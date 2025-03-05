@@ -1,4 +1,4 @@
-# ⚡︎ BoxLang Module: @MODULE_NAME@
+# ⚡︎ BoxLang Module: BoxLang AI
 
 ```
 |:------------------------------------------------------:|

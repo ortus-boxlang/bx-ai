@@ -1,0 +1,84 @@
+class{
+
+	static {
+		chatURL = "https://api.openai.com/v1/chat/completions";
+		imagesURL = "https://api.openai.com/v1/images/generations";
+		embeddingsURL = "https://api.openai.com/v1/embeddings";
+		settings = getModuleInfo( "bx-ai" ).settings;
+		defaultTimeout = 30;
+		defaultRole = "user";
+	}
+
+	function execute(
+		any messages,
+		string model,
+		struct data = {},
+		string type = "chat"
+	){
+		model = arguments.model ?: static.settings.model;
+
+		switch( arguments.type ){
+			case "images" :
+				return images( argumentCollection = arguments )
+			case "embeddings" :
+				return embeddings( argumentCollection = arguments )
+			case "chat" : default :
+				return chat( argumentCollection = arguments )
+		}
+	}
+
+	/**
+	 * ====================================================
+	 * Implementation Methods
+	 * ====================================================
+	 */
+
+	private function chat( any messages, string model, struct data ){
+		// Detect the messages type and massage it
+		if( isSimpleValue( arguments.messages ) ){
+			arguments.messages = [ {
+				"role" : static.defaultRole,
+				"content" : arguments.messages
+			} ]
+		} else if ( isStruct( arguments.messages ) ){
+			param arguments.messages.role = static.defaultRole
+			param arguments.messages.content = ""
+			arguments.messages = [ arguments.messages ]
+		}
+
+		arguments.targetURL = static.chatURL
+		return sendRequest( argumentCollection = arguments )
+	}
+
+	private function images( any messages, string model, struct data  ){
+		arguments.targetURL = static.imagesURL
+		return sendRequest( static.imagesURL, messages, model, data )
+	}
+
+	private function embeddings( any messages, string model, struct data  ){
+		arguments.targetURL = static.embeddingsURL
+		return sendRequest( static.embeddingsURL, messages, model, data )
+	}
+
+	private function sendRequest( string targetURL, any messages, string model, struct data  ){
+		var dataPacket = {
+			"model" : arguments.model,
+			"messages" : arguments.messages
+		}.append( arguments.data )
+
+		bx:http
+			url = arguments.targetURL
+			method = "post"
+			result = "chatResult"
+			charset = "utf-8"
+			timeout = static.defaultTimeout
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+			bx:httpParam type="header" name="Authorization" value="Bearer #static.settings.apiKey#";
+			bx:httpParam type="body" value=jsonSerialize( dataPacket );
+		}
+
+		return jsonDeserialize( chatResult.filecontent );
+	}
+
+}

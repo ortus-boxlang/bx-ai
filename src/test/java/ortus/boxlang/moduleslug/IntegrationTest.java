@@ -16,13 +16,22 @@ package ortus.boxlang.moduleslug;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import io.github.cdimascio.dotenv.Dotenv;
 
 /**
  * This loads the module and runs an integration test on the module.
  */
 public class IntegrationTest extends BaseIntegrationTest {
+
+	@BeforeAll
+	public static void setup() {
+		Dotenv dotenv = Dotenv.load();
+		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
+	}
 
 	@DisplayName( "Test the module loads in BoxLang" )
 	@Test
@@ -32,26 +41,11 @@ public class IntegrationTest extends BaseIntegrationTest {
 		// Then
 		assertThat( moduleService.getRegistry().containsKey( moduleName ) ).isTrue();
 
-		// Verify things got registered
-		// assertThat( datasourceService.hasDriver( Key.of( "derby" ) ) ).isTrue();
-
-		// Register a named datasource
-		// runtime.getConfiguration().runtime.datasources.put(
-		// Key.of( "derby" ),
-		// DatasourceConfig.fromStruct( Struct.of(
-		// "name", "derby",
-		// "driver", "derby",
-		// "properties", Struct.of(
-		// "database", "testDB",
-		// "protocol", "memory"
-		// )
-		// ) )
-		// );
-
 		// @formatter:off
 		runtime.executeSource(
 		    """
-			// Testing code here
+			result = aiChat( "what is boxlang?" )
+			println( result )
 			""",
 		    context
 		);

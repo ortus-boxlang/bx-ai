@@ -36,7 +36,7 @@ class {
 	 * The BoxLang mapping for your module.  All BoxLang modules are registered with an internal
 	 * mapping prefix of : bxModules.{this.mapping}, /bxmodules/{this.mapping}. Ex: bxModules.test, /bxmodules/test
 	 */
-	this.mapping = "bxSpreadsheet";
+	this.mapping = "bxai";
 
 	/**
 	 * Who built the module
@@ -46,7 +46,7 @@ class {
 	/**
 	 * The module description
 	 */
-	this.description = "This module does amazing things";
+	this.description = "This module does amazing things with AI";
 
 	/**
 	 * The module web URL
@@ -68,12 +68,16 @@ class {
 	 * Called by the ModuleService on module registration
 	 */
 	function configure(){
-		/**
-		 * Every module has a settings configuration object
-		 */
 		settings = {
-			loadedOn : now(),
-			loadedBy : "Luis Majano"
+			// The provider of the AI: openai, google, aws, azure, deepseek
+			provider = "openai",
+			// The API Key for the provider
+			apiKey = "",
+			// The provider model to use, if any
+			model = "gpt-4o-mini",
+			// The provider properties according to provider, if any
+			properties = {
+			}
 		};
 
 		/**
@@ -102,16 +106,12 @@ class {
 		 */
 		interceptors = [
 			// { class="path.to.Interceptor", properties={} }
-			{ class : "#moduleRecord.invocationPath#.interceptors.Listener", properties : {
-				createdOn : now(),
-				by : "Luis Majano"
-			} }
 		];
 
 		/**
 		 * A list of custom interception points to register into the runtime
 		 */
-		customInterceptionPoints = [ "onBxTestModule" ];
+		customInterceptionPoints = [  ];
 	}
 
 	/**
@@ -136,7 +136,4 @@ class {
 	 * that match the approved runtime interception points
 	 */
 
-	 function afterModuleActivations(){
-		// do something
-	 }
 }

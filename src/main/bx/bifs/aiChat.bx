@@ -1,0 +1,31 @@
+/**
+ * AI
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Inject the following references into the class
+	 * - moduleRecord : The ModuleRecord instance
+	 * - boxRuntime : The BoxRuntime instance
+	 * - interceptorService : The BoxLang InterceptorService
+	 * - log : A logger for the module config itself
+	 */
+
+    /**
+     * AI chat
+	 *
+	 * @messages The messages to pass into the required model. This depends on the provider. It can be a simple string or an array of messages
+	 * @model The model to override the default model in the settings
+	 * @data A struct of data to pass into the request to the provider.
+     */
+    function invoke(
+		any messages,
+		string model,
+		struct data = {}
+	) {
+		arguments.type = "chat";
+		return new bxModules.bxai.models.OpenAIService().execute( argumentCollection = arguments );
+	}
+
+}
