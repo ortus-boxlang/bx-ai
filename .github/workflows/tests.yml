@@ -34,6 +34,7 @@ jobs:
           #- jdkVersion: "17"
           #  os: "ubuntu-latest"
           #  experimental: true
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -50,11 +51,11 @@ jobs:
           gradle-version: ${{ env.GRADLE_VERSION }}
 
       - name: Setup Environment For Testing Process
-       run: |
-         # Setup .env
-         touch .env
-         # ENV
-         printf "OPENAI_API_KEY=${OPENAI_API_KEY}\n" >> .env
+        run: |
+          # Setup .env
+          touch .env
+          # ENV
+          printf "OPENAI_API_KEY=${OPENAI_API_KEY}\n" >> .env
 
       - name: Test Module
         run: |
