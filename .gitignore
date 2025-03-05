@@ -1,0 +1,14 @@
+.gradle
+build/**
+!gradle/wrapper/gradle-wrapper.jar
+
+### IntelliJ IDEA ###
+.idea/
+
+### Mac OS ###
+.DS_Store
+
+### BOXLANG ###
+/libs/
+src/test/resources/libs/*
+!src/test/resources/libs/.gitkeep
