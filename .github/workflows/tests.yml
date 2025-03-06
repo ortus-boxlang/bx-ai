@@ -56,7 +56,7 @@ jobs:
           touch .env
           # ENV
           printf "OPENAI_API_KEY=${OPENAI_API_KEY}\n" >> .env
-          printf "DEEPDSEEK_API_KEY=${DEEPDSEEK_API_KEY}\n" >> .env
+          printf "DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}\n" >> .env
 
       - name: Test Module
         run: |
