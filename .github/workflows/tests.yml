@@ -19,6 +19,7 @@ jobs:
       DB_USER: root
       DB_PASSWORD: root
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
