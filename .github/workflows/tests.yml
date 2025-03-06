@@ -77,7 +77,7 @@ jobs:
         if: ${{ failure() && github.ref == 'refs/heads/development' }}
         uses: rtCamp/action-slack-notify@v2
         env:
-          SLACK_CHANNEL: boxlang
+          SLACK_CHANNEL: coding
           SLACK_COLOR: ${{ job.status }} # or a specific color like 'green' or '#ff00ff'
           SLACK_ICON_EMOJI: ":bell:"
           SLACK_MESSAGE: "${{ env.MODULE_ID }} Tests FAILED!  You broke the build! :("
