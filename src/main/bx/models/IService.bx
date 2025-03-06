@@ -1,0 +1,8 @@
+/**
+ * Interface for all AI Service classes
+ */
+interface{
+
+	function invoke( required any messages, string model, struct data = {}, string type )
+
+}

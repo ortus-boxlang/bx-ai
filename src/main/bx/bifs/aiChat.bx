@@ -25,7 +25,7 @@ class {
 		struct data = {}
 	) {
 		arguments.type = "chat";
-		return new bxModules.bxai.models.OpenAIService().execute( argumentCollection = arguments );
+		return new bxModules.bxai.models.OpenAIService().invoke( argumentCollection = arguments );
 	}
 
 }

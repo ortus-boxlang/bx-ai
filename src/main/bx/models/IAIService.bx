@@ -1,5 +1,0 @@
-interface{
-
-	function execute( messages, model, data, type );
-
-}

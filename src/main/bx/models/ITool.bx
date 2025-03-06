@@ -1,3 +1,6 @@
+/**
+ * Interface for all AI tools
+ */
 interface {
 
     public string function getName()

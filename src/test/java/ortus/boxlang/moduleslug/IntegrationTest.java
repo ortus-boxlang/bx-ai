@@ -48,7 +48,25 @@ public class IntegrationTest extends BaseIntegrationTest {
 			"""
 			result = aiChat( "what is boxlang?" )
 			println( result )
+			""",
+			context
+		);
+		// @formatter:on
 
+		// Asserts here
+	}
+
+	@DisplayName( "Test the async chat ai" )
+	@Test
+	public void testAsyncChat() {
+		// Given
+
+		// Then
+		assertThat( moduleService.getRegistry().containsKey( moduleName ) ).isTrue();
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
 			future = aiChatAsync( "what is boxlang?" )
 			println( future.get() )
 			""",
@@ -57,10 +75,9 @@ public class IntegrationTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		// Asserts here
-
 	}
 
-	@DisplayName( "Test the module loads in BoxLang" )
+	@DisplayName( "Test the tool calls" )
 	@Test
 	public void testToolCall() {
 		// Given

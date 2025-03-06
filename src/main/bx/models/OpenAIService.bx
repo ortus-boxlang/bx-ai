@@ -1,4 +1,4 @@
-class{
+class implements = "IService"{
 
 	static {
 		chatURL = "https://api.openai.com/v1/chat/completions";
@@ -9,13 +9,13 @@ class{
 		defaultRole = "user";
 	}
 
-	function execute(
-		any messages,
+	function invoke(
+		required any messages,
 		string model,
 		struct data = {},
 		string type = "chat"
 	){
-		model = arguments.model ?: static.settings.model;
+		arguments.model = arguments.model ?: static.settings.model;
 
 		switch( arguments.type ){
 			case "images" :
@@ -54,7 +54,7 @@ class{
 		}
 
 		newMessages = messages.map( message -> message );
-		
+
 		result.choices.each( ( choice, i ) => {
 			newMessages.append(choice.message);
 			choice.message.tool_calls.each(( toolCall, i ) => {
