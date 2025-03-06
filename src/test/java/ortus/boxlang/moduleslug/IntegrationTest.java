@@ -16,7 +16,7 @@ package ortus.boxlang.moduleslug;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -27,17 +27,36 @@ import io.github.cdimascio.dotenv.Dotenv;
  */
 public class IntegrationTest extends BaseIntegrationTest {
 
-	@BeforeAll
-	public static void setup() {
-		Dotenv dotenv = Dotenv.load();
+	static Dotenv dotenv = Dotenv.load();
+
+	@BeforeEach
+	public void beforeEach() {
 		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "openai" );
 	}
 
-	@DisplayName( "Test the module loads in BoxLang" )
+	@DisplayName( "Test the deepseek ai" )
 	@Test
-	public void testModuleLoads() {
-		// Given
+	public void testDeepSeek() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "DEEPSEEK_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "deepseek" );
 
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiChat( "what is boxlang?" )
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Asserts here
+	}
+
+	@DisplayName( "Test OpenAI" )
+	@Test
+	public void testOpenAI() {
 		// Then
 		assertThat( moduleService.getRegistry().containsKey( moduleName ) ).isTrue();
 
@@ -57,11 +76,6 @@ public class IntegrationTest extends BaseIntegrationTest {
 	@DisplayName( "Test the async chat ai" )
 	@Test
 	public void testAsyncChat() {
-		// Given
-
-		// Then
-		assertThat( moduleService.getRegistry().containsKey( moduleName ) ).isTrue();
-
 		// @formatter:off
 		runtime.executeSource(
 			"""
@@ -78,11 +92,6 @@ public class IntegrationTest extends BaseIntegrationTest {
 	@DisplayName( "Test the tool calls" )
 	@Test
 	public void testToolCall() {
-		// Given
-
-		// Then
-		assertThat( moduleService.getRegistry().containsKey( moduleName ) ).isTrue();
-
 		// @formatter:off
 		runtime.executeSource(
 			"""

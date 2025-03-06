@@ -1,22 +1,22 @@
 class implements = "IService"{
 
 	static {
-		chatURL = "https://api.openai.com/v1/chat/completions";
-		imagesURL = "https://api.openai.com/v1/images/generations";
-		embeddingsURL = "https://api.openai.com/v1/embeddings";
-		settings = getModuleInfo( "bx-ai" ).settings;
-		defaultTimeout = 30;
-		defaultRole = "user";
+		chatURL = "https://api.deepseek.com/v1/chat/completions"
+		imagesURL = "https://api.deepseek.com/v1/images/generations"
+		embeddingsURL = "https://api.deepseek.com/v1/embeddings"
+		settings = getModuleInfo( "bx-ai" ).settings
+		defaultTimeout = 30
+		defaultRole = "user"
 	}
 
 	function invoke(
 		required any messages,
-		string model,
+		string model = "deepseek-chat",
 		struct data = {},
 		string type = "chat",
 		boolean verbose = false
 	){
-		arguments.model = arguments.model ?: static.settings.model;
+		arguments.model = arguments.model ?: static.settings.defaultModel;
 
 		result = "";
 

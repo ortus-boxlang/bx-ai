@@ -69,11 +69,11 @@ class {
 	 */
 	function configure(){
 		settings = {
-			// The provider of the AI: openai, google, aws, azure, deepseek
+			// The provider of the AI: openai, deepseek, etc
 			provider = "openai",
 			// The API Key for the provider
 			apiKey = "",
-			// The provider model to use, if any
+			// The default provider model to use, if any
 			model = "gpt-4o-mini",
 			// The provider properties according to provider, if any
 			properties = {

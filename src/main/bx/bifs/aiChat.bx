@@ -27,7 +27,21 @@ class {
 		boolean verbose = false
 	) {
 		arguments.type = "chat";
-		return new bxModules.bxai.models.OpenAIService().invoke( argumentCollection = arguments );
+		return getProvider().invoke( argumentCollection = arguments );
+	}
+
+	/**
+	 * Get the provider configured in the module settings
+	 */
+	private function getProvider() {
+		switch( moduleRecord.settings.provider ) {
+			case "openai":
+				return new bxModules.bxai.models.OpenAIService();
+			case "deepseek":
+				return new bxModules.bxai.models.DeepSeekService();
+			default:
+				throw( "Provider [#moduleRecord.settings.provider#] is not supported.  Valid Providers are: openai, deepseek" );
+		}
 	}
 
 }

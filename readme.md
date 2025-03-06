@@ -19,6 +19,7 @@
 Welcome to the BoxLang AI Module. This module is a BoxLang module that provides AI capabilities to your BoxLang applications.  The following AI providers are supported:
 
 - [OpenAI](https://www.openai.com/)
+- [DeepSeek](https://www.deepseek.com/)
 
 > More coming soon.
 
@@ -30,7 +31,7 @@ Here are the settings you can place in your `boxlang.json` file:
 {
 	"modules" : {
 		"bxai" : {
-			// The provider of the AI: openai, google, aws, azure, deepseek
+			// The provider of the AI: openai, deepseek, etc
 			provider = "openai",
 			// The API Key for the provider
 			apiKey = "",
