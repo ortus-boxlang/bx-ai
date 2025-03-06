@@ -46,6 +46,9 @@ public class IntegrationTest extends BaseIntegrationTest {
 		    """
 			result = aiChat( "what is boxlang?" )
 			println( result )
+
+			future = aiChatAsync( "what is boxlang?" )
+			println( future.get() )
 			""",
 		    context
 		);

@@ -16,112 +16,113 @@
 
 <p>&nbsp;</p>
 
-This template can be used to create Ortus based BoxLang Modules. To use, just click the `Use this Template` button in the github repository: https://github.com/ortus-boxlang/boxlang-module-template and run the setup task from where you cloned it.
+Welcome to the BoxLang AI Module. This module is a BoxLang module that provides AI capabilities to your BoxLang applications.  The following AI providers are supported:
 
-```bash
-box task run taskFile=src/build/SetupTemplate
+- [OpenAI](https://www.openai.com/)
+
+> More coming soon.
+
+## Settings
+
+Here are the settings you can place in your `boxlang.json` file:
+
+```json
+{
+	"modules" : {
+		"bxai" : {
+			// The provider of the AI: openai, google, aws, azure, deepseek
+			provider = "openai",
+			// The API Key for the provider
+			apiKey = "",
+			// The provider model to use, if any
+			model = "gpt-4o-mini",
+			// The provider properties according to provider, if any
+			properties = {
+			}
+		}
+	}
+}
 ```
 
-The `SetupTemplate` task will ask you for your module name, id and description and configure the template for you! Enjoy!
+## Usage
 
-## Directory Structure
+This module exposes the following BoxLang functions:
 
-Here is a brief overview of the directory structure:
+- `aiChat( messages, model, struct data )` : This function will allow you to chat with the AI provider and get responses back.
+- `aiChatAsync( messages, model, struct data )` : This function will allow you to chat with the AI provider asynchronously and give you back a BoxLang Completable Future.
 
--   `.github/workflows` - These are the github actions to test and build the module via CI
--   `build` - This is a temporary non-sourced folder that contains the build assets for the module that gradle produces
--   `gradle` - The gradle wrapper and configuration
--   `src` - Where your module source code lives
--   `.cfformat.json` - A CFFormat using the Ortus Standards
--   `.editorconfig` - Smooth consistency between editors
--   `.gitattributes` - Git attributes
--   `.gitignore` - Basic ignores. Modify as needed.
--   `.markdownlint.json` - A linting file for markdown docs
--   `.ortus-java-style.xml` - Ortus Java Style for IntelliJ, VScode, Eclipse.
--   `box.json` - The box.json for your module used to publish to ForgeBox
--   `build.gradle` - The gradle build file for the module
--   `changelog.md` - A nice changelog tracking file
--   `CONTRIBUTING.md` - A contribution guideline
--   `gradlew` - The gradle wrapper
--   `gradlew.bat` - The gradle wrapper for windows
--   `ModuleConfig.cfc` - Your module's configuration. Modify as needed.
--   `readme.md` - Your module's readme. Modify as needed.
--   `settings.gradle` - The gradle settings file
+### Arguments
 
-Here is a brief overview of the source directory structure:
+- `messages` : The messages to chat with the AI.  This is provider dependent. Please see each section for more information.
+- `model` : The model to use for the AI provider.  This is provider dependent. Please see each section for more information.
+- `data` : The data to pass to the AI provider.  This is provider dependent. Please see each section for more information.
 
--   `build` - Build scripts and assets
--   `main` - The main module source code
-    -   `bx` - The BoxLang source code
-    -   `ModuleConfig.bx` - The BoxLang module configuration
-        -   `bifs` - BoxLang built-in functions
-        -   `components` - BoxLang components
-        -   `config` - BoxLang configuration, schedulers, etc.
-        -   `interceptors` - BoxLang interceptors
-        -   `libs` - Java libraries to use that are NOT managed by gradle
-        -   `models` - BoxLang models
-    -   `java` - Java source code
-    -   `resources` - Resources for the module placed in final jar
--   `test`
-    -   `bx` - The BoxLang test code
-    -   `java` - Java test code
-    -   `resources` - Resources for testing
-        -   `libs` - BoxLang binary goes here for now.
-
-## Project Properties
-
-The project name is defined in the `settings.gradle` file. You can change it there.
-The project version, BoxLang Version and JDK version is defined in the `build.gradle` file. You can change it there.
-
-## Gradle Tasks
-
-Before you get started, you need to run the `downloadBoxLang` task in order to download the latest BoxLang binary until we publish to Maven.
-
-```bash
-gradle downloadBoxLang
+```js
+// Chat with the AI
+aiChat( "What is the meaning of life?" );
 ```
 
-This will store the binary under `/src/test/resources/libs` for you to use in your tests and compiler. Here are some basic tasks
+----
 
-| Task                | Description                                                                                                       |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `build`             | The default lifecycle task that triggers the build process, including tasks like `clean`, `assemble`, and others. |
-| `clean`             | Deletes the `build` folders. It helps ensure a clean build by removing any previously generated artifacts.        |
-| `compileJava`       | Compiles Java source code files located in the `src/main/java` directory                                          |
-| `compileTestJava`   | Compiles Java test source code files located in the `src/test/java` directory                                     |
-| `dependencyUpdates` | Checks for updated versions of all dependencies                                                                   |
-| `downloadBoxLang`   | Downloads the latest BoxLang binary for testing                                                                   |
-| `jar`               | Packages your project's compiled classes and resources into a JAR file `build/libs` folder                        |
-| `javadoc`           | Generates the Javadocs for your project and places them in the `build/docs/javadoc` folder                        |
-| `serviceLoader`     | Generates the ServiceLoader file for your project                                                                 |
-| `spotlessApply`     | Runs the Spotless plugin to format the code                                                                       |
-| `spotlessCheck`     | Runs the Spotless plugin to check the formatting of the code                                                      |
-| `tasks`             | Show all the available tasks in the project                                                                       |
-| `test`              | Executes the unit tests in your project and produces the reports in the `build/reports/tests` folder              |
+## OpenAI
 
-## Tests
+The OpenAI provider will allow you to interact with the following APIs:
 
-Please use the `src/test` folder for your unit tests. You can either test using TestBox o JUnit if it's Java.
+- Chat API - https://platform.openai.com/docs/api-reference/chat
+- Image API
+- Embedding API
 
-## VSCode Tests
+Please see [OpenAI API](https://beta.openai.com/docs/api-reference) for more information.
 
-If you will be running tests for modules using the VSCode test explorer, then you need to make sure you remove the `/src/main/resources` line item from the configured class path, if not, the BoxLang core will try loading any service loaders it finds in that class path resolution.
+### aiChat()
 
-> Please note, this IS ONLY FOR MODULE DEVELOPMENT.
+You can use the `aiChat()` function to chat with the OpenAI API.  Here is more docs on this: https://platform.openai.com/docs/guides/text-generation
 
-Go to the `Java Projects` panel, click on the 3 dots and click on `Configure Classpath`. Remove the `/src/main/resources` line item and hit `APPLY SETTINGS` on the bottom left.
+#### Messages
 
-## Github Actions Automation
+This can be any of the following
 
-The github actions will clone, test, package, deploy your module to ForgeBox and the Ortus S3 accounts for API Docs and Artifacts. So please make sure the following environment variables are set in your repository.
+- A string : A message with a default `role` of `user` will be used
+- A struct : A single message that must have a `role` and a `content` key
+- An array of structs : An array of messages that must have a `role` and a `content` keys
 
-> Please note that most of them are already defined at the org level
+```js
+// Chat with the AI
+aiChat( "What is the meaning of life?" );
+```
 
--   `FORGEBOX_TOKEN` - The Ortus ForgeBox API Token
--   `AWS_ACCESS_KEY` - The travis user S3 account
--   `AWS_ACCESS_SECRET` - The travis secret S3
+```js
+// Chat with the AI
+aiChat( { role="developer", content="What is the meaning of life?" } );
+```
 
-> Please contact the admins in the `#infrastructure` channel for these credentials if needed
+```js
+// Chat with the AI
+aiChat( [
+	{ role="developer", content="Be a helpful assistant" },
+	{ role="user", content="What is the meaning of life?" }
+] );
+```
+
+#### Model
+
+The supported models for OpenAI are:
+
+- `gpt-4o` : The large model
+- `gpt-4o-mini` : The more affordable but slower model
+- `gpt-4o-turbo` : The turbo model
+- Much more, look at the docs.
+
+You can find more information here: https://platform.openai.com/docs/models
+
+#### Data
+
+This is an arbitrary structure that will be passed to the OpenAI API alongsside the top level body.
+
+```js
+// Chat with the AI
+aiChat( "What is the meaning of life?", "gpt-4o-mini", { temperature=0.5, max_tokens=100 } );
+```
 
 ## Ortus Sponsors
 
