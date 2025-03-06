@@ -1,0 +1,7 @@
+interface {
+
+    public string function getName()
+    public struct function getSchema()
+    public string function invoke( required struct args )
+
+}

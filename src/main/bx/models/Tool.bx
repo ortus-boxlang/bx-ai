@@ -1,0 +1,94 @@
+class accessors = true implements="ITool" {
+
+    property name;
+    property func;
+    property schema;
+    property description;
+    property argDescriptions;
+    
+    variables.argDescriptions={};
+
+    function describeFunction( required string description ){
+        variables.description = description
+        return this;
+    }
+
+    function describeArg( required string name, required string description){
+        variables.argDescriptions[ name ] = description;
+        return this;
+    }
+
+    function setName( required string name ){
+        variables.name = name;
+
+        return this;
+    }
+
+    function setFunc( required any func ){
+        variables.func = func;
+
+        return this;
+    }
+
+    function setSchema( required struct schema ){
+        variables.schema = schema;
+
+        return this;
+    }
+
+    public string function getName(){
+        return variables.name
+    }
+
+    public struct function getSchema(){
+        if( variables.schema == null ){
+            return generateSchema()
+        }
+
+        return variables.schema
+    }
+
+    public string function invoke( required struct args ){
+        return variables.func( argumentCollection = args )
+    }
+
+    private struct function generateSchema(){
+        required = []
+        properties = {}
+
+        variables.func.$bx.meta.parameters.each( param => {
+            required.append( param.name )
+            properties[ param.name ] = {
+                "type": "string",
+                "description": variables.argDescriptions[ param.name ]
+            };
+        });
+        
+        return {
+            "type": "function",
+            "function": {
+                "name": variables.name,
+                "description": variables.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                    "additionalProperties": False
+                },
+                "strict": True
+            }
+        };
+    }
+
+    function onMissingMethod( missingMethodName, missingMethodArguments ){
+
+        if( missingMethodName == "describe" ){
+            return this.describeFunction( missingMethodArguments[ 1 ] );
+        }
+        else if( missingMethodName.startsWith( "describe" ) ){
+            return this.describeArg( missingMethodName.replace( "describe", "" ), missingMethodArguments[ 1 ] );
+        }
+
+        throw( "Method #missingMethodName# was not found" );
+    }
+}

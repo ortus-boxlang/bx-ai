@@ -21,6 +21,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import io.github.cdimascio.dotenv.Dotenv;
+import ortus.boxlang.runtime.scopes.Key;
+import ortus.boxlang.runtime.types.Struct;
 
 /**
  * This loads the module and runs an integration test on the module.
@@ -43,18 +45,60 @@ public class IntegrationTest extends BaseIntegrationTest {
 
 		// @formatter:off
 		runtime.executeSource(
-		    """
+			"""
 			result = aiChat( "what is boxlang?" )
 			println( result )
 
 			future = aiChatAsync( "what is boxlang?" )
 			println( future.get() )
 			""",
-		    context
+			context
 		);
 		// @formatter:on
 
 		// Asserts here
 
+	}
+
+	@DisplayName( "Test the module loads in BoxLang" )
+	@Test
+	public void testToolCall() {
+		// Given
+
+		// Then
+		assertThat( moduleService.getRegistry().containsKey( moduleName ) ).isTrue();
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			tool = new bxmodules.bxai.models.Tool();
+
+			tool.setName( "get_weather" )
+				.describe( "Get current temperature for a given location." )
+				.describeLocation( "City and country e.g. Bogotá, Colombia" )
+				.setFunc( ( location ) => {
+					if( location contains "Kansas City" ) {
+						return "85"
+					}
+
+					if( location contains "San Salvador" ){
+						return "90"
+					}
+
+					return "unknown";
+				});
+
+			result = aiChat( messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.", data = {
+				tools: [ tool ]
+			} )
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Asserts here
+		Struct choice = ( Struct ) variables.getAsStruct( Key.of( "result" ) ).getAsArray( Key.of( "choices" ) ).get( 0 );
+		assertThat( choice.getAsStruct( Key.of( "message" ) ).get( "content" ) ).isEqualTo( "San Salvador" );
 	}
 }
