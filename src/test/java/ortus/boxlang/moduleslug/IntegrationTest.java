@@ -21,8 +21,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import io.github.cdimascio.dotenv.Dotenv;
-import ortus.boxlang.runtime.scopes.Key;
-import ortus.boxlang.runtime.types.Struct;
 
 /**
  * This loads the module and runs an integration test on the module.
@@ -114,8 +112,6 @@ public class IntegrationTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		// Asserts here
-		Struct choice = ( Struct ) variables.getAsStruct( Key.of( "result" ) ).getAsArray( Key.of( "choices" ) ).get( 0 );
-		assertThat( choice.getAsStruct( Key.of( "message" ) ).get( "content" ) ).isEqualTo( "San Salvador" );
+		assertThat( variables.get( result ) ).isEqualTo( "San Salvador" );
 	}
 }

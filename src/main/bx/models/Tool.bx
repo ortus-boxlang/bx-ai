@@ -1,3 +1,11 @@
+/**
+ * Basic tool implementation that allows you to pass in a function for the AI to use.
+ * In addition to providing a funciton you must also provide a name and descriptions.
+ * 
+ * You can specify the function and argument descriptions using the fluent syntax `.describeArgName( "This argument is for numbers" )`
+ * or you can use the `setSchema( required struct schema )` method to provide a schema object.
+ * 
+ */
 class accessors = true implements="ITool" {
 
     property name;
@@ -8,38 +16,101 @@ class accessors = true implements="ITool" {
     
     variables.argDescriptions={};
 
+    /**
+     * Describe the function. This is used by the AI to communicate the purpose of the function.
+     * 
+     * @description The description of the function
+     */
     function describeFunction( required string description ){
         variables.description = description
         return this;
     }
 
+    /**
+     * Describe an argument. This is used by the AI to communicate the purpose of the argument.
+     * 
+     * @name The name of the argument
+     * @description The description of the argument
+     */
     function describeArg( required string name, required string description){
         variables.argDescriptions[ name ] = description;
         return this;
     }
 
+    /**
+     * Set the name of the function. This is used by the AI to identify the function.
+     * 
+     * @name The name of the function
+     */
     function setName( required string name ){
         variables.name = name;
 
         return this;
     }
 
+    /**
+     * Set the function that the AI will use. This can be used to return
+     * data to the AI to influence further answers or to allow the AI to take actions
+     * within the system.
+     * 
+     * Your function must return a value that can be cast to a string.
+     * 
+     * @func The function that the AI will use
+     */
     function setFunc( required any func ){
         variables.func = func;
 
         return this;
     }
 
+    /**
+     * Set the schema for the function. This is used to provide a more detailed schema
+     * for the function that the AI can use to validate the arguments.
+     * 
+     * ```
+     * {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get current temperature for a given location.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "City and country e.g. Bogotá, Colombia"
+                        }
+                    },
+                    "required": [
+                        "location"
+                    ],
+                    "additionalProperties": false
+                },
+                "strict": true
+            }
+        } 
+     * ```
+     * 
+     * @schema The schema for the function
+     */
     function setSchema( required struct schema ){
         variables.schema = schema;
 
         return this;
     }
 
+    /**
+     * Get the name of the function
+     */
     public string function getName(){
         return variables.name
     }
 
+    /**
+     * Get the schema for the function.
+     * 
+     * If you did not provide a schema, one will be generated based on the function and argument descriptions.
+     */
     public struct function getSchema(){
         if( variables.schema == null ){
             return generateSchema()
@@ -48,10 +119,18 @@ class accessors = true implements="ITool" {
         return variables.schema
     }
 
+    /**
+     * Invoke the function with the provided arguments.
+     * 
+     * @args The arguments to pass to the function
+     */
     public string function invoke( required struct args ){
         return variables.func( argumentCollection = args )
     }
 
+    /**
+     * Generate a schema based on the function and argument descriptions.
+     */
     private struct function generateSchema(){
         required = []
         properties = {}
@@ -80,6 +159,11 @@ class accessors = true implements="ITool" {
         };
     }
 
+    /**
+     * This is used to provide a fluent interface for describing the function and arguments.
+     * 
+     * If your argument is named `location` you can use `describeLocation( "City and country e.g. Bogotá, Colombia" )`
+     */
     function onMissingMethod( missingMethodName, missingMethodArguments ){
 
         if( missingMethodName == "describe" ){

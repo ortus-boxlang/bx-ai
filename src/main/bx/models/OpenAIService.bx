@@ -18,14 +18,25 @@ class implements = "IService"{
 	){
 		arguments.model = arguments.model ?: static.settings.model;
 
+		result = "";
+
 		switch( arguments.type ){
 			case "images" :
-				return images( argumentCollection = arguments )
+				result = images( argumentCollection = arguments )
+				break
 			case "embeddings" :
-				return embeddings( argumentCollection = arguments )
+				result = embeddings( argumentCollection = arguments )
+				break
 			case "chat" : default :
-				return chat( argumentCollection = arguments )
+				result = chat( argumentCollection = arguments )
+				break
 		}
+
+		if( verbose ){
+			return result;
+		}
+
+		return result.choices[ 1 ].message.content;
 	}
 
 	/**
