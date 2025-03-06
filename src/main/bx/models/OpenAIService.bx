@@ -13,7 +13,8 @@ class implements = "IService"{
 		required any messages,
 		string model,
 		struct data = {},
-		string type = "chat"
+		string type = "chat",
+		boolean verbose = false
 	){
 		arguments.model = arguments.model ?: static.settings.model;
 

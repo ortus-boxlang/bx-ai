@@ -48,14 +48,15 @@ Here are the settings you can place in your `boxlang.json` file:
 
 This module exposes the following BoxLang functions:
 
-- `aiChat( messages, model, struct data )` : This function will allow you to chat with the AI provider and get responses back.
-- `aiChatAsync( messages, model, struct data )` : This function will allow you to chat with the AI provider asynchronously and give you back a BoxLang Completable Future.
+- `aiChat( messages, model, struct data={}, boolean verbose=false )` : This function will allow you to chat with the AI provider and get responses back.
+- `aiChatAsync( messages, model, struct data={}, boolean verbose=false )` : This function will allow you to chat with the AI provider asynchronously and give you back a BoxLang Completable Future.
 
 ### Arguments
 
 - `messages` : The messages to chat with the AI.  This is provider dependent. Please see each section for more information.
 - `model` : The model to use for the AI provider.  This is provider dependent. Please see each section for more information.
 - `data` : The data to pass to the AI provider.  This is provider dependent. Please see each section for more information.
+- `verbose` : A flag to output verbose information about the AI chat or just the response message.
 
 ```js
 // Chat with the AI
@@ -121,7 +122,50 @@ This is an arbitrary structure that will be passed to the OpenAI API alongsside 
 
 ```js
 // Chat with the AI
-aiChat( "What is the meaning of life?", "gpt-4o-mini", { temperature=0.5, max_tokens=100 } );
+aiChat( "What is BoxLang?", "gpt-4o-mini", { temperature=0.5, max_tokens=100 } );
+```
+
+#### Examples
+
+Here are some examples of chatting with the AI:
+
+```js
+aiChat( "Write a haiku about recursion in programming." );
+
+aiChat( {
+	"role": "user",
+	"content": "Write a haiku about recursion in programming."
+} );
+
+aiChat( [
+	{
+		"role": "developer",
+		"content": "You are a helpful assistant."
+	},
+	{
+		"role": "user",
+		"content": "Write a haiku about recursion in programming."
+	}
+] );
+
+// Analyze an image
+aiChat( [
+    {
+		"role": "user",
+		"content": [
+			{
+				"type": "text",
+				"text": "What is in this image?"
+			},
+			{
+				"type": "image_url",
+				"image_url": {
+					"url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
+				}
+			}
+		]
+	}
+] );
 ```
 
 ## Ortus Sponsors

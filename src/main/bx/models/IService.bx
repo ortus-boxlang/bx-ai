@@ -3,6 +3,12 @@
  */
 interface{
 
-	function invoke( required any messages, string model, struct data = {}, string type )
+	function invoke(
+		required any messages,
+		string model,
+		struct data = {},
+		string type,
+		boolean verbose
+	)
 
 }

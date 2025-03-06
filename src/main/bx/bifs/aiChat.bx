@@ -18,11 +18,13 @@ class {
 	 * @messages The messages to pass into the required model. This depends on the provider. It can be a simple string or an array of messages
 	 * @model The model to override the default model in the settings
 	 * @data A struct of data to pass into the request to the provider.
+	 * @verbose By default it returns the first message from the provider. If you want to see all the messages, set this to true
      */
     function invoke(
 		any messages,
 		string model,
-		struct data = {}
+		struct data = {},
+		boolean verbose = false
 	) {
 		arguments.type = "chat";
 		return new bxModules.bxai.models.OpenAIService().invoke( argumentCollection = arguments );
