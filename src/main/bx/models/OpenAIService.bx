@@ -47,7 +47,34 @@ class{
 		}
 
 		arguments.targetURL = static.chatURL
-		return sendRequest( argumentCollection = arguments )
+		result = sendRequest( argumentCollection = arguments )
+
+		if( !result.choices[ 1 ].message.keyExists( "tool_calls" ) ){
+			return result;
+		}
+
+		newMessages = messages.map( message -> message );
+		
+		result.choices.each( ( choice, i ) => {
+			newMessages.append(choice.message);
+			choice.message.tool_calls.each(( toolCall, i ) => {
+
+				toolIndex = data.tools.find( t => t.getName() == toolCall.function.name );
+				if( toolIndex == 0 ){
+					throw( "Invalid tool reference" );
+				}
+
+				tool = data.tools[ toolIndex ]
+
+				newMessages.append({
+					"role" : "tool",
+					"tool_call_id": toolCall.id,
+					"content" : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
+				});
+			});
+		});
+
+		return chat( newMessages, model, data );
 	}
 
 	private function images( any messages, string model, struct data  ){
@@ -65,6 +92,10 @@ class{
 			"model" : arguments.model,
 			"messages" : arguments.messages
 		}.append( arguments.data )
+
+		if( dataPacket.keyExists( "tools") ){
+			dataPacket.tools = dataPacket.tools.map( .getSchema );
+		}
 
 		bx:http
 			url = arguments.targetURL
