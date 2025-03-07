@@ -20,6 +20,7 @@ Welcome to the BoxLang AI Module. This module is a BoxLang module that provides 
 
 - [OpenAI](https://www.openai.com/)
 - [DeepSeek](https://www.deepseek.com/)
+- [Gemini](https://gemini.google.com/)
 
 > More coming soon.
 
