@@ -39,6 +39,8 @@ class {
 				return new bxModules.bxai.models.OpenAIService();
 			case "deepseek":
 				return new bxModules.bxai.models.DeepSeekService();
+			case "gemini":
+				return new bxModules.bxai.models.GeminiService();
 			default:
 				throw( "Provider [#moduleRecord.settings.provider#] is not supported.  Valid Providers are: openai, deepseek" );
 		}

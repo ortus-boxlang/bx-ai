@@ -35,6 +35,72 @@ public class IntegrationTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "provider", "openai" );
 	}
 
+	@DisplayName( "Test Gemini AI" )
+	@Test
+	public void testGemini() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "GEMINI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "gemini" );
+
+		// @formatter:off
+		
+		runtime.executeSource(
+			"""
+			result = aiChat( "what is boxlang?" )
+			println( result )
+			""",
+			context
+		);
+		
+		// @formatter:on
+
+		// Asserts here
+	}
+
+	@DisplayName( "Test Gemini AI, Struct of Message" )
+	@Test
+	public void testGeminiStruct() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "GEMINI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "gemini" );
+
+		// @formatter:off
+		
+		runtime.executeSource(
+			"""
+			result = aiChat( { role:"user", content:"what is boxlang?" } )
+			println( result )
+			""",
+			context
+		);
+		
+		// @formatter:on
+
+		// Asserts here
+	}
+
+	@DisplayName( "Test Gemini AI, Array of Messages" )
+	@Test
+	public void testGeminiArray() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "GEMINI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "gemini" );
+
+		// @formatter:off
+		
+		runtime.executeSource(
+			"""
+			result = aiChat( [
+				{ role:"developer", content:"You are a snarky assistant." },
+				{ role:"user", content:"what is boxlang?" }
+			])
+			println( result )
+			""",
+			context
+		);
+		
+		// @formatter:on
+
+		// Asserts here
+	}
+
 	@DisplayName( "Test the deepseek ai" )
 	@Test
 	public void testDeepSeek() {
