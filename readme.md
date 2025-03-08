@@ -16,11 +16,12 @@
 
 <p>&nbsp;</p>
 
-Welcome to the BoxLang AI Module. This module is a BoxLang module that provides AI capabilities to your BoxLang applications.  The following AI providers are supported:
+Welcome to the BoxLang AI Module. This module is a BoxLang module that provides AI chat capabilities to your BoxLang applications.  The following AI providers are supported:
 
 - [OpenAI](https://www.openai.com/)
 - [DeepSeek](https://www.deepseek.com/)
 - [Gemini](https://gemini.google.com/)
+- [Grok](https://grok.com/)
 
 > More coming soon.
 

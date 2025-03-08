@@ -1,0 +1,129 @@
+abstract class{
+
+	static {
+		chatURL = "https://api.openai.com/v1/chat/completions";
+		imagesURL = "https://api.openai.com/v1/images/generations";
+		embeddingsURL = "https://api.openai.com/v1/embeddings";
+		settings = getModuleInfo( "bx-ai" ).settings;
+		defaultTimeout = 30;
+		defaultRole = "user";
+	}
+
+	function invoke(
+		required any messages,
+		string model,
+		struct data = {},
+		string type = "chat",
+		boolean verbose = false
+	){
+		arguments.model = arguments.model ?: static.settings.model;
+
+		result = "";
+
+		switch( arguments.type ){
+			case "images" :
+				result = images( argumentCollection = arguments )
+				break
+			case "embeddings" :
+				result = embeddings( argumentCollection = arguments )
+				break
+			case "chat" : default :
+				result = chat( argumentCollection = arguments )
+				break
+		}
+
+		if( verbose ){
+			return result;
+		}
+
+		return result.choices[ 1 ].message.content;
+	}
+
+	/**
+	 * ====================================================
+	 * Implementation Methods
+	 * ====================================================
+	 */
+
+	private function chat( any messages, string model, struct data ){
+		// Detect the messages type and massage it according to our supported patterns
+		if( isSimpleValue( arguments.messages ) ){
+			arguments.messages = [ {
+				"role" : static.defaultRole,
+				"content" : arguments.messages
+			} ]
+		} else if ( isStruct( arguments.messages ) ){
+			param arguments.messages.role = static.defaultRole
+			param arguments.messages.content = ""
+			arguments.messages = [ arguments.messages ]
+		}
+
+		arguments.targetURL = static.chatURL
+		result = sendRequest( argumentCollection = arguments )
+
+		if( result.keyExists( "error" ) ){
+			throw( result.error.toString() );
+		}
+
+		if( !result.choices[ 1 ].message.keyExists( "tool_calls" ) ){
+			return result;
+		}
+
+		newMessages = messages.map( message -> message );
+
+		result.choices.each( ( choice, i ) => {
+			newMessages.append(choice.message);
+			choice.message.tool_calls.each(( toolCall, i ) => {
+
+				toolIndex = data.tools.find( t => t.getName() == toolCall.function.name );
+				if( toolIndex == 0 ){
+					throw( "Invalid tool reference" );
+				}
+
+				tool = data.tools[ toolIndex ]
+
+				newMessages.append({
+					"role" : "tool",
+					"tool_call_id": toolCall.id,
+					"content" : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
+				});
+			});
+		});
+
+		return chat( newMessages, model, data );
+	}
+
+	private function sendRequest( string targetURL, any messages, string model, struct data  ){
+		var dataPacket = {
+			"model" : arguments.model,
+			"messages" : arguments.messages
+		}.append( arguments.data )
+
+		if( dataPacket.keyExists( "tools") ){
+			dataPacket.tools = dataPacket.tools.map( .getSchema );
+		}
+
+		BoxAnnounce(
+			"preAIRequest",
+			{
+				"targetURL" : arguments.targetURL,
+				"dataPacket" : dataPacket
+			}
+		);
+
+		bx:http
+			url = arguments.targetURL
+			method = "post"
+			result = "chatResult"
+			charset = "utf-8"
+			timeout = static.defaultTimeout
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+			bx:httpParam type="header" name="Authorization" value="Bearer #static.settings.apiKey#";
+			bx:httpParam type="body" value=jsonSerialize( dataPacket );
+		}
+
+		return jsonDeserialize( chatResult.filecontent );
+	}
+
+}

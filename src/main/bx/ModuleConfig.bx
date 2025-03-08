@@ -111,7 +111,10 @@ class {
 		/**
 		 * A list of custom interception points to register into the runtime
 		 */
-		customInterceptionPoints = [  ];
+		customInterceptionPoints = [
+			"preAIRequest",
+			"postAIRequest"
+		 ];
 	}
 
 	/**
