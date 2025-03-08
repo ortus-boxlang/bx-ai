@@ -1,22 +1,26 @@
 class implements = "IService"{
 
 	static {
-		chatURL = "https://api.openai.com/v1/chat/completions";
-		imagesURL = "https://api.openai.com/v1/images/generations";
-		embeddingsURL = "https://api.openai.com/v1/embeddings";
-		settings = getModuleInfo( "bx-ai" ).settings;
-		defaultTimeout = 30;
-		defaultRole = "user";
+		chatURL = "https://api.openai.com/v1/chat/completions"
+		imagesURL = "https://api.openai.com/v1/images/generations"
+		embeddingsURL = "https://api.openai.com/v1/embeddings"
+		settings = getModuleInfo( "bx-ai" ).settings
+		defaultTimeout = 30
+		defaultRole = "user"
+		defaultModel = "gpt-4o-mini"
 	}
 
 	function invoke(
 		required any messages,
-		string model,
-		struct data = {},
+		struct properties = {},
 		string type = "chat",
 		boolean verbose = false
 	){
-		arguments.model = arguments.model ?: static.settings.model;
+
+		if( !properties.keyExists( "model" ) ){
+			// Check if we have it in the defaults?
+			properties.model = static.settings.properties.keyExists( "model" ) ? static.settings.properties.model : static.defaultModel
+		}
 
 		result = "";
 
@@ -90,24 +94,23 @@ class implements = "IService"{
 			});
 		});
 
-		return chat( newMessages, model, data );
+		return chat( newMessages, properties );
 	}
 
-	private function images( any messages, string model, struct data  ){
+	private function images( any messages, struct properties  ){
 		arguments.targetURL = static.imagesURL
-		return sendRequest( static.imagesURL, messages, model, data )
+		return sendRequest( static.imagesURL, messages, properties )
 	}
 
-	private function embeddings( any messages, string model, struct data  ){
+	private function embeddings( any messages, struct properties  ){
 		arguments.targetURL = static.embeddingsURL
-		return sendRequest( static.embeddingsURL, messages, model, data )
+		return sendRequest( static.embeddingsURL, messages, properties )
 	}
 
-	private function sendRequest( string targetURL, any messages, string model, struct data  ){
+	private function sendRequest( string targetURL, any messages, struct properties  ){
 		var dataPacket = {
-			"model" : arguments.model,
 			"messages" : arguments.messages
-		}.append( arguments.data )
+		}.append( arguments.properties )
 
 		if( dataPacket.keyExists( "tools") ){
 			dataPacket.tools = dataPacket.tools.map( .getSchema );

@@ -73,9 +73,7 @@ class {
 			provider = "openai",
 			// The API Key for the provider
 			apiKey = "",
-			// The default provider model to use, if any
-			model = "gpt-4o-mini",
-			// The provider properties according to provider, if any
+			// The default provider properties to use
 			properties = {
 			}
 		};

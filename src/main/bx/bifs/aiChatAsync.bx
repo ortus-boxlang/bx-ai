@@ -16,14 +16,12 @@ class extends="aiChat"{
      * AI chat
 	 *
 	 * @messages The messages to pass into the required model. This depends on the provider. It can be a simple string or an array of messages
-	 * @model The model to override the default model in the settings
-	 * @data A struct of data to pass into the request to the provider.
+	 * @properties A struct of properties to pass to the provider for the model: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
 	 * @verbose By default it returns the first message from the provider. If you want to see all the messages, set this to true
      */
     function invoke(
 		any messages,
-		string model,
-		struct data = {},
+		struct properties = {},
 		boolean verbose = false
 	) {
 		return futureNew( () => super.invoke( messages, model, data ) );
