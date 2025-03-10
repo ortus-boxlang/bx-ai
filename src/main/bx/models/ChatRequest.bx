@@ -1,0 +1,120 @@
+/**
+ * This models a chat request that will be sent to a provider
+ */
+class{
+
+	/**
+	 * The chat message holder
+	 */
+	property name="messages" type="array" default=[];
+
+	/**
+	 * The params struct to pass to the provider in the request
+	 */
+	property name="params" type="struct" default={};
+
+	/**
+	 * The provider to use for the chat request
+	 */
+	property name="provider" default="";
+
+	/**
+	 * The API key to use for the provider
+	 */
+	property name="apiKey" default="";
+
+	/**
+	 * Log request
+	 */
+	property name="logRequest" type="boolean" default=false;
+
+	/**
+	 * Log response
+	 */
+	property name="logResponse" type="boolean" default=false;
+
+	/**
+	 * The return format for the response
+	 */
+	property name="returnFormat" default="single";
+
+	/**
+	 * The LLM Model to use for the request
+	 */
+	property name="model" default="";
+
+	/**
+	 * The timeout for the request
+	 */
+	property name="timeout" type="numeric" default=30;
+
+	/**
+	 * Constructor
+	 *
+	 * @chatMessage The messages to use for the chat request
+	 * @params A set of request params to pass to the provider
+	 * @options A set of request options to pass to the provider
+	 */
+	function init( ChatMessage chatMessage, struct params = {}, struct options = {} ){
+		variables.messages = arguments.chatMessage.getMessages();
+		variables.params = params;
+		variables.provider = options.provider ?: "";
+		variables.apiKey = options.apiKey ?: "";
+		variables.logRequest = options.logRequest ?: false;
+		variables.logResponse = options.logResponse ?: false;
+		variables.returnFormat = options.returnFormat ?: "single";
+		variables.model = options.params?.model ?: "";
+		variables.timeout = options.timeout ?: 30;
+		return this;
+	}
+
+	/**
+	 * Verify if you have messages
+	 */
+	boolean function hasMessages(){
+		return !variables.messages.isEmpty();
+	}
+
+	/**
+	 * Verify if you have a model defined
+	 */
+	boolean function hasModel(){
+		return !variables.model.isEmpty()
+	}
+
+	/**
+	 * Set the model to use for the request if empty
+	 *
+	 * @model The model to use for the request
+	 *
+	 * @return The chat request instance
+	 */
+	ChatRequest function setModelIfEmpty( required string model ){
+		if( !hasModel() ){
+			variables.model = arguments.model;
+		}
+		return this;
+	}
+
+	/**
+	 * Verify if you have an incoming API Key
+	 */
+	boolean function hasApiKey(){
+		return !variables.apiKey.isEmpty()
+	}
+
+	/**
+	 * Set the API key to use for the request if empty
+	 *
+	 * @apiKey The API key to use for the request
+	 *
+	 * @return The chat request instance
+	 */
+	ChatRequest function setApiKeyIfEmpty( required string apiKey ){
+		if( !hasApiKey() ){
+			variables.apiKey = arguments.apiKey;
+		}
+		return this;
+	}
+
+}

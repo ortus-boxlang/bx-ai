@@ -73,8 +73,9 @@ class {
 			provider = "openai",
 			// The API Key for the provider
 			apiKey = "",
-			// The default provider properties to use
-			properties = {
+			// The default request params to use when calling a provider
+			// Ex: { temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
+			defaultParams = {
 			}
 		};
 
@@ -110,8 +111,9 @@ class {
 		 * A list of custom interception points to register into the runtime
 		 */
 		customInterceptionPoints = [
-			"preAIRequest",
-			"postAIRequest"
+			"onAIRequest",
+			"onAIResponse",
+			"onAIProviderCreate"
 		 ];
 	}
 

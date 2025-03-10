@@ -1,0 +1,59 @@
+/**
+ * Creates a reference to a registered AI Service Provider.
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Inject the following references into the class
+	 * - moduleRecord : The ModuleRecord instance
+	 * - boxRuntime : The BoxRuntime instance
+	 * - interceptorService : The BoxLang InterceptorService
+	 * - log : A logger for the module config itself
+	 */
+	static final VALID_PROVIDERS = [ "openai", "deepseek", "gemini", "grok" ];
+
+    /**
+     * Creates a reference to a registered AI Service Provider this module supports
+	 * <p>
+	 * You can pass an optional API key to use with the AI Service Provider to override the default API key from the configuration.
+	 *
+	 * @provider The provider to use. If not provided, the provider will use the default provider from the configuration.
+	 * @apiKey The API key to use with the provider, if not provided the provider will use the default key from the configuration.
+	 *
+	 * @throws ProviderNotSupported if the provider is not supported
+	 *
+	 * @return The AI Service Provider
+     */
+    function invoke( string provider, any apiKey ) {
+
+		arguments.provider = arguments.provider ?: moduleRecord.settings.provider;
+		arguments.apiKey = arguments.apiKey ?: moduleRecord.settings.apiKey;
+
+		var oTargetService = null;
+		switch( arguments.provider ) {
+			case "openai":
+				oTargetService = new bxModules.bxai.models.providers.OpenAIService().configure( arguments.apiKey )
+				break
+			case "deepseek":
+				oTargetService = new bxModules.bxai.models.providers.DeepSeekService().configure( arguments.apiKey )
+				break
+			case "gemini":
+				oTargetService = new bxModules.bxai.models.providers.GeminiService().configure( arguments.apiKey )
+				break
+			case "grok":
+				oTargetService = new bxModules.bxai.models.providers.GrokService().configure( arguments.apiKey )
+				break
+			default:
+				throw(
+					type: "ProviderNotSupported",
+					message: "Provider [#arguments.provider#] is not supported.  Valid Providers are: #static.VALID_PROVIDERS.toList()# "
+				);
+		}
+
+		BoxAnnounce( "onAIProviderCreate", { provider: oTargetService } );
+
+		return oTargetService;
+	}
+
+}

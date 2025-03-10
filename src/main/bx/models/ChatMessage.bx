@@ -1,0 +1,143 @@
+/**
+ * This class represents a chat conversation.  It holds a collection of messages
+ * that have been added to the chat.
+ * Please note that AI services only allow 1 `system` message per request.
+ */
+class{
+
+	/**
+	 * The collection of messages in the chat
+	 */
+	property name="messages" type="array" default=[];
+
+	/**
+	 * CONSTANTS
+	 */
+	static{
+		final DEFAULT_ROLE = 'user'
+	}
+
+	/**
+	 * Construct a new message holder
+	 *
+	 * @message The initial message to add to the chat: string, struct, or array, or null
+	 */
+	function init( any message ){
+		if( !isNull( arguments.message ) ){
+			this.add( message );
+		}
+		return this;
+	}
+
+	/**
+	 * Count how many messages we have
+	 */
+	numeric function count() {
+		return variables.messages.len();
+	}
+
+	/**
+	 * Clear all messages
+	 */
+	ChatMessage function clear() {
+		variables.messages = [];
+		return this;
+	}
+
+	/**
+	 * Verifies if there is a system message already in the chat
+	 */
+	boolean function hasSystemMessage() {
+		return variables.messages.filter( message -> message?.role == 'system' ).len() > 0;
+	}
+
+	/**
+	 * Get the system message
+	 *
+	 * @return The system message or an empty string
+	 */
+	string function getSystemMessage() {
+		return variables.messages
+			.filter( message -> message?.role == 'system' )
+			.map( message -> message.content )
+			.reduce( ( acc, message ) => message, "" );
+	}
+
+	/**
+	 * Replace the system message
+	 *
+	 * @content The new system message
+	 */
+	ChatMessage function replaceSystemMessage( required string content ) {
+		if( !hasSystemMessage() ){
+			return this;
+		}
+		// Find the location of the system message in the array
+		var index = variables.messages.find( message => message.role == 'system' );
+		// Replace the message
+		variables.messages[ index ].content = arguments.content;
+		return this;
+	}
+
+	/**
+	 * Adds a message to the chat.  The message content can be:
+	 * - A string : The message will be added with the default role of user
+	 * - A struct : The struct that represents the message according to the chat provider
+	 * - An array : The array of messages to incorporate
+	 *
+	 * @content A string, struct, or array of messages to add to the chat
+	 *
+	 * @return The chat message instance
+	 */
+	ChatMessage function add( required any content ) {
+		// Simple messages
+		if( IsSimpleValue( arguments.content ) ){
+
+			if( arguments.content.isEmpty() ){
+				throw( "Cannot add an empty message" );
+			}
+
+			variables.messages.push( {
+				"role" = static.DEFAULT_ROLE,
+				"content" = arguments.content
+			} );
+		}
+		// Struct messages
+		else if( IsStruct( arguments.content ) ){
+			// Default the role if non is provided
+			param arguments.content.role = static.DEFAULT_ROLE;
+
+			// System Message Rules
+			if( arguments.content.role == 'system' && hasSystemMessage() ){
+				// If the content is the same, ignore it, else replace it
+				if( arguments.content.content == getSystemMessage() ){
+					return this;
+				}
+				replaceSystemMessage( arguments.content.content );
+				return this;
+			}
+
+			// Add the message
+			variables.messages.push( arguments.content );
+		} else if( IsArray( arguments.content ) ){
+			arguments.content.each( message => this.add( message ) );
+		} else {
+			throw( 'Invalid content type. It must be a string, struct, or array' );
+		}
+
+		return this;
+	}
+
+	/**
+	 * Dynamic messages using onMissingMethod.
+	 * The missing method name should be add<role> where <role> is the role of the message.
+	 */
+	any function onMissingMethod( string name, struct args ){
+		// The missing method is the role, the first argument is the message
+		return this.add({
+			"role" = arguments.name,
+			"content" = arguments.args[ 1 ]
+		});
+	}
+
+}

@@ -1,0 +1,45 @@
+class extends="testbox.system.BaseSpec"{
+
+	function run(){
+
+		describe( "Chat Messages", () => {
+
+			beforeEach( () => {
+				variables.chatMessage = new src.main.bx.models.ChatMessage()
+				variables.chatMessage.clear()
+			} )
+
+			it( "can create a chat message", () => {
+				expect( chatMessage ).notToBeNull()
+				expect( chatMessage.count() ).toBe( 0 )
+				expect( chatMessage.getSystemMessage() ).toBe( "" )
+			} )
+
+			it( "can add a system message using different approaches" , () => {
+				chatMessage.add( { content: "Hello", role: "system" } )
+				expect( chatMessage.count() ).toBe( 1 )
+				expect( chatMessage.hasSystemMessage() ).toBeTrue()
+
+				chatMessage.clear()
+				chatMessage.system( "hello" )
+				expect( chatMessage.count() ).toBe( 1 )
+				expect( chatMessage.hasSystemMessage() ).toBeTrue()
+				expect( chatMessage.getSystemMessage() ).toBe( "hello" )
+
+				// If you try again, it should not allow ignore it if it's the same content.
+				chatMessage.system( "hello" )
+				expect( chatMessage.count() ).toBe( 1 )
+				expect( chatMessage.hasSystemMessage() ).toBeTrue()
+
+				// Try with a different message
+				chatMessage.system( "goodbye" )
+				expect( chatMessage.count() ).toBe( 1 )
+				expect( chatMessage.hasSystemMessage() ).toBeTrue()
+				expect( chatMessage.getSystemMessage() ).toBe( "goodbye" )
+			} )
+
+		} )
+
+	}
+
+}

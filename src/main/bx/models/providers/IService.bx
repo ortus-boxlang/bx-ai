@@ -1,0 +1,34 @@
+/**
+ * Interface for all AI Service classes
+ */
+interface{
+
+	/**
+	 * Configure the service with an override API key
+	 *
+	 * @apiKey - The API key to use with the provider
+	 *
+	 * @return The service instance
+	 */
+	IService function configure( required any apiKey );
+
+	/**
+	 * Invoke the provider service with a ChatRequest object
+	 *
+	 * @chatRequest The ChatRequest object to send to the provider
+	 *
+	 * @return The response from the service, which can be anything according to their specs: string, or struct, or whatever
+	 */
+	function invoke( required ChatRequest chatRequest );
+
+	/**
+	 * Invoke and generate a single response from the provider from a single message string.
+	 * This is a convenience method for when you only have a single message to send to the provider.
+	 *
+	 * @message A string message to send to the provider
+	 *
+	 * @return The single response from the provider
+	 */
+	//String function invokeSingle( required String message );
+
+}

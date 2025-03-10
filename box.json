@@ -1,46 +1,49 @@
 {
-	"name": "BoxLang AI",
-	"version": "1.0.0",
-	"location": "https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-ai/@build.version@/bx-ai-@build.version@.zip",
-	"author": "Ortus Solutions",
-	"homepage": "https://github.com/ortus-boxlang/bx-ai",
-	"documentation": "https://github.com/ortus-boxlang/bx-ai",
-	"repository": {
-		"type": "git",
-		"URL": "https://github.com/ortus-boxlang/bx-ai"
-	},
-	"bugs": "https://ortussolutions.atlassian.net/browse/BLMODULES",
-	"slug": "bx-ai",
-	"shortDescription": "AI integration for BoxLang",
-	"type": "boxlang-modules",
-	"keywords": [
-		"boxlang"
-	],
-	"boxlang": {
-		"minimumVersion": "1.0.0",
-		"moduleName": "bxai"
-	},
-	"private": false,
-	"license": [
-		{
-			"type": "Apache-2.0",
-			"URL": "https://www.apache.org/licenses/LICENSE-2.0"
-		}
-	],
-	"devDependencies": {
-		"commandbox-boxlang": "*",
-		"commandbox-cfformat": "*",
-		"commandbox-docbox": "*",
-		"testbox": "*"
-	},
-	"ignore": [
-		"**/.*",
-		"settings.gradle",
-		"gradlew.bat",
-		"gradlew",
-		"build.gradle",
-		"/src/**",
-		"gradle/**"
-	],
-	"scripts": {}
+    "name":"BoxLang AI",
+    "version":"1.0.0",
+    "location":"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-ai/@build.version@/bx-ai-@build.version@.zip",
+    "author":"Ortus Solutions",
+    "homepage":"https://github.com/ortus-boxlang/bx-ai",
+    "documentation":"https://github.com/ortus-boxlang/bx-ai",
+    "repository":{
+        "type":"git",
+        "URL":"https://github.com/ortus-boxlang/bx-ai"
+    },
+    "bugs":"https://ortussolutions.atlassian.net/browse/BLMODULES",
+    "slug":"bx-ai",
+    "shortDescription":"AI integration for BoxLang",
+    "type":"boxlang-modules",
+    "keywords":[
+        "boxlang"
+    ],
+    "boxlang":{
+        "minimumVersion":"1.0.0",
+        "moduleName":"bxai"
+    },
+    "private":false,
+    "license":[
+        {
+            "type":"Apache-2.0",
+            "URL":"https://www.apache.org/licenses/LICENSE-2.0"
+        }
+    ],
+    "devDependencies":{
+        "commandbox-boxlang":"*",
+        "commandbox-cfformat":"*",
+        "commandbox-docbox":"*",
+        "testbox":"*"
+    },
+    "ignore":[
+        "**/.*",
+        "settings.gradle",
+        "gradlew.bat",
+        "gradlew",
+        "build.gradle",
+        "/src/**",
+        "gradle/**"
+    ],
+    "scripts":{},
+    "installPaths":{
+        "testbox":"testbox/"
+    }
 }

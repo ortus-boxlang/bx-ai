@@ -1,0 +1,234 @@
+/**
+ * Base Service for AI Providers
+ * This service provides a base implementation for AI providers
+ * ----
+ * All AI Providers must extend this service and implement the following methods:
+ * - configure()
+ * - invoke()
+ * - invokeSingle()
+ *
+ * All providers have the following properties:
+ * - apiKey : The API key to use with the provider
+ * - chatURL : The chat URL of the provider API
+ * - params : The default params request properties
+ */
+abstract class implements="IService" {
+
+	/**
+	 * The API key to use with the provider
+	 */
+	property name="apiKey" default="";
+
+	/**
+	 * The chat URL of the provider API
+	 */
+	property name="chatURL" default="";
+
+	/**
+	 * The param request properties
+	 */
+	property name="params" type="struct" default={};
+
+	/**
+	 * Constants
+	 */
+	static {
+		final settings = getModuleInfo( "bx-ai" ).settings
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Helper Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Set the default params for the provider
+	 *
+	 * @params - The params to set as defaults
+	 *
+	 * @return The service instance
+	 */
+	IService function defaults( required params ){
+		variables.params.append( arguments.params, true );
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Interface Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	 /**
+	 * Configure the service with the API key
+	 *
+	 * @apiKey - The API key to use with the provider
+	 *
+	 * @return The service instance
+	 */
+	IService function configure( required any apiKey ){
+		variables.apiKey = arguments.apiKey;
+		return this;
+	}
+
+	/**
+	 * Invoke a request to the provider
+	 *
+	 * @chatRequest The Chat request to send to the provider
+	 */
+	function invoke( required ChatRequest chatRequest ){
+		// Seed the default params from the chat request, which overrides the service defaults
+		defaults( chatRequest.getParams() )
+		// Model Selection if not set, use the default in the service, which should always be set
+		chatRequest.setModelIfEmpty( variables.params.model );
+		chatRequest.setApiKeyIfEmpty( getAPIKey() );
+
+		// Do a chat request
+		// MORE TYPES CAN BE ADDED HERE
+		var result = chat( argumentCollection = arguments )
+
+		// Determine return formats
+		switch( chatRequest.getReturnFormat() ){
+			case "all":
+				return result.choices;
+			case "raw" :
+				return result;
+			case "single": default:
+				return result.choices[ 1 ].message.content;
+		}
+	}
+
+	/**
+	 * A chat method that sends messages to the provider
+	 *
+	 * @chatRequest The ChatRequest object to send to the provider
+	 *
+	 * @throws ProviderError if the provider returns an error from the request
+	 */
+	public function chat( required ChatRequest chatRequest ){
+		// Vanilla HTTP request
+		var result = sendRequest( chatRequest )
+
+		// If an error is returned, throw it
+		if( result.keyExists( "error" ) ){
+			throw(
+				type: "ProviderError",
+				message: result.error.toString()
+			);
+		}
+
+		// No Tool calls.
+		// TODO: Verify if all services support this.
+		if( !result.choices[ 1 ].message.keyExists( "tool_calls" ) ){
+			return result;
+		}
+
+		/**
+		 * ---------------------------------------------------------------------------------------------------------
+		 * Tool Chains
+		 * ---------------------------------------------------------------------------------------------------------
+		 * Move later to an interceptor
+		 */
+		var newMessages = chatRequest.getMessages().map( message -> message );
+		result.choices.each( ( choice, i ) => {
+			newMessages.append( choice.message );
+			choice.message.tool_calls.each( ( toolCall, i ) => {
+				var toolIndex = data.tools.find( t => t.getName() == toolCall.function.name );
+				if( toolIndex == 0 ){
+					throw(
+						type: "InvalidToolReference",
+						message: "Invalid tool reference: [#toolCall.function.name#"
+					);
+				}
+
+				var tool = data.tools[ toolIndex ]
+
+				newMessages.append({
+					"role" 			 : "tool",
+					"tool_call_id" 	 : toolCall.id,
+					"content" 	 	: tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
+				});
+			});
+		});
+
+		chatRequest.setMessages( newMessages )
+
+		return chat( chatRequest )
+	}
+
+	/**
+	 * Send a request to the HTTP AI Provider
+	 *
+	 * @chatRequest The ChatRequest object to send to the provider
+	 *
+	 * @return The response from the provider as a struct
+	 */
+	private function sendRequest( required ChatRequest chatRequest ){
+		var dataPacket = {
+			"model" : arguments.chatRequest.getModel(),
+			"messages" : arguments.chatRequest.getMessages()
+		}.append( arguments.chatRequest.getParams() )
+
+		// Tooling support
+		if( dataPacket.keyExists( "tools" ) ){
+			dataPacket.tools = dataPacket.tools.map( .getSchema );
+		}
+
+		BoxAnnounce(
+			"onAIRequest",
+			{
+				"dataPacket" : dataPacket,
+				"chatRequest" : arguments.chatRequest,
+				"provider": this
+			}
+		);
+
+		println( dataPacket );
+
+		if( arguments.chatRequest.getLogRequest() ){
+			// Log the request
+			writeLog(
+				text : "Request to AI Provider: #dataPacket.toString()#",
+				type : "info",
+				log : "ai"
+			)
+		}
+
+		bx:http
+			url = getChatURL()
+			method = "post"
+			result = "chatResult"
+			charset = "utf-8"
+			timeout = arguments.chatRequest.getTimeout()
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+			bx:httpParam type="header" name="Authorization" value="Bearer #arguments.chatRequest.getApiKey()#";
+			bx:httpParam type="body" value=jsonSerialize( dataPacket );
+		}
+
+		if( arguments.chatRequest.getLogResponse() ){
+			// Log the request
+			writeLog(
+				text : "Reponse from AI Provider: #chatResult.toString()#",
+				type : "info",
+				log : "ai"
+			)
+		}
+
+		var response = jsonDeserialize( chatResult.filecontent );
+
+		BoxAnnounce(
+			"onAIResponse",
+			{
+				"chatRequest" : arguments.chatRequest,
+				"response": response,
+				"rawResponse" : chatResult,
+				"provider": this
+			}
+		);
+
+		return response;
+	}
+
+}

@@ -1,0 +1,78 @@
+class extends="BaseService"{
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.chatURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent";
+		defaults( {
+			// according to the docs, this is the default model
+			"model" : "gemini-1.5-flash"
+		} )
+	}
+
+	private function chat( any messages, string model, struct data ){
+		// Detect the messages type and massage it according to our supported patterns
+		if( isSimpleValue( arguments.messages ) ){
+			arguments.messages = [ {
+				"role" : static.defaultRole,
+				"parts" : [{"text": arguments.messages }]
+			} ]
+		} else if ( isStruct( arguments.messages ) ){
+			param arguments.messages.role = static.defaultRole
+			param arguments.messages.content = ""
+			arguments.messages = [{
+				"role": arguments.messages.role,
+				"parts": [{"text":arguments.messages.content}]
+			}]
+		} else if ( isArray(arguments.messages )) {
+			arguments.messages = arguments.messages.map(m => {
+				return {
+					"role": m.role == "developer"?"model":"user",
+					"parts": [{
+						"text":m.content
+					}]
+				}
+			});
+		}
+
+		arguments.targetURL = static.chatURL
+		result = sendRequest( argumentCollection = arguments )
+
+		if( result.keyExists( "error" ) ){
+			throw( result.error.toString() );
+		}
+
+		return result;
+
+		// No tools support yet
+
+		if( !result.choices[ 1 ].message.keyExists( "tool_calls" ) ){
+			return result;
+		}
+
+		newMessages = messages.map( message -> message );
+
+		result.choices.each( ( choice, i ) => {
+			newMessages.append(choice.message);
+			choice.message.tool_calls.each(( toolCall, i ) => {
+
+				toolIndex = data.tools.find( t => t.getName() == toolCall.function.name );
+				if( toolIndex == 0 ){
+					throw( "Invalid tool reference" );
+				}
+
+				tool = data.tools[ toolIndex ]
+
+				newMessages.append({
+					"role" : "tool",
+					"tool_call_id": toolCall.id,
+					"content" : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
+				});
+			});
+		});
+
+		return chat( newMessages, model, data );
+	}
+
+}

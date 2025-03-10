@@ -4,6 +4,15 @@
 @BoxBIF
 class {
 
+	static final VALID_RESPONSE_FORMATS = [ "single", "all", "raw" ]
+	static final DEFAULT_OPTIONS = {
+		returnFormat : "single",
+		timeout : 30,
+		logResponse : false,
+		logRequest : false
+	}
+	static MODULE_SETTINGS = getModuleInfo( "bx-ai" ).settings;
+
 	/**
 	 * Inject the following references into the class
 	 * - moduleRecord : The ModuleRecord instance
@@ -13,35 +22,56 @@ class {
 	 */
 
     /**
-     * AI chat
+     * Initiate an AI chat against the default or custom AI Provider.
+	 * <p>
+	 * The messages can be a simple string, a struct representing a message or an array of messages or an actual ChatMessage object
+	 * <p>
+	 * The <code>params</code> are a struct of request params to pass to the provider for the model request according to the provider: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }.
+	 * You can also use default params in your Module configuration.
+	 * <p>
+	 * The <code>options</code> are a struct of request options to pass to the service for the model request. Available options are:
+	 * <ul>
+	 * <li>provider:string - The provider to use for the chat. If not passed, we will use the default from the configuration.</li>
+	 * <li>apiKey:string - The API Key for the provider. If not passed, we will use the default from the configuration.</li>
+	 * <li>timeout:numeric - The timeout in seconds for the request. The default is 30 seconds</li>
+	 * <li>logResponse:boolean - Log the response into the ai.log. The default is false</li>
+	 * <li>logRequest:boolean - Log the request into the ai.log. The default is false</li>
+	 * <li>returnFormat:string - The return format of the response. The default is "single" message. Valid formats are: "single", "all", "raw"</li>
+	 * </ul>
 	 *
-	 * @messages The messages to pass into the required model. This depends on the provider. It can be a simple string or an array of messages
-	 * @properties A struct of properties to pass to the provider for the model: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
-	 * @verbose By default it returns the first message from the provider. If you want to see all the messages, set this to true
+	 * @messages The messages to pass into the required model. This depends on the provider. It can be a simple string, a struct representing a message or an array of messages or an actual ChatMessage object
+	 * @params A struct of request params to pass to the provider for the model request: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
+	 * @options A struct of request options to pass to the provider for the model request. Available options are: { provider:string, apiKey:string, returnFormat:string timeout:numeric, logResponse:boolean, logRequest:boolean }
+	 *
+	 * @throw InvalidArgument if the return format is not valid
      */
     function invoke(
-		any messages,
-		struct properties = {},
-		boolean verbose = false
+		required any messages,
+		struct params = {},
+		struct options = {}
 	) {
-		arguments.type = "chat";
-		return getProvider().invoke( argumentCollection = arguments );
-	}
+		// Incorporate default params with no override
+		arguments.params.append( moduleRecord.settings.defaultParams, false );
+		arguments.options.append( static.DEFAULT_OPTIONS, false );
+		arguments.options.append( static.MODULE_SETTINGS, false );
 
-	/**
-	 * Get the provider configured in the module settings
-	 */
-	private function getProvider() {
-		switch( moduleRecord.settings.provider ) {
-			case "openai":
-				return new bxModules.bxai.models.OpenAIService();
-			case "deepseek":
-				return new bxModules.bxai.models.DeepSeekService();
-			case "gemini":
-				return new bxModules.bxai.models.GeminiService();
-			default:
-				throw( "Provider [#moduleRecord.settings.provider#] is not supported.  Valid Providers are: openai, deepseek" );
+		// Validate or fail
+		if( !static.VALID_RESPONSE_FORMATS.contains( arguments.options.returnFormat ) ){
+			throw(
+				type : "InvalidArgument",
+				message : "Invalid return format [#arguments.options.returnFormat#]. Valid formats are: #static.VALID_RESPONSE_FORMATS.toList()# "
+			);
 		}
+
+		// Build out a chat request
+		var oChatRequest = new bxModules.bxai.models.ChatRequest(
+			aiMessage( arguments.messages ),
+			arguments.params,
+			arguments.options
+		);
+
+		// Get the provider and chat with it
+		return aiService( provider: arguments.options?.provider ).invoke( oChatRequest );
 	}
 
 }

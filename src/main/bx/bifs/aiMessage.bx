@@ -1,0 +1,35 @@
+/**
+ * Create an AI Message fluent holder
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Inject the following references into the class
+	 * - moduleRecord : The ModuleRecord instance
+	 * - boxRuntime : The BoxRuntime instance
+	 * - interceptorService : The BoxLang InterceptorService
+	 * - log : A logger for the module config itself
+	 */
+
+    /**
+     * Create an AI Message fluent holder that you can use to represent one or more messages in a chat conversation.
+	 * <p>
+	 * If you pass a message, it will be added to the chat. The mssage can be:
+	 * - A string : The message will be added with the default role of user
+	 * - A struct : The struct that represents the message
+	 * - An array : The array of messages to incorporate
+	 *
+	 * @message If passed, the initial message to add to the chat.
+	 *
+	 * @return The AI Message object
+     */
+    function invoke( any message ) {
+		// If you are already a chat message object, just return it
+		if( arguments.message instanceof "ChatMessage" ){
+			return arguments.message;
+		}
+		return new bxModules.bxai.models.ChatMessage( arguments.message )
+	}
+
+}

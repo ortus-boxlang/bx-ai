@@ -1,0 +1,14 @@
+class extends="BaseService"{
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.chatURL = "https://api.x.ai/v1/chat/completions";
+		defaults( {
+			// according to the docs, this is the default model
+			"model" : "grok-2-latest"
+		} )
+	}
+
+}

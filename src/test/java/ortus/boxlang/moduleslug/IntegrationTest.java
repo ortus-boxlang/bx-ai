@@ -16,6 +16,8 @@ package ortus.boxlang.moduleslug;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import java.util.List;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,27 @@ public class IntegrationTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "provider", "openai" );
 	}
 
+	@DisplayName( "Can create a provider" )
+	@Test
+	public void testProviders() {
+		List<String> providers = List.of( "deepseek", "gemini", "grok", "openai" ); // Add more if needed
+
+		for ( String provider : providers ) {
+			// Execute the runtime source with the current provider
+			runtime.executeSource(
+			    String.format(
+			        """
+			        provider = aiService( "%s" )
+			        """, provider
+			    ),
+			    context
+			);
+
+			// Assert that the provider is not null
+			assertThat( variables.get( "provider" ) ).isNotNull();
+		}
+	}
+
 	@DisplayName( "Test Gemini AI" )
 	@Test
 	public void testGemini() {
@@ -42,7 +65,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "provider", "gemini" );
 
 		// @formatter:off
-		
+
 		runtime.executeSource(
 			"""
 			result = aiChat( "what is boxlang?" )
@@ -50,7 +73,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 			""",
 			context
 		);
-		
+
 		// @formatter:on
 
 		// Asserts here
@@ -63,7 +86,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "provider", "gemini" );
 
 		// @formatter:off
-		
+
 		runtime.executeSource(
 			"""
 			result = aiChat( { role:"user", content:"what is boxlang?" } )
@@ -71,7 +94,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 			""",
 			context
 		);
-		
+
 		// @formatter:on
 
 		// Asserts here
@@ -84,7 +107,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "provider", "gemini" );
 
 		// @formatter:off
-		
+
 		runtime.executeSource(
 			"""
 			result = aiChat( [
@@ -95,7 +118,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 			""",
 			context
 		);
-		
+
 		// @formatter:on
 
 		// Asserts here
@@ -110,7 +133,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			result = aiChat( "what is boxlang?" )
+			result = aiChat( "what is a servlet?" )
 			println( result )
 			""",
 			context
