@@ -11,7 +11,11 @@ class extends="BaseService"{
 		} )
 	}
 
-	private function chat( any messages, string model, struct data ){
+	/**
+	 * Gemini chat request
+	 */
+	@override
+	public function chat( required ChatRequest chatRequest ){
 		// Detect the messages type and massage it according to our supported patterns
 		if( isSimpleValue( arguments.messages ) ){
 			arguments.messages = [ {
