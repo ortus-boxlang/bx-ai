@@ -14,3 +14,4 @@ build/**
 src/test/resources/libs/*
 !src/test/resources/libs/.gitkeep
 testbox/**
+tests/results
