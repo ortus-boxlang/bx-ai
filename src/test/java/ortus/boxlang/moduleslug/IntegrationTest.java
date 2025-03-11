@@ -229,4 +229,39 @@ public class IntegrationTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( result ) ).isEqualTo( "San Salvador" );
 	}
+
+	@DisplayName( "It can create ai message objects" )
+	@Test
+	public void testAiMessage() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			message = aiMessage()
+			assert message.count() == 0
+
+			message = aiMessage( "hello" )
+			println( message.getMessages() )
+			assert message.count() == 1
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+	}
+
+	@DisplayName( "It can create an ai chat request" )
+	@Test
+	public void testAiChatRequest() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			aiRequest = aiChatRequest()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "aiRequest" ) ).isNotNull();
+	}
 }

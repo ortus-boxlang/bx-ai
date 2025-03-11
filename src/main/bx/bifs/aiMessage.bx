@@ -24,12 +24,13 @@ class {
 	 *
 	 * @return The AI Message object
      */
-    function invoke( any message ) {
+    function invoke( any message = null ) {
 		// If you are already a chat message object, just return it
 		if( arguments.message instanceof "ChatMessage" ){
 			return arguments.message;
 		}
-		return new bxModules.bxai.models.ChatMessage( arguments.message )
+
+		return new bxModules.bxai.models.ChatMessage( argumentCollection: arguments )
 	}
 
 }

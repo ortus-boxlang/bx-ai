@@ -61,7 +61,11 @@ class{
 	 * @params A set of request params to pass to the provider
 	 * @options A set of request options to pass to the provider
 	 */
-	function init( ChatMessage chatMessage, struct params = {}, struct options = {} ){
+	function init(
+		ChatMessage chatMessage = new ChatMessage(),
+		struct params = {},
+		struct options = {}
+	){
 		variables.messages = arguments.chatMessage.getMessages();
 		variables.params = params;
 		variables.provider = options.provider ?: "";

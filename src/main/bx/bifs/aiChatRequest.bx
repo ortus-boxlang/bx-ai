@@ -1,0 +1,46 @@
+/**
+ * Create an Empty AI Chat Request Object
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Inject the following references into the class
+	 * - moduleRecord : The ModuleRecord instance
+	 * - boxRuntime : The BoxRuntime instance
+	 * - interceptorService : The BoxLang InterceptorService
+	 * - log : A logger for the module config itself
+	 */
+
+    /**
+     * Create an AI Chat Request object with the given messages, params and options.
+	 * You can use this later with any AI Service to process the request.
+	 * <p>
+	 * If you pass a message, it will be added to the chat. The mssage can be:
+	 * - A string : The message will be added with the default role of user
+	 * - A struct : The struct that represents the message
+	 * - An array : The array of messages to incorporate
+	 *
+	 * @message If passed, the initial message to add to the chat.
+	 * @params A struct of request params to pass to the provider for the model request: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
+	 * @options A struct of request options to pass to the provider for the model request. Available options are: { provider:string, apiKey:string, returnFormat:string timeout:numeric, logResponse:boolean, logRequest:boolean }
+	 *
+	 * @return The AI Chat Request Object
+     */
+    function invoke(
+		any messages,
+		struct params = {},
+		struct options = {}
+	 ) {
+		if( !isNull( arguments.messages ) ){
+			arguments.messages = aiMessage( arguments.messages );
+		}
+
+		return new bxModules.bxai.models.ChatRequest(
+			arguments.messages,
+			arguments.params,
+			arguments.options
+		 )
+	}
+
+}
