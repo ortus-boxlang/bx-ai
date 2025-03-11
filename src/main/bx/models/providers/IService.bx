@@ -21,14 +21,4 @@ interface{
 	 */
 	function invoke( required ChatRequest chatRequest );
 
-	/**
-	 * Invoke and generate a single response from the provider from a single message string.
-	 * This is a convenience method for when you only have a single message to send to the provider.
-	 *
-	 * @message A string message to send to the provider
-	 *
-	 * @return The single response from the provider
-	 */
-	//String function invokeSingle( required String message );
-
 }

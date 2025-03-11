@@ -58,6 +58,23 @@ public class IntegrationTest extends BaseIntegrationTest {
 		}
 	}
 
+	@DisplayName( "Test Grok AI" )
+	@Test
+	public void testGrok() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "GROK_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "grok" );
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiChat( "what is boxlang?" )
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+	}
+
 	@DisplayName( "Test Gemini AI" )
 	@Test
 	public void testGemini() {

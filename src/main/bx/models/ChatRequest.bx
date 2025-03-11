@@ -49,6 +49,12 @@ class{
 	property name="timeout" type="numeric" default=30;
 
 	/**
+	 * Send an auth header or not with the API Key
+	 * This is usually determined by the provider
+	 */
+	property name="sendAuthHeader" type="boolean" default=true;
+
+	/**
 	 * Constructor
 	 *
 	 * @chatMessage The messages to use for the chat request

@@ -7,7 +7,7 @@ class extends="BaseService"{
 		variables.chatURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent";
 		defaults( {
 			// according to the docs, this is the default model
-			"model" : "gemini-1.5-flash"
+			"model" : "gemini-2.0-flash"
 		} )
 	}
 
@@ -16,67 +16,60 @@ class extends="BaseService"{
 	 */
 	@override
 	public function chat( required ChatRequest chatRequest ){
-		// Detect the messages type and massage it according to our supported patterns
-		if( isSimpleValue( arguments.messages ) ){
-			arguments.messages = [ {
-				"role" : static.defaultRole,
-				"parts" : [{"text": arguments.messages }]
-			} ]
-		} else if ( isStruct( arguments.messages ) ){
-			param arguments.messages.role = static.defaultRole
-			param arguments.messages.content = ""
-			arguments.messages = [{
-				"role": arguments.messages.role,
-				"parts": [{"text":arguments.messages.content}]
-			}]
-		} else if ( isArray(arguments.messages )) {
-			arguments.messages = arguments.messages.map(m => {
-				return {
-					"role": m.role == "developer"?"model":"user",
-					"parts": [{
-						"text":m.content
-					}]
-				}
-			});
+		// We need to pre-process the messages to conform to the Gemini API
+		var dataPacket = {
+			"contents": arguments.chatRequest
+				.getMessages()
+				.map( message -> {
+					return {
+						"role" : message.role == "system" ? "model" : "user",
+						"parts": [ {
+							"text": message.content
+						} ]
+					}
+				} )
+			}.append( arguments.chatRequest.getParams() )
+
+		// Tooling support
+		if( dataPacket.keyExists( "tools" ) ){
+			dataPacket.tools = dataPacket.tools.map( .getSchema )
 		}
 
-		arguments.targetURL = static.chatURL
-		result = sendRequest( argumentCollection = arguments )
+		// Update URL according to the model
+		variables.chatURL = getChatUrl().replace( '%MODEL%', chatRequest.getModel() ) & '?key=#chatRequest.getApiKey()#';
+		// No auth header
+		arguments.chatRequest.setSendAuthHeader( false );
 
+		// Send it
+		var result = sendRequest( chatRequest, dataPacket )
+
+		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
-			throw( result.error.toString() );
+			throw(
+				type   : "ProviderError",
+				message: result.error.toString()
+			);
 		}
 
-		return result;
+		// No Tool calls yet.
 
-		// No tools support yet
-
-		if( !result.choices[ 1 ].message.keyExists( "tool_calls" ) ){
-			return result;
+		// Determine return formats
+		switch( chatRequest.getReturnFormat() ){
+			case "all":
+				return result.candidates;
+			case "raw":
+				return result;
+			case "single": default:
+				return result.candidates[ 1 ].content.parts[ 1 ].text
 		}
 
-		newMessages = messages.map( message -> message );
+		/**
+		 * ---------------------------------------------------------------------------------------------------------
+		 * Tool Chains
+		 * ---------------------------------------------------------------------------------------------------------
+		 * TODO by Jacob here.
+		 */
 
-		result.choices.each( ( choice, i ) => {
-			newMessages.append(choice.message);
-			choice.message.tool_calls.each(( toolCall, i ) => {
-
-				toolIndex = data.tools.find( t => t.getName() == toolCall.function.name );
-				if( toolIndex == 0 ){
-					throw( "Invalid tool reference" );
-				}
-
-				tool = data.tools[ toolIndex ]
-
-				newMessages.append({
-					"role" : "tool",
-					"tool_call_id": toolCall.id,
-					"content" : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
-				});
-			});
-		});
-
-		return chat( newMessages, model, data );
 	}
 
 }
