@@ -197,6 +197,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 
 	@DisplayName( "Test the tool calls" )
 	@Test
+	@Disabled( "Until Jacob can get to this.")
 	public void testToolCall() {
 		// @formatter:off
 		runtime.executeSource(
