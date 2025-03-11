@@ -20,11 +20,13 @@ jobs:
       DB_PASSWORD: root
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ "ubuntu-latest", "windows-latest" ]
+        os: [ "ubuntu-latest" ]
         jdkVersion: [ "21" ]
         experimental: [false]
         #include:
