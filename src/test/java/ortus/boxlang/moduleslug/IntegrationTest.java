@@ -221,7 +221,8 @@ public class IntegrationTest extends BaseIntegrationTest {
 
 			result = aiChat( messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.", data = {
 				tools: [ tool ],
-				seed: 27
+				seed: 27,
+				temperature: 0.1
 			} )
 			println( result )
 			""",
