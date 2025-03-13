@@ -6,7 +6,7 @@ interface{
 	/**
 	 * Get the name of the LLM
 	 */
-	string function getName();
+	function getName();
 
 	/**
 	 * Configure the service with an override API key
