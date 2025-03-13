@@ -1,0 +1,57 @@
+/**
+ * Get an AI Tool instance to interact with the AI service and chats
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Inject the following references into the class
+	 * - moduleRecord : The ModuleRecord instance
+	 * - boxRuntime : The BoxRuntime instance
+	 * - interceptorService : The BoxLang InterceptorService
+	 * - log : A logger for the module config itself
+	 */
+
+    /**
+     * Create an instance of a new AI Tool function that you will be responsible for seeding.
+	 * <p>
+	 * The <code>callable</code> is a lambda/closure that will be called by the AI
+	 * to take action on the data.  The function must return a value that can be cast to a string.
+	 * <p>
+	 * Here is an example of seeding a function:
+	 * <pre>
+	 * myWeatherTool = aiTool(
+	 * 		"myFunction",
+	 * 		"This is a function that does something",
+	 * 		location => {
+	 * 				if( location contains "Kansas City" ) {
+	 *					return "85"
+	 * 				}
+	 *
+	 * 				if( location contains "San Salvador" ){
+	 * 					return "90"
+	 * 				}
+	 *
+	 * 				return "unknown";
+	 * 			} );
+	 * aiChat( "How hot is it in Kansas City?", { tools: myWeatherTool } )
+	 * </pre>
+	 *
+	 * @name The name of the function. This is used by the AI to identify the function.
+	 * @description Describe the function. This is used by the AI to communicate the purpose of the function.
+	 * @callable The function the AI will use.
+	 *
+	 * @return An instance of an AI Tool class to pass to the AI service.
+     */
+    function invoke(
+		required string name,
+		string description,
+		any callable
+	) {
+		return new bxmodules.bxai.models.Tool()
+			.setName( arguments.name )
+			.describeFunction( arguments.description )
+			.call( arguments.callable );
+	}
+
+}

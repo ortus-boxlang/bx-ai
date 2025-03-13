@@ -202,22 +202,21 @@ public class IntegrationTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			tool = new bxmodules.bxai.models.Tool();
+			tool = aiTool(
+				"get_weather",
+				"Get current temperature for a given location.",
+				location => {
+				if( location contains "Kansas City" ) {
+					return "85"
+				}
 
-			tool.setName( "get_weather" )
-				.describe( "Get current temperature for a given location." )
-				.describeLocation( "City and country e.g. Bogotá, Colombia" )
-				.setFunc( ( location ) => {
-					if( location contains "Kansas City" ) {
-						return "85"
-					}
+				if( location contains "San Salvador" ){
+					return "90"
+				}
 
-					if( location contains "San Salvador" ){
-						return "90"
-					}
+				return "unknown";
+			}).describeLocation( "City and country e.g. Bogotá, Colombia" )
 
-					return "unknown";
-				});
 			result = aiChat( messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.", params = {
 				tools: [ tool ],
 				seed: 27

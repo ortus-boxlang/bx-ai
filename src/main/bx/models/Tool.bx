@@ -1,50 +1,56 @@
 /**
  * Basic tool implementation that allows you to pass in a function for the AI to use.
  * In addition to providing a funciton you must also provide a name and descriptions.
- * 
+ *
  * You can specify the function and argument descriptions using the fluent syntax `.describeArgName( "This argument is for numbers" )`
  * or you can use the `setSchema( required struct schema )` method to provide a schema object.
- * 
+ *
  */
-class accessors = true implements="ITool" {
+class implements="ITool" {
 
+	/**
+	 * The name of the function
+	 */
     property name;
-    property func;
+
+	/**
+	 * The callable that the AI will use
+	 */
+    property callable;
+
+	/**
+	 * The schema for the function
+	 */
     property schema;
+
+	/**
+	 * The description of the function
+	 */
     property description;
-    property argDescriptions;
-    
-    variables.argDescriptions={};
+
+	/**
+	 * The descriptions of the arguments
+	 */
+    property name="argDescriptions" default={};
 
     /**
      * Describe the function. This is used by the AI to communicate the purpose of the function.
-     * 
+     *
      * @description The description of the function
      */
-    function describeFunction( required string description ){
+    Tool function describeFunction( required string description ){
         variables.description = description
         return this;
     }
 
     /**
      * Describe an argument. This is used by the AI to communicate the purpose of the argument.
-     * 
+     *
      * @name The name of the argument
      * @description The description of the argument
      */
-    function describeArg( required string name, required string description){
+    Tool function describeArg( required string name, required string description ){
         variables.argDescriptions[ name ] = description;
-        return this;
-    }
-
-    /**
-     * Set the name of the function. This is used by the AI to identify the function.
-     * 
-     * @name The name of the function
-     */
-    function setName( required string name ){
-        variables.name = name;
-
         return this;
     }
 
@@ -52,21 +58,20 @@ class accessors = true implements="ITool" {
      * Set the function that the AI will use. This can be used to return
      * data to the AI to influence further answers or to allow the AI to take actions
      * within the system.
-     * 
+     *
      * Your function must return a value that can be cast to a string.
-     * 
+     *
      * @func The function that the AI will use
      */
-    function setFunc( required any func ){
-        variables.func = func;
-
+    function call( required any callable ){
+        variables.callable = arguments.callable;
         return this;
     }
 
     /**
      * Set the schema for the function. This is used to provide a more detailed schema
      * for the function that the AI can use to validate the arguments.
-     * 
+     *
      * ```
      * {
             "type": "function",
@@ -88,9 +93,9 @@ class accessors = true implements="ITool" {
                 },
                 "strict": true
             }
-        } 
+        }
      * ```
-     * 
+     *
      * @schema The schema for the function
      */
     function setSchema( required struct schema ){
@@ -100,15 +105,8 @@ class accessors = true implements="ITool" {
     }
 
     /**
-     * Get the name of the function
-     */
-    public string function getName(){
-        return variables.name
-    }
-
-    /**
      * Get the schema for the function.
-     * 
+     *
      * If you did not provide a schema, one will be generated based on the function and argument descriptions.
      */
     public struct function getSchema(){
@@ -121,11 +119,11 @@ class accessors = true implements="ITool" {
 
     /**
      * Invoke the function with the provided arguments.
-     * 
+     *
      * @args The arguments to pass to the function
      */
     public string function invoke( required struct args ){
-        return variables.func( argumentCollection = args )
+        return variables.callable( argumentCollection = args )
     }
 
     /**
@@ -135,14 +133,14 @@ class accessors = true implements="ITool" {
         required = []
         properties = {}
 
-        variables.func.$bx.meta.parameters.each( param => {
+        variables.callable.$bx.meta.parameters.each( param => {
             required.append( param.name )
             properties[ param.name ] = {
                 "type": "string",
                 "description": variables.argDescriptions[ param.name ]
             };
         });
-        
+
         return {
             "type": "function",
             "function": {
@@ -161,7 +159,7 @@ class accessors = true implements="ITool" {
 
     /**
      * This is used to provide a fluent interface for describing the function and arguments.
-     * 
+     *
      * If your argument is named `location` you can use `describeLocation( "City and country e.g. Bogotá, Colombia" )`
      */
     function onMissingMethod( missingMethodName, missingMethodArguments ){

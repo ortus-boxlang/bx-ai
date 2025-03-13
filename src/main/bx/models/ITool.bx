@@ -1,10 +1,25 @@
 /**
- * Interface for all AI tools
+ * Interface for all AI tools to implement.
  */
 interface {
 
-    public string function getName()
+	/**
+	 * The name of the function the AI will look for
+	 */
+    public string function getName(){
+		return variables.name;
+	}
+
+	/**
+     * Get the schema for the function.
+     */
     public struct function getSchema()
+
+	/**
+     * Invoke the function with the provided arguments.
+     *
+     * @args The arguments to pass to the function
+     */
     public string function invoke( required struct args )
 
 }
