@@ -147,23 +147,27 @@ abstract class implements="IService" {
 		 */
 		var newMessages = chatRequest.getMessages().map( message -> message );
 		result.choices.each( ( choice, i ) => {
+
+			// add the tool call into our message history
 			newMessages.append( choice.message );
+
+			// find the tool, invoke it, append the result to the chat history
 			choice.message.tool_calls.each( ( toolCall, i ) => {
-				var toolIndex = data.tools.find( t => t.getName() == toolCall.function.name );
-				if( toolIndex == 0 ){
-					throw(
-						type   : "InvalidToolReference",
-						message: "Invalid tool reference: [#toolCall.function.name#"
-					);
-				}
-
-				var tool = data.tools[ toolIndex ]
-
-				newMessages.append({
-					"role"        : "tool",
-					"tool_call_id": toolCall.id,
-					"content"     : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
-				});
+				chatRequest.getTool( toolCall.function.name )
+					.ifPresentOrElse(
+						tool => {
+							newMessages.append({
+								"role"        : "tool",
+								"tool_call_id": toolCall.id,
+								"content"     : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
+							});
+						},
+						() => writeLog(
+							text: "Unable to find tool named: #toolCall.function.name#",
+							type: "warning",
+							log : "ai"
+						)
+					)				
 			});
 		});
 

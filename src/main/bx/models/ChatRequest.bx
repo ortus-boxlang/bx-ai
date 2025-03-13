@@ -78,6 +78,19 @@ class{
 		return this;
 	}
 
+	Attempt function getTool( required string name ){
+		if( !params.keyExists( "tools" ) ){
+			return attempt();
+		}
+
+		var toolIndex = params.tools.find( t => t.getName() == name );
+		if( toolIndex == 0 ){
+			return attempt();
+		}
+
+		return attempt( params.tools[ toolIndex ] );
+	}
+
 	/**
 	 * Verify if you have messages
 	 */
