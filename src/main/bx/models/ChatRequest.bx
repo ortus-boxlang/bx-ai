@@ -55,6 +55,11 @@ class{
 	property name="sendAuthHeader" type="boolean" default=true;
 
 	/**
+	 * A collection of headers to send with the request
+	 */
+	property name="headers" type="struct" default={};
+
+	/**
 	 * Constructor
 	 *
 	 * @chatMessage The messages to use for the chat request
@@ -75,6 +80,17 @@ class{
 		variables.returnFormat = options.returnFormat ?: "single";
 		variables.model = options.params?.model ?: "";
 		variables.timeout = options.timeout ?: 30;
+		return this;
+	}
+
+	/**
+	 * Add a header to the chat request
+	 *
+	 * @name The name of the header
+	 * @value The value of the header
+	 */
+	ChatRequest function addHeader( required string name, required string value ){
+		variables.headers[ arguments.name ] = arguments.value;
 		return this;
 	}
 

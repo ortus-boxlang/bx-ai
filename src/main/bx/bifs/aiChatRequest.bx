@@ -30,7 +30,8 @@ class {
     function invoke(
 		any messages,
 		struct params = {},
-		struct options = {}
+		struct options = {},
+		struct headers = {}
 	 ) {
 		if( !isNull( arguments.messages ) ){
 			arguments.messages = aiMessage( arguments.messages );
@@ -40,7 +41,7 @@ class {
 			arguments.messages,
 			arguments.params,
 			arguments.options
-		 )
+		 ).setHeaders( arguments.headers )
 	}
 
 }

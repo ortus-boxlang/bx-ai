@@ -225,6 +225,13 @@ abstract class implements="IService" {
 				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.chatRequest.getApiKey()#";
 			}
 
+			// Custom Headers
+			if( arguments.chatRequest.getHeaders().count() ){
+				arguments.chatRequest.getHeaders().each( ( key, value ) => {
+					bx:httpParam type="header" name="#key#" value="#value#";
+				} );
+			}
+
 			// Body Packet
 			bx:httpParam type="body" value=jsonSerialize( arguments.dataPacket );
 		}
