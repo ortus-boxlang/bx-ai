@@ -19,7 +19,6 @@ import static com.google.common.truth.Truth.assertThat;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -198,7 +197,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 
 	@DisplayName( "Test the tool calls" )
 	@Test
-	@Disabled( "Until Jacob can get to this." )
+	// @Disabled( "Until Jacob can get to this." )
 	public void testToolCall() {
 		// @formatter:off
 		runtime.executeSource(
@@ -221,7 +220,8 @@ public class IntegrationTest extends BaseIntegrationTest {
 				});
 
 			result = aiChat( messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.", data = {
-				tools: [ tool ]
+				tools: [ tool ],
+				seed: 27
 			} )
 			println( result )
 			""",
