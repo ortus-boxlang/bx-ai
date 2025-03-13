@@ -78,17 +78,24 @@ class{
 		return this;
 	}
 
+	/**
+	 * Get a defined tool if any from the incoming params
+	 *
+	 * @name The name of the tool to get
+	 *
+	 * @return An attempt retrieval of the tools
+	 */
 	Attempt function getTool( required string name ){
-		if( !params.keyExists( "tools" ) ){
+		if( !variables.params.keyExists( "tools" ) ){
 			return attempt();
 		}
 
-		var toolIndex = params.tools.find( t => t.getName() == name );
+		var toolIndex = variables.params.tools.find( t => t.getName() == name );
 		if( toolIndex == 0 ){
 			return attempt();
 		}
 
-		return attempt( params.tools[ toolIndex ] );
+		return attempt( variables.params.tools[ toolIndex ] );
 	}
 
 	/**
