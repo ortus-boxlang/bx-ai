@@ -4,7 +4,8 @@ class extends="BaseService"{
 	 * Constructor
 	 */
 	function init(){
-		variables.chatURL = "https://api.openai.com/v1/chat/completions";
+		variables.chatURL = "https://api.openai.com/v1/chat/completions"
+		variables.name = "OpenAI"
 		defaults( {
 			// according to the docs, this is the default model
 			"model" : "gpt-4-turbo"

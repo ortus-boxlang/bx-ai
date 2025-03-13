@@ -69,9 +69,9 @@ class {
 	 */
 	function configure(){
 		settings = {
-			// The provider of the AI: openai, deepseek, etc
+			// The default provider of the AI: openai, deepseek, etc
 			provider = "openai",
-			// The API Key for the provider
+			// The default API Key for the provider
 			apiKey = "",
 			// The default request params to use when calling a provider
 			// Ex: { temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
@@ -113,6 +113,7 @@ class {
 		customInterceptionPoints = [
 			"onAIRequest",
 			"onAIResponse",
+			"onAIProviderRequest",
 			"onAIProviderCreate"
 		 ];
 	}

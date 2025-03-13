@@ -15,6 +15,11 @@
 abstract class implements="IService" {
 
 	/**
+	 * The name of the LLM
+	 */
+	property name="name" default="";
+
+	/**
 	 * The API key to use with the provider
 	 */
 	property name = "apiKey" default = "";
@@ -167,7 +172,7 @@ abstract class implements="IService" {
 							type: "warning",
 							log : "ai"
 						)
-					)				
+					)
 			});
 		});
 

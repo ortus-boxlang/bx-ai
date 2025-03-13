@@ -15,6 +15,7 @@
 package ortus.boxlang.moduleslug;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
 
 import java.util.List;
 
@@ -37,9 +38,9 @@ public class IntegrationTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "provider", "openai" );
 	}
 
-	@DisplayName( "Can create a provider" )
+	@DisplayName( "Can create a core provider" )
 	@Test
-	public void testProviders() {
+	public void testCoreProviders() {
 		List<String> providers = List.of( "deepseek", "gemini", "grok", "openai" ); // Add more if needed
 
 		for ( String provider : providers ) {
@@ -56,6 +57,45 @@ public class IntegrationTest extends BaseIntegrationTest {
 			// Assert that the provider is not null
 			assertThat( variables.get( "provider" ) ).isNotNull();
 		}
+	}
+
+	@DisplayName( "On invalid provider, it throws an error" )
+	@Test
+	public void testInvalidProvider() {
+		assertThrows(
+		    Exception.class,
+		    () -> runtime.executeSource(
+		        """
+		        provider = aiService( "invalid" )
+		        """,
+		        context
+		    )
+		);
+	}
+
+	@DisplayName( "Provides a custom provider" )
+	@Test
+	public void testCustomProvider() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			boxRegisterInterceptor(
+				( data ) -> {
+					// Mock service
+					data.service = {
+						getName : () => "myCustomLLM"
+					}
+				},
+				"onAIProviderRequest"
+			)
+			provider = aiService( "myCustomLLM" )
+			println( provider.getName() )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "provider" ) ).isNotNull();
 	}
 
 	@DisplayName( "Test Grok AI" )

@@ -11,7 +11,7 @@ class {
 	 * - interceptorService : The BoxLang InterceptorService
 	 * - log : A logger for the module config itself
 	 */
-	static final VALID_PROVIDERS = [ "openai", "deepseek", "gemini", "grok" ];
+	static final CORE_PROVIDERS = [ "openai", "deepseek", "gemini", "grok" ];
 
     /**
      * Creates a reference to a registered AI Service Provider this module supports
@@ -45,10 +45,19 @@ class {
 				oTargetService = new bxModules.bxai.models.providers.GrokService().configure( arguments.apiKey )
 				break
 			default:
-				throw(
-					type: "ProviderNotSupported",
-					message: "Provider [#arguments.provider#] is not supported.  Valid Providers are: #static.VALID_PROVIDERS.toList()# "
-				);
+
+				// Announce the provider request so contributors can listen and provide a service
+				// This is for our aiplus module
+				var iData = { provider: arguments.provider, apiKey: arguments.apiKey, service : null };
+				BoxAnnounce( "onAIProviderRequest", iData );
+
+				if( iData.service == null ){
+					throw(
+						type: "ProviderNotSupported",
+						message: "Provider [#arguments.provider#] is not supported.  Valid Providers are: #static.CORE_PROVIDERS.toList()# "
+					);
+				}
+				oTargetService = iData.service;
 		}
 
 		BoxAnnounce( "onAIProviderCreate", { provider: oTargetService } );
