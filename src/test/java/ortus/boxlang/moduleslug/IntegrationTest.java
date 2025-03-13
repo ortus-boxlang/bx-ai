@@ -81,9 +81,10 @@ public class IntegrationTest extends BaseIntegrationTest {
 			"""
 			boxRegisterInterceptor(
 				( data ) -> {
-					// Mock service
-					data.service = {
-						getName : () => "myCustomLLM"
+					if( data.provider == "myCustomLLM" ) {
+						data.service = {
+							getName : () => "myCustomLLM"
+						}
 					}
 				},
 				"onAIProviderRequest"
