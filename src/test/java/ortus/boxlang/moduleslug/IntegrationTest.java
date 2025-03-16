@@ -41,7 +41,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 	@DisplayName( "Can create a core provider" )
 	@Test
 	public void testCoreProviders() {
-		List<String> providers = List.of( "deepseek", "gemini", "grok", "openai" ); // Add more if needed
+		List<String> providers = List.of( "deepseek", "gemini", "grok", "openai", "perplexity" ); // Add more if needed
 
 		for ( String provider : providers ) {
 			// Execute the runtime source with the current provider
@@ -97,6 +97,25 @@ public class IntegrationTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.get( "provider" ) ).isNotNull();
+	}
+
+	@DisplayName( "Test Perplexity AI" )
+	@Test
+	public void testPerplexity() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "PERPLEXITY_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "perplexity" );
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiChat( "what is boxlang?" )
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Asserts here
 	}
 
 	@DisplayName( "Test Grok AI" )

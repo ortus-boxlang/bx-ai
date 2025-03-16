@@ -1,0 +1,16 @@
+class extends="BaseService"{
+
+	/**
+	 * Constructor
+	 * https://docs.perplexity.ai/home
+	 */
+	function init(){
+		variables.chatURL = "https://api.perplexity.ai/chat/completions"
+		variables.name = "Perplexity"
+		defaults( {
+			// according to the docs, this is the default model
+			"model" : "sonar"
+		} )
+	}
+
+}

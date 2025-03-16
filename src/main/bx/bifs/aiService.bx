@@ -11,7 +11,7 @@ class {
 	 * - interceptorService : The BoxLang InterceptorService
 	 * - log : A logger for the module config itself
 	 */
-	static final CORE_PROVIDERS = [ "openai", "deepseek", "gemini", "grok" ];
+	static final CORE_PROVIDERS = [ "openai", "deepseek", "gemini", "grok", "perplexity" ];
 
     /**
      * Creates a reference to a registered AI Service Provider this module supports
@@ -43,6 +43,9 @@ class {
 				break
 			case "grok":
 				oTargetService = new bxModules.bxai.models.providers.GrokService().configure( arguments.apiKey )
+				break
+			case "perplexity":
+				oTargetService = new bxModules.bxai.models.providers.PerplexityService().configure( arguments.apiKey )
 				break
 			default:
 

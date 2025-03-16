@@ -18,7 +18,31 @@
 
 ## Welcome
 
-Welcome to the BoxLang AI Module. This module provides AI generation capabilities to your BoxLang applications in an easy to use and abstracted API, so you can interact with ANY AI provider in a consistent manner.  We also have an `bx-aiplus` module that enhances this module with more AI providers, capabilities and features.  The `bx-aiplus` module is part of our [BoxLang +/++ subscriptions](https://boxlang.io/plans).
+Welcome to the BoxLang AI Module. This module provides AI generation capabilities to your [BoxLang](www.boxlang.io) applications in an easy to use and abstracted API, so you can interact with ANY AI provider in a consistent manner.
+
+> We also have an `bx-aiplus` module that enhances this module with more AI providers, capabilities and features.  The `bx-aiplus` module is part of our [BoxLang +/++ subscriptions](https://boxlang.io/plans).
+
+## License
+
+BoxLang is open source and licensed under the [Apache 2](https://www.apache.org/licenses/LICENSE-2.0.html) license.
+
+## Getting Started
+
+You can easily get started with BoxLang AI by using the module installer:
+
+```bash
+install-bx-module bx-ai
+```
+
+If you would like to leverage it in your CommandBox Based Web applications, make sure you add it to your `server.json` or use `box install bx-ai`.
+
+Once installed you can leverage the global functions (BIFs) in your BoxLang code.  Here is a simple example:
+
+```java
+// chat.bxs
+answer = aiChat( "How amazing is BoxLang?" )
+println( answer )
+```
 
 ## Providers
 
@@ -28,6 +52,7 @@ The following are the AI providers supported by this module.  **Please note that
 - [DeepSeek](https://www.deepseek.com/)
 - [Gemini](https://gemini.google.com/)
 - [Grok](https://grok.com/)
+- [Perplexity](https://docs.perplexity.ai/)
 
 > More providers are available in our `bx-aiplus` module.
 
@@ -35,7 +60,7 @@ The following are the AI providers supported by this module.  **Please note that
 
 Here are some of the features of this module:
 
-- Chat with the AI providers
+- Integration with multiple AI providers
 - Compose raw chat requests
 - Build message objects
 - Create AI service objects
@@ -53,7 +78,7 @@ Here are the settings you can place in your `boxlang.json` file:
 {
 	"modules" : {
 		"bxai" : {
-			// The provider to use: openai, deepseek, gemini, grok, etc
+			// The provider to use: openai, deepseek, gemini, grok, perplexity, etc
 			provider : "openai",
 			// The API Key for the provider
 			apiKey : "",
