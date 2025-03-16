@@ -16,14 +16,20 @@
 
 <p>&nbsp;</p>
 
-Welcome to the BoxLang AI Module. This module is a BoxLang module that provides AI chat capabilities to your BoxLang applications.  The following AI providers are supported:
+## Welcome
+
+Welcome to the BoxLang AI Module. This module provides AI generation capabilities to your BoxLang applications in an easy to use and abstracted API, so you can interact with ANY AI provider in a consistent manner.  We also have an `bx-aiplus` module that enhances this module with more AI providers, capabilities and features.  The `bx-aiplus` module is part of our [BoxLang +/++ subscriptions](https://boxlang.io/plans).
+
+## Providers
+
+The following are the AI providers supported by this module.  **Please note that in order to interact with these providers you will need to have an account with them and an API key.**
 
 - [OpenAI](https://www.openai.com/)
 - [DeepSeek](https://www.deepseek.com/)
 - [Gemini](https://gemini.google.com/)
 - [Grok](https://grok.com/)
 
-> More coming soon.
+> More providers are available in our `bx-aiplus` module.
 
 ## Settings
 
@@ -33,116 +39,85 @@ Here are the settings you can place in your `boxlang.json` file:
 {
 	"modules" : {
 		"bxai" : {
-			// The provider of the AI: openai, deepseek, etc
-			provider = "openai",
+			// The provider to use: openai, deepseek, gemini, grok, etc
+			provider : "openai",
 			// The API Key for the provider
-			apiKey = "",
-			// The provider model to use, if any
-			model = "gpt-4o-mini",
-			// The provider properties according to provider, if any
-			properties = {
+			apiKey : "",
+			// The default request params to use when calling a provider
+			// Ex: { temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
+			defaultParams = {
+				// model: "gpt-3.5-turbo"
 			}
 		}
 	}
 }
 ```
 
-## Usage
+## Global Functions (BIFs)
 
-This module exposes the following BoxLang functions:
+This module exposes the following BoxLang global functions (BIFs) for you to interact with the AI providers:
 
-- `aiChat( messages, model, struct data={}, boolean verbose=false )` : This function will allow you to chat with the AI provider and get responses back.
-- `aiChatAsync( messages, model, struct data={}, boolean verbose=false )` : This function will allow you to chat with the AI provider asynchronously and give you back a BoxLang Completable Future.
+- `aiChat( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get responses back.  This is the easiest way to interact with the AI providers.
+- `aiChatAsync( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get a BoxLang future back so you can build fluent asynchronous code pipelines.
+- `aiChatRequest( messages, struct params, struct options, struct headers)` - This allows you to compose a raw chat request that you can then later send to an AI service.  The return is a `ChatRequest` object that you can then send to the AI service.
+- `aiMessage( message )` - Allows you to build a message object that you can then use to send to the `aiChat()` or `aiChatRequest()` functions.  It allows you to fluently build up messages as well.
+- `aiService( provider, apiKey )` - Creates a reference to an AI Service provider that you can then use to interact with the AI service.  This is useful if you want to create a service object and then use it multiple times.  You can pass in optional `provider` and `apiKey` to override the global settings.
+- `aiTool( name, description, callable)` - Creates a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiChatRequest()` functions.
 
-### Arguments
+## aiChat()/aiChatAsync() - Chat with the AI
 
-- `messages` : The messages to chat with the AI.  This is provider dependent. Please see each section for more information.
-- `model` : The model to use for the AI provider.  This is provider dependent. Please see each section for more information.
-- `data` : The data to pass to the AI provider.  This is provider dependent. Please see each section for more information.
-- `verbose` : A flag to output verbose information about the AI chat or just the response message.
-
-```js
-// Chat with the AI
-aiChat( "What is the meaning of life?" );
-```
-
-----
-
-## OpenAI
-
-The OpenAI provider will allow you to interact with the following APIs:
-
-- Chat API - https://platform.openai.com/docs/api-reference/chat
-- Image API
-- Embedding API
-
-Please see [OpenAI API](https://beta.openai.com/docs/api-reference) for more information.
-
-### aiChat()
-
-You can use the `aiChat()` function to chat with the OpenAI API.  Here is more docs on this: https://platform.openai.com/docs/guides/text-generation
-
-#### Messages
-
-This can be any of the following
-
-- A string : A message with a default `role` of `user` will be used
-- A struct : A single message that must have a `role` and a `content` key
-- An array of structs : An array of messages that must have a `role` and a `content` keys
+The `aiChat(), aiChatAsync()` functions are the easiest way to interact with the AI providers in a consistent and abstracted way.  Here are the signatures of the function:
 
 ```js
-// Chat with the AI
-aiChat( "What is the meaning of life?" );
+aiChat( messages, struct params={}, struct options={} )
+aiChatAsync( messages, struct params={}, struct options={} )
 ```
 
-```js
-// Chat with the AI
-aiChat( { role="developer", content="What is the meaning of life?" } );
-```
+Here are the parameters:
 
-```js
-// Chat with the AI
-aiChat( [
-	{ role="developer", content="Be a helpful assistant" },
-	{ role="user", content="What is the meaning of life?" }
-] );
-```
+- `messages` : This can be any of the following
+  - A `string` : A message with a default `role` of `user` will be used
+  - A `struct` : A struct with a `role` and `content` key message
+  - An `array of structs` : An array of messages that must have a `role` and a `content` keys
+  - A `ChatMessage` object
+- `params` : This is a struct of request parameters that will be passed to the AI provider.  This can be anything the provider supports.  Usually this is the `model`, `temperature`, `max_tokens`, etc.
+- `options` : This is a struct of options that can be used to control the behavior of the AI provider.  The available options are:
+  - `provider:string` : The provider to use, if not passed it will use the global setting
+  - `apiKey:string` : The API Key to use, if not passed it will use the global setting
+  - `timeout:numeric` : The timeout in milliseconds for the request. Default is 30 seconds.
+  - `logRequest:boolean` : Log the request to the `ai.log`. Default is `false`
+  - `logResponse:boolean` : Log the response to the `ai.log`. Default is `false`
+  - `returnFormat:string` : The format of the response.  The default is a `single` message.  The available formats are:
+    - `single` : A single message
+    - `all` : An array of messages
+    - `raw` : The raw response from the AI provider
 
-#### Model
+The `aiChat()` function will return a message according to the `options.returnFormat` type. If you use `aiChatAsync()` it will return a BoxLang future so you can build fluent asynchronous code pipelines.
 
-The supported models for OpenAI are:
+> Don't worry that you must do a `role` and `content` in your messages if you use a struct or an array of structs.  The ai providers will understand the structure and process it accordingly.
 
-- `gpt-4o` : The large model
-- `gpt-4o-mini` : The more affordable but slower model
-- `gpt-4o-turbo` : The turbo model
-- Much more, look at the docs.
+### System Messages
 
-You can find more information here: https://platform.openai.com/docs/models
+The `messages` argument as explained allows you to send 3 different types of messages.  Another caveat is that there can only be one `system` message per request.
 
-#### Data
-
-This is an arbitrary structure that will be passed to the OpenAI API alongsside the top level body.
-
-```js
-// Chat with the AI
-aiChat( "What is BoxLang?", "gpt-4o-mini", { temperature=0.5, max_tokens=100 } );
-```
-
-#### Examples
+### Examples
 
 Here are some examples of chatting with the AI:
 
 ```js
+// Simple chat
 aiChat( "Write a haiku about recursion in programming." );
 
+// Structural chat
 aiChat( {
 	"role": "user",
 	"content": "Write a haiku about recursion in programming."
 } );
 
+// Using an array of messages
 aiChat( [
 	{
-		"role": "developer",
+		"role": "system",
 		"content": "You are a helpful assistant."
 	},
 	{
@@ -152,52 +127,372 @@ aiChat( [
 ] );
 
 // Analyze an image
-aiChat( [
-    {
-		"role": "user",
-		"content": [
-			{
-				"type": "text",
-				"text": "What is in this image?"
-			},
-			{
-				"type": "image_url",
-				"image_url": {
-					"url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
-				}
+aiChat( {
+	"role": "user",
+	"content": [
+		{
+			"type": "text",
+			"text": "What is in this image?"
+		},
+		{
+			"type": "image_url",
+			"image_url": {
+				"url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
 			}
-		]
+		}
+	]
+} );
+```
+
+Now let's do some async chatting.  The benefit of async chatting is that you can build fluent asynchronous code pipelines and not block the main thread.  Once you are ready for retrieval of the results, then you can use the blocking `get()` method on the future.
+
+```java
+var future = aiChatAsync( "Write a haiku about recursion in programming." )
+    .then( result -> {
+        println( "AI Response: " + result );
+        return result;
+    } )
+    .onError( error -> {
+        writeLog( text: "AI Chat failed: " + error.getMessage(), type: "error" );
+        return "An error occurred. Please try again.";
+    } );
+
+// Later in the code, you can retrieve the result
+<h2>Chat Response</h2>
+<p>#future.get()#</p>
+
+// Transforming and formatting the response
+var future = aiChatAsync( "Write a haiku about recursion in programming." )
+    .then( result -> "### AI-Generated Haiku
+	<br>
+	#result.trim()#
+	" )
+    .onError( error -> {
+        writeLog( text: "AI Chat failed: " + error.getMessage(), type: "error" );
+        return "### AI Error
+		<p>#error.getMessage()#</p>
+		<p>An unexpected error occurred</p>
+		<p>Please try again</p>
+		";
+    } );
+
+// Print or return the formatted result
+println( future.get() );
+```
+
+## aiChatRequest() - Compose a Chat Request
+
+The `aiChatRequest()` function allows you to compose a raw chat request that you can then later send to an AI service.  The return is a `ChatRequest` object that you can then send to the AI service.
+
+```js
+aiChatRequest( messages, struct params, struct options, struct headers )
+```
+
+Here are the parameters:
+
+- `messages` : This can be any of the following
+  - A `string` : A message with a default `role` of `user` will be used
+  - A `struct` : A struct with a `role` and `content` key message
+  - An `array of structs` : An array of messages that must have a `role` and a `content` keys
+  - A `ChatMessage` object
+- `params` : This is a struct of request parameters that will be passed to the AI provider.  This can be anything the provider supports.  Usually this is the `model`, `temperature`, `max_tokens`, etc.
+- `options` : This is a struct of options that can be used to control the behavior of the AI provider.  The available options are:
+  - `provider:string` : The provider to use, if not passed it will use the global setting
+  - `apiKey:string` : The API Key to use, if not passed it will use the global setting
+  - `timeout:numeric` : The timeout in milliseconds for the request. Default is 30 seconds.
+  - `logRequest:boolean` : Log the request to the `ai.log`. Default is `false`
+  - `logResponse:boolean` : Log the response to the `ai.log`. Default is `false`
+  - `returnFormat:string` : The format of the response.  The default is a `single` message.  The available formats are:
+    - `single` : A single message
+    - `all` : An array of messages
+    - `raw` : The raw response from the AI provider
+- `headers` : This is a struct of headers that can be used to send to the AI provider.
+
+### ChatRequest Properties
+
+The `ChatRequest` object has several properties that you can use to interact with the request.  All of them have a getter and a setter.
+
+- `messages:array` : The messages to send to the AI provider
+- `params:struct` : The request parameters to send to the AI provider
+- `provider:string` : The provider to use
+- `apiKey:string` : The API Key to use
+- `logRequest:boolean` : Log the request to the `ai.log`
+- `logResponse:boolean` : Log the response to the `ai.log`
+- `returnFormat:string` : The format of the response
+- `timeout:numeric` : The timeout in milliseconds for the request. Default is 30 seconds.
+- `sendAuthHeader:boolean` : Send the API Key as an Authorization header. Default is `true`
+- `headers:struct` : The headers to send to the AI provider
+
+### ChatRequest Methods
+
+The `ChatRequest` object has several methods that you can use to interact with the request apart from the aforementioned properties setters and getters.
+
+- `addHeader( name, value ):ChatRequest` : Add a header to the request
+- `getTool( name ):Attempt` : Get a tool from the defined params
+- `hasMessages():boolean` : Check if the request has messages
+- `hasModel():boolean` : Check if the request has a model
+- `setModelIfEmpty( model ):ChatRequest` : Set the model if it is empty
+- `hasApiKey():boolean` : Check if the request has an API Key
+- `setApiKeyIfEmpty( apiKey ):ChatRequest` : Set the API Key if it is empty
+
+### Examples
+
+Here are some examples of composing a chat request:
+
+```js
+// Simple chat request
+chatRequest = aiChatRequest( "Write a haiku about recursion in programming." )
+response = aiService().invoke( chatRequest )
+
+// Advanced request
+chatRequest = aiChatRequest( "Write a haiku about recursion in programming.", {
+		"model": "gpt-3.5-turbo",
+		"temperature": 0.5,
+		"max_tokens": 100
+	},
+	{
+		"provider": "grok",
+		"timeout": 10,
+		"logRequest": true,
+		"logResponse": true,
+		"returnFormat": "raw"
+	} );
+response = aiService().invoke( chatRequest )
+```
+
+## aiMessage() - Build a Message Object
+
+This function allows you to build up messages that you can then use to send to the `aiChat()` or `aiChatRequest()` functions.  It allows you to fluently build up messages as well as it implements `onMissingMethod()`. Meaning that any method call that is not found in the `ChatMessage` object will be treated as `roled` message: `system( "message" ), user( "message" ), assistant( "message" )`.  This method returns a `ChatMessage` object.
+
+This is also useful so you can keep track of your messages.
+
+> Please note that the ai-plus module supports chat memory and more.
+
+The `aiMessage()` function has the following signature:
+
+```js
+aiMessage( message )
+```
+
+Here are the parameters:
+
+- `message` : This can be any of the following
+  - A `string` : A message with a default `role` of `user` will be used
+  - A `struct` : A struct with a `role` and `content` key message
+  - An `array of structs` : An array of messages that must have a `role` and a `content` keys
+  - A `ChatMessage` object itself.
+
+### ChatMessage Methods
+
+The `ChatMessage` object has several methods that you can use to interact with the message.
+
+- `count():numeric` : Get the count of messages
+- `getMessages():array` : Get the messages
+- `setMessages( messagaes ):ChatMessage` : Set the messages
+- `clear():ChatMessage` : Clear the messages
+- `hasSystemMessage():boolean` : Check if the message has a system message
+- `getSystemMessage():string` : Get the system message, if any.
+- `replaceSystemMessage( content )` : Replace the system message with a new one
+- `add( content ):ChatMessage` : Add a message to the messages array
+
+### ChatMessage Dynamic Methods
+
+The `ChatMessage` object is dynamic and will treat any method call that is not found as a **roled** message according to the name of the method you call.  This allows you to build up messages fluently.
+
+```java
+aiMessage()
+	.system( "You are a helpful assistant." )
+	.user( "Write a haiku about recursion in programming." )
+	.user( "What is the capital of France?" )
+```
+
+### Examples
+
+Here are a few examples of building up messages and sending them to the `aiChat()` or `aiChatRequest()` functions:
+
+```js
+aiChat(
+	aiMessage()
+		.system( "You are a helpful assistant." )
+		.user( "Write a haiku about recursion in programming." )
+		.user( "What is the capital of France?" )
+)
+```
+
+## aiService() - Create an AI Service Object
+
+This function allows you to create a reference to an AI Service provider that you can then use to interact with an AI service.  This is useful when you need to interact with a specific implementation of our `IAService` interface.
+
+The `aiService()` function has the following signature:
+
+```js
+aiService( provider, apiKey )
+```
+
+Here are the parameters:
+
+- `provider` : The provider to use, if not passed it will use the global setting
+- `apiKey` : The API Key to use, if not passed it will use the global setting
+
+
+### Service Methods
+
+Here are some useful methods each provider implements and gets via the `BaseService` abstract class.
+
+- `getName():string` : Get the name of the AI Service
+- `configure( apiKey ):IService` : Configure the service with an override API key
+- `invoke( chatRequest ):any` : Invoke the provider service with a ChatRequest object
+- `getChatURL():string` : Get the chat URL of the provider
+- `setChatURL( url ):IService` : Set the chat URL of the provider
+- `defaults( struct params ):IService` : Set the default parameters for the provider
+
+### IAiService Interface
+
+Here is the interface that all AI Service providers must implement:
+
+```java
+/**
+ * Interface for all AI Service classes
+ */
+interface{
+
+	/**
+	 * Get the name of the LLM
+	 */
+	function getName();
+
+	/**
+	 * Configure the service with an override API key
+	 *
+	 * @apiKey - The API key to use with the provider
+	 *
+	 * @return The service instance
+	 */
+	IService function configure( required any apiKey );
+
+	/**
+	 * Invoke the provider service with a ChatRequest object
+	 *
+	 * @chatRequest The ChatRequest object to send to the provider
+	 *
+	 * @return The response from the service, which can be anything according to their specs: string, or struct, or whatever
+	 */
+	function invoke( required ChatRequest chatRequest );
+
+}
+```
+
+### BaseService
+
+We have also provided a `BaseService` that implements the interface using the `OpenAI` standard.  This is a great starting point for you to create your own AI Service provider if needed.
+
+### Examples
+
+Here are a few examples of creating an AI Service object and interacting with it:
+
+```js
+// Create a service object
+service = aiProvider( "grok" )
+	.configure( "myApiKey" )
+	.defaults( { model: "gpt-3.5-turbo", temperature: 0.5, max_tokens: 100 } )
+
+// Invoke the service
+response = service.invoke( aiChatRequest( "Write a haiku about recursion in programming." ) )
+// Or
+response = service.invoke(
+	aiChatRequest( "Write a haiku about recursion in programming.", { model: "gpt-3.5-turbo", temperature: 0.5, max_tokens: 100 } )
+)
+```
+
+## aiTool() - Create a Tool Object
+
+This function allows you to create a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiChatRequest()` functions.
+
+The `aiTool()` function has the following signature:
+
+```js
+aiTool( name, description, callable )
+```
+
+Here are the parameters:
+
+- `name` : The name of the tool sent to the AI provider
+- `description` : Describe the function. This is used by the AI to communicate the purpose of the function.
+- `callable` : A closure/lambda to call when the tool is invoked.
+
+Once a tool object is made, you can pass them into a chat's or chat request's `params` via the `tools` array.
+
+```java
+result = aiChat( messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.", params = {
+	tools: [ tool1, tool2, tool3 ],
+	seed: 27
+} )
+```
+
+### Tool Properties
+
+The `Tool` object has several properties that you can use to interact with the tool.
+
+- `name:string` : The name of the tool
+- `description:string` : The description of the tool
+- `callable:function` : The closure/lambda to call when the tool is invoked
+- `schema:struct` : The schema of the tool
+- `argDescriptions:struc` : The argument descriptions of the tool
+
+Each of them have a getter and a setter.
+
+### Tool Methods
+
+The `Tool` object has several methods that you can use to interact with the tool.
+
+- `describeFunction( description ):Tool` : Describe the function of the tool
+- `describeArg( name, description ):Tool` : Describe an argument of the tool
+- `call( callable ):Tool` : Set the callable closure/lambda of the tool
+
+### Dynamic Tool Methods
+
+The `Tool` object also listens to dynamic methods so you can build fluent descriptions of the function or arguments using the `describe{argument}()` methods.
+
+```java
+aiTool(
+	"myTool",
+	( args ) -> {
+		return "Hello World";
+	} )
+	.describe( "My Tool Function" )
+	.describeName( "The name of the person" )
+	.describeAge( "The age of the person" )
+```
+
+### Examples
+
+Let's build a sample AI tool that can be used in a chat request and talk to our local runtime to get realtime weather information.
+
+```java
+tool = aiTool(
+	"get_weather",
+	"Get current temperature for a given location.",
+	location => {
+	if( location contains "Kansas City" ) {
+		return "85"
 	}
-] );
-```
 
-Using tools
+	if( location contains "San Salvador" ){
+		return "90"
+	}
 
-```
-tool = new bxmodules.bxai.models.Tool();
+	return "unknown";
+}).describeLocation( "City and country e.g. Bogotá, Colombia" )
 
-tool.setName( "get_weather" )
-	.describe( "Get current temperature for a given location." )
-	.describeLocation( "City and country e.g. Bogotá, Colombia" )
-	.setFunc( ( location ) => {
-		if( location contains "Kansas City" ) {
-			return "85"
-		}
-
-		if( location contains "San Salvador" ){
-			return "90"
-		}
-
-		return "unknown";
-	});
-
-result = aiChat( messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.", data = {
-	tools: [ tool ]
+result = aiChat( "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.", {
+	tools: [ tool ],
+	seed: 27
 } )
 
-// San Salvador
 println( result )
 ```
+
+----
 
 ## Ortus Sponsors
 
