@@ -37,11 +37,15 @@ class {
 			arguments.messages = aiMessage( arguments.messages );
 		}
 
-		return new bxModules.bxai.models.ChatRequest(
+		var oChatRequest = new bxModules.bxai.models.ChatRequest(
 			arguments.messages,
 			arguments.params,
 			arguments.options
 		 ).setHeaders( arguments.headers )
+
+		 BoxAnnounce( "onAIChatRequestCreate", { chatRequest: oChatRequest } );
+
+		 return oChatRequest;
 	}
 
 }

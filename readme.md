@@ -31,6 +31,20 @@ The following are the AI providers supported by this module.  **Please note that
 
 > More providers are available in our `bx-aiplus` module.
 
+## Features
+
+Here are some of the features of this module:
+
+- Chat with the AI providers
+- Compose raw chat requests
+- Build message objects
+- Create AI service objects
+- Create AI tool objects
+- Fluent API
+- Asynchronous chat requests
+- Global defaults
+- And much more
+
 ## Settings
 
 Here are the settings you can place in your `boxlang.json` file:

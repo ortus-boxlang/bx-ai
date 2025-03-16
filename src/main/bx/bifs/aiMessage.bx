@@ -30,7 +30,12 @@ class {
 			return arguments.message;
 		}
 
-		return new bxModules.bxai.models.ChatMessage( argumentCollection: arguments )
+		var oMessage = new bxModules.bxai.models.ChatMessage( argumentCollection: arguments )
+
+		BoxAnnounce( "onAIChatMessageCreate", { chatMessage: oMessage } );
+
+		return oMessage;
+
 	}
 
 }

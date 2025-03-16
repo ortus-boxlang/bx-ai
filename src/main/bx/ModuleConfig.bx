@@ -114,7 +114,9 @@ class {
 			"onAIRequest",
 			"onAIResponse",
 			"onAIProviderRequest",
-			"onAIProviderCreate"
+			"onAIProviderCreate",
+			"onAIChatRequestCreate",
+			"onAIChatMessageCreate"
 		 ];
 	}
 
