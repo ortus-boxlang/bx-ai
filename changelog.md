@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Missing the `settings` in the module config.
+- Invalid name for the module config.
+
 ## [1.0.0] - 2025-03-17
 
 - First iteration of this module
