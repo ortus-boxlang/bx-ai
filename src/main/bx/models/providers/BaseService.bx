@@ -38,7 +38,7 @@ abstract class implements="IService" {
 	 * Constants
 	 */
 	static {
-		final settings = getModuleInfo( "bx-ai" ).settings
+		final settings = getModuleInfo( "bxai" ).settings
 	}
 
 	/**
