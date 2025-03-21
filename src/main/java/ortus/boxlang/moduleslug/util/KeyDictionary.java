@@ -21,6 +21,6 @@ import ortus.boxlang.runtime.scopes.Key;
  */
 public class KeyDictionary {
 
-	public static final Key moduleName = new Key( "bx-ai" );
+	public static final Key moduleName = new Key( "bxai" );
 
 }
