@@ -78,14 +78,16 @@ Here are the settings you can place in your `boxlang.json` file:
 {
 	"modules" : {
 		"bxai" : {
-			// The provider to use: openai, deepseek, gemini, grok, perplexity, etc
-			provider : "openai",
-			// The API Key for the provider
-			apiKey : "",
-			// The default request params to use when calling a provider
-			// Ex: { temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
-			defaultParams = {
-				// model: "gpt-3.5-turbo"
+			"settings": { 
+				// The provider to use: openai, deepseek, gemini, grok, perplexity, etc
+				provider : "openai",
+				// The API Key for the provider
+				apiKey : "",
+				// The default request params to use when calling a provider
+				// Ex: { temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
+				defaultParams = {
+					// model: "gpt-3.5-turbo"
+				}
 			}
 		}
 	}

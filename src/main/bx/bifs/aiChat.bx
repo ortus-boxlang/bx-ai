@@ -11,7 +11,7 @@ class {
 		logResponse : false,
 		logRequest : false
 	}
-	static MODULE_SETTINGS = getModuleInfo( "bx-ai" ).settings;
+	static MODULE_SETTINGS = getModuleInfo( "bxai" ).settings;
 
 	/**
 	 * Inject the following references into the class
