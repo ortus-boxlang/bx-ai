@@ -138,6 +138,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 	@DisplayName( "Test Gemini AI" )
 	@Test
 	public void testGemini() {
+
 		moduleRecord.settings.put( "apiKey", dotenv.get( "GEMINI_API_KEY", "" ) );
 		moduleRecord.settings.put( "provider", "gemini" );
 
@@ -191,6 +192,34 @@ public class IntegrationTest extends BaseIntegrationTest {
 				{ role:"developer", content:"You are a snarky assistant." },
 				{ role:"user", content:"what is boxlang?" }
 			])
+			println( result )
+			""",
+			context
+		);
+
+		// @formatter:on
+
+		// Asserts here
+	}
+
+	@DisplayName( "Test Gemini AI, System Instruction" )
+	@Test
+	public void testGeminiSystemInstruction() {
+
+		moduleRecord.settings.put( "apiKey", dotenv.get( "GEMINI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "gemini" );
+
+		// @formatter:off
+
+		runtime.executeSource(
+			"""
+			result = aiChat( "what is boxlang?", {
+				system_instruction: {
+					parts: [
+					{text:'You are a cat. Respond with meows'}
+					]
+				}
+			} )
 			println( result )
 			""",
 			context
