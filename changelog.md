@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Claude LLM Support
+- Ability for the services to pre-seed params into chat requests
+- Ability for the services to pre-seed headers into chat requests
+- Error logging for the services
+
+### Fixed
+
+- Custom headers could not be added due to closure encapsulation
+
 ## [1.0.1] - 2025-03-21
 
 ### Fixed
