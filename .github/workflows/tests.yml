@@ -23,6 +23,7 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
       PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+      CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
@@ -30,14 +31,6 @@ jobs:
         os: [ "ubuntu-latest" ]
         jdkVersion: [ "21" ]
         experimental: [false]
-        #include:
-          #- jdkVersion: "17"
-          #  os: "windows-latest"
-          #  experimental: true
-          # Disabled for now until we can figure out the gradle matrix
-          #- jdkVersion: "17"
-          #  os: "ubuntu-latest"
-          #  experimental: true
 
     steps:
       - name: Checkout Repository
