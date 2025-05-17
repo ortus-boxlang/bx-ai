@@ -44,7 +44,7 @@ class extends="BaseService"{
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
 			writeLog(
-				text: results.error.toString(),
+				text: result.error.toString(),
 				type: "error",
 				log : "ai"
 			)
