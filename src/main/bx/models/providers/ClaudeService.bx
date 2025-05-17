@@ -1,0 +1,68 @@
+class extends="BaseService"{
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.chatURL = "https://api.anthropic.com/v1/messages"
+		variables.name = "Claude"
+		// https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview
+		defaults( {
+			// according to the docs, this is the default model and tokens
+			"model" : "claude-3-7-sonnet-latest",
+			"max_tokens": 1024,
+			// https://docs.anthropic.com/en/api/versioning
+
+		} )
+		addHeader( name: "anthropic-version", value: "2023-06-01" )
+	}
+
+	/**
+	 * Claude chat request
+	 * Customized for Claude
+	 * https://docs.anthropic.com/en/api/messages-examples
+	 */
+	@override
+	public function chat( required ChatRequest chatRequest ){
+		// No auth header, claude uses x-api-key
+		arguments.chatRequest
+			.setSendAuthHeader( false )
+			.addHeader( "x-api-key", chatRequest.getApiKey() )
+
+		// Build the packet according to the OpenAI standard
+		var dataPacket = {
+			"model"   : arguments.chatRequest.getModel(),
+			"messages": arguments.chatRequest.getMessages()
+		}.append( arguments.chatRequest.getParams() )
+
+		// Tooling support
+		// TODO
+
+		// Send it
+		var result = sendRequest( chatRequest, dataPacket )
+
+		// If an error is returned, throw it
+		if( result.keyExists( "error" ) ){
+			writeLog(
+				text: result.error.toString(),
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "ProviderError",
+				message: result.error.toString()
+			);
+		}
+
+		// Determine return formats
+		switch( chatRequest.getReturnFormat() ){
+			case "all":
+				return result.content;
+			case "raw":
+				return result;
+			case "single": default:
+				return result.content.first().text;
+		}
+	}
+
+}

@@ -163,4 +163,22 @@ class{
 		return this;
 	}
 
+	/**
+	 * Update the chat request params from the service defaults
+	 * but only if the params are not already set
+	 */
+	ChatRequest function mergeServiceParams( required struct params ){
+		variables.params.append( arguments.params, false );
+		return this;
+	}
+
+	/**
+	 * Update the chat request headers from the service defaults
+	 * but only if the headers are not already set
+	 */
+	ChatRequest function mergeServiceHeaders( required struct headers ){
+		variables.headers.append( arguments.headers, false );
+		return this;
+	}
+
 }

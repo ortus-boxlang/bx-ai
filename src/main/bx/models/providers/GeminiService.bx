@@ -61,7 +61,7 @@ class extends="BaseService"{
 			case "raw":
 				return result;
 			case "single": default:
-				return result.candidates[ 1 ].content.parts[ 1 ].text
+				return result.candidates.first().content.parts.first().text
 		}
 
 		/**

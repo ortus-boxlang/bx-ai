@@ -11,7 +11,14 @@ class {
 	 * - interceptorService : The BoxLang InterceptorService
 	 * - log : A logger for the module config itself
 	 */
-	static final CORE_PROVIDERS = [ "openai", "deepseek", "gemini", "grok", "perplexity" ];
+	static final CORE_PROVIDERS = [
+		"claude",
+		"deepseek",
+		"gemini",
+		"grok",
+		"openai",
+		"perplexity"
+	];
 
     /**
      * Creates a reference to a registered AI Service Provider this module supports
@@ -32,8 +39,8 @@ class {
 
 		var oTargetService = null;
 		switch( arguments.provider ) {
-			case "openai":
-				oTargetService = new bxModules.bxai.models.providers.OpenAIService().configure( arguments.apiKey )
+			case "claude":
+				oTargetService = new bxModules.bxai.models.providers.ClaudeService().configure( arguments.apiKey )
 				break
 			case "deepseek":
 				oTargetService = new bxModules.bxai.models.providers.DeepSeekService().configure( arguments.apiKey )
@@ -44,11 +51,13 @@ class {
 			case "grok":
 				oTargetService = new bxModules.bxai.models.providers.GrokService().configure( arguments.apiKey )
 				break
+			case "openai" :
+				oTargetService = new bxModules.bxai.models.providers.OpenAIService().configure( arguments.apiKey )
+				break
 			case "perplexity":
 				oTargetService = new bxModules.bxai.models.providers.PerplexityService().configure( arguments.apiKey )
 				break
 			default:
-
 				// Announce the provider request so contributors can listen and provide a service
 				// This is for our aiplus module
 				var iData = { provider: arguments.provider, apiKey: arguments.apiKey, service : null };
@@ -57,7 +66,7 @@ class {
 				if( iData.service == null ){
 					throw(
 						type: "ProviderNotSupported",
-						message: "Provider [#arguments.provider#] is not supported.  Valid Providers are: #static.CORE_PROVIDERS.toList()# "
+						message: "Provider [#arguments.provider#] is not supported.  Valid Providers are: [#static.CORE_PROVIDERS.toList()#]"
 					);
 				}
 				oTargetService = iData.service;

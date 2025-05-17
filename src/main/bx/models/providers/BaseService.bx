@@ -30,9 +30,14 @@ abstract class implements="IService" {
 	property name = "chatURL" default = "";
 
 	/**
-	 * The param request properties
+	 * The default params to use with the provider
 	 */
 	property name = "params" type = "struct" default = {};
+
+	/**
+	 * The default headers to use with the provider
+	 */
+	property name = "headers" type = "struct" default = {};
 
 	/**
 	 * Constants
@@ -78,6 +83,17 @@ abstract class implements="IService" {
 	}
 
 	/**
+	 * Add a header to the service definition
+	 *
+	 * @name The name of the header
+	 * @value The value of the header
+	 */
+	BaseService function addHeader( required string name, required string value ){
+		variables.headers[ arguments.name ] = arguments.value;
+		return this;
+	}
+
+	/**
 	 * Invoke a request to the provider
 	 *
 	 * @chatRequest The Chat request to send to the provider
@@ -85,11 +101,12 @@ abstract class implements="IService" {
 	 * @return The response from the provider according to the return format in the chat request
 	 */
 	function invoke( required ChatRequest chatRequest ){
-		// Seed the default params from the chat request, which overrides the service defaults
-		defaults( chatRequest.getParams() )
 		// Model Selection if not set, use the default in the service, which should always be set
-		chatRequest.setModelIfEmpty( variables.params.model );
-		chatRequest.setApiKeyIfEmpty( getAPIKey() );
+		chatRequest
+			.setModelIfEmpty( variables.params.model )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers )
 		// Do a chat request
 		// MORE TYPES CAN BE ADDED HERE LATER
 		return chat( argumentCollection = arguments )
@@ -123,16 +140,19 @@ abstract class implements="IService" {
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
+			writeLog(
+				text: results.error.toString(),
+				type: "error",
+				log : "ai"
+			)
 			throw(
 				type   : "ProviderError",
 				message: result.error.toString()
 			);
 		}
 
-		// No Tool calls
-		// TODO: Verify if all services support this.
-		if( !result.choices[ 1 ].message.keyExists( "tool_calls" ) ){
-
+		// Result returns, only if we are not using tool calls
+		if( !result.choices.first().message.keyExists( "tool_calls" ) ){
 			// Determine return formats
 			switch( chatRequest.getReturnFormat() ){
 				case "all":
@@ -140,7 +160,7 @@ abstract class implements="IService" {
 				case "raw":
 					return result;
 				case "single": default:
-					return result.choices[ 1 ].message.content;
+					return result.choices.first().message.content;
 			}
 		}
 
@@ -220,24 +240,27 @@ abstract class implements="IService" {
 		{
 			bx:httpParam type="header" name="content-type" value="application/json";
 
-			// Auth Header
+			// Auth Header ONLY if the provider requires it
+			// This is the default for OpenAI
+			// If the provider does not require it, set it to false
 			if( arguments.chatRequest.getSendAuthHeader() ){
 				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.chatRequest.getApiKey()#";
 			}
 
 			// Custom Headers
-			if( arguments.chatRequest.getHeaders().count() ){
-				arguments.chatRequest.getHeaders().each( ( key, value ) => {
-					bx:httpParam type="header" name="#key#" value="#value#";
-				} );
+			for( var thisHeader in arguments.chatRequest.getHeaders() ){
+				bx:httpParam
+					type="header"
+					name="#thisHeader#"
+					value="#arguments.chatRequest.getHeaders()[ thisHeader ]#";
 			}
 
 			// Body Packet
 			bx:httpParam type="body" value=jsonSerialize( arguments.dataPacket );
 		}
 
+		// Final logging if the provider supports it
 		if( arguments.chatRequest.getLogResponse() ){
-			// Log the request
 			writeLog(
 				text: "Reponse from AI Provider: #chatResult.toString()#",
 				type: "info",

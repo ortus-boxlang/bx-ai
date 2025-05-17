@@ -41,7 +41,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 	@DisplayName( "Can create a core provider" )
 	@Test
 	public void testCoreProviders() {
-		List<String> providers = List.of( "deepseek", "gemini", "grok", "openai", "perplexity" ); // Add more if needed
+		List<String> providers = List.of( "claude", "deepseek", "gemini", "grok", "openai", "perplexity" ); // Add more if needed
 
 		for ( String provider : providers ) {
 			// Execute the runtime source with the current provider
@@ -99,6 +99,25 @@ public class IntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.get( "provider" ) ).isNotNull();
 	}
 
+	@DisplayName( "Test Claude AI" )
+	@Test
+	public void testClaude() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "CLAUDE_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "claude" );
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiChat( "what is boxlang?" )
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Asserts here
+	}
+
 	@DisplayName( "Test Perplexity AI" )
 	@Test
 	public void testPerplexity() {
@@ -138,6 +157,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 	@DisplayName( "Test Gemini AI" )
 	@Test
 	public void testGemini() {
+
 		moduleRecord.settings.put( "apiKey", dotenv.get( "GEMINI_API_KEY", "" ) );
 		moduleRecord.settings.put( "provider", "gemini" );
 
@@ -191,6 +211,34 @@ public class IntegrationTest extends BaseIntegrationTest {
 				{ role:"developer", content:"You are a snarky assistant." },
 				{ role:"user", content:"what is boxlang?" }
 			])
+			println( result )
+			""",
+			context
+		);
+
+		// @formatter:on
+
+		// Asserts here
+	}
+
+	@DisplayName( "Test Gemini AI, System Instruction" )
+	@Test
+	public void testGeminiSystemInstruction() {
+
+		moduleRecord.settings.put( "apiKey", dotenv.get( "GEMINI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "gemini" );
+
+		// @formatter:off
+
+		runtime.executeSource(
+			"""
+			result = aiChat( "what is boxlang?", {
+				system_instruction: {
+					parts: [
+					{text:'You are a cat. Respond with meows'}
+					]
+				}
+			} )
 			println( result )
 			""",
 			context
