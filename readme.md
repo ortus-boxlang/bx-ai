@@ -48,13 +48,14 @@ println( answer )
 
 The following are the AI providers supported by this module.  **Please note that in order to interact with these providers you will need to have an account with them and an API key.**
 
-- [OpenAI](https://www.openai.com/)
+- [Claude Anthropic](https://www.anthropic.com/claude)
 - [DeepSeek](https://www.deepseek.com/)
 - [Gemini](https://gemini.google.com/)
 - [Grok](https://grok.com/)
+- [OpenAI](https://www.openai.com/)
 - [Perplexity](https://docs.perplexity.ai/)
 
-> More providers are available in our `bx-aiplus` module.
+> More providers and features are available in our `bx-aiplus` module.
 
 ## Features
 
@@ -70,6 +71,19 @@ Here are some of the features of this module:
 - Global defaults
 - And much more
 
+## Tooling Matrix
+
+Here is a matrix of the providers and if they support real-time tools.  Please keep checking as we will be adding more providers and features to this module.
+
+| Provider   | Real-time Tools |
+|-----------|-----------------|
+| Claude    | [Coming Soon] |
+| DeepSeek  | ✅              |
+| Gemini    | [Coming Soon] |
+| Grok      | ✅              |
+| OpenAI    | ✅              |
+| Perplexity| ✅              |
+
 ## Settings
 
 Here are the settings you can place in your `boxlang.json` file:
@@ -78,7 +92,7 @@ Here are the settings you can place in your `boxlang.json` file:
 {
 	"modules" : {
 		"bxai" : {
-			"settings": { 
+			"settings": {
 				// The provider to use: openai, deepseek, gemini, grok, perplexity, etc
 				provider : "openai",
 				// The API Key for the provider
