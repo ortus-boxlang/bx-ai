@@ -92,7 +92,7 @@ Here are the settings you can place in your `boxlang.json` file:
 {
 	"modules" : {
 		"bxai" : {
-			"settings": {
+			"settings": { 
 				// The provider to use: openai, deepseek, gemini, grok, perplexity, etc
 				provider : "openai",
 				// The API Key for the provider
