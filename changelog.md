@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Streamline of env on tests
+
+### Fixed
+
+- Version pinned to `1.0.0` in the `box.json` file by accident.
+
 ## [1.1.0] - 2025-05-17
 
 ### Added

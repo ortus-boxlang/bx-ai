@@ -35,15 +35,17 @@ dependencies {
 	// Until BoxLang is published to Maven Central
 	// Look for it in the local build directory
 	// You must run `./gradle build -x test` in the BoxLang project
-	compileOnly files( '../../boxlang/build/distributions/boxlang-' + boxlangVersion + '.jar' )
-    compileOnly files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
+	if ( file( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' ).exists() ) {
+		compileOnly files( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
+		testImplementation files( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
+	} else {
+		compileOnly files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
+		testImplementation files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
+	}
 
-    // Testing Dependencies
-	testImplementation files( '../../boxlang/build/distributions/boxlang-' + boxlangVersion + '.jar' )
-	testImplementation files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
+
+	// Testing Frameworks
 	testImplementation 'io.github.cdimascio:dotenv-java:3.2.0'
-
-	// Test Frameworks
 	testImplementation "org.junit.jupiter:junit-jupiter:5.+"
 	testImplementation "org.mockito:mockito-core:5.+"
 	testImplementation "com.google.truth:truth:1.+"
@@ -62,6 +64,7 @@ java {
 
 compileJava {
 	// Compiler Options
+	options.incremental = true
 	options.encoding = 'UTF-8'
 	options.debugOptions.debugLevel = "source,lines,vars"
 }
@@ -111,11 +114,13 @@ javadoc.finalizedBy( zipJavadocs )
  * This generates the META-INF/services files for the ServiceLoader as part of the `build` task
  */
 serviceLoader {
+	serviceInterface 'ortus.boxlang.runtime.jdbc.drivers.IJDBCDriver'
     serviceInterface 'ortus.boxlang.runtime.bifs.BIF'
     serviceInterface 'ortus.boxlang.runtime.components.Component'
     serviceInterface 'ortus.boxlang.runtime.async.tasks.IScheduler'
     serviceInterface 'ortus.boxlang.runtime.cache.providers.ICacheProvider'
 	serviceInterface 'ortus.boxlang.runtime.events.IInterceptor'
+	serviceInterface 'ortus.boxlang.runtime.services.IService'
 }
 
 jar {
