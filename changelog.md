@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tool support for Claude LLMs
+- Tool message for open ai tools when no local tools are available.
+- New `ChatMessage` helper method: `getNonSystemMessages()` to retrieve all messages except the system message.
+- `ChatRequest` now has the original `ChatMessage` as a property, so you can access the original message in the request.
+- Latest Claude Sonnet model support: `claude-sonnet-4-0` as its default.
 - Streamline of env on tests
 - Added to the config the following options: `logRequest`, `logResponse`, `timeout`, `returnFormat`, so you can control the behavior of the services globally.
 
