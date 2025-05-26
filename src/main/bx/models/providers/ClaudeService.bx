@@ -43,7 +43,7 @@ class extends="BaseService"{
 		}
 
 		// Add tool support if tools are present
-		if( chatRequest.getParams()?.tools.len() ) {
+		if( chatRequest.getParams()?.tools?.len() ) {
 			dataPacket[ "tools" ] = formatToolsForClaude( chatRequest.getParams().tools )
 		}
 
