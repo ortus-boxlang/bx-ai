@@ -88,7 +88,15 @@ class {
 			// The default request params to use when calling a provider
 			// Ex: { temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
 			defaultParams = {
-			}
+			},
+			// The default timeout of the ai requests
+			timeout = 30,
+			// The default value to log the AI request into the ai.log
+			logRequest = false,
+			// The default value to log the AI response into the ai.log
+			logResponse = false,
+			// The default return format of the AI response: single, all, raw
+			returnFormat = "single"
 		};
 
 		/**

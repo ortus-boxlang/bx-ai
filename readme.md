@@ -92,16 +92,24 @@ Here are the settings you can place in your `boxlang.json` file:
 {
 	"modules" : {
 		"bxai" : {
-			"settings": { 
+			"settings": {
 				// The provider to use: openai, deepseek, gemini, grok, perplexity, etc
-				provider : "openai",
+				"provider" : "openai",
 				// The API Key for the provider
-				apiKey : "",
+				"apiKey" : "",
 				// The default request params to use when calling a provider
 				// Ex: { temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
-				defaultParams = {
+				"defaultParams" : {
 					// model: "gpt-3.5-turbo"
-				}
+				},
+				// The default timeout of the ai requests
+				"timeout" : 30,
+				// The default value to log the AI request into the ai.log
+				"logRequest" : false,
+				// The default value to log the AI response into the ai.log
+				"logResponse" : false,
+				// The default return format of the AI response: single, all, raw
+				"returnFormat" : "single"
 			}
 		}
 	}
