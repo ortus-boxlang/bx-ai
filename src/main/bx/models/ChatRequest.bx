@@ -9,6 +9,11 @@ class{
 	property name="messages" type="array" default=[];
 
 	/**
+	 * The original chat message object, in case we need to reference it
+	 */
+	property name="chatMessage" type="ChatMessage";
+
+	/**
 	 * The params struct to pass to the provider in the request
 	 */
 	property name="params" type="struct" default={};
@@ -72,6 +77,7 @@ class{
 		struct options = {}
 	){
 		variables.messages = arguments.chatMessage.getMessages();
+		variables.chatMessage = arguments.chatMessage;
 		variables.params = params;
 		variables.provider = options.provider ?: "";
 		variables.apiKey = options.apiKey ?: "";
