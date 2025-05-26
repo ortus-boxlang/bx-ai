@@ -47,6 +47,10 @@ jobs:
         with:
           gradle-version: ${{ env.GRADLE_VERSION }}
 
+      - name: Setup Environment For Testing Process
+        run: |
+          # Setup .env
+          touch .env
 
       - name: Test Module
         run: |
