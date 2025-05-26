@@ -80,6 +80,15 @@ class{
 	}
 
 	/**
+	 * Helper to get all messages that are not system messages
+	 *
+	 * @return An array of messages that are not system messages
+	 */
+	Array function getNonSystemMessages() {
+		return variables.messages.filter( message -> message?.role != 'system' );
+	}
+
+	/**
 	 * Adds a message to the chat.  The message content can be:
 	 * - A string : The message will be added with the default role of user
 	 * - A struct : The struct that represents the message according to the chat provider
