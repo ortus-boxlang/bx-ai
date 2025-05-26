@@ -168,7 +168,6 @@ abstract class implements="IService" {
 		 * ---------------------------------------------------------------------------------------------------------
 		 * Tool Chains
 		 * ---------------------------------------------------------------------------------------------------------
-		 * Move later to an interceptor
 		 */
 		var newMessages = chatRequest.getMessages().map( message -> message );
 		result.choices.each( ( choice, i ) => {
@@ -187,11 +186,18 @@ abstract class implements="IService" {
 								"content"     : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
 							});
 						},
-						() => writeLog(
-							text: "Unable to find tool named: #toolCall.function.name#",
-							type: "warning",
-							log : "ai"
-						)
+						() => {
+							writeLog(
+								text: "Unable to find tool named: #toolCall.function.name#",
+								type: "warning",
+								log : "ai"
+							)
+							newMessages.append({
+								"role"        : "tool",
+								"tool_call_id": toolCall.id,
+								"content"     : "Tool ['#toolCall.function.name#'] not found in chat request"
+							});
+						}
 					)
 			});
 		});
