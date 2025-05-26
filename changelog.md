@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New `Tool.getArgumentsSchema()` method to retrieve the arguments schema for use by any provider.
+- New logging params for console debugging: `logRequestToConsole`, `logResponseToConsole`
 - Tool support for Claude LLMs
 - Tool message for open ai tools when no local tools are available.
 - New `ChatMessage` helper method: `getNonSystemMessages()` to retrieve all messages except the system message.
@@ -18,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Latest Claude Sonnet model support: `claude-sonnet-4-0` as its default.
 - Streamline of env on tests
 - Added to the config the following options: `logRequest`, `logResponse`, `timeout`, `returnFormat`, so you can control the behavior of the services globally.
+- Some compatibilities so it can be used in CFML apps.
+- Ability for AI responses to be influenced by the `onAIResponse` event.
 
 ### Fixed
 

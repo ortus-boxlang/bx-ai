@@ -43,7 +43,7 @@ class extends="BaseService"{
 		}
 
 		// Add tool support if tools are present
-		if( chatRequest.getParams().keyExists( "tools" ) && arrayLen( chatRequest.getParams().tools ) ) {
+		if( chatRequest.getParams()?.tools.len() ) {
 			dataPacket[ "tools" ] = formatToolsForClaude( chatRequest.getParams().tools )
 		}
 
@@ -116,16 +116,17 @@ class extends="BaseService"{
 		var claudeTools = []
 
 		for( var tool in arguments.tools ) {
+			var argumentsSchema = tool.getArgumentsSchema();
 			var claudeTool = {
 				"name": tool.getName(),
 				"description": tool.getDescription(),
 				"input_schema": {
 					"type": "object",
-					"properties": tool.getSchema(),
-					"required": structKeyArray( tool.getSchema() )
+					"properties": argumentsSchema.properties,
+					"required": argumentsSchema.required
 				}
 			}
-			arrayAppend( claudeTools, claudeTool )
+			claudeTools.append( claudeTool )
 		}
 
 		return claudeTools
@@ -134,43 +135,41 @@ class extends="BaseService"{
 	/**
 	 * Execute Claude tool calls
 	 *
-	 * @toolCall The tool call object from Claude
+	 * @toolCall The tool call object from Claude: { type:"tool_use", id: "", name: "toolName", input: {} }
 	 * @chatRequest The original chat request containing the tool
 	 */
 	private function executeClaudeTool( required struct toolCall, required ChatRequest chatRequest ) {
-		var toolName = toolCall.name
-		var toolInput = toolCall.input
 		var messages = arguments.chatRequest.getMessages();
 
 		// Get the tool from the chat request
 		arguments.chatRequest
-			.getTool( toolName )
+			.getTool( toolCall.name )
 			.ifPresentOrElse(
 				// Found, invoke the tool
 				tool => {
 					messages.append({
 						"role" : "user",
-						"content" : {
+						"content" : [{
 							"type"        : "tool_result",
 							"tool_use_id" : toolCall.id,
-							"content"     : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
-						}
+							"content"     : tool.invoke( args : toolCall.input )
+						}]
 					});
 				},
 				// Not found
 				() => {
 					writeLog(
-						text: "Unable to find tool named: [#toolName#]",
+						text: "Unable to find tool named: [#toolCall.name#]",
 						type: "warning",
 						log : "ai"
 					)
 					messages.append({
 						"role" : "user",
-						"content" : {
+						"content" : [{
 							"type"        : "tool_result",
 							"tool_use_id" : toolCall.id,
-							"content"     : "Tool ['#toolName#'] not found in chat request"
-						}
+							"content"     : "Tool ['#toolCall.name#'] not found in chat request"
+						}]
 					});
 				}
 			);

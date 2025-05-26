@@ -226,8 +226,8 @@ abstract class implements="IService" {
 			}
 		);
 
+		// Log the request
 		if( arguments.chatRequest.getLogRequest() ){
-			// Log the request
 			writeLog(
 				text: "Request to AI Provider: #arguments.dataPacket.toString()#",
 				type: "info",
@@ -235,7 +235,11 @@ abstract class implements="IService" {
 			)
 		}
 
-		// println( dataPacket )
+		// Log the request to the console if enabled
+		if( arguments.chatRequest.getLogRequestToConsole() ){
+			println( "AI Request" )
+			println( arguments.dataPacket )
+		}
 
 		bx: http
 			url     = getChatURL()
@@ -274,19 +278,24 @@ abstract class implements="IService" {
 			)
 		}
 
-		var response = jsonDeserialize( chatResult.filecontent );
+		// Log the response to the console if enabled
+		if( arguments.chatRequest.getLogResponseToConsole() ){
+			println( "AI Response" )
+			println( chatResult )
+			println( "AI Deserialized Response" )
+			println( jsonDeserialize( chatResult.filecontent ) )
+		}
 
-		BoxAnnounce(
-			"onAIResponse",
-			{
-				"chatRequest"	 : arguments.chatRequest,
-				"response"   	 : response,
-				"rawResponse"	: chatResult,
-				"provider"  	 : this
-			}
-		);
+		var iData = {
+			"chatRequest" = arguments.chatRequest,
+			"response" = jsonDeserialize( chatResult.filecontent ),
+			"rawResponse"	: chatResult,
+			"provider" = this
+		}
 
-		return response;
+		BoxAnnounce( "onAIResponse", iData );
+
+		return iData.response;
 	}
 
 }
