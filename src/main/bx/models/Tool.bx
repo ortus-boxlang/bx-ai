@@ -11,22 +11,22 @@ class implements="ITool" {
 	/**
 	 * The name of the function
 	 */
-    property name;
-
-	/**
-	 * The callable that the AI will use
-	 */
-    property callable;
-
-	/**
-	 * The schema for the function
-	 */
-    property schema;
+    property name="name" default="";
 
 	/**
 	 * The description of the function
 	 */
-    property description;
+    property name="description" default="";
+
+	/**
+	 * The callable that the AI will use
+	 */
+    property name="callable";
+
+	/**
+	 * The schema for the function
+	 */
+    property name="schema";
 
 	/**
 	 * The descriptions of the arguments
@@ -72,6 +72,9 @@ class implements="ITool" {
      * Set the schema for the function. This is used to provide a more detailed schema
      * for the function that the AI can use to validate the arguments.
      *
+	 * This is the Open AI schema format for functions:
+	 * https://platform.openai.com/docs/guides/function-calling?api-mode=responses
+	 *
      * ```
      * {
             "type": "function",
@@ -110,7 +113,7 @@ class implements="ITool" {
      * If you did not provide a schema, one will be generated based on the function and argument descriptions.
      */
     public struct function getSchema(){
-        if( variables.schema == null ){
+        if( variables?.schema == null ){
             return generateSchema()
         }
 
@@ -126,21 +129,40 @@ class implements="ITool" {
         return variables.callable( argumentCollection = args )
     }
 
-    /**
-     * Generate a schema based on the function and argument descriptions.
-     */
-    private struct function generateSchema(){
-        required = []
-        properties = {}
-
+	/**
+	 * Get the callable's properties schema
+	 *
+	 * @return The properties schema for the callable function: { properties:{}, required:[] }
+	 */
+	public struct function getArgumentsSchema(){
+		if( variables.callable == null ){
+			throw( "No callable function has been set for this tool." );
+		}
+		var results = {
+			"properties": {},
+			"required": []
+		}
+		// Discover the parameters from the callable function metadata
         variables.callable.$bx.meta.parameters.each( param => {
-            required.append( param.name )
-            properties[ param.name ] = {
+            results.required.append( param.name )
+            results.properties[ param.name ] = {
                 "type": "string",
                 "description": variables.argDescriptions[ param.name ]
             };
         });
 
+		return results;
+	}
+
+    /**
+     * Generate a schema based on the function and argument descriptions.
+	 * This is based  on the OpenAI function schema format.
+	 * https://platform.openai.com/docs/guides/function-calling?api-mode=responses
+     */
+    private struct function generateSchema(){
+        var argumentsSchema = getArgumentsSchema();
+
+		// https://platform.openai.com/docs/guides/function-calling#defining-functions
         return {
             "type": "function",
             "function": {
@@ -148,8 +170,8 @@ class implements="ITool" {
                 "description": variables.description,
                 "parameters": {
                     "type": "object",
-                    "properties": properties,
-                    "required": required,
+                    "properties": argumentsSchema.properties,
+                    "required": argumentsSchema.required,
                     "additionalProperties": False
                 },
                 "strict": True
