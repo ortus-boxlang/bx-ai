@@ -123,8 +123,8 @@ public class IntegrationTest extends BaseIntegrationTest {
 	public void testClaudeTools() {
 		moduleRecord.settings.put( "apiKey", dotenv.get( "CLAUDE_API_KEY", "" ) );
 		moduleRecord.settings.put( "provider", "claude" );
-		moduleRecord.settings.put( "logResponseToConsole", true );
-		moduleRecord.settings.put( "logRequestToConsole", true );
+		moduleRecord.settings.put( "logResponseToConsole", false );
+		moduleRecord.settings.put( "logRequestToConsole", false );
 
 		// @formatter:off
 		runtime.executeSource(
