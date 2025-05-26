@@ -34,9 +34,21 @@ class{
 	property name="logRequest" type="boolean" default=false;
 
 	/**
+	 * Log request to console
+	 * This is usually used for debugging purposes
+	 */
+	property name="logRequestToConsole" type="boolean" default=false;
+
+	/**
 	 * Log response
 	 */
 	property name="logResponse" type="boolean" default=false;
+
+	/**
+	 * Log response to console
+	 * This is usually used for debugging purposes
+	 */
+	property name="logResponseToConsole" type="boolean" default=false;
 
 	/**
 	 * The return format for the response
@@ -82,7 +94,9 @@ class{
 		variables.provider = options.provider ?: "";
 		variables.apiKey = options.apiKey ?: "";
 		variables.logRequest = options.logRequest ?: false;
+		variables.logRequestToConsole = options.logRequestToConsole ?: false;
 		variables.logResponse = options.logResponse ?: false;
+		variables.logResponseToConsole = options.logResponseToConsole ?: false;
 		variables.returnFormat = options.returnFormat ?: "single";
 		variables.model = options.params?.model ?: "";
 		variables.timeout = options.timeout ?: 30;

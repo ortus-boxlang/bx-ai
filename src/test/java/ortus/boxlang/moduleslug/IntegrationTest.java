@@ -123,6 +123,8 @@ public class IntegrationTest extends BaseIntegrationTest {
 	public void testClaudeTools() {
 		moduleRecord.settings.put( "apiKey", dotenv.get( "CLAUDE_API_KEY", "" ) );
 		moduleRecord.settings.put( "provider", "claude" );
+		moduleRecord.settings.put( "logResponseToConsole", true );
+		moduleRecord.settings.put( "logRequestToConsole", true );
 
 		// @formatter:off
 		runtime.executeSource(
@@ -145,8 +147,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 			result = aiChat(
 				messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.",
 				params = {
-					tools: [ tool ],
-					seed: 27
+					tools: [ tool ]
 				} )
 			println( result )
 			""",
