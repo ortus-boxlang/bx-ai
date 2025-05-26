@@ -77,9 +77,9 @@ Here is a matrix of the providers and if they support real-time tools.  Please k
 
 | Provider   | Real-time Tools |
 |-----------|-----------------|
-| Claude    | [Coming Soon] |
+| Claude    | ✅				 |
 | DeepSeek  | ✅              |
-| Gemini    | [Coming Soon] |
+| Gemini    | [Coming Soon]   |
 | Grok      | ✅              |
 | OpenAI    | ✅              |
 | Perplexity| ✅              |
@@ -104,10 +104,14 @@ Here are the settings you can place in your `boxlang.json` file:
 				},
 				// The default timeout of the ai requests
 				"timeout" : 30,
-				// The default value to log the AI request into the ai.log
+				// If true, log request to the ai.log
 				"logRequest" : false,
-				// The default value to log the AI response into the ai.log
+				// If true, log request to the console
+				"logRequestToConsole" : false,
+				// If true, log the response to the ai.log
 				"logResponse" : false,
+				// If true, log the response to the console
+				"logResponseToConsole" : false,
 				// The default return format of the AI response: single, all, raw
 				"returnFormat" : "single"
 			}
