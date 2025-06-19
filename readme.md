@@ -143,6 +143,28 @@ The AI module supports different return formats for the responses. You can speci
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
 
+### Quick Usage Examples
+
+```java
+// Simple chat
+result = aiChat( "Hello, world!" )
+
+// Async chat with callback
+future = aiChatAsync( "Hello!" ).then( r -> println(r) )
+
+// Build complex request
+request = aiChatRequest( messages, { model: "gpt-4" }, { provider: "openai" } )
+
+// Fluent message building
+msg = aiMessage().system( "Be helpful" ).user( "Hello" )
+
+// Service with custom settings
+service = aiService( "openai", "my-key" ).defaults( { temperature: 0.7 } )
+
+// Tool for function calling
+tool = aiTool( "weather", "Get weather data", location => getWeather(location) )
+```
+
 This module exposes the following BoxLang global functions (BIFs) for you to interact with the AI providers:
 
 - `aiChat( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get responses back.  This is the easiest way to interact with the AI providers.
@@ -174,7 +196,9 @@ Here are the parameters:
   - `apiKey:string` : The API Key to use, if not passed it will use the global setting
   - `timeout:numeric` : The timeout in milliseconds for the request. Default is 30 seconds.
   - `logRequest:boolean` : Log the request to the `ai.log`. Default is `false`
+  - `logRequestToConsole:boolean` : Log the request to the console for debugging. Default is `false`
   - `logResponse:boolean` : Log the response to the `ai.log`. Default is `false`
+  - `logResponseToConsole:boolean` : Log the response to the console for debugging. Default is `false`
   - `returnFormat:string` : The format of the response.  The default is a `single` message.  The available formats are:
     - `single` : A single message
     - `all` : An array of messages
@@ -289,7 +313,9 @@ Here are the parameters:
   - `apiKey:string` : The API Key to use, if not passed it will use the global setting
   - `timeout:numeric` : The timeout in milliseconds for the request. Default is 30 seconds.
   - `logRequest:boolean` : Log the request to the `ai.log`. Default is `false`
+  - `logRequestToConsole:boolean` : Log the request to the console for debugging. Default is `false`
   - `logResponse:boolean` : Log the response to the `ai.log`. Default is `false`
+  - `logResponseToConsole:boolean` : Log the response to the console for debugging. Default is `false`
   - `returnFormat:string` : The format of the response.  The default is a `single` message.  The available formats are:
     - `single` : A single message
     - `all` : An array of messages
@@ -326,6 +352,8 @@ The `ChatRequest` object has several methods that you can use to interact with t
 - `setModelIfEmpty( model ):ChatRequest` : Set the model if it is empty
 - `hasApiKey():boolean` : Check if the request has an API Key
 - `setApiKeyIfEmpty( apiKey ):ChatRequest` : Set the API Key if it is empty
+- `mergeServiceParams( params ):ChatRequest` : Merge service default parameters into the request (only if not already set)
+- `mergeServiceHeaders( headers ):ChatRequest` : Merge service default headers into the request (only if not already set)
 
 ### Examples
 
@@ -542,6 +570,9 @@ The `Tool` object has several methods that you can use to interact with the tool
 - `describeArg( name, description ):Tool` : Describe an argument of the tool
 - `call( callable ):Tool` : Set the callable closure/lambda of the tool
 - `getArgumentsSchema():struct` : Get the arguments schema of the tool. This is useful for providers that require a schema for the tool arguments.
+- `setSchema( schema ):Tool` : Set a custom schema for the tool (OpenAI function schema format)
+- `getSchema():struct` : Get the tool's schema (auto-generated if not manually set)
+- `invoke( args ):string` : Invoke the tool with the provided arguments
 
 ### Dynamic Tool Methods
 
@@ -563,23 +594,24 @@ aiTool(
 Let's build a sample AI tool that can be used in a chat request and talk to our local runtime to get realtime weather information.
 
 ```java
-tool = aiTool(
+weatherTool = aiTool(
 	"get_weather",
 	"Get current temperature for a given location.",
 	location => {
-	if( location contains "Kansas City" ) {
-		return "85"
-	}
+		if( location contains "Kansas City" ) {
+			return "85"
+		}
 
-	if( location contains "San Salvador" ){
-		return "90"
-	}
+		if( location contains "San Salvador" ){
+			return "90"
+		}
 
-	return "unknown";
-}).describeLocation( "City and country e.g. Bogotá, Colombia" )
+		return "unknown";
+	})
+	.describeLocation( "City and country e.g. Bogotá, Colombia" )
 
 result = aiChat( "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.", {
-	tools: [ tool ],
+	tools: [ weatherTool ],
 	seed: 27
 } )
 
@@ -770,6 +802,9 @@ boxRegisterInterceptor( "onAIRequest", myRequestHandler );
 boxRegisterInterceptor( "onAIResponse", myResponseHandler );
 ```
 
+## GitHub Repository and Reporting Issues
+
+Visit the [GitHub repository](https://github.com/ortus-boxlang/bx-ai) for release notes. You can also file a bug report or improvement suggestion  via [Jira](https://ortussolutions.atlassian.net/secure/CreateIssueDetails!init.jspa?pid=13359&components=27149&issuetype=1).
 
 ----
 
