@@ -1,4 +1,4 @@
-# ⚡︎ BoxLang Module: BoxLang AI
+# ⚡︎ BoxLang AI Module
 
 ```
 |:------------------------------------------------------:|
@@ -17,6 +17,8 @@
 <p>&nbsp;</p>
 
 ## Welcome
+
+![BoxLang AI Module](BoxLangAI.png)
 
 Welcome to the BoxLang AI Module. This module provides AI generation capabilities to your [BoxLang](www.boxlang.io) applications in an easy to use and abstracted API, so you can interact with ANY AI provider in a consistent manner.
 
@@ -76,13 +78,13 @@ Here are some of the features of this module:
 Here is a matrix of the providers and if they support real-time tools.  Please keep checking as we will be adding more providers and features to this module.
 
 | Provider   | Real-time Tools |
-|-----------|-----------------|
-| Claude    | [Coming Soon] |
-| DeepSeek  | ✅              |
-| Gemini    | [Coming Soon] |
-| Grok      | ✅              |
-| OpenAI    | ✅              |
-| Perplexity| ✅              |
+|------------|-----------------|
+| Claude    	| ✅ |
+| DeepSeek  | ✅ |
+| Gemini    	| [Coming Soon]   |
+| Grok      	 | ✅ |
+| OpenAI       | ✅ |
+| Perplexity   | ✅ |
 
 ## Settings
 
@@ -92,23 +94,76 @@ Here are the settings you can place in your `boxlang.json` file:
 {
 	"modules" : {
 		"bxai" : {
-			"settings": { 
-				// The provider to use: openai, deepseek, gemini, grok, perplexity, etc
-				provider : "openai",
-				// The API Key for the provider
-				apiKey : "",
+			"settings": {
+				// The default provider to use: openai, deepseek, gemini, grok, perplexity, etc
+				"provider" : "openai",
+				// The default API Key for the provider
+				"apiKey" : "",
 				// The default request params to use when calling a provider
 				// Ex: { temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
-				defaultParams = {
+				"defaultParams" : {
 					// model: "gpt-3.5-turbo"
-				}
+				},
+				// The default timeout of the ai requests
+				"timeout" : 30,
+				// If true, log request to the ai.log
+				"logRequest" : false,
+				// If true, log request to the console
+				"logRequestToConsole" : false,
+				// If true, log the response to the ai.log
+				"logResponse" : false,
+				// If true, log the response to the console
+				"logResponseToConsole" : false,
+				// The default return format of the AI response: single, all, raw
+				"returnFormat" : "single"
 			}
 		}
 	}
 }
 ```
 
+## Return Formats
+
+The AI module supports different return formats for the responses. You can specify the return format in the `options` struct when calling the `aiChat()` or `aiChatAsync()` functions, globally in the settings (as we saw above), or in the `ChatRequest` object.
+
+| Format | Description |
+|--------|-------------|
+| `single` | Returns a single message as a string. This is the default format. |
+| `all` | Returns an array of messages. Each message is a struct with `role` and `content` keys, or whatever the LLM returns |
+| `raw` | Returns the raw response from the AI provider. This is useful for debugging or when you need the full response structure so you can mold it as you see fit |
+
 ## Global Functions (BIFs)
+
+| Function | Purpose | Parameters | Return Type | Async Support |
+|----------|---------|------------|-------------|---------------|
+| `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
+| `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
+| `aiChatRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | ChatRequest Object | N/A |
+| `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
+| `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
+| `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
+
+### Quick Usage Examples
+
+```java
+// Simple chat
+result = aiChat( "Hello, world!" )
+
+// Async chat with callback
+future = aiChatAsync( "Hello!" ).then( r -> println(r) )
+
+// Build complex request
+request = aiChatRequest( messages, { model: "gpt-4" }, { provider: "openai" } )
+
+// Fluent message building
+msg = aiMessage().system( "Be helpful" ).user( "Hello" )
+
+// Service with custom settings
+service = aiService( "openai", "my-key" ).defaults( { temperature: 0.7 } )
+
+// Tool for function calling
+tool = aiTool( "weather", "Get weather data", location => getWeather(location) )
+```
 
 This module exposes the following BoxLang global functions (BIFs) for you to interact with the AI providers:
 
@@ -141,7 +196,9 @@ Here are the parameters:
   - `apiKey:string` : The API Key to use, if not passed it will use the global setting
   - `timeout:numeric` : The timeout in milliseconds for the request. Default is 30 seconds.
   - `logRequest:boolean` : Log the request to the `ai.log`. Default is `false`
+  - `logRequestToConsole:boolean` : Log the request to the console for debugging. Default is `false`
   - `logResponse:boolean` : Log the response to the `ai.log`. Default is `false`
+  - `logResponseToConsole:boolean` : Log the response to the console for debugging. Default is `false`
   - `returnFormat:string` : The format of the response.  The default is a `single` message.  The available formats are:
     - `single` : A single message
     - `all` : An array of messages
@@ -256,7 +313,9 @@ Here are the parameters:
   - `apiKey:string` : The API Key to use, if not passed it will use the global setting
   - `timeout:numeric` : The timeout in milliseconds for the request. Default is 30 seconds.
   - `logRequest:boolean` : Log the request to the `ai.log`. Default is `false`
+  - `logRequestToConsole:boolean` : Log the request to the console for debugging. Default is `false`
   - `logResponse:boolean` : Log the response to the `ai.log`. Default is `false`
+  - `logResponseToConsole:boolean` : Log the response to the console for debugging. Default is `false`
   - `returnFormat:string` : The format of the response.  The default is a `single` message.  The available formats are:
     - `single` : A single message
     - `all` : An array of messages
@@ -268,12 +327,16 @@ Here are the parameters:
 The `ChatRequest` object has several properties that you can use to interact with the request.  All of them have a getter and a setter.
 
 - `messages:array` : The messages to send to the AI provider
+- `chatMessage:ChatMessage` : The original `ChatMessage` object that was used to create the request
 - `params:struct` : The request parameters to send to the AI provider
 - `provider:string` : The provider to use
 - `apiKey:string` : The API Key to use
-- `logRequest:boolean` : Log the request to the `ai.log`
-- `logResponse:boolean` : Log the response to the `ai.log`
+- `logRequest:boolean` : Log the request to the `ai.log`, default is `false`
+- `logRequestToConsole:boolean` : Log the request to the console, default is `false`
+- `logResponse:boolean` : Log the response to the `ai.log` default is `false`
+- `logResponseToConsole:boolean` : Log the response to the console, default is `false`
 - `returnFormat:string` : The format of the response
+- `model:string` : The model to use for the request
 - `timeout:numeric` : The timeout in milliseconds for the request. Default is 30 seconds.
 - `sendAuthHeader:boolean` : Send the API Key as an Authorization header. Default is `true`
 - `headers:struct` : The headers to send to the AI provider
@@ -289,6 +352,8 @@ The `ChatRequest` object has several methods that you can use to interact with t
 - `setModelIfEmpty( model ):ChatRequest` : Set the model if it is empty
 - `hasApiKey():boolean` : Check if the request has an API Key
 - `setApiKeyIfEmpty( apiKey ):ChatRequest` : Set the API Key if it is empty
+- `mergeServiceParams( params ):ChatRequest` : Merge service default parameters into the request (only if not already set)
+- `mergeServiceHeaders( headers ):ChatRequest` : Merge service default headers into the request (only if not already set)
 
 ### Examples
 
@@ -341,14 +406,15 @@ Here are the parameters:
 
 The `ChatMessage` object has several methods that you can use to interact with the message.
 
-- `count():numeric` : Get the count of messages
-- `getMessages():array` : Get the messages
-- `setMessages( messagaes ):ChatMessage` : Set the messages
-- `clear():ChatMessage` : Clear the messages
-- `hasSystemMessage():boolean` : Check if the message has a system message
-- `getSystemMessage():string` : Get the system message, if any.
-- `replaceSystemMessage( content )` : Replace the system message with a new one
 - `add( content ):ChatMessage` : Add a message to the messages array
+- `count():numeric` : Get the count of messages
+- `clear():ChatMessage` : Clear the messages
+- `getMessages():array` : Get the messages
+- `getNonSystemMessages():array` : Get all messages except the system message
+- `getSystemMessage():string` : Get the system message, if any.
+- `hasSystemMessage():boolean` : Check if the message has a system message
+- `replaceSystemMessage( content )` : Replace the system message with a new one
+- `setMessages( messagaes ):ChatMessage` : Set the messages
 
 ### ChatMessage Dynamic Methods
 
@@ -503,6 +569,10 @@ The `Tool` object has several methods that you can use to interact with the tool
 - `describeFunction( description ):Tool` : Describe the function of the tool
 - `describeArg( name, description ):Tool` : Describe an argument of the tool
 - `call( callable ):Tool` : Set the callable closure/lambda of the tool
+- `getArgumentsSchema():struct` : Get the arguments schema of the tool. This is useful for providers that require a schema for the tool arguments.
+- `setSchema( schema ):Tool` : Set a custom schema for the tool (OpenAI function schema format)
+- `getSchema():struct` : Get the tool's schema (auto-generated if not manually set)
+- `invoke( args ):string` : Invoke the tool with the provided arguments
 
 ### Dynamic Tool Methods
 
@@ -524,28 +594,217 @@ aiTool(
 Let's build a sample AI tool that can be used in a chat request and talk to our local runtime to get realtime weather information.
 
 ```java
-tool = aiTool(
+weatherTool = aiTool(
 	"get_weather",
 	"Get current temperature for a given location.",
 	location => {
-	if( location contains "Kansas City" ) {
-		return "85"
-	}
+		if( location contains "Kansas City" ) {
+			return "85"
+		}
 
-	if( location contains "San Salvador" ){
-		return "90"
-	}
+		if( location contains "San Salvador" ){
+			return "90"
+		}
 
-	return "unknown";
-}).describeLocation( "City and country e.g. Bogotá, Colombia" )
+		return "unknown";
+	})
+	.describeLocation( "City and country e.g. Bogotá, Colombia" )
 
 result = aiChat( "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.", {
-	tools: [ tool ],
+	tools: [ weatherTool ],
 	seed: 27
 } )
 
 println( result )
 ```
+
+## Events
+
+The BoxLang AI module emits several events throughout the AI processing lifecycle that allow you to intercept, modify, or extend functionality. These events are useful for logging, debugging, custom providers, and response processing.
+
+### Event Reference Table
+
+| Event | When Fired | Data Emitted | Use Cases |
+|-------|------------|--------------|-----------|
+| `onAIRequest` | Before sending request to AI provider | `dataPacket`, `chatRequest`, `provider` | Request logging, modification, authentication |
+| `onAIResponse` | After receiving response from AI provider | `chatRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
+| `onAIProviderRequest` | When unsupported provider is requested | `provider`, `apiKey`, `service` | Custom provider registration |
+| `onAIProviderCreate` | After AI service provider is created | `provider` | Provider initialization, configuration |
+| `onAIChatRequestCreate` | After ChatRequest object is created | `chatRequest` | Request validation, modification |
+| `onAIChatMessageCreate` | After ChatMessage object is created | `chatMessage` | Message validation, formatting |
+
+### Event Details
+
+#### onAIRequest
+
+Fired before sending a request to the AI provider. This allows you to inspect or modify the request before it's sent.
+
+**Data Structure:**
+
+```java
+{
+    "dataPacket": {}, // The request payload being sent to the provider
+    "chatRequest": ChatRequest, // The ChatRequest object
+    "provider": BaseService // The provider service instance
+}
+```
+
+**Example Usage:**
+
+```java
+// In your module/app event handler
+function onAIRequest( required struct data ) {
+    // Log all requests
+    writeLog( text: "AI Request: #serializeJSON(data.dataPacket)#", type: "information" );
+
+    // Add custom headers or modify request
+    data.dataPacket.custom_header = "my-value";
+}
+```
+
+#### onAIResponse
+
+Fired after receiving a response from the AI provider. This allows you to process, modify, or cache responses.
+
+**Data Structure:**
+```java
+{
+    "chatRequest": ChatRequest, // The original ChatRequest object
+    "response": {}, // The deserialized JSON response from the provider
+    "rawResponse": {}, // The raw HTTP response object
+    "provider": BaseService // The provider service instance
+}
+```
+
+**Example Usage:**
+
+```java
+function onAIResponse( required struct data ) {
+    // Cache responses
+    cacheService.put( "ai_response_#hash(data.chatRequest.toString())#", data.response );
+
+    // Modify response before returning
+    if( structKeyExists(data.response, "choices") ) {
+        data.response.custom_processed = true;
+    }
+}
+```
+
+#### onAIProviderRequest
+
+Fired when an unsupported provider is requested, allowing custom provider registration.
+
+**Data Structure:**
+
+```java
+{
+    "provider": "string", // The provider name requested
+    "apiKey": "string", // The API key provided
+    "service": null // Initially null, set this to your custom service
+}
+```
+
+**Example Usage:**
+
+```java
+function onAIProviderRequest( required struct data ) {
+    if( data.provider == "mycustomprovider" ) {
+        data.service = new MyCustomAIService().configure( data.apiKey );
+    }
+}
+```
+
+#### onAIProviderCreate
+
+Fired after an AI service provider is successfully created.
+
+**Data Structure:**
+
+```java
+{
+    "provider": BaseService // The created provider service instance
+}
+```
+
+**Example Usage:**
+
+```java
+function onAIProviderCreate( required struct data ) {
+    // Log provider creation
+    writeLog( text: "AI Provider Created: #data.provider.getName()#", type: "information" );
+
+    // Apply global configuration
+    data.provider.defaults({ timeout: 60 });
+}
+```
+
+#### onAIChatRequestCreate
+
+Fired after a ChatRequest object is created.
+
+**Data Structure:**
+
+```java
+{
+    "chatRequest": ChatRequest // The created ChatRequest object
+}
+```
+
+**Example Usage:**
+
+```java
+function onAIChatRequestCreate( required struct data ) {
+    // Add default model if not specified
+    if( !data.chatRequest.hasModel() ) {
+        data.chatRequest.setModelIfEmpty( "gpt-4" );
+    }
+
+    // Add audit trail
+    data.chatRequest.addHeader( "X-Request-ID", createUUID() );
+}
+```
+
+#### onAIChatMessageCreate
+
+Fired after a ChatMessage object is created.
+
+**Data Structure:**
+
+```java
+{
+    "chatMessage": ChatMessage // The created ChatMessage object
+}
+```
+
+**Example Usage:**
+
+```java
+function onAIChatMessageCreate( required struct data ) {
+    // Validate messages
+    if( data.chatMessage.count() == 0 ) {
+        throw( message: "Empty chat message not allowed" );
+    }
+
+    // Add timestamp to system messages
+    if( data.chatMessage.hasSystemMessage() ) {
+        var systemMsg = data.chatMessage.getSystemMessage();
+        data.chatMessage.replaceSystemMessage( systemMsg & " [Generated at #now()#]" );
+    }
+}
+```
+
+### Event Registration
+
+Leverage the `BoxRegisterListener()` BIF, or if you are developing a module, you can use the `interceptors` structure.
+
+```java
+boxRegisterInterceptor( "onAIRequest", myRequestHandler );
+boxRegisterInterceptor( "onAIResponse", myResponseHandler );
+```
+
+## GitHub Repository and Reporting Issues
+
+Visit the [GitHub repository](https://github.com/ortus-boxlang/bx-ai) for release notes. You can also file a bug report or improvement suggestion  via [Jira](https://ortussolutions.atlassian.net/secure/CreateIssueDetails!init.jspa?pid=13359&components=27149&issuetype=1).
 
 ----
 

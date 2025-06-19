@@ -9,6 +9,11 @@ class{
 	property name="messages" type="array" default=[];
 
 	/**
+	 * The original chat message object, in case we need to reference it
+	 */
+	property name="chatMessage" type="ChatMessage";
+
+	/**
 	 * The params struct to pass to the provider in the request
 	 */
 	property name="params" type="struct" default={};
@@ -29,9 +34,21 @@ class{
 	property name="logRequest" type="boolean" default=false;
 
 	/**
+	 * Log request to console
+	 * This is usually used for debugging purposes
+	 */
+	property name="logRequestToConsole" type="boolean" default=false;
+
+	/**
 	 * Log response
 	 */
 	property name="logResponse" type="boolean" default=false;
+
+	/**
+	 * Log response to console
+	 * This is usually used for debugging purposes
+	 */
+	property name="logResponseToConsole" type="boolean" default=false;
 
 	/**
 	 * The return format for the response
@@ -72,11 +89,14 @@ class{
 		struct options = {}
 	){
 		variables.messages = arguments.chatMessage.getMessages();
+		variables.chatMessage = arguments.chatMessage;
 		variables.params = params;
 		variables.provider = options.provider ?: "";
 		variables.apiKey = options.apiKey ?: "";
 		variables.logRequest = options.logRequest ?: false;
+		variables.logRequestToConsole = options.logRequestToConsole ?: false;
 		variables.logResponse = options.logResponse ?: false;
+		variables.logResponseToConsole = options.logResponseToConsole ?: false;
 		variables.returnFormat = options.returnFormat ?: "single";
 		variables.model = options.params?.model ?: "";
 		variables.timeout = options.timeout ?: 30;

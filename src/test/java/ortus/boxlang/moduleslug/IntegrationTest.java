@@ -118,6 +118,46 @@ public class IntegrationTest extends BaseIntegrationTest {
 		// Asserts here
 	}
 
+	@DisplayName( "Test Claude Tools" )
+	@Test
+	public void testClaudeTools() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "CLAUDE_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "claude" );
+		moduleRecord.settings.put( "logResponseToConsole", false );
+		moduleRecord.settings.put( "logRequestToConsole", false );
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			tool = aiTool(
+				"get_weather",
+				"Get current temperature for a given location.",
+				location => {
+					if( location contains "Kansas City" ) {
+						return "85"
+					}
+
+					if( location contains "San Salvador" ){
+						return "90"
+					}
+
+					return "unknown";
+				}).describeLocation( "City and country e.g. Bogotá, Colombia" )
+
+			result = aiChat(
+				messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.",
+				params = {
+					tools: [ tool ]
+				} )
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( "San Salvador" );
+	}
+
 	@DisplayName( "Test Perplexity AI" )
 	@Test
 	public void testPerplexity() {

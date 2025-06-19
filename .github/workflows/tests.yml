@@ -9,7 +9,6 @@ on:
 
 env:
   MODULE_ID: ${{ github.event.repository.name }}
-  GRADLE_VERSION: 8.7
 
 jobs:
   tests:
@@ -42,24 +41,16 @@ jobs:
           distribution: "temurin"
           java-version: ${{ matrix.jdkVersion }}
 
-      - name: Setup Gradle
-        uses: gradle/gradle-build-action@v3
-        with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
-
       - name: Setup Environment For Testing Process
         run: |
           # Setup .env
           touch .env
-          # ENV
-          printf "OPENAI_API_KEY=${OPENAI_API_KEY}\n" >> .env
-          printf "DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}\n" >> .env
 
       - name: Test Module
         run: |
-          gradle downloadBoxLang
+          ./gradlew downloadBoxLang
           # this is done in order to build the module structure before testing
-          gradle shadowJar test --stacktrace --console=plain
+          ./gradlew shadowJar test --stacktrace --console=plain
 
       - name: Upload Test Results
         if: always()

@@ -13,6 +13,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New gradle wrapper and build system
+- New `Tool.getArgumentsSchema()` method to retrieve the arguments schema for use by any provider.
+- New logging params for console debugging: `logRequestToConsole`, `logResponseToConsole`
+- Tool support for Claude LLMs
+- Tool message for open ai tools when no local tools are available.
+- New `ChatMessage` helper method: `getNonSystemMessages()` to retrieve all messages except the system message.
+- `ChatRequest` now has the original `ChatMessage` as a property, so you can access the original message in the request.
+- Latest Claude Sonnet model support: `claude-sonnet-4-0` as its default.
+- Streamline of env on tests
+- Added to the config the following options: `logRequest`, `logResponse`, `timeout`, `returnFormat`, so you can control the behavior of the services globally.
+- Some compatibilities so it can be used in CFML apps.
+- Ability for AI responses to be influenced by the `onAIResponse` event.
+
+### Fixed
+
+- Version pinned to `1.0.0` in the `box.json` file by accident.
+
+## [1.1.0] - 2025-05-17
+
+### Added
+
 - Claude LLM Support
 - Ability for the services to pre-seed params into chat requests
 - Ability for the services to pre-seed headers into chat requests
