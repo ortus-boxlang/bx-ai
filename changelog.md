@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New gradle wrapper and build system
 - New `Tool.getArgumentsSchema()` method to retrieve the arguments schema for use by any provider.
 - New logging params for console debugging: `logRequestToConsole`, `logResponseToConsole`
 - Tool support for Claude LLMs
