@@ -1,0 +1,21 @@
+/**
+ * EmbeddingSpec
+ *
+ * Tests for the aiEmbed BIF and Gemini embedding provider
+ */
+class extends="testbox.system.BaseSpec"{
+
+	function run(){
+		describe( "Gemini Embedding", () => {
+			it( "can embed a single string", () => {
+				var apiKey = System.getenv( "GEMINI_API_KEY" ) ?: "";
+				if( apiKey.isEmpty() ) return "No API key set";
+				var result = aiEmbed( "Hello world!", {}, { provider: "gemini", apiKey: apiKey } );
+				println( result );
+				expect( result ).notToBeNull();
+				expect( isArray( result ) && result.len() > 0 ).toBeTrue();
+			} );
+		} );
+	}
+
+}

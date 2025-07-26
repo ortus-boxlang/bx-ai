@@ -30,6 +30,11 @@ abstract class implements="IService" {
 	property name = "chatURL" default = "";
 
 	/**
+	 * The embedding URL of the provider API
+	 */
+	property name = "embedURL" default = "";
+
+	/**
 	 * The default params to use with the provider
 	 */
 	property name = "params" type = "struct" default = {};
@@ -294,6 +299,95 @@ abstract class implements="IService" {
 		}
 
 		BoxAnnounce( "onAIResponse", iData );
+
+		return iData.response;
+	}
+
+	/**
+	 * Send an embedding request to the provider
+	 */
+	public function sendEmbedRequest( required any embedRequest, required any dataPacket ){
+		// Announce the request
+		BoxAnnounce(
+			"onAIEmbedRequest",
+			{
+				"dataPacket" : arguments.dataPacket,
+				"embedRequest": arguments.embedRequest,
+				"provider"   : this
+			}
+		);
+
+		// Log the request
+		if( structKeyExists(arguments.embedRequest, 'getLogRequest') && arguments.embedRequest.getLogRequest() ){
+			writeLog(
+				text: "Request to AI Provider (Embed): #arguments.dataPacket.toString()#",
+				type: "info",
+				log : "ai"
+			)
+		}
+
+		// Log the request to the console if enabled
+		if( structKeyExists(arguments.embedRequest, 'getLogRequestToConsole') && arguments.embedRequest.getLogRequestToConsole() ){
+			println( "AI Embed Request" )
+			println( arguments.dataPacket )
+		}
+
+		var embedURL = structKeyExists(this, 'getEmbedURL') ? this.getEmbedURL() : this.getChatURL();
+		var timeout = arguments.embedRequest.timeout.len() ? arguments.embedRequest.timeout : 30;
+
+		bx: http
+			url     = embedURL
+			method  = "post"
+			result  = "embedResult"
+			charset = "utf-8"
+			timeout = timeout
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+
+			// Auth Header ONLY if the provider requires it
+			if( structKeyExists(arguments.embedRequest, 'getSendAuthHeader') && arguments.embedRequest.getSendAuthHeader() ){
+				bx:httpParam type="header" name="Authorization" value="Bearer #structKeyExists(arguments.embedRequest, 'getApiKey') ? arguments.embedRequest.getApiKey() : ''#";
+			}
+
+			// Custom Headers
+			if( structKeyExists(arguments.embedRequest, 'getHeaders') && isStruct(arguments.embedRequest.getHeaders()) ){
+				for( var thisHeader in arguments.embedRequest.getHeaders() ){
+					bx:httpParam
+						type="header"
+						name="#thisHeader#"
+						value="#arguments.embedRequest.getHeaders()[ thisHeader ]#";
+				}
+			}
+
+			// Body Packet
+			bx:httpParam type="body" value=jsonSerialize( arguments.dataPacket );
+		}
+
+		// Final logging if the provider supports it
+		if( structKeyExists(arguments.embedRequest, 'getLogResponse') && arguments.embedRequest.getLogResponse() ){
+			writeLog(
+				text: "Response from AI Provider (Embed): #embedResult.toString()#",
+				type: "info",
+				log : "ai"
+			)
+		}
+
+		// Log the response to the console if enabled
+		if( structKeyExists(arguments.embedRequest, 'getLogResponseToConsole') && arguments.embedRequest.getLogResponseToConsole() ){
+			println( "AI Embed Response" )
+			println( embedResult )
+			println( "AI Embed Deserialized Response" )
+			println( jsonDeserialize( embedResult.filecontent ) )
+		}
+
+		var iData = {
+			"embedRequest" = arguments.embedRequest,
+			"response" = jsonDeserialize( embedResult.filecontent ),
+			"rawResponse" : embedResult,
+			"provider" = this
+		}
+
+		BoxAnnounce( "onAIEmbedResponse", iData );
 
 		return iData.response;
 	}

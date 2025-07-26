@@ -5,6 +5,7 @@ class extends="BaseService"{
 	 */
 	function init(){
 		variables.chatURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent"
+		variables.embedURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:embedContent"
 		variables.name = "Gemini"
 		defaults( {
 			// according to the docs, this is the default model
@@ -71,6 +72,57 @@ class extends="BaseService"{
 		 * TODO by Jacob here.
 		 */
 
+	}
+
+	/**
+	 * Gemini embedding request
+	 */
+	public function embed( required any embedRequest ){
+		// Use the embedding model if not specified
+		var model = embedRequest.model.len() ? embedRequest.model : "embedding-001";
+
+		// Prepare the input(s) as required by Gemini API
+		var inputs = embedRequest.inputs;
+		if( !isArray( inputs ) ) inputs = [ inputs ];
+
+		// Gemini API expects a "content" field with the text to embed
+		var dataPacket = {
+			"content": {
+				"parts": inputs.map( txt => { "text": txt } )
+			}
+		};
+
+		// Set the embedURL for this request
+		variables.embedURL = getEmbedUrl().replace( '%MODEL%', model ) & '?key=#embedRequest.apiKey#';
+
+		// Call the BaseService sendEmbedRequest
+		var result = sendEmbedRequest( embedRequest, dataPacket );
+
+		// Log the raw response for debugging
+		if( !isStruct(result) || structIsEmpty(result) ) {
+			println( "[GeminiService] Raw response from Gemini API: " & serializeJson(result) );
+			throw( type: "ProviderError", message: "Gemini API returned an empty or invalid response: " & serializeJson(result) );
+		}
+
+		// Parse embeddings from response
+		var embeddings = [];
+		if( result.keyExists( "embedding" ) ){
+			// For single embedding, wrap in array for consistency
+			embeddings = [ result.embedding.values ];
+		} else if( result.keyExists( "embeddings" ) ){
+			embeddings = result.embeddings.map( e => e.values );
+		}
+
+		// Determine return formats
+		switch( embedRequest.getReturnFormat() ){
+			case "all":
+				return embeddings;
+			case "raw":
+				return result;
+			case "single": default:
+				// Return the first embedding as an array (not the array itself)
+				return embeddings.len() ? embeddings[1] : [];
+		}
 	}
 
 }

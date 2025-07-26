@@ -1,0 +1,76 @@
+/**
+ * This models an embedding request that will be sent to a provider
+ */
+class{
+    /**
+     * The text(s) to embed (string or array of strings)
+     */
+    property name="inputs" default=[];
+
+    /**
+     * The params struct to pass to the provider in the request
+     */
+    property name="params" type="struct" default={};
+
+    /**
+     * The provider to use for the embedding request
+     */
+    property name="provider" default="";
+
+    /**
+     * The API key to use for the provider
+     */
+    property name="apiKey" default="";
+
+    /**
+     * The model to use for the request
+     */
+    property name="model" default="";
+
+    /**
+     * The timeout for the request
+     */
+    property name="timeout" type="numeric" default=30;
+
+    /**
+     * The return format for the embedding request
+     */
+    property name="returnFormat" default="all";
+
+    /**
+     * Constructor
+     *
+     * @inputs The text(s) to embed
+     * @params A set of request params to pass to the provider
+     * @options A set of request options to pass to the provider
+     */
+    function init(
+        any inputs = [],
+        struct params = {},
+        struct options = {}
+    ){
+        variables.inputs = isNull(arguments.inputs) ? [] : (isArray(arguments.inputs) ? arguments.inputs : [arguments.inputs]);
+        variables.params = params;
+        variables.provider = options.provider ?: "";
+        variables.apiKey = options.apiKey ?: "";
+        variables.model = options.model ?: "";
+        variables.timeout = options.timeout ?: 30;
+        return this;
+    }
+
+    /**
+     * Get the return format for the embedding request
+     */
+    function getReturnFormat(){
+        return variables.returnFormat;
+    }
+
+    /**
+     * Set the return format for the embedding request
+     * @format The return format (single, all, raw)
+     */
+    function setReturnFormat( required string format ){
+        variables.returnFormat = arguments.format;
+        return this;
+    }
+}
