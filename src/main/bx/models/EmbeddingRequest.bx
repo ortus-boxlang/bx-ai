@@ -38,6 +38,11 @@ class{
     property name="returnFormat" default="all";
 
     /**
+     * The headers to send with the request
+     */
+    property name="headers" type="struct" default={};
+
+    /**
      * Constructor
      *
      * @inputs The text(s) to embed
@@ -71,6 +76,43 @@ class{
      */
     function setReturnFormat( required string format ){
         variables.returnFormat = arguments.format;
+        return this;
+    }
+
+    /**
+     * Get the API key for the embedding request
+     */
+    function getApiKey(){
+        return variables.apiKey;
+    }
+
+    /**
+     * Get whether to send auth header (defaults to true for most providers)
+     */
+    function getSendAuthHeader(){
+        return true;
+    }
+
+    /**
+     * Set whether to send auth header
+     */
+    function setSendAuthHeader( required boolean sendAuthHeader ){
+        variables.sendAuthHeader = arguments.sendAuthHeader;
+        return this;
+    }
+
+    /**
+     * Get the headers for the embedding request
+     */
+    function getHeaders(){
+        return variables.headers;
+    }
+
+    /**
+     * Add a header to the embedding request
+     */
+    function addHeader( required string name, required string value ){
+        variables.headers[ arguments.name ] = arguments.value;
         return this;
     }
 }

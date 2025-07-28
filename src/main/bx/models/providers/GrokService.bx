@@ -5,11 +5,59 @@ class extends="BaseService"{
 	 */
 	function init(){
 		variables.chatURL = "https://api.x.ai/v1/chat/completions"
+		variables.embedURL = "https://api.x.ai/v1/embeddings"
 		variables.name = "Grok"
 		defaults( {
 			// according to the docs, this is the default model
 			"model" : "grok-2-latest"
 		} )
+	}
+
+	/**
+	 * Grok embedding request
+	 */
+	public function embed( required any embedRequest ){
+		// Use the embedding model if not specified
+		var model = embedRequest.model.len() ? embedRequest.model : "grok-embedding-v1";
+
+		// Prepare the input(s) as required by Grok API
+		var inputs = embedRequest.inputs;
+		if( !isArray( inputs ) ) inputs = [ inputs ];
+
+		// Grok API expects an "input" field with the text(s) to embed
+		var dataPacket = {
+			"model": model,
+			"input": inputs
+		};
+
+		// Set the embedURL for this request
+		variables.embedURL = getEmbedUrl();
+
+		// Call the BaseService sendEmbedRequest
+		var result = sendEmbedRequest( embedRequest, dataPacket );
+
+		// Log the raw response for debugging
+		if( !isStruct(result) || structIsEmpty(result) ) {
+			println( "[GrokService] Raw response from Grok API: " & serializeJson(result) );
+			throw( type: "ProviderError", message: "Grok API returned an empty or invalid response: " & serializeJson(result) );
+		}
+
+		// Parse embeddings from response
+		var embeddings = [];
+		if( result.keyExists( "data" ) ){
+			embeddings = result.data.map( e => e.embedding );
+		}
+
+		// Determine return formats
+		switch( embedRequest.getReturnFormat() ){
+			case "all":
+				return embeddings;
+			case "raw":
+				return result;
+			case "single": default:
+				// Return the first embedding as an array (not the array itself)
+				return embeddings.len() ? embeddings[1] : [];
+		}
 	}
 
 }
