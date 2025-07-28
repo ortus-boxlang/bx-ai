@@ -3,8 +3,8 @@
 ```
 |:------------------------------------------------------:|
 | ⚡︎ B o x L a n g ⚡︎
-| Dynamic : Modular : Productive
-|:------------------------------------------------------:|
+| Dynamic : Modular : Productive |
+| :----------------------------: |
 ```
 
 <blockquote>
@@ -78,13 +78,13 @@ Here are some of the features of this module:
 Here is a matrix of the providers and if they support real-time tools.  Please keep checking as we will be adding more providers and features to this module.
 
 | Provider   | Real-time Tools |
-|------------|-----------------|
-| Claude    	| ✅ |
-| DeepSeek  | ✅ |
-| Gemini    	| [Coming Soon]   |
-| Grok      	 | ✅ |
-| OpenAI       | ✅ |
-| Perplexity   | ✅ |
+| ---------- | --------------- |
+| Claude     | ✅               |
+| DeepSeek   | ✅               |
+| Gemini     | [Coming Soon]   |
+| Grok       | ✅               |
+| OpenAI     | ✅               |
+| Perplexity | ✅               |
 
 ## Settings
 
@@ -126,22 +126,23 @@ Here are the settings you can place in your `boxlang.json` file:
 
 The AI module supports different return formats for the responses. You can specify the return format in the `options` struct when calling the `aiChat()` or `aiChatAsync()` functions, globally in the settings (as we saw above), or in the `ChatRequest` object.
 
-| Format | Description |
-|--------|-------------|
-| `single` | Returns a single message as a string. This is the default format. |
-| `all` | Returns an array of messages. Each message is a struct with `role` and `content` keys, or whatever the LLM returns |
-| `raw` | Returns the raw response from the AI provider. This is useful for debugging or when you need the full response structure so you can mold it as you see fit |
+| Format   | Description                                                                                                                                                |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `single` | Returns a single message as a string. This is the default format.                                                                                          |
+| `all`    | Returns an array of messages. Each message is a struct with `role` and `content` keys, or whatever the LLM returns                                         |
+| `raw`    | Returns the raw response from the AI provider. This is useful for debugging or when you need the full response structure so you can mold it as you see fit |
 
 ## Global Functions (BIFs)
 
-| Function | Purpose | Parameters | Return Type | Async Support |
-|----------|---------|------------|-------------|---------------|
-| `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
-| `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
-| `aiChatRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | ChatRequest Object | N/A |
-| `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
-| `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
-| `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
+| Function          | Purpose                              | Parameters                                 | Return Type         | Async Support |
+| ----------------- | ------------------------------------ | ------------------------------------------ | ------------------- | ------------- |
+| `aiChat()`        | Chat with AI provider                | `messages`, `params={}`, `options={}`      | String/Array/Struct | ❌             |
+| `aiChatAsync()`   | Async chat with AI provider          | `messages`, `params={}`, `options={}`      | BoxLang Future      | ✅             |
+| `aiChatRequest()` | Compose raw chat request             | `messages`, `params`, `options`, `headers` | ChatRequest Object  | N/A           |
+| `aiEmbed()`       | Generate embeddings from AI provider | `inputs`, `params={}`, `options={}`        | Array/Struct        | ❌             |
+| `aiMessage()`     | Build message object                 | `message`                                  | ChatMessage Object  | N/A           |
+| `aiService()`     | Create AI service provider           | `provider`, `apiKey`                       | IService Object     | N/A           |
+| `aiTool()`        | Create tool for real-time processing | `name`, `description`, `callable`          | Tool Object         | N/A           |
 
 ### Quick Usage Examples
 
@@ -163,6 +164,9 @@ service = aiService( "openai", "my-key" ).defaults( { temperature: 0.7 } )
 
 // Tool for function calling
 tool = aiTool( "weather", "Get weather data", location => getWeather(location) )
+
+// Generate embeddings
+embeddings = aiEmbed( "Hello world", { model: "text-embedding-ada-002" } )
 ```
 
 This module exposes the following BoxLang global functions (BIFs) for you to interact with the AI providers:
@@ -618,20 +622,89 @@ result = aiChat( "How hot is it in Kansas City? What about San Salvador? Answer 
 println( result )
 ```
 
+## aiEmbed() - Generate Embeddings
+
+The `aiEmbed()` function allows you to generate embeddings from text using AI providers. Embeddings are vector representations of text that can be used for semantic search, similarity comparisons, and other AI-powered text analysis tasks.
+
+The `aiEmbed()` function has the following signature:
+
+```js
+aiEmbed( inputs, struct params={}, struct options={} )
+```
+
+Here are the parameters:
+
+- `inputs` : This can be any of the following
+  - A `string` : A single text input to embed
+  - An `array of strings` : Multiple text inputs to embed
+- `params` : This is a struct of request parameters that will be passed to the AI provider. This can be anything the provider supports. Usually this includes the `model` parameter.
+- `options` : This is a struct of options that can be used to control the behavior of the AI provider. The available options are:
+  - `provider:string` : The provider to use, if not passed it will use the global setting
+  - `apiKey:string` : The API Key to use, if not passed it will use the global setting
+  - `timeout:numeric` : The timeout in milliseconds for the request. Default is 30 seconds.
+  - `logRequest:boolean` : Log the request to the `ai.log`. Default is `false`
+  - `logRequestToConsole:boolean` : Log the request to the console for debugging. Default is `false`
+  - `logResponse:boolean` : Log the response to the `ai.log`. Default is `false`
+  - `logResponseToConsole:boolean` : Log the response to the console for debugging. Default is `false`
+
+The function returns an array of embedding vectors from the provider. Each embedding is typically a high-dimensional vector (e.g., 1536 dimensions for OpenAI's text-embedding-ada-002 model).
+
+### Examples
+
+Here are some examples of generating embeddings:
+
+```js
+// Single text embedding
+embedding = aiEmbed( "Hello world" )
+
+// Multiple text embeddings
+embeddings = aiEmbed( [ "Hello world", "Goodbye world", "How are you?" ] )
+
+// With specific model and parameters
+embedding = aiEmbed(
+    "Hello world",
+    { model: "text-embedding-ada-002" },
+    { provider: "openai", timeout: 60 }
+)
+
+// Using array of inputs with custom parameters
+embeddings = aiEmbed(
+    [ "Document 1 content", "Document 2 content" ],
+    { model: "text-embedding-ada-002", dimensions: 1536 },
+    { provider: "openai", logRequest: true }
+)
+```
+
+### Use Cases
+
+Embeddings are commonly used for:
+
+- **Semantic Search**: Finding documents or content that are semantically similar to a query
+- **Text Classification**: Grouping similar texts together
+- **Recommendation Systems**: Finding similar items based on text descriptions
+- **Document Clustering**: Organizing documents by similarity
+- **Question Answering**: Finding relevant context for answering questions
+
+### Provider Support
+
+Not all AI providers support embeddings. Check with your specific provider for embedding model availability and requirements.
+
 ## Events
 
 The BoxLang AI module emits several events throughout the AI processing lifecycle that allow you to intercept, modify, or extend functionality. These events are useful for logging, debugging, custom providers, and response processing.
 
 ### Event Reference Table
 
-| Event | When Fired | Data Emitted | Use Cases |
-|-------|------------|--------------|-----------|
-| `onAIRequest` | Before sending request to AI provider | `dataPacket`, `chatRequest`, `provider` | Request logging, modification, authentication |
-| `onAIResponse` | After receiving response from AI provider | `chatRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
-| `onAIProviderRequest` | When unsupported provider is requested | `provider`, `apiKey`, `service` | Custom provider registration |
-| `onAIProviderCreate` | After AI service provider is created | `provider` | Provider initialization, configuration |
-| `onAIChatRequestCreate` | After ChatRequest object is created | `chatRequest` | Request validation, modification |
-| `onAIChatMessageCreate` | After ChatMessage object is created | `chatMessage` | Message validation, formatting |
+| Event                   | When Fired                                          | Data Emitted                                          | Use Cases                                     |
+| ----------------------- | --------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------- |
+| `onAIRequest`           | Before sending request to AI provider               | `dataPacket`, `chatRequest`, `provider`               | Request logging, modification, authentication |
+| `onAIResponse`          | After receiving response from AI provider           | `chatRequest`, `response`, `rawResponse`, `provider`  | Response processing, logging, caching         |
+| `onAIEmbedRequest`      | Before sending embedding request to AI provider     | `dataPacket`, `embedRequest`, `provider`              | Embedding request logging, modification       |
+| `onAIEmbedResponse`     | After receiving embedding response from AI provider | `embedRequest`, `response`, `rawResponse`, `provider` | Embedding response processing, logging        |
+| `onAIProviderRequest`   | When unsupported provider is requested              | `provider`, `apiKey`, `service`                       | Custom provider registration                  |
+| `onAIProviderCreate`    | After AI service provider is created                | `provider`                                            | Provider initialization, configuration        |
+| `onAIChatRequestCreate` | After ChatRequest object is created                 | `chatRequest`                                         | Request validation, modification              |
+| `onAIChatMessageCreate` | After ChatMessage object is created                 | `chatMessage`                                         | Message validation, formatting                |
 
 ### Event Details
 
@@ -789,6 +862,67 @@ function onAIChatMessageCreate( required struct data ) {
     if( data.chatMessage.hasSystemMessage() ) {
         var systemMsg = data.chatMessage.getSystemMessage();
         data.chatMessage.replaceSystemMessage( systemMsg & " [Generated at #now()#]" );
+    }
+}
+```
+
+#### onAIEmbedRequest
+
+Fired before sending an embedding request to the AI provider. This allows you to inspect or modify the embedding request before it's sent.
+
+**Data Structure:**
+
+```java
+{
+    "dataPacket": {}, // The embedding request payload being sent to the provider
+    "embedRequest": EmbeddingRequest, // The EmbeddingRequest object
+    "provider": BaseService // The provider service instance
+}
+```
+
+**Example Usage:**
+
+```java
+function onAIEmbedRequest( required struct data ) {
+    // Log all embedding requests
+    writeLog( text: "AI Embed Request: #serializeJSON(data.dataPacket)#", type: "information" );
+
+    // Add custom headers or modify request
+    data.dataPacket.custom_header = "embedding-request";
+}
+```
+
+#### onAIEmbedResponse
+
+Fired after receiving an embedding response from the AI provider. This allows you to process, modify, or cache embedding responses.
+
+**Data Structure:**
+
+```java
+{
+    "embedRequest": EmbeddingRequest, // The original EmbeddingRequest object
+    "response": {}, // The deserialized JSON response from the provider
+    "rawResponse": {}, // The raw HTTP response object
+    "provider": BaseService // The provider service instance
+}
+```
+
+**Example Usage:**
+
+```java
+function onAIEmbedResponse( required struct data ) {
+    // Cache embedding responses
+    cacheService.put( "embed_response_#hash(data.embedRequest.toString())#", data.response );
+
+    // Process embedding vectors
+    if( structKeyExists(data.response, "data") ) {
+        data.response.processed_embeddings = data.response.data.map( item => {
+            return {
+                embedding: item.embedding,
+                index: item.index,
+                object: item.object
+            };
+        });
     }
 }
 ```
