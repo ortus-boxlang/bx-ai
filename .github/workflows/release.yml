@@ -41,7 +41,7 @@ jobs:
       issues: write
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup CommandBox
         uses: Ortus-Solutions/setup-commandbox@v2.0.1
@@ -183,7 +183,7 @@ jobs:
       issues: write
     steps:
       - name: Checkout Development Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: development
 
