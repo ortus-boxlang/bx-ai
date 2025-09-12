@@ -413,4 +413,85 @@ public class IntegrationTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( "aiRequest" ) ).isNotNull();
 	}
+
+	@DisplayName( "Test Gemini AI" )
+	@Test
+	public void testGeminiEmbedding() {
+
+		moduleRecord.settings.put( "apiKey", dotenv.get( "GEMINI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "gemini" );
+
+		// @formatter:off
+
+		runtime.executeSource(
+			"""
+			result = aiEmbed( "what is boxlang?" )
+			println( result )
+			""",
+			context
+		);
+
+		// @formatter:on
+
+		// Asserts here
+		Object embeddingResult = variables.get( "result" );
+		assertThat( embeddingResult ).isNotNull();
+		assertThat( embeddingResult ).isInstanceOf( java.util.List.class );
+		System.out.println( embeddingResult.toString() );
+		assertThat( ( ( java.util.List<?> ) embeddingResult ).size() ).isAtLeast( 1 );
+	}
+
+	@DisplayName( "Test OpenAI Embedding" )
+	@Test
+	public void testOpenAIEmbedding() {
+
+		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "openai" );
+
+		// @formatter:off
+
+		runtime.executeSource(
+			"""
+			result = aiEmbed( "what is boxlang?" )
+			println( result )
+			""",
+			context
+		);
+
+		// @formatter:on
+
+		// Asserts here
+		Object embeddingResult = variables.get( "result" );
+		assertThat( embeddingResult ).isNotNull();
+		assertThat( embeddingResult ).isInstanceOf( java.util.List.class );
+		System.out.println( embeddingResult.toString() );
+		assertThat( ( ( java.util.List<?> ) embeddingResult ).size() ).isAtLeast( 1 );
+	}
+
+	@DisplayName( "Test Grok Embedding" )
+	@Test
+	public void testGrokEmbedding() {
+
+		moduleRecord.settings.put( "apiKey", dotenv.get( "GROK_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "grok" );
+
+		// @formatter:off
+
+		runtime.executeSource(
+			"""
+			result = aiEmbed( "what is boxlang?" )
+			println( result )
+			""",
+			context
+		);
+
+		// @formatter:on
+
+		// Asserts here
+		Object embeddingResult = variables.get( "result" );
+		assertThat( embeddingResult ).isNotNull();
+		assertThat( embeddingResult ).isInstanceOf( java.util.List.class );
+		System.out.println( embeddingResult.toString() );
+		assertThat( ( ( java.util.List<?> ) embeddingResult ).size() ).isAtLeast( 1 );
+	}
 }

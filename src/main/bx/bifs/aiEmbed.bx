@@ -1,0 +1,43 @@
+/**
+ * AI Embedding
+ */
+@BoxBIF
+class {
+
+	static MODULE_SETTINGS = getModuleInfo( "bxai" ).settings;
+
+	/**
+	 * Inject the following references into the class
+	 * - moduleRecord : The ModuleRecord instance
+	 * - boxRuntime : The BoxRuntime instance
+	 * - interceptorService : The BoxLang InterceptorService
+	 * - log : A logger for the module config itself
+	 */
+
+	/**
+	 * Generate an embedding from the default or custom AI Provider.
+	 *
+	 * @inputs The text(s) to embed (string or array of strings)
+	 * @params A struct of request params to pass to the provider for the embedding request
+	 * @options A struct of request options to pass to the provider (provider, apiKey, model, timeout)
+	 *
+	 * @return The embedding vector(s) from the provider
+	 */
+	function invoke(
+		required any inputs,
+		struct params = {},
+		struct options = {}
+	) {
+		arguments.options.append( static.MODULE_SETTINGS, false );
+
+		var oEmbedRequest = new bxModules.bxai.models.EmbeddingRequest(
+			arguments.inputs,
+			arguments.params,
+			arguments.options
+		);
+
+		// Get the provider and embed with it
+		return aiService( provider: arguments.options?.provider ).embed( oEmbedRequest );
+	}
+
+}
