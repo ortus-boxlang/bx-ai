@@ -43,6 +43,11 @@ class{
     property name="headers" type="struct" default={};
 
     /**
+     * Whether to send auth header (defaults to true for most providers)
+     */
+    property name="sendAuthHeader" type="boolean" default=true;
+
+    /**
      * Constructor
      *
      * @inputs The text(s) to embed
@@ -60,6 +65,7 @@ class{
         variables.apiKey = options.apiKey ?: "";
         variables.model = options.model ?: "";
         variables.timeout = options.timeout ?: 30;
+        variables.sendAuthHeader = options.sendAuthHeader ?: true;
         return this;
     }
 
@@ -90,7 +96,7 @@ class{
      * Get whether to send auth header (defaults to true for most providers)
      */
     function getSendAuthHeader(){
-        return true;
+        return variables.sendAuthHeader;
     }
 
     /**
