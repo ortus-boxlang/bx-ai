@@ -83,6 +83,10 @@ class extends="BaseService"{
 
 		// Prepare the input(s) as required by Gemini API
 		var inputs = arguments.embedRequest.inputs;
+		var model = embedRequest.model.len() ? embedRequest.model : "embedding-001";
+
+		// Prepare the input(s) as required by Gemini API
+		var inputs = embedRequest.inputs;
 		if( !isArray( inputs ) ) inputs = [ inputs ];
 
 		// Gemini API expects a "content" field with the text to embed
