@@ -414,13 +414,12 @@ public class IntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.get( "aiRequest" ) ).isNotNull();
 	}
 
-	@DisplayName( "Test Gemini AI" )
+	@DisplayName( "Test Gemini AI Embedding" )
 	@Test
 	public void testGeminiEmbedding() {
 
 		moduleRecord.settings.put( "apiKey", dotenv.get( "GEMINI_API_KEY", "" ) );
 		moduleRecord.settings.put( "provider", "gemini" );
-
 		// @formatter:off
 
 		runtime.executeSource(

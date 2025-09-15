@@ -79,10 +79,10 @@ class extends="BaseService"{
 	 */
 	public function embed( required any embedRequest ){
 		// Use the embedding model if not specified
-		var model = embedRequest.model.len() ? embedRequest.model : "embedding-001";
+		var model = arguments.embedRequest.model.len() ? arguments.embedRequest.model : "gemini-embedding-001";
 
 		// Prepare the input(s) as required by Gemini API
-		var inputs = embedRequest.inputs;
+		var inputs = arguments.embedRequest.inputs;
 		if( !isArray( inputs ) ) inputs = [ inputs ];
 
 		// Gemini API expects a "content" field with the text to embed
@@ -91,12 +91,15 @@ class extends="BaseService"{
 				"parts": inputs.map( txt => { "text": txt } )
 			}
 		};
+		arguments.embedRequest.headers.append( { "x-goog-api-key": arguments.embedRequest.apiKey } );
+		// No auth header
+		arguments.embedRequest.setSendAuthHeader( false );
 
 		// Set the embedURL for this request
-		variables.embedURL = getEmbedUrl().replace( '%MODEL%', model ) & '?key=#embedRequest.apiKey#';
+		variables.embedURL = getEmbedUrl().replace( '%MODEL%', model ) & '?key=#arguments.embedRequest.apiKey#';
 
 		// Call the BaseService sendEmbedRequest
-		var result = sendEmbedRequest( embedRequest, dataPacket );
+		var result = sendEmbedRequest( arguments.embedRequest, dataPacket );
 
 		// Log the raw response for debugging
 		if( !isStruct(result) || structIsEmpty(result) ) {
@@ -114,7 +117,7 @@ class extends="BaseService"{
 		}
 
 		// Determine return formats
-		switch( embedRequest.getReturnFormat() ){
+		switch( arguments.embedRequest.getReturnFormat() ){
 			case "all":
 				return embeddings;
 			case "raw":
