@@ -45,7 +45,7 @@ dependencies {
 
 	// Testing Frameworks
 	testImplementation 'io.github.cdimascio:dotenv-java:3.2.0'
-	testImplementation "org.junit.jupiter:junit-jupiter:5.+"
+	testImplementation "org.junit.jupiter:junit-jupiter:6.+"
 	testImplementation "org.mockito:mockito-core:5.+"
 	testImplementation "com.google.truth:truth:1.+"
 	// Explicitly declare the JUnit platform launcher (to avoid deprecation)
