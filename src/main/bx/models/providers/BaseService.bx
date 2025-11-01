@@ -161,7 +161,7 @@ abstract class implements="IService" {
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
 			writeLog(
-				text: results.error.toString(),
+				text: result.error.toString(),
 				type: "error",
 				log : "ai"
 			)
@@ -292,7 +292,7 @@ abstract class implements="IService" {
 		// Final logging if the provider supports it
 		if( arguments.chatRequest.getLogResponse() ){
 			writeLog(
-				text: "Reponse from AI Provider: #chatResult.toString()#",
+				text: "Response from AI Provider: #chatResult.toString()#",
 				type: "info",
 				log : "ai"
 			)
@@ -408,6 +408,31 @@ abstract class implements="IService" {
 
 			// Body Packet
 			bx:httpParam type="body" value=jsonSerialize( arguments.dataPacket );
+		}
+
+		// Check for HTTP errors
+		if( chatResult.statusCode != "200" && !chatResult.statusCode.startsWith( "2" ) ){
+			var errorMessage = "HTTP Error #chatResult.statusCode#";
+			try {
+				var errorData = jsonDeserialize( chatResult.filecontent );
+				if( errorData.keyExists( "error" ) ){
+					errorMessage = errorData.error.toString();
+				}
+			} catch( any e ){
+				// If we can't parse the error, use the raw response
+				errorMessage &= ": #chatResult.filecontent#";
+			}
+			
+			writeLog(
+				text: "Stream Request Error: #errorMessage#",
+				type: "error",
+				log : "ai"
+			)
+			
+			throw(
+				type   : "ProviderError",
+				message: errorMessage
+			);
 		}
 
 		// Process the streaming response
