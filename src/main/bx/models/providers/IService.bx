@@ -26,4 +26,14 @@ interface{
 	 */
 	function invoke( required ChatRequest chatRequest );
 
+	/**
+	 * Invoke the provider service with a ChatRequest object in streaming mode
+	 *
+	 * @chatRequest The ChatRequest object to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
+	 *
+	 * @return void
+	 */
+	function invokeStream( required ChatRequest chatRequest, required function callback );
+
 }

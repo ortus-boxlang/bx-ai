@@ -77,6 +77,11 @@ class{
 	property name="headers" type="struct" default={};
 
 	/**
+	 * Whether to stream the response or not
+	 */
+	property name="stream" type="boolean" default=false;
+
+	/**
 	 * Constructor
 	 *
 	 * @chatMessage The messages to use for the chat request
@@ -100,6 +105,7 @@ class{
 		variables.returnFormat = options.returnFormat ?: "single";
 		variables.model = options.params?.model ?: "";
 		variables.timeout = options.timeout ?: 30;
+		variables.stream = options.stream ?: false;
 		return this;
 	}
 
