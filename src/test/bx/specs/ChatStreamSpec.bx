@@ -1,0 +1,36 @@
+class extends="testbox.system.BaseSpec"{
+
+	function run(){
+
+		describe( "AI Chat Stream", () => {
+
+			it( "can create a chat stream request", () => {
+				var chatRequest = new src.main.bx.models.ChatRequest(
+					new src.main.bx.models.ChatMessage(),
+					{},
+					{ stream: true }
+				)
+				expect( chatRequest ).notToBeNull()
+				expect( chatRequest.getStream() ).toBeTrue()
+			} )
+
+			it( "can set stream flag via options", () => {
+				var options = { stream: true }
+				var chatRequest = new src.main.bx.models.ChatRequest(
+					new src.main.bx.models.ChatMessage(),
+					{},
+					options
+				)
+				expect( chatRequest.getStream() ).toBeTrue()
+			} )
+
+			it( "stream defaults to false", () => {
+				var chatRequest = new src.main.bx.models.ChatRequest()
+				expect( chatRequest.getStream() ).toBeFalse()
+			} )
+
+		} )
+
+	}
+
+}
