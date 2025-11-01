@@ -11,7 +11,7 @@ aiChatStream(
     "Write a haiku about programming",
     ( chunk ) => {
         // Extract and print content as it arrives
-        var content = chunk.choices[1].delta.content ?: "";
+        var content = chunk.choices?.first()?.delta?.content ?: "";
         print( content );
     },
     {},
@@ -25,7 +25,7 @@ var fullResponse = "";
 aiChatStream(
     "Explain what BoxLang is in one sentence",
     ( chunk ) => {
-        var content = chunk.choices[1].delta.content ?: "";
+        var content = chunk.choices?.first()?.delta?.content ?: "";
         fullResponse &= content;
         print( content );
     }
@@ -42,7 +42,7 @@ aiChatStream(
     ],
     ( chunk ) => {
         if( chunk.keyExists( "choices" ) && !chunk.choices.isEmpty() ) {
-            var delta = chunk.choices[1].delta;
+            var delta = chunk.choices.first().delta;
             if( delta.keyExists( "content" ) ) {
                 print( delta.content );
             }
@@ -61,17 +61,18 @@ aiChatStream(
     "Count to 5 slowly",
     ( chunk ) => {
         chunkCount++;
-        var content = chunk.choices[1].delta.content ?: "";
+        var content = chunk.choices?.first()?.delta?.content ?: "";
         print( content );
         
         // Check if streaming is complete
-        if( chunk.choices[1].keyExists( "finish_reason" ) && 
-            !isNull( chunk.choices[1].finish_reason ) ) {
+        var firstChoice = chunk.choices?.first();
+        if( firstChoice.keyExists( "finish_reason" ) && 
+            !isNull( firstChoice.finish_reason ) ) {
             var elapsedMs = getTickCount() - startTime;
             println( "\n\nStreaming complete!" );
             println( "Chunks received: " & chunkCount );
             println( "Time elapsed: " & elapsedMs & "ms" );
-            println( "Finish reason: " & chunk.choices[1].finish_reason );
+            println( "Finish reason: " & firstChoice.finish_reason );
         }
     }
 );
@@ -84,7 +85,7 @@ try {
         "Tell me about BoxLang",
         ( chunk ) => {
             try {
-                var content = chunk.choices[1].delta.content ?: "";
+                var content = chunk.choices?.first()?.delta?.content ?: "";
                 print( content );
             } catch( any e ) {
                 writeLog(

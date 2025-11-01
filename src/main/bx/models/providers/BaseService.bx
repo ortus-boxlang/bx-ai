@@ -411,7 +411,7 @@ abstract class implements="IService" {
 		}
 
 		// Check for HTTP errors
-		if( chatResult.statusCode != "200" && !chatResult.statusCode.startsWith( "2" ) ){
+		if( !chatResult.statusCode.startsWith( "2" ) ){
 			var errorMessage = "HTTP Error #chatResult.statusCode#";
 			try {
 				var errorData = jsonDeserialize( chatResult.filecontent );

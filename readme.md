@@ -155,7 +155,7 @@ future = aiChatAsync( "Hello!" ).then( r -> println(r) )
 
 // Stream chat responses
 aiChatStream( "Tell me a story", ( chunk ) => {
-    print( chunk.choices[1].delta.content ?: "" )
+    print( chunk.choices?.first()?.delta?.content ?: "" )
 } )
 
 // Build complex request
@@ -335,7 +335,7 @@ aiChatStream(
     "Write a short story about a robot learning to paint", 
     ( chunk ) => {
         // OpenAI streaming format
-        print( chunk.choices[1].delta.content ?: "" )
+        print( chunk.choices?.first()?.delta?.content ?: "" )
     }
 )
 
@@ -344,7 +344,7 @@ var fullResponse = ""
 aiChatStream( 
     "Explain quantum computing in simple terms",
     ( chunk ) => {
-        var content = chunk.choices[1].delta.content ?: ""
+        var content = chunk.choices?.first()?.delta?.content ?: ""
         fullResponse &= content
         print( content )
     },
@@ -362,7 +362,7 @@ aiChatStream(
     ( chunk ) => {
         // Process each chunk as it arrives
         if( chunk.keyExists( "choices" ) && !chunk.choices.isEmpty() ) {
-            var delta = chunk.choices[1].delta
+            var delta = chunk.choices.first().delta
             if( delta.keyExists( "content" ) ) {
                 print( delta.content )
             }
@@ -380,7 +380,7 @@ var inCodeBlock = false
 aiChatStream(
     "Write a Java class for a basic calculator",
     ( chunk ) => {
-        var content = chunk.choices[1].delta.content ?: ""
+        var content = chunk.choices?.first()?.delta?.content ?: ""
         print( content )
         
         // Detect code block boundaries
