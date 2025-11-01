@@ -420,13 +420,13 @@ public class IntegrationTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			var chunks = []
-			var fullResponse = ""
+			chunks = []
+			fullResponse = ""
 			aiChatStream(
 				"Count to 3",
 				( chunk ) => {
 					chunks.append( chunk )
-					var content = chunk.choices?.first()?.delta?.content ?: ""
+					content = chunk.choices?.first()?.delta?.content ?: ""
 					fullResponse &= content
 				}
 			)
@@ -448,7 +448,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			var chunkCount = 0
+			chunkCount = 0
 			aiChatStream(
 				"Say hello",
 				( chunk ) => {
