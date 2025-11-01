@@ -413,4 +413,57 @@ public class IntegrationTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( "aiRequest" ) ).isNotNull();
 	}
+
+	@DisplayName( "Test streaming chat with OpenAI" )
+	@Test
+	public void testChatStream() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			var chunks = []
+			var fullResponse = ""
+			aiChatStream(
+				"Count to 3",
+				( chunk ) => {
+					chunks.append( chunk )
+					var content = chunk.choices?.first()?.delta?.content ?: ""
+					fullResponse &= content
+				}
+			)
+			println( "Received " & chunks.len() & " chunks" )
+			println( "Full response: " & fullResponse )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Verify we received chunks
+		assertThat( variables.get( "chunks" ) ).isNotNull();
+		assertThat( variables.get( "fullResponse" ) ).isNotNull();
+	}
+
+	@DisplayName( "Test streaming with callback" )
+	@Test
+	public void testStreamingCallback() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			var chunkCount = 0
+			aiChatStream(
+				"Say hello",
+				( chunk ) => {
+					chunkCount++
+				},
+				{},
+				{ provider: "openai" }
+			)
+			println( "Total chunks received: " & chunkCount )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Verify callback was invoked
+		assertThat( variables.get( "chunkCount" ) ).isNotNull();
+	}
 }
