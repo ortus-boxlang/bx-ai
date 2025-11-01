@@ -138,6 +138,7 @@ The AI module supports different return formats for the responses. You can speci
 |----------|---------|------------|-------------|---------------|
 | `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
+| `aiChatStream()` | Stream chat responses from AI provider | `messages`, `callback`, `params={}`, `options={}` | void | N/A |
 | `aiChatRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | ChatRequest Object | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
@@ -151,6 +152,11 @@ result = aiChat( "Hello, world!" )
 
 // Async chat with callback
 future = aiChatAsync( "Hello!" ).then( r -> println(r) )
+
+// Stream chat responses
+aiChatStream( "Tell me a story", ( chunk ) => {
+    print( chunk.choices[1].delta.content ?: "" )
+} )
 
 // Build complex request
 request = aiChatRequest( messages, { model: "gpt-4" }, { provider: "openai" } )
@@ -169,6 +175,7 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 
 - `aiChat( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get responses back.  This is the easiest way to interact with the AI providers.
 - `aiChatAsync( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get a BoxLang future back so you can build fluent asynchronous code pipelines.
+- `aiChatStream( messages, callback, struct params={}, struct options={} )` : This function will allow you to stream responses from the AI provider in real-time. A callback function is invoked for each chunk of data received.
 - `aiChatRequest( messages, struct params, struct options, struct headers)` - This allows you to compose a raw chat request that you can then later send to an AI service.  The return is a `ChatRequest` object that you can then send to the AI service.
 - `aiMessage( message )` - Allows you to build a message object that you can then use to send to the `aiChat()` or `aiChatRequest()` functions.  It allows you to fluently build up messages as well.
 - `aiService( provider, apiKey )` - Creates a reference to an AI Service provider that you can then use to interact with the AI service.  This is useful if you want to create a service object and then use it multiple times.  You can pass in optional `provider` and `apiKey` to override the global settings.
@@ -291,6 +298,131 @@ var future = aiChatAsync( "Write a haiku about recursion in programming." )
 // Print or return the formatted result
 println( future.get() );
 ```
+
+## aiChatStream() - Stream Chat Responses
+
+The `aiChatStream()` function allows you to receive AI responses in real-time as they are generated, rather than waiting for the complete response. This is ideal for building interactive chat interfaces or showing progressive output to users.
+
+```js
+aiChatStream( messages, callback, struct params={}, struct options={} )
+```
+
+Here are the parameters:
+
+- `messages` : This can be any of the following
+  - A `string` : A message with a default `role` of `user` will be used
+  - A `struct` : A struct with a `role` and `content` key message
+  - An `array of structs` : An array of messages that must have a `role` and a `content` keys
+  - A `ChatMessage` object
+- `callback` : A function that will be called for each chunk of data received from the stream. The function receives a single argument containing the chunk data (typically a struct with the streaming response format specific to the provider).
+- `params` : This is a struct of request parameters that will be passed to the AI provider. This can be anything the provider supports. Usually this is the `model`, `temperature`, `max_tokens`, etc.
+- `options` : This is a struct of options that can be used to control the behavior of the AI provider. The available options are:
+  - `provider:string` : The provider to use, if not passed it will use the global setting
+  - `apiKey:string` : The API Key to use, if not passed it will use the global setting
+  - `timeout:numeric` : The timeout in seconds for the request. Default is 30 seconds.
+  - `logRequest:boolean` : Log the request to the `ai.log`. Default is `false`
+  - `logRequestToConsole:boolean` : Log the request to the console for debugging. Default is `false`
+  - `logResponse:boolean` : Log the response to the `ai.log`. Default is `false`
+  - `logResponseToConsole:boolean` : Log the response to the console for debugging. Default is `false`
+
+### Examples
+
+Here are some examples of streaming chat responses:
+
+```js
+// Simple streaming chat
+aiChatStream( 
+    "Write a short story about a robot learning to paint", 
+    ( chunk ) => {
+        // OpenAI streaming format
+        print( chunk.choices[1].delta.content ?: "" )
+    }
+)
+
+// Streaming with accumulated response
+var fullResponse = ""
+aiChatStream( 
+    "Explain quantum computing in simple terms",
+    ( chunk ) => {
+        var content = chunk.choices[1].delta.content ?: ""
+        fullResponse &= content
+        print( content )
+    },
+    { temperature: 0.7 },
+    { provider: "openai" }
+)
+println( "\n\nFull Response: " & fullResponse )
+
+// Streaming with custom provider
+aiChatStream(
+    [
+        { role: "system", content: "You are a helpful coding assistant" },
+        { role: "user", content: "Write a function to calculate fibonacci numbers" }
+    ],
+    ( chunk ) => {
+        // Process each chunk as it arrives
+        if( chunk.keyExists( "choices" ) && !chunk.choices.isEmpty() ) {
+            var delta = chunk.choices[1].delta
+            if( delta.keyExists( "content" ) ) {
+                print( delta.content )
+            }
+        }
+    },
+    { model: "gpt-4" },
+    { provider: "openai", timeout: 60 }
+)
+
+// Streaming with structured output handling
+var codeBlocks = []
+var currentBlock = ""
+var inCodeBlock = false
+
+aiChatStream(
+    "Write a Java class for a basic calculator",
+    ( chunk ) => {
+        var content = chunk.choices[1].delta.content ?: ""
+        print( content )
+        
+        // Detect code block boundaries
+        if( content.contains( "```" ) ) {
+            if( inCodeBlock ) {
+                codeBlocks.append( currentBlock )
+                currentBlock = ""
+            }
+            inCodeBlock = !inCodeBlock
+        } else if( inCodeBlock ) {
+            currentBlock &= content
+        }
+    }
+)
+
+println( "\n\nExtracted " & codeBlocks.len() & " code blocks" )
+```
+
+### Streaming Response Format
+
+The chunk data passed to the callback function follows the Server-Sent Events (SSE) format used by most AI providers. For OpenAI-compatible providers, each chunk typically has this structure:
+
+```js
+{
+    "id": "chatcmpl-...",
+    "object": "chat.completion.chunk",
+    "created": 1234567890,
+    "model": "gpt-4",
+    "choices": [
+        {
+            "index": 0,
+            "delta": {
+                "role": "assistant",  // Only in first chunk
+                "content": "text"     // Progressive text content
+            },
+            "finish_reason": null  // or "stop", "length", etc. in final chunk
+        }
+    ]
+}
+```
+
+Different providers may have slightly different formats, so consult your provider's documentation for exact details.
 
 ## aiChatRequest() - Compose a Chat Request
 
