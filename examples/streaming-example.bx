@@ -1,0 +1,110 @@
+/**
+ * Example: Using aiChatStream for real-time AI responses
+ * 
+ * This example demonstrates how to use the aiChatStream BIF to receive
+ * streaming responses from AI providers in real-time.
+ */
+
+// Example 1: Simple streaming output
+println( "=== Example 1: Simple Streaming ===" );
+aiChatStream( 
+    "Write a haiku about programming",
+    ( chunk ) => {
+        // Extract and print content as it arrives
+        var content = chunk.choices[1].delta.content ?: "";
+        print( content );
+    },
+    {},
+    { provider: "openai" }
+);
+println( "\n" );
+
+// Example 2: Accumulate the full response
+println( "=== Example 2: Accumulate Response ===" );
+var fullResponse = "";
+aiChatStream(
+    "Explain what BoxLang is in one sentence",
+    ( chunk ) => {
+        var content = chunk.choices[1].delta.content ?: "";
+        fullResponse &= content;
+        print( content );
+    }
+);
+println( "\n\nFull accumulated response: " & fullResponse );
+println( "\n" );
+
+// Example 3: Streaming with multiple messages
+println( "=== Example 3: Multi-turn Conversation ===" );
+aiChatStream(
+    [
+        { role: "system", content: "You are a helpful coding assistant." },
+        { role: "user", content: "Write a simple hello world in BoxLang" }
+    ],
+    ( chunk ) => {
+        if( chunk.keyExists( "choices" ) && !chunk.choices.isEmpty() ) {
+            var delta = chunk.choices[1].delta;
+            if( delta.keyExists( "content" ) ) {
+                print( delta.content );
+            }
+        }
+    },
+    { temperature: 0.7, max_tokens: 200 }
+);
+println( "\n" );
+
+// Example 4: Track streaming metadata
+println( "=== Example 4: Track Metadata ===" );
+var chunkCount = 0;
+var startTime = getTickCount();
+
+aiChatStream(
+    "Count to 5 slowly",
+    ( chunk ) => {
+        chunkCount++;
+        var content = chunk.choices[1].delta.content ?: "";
+        print( content );
+        
+        // Check if streaming is complete
+        if( chunk.choices[1].keyExists( "finish_reason" ) && 
+            !isNull( chunk.choices[1].finish_reason ) ) {
+            var elapsedMs = getTickCount() - startTime;
+            println( "\n\nStreaming complete!" );
+            println( "Chunks received: " & chunkCount );
+            println( "Time elapsed: " & elapsedMs & "ms" );
+            println( "Finish reason: " & chunk.choices[1].finish_reason );
+        }
+    }
+);
+println( "\n" );
+
+// Example 5: Error handling
+println( "=== Example 5: Error Handling ===" );
+try {
+    aiChatStream(
+        "Tell me about BoxLang",
+        ( chunk ) => {
+            try {
+                var content = chunk.choices[1].delta.content ?: "";
+                print( content );
+            } catch( any e ) {
+                writeLog(
+                    text: "Error processing chunk: #e.message#",
+                    type: "error",
+                    log: "ai"
+                );
+            }
+        },
+        {},
+        { 
+            provider: "openai",
+            timeout: 60,
+            logRequest: true,
+            logResponse: true
+        }
+    );
+} catch( any e ) {
+    println( "Error during streaming: #e.message#" );
+}
+println( "\n" );
+
+println( "=== All Examples Complete ===" );
