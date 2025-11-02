@@ -133,7 +133,7 @@ shadowJar {
     mergeServiceFiles()
     destinationDirectory = file( "build/libs" )
 }
-build.finalizedBy( shadowJar )
+assemble.dependsOn( shadowJar )
 
 /**
  * Source Code Formatting
