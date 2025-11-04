@@ -23,6 +23,7 @@ class extends="BaseService"{
 		variables.chatURL = "https://api.perplexity.ai/chat/completions"
 		variables.name = "Perplexity"
 		defaults( {
+			// https://docs.perplexity.ai/getting-started/models
 			// according to the docs, this is the default model
 			"model" : "sonar"
 		} )
