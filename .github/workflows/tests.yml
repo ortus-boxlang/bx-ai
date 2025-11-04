@@ -50,14 +50,12 @@ jobs:
         uses: hoverkraft-tech/compose-action@v2.0.2
         with:
           compose-file: "./docker-compose.yml"
-          services: "ollama-test"
+          services: "ollama"
 
       - name: Wait for Ollama to be ready
         run: |
           # Wait for Ollama to be ready
           timeout 300 bash -c 'until curl -f http://localhost:11434/api/tags; do echo "Waiting for Ollama..."; sleep 5; done'
-          # Verify the model is available
-          curl -s http://localhost:11434/api/tags | grep -q "qwen2.5:0.5b" || echo "Model may not be ready yet, tests might fail"
 
       - name: Test Module
         run: |
