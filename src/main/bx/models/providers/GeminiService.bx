@@ -22,8 +22,9 @@ class extends="BaseService"{
 		variables.chatURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent"
 		variables.name = "Gemini"
 		defaults( {
+			// https://ai.google.dev/gemini-api/docs/quickstart
 			// according to the docs, this is the default model
-			"model" : "gemini-2.0-flash"
+			"model" : "gemini-2.5-flash"
 		} )
 	}
 
