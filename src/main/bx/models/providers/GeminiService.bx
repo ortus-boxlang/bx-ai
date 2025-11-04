@@ -78,14 +78,51 @@ class extends="BaseService"{
 			case "single": default:
 				return result.candidates.first().content.parts.first().text
 		}
+	}
 
-		/**
-		 * ---------------------------------------------------------------------------------------------------------
-		 * Tool Chains
-		 * ---------------------------------------------------------------------------------------------------------
-		 * TODO by Jacob here.
-		 */
+	/**
+	 * Gemini streaming chat request - overridden to use Gemini-specific streaming format
+	 * Gemini uses streamGenerateContent endpoint with ?alt=sse parameter
+	 * @see https://ai.google.dev/gemini-api/docs/text-generation#rest_5
+	 *
+	 * @chatRequest The ChatRequest object to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream
+	 */
+	@override
+	public function chatStream( required ChatRequest chatRequest, required function callback ){
+		// We need to pre-process the messages to conform to the Gemini API
+		var dataPacket = {
+			"contents": arguments.chatRequest
+				.getMessages()
+				.map( message -> {
+					return {
+						"role" : message.role == "system" ? "model" : "user",
+						"parts": [ {
+							"text": message.content
+						} ]
+					}
+				} )
+			}.append( arguments.chatRequest.getParams() )
 
+		// Tooling support
+		if( dataPacket.keyExists( "tools" ) ){
+			dataPacket.tools = dataPacket.tools.map( .getSchema )
+		}
+
+		// Update URL for Gemini streaming: use streamGenerateContent endpoint with alt=sse
+		var streamingURL = getChatUrl()
+			.replace( '%MODEL%', chatRequest.getModel() )
+			.replace( 'generateContent', 'streamGenerateContent' )
+			& '?key=#chatRequest.getApiKey()#&alt=sse';
+
+		// Set the streaming URL
+		variables.chatURL = streamingURL;
+
+		// No auth header for Gemini
+		arguments.chatRequest.setSendAuthHeader( false );
+
+		// Send it with streaming
+		sendStreamRequest( chatRequest, dataPacket, callback )
 	}
 
 }

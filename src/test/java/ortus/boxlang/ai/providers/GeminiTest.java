@@ -121,7 +121,11 @@ public class GeminiTest extends BaseIntegrationTest {
 				"Count to 3",
 				( chunk ) => {
 					chunks.append( chunk )
-					content = chunk.choices?.first()?.delta?.content ?: ""
+					// Print chunk structure to understand Gemini's format
+					println( "Chunk: " & jsonSerialize( chunk ) )
+					
+					// Gemini format: candidates[0].content.parts[0].text
+					content = chunk.candidates?.first()?.content?.parts?.first()?.text ?: ""
 					fullResponse &= content
 				}
 			)
@@ -144,15 +148,20 @@ public class GeminiTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 			chunkCount = 0
+			fullText = ""
 			aiChatStream(
 				"Say hello",
 				( chunk ) => {
 					chunkCount++
+					// Extract text using Gemini format
+					content = chunk.candidates?.first()?.content?.parts?.first()?.text ?: ""
+					fullText &= content
 				},
 				{},
 				{ provider: "gemini" }
 			)
 			println( "Total chunks received: " & chunkCount )
+			println( "Full text: " & fullText )
 			""",
 			context
 		);
@@ -160,5 +169,6 @@ public class GeminiTest extends BaseIntegrationTest {
 
 		// Verify callback was invoked
 		assertThat( variables.get( "chunkCount" ) ).isNotNull();
+		assertThat( variables.get( "fullText" ) ).isNotNull();
 	}
 }
