@@ -22,8 +22,9 @@ class extends="BaseService"{
 		variables.chatURL = "https://api.openai.com/v1/chat/completions"
 		variables.name = "OpenAI"
 		defaults( {
+			// https://platform.openai.com/docs/models
 			// according to the docs, this is the default model
-			"model" : "gpt-4-turbo"
+			"model" : "gpt-5-nano"
 		} )
 	}
 
