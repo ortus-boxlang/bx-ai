@@ -79,6 +79,17 @@ abstract class implements="IService" {
 	}
 
 	/**
+	 * Add a header to the service definition
+	 *
+	 * @name The name of the header
+	 * @value The value of the header
+	 */
+	BaseService function addHeader( required string name, required string value ){
+		variables.headers[ arguments.name ] = arguments.value;
+		return this;
+	}
+
+	/**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Interface Methods
 	 * ---------------------------------------------------------------------------------------------------------
@@ -93,17 +104,6 @@ abstract class implements="IService" {
 	 */
 	IService function configure( required any apiKey ){
 		variables.apiKey = arguments.apiKey;
-		return this;
-	}
-
-	/**
-	 * Add a header to the service definition
-	 *
-	 * @name The name of the header
-	 * @value The value of the header
-	 */
-	BaseService function addHeader( required string name, required string value ){
-		variables.headers[ arguments.name ] = arguments.value;
 		return this;
 	}
 
@@ -145,6 +145,12 @@ abstract class implements="IService" {
 		// Do a chat stream request
 		return chatStream( argumentCollection = arguments )
 	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Callers
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
 
 	/**
 	 * A chat method that sends messages to the provider.
@@ -242,6 +248,41 @@ abstract class implements="IService" {
 	}
 
 	/**
+	 * A chat stream method that sends messages to the provider and streams the response.
+	 * This method in this base class is based of OpenAI's standard.
+	 * If the provider does not support this standard, it should override this method.
+	 *
+	 * @chatRequest The ChatRequest object to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
+	 *
+	 * @throws ProviderError if the provider returns an error from the request
+	 *
+	 * @return void
+	 */
+	public function chatStream( required ChatRequest chatRequest, required function callback ){
+		// Build the packet according to the OpenAI standard
+		var dataPacket = {
+			"model"   : arguments.chatRequest.getModel(),
+			"messages": arguments.chatRequest.getMessages(),
+			"stream"  : true
+		}.append( arguments.chatRequest.getParams() )
+
+		// Tooling support
+		if( dataPacket.keyExists( "tools" ) ){
+			dataPacket.tools = dataPacket.tools.map( .getSchema )
+		}
+
+		// Send it with streaming
+		sendStreamRequest( chatRequest, dataPacket, callback )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
 	 * A generic HTTP proxy to send requests to the provider
 	 *
 	 * @chatRequest The ChatRequest object to use in the request
@@ -333,35 +374,6 @@ abstract class implements="IService" {
 	}
 
 	/**
-	 * A chat stream method that sends messages to the provider and streams the response.
-	 * This method in this base class is based of OpenAI's standard.
-	 * If the provider does not support this standard, it should override this method.
-	 *
-	 * @chatRequest The ChatRequest object to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @throws ProviderError if the provider returns an error from the request
-	 *
-	 * @return void
-	 */
-	public function chatStream( required ChatRequest chatRequest, required function callback ){
-		// Build the packet according to the OpenAI standard
-		var dataPacket = {
-			"model"   : arguments.chatRequest.getModel(),
-			"messages": arguments.chatRequest.getMessages(),
-			"stream"  : true
-		}.append( arguments.chatRequest.getParams() )
-
-		// Tooling support
-		if( dataPacket.keyExists( "tools" ) ){
-			dataPacket.tools = dataPacket.tools.map( .getSchema )
-		}
-
-		// Send it with streaming
-		sendStreamRequest( chatRequest, dataPacket, callback )
-	}
-
-	/**
 	 * A generic HTTP proxy to send streaming requests to the provider
 	 *
 	 * @chatRequest The ChatRequest object to use in the request
@@ -370,7 +382,11 @@ abstract class implements="IService" {
 	 *
 	 * @return void
 	 */
-	private function sendStreamRequest( required ChatRequest chatRequest, required struct dataPacket, required function callback ){
+	private function sendStreamRequest(
+		required ChatRequest chatRequest,
+		required struct dataPacket,
+		required function callback
+	 ){
 		// Announce the request
 		BoxAnnounce(
 			"onAIRequest",
@@ -425,7 +441,7 @@ abstract class implements="IService" {
 		}
 
 		// Check for HTTP errors
-		if( !chatResult.statusCode.startsWith( "2" ) ){
+		if( chatResult.statusCode >= 300 ){
 			var errorMessage = "HTTP Error #chatResult.statusCode#";
 			try {
 				var errorData = jsonDeserialize( chatResult.filecontent );

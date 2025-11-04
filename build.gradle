@@ -61,6 +61,17 @@ java {
 	withJavadocJar()
 }
 
+// Exclude main resources from IDE classpath to avoid class loading conflicts
+// Resources are still included in the JAR/build outputs
+sourceSets {
+	main {
+		resources {
+			// Empty the resources to exclude from IDE classpath
+			srcDirs = []
+		}
+	}
+}
+
 compileJava {
 	// Compiler Options
 	options.incremental = true
