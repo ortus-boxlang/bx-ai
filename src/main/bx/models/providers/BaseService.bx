@@ -1,11 +1,25 @@
 /**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
  * Base Service for AI Providers
  * This service provides a base implementation for AI providers
  * It is based on the Open AI standard, overridable by the provider
- * ----
+ *
  * All AI Providers must extend this service and implement the following methods:
  * - configure()
  * - invoke()
+ * - invokeStream()
  *
  * All providers have the following properties:
  * - apiKey                                   : The API key to use with the provider
@@ -422,13 +436,13 @@ abstract class implements="IService" {
 				// If we can't parse the error, use the raw response
 				errorMessage &= ": #chatResult.filecontent#";
 			}
-			
+
 			writeLog(
 				text: "Stream Request Error: #errorMessage#",
 				type: "error",
 				log : "ai"
 			)
-			
+
 			throw(
 				type   : "ProviderError",
 				message: errorMessage
@@ -437,7 +451,7 @@ abstract class implements="IService" {
 
 		// Process the streaming response
 		var streamContent = chatResult.filecontent;
-		
+
 		// Log the response if enabled
 		if( arguments.chatRequest.getLogResponse() ){
 			writeLog(
@@ -451,24 +465,24 @@ abstract class implements="IService" {
 		// OpenAI and most providers use SSE format: "data: {json}\n\n"
 		var lines = streamContent.split( "\n" );
 		var buffer = "";
-		
+
 		for( var line in lines ){
 			line = line.trim();
-			
+
 			// Skip empty lines
 			if( line.isEmpty() ){
 				continue;
 			}
-			
+
 			// Check if it's a data line
 			if( line.startsWith( "data: " ) ){
 				var jsonData = line.substring( 6 ).trim();
-				
+
 				// Check for stream end marker
 				if( jsonData == "[DONE]" ){
 					break;
 				}
-				
+
 				// Try to parse and send to callback
 				try {
 					var chunk = jsonDeserialize( jsonData );
@@ -483,8 +497,8 @@ abstract class implements="IService" {
 			}
 		}
 
-		BoxAnnounce( 
-			"onAIResponse", 
+		BoxAnnounce(
+			"onAIResponse",
 			{
 				"chatRequest" : arguments.chatRequest,
 				"provider"    : this,
