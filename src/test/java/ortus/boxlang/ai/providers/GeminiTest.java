@@ -121,9 +121,6 @@ public class GeminiTest extends BaseIntegrationTest {
 				"Count to 3",
 				( chunk ) => {
 					chunks.append( chunk )
-					// Print chunk structure to understand Gemini's format
-					println( "Chunk: " & jsonSerialize( chunk ) )
-					
 					// Gemini format: candidates[0].content.parts[0].text
 					content = chunk.candidates?.first()?.content?.parts?.first()?.text ?: ""
 					fullResponse &= content
