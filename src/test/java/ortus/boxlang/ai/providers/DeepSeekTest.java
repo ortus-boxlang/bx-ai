@@ -14,6 +14,8 @@
  */
 package ortus.boxlang.ai.providers;
 
+import static com.google.common.truth.Truth.assertThat;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,5 +50,58 @@ public class DeepSeekTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		// Asserts here
+	}
+
+	@DisplayName( "Test streaming chat with DeepSeek" )
+	@Test
+	public void testChatStream() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			chunks = []
+			fullResponse = ""
+			aiChatStream(
+				"Count to 3",
+				( chunk ) => {
+					chunks.append( chunk )
+					content = chunk.choices?.first()?.delta?.content ?: ""
+					fullResponse &= content
+				}
+			)
+			println( "Received " & chunks.len() & " chunks" )
+			println( "Full response: " & fullResponse )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Verify we received chunks
+		assertThat( variables.get( "chunks" ) ).isNotNull();
+		assertThat( variables.get( "fullResponse" ) ).isNotNull();
+	}
+
+	@DisplayName( "Test streaming with callback" )
+	@Test
+	public void testStreamingCallback() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			chunkCount = 0
+			aiChatStream(
+				"Say hello",
+				( chunk ) => {
+					chunkCount++
+				},
+				{},
+				{ provider: "deepseek" }
+			)
+			println( "Total chunks received: " & chunkCount )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Verify callback was invoked
+		assertThat( variables.get( "chunkCount" ) ).isNotNull();
 	}
 }
