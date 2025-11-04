@@ -25,12 +25,46 @@ class extends="BaseService"{
 		defaults( {
 			// according to the docs, this is the default model and tokens
 			// https://docs.anthropic.com/en/docs/about-claude/models/overview#model-aliases
-			"model" : "claude-sonnet-4-0",
+			"model" : "claude-sonnet-4-5",
 			"max_tokens": 1024,
 			// https://docs.anthropic.com/en/api/versioning
 
 		} )
 		addHeader( name: "anthropic-version", value: "2023-06-01" )
+	}
+
+	/**
+	 * Claude streaming chat request - overridden to use Claude-specific authentication
+	 *
+	 * @chatRequest The ChatRequest object to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream
+	 */
+	@override
+	public function chatStream( required ChatRequest chatRequest, required function callback ){
+		// No auth header, claude uses x-api-key
+		arguments.chatRequest
+			.setSendAuthHeader( false )
+			.addHeader( "x-api-key", chatRequest.getApiKey() )
+
+		// Build the packet according to Claude's API requirements with streaming
+		var dataPacket = {
+			"model"   : arguments.chatRequest.getModel(),
+			"messages": arguments.chatRequest.getChatMessage().getNonSystemMessages(),
+			"stream"  : true
+		}.append( arguments.chatRequest.getParams() )
+
+		// Do we have a system message? Claude supports it at the root
+		if( arguments.chatRequest.getChatMessage().hasSystemMessage() ){
+			dataPacket[ "system" ] = arguments.chatRequest.getChatMessage().getSystemMessage();
+		}
+
+		// Add tool support if tools are present
+		if( chatRequest.getParams()?.tools?.len() ) {
+			dataPacket[ "tools" ] = formatToolsForClaude( chatRequest.getParams().tools )
+		}
+
+		// Send it with streaming
+		sendStreamRequest( chatRequest, dataPacket, callback )
 	}
 
 	/**
