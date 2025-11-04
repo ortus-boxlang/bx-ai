@@ -83,6 +83,7 @@ Here is a matrix of the providers and if they support real-time tools.  Please k
 | DeepSeek  | ✅ |
 | Gemini    	| [Coming Soon]   |
 | Grok      	 | ✅ |
+| Ollama       | ✅ |
 | OpenAI       | ✅ |
 | Perplexity   | ✅ |
 
@@ -95,7 +96,7 @@ Here are the settings you can place in your `boxlang.json` file:
 	"modules" : {
 		"bxai" : {
 			"settings": {
-				// The default provider to use: openai, deepseek, gemini, grok, perplexity, etc
+				// The default provider to use: openai, claude, deepseek, gemini, grok, ollama, perplexity
 				"provider" : "openai",
 				// The default API Key for the provider
 				"apiKey" : "",
@@ -121,6 +122,43 @@ Here are the settings you can place in your `boxlang.json` file:
 	}
 }
 ```
+
+### Ollama Configuration
+
+**Ollama** allows you to run AI models locally on your machine. It's perfect for privacy, offline use, and cost savings.
+
+#### Setup Ollama
+
+1. **Install**: Download from [https://ollama.ai](https://ollama.ai)
+2. **Pull a model**: `ollama pull llama3.2` (or any supported model)
+3. **Start service**: Ollama runs on `http://localhost:11434` by default
+
+#### Configuration
+
+```json
+{
+	"modules": {
+		"bxai": {
+			"settings": {
+				"provider": "ollama",
+				"apiKey": "",  // Optional: for remote/secured Ollama instances
+				"chatURL": "http://localhost:11434",  // Default local instance
+				"defaultParams": {
+					"model": "llama3.2"  // Any Ollama model you have pulled
+				}
+			}
+		}
+	}
+}
+```
+
+#### Popular Ollama Models
+
+- `llama3.2` - Latest Llama model (recommended)
+- `llama3.2:1b` - Smaller, faster model
+- `codellama` - Code-focused model
+- `mistral` - High-quality general model
+- `phi3` - Microsoft's efficient model
 
 ## Return Formats
 
@@ -331,8 +369,8 @@ Here are some examples of streaming chat responses:
 
 ```js
 // Simple streaming chat
-aiChatStream( 
-    "Write a short story about a robot learning to paint", 
+aiChatStream(
+    "Write a short story about a robot learning to paint",
     ( chunk ) => {
         // OpenAI streaming format
         print( chunk.choices?.first()?.delta?.content ?: "" )
@@ -341,7 +379,7 @@ aiChatStream(
 
 // Streaming with accumulated response
 var fullResponse = ""
-aiChatStream( 
+aiChatStream(
     "Explain quantum computing in simple terms",
     ( chunk ) => {
         var content = chunk.choices?.first()?.delta?.content ?: ""
@@ -382,7 +420,7 @@ aiChatStream(
     ( chunk ) => {
         var content = chunk.choices?.first()?.delta?.content ?: ""
         print( content )
-        
+
         // Detect code block boundaries
         if( content.contains( "```" ) ) {
             if( inCodeBlock ) {
@@ -939,6 +977,42 @@ boxRegisterInterceptor( "onAIResponse", myResponseHandler );
 Visit the [GitHub repository](https://github.com/ortus-boxlang/bx-ai) for release notes. You can also file a bug report or improvement suggestion  via [Jira](https://ortussolutions.atlassian.net/secure/CreateIssueDetails!init.jspa?pid=13359&components=27149&issuetype=1).
 
 ----
+
+## Testing
+
+This module includes tests for all AI providers. To run the tests:
+
+```bash
+./gradlew test
+```
+
+### Ollama Testing
+
+For Ollama provider tests, you need to start the test Ollama service first:
+
+```bash
+# Start the Ollama test service
+docker-compose up -d ollama-test
+
+# Wait for it to be ready (this may take a few minutes for the first run)
+# The service will automatically pull the qwen2.5:0.5b model
+
+# Run the tests
+./gradlew test --tests "ortus.boxlang.ai.providers.OllamaTest"
+
+# Clean up when done
+docker-compose down -v
+```
+
+You can also use the provided test script:
+
+```bash
+./test-ollama.sh
+```
+
+This will start the service, verify it's working, and run a basic test.
+
+**Note**: The first time you run this, it will download the `qwen2.5:0.5b` model (~500MB), so it may take several minutes.
 
 ## Ortus Sponsors
 

@@ -29,6 +29,7 @@ class {
 		"deepseek",
 		"gemini",
 		"grok",
+		"ollama",
 		"openai",
 		"perplexity"
 	];
@@ -63,6 +64,9 @@ class {
 				break
 			case "grok":
 				oTargetService = new bxModules.bxai.models.providers.GrokService().configure( arguments.apiKey )
+				break
+			case "ollama":
+				oTargetService = new bxModules.bxai.models.providers.OllamaService().configure( arguments.apiKey )
 				break
 			case "openai" :
 				oTargetService = new bxModules.bxai.models.providers.OpenAIService().configure( arguments.apiKey )

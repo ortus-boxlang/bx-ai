@@ -1,0 +1,37 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=4
+      - OLLAMA_MAX_LOADED_MODELS=3
+      - OLLAMA_HOST=0.0.0.0:11434
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "ollama serve &
+      sleep 10
+      ollama pull qwen2.5:0.5b-instruct
+      wait"
+    restart: unless-stopped
+
+  webui:
+    image: ghcr.io/ollama-webui/ollama-webui:main
+    container_name: ollama-webui
+    ports:
+      - "3000:8080"
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_API_BASE_URL=http://ollama:11434/api
+      - WEBUI_AUTH=True
+      - WEBUI_ADMIN_USER=boxlang
+      - WEBUI_ADMIN_PASS=rocks
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+    name: ollama_data

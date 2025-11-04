@@ -1,0 +1,162 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ */
+class extends="BaseService"{
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		// Default to local Ollama instance
+		variables.chatURL = "http://localhost:11434/api/generate"
+		variables.name = "Ollama"
+
+		defaults( {
+			// Popular local models - users can override with any Ollama model
+			"model" : "qwen2.5:0.5b-instruct",
+			"stream": false  // Ollama supports both streaming and non-streaming
+		} )
+
+		// Ollama typically doesn't require auth headers for local instances
+		// But supports basic auth for remote/secured instances
+	}
+
+	/**
+	 * Ollama chat request - customized for Ollama's API format
+	 * @see https://github.com/ollama/ollama/blob/main/docs/api.md
+	 */
+	@override
+	public function chat( required ChatRequest chatRequest ){
+		// Ollama typically doesn't use auth headers for local instances
+		// But may use basic auth for remote instances
+		if( !arguments.chatRequest.getApiKey().isEmpty() ){
+			arguments.chatRequest.addHeader( "Authorization", "Basic #toBase64( arguments.chatRequest.getApiKey() )#" );
+		} else {
+			arguments.chatRequest.setSendAuthHeader( false );
+		}
+
+		// Build the packet according to Ollama's API format
+		var dataPacket = {
+			"model": arguments.chatRequest.getModel(),
+			"prompt": formatMessagesForOllama( arguments.chatRequest.getMessages() ),
+			"stream": false
+		}.append( arguments.chatRequest.getParams() )
+
+		// Send it
+		var result = sendRequest( chatRequest, dataPacket )
+
+		// If an error is returned, throw it
+		if( result.keyExists( "error" ) ){
+			writeLog(
+				text: result.error.toString(),
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "ProviderError",
+				message: result.error.toString()
+			);
+		}
+
+		// Determine return formats
+		switch( chatRequest.getReturnFormat() ){
+			case "all":
+				return result;
+			case "raw":
+				return result;
+			case "single": default:
+				return result.response ?: result.message?.content ?: "";
+		}
+	}
+
+	/**
+	 * Ollama streaming chat request - overridden for Ollama's streaming format
+	 *
+	 * @chatRequest The ChatRequest object to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream
+	 */
+	@override
+	public function chatStream( required ChatRequest chatRequest, required function callback ){
+		// Handle authentication for remote/secured Ollama instances
+		if( !arguments.chatRequest.getApiKey().isEmpty() ){
+			arguments.chatRequest.addHeader( "Authorization", "Basic #toBase64( arguments.chatRequest.getApiKey() )#" );
+		} else {
+			arguments.chatRequest.setSendAuthHeader( false );
+		}
+
+		// Build the packet according to Ollama's API format with streaming
+		var dataPacket = {
+			"model": arguments.chatRequest.getModel(),
+			"prompt": formatMessagesForOllama( arguments.chatRequest.getMessages() ),
+			"stream": true
+		}.append( arguments.chatRequest.getParams() )
+
+		// Send it with streaming
+		sendStreamRequest( chatRequest, dataPacket, callback )
+	}
+
+	/**
+	 * Format messages for Ollama's prompt-based format
+	 * Ollama uses a single prompt string rather than separate messages
+	 *
+	 * @messages Array of message objects with role and content
+	 * @return String formatted prompt
+	 */
+	private string function formatMessagesForOllama( required array messages ){
+		var prompt = "";
+
+		for( var message in arguments.messages ){
+			switch( message.role ){
+				case "system":
+					prompt &= "System: #message.content#\n\n";
+					break;
+				case "user":
+					prompt &= "User: #message.content#\n\n";
+					break;
+				case "assistant":
+					prompt &= "Assistant: #message.content#\n\n";
+					break;
+				default:
+					prompt &= "#message.content#\n\n";
+			}
+		}
+
+		// Add final prompt for assistant response
+		prompt &= "Assistant: ";
+
+		return prompt.trim();
+	}
+
+	/**
+	 * Override the chat URL setter to support custom Ollama hosts
+	 *
+	 * @url The base URL for the Ollama instance
+	 * @return This service instance for chaining
+	 */
+	public function setChatURL( required string url ){
+		// Ensure URL ends with the correct endpoint
+		if( !arguments.url.endsWith( "/api/generate" ) ){
+			if( arguments.url.endsWith( "/" ) ){
+				arguments.url &= "api/generate";
+			} else {
+				arguments.url &= "/api/generate";
+			}
+		}
+
+		variables.chatURL = arguments.url;
+		return this;
+	}
+
+}

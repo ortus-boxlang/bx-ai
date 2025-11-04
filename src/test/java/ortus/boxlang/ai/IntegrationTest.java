@@ -42,7 +42,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 	@DisplayName( "Can create a core provider" )
 	@Test
 	public void testCoreProviders() {
-		List<String> providers = List.of( "claude", "deepseek", "gemini", "grok", "openai", "perplexity" ); // Add more if needed
+		List<String> providers = List.of( "claude", "deepseek", "gemini", "grok", "ollama", "openai", "perplexity" ); // Add more if needed
 
 		for ( String provider : providers ) {
 			// Execute the runtime source with the current provider
