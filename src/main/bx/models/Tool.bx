@@ -135,11 +135,28 @@ class implements="ITool" {
 
     /**
      * Invoke the function with the provided arguments.
+	 *  If the result is a simple value, returns the string representation of the value.
+	 * If the result is a complex value, returns the JSON representation of the value.
      *
      * @args The arguments to pass to the function
+	 *
+	 * @return The result of the function as a string. If the result is null, returns "null".
      */
     public string function invoke( required struct args ){
-        return variables.callable( argumentCollection = args )
+        var results = variables.callable( argumentCollection = args )
+
+		// If null or empty, return empty string
+		if( results == null ){
+			return "null"
+		}
+
+		// If it's a simple value return it as a string
+		if( isSimpleValue( results ) ){
+			return toString( results )
+		}
+
+		// Otherwise, return the JSON representation
+		return jsonSerialize( results )
     }
 
 	/**

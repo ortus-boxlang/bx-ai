@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Automatic JSON serialization for tool calls that don't return strings
 - **Ollama Provider Support**: Complete integration with Ollama for local AI model execution
   - OllamaService.bx with support for local and remote Ollama instances
   - Default model configuration with qwen2.5:0.5b-instruct
