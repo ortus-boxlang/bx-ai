@@ -24,7 +24,7 @@ class extends="BaseService"{
 		defaults( {
 			// https://platform.openai.com/docs/models
 			// according to the docs, this is the default model
-			"model" : "gpt-5-nano"
+			"model" : "gpt-5-mini"
 		} )
 	}
 
