@@ -160,7 +160,7 @@ class implements="ITool" {
             results.required.append( param.name )
             results.properties[ param.name ] = {
                 "type": "string",
-                "description": variables.argDescriptions[ param.name ]
+                "description": variables.argDescriptions[ param.name ] ?: param.name
             };
         });
 
