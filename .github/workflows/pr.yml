@@ -25,6 +25,8 @@ jobs:
   # Format PR
   format_check:
     name: Checks Source Code Formatting
+    permissions:
+      contents: read
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout Repository
