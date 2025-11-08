@@ -23,6 +23,7 @@ jobs:
       GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
       PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
       CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false

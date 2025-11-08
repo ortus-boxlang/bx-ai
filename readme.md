@@ -55,6 +55,7 @@ The following are the AI providers supported by this module.  **Please note that
 - [Gemini](https://gemini.google.com/)
 - [Grok](https://grok.com/)
 - [OpenAI](https://www.openai.com/)
+- [OpenRouter](https://openrouter.ai/)
 - [Perplexity](https://docs.perplexity.ai/)
 
 > More providers and features are available in our `bx-aiplus` module.
@@ -85,6 +86,7 @@ Here is a matrix of the providers and if they support real-time tools.  Please k
 | Grok      	 | ✅ |
 | Ollama       | ✅ |
 | OpenAI       | ✅ |
+| OpenRouter   | ✅ |
 | Perplexity   | ✅ |
 
 ## Settings
@@ -96,7 +98,7 @@ Here are the settings you can place in your `boxlang.json` file:
 	"modules" : {
 		"bxai" : {
 			"settings": {
-				// The default provider to use: openai, claude, deepseek, gemini, grok, ollama, perplexity
+				// The default provider to use: openai, claude, deepseek, gemini, grok, ollama, openrouter, perplexity
 				"provider" : "openai",
 				// The default API Key for the provider
 				"apiKey" : "",
