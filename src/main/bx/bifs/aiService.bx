@@ -31,6 +31,7 @@ class {
 		"grok",
 		"ollama",
 		"openai",
+		"openrouter",
 		"perplexity"
 	];
 
@@ -70,6 +71,9 @@ class {
 				break
 			case "openai" :
 				oTargetService = new bxModules.bxai.models.providers.OpenAIService().configure( arguments.apiKey )
+				break
+			case "openrouter":
+				oTargetService = new bxModules.bxai.models.providers.OpenRouterService().configure( arguments.apiKey )
 				break
 			case "perplexity":
 				oTargetService = new bxModules.bxai.models.providers.PerplexityService().configure( arguments.apiKey )
