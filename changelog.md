@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- ChatMessage now has the following new methods:
+    - `format(bindings)` - Formats messages with provided bindings.
+    - `render()` - Renders messages using stored bindings.
+    - `bind( bindings )` - Binds variables to be used in message formatting.
+    - `getBindings(), setBindings( bindings )` - Getters and setters for bindings.
 - Detect API Keys by convention in `AIService()` BIF: `<PROVIDER>_API_KEY` from system settings
 - **OpenRouter Provider Support**: Full integration with OpenRouter AI services
 - Automatic JSON serialization for tool calls that don't return strings

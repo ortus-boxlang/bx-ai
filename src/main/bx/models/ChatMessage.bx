@@ -23,6 +23,11 @@ class{
 	 */
 	property name="messages" type="array" default=[];
 
+    /**
+     * A collection of bindings for the chat message
+     */
+    property name="bindings" type="struct" default={};
+
 	/**
 	 * CONSTANTS
 	 */
@@ -37,31 +42,69 @@ class{
 	 */
 	function init( any message ){
 		if( !isNull( arguments.message ) ){
-			this.add( message );
+			this.add( message )
 		}
-		return this;
+		return this
 	}
 
 	/**
 	 * Count how many messages we have
 	 */
 	numeric function count() {
-		return variables.messages.len();
+		return variables.messages.len()
 	}
 
 	/**
 	 * Clear all messages
 	 */
 	ChatMessage function clear() {
-		variables.messages = [];
-		return this;
+		variables.messages = []
+		return this
 	}
 
 	/**
 	 * Verifies if there is a system message already in the chat
 	 */
 	boolean function hasSystemMessage() {
-		return variables.messages.filter( message -> message?.role == 'system' ).len() > 0;
+		return variables.messages.filter( message -> message?.role == 'system' ).len() > 0
+	}
+
+	/**
+	 * Store bindings for later formatting/rendering
+	 *
+	 * @bindings A struct of key-value pairs to use for string replacement
+	 *
+	 * @return The chat message instance
+	 */
+	ChatMessage function bind( required struct bindings ) {
+		variables.bindings = arguments.bindings
+		return this
+	}
+
+	/**
+	 * Format the messages with the provided bindings using stringBind()
+	 *
+	 * @bindings A struct of key-value pairs to use for string replacement
+	 *
+	 * @return An array of formatted messages
+	 */
+	array function format( required struct bindings ) {
+		return variables.messages.map( message => {
+            var formattedMessage = duplicate( message );
+			if( isSimpleValue( formattedMessage.content ) ){
+				formattedMessage.content = stringBind( formattedMessage.content, bindings )
+			}
+			return formattedMessage;
+		} )
+	}
+
+	/**
+	 * Render the messages using the stored bindings
+	 *
+	 * @return An array of formatted messages using the stored bindings
+	 */
+	array function render() {
+		return format( variables.bindings )
 	}
 
 	/**
