@@ -49,6 +49,13 @@ class {
      */
     function invoke( string provider, any apiKey ) {
 
+         // By convention check if there is a <PROVIDER>_API_KEY setting override it
+        var conventionAPIKey = getSystemSetting( "#arguments.provider.ucase()#_API_KEY", "" );
+        if( isNull( arguments.apiKey ) && len( conventionAPIKey ) ){
+            arguments.apiKey = conventionAPIKey;
+        }
+
+        // Defaults from module settings
 		arguments.provider = arguments.provider ?: moduleRecord.settings.provider;
 		arguments.apiKey = arguments.apiKey ?: moduleRecord.settings.apiKey;
 

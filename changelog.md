@@ -11,45 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Detect API Keys by convention in `AIService()` BIF: `<PROVIDER>_API_KEY` from system settings
+- **OpenRouter Provider Support**: Full integration with OpenRouter AI services
 - Automatic JSON serialization for tool calls that don't return strings
 - **Ollama Provider Support**: Complete integration with Ollama for local AI model execution
-  - OllamaService.bx with support for local and remote Ollama instances
-  - Default model configuration with qwen2.5:0.5b-instruct
-  - No authentication required for local instances, basic auth support for remote
 - **Comprehensive Provider Test Suite**: Individual test files for each AI provider
-  - ClaudeTest.java with streaming override tests
-  - DeepSeekTest.java with provider-specific configurations
-  - GeminiTest.java with custom authentication handling
-  - GrokTest.java for X.AI's Grok models
-  - OllamaTest.java for local AI testing
-  - OpenAITest.java for OpenAI provider verification
-  - PerplexityTest.java for Perplexity AI integration
 - **Streaming Support Validation**: Verified aiChatStream() functionality across all providers
-  - Claude with custom streaming implementation
-  - Gemini with provider-specific streaming configuration
-  - All other providers inherit streaming from BaseService
 - **Docker Compose Testing Infrastructure**: Automated local development and CI/CD support
-  - docker-compose.yml with Ollama service and Web UI
-  - Automatic model pulling (qwen2.5:0.5b-instruct)
-  - Volume persistence for model storage
-  - Health checks and service dependencies
 - **Enhanced GitHub Actions Workflow**: Improved CI/CD pipeline with AI service support
-  - Integration with hoverkraft-tech/compose-action@v2.0.2
-  - Automated Ollama service startup for testing
-  - Proper service health checks and timeouts
-  - Environment variable management for all AI provider API keys
 - **BIF Reference Documentation**: Complete function reference table in README
-  - aiChat(), aiChatAsync(), aiChatRequest(), aiChatStream()
-  - aiMessage(), aiService(), aiTool()
-  - Parameter documentation and usage examples
 - **Comprehensive Event Documentation**: Complete event system documentation
-  - onAIRequest: Pre-request modification and validation
-  - onAIResponse: Post-response processing and modification
-  - onAIProviderRequest: Provider-specific request handling
-  - onAIProviderCreate: Provider instantiation customization
-  - onAIChatRequestCreate: Chat request object creation events
-  - onAIChatMessageCreate: Chat message object creation events
-  - Event data structures and usage examples
 
 ### Fixed
 
