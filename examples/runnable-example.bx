@@ -1,0 +1,127 @@
+/**
+ * Example demonstrating the AI Runnable interface
+ * Shows how to create and chain runnables for data transformation pipelines
+ */
+
+// Example 1: Simple transform runnable
+println( "=== Example 1: Simple Transform ===" )
+var uppercase = new src.main.bx.models.transformers.AiTransformRunnable(
+	fn = ( input ) => ucase( input )
+).withName( "Uppercase" )
+
+var result = uppercase.run( "hello world" )
+println( "Input: 'hello world'" )
+println( "Output: " & result )
+println()
+
+// Example 2: Chaining runnables
+println( "=== Example 2: Chaining Runnables ===" )
+var double = new src.main.bx.models.transformers.AiTransformRunnable(
+	fn = ( x ) => x * 2
+).withName( "Double" )
+
+var addTen = new src.main.bx.models.transformers.AiTransformRunnable(
+	fn = ( x ) => x + 10
+).withName( "Add Ten" )
+
+var chain = double.to( addTen )
+result = chain.run( 5 )
+println( "Input: 5" )
+println( "Pipeline: Double (5 * 2 = 10) -> Add Ten (10 + 10 = 20)" )
+println( "Output: " & result )
+println()
+
+// Example 3: Using transform() helper
+println( "=== Example 3: Transform Helper ===" )
+var pipeline = new src.main.bx.models.transformers.AiTransformRunnable(
+	fn = ( x ) => x + 1
+).withName( "Increment" )
+	.transform( ( x ) => x * x )
+
+result = pipeline.run( 4 )
+println( "Input: 4" )
+println( "Pipeline: Increment (4 + 1 = 5) -> Square (5 * 5 = 25)" )
+println( "Output: " & result )
+println()
+
+// Example 4: Complex chain with multiple steps
+println( "=== Example 4: Complex Pipeline ===" )
+var complexPipeline = new src.main.bx.models.transformers.AiTransformRunnable(
+	fn = ( x ) => x + 1
+).withName( "Add 1" )
+	.to( new src.main.bx.models.transformers.AiTransformRunnable(
+		fn = ( x ) => x * 2
+	).withName( "Multiply by 2" ) )
+	.transform( ( x ) => x - 5 )
+	.to( new src.main.bx.models.transformers.AiTransformRunnable(
+		fn = ( x ) => x * 10
+	).withName( "Multiply by 10" ) )
+
+result = complexPipeline.run( 10 )
+println( "Input: 10" )
+println( "Steps: Add 1 (11) -> Multiply by 2 (22) -> Subtract 5 (17) -> Multiply by 10 (170)" )
+println( "Output: " & result )
+println()
+
+// Example 5: Sequence with print
+println( "=== Example 5: Sequence Information ===" )
+var t1 = new src.main.bx.models.transformers.AiTransformRunnable(
+	fn = ( x ) => x * 2
+).withName( "Double" )
+
+var t2 = new src.main.bx.models.transformers.AiTransformRunnable(
+	fn = ( x ) => x + 10
+).withName( "Add Ten" )
+
+var t3 = new src.main.bx.models.transformers.AiTransformRunnable(
+	fn = ( x ) => x / 2
+).withName( "Halve" )
+
+var sequence = new src.main.bx.models.runnables.AiRunnableSequence( [ t1, t2, t3 ] )
+sequence.print()
+result = sequence.run( 5 )
+println( "Input: 5, Output: " & result )
+println()
+
+// Example 6: Streaming
+println( "=== Example 6: Streaming ===" )
+var streamable = new src.main.bx.models.transformers.AiTransformRunnable(
+	fn = ( x ) => x * 3
+).withName( "Triple" )
+
+println( "Streaming result:" )
+streamable.stream(
+	7,
+	( chunk, metadata ) => {
+		println( "  Chunk: " & chunk & " (step: " & metadata.step & ")" )
+	}
+)
+println()
+
+// Example 7: Parameters
+println( "=== Example 7: Parameter Management ===" )
+var paramTransform = new src.main.bx.models.transformers.AiTransformRunnable(
+	fn = ( x ) => x * 2
+)
+	.withName( "Configured Transform" )
+	.withParams( { temperature: 0.7, model: "gpt-4" } )
+
+println( "Name: " & paramTransform.getName() )
+var params = paramTransform.mergeParams( { model: "gpt-3.5", maxTokens: 100 } )
+println( "Merged params: " & serializeJSON( params ) )
+println()
+
+// Example 8: String transformation pipeline
+println( "=== Example 8: String Processing Pipeline ===" )
+var stringPipeline = new src.main.bx.models.transformers.AiTransformRunnable(
+	fn = ( s ) => trim( s )
+).withName( "Trim" )
+	.transform( ( s ) => ucase( s ) )
+	.transform( ( s ) => replace( s, " ", "_", "all" ) )
+
+result = stringPipeline.run( "  hello world  " )
+println( "Input: '  hello world  '" )
+println( "Output: '" & result & "'" )
+println()
+
+println( "=== Examples Complete ===" )
