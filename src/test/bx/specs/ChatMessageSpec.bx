@@ -49,7 +49,7 @@ class extends="testbox.system.BaseSpec"{
 				expect( json.len() ).toBeGT( 0 )
 				
 				// Verify JSON contains expected data
-				var data = deserializeJSON( json )
+				var data = jsonDeserialize( json )
 				expect( data ).toHaveKey( "messages" )
 				expect( data.messages ).toBeArray()
 				expect( data.messages.len() ).toBe( 2 )
@@ -90,7 +90,7 @@ class extends="testbox.system.BaseSpec"{
 
 			it( "can serialize empty messages", () => {
 				var json = chatMessage.toJson()
-				var data = deserializeJSON( json )
+				var data = jsonDeserialize( json )
 				
 				expect( data.messages ).toBeArray()
 				expect( data.messages.len() ).toBe( 0 )

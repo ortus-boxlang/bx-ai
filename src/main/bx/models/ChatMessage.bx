@@ -211,7 +211,7 @@ class{
 	 * @return A JSON string representation of the ChatMessage
 	 */
 	string function toJson() {
-		return serializeJSON( {
+		return jsonSerialize( {
 			"messages" = variables.messages,
 			"bindings" = variables.bindings
 		} );
@@ -225,7 +225,7 @@ class{
 	 * @return A new ChatMessage instance populated with the deserialized data
 	 */
 	static ChatMessage function fromJson( required string json ) {
-		var data = deserializeJSON( arguments.json );
+		var data = jsonDeserialize( arguments.json );
 		var instance = new ChatMessage();
 		
 		// Restore messages if present
