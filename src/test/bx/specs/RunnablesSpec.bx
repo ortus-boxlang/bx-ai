@@ -1,0 +1,233 @@
+class extends="testbox.system.BaseSpec"{
+
+	function run(){
+
+		describe( "AI Runnables", () => {
+
+			describe( "AiTransformRunnable", () => {
+
+				it( "can create and run a transform", () => {
+					var transform = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( input ) => ucase( input ) 
+					)
+					
+					var result = transform.run( "hello world" )
+					
+					expect( result ).toBe( "HELLO WORLD" )
+				} )
+
+				it( "can stream a transform", () => {
+					var transform = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( input ) => input * 2 
+					)
+					
+					var chunks = []
+					transform.stream( 
+						5, 
+						( chunk, metadata ) => {
+							chunks.append( chunk )
+						}
+					)
+					
+					expect( chunks.len() ).toBe( 1 )
+					expect( chunks[1] ).toBe( 10 )
+				} )
+
+				it( "can be named", () => {
+					var transform = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( x ) => x * 2 
+					)
+					
+					transform.withName( "Doubler" )
+					
+					expect( transform.getName() ).toBe( "Doubler" )
+				} )
+
+			} )
+
+			describe( "AiRunnableSequence", () => {
+
+				it( "can create and run a sequence", () => {
+					var double = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( input ) => input * 2 
+					)
+					var addTen = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( input ) => input + 10 
+					)
+					
+					var sequence = new src.main.bx.models.runnables.AiRunnableSequence( [ double, addTen ] )
+					
+					// 5 * 2 = 10, 10 + 10 = 20
+					var result = sequence.run( 5 )
+					
+					expect( result ).toBe( 20 )
+				} )
+
+				it( "can count steps", () => {
+					var t1 = new src.main.bx.models.transformers.AiTransformRunnable( fn = ( x ) => x )
+					var t2 = new src.main.bx.models.transformers.AiTransformRunnable( fn = ( x ) => x )
+					var t3 = new src.main.bx.models.transformers.AiTransformRunnable( fn = ( x ) => x )
+					
+					var sequence = new src.main.bx.models.runnables.AiRunnableSequence( [ t1, t2, t3 ] )
+					
+					expect( sequence.count() ).toBe( 3 )
+				} )
+
+				it( "can add steps with to()", () => {
+					var t1 = new src.main.bx.models.transformers.AiTransformRunnable( fn = ( x ) => x * 2 )
+					var t2 = new src.main.bx.models.transformers.AiTransformRunnable( fn = ( x ) => x + 5 )
+					var t3 = new src.main.bx.models.transformers.AiTransformRunnable( fn = ( x ) => x * 10 )
+					
+					var seq1 = new src.main.bx.models.runnables.AiRunnableSequence( [ t1, t2 ] )
+					var seq2 = seq1.to( t3 )
+					
+					expect( seq1.count() ).toBe( 2 )
+					expect( seq2.count() ).toBe( 3 )
+				} )
+
+				it( "can get step information", () => {
+					var t1 = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( x ) => x 
+					).withName( "First" )
+					
+					var t2 = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( x ) => x 
+					).withName( "Second" )
+					
+					var sequence = new src.main.bx.models.runnables.AiRunnableSequence( [ t1, t2 ] )
+					var steps = sequence.getSteps()
+					
+					expect( steps ).toBeArray()
+					expect( steps.len() ).toBe( 2 )
+					expect( steps[1].name ).toBe( "First" )
+					expect( steps[2].name ).toBe( "Second" )
+				} )
+
+				it( "can stream through the sequence", () => {
+					var double = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( x ) => x * 2 
+					)
+					var square = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( x ) => x * x 
+					)
+					
+					var sequence = new src.main.bx.models.runnables.AiRunnableSequence( [ double, square ] )
+					
+					var chunks = []
+					sequence.stream( 
+						3, 
+						( chunk, metadata ) => {
+							chunks.append( chunk )
+						}
+					)
+					
+					// 3 * 2 = 6, 6 * 6 = 36
+					expect( chunks.len() ).toBe( 1 )
+					expect( chunks[1] ).toBe( 36 )
+				} )
+
+				it( "can print sequence information", () => {
+					var t1 = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( x ) => x 
+					).withName( "Transform1" )
+					
+					var t2 = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( x ) => x 
+					).withName( "Transform2" )
+					
+					var sequence = new src.main.bx.models.runnables.AiRunnableSequence( [ t1, t2 ] )
+					var output = sequence.print()
+					
+					expect( output ).toInclude( "AiRunnableSequence" )
+					expect( output ).toInclude( "Transform1" )
+					expect( output ).toInclude( "Transform2" )
+				} )
+
+			} )
+
+			describe( "Chaining Operations", () => {
+
+				it( "can chain runnables with to()", () => {
+					var double = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( input ) => input * 2 
+					)
+					var addFive = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( input ) => input + 5 
+					)
+					
+					var chain = double.to( addFive )
+					
+					// 3 * 2 = 6, 6 + 5 = 11
+					var result = chain.run( 3 )
+					
+					expect( result ).toBe( 11 )
+				} )
+
+				it( "can use transform() helper", () => {
+					var double = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( input ) => input * 2 
+					)
+					
+					var chain = double.transform( ( x ) => x + 100 )
+					
+					// 5 * 2 = 10, 10 + 100 = 110
+					var result = chain.run( 5 )
+					
+					expect( result ).toBe( 110 )
+				} )
+
+				it( "can create complex chains", () => {
+					var result = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( x ) => x + 1 
+					)
+						.to( new src.main.bx.models.transformers.AiTransformRunnable( 
+							fn = ( x ) => x * 2 
+						) )
+						.transform( ( x ) => x - 5 )
+						.to( new src.main.bx.models.transformers.AiTransformRunnable( 
+							fn = ( x ) => x * 10 
+						) )
+						.run( 10 )
+					
+					// 10 + 1 = 11, 11 * 2 = 22, 22 - 5 = 17, 17 * 10 = 170
+					expect( result ).toBe( 170 )
+				} )
+
+			} )
+
+			describe( "Parameter Management", () => {
+
+				it( "can set and merge parameters", () => {
+					var transform = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( x ) => x * 2 
+					)
+					
+					transform.withParams( { temperature: 0.7, model: "gpt-4" } )
+					
+					var merged = transform.mergeParams( { model: "gpt-3.5", maxTokens: 100 } )
+					
+					expect( merged.temperature ).toBe( 0.7 )
+					expect( merged.model ).toBe( "gpt-3.5" ) // Runtime override
+					expect( merged.maxTokens ).toBe( 100 )
+				} )
+
+				it( "can chain parameter setting", () => {
+					var transform = new src.main.bx.models.transformers.AiTransformRunnable( 
+						fn = ( x ) => x * 2 
+					)
+						.withName( "Doubler" )
+						.withParams( { temperature: 0.5 } )
+					
+					expect( transform.getName() ).toBe( "Doubler" )
+					
+					var merged = transform.mergeParams()
+					expect( merged.temperature ).toBe( 0.5 )
+				} )
+
+			} )
+
+		} )
+
+	}
+
+}

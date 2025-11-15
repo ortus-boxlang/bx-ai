@@ -1,0 +1,145 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * A sequence of runnables that are executed in order.
+ * Each step's output becomes the input for the next step.
+ */
+class extends="AiBaseRunnable" {
+
+	/**
+	 * The array of runnable steps in this sequence
+	 */
+	property name="steps" type="array";
+
+	/**
+	 * Initialize a new runnable sequence
+	 *
+	 * @steps The array of runnable steps
+	 *
+	 * @return This sequence
+	 */
+	function init( required array steps ) {
+		variables.steps = arguments.steps;
+		return this;
+	}
+
+	/**
+	 * Add another runnable to the sequence
+	 * Creates a new sequence with the additional step
+	 *
+	 * @next The next runnable to add
+	 *
+	 * @return A new sequence with the additional step
+	 */
+	public IAiRunnable function to( required IAiRunnable next ) {
+		var newSteps = variables.steps.clone();
+		newSteps.append( arguments.next );
+		return new AiRunnableSequence( newSteps );
+	}
+
+	/**
+	 * Get the number of steps in this sequence
+	 *
+	 * @return The number of steps
+	 */
+	public numeric function count() {
+		return variables.steps.len();
+	}
+
+	/**
+	 * Get information about all steps in this sequence
+	 *
+	 * @return An array of step information structs
+	 */
+	public array function getSteps() {
+		var result = [];
+		var idx    = 1;
+
+		for ( var step in variables.steps ) {
+			var md = getMetadata( step );
+			result.append( {
+				index  : idx,
+				name   : step.getName(),
+				type   : structKeyExists( md, "fullName" ) ? md.fullName : ( md.name ?: "" ),
+				params : structKeyExists( step, "defaultParams" ) ? step.defaultParams : {},
+				step   : step
+			} );
+			idx++;
+		}
+
+		return result;
+	}
+
+	/**
+	 * Run all steps in sequence
+	 * Each step's output becomes the next step's input
+	 *
+	 * @input The initial input
+	 * @params Parameters to pass to each step
+	 *
+	 * @return The final output after all steps
+	 */
+	public any function run( required any input, struct params = {} ) {
+		var current = arguments.input;
+		for ( var step in variables.steps ) {
+			current = step.run( current, arguments.params );
+		}
+		return current;
+	}
+
+	/**
+	 * Stream through all steps
+	 * All steps except the last are run normally, the last step is streamed
+	 *
+	 * @input The initial input
+	 * @onChunk The callback for streaming chunks
+	 * @params Parameters to pass to each step
+	 */
+	public void function stream(
+		required any input,
+		required function onChunk,
+		struct params = {}
+	) {
+		var current   = arguments.input;
+		var lastIndex = variables.steps.len();
+
+		for ( var i = 1; i < lastIndex; i++ ) {
+			current = variables.steps[ i ].run( current, arguments.params );
+		}
+
+		variables.steps[ lastIndex ].stream( current, arguments.onChunk, arguments.params );
+	}
+
+	/**
+	 * Print a summary of this sequence to the output
+	 *
+	 * @return The printed text
+	 */
+	public string function print() {
+		var lines     = [];
+		var stepsInfo = getSteps();
+
+		lines.append( "AiRunnableSequence (" & count() & " steps)" );
+		for ( var s in stepsInfo ) {
+			lines.append(
+				"  [" & s.index & "] " & s.name & ( len( s.type ) ? " (" & s.type & ")" : "" )
+			);
+		}
+
+		var out = lines.toList( chr(10) );
+		writeOutput( out & chr(10) );
+		return out;
+	}
+
+}
