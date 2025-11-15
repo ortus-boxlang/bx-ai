@@ -38,6 +38,84 @@ class extends="testbox.system.BaseSpec"{
 				expect( chatMessage.getSystemMessage() ).toBe( "goodbye" )
 			} )
 
+			it( "can serialize to JSON using toJson()", () => {
+				chatMessage.add( "Hello world" )
+				chatMessage.add( { role: "assistant", content: "Hi there!" } )
+				
+				var json = chatMessage.toJson()
+				
+				expect( json ).notToBeNull()
+				expect( json ).toBeString()
+				expect( json.len() ).toBeGT( 0 )
+				
+				// Verify JSON contains expected data
+				var data = deserializeJSON( json )
+				expect( data ).toHaveKey( "messages" )
+				expect( data.messages ).toBeArray()
+				expect( data.messages.len() ).toBe( 2 )
+			} )
+
+			it( "can deserialize from JSON using fromJson()", () => {
+				var json = '{"messages":[{"role":"user","content":"Test message"}],"bindings":{}}'
+				var restored = new src.main.bx.models.ChatMessage().fromJson( json )
+				
+				expect( restored ).notToBeNull()
+				expect( restored.count() ).toBe( 1 )
+			} )
+
+			it( "can round-trip serialize and deserialize messages", () => {
+				chatMessage.add( "First message" )
+				chatMessage.add( { role: "assistant", content: "Second message" } )
+				chatMessage.add( { role: "system", content: "System prompt" } )
+				
+				var json = chatMessage.toJson()
+				var restored = new src.main.bx.models.ChatMessage().fromJson( json )
+				
+				expect( restored.count() ).toBe( 3 )
+				expect( restored.hasSystemMessage() ).toBeTrue()
+				expect( restored.getSystemMessage() ).toBe( "System prompt" )
+			} )
+
+			it( "can serialize and deserialize bindings", () => {
+				chatMessage.add( "Hello {name}" )
+				chatMessage.bind( { name: "World" } )
+				
+				var json = chatMessage.toJson()
+				var restored = new src.main.bx.models.ChatMessage().fromJson( json )
+				
+				expect( restored.count() ).toBe( 1 )
+				var rendered = restored.render()
+				expect( rendered[ 1 ].content ).toBe( "Hello World" )
+			} )
+
+			it( "can serialize empty messages", () => {
+				var json = chatMessage.toJson()
+				var data = deserializeJSON( json )
+				
+				expect( data.messages ).toBeArray()
+				expect( data.messages.len() ).toBe( 0 )
+				expect( data.bindings ).toBeStruct()
+			} )
+
+			it( "can deserialize empty JSON", () => {
+				var json = '{"messages":[],"bindings":{}}'
+				var restored = new src.main.bx.models.ChatMessage().fromJson( json )
+				
+				expect( restored.count() ).toBe( 0 )
+			} )
+
+			it( "can handle complex message structures in JSON", () => {
+				chatMessage.add( {
+					role: "user",
+					content: "Test with special chars: \"quotes\", 'apostrophes', and \nnewlines"
+				} )
+				
+				var json = chatMessage.toJson()
+				var restored = new src.main.bx.models.ChatMessage().fromJson( json )
+				
+				expect( restored.count() ).toBe( 1 )
+			} )
+
 		} )
 
 	}
