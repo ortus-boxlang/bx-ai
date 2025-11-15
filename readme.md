@@ -179,7 +179,7 @@ The AI module supports different return formats for the responses. You can speci
 | `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
 | `aiChatStream()` | Stream chat responses from AI provider | `messages`, `callback`, `params={}`, `options={}` | void | N/A |
-| `aiChatRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | ChatRequest Object | N/A |
+| `aiAiRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | AiRequestObject | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
@@ -217,9 +217,9 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 - `aiChatAsync( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get a BoxLang future back so you can build fluent asynchronous code pipelines.
 - `aiChatStream( messages, callback, struct params={}, struct options={} )` : This function will allow you to stream responses from the AI provider in real-time. A callback function is invoked for each chunk of data received.
 - `aiChatRequest( messages, struct params, struct options, struct headers)` - This allows you to compose a raw chat request that you can then later send to an AI service.  The return is a `ChatRequest` object that you can then send to the AI service.
-- `aiMessage( message )` - Allows you to build a message object that you can then use to send to the `aiChat()` or `aiChatRequest()` functions.  It allows you to fluently build up messages as well.
+- `aiMessage( message )` - Allows you to build a message object that you can then use to send to the `aiChat()` or `aiAiRequest()` functions.  It allows you to fluently build up messages as well.
 - `aiService( provider, apiKey )` - Creates a reference to an AI Service provider that you can then use to interact with the AI service.  This is useful if you want to create a service object and then use it multiple times.  You can pass in optional `provider` and `apiKey` to override the global settings.
-- `aiTool( name, description, callable)` - Creates a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiChatRequest()` functions.
+- `aiTool( name, description, callable)` - Creates a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiAiRequest()` functions.
 
 ## aiChat()/aiChatAsync() - Chat with the AI
 
@@ -464,9 +464,9 @@ The chunk data passed to the callback function follows the Server-Sent Events (S
 
 Different providers may have slightly different formats, so consult your provider's documentation for exact details.
 
-## aiChatRequest() - Compose a Chat Request
+## aiAiRequest() - Compose a Chat Request
 
-The `aiChatRequest()` function allows you to compose a raw chat request that you can then later send to an AI service.  The return is a `ChatRequest` object that you can then send to the AI service.
+The `aiAiRequest()` function allows you to compose a raw chat request that you can then later send to an AI service.  The return is a `ChatRequest` object that you can then send to the AI service.
 
 ```js
 aiChatRequest( messages, struct params, struct options, struct headers )
@@ -494,7 +494,7 @@ Here are the parameters:
     - `raw` : The raw response from the AI provider
 - `headers` : This is a struct of headers that can be used to send to the AI provider.
 
-### ChatRequest Properties
+### AiRequestProperties
 
 The `ChatRequest` object has several properties that you can use to interact with the request.  All of them have a getter and a setter.
 
@@ -513,7 +513,7 @@ The `ChatRequest` object has several properties that you can use to interact wit
 - `sendAuthHeader:boolean` : Send the API Key as an Authorization header. Default is `true`
 - `headers:struct` : The headers to send to the AI provider
 
-### ChatRequest Methods
+### AiRequestMethods
 
 The `ChatRequest` object has several methods that you can use to interact with the request apart from the aforementioned properties setters and getters.
 
@@ -533,11 +533,11 @@ Here are some examples of composing a chat request:
 
 ```js
 // Simple chat request
-chatRequest = aiChatRequest( "Write a haiku about recursion in programming." )
-response = aiService().invoke( chatRequest )
+aiRequest = aiChatRequest( "Write a haiku about recursion in programming." )
+response = aiService().invoke( aiRequest )
 
 // Advanced request
-chatRequest = aiChatRequest( "Write a haiku about recursion in programming.", {
+aiRequest = aiChatRequest( "Write a haiku about recursion in programming.", {
 		"model": "gpt-3.5-turbo",
 		"temperature": 0.5,
 		"max_tokens": 100
@@ -549,12 +549,12 @@ chatRequest = aiChatRequest( "Write a haiku about recursion in programming.", {
 		"logResponse": true,
 		"returnFormat": "raw"
 	} );
-response = aiService().invoke( chatRequest )
+response = aiService().invoke( aiRequest)
 ```
 
 ## aiMessage() - Build a Message Object
 
-This function allows you to build up messages that you can then use to send to the `aiChat()` or `aiChatRequest()` functions.  It allows you to fluently build up messages as well as it implements `onMissingMethod()`. Meaning that any method call that is not found in the `ChatMessage` object will be treated as `roled` message: `system( "message" ), user( "message" ), assistant( "message" )`.  This method returns a `ChatMessage` object.
+This function allows you to build up messages that you can then use to send to the `aiChat()` or `aiAiRequest()` functions.  It allows you to fluently build up messages as well as it implements `onMissingMethod()`. Meaning that any method call that is not found in the `ChatMessage` object will be treated as `roled` message: `system( "message" ), user( "message" ), assistant( "message" )`.  This method returns a `ChatMessage` object.
 
 This is also useful so you can keep track of your messages.
 
@@ -601,7 +601,7 @@ aiMessage()
 
 ### Examples
 
-Here are a few examples of building up messages and sending them to the `aiChat()` or `aiChatRequest()` functions:
+Here are a few examples of building up messages and sending them to the `aiChat()` or `aiAiRequest()` functions:
 
 ```js
 aiChat(
@@ -634,7 +634,7 @@ Here are some useful methods each provider implements and gets via the `BaseServ
 
 - `getName():string` : Get the name of the AI Service
 - `configure( apiKey ):IService` : Configure the service with an override API key
-- `invoke( chatRequest ):any` : Invoke the provider service with a ChatRequest object
+- `invoke( aiRequest ):any` : Invoke the provider service with a AiRequestobject
 - `getChatURL():string` : Get the chat URL of the provider
 - `setChatURL( url ):IService` : Set the chat URL of the provider
 - `defaults( struct params ):IService` : Set the default parameters for the provider
@@ -664,13 +664,13 @@ interface{
 	IService function configure( required any apiKey );
 
 	/**
-	 * Invoke the provider service with a ChatRequest object
+	 * Invoke the provider service with a AiRequestobject
 	 *
-	 * @chatRequest The ChatRequest object to send to the provider
+	 * @aiRequest The AiRequestobject to send to the provider
 	 *
 	 * @return The response from the service, which can be anything according to their specs: string, or struct, or whatever
 	 */
-	function invoke( required ChatRequest chatRequest );
+	function invoke( required AiRequest aiRequest );
 
 }
 ```
@@ -699,7 +699,7 @@ response = service.invoke(
 
 ## aiTool() - Create a Tool Object
 
-This function allows you to create a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiChatRequest()` functions.
+This function allows you to create a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiAiRequest()` functions.
 
 The `aiTool()` function has the following signature:
 
@@ -802,7 +802,7 @@ The BoxLang AI module emits several events throughout the AI processing lifecycl
 | `onAIResponse` | After receiving response from AI provider | `chatRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
 | `onAIProviderRequest` | When unsupported provider is requested | `provider`, `apiKey`, `service` | Custom provider registration |
 | `onAIProviderCreate` | After AI service provider is created | `provider` | Provider initialization, configuration |
-| `onAIChatRequestCreate` | After ChatRequest object is created | `chatRequest` | Request validation, modification |
+| `onAIRequestCreate` | After AiRequestobject is created | `chatRequest` | Request validation, modification |
 | `onAIChatMessageCreate` | After ChatMessage object is created | `chatMessage` | Message validation, formatting |
 
 ### Event Details
@@ -816,7 +816,7 @@ Fired before sending a request to the AI provider. This allows you to inspect or
 ```java
 {
     "dataPacket": {}, // The request payload being sent to the provider
-    "chatRequest": ChatRequest, // The ChatRequest object
+    "chatRequest": ChatRequest, // The AiRequestobject
     "provider": BaseService // The provider service instance
 }
 ```
@@ -841,7 +841,7 @@ Fired after receiving a response from the AI provider. This allows you to proces
 **Data Structure:**
 ```java
 {
-    "chatRequest": ChatRequest, // The original ChatRequest object
+    "chatRequest": ChatRequest, // The original AiRequestobject
     "response": {}, // The deserialized JSON response from the provider
     "rawResponse": {}, // The raw HTTP response object
     "provider": BaseService // The provider service instance
@@ -910,22 +910,22 @@ function onAIProviderCreate( required struct data ) {
 }
 ```
 
-#### onAIChatRequestCreate
+#### onAIRequestCreate
 
-Fired after a ChatRequest object is created.
+Fired after a AiRequestobject is created.
 
 **Data Structure:**
 
 ```java
 {
-    "chatRequest": ChatRequest // The created ChatRequest object
+    "chatRequest": AiRequest// The created AiRequestobject
 }
 ```
 
 **Example Usage:**
 
 ```java
-function onAIChatRequestCreate( required struct data ) {
+function onAIRequestCreate( required struct data ) {
     // Add default model if not specified
     if( !data.chatRequest.hasModel() ) {
         data.chatRequest.setModelIfEmpty( "gpt-4" );

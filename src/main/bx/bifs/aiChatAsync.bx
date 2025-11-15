@@ -28,7 +28,7 @@ class extends="aiChat"{
     /**
      * Initiate an AI chat against the default or custom AI Provider.
 	 * <p>
-	 * The messages can be a simple string, a struct representing a message or an array of messages or an actual ChatMessage object
+	 * The messages can be a simple string, a struct representing a message or an array of messages or an actual AiMessage object
 	 * <p>
 	 * The <code>params</code> are a struct of request params to pass to the provider for the model request according to the provider: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }.
 	 * You can also use default params in your Module configuration.
@@ -43,7 +43,7 @@ class extends="aiChat"{
 	 * <li>returnFormat:string - The return format of the response. The default is "single" message. Valid formats are: "single", "all", "raw"</li>
 	 * </ul>
 	 *
-	 * @messages The messages to pass into the required model. This depends on the provider. It can be a simple string, a struct representing a message or an array of messages or an actual ChatMessage object
+	 * @messages The messages to pass into the required model. This depends on the provider. It can be a simple string, a struct representing a message or an array of messages or an actual AiMessage object
 	 * @params A struct of request params to pass to the provider for the model request: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
 	 * @options A struct of request options to pass to the provider for the model request. Available options are: { provider:string, apiKey:string, returnFormat:string timeout:numeric, logResponse:boolean, logRequest:boolean }
 	 *

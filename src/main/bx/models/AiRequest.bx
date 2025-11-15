@@ -24,7 +24,7 @@ class{
 	/**
 	 * The original chat message object, in case we need to reference it
 	 */
-	property name="chatMessage" type="ChatMessage";
+	property name="aiMessage" type="AiMessage";
 
 	/**
 	 * The params struct to pass to the provider in the request
@@ -97,17 +97,17 @@ class{
 	/**
 	 * Constructor
 	 *
-	 * @chatMessage The messages to use for the chat request
+	 * @aiMessage The messages to use for the chat request
 	 * @params A set of request params to pass to the provider
 	 * @options A set of request options to pass to the provider
 	 */
 	function init(
-		ChatMessage chatMessage = new ChatMessage(),
+		aiMessage aiMessage = new aiMessage(),
 		struct params = {},
 		struct options = {}
 	){
-		variables.messages = arguments.chatMessage.getMessages();
-		variables.chatMessage = arguments.chatMessage;
+		variables.messages = arguments.aiMessage.getMessages();
+		variables.aiMessage = arguments.aiMessage;
 		variables.params = params;
 		variables.provider = options.provider ?: "";
 		variables.apiKey = options.apiKey ?: "";
@@ -128,7 +128,7 @@ class{
 	 * @name The name of the header
 	 * @value The value of the header
 	 */
-	ChatRequest function addHeader( required string name, required string value ){
+	AiRequest function addHeader( required string name, required string value ){
 		variables.headers[ arguments.name ] = arguments.value;
 		return this;
 	}
@@ -174,7 +174,7 @@ class{
 	 *
 	 * @return The chat request instance
 	 */
-	ChatRequest function setModelIfEmpty( required string model ){
+	AiRequest function setModelIfEmpty( required string model ){
 		if( !hasModel() ){
 			variables.model = arguments.model;
 		}
@@ -195,7 +195,7 @@ class{
 	 *
 	 * @return The chat request instance
 	 */
-	ChatRequest function setApiKeyIfEmpty( required string apiKey ){
+	AiRequest function setApiKeyIfEmpty( required string apiKey ){
 		if( !hasApiKey() ){
 			variables.apiKey = arguments.apiKey;
 		}
@@ -206,7 +206,7 @@ class{
 	 * Update the chat request params from the service defaults
 	 * but only if the params are not already set
 	 */
-	ChatRequest function mergeServiceParams( required struct params ){
+	AiRequest function mergeServiceParams( required struct params ){
 		variables.params.append( arguments.params, false );
 		return this;
 	}
@@ -215,7 +215,7 @@ class{
 	 * Update the chat request headers from the service defaults
 	 * but only if the headers are not already set
 	 */
-	ChatRequest function mergeServiceHeaders( required struct headers ){
+	AiRequest function mergeServiceHeaders( required struct headers ){
 		variables.headers.append( arguments.headers, false );
 		return this;
 	}

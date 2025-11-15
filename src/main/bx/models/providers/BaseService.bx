@@ -110,13 +110,13 @@ abstract class implements="IService" {
 	/**
 	 * Invoke a request to the provider
 	 *
-	 * @chatRequest The Chat request to send to the provider
+	 * @aiRequest The AI request to send to the provider
 	 *
-	 * @return The response from the provider according to the return format in the chat request
+	 * @return The response from the provider according to the return format in the AI request
 	 */
-	function invoke( required ChatRequest chatRequest ){
+	function invoke( required AiRequest aiRequest ){
 		// Model Selection if not set, use the default in the service, which should always be set
-		chatRequest
+		aiRequest
 			.setModelIfEmpty( variables.params.model )
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceParams( variables.params )
@@ -129,14 +129,14 @@ abstract class implements="IService" {
 	/**
 	 * Invoke a request to the provider in streaming mode
 	 *
-	 * @chatRequest The Chat request to send to the provider
+	 * @aiRequest The Chat request to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
 	 *
 	 * @return void
 	 */
-	function invokeStream( required ChatRequest chatRequest, required function callback ){
+	function invokeStream( required AiRequest aiRequest, required function callback ){
 		// Model Selection if not set, use the default in the service, which should always be set
-		chatRequest
+		aiRequest
 			.setModelIfEmpty( variables.params.model )
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceParams( variables.params )
@@ -157,18 +157,18 @@ abstract class implements="IService" {
 	 * This method in this base class is based of OpenAI's standard.
 	 * If the provider does not support this standard, it should override this method.
 	 *
-	 * @chatRequest The ChatRequest object to send to the provider
+	 * @aiRequest The AIRequest object to send to the provider
 	 *
 	 * @throws ProviderError if the provider returns an error from the request
 	 *
-	 * @return The response from the provider according to the return format in the chat request
+	 * @return The response from the provider according to the return format in the AI request
 	 */
-	public function chat( required ChatRequest chatRequest ){
+	public function chat( required AiRequest aiRequest ){
 		// Build the packet according to the OpenAI standard
 		var dataPacket = {
-			"model"   : arguments.chatRequest.getModel(),
-			"messages": arguments.chatRequest.getMessages()
-		}.append( arguments.chatRequest.getParams() )
+			"model"   : arguments.aiRequest.getModel(),
+			"messages": arguments.aiRequest.getMessages()
+		}.append( arguments.aiRequest.getParams() )
 
 		// Tooling support
 		if( dataPacket.keyExists( "tools" ) ){
@@ -176,7 +176,7 @@ abstract class implements="IService" {
 		}
 
 		// Send it
-		var result = sendRequest( chatRequest, dataPacket )
+		var result = sendRequest( aiRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
@@ -194,7 +194,7 @@ abstract class implements="IService" {
 		// Result returns, only if we are not using tool calls
 		if( !result.choices.first().message.keyExists( "tool_calls" ) ){
 			// Determine return formats
-			switch( chatRequest.getReturnFormat() ){
+			switch( aiRequest.getReturnFormat() ){
 				case "all":
 					return result.choices;
 				case "raw":
@@ -209,7 +209,7 @@ abstract class implements="IService" {
 		 * Tool Chains
 		 * ---------------------------------------------------------------------------------------------------------
 		 */
-		var newMessages = chatRequest.getMessages().map( message -> message );
+		var newMessages = aiRequest.getMessages().map( message -> message );
 		result.choices.each( ( choice, i ) => {
 
 			// add the tool call into our message history
@@ -217,7 +217,7 @@ abstract class implements="IService" {
 
 			// find the tool, invoke it, append the result to the chat history
 			choice.message.tool_calls.each( ( toolCall, i ) => {
-				chatRequest.getTool( toolCall.function.name )
+				aiRequest.getTool( toolCall.function.name )
 					.ifPresentOrElse(
 						tool => {
 							newMessages.append({
@@ -242,9 +242,9 @@ abstract class implements="IService" {
 			});
 		});
 
-		chatRequest.setMessages( newMessages )
+		aiRequest.setMessages( newMessages )
 
-		return chat( chatRequest )
+		return chat( aiRequest )
 	}
 
 	/**
@@ -252,20 +252,20 @@ abstract class implements="IService" {
 	 * This method in this base class is based of OpenAI's standard.
 	 * If the provider does not support this standard, it should override this method.
 	 *
-	 * @chatRequest The ChatRequest object to send to the provider
+	 * @aiRequest The aiRequest object to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
 	 *
 	 * @throws ProviderError if the provider returns an error from the request
 	 *
 	 * @return void
 	 */
-	public function chatStream( required ChatRequest chatRequest, required function callback ){
+	public function chatStream( required AiRequest aiRequest, required function callback ){
 		// Build the packet according to the OpenAI standard
 		var dataPacket = {
-			"model"   : arguments.chatRequest.getModel(),
-			"messages": arguments.chatRequest.getMessages(),
+			"model"   : arguments.aiRequest.getModel(),
+			"messages": arguments.aiRequest.getMessages(),
 			"stream"  : true
-		}.append( arguments.chatRequest.getParams() )
+		}.append( arguments.aiRequest.getParams() )
 
 		// Tooling support
 		if( dataPacket.keyExists( "tools" ) ){
@@ -273,7 +273,7 @@ abstract class implements="IService" {
 		}
 
 		// Send it with streaming
-		sendStreamRequest( chatRequest, dataPacket, callback )
+		sendStreamRequest( aiRequest, dataPacket, callback )
 	}
 
 	/**
@@ -285,24 +285,24 @@ abstract class implements="IService" {
 	/**
 	 * A generic HTTP proxy to send requests to the provider
 	 *
-	 * @chatRequest The ChatRequest object to use in the request
+	 * @aiRequest The aiRequest object to use in the request
 	 * @dataPacket The data packet to send to the provider
 	 *
 	 * @return The response from the provider as a struct
 	 */
-	private function sendRequest( required ChatRequest chatRequest, required struct dataPacket ){
+	private function sendRequest( required AiRequest aiRequest, required struct dataPacket ){
 		// Announce the request
 		BoxAnnounce(
 			"onAIRequest",
 			{
 				"dataPacket" : arguments.dataPacket,
-				"chatRequest": arguments.chatRequest,
+				"aiRequest": arguments.aiRequest,
 				"provider"   : this
 			}
 		);
 
 		// Log the request
-		if( arguments.chatRequest.getLogRequest() ){
+		if( arguments.aiRequest.getLogRequest() ){
 			writeLog(
 				text: "Request to AI Provider: #arguments.dataPacket.toString()#",
 				type: "info",
@@ -311,7 +311,7 @@ abstract class implements="IService" {
 		}
 
 		// Log the request to the console if enabled
-		if( arguments.chatRequest.getLogRequestToConsole() ){
+		if( arguments.aiRequest.getLogRequestToConsole() ){
 			println( "AI Request" )
 			println( arguments.dataPacket )
 		}
@@ -321,23 +321,23 @@ abstract class implements="IService" {
 			method  = "post"
 			result  = "chatResult"
 			charset = "utf-8"
-			timeout = arguments.chatRequest.getTimeout()
+			timeout = arguments.aiRequest.getTimeout()
 		{
 			bx:httpParam type="header" name="content-type" value="application/json";
 
 			// Auth Header ONLY if the provider requires it
 			// This is the default for OpenAI
 			// If the provider does not require it, set it to false
-			if( arguments.chatRequest.getSendAuthHeader() ){
-				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.chatRequest.getApiKey()#";
+			if( arguments.aiRequest.getSendAuthHeader() ){
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.aiRequest.getApiKey()#";
 			}
 
 			// Custom Headers
-			for( var thisHeader in arguments.chatRequest.getHeaders() ){
+			for( var thisHeader in arguments.aiRequest.getHeaders() ){
 				bx:httpParam
 					type="header"
 					name="#thisHeader#"
-					value="#arguments.chatRequest.getHeaders()[ thisHeader ]#";
+					value="#arguments.aiRequest.getHeaders()[ thisHeader ]#";
 			}
 
 			// Body Packet
@@ -345,7 +345,7 @@ abstract class implements="IService" {
 		}
 
 		// Final logging if the provider supports it
-		if( arguments.chatRequest.getLogResponse() ){
+		if( arguments.aiRequest.getLogResponse() ){
 			writeLog(
 				text: "Response from AI Provider: #chatResult.toString()#",
 				type: "info",
@@ -354,7 +354,7 @@ abstract class implements="IService" {
 		}
 
 		// Log the response to the console if enabled
-		if( arguments.chatRequest.getLogResponseToConsole() ){
+		if( arguments.aiRequest.getLogResponseToConsole() ){
 			println( "AI Response" )
 			println( chatResult )
 			println( "AI Deserialized Response" )
@@ -362,7 +362,7 @@ abstract class implements="IService" {
 		}
 
 		var iData = {
-			"chatRequest" = arguments.chatRequest,
+			"aiRequest" = arguments.aiRequest,
 			"response" = jsonDeserialize( chatResult.filecontent ),
 			"rawResponse"	: chatResult,
 			"provider" = this
@@ -376,14 +376,14 @@ abstract class implements="IService" {
 	/**
 	 * A generic HTTP proxy to send streaming requests to the provider
 	 *
-	 * @chatRequest The ChatRequest object to use in the request
+	 * @aiRequest The aiRequest object to use in the request
 	 * @dataPacket The data packet to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
 	 *
 	 * @return void
 	 */
 	private function sendStreamRequest(
-		required ChatRequest chatRequest,
+		required AiRequest aiRequest,
 		required struct dataPacket,
 		required function callback
 	 ){
@@ -392,13 +392,13 @@ abstract class implements="IService" {
 			"onAIRequest",
 			{
 				"dataPacket" : arguments.dataPacket,
-				"chatRequest": arguments.chatRequest,
+				"aiRequest": arguments.aiRequest,
 				"provider"   : this
 			}
 		);
 
 		// Log the request
-		if( arguments.chatRequest.getLogRequest() ){
+		if( arguments.aiRequest.getLogRequest() ){
 			writeLog(
 				text: "Request to AI Provider: #arguments.dataPacket.toString()#",
 				type: "info",
@@ -407,7 +407,7 @@ abstract class implements="IService" {
 		}
 
 		// Log the request to the console if enabled
-		if( arguments.chatRequest.getLogRequestToConsole() ){
+		if( arguments.aiRequest.getLogRequestToConsole() ){
 			println( "AI Request (Stream)" )
 			println( arguments.dataPacket )
 		}
@@ -417,23 +417,23 @@ abstract class implements="IService" {
 			method  = "post"
 			result  = "chatResult"
 			charset = "utf-8"
-			timeout = arguments.chatRequest.getTimeout()
+			timeout = arguments.aiRequest.getTimeout()
 		{
 			bx:httpParam type="header" name="content-type" value="application/json";
 
 			// Auth Header ONLY if the provider requires it
 			// This is the default for OpenAI
 			// If the provider does not require it, set it to false
-			if( arguments.chatRequest.getSendAuthHeader() ){
-				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.chatRequest.getApiKey()#";
+			if( arguments.aiRequest.getSendAuthHeader() ){
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.aiRequest.getApiKey()#";
 			}
 
 			// Custom Headers
-			for( var thisHeader in arguments.chatRequest.getHeaders() ){
+			for( var thisHeader in arguments.aiRequest.getHeaders() ){
 				bx:httpParam
 					type="header"
 					name="#thisHeader#"
-					value="#arguments.chatRequest.getHeaders()[ thisHeader ]#";
+					value="#arguments.aiRequest.getHeaders()[ thisHeader ]#";
 			}
 
 			// Body Packet
@@ -469,7 +469,7 @@ abstract class implements="IService" {
 		var streamContent = chatResult.filecontent;
 
 		// Log the response if enabled
-		if( arguments.chatRequest.getLogResponse() ){
+		if( arguments.aiRequest.getLogResponse() ){
 			writeLog(
 				text: "Stream Response from AI Provider: #streamContent.toString()#",
 				type: "info",
@@ -516,7 +516,7 @@ abstract class implements="IService" {
 		BoxAnnounce(
 			"onAIResponse",
 			{
-				"chatRequest" : arguments.chatRequest,
+				"aiRequest" : arguments.aiRequest,
 				"provider"    : this,
 				"streamComplete" : true
 			}

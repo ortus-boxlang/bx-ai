@@ -122,11 +122,11 @@ public class IntegrationTest extends BaseIntegrationTest {
 
 	@DisplayName( "It can create an ai chat request" )
 	@Test
-	public void testAiChatRequest() {
+	public void testAiAiRequest() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			aiRequest = aiChatRequest()
+			aiRequest = aiAiRequest()
 			""",
 			context
 		);

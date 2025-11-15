@@ -130,8 +130,8 @@ class {
 			"onAIResponse",
 			"onAIProviderRequest",
 			"onAIProviderCreate",
-			"onAIChatRequestCreate",
-			"onAIChatMessageCreate"
+			"onAIRequestCreate",
+			"onAIMessageCreate"
 		 ];
 	}
 

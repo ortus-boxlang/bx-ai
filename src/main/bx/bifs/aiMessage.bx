@@ -39,13 +39,13 @@ class {
      */
     function invoke( any message = null ) {
 		// If you are already a chat message object, just return it
-		if( arguments.message instanceof "ChatMessage" ){
+		if( arguments.message instanceof "AiMessage" ){
 			return arguments.message;
 		}
 
-		var oMessage = new bxModules.bxai.models.ChatMessage( argumentCollection: arguments )
+		var oMessage = new bxModules.bxai.models.AiMessage( argumentCollection: arguments )
 
-		BoxAnnounce( "onAIChatMessageCreate", { chatMessage: oMessage } );
+		BoxAnnounce( "onAIMessageCreate", { message: oMessage } );
 
 		return oMessage;
 

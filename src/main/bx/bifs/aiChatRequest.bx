@@ -50,15 +50,15 @@ class {
 			arguments.messages = aiMessage( arguments.messages );
 		}
 
-		var oChatRequest = new bxModules.bxai.models.ChatRequest(
+		var oAiRequest = new bxModules.bxai.models.AiRequest(
 			arguments.messages,
 			arguments.params,
 			arguments.options
 		 ).setHeaders( arguments.headers )
 
-		 BoxAnnounce( "onAIChatRequestCreate", { chatRequest: oChatRequest } );
+		 BoxAnnounce( "onAIRequestCreate", { aiRequest: oAiRequest } );
 
-		 return oChatRequest;
+		 return oAiRequest;
 	}
 
 }

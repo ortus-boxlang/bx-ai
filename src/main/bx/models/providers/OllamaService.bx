@@ -38,21 +38,21 @@ class extends="BaseService"{
 	 * @see https://github.com/ollama/ollama/blob/main/docs/api.md
 	 */
 	@override
-	public function chat( required ChatRequest chatRequest ){
+	public function chat( required AiRequest aiRequest ){
 		// Ollama typically doesn't use auth headers for local instances
 		// But may use basic auth for remote instances
-		if( !arguments.chatRequest.getApiKey().isEmpty() ){
-			arguments.chatRequest.addHeader( "Authorization", "Basic #toBase64( arguments.chatRequest.getApiKey() )#" );
+		if( !arguments.aiRequest.getApiKey().isEmpty() ){
+			arguments.aiRequest.addHeader( "Authorization", "Basic #toBase64( arguments.aiRequest.getApiKey() )#" );
 		} else {
-			arguments.chatRequest.setSendAuthHeader( false );
+			arguments.aiRequest.setSendAuthHeader( false );
 		}
 
 		// Build the packet according to Ollama's API format
 		var dataPacket = {
-			"model": arguments.chatRequest.getModel(),
-			"prompt": formatMessagesForOllama( arguments.chatRequest.getMessages() ),
+			"model": arguments.aiRequest.getModel(),
+			"prompt": formatMessagesForOllama( arguments.aiRequest.getMessages() ),
 			"stream": false
-		}.append( arguments.chatRequest.getParams() )
+		}.append( arguments.aiRequest.getParams() )
 
 		// Send it
 		var result = sendRequest( chatRequest, dataPacket )
@@ -84,24 +84,24 @@ class extends="BaseService"{
 	/**
 	 * Ollama streaming chat request - overridden for Ollama's streaming format
 	 *
-	 * @chatRequest The ChatRequest object to send to the provider
+	 * @aiRequest The AiRequestobject to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream
 	 */
 	@override
-	public function chatStream( required ChatRequest chatRequest, required function callback ){
+	public function chatStream( required AiRequest aiRequest, required function callback ){
 		// Handle authentication for remote/secured Ollama instances
-		if( !arguments.chatRequest.getApiKey().isEmpty() ){
-			arguments.chatRequest.addHeader( "Authorization", "Basic #toBase64( arguments.chatRequest.getApiKey() )#" );
+		if( !arguments.aiRequest.getApiKey().isEmpty() ){
+			arguments.aiRequest.addHeader( "Authorization", "Basic #toBase64( arguments.aiRequest.getApiKey() )#" );
 		} else {
-			arguments.chatRequest.setSendAuthHeader( false );
+			arguments.aiRequest.setSendAuthHeader( false );
 		}
 
 		// Build the packet according to Ollama's API format with streaming
 		var dataPacket = {
-			"model": arguments.chatRequest.getModel(),
-			"prompt": formatMessagesForOllama( arguments.chatRequest.getMessages() ),
+			"model": arguments.aiRequest.getModel(),
+			"prompt": formatMessagesForOllama( arguments.aiRequest.getMessages() ),
 			"stream": true
-		}.append( arguments.chatRequest.getParams() )
+		}.append( arguments.aiRequest.getParams() )
 
 		// Send it with streaming
 		sendStreamRequest( chatRequest, dataPacket, callback )

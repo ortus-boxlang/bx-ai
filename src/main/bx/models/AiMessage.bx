@@ -57,7 +57,7 @@ class{
 	/**
 	 * Clear all messages
 	 */
-	ChatMessage function clear() {
+	AiMessage function clear() {
 		variables.messages = []
 		return this
 	}
@@ -76,7 +76,7 @@ class{
 	 *
 	 * @return The chat message instance
 	 */
-	ChatMessage function bind( required struct bindings ) {
+	AiMessage function bind( required struct bindings ) {
 		variables.bindings = arguments.bindings
 		return this
 	}
@@ -124,7 +124,7 @@ class{
 	 *
 	 * @content The new system message
 	 */
-	ChatMessage function replaceSystemMessage( required string content ) {
+	AiMessage function replaceSystemMessage( required string content ) {
 		if( !hasSystemMessage() ){
 			return this;
 		}
@@ -154,7 +154,7 @@ class{
 	 *
 	 * @return The chat message instance
 	 */
-	ChatMessage function add( required any content ) {
+	AiMessage function add( required any content ) {
 		// Simple messages
 		if( IsSimpleValue( arguments.content ) ){
 
@@ -206,30 +206,30 @@ class{
 	}
 
 	/**
-	 * Serialize this ChatMessage instance to a JSON string
+	 * Serialize this AiMessage instance to a JSON string
 	 *
-	 * @return A JSON string representation of the ChatMessage
+	 * @return A JSON string representation of the AiMessage
 	 */
 	string function toJson() {
 		return jsonSerialize( variables.messages );
 	}
 
 	/**
-	 * Create a ChatMessage instance from a JSON string
+	 * Create a AiMessage instance from a JSON string
 	 *
 	 * @json The JSON string to deserialize
 	 *
-	 * @return A new ChatMessage instance populated with the deserialized data
+	 * @return A new AiMessage instance populated with the deserialized data
 	 */
-	static ChatMessage function fromJson( required string json ) {
+	static AiMessage function fromJson( required string json ) {
 		var messages = jsonDeserialize( arguments.json );
-		var instance = new ChatMessage();
-		
+		var instance = new AiMessage();
+
 		// Restore messages if present
 		if( isArray( messages ) ){
 			instance.add( messages );
 		}
-		
+
 		return instance;
 	}
 

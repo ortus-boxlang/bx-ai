@@ -32,10 +32,10 @@ class extends="BaseService"{
 	 * Gemini chat request
 	 */
 	@override
-	public function chat( required ChatRequest chatRequest ){
+	public function chat( required AiRequest aiRequest ){
 		// We need to pre-process the messages to conform to the Gemini API
 		var dataPacket = {
-			"contents": arguments.chatRequest
+			"contents": arguments.aiRequest
 				.getMessages()
 				.map( message -> {
 					return {
@@ -45,7 +45,7 @@ class extends="BaseService"{
 						} ]
 					}
 				} )
-			}.append( arguments.chatRequest.getParams() )
+			}.append( arguments.aiRequest.getParams() )
 
 		// Tooling support
 		if( dataPacket.keyExists( "tools" ) ){
@@ -55,7 +55,7 @@ class extends="BaseService"{
 		// Update URL according to the model
 		variables.chatURL = getChatUrl().replace( '%MODEL%', chatRequest.getModel() ) & '?key=#chatRequest.getApiKey()#';
 		// No auth header
-		arguments.chatRequest.setSendAuthHeader( false );
+		arguments.aiRequest.setSendAuthHeader( false );
 
 		// Send it
 		var result = sendRequest( chatRequest, dataPacket )
@@ -86,14 +86,14 @@ class extends="BaseService"{
 	 * Gemini uses streamGenerateContent endpoint with ?alt=sse parameter
 	 * @see https://ai.google.dev/gemini-api/docs/text-generation#rest_5
 	 *
-	 * @chatRequest The ChatRequest object to send to the provider
+	 * @aiRequest The AiRequestobject to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream
 	 */
 	@override
-	public function chatStream( required ChatRequest chatRequest, required function callback ){
+	public function chatStream( required AiRequest aiRequest, required function callback ){
 		// We need to pre-process the messages to conform to the Gemini API
 		var dataPacket = {
-			"contents": arguments.chatRequest
+			"contents": arguments.aiRequest
 				.getMessages()
 				.map( message -> {
 					return {
@@ -103,7 +103,7 @@ class extends="BaseService"{
 						} ]
 					}
 				} )
-			}.append( arguments.chatRequest.getParams() )
+			}.append( arguments.aiRequest.getParams() )
 
 		// Tooling support
 		if( dataPacket.keyExists( "tools" ) ){
@@ -120,7 +120,7 @@ class extends="BaseService"{
 		variables.chatURL = streamingURL;
 
 		// No auth header for Gemini
-		arguments.chatRequest.setSendAuthHeader( false );
+		arguments.aiRequest.setSendAuthHeader( false );
 
 		// Send it with streaming
 		sendStreamRequest( chatRequest, dataPacket, callback )
