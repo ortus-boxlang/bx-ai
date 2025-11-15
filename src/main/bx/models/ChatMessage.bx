@@ -205,4 +205,32 @@ class{
 		});
 	}
 
+	/**
+	 * Serialize this ChatMessage instance to a JSON string
+	 *
+	 * @return A JSON string representation of the ChatMessage
+	 */
+	string function toJson() {
+		return jsonSerialize( variables.messages );
+	}
+
+	/**
+	 * Create a ChatMessage instance from a JSON string
+	 *
+	 * @json The JSON string to deserialize
+	 *
+	 * @return A new ChatMessage instance populated with the deserialized data
+	 */
+	static ChatMessage function fromJson( required string json ) {
+		var messages = jsonDeserialize( arguments.json );
+		var instance = new ChatMessage();
+		
+		// Restore messages if present
+		if( isArray( messages ) ){
+			instance.add( messages );
+		}
+		
+		return instance;
+	}
+
 }
