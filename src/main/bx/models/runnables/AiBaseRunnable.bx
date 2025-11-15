@@ -36,13 +36,13 @@ abstract class implements="IAiRunnable" {
 	/**
 	 * Run the operation with the given input
 	 *
-	 * @input The input to process, null if none
+	 * @input The input to process, empty struct if none
 	 * @params Optional parameters to configure the operation, these override defaults
 	 *
 	 * @return The result of the operation
 	 */
 	abstract public any function run(
-		any input,
+		any input = {},
 		struct params = {}
 	);
 
@@ -50,12 +50,12 @@ abstract class implements="IAiRunnable" {
 	 * Stream the operation with the given input, calling onChunk for each chunk
 	 *
 	 * @onChunk The callback function to invoke for each chunk
-	 * @input The input to process
+	 * @input The input to process, empty struct if none
 	 * @params Optional parameters to configure the operation
 	 */
 	abstract public any function stream(
 		required function onChunk,
-        any input,
+        any input = {},
 		struct params = {}
 	);
 
@@ -120,7 +120,11 @@ abstract class implements="IAiRunnable" {
      *
      * @return The transformed result of the operation
      */
-    public any function transformAndRun(  required function transformer, any input, struct params = {} ) {
+    public any function transformAndRun(
+        required function transformer,
+        any input = {},
+        struct params = {}
+    ) {
         return this.transform( arguments.transformer )
             .run( arguments.input, arguments.params )
     }

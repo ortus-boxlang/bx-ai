@@ -20,18 +20,18 @@ class extends="AiBaseRunnable" {
 	/**
 	 * The array of runnable steps in this sequence
 	 */
-	property name="steps" type="array";
+	property name="steps" type="array" default=[];
 
 	/**
 	 * Initialize a new runnable sequence
 	 *
-	 * @steps The array of runnable steps
+	 * @steps The array of runnable steps, or none for an empty sequence
 	 *
 	 * @return This sequence
 	 */
-	function init( required array steps ) {
-		variables.steps = arguments.steps;
-		return this;
+	function init( array steps =[] ) {
+		variables.steps = arguments.steps
+		return this
 	}
 
 	/**
@@ -43,7 +43,7 @@ class extends="AiBaseRunnable" {
 	 * @return A new sequence with the additional step
 	 */
 	public IAiRunnable function to( required IAiRunnable next ) {
-		var newSteps = variables.steps.clone();
+		var newSteps = variables.steps.duplicate( false );
 		newSteps.append( arguments.next );
 		return new AiRunnableSequence( newSteps );
 	}
@@ -63,34 +63,26 @@ class extends="AiBaseRunnable" {
 	 * @return An array of step information structs
 	 */
 	public array function getSteps() {
-		var result = [];
-		var idx    = 1;
-
-		for ( var step in variables.steps ) {
-			var md = getMetadata( step );
-			result.append( {
-				index  : idx,
-				name   : step.getName(),
-				type   : structKeyExists( md, "fullName" ) ? md.fullName : ( md.name ?: "" ),
-				params : structKeyExists( step, "defaultParams" ) ? step.defaultParams : {},
-				step   : step
-			} );
-			idx++;
-		}
-
-		return result;
+        return variables.steps
+            .map( (  step, idx ) =>{
+                "index": idx,
+                "name": step.getName(),
+                "type": getMetadata( step ).path,
+                "params": step.getDefaultParams(),
+                "step": step
+            } )
 	}
 
 	/**
 	 * Run all steps in sequence
 	 * Each step's output becomes the next step's input
 	 *
-	 * @input The initial input
+	 * @input The initial input, empty struct if none
 	 * @params Parameters to pass to each step
 	 *
 	 * @return The final output after all steps
 	 */
-	public any function run( required any input, struct params = {} ) {
+	public any function run( any input = {}, struct params = {} ) {
 		var current = arguments.input;
 		for ( var step in variables.steps ) {
 			current = step.run( current, arguments.params );
@@ -102,13 +94,13 @@ class extends="AiBaseRunnable" {
 	 * Stream through all steps
 	 * All steps except the last are run normally, the last step is streamed
 	 *
-	 * @input The initial input
 	 * @onChunk The callback for streaming chunks
+	 * @input The initial input
 	 * @params Parameters to pass to each step
 	 */
 	public void function stream(
-		required any input,
 		required function onChunk,
+		any input = {},
 		struct params = {}
 	) {
 		var current   = arguments.input;
@@ -138,7 +130,7 @@ class extends="AiBaseRunnable" {
 		}
 
 		var out = lines.toList( chr(10) );
-		writeOutput( out & chr(10) );
+		println( out );
 		return out;
 	}
 

@@ -20,13 +20,13 @@ interface {
 	/**
 	 * Run the operation with the given input
 	 *
-	 * @input The input to process, null if none
+	 * @input The input to process
 	 * @params Optional parameters to configure the operation, these override defaults
 	 *
 	 * @return The result of the operation
 	 */
 	public any function run(
-		any input,
+		any input = {},
 		struct params = {}
 	);
 
@@ -39,7 +39,7 @@ interface {
 	 */
 	public any function stream(
 		required function onChunk,
-        any input,
+        any input = {},
 		struct params = {}
 	);
 
