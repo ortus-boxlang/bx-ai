@@ -53,12 +53,12 @@ class extends="BaseService"{
 		}
 
 		// Update URL according to the model
-		variables.chatURL = getChatUrl().replace( '%MODEL%', chatRequest.getModel() ) & '?key=#chatRequest.getApiKey()#';
+		variables.chatURL = getChatUrl().replace( '%MODEL%', aiRequest.getModel() ) & '?key=#aiRequest.getApiKey()#';
 		// No auth header
 		arguments.aiRequest.setSendAuthHeader( false );
 
 		// Send it
-		var result = sendRequest( chatRequest, dataPacket )
+		var result = sendRequest( aiRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
@@ -71,7 +71,7 @@ class extends="BaseService"{
 		// No Tool calls yet.
 
 		// Determine return formats
-		switch( chatRequest.getReturnFormat() ){
+		switch( aiRequest.getReturnFormat() ){
 			case "all":
 				return result.candidates;
 			case "raw":
@@ -112,9 +112,9 @@ class extends="BaseService"{
 
 		// Update URL for Gemini streaming: use streamGenerateContent endpoint with alt=sse
 		var streamingURL = getChatUrl()
-			.replace( '%MODEL%', chatRequest.getModel() )
+			.replace( '%MODEL%', aiRequest.getModel() )
 			.replace( 'generateContent', 'streamGenerateContent' )
-			& '?key=#chatRequest.getApiKey()#&alt=sse';
+			& '?key=#aiRequest.getApiKey()#&alt=sse';
 
 		// Set the streaming URL
 		variables.chatURL = streamingURL;
@@ -123,7 +123,7 @@ class extends="BaseService"{
 		arguments.aiRequest.setSendAuthHeader( false );
 
 		// Send it with streaming
-		sendStreamRequest( chatRequest, dataPacket, callback )
+		sendStreamRequest( aiRequest, dataPacket, callback )
 	}
 
 }
