@@ -35,10 +35,10 @@ public class RunnablesTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 			// Create a simple transform that uppercases the input
-			transform = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( input ) => ucase( input ) 
+			transform = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( input ) => ucase( input )
 			)
-			
+
 			result = transform.run( "hello world" )
 			""",
 			context
@@ -55,14 +55,14 @@ public class RunnablesTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 			// Create a transform runnable
-			transform = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( input ) => input * 2 
+			transform = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( input ) => input * 2
 			)
-			
+
 			// Collect streaming results
 			chunks = []
-			transform.stream( 
-				5, 
+			transform.stream(
+				5,
 				( chunk, metadata ) => {
 					chunks.append( chunk )
 				}
@@ -85,16 +85,16 @@ public class RunnablesTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 			// Create two transform runnables
-			double = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( input ) => input * 2 
+			double = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( input ) => input * 2
 			)
-			addTen = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( input ) => input + 10 
+			addTen = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( input ) => input + 10
 			)
-			
+
 			// Create a sequence
 			sequence = new src.main.bx.models.runnables.AiRunnableSequence( [ double, addTen ] )
-			
+
 			// Run the sequence: 5 * 2 = 10, 10 + 10 = 20
 			result = sequence.run( 5 )
 			""",
@@ -111,20 +111,20 @@ public class RunnablesTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			transform1 = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x * 2 
+			transform1 = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x * 2
 			)
-			transform2 = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x + 1 
+			transform2 = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x + 1
 			)
-			transform3 = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x * 3 
+			transform3 = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x * 3
 			)
-			
-			sequence = new src.main.bx.models.runnables.AiRunnableSequence( 
-				[ transform1, transform2, transform3 ] 
+
+			sequence = new src.main.bx.models.runnables.AiRunnableSequence(
+				[ transform1, transform2, transform3 ]
 			)
-			
+
 			stepCount = sequence.count()
 			""",
 			context
@@ -141,16 +141,16 @@ public class RunnablesTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 			// Create transforms
-			double = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( input ) => input * 2 
+			double = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( input ) => input * 2
 			)
-			addFive = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( input ) => input + 5 
+			addFive = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( input ) => input + 5
 			)
-			
+
 			// Chain them
 			chain = double.to( addFive )
-			
+
 			// Should be: 3 * 2 = 6, 6 + 5 = 11
 			result = chain.run( 3 )
 			""",
@@ -168,13 +168,13 @@ public class RunnablesTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 			// Create a base transform
-			double = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( input ) => input * 2 
+			double = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( input ) => input * 2
 			)
-			
+
 			// Use the transform helper to add another step
 			chain = double.transform( ( x ) => x + 100 )
-			
+
 			// Should be: 5 * 2 = 10, 10 + 100 = 110
 			result = chain.run( 5 )
 			""",
@@ -191,13 +191,13 @@ public class RunnablesTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			transform = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x * 2 
+			transform = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x * 2
 			)
-			
+
 			// Set a custom name
 			transform.withName( "Doubler" )
-			
+
 			name = transform.getName()
 			""",
 			context
@@ -213,13 +213,13 @@ public class RunnablesTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			transform = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x * 2 
+			transform = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x * 2
 			)
-			
+
 			// Set default params
 			transform.withParams( { temperature: 0.7, model: "gpt-4" } )
-			
+
 			// Merge with runtime params (runtime overrides default)
 			merged = transform.mergeParams( { model: "gpt-3.5", maxTokens: 100 } )
 			""",
@@ -240,16 +240,16 @@ public class RunnablesTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			t1 = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x 
+			t1 = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x
 			).withName( "First" )
-			
-			t2 = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x 
+
+			t2 = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x
 			).withName( "Second" )
-			
+
 			sequence = new src.main.bx.models.runnables.AiRunnableSequence( [ t1, t2 ] )
-			
+
 			steps = sequence.getSteps()
 			""",
 			context
@@ -267,24 +267,24 @@ public class RunnablesTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			t1 = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x * 2 
+			t1 = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x * 2
 			)
-			t2 = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x + 5 
+			t2 = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x + 5
 			)
-			t3 = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x * 10 
+			t3 = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x * 10
 			)
-			
+
 			// Start with 2 steps
 			seq1 = new src.main.bx.models.runnables.AiRunnableSequence( [ t1, t2 ] )
 			count1 = seq1.count()
-			
+
 			// Add a third step
 			seq2 = seq1.to( t3 )
 			count2 = seq2.count()
-			
+
 			// Original should be unchanged
 			countOriginal = seq1.count()
 			""",
@@ -304,24 +304,24 @@ public class RunnablesTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 			// Create transforms
-			double = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x * 2 
+			double = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x * 2
 			)
-			square = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x * x 
+			square = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x * x
 			)
-			
+
 			sequence = new src.main.bx.models.runnables.AiRunnableSequence( [ double, square ] )
-			
+
 			// Collect streaming results
 			chunks = []
-			sequence.stream( 
-				3, 
+			sequence.stream(
+				3,
 				( chunk, metadata ) => {
 					chunks.append( chunk )
 				}
 			)
-			
+
 			// Should be: 3 * 2 = 6, 6 * 6 = 36
 			""",
 			context
@@ -340,16 +340,16 @@ public class RunnablesTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			t1 = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x 
+			t1 = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x
 			).withName( "Transform1" )
-			
-			t2 = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x 
+
+			t2 = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x
 			).withName( "Transform2" )
-			
+
 			sequence = new src.main.bx.models.runnables.AiRunnableSequence( [ t1, t2 ] )
-			
+
 			output = sequence.print()
 			""",
 			context
@@ -370,18 +370,18 @@ public class RunnablesTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 			// Create a complex chain
-			result = new src.main.bx.models.transformers.AiTransformRunnable( 
-				fn = ( x ) => x + 1 
+			result = new src.main.bx.models.transformers.AiTransformRunnable(
+				transformer = ( x ) => x + 1
 			)
-				.to( new src.main.bx.models.transformers.AiTransformRunnable( 
-					fn = ( x ) => x * 2 
+				.to( new src.main.bx.models.transformers.AiTransformRunnable(
+					transformer = ( x ) => x * 2
 				) )
 				.transform( ( x ) => x - 5 )
-				.to( new src.main.bx.models.transformers.AiTransformRunnable( 
-					fn = ( x ) => x * 10 
+				.to( new src.main.bx.models.transformers.AiTransformRunnable(
+					transformer = ( x ) => x * 10
 				) )
 				.run( 10 )
-			
+
 			// Should be: 10 + 1 = 11, 11 * 2 = 22, 22 - 5 = 17, 17 * 10 = 170
 			""",
 			context
