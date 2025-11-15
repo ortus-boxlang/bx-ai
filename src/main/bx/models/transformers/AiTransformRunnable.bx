@@ -42,7 +42,7 @@ class extends="src.main.bx.models.runnables.AiBaseRunnable" {
 	 *
 	 * @return The transformed output
 	 */
-	public any function run( required any input, struct params = {} ) {
+	public any function run( any input = {}, struct params = {} ) {
 		return variables.transformer( arguments.input );
 	}
 
@@ -50,13 +50,13 @@ class extends="src.main.bx.models.runnables.AiBaseRunnable" {
 	 * Stream the transformation
 	 * Since transformation is synchronous, we run it and send the result as a chunk
 	 *
-	 * @input The input to transform
 	 * @onChunk The callback to invoke with the result
+	 * @input The input to transform
 	 * @params Optional parameters
 	 */
 	public void function stream(
-		required any input,
 		required function onChunk,
+		any input = {},
 		struct params = {}
 	) {
 		var out = run( arguments.input, arguments.params );
