@@ -126,7 +126,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			aiRequest = aiAiRequest()
+			aiRequest = aiChatRequest()
 			""",
 			context
 		);

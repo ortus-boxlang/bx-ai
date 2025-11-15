@@ -41,10 +41,13 @@ abstract class implements="IAiRunnable" {
 	 *
 	 * @return The result of the operation
 	 */
-	abstract public any function run(
+	public any function run(
 		any input = {},
 		struct params = {}
-	);
+	){
+        // Abstract method - to be implemented by subclasses
+        throw( type: "NotImplementedError", message: "The 'run' method must be implemented by subclasses of AiBaseRunnable." );
+    }
 
 	/**
 	 * Stream the operation with the given input, calling onChunk for each chunk
@@ -53,11 +56,14 @@ abstract class implements="IAiRunnable" {
 	 * @input The input to process, empty struct if none
 	 * @params Optional parameters to configure the operation
 	 */
-	abstract public any function stream(
+	public any function stream(
 		required function onChunk,
         any input = {},
 		struct params = {}
-	);
+	){
+        // Abstract method - to be implemented by subclasses
+        throw( type: "NotImplementedError", message: "The 'stream' method must be implemented by subclasses of AiBaseRunnable." );
+    }
 
     /**
 	 * ---------------------------------------------------------------------------------------------------------
