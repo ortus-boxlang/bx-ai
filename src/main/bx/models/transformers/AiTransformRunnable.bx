@@ -1,0 +1,66 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * A runnable that applies a transformation function to the input.
+ * Useful for data transformation and mapping operations in a pipeline.
+ */
+class extends="src.main.bx.models.runnables.AiBaseRunnable" {
+
+	/**
+	 * The transformation function to apply
+	 */
+	property name="fn" type="function";
+
+	/**
+	 * Initialize a new transform runnable
+	 *
+	 * @fn The transformation function to apply
+	 *
+	 * @return This runnable
+	 */
+	function init( required function fn ) {
+		variables.fn = arguments.fn;
+		return this;
+	}
+
+	/**
+	 * Run the transformation function on the input
+	 *
+	 * @input The input to transform
+	 * @params Optional parameters (unused in transform)
+	 *
+	 * @return The transformed output
+	 */
+	public any function run( required any input, struct params = {} ) {
+		return variables.fn( arguments.input );
+	}
+
+	/**
+	 * Stream the transformation
+	 * Since transformation is synchronous, we run it and send the result as a chunk
+	 *
+	 * @input The input to transform
+	 * @onChunk The callback to invoke with the result
+	 * @params Optional parameters
+	 */
+	public void function stream(
+		required any input,
+		required function onChunk,
+		struct params = {}
+	) {
+		var out = run( arguments.input, arguments.params );
+		arguments.onChunk( out, { step : "transform" } );
+	}
+
+}
