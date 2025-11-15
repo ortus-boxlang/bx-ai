@@ -20,17 +20,17 @@ class extends="src.main.bx.models.runnables.AiBaseRunnable" {
 	/**
 	 * The transformation function to apply
 	 */
-	property name="fn" type="function";
+	property name="transformer" type="function";
 
 	/**
 	 * Initialize a new transform runnable
 	 *
-	 * @fn The transformation function to apply
+	 * @transformer The transformation function to apply
 	 *
 	 * @return This runnable
 	 */
-	function init( required function fn ) {
-		variables.fn = arguments.fn;
+	function init( required function transformer ) {
+		variables.transformer = arguments.transformer;
 		return this;
 	}
 
@@ -43,7 +43,7 @@ class extends="src.main.bx.models.runnables.AiBaseRunnable" {
 	 * @return The transformed output
 	 */
 	public any function run( required any input, struct params = {} ) {
-		return variables.fn( arguments.input );
+		return variables.transformer( arguments.input );
 	}
 
 	/**

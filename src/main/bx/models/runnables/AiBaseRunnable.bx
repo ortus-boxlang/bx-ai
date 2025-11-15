@@ -27,57 +27,103 @@ abstract class implements="IAiRunnable" {
 	 */
 	property name="defaultParams" type="struct" default={};
 
+    /**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Interface Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
 	/**
 	 * Run the operation with the given input
-	 * Must be implemented by subclasses
 	 *
-	 * @input The input to process
-	 * @params Optional parameters to configure the operation
+	 * @input The input to process, null if none
+	 * @params Optional parameters to configure the operation, these override defaults
 	 *
 	 * @return The result of the operation
 	 */
 	abstract public any function run(
-		required any input,
+		any input,
 		struct params = {}
 	);
 
 	/**
 	 * Stream the operation with the given input, calling onChunk for each chunk
-	 * Must be implemented by subclasses
 	 *
-	 * @input The input to process
 	 * @onChunk The callback function to invoke for each chunk
+	 * @input The input to process
 	 * @params Optional parameters to configure the operation
 	 */
-	abstract public void function stream(
-		required any input,
+	abstract public any function stream(
 		required function onChunk,
+        any input,
 		struct params = {}
 	);
+
+    /**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Helper Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
 
 	/**
 	 * Chain this runnable with another runnable
 	 * Creates a sequence that will execute this runnable followed by the next
+     *
+     * Example:
+     * ```
+     * var runnable1 = new SomeAiRunnable();
+     * var runnable2 = new AnotherAiRunnable();
+     * var sequence = runnable1.to( runnable2 );
+     * var result = sequence.run( inputData );
+     * ```
+     *
+     * In this example, `runnable1` is executed first, and its output is passed as input to `runnable2`.
+     * The final result is obtained from `runnable2`.
 	 *
 	 * @next The next runnable to execute
 	 *
-	 * @return A new AiRunnableSequence containing both runnables
+	 * @return A new AiRunnableSequence containing both runnables in order
 	 */
 	public IAiRunnable function to( required IAiRunnable next ) {
-		return new AiRunnableSequence( [ this, arguments.next ] );
+		return new AiRunnableSequence( [ this, arguments.next ] )
 	}
 
 	/**
 	 * Apply a transformation function after this runnable
 	 * Creates a sequence with a transform runnable
+     *
+     * Example:
+     * ```
+     * var runnable = new SomeAiRunnable()
+     * var transformedRunnable = runnable.transform( input => input.ucase() )
+     * var finalResult = transformedRunnable.run( inputData )
+     * ```
+     *
+     * In this example, the output of `runnable` is transformed to uppercase by the provided function before being returned as `finalResult`.
+     * This allows for easy post-processing of results.
 	 *
-	 * @fn The transformation function to apply
+	 * @transformer The transformation function to apply
 	 *
 	 * @return A new runnable sequence with the transform step
 	 */
-	public IAiRunnable function transform( required function fn ) {
-		return this.to( new src.main.bx.models.transformers.AiTransformRunnable( fn = arguments.fn ) );
+	public IAiRunnable function transform( required function transformer ) {
+		return this.to( new src.main.bx.models.transformers.AiTransformRunnable( arguments.transformer ) )
 	}
+
+    /**
+     * Apply a transformation function and run in one step
+     * Combines transform() and run() for convenience
+     *
+     * @transformer The transformation function to apply
+     * @input The input to process
+     * @params Optional parameters to configure the operation
+     *
+     * @return The transformed result of the operation
+     */
+    public any function transformAndRun(  required function transformer, any input, struct params = {} ) {
+        return this.transform( arguments.transformer )
+            .run( arguments.input, arguments.params )
+    }
 
 	/**
 	 * Set the name of this runnable
@@ -87,8 +133,8 @@ abstract class implements="IAiRunnable" {
 	 * @return This runnable for chaining
 	 */
 	public AiBaseRunnable function withName( required string name ) {
-		variables.name = arguments.name;
-		return this;
+		variables.name = arguments.name
+		return this
 	}
 
 	/**
@@ -99,18 +145,10 @@ abstract class implements="IAiRunnable" {
 	 */
 	public string function getName() {
 		if ( len( variables.name ) ) {
-			return variables.name;
+			return variables.name
 		}
 
-		var md = getMetadata( this );
-		if ( structKeyExists( md, "name" ) && len( md.name ) ) {
-			return md.name;
-		}
-		if ( structKeyExists( md, "fullName" ) && len( md.fullName ) ) {
-			return md.fullName;
-		}
-
-		return "IAiRunnable";
+		return getMetadata( this ).name
 	}
 
 	/**
