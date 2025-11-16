@@ -110,7 +110,7 @@ class extends="AiBaseRunnable" {
 			current = variables.steps[ i ].run( current, arguments.params );
 		}
 
-		variables.steps[ lastIndex ].stream( current, arguments.onChunk, arguments.params );
+		variables.steps[ lastIndex ].stream( arguments.onChunk, current, arguments.params );
 	}
 
 	/**
@@ -129,7 +129,7 @@ class extends="AiBaseRunnable" {
 			);
 		}
 
-		var out = lines.toList( chr(10) );
+		var out = lines.toList( char( 10 ) );
 		println( out );
 		return out;
 	}

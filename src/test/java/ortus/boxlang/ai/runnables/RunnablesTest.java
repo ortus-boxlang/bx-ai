@@ -20,6 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
+import ortus.boxlang.runtime.scopes.Key;
 
 /**
  * Integration tests for AI Runnable interfaces and classes.
@@ -62,20 +63,20 @@ public class RunnablesTest extends BaseIntegrationTest {
 			// Collect streaming results
 			chunks = []
 			transform.stream(
-				5,
 				( chunk, metadata ) => {
 					chunks.append( chunk )
-				}
+				},
+				5
 			)
 			""",
 			context
 		);
 		// @formatter:on
 
-		var chunks = variables.getAsArray( result );
+		var chunks = variables.getAsArray( Key.of( "chunks" ) );
 		assertThat( chunks ).isNotNull();
 		assertThat( chunks.size() ).isEqualTo( 1 );
-		assertThat( chunks.get( 0 ) ).isEqualTo( 10 );
+		assertThat( chunks.get( 0 ).toString() ).isEqualTo( "10" );
 	}
 
 	@DisplayName( "Can create a runnable sequence" )
@@ -102,7 +103,7 @@ public class RunnablesTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		assertThat( variables.get( "result" ) ).isEqualTo( 20 );
+		assertThat( variables.get( "result" ).toString() ).isEqualTo( "20" );
 	}
 
 	@DisplayName( "Runnable sequence can count steps" )
@@ -158,7 +159,7 @@ public class RunnablesTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		assertThat( variables.get( "result" ) ).isEqualTo( 11 );
+		assertThat( variables.get( "result" ).toString() ).isEqualTo( "11" );
 	}
 
 	@DisplayName( "Can use transform() helper method" )
@@ -182,7 +183,7 @@ public class RunnablesTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		assertThat( variables.get( "result" ) ).isEqualTo( 110 );
+		assertThat( variables.get( "result" ).toString() ).isEqualTo( "110" );
 	}
 
 	@DisplayName( "Can set and get name on runnable" )
@@ -227,9 +228,9 @@ public class RunnablesTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var merged = variables.getAsStruct( result );
+		var merged = variables.getAsStruct( Key.of( "merged" ) );
 		assertThat( merged ).isNotNull();
-		assertThat( merged.get( "temperature" ) ).isEqualTo( 0.7 );
+		assertThat( merged.get( "temperature" ).toString() ).isEqualTo( "0.7" );
 		assertThat( merged.get( "model" ) ).isEqualTo( "gpt-3.5" ); // Runtime override
 		assertThat( merged.get( "maxTokens" ) ).isEqualTo( 100 );
 	}
@@ -256,7 +257,7 @@ public class RunnablesTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var steps = variables.getAsArray( result );
+		var steps = variables.getAsArray( Key.of( "steps" ) );
 		assertThat( steps ).isNotNull();
 		assertThat( steps.size() ).isEqualTo( 2 );
 	}
@@ -316,10 +317,10 @@ public class RunnablesTest extends BaseIntegrationTest {
 			// Collect streaming results
 			chunks = []
 			sequence.stream(
-				3,
 				( chunk, metadata ) => {
 					chunks.append( chunk )
-				}
+				},
+				3
 			)
 
 			// Should be: 3 * 2 = 6, 6 * 6 = 36
@@ -328,10 +329,10 @@ public class RunnablesTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var chunks = variables.getAsArray( result );
+		var chunks = variables.getAsArray( Key.of( "chunks" ) );
 		assertThat( chunks ).isNotNull();
 		assertThat( chunks.size() ).isEqualTo( 1 );
-		assertThat( chunks.get( 0 ) ).isEqualTo( 36 );
+		assertThat( chunks.get( 0 ).toString() ).isEqualTo( "36" );
 	}
 
 	@DisplayName( "Sequence print() outputs step information" )
@@ -356,8 +357,7 @@ public class RunnablesTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var output = variables.getAsString( result );
-		assertThat( output ).isNotNull();
+		var output = variables.getAsString( Key.of( "output" ) );
 		assertThat( output ).contains( "AiRunnableSequence" );
 		assertThat( output ).contains( "Transform1" );
 		assertThat( output ).contains( "Transform2" );
@@ -382,13 +382,15 @@ public class RunnablesTest extends BaseIntegrationTest {
 				) )
 				.run( 10 )
 
+				println( result )
+
 			// Should be: 10 + 1 = 11, 11 * 2 = 22, 22 - 5 = 17, 17 * 10 = 170
 			""",
 			context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( "result" ) ).isEqualTo( 170 );
+		assertThat( variables.get( result ).toString() ).isEqualTo( "170" );
 	}
 
 }
