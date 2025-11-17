@@ -211,7 +211,7 @@ class extends="AiBaseRunnable"{
 		var historyMessages = [];
 
 		// Extract messages from AiMessage instance or use array directly
-		if( isObject( arguments.history ) && arguments.history.getClass().getName() contains "AiMessage" ){
+		if( arguments.history instanceOf "AiMessage" ){
 			historyMessages = arguments.history.getMessages();
 		} else if( isArray( arguments.history ) ){
 			historyMessages = arguments.history;
