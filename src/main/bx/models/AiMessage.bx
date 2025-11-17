@@ -220,7 +220,15 @@ class extends="AiBaseRunnable"{
 		}
 
 		// Prepend history messages to the beginning of the current messages
-		variables.messages = historyMessages.append( variables.messages );
+		// Create a new array with history first, then current messages
+		var newMessages = [];
+		historyMessages.each( function( msg ) {
+			newMessages.append( msg );
+		} );
+		variables.messages.each( function( msg ) {
+			newMessages.append( msg );
+		} );
+		variables.messages = newMessages;
 
 		return this;
 	}
