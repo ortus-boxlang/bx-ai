@@ -131,7 +131,8 @@ class {
 			"onAIProviderRequest",
 			"onAIProviderCreate",
 			"onAIRequestCreate",
-			"onAIMessageCreate"
+			"onAIMessageCreate",
+            "onAITransformCreate"
 		 ];
 	}
 

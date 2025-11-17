@@ -15,8 +15,12 @@
  * This class represents a chat conversation.  It holds a collection of messages
  * that have been added to the chat.
  * Please note that AI services only allow 1 `system` message per request.
+ *
+ * This class extends AiBaseRunnable, making it usable in runnable pipelines.
  */
-class{
+import bxModules.bxai.models.runnables.*;
+
+class extends="AiBaseRunnable"{
 
 	/**
 	 * The collection of messages in the chat
@@ -99,12 +103,63 @@ class{
 	}
 
 	/**
-	 * Render the messages using the stored bindings
+	 * Render the messages using the stored bindings or optional provided bindings
+     *
+     * @bindings Optional bindings to merge with stored bindings for rendering
 	 *
 	 * @return An array of formatted messages using the stored bindings
 	 */
-	array function render() {
-		return format( variables.bindings )
+	array function render( struct bindings = {} ) {
+        // Merge provided bindings with stored bindings, in favor of provided
+        var allBindings = arguments.bindings.append( variables.bindings, false )
+		return format( allBindings )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiRunnable Interface Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Run the message as a runnable - returns the formatted messages
+	 * If input is provided and is a struct with bindings, it will be used for formatting
+	 *
+	 * @input Optional input, which is considered the bindings struct
+	 * @params Optional parameters (ignored in this implementation)
+	 *
+	 * @return An array of formatted messages
+	 */
+	public any function run( any input = {}, struct params = {} ) {
+        var incomingBindings = isStruct( arguments.input ) ? arguments.input : {}
+		// Delegate to render with incoming bindings
+		return render( incomingBindings );
+	}
+
+	/**
+	 * Stream the messages through the callback
+	 * Each message is sent as a separate chunk
+	 *
+	 * @onChunk The callback to invoke for each message
+	 * @input Optional input with bindings
+	 * @params Optional parameters
+	 */
+	public void function stream(
+		required function onChunk,
+		any input = {},
+		struct params = {}
+	) {
+		var formattedMessages = run( arguments.input, arguments.params );
+		var index = 1;
+
+		for( var message in formattedMessages ) {
+			arguments.onChunk( message, {
+				step: "message",
+				index: index,
+				total: formattedMessages.len()
+			} );
+			index++;
+		}
 	}
 
 	/**

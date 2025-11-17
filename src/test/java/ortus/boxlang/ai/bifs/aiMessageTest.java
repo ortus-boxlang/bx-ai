@@ -202,4 +202,214 @@ public class aiMessageTest extends BaseIntegrationTest {
 		assertThat( assistantMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "assistant" );
 		assertThat( assistantMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Nice to meet you, Carlos!" );
 	}
+
+	@DisplayName( "Can use aiMessage as a runnable" )
+	@Test
+	public void testMessageAsRunnable() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Hello, ${name}!" )
+					.bind( { name: "World" } )
+				result = message.run()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		assertThat( firstMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hello, World!" );
+	}
+
+	@DisplayName( "Can chain aiMessage with transforms" )
+	@Test
+	public void testMessageChaining() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				pipeline = aiMessage()
+					.user( "Hello, ${name}!" )
+					.bind( { name: "AI" } )
+					.to( aiTransform( messages => messages.len() ) )
+
+				result = pipeline.run()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "pipeline" ) ).isNotNull();
+		assertThat( ( ( Number ) variables.get( "result" ) ).intValue() ).isEqualTo( 1 );
+	}
+
+	@DisplayName( "Can stream aiMessage" )
+	@Test
+	public void testMessageStream() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.system( "You are ${role}." )
+					.user( "Hello!" )
+					.bind( { role: "helpful" } )
+
+				chunks = []
+				message.stream(
+					onChunk = ( chunk, metadata ) => {
+						chunks.append( chunk )
+					}
+				)
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array chunks = ( Array ) variables.get( "chunks" );
+		assertThat( chunks.size() ).isEqualTo( 2 );
+
+		IStruct systemMessage = ( IStruct ) chunks.get( 0 );
+		assertThat( systemMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "You are helpful." );
+
+		IStruct userMessage = ( IStruct ) chunks.get( 1 );
+		assertThat( userMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hello!" );
+	}
+
+	@DisplayName( "Can use withName on aiMessage" )
+	@Test
+	public void testMessageWithName() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Test" )
+					.withName( "TestMessage" )
+
+				name = message.getName()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		assertThat( variables.getAsString( Key.of( "name" ) ) ).isEqualTo( "TestMessage" );
+	}
+
+	@DisplayName( "Can pass bindings via run input parameter" )
+	@Test
+	public void testMessageRunWithInputBindings() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Hello, ${name}!" )
+					.system( "You are ${role}." )
+
+				// Pass bindings as input to run()
+				result = message.run( { name: "Alice", role: "helpful" } )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 2 );
+
+		IStruct userMessage = ( IStruct ) result.get( 0 );
+		assertThat( userMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hello, Alice!" );
+
+		IStruct systemMessage = ( IStruct ) result.get( 1 );
+		assertThat( systemMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "You are helpful." );
+	}
+
+	@DisplayName( "Input bindings merge with stored bindings" )
+	@Test
+	public void testMessageRunBindingsMerge() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Hello, ${name}! You are ${age} years old." )
+					.bind( { name: "Bob" } )
+
+				// Input bindings merge with stored bindings
+				result = message.run( { age: 30 } )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		assertThat( firstMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hello, Bob! You are 30 years old." );
+	}
+
+	@DisplayName( "Input bindings override stored bindings" )
+	@Test
+	public void testMessageRunBindingsOverride() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Hello, ${name}!" )
+					.bind( { name: "Original" } )
+
+				// Input bindings override stored bindings
+				result = message.run( { name: "Override" } )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		assertThat( firstMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hello, Override!" );
+	}
+
+	@DisplayName( "Can use aiMessage without any bindings" )
+	@Test
+	public void testMessageRunWithoutBindings() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Hello, world!" )
+					.system( "You are helpful." )
+
+				result = message.run()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 2 );
+
+		IStruct userMessage = ( IStruct ) result.get( 0 );
+		assertThat( userMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hello, world!" );
+
+		IStruct systemMessage = ( IStruct ) result.get( 1 );
+		assertThat( systemMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "You are helpful." );
+	}
 }
