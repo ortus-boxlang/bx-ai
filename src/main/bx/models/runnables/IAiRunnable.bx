@@ -37,7 +37,7 @@ interface {
 	 * @input The input to process
 	 * @params Optional parameters to configure the operation
 	 */
-	public any function stream(
+	public void function stream(
 		required function onChunk,
         any input = {},
 		struct params = {}

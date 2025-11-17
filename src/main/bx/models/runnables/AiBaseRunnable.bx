@@ -56,7 +56,7 @@ abstract class implements="IAiRunnable" {
 	 * @input The input to process, empty struct if none
 	 * @params Optional parameters to configure the operation
 	 */
-	public any function stream(
+	public void function stream(
 		required function onChunk,
         any input = {},
 		struct params = {}
