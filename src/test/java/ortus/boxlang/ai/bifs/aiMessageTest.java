@@ -412,4 +412,238 @@ public class aiMessageTest extends BaseIntegrationTest {
 		IStruct systemMessage = ( IStruct ) result.get( 1 );
 		assertThat( systemMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "You are helpful." );
 	}
+
+	@DisplayName( "Can prepend history as an array" )
+	@Test
+	public void testHistoryWithArray() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Create history messages
+				historyMessages = [
+					{ role = "user", content = "What is BoxLang?" },
+					{ role = "assistant", content = "BoxLang is a modern JVM language." }
+				]
+
+				// Create new message and prepend history
+				message = aiMessage()
+					.history( historyMessages )
+					.user( "Tell me more" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 3 );
+
+		// Verify history messages are first
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		assertThat( firstMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "user" );
+		assertThat( firstMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "What is BoxLang?" );
+
+		IStruct secondMessage = ( IStruct ) result.get( 1 );
+		assertThat( secondMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "assistant" );
+		assertThat( secondMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "BoxLang is a modern JVM language." );
+
+		// Verify new message is last
+		IStruct thirdMessage = ( IStruct ) result.get( 2 );
+		assertThat( thirdMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "user" );
+		assertThat( thirdMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Tell me more" );
+	}
+
+	@DisplayName( "Can prepend history as an AiMessage instance" )
+	@Test
+	public void testHistoryWithAiMessage() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Create history as an AiMessage instance
+				history = aiMessage()
+					.user( "Hello" )
+					.assistant( "Hi there!" )
+					.user( "How are you?" )
+					.assistant( "I'm doing well, thanks!" )
+
+				// Create new message and prepend history
+				message = aiMessage()
+					.history( history )
+					.user( "Great! Can you help me?" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 5 );
+
+		// Verify history messages are first
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		assertThat( firstMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hello" );
+
+		IStruct secondMessage = ( IStruct ) result.get( 1 );
+		assertThat( secondMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hi there!" );
+
+		IStruct thirdMessage = ( IStruct ) result.get( 2 );
+		assertThat( thirdMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "How are you?" );
+
+		IStruct fourthMessage = ( IStruct ) result.get( 3 );
+		assertThat( fourthMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "I'm doing well, thanks!" );
+
+		// Verify new message is last
+		IStruct fifthMessage = ( IStruct ) result.get( 4 );
+		assertThat( fifthMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Great! Can you help me?" );
+	}
+
+	@DisplayName( "Can chain history() with other methods" )
+	@Test
+	public void testHistoryChaining() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				historyMessages = [
+					{ role = "system", content = "You are helpful" },
+					{ role = "user", content = "Previous question" }
+				]
+
+				message = aiMessage()
+					.history( historyMessages )
+					.user( "New question" )
+					.bind( { name: "Alice" } )
+
+				result = message.getMessages()
+				name = message.getBindings().name
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 3 );
+		assertThat( variables.getAsString( Key.of( "name" ) ) ).isEqualTo( "Alice" );
+	}
+
+	@DisplayName( "Can prepend empty history" )
+	@Test
+	public void testEmptyHistory() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				emptyHistory = []
+
+				message = aiMessage()
+					.history( emptyHistory )
+					.user( "Hello" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		assertThat( firstMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hello" );
+	}
+
+	@DisplayName( "Can prepend history to existing messages" )
+	@Test
+	public void testHistoryToExistingMessages() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Create message with initial content
+				message = aiMessage()
+					.system( "You are helpful" )
+					.user( "Current question" )
+
+				// Now prepend history
+				historyMessages = [
+					{ role = "user", content = "Past question 1" },
+					{ role = "assistant", content = "Past answer 1" }
+				]
+				message.history( historyMessages )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 4 );
+
+		// Verify history comes first
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		assertThat( firstMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Past question 1" );
+
+		IStruct secondMessage = ( IStruct ) result.get( 1 );
+		assertThat( secondMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Past answer 1" );
+
+		// Verify original messages come after
+		IStruct thirdMessage = ( IStruct ) result.get( 2 );
+		assertThat( thirdMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "system" );
+
+		IStruct fourthMessage = ( IStruct ) result.get( 3 );
+		assertThat( fourthMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Current question" );
+	}
+
+	@DisplayName( "Can use history() multiple times" )
+	@Test
+	public void testMultipleHistoryCalls() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Add first batch of history
+				firstHistory = [
+					{ role = "user", content = "Message 1" }
+				]
+
+				// Add second batch of history
+				secondHistory = [
+					{ role = "user", content = "Message 2" }
+				]
+
+				message = aiMessage()
+					.history( firstHistory )
+					.history( secondHistory )
+					.user( "Message 3" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 3 );
+
+		// Verify order - second history should be first (most recent prepend)
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		assertThat( firstMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 2" );
+
+		IStruct secondMessage = ( IStruct ) result.get( 1 );
+		assertThat( secondMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 1" );
+
+		IStruct thirdMessage = ( IStruct ) result.get( 2 );
+		assertThat( thirdMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 3" );
+	}
 }

@@ -34,6 +34,114 @@ messages = message.run()
 - **user**: Your messages/questions
 - **assistant**: AI responses (for conversation history)
 
+## Conversation History
+
+Maintain context across interactions by prepending previous conversation exchanges using the `history()` method:
+
+### Adding History from Array
+
+```java
+// Previous conversation
+historyMessages = [
+    { role: "user", content: "What is BoxLang?" },
+    { role: "assistant", content: "BoxLang is a modern JVM language" },
+    { role: "user", content: "What are its key features?" },
+    { role: "assistant", content: "BoxLang has dynamic typing, Java interop..." }
+]
+
+// New conversation with history
+message = aiMessage()
+    .history( historyMessages )
+    .user( "Can you give me an example?" )
+
+messages = message.run()
+// Returns all 5 messages with history first, then new message
+```
+
+### Adding History from AiMessage
+
+```java
+// Previous conversation as AiMessage
+previousChat = aiMessage()
+    .user( "Hello" )
+    .assistant( "Hi! How can I help?" )
+    .user( "Tell me about AI" )
+    .assistant( "AI is artificial intelligence..." )
+
+// Continue the conversation
+message = aiMessage()
+    .history( previousChat )
+    .user( "What are some examples?" )
+
+result = message.toDefaultModel().run()
+```
+
+### Chaining History
+
+```java
+// Build conversation incrementally
+conversation = aiMessage()
+    .system( "You are a helpful teacher" )
+    .user( "Teach me about variables" )
+
+// Add previous exchanges
+oldHistory = [
+    { role: "user", content: "What is programming?" },
+    { role: "assistant", content: "Programming is..." }
+]
+
+conversation
+    .history( oldHistory )
+    .user( "Now explain functions" )
+```
+
+### Real-World Example: Chatbot
+
+```java
+component {
+    property name="conversationHistory" type="array";
+
+    function init() {
+        variables.conversationHistory = []
+        return this
+    }
+
+    function chat( required string userMessage ) {
+        // Build message with full history
+        message = aiMessage()
+            .system( "You are a friendly chatbot" )
+            .history( variables.conversationHistory )
+            .user( arguments.userMessage )
+
+        // Get AI response
+        response = message.toDefaultModel().run()
+
+        // Update history with this exchange
+        variables.conversationHistory.append( {
+            role: "user",
+            content: arguments.userMessage
+        } )
+        variables.conversationHistory.append( {
+            role: "assistant",
+            content: response.content
+        } )
+
+        return response.content
+    }
+
+    function clearHistory() {
+        variables.conversationHistory = []
+        return this
+    }
+}
+
+// Usage
+chatbot = new Chatbot()
+chatbot.chat( "Hello!" )                    // "Hi there! How can I help?"
+chatbot.chat( "What's the weather like?" )  // Uses history from previous exchange
+chatbot.chat( "Thanks!" )                   // Uses full conversation history
+```
+
 ## Template Placeholders
 
 Use `${key}` syntax for dynamic values:
@@ -354,6 +462,10 @@ component {
 5. **Escape Special Chars**: Handle user input safely
 6. **Version Templates**: Track changes to prompts
 7. **Test Variations**: Try different wording
+8. **Manage History**: Use `.history()` to maintain conversation context
+   - Store conversation history in persistent storage for multi-turn dialogues
+   - Limit history size to avoid exceeding API token limits
+   - Clear old history when starting new conversation topics
 
 ## Template Library Pattern
 

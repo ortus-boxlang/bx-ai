@@ -200,6 +200,32 @@ class extends="AiBaseRunnable"{
 	}
 
 	/**
+	 * Prepends historical messages to the beginning of the current messages array.
+	 * This is useful for maintaining conversation context by adding previous exchanges.
+	 *
+	 * @history An array of message structs or an AiMessage instance whose messages will be prepended
+	 *
+	 * @return The chat message instance for fluent chaining
+	 */
+	AiMessage function history( required any history ) {
+		var historyMessages = [];
+
+		// Extract messages from AiMessage instance or use array directly
+		if( isObject( arguments.history ) && arguments.history.getClass().getName() contains "AiMessage" ){
+			historyMessages = arguments.history.getMessages();
+		} else if( isArray( arguments.history ) ){
+			historyMessages = arguments.history;
+		} else {
+			throw( 'Invalid history type. It must be an array of messages or an AiMessage instance' );
+		}
+
+		// Prepend history messages to the beginning of the current messages
+		variables.messages = historyMessages.append( variables.messages );
+
+		return this;
+	}
+
+	/**
 	 * Adds a message to the chat.  The message content can be:
 	 * - A string : The message will be added with the default role of user
 	 * - A struct : The struct that represents the message according to the chat provider

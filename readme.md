@@ -585,6 +585,7 @@ The `ChatMessage` object has several methods that you can use to interact with t
 - `getNonSystemMessages():array` : Get all messages except the system message
 - `getSystemMessage():string` : Get the system message, if any.
 - `hasSystemMessage():boolean` : Check if the message has a system message
+- `history( history ):ChatMessage` : Prepend conversation history (array of messages or AiMessage instance) to the beginning of the messages array
 - `replaceSystemMessage( content )` : Replace the system message with a new one
 - `setMessages( messagaes ):ChatMessage` : Set the messages
 
@@ -604,12 +605,38 @@ aiMessage()
 Here are a few examples of building up messages and sending them to the `aiChat()` or `aiAiRequest()` functions:
 
 ```js
+// Basic message building
 aiChat(
 	aiMessage()
 		.system( "You are a helpful assistant." )
 		.user( "Write a haiku about recursion in programming." )
 		.user( "What is the capital of France?" )
 )
+
+// Using conversation history
+previousMessages = [
+	{ role: "user", content: "Hello" },
+	{ role: "assistant", content: "Hi! How can I help you today?" }
+]
+
+aiChat(
+	aiMessage()
+		.system( "You are a helpful assistant." )
+		.history( previousMessages )
+		.user( "Tell me about BoxLang" )
+)
+
+// Using history from another AiMessage
+historyChat = aiMessage()
+	.user( "What is AI?" )
+	.assistant( "AI stands for Artificial Intelligence..." )
+
+newChat = aiMessage()
+	.system( "You are helpful" )
+	.history( historyChat )
+	.user( "Can you give examples?" )
+
+aiChat( newChat )
 ```
 
 ## aiService() - Create an AI Service Object
