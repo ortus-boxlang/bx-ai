@@ -88,9 +88,8 @@ class extends="AiBaseRunnable" {
 	 */
 	private array function extractMessages( required any input ) {
 		// AiMessage or other runnable that returns messages
-        if( arguments.input instanceof "IAiRunnable" ){
-			var result = arguments.input.run();
-			return isArray( result ) ? result : [ result ];
+        if( arguments.input instanceof "AiMessage" ){
+			return arguments.input.render();
 		}
 
 		// Array of messages
