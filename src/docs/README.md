@@ -44,6 +44,7 @@ BoxLang AI is a comprehensive module that brings artificial intelligence capabil
 ## Table of Contents
 
 ### Getting Started
+
 📚 **[Installation & Configuration](getting-started/installation.md)**
 Learn how to install the module, configure providers, and set up your first AI integration.
 
@@ -53,6 +54,7 @@ Get up and running in minutes with simple examples and your first AI chat.
 ---
 
 ### Simple AI Interactions
+
 💬 **[Basic Chatting](simple-interactions/basic-chatting.md)**
 Simple question-answer interactions, parameters, and provider switching.
 
@@ -65,6 +67,7 @@ Direct service control, custom requests, headers, and managing multiple provider
 ---
 
 ### AI Pipelines
+
 🔗 **[Understanding Pipelines](pipelines/overview.md)**
 Core concepts of AI pipelines, composability, and building workflows.
 
@@ -79,6 +82,13 @@ Processing and transforming data between pipeline steps.
 
 📡 **[Pipeline Streaming](pipelines/streaming.md)**
 Real-time streaming through pipelines for responsive applications.
+
+---
+
+### Advanced Topics
+
+🎪 **[Event System](advanced/events.md)**
+Intercept and customize AI operations with comprehensive event hooks for monitoring, security, and extensibility.
 
 ---
 

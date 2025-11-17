@@ -387,6 +387,158 @@ CLAUDE_API_KEY=sk-ant-...
 }
 ```
 
+## Introduction to Pipelines
+
+Pipelines let you chain AI operations together for more complex workflows. Here are some quick examples:
+
+### Simple Pipeline
+
+```java
+// Create a reusable pipeline
+pipeline = aiMessage()
+    .system( "You are a helpful coding assistant" )
+    .user( "Explain ${topic}" )
+    .toDefaultModel()
+    .transform( r => r.content )
+
+// Run it with different topics
+explanation = pipeline.run({ topic: "recursion" })
+println( explanation )
+
+result = pipeline.run({ topic: "closures" })
+println( result )
+```
+
+### FAQ Bot Pipeline
+
+```java
+// Build a reusable FAQ pipeline
+faqBot = aiMessage()
+    .system( "You are a helpful FAQ assistant. Answer briefly and clearly." )
+    .user( "${question}" )
+    .toDefaultModel()
+    .transform( r => r.content )
+
+// Use it multiple times
+answer1 = faqBot.run({ question: "What are your business hours?" })
+answer2 = faqBot.run({ question: "Do you offer refunds?" })
+answer3 = faqBot.run({ question: "How do I reset my password?" })
+```
+
+### Multi-Step Pipeline
+
+```java
+// Create a pipeline with multiple transformations
+analyzer = aiMessage()
+    .system( "You are a code analyzer" )
+    .user( "Analyze this code: ${code}" )
+    .toDefaultModel()
+    .transform( r => r.content )
+    .transform( analysis => {
+        return {
+            timestamp: now(),
+            analysis: analysis,
+            codeLength: len( code )
+        }
+    })
+
+// Run analysis
+report = analyzer.run({
+    code: "function hello() { return 'world'; }"
+})
+
+println( report.analysis )
+```
+
+### Extract and Parse Pipeline
+
+```java
+// Pipeline that extracts JSON data
+dataExtractor = aiMessage()
+    .system( "Extract data as JSON" )
+    .user( "From this text, extract name and email: ${text}" )
+    .toDefaultModel()
+    .transform( r => r.content )
+    .transform( json => deserializeJSON( json ) )
+
+// Extract structured data
+userData = dataExtractor.run({
+    text: "Contact John Doe at john@example.com"
+})
+
+println( userData.name )   // "John Doe"
+println( userData.email )  // "john@example.com"
+```
+
+### Pipeline with Multiple Models
+
+```java
+// Use different models in a workflow
+translator = aiMessage()
+    .user( "Translate to Spanish: ${text}" )
+    .to( aiModel( "openai", { model: "gpt-4" } ) )
+    .transform( r => r.content )
+
+reviewer = aiMessage()
+    .user( "Review this translation: ${translation}" )
+    .to( aiModel( "claude", { model: "claude-3-opus" } ) )
+    .transform( r => r.content )
+
+// Translate then review
+text = "Hello, how are you?"
+translation = translator.run({ text: text })
+review = reviewer.run({ translation: translation })
+```
+
+### Why Use Pipelines?
+
+**Reusability**: Create once, run many times with different inputs
+
+```java
+// Define once
+greeter = aiMessage()
+    .system( "You are a friendly greeter" )
+    .user( "Greet ${name} in ${style} style" )
+    .toDefaultModel()
+    .transform( r => r.content )
+
+// Use many times
+greeter.run({ name: "Alice", style: "formal" })
+greeter.run({ name: "Bob", style: "casual" })
+greeter.run({ name: "Charlie", style: "funny" })
+```
+
+**Composability**: Chain operations together
+
+```java
+// Each step does one thing well
+pipeline = aiMessage()
+    .user( "${prompt}" )
+    .toDefaultModel()              // Get AI response
+    .transform( r => r.content )   // Extract text
+    .transform( text => uCase( text ) )  // Transform
+    .transform( text => len( text ) )    // Analyze
+```
+
+**Separation of Concerns**: Template, model, and transformation logic separated
+
+```java
+// Template (what to ask)
+template = aiMessage()
+    .system( "You are an expert" )
+    .user( "${question}" )
+
+// Model (how to ask)
+model = aiModel( "openai", { temperature: 0.7 } )
+
+// Pipeline (complete flow)
+pipeline = template
+    .to( model )
+    .transform( r => r.content )
+```
+
+Learn more about pipelines in the [Pipeline Overview](../pipelines/overview.md) section.
+
 ## Next Steps
 
 Now that you're comfortable with the basics, explore:
@@ -400,6 +552,9 @@ Now that you're comfortable with the basics, explore:
 - **[Pipeline Overview](../pipelines/overview.md)** - Learn about composable workflows
 - **[Working with Models](../pipelines/models.md)** - Pipeline-compatible AI models
 - **[Message Templates](../pipelines/messages.md)** - Reusable prompts
+
+### Advanced Topics
+- **[Event System](../advanced/events.md)** - Intercept and customize AI operations
 
 ### Examples
 Check the `/examples` folder in the repository for more complete applications.
