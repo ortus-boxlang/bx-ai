@@ -133,7 +133,9 @@ class {
 			"onAIRequestCreate",
 			"onAIMessageCreate",
 			"onAITransformCreate",
-			"onAIModelCreate"
+			"onAIModelCreate",
+            "beforeAIModelInvoke",
+            "afterAIModelInvoke"
 		 ];
 	}
 

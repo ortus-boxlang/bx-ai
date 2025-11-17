@@ -52,8 +52,16 @@ class extends="AiBaseRunnable" {
 			.setMessages( messages )
 			.setParams( effectiveParams );
 
+        // beforeAIModelInvoke event
+        BoxAnnounce( "beforeAIModelInvoke", { model: this, request: request } );
+
 		// Invoke service
-		return variables.service.invoke( request );
+		var results = variables.service.invoke( request );
+
+        // afterAIModelInvoke event
+        BoxAnnounce( "afterAIModelInvoke", { model: this, request: request, results: results } );
+
+        return results;
 	}
 
 	/**
