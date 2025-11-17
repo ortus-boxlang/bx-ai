@@ -1,0 +1,138 @@
+/**
+ * Example: Using the history() method for conversation context
+ * 
+ * This example demonstrates how to maintain conversation history
+ * across multiple interactions with an AI model.
+ */
+
+// Example 1: Basic history usage with array
+println( "=== Example 1: Adding history from an array ===" )
+
+// Previous conversation exchanges
+previousConversation = [
+	{ role: "user", content: "What is BoxLang?" },
+	{ role: "assistant", content: "BoxLang is a modern dynamic JVM language that combines CFML compatibility with modern features." },
+	{ role: "user", content: "What are its key features?" },
+	{ role: "assistant", content: "BoxLang features dynamic typing, Java interoperability, null safety, and a modern module system." }
+]
+
+// Create a new message that includes the previous conversation
+message = aiMessage()
+	.system( "You are a helpful BoxLang expert." )
+	.history( previousConversation )
+	.user( "Can you show me a code example?" )
+
+println( "Total messages: " & message.count() )
+println( "Messages array: " )
+println( message.getMessages() )
+
+// Example 2: Using history from an AiMessage instance
+println( "\n=== Example 2: Adding history from AiMessage ===" )
+
+// Build up a conversation as an AiMessage object
+chatHistory = aiMessage()
+	.user( "Hello, I'm learning BoxLang" )
+	.assistant( "Great! I'd be happy to help you learn BoxLang." )
+	.user( "I'm interested in AI features" )
+	.assistant( "BoxLang has excellent AI integration through the bx-ai module!" )
+
+// Create a new conversation that continues from the history
+continuedChat = aiMessage()
+	.system( "You are a patient teacher" )
+	.history( chatHistory )
+	.user( "How do I get started with AI in BoxLang?" )
+
+println( "Total messages: " & continuedChat.count() )
+println( "First message: " & continuedChat.getMessages()[ 1 ].content )
+println( "Last message: " & continuedChat.getMessages()[ continuedChat.count() ].content )
+
+// Example 3: Real-world chatbot simulation
+println( "\n=== Example 3: Simulated chatbot with persistent history ===" )
+
+component {
+	property name="history" type="array";
+	property name="systemPrompt" type="string";
+
+	function init() {
+		variables.history = []
+		variables.systemPrompt = "You are a friendly and helpful AI assistant."
+		return this
+	}
+
+	function chat( required string userMessage ) {
+		println( "\nUser: " & arguments.userMessage )
+
+		// Build message with full conversation history
+		message = aiMessage()
+			.system( variables.systemPrompt )
+			.history( variables.history )
+			.user( arguments.userMessage )
+
+		// In a real application, you would call an AI service here
+		// For this example, we'll just show the message structure
+		println( "Prepared message with " & message.count() & " total messages" )
+		
+		// Simulate an AI response
+		var simulatedResponse = "This is a simulated response to: " & arguments.userMessage
+
+		// Add this exchange to history
+		variables.history.append( { role: "user", content: arguments.userMessage } )
+		variables.history.append( { role: "assistant", content: simulatedResponse } )
+
+		println( "Assistant: " & simulatedResponse )
+		println( "History now contains " & variables.history.len() & " messages" )
+
+		return simulatedResponse
+	}
+
+	function clearHistory() {
+		variables.history = []
+		println( "History cleared" )
+		return this
+	}
+
+	function getHistorySize() {
+		return variables.history.len()
+	}
+}
+
+// Create and use the chatbot
+bot = new component()
+bot.chat( "Hello!" )
+bot.chat( "Tell me about yourself" )
+bot.chat( "What did I ask you before?" )  // This will have full context
+
+println( "\nFinal history size: " & bot.getHistorySize() )
+
+// Example 4: Chaining multiple history sources
+println( "\n=== Example 4: Chaining multiple history sources ===" )
+
+// Old archived conversation
+archivedHistory = [
+	{ role: "user", content: "Question from last week..." },
+	{ role: "assistant", content: "Answer from last week..." }
+]
+
+// Recent session
+recentHistory = aiMessage()
+	.user( "Earlier today I asked about X" )
+	.assistant( "Yes, and I told you about Y" )
+
+// New message with combined history
+combinedMessage = aiMessage()
+	.system( "You are helpful" )
+	.history( archivedHistory )  // Add old history first
+	.history( recentHistory )     // Add recent history second
+	.user( "Now tell me about Z" )
+
+println( "Total messages with combined history: " & combinedMessage.count() )
+println( "Order verification:" )
+println( "- First message (from archived): " & combinedMessage.getMessages()[ 1 ].content )
+println( "- Last message (current): " & combinedMessage.getMessages()[ combinedMessage.count() ].content )
+
+println( "\n=== Examples complete ===" )
+println( "The history() method allows you to:" )
+println( "  1. Maintain conversation context across multiple turns" )
+println( "  2. Combine history from different sources" )
+println( "  3. Build context-aware AI interactions" )
+println( "  4. Preserve conversation flow in chatbot applications" )
