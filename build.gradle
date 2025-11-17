@@ -212,6 +212,10 @@ test {
     useJUnitPlatform()
     testLogging {
 		showStandardStreams = true
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+        showExceptions true
+        showCauses true
 	}
 	classpath = classpath.filter { !it.path.contains( "build${File.separator}resources" ) }
 }
