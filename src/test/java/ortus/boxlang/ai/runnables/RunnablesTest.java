@@ -196,8 +196,6 @@ public class RunnablesTest extends BaseIntegrationTest {
 				transformer = ( x ) => x * 2
 			)
 
-			println( transform.getName() )
-
 			// Set a custom name
 			transform.withName( "Doubler" )
 
@@ -224,7 +222,12 @@ public class RunnablesTest extends BaseIntegrationTest {
 			transform.withParams( { temperature: 0.7, model: "gpt-4" } )
 
 			// Merge with runtime params (runtime overrides default)
-			merged = transform.mergeParams( { model: "gpt-3.5", maxTokens: 100 } )
+			merged = transform.getMergedParams( { model: "gpt-3.5", maxTokens: 100 } )
+
+			// Clear params
+			transform.clearParams()
+
+			result = transform.getMergedParams();
 			""",
 			context
 		);
@@ -235,6 +238,8 @@ public class RunnablesTest extends BaseIntegrationTest {
 		assertThat( merged.get( "temperature" ).toString() ).isEqualTo( "0.7" );
 		assertThat( merged.get( "model" ) ).isEqualTo( "gpt-3.5" ); // Runtime override
 		assertThat( merged.get( "maxTokens" ) ).isEqualTo( 100 );
+		var result = variables.getAsStruct( Key.of( "result" ) );
+		assertThat( result.size() ).isEqualTo( 0 ); // Cleared
 	}
 
 	@DisplayName( "Sequence can get step information" )

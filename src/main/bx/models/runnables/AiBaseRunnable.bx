@@ -183,7 +183,7 @@ abstract class implements="IAiRunnable" {
 	 *
 	 * @return The merged parameter struct
 	 */
-	public struct function getEffectiveParams( struct params = {} ) {
+	public struct function getMergedParams( struct params = {} ) {
 		var out = duplicate( variables.defaultParams );
 		out.append( arguments.params, true );
 		return out;
