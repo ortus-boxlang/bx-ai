@@ -176,23 +176,23 @@ component {
             case "creative":
                 return aiModel( "openai" )
                     .withParams({ temperature: 0.9, model: "gpt-4" })
-            
+
             case "factual":
                 return aiModel( "openai" )
                     .withParams({ temperature: 0.2, model: "gpt-4" })
-            
+
             case "code":
                 return aiModel( "openai" )
                     .withParams({ temperature: 0.3, model: "gpt-4" })
-            
+
             case "analysis":
                 return aiModel( "claude" )
                     .withParams({ temperature: 0.2, max_tokens: 4096 })
-            
+
             case "local":
                 return aiModel( "ollama" )
                     .withParams({ model: "llama3.2" })
-            
+
             default:
                 return aiModel()
         }
@@ -217,9 +217,9 @@ function askEnsemble( required string question ) {
         aiModel( "claude" ).withName( "claude" ),
         aiModel( "ollama" ).withName( "ollama" )
     ]
-    
+
     message = aiMessage().user( arguments.question )
-    
+
     return models.map( m => {
         return {
             model: m.getName(),
@@ -244,15 +244,15 @@ function getAppropriateModel( required string taskType, required numeric complex
     if( arguments.taskType == "creative" ) {
         return aiModel( "openai" ).withParams({ temperature: 0.9 })
     }
-    
+
     if( arguments.complexity > 8 ) {
         return aiModel( "openai" ).withParams({ model: "gpt-4" })
     }
-    
+
     if( arguments.complexity < 3 ) {
         return aiModel( "ollama" ).withParams({ model: "llama3.2:1b" })
     }
-    
+
     return aiModel( "openai" ).withParams({ model: "gpt-3.5-turbo" })
 }
 
@@ -266,7 +266,7 @@ result = aiMessage().user( "Complex task" ).to( model ).run()
 ```java
 function robustPipeline( required string question ) {
     message = aiMessage().user( arguments.question )
-    
+
     try {
         // Try primary model
         return message.to( aiModel( "openai" ) ).run()
@@ -288,15 +288,15 @@ function robustPipeline( required string question ) {
 component {
     property name="budget" type="numeric" default="0";
     property name="spent" type="numeric" default="0";
-    
+
     function init( required numeric budget ) {
         variables.budget = arguments.budget
         return this
     }
-    
+
     function getModel() {
         remaining = variables.budget - variables.spent
-        
+
         if( remaining > 0.10 ) {
             return aiModel( "openai" ).withParams({ model: "gpt-4" })
         } else if( remaining > 0.01 ) {
@@ -305,7 +305,7 @@ component {
             return aiModel( "ollama" )  // Free
         }
     }
-    
+
     function trackUsage( required numeric cost ) {
         variables.spent += arguments.cost
     }

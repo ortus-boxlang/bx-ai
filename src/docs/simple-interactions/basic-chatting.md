@@ -392,10 +392,10 @@ try {
     println( answer )
 } catch( any e ) {
     println( "AI Error: " & e.message )
-    
+
     // Log the error
     writeLog( "AI request failed: " & e.message )
-    
+
     // Return fallback
     answer = "I'm sorry, I'm having trouble processing that request."
 }
@@ -476,14 +476,14 @@ local = aiChat( question, {}, { provider: "ollama" } )
 // Cache function
 function cachedAIChat( message, ttl = 3600 ) {
     cacheKey = "ai_" & hash( message )
-    
+
     if( cacheExists( cacheKey ) ) {
         return cacheGet( cacheKey )
     }
-    
+
     answer = aiChat( message )
     cachePut( cacheKey, answer, ttl )
-    
+
     return answer
 }
 

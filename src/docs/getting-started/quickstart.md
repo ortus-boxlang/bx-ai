@@ -335,7 +335,7 @@ try {
     println( answer )
 } catch( any e ) {
     println( "Error: " & e.message )
-    
+
     // Fallback or retry logic
     if( e.message contains "timeout" ) {
         // Retry with longer timeout

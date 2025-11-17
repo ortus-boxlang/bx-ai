@@ -128,7 +128,7 @@ result = pipeline.run( { topic: "AI" } )
 ratingTransform = aiTransform( response => {
     content = response.content ?: "0"
     rating = val( content.reReplace( "[^0-9]", "", "all" ) )
-    
+
     return {
         raw: content,
         rating: rating,
@@ -151,7 +151,7 @@ safeTransform = aiTransform( response => {
         if( !structKeyExists( response, "content" ) ) {
             return "Error: No content returned"
         }
-        
+
         data = deserializeJSON( response.content )
         return data
     } catch( any e ) {
@@ -169,15 +169,15 @@ safeTransform = aiTransform( response => {
 ```java
 validator = aiTransform( data => {
     errors = []
-    
+
     if( !structKeyExists( data, "name" ) || len( data.name ) < 2 ) {
         errors.append( "Invalid name" )
     }
-    
+
     if( !structKeyExists( data, "age" ) || data.age < 0 ) {
         errors.append( "Invalid age" )
     }
-    
+
     return {
         valid: errors.len() == 0,
         errors: errors,
@@ -193,7 +193,7 @@ validator = aiTransform( data => {
 ```java
 markdownTransform = aiTransform( response => {
     markdown = response.content ?: ""
-    
+
     // Simple markdown parsing
     html = markdown
         .reReplace( "#{3} (.*)", "<h3>\1</h3>", "all" )
@@ -201,7 +201,7 @@ markdownTransform = aiTransform( response => {
         .reReplace( "#{1} (.*)", "<h1>\1</h1>", "all" )
         .reReplace( "\*\*(.*?)\*\*", "<strong>\1</strong>", "all" )
         .reReplace( "\*(.*?)\*", "<em>\1</em>", "all" )
-    
+
     return html
 } )
 
@@ -218,7 +218,7 @@ sqlTransform = aiTransform( response => {
     sql = response.content
         .reReplace( "(?s).*```sql\n(.*?)```.*", "\1", "one" )
         .trim()
-    
+
     return {
         sql: sql,
         safe: !sql.reFindNoCase( "drop|delete|truncate" ),
@@ -237,27 +237,27 @@ pipeline = aiMessage()
 ```java
 component {
     property name="cache" type="struct";
-    
+
     function init() {
         variables.cache = {}
         return this
     }
-    
+
     function getCachedTransform() {
         return aiTransform( response => {
             key = hash( response.content )
-            
+
             if( structKeyExists( variables.cache, key ) ) {
                 return variables.cache[ key ]
             }
-            
+
             processed = processResponse( response )
             variables.cache[ key ] = processed
-            
+
             return processed
         } )
     }
-    
+
     function processResponse( response ) {
         // Your processing logic
         return response.content.trim()
@@ -270,7 +270,7 @@ component {
 ```java
 formatter = aiTransform( response => {
     content = response.content ?: ""
-    
+
     return {
         text: content,
         html: "<p>" & content.replace( "\n", "</p><p>" ) & "</p>",
@@ -333,34 +333,34 @@ component {
     function extractContent() {
         return aiTransform( r => r.content )
     }
-    
+
     function toUpperCase() {
         return aiTransform( s => s.ucase() )
     }
-    
+
     function toLowerCase() {
         return aiTransform( s => s.lcase() )
     }
-    
+
     function trim() {
         return aiTransform( s => s.trim() )
     }
-    
+
     function parseJSON() {
         return aiTransform( s => deserializeJSON( s ) )
     }
-    
+
     function extractCode( language = "" ) {
         return aiTransform( r => {
             pattern = "(?s).*```#language#\n(.*?)```.*"
             return r.content.reReplace( pattern, "\1", "one" ).trim()
         } )
     }
-    
+
     function wordCount() {
         return aiTransform( s => s.listLen( " " ) )
     }
-    
+
     function summarize( maxWords = 50 ) {
         return aiTransform( s => {
             words = s.listToArray( " " )

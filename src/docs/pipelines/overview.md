@@ -58,13 +58,13 @@ All pipeline components implement the `IAiRunnable` interface:
 interface IAiRunnable {
     // Synchronous execution
     any function run( any input = {}, struct params = {} )
-    
+
     // Streaming execution
     void function stream( function onChunk, any input = {}, struct params = {} )
-    
+
     // Chaining
     IAiRunnable function to( IAiRunnable next )
-    
+
     // Introspection
     string function getName()
 }
@@ -278,7 +278,7 @@ pipeline.print()
 /*
 Pipeline with 3 steps:
 1. greeting-template
-2. gpt-model  
+2. gpt-model
 3. AiTransformRunnable
 */
 ```
@@ -322,10 +322,10 @@ model.clearParams()
 analyzer = aiMessage()
     .system( "Analyze the following" )
     .withName( "analyzer-prompt" )
-    
+
 model = aiModel( "gpt-4" )
     .withName( "analysis-model" )
-    
+
 pipeline = analyzer.user( "${text}" ).to( model )
     .withName( "document-analyzer" )
 

@@ -318,7 +318,7 @@ answer = assistant.run( { question: "What is a function?" } )
 ```java
 component {
     property name="templates" type="struct";
-    
+
     function init() {
         variables.templates = {
             en: aiMessage()
@@ -333,13 +333,13 @@ component {
         }
         return this
     }
-    
+
     function ask( required string question, string lang = "en" ) {
         template = variables.templates[ arguments.lang ]
-        bindings = arguments.lang == "es" 
+        bindings = arguments.lang == "es"
             ? { pregunta: arguments.question }
             : { question: arguments.question }
-        
+
         return template.toDefaultModel().run( bindings )
     }
 }
@@ -365,14 +365,14 @@ component {
             .user( "Greet ${name}" )
             .bind( { style: arguments.style } )
     }
-    
+
     function explainer( required string role ) {
         return aiMessage()
             .system( "You are a ${role}" )
             .user( "Explain ${topic} in ${detail} detail" )
             .bind( { role: arguments.role, detail: "moderate" } )
     }
-    
+
     function coder( required string language ) {
         return aiMessage()
             .system( "Expert ${language} developer" )

@@ -85,25 +85,25 @@ println( "Total: " & len( fullResponse ) & " characters" )
 component {
     property name="chunks" type="array";
     property name="fullText" type="string" default="";
-    
+
     function init() {
         variables.chunks = []
         return this
     }
-    
+
     function onChunk( chunk ) {
         content = chunk.choices?.first()?.delta?.content ?: ""
-        
+
         variables.chunks.append( {
             content: content,
             timestamp: now(),
             index: variables.chunks.len() + 1
         } )
-        
+
         variables.fullText &= content
         print( content )
     }
-    
+
     function getStats() {
         return {
             totalChunks: variables.chunks.len(),
@@ -167,12 +167,12 @@ words = []
 pipeline.stream(
     ( chunk ) => {
         content = chunk.choices?.first()?.delta?.content ?: ""
-        
+
         // Process words as they arrive
         if( content contains " " ) {
             words.append( content.trim() )
         }
-        
+
         print( content )
     }
 )
@@ -189,20 +189,20 @@ function streamToClient( required string question ) {
     response.setContentType( "text/event-stream" )
     response.setHeader( "Cache-Control", "no-cache" )
     response.setHeader( "Connection", "keep-alive" )
-    
+
     pipeline = aiMessage()
         .user( arguments.question )
         .toDefaultModel()
-    
+
     pipeline.stream( ( chunk ) => {
         content = chunk.choices?.first()?.delta?.content ?: ""
-        
+
         if( len( content ) ) {
             writeOutput( "data: " & encodeForHTML( content ) & "\n\n" )
             flush()
         }
     } )
-    
+
     writeOutput( "data: [DONE]\n\n" )
 }
 ```
@@ -214,10 +214,10 @@ function streamToWebSocket( required websocket, required string question ) {
     pipeline = aiMessage()
         .user( arguments.question )
         .toDefaultModel()
-    
+
     pipeline.stream( ( chunk ) => {
         content = chunk.choices?.first()?.delta?.content ?: ""
-        
+
         if( len( content ) ) {
             arguments.websocket.send( serializeJSON( {
                 type: "chunk",
@@ -225,7 +225,7 @@ function streamToWebSocket( required websocket, required string question ) {
             } ) )
         }
     } )
-    
+
     arguments.websocket.send( serializeJSON( {
         type: "done"
     } ) )
@@ -237,23 +237,23 @@ function streamToWebSocket( required websocket, required string question ) {
 ```java
 function streamJSON( required string question ) {
     response.setContentType( "application/x-ndjson" )
-    
+
     chunkIndex = 0
-    
+
     pipeline = aiMessage()
         .user( arguments.question )
         .toDefaultModel()
-    
+
     pipeline.stream( ( chunk ) => {
         content = chunk.choices?.first()?.delta?.content ?: ""
-        
+
         if( len( content ) ) {
             output = serializeJSON( {
                 index: chunkIndex++,
                 content: content,
                 timestamp: getTickCount()
             } )
-            
+
             writeOutput( output & "\n" )
             flush()
         }
@@ -293,7 +293,7 @@ function conditionalStream( required string question, boolean useStream = true )
     pipeline = aiMessage()
         .user( arguments.question )
         .toDefaultModel()
-    
+
     if( arguments.useStream ) {
         pipeline.stream( ( chunk ) => {
             print( chunk.choices?.first()?.delta?.content ?: "" )
@@ -315,7 +315,7 @@ pipeline.stream( ( chunk ) => {
     if( getTickCount() - startTime > timeout ) {
         throw( type: "StreamTimeout", message: "Streaming took too long" )
     }
-    
+
     content = chunk.choices?.first()?.delta?.content ?: ""
     print( content )
 } )
@@ -328,7 +328,7 @@ pipeline.stream( ( chunk ) => {
 ```java
 component {
     property name="pipeline";
-    
+
     function init() {
         variables.pipeline = aiMessage()
             .system( "You are helpful" )
@@ -336,18 +336,18 @@ component {
             .toDefaultModel()
         return this
     }
-    
+
     function chat( required string message ) {
         println( "You: " & arguments.message )
         print( "AI: " )
-        
+
         variables.pipeline.stream(
             ( chunk ) => {
                 print( chunk.choices?.first()?.delta?.content ?: "" )
             },
             { message: arguments.message }
         )
-        
+
         println( "\n" )
     }
 }
@@ -366,7 +366,7 @@ codeBuffer = ""
 
 pipeline.stream( ( chunk ) => {
     content = chunk.choices?.first()?.delta?.content ?: ""
-    
+
     // Track code blocks
     if( content contains "```" ) {
         inCodeBlock = !inCodeBlock
@@ -375,7 +375,7 @@ pipeline.stream( ( chunk ) => {
             codeBuffer = ""
         }
     }
-    
+
     // Style code differently
     if( inCodeBlock ) {
         codeBuffer &= content
@@ -396,16 +396,16 @@ progress = {
 
 pipeline.stream( ( chunk ) => {
     content = chunk.choices?.first()?.delta?.content ?: ""
-    
+
     progress.chars += len( content )
     progress.words += content.listLen( " " )
     progress.sentences += content.reFindNoCase( "[.!?]" )
-    
+
     // Update UI every 10 chunks
     if( progress.chars % 10 == 0 ) {
         println( "Progress: " & progress.chars & " chars" )
     }
-    
+
     print( content )
 } )
 
@@ -427,7 +427,7 @@ fullText = ""
 pipeline.stream( ( chunk ) => {
     content = chunk.choices?.first()?.delta?.content ?: ""
     fullText &= content
-    
+
     // Send to all outputs
     outputs.each( output => output( content ) )
 } )
@@ -447,10 +447,10 @@ try {
     )
 } catch( any e ) {
     println( "\nStream error: " & e.message )
-    
+
     // Log error
     writeLog( "Stream failed: " & e.message )
-    
+
     // Fallback to non-streaming
     result = pipeline.run()
     println( result.content )
