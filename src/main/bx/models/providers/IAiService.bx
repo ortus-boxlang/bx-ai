@@ -35,7 +35,7 @@ interface{
 	 *
 	 * @return The service instance
 	 */
-	IService function configure( required any apiKey );
+	IAiService function configure( required any apiKey );
 
 	/**
 	 * Invoke the provider service with a AiRequestobject

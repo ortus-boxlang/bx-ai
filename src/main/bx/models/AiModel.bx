@@ -1,0 +1,117 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Wraps an AI Service as a runnable model for use in pipelines
+ * Handles message extraction, request building, and response handling
+ */
+import bxModules.bxai.models.runnables.*;
+
+class extends="AiBaseRunnable" {
+
+	/**
+	 * The AI service provider to wrap
+	 */
+	property name="service" type="IAiService";
+
+	/**
+	 * Constructor
+	 *
+	 * @service The AI service provider to wrap
+	 */
+	function init( required IAiService service ) {
+		variables.service = arguments.service
+		variables.name = "AiModel-" & arguments.service.getName()
+		return this
+	}
+
+	/**
+	 * Run the model with messages as input
+	 *
+	 * @input Messages array, AiMessage, or struct with messages
+	 * @params Runtime parameters (model, temperature, etc.)
+	 *
+	 * @return The LLM response
+	 */
+	public any function run( any input = {}, struct params = {} ) {
+		var messages = extractMessages( arguments.input );
+		var effectiveParams = getMergedParams( arguments.params );
+
+		// Build request
+		var request = new bxModules.bxai.models.AiRequest()
+			.setMessages( messages )
+			.setParams( effectiveParams );
+
+		// Invoke service
+		return variables.service.invoke( request );
+	}
+
+	/**
+	 * Stream through the model
+	 *
+	 * @onChunk The callback to invoke for each chunk
+	 * @input Messages array, AiMessage, or struct with messages
+	 * @params Runtime parameters
+	 */
+	public void function stream(
+		required function onChunk,
+		any input = {},
+		struct params = {}
+	) {
+		var messages = extractMessages( arguments.input );
+		var effectiveParams = getMergedParams( arguments.params );
+
+		var request = new bxModules.bxai.models.AiRequest()
+			.setMessages( messages )
+			.setParams( effectiveParams )
+			.setStream( true );
+
+		variables.service.invokeStream( request, arguments.onChunk );
+	}
+
+	/**
+	 * Extract messages from various input formats
+	 *
+	 * @input The input to extract messages from
+	 *
+	 * @return An array of messages
+	 */
+	private array function extractMessages( required any input ) {
+		// AiMessage or other runnable that returns messages
+        if( arguments.input instanceof "IAiRunnable" ){
+			var result = arguments.input.run();
+			return isArray( result ) ? result : [ result ];
+		}
+
+		// Array of messages
+		if( isArray( arguments.input ) ) {
+			return arguments.input;
+		}
+
+		// Struct with messages key
+		if( isStruct( arguments.input ) && structKeyExists( arguments.input, "messages" ) ) {
+			return arguments.input.messages;
+		}
+
+		// Empty struct - no messages
+		if( isStruct( arguments.input ) && arguments.input.isEmpty() ) {
+			return [];
+		}
+
+		throw(
+			type: "InvalidInput",
+			message: "Input must be: AiMessage, array of messages, or struct with 'messages' key"
+		);
+	}
+
+}

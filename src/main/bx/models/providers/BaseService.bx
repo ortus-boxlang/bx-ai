@@ -73,7 +73,7 @@ abstract class implements="IAiService" {
 	 *
 	 * @return The service instance
 	 */
-	IService function defaults( required params ){
+	IAiService function defaults( required params ){
 		variables.params.append( arguments.params, true );
 		return this;
 	}
@@ -102,7 +102,7 @@ abstract class implements="IAiService" {
 	 *
 	 * @return The service instance
 	 */
-	IService function configure( required any apiKey ){
+	IAiService function configure( required any apiKey ){
 		variables.apiKey = arguments.apiKey;
 		return this;
 	}

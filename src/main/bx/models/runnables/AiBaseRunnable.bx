@@ -118,6 +118,25 @@ abstract class implements="IAiRunnable" {
 		return this.to( new AiTransformRunnable( arguments.transformer ) )
 	}
 
+	/**
+	 * Connect this runnable to the default AI model
+	 * Uses the provider and apiKey from module settings
+     *
+     * Example:
+     * ```
+     * var runnable = aiMessage( "Hello ${name}" )
+     * var pipeline = runnable.toDefaultModel()
+     * var result = pipeline.run( { name: "World" } )
+     * ```
+     *
+     * This is a convenience method equivalent to: this.to( aiModel() )
+	 *
+	 * @return A new runnable sequence connected to the default model
+	 */
+	public IAiRunnable function toDefaultModel() {
+		return this.to( aiModel() )
+	}
+
     /**
      * Apply a transformation function and run in one step
      * Combines transform() and run() for convenience

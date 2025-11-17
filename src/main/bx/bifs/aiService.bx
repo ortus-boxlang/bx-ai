@@ -48,17 +48,18 @@ class {
 	 * @return The AI Service Provider
      */
     function invoke( string provider, any apiKey ) {
+        // Default the provider from the module settings if not provided
+		arguments.provider = arguments.provider ?: moduleRecord.settings.provider;
 
-         // By convention check if there is a <PROVIDER>_API_KEY setting override it
+        // By convention check if there is a <PROVIDER>_API_KEY setting override it
         var conventionAPIKey = getSystemSetting( "#arguments.provider.ucase()#_API_KEY", "" );
         if( isNull( arguments.apiKey ) && len( conventionAPIKey ) ){
             arguments.apiKey = conventionAPIKey;
         }
-
-        // Defaults from module settings
-		arguments.provider = arguments.provider ?: moduleRecord.settings.provider;
+        // Else use the module setting
 		arguments.apiKey = arguments.apiKey ?: moduleRecord.settings.apiKey;
 
+        // Build the target service
 		var oTargetService = null;
 		switch( arguments.provider ) {
 			case "claude":
