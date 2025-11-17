@@ -15,6 +15,8 @@
  * Base abstract class for all AI runnables.
  * Provides common functionality for naming, parameter management, and chaining operations.
  */
+import bxModules.bxai.models.transformers.*;
+
 abstract class implements="IAiRunnable" {
 
 	/**
@@ -66,12 +68,6 @@ abstract class implements="IAiRunnable" {
     }
 
     /**
-	 * ---------------------------------------------------------------------------------------------------------
-	 * Helper Methods
-	 * ---------------------------------------------------------------------------------------------------------
-	 */
-
-	/**
 	 * Chain this runnable with another runnable
 	 * Creates a sequence that will execute this runnable followed by the next
      *
@@ -94,6 +90,12 @@ abstract class implements="IAiRunnable" {
 		return new AiRunnableSequence( [ this, arguments.next ] )
 	}
 
+    /**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Helper Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
 	/**
 	 * Apply a transformation function after this runnable
 	 * Creates a sequence with a transform runnable
@@ -113,7 +115,7 @@ abstract class implements="IAiRunnable" {
 	 * @return A new runnable sequence with the transform step
 	 */
 	public IAiRunnable function transform( required function transformer ) {
-		return this.to( new src.main.bx.models.transformers.AiTransformRunnable( arguments.transformer ) )
+		return this.to( new AiTransformRunnable( arguments.transformer ) )
 	}
 
     /**
@@ -142,7 +144,7 @@ abstract class implements="IAiRunnable" {
 	 *
 	 * @return This runnable for chaining
 	 */
-	public AiBaseRunnable function withName( required string name ) {
+	public IAiRunnable function withName( required string name ) {
 		variables.name = arguments.name
 		return this
 	}
@@ -157,7 +159,6 @@ abstract class implements="IAiRunnable" {
 		if ( len( variables.name ) ) {
 			return variables.name
 		}
-
 		return getMetadata( this ).name
 	}
 
@@ -169,23 +170,33 @@ abstract class implements="IAiRunnable" {
 	 *
 	 * @return This runnable for chaining
 	 */
-	public AiBaseRunnable function withParams( required struct params ) {
+	public IAiRunnable function withParams( required struct params ) {
 		variables.defaultParams.append( arguments.params, true );
 		return this;
 	}
 
 	/**
-	 * Merge runtime parameters with default parameters
+	 * Merge incoming parameters with default parameters
 	 * Runtime parameters take precedence over defaults
 	 *
 	 * @params Runtime parameters to merge
 	 *
 	 * @return The merged parameter struct
 	 */
-	public struct function mergeParams( struct params = {} ) {
+	public struct function getEffectiveParams( struct params = {} ) {
 		var out = duplicate( variables.defaultParams );
 		out.append( arguments.params, true );
 		return out;
 	}
+
+    /**
+     * Clear all default parameters for this runnable
+     *
+     * @return This runnable for chaining
+     */
+    public IAiRunnable function clearParams(){
+        variables.defaultParams = {};
+        return this;
+    }
 
 }

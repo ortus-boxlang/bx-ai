@@ -196,6 +196,8 @@ public class RunnablesTest extends BaseIntegrationTest {
 				transformer = ( x ) => x * 2
 			)
 
+			println( transform.getName() )
+
 			// Set a custom name
 			transform.withName( "Doubler" )
 
