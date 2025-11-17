@@ -43,4 +43,32 @@ interface {
 		struct params = {}
 	);
 
+    /**
+     * Get the name of the runnable
+     *
+     * @return The name of the runnable
+     */
+    public string function getName();
+
+    /**
+	 * Chain this runnable with another runnable
+	 * Creates a sequence that will execute this runnable followed by the next
+     *
+     * Example:
+     * ```
+     * var runnable1 = new SomeAiRunnable();
+     * var runnable2 = new AnotherAiRunnable();
+     * var sequence = runnable1.to( runnable2 );
+     * var result = sequence.run( inputData );
+     * ```
+     *
+     * In this example, `runnable1` is executed first, and its output is passed as input to `runnable2`.
+     * The final result is obtained from `runnable2`.
+	 *
+	 * @next The next runnable to execute
+	 *
+	 * @return A new AiRunnableSequence containing both runnables in order
+	 */
+	public IAiRunnable function to( required IAiRunnable next );
+
 }
