@@ -163,6 +163,39 @@ class extends="AiBaseRunnable"{
 	}
 
 	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Message Helpers
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Add a history of messages to the chat
+	 *
+	 * @messages An array of message structs to add to the chat, or an AiMessage instance
+	 *
+	 * @return The chat message instance
+	 */
+	 AiMessage function history( required any messages ) {
+		var targetMessages = arguments.messages;
+
+		// If an AiMessage instance is provided, extract its messages
+		if( targetMessages instanceof "AiMessage" ) {
+			targetMessages = targetMessages.getMessages();
+		}
+
+		if( !isArray( targetMessages ) ) {
+			throw( "History messages must be an array or an AiMessage instance" );
+		}
+
+		// Add each message to the chat
+		for( var message in targetMessages ) {
+			this.add( message );
+		}
+
+		return this;
+	}
+
+	/**
 	 * Get the system message
 	 *
 	 * @return The system message or an empty string

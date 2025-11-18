@@ -13,6 +13,7 @@ Input → Message Template → AI Model → Transform → Output
 ```
 
 Each step:
+
 1. Receives input from the previous step
 2. Processes the data
 3. Passes output to the next step
@@ -20,11 +21,13 @@ Each step:
 ### Why Use Pipelines?
 
 **Composability**: Chain multiple operations together
+
 ```java
 pipeline = aiMessage().user( "Hello" ).toDefaultModel().transform( r => r.content )
 ```
 
 **Reusability**: Define once, use with different inputs
+
 ```java
 greeter = aiMessage().user( "Greet ${name}" ).toDefaultModel()
 greeter.run( { name: "Alice" } )  // "Hello Alice!"
@@ -32,6 +35,7 @@ greeter.run( { name: "Bob" } )    // "Hello Bob!"
 ```
 
 **Immutability**: Each operation creates a new pipeline
+
 ```java
 base = aiMessage().user( "Hello" )
 pipeline1 = base.toDefaultModel()  // Doesn't modify base
@@ -39,6 +43,7 @@ pipeline2 = base.to( aiModel( "claude" ) )  // Different pipeline
 ```
 
 **Flexibility**: Mix models, transforms, and custom logic
+
 ```java
 complex = aiMessage()
     .user( "Task: ${task}" )
@@ -71,6 +76,7 @@ interface IAiRunnable {
 ```
 
 **Built-in Runnables:**
+
 - `AiMessage` - Message templates
 - `AiModel` - AI providers wrapped for pipelines
 - `AiTransformRunnable` - Data transformers
@@ -79,12 +85,14 @@ interface IAiRunnable {
 ### Input and Output
 
 **Input types:**
+
 - Empty struct `{}` - No input
 - Struct with bindings `{ key: "value" }`
 - Messages array `[{ role: "user", content: "..." }]`
 - Previous step output
 
 **Output types:**
+
 - Messages array
 - AI response struct
 - Transformed data (string, struct, array, etc.)
@@ -165,6 +173,7 @@ pipeline = step1.to( step2 ).to( step3 )
 ### Helper Methods
 
 **`.toDefaultModel()`** - Connect to default model:
+
 ```java
 pipeline = aiMessage()
     .user( "Hello" )
@@ -172,6 +181,7 @@ pipeline = aiMessage()
 ```
 
 **`.transform()`** - Add a transformer:
+
 ```java
 pipeline = aiMessage()
     .user( "Hello" )

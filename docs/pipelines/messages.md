@@ -221,6 +221,54 @@ message = aiMessage()
 println( message.getName() )  // "greeting-template"
 ```
 
+### History
+
+Use `history()` to inflate an `AiMessage` with a prior conversation. This accepts either an array of message structs or another `AiMessage` instance. Each message is appended to the current message list in order.
+
+Signature:
+
+```java
+message.history( messages )  // messages = array of structs OR AiMessage instance
+```
+
+Behavior highlights:
+
+- If passed an `AiMessage`, its internal messages are extracted and appended.
+- If passed an array, each element (struct) is added via the normal `.add()` flow.
+- The method will throw an error when passed anything other than an array or `AiMessage`.
+- History can be chained fluently with other message methods.
+
+Examples:
+
+```java
+// 1) Inflate from an array of messages
+historyMessages = [
+    { role: "system", content: "You are a helpful assistant." },
+    { role: "user", content: "Hello!" },
+    { role: "assistant", content: "Hi there!" }
+]
+
+message = aiMessage()
+    .history( historyMessages )
+    .user( "Tell me a joke" )
+
+// 2) Inflate from another AiMessage instance
+previous = aiMessage()
+    .system( "You are helpful" )
+    .user( "What's 2+2?" )
+    .assistant( "4" )
+
+message = aiMessage()
+    .history( previous )
+    .user( "What about 3+3?" )
+
+// 3) Chaining with other methods
+message = aiMessage()
+    .system( "You are helpful" )
+    .history( historyMessages )
+    .user( "Follow up question" )
+```
+
 ### Streaming Messages
 
 Messages can stream their content:

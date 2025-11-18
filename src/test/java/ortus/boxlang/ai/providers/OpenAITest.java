@@ -158,4 +158,31 @@ public class OpenAITest extends BaseIntegrationTest {
 
 		// Asserts here
 	}
+
+	@DisplayName( "Test a pipeline with OpenAI" )
+	@Test
+	public void testPipeline() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiMessage()
+				.user( "What about 3+3?" )
+				.toModel( "openai" )
+				.withParams( { model: "gpt-3.5-turbo" } )
+				.transform( response -> {
+					return response.replace( "6", "SIX" )
+				} )
+				.run()
+
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Asserts here
+		assertThat( variables.get( "result" ) ).isNotNull();
+		assertThat( variables.get( "result" ).toString().contains( "SIX" ) ).isTrue();
+	}
+
 }

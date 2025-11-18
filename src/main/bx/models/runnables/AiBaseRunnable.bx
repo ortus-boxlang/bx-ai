@@ -90,6 +90,29 @@ abstract class implements="IAiRunnable" {
 		return new AiRunnableSequence( [ this, arguments.next ] )
 	}
 
+	/**
+	 * Connect this runnable to a specific AI model
+	 * Uses the specified provider and apiKey
+	 * This is a convenience method
+	 *
+	 * Example:
+	 * ```
+	 * var runnable = aiMessage( "Hello ${name}" )
+	 * var pipeline = runnable.toModel( "openai", "my-api-key" )
+	 * var result = pipeline.run( { name: "World" } )
+	 * ```
+	 *
+	 * This is a convenience method equivalent to: this.to( aiModel( provider, apiKey ) )
+	 *
+	 * @provider The AI service provider to use
+	 * @apiKey The API key to use with the provider
+	 *
+	 * @return A new runnable sequence connected to the specified model
+	 */
+	public IAiRunnable function toModel( required string provider, string apiKey ) {
+		return this.to( aiModel( argumentCollection: arguments ) )
+	}
+
     /**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Helper Methods

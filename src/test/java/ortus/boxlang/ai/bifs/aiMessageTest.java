@@ -1,6 +1,7 @@
 package ortus.boxlang.ai.bifs;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -411,5 +412,153 @@ public class aiMessageTest extends BaseIntegrationTest {
 
 		IStruct systemMessage = ( IStruct ) result.get( 1 );
 		assertThat( systemMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "You are helpful." );
+	}
+
+	@DisplayName( "Can add history from an array of messages" )
+	@Test
+	public void testHistoryWithArray() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				historyMessages = [
+					{ role: "system", content: "You are a helpful assistant." },
+					{ role: "user", content: "Hello!" },
+					{ role: "assistant", content: "Hi there! How can I help you?" }
+				]
+
+				message = aiMessage()
+					.history( historyMessages )
+					.user( "Tell me a joke" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 4 );
+
+		IStruct systemMessage = ( IStruct ) result.get( 0 );
+		assertThat( systemMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "system" );
+		assertThat( systemMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "You are a helpful assistant." );
+
+		IStruct userMessage1 = ( IStruct ) result.get( 1 );
+		assertThat( userMessage1.getAsString( Key.of( "role" ) ) ).isEqualTo( "user" );
+		assertThat( userMessage1.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hello!" );
+
+		IStruct assistantMessage = ( IStruct ) result.get( 2 );
+		assertThat( assistantMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "assistant" );
+		assertThat( assistantMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hi there! How can I help you?" );
+
+		IStruct userMessage2 = ( IStruct ) result.get( 3 );
+		assertThat( userMessage2.getAsString( Key.of( "role" ) ) ).isEqualTo( "user" );
+		assertThat( userMessage2.getAsString( Key.of( "content" ) ) ).isEqualTo( "Tell me a joke" );
+	}
+
+	@DisplayName( "Can add history from another AiMessage instance" )
+	@Test
+	public void testHistoryWithAiMessage() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				previousConversation = aiMessage()
+					.system( "You are a helpful assistant." )
+					.user( "What's 2+2?" )
+					.assistant( "4" )
+
+				newMessage = aiMessage()
+					.history( previousConversation )
+					.user( "What about 3+3?" )
+
+				result = newMessage.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "newMessage" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 4 );
+
+		IStruct systemMessage = ( IStruct ) result.get( 0 );
+		assertThat( systemMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "system" );
+		assertThat( systemMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "You are a helpful assistant." );
+
+		IStruct userMessage1 = ( IStruct ) result.get( 1 );
+		assertThat( userMessage1.getAsString( Key.of( "role" ) ) ).isEqualTo( "user" );
+		assertThat( userMessage1.getAsString( Key.of( "content" ) ) ).isEqualTo( "What's 2+2?" );
+
+		IStruct assistantMessage = ( IStruct ) result.get( 2 );
+		assertThat( assistantMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "assistant" );
+		assertThat( assistantMessage.getAsString( Key.of( "content" ) ) ).isEqualTo( "4" );
+
+		IStruct userMessage2 = ( IStruct ) result.get( 3 );
+		assertThat( userMessage2.getAsString( Key.of( "role" ) ) ).isEqualTo( "user" );
+		assertThat( userMessage2.getAsString( Key.of( "content" ) ) ).isEqualTo( "What about 3+3?" );
+	}
+
+	@DisplayName( "History method throws error for invalid input" )
+	@Test
+	public void testHistoryWithInvalidInput() {
+
+		// @formatter:off
+		try {
+			runtime.executeSource(
+			    """
+					message = aiMessage()
+						.history( "invalid string input" )
+			    """,
+			    context
+			);
+			fail( "Should have thrown an exception for invalid history input" );
+		} catch ( Exception e ) {
+			assertThat( e.getMessage() ).contains( "History messages must be an array or an AiMessage instance" );
+		}
+		// @formatter:on
+	}
+
+	@DisplayName( "Can chain history with other message methods" )
+	@Test
+	public void testHistoryChaining() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				historyMessages = [
+					{ role: "user", content: "First question" },
+					{ role: "assistant", content: "First answer" }
+				]
+
+				message = aiMessage()
+					.system( "You are helpful" )
+					.history( historyMessages )
+					.user( "Second question" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 4 );
+
+		// Verify order: system, user, assistant, user
+		IStruct systemMsg = ( IStruct ) result.get( 0 );
+		assertThat( systemMsg.getAsString( Key.of( "role" ) ) ).isEqualTo( "system" );
+
+		IStruct user1 = ( IStruct ) result.get( 1 );
+		assertThat( user1.getAsString( Key.of( "content" ) ) ).isEqualTo( "First question" );
+
+		IStruct assistant = ( IStruct ) result.get( 2 );
+		assertThat( assistant.getAsString( Key.of( "content" ) ) ).isEqualTo( "First answer" );
+
+		IStruct user2 = ( IStruct ) result.get( 3 );
+		assertThat( user2.getAsString( Key.of( "content" ) ) ).isEqualTo( "Second question" );
 	}
 }

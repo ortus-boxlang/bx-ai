@@ -47,19 +47,19 @@ class extends="AiBaseRunnable" {
 		var messages = extractMessages( arguments.input );
 		var effectiveParams = getMergedParams( arguments.params );
 
-		// Build request
-		var request = new bxModules.bxai.models.AiRequest()
+		// Build the ai request
+		var aiRequest = new bxModules.bxai.models.AiRequest()
 			.setMessages( messages )
 			.setParams( effectiveParams );
 
         // beforeAIModelInvoke event
-        BoxAnnounce( "beforeAIModelInvoke", { model: this, request: request } );
+        BoxAnnounce( "beforeAIModelInvoke", { model: this, aiRequest: aiRequest } );
 
 		// Invoke service
-		var results = variables.service.invoke( request );
+		var results = variables.service.invoke( aiRequest );
 
         // afterAIModelInvoke event
-        BoxAnnounce( "afterAIModelInvoke", { model: this, request: request, results: results } );
+        BoxAnnounce( "afterAIModelInvoke", { model: this, aiRequest: aiRequest, results: results } );
 
         return results;
 	}
