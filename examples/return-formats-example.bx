@@ -1,0 +1,91 @@
+/**
+ * Example: Pipeline Return Formats
+ *
+ * Demonstrates the three return format options for pipelines:
+ * - raw (default): Full API response with metadata
+ * - single: Just the content string
+ * - all: Array of message objects
+ */
+
+// Create a simple pipeline
+basePipeline = aiMessage()
+    .user( "What is the capital of France?" )
+    .toDefaultModel()
+
+// 1. Raw format (default) - Full API response
+println( "=== Raw Format (Default) ===" )
+rawResult = basePipeline.run()
+println( "Type: " & rawResult.getClass().getName() )
+println( "Model: " & rawResult.model )
+println( "Tokens used: " & rawResult.usage.total_tokens )
+println( "Content: " & rawResult.choices.first().message.content )
+println()
+
+// 2. Single message format - Just the content string
+println( "=== Single Message Format ===" )
+singleResult = basePipeline
+    .singleMessage()
+    .run()
+println( "Type: " & singleResult.getClass().getName() )
+println( "Content: " & singleResult )
+println()
+
+// 3. All messages format - Array of message objects
+println( "=== All Messages Format ===" )
+allResult = basePipeline
+    .allMessages()
+    .run()
+println( "Type: " & allResult.getClass().getName() )
+println( "Count: " & allResult.len() )
+allResult.each( ( msg, i ) => {
+    println( "Message #i#: " & msg.content )
+})
+println()
+
+// 4. Using withFormat() explicitly
+println( "=== Using withFormat() ===" )
+formatResult = basePipeline
+    .withFormat( "single" )
+    .run()
+println( "Content: " & formatResult )
+println()
+
+// 5. Combining with transforms
+println( "=== Single + Transform ===" )
+transformed = basePipeline
+    .singleMessage()
+    .transform( content => content.ucase() )
+    .run()
+println( "Uppercase: " & transformed )
+println()
+
+// 6. Different use cases
+println( "=== Use Case Examples ===" )
+
+// For debugging - use raw
+debugPipeline = aiMessage()
+    .user( "Count to 3" )
+    .toDefaultModel()
+    .rawResponse()
+
+debugResult = debugPipeline.run()
+println( "Debug - Model used: " & debugResult.model )
+println( "Debug - Response time: " & debugResult.created )
+
+// For user-facing text - use single
+textPipeline = aiMessage()
+    .user( "Tell me a joke" )
+    .toDefaultModel()
+    .singleMessage()
+
+userText = textPipeline.run()
+println( "User sees: " & userText )
+
+// For processing choices - use all
+choicesPipeline = aiMessage()
+    .user( "Suggest 3 color names" )
+    .toDefaultModel()
+    .allMessages()
+
+choices = choicesPipeline.run()
+println( "Processing " & choices.len() & " choices" )

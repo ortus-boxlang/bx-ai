@@ -184,6 +184,8 @@ The AI module supports different return formats for the responses. You can speci
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
 
+> **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](docs/pipelines/overview.md#return-formats) documentation for details.
+
 ### Quick Usage Examples
 
 ```java
@@ -578,7 +580,10 @@ Here are the parameters:
 
 The `ChatMessage` object has several methods that you can use to interact with the message.
 
+**Message Management:**
+
 - `add( content ):ChatMessage` : Add a message to the messages array
+- `history( messages ):ChatMessage` : Inflate the message with prior conversation history (array or AiMessage)
 - `count():numeric` : Get the count of messages
 - `clear():ChatMessage` : Clear the messages
 - `getMessages():array` : Get the messages
@@ -586,7 +591,14 @@ The `ChatMessage` object has several methods that you can use to interact with t
 - `getSystemMessage():string` : Get the system message, if any.
 - `hasSystemMessage():boolean` : Check if the message has a system message
 - `replaceSystemMessage( content )` : Replace the system message with a new one
-- `setMessages( messagaes ):ChatMessage` : Set the messages
+- `setMessages( messages ):ChatMessage` : Set the messages
+
+**Return Format Control (for pipelines):**
+
+- `withFormat( format ):ChatMessage` : Set return format ('raw', 'single', or 'all')
+- `singleMessage():ChatMessage` : Convenience for `.withFormat("single")` - returns content string
+- `allMessages():ChatMessage` : Convenience for `.withFormat("all")` - returns array of messages
+- `rawResponse():ChatMessage` : Convenience for `.withFormat("raw")` - returns full API response (default)
 
 ### ChatMessage Dynamic Methods
 

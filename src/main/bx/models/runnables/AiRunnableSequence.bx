@@ -79,13 +79,17 @@ class extends="AiBaseRunnable" {
 	 *
 	 * @input The initial input, empty struct if none
 	 * @params Parameters to pass to each step
+	 * @options Runtime options to pass to each step
 	 *
 	 * @return The final output after all steps
 	 */
-	public any function run( any input = {}, struct params = {} ) {
+	public any function run( any input = {}, struct params = {}, struct options = {} ) {
 		var current = arguments.input;
+		var effectiveOptions = getMergedOptions( arguments.options );
+
+		// Execute the sequence, passing options through
 		for ( var step in variables.steps ) {
-			current = step.run( current, arguments.params );
+			current = step.run( current, arguments.params, effectiveOptions );
 		}
 		return current;
 	}
@@ -97,20 +101,23 @@ class extends="AiBaseRunnable" {
 	 * @onChunk The callback for streaming chunks
 	 * @input The initial input
 	 * @params Parameters to pass to each step
+	 * @options Runtime options to pass to each step
 	 */
 	public void function stream(
 		required function onChunk,
 		any input = {},
-		struct params = {}
+		struct params = {},
+		struct options = {}
 	) {
 		var current   = arguments.input;
 		var lastIndex = variables.steps.len();
+		var effectiveOptions = getMergedOptions( arguments.options );
 
 		for ( var i = 1; i < lastIndex; i++ ) {
-			current = variables.steps[ i ].run( current, arguments.params );
+			current = variables.steps[ i ].run( current, arguments.params, effectiveOptions );
 		}
 
-		variables.steps[ lastIndex ].stream( arguments.onChunk, current, arguments.params );
+		variables.steps[ lastIndex ].stream( arguments.onChunk, current, arguments.params, effectiveOptions );
 	}
 
 	/**

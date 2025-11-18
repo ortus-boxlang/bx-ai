@@ -19,7 +19,7 @@ class {
 
 	static final VALID_RESPONSE_FORMATS = [ "single", "all", "raw" ]
 	static final DEFAULT_OPTIONS = {
-		returnFormat : "single",
+		returnFormat : "single",  // aiChat() defaults to single for convenience
 		timeout : 30,
 		logResponse : false,
 		logRequest : false

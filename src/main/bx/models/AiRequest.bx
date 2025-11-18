@@ -64,9 +64,10 @@ class{
 	property name="logResponseToConsole" type="boolean" default=false;
 
 	/**
-	 * The return format for the response
+	 * The return format of the response
+	 * Valid formats: 'raw' (full response), 'single' (content string), 'all' (array of messages)
 	 */
-	property name="returnFormat" default="single";
+	property name="returnFormat" default="raw";
 
 	/**
 	 * The LLM Model to use for the request
@@ -115,7 +116,7 @@ class{
 		variables.logRequestToConsole = options.logRequestToConsole ?: false;
 		variables.logResponse = options.logResponse ?: false;
 		variables.logResponseToConsole = options.logResponseToConsole ?: false;
-		variables.returnFormat = options.returnFormat ?: "single";
+		variables.returnFormat = options.returnFormat ?: "raw";
 		variables.model = options.params?.model ?: "";
 		variables.timeout = options.timeout ?: 30;
 		variables.stream = options.stream ?: false;

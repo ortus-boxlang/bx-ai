@@ -39,10 +39,11 @@ class extends="src.main.bx.models.runnables.AiBaseRunnable" {
 	 *
 	 * @input The input to transform
 	 * @params Optional parameters (unused in transform)
+	 * @options Optional runtime options (unused in transform)
 	 *
 	 * @return The transformed output
 	 */
-	public any function run( any input = {}, struct params = {} ) {
+	public any function run( any input = {}, struct params = {}, struct options = {} ) {
 		return variables.transformer( arguments.input );
 	}
 
@@ -53,13 +54,15 @@ class extends="src.main.bx.models.runnables.AiBaseRunnable" {
 	 * @onChunk The callback to invoke with the result
 	 * @input The input to transform
 	 * @params Optional parameters
+	 * @options Optional runtime options (unused in transform)
 	 */
 	public void function stream(
 		required function onChunk,
 		any input = {},
-		struct params = {}
+		struct params = {},
+		struct options = {}
 	) {
-		var out = run( arguments.input, arguments.params );
+		var out = run( arguments.input, arguments.params, arguments.options );
 		arguments.onChunk( out, { step : "transform" } );
 	}
 

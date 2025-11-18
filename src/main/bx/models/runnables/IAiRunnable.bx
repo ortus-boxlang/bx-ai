@@ -22,12 +22,14 @@ interface {
 	 *
 	 * @input The input to process
 	 * @params Optional parameters to configure the operation, these override defaults
+	 * @options Optional runtime options (returnFormat, timeout, logging, etc.)
 	 *
 	 * @return The result of the operation
 	 */
 	public any function run(
 		any input = {},
-		struct params = {}
+		struct params = {},
+		struct options = {}
 	);
 
 	/**
@@ -36,11 +38,13 @@ interface {
 	 * @onChunk The callback function to invoke for each chunk
 	 * @input The input to process
 	 * @params Optional parameters to configure the operation
+	 * @options Optional runtime options (returnFormat, timeout, logging, etc.)
 	 */
 	public void function stream(
 		required function onChunk,
         any input = {},
-		struct params = {}
+		struct params = {},
+		struct options = {}
 	);
 
     /**

@@ -255,6 +255,126 @@ result = pipeline.run()
 result = pipeline.run( { key: "value" }, { temperature: 0.9 } )
 ```
 
+### Return Formats
+
+By default, pipelines return **raw responses** from the AI provider (full API response struct). This gives you maximum flexibility to access all response data including metadata, usage stats, and multiple choices.
+
+**Three format options:**
+
+1. **`raw`** (default) - Full API response with all metadata
+2. **`single`** - Extract just the content string from first message
+3. **`all`** - Array of all choice messages
+
+#### Using `.withFormat()`
+
+```java
+// Explicit format specification
+pipeline = aiMessage()
+    .user( "Hello" )
+    .toDefaultModel()
+    .withFormat( "single" )  // Returns string content
+
+result = pipeline.run()  // "Hello! How can I help you?"
+```
+
+#### Convenience Methods
+
+**`.singleMessage()`** - Extract content string (most common):
+
+```java
+// Returns just the text response
+content = aiMessage()
+    .user( "What is 2+2?" )
+    .toDefaultModel()
+    .singleMessage()
+    .run()
+
+println( content )  // "4"
+```
+
+**`.allMessages()`** - Get array of message objects:
+
+```java
+// Returns array of choice messages
+messages = aiMessage()
+    .user( "List 3 colors" )
+    .toDefaultModel()
+    .allMessages()
+    .run()
+
+messages.each( m => println( m.content ) )
+```
+
+**`.rawResponse()`** - Explicit raw format (default behavior):
+
+```java
+// Returns full API response
+raw = aiMessage()
+    .user( "Hello" )
+    .toDefaultModel()
+    .rawResponse()  // Optional - raw is default
+    .run()
+
+println( "Model used: " & raw.model )
+println( "Usage: " & raw.usage.total_tokens )
+println( "Content: " & raw.choices.first().message.content )
+```
+
+#### Format Comparison
+
+```java
+pipeline = aiMessage().user( "Say hello" ).toDefaultModel()
+
+// Raw (default) - full response struct
+rawResult = pipeline.run()
+// { model: "gpt-3.5-turbo", choices: [...], usage: {...}, ... }
+
+// Single - just the content string
+singleResult = pipeline.singleMessage().run()
+// "Hello! How can I help you today?"
+
+// All - array of message objects
+allResult = pipeline.allMessages().run()
+// [{ role: "assistant", content: "Hello! How can I help you today?" }]
+```
+
+#### When to Use Each Format
+
+**Use `raw` (default) when:**
+
+- Building reusable pipeline components
+- Need access to metadata (model, usage, tokens)
+- Handling multiple choice responses
+- Debugging API responses
+
+**Use `singleMessage()` when:**
+
+- Simple text extraction is all you need
+- Building user-facing features
+- Migrating from `aiChat()` to pipelines
+- Chaining with transformers
+
+**Use `allMessages()` when:**
+
+- Processing multiple response choices
+- Iterating over message objects
+- Extracting role/content pairs
+- Building conversation logs
+
+#### Format vs Transform
+
+Return formats are **built-in extraction**, transforms are **custom logic**:
+
+```java
+// Using format (built-in)
+result = pipeline.singleMessage().run()
+
+// Using transform (custom)
+result = pipeline.transform( r => r.choices.first().message.content ).run()
+
+// They can be equivalent, but formats are cleaner for common cases
+```
+
 ### Inspecting Pipelines
 
 ```java

@@ -40,28 +40,32 @@ class extends="AiBaseRunnable" {
 	 *
 	 * @input Messages array, AiMessage, or struct with messages
 	 * @params Runtime parameters (model, temperature, etc.)
+	 * @options Runtime options (returnFormat, timeout, logging, etc.)
 	 *
 	 * @return The LLM response
 	 */
-	public any function run( any input = {}, struct params = {} ) {
-		var messages = extractMessages( arguments.input );
-		var effectiveParams = getMergedParams( arguments.params );
+	public any function run( any input = {}, struct params = {}, struct options = {} ) {
+		var messages = extractMessages( arguments.input )
+		var effectiveParams = getMergedParams( arguments.params )
+		var effectiveOptions = getMergedOptions( arguments.options )
 
 		// Build the ai request
-		var aiRequest = new bxModules.bxai.models.AiRequest()
-			.setMessages( messages )
-			.setParams( effectiveParams );
+		var aiRequest = new bxModules.bxai.models.AiRequest(
+			aiMessage( messages ),
+			effectiveParams,
+			effectiveOptions
+		)
 
         // beforeAIModelInvoke event
-        BoxAnnounce( "beforeAIModelInvoke", { model: this, aiRequest: aiRequest } );
+        BoxAnnounce( "beforeAIModelInvoke", { model: this, aiRequest: aiRequest } )
 
 		// Invoke service
-		var results = variables.service.invoke( aiRequest );
+		var results = variables.service.invoke( aiRequest )
 
         // afterAIModelInvoke event
-        BoxAnnounce( "afterAIModelInvoke", { model: this, aiRequest: aiRequest, results: results } );
+        BoxAnnounce( "afterAIModelInvoke", { model: this, aiRequest: aiRequest, results: results } )
 
-        return results;
+        return results
 	}
 
 	/**
@@ -70,19 +74,24 @@ class extends="AiBaseRunnable" {
 	 * @onChunk The callback to invoke for each chunk
 	 * @input Messages array, AiMessage, or struct with messages
 	 * @params Runtime parameters
+	 * @options Runtime options (timeout, logging, etc.)
 	 */
 	public void function stream(
 		required function onChunk,
 		any input = {},
-		struct params = {}
+		struct params = {},
+		struct options = {}
 	) {
 		var messages = extractMessages( arguments.input );
 		var effectiveParams = getMergedParams( arguments.params );
+		var effectiveOptions = getMergedOptions( arguments.options );
+		effectiveOptions.stream = true;
 
-		var request = new bxModules.bxai.models.AiRequest()
-			.setMessages( messages )
-			.setParams( effectiveParams )
-			.setStream( true );
+		var request = new bxModules.bxai.models.AiRequest(
+			aiMessage( messages ),
+			effectiveParams,
+			effectiveOptions
+		);
 
 		variables.service.invokeStream( request, arguments.onChunk );
 	}

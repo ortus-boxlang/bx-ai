@@ -127,10 +127,11 @@ class extends="AiBaseRunnable"{
 	 *
 	 * @input Optional input, which is considered the bindings struct
 	 * @params Optional parameters (ignored in this implementation)
+	 * @options Optional runtime options (ignored in this implementation)
 	 *
 	 * @return An array of formatted messages
 	 */
-	public any function run( any input = {}, struct params = {} ) {
+	public any function run( any input = {}, struct params = {}, struct options = {} ) {
         var incomingBindings = isStruct( arguments.input ) ? arguments.input : {}
 		// Delegate to render with incoming bindings
 		return render( incomingBindings );
@@ -143,13 +144,15 @@ class extends="AiBaseRunnable"{
 	 * @onChunk The callback to invoke for each message
 	 * @input Optional input with bindings
 	 * @params Optional parameters
+	 * @options Optional runtime options (ignored in this implementation)
 	 */
 	public void function stream(
 		required function onChunk,
 		any input = {},
-		struct params = {}
+		struct params = {},
+		struct options = {}
 	) {
-		var formattedMessages = run( arguments.input, arguments.params );
+		var formattedMessages = run( arguments.input, arguments.params, arguments.options );
 		var index = 1;
 
 		for( var message in formattedMessages ) {

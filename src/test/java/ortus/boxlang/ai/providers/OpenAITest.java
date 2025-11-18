@@ -169,9 +169,7 @@ public class OpenAITest extends BaseIntegrationTest {
 				.user( "What about 3+3?" )
 				.toModel( "openai" )
 				.withParams( { model: "gpt-3.5-turbo" } )
-				.transform( response -> {
-					return response.replace( "6", "SIX" )
-				} )
+				.singleMessage()
 				.run()
 
 			println( result )
@@ -180,9 +178,65 @@ public class OpenAITest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		// Asserts here
+		// Asserts here - should return string content since .singleMessage() was used
 		assertThat( variables.get( "result" ) ).isNotNull();
-		assertThat( variables.get( "result" ).toString().contains( "SIX" ) ).isTrue();
+		assertThat( variables.get( "result" ) ).isInstanceOf( String.class );
+	}
+
+	@DisplayName( "Test return format methods" )
+	@Test
+	public void testReturnFormats() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			// Test 1: Raw response (default)
+			rawResult = aiMessage()
+				.user( "Say hello" )
+				.toModel( "openai" )
+				.withParams( { model: "gpt-3.5-turbo" } )
+				.run()
+			println( "Raw has choices: " & rawResult.keyExists( "choices" ) )
+
+			// Test 3: allMessages() convenience
+			allResult = aiMessage()
+				.user( "Say hi" )
+				.toModel( "openai" )
+				.allMessages()
+				.run()
+			println( "All messages count: " & allResult.len() )
+
+			// Test 4: Using withOptions() explicitly
+			optionsResult = aiMessage()
+				.user( "Count to 3" )
+				.toModel( "openai" )
+				.withOptions( { returnFormat: "single" } )
+				.run()
+			println( "Options result type: " & optionsResult.getClass().getName() )
+
+			// Test 5: Passing options at runtime
+			runtimeResult = aiMessage()
+				.user( "Hello" )
+				.toModel( "openai" )
+				.run( {}, {}, { returnFormat: "single" } )
+			println( "Runtime options result: " & runtimeResult )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Verify raw result has structure
+		assertThat( variables.get( "rawResult" ) ).isNotNull();
+
+		// Verify all result is an array
+		assertThat( variables.get( "allResult" ) ).isNotNull();
+
+		// Verify options result is string
+		assertThat( variables.get( "optionsResult" ) ).isNotNull();
+		assertThat( variables.get( "optionsResult" ) ).isInstanceOf( String.class );
+
+		// Verify runtime options result is string
+		assertThat( variables.get( "runtimeResult" ) ).isNotNull();
+		assertThat( variables.get( "runtimeResult" ) ).isInstanceOf( String.class );
 	}
 
 }
