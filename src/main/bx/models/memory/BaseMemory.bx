@@ -1,0 +1,267 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Base abstract class for AI Memory implementations
+ * Provides common functionality for conversation history storage
+ */
+abstract class implements="IAiMemory" {
+
+	/**
+	 * Unique key for this memory instance
+	 */
+	property name="key" type="string" default="";
+
+	/**
+	 * Metadata for this memory instance
+	 */
+	property name="metadata" type="struct" default={};
+
+	/**
+	 * Configuration for this memory instance
+	 */
+	property name="config" type="struct" default={};
+
+	/**
+	 * Messages stored in memory
+	 */
+	property name="messages" type="array" default=[];
+
+	/**
+	 * Constants
+	 */
+	static {
+		final settings = getModuleInfo( "bxai" ).settings
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Interface Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get or set the unique key for this memory instance
+	 *
+	 * @key The unique key string to set, or none to get the current key
+	 *
+	 * @return Struct (getter) or IAiMemory (setter)
+	 */
+	public any function key( string key ) {
+		if ( !isNull( arguments.key ) ) {
+			variables.key = arguments.key;
+			return this;
+		}
+		return variables.key;
+	}
+
+	/**
+	 * Get or set metadata for this memory
+	 *
+	 * @metadata Optional struct to merge with existing metadata
+	 *
+	 * @return Struct (getter) or IAiMemory (setter)
+	 */
+	public any function metadata( struct metadata ) {
+		if ( !isNull( arguments.metadata ) ) {
+			variables.metadata.append( arguments.metadata, true );
+			return this;
+		}
+		return variables.metadata;
+	}
+
+	/**
+	 * Add a message to memory. The message can be:
+	 * - A string: The message will be added with the default role (user)
+	 * - A struct: The struct must contain at least 'role' and 'content' keys
+	 * - An array: Each element will be processed as above
+	 * - An AiMessage instance: Its messages will be added
+	 *
+	 * @message The message to add
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function add( required any message ) {
+		// String - add as user message
+		if ( isSimpleValue( arguments.message ) ) {
+			variables.messages.append( {
+				role: "user",
+				content: arguments.message,
+				timestamp: now()
+			} );
+		}
+		// AiMessage instance - get its messages
+		else if ( arguments.message instanceof "AiMessage" ) {
+			add( arguments.message.getMessages() );
+		}
+		// Struct - must have role and content
+		else if ( isStruct( arguments.message ) ) {
+			if ( !arguments.message.keyExists( "role" ) || !arguments.message.keyExists( "content" ) ) {
+				throw(
+					type: "InvalidMessage",
+					message: "Message struct must contain 'role' and 'content' keys"
+				);
+			}
+			var msg = duplicate( arguments.message );
+			// Add timestamp if not present
+			if ( !msg.keyExists( "timestamp" ) ) {
+				msg.timestamp = now();
+			}
+			variables.messages.append( msg );
+		}
+		// Array - process each element
+		else if ( isArray( arguments.message ) ) {
+			arguments.message.each( ( m ) => add( m ) );
+		}
+		// Invalid type
+		else {
+			throw(
+				type: "InvalidMessage",
+				message: "Message must be a string, struct, array, or AiMessage instance"
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * Get all messages from memory
+	 *
+	 * @return Array of message structs
+	 */
+	public array function getAll() {
+		return variables.messages
+	}
+
+	/**
+	 * Get recent messages from memory
+	 *
+	 * @limit Number of recent messages to retrieve
+	 *
+	 * @return Array of message structs
+	 */
+	public array function getRecent( numeric limit = 10 ) {
+		var total = variables.messages.len();
+		if ( total <= arguments.limit ) {
+			return this.getAll();
+		}
+
+		var start = total - arguments.limit + 1;
+		return variables.messages.slice( start, total );
+	}
+
+	/**
+	 * Get messages by role (user, assistant, system, tool)
+	 *
+	 * @role The role to filter by
+	 *
+	 * @return Array of message structs
+	 */
+	public array function getByRole( required string role ) {
+		return variables.messages.filter( ( m ) => m.role == role );
+	}
+
+	/**
+	 * Clear all messages from memory
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function clear() {
+		variables.messages = [];
+		return this;
+	}
+
+	/**
+	 * Get the count of messages in memory
+	 *
+	 * @return Numeric count
+	 */
+	public numeric function count() {
+		return variables.messages.len();
+	}
+
+	/**
+	 * Check if memory is empty
+	 *
+	 * @return True if empty, false otherwise
+	 */
+	public boolean function isEmpty() {
+		return variables.messages.isEmpty();
+	}
+
+	/**
+	 * Get the system message if one exists
+	 *
+	 * @return The system message content or an empty string
+	 */
+	public string function getSystemMessage() {
+		var systemMessages = this.getByRole( "system" );
+		if ( systemMessages.isEmpty() ) {
+			return "";
+		}
+		return systemMessages.first().content;
+	}
+
+	/**
+	 * Set or replace the system message
+	 *
+	 * @message The system message content (string)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function setSystemMessage( required string message ) {
+		// Remove existing system message if any
+		removeSystemMessage();
+
+		// Add new system message at the beginning
+		variables.messages.prepend( {
+			role: "system",
+			content: arguments.message,
+			timestamp: now()
+		} );
+
+		return this;
+	}
+
+	/**
+	 * Remove the system message
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function removeSystemMessage() {
+		variables.messages = variables.messages.filter( ( m ) => m.role != "system" );
+		return this;
+	}
+
+	/**
+	 * Get messages excluding system message
+	 *
+	 * @return Array of message structs
+	 */
+	public array function getNonSystemMessages() {
+		return variables.messages.filter( ( m ) => m.role != "system" );
+	}
+
+	/**
+	 * Configure the memory instance for operation
+	 *
+	 * @config Configuration struct to merge
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function configure( required struct config ) {
+		variables.config.append( arguments.config, true );
+		return this;
+	}
+
+}

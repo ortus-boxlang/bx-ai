@@ -1,0 +1,80 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * In-Memory AI conversation storage
+ * Stores conversation history in memory (volatile - lost on restart)
+ */
+class extends="BaseMemory" {
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		return this;
+	}
+
+	/**
+	 * Get a summary of this memory instance
+	 *
+	 * @return Struct with memory information
+	 */
+	public struct function getSummary() {
+		return {
+			type: "InMemory",
+			key: variables.key,
+			messageCount: this.count(),
+			hasSystemMessage: len( this.getSystemMessage() ) > 0,
+			metadata: variables.metadata,
+			config: variables.config
+		};
+	}
+
+	/**
+	 * Export messages to a serializable format
+	 *
+	 * @return Struct containing all memory data
+	 */
+	public struct function export() {
+		return {
+			key: variables.key,
+			metadata: variables.metadata,
+			config: variables.config,
+			messages: this.getAll()
+		};
+	}
+
+	/**
+	 * Import messages from a previously exported format
+	 *
+	 * @data The exported memory data
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function import( required struct data ) {
+		if ( arguments.data.keyExists( "key" ) ) {
+			variables.key = arguments.data.key;
+		}
+		if ( arguments.data.keyExists( "metadata" ) ) {
+			variables.metadata = arguments.data.metadata;
+		}
+		if ( arguments.data.keyExists( "config" ) ) {
+			variables.config = arguments.data.config;
+		}
+		if ( arguments.data.keyExists( "messages" ) && isArray( arguments.data.messages ) ) {
+			variables.messages = arguments.data.messages;
+		}
+		return this;
+	}
+
+}

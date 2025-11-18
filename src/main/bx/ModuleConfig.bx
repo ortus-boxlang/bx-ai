@@ -101,6 +101,12 @@ class {
 			// Ex: { temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
 			defaultParams = {
 			},
+			// The default memory to use
+			memory : {
+				provider = "inMemory",
+				config = {
+				}
+			},
 			// The default timeout of the ai requests
 			timeout = 30,
 			// If true, the AI request will be logged into the ai.log
