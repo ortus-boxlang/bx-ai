@@ -127,11 +127,109 @@ model = aiModel( "ollama" )
 model = aiModel( "openai" )
     .withParams( { temperature: 0.7 } )
 
-// Override at runtime
+// Override at runtime - second parameter is params
 result = model.run(
     { messages: [...] },
     { temperature: 0.9 }  // Uses 0.9
 )
+```
+
+## Model Options
+
+Models support the `options` parameter for controlling runtime behavior.
+
+### Setting Default Options
+
+```java
+model = aiModel( "openai" )
+    .withParams( { model: "gpt-4" } )
+    .withOptions( {
+        returnFormat: "single",
+        timeout: 60,
+        logRequest: true
+    } )
+
+// Uses default options
+result = aiMessage()
+    .user( "Hello" )
+    .to( model )
+    .run()
+```
+
+### Runtime Options Override
+
+```java
+model = aiModel( "openai" )
+    .withOptions( { returnFormat: "raw" } )
+
+pipeline = aiMessage()
+    .user( "Hello ${name}" )
+    .to( model )
+
+// Override at runtime - third parameter is options
+result = pipeline.run(
+    { name: "World" },           // input bindings
+    { temperature: 0.7 },        // AI parameters
+    { returnFormat: "single" }   // runtime options (overrides default)
+)
+```
+
+### Convenience Methods
+
+```java
+// Return just the content string
+result = aiMessage()
+    .user( "Say hello" )
+    .to( aiModel() )
+    .singleMessage()  // Convenience method
+    .run()
+// "Hello! How can I help you?"
+
+// Return array of messages
+result = aiMessage()
+    .user( "List colors" )
+    .to( aiModel() )
+    .allMessages()  // Convenience method
+    .run()
+// [{ role: "assistant", content: "Red, Blue, Green" }]
+
+// Return raw response (default for pipelines)
+result = aiMessage()
+    .user( "Hello" )
+    .to( aiModel() )
+    .rawResponse()  // Explicit (raw is default)
+    .run()
+// { model: "gpt-3.5-turbo", choices: [...], usage: {...}, ... }
+```
+
+### Available Options
+
+- `returnFormat:string` - `"raw"` (default), `"single"`, or `"all"`
+- `timeout:numeric` - Request timeout in seconds
+- `logRequest:boolean` - Log requests to `ai.log`
+- `logRequestToConsole:boolean` - Log requests to console
+- `logResponse:boolean` - Log responses to `ai.log`
+- `logResponseToConsole:boolean` - Log responses to console
+- `provider:string` - Override AI provider
+- `apiKey:string` - Override API key
+
+### Debugging with Options
+
+```java
+// Enable logging for debugging
+debugModel = aiModel( "openai" )
+    .withOptions( {
+        logRequest: true,
+        logRequestToConsole: true,
+        logResponse: true,
+        logResponseToConsole: true
+    } )
+
+pipeline = aiMessage()
+    .user( "Debug this" )
+    .to( debugModel )
+
+result = pipeline.run()  // Logs everything to console and ai.log
 ```
 
 ## Model Patterns

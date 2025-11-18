@@ -593,12 +593,25 @@ The `ChatMessage` object has several methods that you can use to interact with t
 - `replaceSystemMessage( content )` : Replace the system message with a new one
 - `setMessages( messages ):ChatMessage` : Set the messages
 
-**Return Format Control (for pipelines):**
+**Options Management (for pipelines):**
 
-- `withFormat( format ):ChatMessage` : Set return format ('raw', 'single', or 'all')
-- `singleMessage():ChatMessage` : Convenience for `.withFormat("single")` - returns content string
-- `allMessages():ChatMessage` : Convenience for `.withFormat("all")` - returns array of messages
-- `rawResponse():ChatMessage` : Convenience for `.withFormat("raw")` - returns full API response (default)
+- `withOptions( options ):ChatMessage` : Set default runtime options (returnFormat, timeout, logging, etc.)
+- `singleMessage():ChatMessage` : Convenience for `.withOptions({ returnFormat: "single" })` - returns content string
+- `allMessages():ChatMessage` : Convenience for `.withOptions({ returnFormat: "all" })` - returns array of messages
+- `rawResponse():ChatMessage` : Convenience for `.withOptions({ returnFormat: "raw" })` - returns full API response (default for pipelines)
+- `clearOptions():ChatMessage` : Clear all default options
+
+**Parameter Management:**
+
+- `withParams( params ):ChatMessage` : Set default AI parameters (temperature, max_tokens, etc.)
+- `clearParams():ChatMessage` : Clear all default parameters
+
+**Chaining Methods:**
+
+- `to( runnable ):IAiRunnable` : Chain this message to another runnable
+- `toDefaultModel():IAiRunnable` : Convenience for `.to( aiModel() )` - connect to default model
+- `toModel( provider, apiKey ):IAiRunnable` : Convenience for `.to( aiModel( provider, apiKey ) )`
+- `transform( transformer ):IAiRunnable` : Add a transformation step to the pipeline
 
 ### ChatMessage Dynamic Methods
 
@@ -708,6 +721,115 @@ response = service.invoke(
 	aiChatRequest( "Write a haiku about recursion in programming.", { model: "gpt-3.5-turbo", temperature: 0.5, max_tokens: 100 } )
 )
 ```
+
+## Pipeline Options
+
+All runnables (message templates, models, transforms, sequences) support an `options` parameter that controls runtime behavior. This provides a consistent API across all pipeline components.
+
+### Options Parameter
+
+The `options` struct can be passed to `run()` and `stream()` methods:
+
+```java
+pipeline.run( input, params, options )
+pipeline.stream( onChunk, input, params, options )
+```
+
+**Available Options:**
+
+- `returnFormat:string` : Format of the response - `"raw"` (default for pipelines), `"single"`, or `"all"`
+- `timeout:numeric` : Request timeout in seconds (default: 30)
+- `logRequest:boolean` : Log requests to `ai.log` (default: false)
+- `logRequestToConsole:boolean` : Log requests to console (default: false)
+- `logResponse:boolean` : Log responses to `ai.log` (default: false)
+- `logResponseToConsole:boolean` : Log responses to console (default: false)
+- `provider:string` : Override the AI provider
+- `apiKey:string` : Override the API key
+
+### Setting Default Options
+
+Use `withOptions()` to set default options for a runnable:
+
+```java
+pipeline = aiMessage()
+    .user( "Hello ${name}" )
+    .toDefaultModel()
+    .withOptions( {
+        returnFormat: "single",
+        timeout: 60,
+        logRequest: true
+    } )
+
+// Uses default options
+result = pipeline.run( { name: "World" } )
+```
+
+### Runtime Options Override
+
+Runtime options override default options:
+
+```java
+pipeline = aiMessage()
+    .user( "Hello" )
+    .toDefaultModel()
+    .withOptions( { returnFormat: "raw" } )
+
+// Override at runtime
+result = pipeline.run( {}, {}, { returnFormat: "single" } )  // Returns string
+```
+
+### Options Propagation
+
+Options set via `withOptions()` propagate through pipeline chains:
+
+```java
+step1 = aiMessage()
+    .user( "Generate code" )
+    .withOptions( { returnFormat: "single", timeout: 60 } )
+
+step2 = aiModel( "openai" )
+
+pipeline = step1.to( step2 )  // Options from step1 become defaults for the sequence
+```
+
+### Convenience Methods
+
+For return format, use convenience methods instead of `withOptions()`:
+
+```java
+// These are equivalent:
+pipeline.withOptions( { returnFormat: "single" } )
+pipeline.singleMessage()
+
+// These are equivalent:
+pipeline.withOptions( { returnFormat: "all" } )
+pipeline.allMessages()
+
+// These are equivalent:
+pipeline.withOptions( { returnFormat: "raw" } )
+pipeline.rawResponse()
+```
+
+### Return Format Behavior
+
+**Pipelines (runnables) vs. BIFs:**
+
+- **Pipelines default to `"raw"`** - Full API response with all metadata for composability
+- **`aiChat()` defaults to `"single"`** - Content string for convenience
+
+```java
+// Pipeline - returns full response struct by default
+pipeline = aiMessage().user( "Hello" ).toDefaultModel()
+rawResult = pipeline.run()  // { choices: [...], usage: {...}, ... }
+
+// Extract content with convenience method
+singleResult = pipeline.singleMessage().run()  // "Hello! How can I help?"
+
+// aiChat() - returns string by default
+result = aiChat( "Hello" )  // "Hello! How can I help?"
+```
+
+See the [Pipeline Documentation](docs/pipelines/overview.md#options-and-return-formats) for more details.
 
 ## aiTool() - Create a Tool Object
 

@@ -4,6 +4,8 @@ Transform and process data between pipeline steps. Transformers are functions th
 
 ## Creating Transformers
 
+Transformers process data between pipeline steps. They implement the `IAiRunnable` interface but ignore the `options` parameter since they don't interact with AI providers.
+
 ### Inline Transform
 
 ```java
@@ -118,6 +120,36 @@ pipeline = aiMessage()
 
 result = pipeline.run( { topic: "AI" } )
 // { content: "...", topic: "AI", timestamp: {ts}, length: 150 }
+```
+
+## Options in Transformers
+
+Transformers accept the `options` parameter for interface consistency but **ignore it** since they don't make AI requests:
+
+```java
+transformer = aiTransform( r => r.content.ucase() )
+
+// Options parameter exists but has no effect on transformer behavior
+result = transformer.run(
+    { content: "hello" },     // input
+    {},                       // params (ignored)
+    { timeout: 60 }          // options (ignored by transformer)
+)
+// "HELLO"
+```
+
+**Why options exist:** Transformers implement `IAiRunnable` interface which requires the `options` parameter. This maintains a consistent API across all pipeline components, even though transformers don't use options.
+
+**Options propagation:** When transformers are part of a pipeline sequence, options flow through to AI components:
+
+```java
+pipeline = aiMessage()
+    .user( "Hello" )
+    .toDefaultModel()
+    .transform( r => r.content )  // Ignores options
+    .withOptions( { returnFormat: "single" } )  // Applies to model, not transform
+
+result = pipeline.run()  // Options affect the model step
 ```
 
 ## Advanced Transforms

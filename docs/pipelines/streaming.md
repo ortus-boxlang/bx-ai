@@ -25,11 +25,69 @@ pipeline = aiMessage()
     .user( "Write about ${topic}" )
     .toDefaultModel()
 
+// stream( onChunk, input, params, options )
 pipeline.stream(
     ( chunk ) => print( chunk.choices?.first()?.delta?.content ?: "" ),
-    { style: "poetic", topic: "nature" }
+    { style: "poetic", topic: "nature" }  // input bindings
 )
 ```
+
+### With Options
+
+```java
+pipeline = aiMessage()
+    .user( "Write a story" )
+    .toDefaultModel()
+
+// stream( onChunk, input, params, options )
+pipeline.stream(
+    ( chunk ) => print( chunk.choices?.first()?.delta?.content ?: "" ),
+    {},                      // input bindings
+    { temperature: 0.8 },    // AI parameters
+    { timeout: 120 }         // runtime options
+)
+```
+
+## Options in Streaming
+
+Streamers accept the same `options` parameter as `run()` methods:
+
+### Default Options
+
+```java
+pipeline = aiMessage()
+    .user( "Tell me about ${topic}" )
+    .toDefaultModel()
+    .withOptions( {
+        timeout: 120,
+        logRequest: true
+    } )
+
+// Uses default options
+pipeline.stream(
+    ( chunk ) => print( chunk.choices?.first()?.delta?.content ?: "" ),
+    { topic: "AI" }
+)
+```
+
+### Runtime Options Override
+
+```java
+pipeline = aiMessage()
+    .user( "Write code" )
+    .toDefaultModel()
+    .withOptions( { timeout: 30 } )
+
+// Override timeout at runtime
+pipeline.stream(
+    ( chunk ) => print( chunk.choices?.first()?.delta?.content ?: "" ),
+    {},                      // input
+    { temperature: 0.7 },    // params
+    { timeout: 180 }         // options override
+)
+```
+
+**Note:** Return format options don't apply to streaming - chunks are always in provider's streaming format.
 
 ## Message Streaming
 

@@ -62,10 +62,10 @@ All pipeline components implement the `IAiRunnable` interface:
 ```java
 interface IAiRunnable {
     // Synchronous execution
-    any function run( any input = {}, struct params = {} )
+    any function run( any input = {}, struct params = {}, struct options = {} )
 
     // Streaming execution
-    void function stream( function onChunk, any input = {}, struct params = {} )
+    void function stream( function onChunk, any input = {}, struct params = {}, struct options = {} )
 
     // Chaining
     IAiRunnable function to( IAiRunnable next )
@@ -107,6 +107,20 @@ model = aiModel()
 
 // Runtime params override
 model.run( {}, { temperature: 0.9 } )  // Uses 0.9
+```
+
+### Options
+
+Options control runtime behavior (returnFormat, timeout, logging, etc.):
+
+```java
+pipeline = aiMessage()
+    .user( "Hello" )
+    .toDefaultModel()
+    .withOptions( { returnFormat: "single", timeout: 60 } )  // Stored defaults
+
+// Runtime options override
+pipeline.run( {}, {}, { returnFormat: "raw" } )  // Uses raw format
 ```
 
 ## Building Your First Pipeline
@@ -255,7 +269,7 @@ result = pipeline.run()
 result = pipeline.run( { key: "value" }, { temperature: 0.9 } )
 ```
 
-### Return Formats
+### Options and Return Formats
 
 By default, pipelines return **raw responses** from the AI provider (full API response struct). This gives you maximum flexibility to access all response data including metadata, usage stats, and multiple choices.
 
@@ -265,16 +279,19 @@ By default, pipelines return **raw responses** from the AI provider (full API re
 2. **`single`** - Extract just the content string from first message
 3. **`all`** - Array of all choice messages
 
-#### Using `.withFormat()`
+#### Using `.withOptions()`
 
 ```java
 // Explicit format specification
 pipeline = aiMessage()
     .user( "Hello" )
     .toDefaultModel()
-    .withFormat( "single" )  // Returns string content
+    .withOptions( { returnFormat: "single" } )  // Returns string content
 
 result = pipeline.run()  // "Hello! How can I help you?"
+
+// Or specify at runtime
+result = pipeline.run( {}, {}, { returnFormat: "single" } )  // "Hello! How can I help you?"
 ```
 
 #### Convenience Methods
@@ -329,13 +346,73 @@ pipeline = aiMessage().user( "Say hello" ).toDefaultModel()
 rawResult = pipeline.run()
 // { model: "gpt-3.5-turbo", choices: [...], usage: {...}, ... }
 
-// Single - just the content string
+// Single - just the content string (convenience method)
 singleResult = pipeline.singleMessage().run()
+// "Hello! How can I help you today?"
+
+// Single - using withOptions
+singleResult = pipeline.withOptions({ returnFormat: "single" }).run()
+// "Hello! How can I help you today?"
+
+// Single - using runtime options
+singleResult = pipeline.run( {}, {}, { returnFormat: "single" } )
 // "Hello! How can I help you today?"
 
 // All - array of message objects
 allResult = pipeline.allMessages().run()
 // [{ role: "assistant", content: "Hello! How can I help you today?" }]
+```
+
+#### Available Options
+
+The `options` struct supports these properties:
+
+- `returnFormat:string` - Response format: `"raw"` (default), `"single"`, or `"all"`
+- `timeout:numeric` - Request timeout in seconds (default: 30)
+- `logRequest:boolean` - Log requests to `ai.log` (default: false)
+- `logRequestToConsole:boolean` - Log requests to console (default: false)
+- `logResponse:boolean` - Log responses to `ai.log` (default: false)
+- `logResponseToConsole:boolean` - Log responses to console (default: false)
+- `provider:string` - Override AI provider
+- `apiKey:string` - Override API key
+
+```java
+pipeline = aiMessage()
+    .user( "Debug this" )
+    .toDefaultModel()
+    .withOptions( {
+        returnFormat: "single",
+        timeout: 60,
+        logRequest: true,
+        logResponse: true
+    } )
+```
+
+#### Options Propagation
+
+Options set via `withOptions()` propagate through pipeline chains:
+
+```java
+step1 = aiMessage()
+    .user( "Hello" )
+    .withOptions( { returnFormat: "single" } )
+
+step2 = aiModel( "openai" )
+
+pipeline = step1.to( step2 )  // Options from step1 become defaults for the sequence
+result = pipeline.run()  // Uses single format
+```
+
+Runtime options override default options:
+
+```java
+pipeline = aiMessage()
+    .user( "Hello" )
+    .toDefaultModel()
+    .withOptions( { returnFormat: "raw" } )
+
+// Override at runtime
+result = pipeline.run( {}, {}, { returnFormat: "single" } )  // Returns string, not struct
 ```
 
 #### When to Use Each Format

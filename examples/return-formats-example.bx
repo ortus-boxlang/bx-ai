@@ -42,15 +42,25 @@ allResult.each( ( msg, i ) => {
 })
 println()
 
-// 4. Using withFormat() explicitly
-println( "=== Using withFormat() ===" )
+// 4. Using withOptions() explicitly
+println( "=== Using withOptions() ===" )
 formatResult = basePipeline
-    .withFormat( "single" )
+    .withOptions( { returnFormat: "single" } )
     .run()
 println( "Content: " & formatResult )
 println()
 
-// 5. Combining with transforms
+// 5. Runtime options override
+println( "=== Runtime Options Override ===" )
+runtimeResult = basePipeline.run(
+    {},                              // input bindings
+    {},                              // params
+    { returnFormat: "single" }       // runtime options
+)
+println( "Content: " & runtimeResult )
+println()
+
+// 7. Combining with transforms
 println( "=== Single + Transform ===" )
 transformed = basePipeline
     .singleMessage()
@@ -59,7 +69,7 @@ transformed = basePipeline
 println( "Uppercase: " & transformed )
 println()
 
-// 6. Different use cases
+// 8. Different use cases
 println( "=== Use Case Examples ===" )
 
 // For debugging - use raw

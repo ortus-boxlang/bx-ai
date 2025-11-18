@@ -190,6 +190,87 @@ result = pipeline.run( {
 } )
 ```
 
+## Pipeline Options
+
+Messages in pipelines support the `options` parameter for controlling runtime behavior.
+
+### Setting Default Options
+
+```java
+pipeline = aiMessage()
+    .system( "You are helpful" )
+    .user( "Explain ${topic}" )
+    .toDefaultModel()
+    .withOptions( {
+        returnFormat: "single",
+        timeout: 60,
+        logRequest: true
+    } )
+
+result = pipeline.run( { topic: "AI" } )  // Uses default options
+```
+
+### Runtime Options Override
+
+```java
+pipeline = aiMessage()
+    .user( "Hello" )
+    .toDefaultModel()
+    .withOptions( { returnFormat: "raw" } )
+
+// Override at runtime - third parameter is options
+result = pipeline.run(
+    { name: "World" },           // input bindings
+    { temperature: 0.7 },        // AI parameters
+    { returnFormat: "single" }   // runtime options (overrides default)
+)
+```
+
+### Convenience Methods
+
+For return format, use convenience methods:
+
+```java
+// These are equivalent:
+pipeline.withOptions( { returnFormat: "single" } )
+pipeline.singleMessage()
+
+// Extract just the content string
+result = aiMessage()
+    .user( "Say hello" )
+    .toDefaultModel()
+    .singleMessage()  // Convenience method
+    .run()
+// "Hello! How can I help you?"
+
+// Get all messages
+result = aiMessage()
+    .user( "List colors" )
+    .toDefaultModel()
+    .allMessages()  // Convenience method
+    .run()
+// [{ role: "assistant", content: "Red, Blue, Green" }]
+
+// Get raw response (default for pipelines)
+result = aiMessage()
+    .user( "Hello" )
+    .toDefaultModel()
+    .rawResponse()  // Explicit (raw is default)
+    .run()
+// { model: "gpt-3.5-turbo", choices: [...], usage: {...}, ... }
+```
+
+### Available Options
+
+- `returnFormat:string` - `"raw"` (default), `"single"`, or `"all"`
+- `timeout:numeric` - Request timeout in seconds
+- `logRequest:boolean` - Log requests to `ai.log`
+- `logRequestToConsole:boolean` - Log requests to console
+- `logResponse:boolean` - Log responses to `ai.log`
+- `logResponseToConsole:boolean` - Log responses to console
+- `provider:string` - Override AI provider
+- `apiKey:string` - Override API key
+
 ## Advanced Features
 
 ### Rendering Templates
