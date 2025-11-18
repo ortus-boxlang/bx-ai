@@ -24,7 +24,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		    memory = aiMemory( "cache" )
 		        .key( "test-session" )
 		        .configure( { cacheName: "default" } )
-		    
+
 		    cacheName = memory.getSummary().cacheName
 		    """,
 		    context
@@ -42,7 +42,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		    memory = aiMemory( "cache" )
 		        .key( "test-session" )
 		        .configure( { cacheName: "default" } )
-		    
+
 		    summary = memory.getSummary()
 		    """,
 		    context
@@ -63,26 +63,26 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		        .configure( { cacheName: "default" } )
 		        .add( "First message" )
 		        .add( "Second message" )
-		    
+
 		    count1 = memory1.count()
-		    
+
 		    // Create new instance with same key - should load from cache
 		    memory2 = aiMemory( "cache" )
 		        .key( "persist-test" )
 		        .configure( { cacheName: "default" } )
-		    
+
 		    count2 = memory2.count()
 		    messages = memory2.getAll()
-		    
+
 		    // Cleanup
 		    memory2.clear()
 		    """,
 		    context
 		);
 
-		var count1 = variables.getAsInteger( Key.of( "count1" ) );
-		var count2 = variables.getAsInteger( Key.of( "count2" ) );
-		
+		var	count1	= variables.getAsInteger( Key.of( "count1" ) );
+		var	count2	= variables.getAsInteger( Key.of( "count2" ) );
+
 		assertThat( count1 ).isEqualTo( 2 );
 		assertThat( count2 ).isEqualTo( 2 ); // Should load from cache
 	}
@@ -97,26 +97,26 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		        .key( "clear-test" )
 		        .configure( { cacheName: "default" } )
 		        .add( "Test message" )
-		    
+
 		    count1 = memory1.count()
-		    
+
 		    // Clear it
 		    memory1.clear()
-		    
+
 		    // Create new instance - should be empty
 		    memory2 = aiMemory( "cache" )
 		        .key( "clear-test" )
 		        .configure( { cacheName: "default" } )
-		    
+
 		    count2 = memory2.count()
 		    isEmpty = memory2.isEmpty()
 		    """,
 		    context
 		);
 
-		var count1 = variables.getAsInteger( Key.of( "count1" ) );
-		var count2 = variables.getAsInteger( Key.of( "count2" ) );
-		var isEmpty = variables.getAsBoolean( Key.of( "isEmpty" ) );
+		var	count1	= variables.getAsInteger( Key.of( "count1" ) );
+		var	count2	= variables.getAsInteger( Key.of( "count2" ) );
+		var	isEmpty	= variables.getAsBoolean( Key.of( "isEmpty" ) );
 
 		assertThat( count1 ).isEqualTo( 1 );
 		assertThat( count2 ).isEqualTo( 0 );
@@ -134,24 +134,24 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		        .configure( { cacheName: "default" } )
 		        .setSystemMessage( "You are a helpful assistant" )
 		        .add( "Hello" )
-		    
+
 		    sysMsg1 = memory1.getSystemMessage()
-		    
+
 		    // Create new instance - should load system message
 		    memory2 = aiMemory( "cache" )
 		        .key( "system-test" )
 		        .configure( { cacheName: "default" } )
-		    
+
 		    sysMsg2 = memory2.getSystemMessage()
-		    
+
 		    // Cleanup
 		    memory2.clear()
 		    """,
 		    context
 		);
 
-		var sysMsg1 = variables.getAsString( Key.of( "sysMsg1" ) );
-		var sysMsg2 = variables.getAsString( Key.of( "sysMsg2" ) );
+		var	sysMsg1	= variables.getAsString( Key.of( "sysMsg1" ) );
+		var	sysMsg2	= variables.getAsString( Key.of( "sysMsg2" ) );
 
 		assertThat( sysMsg1 ).isEqualTo( "You are a helpful assistant" );
 		assertThat( sysMsg2 ).isEqualTo( "You are a helpful assistant" );
@@ -166,9 +166,9 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		        .key( "summary-test" )
 		        .configure( { cacheName: "default" } )
 		        .add( "Test" )
-		    
+
 		    summary = memory.getSummary()
-		    
+
 		    // Cleanup
 		    memory.clear()
 		    """,
@@ -190,9 +190,9 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		        .key( "export-test" )
 		        .configure( { cacheName: "default" } )
 		        .add( "Test message" )
-		    
+
 		    exported = memory.export()
-		    
+
 		    // Cleanup
 		    memory.clear()
 		    """,
@@ -219,29 +219,29 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		        metadata: { session: "test" },
 		        config: { test: true }
 		    }
-		    
+
 		    // Import data
 		    memory1 = aiMemory( "cache" )
 		        .configure( { cacheName: "default" } )
 		        .import( data )
-		    
+
 		    count1 = memory1.count()
-		    
+
 		    // Create new instance - should load from cache
 		    memory2 = aiMemory( "cache" )
 		        .key( "import-test" )
 		        .configure( { cacheName: "default" } )
-		    
+
 		    count2 = memory2.count()
-		    
+
 		    // Cleanup
 		    memory2.clear()
 		    """,
 		    context
 		);
 
-		var count1 = variables.getAsInteger( Key.of( "count1" ) );
-		var count2 = variables.getAsInteger( Key.of( "count2" ) );
+		var	count1	= variables.getAsInteger( Key.of( "count1" ) );
+		var	count2	= variables.getAsInteger( Key.of( "count2" ) );
 
 		assertThat( count1 ).isEqualTo( 2 );
 		assertThat( count2 ).isEqualTo( 2 ); // Should load from cache
@@ -258,24 +258,24 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		        .configure( { cacheName: "default" } )
 		        .metadata( { userId: "123", sessionId: "abc" } )
 		        .add( "Test" )
-		    
+
 		    meta1 = memory1.metadata()
-		    
+
 		    // Create new instance - should load metadata
 		    memory2 = aiMemory( "cache" )
 		        .key( "metadata-test" )
 		        .configure( { cacheName: "default" } )
-		    
+
 		    meta2 = memory2.metadata()
-		    
+
 		    // Cleanup
 		    memory2.clear()
 		    """,
 		    context
 		);
 
-		var meta1 = variables.getAsStruct( Key.of( "meta1" ) );
-		var meta2 = variables.getAsStruct( Key.of( "meta2" ) );
+		var	meta1	= variables.getAsStruct( Key.of( "meta1" ) );
+		var	meta2	= variables.getAsStruct( Key.of( "meta2" ) );
 
 		assertThat( meta1.getAsString( Key.of( "userId" ) ) ).isEqualTo( "123" );
 		assertThat( meta2.getAsString( Key.of( "userId" ) ) ).isEqualTo( "123" );

@@ -105,16 +105,16 @@ class extends="BaseMemory" {
 	public IAiMemory function add( required any message ) {
 		var data = getCacheData();
 		var messages = data.messages;
-		
+
 		// Use parent's logic to process the message into proper format
 		// but don't let it store in variables.messages
 		var tempMessages = [];
 		variables.messages = tempMessages;
 		super.add( arguments.message );
-		
+
 		// Append the processed message(s) to cache messages
 		messages.append( tempMessages, true );
-		
+
 		// Save back to cache
 		setCacheData( messages, data.metadata, data.config );
 
@@ -185,17 +185,17 @@ class extends="BaseMemory" {
 	public IAiMemory function setSystemMessage( required string message ) {
 		var data = getCacheData();
 		var messages = data.messages;
-		
+
 		// Remove existing system message
 		messages = messages.filter( ( m ) => m.role != "system" );
-		
+
 		// Add new system message at the beginning
 		messages.prepend( {
 			role: "system",
 			content: arguments.message,
 			timestamp: now()
 		} );
-		
+
 		setCacheData( messages, data.metadata, data.config );
 		return this;
 	}
@@ -312,7 +312,7 @@ class extends="BaseMemory" {
 		if ( isNull( variables.cache ) || !len( variables.key ) ) {
 			return { messages: [], metadata: {}, config: {} };
 		}
-		
+
 		return variables.cache.getOrSet(
 			variables.key,
 			() => {
