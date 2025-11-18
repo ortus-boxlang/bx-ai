@@ -1,0 +1,352 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Cache-backed AI conversation storage
+ * Stores conversation history ONLY in BoxLang cache for persistence across restarts
+ * Does NOT use in-memory arrays - cache is the single source of truth
+ */
+class extends="BaseMemory" {
+
+	/**
+	 * The BoxLang cache provider instance
+	 */
+	property name="cache" type="any";
+
+	/**
+	 * The name of the cache to use
+	 */
+	property name="cacheName" type="string" default="default";
+
+	/**
+	 * Constructor
+	 *
+	 * @cacheName Name of the cache to use (default: "default")
+	 */
+	function init( string cacheName = "default" ) {
+		super.init();
+		variables.cacheName = arguments.cacheName;
+		return this;
+	}
+
+	/**
+	 * Configure the memory instance
+	 * Supports cacheName in config and initializes the cache provider
+	 * Loads metadata and config from cache if they exist
+	 */
+	public IAiMemory function configure( required struct config ) {
+		super.configure( arguments.config );
+
+		if ( arguments.config.keyExists( "cacheName" ) ) {
+			variables.cacheName = arguments.config.cacheName;
+		}
+
+		// Get the cache provider instance
+		variables.cache = cache( variables.cacheName );
+
+		// Load metadata and config from cache if they exist
+		// (but NOT messages - those are accessed on-demand via getAll())
+		var data = getCacheData();
+		if ( !data.metadata.isEmpty() ) {
+			variables.metadata = data.metadata;
+		}
+		if ( !data.config.isEmpty() ) {
+			variables.config = data.config;
+		}
+
+		return this;
+	}
+
+	/**
+	 * Get or set metadata - persists to cache when setting
+	 *
+	 * @metadata Optional struct to merge with existing metadata
+	 *
+	 * @return Struct (getter) or IAiMemory (setter)
+	 */
+	public any function metadata( struct metadata ) {
+		if ( !isNull( arguments.metadata ) ) {
+			// Update variables.metadata
+			variables.metadata.append( arguments.metadata, true );
+			// Persist to cache
+			var data = getCacheData();
+			setCacheData( data.messages, variables.metadata, data.config );
+			return this;
+		}
+		return variables.metadata;
+	}
+
+	/**
+	 * Get all messages - reads directly from cache
+	 *
+	 * @return Array of message structs
+	 */
+	public array function getAll() {
+		return getCacheData().messages;
+	}
+
+	/**
+	 * Add a message - writes directly to cache
+	 *
+	 * @message The message to add
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function add( required any message ) {
+		var data = getCacheData();
+		var messages = data.messages;
+		
+		// Use parent's logic to process the message into proper format
+		// but don't let it store in variables.messages
+		var tempMessages = [];
+		variables.messages = tempMessages;
+		super.add( arguments.message );
+		
+		// Append the processed message(s) to cache messages
+		messages.append( tempMessages, true );
+		
+		// Save back to cache
+		setCacheData( messages, data.metadata, data.config );
+
+		return this;
+	}
+
+	/**
+	 * Clear all messages from cache
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function clear() {
+		if ( !isNull( variables.cache ) && len( variables.key ) ) {
+			variables.cache.clear( variables.key );
+		}
+		return this;
+	}
+
+	/**
+	 * Get the count of messages in cache
+	 *
+	 * @return Numeric count
+	 */
+	public numeric function count() {
+		return getCacheData().messages.len();
+	}
+
+	/**
+	 * Check if memory is empty
+	 *
+	 * @return True if empty, false otherwise
+	 */
+	public boolean function isEmpty() {
+		return getCacheData().messages.isEmpty();
+	}
+
+	/**
+	 * Get messages by role - reads from cache
+	 *
+	 * @role The role to filter by
+	 *
+	 * @return Array of message structs
+	 */
+	public array function getByRole( required string role ) {
+		return getCacheData().messages.filter( ( m ) => m.role == role );
+	}
+
+	/**
+	 * Get the system message from cache
+	 *
+	 * @return The system message content or an empty string
+	 */
+	public string function getSystemMessage() {
+		var systemMessages = this.getByRole( "system" );
+		if ( systemMessages.isEmpty() ) {
+			return "";
+		}
+		return systemMessages.first().content;
+	}
+
+	/**
+	 * Set or replace the system message in cache
+	 *
+	 * @message The system message content (string)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function setSystemMessage( required string message ) {
+		var data = getCacheData();
+		var messages = data.messages;
+		
+		// Remove existing system message
+		messages = messages.filter( ( m ) => m.role != "system" );
+		
+		// Add new system message at the beginning
+		messages.prepend( {
+			role: "system",
+			content: arguments.message,
+			timestamp: now()
+		} );
+		
+		setCacheData( messages, data.metadata, data.config );
+		return this;
+	}
+
+	/**
+	 * Remove the system message from cache
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function removeSystemMessage() {
+		var data = getCacheData();
+		var messages = data.messages.filter( ( m ) => m.role != "system" );
+		setCacheData( messages, data.metadata, data.config );
+		return this;
+	}
+
+	/**
+	 * Get messages excluding system message from cache
+	 *
+	 * @return Array of message structs
+	 */
+	public array function getNonSystemMessages() {
+		return getCacheData().messages.filter( ( m ) => m.role != "system" );
+	}
+
+	/**
+	 * Get recent messages from cache
+	 *
+	 * @limit Number of recent messages to retrieve
+	 *
+	 * @return Array of message structs
+	 */
+	public array function getRecent( numeric limit = 10 ) {
+		var messages = this.getAll();
+		var total = messages.len();
+		if ( total <= arguments.limit ) {
+			return messages;
+		}
+		var start = total - arguments.limit + 1;
+		return messages.slice( start, total );
+	}
+
+	/**
+	 * Get a summary of this memory instance
+	 * Overrides base to add cacheName field
+	 *
+	 * @return Struct with memory information
+	 */
+	public struct function getSummary() {
+		var summary = super.getSummary();
+		summary.cacheName = variables.cacheName;
+		summary.cached = !isNull( variables.cache );
+		return summary;
+	}
+
+	/**
+	 * Export messages to a serializable format
+	 * Overrides base to add cacheName field
+	 *
+	 * @return Struct containing all memory data
+	 */
+	public struct function export() {
+		var exported = super.export();
+		exported.cacheName = variables.cacheName;
+		return exported;
+	}
+
+	/**
+	 * Import messages from a previously exported format
+	 * Overrides base to handle cacheName and persist to cache
+	 *
+	 * @data The exported memory data
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function import( required struct data ) {
+		// Handle cacheName specific to CacheMemory
+		if ( arguments.data.keyExists( "cacheName" ) ) {
+			variables.cacheName = arguments.data.cacheName;
+			// Reinitialize cache if cacheName changed
+			variables.cache = cache( variables.cacheName );
+		}
+
+		// Import key, metadata, config
+		if ( arguments.data.keyExists( "key" ) ) {
+			variables.key = arguments.data.key;
+		}
+		if ( arguments.data.keyExists( "metadata" ) ) {
+			variables.metadata = arguments.data.metadata;
+		}
+		if ( arguments.data.keyExists( "config" ) ) {
+			variables.config = arguments.data.config;
+		}
+
+		// Import messages directly to cache (don't use variables.messages)
+		var messages = arguments.data.messages ?: [];
+		setCacheData( messages, variables.metadata, variables.config );
+
+		return this;
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * Private Helpers
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get cache data structure - reads directly from cache
+	 *
+	 * @return Struct with keys: messages, metadata, config
+	 */
+	private struct function getCacheData() {
+		if ( isNull( variables.cache ) || !len( variables.key ) ) {
+			return { messages: [], metadata: {}, config: {} };
+		}
+		
+		return variables.cache.getOrSet(
+			variables.key,
+			() => {
+				return {
+					messages  : [],
+					metadata  : {},
+					config    : {}
+				};
+			}
+		);
+	}
+
+	/**
+	 * Set cache data structure - writes directly to cache
+	 *
+	 * @messages Array of message structs
+	 * @metadata Metadata struct
+	 * @config Config struct
+	 */
+	private void function setCacheData(
+		required array messages,
+		struct metadata = {},
+		struct config = {}
+	) {
+		if ( !isNull( variables.cache ) && len( variables.key ) ) {
+			variables.cache.set(
+				variables.key,
+				{
+					messages  : arguments.messages,
+					metadata  : arguments.metadata,
+					config    : arguments.config
+				}
+			);
+		}
+	}
+
+}
