@@ -1,0 +1,141 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Interface for AI Agent Memory implementations
+ * Defines the contract for storing and retrieving conversation history
+ */
+interface {
+
+    /**
+     * Get or set the unique key for this memory instance
+	 *
+     * @key The unique key string to set, or none to get the current key
+	 *
+     * @return Struct (getter) or IAiMemory (setter)
+     */
+    any function key( string key );
+
+    /**
+     * Get or set metadata for this memory
+	 *
+     * @metadata Optional struct to merge with existing metadata
+	 *
+     * @return Struct (getter) or IAiMemory (setter)
+     */
+    any function metadata( struct metadata );
+
+    /**
+     * Add a message to memory. The message can be:
+	 * - A string: The message will be added with the default role (user)
+	 * - A struct: The struct must contain at least 'role' and 'content' keys
+	 * - An array: Each element will be processed as above
+	 *  - An AiMessage instance: Its messages will be added
+	 *
+     * @message
+	 *
+     * @return IAiMemory for chaining
+     */
+    IAiMemory function add( required any message );
+
+    /**
+     * Get all messages from memory
+	 *
+     * @return Array of message structs
+     */
+    array function getAll();
+
+    /**
+     * Get recent messages from memory
+	 *
+     * @limit Number of recent messages to retrieve
+	 *
+     * @return Array of message structs
+     */
+    array function getRecent( numeric limit = 10 );
+
+    /**
+     * Get messages by role (user, assistant, system, tool)
+	 *
+     * @role The role to filter by
+	 *
+     * @return Array of message structs
+     */
+    array function getByRole( required string role );
+
+    /**
+     * Clear all messages from memory
+	 *
+     * @return IAiMemory for chaining
+     */
+    IAiMemory function clear();
+
+    /**
+     * Get the count of messages in memory
+	 *
+     * @return Numeric count
+     */
+    numeric function count();
+
+    /**
+     * Check if memory is empty
+	 *
+     * @return True if empty, false otherwise
+     */
+    boolean function isEmpty();
+
+    /**
+     * Get the system message if one exists
+	 *
+     * @return The system message or an empty string
+     */
+    string function getSystemMessage();
+
+    /**
+     * Set or replace the system message
+	 *
+     * @message The system message content (string)
+	 *
+     * @return IAiMemory for chaining
+     */
+    IAiMemory function setSystemMessage( required string  message );
+
+    /**
+     * Remove the system message
+     * @return IAiMemory for chaining
+     */
+    IAiMemory function removeSystemMessage();
+
+    /**
+     * Get messages excluding system message
+	 *
+     * @return Array of message structs
+     */
+    array function getNonSystemMessages();
+
+    /**
+     * Get configuration struct
+	 *
+     * @return Struct of configuration
+     */
+    struct function getConfig();
+
+    /**
+     * Configure the memory instance for operation
+	 *
+     * @config Configuration struct to merge
+	 *
+     * @return IAiMemory for chaining
+     */
+    IAiMemory function configure( required struct config );
+}
