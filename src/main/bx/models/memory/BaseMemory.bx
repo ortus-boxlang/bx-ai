@@ -28,6 +28,11 @@ abstract class implements="IAiMemory" {
 	property name="metadata" type="struct" default={};
 
 	/**
+	 * Memory instance name (defaults to class name via getMetadata)
+	 */
+	property name="name" type="string" default="";
+
+	/**
 	 * Configuration for this memory instance
 	 */
 	property name="config" type="struct" default={};
@@ -42,6 +47,16 @@ abstract class implements="IAiMemory" {
 	 */
 	static {
 		final settings = getModuleInfo( "bxai" ).settings
+	}
+
+	/**
+	 * Constructor - sets default name from class metadata
+	 */
+	function init() {
+		var fullName = getMetadata( this ).name ?: "BaseMemory";
+		// Extract just the class name from fully qualified path (e.g., "bxModules.bxai.models.memory.SimpleMemory" -> "SimpleMemory")
+		variables.name = fullName.listLast( "." );
+		return this;
 	}
 
 	/**
@@ -253,6 +268,30 @@ abstract class implements="IAiMemory" {
 	}
 
 	/**
+	 * Get or set the name of this memory instance
+	 *
+	 * @name Optional name to set
+	 *
+	 * @return String (getter) or IAiMemory (setter)
+	 */
+	public any function name( string name ) {
+		if ( !isNull( arguments.name ) ) {
+			variables.name = arguments.name;
+			return this;
+		}
+		return variables.name;
+	}
+
+	/**
+	 * Get the configuration struct
+	 *
+	 * @return Struct with configuration
+	 */
+	public struct function getConfig() {
+		return variables.config;
+	}
+
+	/**
 	 * Configure the memory instance for operation
 	 *
 	 * @config Configuration struct to merge
@@ -261,6 +300,64 @@ abstract class implements="IAiMemory" {
 	 */
 	public IAiMemory function configure( required struct config ) {
 		variables.config.append( arguments.config, true );
+		return this;
+	}
+
+	/**
+	 * Get a summary of this memory instance
+	 * Subclasses can override to add specific fields
+	 *
+	 * @return Struct with memory information
+	 */
+	public struct function getSummary() {
+		return {
+			type: variables.name,
+			key: variables.key,
+			messageCount: this.count(),
+			nonSystemCount: this.getNonSystemMessages().len(),
+			hasSystemMessage: len( this.getSystemMessage() ) > 0,
+			metadata: variables.metadata,
+			config: variables.config
+		};
+	}
+
+	/**
+	 * Export messages to a serializable format
+	 * Subclasses can override to add specific fields
+	 *
+	 * @return Struct containing all memory data
+	 */
+	public struct function export() {
+		return {
+			type: variables.name,
+			key: variables.key,
+			metadata: variables.metadata,
+			config: variables.config,
+			messages: this.getAll()
+		};
+	}
+
+	/**
+	 * Import messages from a previously exported format
+	 * Subclasses can override to handle specific fields
+	 *
+	 * @data The exported memory data
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function import( required struct data ) {
+		if ( arguments.data.keyExists( "key" ) ) {
+			variables.key = arguments.data.key;
+		}
+		if ( arguments.data.keyExists( "metadata" ) ) {
+			variables.metadata = arguments.data.metadata;
+		}
+		if ( arguments.data.keyExists( "config" ) ) {
+			variables.config = arguments.data.config;
+		}
+		if ( arguments.data.keyExists( "messages" ) && isArray( arguments.data.messages ) ) {
+			variables.messages = arguments.data.messages;
+		}
 		return this;
 	}
 

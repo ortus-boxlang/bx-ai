@@ -1,0 +1,170 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Windowed AI conversation storage
+ * Automatically keeps only the last N messages (sliding window buffer)
+ * Perfect for managing conversation context window limits
+ */
+class extends="SimpleMemory" {
+
+	/**
+	 * Maximum number of messages to keep in memory (excluding system message)
+	 */
+	property name="maxMessages" type="numeric" default=10;
+
+	/**
+	 * Constructor
+	 *
+	 * @maxMessages Maximum number of messages to keep (default: 10)
+	 */
+	function init( numeric maxMessages = 10 ) {
+		super.init();
+		variables.maxMessages = arguments.maxMessages;
+		return this;
+	}
+
+	/**
+	 * Configure the memory instance
+	 * Supports maxMessages in config
+	 */
+	public IAiMemory function configure( required struct config ) {
+		super.configure( arguments.config );
+
+		if ( arguments.config.keyExists( "maxMessages" ) ) {
+			variables.maxMessages = arguments.config.maxMessages;
+		}
+
+		return this;
+	}
+
+	/**
+	 * Add a message to memory with auto-trimming
+	 * Automatically removes oldest messages when buffer is full
+	 *
+	 * @message The message to add
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function add( required any message ) {
+		// Use parent's add logic
+		super.add( arguments.message );
+
+		// Trim to max size (excluding system message)
+		this.trim();
+
+		return this;
+	}
+
+	/**
+	 * Trim messages to keep only the last N (excluding system message)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function trim() {
+		var systemMsg = "";
+		var hasSystem = false;
+
+		// Extract system message if exists
+		if ( len( this.getSystemMessage() ) ) {
+			systemMsg = this.getSystemMessage();
+			hasSystem = true;
+		}
+
+		// Get non-system messages
+		var nonSystemMessages = this.getNonSystemMessages();
+
+		// If we're over the limit, keep only the last N
+		if ( nonSystemMessages.len() > variables.maxMessages ) {
+			var start = nonSystemMessages.len() - variables.maxMessages + 1;
+			var kept = nonSystemMessages.slice( start, nonSystemMessages.len() );
+
+			// Clear and rebuild
+			variables.messages = [];
+
+			// Re-add system message first if it existed
+			if ( hasSystem ) {
+				this.setSystemMessage( systemMsg );
+			}
+
+			// Add back the kept messages
+			kept.each( function( msg ) {
+				variables.messages.append( msg );
+			} );
+		}
+
+		return this;
+	}
+
+	/**
+	 * Set the maximum messages limit
+	 * Triggers trim if current count exceeds new limit
+	 *
+	 * @maxMessages The new maximum
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function setMaxMessages( required numeric maxMessages ) {
+		variables.maxMessages = arguments.maxMessages;
+		this.trim();
+		return this;
+	}
+
+	/**
+	 * Get a summary of this memory instance
+	 * Overrides base to add maxMessages field
+	 *
+	 * @return Struct with memory information
+	 */
+	public struct function getSummary() {
+		var summary = super.getSummary();
+		summary.maxMessages = variables.maxMessages;
+		return summary;
+	}
+
+	/**
+	 * Export messages to a serializable format
+	 * Overrides base to add maxMessages field
+	 *
+	 * @return Struct containing all memory data
+	 */
+	public struct function export() {
+		var exported = super.export();
+		exported.maxMessages = variables.maxMessages;
+		return exported;
+	}
+
+	/**
+	 * Import messages from a previously exported format
+	 * Overrides base to handle maxMessages and trigger trim
+	 *
+	 * @data The exported memory data
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function import( required struct data ) {
+		// Import base fields
+		super.import( arguments.data );
+
+		// Handle maxMessages specific to WindowMemory
+		if ( arguments.data.keyExists( "maxMessages" ) ) {
+			variables.maxMessages = arguments.data.maxMessages;
+		}
+
+		// Trim to max after import
+		this.trim();
+
+		return this;
+	}
+
+}

@@ -39,16 +39,23 @@ class {
 		var memoryClass = "";
 
 		// Map memory types to their class paths
-		switch( memoryType ) {
+		switch( memoryType.lcase() ) {
 			case "inmemory":
 			case "memory":
 			case "simple":
-				memoryClass = "bxModules.bxai.models.memory.InMemory";
+			case "simplememory":
+				memoryClass = "bxModules.bxai.models.memory.SimpleMemory";
+				break;
+			case "buffered":
+			case "buffer":
+			case "window":
+			case "windowmemory":
+				memoryClass = "bxModules.bxai.models.memory.WindowMemory";
 				break;
 			default:
 				throw(
 					type: "InvalidMemoryType",
-					message: "Unknown memory type: [#memoryType#]. Available types: InMemory"
+					message: "Unknown memory type: #memoryType#. Available types: SimpleMemory, WindowMemory"
 				);
 		}
 

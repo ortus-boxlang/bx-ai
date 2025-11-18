@@ -12,7 +12,7 @@ import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.exceptions.BoxRuntimeException;
 
-public class InMemoryTest extends BaseIntegrationTest {
+public class SimpleMemoryTest extends BaseIntegrationTest {
 
 	@BeforeEach
 	public void setupEach() {
@@ -20,11 +20,11 @@ public class InMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test InMemory instantiation" )
+	@DisplayName( "Test SimpleMemory instantiation" )
 	public void testInstantiation() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.InMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
 		    """,
 		    context
 		);
@@ -34,11 +34,11 @@ public class InMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test InMemory getSummary()" )
+	@DisplayName( "Test SimpleMemory getSummary()" )
 	public void testGetSummary() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.InMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
 		        .key( "test-key" )
 		        .setSystemMessage( "Test system" )
 		        .add( "User message" )
@@ -49,18 +49,18 @@ public class InMemoryTest extends BaseIntegrationTest {
 		);
 
 		var summary = variables.getAsStruct( Key.of( "summary" ) );
-		assertThat( summary.getAsString( Key.of( "type" ) ) ).isEqualTo( "InMemory" );
+		assertThat( summary.getAsString( Key.of( "type" ) ) ).isEqualTo( "SimpleMemory" );
 		assertThat( summary.getAsString( Key.of( "key" ) ) ).isEqualTo( "test-key" );
 		assertThat( summary.get( "messageCount" ) ).isEqualTo( 2 ); // system + user
 		assertThat( summary.getAsBoolean( Key.of( "hasSystemMessage" ) ) ).isTrue();
 	}
 
 	@Test
-	@DisplayName( "Test InMemory export()" )
+	@DisplayName( "Test SimpleMemory export()" )
 	public void testExport() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.InMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
 		        .key( "export-key" )
 		        .metadata( { userId: 789 } )
 		        .configure( { maxSize: 100 } )
@@ -79,7 +79,7 @@ public class InMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test InMemory import()" )
+	@DisplayName( "Test SimpleMemory import()" )
 	public void testImport() {
 		runtime.executeSource(
 		    """
@@ -92,7 +92,7 @@ public class InMemoryTest extends BaseIntegrationTest {
 		        ]
 		    }
 
-		    memory = new bxModules.bxai.models.memory.InMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
 		        .import( data )
 
 		    result = {
@@ -117,11 +117,11 @@ public class InMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test InMemory export/import roundtrip" )
+	@DisplayName( "Test SimpleMemory export/import roundtrip" )
 	public void testExportImportRoundtrip() {
 		runtime.executeSource(
 		    """
-		    original = new bxModules.bxai.models.memory.InMemory()
+		    original = new bxModules.bxai.models.memory.SimpleMemory()
 		        .key( "roundtrip" )
 		        .metadata( { version: 1 } )
 		        .setSystemMessage( "System prompt" )
@@ -130,7 +130,7 @@ public class InMemoryTest extends BaseIntegrationTest {
 
 		    exported = original.export()
 
-		    restored = new bxModules.bxai.models.memory.InMemory()
+		    restored = new bxModules.bxai.models.memory.SimpleMemory()
 		        .import( exported )
 
 		    result = {
@@ -151,11 +151,11 @@ public class InMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test InMemory message timestamps" )
+	@DisplayName( "Test SimpleMemory message timestamps" )
 	public void testMessageTimestamps() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.InMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
 		        .add( "Message with timestamp" )
 
 		    messages = memory.getAll()
@@ -169,12 +169,12 @@ public class InMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test InMemory invalid message format throws error" )
+	@DisplayName( "Test SimpleMemory invalid message format throws error" )
 	public void testInvalidMessageFormat() {
 		assertThrows( BoxRuntimeException.class, () -> {
 			runtime.executeSource(
 			    """
-			    memory = new bxModules.bxai.models.memory.InMemory()
+			    memory = new bxModules.bxai.models.memory.SimpleMemory()
 			        .add( { invalidKey: "no role or content" } )
 			    """,
 			    context
@@ -183,7 +183,7 @@ public class InMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test InMemory with AiMessage integration" )
+	@DisplayName( "Test SimpleMemory with AiMessage integration" )
 	public void testAiMessageIntegration() {
 		runtime.executeSource(
 		    """
@@ -191,7 +191,7 @@ public class InMemoryTest extends BaseIntegrationTest {
 		           .system( "Be helpful" )
 		           .user( "Hello" )
 
-		       memory = new bxModules.bxai.models.memory.InMemory()
+		       memory = new bxModules.bxai.models.memory.SimpleMemory()
 		           .add( msg )
 
 		       count = memory.count()
@@ -205,11 +205,11 @@ public class InMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test InMemory configuration persistence" )
+	@DisplayName( "Test SimpleMemory configuration persistence" )
 	public void testConfigurationPersistence() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.InMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
 		        .configure( { option1: "value1" } )
 		        .configure( { option2: "value2" } )
 
@@ -224,11 +224,11 @@ public class InMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test InMemory replaces system message" )
+	@DisplayName( "Test SimpleMemory replaces system message" )
 	public void testSystemMessageReplacement() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.InMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
 		        .setSystemMessage( "First system message" )
 		        .add( "User message" )
 		        .setSystemMessage( "Second system message" )
@@ -245,11 +245,11 @@ public class InMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test InMemory getRecent with more messages than limit" )
+	@DisplayName( "Test SimpleMemory getRecent with more messages than limit" )
 	public void testGetRecentWithLimit() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.InMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
 
 		    // Add 10 messages
 		    for( i = 1; i <= 10; i++ ) {
