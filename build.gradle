@@ -238,6 +238,31 @@ task downloadBoxLang( type: Download ) {
 }
 
 /**
+ * Task to download bx-derby module for testing JDBC functionality
+ */
+task downloadBxDerby( type: Download ) {
+	// Create the destination directory
+	doFirst {
+		file( "src/test/resources/modules" ).mkdirs()
+	}
+    // Configure the URL of the file to download
+    src "https://s3.amazonaws.com/downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-derby/1.1.0/bx-derby-1.1.0.zip"
+    // Specify the destination directory for the downloaded file
+    dest "src/test/resources/modules/bx-derby-1.1.0.zip"
+    overwrite false
+    onlyIfModified true
+}
+
+/**
+ * Task to unzip bx-derby module
+ */
+task unzipBxDerby( type: Copy ) {
+	dependsOn downloadBxDerby
+	from zipTree( "src/test/resources/modules/bx-derby-1.1.0.zip" )
+	into "src/test/resources/modules/bx-derby"
+}
+
+/**
  * Project Wide Helper function
  * This is not a task, but a reusable UDF
  */

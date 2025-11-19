@@ -1,0 +1,472 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * JDBC-based AI conversation storage
+ * Stores conversation history in a database table for persistence across restarts
+ * Works with any database supported by BoxLang datasources
+ */
+class extends="BaseMemory" {
+
+	/**
+	 * The datasource name to use
+	 */
+	property name="datasource" type="string" default="";
+
+	/**
+	 * The table name where messages are stored
+	 */
+	property name="table" type="string" default="ai_memory";
+
+	/**
+	 * Constructor
+	 *
+	 * @datasource Name of the datasource (optional)
+	 * @table Name of the table (optional, defaults to "ai_memory")
+	 */
+	function init( string datasource = "", string table = "ai_memory" ) {
+		super.init();
+		variables.datasource = arguments.datasource;
+		variables.table = arguments.table;
+		return this;
+	}
+
+	/**
+	 * Configure the memory instance
+	 * Supports datasource and table in config
+	 * Ensures the table exists or creates it
+	 */
+	public IAiMemory function configure( required struct config ) {
+		super.configure( arguments.config );
+
+		if ( arguments.config.keyExists( "datasource" ) ) {
+			variables.datasource = arguments.config.datasource;
+		}
+
+		if ( arguments.config.keyExists( "table" ) ) {
+			variables.table = arguments.config.table;
+		}
+
+		// Validate datasource is set
+		if ( !len( variables.datasource ) ) {
+			throw(
+				type: "JdbcMemoryError",
+				message: "Datasource name is required for JdbcMemory"
+			);
+		}
+
+		// Ensure table exists
+		ensureTableExists();
+
+		// Load existing data from database if this memory has a key
+		if ( len( variables.key ) ) {
+			loadFromDatabase();
+		}
+
+		return this;
+	}
+
+	/**
+	 * Get or set the datasource
+	 *
+	 * @datasource Optional datasource name to set
+	 *
+	 * @return String (getter) or IAiMemory (setter)
+	 */
+	public any function datasource( string datasource ) {
+		if ( !isNull( arguments.datasource ) ) {
+			variables.datasource = arguments.datasource;
+			return this;
+		}
+		return variables.datasource;
+	}
+
+	/**
+	 * Get or set the table name
+	 *
+	 * @table Optional table name to set
+	 *
+	 * @return String (getter) or IAiMemory (setter)
+	 */
+	public any function table( string table ) {
+		if ( !isNull( arguments.table ) ) {
+			variables.table = arguments.table;
+			return this;
+		}
+		return variables.table;
+	}
+
+	/**
+	 * Set the memory key and load data from database
+	 *
+	 * @key The unique key string to set
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public any function key( string key ) {
+		if ( !isNull( arguments.key ) ) {
+			variables.key = arguments.key;
+			// Load data from database when key is set
+			if ( len( variables.datasource ) ) {
+				loadFromDatabase();
+			}
+			return this;
+		}
+		return variables.key;
+	}
+
+	/**
+	 * Add a message to memory and persist to database
+	 *
+	 * @message The message to add
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function add( required any message ) {
+		// Use parent's add logic
+		super.add( arguments.message );
+		
+		// Persist to database
+		saveToDatabase();
+		
+		return this;
+	}
+
+	/**
+	 * Clear all messages from memory and database
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function clear() {
+		super.clear();
+		
+		// Clear from database
+		if ( len( variables.datasource ) && len( variables.key ) ) {
+			queryExecute(
+				"DELETE FROM #variables.table# WHERE memory_key = :key",
+				{ key: variables.key },
+				{ datasource: variables.datasource }
+			);
+		}
+		
+		return this;
+	}
+
+	/**
+	 * Set or replace the system message and persist to database
+	 *
+	 * @message The system message content (string)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function setSystemMessage( required string message ) {
+		super.setSystemMessage( arguments.message );
+		saveToDatabase();
+		return this;
+	}
+
+	/**
+	 * Remove the system message and persist to database
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function removeSystemMessage() {
+		super.removeSystemMessage();
+		saveToDatabase();
+		return this;
+	}
+
+	/**
+	 * Get or set metadata - persists to database when setting
+	 *
+	 * @metadata Optional struct to merge with existing metadata
+	 *
+	 * @return Struct (getter) or IAiMemory (setter)
+	 */
+	public any function metadata( struct metadata ) {
+		if ( !isNull( arguments.metadata ) ) {
+			variables.metadata.append( arguments.metadata, true );
+			saveToDatabase();
+			return this;
+		}
+		return variables.metadata;
+	}
+
+	/**
+	 * Get a summary of this memory instance
+	 * Overrides base to add datasource and table fields
+	 *
+	 * @return Struct with memory information
+	 */
+	public struct function getSummary() {
+		var summary = super.getSummary();
+		summary.datasource = variables.datasource;
+		summary.table = variables.table;
+		return summary;
+	}
+
+	/**
+	 * Export messages to a serializable format
+	 * Overrides base to add datasource and table fields
+	 *
+	 * @return Struct containing all memory data
+	 */
+	public struct function export() {
+		var exported = super.export();
+		exported.datasource = variables.datasource;
+		exported.table = variables.table;
+		return exported;
+	}
+
+	/**
+	 * Import messages from a previously exported format
+	 * Overrides base to handle datasource and table, then persist to database
+	 *
+	 * @data The exported memory data
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function import( required struct data ) {
+		// Import base fields
+		super.import( arguments.data );
+
+		// Handle datasource and table specific to JdbcMemory
+		if ( arguments.data.keyExists( "datasource" ) ) {
+			variables.datasource = arguments.data.datasource;
+		}
+		if ( arguments.data.keyExists( "table" ) ) {
+			variables.table = arguments.data.table;
+		}
+
+		// Persist imported data to database
+		if ( len( variables.datasource ) ) {
+			saveToDatabase();
+		}
+
+		return this;
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * Private Helpers
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure the database table exists, create it if it doesn't
+	 * Uses database-agnostic SQL that works across different databases
+	 *
+	 * @return JdbcMemory for chaining
+	 */
+	private IAiMemory function ensureTableExists() {
+		if ( !len( variables.datasource ) ) {
+			return this;
+		}
+
+		try {
+			// Use DBInfo component to check if table exists
+			var dbInfo = new DBInfo( datasource: variables.datasource );
+			var tables = dbInfo.tables( table: variables.table );
+			
+			// If table doesn't exist, create it
+			if ( tables.recordCount == 0 ) {
+				createTable();
+			}
+		} catch( any e ) {
+			// If DBInfo fails, try to create table anyway
+			// This handles cases where DBInfo might not be available
+			try {
+				createTable();
+			} catch( any createError ) {
+				// If table already exists, this will fail - that's OK
+				// Only throw if it's a different error
+				if ( !createError.message.findNoCase( "already exists" ) && 
+					 !createError.message.findNoCase( "duplicate" ) ) {
+					throw(
+						type: "JdbcMemoryError",
+						message: "Failed to ensure table exists: #variables.table#",
+						detail: createError.message
+					);
+				}
+			}
+		}
+
+		return this;
+	}
+
+	/**
+	 * Create the database table for storing messages
+	 * Uses database-agnostic SQL
+	 *
+	 * @return JdbcMemory for chaining
+	 */
+	private IAiMemory function createTable() {
+		// Create table with database-agnostic SQL
+		// Using VARCHAR with large sizes for broad compatibility
+		var sql = "
+			CREATE TABLE #variables.table# (
+				id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+				memory_key VARCHAR(255) NOT NULL,
+				memory_data CLOB NOT NULL,
+				created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			)
+		";
+
+		try {
+			queryExecute( sql, {}, { datasource: variables.datasource } );
+		} catch( any e ) {
+			// Try alternate syntax for databases that don't support IDENTITY
+			if ( e.message.findNoCase( "IDENTITY" ) || e.message.findNoCase( "GENERATED" ) ) {
+				sql = "
+					CREATE TABLE #variables.table# (
+						id INTEGER PRIMARY KEY AUTO_INCREMENT,
+						memory_key VARCHAR(255) NOT NULL,
+						memory_data TEXT NOT NULL,
+						created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+						updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+					)
+				";
+				try {
+					queryExecute( sql, {}, { datasource: variables.datasource } );
+				} catch( any e2 ) {
+					// Try simplest syntax for maximum compatibility
+					sql = "
+						CREATE TABLE #variables.table# (
+							id INTEGER NOT NULL PRIMARY KEY,
+							memory_key VARCHAR(255) NOT NULL,
+							memory_data CLOB,
+							created_date TIMESTAMP,
+							updated_date TIMESTAMP
+						)
+					";
+					queryExecute( sql, {}, { datasource: variables.datasource } );
+				}
+			} else {
+				throw( e );
+			}
+		}
+
+		// Create index on memory_key for faster lookups
+		try {
+			queryExecute(
+				"CREATE INDEX idx_#variables.table#_key ON #variables.table# (memory_key)",
+				{},
+				{ datasource: variables.datasource }
+			);
+		} catch( any e ) {
+			// Index creation failure is not critical
+		}
+
+		return this;
+	}
+
+	/**
+	 * Load memory data from database
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	private IAiMemory function loadFromDatabase() {
+		if ( !len( variables.datasource ) || !len( variables.key ) ) {
+			return this;
+		}
+
+		try {
+			var result = queryExecute(
+				"SELECT memory_data FROM #variables.table# WHERE memory_key = :key ORDER BY id DESC",
+				{ key: variables.key },
+				{ datasource: variables.datasource, maxrows: 1 }
+			);
+
+			if ( result.recordCount > 0 ) {
+				var data = deserializeJSON( result.memory_data );
+				
+				// Import the data using parent's logic
+				if ( isStruct( data ) ) {
+					if ( data.keyExists( "metadata" ) ) {
+						variables.metadata = data.metadata;
+					}
+					if ( data.keyExists( "messages" ) && isArray( data.messages ) ) {
+						variables.messages = data.messages;
+					}
+				}
+			}
+		} catch( any e ) {
+			// If there's an error reading from database, just continue with empty memory
+			// This handles cases where table might not exist yet or data is corrupted
+		}
+
+		return this;
+	}
+
+	/**
+	 * Save memory data to database
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	private IAiMemory function saveToDatabase() {
+		if ( !len( variables.datasource ) || !len( variables.key ) ) {
+			return this;
+		}
+
+		try {
+			// Prepare data to save
+			var data = {
+				type: variables.name,
+				key: variables.key,
+				metadata: variables.metadata,
+				messages: this.getAll()
+			};
+
+			var jsonData = serializeJSON( data );
+
+			// Check if record exists
+			var existing = queryExecute(
+				"SELECT id FROM #variables.table# WHERE memory_key = :key",
+				{ key: variables.key },
+				{ datasource: variables.datasource, maxrows: 1 }
+			);
+
+			if ( existing.recordCount > 0 ) {
+				// Update existing record
+				queryExecute(
+					"UPDATE #variables.table# SET memory_data = :data, updated_date = CURRENT_TIMESTAMP WHERE memory_key = :key",
+					{ 
+						data: jsonData,
+						key: variables.key 
+					},
+					{ datasource: variables.datasource }
+				);
+			} else {
+				// Insert new record
+				queryExecute(
+					"INSERT INTO #variables.table# (memory_key, memory_data, created_date, updated_date) VALUES (:key, :data, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+					{ 
+						key: variables.key,
+						data: jsonData
+					},
+					{ datasource: variables.datasource }
+				);
+			}
+		} catch( any e ) {
+			throw(
+				type: "JdbcMemoryError",
+				message: "Failed to save memory to database: #variables.table#",
+				detail: e.message
+			);
+		}
+
+		return this;
+	}
+
+}
