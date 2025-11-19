@@ -51,7 +51,7 @@ class extends="BaseMemory" {
 
 		// Ensure directory exists
 		if ( !directoryExists( variables.directoryPath ) ) {
-			directoryCreate( variables.directoryPath, true );
+			directoryCreate( variables.directoryPath, true, true );
 		}
 
 		// Load existing data from file if it exists
@@ -107,10 +107,10 @@ class extends="BaseMemory" {
 	public IAiMemory function clear() {
 		super.clear();
 
-		// Clear the file content
+		// Delete the file if it exists
 		var filePath = getFilePath();
-		if ( len( filePath ) ) {
-			saveToFile();
+		if ( len( filePath ) && fileExists( filePath ) ) {
+			fileDelete( filePath );
 		}
 
 		return this;
@@ -201,10 +201,7 @@ class extends="BaseMemory" {
 		}
 
 		// Persist imported data to file
-		var filePath = getFilePath();
-		if ( len( filePath ) ) {
-			saveToFile();
-		}
+		saveToFile();
 
 		return this;
 	}
@@ -223,7 +220,8 @@ class extends="BaseMemory" {
 	 */
 	private string function getFilePath() {
 		// Generate filename from key: memory-{key}.json
-		var filename = "memory-#variables.key#.json".slugify();
+		// Slugify the key portion only, not the extension
+		var filename = "memory-#variables.key.slugify()#.json";
 		// Combine directory and filename
 		return variables.directoryPath & "/" & filename;
 	}
@@ -291,7 +289,7 @@ class extends="BaseMemory" {
 		try {
 			// Ensure directory exists
 			if ( len( variables.directoryPath ) && !directoryExists( variables.directoryPath ) ) {
-				directoryCreate( variables.directoryPath, true );
+				directoryCreate( variables.directoryPath, true, true );
 			}
 
 			// Export data and serialize to JSON

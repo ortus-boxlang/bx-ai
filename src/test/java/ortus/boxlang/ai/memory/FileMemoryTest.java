@@ -16,15 +16,13 @@ import ortus.boxlang.runtime.types.IStruct;
 
 public class FileMemoryTest extends BaseIntegrationTest {
 
-	private Path	tempDir;
-	private String	testFilePath;
+	private Path tempDir;
 
 	@BeforeEach
 	public void setupEach() {
 		super.setupEach();
 		try {
-			tempDir			= Files.createTempDirectory( "filememory-test-" );
-			testFilePath	= tempDir.resolve( "test-memory.json" ).toString();
+			tempDir = Files.createTempDirectory( "filememory-test-" );
 		} catch ( Exception e ) {
 			throw new RuntimeException( "Failed to create temp directory", e );
 		}
@@ -137,18 +135,20 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    String.format( """
 		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "clear-key" )
 		                       .add( "Message 1" )
 		                       .add( "Message 2" )
 		                       .clear()
 
 		                   count = memory.count()
 
-		                   // Load from file again to verify it's empty
+		                   // Load from file again to verify it's deleted
 		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "clear-key" )
 		                       .configure( {} )
 
 		                   count2 = memory2.count()
-		                   """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
+		                   """, tempDir.toString().replace( "\\", "\\\\" ), tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -394,17 +394,19 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "Test FileMemory handles empty file" )
 	public void testEmptyFileHandling() throws Exception {
-		// Create an empty file
-		Files.writeString( Path.of( testFilePath ), "" );
+		// Create an empty file with the expected naming convention
+		String emptyFileName = tempDir.toString() + "/memory-empty-key.json";
+		Files.writeString( Path.of( emptyFileName ), "" );
 
 		runtime.executeSource(
 		    String.format( """
 		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "empty-key" )
 		                       .configure( {} )
 
 		                   count = memory.count()
 		                   isEmpty = memory.isEmpty()
-		                   """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   """, tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 
