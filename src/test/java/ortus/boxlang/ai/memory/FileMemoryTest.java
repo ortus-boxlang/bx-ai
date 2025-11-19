@@ -57,8 +57,8 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testInstantiation() {
 		runtime.executeSource(
 		    String.format( """
-		        memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		        """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                   """, testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -71,11 +71,11 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testFilePathConfiguration() {
 		runtime.executeSource(
 		    String.format( """
-		        memory = new bxModules.bxai.models.memory.FileMemory()
-		            .configure( { filePath: "%s" } )
+		                   memory = new bxModules.bxai.models.memory.FileMemory()
+		                       .configure( { filePath: "%s" } )
 
-		        result = memory.filePath()
-		        """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   result = memory.filePath()
+		                   """, testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -88,12 +88,12 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testPersistMessages() {
 		runtime.executeSource(
 		    String.format( """
-		        memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .key( "test-key" )
-		            .add( "Hello World" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "test-key" )
+		                       .add( "Hello World" )
 
-		        fileExists = fileExists( "%s" )
-		        """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
+		                   fileExists = fileExists( "%s" )
+		                   """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -105,20 +105,20 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testLoadFromFile() {
 		runtime.executeSource(
 		    String.format( """
-		        // Create first memory and add messages
-		        memory1 = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .key( "persist-key" )
-		            .add( "Message 1" )
-		            .add( "Message 2" )
+		                   // Create first memory and add messages
+		                   memory1 = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "persist-key" )
+		                       .add( "Message 1" )
+		                       .add( "Message 2" )
 
-		        // Create new memory instance that loads from the same file
-		        memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .configure( {} )
+		                   // Create new memory instance that loads from the same file
+		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .configure( {} )
 
-		        count = memory2.count()
-		        messages = memory2.getAll()
-		        key = memory2.key()
-		        """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
+		                   count = memory2.count()
+		                   messages = memory2.getAll()
+		                   key = memory2.key()
+		                   """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -136,19 +136,19 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testClearRemovesContent() {
 		runtime.executeSource(
 		    String.format( """
-		        memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .add( "Message 1" )
-		            .add( "Message 2" )
-		            .clear()
+		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .add( "Message 1" )
+		                       .add( "Message 2" )
+		                       .clear()
 
-		        count = memory.count()
+		                   count = memory.count()
 
-		        // Load from file again to verify it's empty
-		        memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .configure( {} )
+		                   // Load from file again to verify it's empty
+		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .configure( {} )
 
-		        count2 = memory2.count()
-		        """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
+		                   count2 = memory2.count()
+		                   """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -161,13 +161,13 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testGetSummary() {
 		runtime.executeSource(
 		    String.format( """
-		        memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .key( "test-key" )
-		            .setSystemMessage( "Test system" )
-		            .add( "User message" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "test-key" )
+		                       .setSystemMessage( "Test system" )
+		                       .add( "User message" )
 
-		        summary = memory.getSummary()
-		        """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   summary = memory.getSummary()
+		                   """, testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -185,14 +185,14 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testExport() {
 		runtime.executeSource(
 		    String.format( """
-		        memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .key( "export-key" )
-		            .metadata( { userId: 789 } )
-		            .configure( { maxSize: 100 } )
-		            .add( { role: "user", content: "Test" } )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "export-key" )
+		                       .metadata( { userId: 789 } )
+		                       .configure( { maxSize: 100 } )
+		                       .add( { role: "user", content: "Test" } )
 
-		        exported = memory.export()
-		        """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   exported = memory.export()
+		                   """, testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -209,27 +209,27 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testImport() {
 		runtime.executeSource(
 		    String.format( """
-		        data = {
-		            key: "imported-key",
-		            metadata: { imported: true },
-		            config: { setting: "value" },
-		            messages: [
-		                { role: "user", content: "Imported message" }
-		            ],
-		            filePath: "%s"
-		        }
+		                   data = {
+		                       key: "imported-key",
+		                       metadata: { imported: true },
+		                       config: { setting: "value" },
+		                       messages: [
+		                           { role: "user", content: "Imported message" }
+		                       ],
+		                       filePath: "%s"
+		                   }
 
-		        memory = new bxModules.bxai.models.memory.FileMemory()
-		            .import( data )
+		                   memory = new bxModules.bxai.models.memory.FileMemory()
+		                       .import( data )
 
-		        result = {
-		            key: memory.key(),
-		            count: memory.count(),
-		            metadata: memory.metadata(),
-		            config: memory.getConfig(),
-		            filePath: memory.filePath()
-		        }
-		        """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   result = {
+		                       key: memory.key(),
+		                       count: memory.count(),
+		                       metadata: memory.metadata(),
+		                       config: memory.getConfig(),
+		                       filePath: memory.filePath()
+		                   }
+		                   """, testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -250,26 +250,26 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testExportImportRoundtrip() {
 		runtime.executeSource(
 		    String.format( """
-		        original = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .key( "roundtrip" )
-		            .metadata( { version: 1 } )
-		            .setSystemMessage( "System prompt" )
-		            .add( "User: Hello" )
-		            .add( { role: "assistant", content: "Assistant: Hi!" } )
+		                   original = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "roundtrip" )
+		                       .metadata( { version: 1 } )
+		                       .setSystemMessage( "System prompt" )
+		                       .add( "User: Hello" )
+		                       .add( { role: "assistant", content: "Assistant: Hi!" } )
 
-		        exported = original.export()
+		                   exported = original.export()
 
-		        restored = new bxModules.bxai.models.memory.FileMemory()
-		            .import( exported )
+		                   restored = new bxModules.bxai.models.memory.FileMemory()
+		                       .import( exported )
 
-		        result = {
-		            key: restored.key(),
-		            count: restored.count(),
-		            systemMsg: restored.getSystemMessage(),
-		            messages: restored.getAll(),
-		            filePath: restored.filePath()
-		        }
-		        """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   result = {
+		                       key: restored.key(),
+		                       count: restored.count(),
+		                       systemMsg: restored.getSystemMessage(),
+		                       messages: restored.getAll(),
+		                       filePath: restored.filePath()
+		                   }
+		                   """, testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -286,16 +286,16 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testMetadataPersistence() {
 		runtime.executeSource(
 		    String.format( """
-		        memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .metadata( { userId: "123", sessionId: "abc" } )
-		            .add( "Test message" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .metadata( { userId: "123", sessionId: "abc" } )
+		                       .add( "Test message" )
 
-		        // Load from file
-		        memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .configure( {} )
+		                   // Load from file
+		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .configure( {} )
 
-		        metadata = memory2.metadata()
-		        """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
+		                   metadata = memory2.metadata()
+		                   """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -307,16 +307,16 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "Test FileMemory handles missing file gracefully" )
 	public void testMissingFileGraceful() {
-		String	nonExistentPath	= tempDir.resolve( "nonexistent.json" ).toString();
+		String nonExistentPath = tempDir.resolve( "nonexistent.json" ).toString();
 
 		runtime.executeSource(
 		    String.format( """
-		        memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .configure( {} )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .configure( {} )
 
-		        count = memory.count()
-		        isEmpty = memory.isEmpty()
-		        """, nonExistentPath.replace( "\\", "\\\\" ) ),
+		                   count = memory.count()
+		                   isEmpty = memory.isEmpty()
+		                   """, nonExistentPath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -332,11 +332,11 @@ public class FileMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    String.format( """
-		        memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .add( "Test message" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .add( "Test message" )
 
-		        fileExists = fileExists( "%s" )
-		        """, filePath.replace( "\\", "\\\\" ), filePath.replace( "\\", "\\\\" ) ),
+		                   fileExists = fileExists( "%s" )
+		                   """, filePath.replace( "\\", "\\\\" ), filePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -348,13 +348,13 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testWithAiMemoryBIF() {
 		runtime.executeSource(
 		    String.format( """
-		        memory = aiMemory( "file", { filePath: "%s" } )
-		            .key( "bif-test" )
-		            .add( "BIF message" )
+		                   memory = aiMemory( "file", { filePath: "%s" } )
+		                       .key( "bif-test" )
+		                       .add( "BIF message" )
 
-		        count = memory.count()
-		        name = memory.name()
-		        """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   count = memory.count()
+		                   name = memory.name()
+		                   """, testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -367,17 +367,17 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testSystemMessagePersistence() {
 		runtime.executeSource(
 		    String.format( """
-		        memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .setSystemMessage( "Be helpful" )
-		            .add( "User message" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .setSystemMessage( "Be helpful" )
+		                       .add( "User message" )
 
-		        // Load from file
-		        memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .configure( {} )
+		                   // Load from file
+		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .configure( {} )
 
-		        systemMsg = memory2.getSystemMessage()
-		        count = memory2.count()
-		        """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
+		                   systemMsg = memory2.getSystemMessage()
+		                   count = memory2.count()
+		                   """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -393,12 +393,12 @@ public class FileMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    String.format( """
-		        memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .configure( {} )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .configure( {} )
 
-		        count = memory.count()
-		        isEmpty = memory.isEmpty()
-		        """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   count = memory.count()
+		                   isEmpty = memory.isEmpty()
+		                   """, testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -411,19 +411,19 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testAiMessageIntegration() {
 		runtime.executeSource(
 		    String.format( """
-		        msg = aiMessage()
-		            .system( "Be helpful" )
-		            .user( "Hello" )
+		                   msg = aiMessage()
+		                       .system( "Be helpful" )
+		                       .user( "Hello" )
 
-		        memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .add( msg )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .add( msg )
 
-		        // Load from file
-		        memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		            .configure( {} )
+		                   // Load from file
+		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .configure( {} )
 
-		        count = memory2.count()
-		        """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
+		                   count = memory2.count()
+		                   """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
