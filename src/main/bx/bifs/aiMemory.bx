@@ -55,10 +55,14 @@ class {
 			case "cachememory":
 				memoryClass = "bxModules.bxai.models.memory.CacheMemory";
 				break;
+			case "file":
+			case "filememory":
+				memoryClass = "bxModules.bxai.models.memory.FileMemory";
+				break;
 			default:
 				throw(
 					type: "InvalidMemoryType",
-					message: "Unknown memory type: #memoryType#. Available types: SimpleMemory, WindowMemory, CacheMemory"
+					message: "Unknown memory type: #memoryType#. Available types: SimpleMemory, WindowMemory, CacheMemory, FileMemory"
 				);
 		}
 
