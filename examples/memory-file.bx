@@ -1,0 +1,63 @@
+/**
+ * FileMemory Example
+ * 
+ * This example demonstrates how to use FileMemory to persist AI conversation
+ * history to a JSON file. Perfect for simple persistent storage without 
+ * external dependencies like caching systems.
+ */
+
+// Create a file-based memory with a specific file path
+memory = aiMemory( "file", { 
+    filePath: expandPath( "./data/conversation-history.json" ) 
+} )
+    .key( "demo-session-123" )
+    .setSystemMessage( "You are a helpful AI assistant" )
+
+// Add some conversation messages
+memory
+    .add( "What is BoxLang?" )
+    .add( { 
+        role: "assistant", 
+        content: "BoxLang is a modern dynamic JVM language that combines the power of Java with a developer-friendly syntax." 
+    } )
+    .add( "Can you explain its key features?" )
+    .add( { 
+        role: "assistant", 
+        content: "BoxLang features include: dynamic typing, Java interop, built-in serialization, and null-safe navigation." 
+    } )
+
+// View memory summary
+println( "=== Memory Summary ===" )
+println( serializeJSON( memory.getSummary() ) )
+
+// Get all messages
+println( "\n=== All Messages ===" )
+memory.getAll().each( ( message ) => {
+    println( "#message.role#: #message.content#" )
+} )
+
+// The data is automatically persisted to the JSON file!
+println( "\n✅ Data saved to: #memory.filePath()#" )
+
+// Demonstrate persistence by loading from file
+println( "\n=== Loading from File ===" )
+memory2 = aiMemory( "file", { 
+    filePath: expandPath( "./data/conversation-history.json" ) 
+} )
+    .configure( {} )
+
+println( "Loaded #memory2.count()# messages from file" )
+println( "System message: #memory2.getSystemMessage()#" )
+println( "Session key: #memory2.key()#" )
+
+// Export memory to a different file
+println( "\n=== Exporting Memory ===" )
+exported = memory.export()
+println( "Exported data structure:" )
+println( serializeJSON( exported ) )
+
+// Clean up example file (optional)
+if ( fileExists( memory.filePath() ) ) {
+    fileDelete( memory.filePath() )
+    println( "\n🧹 Cleaned up example file" )
+}
