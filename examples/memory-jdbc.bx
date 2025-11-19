@@ -1,0 +1,98 @@
+/**
+ * BoxLang AI - JDBC Memory Example
+ * 
+ * This example demonstrates using database-backed memory for AI conversations.
+ * The JDBC memory stores conversation history in a database table, providing
+ * persistence across application restarts.
+ * 
+ * Prerequisites:
+ * - Configure a datasource in your BoxLang configuration (boxlang.json)
+ * - The datasource can be any database (Derby, MySQL, PostgreSQL, SQL Server, etc.)
+ * 
+ * Example datasource configuration (boxlang.json):
+ * {
+ *   "datasources": {
+ *     "myAppDB": {
+ *       "driver": "derby",
+ *       "connectionString": "jdbc:derby:memory:aiMemoryDB;create=true"
+ *     }
+ *   }
+ * }
+ */
+
+// Create a JDBC-backed memory instance
+// The table will be auto-created if it doesn't exist
+memory = aiMemory( "jdbc", {
+    datasource: "myAppDB",
+    table: "ai_conversations"
+} )
+    .key( "user-session-123" )
+    .setSystemMessage( "You are a helpful AI assistant specializing in BoxLang development." );
+
+// Add some conversation history
+memory
+    .add( "How do I create a component in BoxLang?" )
+    .add( {
+        role: "assistant",
+        content: "In BoxLang, you create a component using the 'class' keyword. Here's a simple example:\n\nclass MyComponent {\n    property name='myProperty' type='string';\n    \n    function init() {\n        return this;\n    }\n}"
+    } )
+    .add( "Can I extend another component?" )
+    .add( {
+        role: "assistant",
+        content: "Yes! Use the extends attribute: class MyChild extends='MyParent' { ... }"
+    } );
+
+// The conversation is now persisted in the database
+println( "Messages stored in database: #memory.count()#" );
+println( "Memory key: #memory.key()#" );
+
+// You can retrieve the conversation later by creating a new memory instance
+// with the same key - it will load from the database automatically
+reloadedMemory = aiMemory( "jdbc", {
+    datasource: "myAppDB",
+    table: "ai_conversations"
+} ).key( "user-session-123" );
+
+println( "Messages loaded from database: #reloadedMemory.count()#" );
+println( "System message: #reloadedMemory.getSystemMessage()#" );
+
+// Get all messages for display
+messages = reloadedMemory.getAll();
+for ( msg in messages ) {
+    println( "- #msg.role#: #msg.content.left(50)#..." );
+}
+
+// You can also use it with AI models for persistent conversations
+/*
+chat = aiChat( "openai" )
+    .memory( memory )
+    .model( "gpt-4o-mini" )
+    .invoke( "What was my first question?" );
+
+println( "AI Response: #chat.content#" );
+*/
+
+// Export memory for backup or migration
+exported = memory.export();
+println( "Exported memory contains #exported.messages.len()# messages" );
+
+// Clear conversation when done
+// memory.clear();
+
+// Multiple users can have separate conversations using different keys
+userAliceMemory = aiMemory( "jdbc", {
+    datasource: "myAppDB",
+    table: "ai_conversations"
+} ).key( "alice-session" );
+
+userBobMemory = aiMemory( "jdbc", {
+    datasource: "myAppDB",
+    table: "ai_conversations"
+} ).key( "bob-session" );
+
+// Each user's conversation is isolated by their unique key
+userAliceMemory.add( "Alice's message" );
+userBobMemory.add( "Bob's message" );
+
+println( "Alice has #userAliceMemory.count()# messages" );
+println( "Bob has #userBobMemory.count()# messages" );

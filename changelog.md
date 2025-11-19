@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **JDBC Memory Support**: New `JdbcMemory` class for database-backed conversation persistence
+    - Store AI conversation history in any database supported by BoxLang datasources
+    - Auto-creates table on first use with database-agnostic SQL
+    - Supports Derby, MySQL, PostgreSQL, SQL Server, and more
+    - Isolates multiple conversations using unique memory keys
+    - Full CRUD operations with automatic persistence
+    - Example: `aiMemory( "jdbc", { datasource: "myDB", table: "ai_conversations" } )`
 - ChatMessage now has the following new methods:
     - `format(bindings)` - Formats messages with provided bindings.
     - `render()` - Renders messages using stored bindings.
