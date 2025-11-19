@@ -44,6 +44,11 @@ abstract class implements="IAiService" {
 	property name = "chatURL" default = "";
 
 	/**
+	 * The embeddings URL of the provider API
+	 */
+	property name = "embeddingsURL" default = "";
+
+	/**
 	 * The default params to use with the provider
 	 */
 	property name = "params" type = "struct" default = {};
@@ -274,6 +279,58 @@ abstract class implements="IAiService" {
 
 		// Send it with streaming
 		sendStreamRequest( aiRequest, dataPacket, callback )
+	}
+
+	/**
+	 * Generate embeddings for the given input text(s)
+	 * This method in this base class is based on OpenAI's embeddings API standard.
+	 * If the provider does not support this standard, it should override this method.
+	 *
+	 * @embeddingRequest The embedding request object
+	 *
+	 * @throws ProviderError if the provider returns an error from the request
+	 *
+	 * @return The embeddings response from the provider
+	 */
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		// Model Selection if not set, use the default in the service
+		embeddingRequest
+			.setModelIfEmpty( variables.params.model ?: "" )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers )
+
+		// Build the packet according to the OpenAI embeddings API standard
+		var dataPacket = {
+			"input": arguments.embeddingRequest.getInput(),
+			"model": arguments.embeddingRequest.getModel()
+		}.append( arguments.embeddingRequest.getParams() )
+
+		// Send it
+		var result = sendEmbeddingRequest( embeddingRequest, dataPacket )
+
+		// If an error is returned, throw it
+		if( result.keyExists( "error" ) ){
+			writeLog(
+				text: result.error.toString(),
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "ProviderError",
+				message: result.error.toString()
+			);
+		}
+
+		// Determine return formats
+		switch( embeddingRequest.getReturnFormat() ){
+			case "embeddings":
+				return result.data.map( item => item.embedding );
+			case "first":
+				return result.data.first().embedding;
+			case "raw": default:
+				return result;
+		}
 	}
 
 	/**
@@ -521,6 +578,95 @@ abstract class implements="IAiService" {
 				"streamComplete" : true
 			}
 		);
+	}
+
+	/**
+	 * A generic HTTP proxy to send embedding requests to the provider
+	 *
+	 * @embeddingRequest The embedding request object to use in the request
+	 * @dataPacket The data packet to send to the provider
+	 *
+	 * @return The response from the provider as a struct
+	 */
+	private function sendEmbeddingRequest( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
+		// Announce the request
+		BoxAnnounce(
+			"onAIEmbeddingRequest",
+			{
+				"dataPacket" : arguments.dataPacket,
+				"embeddingRequest": arguments.embeddingRequest,
+				"provider"   : this
+			}
+		);
+
+		// Log the request
+		if( arguments.embeddingRequest.getLogRequest() ){
+			writeLog(
+				text: "Embedding Request to AI Provider: #arguments.dataPacket.toString()#",
+				type: "info",
+				log : "ai"
+			)
+		}
+
+		// Log the request to the console if enabled
+		if( arguments.embeddingRequest.getLogRequestToConsole() ){
+			println( "AI Embedding Request" )
+			println( arguments.dataPacket )
+		}
+
+		bx: http
+			url     = getEmbeddingsURL()
+			method  = "post"
+			result  = "embeddingResult"
+			charset = "utf-8"
+			timeout = arguments.embeddingRequest.getTimeout()
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+
+			// Auth Header ONLY if the provider requires it
+			if( arguments.embeddingRequest.getSendAuthHeader() ){
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.embeddingRequest.getApiKey()#";
+			}
+
+			// Custom Headers
+			for( var thisHeader in arguments.embeddingRequest.getHeaders() ){
+				bx:httpParam
+					type="header"
+					name="#thisHeader#"
+					value="#arguments.embeddingRequest.getHeaders()[ thisHeader ]#";
+			}
+
+			// Body Packet
+			bx:httpParam type="body" value=jsonSerialize( arguments.dataPacket );
+		}
+
+		// Final logging if the provider supports it
+		if( arguments.embeddingRequest.getLogResponse() ){
+			writeLog(
+				text: "Embedding Response from AI Provider: #embeddingResult.toString()#",
+				type: "info",
+				log : "ai"
+			)
+		}
+
+		// Log the response to the console if enabled
+		if( arguments.embeddingRequest.getLogResponseToConsole() ){
+			println( "AI Embedding Response" )
+			println( embeddingResult )
+			println( "AI Embedding Deserialized Response" )
+			println( jsonDeserialize( embeddingResult.filecontent ) )
+		}
+
+		var iData = {
+			"embeddingRequest" = arguments.embeddingRequest,
+			"response" = jsonDeserialize( embeddingResult.filecontent ),
+			"rawResponse"	: embeddingResult,
+			"provider" = this
+		}
+
+		BoxAnnounce( "onAIEmbeddingResponse", iData );
+
+		return iData.response;
 	}
 
 }
