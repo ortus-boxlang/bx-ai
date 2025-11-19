@@ -37,7 +37,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testCustomMaxViaConstructor() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.WindowMemory( 5 )
+		    memory = new bxModules.bxai.models.memory.WindowMemory( "test-key", 5 )
 		    maxMessages = memory.getMaxMessages()
 		    """,
 		    context
@@ -161,8 +161,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testGetSummary() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", { maxMessages: 5 } )
-		        .key( "buffered-test" )
+		    memory = aiMemory( "buffered", "buffered-test", { maxMessages: 5 } )
 		        .add( "Test" )
 
 		    summary = memory.getSummary()
@@ -181,8 +180,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testExport() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", { maxMessages: 7 } )
-		        .key( "export-test" )
+		    memory = aiMemory( "buffered", "export-test", { maxMessages: 7 } )
 		        .add( "Message" )
 
 		    exported = memory.export()
