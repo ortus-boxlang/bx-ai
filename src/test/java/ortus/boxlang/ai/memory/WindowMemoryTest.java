@@ -52,7 +52,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testCustomMaxViaConfig() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", { maxMessages: 3 } )
+		    memory = aiMemory( "buffered", "test-key", { maxMessages: 3 } )
 		    maxMessages = memory.getMaxMessages()
 		    """,
 		    context
@@ -67,7 +67,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testAutoTrim() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", { maxMessages: 3 } )
+		    memory = aiMemory( "buffered", "test-key", { maxMessages: 3 } )
 
 		    // Add 5 messages
 		    memory.add( "Message 1" )
@@ -100,7 +100,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testSystemMessagePreservation() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", { maxMessages: 2 } )
+		    memory = aiMemory( "buffered", "test-key", { maxMessages: 2 } )
 		        .setSystemMessage( "You are helpful" )
 		        .add( "User 1" )
 		        .add( "Assistant 1" )
@@ -129,7 +129,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testSetMaxMessagesTriggersTrim() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", { maxMessages: 10 } )
+		    memory = aiMemory( "buffered", "test-key", { maxMessages: 10 } )
 
 		    // Add 5 messages
 		    for( i = 1; i <= 5; i++ ) {
@@ -237,7 +237,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testSystemMessageNotCountedInLimit() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", { maxMessages: 2 } )
+		    memory = aiMemory( "buffered", "test-key", { maxMessages: 2 } )
 		        .setSystemMessage( "System" )
 
 		    // Add 3 non-system messages
@@ -267,7 +267,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testManualTrim() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", { maxMessages: 5 } )
+		    memory = aiMemory( "buffered", "test-key", { maxMessages: 5 } )
 
 		    // Add 3 messages (under limit)
 		    memory.add( "Message 1" )
@@ -295,7 +295,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testAddArrayTriggersTrim() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", { maxMessages: 3 } )
+		    memory = aiMemory( "buffered", "test-key", { maxMessages: 3 } )
 
 		    // Add array of 5 messages at once
 		    memory.add( [

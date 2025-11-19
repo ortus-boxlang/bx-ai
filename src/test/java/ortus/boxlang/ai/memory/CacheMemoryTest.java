@@ -39,8 +39,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 	public void testCustomCacheViaConfig() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "cache" )
-		        .key( "test-session" )
+		    memory = aiMemory( "cache", "test-session-2" )
 		        .configure( { cacheName: "default" } )
 
 		    summary = memory.getSummary()
@@ -58,8 +57,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory and add messages
-		    memory1 = aiMemory( "cache" )
-		        .key( "persist-test" )
+		    memory1 = aiMemory( "cache", "persist-test" )
 		        .configure( { cacheName: "default" } )
 		        .add( "First message" )
 		        .add( "Second message" )
@@ -67,8 +65,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		    count1 = memory1.count()
 
 		    // Create new instance with same key - should load from cache
-		    memory2 = aiMemory( "cache" )
-		        .key( "persist-test" )
+		    memory2 = aiMemory( "cache", "persist-test" )
 		        .configure( { cacheName: "default" } )
 
 		    count2 = memory2.count()
@@ -93,8 +90,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory and add messages
-		    memory1 = aiMemory( "cache" )
-		        .key( "clear-test" )
+		    memory1 = aiMemory( "cache", "clear-test" )
 		        .configure( { cacheName: "default" } )
 		        .add( "Test message" )
 
@@ -104,8 +100,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		    memory1.clear()
 
 		    // Create new instance - should be empty
-		    memory2 = aiMemory( "cache" )
-		        .key( "clear-test" )
+		    memory2 = aiMemory( "cache", "clear-test" )
 		        .configure( { cacheName: "default" } )
 
 		    count2 = memory2.count()
@@ -129,8 +124,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory with system message
-		    memory1 = aiMemory( "cache" )
-		        .key( "system-test" )
+		    memory1 = aiMemory( "cache", "system-test" )
 		        .configure( { cacheName: "default" } )
 		        .setSystemMessage( "You are a helpful assistant" )
 		        .add( "Hello" )
@@ -138,8 +132,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		    sysMsg1 = memory1.getSystemMessage()
 
 		    // Create new instance - should load system message
-		    memory2 = aiMemory( "cache" )
-		        .key( "system-test" )
+		    memory2 = aiMemory( "cache", "system-test" )
 		        .configure( { cacheName: "default" } )
 
 		    sysMsg2 = memory2.getSystemMessage()
@@ -162,8 +155,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 	public void testGetSummary() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "cache" )
-		        .key( "summary-test" )
+		    memory = aiMemory( "cache", "summary-test" )
 		        .configure( { cacheName: "default" } )
 		        .add( "Test" )
 
@@ -186,8 +178,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 	public void testExport() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "cache" )
-		        .key( "export-test" )
+		    memory = aiMemory( "cache", "export-test" )
 		        .configure( { cacheName: "default" } )
 		        .add( "Test message" )
 
@@ -221,15 +212,14 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		    }
 
 		    // Import data
-		    memory1 = aiMemory( "cache" )
+		    memory1 = aiMemory( "cache", "temp-key" )
 		        .configure( { cacheName: "default" } )
 		        .import( data )
 
 		    count1 = memory1.count()
 
 		    // Create new instance - should load from cache
-		    memory2 = aiMemory( "cache" )
-		        .key( "import-test" )
+		    memory2 = aiMemory( "cache", "import-test" )
 		        .configure( { cacheName: "default" } )
 
 		    count2 = memory2.count()
@@ -253,8 +243,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory with metadata
-		    memory1 = aiMemory( "cache" )
-		        .key( "metadata-test" )
+		    memory1 = aiMemory( "cache", "metadata-test" )
 		        .configure( { cacheName: "default" } )
 		        .metadata( { userId: "123", sessionId: "abc" } )
 		        .add( "Test" )
@@ -262,8 +251,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		    meta1 = memory1.metadata()
 
 		    // Create new instance - should load metadata
-		    memory2 = aiMemory( "cache" )
-		        .key( "metadata-test" )
+		    memory2 = aiMemory( "cache", "metadata-test" )
 		        .configure( { cacheName: "default" } )
 
 		    meta2 = memory2.metadata()
@@ -287,16 +275,14 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory and add messages
-		    memory1 = aiMemory( "cache" )
-		        .key( "search-test" )
+		    memory1 = aiMemory( "cache", "search-test" )
 		        .configure( { cacheName: "default" } )
 		        .add( "Hello world" )
 		        .add( "Goodbye world" )
 		        .add( "Testing BoxLang" )
 
 		    // Create new instance and search
-		    memory2 = aiMemory( "cache" )
-		        .key( "search-test" )
+		    memory2 = aiMemory( "cache", "search-test" )
 		        .configure( { cacheName: "default" } )
 
 		    results = memory2.search( "world" )
@@ -320,8 +306,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 	public void testSearchCaseSensitive() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "cache" )
-		        .key( "case-test" )
+		    memory = aiMemory( "cache", "case-test" )
 		        .configure( { cacheName: "default" } )
 		        .add( "Hello World" )
 		        .add( "hello world" )
@@ -348,8 +333,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 	public void testGetRange() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "cache" )
-		        .key( "range-test" )
+		    memory = aiMemory( "cache", "range-test" )
 		        .configure( { cacheName: "default" } )
 
 		    // Add 10 messages
@@ -358,8 +342,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		    }
 
 		    // Create new instance and get range
-		    memory2 = aiMemory( "cache" )
-		        .key( "range-test" )
+		    memory2 = aiMemory( "cache", "range-test" )
 		        .configure( { cacheName: "default" } )
 
 		    range = memory2.getRange( 3, 7 )
@@ -383,8 +366,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 	public void testGetRangeInvalid() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "cache" )
-		        .key( "range-invalid-test" )
+		    memory = aiMemory( "cache", "range-invalid-test" )
 		        .configure( { cacheName: "default" } )
 
 		    // Add 5 messages
@@ -413,8 +395,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 	public void testClone() {
 		runtime.executeSource(
 		    """
-		    original = aiMemory( "cache" )
-		        .key( "clone-test" )
+		    original = aiMemory( "cache", "clone-test" )
 		        .configure( { cacheName: "default" } )
 		        .metadata( { userId: "123" } )
 		        .add( "Message 1" )
@@ -447,14 +428,12 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 	public void testMerge() {
 		runtime.executeSource(
 		    """
-		    memory1 = aiMemory( "cache" )
-		        .key( "merge-test-1" )
+		    memory1 = aiMemory( "cache", "merge-test-1" )
 		        .configure( { cacheName: "default" } )
 		        .add( "Message 1" )
 		        .add( "Message 2" )
 
-		    memory2 = aiMemory( "cache" )
-		        .key( "merge-test-2" )
+		    memory2 = aiMemory( "cache", "merge-test-2" )
 		        .configure( { cacheName: "default" } )
 		        .add( "Message 3" )
 		        .add( "Message 4" )
@@ -462,8 +441,7 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		    memory1.merge( memory2 )
 
 		    // Create new instance to verify persistence
-		    memory3 = aiMemory( "cache" )
-		        .key( "merge-test-1" )
+		    memory3 = aiMemory( "cache", "merge-test-1" )
 		        .configure( { cacheName: "default" } )
 
 		    count = memory3.count()
@@ -485,14 +463,12 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 	public void testMergeSkipDuplicates() {
 		runtime.executeSource(
 		    """
-		    memory1 = aiMemory( "cache" )
-		        .key( "merge-dup-test-1" )
+		    memory1 = aiMemory( "cache", "merge-dup-test-1" )
 		        .configure( { cacheName: "default" } )
 		        .add( "Message 1" )
 		        .add( "Message 2" )
 
-		    memory2 = aiMemory( "cache" )
-		        .key( "merge-dup-test-2" )
+		    memory2 = aiMemory( "cache", "merge-dup-test-2" )
 		        .configure( { cacheName: "default" } )
 		        .add( "Message 2" )
 		        .add( "Message 3" )

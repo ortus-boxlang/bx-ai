@@ -24,7 +24,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testInstantiation() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 		    """,
 		    context
 		);
@@ -38,8 +38,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testGetSummary() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
-		        .key( "test-key" )
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 		        .setSystemMessage( "Test system" )
 		        .add( "User message" )
 
@@ -60,8 +59,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testExport() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
-		        .key( "export-key" )
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "export-key" )
 		        .metadata( { userId: 789 } )
 		        .configure( { maxSize: 100 } )
 		        .add( { role: "user", content: "Test" } )
@@ -92,7 +90,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 		        ]
 		    }
 
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "temp-key" )
 		        .import( data )
 
 		    result = {
@@ -121,8 +119,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testExportImportRoundtrip() {
 		runtime.executeSource(
 		    """
-		    original = new bxModules.bxai.models.memory.SimpleMemory()
-		        .key( "roundtrip" )
+		    original = new bxModules.bxai.models.memory.SimpleMemory( "roundtrip" )
 		        .metadata( { version: 1 } )
 		        .setSystemMessage( "System prompt" )
 		        .add( "User: Hello" )
@@ -130,7 +127,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 
 		    exported = original.export()
 
-		    restored = new bxModules.bxai.models.memory.SimpleMemory()
+		    restored = new bxModules.bxai.models.memory.SimpleMemory( "temp-key" )
 		        .import( exported )
 
 		    result = {
@@ -155,7 +152,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testMessageTimestamps() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 		        .add( "Message with timestamp" )
 
 		    messages = memory.getAll()
@@ -174,7 +171,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 		assertThrows( BoxRuntimeException.class, () -> {
 			runtime.executeSource(
 			    """
-			    memory = new bxModules.bxai.models.memory.SimpleMemory()
+			    memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 			        .add( { invalidKey: "no role or content" } )
 			    """,
 			    context
@@ -191,7 +188,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 		           .system( "Be helpful" )
 		           .user( "Hello" )
 
-		       memory = new bxModules.bxai.models.memory.SimpleMemory()
+		       memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 		           .add( msg )
 
 		       count = memory.count()
@@ -209,7 +206,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testConfigurationPersistence() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 		        .configure( { option1: "value1" } )
 		        .configure( { option2: "value2" } )
 
@@ -228,7 +225,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testSystemMessageReplacement() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 		        .setSystemMessage( "First system message" )
 		        .add( "User message" )
 		        .setSystemMessage( "Second system message" )
@@ -249,7 +246,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testGetRecentWithLimit() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 
 		    // Add 10 messages
 		    for( i = 1; i <= 10; i++ ) {
@@ -278,7 +275,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testSearchCaseInsensitive() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 		        .add( "Hello world" )
 		        .add( "Goodbye world" )
 		        .add( "Testing BoxLang" )
@@ -305,7 +302,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testSearchCaseSensitive() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 		        .add( "Hello World" )
 		        .add( "hello world" )
 		        .add( "HELLO WORLD" )
@@ -333,7 +330,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testGetRangeBasic() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 
 		    // Add 5 messages
 		    for( i = 1; i <= 5; i++ ) {
@@ -359,7 +356,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testGetRangeDefaultEnd() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 
 		    // Add 5 messages
 		    for( i = 1; i <= 5; i++ ) {
@@ -386,7 +383,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testGetRangeInvalidIndices() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory = new bxModules.bxai.models.memory.SimpleMemory( "test-key" )
 
 		    // Add 5 messages
 		    for( i = 1; i <= 5; i++ ) {
@@ -414,8 +411,7 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testClone() {
 		runtime.executeSource(
 		    """
-		    original = new bxModules.bxai.models.memory.SimpleMemory()
-		        .key( "original-key" )
+		    original = new bxModules.bxai.models.memory.SimpleMemory( "original-key" )
 		        .metadata( { userId: "123" } )
 		        .add( "Message 1" )
 		        .add( "Message 2" )
@@ -443,11 +439,11 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testMergeNoDuplicates() {
 		runtime.executeSource(
 		    """
-		    memory1 = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory1 = new bxModules.bxai.models.memory.SimpleMemory( "test-key-1" )
 		        .add( "Message 1" )
 		        .add( "Message 2" )
 
-		    memory2 = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory2 = new bxModules.bxai.models.memory.SimpleMemory( "test-key-2" )
 		        .add( "Message 3" )
 		        .add( "Message 4" )
 
@@ -472,11 +468,11 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 	public void testMergeSkipDuplicates() {
 		runtime.executeSource(
 		    """
-		    memory1 = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory1 = new bxModules.bxai.models.memory.SimpleMemory( "test-key-1" )
 		        .add( "Message 1" )
 		        .add( "Message 2" )
 
-		    memory2 = new bxModules.bxai.models.memory.SimpleMemory()
+		    memory2 = new bxModules.bxai.models.memory.SimpleMemory( "test-key-2" )
 		        .add( "Message 2" )
 		        .add( "Message 3" )
 
