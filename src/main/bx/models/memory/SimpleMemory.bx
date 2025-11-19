@@ -19,9 +19,11 @@ class extends="BaseMemory" {
 
 	/**
 	 * Constructor
+	 *
+	 * @key The unique key for this memory instance
 	 */
-	function init() {
-		super.init();
+	function init( required string key ) {
+		super.init( arguments.key );
 		return this;
 	}
 

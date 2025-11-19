@@ -27,11 +27,12 @@ class {
 	 * Create an AI memory instance
 	 *
 	 * @memory The memory type to create. Defaults to "simple".
+	 * @key The key to identify the memory instance. Defaults to a new UUID.
 	 * @config Configuration struct for the memory instance
 	 *
 	 * @return IAiMemory instance
 	 */
-	function invoke( string memory, struct config = {} ) {
+	function invoke( string memory, string key = createUUID(), struct config = {} ) {
 
 		// Default the memory type from the module settings if not provided
 		var memoryType = arguments.memory ?: moduleRecord.settings.memory.provider;
@@ -73,7 +74,7 @@ class {
 		} );
 
 		// Create and configure the memory instance
-		return new "#memoryClass#"().configure( memoryConfig );
+		return new "#memoryClass#"( arguments.key ).configure( memoryConfig );
 	}
 
 }

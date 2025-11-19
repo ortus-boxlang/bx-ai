@@ -30,10 +30,11 @@ class extends="BaseMemory" {
 	/**
 	 * Constructor
 	 *
+	 * @key The unique key for this memory instance
 	 * @directoryPath Path to the directory for storing memory files (optional)
 	 */
-	function init( string directoryPath = static.DEFAULT_DIRECTORY_PATH ) {
-		super.init();
+	function init( required string key, string directoryPath = static.DEFAULT_DIRECTORY_PATH ) {
+		super.init( arguments.key );
 		variables.directoryPath = arguments.directoryPath;
 		return this;
 	}

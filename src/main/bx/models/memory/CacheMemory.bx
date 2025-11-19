@@ -35,10 +35,11 @@ class extends="BaseMemory" {
 	/**
 	 * Constructor
 	 *
+	 * @key The unique key for this memory instance
 	 * @cacheName Name of the cache to use (default: "default")
 	 */
-	function init( string cacheName = static.DEFAULT_CACHE_NAME ) {
-		super.init();
+	function init( required string key, string cacheName = static.DEFAULT_CACHE_NAME ) {
+		super.init( arguments.key );
 		variables.cacheName = arguments.cacheName;
 		return this;
 	}
@@ -366,12 +367,13 @@ class extends="BaseMemory" {
 		// Export current state and deep copy it
 		var exported = duplicate( this.export() );
 
-		// Create new instance with same cache name
-		var cloned = new CacheMemory( variables.cacheName )
-			.configure( exported.config );
-
 		// Generate new unique key to avoid cache conflicts
-		exported.key = variables.key & "_clone_" & createUUID();
+		var newKey = variables.key & "_clone_" & createUUID();
+		exported.key = newKey;
+
+		// Create new instance with new key and same cache name
+		var cloned = new CacheMemory( newKey, variables.cacheName )
+			.configure( exported.config );
 
 		// Import data (will create new cache entry)
 		return cloned.import( exported );

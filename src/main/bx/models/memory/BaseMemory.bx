@@ -51,13 +51,13 @@ abstract class implements="IAiMemory" {
 
 	/**
 	 * Constructor - sets default name from class metadata
+	 *
+	 * @key The unique key for this memory instance
 	 */
-	function init() {
+	function init( required string key ) {
 		var fullName = getMetadata( this ).name ?: "BaseMemory";
-		// Extract just the class name from fully qualified path (e.g., "bxModules.bxai.models.memory.SimpleMemory" -> "SimpleMemory")
 		variables.name = fullName.listLast( "." );
-		// Default unique key to a UUID
-		variables.key = createUUID();
+		variables.key = arguments.key;
 		return this;
 	}
 
@@ -425,8 +425,8 @@ abstract class implements="IAiMemory" {
 		// Export current state and deep copy it
 		var exported = duplicate( this.export() );
 
-		// Create new instance of same type
-		var cloned = createObject( "component", getMetadata( this ).name ).init();
+		// Create new instance of same type with the same key
+		var cloned = createObject( "component", getMetadata( this ).name ).init( exported.key );
 
 		// Import data into new instance
 		cloned.import( exported );
