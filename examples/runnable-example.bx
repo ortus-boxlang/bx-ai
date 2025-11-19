@@ -108,7 +108,7 @@ var paramTransform = new src.main.bx.models.transformers.AiTransformRunnable(
 
 println( "Name: " & paramTransform.getName() )
 var params = paramTransform.mergeParams( { model: "gpt-3.5", maxTokens: 100 } )
-println( "Merged params: " & serializeJSON( params ) )
+println( "Merged params: " & jsonSerialize( params ) )
 println()
 
 // Example 8: String transformation pipeline
