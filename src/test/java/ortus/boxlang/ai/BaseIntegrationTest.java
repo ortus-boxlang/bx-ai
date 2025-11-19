@@ -20,7 +20,6 @@ import java.nio.file.Paths;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 
-import ortus.boxlang.ai.util.KeyDictionary;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.context.ScriptingRequestBoxContext;
@@ -40,7 +39,7 @@ public abstract class BaseIntegrationTest {
 	protected static ModuleService			moduleService;
 	protected static ModuleRecord			moduleRecord;
 	protected static Key					result		= new Key( "result" );
-	protected static Key					moduleName	= KeyDictionary.moduleName;
+	protected static Key					moduleName	= new Key( "bxai" );
 	protected ScriptingRequestBoxContext	context;
 	protected IScope						variables;
 
