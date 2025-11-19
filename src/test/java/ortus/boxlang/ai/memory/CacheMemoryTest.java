@@ -408,4 +408,110 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		assertThat( invalid.size() ).isEqualTo( 0 );
 	}
 
+	@Test
+	@DisplayName( "Test CacheMemory clone() creates independent instance" )
+	public void testClone() {
+		runtime.executeSource(
+		    """
+		    original = aiMemory( "cache" )
+		        .key( "clone-test" )
+		        .configure( { cacheName: "default" } )
+		        .metadata( { userId: "123" } )
+		        .add( "Message 1" )
+		        .add( "Message 2" )
+
+		    cloned = original.clone()
+
+		    // Modify clone
+		    cloned.add( "Message 3" )
+
+		    originalCount = original.count()
+		    clonedCount = cloned.count()
+
+		    // Cleanup
+		    original.clear()
+		    cloned.clear()
+		    """,
+		    context
+		);
+
+		var	originalCount	= variables.getAsInteger( Key.of( "originalCount" ) );
+		var	clonedCount		= variables.getAsInteger( Key.of( "clonedCount" ) );
+
+		assertThat( originalCount ).isEqualTo( 2 );
+		assertThat( clonedCount ).isEqualTo( 3 );
+	}
+
+	@Test
+	@DisplayName( "Test CacheMemory merge() persists to cache" )
+	public void testMerge() {
+		runtime.executeSource(
+		    """
+		    memory1 = aiMemory( "cache" )
+		        .key( "merge-test-1" )
+		        .configure( { cacheName: "default" } )
+		        .add( "Message 1" )
+		        .add( "Message 2" )
+
+		    memory2 = aiMemory( "cache" )
+		        .key( "merge-test-2" )
+		        .configure( { cacheName: "default" } )
+		        .add( "Message 3" )
+		        .add( "Message 4" )
+
+		    memory1.merge( memory2 )
+
+		    // Create new instance to verify persistence
+		    memory3 = aiMemory( "cache" )
+		        .key( "merge-test-1" )
+		        .configure( { cacheName: "default" } )
+
+		    count = memory3.count()
+
+		    // Cleanup
+		    memory1.clear()
+		    memory2.clear()
+		    """,
+		    context
+		);
+
+		var count = variables.getAsInteger( Key.of( "count" ) );
+
+		assertThat( count ).isEqualTo( 4 );
+	}
+
+	@Test
+	@DisplayName( "Test CacheMemory merge() with skipDuplicates" )
+	public void testMergeSkipDuplicates() {
+		runtime.executeSource(
+		    """
+		    memory1 = aiMemory( "cache" )
+		        .key( "merge-dup-test-1" )
+		        .configure( { cacheName: "default" } )
+		        .add( "Message 1" )
+		        .add( "Message 2" )
+
+		    memory2 = aiMemory( "cache" )
+		        .key( "merge-dup-test-2" )
+		        .configure( { cacheName: "default" } )
+		        .add( "Message 2" )
+		        .add( "Message 3" )
+
+		    memory1.merge( memory2, true )
+
+		    count = memory1.count()
+
+		    // Cleanup
+		    memory1.clear()
+		    memory2.clear()
+		    """,
+		    context
+		);
+
+		var count = variables.getAsInteger( Key.of( "count" ) );
+
+		// Should have 3 messages (1, 2, 3) - duplicate "Message 2" skipped
+		assertThat( count ).isEqualTo( 3 );
+	}
+
 }

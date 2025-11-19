@@ -191,6 +191,8 @@ interface {
 	 * ------------------------------------------------------------------------------
 	 */
 
+
+
 	/**
      * Export memory to a serializable format
      *
@@ -198,7 +200,7 @@ interface {
      */
     struct function export();
 
-    /**
+	/**
      * Import memory from exported format
      *
      * @data The exported memory data
@@ -208,12 +210,27 @@ interface {
     IAiMemory function import( required struct data );
 
 	/**
+	 * Create a deep copy of this memory instance
+	 *
+	 * @return A new IAiMemory instance with the same data
+	 */
+	IAiMemory function clone();
+
+	/**
+	 * Merge messages from another memory instance into this one
+	 *
+	 * @otherMemory The memory instance to merge from
+	 * @skipDuplicates Whether to skip duplicate messages (default: false)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	IAiMemory function merge( required IAiMemory otherMemory, boolean skipDuplicates = false );
+
+	/**
 	 * ------------------------------------------------------------------------------
 	 * SEARCH METHODS (Optional - implement as needed)
 	 * ------------------------------------------------------------------------------
-	 */
-
-	/**
+	 */	/**
 	 * Search messages by content
 	 *
 	 * @searchTerm Text to search for

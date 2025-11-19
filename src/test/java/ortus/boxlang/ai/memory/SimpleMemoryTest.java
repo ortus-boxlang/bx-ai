@@ -409,4 +409,92 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 		assertThat( endBeforeStart.size() ).isEqualTo( 0 );
 	}
 
+	@Test
+	@DisplayName( "Test SimpleMemory clone()" )
+	public void testClone() {
+		runtime.executeSource(
+		    """
+		    original = new bxModules.bxai.models.memory.SimpleMemory()
+		        .key( "original-key" )
+		        .metadata( { userId: "123" } )
+		        .add( "Message 1" )
+		        .add( "Message 2" )
+
+		    cloned = original.clone()
+
+		    // Modify clone
+		    cloned.add( "Message 3" )
+
+		    originalCount = original.count()
+		    clonedCount = cloned.count()
+		    """,
+		    context
+		);
+
+		var	originalCount	= variables.getAsInteger( Key.of( "originalCount" ) );
+		var	clonedCount		= variables.getAsInteger( Key.of( "clonedCount" ) );
+
+		assertThat( originalCount ).isEqualTo( 2 );
+		assertThat( clonedCount ).isEqualTo( 3 );
+	}
+
+	@Test
+	@DisplayName( "Test SimpleMemory merge() without duplicates" )
+	public void testMergeNoDuplicates() {
+		runtime.executeSource(
+		    """
+		    memory1 = new bxModules.bxai.models.memory.SimpleMemory()
+		        .add( "Message 1" )
+		        .add( "Message 2" )
+
+		    memory2 = new bxModules.bxai.models.memory.SimpleMemory()
+		        .add( "Message 3" )
+		        .add( "Message 4" )
+
+		    memory1.merge( memory2 )
+
+		    count = memory1.count()
+		    messages = memory1.getAll()
+		    """,
+		    context
+		);
+
+		var	count		= variables.getAsInteger( Key.of( "count" ) );
+		var	messages	= variables.getAsArray( Key.of( "messages" ) );
+
+		assertThat( count ).isEqualTo( 4 );
+		IStruct last = ( IStruct ) messages.get( 3 );
+		assertThat( last.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 4" );
+	}
+
+	@Test
+	@DisplayName( "Test SimpleMemory merge() with skipDuplicates" )
+	public void testMergeSkipDuplicates() {
+		runtime.executeSource(
+		    """
+		    memory1 = new bxModules.bxai.models.memory.SimpleMemory()
+		        .add( "Message 1" )
+		        .add( "Message 2" )
+
+		    memory2 = new bxModules.bxai.models.memory.SimpleMemory()
+		        .add( "Message 2" )
+		        .add( "Message 3" )
+
+		    memory1.merge( memory2, true )
+
+		    count = memory1.count()
+		    messages = memory1.getAll()
+		    """,
+		    context
+		);
+
+		var	count		= variables.getAsInteger( Key.of( "count" ) );
+		var	messages	= variables.getAsArray( Key.of( "messages" ) );
+
+		// Should have 3 messages (1, 2, 3) - duplicate "Message 2" skipped
+		assertThat( count ).isEqualTo( 3 );
+		IStruct last = ( IStruct ) messages.get( 2 );
+		assertThat( last.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 3" );
+	}
+
 }

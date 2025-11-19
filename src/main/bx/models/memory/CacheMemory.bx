@@ -350,6 +350,59 @@ class extends="BaseMemory" {
 	}
 
 	/**
+	 * Create a deep copy of this cache memory instance
+	 * Note: Creates new instance but does NOT copy cache data - use different key
+	 *
+	 * @return A new IAiMemory instance with the same data
+	 */
+	public IAiMemory function clone() {
+		// Export current state and deep copy it
+		var exported = duplicate( this.export() );
+
+		// Create new instance with same cache name
+		var cloned = new CacheMemory( variables.cacheName )
+			.config( exported.config );
+
+		// Generate new unique key to avoid cache conflicts
+		exported.key = variables.key & "_clone_" & createUUID();
+
+		// Import data (will create new cache entry)
+		return cloned.import( exported );
+	}
+
+	/**
+	 * Merge messages from another memory instance into this one
+	 * Reads from cache, merges, and writes back to cache
+	 *
+	 * @otherMemory The memory instance to merge from
+	 * @skipDuplicates Whether to skip duplicate messages based on content and role (default: false)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function merge( required IAiMemory otherMemory, boolean skipDuplicates = false ) {
+		var data = getCacheData();
+		var currentMessages = data.messages;
+		var otherMessages = arguments.otherMemory.getAll();
+
+		if ( arguments.skipDuplicates ) {
+			// Filter out duplicates by comparing role and content
+			otherMessages = otherMessages.filter( ( newMsg ) => {
+				return !currentMessages.some( ( existingMsg ) =>
+					existingMsg.role == newMsg.role && existingMsg.content == newMsg.content
+				);
+			} );
+		}
+
+		// Append filtered messages
+		currentMessages.append( otherMessages, true );
+
+		// Write back to cache
+		setCacheData( currentMessages, data.metadata );
+
+		return this;
+	}
+
+	/**
 	 * --------------------------------------------------------------------------
 	 * Private Helpers
 	 * --------------------------------------------------------------------------

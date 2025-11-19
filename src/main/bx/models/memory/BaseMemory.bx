@@ -414,4 +414,50 @@ abstract class implements="IAiMemory" {
 		return this;
 	}
 
+	/**
+	 * Create a deep copy of this memory instance
+	 *
+	 * @return A new IAiMemory instance with the same data
+	 */
+	public IAiMemory function clone() {
+		// Export current state and deep copy it
+		var exported = duplicate( this.export() );
+
+		// Create new instance of same type
+		var cloned = createObject( "component", getMetadata( this ).name ).init();
+
+		// Import data into new instance
+		cloned.import( exported );
+
+		return cloned;
+	}
+
+	/**
+	 * Merge messages from another memory instance into this one
+	 *
+	 * @otherMemory The memory instance to merge from
+	 * @skipDuplicates Whether to skip duplicate messages based on content and role (default: false)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function merge( required IAiMemory otherMemory, boolean skipDuplicates = false ) {
+		var otherMessages = arguments.otherMemory.getAll();
+
+		if ( arguments.skipDuplicates ) {
+			var existingMessages = this.getAll();
+
+			// Filter out duplicates by comparing role and content
+			otherMessages = otherMessages.filter( ( newMsg ) => {
+				return !existingMessages.some( ( existingMsg ) =>
+					existingMsg.role == newMsg.role && existingMsg.content == newMsg.content
+				);
+			} );
+		}
+
+		// Add all messages (duplicates already filtered if requested)
+		otherMessages.each( ( msg ) => this.add( msg ) );
+
+		return this;
+	}
+
 }
