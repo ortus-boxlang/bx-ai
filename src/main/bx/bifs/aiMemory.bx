@@ -60,10 +60,16 @@ class {
 			case "filememory":
 				memoryClass = "bxModules.bxai.models.memory.FileMemory";
 				break;
+			case "jdbc":
+			case "jdbcmemory":
+			case "database":
+			case "db":
+				memoryClass = "bxModules.bxai.models.memory.JdbcMemory";
+				break;
 			default:
 				throw(
 					type: "InvalidMemoryType",
-					message: "Unknown memory type: #memoryType#. Available types: SimpleMemory, WindowMemory, CacheMemory, FileMemory"
+					message: "Unknown memory type: #memoryType#. Available types: SimpleMemory, WindowMemory, CacheMemory, FileMemory, JdbcMemory"
 				);
 		}
 

@@ -238,6 +238,36 @@ task downloadBoxLang( type: Download ) {
 }
 
 /**
+ * Task to download and extract the bx-derby module for testing
+ */
+task downloadDerbyModule( type: Download ) {
+	// Create the destination directory
+	doFirst {
+		file( "src/test/resources/modules" ).mkdirs()
+	}
+    // Configure the URL of the Derby module
+    src "https://s3.amazonaws.com/downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-derby/${derbyModuleVersion}/bx-derby-${derbyModuleVersion}.zip"
+    // Specify the destination for the downloaded file
+    dest file( "src/test/resources/modules/bx-derby-${derbyModuleVersion}.zip" )
+    overwrite true
+    onlyIfModified false
+}
+
+task extractDerbyModule( type: Copy ) {
+	dependsOn downloadDerbyModule
+	from zipTree( "src/test/resources/modules/bx-derby-${derbyModuleVersion}.zip" )
+	into "src/test/resources/modules/bx-derby"
+	doLast {
+		// Clean up the zip file after extraction
+		delete "src/test/resources/modules/bx-derby-${derbyModuleVersion}.zip"
+		println "+ Derby module extracted to src/test/resources/modules"
+	}
+}
+
+// Make sure test depends on Derby module extraction
+downloadBoxLang.finalizedBy( extractDerbyModule )
+
+/**
  * Project Wide Helper function
  * This is not a task, but a reusable UDF
  */
