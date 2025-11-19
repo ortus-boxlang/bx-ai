@@ -82,12 +82,12 @@ Here is a matrix of the providers and their feature support.  Please keep checki
 | Provider   | Real-time Tools | Embeddings |
 |------------|-----------------|------------|
 | Claude    	| ✅ | ❌ |
-| DeepSeek  | ✅ | ❌ |
-| Gemini    	| [Coming Soon]   | ❌ |
-| Grok      	 | ✅ | ❌ |
+| DeepSeek  | ✅ | ✅ |
+| Gemini    	| [Coming Soon]   | ✅ |
+| Grok      	 | ✅ | ✅ |
 | Ollama       | ✅ | ✅ |
 | OpenAI       | ✅ | ✅ |
-| OpenRouter   | ✅ | ❌ |
+| OpenRouter   | ✅ | ✅ |
 | Perplexity   | ✅ | ❌ |
 
 ## Settings
@@ -1098,8 +1098,12 @@ println( "Most relevant: " & scores.first().doc )
 |----------|---------|---------------|------------|
 | OpenAI | ✅ | text-embedding-3-small | 1536 |
 | Ollama | ✅ | nomic-embed-text | Varies |
+| DeepSeek | ✅ | (inherits from chat model) | Varies |
+| Grok | ✅ | (inherits from chat model) | Varies |
+| OpenRouter | ✅ | (depends on routed model) | Varies |
+| Gemini | ✅ | text-embedding-004 | 768 |
 | Claude | ❌ | N/A | N/A |
-| Others | ❌ | N/A | N/A |
+| Perplexity | ❌ | N/A | N/A |
 
 ### Best Practices
 

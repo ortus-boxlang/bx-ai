@@ -20,12 +20,92 @@ class extends="BaseService"{
 	 */
 	function init(){
 		variables.chatURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent"
+		variables.embeddingsURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:embedContent"
 		variables.name = "Gemini"
 		defaults( {
 			// https://ai.google.dev/gemini-api/docs/quickstart
 			// according to the docs, this is the default model
 			"model" : "gemini-2.5-flash"
 		} )
+	}
+
+	/**
+	 * Override embeddings to handle Gemini's specific API format
+	 * Gemini uses embedContent endpoint with model in URL and key as query param
+	 * @see https://ai.google.dev/api/embeddings
+	 */
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		// Set default embedding model if not specified
+		if( embeddingRequest.getModel().isEmpty() ){
+			embeddingRequest.setModelIfEmpty( "text-embedding-004" )
+		}
+
+		// Model Selection
+		embeddingRequest
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers )
+
+		// Build Gemini-specific data packet
+		var input = arguments.embeddingRequest.getInput();
+		var dataPacket = {
+			"content": {
+				"parts": [ {
+					"text": isArray( input ) ? input.toList( " " ) : input
+				} ]
+			}
+		}.append( arguments.embeddingRequest.getParams() )
+
+		// Update URL with model and API key
+		var requestURL = getEmbeddingsURL()
+			.replace( '%MODEL%', embeddingRequest.getModel() )
+			& '?key=#embeddingRequest.getApiKey()#';
+
+		// Temporarily store the URL
+		var originalURL = variables.embeddingsURL;
+		variables.embeddingsURL = requestURL;
+
+		// No auth header for Gemini
+		embeddingRequest.setSendAuthHeader( false );
+
+		// Send it
+		var result = sendEmbeddingRequest( embeddingRequest, dataPacket )
+
+		// Restore original URL
+		variables.embeddingsURL = originalURL;
+
+		// If an error is returned, throw it
+		if( result.keyExists( "error" ) ){
+			writeLog(
+				text: result.error.toString(),
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "ProviderError",
+				message: result.error.toString()
+			);
+		}
+
+		// Convert Gemini response format to standard format
+		var standardResponse = {
+			"data": [ {
+				"embedding": result.embedding.values,
+				"index": 0
+			} ],
+			"model": embeddingRequest.getModel()
+		}
+
+		// Determine return formats
+		switch( embeddingRequest.getReturnFormat() ){
+			case "embeddings":
+				return [ standardResponse.data.first().embedding ];
+			case "first":
+				return standardResponse.data.first().embedding;
+			case "raw": default:
+				return standardResponse;
+		}
 	}
 
 	/**

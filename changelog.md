@@ -17,8 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - New `embeddings()` method in `IAiService` interface
     - Support for single text and batch text embedding generation
     - Multiple return formats: raw, embeddings, first
-    - OpenAI embeddings support with `text-embedding-3-small` and `text-embedding-3-large` models
-    - Ollama local embeddings support for privacy-sensitive use cases
+    - **Provider Support**:
+        - OpenAI: `text-embedding-3-small` and `text-embedding-3-large` models
+        - Ollama: Local embeddings for privacy-sensitive use cases
+        - DeepSeek: OpenAI-compatible embeddings API
+        - Grok: OpenAI-compatible embeddings API
+        - OpenRouter: Aggregated embeddings via multiple models
+        - Gemini: Custom implementation with `text-embedding-004` model
     - New embedding-specific events: `onAIEmbeddingRequest`, `onAIEmbeddingResponse`, `beforeAIEmbedding`, `afterAIEmbedding`
     - Comprehensive embeddings documentation in README with examples
     - New `examples/embeddings-example.bx` demonstrating practical use cases
