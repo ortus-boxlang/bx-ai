@@ -273,4 +273,140 @@ public class SimpleMemoryTest extends BaseIntegrationTest {
 		assertThat( firstRecent.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 8" );
 	}
 
+	@Test
+	@DisplayName( "Test SimpleMemory search() case-insensitive" )
+	public void testSearchCaseInsensitive() {
+		runtime.executeSource(
+		    """
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		        .add( "Hello world" )
+		        .add( "Goodbye world" )
+		        .add( "Testing BoxLang" )
+		        .add( "Another message" )
+
+		    results = memory.search( "WORLD" )
+		    noResults = memory.search( "notfound" )
+		    """,
+		    context
+		);
+
+		var	results		= variables.getAsArray( Key.of( "results" ) );
+		var	noResults	= variables.getAsArray( Key.of( "noResults" ) );
+
+		assertThat( results.size() ).isEqualTo( 2 );
+		IStruct first = ( IStruct ) results.get( 0 );
+		assertThat( first.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hello world" );
+
+		assertThat( noResults.size() ).isEqualTo( 0 );
+	}
+
+	@Test
+	@DisplayName( "Test SimpleMemory search() case-sensitive" )
+	public void testSearchCaseSensitive() {
+		runtime.executeSource(
+		    """
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+		        .add( "Hello World" )
+		        .add( "hello world" )
+		        .add( "HELLO WORLD" )
+
+		    results = memory.search( "World", true )
+		    allResults = memory.search( "world", false )
+		    """,
+		    context
+		);
+
+		var	results		= variables.getAsArray( Key.of( "results" ) );
+		var	allResults	= variables.getAsArray( Key.of( "allResults" ) );
+
+		// Case-sensitive should only match "Hello World"
+		assertThat( results.size() ).isEqualTo( 1 );
+		IStruct match = ( IStruct ) results.get( 0 );
+		assertThat( match.getAsString( Key.of( "content" ) ) ).isEqualTo( "Hello World" );
+
+		// Case-insensitive should match all 3
+		assertThat( allResults.size() ).isEqualTo( 3 );
+	}
+
+	@Test
+	@DisplayName( "Test SimpleMemory getRange() basic" )
+	public void testGetRangeBasic() {
+		runtime.executeSource(
+		    """
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+
+		    // Add 5 messages
+		    for( i = 1; i <= 5; i++ ) {
+		        memory.add( "Message " & i )
+		    }
+
+		    range = memory.getRange( 2, 4 )
+		    """,
+		    context
+		);
+
+		var range = variables.getAsArray( Key.of( "range" ) );
+
+		assertThat( range.size() ).isEqualTo( 3 );
+		IStruct	first	= ( IStruct ) range.get( 0 );
+		IStruct	last	= ( IStruct ) range.get( 2 );
+		assertThat( first.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 2" );
+		assertThat( last.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 4" );
+	}
+
+	@Test
+	@DisplayName( "Test SimpleMemory getRange() default endIndex" )
+	public void testGetRangeDefaultEnd() {
+		runtime.executeSource(
+		    """
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+
+		    // Add 5 messages
+		    for( i = 1; i <= 5; i++ ) {
+		        memory.add( "Message " & i )
+		    }
+
+		    range = memory.getRange( 3 )
+		    """,
+		    context
+		);
+
+		var range = variables.getAsArray( Key.of( "range" ) );
+
+		// Should get messages 3, 4, 5
+		assertThat( range.size() ).isEqualTo( 3 );
+		IStruct	first	= ( IStruct ) range.get( 0 );
+		IStruct	last	= ( IStruct ) range.get( 2 );
+		assertThat( first.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 3" );
+		assertThat( last.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 5" );
+	}
+
+	@Test
+	@DisplayName( "Test SimpleMemory getRange() invalid indices" )
+	public void testGetRangeInvalidIndices() {
+		runtime.executeSource(
+		    """
+		    memory = new bxModules.bxai.models.memory.SimpleMemory()
+
+		    // Add 5 messages
+		    for( i = 1; i <= 5; i++ ) {
+		        memory.add( "Message " & i )
+		    }
+
+		    outOfBounds = memory.getRange( 10, 20 )
+		    negativeStart = memory.getRange( 0, 3 )
+		    endBeforeStart = memory.getRange( 4, 2 )
+		    """,
+		    context
+		);
+
+		var	outOfBounds		= variables.getAsArray( Key.of( "outOfBounds" ) );
+		var	negativeStart	= variables.getAsArray( Key.of( "negativeStart" ) );
+		var	endBeforeStart	= variables.getAsArray( Key.of( "endBeforeStart" ) );
+
+		assertThat( outOfBounds.size() ).isEqualTo( 0 );
+		assertThat( negativeStart.size() ).isEqualTo( 0 );
+		assertThat( endBeforeStart.size() ).isEqualTo( 0 );
+	}
+
 }

@@ -268,6 +268,56 @@ abstract class implements="IAiMemory" {
 	}
 
 	/**
+	 * Search messages by content
+	 *
+	 * @searchTerm Text to search for
+	 * @caseSensitive Whether search is case-sensitive (default: false)
+	 *
+	 * @return Array of matching message structs
+	 */
+	public array function search( required string searchTerm, boolean caseSensitive = false ) {
+		var term = arguments.searchTerm;
+		var isCaseSensitive = arguments.caseSensitive;
+
+		return this.getAll().filter( ( message ) => {
+			return isCaseSensitive
+				? message.content.find( term ) > 0
+				: message.content.findNoCase( term ) > 0;
+		} );
+	}	/**
+	 * Get messages in a specific range
+	 *
+	 * @startIndex Starting index (1-based)
+	 * @endIndex Ending index (1-based), optional - defaults to last message
+	 *
+	 * @return Array of message structs
+	 */
+	public array function getRange( required numeric startIndex, numeric endIndex ) {
+		var messages = this.getAll();
+		var total = messages.len();
+
+		// Validate startIndex - must be within bounds
+		if ( arguments.startIndex < 1 || arguments.startIndex > total ) {
+			return [];
+		}
+
+		// Default endIndex to last message if not provided
+		var finalEndIndex = isNull( arguments.endIndex ) ? total : arguments.endIndex;
+
+		// Clamp endIndex to valid range
+		if ( finalEndIndex > total ) {
+			finalEndIndex = total;
+		}
+
+		// If endIndex is before startIndex, return empty
+		if ( finalEndIndex < arguments.startIndex ) {
+			return [];
+		}
+
+		// Calculate length for slice (slice takes start and length, not start and end)
+		var length = finalEndIndex - arguments.startIndex + 1;
+		return messages.slice( arguments.startIndex, length );
+	}	/**
 	 * Get or set the name of this memory instance
 	 *
 	 * @name Optional name to set
@@ -310,14 +360,17 @@ abstract class implements="IAiMemory" {
 	 * @return Struct with memory information
 	 */
 	public struct function getSummary() {
+		var all = this.getAll();
 		return {
-			type: variables.name,
-			key: variables.key,
-			messageCount: this.count(),
-			nonSystemCount: this.getNonSystemMessages().len(),
-			hasSystemMessage: len( this.getSystemMessage() ) > 0,
-			metadata: variables.metadata,
-			config: variables.config
+			"type": variables.name,
+			"key": variables.key,
+			"messageCount": this.count(),
+			"nonSystemCount": this.getNonSystemMessages().len(),
+			"hasSystemMessage": len( this.getSystemMessage() ) > 0,
+			"metadata": variables.metadata,
+			"config": variables.config,
+			"firstMessageAt": all.isEmpty() ? "" : all.first().timestamp,
+        	"lastMessageAt": all.isEmpty() ? "" : all.last().timestamp
 		};
 	}
 

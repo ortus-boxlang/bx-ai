@@ -281,4 +281,131 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		assertThat( meta2.getAsString( Key.of( "userId" ) ) ).isEqualTo( "123" );
 	}
 
+	@Test
+	@DisplayName( "Test CacheMemory search() persists across instances" )
+	public void testSearchPersistence() {
+		runtime.executeSource(
+		    """
+		    // Create memory and add messages
+		    memory1 = aiMemory( "cache" )
+		        .key( "search-test" )
+		        .configure( { cacheName: "default" } )
+		        .add( "Hello world" )
+		        .add( "Goodbye world" )
+		        .add( "Testing BoxLang" )
+
+		    // Create new instance and search
+		    memory2 = aiMemory( "cache" )
+		        .key( "search-test" )
+		        .configure( { cacheName: "default" } )
+
+		    results = memory2.search( "world" )
+		    boxlangResults = memory2.search( "BoxLang" )
+
+		    // Cleanup
+		    memory2.clear()
+		    """,
+		    context
+		);
+
+		var	results			= variables.getAsArray( Key.of( "results" ) );
+		var	boxlangResults	= variables.getAsArray( Key.of( "boxlangResults" ) );
+
+		assertThat( results.size() ).isEqualTo( 2 );
+		assertThat( boxlangResults.size() ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Test CacheMemory search() case-sensitive" )
+	public void testSearchCaseSensitive() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( "cache" )
+		        .key( "case-test" )
+		        .configure( { cacheName: "default" } )
+		        .add( "Hello World" )
+		        .add( "hello world" )
+		        .add( "HELLO WORLD" )
+
+		    caseSensitive = memory.search( "World", true )
+		    caseInsensitive = memory.search( "world", false )
+
+		    // Cleanup
+		    memory.clear()
+		    """,
+		    context
+		);
+
+		var	caseSensitive	= variables.getAsArray( Key.of( "caseSensitive" ) );
+		var	caseInsensitive	= variables.getAsArray( Key.of( "caseInsensitive" ) );
+
+		assertThat( caseSensitive.size() ).isEqualTo( 1 );
+		assertThat( caseInsensitive.size() ).isEqualTo( 3 );
+	}
+
+	@Test
+	@DisplayName( "Test CacheMemory getRange() from cache" )
+	public void testGetRange() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( "cache" )
+		        .key( "range-test" )
+		        .configure( { cacheName: "default" } )
+
+		    // Add 10 messages
+		    for( i = 1; i <= 10; i++ ) {
+		        memory.add( "Message " & i )
+		    }
+
+		    // Create new instance and get range
+		    memory2 = aiMemory( "cache" )
+		        .key( "range-test" )
+		        .configure( { cacheName: "default" } )
+
+		    range = memory2.getRange( 3, 7 )
+		    rangeToEnd = memory2.getRange( 8 )
+
+		    // Cleanup
+		    memory2.clear()
+		    """,
+		    context
+		);
+
+		var	range		= variables.getAsArray( Key.of( "range" ) );
+		var	rangeToEnd	= variables.getAsArray( Key.of( "rangeToEnd" ) );
+
+		assertThat( range.size() ).isEqualTo( 5 ); // Messages 3-7
+		assertThat( rangeToEnd.size() ).isEqualTo( 3 ); // Messages 8-10
+	}
+
+	@Test
+	@DisplayName( "Test CacheMemory getRange() invalid indices" )
+	public void testGetRangeInvalid() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( "cache" )
+		        .key( "range-invalid-test" )
+		        .configure( { cacheName: "default" } )
+
+		    // Add 5 messages
+		    for( i = 1; i <= 5; i++ ) {
+		        memory.add( "Message " & i )
+		    }
+
+		    outOfBounds = memory.getRange( 10, 20 )
+		    invalid = memory.getRange( 0, 3 )
+
+		    // Cleanup
+		    memory.clear()
+		    """,
+		    context
+		);
+
+		var	outOfBounds	= variables.getAsArray( Key.of( "outOfBounds" ) );
+		var	invalid		= variables.getAsArray( Key.of( "invalid" ) );
+
+		assertThat( outOfBounds.size() ).isEqualTo( 0 );
+		assertThat( invalid.size() ).isEqualTo( 0 );
+	}
+
 }

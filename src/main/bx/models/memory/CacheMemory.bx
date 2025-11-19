@@ -54,14 +54,12 @@ class extends="BaseMemory" {
 		// Get the cache provider instance
 		variables.cache = cache( variables.cacheName );
 
-		// Load metadata and config from cache if they exist
+		// Load metadata from cache if it exists
 		// (but NOT messages - those are accessed on-demand via getAll())
+		// (and NOT config - that's just for instance configuration)
 		var data = getCacheData();
 		if ( !data.metadata.isEmpty() ) {
 			variables.metadata = data.metadata;
-		}
-		if ( !data.config.isEmpty() ) {
-			variables.config = data.config;
 		}
 
 		return this;
@@ -80,7 +78,7 @@ class extends="BaseMemory" {
 			variables.metadata.append( arguments.metadata, true );
 			// Persist to cache
 			var data = getCacheData();
-			setCacheData( data.messages, variables.metadata, data.config );
+			setCacheData( data.messages, variables.metadata );
 			return this;
 		}
 		return variables.metadata;
@@ -116,7 +114,7 @@ class extends="BaseMemory" {
 		messages.append( tempMessages, true );
 
 		// Save back to cache
-		setCacheData( messages, data.metadata, data.config );
+		setCacheData( messages, data.metadata );
 
 		return this;
 	}
@@ -196,7 +194,7 @@ class extends="BaseMemory" {
 			timestamp: now()
 		} );
 
-		setCacheData( messages, data.metadata, data.config );
+		setCacheData( messages, data.metadata );
 		return this;
 	}
 
@@ -208,7 +206,7 @@ class extends="BaseMemory" {
 	public IAiMemory function removeSystemMessage() {
 		var data = getCacheData();
 		var messages = data.messages.filter( ( m ) => m.role != "system" );
-		setCacheData( messages, data.metadata, data.config );
+		setCacheData( messages, data.metadata );
 		return this;
 	}
 
@@ -236,6 +234,60 @@ class extends="BaseMemory" {
 		}
 		var start = total - arguments.limit + 1;
 		return messages.slice( start, total );
+	}
+
+	/**
+	 * Search messages by content - reads from cache
+	 *
+	 * @searchTerm Text to search for
+	 * @caseSensitive Whether search is case-sensitive (default: false)
+	 *
+	 * @return Array of matching message structs
+	 */
+	public array function search( required string searchTerm, boolean caseSensitive = false ) {
+		var term = arguments.searchTerm;
+		var isCaseSensitive = arguments.caseSensitive;
+
+		return this.getAll().filter( ( message ) => {
+			return isCaseSensitive
+				? message.content.find( term ) > 0
+				: message.content.findNoCase( term ) > 0;
+		} );
+	}
+
+	/**
+	 * Get messages in a specific range - reads from cache
+	 *
+	 * @startIndex Starting index (1-based)
+	 * @endIndex Ending index (1-based), optional - defaults to last message
+	 *
+	 * @return Array of message structs
+	 */
+	public array function getRange( required numeric startIndex, numeric endIndex ) {
+		var messages = this.getAll();
+		var total = messages.len();
+
+		// Validate startIndex - must be within bounds
+		if ( arguments.startIndex < 1 || arguments.startIndex > total ) {
+			return [];
+		}
+
+		// Default endIndex to last message if not provided
+		var finalEndIndex = isNull( arguments.endIndex ) ? total : arguments.endIndex;
+
+		// Clamp endIndex to valid range
+		if ( finalEndIndex > total ) {
+			finalEndIndex = total;
+		}
+
+		// If endIndex is before startIndex, return empty
+		if ( finalEndIndex < arguments.startIndex ) {
+			return [];
+		}
+
+		// Calculate length for slice (slice takes start and length, not start and end)
+		var length = finalEndIndex - arguments.startIndex + 1;
+		return messages.slice( arguments.startIndex, length );
 	}
 
 	/**
@@ -292,7 +344,7 @@ class extends="BaseMemory" {
 
 		// Import messages directly to cache (don't use variables.messages)
 		var messages = arguments.data.messages ?: [];
-		setCacheData( messages, variables.metadata, variables.config );
+		setCacheData( messages, variables.metadata );
 
 		return this;
 	}
@@ -306,20 +358,19 @@ class extends="BaseMemory" {
 	/**
 	 * Get cache data structure - reads directly from cache
 	 *
-	 * @return Struct with keys: messages, metadata, config
+	 * @return Struct with keys: messages, metadata
 	 */
 	private struct function getCacheData() {
 		if ( isNull( variables.cache ) || !len( variables.key ) ) {
-			return { messages: [], metadata: {}, config: {} };
+			return { messages: [], metadata: {} };
 		}
 
 		return variables.cache.getOrSet(
 			variables.key,
 			() => {
 				return {
-					messages  : [],
-					metadata  : {},
-					config    : {}
+					"messages"  : [],
+					"metadata"  : {}
 				};
 			}
 		);
@@ -330,20 +381,17 @@ class extends="BaseMemory" {
 	 *
 	 * @messages Array of message structs
 	 * @metadata Metadata struct
-	 * @config Config struct
 	 */
 	private void function setCacheData(
 		required array messages,
-		struct metadata = {},
-		struct config = {}
+		struct metadata = {}
 	) {
 		if ( !isNull( variables.cache ) && len( variables.key ) ) {
 			variables.cache.set(
 				variables.key,
 				{
 					messages  : arguments.messages,
-					metadata  : arguments.metadata,
-					config    : arguments.config
+					metadata  : arguments.metadata
 				}
 			);
 		}

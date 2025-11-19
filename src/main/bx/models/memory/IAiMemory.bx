@@ -17,6 +17,21 @@
  */
 interface {
 
+	/**
+	 * ------------------------------------------------------------------------------
+	 * CORE IDENTITY METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+     * Get or set the name of this memory instance
+     *
+     * @name Optional name to set
+     *
+     * @return String (getter) or IAiMemory (setter)
+     */
+    any function name( string name );
+
     /**
      * Get or set the unique key for this memory instance
 	 *
@@ -34,6 +49,12 @@ interface {
      * @return Struct (getter) or IAiMemory (setter)
      */
     any function metadata( struct metadata );
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * MESSAGE MANAGEMENT METHODS
+	 * ------------------------------------------------------------------------------
+	 */
 
     /**
      * Add a message to memory. The message can be:
@@ -80,6 +101,12 @@ interface {
      */
     IAiMemory function clear();
 
+	/**
+	 * ------------------------------------------------------------------------------
+	 *  QUANTITY MANAGEMENT METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
     /**
      * Get the count of messages in memory
 	 *
@@ -93,6 +120,12 @@ interface {
      * @return True if empty, false otherwise
      */
     boolean function isEmpty();
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * SYSTEM MESSAGE METHODS
+	 * ------------------------------------------------------------------------------
+	 */
 
     /**
      * Get the system message if one exists
@@ -123,6 +156,12 @@ interface {
      */
     array function getNonSystemMessages();
 
+	/**
+	 * ------------------------------------------------------------------------------
+	 * CONFIGURATION METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
     /**
      * Get configuration struct
 	 *
@@ -138,4 +177,60 @@ interface {
      * @return IAiMemory for chaining
      */
     IAiMemory function configure( required struct config );
+
+    /**
+     * Get summary of memory instance
+     *
+     * @return Struct with memory information
+     */
+    struct function getSummary();
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * IMPORT/EXPORT METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+     * Export memory to a serializable format
+     *
+     * @return Struct containing all memory data
+     */
+    struct function export();
+
+    /**
+     * Import memory from exported format
+     *
+     * @data The exported memory data
+     *
+     * @return IAiMemory for chaining
+     */
+    IAiMemory function import( required struct data );
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * SEARCH METHODS (Optional - implement as needed)
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Search messages by content
+	 *
+	 * @searchTerm Text to search for
+	 * @caseSensitive Whether search is case-sensitive
+	 *
+	 * @return Array of matching message structs
+	 */
+	array function search( required string searchTerm, boolean caseSensitive = false );
+
+	/**
+	 * Get messages in a specific range
+	 *
+	 * @startIndex Starting index (1-based)
+	 * @endIndex Ending index (1-based), Optional, defaults to last message
+	 *
+	 * @return Array of message structs
+	 */
+	array function getRange( required numeric startIndex, numeric endIndex );
+
 }
