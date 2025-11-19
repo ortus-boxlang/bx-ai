@@ -21,14 +21,18 @@ class extends="SimpleMemory" {
 	/**
 	 * Maximum number of messages to keep in memory (excluding system message)
 	 */
-	property name="maxMessages" type="numeric" default=10;
+	property name="maxMessages" type="numeric";
+
+	static {
+		final DEFAULT_MAX_MESSAGES = 20
+	}
 
 	/**
 	 * Constructor
 	 *
-	 * @maxMessages Maximum number of messages to keep (default: 10)
+	 * @maxMessages Maximum number of messages to keep (default: 20)
 	 */
-	function init( numeric maxMessages = 10 ) {
+	function init( numeric maxMessages = static.DEFAULT_MAX_MESSAGES ) {
 		super.init();
 		variables.maxMessages = arguments.maxMessages;
 		return this;
@@ -98,7 +102,7 @@ class extends="SimpleMemory" {
 			}
 
 			// Add back the kept messages
-			kept.each( function( msg ) {
+			kept.each( msg => {
 				variables.messages.append( msg );
 			} );
 		}

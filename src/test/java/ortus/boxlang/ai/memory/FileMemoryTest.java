@@ -1,7 +1,6 @@
 package ortus.boxlang.ai.memory;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,7 +13,6 @@ import org.junit.jupiter.api.Test;
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.IStruct;
-import ortus.boxlang.runtime.types.exceptions.BoxRuntimeException;
 
 public class FileMemoryTest extends BaseIntegrationTest {
 
@@ -57,8 +55,8 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testInstantiation() {
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		                   """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   memory = new bxModules.bxai.models.memory.FileMemory( \"%s\" )
+		                   """, tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -67,33 +65,34 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test FileMemory with filePath configuration" )
-	public void testFilePathConfiguration() {
+	@DisplayName( "Test FileMemory with directoryPath configuration" )
+	public void testDirectoryPathConfiguration() {
 		runtime.executeSource(
 		    String.format( """
 		                   memory = new bxModules.bxai.models.memory.FileMemory()
-		                       .configure( { filePath: "%s" } )
+		                       .configure( { directoryPath: \"%s\" } )
 
-		                   result = memory.filePath()
-		                   """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   result = memory.directoryPath()
+		                   """, tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 
 		var result = variables.getAsString( Key.of( "result" ) );
-		assertThat( result ).isEqualTo( testFilePath );
+		assertThat( result ).isEqualTo( tempDir.toString() );
 	}
 
 	@Test
 	@DisplayName( "Test FileMemory persists messages to file" )
 	public void testPersistMessages() {
+		String expectedFile = tempDir.toString() + "/memory-test-key.json";
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		                       .key( "test-key" )
-		                       .add( "Hello World" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( \"%s\" )
+		                       .key( \"test-key\" )
+		                       .add( \"Hello World\" )
 
-		                   fileExists = fileExists( "%s" )
-		                   """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
+		                   fileExists = fileExists( \"%s\" )
+		                   """, tempDir.toString().replace( "\\", "\\\\" ), expectedFile.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -111,14 +110,15 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		                       .add( "Message 1" )
 		                       .add( "Message 2" )
 
-		                   // Create new memory instance that loads from the same file
+		                   // Create new memory instance with same key to load from the same file
 		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "persist-key" )
 		                       .configure( {} )
 
 		                   count = memory2.count()
 		                   messages = memory2.getAll()
 		                   key = memory2.key()
-		                   """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
+		                   """, tempDir.toString().replace( "\\", "\\\\" ), tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -167,16 +167,17 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		                       .add( "User message" )
 
 		                   summary = memory.getSummary()
-		                   """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   """, tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 
-		var summary = variables.getAsStruct( Key.of( "summary" ) );
+		String	expectedFilePath	= tempDir.toString() + "/memory-test-key.json";
+		var		summary				= variables.getAsStruct( Key.of( "summary" ) );
 		assertThat( summary.getAsString( Key.of( "type" ) ) ).isEqualTo( "FileMemory" );
 		assertThat( summary.getAsString( Key.of( "key" ) ) ).isEqualTo( "test-key" );
 		assertThat( summary.get( "messageCount" ) ).isEqualTo( 2 ); // system + user
 		assertThat( summary.getAsBoolean( Key.of( "hasSystemMessage" ) ) ).isTrue();
-		assertThat( summary.getAsString( Key.of( "filePath" ) ) ).isEqualTo( testFilePath );
+		assertThat( summary.getAsString( Key.of( "filePath" ) ) ).isEqualTo( expectedFilePath );
 		assertThat( summary.getAsBoolean( Key.of( "fileExists" ) ) ).isTrue();
 	}
 
@@ -192,7 +193,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		                       .add( { role: "user", content: "Test" } )
 
 		                   exported = memory.export()
-		                   """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   """, tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -201,7 +202,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		assertThat( exported.containsKey( Key.of( "metadata" ) ) ).isTrue();
 		assertThat( exported.containsKey( Key.of( "config" ) ) ).isTrue();
 		assertThat( exported.containsKey( Key.of( "messages" ) ) ).isTrue();
-		assertThat( exported.getAsString( Key.of( "filePath" ) ) ).isEqualTo( testFilePath );
+		assertThat( exported.getAsString( Key.of( "directoryPath" ) ) ).isEqualTo( tempDir.toString() );
 	}
 
 	@Test
@@ -216,7 +217,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		                       messages: [
 		                           { role: "user", content: "Imported message" }
 		                       ],
-		                       filePath: "%s"
+		                       directoryPath: "%s"
 		                   }
 
 		                   memory = new bxModules.bxai.models.memory.FileMemory()
@@ -227,16 +228,16 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		                       count: memory.count(),
 		                       metadata: memory.metadata(),
 		                       config: memory.getConfig(),
-		                       filePath: memory.filePath()
+		                       directoryPath: memory.directoryPath()
 		                   }
-		                   """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   """, tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 
 		var result = variables.getAsStruct( Key.of( "result" ) );
 		assertThat( result.getAsString( Key.of( "key" ) ) ).isEqualTo( "imported-key" );
 		assertThat( result.get( "count" ) ).isEqualTo( 1 );
-		assertThat( result.getAsString( Key.of( "filePath" ) ) ).isEqualTo( testFilePath );
+		assertThat( result.getAsString( Key.of( "directoryPath" ) ) ).isEqualTo( tempDir.toString() );
 
 		IStruct metadata = ( IStruct ) result.get( "metadata" );
 		assertThat( metadata.getAsBoolean( Key.of( "imported" ) ) ).isTrue();
@@ -267,9 +268,9 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		                       count: restored.count(),
 		                       systemMsg: restored.getSystemMessage(),
 		                       messages: restored.getAll(),
-		                       filePath: restored.filePath()
+		                       directoryPath: restored.directoryPath()
 		                   }
-		                   """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   """, tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -278,7 +279,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		assertThat( result.get( "count" ) ).isEqualTo( 3 );
 		assertThat( result.getAsString( Key.of( "systemMsg" ) ) ).isEqualTo( "System prompt" );
 		assertThat( result.getAsArray( Key.of( "messages" ) ).size() ).isEqualTo( 3 );
-		assertThat( result.getAsString( Key.of( "filePath" ) ) ).isEqualTo( testFilePath );
+		assertThat( result.getAsString( Key.of( "directoryPath" ) ) ).isEqualTo( tempDir.toString() );
 	}
 
 	@Test
@@ -287,15 +288,17 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    String.format( """
 		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "metadata-key" )
 		                       .metadata( { userId: "123", sessionId: "abc" } )
 		                       .add( "Test message" )
 
-		                   // Load from file
+		                   // Load from file with same key
 		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "metadata-key" )
 		                       .configure( {} )
 
 		                   metadata = memory2.metadata()
-		                   """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
+		                   """, tempDir.toString().replace( "\\", "\\\\" ), tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -327,16 +330,17 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "Test FileMemory creates directory if needed" )
 	public void testDirectoryCreation() {
-		Path	nestedPath	= tempDir.resolve( "nested/dir/memory.json" );
-		String	filePath	= nestedPath.toString();
+		Path	nestedDir		= tempDir.resolve( "nested/dir" );
+		String	expectedFile	= nestedDir.toString() + "/memory-nested-key.json";
 
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		                       .add( "Test message" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( \"%s\" )
+		                       .key( \"nested-key\" )
+		                       .add( \"Test message\" )
 
-		                   fileExists = fileExists( "%s" )
-		                   """, filePath.replace( "\\", "\\\\" ), filePath.replace( "\\", "\\\\" ) ),
+		                   fileExists = fileExists( \"%s\" )
+		                   """, nestedDir.toString().replace( "\\", "\\\\" ), expectedFile.replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -348,13 +352,13 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testWithAiMemoryBIF() {
 		runtime.executeSource(
 		    String.format( """
-		                   memory = aiMemory( "file", { filePath: "%s" } )
-		                       .key( "bif-test" )
-		                       .add( "BIF message" )
+		                   memory = aiMemory( \"file\", { directoryPath: \"%s\" } )
+		                       .key( \"bif-test\" )
+		                       .add( \"BIF message\" )
 
 		                   count = memory.count()
 		                   name = memory.name()
-		                   """, testFilePath.replace( "\\", "\\\\" ) ),
+		                   """, tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -367,17 +371,19 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testSystemMessagePersistence() {
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
-		                       .setSystemMessage( "Be helpful" )
-		                       .add( "User message" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( \"%s\" )
+		                       .key( \"system-key\" )
+		                       .setSystemMessage( \"Be helpful\" )
+		                       .add( \"User message\" )
 
-		                   // Load from file
-		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                   // Load from file with same key
+		                   memory2 = new bxModules.bxai.models.memory.FileMemory( \"%s\" )
+		                       .key( \"system-key\" )
 		                       .configure( {} )
 
 		                   systemMsg = memory2.getSystemMessage()
 		                   count = memory2.count()
-		                   """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
+		                   """, tempDir.toString().replace( "\\", "\\\\" ), tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 
@@ -416,14 +422,16 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		                       .user( "Hello" )
 
 		                   memory = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "aimessage-key" )
 		                       .add( msg )
 
-		                   // Load from file
+		                   // Load from file with same key
 		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "%s" )
+		                       .key( "aimessage-key" )
 		                       .configure( {} )
 
 		                   count = memory2.count()
-		                   """, testFilePath.replace( "\\", "\\\\" ), testFilePath.replace( "\\", "\\\\" ) ),
+		                   """, tempDir.toString().replace( "\\", "\\\\" ), tempDir.toString().replace( "\\", "\\\\" ) ),
 		    context
 		);
 

@@ -56,6 +56,8 @@ abstract class implements="IAiMemory" {
 		var fullName = getMetadata( this ).name ?: "BaseMemory";
 		// Extract just the class name from fully qualified path (e.g., "bxModules.bxai.models.memory.SimpleMemory" -> "SimpleMemory")
 		variables.name = fullName.listLast( "." );
+		// Default unique key to a UUID
+		variables.key = createUUID();
 		return this;
 	}
 

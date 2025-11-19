@@ -19,34 +19,43 @@
 class extends="BaseMemory" {
 
 	/**
-	 * The file path where messages are stored
+	 * The directory path where memory files are stored
 	 */
-	property name="filePath" type="string" default="";
+	property name="directoryPath" type="string";
+
+	static{
+		final DEFAULT_DIRECTORY_PATH = getTempDirectory() & "/bx-ai-memories"
+	}
 
 	/**
 	 * Constructor
 	 *
-	 * @filePath Path to the JSON file for storing messages (optional)
+	 * @directoryPath Path to the directory for storing memory files (optional)
 	 */
-	function init( string filePath = "" ) {
+	function init( string directoryPath = static.DEFAULT_DIRECTORY_PATH ) {
 		super.init();
-		variables.filePath = arguments.filePath;
+		variables.directoryPath = arguments.directoryPath;
 		return this;
 	}
 
 	/**
 	 * Configure the memory instance
-	 * Supports filePath in config and loads data from file if it exists
+	 * Supports directoryPath in config and loads data from file if it exists
 	 */
 	public IAiMemory function configure( required struct config ) {
 		super.configure( arguments.config );
 
-		if ( arguments.config.keyExists( "filePath" ) ) {
-			variables.filePath = arguments.config.filePath;
+		if ( arguments.config.keyExists( "directoryPath" ) ) {
+			variables.directoryPath = arguments.config.directoryPath;
+		}
+
+		// Ensure directory exists
+		if ( !directoryExists( variables.directoryPath ) ) {
+			directoryCreate( variables.directoryPath, true );
 		}
 
 		// Load existing data from file if it exists
-		if ( len( variables.filePath ) && fileExists( variables.filePath ) ) {
+		if ( fileExists( getFilePath() ) ) {
 			loadFromFile();
 		}
 
@@ -54,22 +63,23 @@ class extends="BaseMemory" {
 	}
 
 	/**
-	 * Get or set the file path
+	 * Get or set the directory path
 	 *
-	 * @filePath Optional path to set
+	 * @directoryPath Optional directory path to set
 	 *
 	 * @return String (getter) or IAiMemory (setter)
 	 */
-	public any function filePath( string filePath ) {
-		if ( !isNull( arguments.filePath ) ) {
-			variables.filePath = arguments.filePath;
-			// Load data from new file path if it exists
-			if ( len( variables.filePath ) && fileExists( variables.filePath ) ) {
+	public any function directoryPath( string directoryPath ) {
+		if ( !isNull( arguments.directoryPath ) ) {
+			variables.directoryPath = arguments.directoryPath;
+			// Load data from file if it exists
+			var filePath = getFilePath();
+			if ( len( filePath ) && fileExists( filePath ) ) {
 				loadFromFile();
 			}
 			return this;
 		}
-		return variables.filePath;
+		return variables.directoryPath;
 	}
 
 	/**
@@ -82,10 +92,10 @@ class extends="BaseMemory" {
 	public IAiMemory function add( required any message ) {
 		// Use parent's add logic
 		super.add( arguments.message );
-		
+
 		// Persist to file
 		saveToFile();
-		
+
 		return this;
 	}
 
@@ -96,12 +106,13 @@ class extends="BaseMemory" {
 	 */
 	public IAiMemory function clear() {
 		super.clear();
-		
+
 		// Clear the file content
-		if ( len( variables.filePath ) ) {
+		var filePath = getFilePath();
+		if ( len( filePath ) ) {
 			saveToFile();
 		}
-		
+
 		return this;
 	}
 
@@ -147,32 +158,34 @@ class extends="BaseMemory" {
 
 	/**
 	 * Get a summary of this memory instance
-	 * Overrides base to add filePath field
+	 * Overrides base to add directoryPath field
 	 *
 	 * @return Struct with memory information
 	 */
 	public struct function getSummary() {
 		var summary = super.getSummary();
-		summary.filePath = variables.filePath;
-		summary.fileExists = len( variables.filePath ) && fileExists( variables.filePath );
+		var filePath = getFilePath();
+		summary.directoryPath = variables.directoryPath;
+		summary.filePath = filePath;
+		summary.fileExists = len( filePath ) && fileExists( filePath );
 		return summary;
 	}
 
 	/**
 	 * Export messages to a serializable format
-	 * Overrides base to add filePath field
+	 * Overrides base to add directoryPath field
 	 *
 	 * @return Struct containing all memory data
 	 */
 	public struct function export() {
 		var exported = super.export();
-		exported.filePath = variables.filePath;
+		exported.directoryPath = variables.directoryPath;
 		return exported;
 	}
 
 	/**
 	 * Import messages from a previously exported format
-	 * Overrides base to handle filePath and persist to file
+	 * Overrides base to handle directoryPath and persist to file
 	 *
 	 * @data The exported memory data
 	 *
@@ -182,13 +195,14 @@ class extends="BaseMemory" {
 		// Import base fields
 		super.import( arguments.data );
 
-		// Handle filePath specific to FileMemory
-		if ( arguments.data.keyExists( "filePath" ) ) {
-			variables.filePath = arguments.data.filePath;
+		// Handle directoryPath specific to FileMemory
+		if ( arguments.data.keyExists( "directoryPath" ) ) {
+			variables.directoryPath = arguments.data.directoryPath;
 		}
 
 		// Persist imported data to file
-		if ( len( variables.filePath ) ) {
+		var filePath = getFilePath();
+		if ( len( filePath ) ) {
 			saveToFile();
 		}
 
@@ -202,25 +216,38 @@ class extends="BaseMemory" {
 	 */
 
 	/**
+	 * Get the full file path based on directoryPath and key
+	 * Generates filename from memory key
+	 *
+	 * @return String full path to the memory file
+	 */
+	private string function getFilePath() {
+		// Generate filename from key: memory-{key}.json
+		var filename = "memory-#variables.key#.json".slugify();
+		// Combine directory and filename
+		return variables.directoryPath & "/" & filename;
+	}
+
+	/**
 	 * Load memory data from JSON file
 	 *
 	 * @return IAiMemory for chaining
 	 */
 	private IAiMemory function loadFromFile() {
-		if ( !len( variables.filePath ) ) {
-			return this;
-		}
+		var filePath = getFilePath();
 
 		// Only load if file exists
-		if ( !fileExists( variables.filePath ) ) {
+		if ( !fileExists( filePath ) ) {
 			return this;
 		}
 
 		try {
-			var fileContent = fileRead( variables.filePath );
-			
+			var fileContent = fileRead( filePath );
+
 			// Handle empty files
 			if ( !len( trim( fileContent ) ) ) {
+				// delete the file
+				fileDelete( filePath );
 				return this;
 			}
 
@@ -228,10 +255,10 @@ class extends="BaseMemory" {
 
 			// Import the data using parent's import logic
 			if ( isStruct( data ) ) {
-				// Store current filePath
-				var currentFilePath = variables.filePath;
-				
-				// Import without changing filePath
+				// Store current directoryPath
+				var currentDirectoryPath = variables.directoryPath;
+
+				// Import without changing directoryPath
 				if ( data.keyExists( "key" ) ) {
 					variables.key = data.key;
 				}
@@ -241,9 +268,9 @@ class extends="BaseMemory" {
 				if ( data.keyExists( "messages" ) && isArray( data.messages ) ) {
 					variables.messages = data.messages;
 				}
-				
-				// Restore filePath
-				variables.filePath = currentFilePath;
+
+				// Restore directoryPath
+				variables.directoryPath = currentDirectoryPath;
 			}
 		} catch( any e ) {
 			// If there's an error reading the file, just continue with empty memory
@@ -259,15 +286,12 @@ class extends="BaseMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	private IAiMemory function saveToFile() {
-		if ( !len( variables.filePath ) ) {
-			return this;
-		}
+		var filePath = getFilePath();
 
 		try {
 			// Ensure directory exists
-			var directory = getDirectoryFromPath( variables.filePath );
-			if ( !directoryExists( directory ) ) {
-				directoryCreate( directory, true );
+			if ( len( variables.directoryPath ) && !directoryExists( variables.directoryPath ) ) {
+				directoryCreate( variables.directoryPath, true );
 			}
 
 			// Export data and serialize to JSON
@@ -279,13 +303,13 @@ class extends="BaseMemory" {
 			};
 
 			var jsonContent = jsonSerialize( data );
-			
+
 			// Write to file
-			fileWrite( variables.filePath, jsonContent );
+			fileWrite( filePath, jsonContent );
 		} catch( any e ) {
 			throw(
 				type: "FileMemoryError",
-				message: "Failed to save memory to file: #variables.filePath#",
+				message: "Failed to save memory to file: #filePath#",
 				detail: e.message
 			);
 		}

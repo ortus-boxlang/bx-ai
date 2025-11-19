@@ -26,14 +26,18 @@ class extends="BaseMemory" {
 	/**
 	 * The name of the cache to use
 	 */
-	property name="cacheName" type="string" default="default";
+	property name="cacheName" type="string";
+
+	static {
+		final DEFAULT_CACHE_NAME = "default"
+	}
 
 	/**
 	 * Constructor
 	 *
 	 * @cacheName Name of the cache to use (default: "default")
 	 */
-	function init( string cacheName = "default" ) {
+	function init( string cacheName = static.DEFAULT_CACHE_NAME ) {
 		super.init();
 		variables.cacheName = arguments.cacheName;
 		return this;
@@ -43,10 +47,15 @@ class extends="BaseMemory" {
 	 * Configure the memory instance
 	 * Supports cacheName in config and initializes the cache provider
 	 * Loads metadata and config from cache if they exist
+	 *
+	 * @config The configuration struct
+	 *
+	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function configure( required struct config ) {
 		super.configure( arguments.config );
 
+		// Override cacheName if provided, else we use the default cache
 		if ( arguments.config.keyExists( "cacheName" ) ) {
 			variables.cacheName = arguments.config.cacheName;
 		}
@@ -58,9 +67,7 @@ class extends="BaseMemory" {
 		// (but NOT messages - those are accessed on-demand via getAll())
 		// (and NOT config - that's just for instance configuration)
 		var data = getCacheData();
-		if ( !data.metadata.isEmpty() ) {
-			variables.metadata = data.metadata;
-		}
+		variables.metadata = data.metadata;
 
 		return this;
 	}
@@ -361,7 +368,7 @@ class extends="BaseMemory" {
 
 		// Create new instance with same cache name
 		var cloned = new CacheMemory( variables.cacheName )
-			.config( exported.config );
+			.configure( exported.config );
 
 		// Generate new unique key to avoid cache conflicts
 		exported.key = variables.key & "_clone_" & createUUID();
@@ -414,10 +421,6 @@ class extends="BaseMemory" {
 	 * @return Struct with keys: messages, metadata
 	 */
 	private struct function getCacheData() {
-		if ( isNull( variables.cache ) || !len( variables.key ) ) {
-			return { messages: [], metadata: {} };
-		}
-
 		return variables.cache.getOrSet(
 			variables.key,
 			() => {
