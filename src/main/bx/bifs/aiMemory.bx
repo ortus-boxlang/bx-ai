@@ -26,21 +26,20 @@ class {
 	/**
 	 * Create an AI memory instance
 	 *
-	 * @memory The memory type to create (InMemory, etc.)
+	 * @memory The memory type to create. Defaults to "simple".
 	 * @config Configuration struct for the memory instance
 	 *
 	 * @return IAiMemory instance
 	 */
-	function invoke( string memory = "InMemory", struct config = {} ) {
+	function invoke( string memory, struct config = {} ) {
 
-		// Default the provider from the module settings if not provided
+		// Default the memory type from the module settings if not provided
 		var memoryType = arguments.memory ?: moduleRecord.settings.memory.provider;
 		var memoryConfig = arguments.config ?: moduleRecord.settings.memory.config;
 		var memoryClass = "";
 
 		// Map memory types to their class paths
 		switch( memoryType.lcase() ) {
-			case "inmemory":
 			case "memory":
 			case "simple":
 			case "simplememory":
@@ -62,6 +61,12 @@ class {
 					message: "Unknown memory type: #memoryType#. Available types: SimpleMemory, WindowMemory, CacheMemory"
 				);
 		}
+
+		BoxAnnounce( "onAiMemoryCreate", {
+			memoryType: memoryType,
+			memoryClass: memoryClass,
+			memoryConfig: memoryConfig
+		} );
 
 		// Create and configure the memory instance
 		return new "#memoryClass#"().configure( memoryConfig );
