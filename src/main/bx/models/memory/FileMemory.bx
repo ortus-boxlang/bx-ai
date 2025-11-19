@@ -204,7 +204,7 @@ class extends="BaseMemory" {
 	/**
 	 * Load memory data from JSON file
 	 *
-	 * @return FileMemory for chaining
+	 * @return IAiMemory for chaining
 	 */
 	private IAiMemory function loadFromFile() {
 		if ( !len( variables.filePath ) ) {
@@ -256,7 +256,7 @@ class extends="BaseMemory" {
 	/**
 	 * Save memory data to JSON file
 	 *
-	 * @return FileMemory for chaining
+	 * @return IAiMemory for chaining
 	 */
 	private IAiMemory function saveToFile() {
 		if ( !len( variables.filePath ) ) {
