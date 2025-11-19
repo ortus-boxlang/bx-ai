@@ -69,25 +69,26 @@ Here are some of the features of this module:
 - Build message objects
 - Create AI service objects
 - Create AI tool objects
+- Generate embeddings for semantic search
 - Fluent API
 - Asynchronous chat requests
 - Global defaults
 - And much more
 
-## Tooling Matrix
+## Provider Support Matrix
 
-Here is a matrix of the providers and if they support real-time tools.  Please keep checking as we will be adding more providers and features to this module.
+Here is a matrix of the providers and their feature support.  Please keep checking as we will be adding more providers and features to this module.
 
-| Provider   | Real-time Tools |
-|------------|-----------------|
-| Claude    	| ✅ |
-| DeepSeek  | ✅ |
-| Gemini    	| [Coming Soon]   |
-| Grok      	 | ✅ |
-| Ollama       | ✅ |
-| OpenAI       | ✅ |
-| OpenRouter   | ✅ |
-| Perplexity   | ✅ |
+| Provider   | Real-time Tools | Embeddings |
+|------------|-----------------|------------|
+| Claude    	| ✅ | ❌ |
+| DeepSeek  | ✅ | ❌ |
+| Gemini    	| [Coming Soon]   | ❌ |
+| Grok      	 | ✅ | ❌ |
+| Ollama       | ✅ | ✅ |
+| OpenAI       | ✅ | ✅ |
+| OpenRouter   | ✅ | ❌ |
+| Perplexity   | ✅ | ❌ |
 
 ## Settings
 
@@ -215,10 +216,16 @@ tool = aiTool( "weather", "Get weather data", location => getWeather(location) )
 
 This module exposes the following BoxLang global functions (BIFs) for you to interact with the AI providers:
 
+### Chat Functions
 - `aiChat( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get responses back.  This is the easiest way to interact with the AI providers.
 - `aiChatAsync( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get a BoxLang future back so you can build fluent asynchronous code pipelines.
 - `aiChatStream( messages, callback, struct params={}, struct options={} )` : This function will allow you to stream responses from the AI provider in real-time. A callback function is invoked for each chunk of data received.
 - `aiChatRequest( messages, struct params, struct options, struct headers)` - This allows you to compose a raw chat request that you can then later send to an AI service.  The return is a `ChatRequest` object that you can then send to the AI service.
+
+### Embedding Functions
+- `aiEmbedding( input, struct params={}, struct options={} )` : Generate embeddings for text input. Input can be a single string or an array of strings. Returns numerical vectors that capture semantic meaning, useful for semantic search, clustering, and recommendations.
+
+### Helper Functions
 - `aiMessage( message )` - Allows you to build a message object that you can then use to send to the `aiChat()` or `aiAiRequest()` functions.  It allows you to fluently build up messages as well.
 - `aiService( provider, apiKey )` - Creates a reference to an AI Service provider that you can then use to interact with the AI service.  This is useful if you want to create a service object and then use it multiple times.  You can pass in optional `provider` and `apiKey` to override the global settings.
 - `aiTool( name, description, callable)` - Creates a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiAiRequest()` functions.
@@ -924,6 +931,216 @@ result = aiChat( "How hot is it in Kansas City? What about San Salvador? Answer 
 println( result )
 ```
 
+## aiEmbedding() - Generate Text Embeddings
+
+The `aiEmbedding()` function generates numerical vector representations of text that capture semantic meaning. These embeddings are useful for:
+
+- 🔍 **Semantic Search**: Find documents similar to a query
+- 📊 **Text Clustering**: Group related content together
+- 🎯 **Recommendations**: Find similar items
+- 📈 **Text Classification**: Categorize content
+- 🤝 **Similarity Comparison**: Measure how similar two texts are
+
+### Function Signature
+
+```js
+aiEmbedding( input, struct params={}, struct options={} )
+```
+
+### Parameters
+
+- `input` : The text(s) to generate embeddings for. Can be:
+  - A single `string`: "Hello World"
+  - An `array of strings`: ["Hello", "World", "BoxLang"]
+- `params` : A struct of parameters to pass to the provider
+  - `model`: The embedding model to use (e.g., "text-embedding-3-small" for OpenAI)
+  - Additional provider-specific parameters
+- `options` : A struct of options to control behavior
+  - `provider:string` : The provider to use (default: global setting)
+  - `apiKey:string` : The API key to use (default: global setting)
+  - `returnFormat:string` : The format of the response (default: "raw")
+    - `raw`: Full API response with metadata (model, usage, etc.)
+    - `embeddings`: Array of embedding vectors only
+    - `first`: Single embedding vector (first item if batch)
+  - `timeout:numeric` : Timeout in seconds (default: 30)
+  - `logRequest:boolean` : Log the request to ai.log (default: false)
+  - `logResponse:boolean` : Log the response to ai.log (default: false)
+  - `logRequestToConsole:boolean` : Log request to console for debugging (default: false)
+  - `logResponseToConsole:boolean` : Log response to console for debugging (default: false)
+
+### Return Value
+
+The return value depends on the `returnFormat` option:
+
+- **"raw"** (default): Full response from the provider
+  ```js
+  {
+      "data": [
+          { "embedding": [0.123, -0.456, ...], "index": 0 }
+      ],
+      "model": "text-embedding-3-small",
+      "usage": { "prompt_tokens": 5, "total_tokens": 5 }
+  }
+  ```
+
+- **"embeddings"**: Array of embedding vectors
+  ```js
+  [
+      [0.123, -0.456, 0.789, ...],  // First text embedding
+      [0.234, -0.567, 0.890, ...]   // Second text embedding
+  ]
+  ```
+
+- **"first"**: Single embedding vector
+  ```js
+  [0.123, -0.456, 0.789, ...]
+  ```
+
+### Examples
+
+#### Basic Single Text Embedding
+
+```js
+// Generate embedding for a single text
+embedding = aiEmbedding( "BoxLang is awesome" )
+println( "Model: " & embedding.model )
+println( "Dimensions: " & embedding.data.first().embedding.len() )
+```
+
+#### Get Just the Vector
+
+```js
+// Get just the embedding vector
+vector = aiEmbedding(
+    input: "Hello World",
+    options: { returnFormat: "first" }
+)
+println( "Vector length: " & vector.len() )
+```
+
+#### Batch Embeddings
+
+```js
+// Generate embeddings for multiple texts at once
+texts = [
+    "BoxLang is a dynamic language",
+    "Java runs on the JVM",
+    "Python is easy to learn"
+]
+
+embeddings = aiEmbedding(
+    input: texts,
+    options: { returnFormat: "embeddings" }
+)
+println( "Generated " & embeddings.len() & " embeddings" )
+```
+
+#### Using Different Models
+
+```js
+// Use a specific embedding model
+embedding = aiEmbedding(
+    input: "Sample text",
+    params: { model: "text-embedding-3-large" },
+    options: { provider: "openai" }
+)
+```
+
+#### Local Embeddings with Ollama
+
+```js
+// Use Ollama for free, local embeddings
+// First: ollama pull nomic-embed-text
+localEmbedding = aiEmbedding(
+    input: "Private data stays local",
+    params: { model: "nomic-embed-text" },
+    options: { provider: "ollama" }
+)
+```
+
+#### Semantic Search Example
+
+```js
+// Calculate cosine similarity between vectors
+function cosineSimilarity( v1, v2 ) {
+    var dot = 0, mag1 = 0, mag2 = 0
+    for( var i = 1; i <= v1.len(); i++ ) {
+        dot += v1[i] * v2[i]
+        mag1 += v1[i] * v1[i]
+        mag2 += v2[i] * v2[i]
+    }
+    return dot / ( sqrt(mag1) * sqrt(mag2) )
+}
+
+// Generate embeddings for documents and query
+docs = ["Doc 1", "Doc 2", "Doc 3"]
+docEmbeddings = aiEmbedding( docs, {}, { returnFormat: "embeddings" } )
+
+query = "My search query"
+queryEmbedding = aiEmbedding( query, {}, { returnFormat: "first" } )
+
+// Find most similar document
+scores = docEmbeddings.map( (docEmb, i) => {
+    return {
+        "index": i,
+        "doc": docs[i],
+        "score": cosineSimilarity( queryEmbedding, docEmb )
+    }
+})
+scores.sort( (a,b) => b.score - a.score )
+
+println( "Most relevant: " & scores.first().doc )
+```
+
+### Supported Providers
+
+| Provider | Support | Default Model | Dimensions |
+|----------|---------|---------------|------------|
+| OpenAI | ✅ | text-embedding-3-small | 1536 |
+| Ollama | ✅ | nomic-embed-text | Varies |
+| Claude | ❌ | N/A | N/A |
+| Others | ❌ | N/A | N/A |
+
+### Best Practices
+
+1. **Batch Processing**: Generate embeddings in batches to reduce API calls
+2. **Caching**: Cache embeddings for frequently used texts
+3. **Model Selection**: Balance accuracy vs cost/speed
+   - `text-embedding-3-small`: Faster, cheaper, good for most use cases
+   - `text-embedding-3-large`: More accurate, higher cost
+4. **Local Processing**: Use Ollama for privacy-sensitive data
+5. **Distance Metrics**: Use cosine similarity for most cases
+
+### Common Use Cases
+
+**Semantic Search**
+```js
+// Search documents by meaning, not just keywords
+userQuery = "programming language"
+results = findSimilarDocs( userQuery, docEmbeddings )
+```
+
+**Text Clustering**
+```js
+// Group similar articles together
+embeddings = aiEmbedding( articles )
+clusters = clusterByEmbedding( embeddings )
+```
+
+**Recommendations**
+```js
+// Find similar products/content
+itemEmbedding = aiEmbedding( currentItem )
+similar = findSimilarItems( itemEmbedding, allItemEmbeddings )
+```
+
+**Duplicate Detection**
+```js
+// Find near-duplicate content
+similarity = cosineSimilarity( embedding1, embedding2 )
+if( similarity > 0.95 ) { /* likely duplicate */ }
+```
+
 ## Events
 
 The BoxLang AI module emits several events throughout the AI processing lifecycle that allow you to intercept, modify, or extend functionality. These events are useful for logging, debugging, custom providers, and response processing.
@@ -934,6 +1151,10 @@ The BoxLang AI module emits several events throughout the AI processing lifecycl
 |-------|------------|--------------|-----------|
 | `onAIRequest` | Before sending request to AI provider | `dataPacket`, `chatRequest`, `provider` | Request logging, modification, authentication |
 | `onAIResponse` | After receiving response from AI provider | `chatRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
+| `onAIEmbeddingRequest` | Before sending embedding request to AI provider | `dataPacket`, `embeddingRequest`, `provider` | Request logging, modification, authentication |
+| `onAIEmbeddingResponse` | After receiving embedding response from AI provider | `embeddingRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
+| `beforeAIEmbedding` | Before generating embeddings | `embeddingRequest`, `service` | Request validation, preprocessing |
+| `afterAIEmbedding` | After generating embeddings | `embeddingRequest`, `service`, `result` | Result processing, caching |
 | `onAIProviderRequest` | When unsupported provider is requested | `provider`, `apiKey`, `service` | Custom provider registration |
 | `onAIProviderCreate` | After AI service provider is created | `provider` | Provider initialization, configuration |
 | `onAIRequestCreate` | After AiRequestobject is created | `chatRequest` | Request validation, modification |
