@@ -68,14 +68,14 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    memory = aiMemory( "buffered", { maxMessages: 3 } )
-		    
+
 		    // Add 5 messages
 		    memory.add( "Message 1" )
 		    memory.add( "Message 2" )
 		    memory.add( "Message 3" )
 		    memory.add( "Message 4" )
 		    memory.add( "Message 5" )
-		    
+
 		    count = memory.count()
 		    messages = memory.getAll()
 		    """,
@@ -85,12 +85,12 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		// Should only have 3 messages (auto-trimmed)
 		var count = variables.getAsInteger( Key.of( "count" ) );
 		assertThat( count ).isEqualTo( 3 );
-		
+
 		// Should be the last 3 messages (3, 4, 5)
-		var messages = variables.getAsArray( Key.of( "messages" ) );
-		IStruct firstMsg = ( IStruct ) messages.get( 0 );
+		var		messages	= variables.getAsArray( Key.of( "messages" ) );
+		IStruct	firstMsg	= ( IStruct ) messages.get( 0 );
 		assertThat( firstMsg.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 3" );
-		
+
 		IStruct lastMsg = ( IStruct ) messages.get( 2 );
 		assertThat( lastMsg.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 5" );
 	}
@@ -106,7 +106,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		        .add( "Assistant 1" )
 		        .add( "User 2" )
 		        .add( "Assistant 2" )
-		    
+
 		    systemMsg = memory.getSystemMessage()
 		    count = memory.count()
 		    nonSystemCount = memory.getNonSystemMessages().len()
@@ -116,10 +116,10 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 
 		// System message should still be there
 		assertThat( variables.getAsString( Key.of( "systemMsg" ) ) ).isEqualTo( "You are helpful" );
-		
+
 		// Total count = system + 2 messages
 		assertThat( variables.getAsInteger( Key.of( "count" ) ) ).isEqualTo( 3 );
-		
+
 		// Non-system count should be exactly maxMessages
 		assertThat( variables.getAsInteger( Key.of( "nonSystemCount" ) ) ).isEqualTo( 2 );
 	}
@@ -130,17 +130,17 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    memory = aiMemory( "buffered", { maxMessages: 10 } )
-		    
+
 		    // Add 5 messages
 		    for( i = 1; i <= 5; i++ ) {
 		        memory.add( "Message " & i )
 		    }
-		    
+
 		    countBefore = memory.count()
-		    
+
 		    // Reduce max to 2
 		    memory.setMaxMessages( 2 )
-		    
+
 		    countAfter = memory.count()
 		    messages = memory.getAll()
 		    """,
@@ -149,10 +149,10 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 
 		assertThat( variables.getAsInteger( Key.of( "countBefore" ) ) ).isEqualTo( 5 );
 		assertThat( variables.getAsInteger( Key.of( "countAfter" ) ) ).isEqualTo( 2 );
-		
+
 		// Should keep last 2 messages (4, 5)
-		var messages = variables.getAsArray( Key.of( "messages" ) );
-		IStruct firstMsg = ( IStruct ) messages.get( 0 );
+		var		messages	= variables.getAsArray( Key.of( "messages" ) );
+		IStruct	firstMsg	= ( IStruct ) messages.get( 0 );
 		assertThat( firstMsg.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 4" );
 	}
 
@@ -164,7 +164,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		    memory = aiMemory( "buffered", { maxMessages: 5 } )
 		        .key( "buffered-test" )
 		        .add( "Test" )
-		    
+
 		    summary = memory.getSummary()
 		    """,
 		    context
@@ -184,7 +184,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		    memory = aiMemory( "buffered", { maxMessages: 7 } )
 		        .key( "export-test" )
 		        .add( "Message" )
-		    
+
 		    exported = memory.export()
 		    """,
 		    context
@@ -213,10 +213,10 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		            { role: "user", content: "Message 5" }
 		        ]
 		    }
-		    
+
 		    memory = aiMemory( "buffered" )
 		        .import( data )
-		    
+
 		    count = memory.count()
 		    maxMessages = memory.getMaxMessages()
 		    messages = memory.getAll()
@@ -227,10 +227,10 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		// Should trim to max of 2
 		assertThat( variables.getAsInteger( Key.of( "count" ) ) ).isEqualTo( 2 );
 		assertThat( variables.getAsInteger( Key.of( "maxMessages" ) ) ).isEqualTo( 2 );
-		
+
 		// Should keep last 2 (4, 5)
-		var messages = variables.getAsArray( Key.of( "messages" ) );
-		IStruct firstMsg = ( IStruct ) messages.get( 0 );
+		var		messages	= variables.getAsArray( Key.of( "messages" ) );
+		IStruct	firstMsg	= ( IStruct ) messages.get( 0 );
 		assertThat( firstMsg.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 4" );
 	}
 
@@ -241,12 +241,12 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		    """
 		    memory = aiMemory( "buffered", { maxMessages: 2 } )
 		        .setSystemMessage( "System" )
-		    
+
 		    // Add 3 non-system messages
 		    memory.add( "User 1" )
 		    memory.add( "User 2" )
 		    memory.add( "User 3" )
-		    
+
 		    total = memory.count()
 		    nonSystem = memory.getNonSystemMessages().len()
 		    systemMsg = memory.getSystemMessage()
@@ -256,10 +256,10 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 
 		// Total = system + 2 user messages (trimmed from 3)
 		assertThat( variables.getAsInteger( Key.of( "total" ) ) ).isEqualTo( 3 );
-		
+
 		// Non-system should be exactly maxMessages
 		assertThat( variables.getAsInteger( Key.of( "nonSystem" ) ) ).isEqualTo( 2 );
-		
+
 		// System message should still exist
 		assertThat( variables.getAsString( Key.of( "systemMsg" ) ) ).isEqualTo( "System" );
 	}
@@ -270,15 +270,15 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    memory = aiMemory( "buffered", { maxMessages: 5 } )
-		    
+
 		    // Add 3 messages (under limit)
 		    memory.add( "Message 1" )
 		    memory.add( "Message 2" )
 		    memory.add( "Message 3" )
-		    
+
 		    // Manually reduce max and trim
 		    memory.setMaxMessages( 1 )
-		    
+
 		    count = memory.count()
 		    messages = memory.getAll()
 		    """,
@@ -286,9 +286,9 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		);
 
 		assertThat( variables.getAsInteger( Key.of( "count" ) ) ).isEqualTo( 1 );
-		
-		var messages = variables.getAsArray( Key.of( "messages" ) );
-		IStruct msg = ( IStruct ) messages.get( 0 );
+
+		var		messages	= variables.getAsArray( Key.of( "messages" ) );
+		IStruct	msg			= ( IStruct ) messages.get( 0 );
 		assertThat( msg.getAsString( Key.of( "content" ) ) ).isEqualTo( "Message 3" );
 	}
 
@@ -298,7 +298,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    memory = aiMemory( "buffered", { maxMessages: 3 } )
-		    
+
 		    // Add array of 5 messages at once
 		    memory.add( [
 		        { role: "user", content: "Msg 1" },
@@ -307,7 +307,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		        { role: "user", content: "Msg 4" },
 		        { role: "user", content: "Msg 5" }
 		    ] )
-		    
+
 		    count = memory.count()
 		    messages = memory.getAll()
 		    """,
@@ -315,9 +315,9 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		);
 
 		assertThat( variables.getAsInteger( Key.of( "count" ) ) ).isEqualTo( 3 );
-		
-		var messages = variables.getAsArray( Key.of( "messages" ) );
-		IStruct firstMsg = ( IStruct ) messages.get( 0 );
+
+		var		messages	= variables.getAsArray( Key.of( "messages" ) );
+		IStruct	firstMsg	= ( IStruct ) messages.get( 0 );
 		assertThat( firstMsg.getAsString( Key.of( "content" ) ) ).isEqualTo( "Msg 3" );
 	}
 
