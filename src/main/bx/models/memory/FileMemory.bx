@@ -1,0 +1,296 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * File-based AI conversation storage
+ * Stores conversation history in a JSON file for persistence across restarts
+ * Perfect for simple persistent storage without external dependencies
+ */
+class extends="BaseMemory" {
+
+	/**
+	 * The file path where messages are stored
+	 */
+	property name="filePath" type="string" default="";
+
+	/**
+	 * Constructor
+	 *
+	 * @filePath Path to the JSON file for storing messages (optional)
+	 */
+	function init( string filePath = "" ) {
+		super.init();
+		variables.filePath = arguments.filePath;
+		return this;
+	}
+
+	/**
+	 * Configure the memory instance
+	 * Supports filePath in config and loads data from file if it exists
+	 */
+	public IAiMemory function configure( required struct config ) {
+		super.configure( arguments.config );
+
+		if ( arguments.config.keyExists( "filePath" ) ) {
+			variables.filePath = arguments.config.filePath;
+		}
+
+		// Load existing data from file if it exists
+		if ( len( variables.filePath ) && fileExists( variables.filePath ) ) {
+			loadFromFile();
+		}
+
+		return this;
+	}
+
+	/**
+	 * Get or set the file path
+	 *
+	 * @filePath Optional path to set
+	 *
+	 * @return String (getter) or IAiMemory (setter)
+	 */
+	public any function filePath( string filePath ) {
+		if ( !isNull( arguments.filePath ) ) {
+			variables.filePath = arguments.filePath;
+			// Load data from new file path if it exists
+			if ( len( variables.filePath ) && fileExists( variables.filePath ) ) {
+				loadFromFile();
+			}
+			return this;
+		}
+		return variables.filePath;
+	}
+
+	/**
+	 * Add a message to memory and persist to file
+	 *
+	 * @message The message to add
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function add( required any message ) {
+		// Use parent's add logic
+		super.add( arguments.message );
+		
+		// Persist to file
+		saveToFile();
+		
+		return this;
+	}
+
+	/**
+	 * Clear all messages from memory and file
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function clear() {
+		super.clear();
+		
+		// Clear the file content
+		if ( len( variables.filePath ) ) {
+			saveToFile();
+		}
+		
+		return this;
+	}
+
+	/**
+	 * Set or replace the system message and persist to file
+	 *
+	 * @message The system message content (string)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function setSystemMessage( required string message ) {
+		super.setSystemMessage( arguments.message );
+		saveToFile();
+		return this;
+	}
+
+	/**
+	 * Remove the system message and persist to file
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function removeSystemMessage() {
+		super.removeSystemMessage();
+		saveToFile();
+		return this;
+	}
+
+	/**
+	 * Get or set metadata - persists to file when setting
+	 *
+	 * @metadata Optional struct to merge with existing metadata
+	 *
+	 * @return Struct (getter) or IAiMemory (setter)
+	 */
+	public any function metadata( struct metadata ) {
+		if ( !isNull( arguments.metadata ) ) {
+			variables.metadata.append( arguments.metadata, true );
+			saveToFile();
+			return this;
+		}
+		return variables.metadata;
+	}
+
+	/**
+	 * Get a summary of this memory instance
+	 * Overrides base to add filePath field
+	 *
+	 * @return Struct with memory information
+	 */
+	public struct function getSummary() {
+		var summary = super.getSummary();
+		summary.filePath = variables.filePath;
+		summary.fileExists = len( variables.filePath ) && fileExists( variables.filePath );
+		return summary;
+	}
+
+	/**
+	 * Export messages to a serializable format
+	 * Overrides base to add filePath field
+	 *
+	 * @return Struct containing all memory data
+	 */
+	public struct function export() {
+		var exported = super.export();
+		exported.filePath = variables.filePath;
+		return exported;
+	}
+
+	/**
+	 * Import messages from a previously exported format
+	 * Overrides base to handle filePath and persist to file
+	 *
+	 * @data The exported memory data
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function import( required struct data ) {
+		// Import base fields
+		super.import( arguments.data );
+
+		// Handle filePath specific to FileMemory
+		if ( arguments.data.keyExists( "filePath" ) ) {
+			variables.filePath = arguments.data.filePath;
+		}
+
+		// Persist imported data to file
+		if ( len( variables.filePath ) ) {
+			saveToFile();
+		}
+
+		return this;
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * Private Helpers
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Load memory data from JSON file
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	private IAiMemory function loadFromFile() {
+		if ( !len( variables.filePath ) ) {
+			return this;
+		}
+
+		// Only load if file exists
+		if ( !fileExists( variables.filePath ) ) {
+			return this;
+		}
+
+		try {
+			var fileContent = fileRead( variables.filePath );
+			
+			// Handle empty files
+			if ( !len( trim( fileContent ) ) ) {
+				return this;
+			}
+
+			var data = jsonDeserialize( fileContent );
+
+			// Import the data using parent's import logic
+			if ( isStruct( data ) ) {
+				// Store current filePath
+				var currentFilePath = variables.filePath;
+				
+				// Import without changing filePath
+				if ( data.keyExists( "key" ) ) {
+					variables.key = data.key;
+				}
+				if ( data.keyExists( "metadata" ) ) {
+					variables.metadata = data.metadata;
+				}
+				if ( data.keyExists( "messages" ) && isArray( data.messages ) ) {
+					variables.messages = data.messages;
+				}
+				
+				// Restore filePath
+				variables.filePath = currentFilePath;
+			}
+		} catch( any e ) {
+			// If there's an error reading the file, just continue with empty memory
+			// This handles corrupted JSON or other file issues gracefully
+		}
+
+		return this;
+	}
+
+	/**
+	 * Save memory data to JSON file
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	private IAiMemory function saveToFile() {
+		if ( !len( variables.filePath ) ) {
+			return this;
+		}
+
+		try {
+			// Ensure directory exists
+			var directory = getDirectoryFromPath( variables.filePath );
+			if ( !directoryExists( directory ) ) {
+				directoryCreate( directory, true );
+			}
+
+			// Export data and serialize to JSON
+			var data = {
+				type: variables.name,
+				key: variables.key,
+				metadata: variables.metadata,
+				messages: this.getAll()
+			};
+
+			var jsonContent = jsonSerialize( data );
+			
+			// Write to file
+			fileWrite( variables.filePath, jsonContent );
+		} catch( any e ) {
+			throw(
+				type: "FileMemoryError",
+				message: "Failed to save memory to file: #variables.filePath#",
+				detail: e.message
+			);
+		}
+
+		return this;
+	}
+
+}
