@@ -224,7 +224,7 @@ class extends="BaseMemory" {
 				return this;
 			}
 
-			var data = deserializeJSON( fileContent );
+			var data = jsonDeserialize( fileContent );
 
 			// Import the data using parent's import logic
 			if ( isStruct( data ) ) {
@@ -278,7 +278,7 @@ class extends="BaseMemory" {
 				messages: this.getAll()
 			};
 
-			var jsonContent = serializeJSON( data );
+			var jsonContent = jsonSerialize( data );
 			
 			// Write to file
 			fileWrite( variables.filePath, jsonContent );

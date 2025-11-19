@@ -28,7 +28,7 @@ memory
 
 // View memory summary
 println( "=== Memory Summary ===" )
-println( serializeJSON( memory.getSummary() ) )
+println( jsonSerialize( memory.getSummary() ) )
 
 // Get all messages
 println( "\n=== All Messages ===" )
@@ -54,7 +54,7 @@ println( "Session key: #memory2.key()#" )
 println( "\n=== Exporting Memory ===" )
 exported = memory.export()
 println( "Exported data structure:" )
-println( serializeJSON( exported ) )
+println( jsonSerialize( exported ) )
 
 // Clean up example file (optional)
 if ( fileExists( memory.filePath() ) ) {
