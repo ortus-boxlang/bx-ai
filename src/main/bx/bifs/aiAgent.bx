@@ -39,7 +39,7 @@ class {
 	 * @return AiAgent instance for fluent chaining
 	 */
 	function invoke(
-		string name = "",
+		string name = "BxAi",
 		string description = "",
 		string instructions = "",
 		AiModel model = aiModel(),
