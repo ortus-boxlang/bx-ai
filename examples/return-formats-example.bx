@@ -1,10 +1,12 @@
 /**
  * Example: Pipeline Return Formats
  *
- * Demonstrates the three return format options for pipelines:
+ * Demonstrates the five return format options for pipelines:
  * - raw (default): Full API response with metadata
  * - single: Just the content string
  * - all: Array of message objects
+ * - json: Parsed JSON object from content
+ * - xml: Parsed XML document from content
  */
 
 // Create a simple pipeline
@@ -60,7 +62,34 @@ runtimeResult = basePipeline.run(
 println( "Content: " & runtimeResult )
 println()
 
-// 7. Combining with transforms
+// 6. JSON format - Parsed JSON object
+println( "=== JSON Format ===" )
+jsonPipeline = aiMessage()
+    .user( "Return JSON: {\"language\": \"BoxLang\", \"version\": \"2.0\", \"cool\": true}" )
+    .toDefaultModel()
+    .asJson()
+
+jsonResult = jsonPipeline.run()
+println( "Type: " & jsonResult.getClass().getName() )
+println( "Language: " & jsonResult.language )
+println( "Version: " & jsonResult.version )
+println( "Cool: " & jsonResult.cool )
+println()
+
+// 7. XML format - Parsed XML document
+println( "=== XML Format ===" )
+xmlPipeline = aiMessage()
+    .user( "Return XML: <project><name>bx-ai</name><type>module</type></project>" )
+    .toDefaultModel()
+    .asXml()
+
+xmlResult = xmlPipeline.run()
+println( "Type: " & xmlResult.getClass().getName() )
+println( "Project: " & xmlResult.project.name.xmlText )
+println( "Type: " & xmlResult.project.type.xmlText )
+println()
+
+// 8. Combining with transforms
 println( "=== Single + Transform ===" )
 transformed = basePipeline
     .singleMessage()
@@ -69,7 +98,7 @@ transformed = basePipeline
 println( "Uppercase: " & transformed )
 println()
 
-// 8. Different use cases
+// 9. Different use cases
 println( "=== Use Case Examples ===" )
 
 // For debugging - use raw

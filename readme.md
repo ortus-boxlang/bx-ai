@@ -223,7 +223,11 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 - `aiChatRequest( messages, struct params, struct options, struct headers)` - This allows you to compose a raw chat request that you can then later send to an AI service.  The return is a `ChatRequest` object that you can then send to the AI service.
 
 ### Embedding Functions
-- `aiEmbedding( input, struct params={}, struct options={} )` : Generate embeddings for text input. Input can be a single string or an array of strings. Returns numerical vectors that capture semantic meaning, useful for semantic search, clustering, and recommendations.
+- `aiEmbed( input, struct params={}, struct options={} )` : Generate embeddings for text input. Input can be a single string or an array of strings. Returns numerical vectors that capture semantic meaning, useful for semantic search, clustering, and recommendations.
+
+### Text Processing Functions
+- `aiChunk( text, struct options={} )` : Split text into chunks for processing within AI token limits. Supports multiple chunking strategies (recursive, characters, words, sentences, paragraphs) with configurable chunk size and overlap.
+- `aiTokens( text, struct options={} )` : Estimate token count for text using character-based or word-based methods. Useful for planning API usage and managing token budgets.
 
 ### Helper Functions
 - `aiMessage( message )` - Allows you to build a message object that you can then use to send to the `aiChat()` or `aiAiRequest()` functions.  It allows you to fluently build up messages as well.
@@ -498,9 +502,11 @@ Here are the parameters:
   - `logResponse:boolean` : Log the response to the `ai.log`. Default is `false`
   - `logResponseToConsole:boolean` : Log the response to the console for debugging. Default is `false`
   - `returnFormat:string` : The format of the response.  The default is a `single` message.  The available formats are:
-    - `single` : A single message
+    - `single` : A single message (content string only)
     - `all` : An array of messages
     - `raw` : The raw response from the AI provider
+    - `json` : Automatically parse response as JSON (uses `jsonDeserialize()`)
+    - `xml` : Automatically parse response as XML (uses `xmlParse()`)
 - `headers` : This is a struct of headers that can be used to send to the AI provider.
 
 ### AiRequestProperties

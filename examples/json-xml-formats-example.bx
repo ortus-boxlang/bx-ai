@@ -1,0 +1,226 @@
+/**
+ * BoxLang AI - JSON and XML Return Formats
+ *
+ * This example demonstrates the new json and xml return formats
+ * that automatically parse LLM responses into structured data.
+ */
+
+// ==============================================================================
+// JSON Format - Automatic Parsing
+// ==============================================================================
+println( "=== JSON Format ===" )
+
+// Method 1: Using asJson() helper
+jsonResult = aiMessage()
+    .user( "Return JSON: {\"name\": \"John Doe\", \"age\": 30, \"city\": \"New York\"}" )
+    .toDefaultModel()
+    .asJson()
+    .run()
+
+println( "Type: " & jsonResult.getClass().getName() )
+println( "Name: " & jsonResult.name )
+println( "Age: " & jsonResult.age )
+println( "City: " & jsonResult.city )
+println()
+
+// Method 2: Using returnFormat option
+jsonResult2 = aiChat(
+    "Return a JSON object with firstName: Alice, lastName: Smith, email: alice@example.com",
+    {},
+    { returnFormat: "json" }
+)
+
+println( "Full Name: " & jsonResult2.firstName & " " & jsonResult2.lastName )
+println( "Email: " & jsonResult2.email )
+println()
+
+// ==============================================================================
+// JSON Format - Complex Objects
+// ==============================================================================
+println( "=== JSON Format - Complex Objects ===" )
+
+complexJson = aiMessage()
+    .user( """
+        Return JSON with this structure:
+        {
+            "users": [
+                {"name": "Bob", "role": "admin"},
+                {"name": "Carol", "role": "user"}
+            ],
+            "total": 2
+        }
+    """ )
+    .toDefaultModel()
+    .asJson()
+    .run()
+
+println( "Total users: " & complexJson.total )
+complexJson.users.each( (user, i) => {
+    println( "User #i#: #user.name# (#user.role#)" )
+})
+println()
+
+// ==============================================================================
+// JSON Format - With Transform
+// ==============================================================================
+println( "=== JSON Format + Transform ===" )
+
+transformed = aiMessage()
+    .user( "Return JSON: {\"message\": \"hello world\", \"count\": 5}" )
+    .toDefaultModel()
+    .asJson()
+    .transform( (data) => {
+        return {
+            upperMessage: data.message.ucase(),
+            doubleCount: data.count * 2
+        }
+    })
+    .run()
+
+println( "Transformed: " & transformed.toString() )
+println()
+
+// ==============================================================================
+// XML Format - Automatic Parsing
+// ==============================================================================
+println( "=== XML Format ===" )
+
+// Method 1: Using asXml() helper
+xmlResult = aiMessage()
+    .user( """
+        Return XML:
+        <person>
+            <name>Jane Doe</name>
+            <age>28</age>
+            <city>San Francisco</city>
+        </person>
+    """ )
+    .toDefaultModel()
+    .asXml()
+    .run()
+
+println( "Type: " & xmlResult.getClass().getName() )
+println( "Root element: " & xmlResult.xmlRoot.xmlName )
+println( "Name: " & xmlResult.person.name.xmlText )
+println( "Age: " & xmlResult.person.age.xmlText )
+println( "City: " & xmlResult.person.city.xmlText )
+println()
+
+// Method 2: Using returnFormat option
+xmlResult2 = aiChat(
+    """
+    Return XML for a book:
+    <book>
+        <title>BoxLang Guide</title>
+        <author>Ortus Solutions</author>
+        <year>2025</year>
+    </book>
+    """,
+    {},
+    { returnFormat: "xml" }
+)
+
+println( "Book: " & xmlResult2.book.title.xmlText )
+println( "Author: " & xmlResult2.book.author.xmlText )
+println( "Year: " & xmlResult2.book.year.xmlText )
+println()
+
+// ==============================================================================
+// XML Format - Complex Documents
+// ==============================================================================
+println( "=== XML Format - Complex Documents ===" )
+
+catalogXml = aiMessage()
+    .user( """
+        Return XML catalog:
+        <catalog>
+            <book id="1">
+                <title>Book One</title>
+                <price>29.99</price>
+            </book>
+            <book id="2">
+                <title>Book Two</title>
+                <price>39.99</price>
+            </book>
+        </catalog>
+    """ )
+    .toDefaultModel()
+    .asXml()
+    .run()
+
+println( "Catalog has " & catalogXml.catalog.book.len() & " books" )
+catalogXml.catalog.book.each( (book, i) => {
+    println( "Book #i#: #book.title.xmlText# - $#book.price.xmlText#" )
+})
+println()
+
+// ==============================================================================
+// Comparison - All Return Formats
+// ==============================================================================
+println( "=== Return Format Comparison ===" )
+
+prompt = "Return JSON: {\"status\": \"success\", \"code\": 200}"
+
+// Raw format - full response
+rawResponse = aiChat( prompt, {}, { returnFormat: "raw" } )
+println( "Raw: " & rawResponse.keyList() )
+
+// Single format - just the text
+singleResponse = aiChat( prompt, {}, { returnFormat: "single" } )
+println( "Single: " & singleResponse.getClass().getName() )
+
+// JSON format - parsed struct
+jsonResponse = aiChat( prompt, {}, { returnFormat: "json" } )
+println( "JSON: " & jsonResponse.status & " (code: " & jsonResponse.code & ")" )
+println()
+
+// ==============================================================================
+// Pipeline Chaining with JSON
+// ==============================================================================
+println( "=== Pipeline with JSON Parsing ===" )
+
+pipeline = aiMessage()
+    .user( "Generate a random user with name, email, and age as JSON" )
+    .toDefaultModel()
+    .asJson()
+    .transform( (user) => {
+        // Add computed field
+        user.isAdult = user.age >= 18
+        return user
+    })
+
+result = pipeline.run()
+println( "User: " & result.name )
+println( "Email: " & result.email )
+println( "Is Adult: " & result.isAdult )
+println()
+
+// ==============================================================================
+// Error Handling
+// ==============================================================================
+println( "=== Error Handling ===" )
+
+try {
+    // This will fail if LLM doesn't return valid JSON
+    badJson = aiChat(
+        "Say hello world (don't return JSON)",
+        {},
+        { returnFormat: "json" }
+    )
+} catch( any e ) {
+    println( "Error parsing JSON: " & e.message )
+}
+
+try {
+    // This will fail if LLM doesn't return valid XML
+    badXml = aiChat(
+        "Say hello world (don't return XML)",
+        {},
+        { returnFormat: "xml" }
+    )
+} catch( any e ) {
+    println( "Error parsing XML: " & e.message )
+}
+
+println()
+println( "✅ JSON and XML format examples completed!" )

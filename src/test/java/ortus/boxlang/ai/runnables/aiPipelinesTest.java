@@ -19,11 +19,13 @@ package ortus.boxlang.ai.runnables;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
+import ortus.boxlang.runtime.types.XML;
 
 public class aiPipelinesTest extends BaseIntegrationTest {
 
@@ -253,4 +255,49 @@ public class aiPipelinesTest extends BaseIntegrationTest {
 		assertThat( ( ( Number ) resultStruct.get( Key.of( "totalSteps" ) ) ).intValue() ).isEqualTo( 4 );
 		assertThat( resultStruct.get( Key.of( "pipelineName" ) ) ).isEqualTo( "complete-pipeline" );
 	}
+
+	@DisplayName( "Test json results from a pipeline" )
+	@Test
+	public void testPipelineJsonResult() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				// Create pipeline that returns JSON
+				results = aiMessage()
+					.user( "Return JSON with name: John, age: 30" )
+					.toDefaultModel()
+					.asJson()
+					.run()
+				println( results )
+			""",
+			context
+		);
+		// @formatter:on
+		var resultsStruct = variables.getAsStruct( Key.of( "results" ) );
+		assertThat( resultsStruct.getAsString( Key.of( "name" ) ) ).isEqualTo( "John" );
+		assertThat( ( ( Number ) resultsStruct.get( Key.of( "age" ) ) ).intValue() ).isEqualTo( 30 );
+	}
+
+	@DisplayName( "Test xml results from a pipeline" )
+	@Test
+	public void testPipelineXmlResult() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				// Create pipeline that returns XML
+				results = aiMessage()
+					.user( "Return XML with root <user><name>John</name><age>30</age></user>" )
+					.toDefaultModel()
+					.asXml()
+					.run()
+				println( results )
+			""",
+			context
+		);
+		// @formatter:on
+
+		XML resultsXml = ( XML ) variables.get( Key.of( "results" ) );
+		assertThat( resultsXml.size() ).isEqualTo( 1 );
+	}
+
 }

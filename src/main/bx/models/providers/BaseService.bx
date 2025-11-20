@@ -204,6 +204,10 @@ abstract class implements="IAiService" {
 					return result.choices;
 				case "raw":
 					return result;
+				case "json":
+					return jsonDeserialize( result.choices.first().message.content );
+				case "xml":
+					return xmlParse( result.choices.first().message.content );
 				case "single": default:
 					return result.choices.first().message.content;
 			}

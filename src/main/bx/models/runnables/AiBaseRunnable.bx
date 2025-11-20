@@ -314,6 +314,26 @@ abstract class implements="IAiRunnable" {
 	}
 
 	/**
+	 * Convenience method to set return format to 'json'
+	 * Returns the parsed JSON object from the content string
+	 *
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function asJson() {
+		return this.withOptions( { returnFormat: "json" } );
+	}
+
+	/**
+	 * Convenience method to set return format to 'xml'
+	 * Returns the parsed XML document from the content string
+	 *
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function asXml() {
+		return this.withOptions( { returnFormat: "xml" } );
+	}
+
+	/**
 	 * Convenience method to set return format to 'raw'
 	 * Returns the full raw response from the provider
 	 *
