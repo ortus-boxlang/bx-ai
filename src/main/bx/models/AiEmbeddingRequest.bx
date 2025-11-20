@@ -14,76 +14,12 @@
  * ----------------------------------------------------------------------------------
  * This models an embedding request that will be sent to a provider
  */
-class{
+class extends="AiBaseRequest"{
 
 	/**
 	 * The input text or array of texts to generate embeddings for
 	 */
 	property name="input" default="";
-
-	/**
-	 * The params struct to pass to the provider in the request
-	 */
-	property name="params" type="struct" default={};
-
-	/**
-	 * The provider to use for the embedding request
-	 */
-	property name="provider" default="";
-
-	/**
-	 * The API key to use for the provider
-	 */
-	property name="apiKey" default="";
-
-	/**
-	 * Log request
-	 */
-	property name="logRequest" type="boolean" default=false;
-
-	/**
-	 * Log request to console
-	 * This is usually used for debugging purposes
-	 */
-	property name="logRequestToConsole" type="boolean" default=false;
-
-	/**
-	 * Log response
-	 */
-	property name="logResponse" type="boolean" default=false;
-
-	/**
-	 * Log response to console
-	 * This is usually used for debugging purposes
-	 */
-	property name="logResponseToConsole" type="boolean" default=false;
-
-	/**
-	 * The return format of the response
-	 * Valid formats: 'raw' (full response), 'embeddings' (just the embedding vectors), 'first' (first embedding only)
-	 */
-	property name="returnFormat" default="raw";
-
-	/**
-	 * The embedding model to use for the request
-	 */
-	property name="model" default="";
-
-	/**
-	 * The timeout for the request
-	 */
-	property name="timeout" type="numeric" default=30;
-
-	/**
-	 * Send an auth header or not with the API Key
-	 * This is usually determined by the provider
-	 */
-	property name="sendAuthHeader" type="boolean" default=true;
-
-	/**
-	 * A collection of headers to send with the request
-	 */
-	property name="headers" type="struct" default={};
 
 	/**
 	 * Constructor
@@ -111,61 +47,5 @@ class{
 		return this;
 	}
 
-	/**
-	 * Add a header to the embedding request
-	 *
-	 * @name The name of the header
-	 * @value The value of the header
-	 */
-	AiEmbeddingRequest function addHeader( required string name, required string value ){
-		variables.headers[ arguments.name ] = arguments.value;
-		return this;
-	}
-
-	/**
-	 * Set the model if it's empty
-	 *
-	 * @model The model to use if the current model is empty
-	 */
-	AiEmbeddingRequest function setModelIfEmpty( required string model ){
-		if( variables.model.isEmpty() ){
-			variables.model = arguments.model;
-		}
-		return this;
-	}
-
-	/**
-	 * Set the API key if it's empty
-	 *
-	 * @apiKey The API key to use if the current API key is empty
-	 */
-	AiEmbeddingRequest function setApiKeyIfEmpty( required string apiKey ){
-		if( variables.apiKey.isEmpty() ){
-			variables.apiKey = arguments.apiKey;
-		}
-		return this;
-	}
-
-	/**
-	 * Merge service params into the request params
-	 *
-	 * @serviceParams The service params to merge
-	 */
-	AiEmbeddingRequest function mergeServiceParams( required struct serviceParams ){
-		// Filter out model as it's handled separately
-		var paramsToMerge = arguments.serviceParams.filter( ( key, value ) => key != "model" );
-		variables.params.append( paramsToMerge, false );
-		return this;
-	}
-
-	/**
-	 * Merge service headers into the request headers
-	 *
-	 * @serviceHeaders The service headers to merge
-	 */
-	AiEmbeddingRequest function mergeServiceHeaders( required struct serviceHeaders ){
-		variables.headers.append( arguments.serviceHeaders, false );
-		return this;
-	}
 
 }
