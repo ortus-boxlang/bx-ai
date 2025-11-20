@@ -273,11 +273,13 @@ result = pipeline.run( { key: "value" }, { temperature: 0.9 } )
 
 By default, pipelines return **raw responses** from the AI provider (full API response struct). This gives you maximum flexibility to access all response data including metadata, usage stats, and multiple choices.
 
-**Three format options:**
+**Five format options:**
 
 1. **`raw`** (default) - Full API response with all metadata
 2. **`single`** - Extract just the content string from first message
 3. **`all`** - Array of all choice messages
+4. **`json`** - Automatically parse JSON response into struct/array
+5. **`xml`** - Automatically parse XML response into XML object
 
 #### Using `.withOptions()`
 
@@ -337,6 +339,36 @@ println( "Usage: " & raw.usage.total_tokens )
 println( "Content: " & raw.choices.first().message.content )
 ```
 
+**`.asJson()`** - Parse JSON response automatically:
+
+```java
+// Returns parsed JSON as struct/array
+data = aiMessage()
+    .system( "Return only valid JSON" )
+    .user( "Create a person object with name and age" )
+    .toDefaultModel()
+    .asJson()
+    .run()
+
+println( "Name: #data.name#" )  // Direct access!
+println( "Age: #data.age#" )
+```
+
+**`.asXml()`** - Parse XML response automatically:
+
+```java
+// Returns parsed XML object
+doc = aiMessage()
+    .system( "Return valid XML" )
+    .user( "Create XML for a book with title and author" )
+    .toDefaultModel()
+    .asXml()
+    .run()
+
+println( "Title: #doc.xmlRoot.book.title.xmlText#" )
+println( "Author: #doc.xmlRoot.book.author.xmlText#" )
+```
+
 #### Format Comparison
 
 ```java
@@ -361,13 +393,33 @@ singleResult = pipeline.run( {}, {}, { returnFormat: "single" } )
 // All - array of message objects
 allResult = pipeline.allMessages().run()
 // [{ role: "assistant", content: "Hello! How can I help you today?" }]
+
+// JSON - parsed JSON data
+jsonPipeline = aiMessage()
+    .system( "Return valid JSON" )
+    .user( "Create a user with name and email" )
+    .toDefaultModel()
+
+jsonResult = jsonPipeline.asJson().run()
+// { name: "John", email: "john@example.com" }
+println( jsonResult.name )  // Direct access!
+
+// XML - parsed XML document
+xmlPipeline = aiMessage()
+    .system( "Return valid XML" )
+    .user( "Create book XML with title and author" )
+    .toDefaultModel()
+
+xmlResult = xmlPipeline.asXml().run()
+// XML object
+println( xmlResult.xmlRoot.book.title.xmlText )  // Direct access!
 ```
 
 #### Available Options
 
 The `options` struct supports these properties:
 
-- `returnFormat:string` - Response format: `"raw"` (default), `"single"`, or `"all"`
+- `returnFormat:string` - Response format: `"raw"` (default), `"single"`, `"all"`, `"json"`, or `"xml"`
 - `timeout:numeric` - Request timeout in seconds (default: 30)
 - `logRequest:boolean` - Log requests to `ai.log` (default: false)
 - `logRequestToConsole:boolean` - Log requests to console (default: false)
@@ -438,6 +490,20 @@ result = pipeline.run( {}, {}, { returnFormat: "single" } )  // Returns string, 
 - Extracting role/content pairs
 - Building conversation logs
 
+**Use `asJson()` when:**
+
+- AI generates structured data (objects, arrays)
+- Need automatic JSON parsing
+- Building APIs or data extraction
+- Eliminating manual `deserializeJSON()` calls
+
+**Use `asXml()` when:**
+
+- AI generates XML documents
+- Working with legacy XML systems
+- RSS/ATOM feed generation
+- Configuration file creation
+
 #### Format vs Transform
 
 Return formats are **built-in extraction**, transforms are **custom logic**:
@@ -450,6 +516,231 @@ result = pipeline.singleMessage().run()
 result = pipeline.transform( r => r.choices.first().message.content ).run()
 
 // They can be equivalent, but formats are cleaner for common cases
+```
+
+## JSON and XML in Pipelines
+
+### JSON Data Pipelines
+
+Create pipelines that automatically parse JSON responses:
+
+```java
+// Simple JSON extraction
+userPipeline = aiMessage()
+    .system( "Return only valid JSON" )
+    .user( "Create a user profile for ${name}, age ${age}" )
+    .toDefaultModel()
+    .asJson()
+
+user = userPipeline.run( { name: "Alice", age: 30 } )
+println( "Name: #user.name#" )
+println( "Age: #user.age#" )
+```
+
+**Complex nested structures:**
+
+```java
+// Generate product catalog
+catalogPipeline = aiMessage()
+    .system( "You are a product data generator. Always return valid JSON." )
+    .user( "Create ${count} products with id, name, price, and features array" )
+    .toDefaultModel()
+    .asJson()
+
+products = catalogPipeline.run( { count: 5 } )
+
+products.each( product => {
+    println( "##product.id#: #product.name# - $#product.price#" )
+    println( "Features: #product.features.toList( ', ' )#" )
+} )
+```
+
+**Multi-step JSON processing:**
+
+```java
+// Generate data, then transform it
+pipeline = aiMessage()
+    .system( "Return valid JSON" )
+    .user( "Create 3 users with name and email" )
+    .toDefaultModel()
+    .asJson()  // Parse JSON
+    .transform( users => {
+        // Transform the parsed data
+        return users.map( user => {
+            return {
+                fullName: user.name.ucase(),
+                email: user.email.lcase(),
+                domain: user.email.listLast( "@" )
+            }
+        } )
+    } )
+
+enrichedUsers = pipeline.run()
+enrichedUsers.each( u => {
+    println( "#u.fullName# at #u.domain#" )
+} )
+```
+
+**JSON for data extraction:**
+
+```java
+// Extract structured data from text
+extractorPipeline = aiMessage()
+    .system( "Extract information as JSON" )
+    .user( "Extract contact info as JSON from: ${text}" )
+    .toDefaultModel()
+    .asJson()
+
+text = "John Doe, 555-1234, john@example.com, 123 Main St"
+contact = extractorPipeline.run( { text: text } )
+
+println( "Name: #contact.name#" )
+println( "Phone: #contact.phone#" )
+println( "Email: #contact.email#" )
+```
+
+**Reusable JSON templates:**
+
+```java
+// Create a reusable form generator
+formGenerator = aiMessage()
+    .system( "Generate form data as JSON with fields: ${fields}" )
+    .user( "Create sample data for a ${formType} form" )
+    .toDefaultModel()
+    .asJson()
+
+// Use for different forms
+registrationData = formGenerator.run({
+    formType: "user registration",
+    fields: "username, email, password"
+})
+
+surveyData = formGenerator.run({
+    formType: "customer survey",
+    fields: "rating, comments, wouldRecommend"
+})
+```
+
+### XML Document Pipelines
+
+Generate and parse XML documents:
+
+```java
+// Simple XML generation
+configPipeline = aiMessage()
+    .system( "Return valid XML configuration" )
+    .user( "Create server config with host: ${host}, port: ${port}" )
+    .toDefaultModel()
+    .asXml()
+
+config = configPipeline.run({ host: "localhost", port: 8080 })
+println( "Host: #config.xmlRoot.server.host.xmlText#" )
+println( "Port: #config.xmlRoot.server.port.xmlText#" )
+```
+
+**RSS feed generation:**
+
+```java
+// Generate RSS feed
+rssPipeline = aiMessage()
+    .system( "Generate valid RSS 2.0 XML" )
+    .user( "Create RSS feed about ${topic} with ${count} articles" )
+    .toDefaultModel()
+    .asXml()
+
+feed = rssPipeline.run({ 
+    topic: "Technology News",
+    count: 3
+})
+
+// Parse and display
+println( "Feed: #feed.xmlRoot.channel.title.xmlText#" )
+
+feed.xmlRoot.channel.xmlChildren
+    .filter( node => node.xmlName == "item" )
+    .each( item => {
+        println( "- #item.title.xmlText#" )
+        println( "  #item.description.xmlText#" )
+    } )
+```
+
+**Multi-step XML processing:**
+
+```java
+// Generate XML, then extract data
+reportPipeline = aiMessage()
+    .system( "Generate sales report XML" )
+    .user( "Create monthly sales report for ${month}" )
+    .toDefaultModel()
+    .asXml()
+    .transform( xml => {
+        // Extract and summarize from XML
+        total = 0
+        regions = []
+        
+        xml.xmlRoot.report.regions.xmlChildren.each( region => {
+            sales = val( region.sales.xmlText )
+            total += sales
+            regions.append({
+                name: region.name.xmlText,
+                sales: sales
+            })
+        } )
+        
+        return {
+            total: total,
+            regions: regions,
+            average: total / regions.len()
+        }
+    } )
+
+summary = reportPipeline.run({ month: "January 2025" })
+println( "Total Sales: $#numberFormat( summary.total )#" )
+println( "Average per Region: $#numberFormat( summary.average )#" )
+```
+
+**XML to JSON conversion pipeline:**
+
+```java
+// Convert XML to JSON
+conversionPipeline = aiMessage()
+    .system( "Generate XML data" )
+    .user( "Create product XML with id, name, price" )
+    .toDefaultModel()
+    .asXml()
+    .transform( xml => {
+        // Convert XML to struct
+        return {
+            id: xml.xmlRoot.product.id.xmlText,
+            name: xml.xmlRoot.product.name.xmlText,
+            price: val( xml.xmlRoot.product.price.xmlText )
+        }
+    } )
+
+product = conversionPipeline.run()
+println( serializeJSON( product ) )  // JSON output from XML input
+```
+
+### Combining Formats in Workflows
+
+```java
+// Step 1: Generate JSON data
+step1 = aiMessage()
+    .user( "Generate 3 users as JSON" )
+    .toDefaultModel()
+    .asJson()
+
+// Step 2: Convert to XML
+step2 = aiMessage()
+    .user( "Convert this data to XML: ${data}" )
+    .toDefaultModel()
+    .asXml()
+
+// Chain them
+workflow = step1.to( step2 )
+
+result = workflow.run()
+// Input: text → JSON → XML
 ```
 
 ### Inspecting Pipelines

@@ -101,12 +101,14 @@ Generate vector representations for semantic search, recommendations, clustering
 ## Quick Examples
 
 ### Simple Chat
+
 ```java
 answer = aiChat( "What is BoxLang?" )
 println( answer )
 ```
 
 ### Chat with Parameters
+
 ```java
 answer = aiChat(
     "Write a haiku about coding",
@@ -115,6 +117,7 @@ answer = aiChat(
 ```
 
 ### Build a Pipeline
+
 ```java
 pipeline = aiMessage()
     .system( "You are a helpful assistant" )
@@ -126,6 +129,7 @@ result = pipeline.run( { topic: "recursion" } )
 ```
 
 ### Stream Responses
+
 ```java
 aiChatStream(
     "Tell me a story",

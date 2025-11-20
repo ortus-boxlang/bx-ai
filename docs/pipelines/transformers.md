@@ -40,7 +40,7 @@ println( result )  // "BoxLang is a modern dynamic JVM language..."
 Returns complete messages array with roles and metadata:
 
 ```java
-result = aiChat( 
+result = aiChat(
     "What is BoxLang?",
     {},
     { returnFormat: "all" }
@@ -365,7 +365,7 @@ pipeline = aiMessage()
     .toDefaultModel()
     .asXml()  // Automatically parses XML
 
-book = pipeline.run({ 
+book = pipeline.run({
     title: "Learning BoxLang",
     author: "John Doe"
 })
@@ -460,7 +460,7 @@ debugPipeline = aiMessage()
         writeLog( "Model: #response.model#" )
         writeLog( "Tokens: #response.usage.totalTokens#" )
         writeLog( "Finish reason: #response.choices.first().finishReason#" )
-        
+
         // Return just content
         return response.choices.first().message.content
     } )

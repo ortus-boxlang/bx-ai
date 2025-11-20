@@ -49,7 +49,7 @@ println( "First 5 values: #vector.slice( 1, 5 )#" )
 // Generate embeddings for multiple texts
 texts = [
     "BoxLang is a dynamic language",
-    "Java runs on the JVM", 
+    "Java runs on the JVM",
     "Python is easy to learn"
 ]
 
@@ -75,7 +75,7 @@ embedding = aiEmbed(
 
 // Use Claude (if available)
 embedding = aiEmbed(
-    input: "Hello World", 
+    input: "Hello World",
     options: { provider: "claude" }
 )
 
@@ -145,7 +145,7 @@ println( response )
 Get just the vectors:
 
 ```java
-embeddings = aiEmbed( 
+embeddings = aiEmbed(
     [ "Hello", "World" ],
     {},
     { returnFormat: "embeddings" }
@@ -163,7 +163,7 @@ println( embeddings )
 Get single vector for single input:
 
 ```java
-vector = aiEmbed( 
+vector = aiEmbed(
     "Hello World",
     {},
     { returnFormat: "first" }
@@ -221,13 +221,13 @@ function cosineSimilarity( v1, v2 ) {
     dot = 0
     mag1 = 0
     mag2 = 0
-    
+
     for ( var i = 1; i <= v1.len(); i++ ) {
         dot += v1[ i ] * v2[ i ]
         mag1 += v1[ i ] * v1[ i ]
         mag2 += v2[ i ] * v2[ i ]
     }
-    
+
     return dot / ( sqrt( mag1 ) * sqrt( mag2 ) )
 }
 ```
@@ -393,7 +393,7 @@ kbEmbeddings = aiEmbed( knowledgeBase, {}, { returnFormat: "embeddings" } )
 function answerQuestion( question ) {
     // 1. Embed the question
     questionEmb = aiEmbed( question, {}, { returnFormat: "first" } )
-    
+
     // 2. Find most relevant knowledge
     relevantDocs = kbEmbeddings
         .map( (emb, index) => {
@@ -404,22 +404,22 @@ function answerQuestion( question ) {
         } )
         .sort( (a, b) => b.similarity - a.similarity )
         .slice( 1, 3 )  // Top 3
-    
+
     // 3. Build context from relevant docs
     context = relevantDocs.map( d => d.text ).toList( chr(10) )
-    
+
     // 4. Generate answer with context
     prompt = "
         Context:
         #context#
-        
+
         Question: #question#
-        
+
         Answer the question based only on the context above.
     "
-    
+
     answer = aiChat( prompt, {}, { returnFormat: "single" } )
-    
+
     return {
         question: question,
         answer: answer,
@@ -445,7 +445,7 @@ Some models support dimension reduction for faster processing:
 // OpenAI supports dimension parameter
 embedding = aiEmbed(
     input: "Text to embed",
-    params: { 
+    params: {
         model: "text-embedding-3-large",
         dimensions: 1024  // Reduce from 3072 to 1024
     },
@@ -464,33 +464,33 @@ Embeddings are expensive - cache them:
 // Simple file-based cache
 component {
     property name="cacheDir" default="./embeddings-cache";
-    
+
     function init() {
         if ( !directoryExists( variables.cacheDir ) ) {
             directoryCreate( variables.cacheDir )
         }
         return this
     }
-    
+
     function getEmbedding( required string text, struct params = {} ) {
         // Generate cache key
         key = hash( text & serializeJSON( params ) )
         cachePath = "#variables.cacheDir#/#key#.json"
-        
+
         // Check cache
         if ( fileExists( cachePath ) ) {
             cached = deserializeJSON( fileRead( cachePath ) )
             println( "Cache HIT: #left( text, 50 )#..." )
             return cached
         }
-        
+
         // Generate new embedding
         println( "Cache MISS: #left( text, 50 )#..." )
         embedding = aiEmbed( text, params, { returnFormat: "first" } )
-        
+
         // Cache it
         fileWrite( cachePath, serializeJSON( embedding ) )
-        
+
         return embedding
     }
 }
@@ -519,13 +519,13 @@ allEmbeddings = []
 
 for ( var i = 1; i <= documents.len(); i += batchSize ) {
     batch = documents.slice( i, min( i + batchSize - 1, documents.len() ) )
-    
+
     println( "Processing batch #ceiling( i / batchSize )#..." )
-    
+
     // Single API call for entire batch
     batchEmbeddings = aiEmbed( batch, {}, { returnFormat: "embeddings" } )
     allEmbeddings.append( batchEmbeddings, true )
-    
+
     // Rate limiting
     sleep( 1000 )  // 1 second between batches
 }
@@ -542,7 +542,7 @@ Embed large documents by chunks:
 document = fileRead( "large-book.txt" )
 
 // Chunk it
-chunks = aiChunk( document, { 
+chunks = aiChunk( document, {
     chunkSize: 1000,
     overlap: 100,
     strategy: "recursive"
@@ -561,7 +561,7 @@ chunkEmbeddings = chunks.map( (chunk, index) => {
 // Now you can search within the document
 function searchDocument( query ) {
     queryEmb = aiEmbed( query, {}, { returnFormat: "first" } )
-    
+
     results = chunkEmbeddings
         .map( chunk => {
             return {
@@ -572,7 +572,7 @@ function searchDocument( query ) {
         } )
         .sort( (a, b) => b.similarity - a.similarity )
         .slice( 1, 5 )  // Top 5 chunks
-    
+
     return results
 }
 
@@ -731,7 +731,7 @@ try {
 } catch ( any e ) {
     // Log error
     writeLog( "Embedding failed: #e.message#" )
-    
+
     // Fallback strategy
     if ( e.message.findNoCase( "rate limit" ) ) {
         sleep( 5000 )
@@ -749,19 +749,19 @@ try {
 // Track API usage
 function trackEmbedding( text, provider = "openai" ) {
     tokens = aiTokens( text )
-    
+
     // Rough cost estimates (example rates)
     costs = {
         "openai": 0.0001,  // $0.0001 per 1k tokens
         "gemini": 0.00005,
         "ollama": 0  // Free!
     }
-    
+
     cost = ( tokens / 1000 ) * costs[ provider ]
-    
+
     // Log for tracking
     logUsage( provider, tokens, cost )
-    
+
     return aiEmbed( text, {}, { provider: provider } )
 }
 ```

@@ -65,9 +65,9 @@ chunks = aiChunk( text, { strategy: "recursive" } )
 Simple character-based splitting:
 
 ```java
-chunks = aiChunk( text, { 
+chunks = aiChunk( text, {
     strategy: "characters",
-    chunkSize: 1000 
+    chunkSize: 1000
 } )
 ```
 
@@ -81,7 +81,7 @@ chunks = aiChunk( text, {
 Splits on word boundaries:
 
 ```java
-chunks = aiChunk( text, { 
+chunks = aiChunk( text, {
     strategy: "words",
     chunkSize: 500  // ~125 words
 } )
@@ -97,7 +97,7 @@ chunks = aiChunk( text, {
 Splits on sentence boundaries:
 
 ```java
-chunks = aiChunk( text, { 
+chunks = aiChunk( text, {
     strategy: "sentences",
     chunkSize: 2000
 } )
@@ -113,7 +113,7 @@ chunks = aiChunk( text, {
 Splits on paragraph boundaries:
 
 ```java
-chunks = aiChunk( text, { 
+chunks = aiChunk( text, {
     strategy: "paragraphs",
     chunkSize: 3000
 } )
@@ -133,7 +133,7 @@ Overlap preserves context between chunks by including text from the previous chu
 chunks = aiChunk( text, { overlap: 0 } )
 
 // 200 char overlap - preserves context
-chunks = aiChunk( text, { 
+chunks = aiChunk( text, {
     chunkSize: 2000,
     overlap: 200  // Last 200 chars of chunk N start chunk N+1
 } )
@@ -149,7 +149,7 @@ chunks = aiChunk( text, {
 
 ```java
 // 20% overlap
-chunks = aiChunk( text, { 
+chunks = aiChunk( text, {
     chunkSize: 2000,
     overlap: 400
 } )
@@ -164,7 +164,7 @@ chunks = aiChunk( text, {
 bookContent = fileRead( expandPath( "./book.txt" ) )
 
 // Chunk it for processing
-chunks = aiChunk( 
+chunks = aiChunk(
     text: bookContent,
     options: {
         chunkSize: 3000,  // ~750 tokens
@@ -175,7 +175,7 @@ chunks = aiChunk(
 
 // Process each chunk
 summaries = chunks.map( chunk => {
-    return aiChat( 
+    return aiChat(
         message: "Summarize this text: #chunk#",
         options: { returnFormat: "single" }
     )
@@ -200,11 +200,11 @@ docs = [
 // Create searchable chunks with metadata
 searchableChunks = []
 docs.each( doc => {
-    chunks = aiChunk( doc.content, { 
+    chunks = aiChunk( doc.content, {
         chunkSize: 1000,
-        overlap: 100 
+        overlap: 100
     } )
-    
+
     chunks.each( (chunk, index) => {
         searchableChunks.append({
             text: chunk,
@@ -227,11 +227,11 @@ estimatedTokens = aiTokens( text )
 
 if ( estimatedTokens > 8000 ) {
     // Model limit is 8k, chunk with safety margin
-    chunks = aiChunk( text, { 
+    chunks = aiChunk( text, {
         chunkSize: 3000,  // ~750 tokens per chunk
         overlap: 300
     } )
-    
+
     // Process chunks separately
     results = chunks.map( chunk => processWithAI( chunk ) )
 } else {
@@ -295,9 +295,9 @@ tokens = aiTokens( text, { method: "words" } )
 Get comprehensive token analysis:
 
 ```java
-stats = aiTokens( text, { 
+stats = aiTokens( text, {
     method: "characters",
-    detailed: true 
+    detailed: true
 } )
 
 println( stats )
@@ -381,14 +381,14 @@ result = aiChat( prompt, { model: model } )
 // Validate before sending
 function validateRequest( text, maxTokens = 4000 ) {
     tokens = aiTokens( text )
-    
+
     if ( tokens > maxTokens ) {
         throw(
             type: "TokenLimitExceeded",
             message: "Request has #tokens# tokens, limit is #maxTokens#"
         )
     }
-    
+
     return {
         valid: true,
         tokens: tokens,
@@ -450,17 +450,17 @@ println( "Processing #texts.len()# texts in #batches.len()# batches" )
 function chunkByTokens( text, maxTokens = 2000 ) {
     // Estimate total tokens
     totalTokens = aiTokens( text )
-    
+
     if ( totalTokens <= maxTokens ) {
         return [ text ]
     }
-    
+
     // Calculate approximate chunk size in characters
     charsPerToken = len( text ) / totalTokens
     chunkSize = floor( maxTokens * charsPerToken * 0.9 )  // 90% safety margin
-    
+
     // Chunk with calculated size
-    return aiChunk( text, { 
+    return aiChunk( text, {
         chunkSize: chunkSize,
         overlap: floor( chunkSize * 0.1 )  // 10% overlap
     } )
@@ -531,36 +531,36 @@ Use chunking and token counting together for optimal processing:
 function processLargeDocument( filePath, maxTokensPerChunk = 1000 ) {
     // Load document
     content = fileRead( filePath )
-    
+
     // Check if chunking needed
     totalTokens = aiTokens( content )
     println( "Document has ~#totalTokens# tokens" )
-    
+
     if ( totalTokens <= maxTokensPerChunk ) {
         // Process directly
         return aiChat( "Summarize: #content#" )
     }
-    
+
     // Calculate optimal chunk size
     totalChars = len( content )
     charsPerToken = totalChars / totalTokens
     chunkSize = floor( maxTokensPerChunk * charsPerToken * 0.9 )
-    
+
     println( "Chunking into ~#ceiling( totalTokens / maxTokensPerChunk )# chunks" )
-    
+
     // Create chunks
-    chunks = aiChunk( content, { 
+    chunks = aiChunk( content, {
         chunkSize: chunkSize,
         overlap: floor( chunkSize * 0.1 ),
         strategy: "recursive"
     } )
-    
+
     // Verify chunk tokens
     chunks.each( (chunk, i) => {
         tokens = aiTokens( chunk )
         println( "Chunk #i#: ~#tokens# tokens" )
     } )
-    
+
     // Process chunks
     return chunks.map( chunk => aiChat( "Summarize: #chunk#" ) )
 }
@@ -581,13 +581,13 @@ chunks = aiChunk( text, { chunkSize: 500 } )
 chunks = aiChunk( text, { chunkSize: 4000 } )
 
 // Question Answering (medium with overlap)
-chunks = aiChunk( text, { 
+chunks = aiChunk( text, {
     chunkSize: 1500,
     overlap: 300
 } )
 
 // Code analysis (preserve functions/methods)
-chunks = aiChunk( code, { 
+chunks = aiChunk( code, {
     chunkSize: 2000,
     strategy: "recursive"  // Tries paragraphs (blank lines between functions)
 } )
@@ -601,12 +601,12 @@ function processLargeFile( path ) {
     file = fileOpen( path, "read" )
     buffer = ""
     results = []
-    
+
     try {
         while ( !fileIsEOF( file ) ) {
             // Read chunks
             buffer &= fileReadLine( file )
-            
+
             // When buffer is large enough, process it
             if ( aiTokens( buffer ) >= 1000 ) {
                 result = aiChat( "Process: #buffer#" )
@@ -614,16 +614,16 @@ function processLargeFile( path ) {
                 buffer = ""
             }
         }
-        
+
         // Process remaining buffer
         if ( len( buffer ) ) {
             results.append( aiChat( "Process: #buffer#" ) )
         }
-        
+
     } finally {
         fileClose( file )
     }
-    
+
     return results
 }
 ```
@@ -640,7 +640,7 @@ function smartChunk( text, type = "general" ) {
         "qa": { chunkSize: 1500, overlap: 300, strategy: "sentences" },
         "general": { chunkSize: 2000, overlap: 200, strategy: "recursive" }
     }
-    
+
     config = strategies[ type ] ?: strategies.general
     return aiChunk( text, config )
 }
