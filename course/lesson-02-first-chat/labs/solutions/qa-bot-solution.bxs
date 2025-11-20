@@ -1,0 +1,83 @@
+// qa-bot-solution.bxs
+/**
+ * SOLUTION: Q&A Bot
+ * 
+ * This is one possible solution. Your implementation may differ!
+ */
+
+import bxModules.bxai.models.util.TokenCounter;
+
+println( "=== Q&A Bot (Solution) ===" )
+println()
+
+// Step 1: Define bot personality
+systemPrompt = "You are TechBot, a friendly and knowledgeable programming assistant.
+Answer questions clearly and concisely. Always return your response as JSON with this format:
+{
+  'answer': 'your detailed answer',
+  'confidence': 'high|medium|low',
+  'relatedTopics': ['topic1', 'topic2']
+}"
+
+// Step 2: Initialize conversation
+conversation = [
+    aiMessage().system( systemPrompt )
+]
+
+// Step 3: Bot introduction
+println( "TechBot: Hello! I'm TechBot, your programming assistant. Ask me anything!" )
+println()
+
+// Step 4: Define questions to ask
+questions = [
+    "What is a variable?",
+    "Can you show me an example in BoxLang?",
+    "What's the difference between a variable and a constant?"
+]
+
+// Step 5: Process each question
+totalTokens = 0
+questions.each( ( question, index ) => {
+    println( "You: #question#" )
+    
+    // Add user message
+    conversation.append( aiMessage().user( question ) )
+    
+    try {
+        // Get AI response with JSON format
+        response = aiChat( conversation, { responseFormat: "json" } )
+        
+        // Add to conversation history
+        conversation.append( aiMessage().assistant( response ) )
+        
+        // Parse JSON
+        data = deserializeJSON( response )
+        
+        // Display formatted response
+        println( "TechBot:" )
+        println( "  Answer: #data.answer#" )
+        println( "  Confidence: #data.confidence#" )
+        
+        if ( data.keyExists( "relatedTopics" ) && isArray( data.relatedTopics ) ) {
+            println( "  Related Topics: #data.relatedTopics.toList()#" )
+        }
+        
+        // Count tokens
+        questionTokens = TokenCounter::count( question )
+        responseTokens = TokenCounter::count( response )
+        totalTokens += questionTokens + responseTokens
+        
+        println( "  Tokens: #questionTokens# in + #responseTokens# out" )
+        
+    } catch( any e ) {
+        println( "  ❌ Error: #e.message#" )
+    }
+    
+    println()
+} )
+
+// Step 6: Summary
+println( "=== Conversation Summary ===" )
+println( "Total messages: #conversation.len()#" )
+println( "Total tokens: #totalTokens#" )
+println( "Estimated cost: $#numberFormat( totalTokens / 1000000 * 0.002, '0.000000' )#" )

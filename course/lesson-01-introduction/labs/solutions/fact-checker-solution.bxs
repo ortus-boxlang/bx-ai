@@ -1,0 +1,63 @@
+// fact-checker-solution.bxs
+/**
+ * SOLUTION: AI Fact Checker
+ * 
+ * This is one possible solution. Your solution may be different and equally valid!
+ */
+
+import bxModules.bxai.models.util.TokenCounter;
+
+println( "=== AI Fact Checker ===" )
+println( "Verify statements using AI" )
+println()
+
+// Statement to fact-check
+statement = "The Earth is flat"
+
+println( "Statement: '#statement#'" )
+println( "Checking facts..." )
+println()
+
+try {
+    // Create a detailed prompt
+    prompt = "
+You are a fact-checker. Analyze this statement and respond ONLY in this format:
+
+VERDICT: [TRUE/FALSE/UNCERTAIN]
+CONFIDENCE: [0-100]%
+EXPLANATION: [Your explanation]
+
+Statement: #statement#
+"
+
+    // Call the AI
+    response = aiChat( prompt, { temperature: 0.1 } )  // Low temperature for factual responses
+    
+    // Display the response
+    println( "=== FACT CHECK RESULT ===" )
+    println( response )
+    println()
+    
+    // Calculate token usage and cost
+    inputTokens = TokenCounter::count( prompt )
+    outputTokens = TokenCounter::count( response )
+    totalTokens = inputTokens + outputTokens
+    
+    // Estimated cost (gpt-3.5-turbo pricing)
+    cost = ( inputTokens / 1000000 * 0.0005 ) + ( outputTokens / 1000000 * 0.0015 )
+    
+    println( "=== USAGE STATISTICS ===" )
+    println( "Input tokens: #inputTokens#" )
+    println( "Output tokens: #outputTokens#" )
+    println( "Total tokens: #totalTokens#" )
+    println( "Estimated cost: $#numberFormat( cost, '0.000000' )#" )
+    
+} catch( any e ) {
+    println( "❌ Error: #e.message#" )
+    println()
+    println( "Troubleshooting:" )
+    println( "1. Check your API key configuration" )
+    println( "2. Verify internet connection" )
+    println( "3. Try running: ollama pull llama3.2" )
+    println( "   Then change aiChat() to use { provider: 'ollama' }" )
+}

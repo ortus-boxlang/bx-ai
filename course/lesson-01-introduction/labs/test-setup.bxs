@@ -1,0 +1,64 @@
+// test-setup.bxs
+/**
+ * Test Your Setup
+ * Verify that everything is configured correctly
+ */
+
+println( "=== Testing BoxLang AI Setup ===" )
+println()
+
+// Test 1: Check module is loaded
+println( "✓ Test 1: Checking if bx-ai module is loaded..." )
+try {
+    moduleInfo = getModuleInfo( "bxai" )
+    println( "  ✅ Module loaded successfully!" )
+    println( "  Version: #moduleInfo.version ?: 'unknown'#" )
+} catch( any e ) {
+    println( "  ❌ Module not found. Run: box install bx-ai" )
+    abort;
+}
+println()
+
+// Test 2: Check API key configuration
+println( "✓ Test 2: Checking API key configuration..." )
+try {
+    // Try to get module settings
+    settings = moduleInfo.settings ?: {}
+    if ( settings.keyExists( "apiKey" ) && len( settings.apiKey ) ) {
+        println( "  ✅ API key is configured" )
+    } else {
+        println( "  ⚠️  No API key found - using default" )
+        println( "  Add OPENAI_API_KEY to .env file" )
+    }
+} catch( any e ) {
+    println( "  ⚠️  Could not check API key" )
+}
+println()
+
+// Test 3: Try a simple AI call
+println( "✓ Test 3: Testing AI connection..." )
+try {
+    // Make a minimal AI call
+    answer = aiChat( "Say 'OK'" )
+    
+    if ( len( answer ) > 0 ) {
+        println( "  ✅ AI connection successful!" )
+        println( "  Response: #answer#" )
+    } else {
+        println( "  ❌ Empty response from AI" )
+    }
+} catch( any e ) {
+    println( "  ❌ AI call failed: #e.message#" )
+    println()
+    println( "  Troubleshooting:" )
+    println( "  1. Check your API key in .env" )
+    println( "  2. Verify API key has credits" )
+    println( "  3. Check internet connection" )
+    println( "  4. Try Ollama: ollama pull llama3.2" )
+}
+println()
+
+println( "=== Setup Test Complete ===" )
+println()
+println( "If all tests passed, you're ready to start learning!" )
+println( "If not, review the installation guide in the README." )

@@ -1,0 +1,26 @@
+// safe-chat.bxs
+/**
+ * Error Handling with AI
+ * Shows proper error handling for AI calls
+ */
+
+println( "=== Safe AI Chat ===" )
+
+try {
+    // Attempt to call AI
+    answer = aiChat( "Tell me a programming joke" )
+    
+    println( "AI Response:" )
+    println( answer )
+    
+} catch( any e ) {
+    // Handle errors gracefully
+    println( "❌ Error occurred:" )
+    println( e.message )
+    println()
+    println( "Troubleshooting steps:" )
+    println( "1. Check your API key is set in .env" )
+    println( "2. Verify your API key has credits" )
+    println( "3. Check your internet connection" )
+    println( "4. Try using Ollama instead (no API key needed)" )
+}

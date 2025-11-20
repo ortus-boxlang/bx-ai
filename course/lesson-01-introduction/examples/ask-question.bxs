@@ -1,0 +1,18 @@
+// ask-question.bxs
+/**
+ * Ask the AI a Question
+ * Shows how to ask questions and display answers
+ */
+
+// Ask a question
+question = "What is BoxLang?"
+
+println( "=== AI Question Answering ===" )
+println( "Q: " & question )
+println()
+
+// Get the answer
+answer = aiChat( question )
+
+// Display the answer
+println( "A: " & answer )

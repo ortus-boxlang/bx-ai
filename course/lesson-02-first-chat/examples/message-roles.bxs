@@ -1,0 +1,66 @@
+// message-roles.bxs
+/**
+ * Understanding Message Roles
+ * Demonstrates system, user, and assistant roles
+ */
+
+println( "=== Message Roles Demo ===" )
+println()
+
+// Example 1: Impact of System Message
+println( "Example 1: Same question, different system messages" )
+println( "-".repeat( 60 ) )
+
+question = "What is AI?"
+
+// Without system message
+answer1 = aiChat( question )
+println( "Without system message:" )
+println( answer1 )
+println()
+
+// With concise system message
+answer2 = aiChat( [
+    aiMessage().system( "Answer in exactly one sentence, like explaining to a 5-year-old" ),
+    aiMessage().user( question )
+] )
+println( "With 'simple explanation' system message:" )
+println( answer2 )
+println()
+
+// With technical system message
+answer3 = aiChat( [
+    aiMessage().system( "You are a computer science professor. Be technical and precise." ),
+    aiMessage().user( question )
+] )
+println( "With 'technical' system message:" )
+println( answer3 )
+println()
+
+// Example 2: Conversation with all three roles
+println( "Example 2: All three roles in action" )
+println( "-".repeat( 60 ) )
+
+conversation = [
+    // System: Sets the rules
+    aiMessage().system( "You are a friendly tutor who checks student understanding" ),
+    
+    // User: Asks question
+    aiMessage().user( "What is a loop?" ),
+    
+    // Assistant: Previous answer (simulated)
+    aiMessage().assistant( "A loop is a programming construct that repeats code" ),
+    
+    // User: Follow-up
+    aiMessage().user( "Can you give an example?" )
+]
+
+response = aiChat( conversation )
+println( "AI Response:" )
+println( response )
+println()
+
+println( "💡 Key Insight:" )
+println( "- System: Directs the AI's behavior" )
+println( "- User: Your questions/input" )
+println( "- Assistant: AI's previous responses" )

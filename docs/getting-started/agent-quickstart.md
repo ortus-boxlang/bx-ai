@@ -280,6 +280,7 @@ answer2 = researcher.run( "How does that compare to last year?" )
 Control what agents return:
 
 ### Single (Default) - Just the Response
+
 ```java
 agent = aiAgent( name: "Simple" )
 response = agent.run( "Hello" )
@@ -287,6 +288,7 @@ response = agent.run( "Hello" )
 ```
 
 ### All - Complete Conversation
+
 ```java
 agent = aiAgent(
     name: "Detailed",
@@ -301,6 +303,7 @@ messages = agent.run( "Hello" )
 ```
 
 ### Raw - Full API Response
+
 ```java
 agent = aiAgent(
     name: "Debug",
@@ -309,6 +312,28 @@ agent = aiAgent(
 
 raw = agent.run( "Hello" )
 // Returns: { id: "...", choices: [...], usage: {...} }
+```
+
+### JSON - Structured Data
+
+Returns the single message response as a JSON object:
+
+```java
+agent = aiAgent(
+	name: "JsonAgent",
+	returnFormat: "json"
+)
+data = agent.run( "Give me a summary of AI agents in json format" )
+```
+
+### XML - Structured Data in XML format
+
+```java
+agent = aiAgent(
+	name: "XmlAgent",
+	returnFormat: "xml"
+)
+data = agent.run( "Give me a summary of AI agents in xml format" )
 ```
 
 ## Streaming Agent Responses

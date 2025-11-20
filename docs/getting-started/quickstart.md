@@ -43,11 +43,13 @@ aiChat( message, params, options )
 ### Simple Examples
 
 **Ask a question:**
+
 ```java
 answer = aiChat( "Explain recursion" )
 ```
 
 **Get creative:**
+
 ```java
 poem = aiChat(
     "Write a haiku about coding",
@@ -56,6 +58,7 @@ poem = aiChat(
 ```
 
 **Use a specific model:**
+
 ```java
 answer = aiChat(
     "Explain quantum physics",
@@ -68,6 +71,7 @@ answer = aiChat(
 ### Cloud Providers
 
 **OpenAI:**
+
 ```java
 answer = aiChat(
     "Hello!",
@@ -77,6 +81,7 @@ answer = aiChat(
 ```
 
 **Claude:**
+
 ```java
 answer = aiChat(
     "Analyze this code",
@@ -86,6 +91,7 @@ answer = aiChat(
 ```
 
 **Gemini:**
+
 ```java
 answer = aiChat(
     "What's new in AI?",

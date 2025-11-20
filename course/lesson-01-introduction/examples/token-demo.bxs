@@ -1,0 +1,31 @@
+// token-demo.bxs
+/**
+ * Understanding Tokens
+ * Learn how text is converted to tokens
+ */
+
+import bxModules.bxai.models.util.TokenCounter;
+
+println( "=== Token Counter Demo ===" )
+println( "Tokens are pieces of text that AI models process" )
+println()
+
+// Different examples to show token counting
+examples = [
+    "Hello",
+    "Hello world!",
+    "The quick brown fox jumps over the lazy dog",
+    "BoxLang is a modern dynamic JVM language",
+    "function hello() { return 'world'; }"
+]
+
+examples.each( ( text ) => {
+    tokenCount = TokenCounter::count( text )
+    println( "Text: '#text#'" )
+    println( "Tokens: #tokenCount#" )
+    println( "Characters: #len( text )#" )
+    println( "Chars per token: #numberFormat( len( text ) / tokenCount, '0.0' )#" )
+    println()
+} )
+
+println( "💡 Key Insight: ~4 characters = 1 token on average" )

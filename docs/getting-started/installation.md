@@ -269,7 +269,7 @@ ollama run llama3.2 "Hello!"
 | `logRequestToConsole` | boolean | `false` | Log requests to console |
 | `logResponse` | boolean | `false` | Log responses to ai.log |
 | `logResponseToConsole` | boolean | `false` | Log responses to console |
-| `returnFormat` | string | `"single"` | Default return format: `single`, `all`, or `raw` |
+| `returnFormat` | string | `"single"` | Default return format: `single`, `all`, `json`, `xml` or `raw` |
 
 ### Default Parameters
 

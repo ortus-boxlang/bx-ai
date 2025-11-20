@@ -142,7 +142,7 @@ response = agent.run( "Review this function: ${codeSnippet}" )
 
 ## Return Formats
 
-Agents support three return formats:
+Agents support five return formats: `single`, `all`, `json`, `xml`, and `raw`.
 
 ### Single (Default)
 
@@ -178,6 +178,22 @@ rawResponse = agent.run( "Hello", {}, { returnFormat: "raw" } )
 // Returns complete OpenAI/Claude/etc response with metadata
 println( rawResponse.usage.total_tokens )  // Token count
 println( rawResponse.model )                // Model used
+```
+
+### JSON Format
+
+```java
+jsonResponse = agent.run( "Hello", {}, { returnFormat: "json" } )
+// Returns response as JSON string
+println( jsonResponse )  // JSON formatted string
+```
+
+### XML Format
+
+```java
+xmlResponse = agent.run( "Hello", {}, { returnFormat: "xml" } )
+// Returns response as XML string
+println( xmlResponse )  // XML formatted string
 ```
 
 ## Streaming Responses

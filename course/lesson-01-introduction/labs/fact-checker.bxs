@@ -1,0 +1,35 @@
+// fact-checker.bxs
+/**
+ * LAB: AI Fact Checker
+ * 
+ * OBJECTIVE:
+ * Build a fact-checking application that verifies statements using AI
+ * 
+ * REQUIREMENTS:
+ * 1. Accept a statement to verify
+ * 2. Ask AI if the statement is true, false, or uncertain
+ * 3. Request an explanation
+ * 4. Display results in a user-friendly format
+ * 5. Include proper error handling
+ * 
+ * BONUS CHALLENGES:
+ * - Add confidence scoring (0-100%)
+ * - Support multiple statements in one run
+ * - Save results to a file
+ * - Compare responses from different AI models
+ * 
+ * HINTS:
+ * - Use aiChat() for simple requests
+ * - Use try/catch for error handling
+ * - Break the prompt into clear instructions
+ * - Ask for structured output (e.g., "Format: TRUE/FALSE/UNCERTAIN - explanation")
+ */
+
+// YOUR CODE HERE
+// 
+// Start by defining the statement to check:
+// statement = "The Earth is flat"
+//
+// Then create a prompt that asks the AI to fact-check it
+// 
+// Finally, display the result in a clear format

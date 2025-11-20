@@ -1,0 +1,193 @@
+// qa-bot-bonus.bxs
+/**
+ * BONUS SOLUTION: Advanced Q&A Bot
+ * 
+ * Implements all bonus challenges:
+ * - Conversation reset
+ * - Save to file
+ * - Multiple personalities
+ * - Token counting
+ * - Conversation summary
+ */
+
+import bxModules.bxai.models.util.TokenCounter;
+
+/**
+ * QABot Class - Full-featured Q&A bot
+ */
+class {
+    property name="conversation" type="array";
+    property name="personality" type="string";
+    property name="totalTokens" type="numeric" default="0";
+    
+    function init( personality = "general" ) {
+        variables.personality = arguments.personality
+        variables.totalTokens = 0
+        reset()
+        return this
+    }
+    
+    function reset() {
+        variables.conversation = [
+            aiMessage().system( getSystemPrompt( variables.personality ) )
+        ]
+        return this
+    }
+    
+    function getSystemPrompt( personality ) {
+        prompts = {
+            "general": "You are a friendly general knowledge assistant.",
+            "programmer": "You are an experienced programmer who explains concepts clearly with code examples.",
+            "teacher": "You are a patient teacher who uses simple analogies and checks understanding.",
+            "scientist": "You are a scientist who provides evidence-based, detailed explanations."
+        }
+        
+        basePrompt = prompts[ arguments.personality ] ?: prompts.general
+        
+        return basePrompt & "
+Always return JSON: {answer: 'your answer', confidence: 'high|medium|low', relatedTopics: []}"
+    }
+    
+    function ask( question ) {
+        // Add user message
+        variables.conversation.append( aiMessage().user( arguments.question ) )
+        
+        // Get response
+        response = aiChat( variables.conversation, { responseFormat: "json" } )
+        
+        // Add assistant message
+        variables.conversation.append( aiMessage().assistant( response ) )
+        
+        // Count tokens
+        questionTokens = TokenCounter::count( arguments.question )
+        responseTokens = TokenCounter::count( response )
+        variables.totalTokens += questionTokens + responseTokens
+        
+        // Parse and return
+        data = deserializeJSON( response )
+        data.tokens = {
+            input: questionTokens,
+            output: responseTokens
+        }
+        
+        return data
+    }
+    
+    function switchPersonality( newPersonality ) {
+        variables.personality = arguments.newPersonality
+        reset()
+        return this
+    }
+    
+    function save( filename ) {
+        export = {
+            personality: variables.personality,
+            totalTokens: variables.totalTokens,
+            messages: variables.conversation,
+            timestamp: now()
+        }
+        
+        fileWrite( arguments.filename, serializeJSON( export, true ) )
+        return this
+    }
+    
+    function getSummary() {
+        if ( variables.conversation.len() < 5 ) {
+            return "Not enough conversation to summarize"
+        }
+        
+        summaryPrompt = "Summarize the key points from this conversation in 3 bullet points"
+        
+        variables.conversation.append( aiMessage().user( summaryPrompt ) )
+        summary = aiChat( variables.conversation )
+        variables.conversation.deleteLast()  // Don't keep summary request in history
+        
+        return summary
+    }
+    
+    function getStats() {
+        return {
+            personality: variables.personality,
+            messages: variables.conversation.len(),
+            totalTokens: variables.totalTokens,
+            estimatedCost: variables.totalTokens / 1000000 * 0.002
+        }
+    }
+}
+
+// ===== DEMO =====
+
+println( "=== Advanced Q&A Bot Demo ===" )
+println()
+
+// Demo 1: Basic usage with programmer personality
+println( "Demo 1: Programmer Bot" )
+println( "-".repeat( 60 ) )
+
+bot = new QABot( "programmer" )
+
+questions1 = [
+    "What is recursion?",
+    "Show me an example",
+    "When should I use it?"
+]
+
+questions1.each( q => {
+    println( "You: #q#" )
+    answer = bot.ask( q )
+    println( "Bot: #answer.answer.left( 100 )#..." )
+    println( "     (confidence: #answer.confidence#, tokens: #answer.tokens.input + answer.tokens.output#)" )
+    println()
+} )
+
+// Demo 2: Switch personality
+println( "Demo 2: Switching to Teacher Bot" )
+println( "-".repeat( 60 ) )
+
+bot.switchPersonality( "teacher" )
+
+questions2 = [
+    "What is a loop?",
+    "Why are loops important?"
+]
+
+questions2.each( q => {
+    println( "You: #q#" )
+    answer = bot.ask( q )
+    println( "Bot: #answer.answer.left( 100 )#..." )
+    println()
+} )
+
+// Demo 3: Get summary
+println( "Demo 3: Conversation Summary" )
+println( "-".repeat( 60 ) )
+
+summary = bot.getSummary()
+println( summary )
+println()
+
+// Demo 4: Save conversation
+println( "Demo 4: Save to File" )
+println( "-".repeat( 60 ) )
+
+bot.save( "qa-bot-conversation.json" )
+println( "✅ Conversation saved to: qa-bot-conversation.json" )
+println()
+
+// Demo 5: Show stats
+println( "Demo 5: Conversation Statistics" )
+println( "-".repeat( 60 ) )
+
+stats = bot.getStats()
+println( "Personality: #stats.personality#" )
+println( "Messages: #stats.messages#" )
+println( "Total tokens: #stats.totalTokens#" )
+println( "Estimated cost: $#numberFormat( stats.estimatedCost, '0.000000' )#" )
+println()
+
+println( "💡 This bot demonstrates:" )
+println( "- Multiple personalities" )
+println( "- Token tracking" )
+println( "- Conversation saving" )
+println( "- Summary generation" )
+println( "- Statistics reporting" )

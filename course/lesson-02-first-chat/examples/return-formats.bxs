@@ -1,0 +1,100 @@
+// return-formats.bxs
+/**
+ * Return Formats Demo
+ * Shows text, JSON, and XML output formats
+ */
+
+println( "=== Return Formats Demo ===" )
+println()
+
+// Example 1: Default Text Format
+println( "1. TEXT FORMAT (default)" )
+println( "-".repeat( 60 ) )
+
+textAnswer = aiChat( "Name 3 programming languages" )
+println( textAnswer )
+println()
+
+// Example 2: JSON Format
+println( "2. JSON FORMAT" )
+println( "-".repeat( 60 ) )
+
+jsonAnswer = aiChat(
+    "List 3 programming languages with their primary use case. Return as JSON array.",
+    { responseFormat: "json" }
+)
+
+println( "Raw JSON:" )
+println( jsonAnswer )
+println()
+
+// Parse and use the JSON
+data = deserializeJSON( jsonAnswer )
+println( "Parsed data:" )
+if ( isArray( data ) ) {
+    data.each( item => {
+        println( "  - #item.name ?: item#: #item.useCase ?: ''#" )
+    } )
+} else {
+    println( serializeJSON( data, true ) )
+}
+println()
+
+// Example 3: XML Format
+println( "3. XML FORMAT" )
+println( "-".repeat( 60 ) )
+
+xmlAnswer = aiChat(
+    "Create an XML list of 3 books with title and author",
+    { responseFormat: "xml" }
+)
+
+println( "Raw XML:" )
+println( xmlAnswer )
+println()
+
+// Parse and use the XML
+try {
+    xmlDoc = xmlParse( xmlAnswer )
+    books = xmlSearch( xmlDoc, "//book" )
+    
+    println( "Parsed books:" )
+    books.each( book => {
+        title = xmlSearch( book, "title" )
+        author = xmlSearch( book, "author" )
+        
+        if ( title.len() && author.len() ) {
+            println( "  - '#title[1].xmlText#' by #author[1].xmlText#" )
+        }
+    } )
+} catch( any e ) {
+    println( "  Could not parse XML: #e.message#" )
+}
+println()
+
+// Example 4: Structured JSON with Schema
+println( "4. STRUCTURED JSON WITH SCHEMA" )
+println( "-".repeat( 60 ) )
+
+structuredAnswer = aiChat(
+    "Analyze the sentiment of: 'I love BoxLang!'. 
+     Return JSON: {sentiment: 'positive|negative|neutral', confidence: 0-100, explanation: '...'}'",
+    { responseFormat: "json" }
+)
+
+println( "Raw response:" )
+println( structuredAnswer )
+println()
+
+sentiment = deserializeJSON( structuredAnswer )
+println( "Structured data:" )
+println( "  Sentiment: #sentiment.sentiment#" )
+println( "  Confidence: #sentiment.confidence#%" )
+println( "  Explanation: #sentiment.explanation#" )
+println()
+
+println( "💡 Key Takeaways:" )
+println( "- Text: Natural, human-readable" )
+println( "- JSON: Structured, easy to parse and process" )
+println( "- XML: Hierarchical, good for complex documents" )
+println( "- Always specify desired format in your prompt!" )
