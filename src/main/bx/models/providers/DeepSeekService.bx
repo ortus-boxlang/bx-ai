@@ -16,16 +16,23 @@
 class extends="BaseService"{
 
 	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// according to the docs, this is the default model
+			"model" : "deepseek-chat"
+		};
+	}
+
+	/**
 	 * Constructor
 	 */
 	function init(){
 		variables.chatURL = "https://api.deepseek.com/v1/chat/completions"
 		variables.embeddingsURL = "https://api.deepseek.com/v1/embeddings"
 		variables.name = "DeepSeek"
-		defaults( {
-			// according to the docs, this is the default model
-			"model" : "deepseek-chat"
-		} )
+		defaults( static.DEFAULT_CHAT_PARAMS )
 	}
 
 }

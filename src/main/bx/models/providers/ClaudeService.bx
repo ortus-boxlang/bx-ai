@@ -16,21 +16,30 @@
 class extends="BaseService"{
 
 	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// according to the docs, this is the default model and tokens
+			// https://docs.anthropic.com/en/docs/about-claude/models/overview#model-aliases
+			"model" : "claude-sonnet-4-5",
+			"max_tokens": 1024
+		};
+		DEFAULT_HEADERS = {
+			// https://docs.anthropic.com/en/api/versioning
+			"anthropic-version" : "2023-06-01"
+		};
+	}
+
+	/**
 	 * Constructor
 	 */
 	function init(){
 		variables.chatURL = "https://api.anthropic.com/v1/messages"
 		variables.name = "Claude"
 		// https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview
-		defaults( {
-			// according to the docs, this is the default model and tokens
-			// https://docs.anthropic.com/en/docs/about-claude/models/overview#model-aliases
-			"model" : "claude-sonnet-4-5",
-			"max_tokens": 1024,
-			// https://docs.anthropic.com/en/api/versioning
-
-		} )
-		addHeader( name: "anthropic-version", value: "2023-06-01" )
+		defaults( static.DEFAULT_CHAT_PARAMS )
+		addHeader( name: "anthropic-version", value: static.DEFAULT_HEADERS[ "anthropic-version" ] )
 	}
 
 	/**

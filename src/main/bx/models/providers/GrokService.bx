@@ -16,16 +16,23 @@
 class extends="BaseService"{
 
 	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// according to the docs, this is the default model
+			"model" : "grok-2-latest"
+		};
+	}
+
+	/**
 	 * Constructor
 	 */
 	function init(){
 		variables.chatURL = "https://api.x.ai/v1/chat/completions"
 		variables.embeddingsURL = "https://api.x.ai/v1/embeddings"
 		variables.name = "Grok"
-		defaults( {
-			// according to the docs, this is the default model
-			"model" : "grok-2-latest"
-		} )
+		defaults( static.DEFAULT_CHAT_PARAMS )
 	}
 
 }

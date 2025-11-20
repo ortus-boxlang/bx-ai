@@ -16,6 +16,17 @@
 class extends="BaseService"{
 
 	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// https://openrouter.ai/docs/quickstart
+			// according to the docs, this is the default model
+			"model" : "openrouter/auto"
+		};
+	}
+
+	/**
 	 * Constructor
 	 * https://openrouter.ai/docs/quickstart
 	 */
@@ -23,11 +34,7 @@ class extends="BaseService"{
 		variables.chatURL = "https://openrouter.ai/api/v1/chat/completions"
 		variables.embeddingsURL = "https://openrouter.ai/api/v1/embeddings"
 		variables.name = "OpenRouter"
-		defaults( {
-			// https://openrouter.ai/docs/quickstart
-			// according to the docs, this is the default model
-			"model" : "openrouter/auto"
-		} )
+		defaults( static.DEFAULT_CHAT_PARAMS )
 	}
 
 }

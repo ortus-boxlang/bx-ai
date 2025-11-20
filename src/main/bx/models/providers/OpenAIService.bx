@@ -16,18 +16,28 @@
 class extends="BaseService"{
 
 	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// https://platform.openai.com/docs/models
+			// according to the docs, this is the default model
+			// https://platform.openai.com/docs/models/gpt-5-nano
+			"model" : "gpt-5-nano"
+		};
+		DEFAULT_EMBED_PARAMS = {
+			"model" : "text-embedding-3-small"
+		};
+	}
+
+	/**
 	 * Constructor
 	 */
 	function init(){
 		variables.chatURL = "https://api.openai.com/v1/chat/completions"
 		variables.embeddingsURL = "https://api.openai.com/v1/embeddings"
 		variables.name = "OpenAI"
-		defaults( {
-			// https://platform.openai.com/docs/models
-			// according to the docs, this is the default model
-			// https://platform.openai.com/docs/models/gpt-5-nano
-			"model" : "gpt-5-nano"
-		} )
+		defaults( static.DEFAULT_CHAT_PARAMS )
 	}
 
 	/**
@@ -37,7 +47,7 @@ class extends="BaseService"{
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
 		// Set default embedding model if not specified
 		if( embeddingRequest.getModel().isEmpty() ){
-			embeddingRequest.setModelIfEmpty( "text-embedding-3-small" )
+			embeddingRequest.setModelIfEmpty( static.DEFAULT_EMBED_PARAMS.model )
 		}
 		return super.embeddings( embeddingRequest )
 	}

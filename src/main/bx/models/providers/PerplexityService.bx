@@ -16,17 +16,24 @@
 class extends="BaseService"{
 
 	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// https://docs.perplexity.ai/getting-started/models
+			// according to the docs, this is the default model
+			"model" : "sonar"
+		};
+	}
+
+	/**
 	 * Constructor
 	 * https://docs.perplexity.ai/home
 	 */
 	function init(){
 		variables.chatURL = "https://api.perplexity.ai/chat/completions"
 		variables.name = "Perplexity"
-		defaults( {
-			// https://docs.perplexity.ai/getting-started/models
-			// according to the docs, this is the default model
-			"model" : "sonar"
-		} )
+		defaults( static.DEFAULT_CHAT_PARAMS )
 	}
 
 }

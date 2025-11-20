@@ -16,17 +16,27 @@
 class extends="BaseService"{
 
 	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// https://ai.google.dev/gemini-api/docs/quickstart
+			// according to the docs, this is the default model
+			"model" : "gemini-2.5-flash"
+		};
+		DEFAULT_EMBED_PARAMS = {
+			"model" : "text-embedding-004"
+		};
+	}
+
+	/**
 	 * Constructor
 	 */
 	function init(){
 		variables.chatURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent"
 		variables.embeddingsURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:embedContent"
 		variables.name = "Gemini"
-		defaults( {
-			// https://ai.google.dev/gemini-api/docs/quickstart
-			// according to the docs, this is the default model
-			"model" : "gemini-2.5-flash"
-		} )
+		defaults( static.DEFAULT_CHAT_PARAMS )
 	}
 
 	/**
@@ -38,7 +48,7 @@ class extends="BaseService"{
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
 		// Set default embedding model if not specified
 		if( embeddingRequest.getModel().isEmpty() ){
-			embeddingRequest.setModelIfEmpty( "text-embedding-004" )
+			embeddingRequest.setModelIfEmpty( static.DEFAULT_EMBED_PARAMS.model )
 		}
 
 		// Model Selection

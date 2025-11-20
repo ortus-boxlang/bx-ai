@@ -16,6 +16,20 @@
 class extends="BaseService"{
 
 	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// Popular local models - users can override with any Ollama model
+			"model" : "qwen2.5:0.5b-instruct",
+			"stream": false  // Ollama supports both streaming and non-streaming
+		};
+		DEFAULT_EMBED_PARAMS = {
+			"model" : "nomic-embed-text"
+		};
+	}
+
+	/**
 	 * Constructor
 	 */
 	function init(){
@@ -24,11 +38,7 @@ class extends="BaseService"{
 		variables.embeddingsURL = "http://localhost:11434/api/embeddings"
 		variables.name = "Ollama"
 
-		defaults( {
-			// Popular local models - users can override with any Ollama model
-			"model" : "qwen2.5:0.5b-instruct",
-			"stream": false  // Ollama supports both streaming and non-streaming
-		} )
+		defaults( static.DEFAULT_CHAT_PARAMS )
 
 		// Ollama typically doesn't require auth headers for local instances
 		// But supports basic auth for remote/secured instances
