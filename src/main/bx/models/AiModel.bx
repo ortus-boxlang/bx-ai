@@ -20,26 +20,81 @@ import bxModules.bxai.models.runnables.*;
 class extends="AiBaseRunnable" {
 
 	/**
-	 * The AI service provider to wrap
+	 * The AI service provider we are linked to.
 	 */
 	property name="service" type="IAiService";
+
+	/**
+	 * The tools attached to this model for tool-augmented generation.
+	 */
+	property name="tools" type="array" default=[];
 
 	/**
 	 * Constructor
 	 *
 	 * @service The AI service provider to wrap
+	 * @tools An array of tools to bind to this model
 	 */
-	function init( required IAiService service ) {
-		variables.service = arguments.service
+	function init( required IAiService service, any tools =[] ) {
 		variables.name = "AiModel-" & arguments.service.getName()
+		variables.service = arguments.service
+		bindTools( arguments.tools )
+
 		return this
 	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Config Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	 /**
+	  * Bind tools to this model
+	  *
+	  * @tools An array of tools to bind
+	  * @return This model with tools bound
+	  */
+	public AiModel function bindTools( any tools ) {
+		// If simple value, wrap as array
+		if( !isArray( arguments.tools ) ){
+			arguments.tools = [ arguments.tools ];
+		}
+		variables.tools = arguments.tools;
+		return this;
+	}
+
+	/**
+	 * This method adds additional tools to the existing set of tools
+	 * @tools One or more tools to add
+	 *
+	 * @return This model with tools added
+	 */
+	public AiModel function addTools( any tools ) {
+		// If simple value, wrap as array
+		if( !isArray( arguments.tools ) ){
+			arguments.tools = [ arguments.tools ];
+		}
+
+		// Append to existing tools
+		if( arguments.tools.len() ){
+			variables.tools.append( arguments.tools, true );
+		}
+
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Runnable Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
 
 	/**
 	 * Run the model with messages as input
 	 *
 	 * @input Messages array, AiMessage, or struct with messages
-	 * @params Runtime parameters (model, temperature, etc.)
+	 * @params Runtime parameters (model, temperature, tools, etc.)
 	 * @options Runtime options (returnFormat, timeout, logging, etc.)
 	 *
 	 * @return The LLM response
@@ -48,6 +103,20 @@ class extends="AiBaseRunnable" {
 		var messages = extractMessages( arguments.input )
 		var effectiveParams = getMergedParams( arguments.params )
 		var effectiveOptions = getMergedOptions( arguments.options )
+
+		// If we have tools in the options, merge them with the model's tools
+		if( effectiveParams.keyExists( "tools" ) ){
+			// Make sure these are normalized to an array
+			if( !isArray( effectiveParams.tools ) ){
+				effectiveParams.tools = [ effectiveParams.tools ];
+			}
+			effectiveParams.tools.append( variables.tools, true );
+		}
+		// No tools in options, use model's tools
+		else {
+			effectiveParams.tools = variables.tools;
+		}
+
 
 		// Build the ai request
 		var aiRequest = new bxModules.bxai.models.AiRequest(
@@ -95,6 +164,12 @@ class extends="AiBaseRunnable" {
 
 		variables.service.invokeStream( request, arguments.onChunk );
 	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
 
 	/**
 	 * Extract messages from various input formats
