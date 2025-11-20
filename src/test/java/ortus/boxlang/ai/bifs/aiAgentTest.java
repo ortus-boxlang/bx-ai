@@ -257,4 +257,29 @@ public class aiAgentTest extends BaseIntegrationTest {
 		assertTrue( variables.getAsBoolean( Key.of( "result" ) ) );
 	}
 
+	@Test
+	@DisplayName( "Real AI Agent using default model and default memory" )
+	public void testRealAIAgent() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		    agent = aiAgent(
+		        name: "RealAgent",
+		        description: "An agent that uses real AI",
+		        instructions: "Provide concise answers"
+		    )
+
+		    response = agent.run( "What is BoxLang?" )
+
+		    println( response )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		var response = variables.getAsString( Key.of( "response" ) );
+		assertTrue( response != null && !response.isEmpty() );
+
+	}
+
 }

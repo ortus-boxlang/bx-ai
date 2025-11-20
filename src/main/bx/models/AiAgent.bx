@@ -157,13 +157,16 @@ class extends="AiBaseRunnable" {
 		// Store in memory
 		storeInMemory( userMessage, response );
 
+		// Extract content from response
+		var content = extractContent( response );
+
 		// Announce after execution
 		BoxAnnounce( "afterAIAgentRun", {
 			agent: this,
-			response: response
+			response: content
 		} );
 
-		return response;
+		return content;
 	}
 
 	/**
@@ -427,20 +430,24 @@ class extends="AiBaseRunnable" {
 			return;
 		}
 
+		// Capture function arguments before using in closures
+		var userMsg = arguments.userMessage;
+		var responseData = arguments.response;
+
 		// Add user message
-		variables.memories.each( mem => mem.add( arguments.userMessage ) );
+		variables.memories.each( mem => mem.add( userMsg ) );
 
 		// Extract assistant message from response
 		var assistantContent = "";
-		if ( isStruct( arguments.response ) ) {
+		if ( isStruct( responseData ) ) {
 			// Handle structured response
-			if ( arguments.response.keyExists( "choices" ) && !arguments.response.choices.isEmpty() ) {
-				assistantContent = arguments.response.choices[ 1 ].message?.content ?: "";
-			} else if ( arguments.response.keyExists( "content" ) ) {
-				assistantContent = arguments.response.content;
+			if ( responseData.keyExists( "choices" ) && !responseData.choices.isEmpty() ) {
+				assistantContent = responseData.choices[ 1 ].message?.content ?: "";
+			} else if ( responseData.keyExists( "content" ) ) {
+				assistantContent = responseData.content;
 			}
 		} else {
-			assistantContent = toString( arguments.response );
+			assistantContent = toString( responseData );
 		}
 
 		// Add assistant message
