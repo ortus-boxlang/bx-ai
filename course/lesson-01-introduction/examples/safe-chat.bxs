@@ -9,10 +9,10 @@ println( "=== Safe AI Chat ===" )
 try {
     // Attempt to call AI
     answer = aiChat( "Tell me a programming joke" )
-    
+
     println( "AI Response:" )
     println( answer )
-    
+
 } catch( any e ) {
     // Handle errors gracefully
     println( "❌ Error occurred:" )

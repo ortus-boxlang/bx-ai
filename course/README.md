@@ -6,8 +6,8 @@ This comprehensive, hands-on course will take you from zero AI knowledge to buil
 
 ## 🎯 Course Overview
 
-**Duration**: 10 Lessons (~20 hours total)  
-**Level**: Beginner to Intermediate  
+**Duration**: 10 Lessons (~20 hours total)
+**Level**: Beginner to Intermediate
 **Prerequisites**: Basic BoxLang knowledge
 
 ### What You'll Learn
@@ -33,7 +33,7 @@ By the end of this course, you'll have built:
 ## 📚 Course Curriculum
 
 ### [Lesson 1: Introduction to AI in BoxLang](lesson-01-introduction/)
-**Duration**: 1.5 hours  
+**Duration**: 1.5 hours
 **Objective**: Understand AI fundamentals and setup your development environment
 
 - What is AI and LLM?
@@ -47,7 +47,7 @@ By the end of this course, you'll have built:
 ---
 
 ### [Lesson 2: Your First AI Chat](lesson-02-first-chat/)
-**Duration**: 2 hours  
+**Duration**: 2 hours
 **Objective**: Master basic AI chat interactions
 
 - The `aiChat()` function
@@ -61,7 +61,7 @@ By the end of this course, you'll have built:
 ---
 
 ### [Lesson 3: Working with AI Providers](lesson-03-providers/)
-**Duration**: 2 hours  
+**Duration**: 2 hours
 **Objective**: Learn to work with different AI providers
 
 - OpenAI / GPT models
@@ -76,7 +76,7 @@ By the end of this course, you'll have built:
 ---
 
 ### [Lesson 4: Controlling AI Behavior](lesson-04-parameters/)
-**Duration**: 2 hours  
+**Duration**: 2 hours
 **Objective**: Fine-tune AI responses with parameters
 
 - Temperature (creativity vs consistency)
@@ -91,7 +91,7 @@ By the end of this course, you'll have built:
 ---
 
 ### [Lesson 5: Real-Time Streaming](lesson-05-streaming/)
-**Duration**: 2 hours  
+**Duration**: 2 hours
 **Objective**: Implement streaming responses for better UX
 
 - Understanding streaming
@@ -106,7 +106,7 @@ By the end of this course, you'll have built:
 ---
 
 ### [Lesson 6: AI Tools and Function Calling](lesson-06-tools/)
-**Duration**: 2.5 hours  
+**Duration**: 2.5 hours
 **Objective**: Enable AI to execute functions and access data
 
 - What are AI tools?
@@ -121,7 +121,7 @@ By the end of this course, you'll have built:
 ---
 
 ### [Lesson 7: Memory Systems](lesson-07-memory/)
-**Duration**: 2 hours  
+**Duration**: 2 hours
 **Objective**: Implement conversation memory and context
 
 - Why memory matters
@@ -137,7 +137,7 @@ By the end of this course, you'll have built:
 ---
 
 ### [Lesson 8: Building AI Agents](lesson-08-agents/)
-**Duration**: 3 hours  
+**Duration**: 3 hours
 **Objective**: Create autonomous AI agents with memory and tools
 
 - What are AI agents?
@@ -152,7 +152,7 @@ By the end of this course, you'll have built:
 ---
 
 ### [Lesson 9: AI Pipelines and Workflows](lesson-09-pipelines/)
-**Duration**: 2.5 hours  
+**Duration**: 2.5 hours
 **Objective**: Design complex multi-step AI workflows
 
 - Understanding pipelines
@@ -167,7 +167,7 @@ By the end of this course, you'll have built:
 ---
 
 ### [Lesson 10: Production Deployment](lesson-10-production/)
-**Duration**: 2.5 hours  
+**Duration**: 2.5 hours
 **Objective**: Deploy and maintain AI applications in production
 
 - Performance optimization

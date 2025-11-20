@@ -1,7 +1,7 @@
 // qa-bot-solution.bxs
 /**
  * SOLUTION: Q&A Bot
- * 
+ *
  * This is one possible solution. Your implementation may differ!
  */
 
@@ -39,40 +39,40 @@ questions = [
 totalTokens = 0
 questions.each( ( question, index ) => {
     println( "You: #question#" )
-    
+
     // Add user message
     conversation.append( aiMessage().user( question ) )
-    
+
     try {
         // Get AI response with JSON format
         response = aiChat( conversation, { responseFormat: "json" } )
-        
+
         // Add to conversation history
         conversation.append( aiMessage().assistant( response ) )
-        
+
         // Parse JSON
         data = deserializeJSON( response )
-        
+
         // Display formatted response
         println( "TechBot:" )
         println( "  Answer: #data.answer#" )
         println( "  Confidence: #data.confidence#" )
-        
+
         if ( data.keyExists( "relatedTopics" ) && isArray( data.relatedTopics ) ) {
             println( "  Related Topics: #data.relatedTopics.toList()#" )
         }
-        
+
         // Count tokens
         questionTokens = TokenCounter::count( question )
         responseTokens = TokenCounter::count( response )
         totalTokens += questionTokens + responseTokens
-        
+
         println( "  Tokens: #questionTokens# in + #responseTokens# out" )
-        
+
     } catch( any e ) {
         println( "  ❌ Error: #e.message#" )
     }
-    
+
     println()
 } )
 

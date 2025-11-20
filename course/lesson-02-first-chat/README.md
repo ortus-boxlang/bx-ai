@@ -1,6 +1,6 @@
 # Lesson 2: Your First AI Chat
 
-**Duration:** 45 minutes  
+**Duration:** 45 minutes
 **Prerequisites:** Lesson 1 completed, BoxLang AI module installed
 
 ## Learning Objectives
@@ -291,7 +291,7 @@ answer = askExpert( "What is polymorphism?", "programming teacher" )
 ```java
 class ConversationManager {
     property messages;
-    
+
     function init( systemPrompt = "" ) {
         variables.messages = []
         if ( len( systemPrompt ) ) {
@@ -299,14 +299,14 @@ class ConversationManager {
         }
         return this
     }
-    
+
     function ask( question ) {
         variables.messages.append( aiMessage().user( question ) )
         answer = aiChat( variables.messages )
         variables.messages.append( aiMessage().assistant( answer ) )
         return answer
     }
-    
+
     function reset() {
         variables.messages = []
         return this
@@ -326,12 +326,12 @@ function extractJSON( text ) {
     // Find JSON in text
     start = text.find( "{" )
     end = text.findLast( "}" )
-    
+
     if ( start > 0 && end > 0 ) {
         json = text.mid( start, end - start + 1 )
         return deserializeJSON( json )
     }
-    
+
     return {}
 }
 
@@ -369,7 +369,7 @@ Reusable conversation class
 
 **File:** `labs/qa-bot.bxs`
 
-**Objective:**  
+**Objective:**
 Create an interactive Q&A bot that:
 1. Has a personality (defined in system message)
 2. Maintains conversation context
@@ -425,11 +425,11 @@ Create two AI "debaters" with opposing views. Have them debate a topic with 3 ro
 
 ## Key Takeaways
 
-✅ Messages have roles (system, user, assistant)  
-✅ System messages control AI behavior  
-✅ Conversation history enables context  
-✅ Multiple return formats (text, JSON, XML)  
-✅ Use aiMessage() for fluent message building  
+✅ Messages have roles (system, user, assistant)
+✅ System messages control AI behavior
+✅ Conversation history enables context
+✅ Multiple return formats (text, JSON, XML)
+✅ Use aiMessage() for fluent message building
 ✅ Pattern: Store conversation array, append each turn
 
 ---

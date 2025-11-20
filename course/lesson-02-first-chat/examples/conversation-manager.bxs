@@ -10,51 +10,51 @@
 class {
     property name="messages" type="array";
     property name="systemPrompt" type="string";
-    
+
     /**
      * Initialize the conversation
      */
     function init( systemPrompt = "" ) {
         variables.messages = []
         variables.systemPrompt = arguments.systemPrompt
-        
+
         if ( len( variables.systemPrompt ) ) {
             variables.messages.append( aiMessage().system( variables.systemPrompt ) )
         }
-        
+
         return this
     }
-    
+
     /**
      * Ask a question
      */
     function ask( question ) {
         // Add user message
         variables.messages.append( aiMessage().user( arguments.question ) )
-        
+
         // Get AI response
         answer = aiChat( variables.messages )
-        
+
         // Add assistant response to history
         variables.messages.append( aiMessage().assistant( answer ) )
-        
+
         return answer
     }
-    
+
     /**
      * Get conversation history
      */
     function getHistory() {
         return variables.messages
     }
-    
+
     /**
      * Get conversation length
      */
     function length() {
         return variables.messages.len()
     }
-    
+
     /**
      * Reset conversation
      */
@@ -65,14 +65,14 @@ class {
         }
         return this
     }
-    
+
     /**
      * Export conversation as JSON
      */
     function export() {
         return serializeJSON( variables.messages, true )
     }
-    
+
     /**
      * Display conversation
      */
@@ -80,7 +80,7 @@ class {
         variables.messages.each( msg => {
             role = msg.role.uCase()
             content = msg.content
-            
+
             println( "#role#: #content#" )
             println()
         } )

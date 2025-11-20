@@ -1,7 +1,7 @@
 # Lesson 1: Introduction to AI in BoxLang
 
-**Duration**: 1.5 hours  
-**Level**: Beginner  
+**Duration**: 1.5 hours
+**Level**: Beginner
 **Prerequisites**: Basic BoxLang knowledge
 
 ## 🎯 Learning Objectives
@@ -387,10 +387,10 @@ Test your understanding:
 
 In this lesson, you learned:
 
-✅ **AI Basics**: What LLMs are and how they work  
-✅ **BoxLang AI**: Benefits of the bx-ai module  
-✅ **Setup**: Installed and configured the module  
-✅ **First Call**: Made your first AI interaction  
+✅ **AI Basics**: What LLMs are and how they work
+✅ **BoxLang AI**: Benefits of the bx-ai module
+✅ **Setup**: Installed and configured the module
+✅ **First Call**: Made your first AI interaction
 ✅ **Tokens**: Understood costs and token counting
 
 ### Key Functions Learned

@@ -57,12 +57,12 @@ println()
 try {
     xmlDoc = xmlParse( xmlAnswer )
     books = xmlSearch( xmlDoc, "//book" )
-    
+
     println( "Parsed books:" )
     books.each( book => {
         title = xmlSearch( book, "title" )
         author = xmlSearch( book, "author" )
-        
+
         if ( title.len() && author.len() ) {
             println( "  - '#title[1].xmlText#' by #author[1].xmlText#" )
         }
@@ -77,7 +77,7 @@ println( "4. STRUCTURED JSON WITH SCHEMA" )
 println( "-".repeat( 60 ) )
 
 structuredAnswer = aiChat(
-    "Analyze the sentiment of: 'I love BoxLang!'. 
+    "Analyze the sentiment of: 'I love BoxLang!'.
      Return JSON: {sentiment: 'positive|negative|neutral', confidence: 0-100, explanation: '...'}'",
     { responseFormat: "json" }
 )

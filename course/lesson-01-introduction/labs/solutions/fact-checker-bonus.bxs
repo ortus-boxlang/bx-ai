@@ -1,7 +1,7 @@
 // fact-checker-bonus.bxs
 /**
  * BONUS SOLUTION: Advanced Fact Checker
- * 
+ *
  * This solution implements all bonus challenges:
  * - Confidence scoring
  * - Multiple statements
@@ -31,12 +31,12 @@ allResults = []
 // Check each statement with each model
 statements.each( ( statement ) => {
     println( "Checking: '#statement#'" )
-    
+
     statementResults = {
         statement: statement,
         checks: []
     }
-    
+
     models.each( ( model ) => {
         try {
             prompt = "
@@ -48,22 +48,22 @@ EXPLANATION: [Brief explanation]
 
 Statement: #statement#
 "
-            
+
             // Track timing
             startTime = getTickCount()
-            
+
             // Call AI with specific model
             response = aiChat(
                 prompt,
                 { model: model, temperature: 0.1 }
             )
-            
+
             elapsed = getTickCount() - startTime
-            
+
             // Count tokens
             inputTokens = TokenCounter::count( prompt )
             outputTokens = TokenCounter::count( response )
-            
+
             // Store result
             statementResults.checks.append( {
                 model: model,
@@ -72,14 +72,14 @@ Statement: #statement#
                 inputTokens: inputTokens,
                 outputTokens: outputTokens
             } )
-            
+
             println( "  ✓ #model# completed in #elapsed#ms" )
-            
+
         } catch( any e ) {
             println( "  ✗ #model# failed: #e.message#" )
         }
     } )
-    
+
     allResults.append( statementResults )
     println()
 } )
@@ -91,7 +91,7 @@ println()
 allResults.each( ( result ) => {
     println( "Statement: #result.statement#" )
     println( "-".repeat( 80 ) )
-    
+
     result.checks.each( ( check ) => {
         println()
         println( "Model: #check.model#" )
@@ -99,7 +99,7 @@ allResults.each( ( result ) => {
         println()
         println( "Stats: #check.inputTokens# input + #check.outputTokens# output = #check.inputTokens + check.outputTokens# tokens (#check.elapsed#ms)" )
     } )
-    
+
     println()
     println()
 } )
@@ -108,10 +108,10 @@ allResults.each( ( result ) => {
 try {
     // Format as JSON
     jsonResults = serializeJSON( allResults, true )
-    
+
     // Save to file
     fileWrite( "fact-check-results.json", jsonResults )
-    
+
     println( "✅ Results saved to: fact-check-results.json" )
 } catch( any e ) {
     println( "⚠️  Could not save results: #e.message#" )

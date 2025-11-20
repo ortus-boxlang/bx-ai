@@ -1,7 +1,7 @@
 // qa-bot-bonus.bxs
 /**
  * BONUS SOLUTION: Advanced Q&A Bot
- * 
+ *
  * Implements all bonus challenges:
  * - Conversation reset
  * - Save to file
@@ -19,21 +19,21 @@ class {
     property name="conversation" type="array";
     property name="personality" type="string";
     property name="totalTokens" type="numeric" default="0";
-    
+
     function init( personality = "general" ) {
         variables.personality = arguments.personality
         variables.totalTokens = 0
         reset()
         return this
     }
-    
+
     function reset() {
         variables.conversation = [
             aiMessage().system( getSystemPrompt( variables.personality ) )
         ]
         return this
     }
-    
+
     function getSystemPrompt( personality ) {
         prompts = {
             "general": "You are a friendly general knowledge assistant.",
@@ -41,44 +41,44 @@ class {
             "teacher": "You are a patient teacher who uses simple analogies and checks understanding.",
             "scientist": "You are a scientist who provides evidence-based, detailed explanations."
         }
-        
+
         basePrompt = prompts[ arguments.personality ] ?: prompts.general
-        
+
         return basePrompt & "
 Always return JSON: {answer: 'your answer', confidence: 'high|medium|low', relatedTopics: []}"
     }
-    
+
     function ask( question ) {
         // Add user message
         variables.conversation.append( aiMessage().user( arguments.question ) )
-        
+
         // Get response
         response = aiChat( variables.conversation, { responseFormat: "json" } )
-        
+
         // Add assistant message
         variables.conversation.append( aiMessage().assistant( response ) )
-        
+
         // Count tokens
         questionTokens = TokenCounter::count( arguments.question )
         responseTokens = TokenCounter::count( response )
         variables.totalTokens += questionTokens + responseTokens
-        
+
         // Parse and return
         data = deserializeJSON( response )
         data.tokens = {
             input: questionTokens,
             output: responseTokens
         }
-        
+
         return data
     }
-    
+
     function switchPersonality( newPersonality ) {
         variables.personality = arguments.newPersonality
         reset()
         return this
     }
-    
+
     function save( filename ) {
         export = {
             personality: variables.personality,
@@ -86,25 +86,25 @@ Always return JSON: {answer: 'your answer', confidence: 'high|medium|low', relat
             messages: variables.conversation,
             timestamp: now()
         }
-        
+
         fileWrite( arguments.filename, serializeJSON( export, true ) )
         return this
     }
-    
+
     function getSummary() {
         if ( variables.conversation.len() < 5 ) {
             return "Not enough conversation to summarize"
         }
-        
+
         summaryPrompt = "Summarize the key points from this conversation in 3 bullet points"
-        
+
         variables.conversation.append( aiMessage().user( summaryPrompt ) )
         summary = aiChat( variables.conversation )
         variables.conversation.deleteLast()  // Don't keep summary request in history
-        
+
         return summary
     }
-    
+
     function getStats() {
         return {
             personality: variables.personality,

@@ -40,7 +40,7 @@ println( "✓ Test 3: Testing AI connection..." )
 try {
     // Make a minimal AI call
     answer = aiChat( "Say 'OK'" )
-    
+
     if ( len( answer ) > 0 ) {
         println( "  ✅ AI connection successful!" )
         println( "  Response: #answer#" )

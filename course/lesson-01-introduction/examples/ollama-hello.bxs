@@ -2,7 +2,7 @@
 /**
  * Using Ollama for Local AI
  * No API key required - runs on your machine!
- * 
+ *
  * Prerequisites:
  * 1. Install Ollama from https://ollama.ai
  * 2. Run: ollama pull llama3.2

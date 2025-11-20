@@ -40,7 +40,7 @@ pricing.each( ( model, prices ) => {
     inputCost = ( estimatedInputTokens / 1000000 ) * prices.input
     outputCost = ( estimatedOutputTokens / 1000000 ) * prices.output
     totalCost = inputCost + outputCost
-    
+
     println( "Model: #model#" )
     println( "  Input cost:  $#numberFormat( inputCost, '0.000000' )#" )
     println( "  Output cost: $#numberFormat( outputCost, '0.000000' )#" )
