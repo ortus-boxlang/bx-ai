@@ -20,21 +20,20 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
-import ortus.boxlang.runtime.types.Array;
-import ortus.boxlang.runtime.types.Struct;
+import ortus.boxlang.runtime.scopes.Key;
 
 /**
- * Integration tests for aiEmbedding BIF
+ * Integration tests for aiEmbed BIF
  */
-public class aiEmbeddingTest extends BaseIntegrationTest {
+public class aiEmbedTest extends BaseIntegrationTest {
 
-	@DisplayName( "Test aiEmbedding with single text (raw format)" )
+	@DisplayName( "Test aiEmbed with single text (raw format)" )
 	@Test
 	public void testEmbeddingSingleTextRaw() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			result = aiEmbedding( "Hello World" )
+			result = aiEmbed( "Hello World" )
 			println( "Embedding result keys: " & result.keyList() )
 			""",
 			context
@@ -47,13 +46,13 @@ public class aiEmbeddingTest extends BaseIntegrationTest {
 		assertThat( result.containsKey( "data" ) ).isTrue();
 	}
 
-	@DisplayName( "Test aiEmbedding with single text (embeddings format)" )
+	@DisplayName( "Test aiEmbed with single text (embeddings format)" )
 	@Test
-	public void testEmbeddingSingleTextEmbeddingsFormat() {
+	public void testEmbedSingleTextEmbeddingsFormat() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			result = aiEmbedding(
+			result = aiEmbed(
 				input: "Hello World",
 				options: { returnFormat: "embeddings" }
 			)
@@ -68,13 +67,13 @@ public class aiEmbeddingTest extends BaseIntegrationTest {
 		assertThat( result.size() ).isGreaterThan( 0 );
 	}
 
-	@DisplayName( "Test aiEmbedding with single text (first format)" )
+	@DisplayName( "Test aiEmbed with single text (first format)" )
 	@Test
-	public void testEmbeddingSingleTextFirstFormat() {
+	public void testEmbedSingleTextFirstFormat() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			result = aiEmbedding(
+			result = aiEmbed(
 				input: "Hello World",
 				options: { returnFormat: "first" }
 			)
@@ -91,13 +90,13 @@ public class aiEmbeddingTest extends BaseIntegrationTest {
 		assertThat( isArray ).isTrue();
 	}
 
-	@DisplayName( "Test aiEmbedding with batch texts" )
+	@DisplayName( "Test aiEmbed with batch texts" )
 	@Test
-	public void testEmbeddingBatchTexts() {
+	public void testEmbedBatchTexts() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			result = aiEmbedding(
+			result = aiEmbed(
 				input: ["Hello", "World", "BoxLang"],
 				options: { returnFormat: "raw" }
 			)
@@ -115,13 +114,13 @@ public class aiEmbeddingTest extends BaseIntegrationTest {
 		assertThat( embeddingCount ).isEqualTo( 3 );
 	}
 
-	@DisplayName( "Test aiEmbedding with custom model" )
+	@DisplayName( "Test aiEmbed with custom model" )
 	@Test
-	public void testEmbeddingWithCustomModel() {
+	public void testEmbedWithCustomModel() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			result = aiEmbedding(
+			result = aiEmbed(
 				input: "Hello World",
 				params: { model: "text-embedding-3-small" },
 				options: { returnFormat: "raw" }
@@ -139,13 +138,13 @@ public class aiEmbeddingTest extends BaseIntegrationTest {
 		assertThat( modelName ).contains( "embedding" );
 	}
 
-	@DisplayName( "Test aiEmbedding BIF is registered" )
+	@DisplayName( "Test aiEmbed BIF is registered" )
 	@Test
-	public void testEmbeddingBIFRegistered() {
+	public void testEmbedBIFRegistered() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			bifExists = isDefined( "aiEmbedding" )
+			bifExists = getFunctionList().keyExists( "aiEmbed" )
 			""",
 			context
 		);

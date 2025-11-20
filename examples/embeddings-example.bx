@@ -21,7 +21,7 @@
 // ============================================================================
 println( "=== Single Text Embedding ===" )
 
-embedding = aiEmbedding( "BoxLang is a dynamic JVM language" )
+embedding = aiEmbed( "BoxLang is a dynamic JVM language" )
 println( "Full Response Keys: " & embedding.keyList() )
 println( "Embedding Dimensions: " & embedding.data.first().embedding.len() )
 println( "Model Used: " & embedding.model )
@@ -31,7 +31,7 @@ println( "Model Used: " & embedding.model )
 // ============================================================================
 println( "\n=== Embedding Vector Only ===" )
 
-vector = aiEmbedding(
+vector = aiEmbed(
     input: "Hello World",
     options: { returnFormat: "first" }
 )
@@ -49,7 +49,7 @@ texts = [
     "Python is easy to learn"
 ]
 
-batchResult = aiEmbedding(
+batchResult = aiEmbed(
     input: texts,
     options: { returnFormat: "embeddings" }
 )
@@ -62,7 +62,7 @@ println( "Each embedding has " & batchResult.first().len() & " dimensions" )
 println( "\n=== Different Embedding Models ===" )
 
 // OpenAI text-embedding-3-small (1536 dimensions, faster, cheaper)
-smallEmbedding = aiEmbedding(
+smallEmbedding = aiEmbed(
     input: "Sample text",
     params: { model: "text-embedding-3-small" },
     options: { provider: "openai" }
@@ -70,7 +70,7 @@ smallEmbedding = aiEmbedding(
 println( "Small Model Dimensions: " & smallEmbedding.data.first().embedding.len() )
 
 // OpenAI text-embedding-3-large (3072 dimensions, more accurate, costlier)
-largeEmbedding = aiEmbedding(
+largeEmbedding = aiEmbed(
     input: "Sample text",
     params: { model: "text-embedding-3-large" },
     options: { provider: "openai" }
@@ -83,7 +83,7 @@ println( "Large Model Dimensions: " & largeEmbedding.data.first().embedding.len(
 println( "\n=== Local Ollama Embeddings ===" )
 
 // Note: First pull an embedding model: ollama pull nomic-embed-text
-localEmbedding = aiEmbedding(
+localEmbedding = aiEmbed(
     input: "Local embedding generation",
     params: { model: "nomic-embed-text" },
     options: { provider: "ollama" }
@@ -119,7 +119,7 @@ sentences = [
     "Dogs are loyal animals"
 ]
 
-embeddings = aiEmbedding(
+embeddings = aiEmbed(
     input: sentences,
     options: { returnFormat: "embeddings" }
 )
@@ -146,14 +146,14 @@ documents = [
 ]
 
 // Generate embeddings for all documents
-docEmbeddings = aiEmbedding(
+docEmbeddings = aiEmbed(
     input: documents,
     options: { returnFormat: "embeddings" }
 )
 
 // User search query
 query = "Tell me about BoxLang"
-queryEmbedding = aiEmbedding(
+queryEmbedding = aiEmbed(
     input: query,
     options: { returnFormat: "first" }
 )

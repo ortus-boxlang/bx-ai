@@ -17,22 +17,22 @@
  * @example
  * ```
  * // Single text embedding
- * embedding = aiEmbedding( "Hello World" )
+ * embedding = aiEmbed( "Hello World" )
  * println( embedding.data.first().embedding )
  *
  * // Batch embeddings
- * embeddings = aiEmbedding( ["Hello", "World", "BoxLang"] )
+ * embeddings = aiEmbed( ["Hello", "World", "BoxLang"] )
  * println( embeddings.data.map( d => d.embedding ) )
  *
  * // With specific provider and model
- * embedding = aiEmbedding(
+ * embedding = aiEmbed(
  *     input: "Hello World",
  *     params: { model: "text-embedding-3-large" },
  *     options: { provider: "openai" }
  * )
  *
  * // Get just the embeddings array
- * embeddings = aiEmbedding(
+ * embeddings = aiEmbed(
  *     input: "Hello",
  *     options: { returnFormat: "embeddings" }
  * )
@@ -60,16 +60,8 @@ class {
 		struct params = {},
 		struct options = {}
 	){
-		// Default the provider from the module settings if not provided
-		arguments.options.provider = arguments.options.provider ?: static.MODULE_SETTINGS.provider;
-
-		// By convention check if there is a <PROVIDER>_API_KEY setting override it
-		var conventionAPIKey = getSystemSetting( "#arguments.options.provider.ucase()#_API_KEY", "" );
-		if( isNull( arguments.options.apiKey ) && len( conventionAPIKey ) ){
-			arguments.options.apiKey = conventionAPIKey;
-		}
-		// Else use the module setting
-		arguments.options.apiKey = arguments.options.apiKey ?: static.MODULE_SETTINGS.apiKey;
+		// Append defaults
+		arguments.options.append( static.MODULE_SETTINGS, false );
 
 		// Create the embedding request
 		var embeddingRequest = new bxModules.bxai.models.AiEmbeddingRequest(
@@ -79,19 +71,16 @@ class {
 		);
 
 		// Get the service
-		var service = aiService(
-			provider: arguments.options.provider,
-			apiKey: arguments.options.apiKey
-		);
+		var service = aiService( arguments.options?.provider, arguments.options?.apiKey );
 
 		// Announce the embedding request
-		BoxAnnounce( "beforeAIEmbedding", { embeddingRequest: embeddingRequest, service: service } );
+		BoxAnnounce( "beforeAIEmbed", { embeddingRequest: embeddingRequest, service: service } );
 
 		// Generate embeddings
 		var result = service.embeddings( embeddingRequest );
 
 		// Announce the response
-		BoxAnnounce( "afterAIEmbedding", { embeddingRequest: embeddingRequest, service: service, result: result } );
+		BoxAnnounce( "afterAIEmbed", { embeddingRequest: embeddingRequest, service: service, result: result } );
 
 		return result;
 	}

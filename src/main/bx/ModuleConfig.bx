@@ -142,10 +142,10 @@ class {
 			"onAIModelCreate",
             "beforeAIModelInvoke",
             "afterAIModelInvoke",
-			"onAIEmbeddingRequest",
-			"onAIEmbeddingResponse",
-			"beforeAIEmbedding",
-			"afterAIEmbedding"
+			"onAIEmbedRequest",
+			"onAIEmbedResponse",
+			"beforeAIEmbed",
+			"afterAIEmbed"
 		 ];
 	}
 

@@ -25,7 +25,7 @@ public class aiTokensTest extends BaseIntegrationTest {
 
 		Object result = variables.get( "result" );
 		assertThat( result ).isInstanceOf( Number.class );
-		
+
 		// "Hello, world!" = 13 chars / 4 = 3.25, ceiling = 4 tokens
 		assertThat( ( ( Number ) result ).intValue() ).isEqualTo( 4 );
 	}
@@ -45,7 +45,7 @@ public class aiTokensTest extends BaseIntegrationTest {
 
 		Object result = variables.get( "result" );
 		assertThat( result ).isInstanceOf( Number.class );
-		
+
 		// 3 words * 1.3 = 3.9, ceiling = 4 tokens
 		assertThat( ( ( Number ) result ).intValue() ).isEqualTo( 4 );
 	}
@@ -65,7 +65,7 @@ public class aiTokensTest extends BaseIntegrationTest {
 
 		Object result = variables.get( "result" );
 		assertThat( result ).isInstanceOf( Number.class );
-		
+
 		// "Helloworldtest" = 14 chars / 4 = 3.5, ceiling = 4 tokens
 		assertThat( ( ( Number ) result ).intValue() ).isEqualTo( 4 );
 	}
@@ -90,7 +90,7 @@ public class aiTokensTest extends BaseIntegrationTest {
 		assertThat( result.containsKey( "words" ) ).isTrue();
 		assertThat( result.containsKey( "chunks" ) ).isTrue();
 		assertThat( result.containsKey( "method" ) ).isTrue();
-		
+
 		// 24 characters
 		assertThat( ( ( Number ) result.get( "characters" ) ).intValue() ).isEqualTo( 24 );
 		// 5 words
@@ -155,7 +155,7 @@ public class aiTokensTest extends BaseIntegrationTest {
 
 		Object result = variables.get( "result" );
 		assertThat( result ).isInstanceOf( Number.class );
-		
+
 		// 16 * 25 = 400 chars / 4 = 100 tokens
 		assertThat( ( ( Number ) result ).intValue() ).isEqualTo( 100 );
 	}
@@ -174,15 +174,15 @@ public class aiTokensTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		Object charResult = variables.get( "charResult" );
-		Object wordResult = variables.get( "wordResult" );
-		
+		Object	charResult	= variables.get( "charResult" );
+		Object	wordResult	= variables.get( "wordResult" );
+
 		assertThat( charResult ).isInstanceOf( Number.class );
 		assertThat( wordResult ).isInstanceOf( Number.class );
-		
+
 		// 44 chars / 4 = 11 tokens (characters method)
 		assertThat( ( ( Number ) charResult ).intValue() ).isEqualTo( 11 );
-		
+
 		// 9 words * 1.3 = 11.7, ceiling = 12 tokens (words method)
 		assertThat( ( ( Number ) wordResult ).intValue() ).isEqualTo( 12 );
 	}
@@ -203,7 +203,7 @@ public class aiTokensTest extends BaseIntegrationTest {
 
 		Object result = variables.get( "result" );
 		assertThat( result ).isInstanceOf( Number.class );
-		
+
 		// Chunks may trim whitespace, so token count is approximate
 		assertThat( ( ( Number ) result ).intValue() ).isGreaterThan( 10 );
 	}
@@ -223,7 +223,7 @@ public class aiTokensTest extends BaseIntegrationTest {
 
 		Struct result = ( Struct ) variables.get( "result" );
 		assertThat( result ).isNotNull();
-		
+
 		// 6 words total
 		assertThat( ( ( Number ) result.get( "words" ) ).intValue() ).isEqualTo( 6 );
 		// 3 chunks
