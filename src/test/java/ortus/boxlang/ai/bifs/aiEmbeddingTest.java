@@ -85,8 +85,8 @@ public class aiEmbeddingTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var result = variables.get( Key.of( "result" ) );
-		var isArray = variables.getAsBoolean( Key.of( "isArray" ) );
+		var	result	= variables.get( Key.of( "result" ) );
+		var	isArray	= variables.getAsBoolean( Key.of( "isArray" ) );
 		assertThat( result ).isNotNull();
 		assertThat( isArray ).isTrue();
 	}
@@ -108,8 +108,8 @@ public class aiEmbeddingTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var result = variables.getAsStruct( Key.of( "result" ) );
-		var embeddingCount = variables.getAsInteger( Key.of( "embeddingCount" ) );
+		var	result			= variables.getAsStruct( Key.of( "result" ) );
+		var	embeddingCount	= variables.getAsInteger( Key.of( "embeddingCount" ) );
 		assertThat( result ).isNotNull();
 		assertThat( result.containsKey( "data" ) ).isTrue();
 		assertThat( embeddingCount ).isEqualTo( 3 );
@@ -133,8 +133,8 @@ public class aiEmbeddingTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var result = variables.getAsStruct( Key.of( "result" ) );
-		var modelName = variables.getAsString( Key.of( "modelName" ) );
+		var	result		= variables.getAsStruct( Key.of( "result" ) );
+		var	modelName	= variables.getAsString( Key.of( "modelName" ) );
 		assertThat( result ).isNotNull();
 		assertThat( modelName ).contains( "embedding" );
 	}

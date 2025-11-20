@@ -60,10 +60,10 @@ public class OpenAIEmbeddingTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var hasData = variables.getAsBoolean( Key.of( "hasData" ) );
-		var hasModel = variables.getAsBoolean( Key.of( "hasModel" ) );
-		var hasUsage = variables.getAsBoolean( Key.of( "hasUsage" ) );
-		var embeddingLength = variables.getAsInteger( Key.of( "embeddingLength" ) );
+		var	hasData			= variables.getAsBoolean( Key.of( "hasData" ) );
+		var	hasModel		= variables.getAsBoolean( Key.of( "hasModel" ) );
+		var	hasUsage		= variables.getAsBoolean( Key.of( "hasUsage" ) );
+		var	embeddingLength	= variables.getAsInteger( Key.of( "embeddingLength" ) );
 
 		assertThat( hasData ).isTrue();
 		assertThat( hasModel ).isTrue();
@@ -90,8 +90,8 @@ public class OpenAIEmbeddingTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var embeddingCount = variables.getAsInteger( Key.of( "embeddingCount" ) );
-		var firstEmbeddingLength = variables.getAsInteger( Key.of( "firstEmbeddingLength" ) );
+		var	embeddingCount			= variables.getAsInteger( Key.of( "embeddingCount" ) );
+		var	firstEmbeddingLength	= variables.getAsInteger( Key.of( "firstEmbeddingLength" ) );
 
 		assertThat( embeddingCount ).isEqualTo( 3 );
 		assertThat( firstEmbeddingLength ).isGreaterThan( 0 );
@@ -116,8 +116,8 @@ public class OpenAIEmbeddingTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var modelName = variables.getAsString( Key.of( "modelName" ) );
-		var embeddingLength = variables.getAsInteger( Key.of( "embeddingLength" ) );
+		var	modelName		= variables.getAsString( Key.of( "modelName" ) );
+		var	embeddingLength	= variables.getAsInteger( Key.of( "embeddingLength" ) );
 
 		assertThat( modelName ).contains( "text-embedding-3-large" );
 		// text-embedding-3-large produces 3072-dimensional vectors
@@ -141,8 +141,8 @@ public class OpenAIEmbeddingTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var isArray = variables.getAsBoolean( Key.of( "isArray" ) );
-		var embeddingLength = variables.getAsInteger( Key.of( "embeddingLength" ) );
+		var	isArray			= variables.getAsBoolean( Key.of( "isArray" ) );
+		var	embeddingLength	= variables.getAsInteger( Key.of( "embeddingLength" ) );
 
 		assertThat( isArray ).isTrue();
 		assertThat( embeddingLength ).isGreaterThan( 0 );
