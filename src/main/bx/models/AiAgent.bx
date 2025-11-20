@@ -114,11 +114,20 @@ class extends="AiBaseRunnable" {
 	 *
 	 * @input The task or question for the agent
 	 * @params Runtime parameters to override
-	 * @options Runtime options to override
+	 * @options Runtime options to override. Supported options:
+	 *          - returnFormat: "single" (default), "all", or "raw"
+	 *            - single: Returns just the assistant's content string
+	 *            - all: Returns all messages (handled by service)
+	 *            - raw: Returns the full provider response structure
 	 *
-	 * @return The agent's response
+	 * @return The agent's response (format depends on returnFormat option)
 	 */
 	public any function run( any input = "", struct params = {}, struct options = {} ) {
+		// Default returnFormat to "single" if not specified
+		if ( !arguments.options.keyExists( "returnFormat" ) ) {
+			arguments.options.returnFormat = "single";
+		}
+
 		// Build system message from instructions and description
 		var systemMessage = buildSystemMessage();
 
@@ -141,7 +150,7 @@ class extends="AiBaseRunnable" {
 		// Merge parameters
 		var effectiveParams = variables.params.append( arguments.params );
 
-		// Merge options
+		// Merge options (including returnFormat)
 		var effectiveOptions = variables.options.append( arguments.options );
 
 		// Announce before execution
@@ -151,22 +160,19 @@ class extends="AiBaseRunnable" {
 			messages: messages
 		} );
 
-		// Execute via model (tools are handled by the model/service)
+		// Execute via model - service handles returnFormat and returns formatted result
 		var response = variables.aiModel.run( messages, effectiveParams, effectiveOptions );
 
-		// Store in memory
+		// Store in memory (handles all response formats)
 		storeInMemory( userMessage, response );
-
-		// Extract content from response
-		var content = extractContent( response );
 
 		// Announce after execution
 		BoxAnnounce( "afterAIAgentRun", {
 			agent: this,
-			response: content
+			response: response
 		} );
 
-		return content;
+		return response;
 	}
 
 	/**
