@@ -54,7 +54,7 @@ abstract class implements="IAiMemory" {
 	 *
 	 * @key The unique key for this memory instance
 	 */
-	function init( required string key ) {
+	function init( string key = createUUID() ) {
 		variables.key = arguments.key;
 		var fullName = getMetadata( this ).name ?: "BaseMemory";
 		variables.name = fullName.listLast( "." );

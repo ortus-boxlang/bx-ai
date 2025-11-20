@@ -22,9 +22,8 @@ class extends="BaseMemory" {
 	 *
 	 * @key The unique key for this memory instance
 	 */
-	function init( required string key ) {
-		super.init( arguments.key );
-		return this;
+	function init( string key = createUUID() ) {
+		return super.init( arguments.key );
 	}
 
 }

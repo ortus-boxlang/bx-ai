@@ -2,6 +2,8 @@
 
 Get up and running with AI Agents in BoxLang - autonomous AI assistants with memory, tools, and reasoning capabilities.
 
+> **New to BoxLang AI?** Start with the [Quick Start Guide](quickstart.md) to learn the basics first.
+
 ## What are AI Agents?
 
 AI Agents are autonomous assistants that:
@@ -21,8 +23,9 @@ Think of agents as AI assistants that can:
 The simplest agent is just a conversation interface with memory:
 
 ```java
+// agent-hello.bxs
 // Create an agent with memory
-agent = aiAgent( 
+agent = aiAgent(
     name: "Assistant",
     description: "A helpful AI assistant"
 )
@@ -107,8 +110,8 @@ agent = aiAgent( name: "Support Agent" )
     .setMemories( aiMemory( "simple", "support-session-123" ) )
 
 // Agent can now look up users and do math
-response = agent.run( 
-    "What's the account balance for user@example.com divided by 2?" 
+response = agent.run(
+    "What's the account balance for user@example.com divided by 2?"
 )
 ```
 
@@ -130,8 +133,8 @@ Keeps only recent messages - good for managing context limits:
 ```java
 agent = aiAgent(
     name: "Chatbot",
-    memories: aiMemory( 
-        type: "buffered", 
+    memories: aiMemory(
+        type: "buffered",
         key: "session-1",
         config: { maxMessages: 20 }  // Keep last 20 messages
     )
@@ -155,7 +158,7 @@ Saves to disk - persists across application restarts:
 ```java
 agent = aiAgent(
     name: "PersistentBot",
-    memories: aiMemory( 
+    memories: aiMemory(
         type: "file",
         key: "user-123",
         config: { filePath: expandPath( "./data/chat-history.json" ) }
@@ -187,7 +190,7 @@ lookupOrder = aiTool(
 ).describeOrderNum( "Order number" )
 
 cancelOrder = aiTool(
-    name: "cancel_order", 
+    name: "cancel_order",
     description: "Cancel an order",
     action: ( orderNum ) => processCancellation( orderNum )
 ).describeOrderNum( "Order number to cancel" )
@@ -196,7 +199,7 @@ cancelOrder = aiTool(
 supportAgent = aiAgent(
     name: "SupportBot",
     instructions: "
-        You are a customer support agent. 
+        You are a customer support agent.
         Help customers with orders politely and efficiently.
         Always confirm before canceling orders.
     ",
@@ -231,8 +234,8 @@ reviewer = aiAgent(
 )
 
 // Request review
-review = reviewer.run( 
-    "Please review the authentication logic in /src/security/Auth.cfc" 
+review = reviewer.run(
+    "Please review the authentication logic in /src/security/Auth.cfc"
 )
 ```
 
@@ -256,7 +259,7 @@ readArticle = aiTool(
 researcher = aiAgent(
     name: "Researcher",
     instructions: "
-        You are a research assistant. 
+        You are a research assistant.
         Search for information, read articles, and provide well-sourced answers.
         Remember previous research to build comprehensive responses.
     ",
@@ -285,7 +288,7 @@ response = agent.run( "Hello" )
 
 ### All - Complete Conversation
 ```java
-agent = aiAgent( 
+agent = aiAgent(
     name: "Detailed",
     returnFormat: "all"
 )
@@ -299,7 +302,7 @@ messages = agent.run( "Hello" )
 
 ### Raw - Full API Response
 ```java
-agent = aiAgent( 
+agent = aiAgent(
     name: "Debug",
     returnFormat: "raw"
 )
@@ -417,7 +420,7 @@ try {
         text: "Agent error: #e.message#",
         type: "error"
     )
-    
+
     // Provide fallback
     response = "I'm having trouble right now. Please try again."
 }
@@ -473,8 +476,8 @@ agent = aiAgent(
     tools: [ fetchData, analyzeData, visualizeData ]
 )
 
-result = agent.run( 
-    "Analyze sales data for Q4 and create a visualization" 
+result = agent.run(
+    "Analyze sales data for Q4 and create a visualization"
 )
 // Agent will:
 // 1. Use fetchData to get sales data
@@ -524,19 +527,24 @@ writeDump( exported )
 Ready to dive deeper?
 
 ### Learn More About Agents
+
 - **[Full Agent Documentation](../pipelines/agents.md)** - Complete guide to agent features
-- **[Agent Examples](/examples/agents/)** - Working code examples
+- **[Agent Examples](../../examples/agents/)** - Working code examples
 
 ### Related Topics
+
 - **[Working with Tools](../simple-interactions/advanced-chatting.md#function-calling-tools)** - Deep dive into AI tools
 - **[Memory Systems](../pipelines/agents.md#memory-management)** - Understanding memory types
 - **[Pipeline Integration](../pipelines/overview.md)** - Using agents in pipelines
 
-### Example Projects
-- Customer support chatbot with order management
-- Code review agent with GitHub integration
-- Research assistant with web search
-- Personal assistant with calendar and email tools
+### Example Code
+
+Check the [examples directory](../../examples/) for complete, runnable examples:
+
+- **[basic-agent.bxs](../../examples/agents/basic-agent.bxs)** - Simple agent with memory
+- **[agent-with-tools.bxs](../../examples/agents/agent-with-tools.bxs)** - Agent using tools
+- **[customer-support-agent.bxs](../../examples/agents/customer-support-agent.bxs)** - Production-ready support bot
+- **[research-agent.bxs](../../examples/agents/research-agent.bxs)** - Web research assistant
 
 ## Common Issues
 

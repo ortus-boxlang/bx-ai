@@ -543,6 +543,9 @@ Learn more about pipelines in the [Pipeline Overview](../pipelines/overview.md) 
 
 Now that you're comfortable with the basics, explore:
 
+### Quick Starts
+- **[AI Agents Quick Start](agent-quickstart.md)** - Build autonomous agents with memory and tools
+
 ### Simple Interactions
 - **[Basic Chatting](../simple-interactions/basic-chatting.md)** - Master the fundamentals
 - **[Advanced Chatting](../simple-interactions/advanced-chatting.md)** - Tools, async, streaming

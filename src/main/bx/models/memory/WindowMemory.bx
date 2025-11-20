@@ -33,7 +33,7 @@ class extends="SimpleMemory" {
 	 * @key The unique key for this memory instance
 	 * @maxMessages Maximum number of messages to keep (default: 20)
 	 */
-	function init( required string key, numeric maxMessages = static.DEFAULT_MAX_MESSAGES ) {
+	function init( string key = createUUID(), numeric maxMessages = static.DEFAULT_MAX_MESSAGES ) {
 		super.init( arguments.key );
 		variables.maxMessages = arguments.maxMessages;
 		return this;

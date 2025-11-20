@@ -25,22 +25,11 @@ class extends="WindowMemory" {
 	 * @key The unique key for this memory instance, defaults to the current session ID
 	 * @maxMessages Maximum number of messages to keep (default: 20)
 	 */
-	function init( string key = session.jsessionId, numeric maxMessages ) {
+	function init( string key = "bxai", numeric maxMessages ) {
 		super.init( argumentCollection: arguments );
 
-		// Initialize session.bxai container if not exists
-		if ( !structKeyExists( session, "bxai" ) ) {
-			session.bxai = {};
-		}
-
-		// Initialize this memory's storage in session
-		if ( !structKeyExists( session.bxai, variables.key ) ) {
-			session.bxai[ variables.key ] = {
-				messages: [],
-				metadata: {},
-				config: {}
-			};
-		}
+		// Initialize session memory storage if not exists
+		ensureSessionStorage();
 
 		return this;
 	}
@@ -51,8 +40,8 @@ class extends="WindowMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getAll() {
-		this.ensureSessionStorage();
-		return session.bxai[ variables.key ].messages;
+		ensureSessionStorage();
+		return session[ variables.key ].messages;
 	}
 
 	/**
@@ -61,8 +50,7 @@ class extends="WindowMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function clear() {
-		this.ensureSessionStorage();
-		session.bxai[ variables.key ].messages = [];
+		ensureSessionStorage( true );
 		return this;
 	}
 
@@ -75,16 +63,16 @@ class extends="WindowMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function add( required any message ) {
-		this.ensureSessionStorage();
+		ensureSessionStorage();
 
 		// Temporarily sync messages to variables for parent logic
-		variables.messages = session.bxai[ variables.key ].messages;
+		variables.messages = session[ variables.key ].messages;
 
 		// Use parent's add logic (handles string, struct, array, AiMessage)
 		super.add( arguments.message );
 
 		// Sync back to session
-		session.bxai[ variables.key ].messages = variables.messages;
+		session[ variables.key ].messages = variables.messages;
 
 		return this;
 	}
@@ -97,14 +85,14 @@ class extends="WindowMemory" {
 	 * @return Struct (getter) or IAiMemory (setter)
 	 */
 	public any function metadata( struct metadata ) {
-		this.ensureSessionStorage();
+		ensureSessionStorage();
 
 		if ( !isNull( arguments.metadata ) ) {
-			session.bxai[ variables.key ].metadata.append( arguments.metadata, true );
+			session[ variables.key ].metadata.append( arguments.metadata, true );
 			return this;
 		}
 
-		return session.bxai[ variables.key ].metadata;
+		return session[ variables.key ].metadata;
 	}
 
 	/**
@@ -113,15 +101,15 @@ class extends="WindowMemory" {
 	 * @return Struct containing all memory data
 	 */
 	public struct function export() {
-		this.ensureSessionStorage();
+		ensureSessionStorage();
 
 		return {
 			key: variables.key,
 			name: variables.name,
 			maxMessages: variables.maxMessages,
-			messages: session.bxai[ variables.key ].messages,
-			metadata: session.bxai[ variables.key ].metadata,
-			config: session.bxai[ variables.key ].config
+			messages: session[ variables.key ].messages,
+			metadata: session[ variables.key ].metadata,
+			config: session[ variables.key ].config
 		};
 	}
 
@@ -133,7 +121,7 @@ class extends="WindowMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function import( required struct data ) {
-		this.ensureSessionStorage();
+		ensureSessionStorage();
 
 		// Import key and maxMessages
 		if ( arguments.data.keyExists( "key" ) ) {
@@ -145,19 +133,19 @@ class extends="WindowMemory" {
 
 		// Import into session storage
 		if ( arguments.data.keyExists( "messages" ) ) {
-			session.bxai[ variables.key ].messages = arguments.data.messages;
+			session[ variables.key ].messages = arguments.data.messages;
 		}
 		if ( arguments.data.keyExists( "metadata" ) ) {
-			session.bxai[ variables.key ].metadata = arguments.data.metadata;
+			session[ variables.key ].metadata = arguments.data.metadata;
 		}
 		if ( arguments.data.keyExists( "config" ) ) {
-			session.bxai[ variables.key ].config = arguments.data.config;
+			session[ variables.key ].config = arguments.data.config;
 		}
 
 		// Sync to variables for parent trim logic
-		variables.messages = session.bxai[ variables.key ].messages;
+		variables.messages = session[ variables.key ].messages;
 		this.trim();
-		session.bxai[ variables.key ].messages = variables.messages;
+		session[ variables.key ].messages = variables.messages;
 
 		return this;
 	}
@@ -168,8 +156,8 @@ class extends="WindowMemory" {
 	 * @return Numeric count
 	 */
 	public numeric function count() {
-		this.ensureSessionStorage();
-		return session.bxai[ variables.key ].messages.len();
+		ensureSessionStorage();
+		return session[ variables.key ].messages.len();
 	}
 
 	/**
@@ -178,22 +166,19 @@ class extends="WindowMemory" {
 	 * @return True if empty, false otherwise
 	 */
 	public boolean function isEmpty() {
-		this.ensureSessionStorage();
-		return session.bxai[ variables.key ].messages.isEmpty();
+		ensureSessionStorage();
+		return session[ variables.key ].messages.isEmpty();
 	}
 
 	/**
 	 * Ensure session storage exists for this memory instance
-	 * Creates the bxai container and memory key if needed
+	 * Creates the memory key storage if needed
 	 *
 	 * @return void
 	 */
-	private void function ensureSessionStorage() {
-		if ( !structKeyExists( session, "bxai" ) ) {
-			session.bxai = {};
-		}
-		if ( !structKeyExists( session.bxai, variables.key ) ) {
-			session.bxai[ variables.key ] = {
+	private void function ensureSessionStorage( boolean force = false ) {
+		if ( !structKeyExists( session, variables.key ) || arguments.force ) {
+			session[ variables.key ] = {
 				messages: [],
 				metadata: {},
 				config: {}

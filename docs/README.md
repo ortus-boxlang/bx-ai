@@ -51,6 +51,9 @@ Learn how to install the module, configure providers, and set up your first AI i
 📚 **[Quick Start Guide](getting-started/quickstart.md)**
 Get up and running in minutes with simple examples and your first AI chat.
 
+🤖 **[AI Agents Quick Start](getting-started/agent-quickstart.md)**
+Build autonomous AI agents with memory, tools, and reasoning capabilities.
+
 ---
 
 ### Simple AI Interactions
