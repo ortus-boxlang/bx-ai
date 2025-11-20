@@ -79,6 +79,7 @@ interface IAiRunnable {
 
 - `AiMessage` - Message templates
 - `AiModel` - AI providers wrapped for pipelines
+- `AiAgent` - Autonomous agents with memory and tools
 - `AiTransformRunnable` - Data transformers
 - `AiRunnableSequence` - Pipeline chains
 
@@ -857,6 +858,7 @@ try {
 
 ## Next Steps
 
+- **[AI Agents](agents.md)** - Autonomous agents with memory and tools
 - **[Working with Models](models.md)** - AI models in pipelines
 - **[Message Templates](messages.md)** - Advanced templating
 - **[Transformers](transformers.md)** - Data transformation

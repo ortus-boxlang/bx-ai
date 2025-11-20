@@ -177,11 +177,13 @@ The AI module supports different return formats for the responses. You can speci
 
 | Function | Purpose | Parameters | Return Type | Async Support |
 |----------|---------|------------|-------------|---------------|
+| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `params`, `options` | AiAgent Object | ❌ |
 | `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
 | `aiChatStream()` | Stream chat responses from AI provider | `messages`, `callback`, `params={}`, `options={}` | void | N/A |
 | `aiAiRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | AiRequestObject | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
+| `aiModel()` | Create AI model wrapper | `provider`, `apiKey` | AiModel Object | N/A |
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
 
@@ -192,6 +194,14 @@ The AI module supports different return formats for the responses. You can speci
 ```java
 // Simple chat
 result = aiChat( "Hello, world!" )
+
+// Create an autonomous AI agent
+agent = aiAgent(
+    name: "MyAgent",
+    description: "A helpful assistant",
+    instructions: "Be concise and friendly"
+)
+response = agent.run( "What is BoxLang?" )
 
 // Async chat with callback
 future = aiChatAsync( "Hello!" ).then( r -> println(r) )
@@ -207,6 +217,9 @@ request = aiChatRequest( messages, { model: "gpt-4" }, { provider: "openai" } )
 // Fluent message building
 msg = aiMessage().system( "Be helpful" ).user( "Hello" )
 
+// AI Model wrapper
+model = aiModel( "openai" ).bindTools( [tool1, tool2] )
+
 // Service with custom settings
 service = aiService( "openai", "my-key" ).defaults( { temperature: 0.7 } )
 
@@ -217,6 +230,7 @@ tool = aiTool( "weather", "Get weather data", location => getWeather(location) )
 This module exposes the following BoxLang global functions (BIFs) for you to interact with the AI providers:
 
 ### Chat Functions
+
 - `aiChat( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get responses back.  This is the easiest way to interact with the AI providers.
 - `aiChatAsync( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get a BoxLang future back so you can build fluent asynchronous code pipelines.
 - `aiChatStream( messages, callback, struct params={}, struct options={} )` : This function will allow you to stream responses from the AI provider in real-time. A callback function is invoked for each chunk of data received.
@@ -231,8 +245,15 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 - `aiChunk( text, struct options={} )` : Split text into chunks for processing within AI token limits. Supports multiple chunking strategies (recursive, characters, words, sentences, paragraphs) with configurable chunk size and overlap.
 - `aiTokens( text, struct options={} )` : Estimate token count for text using character-based or word-based methods. Useful for planning API usage and managing token budgets.
 
+### Agent Functions
+
+- `aiAgent( name, description, instructions, model, memory, tools, params, options )` - Creates an autonomous AI agent that can maintain conversation memory, use tools, and execute tasks. Agents simplify complex AI workflows by managing state and context automatically.
+- `aiMemory( type )` - Creates a memory instance for agents. Types include "simple" (default) for basic conversation history.
+
 ### Helper Functions
+
 - `aiMessage( message )` - Allows you to build a message object that you can then use to send to the `aiChat()` or `aiAiRequest()` functions.  It allows you to fluently build up messages as well.
+- `aiModel( provider, apiKey )` - Creates an AI model wrapper that can be configured with tools and used in agents or pipelines. Provides a fluent API for model configuration.
 - `aiService( provider, apiKey )` - Creates a reference to an AI Service provider that you can then use to interact with the AI service.  This is useful if you want to create a service object and then use it multiple times.  You can pass in optional `provider` and `apiKey` to override the global settings.
 - `aiTool( name, description, callable)` - Creates a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiAiRequest()` functions.
 
@@ -848,6 +869,178 @@ result = aiChat( "Hello" )  // "Hello! How can I help?"
 
 See the [Pipeline Documentation](docs/pipelines/overview.md#options-and-return-formats) for more details.
 
+## aiModel() - Create an AI Model Wrapper
+
+The `aiModel()` function creates an AI model wrapper that can be used in pipelines and agents. It provides a fluent API for configuring the model, binding tools, and managing runtime parameters.
+
+### Function Signature
+
+```java
+aiModel( string provider = "", string apiKey = "" )
+```
+
+### Parameters
+
+- `provider` : The AI provider to use (e.g., "openai", "claude", "gemini"). If empty, uses global default.
+- `apiKey` : The API key for the provider. If empty, uses global default or environment variable.
+
+### Return Value
+
+Returns an `AiModel` object that implements `IAiRunnable` with the following methods:
+
+**Configuration Methods:**
+- `configure( provider, apiKey )` : Configure the provider and API key
+- `bindTools( tools )` : Bind tools to the model (replaces existing)
+- `addTools( tools )` : Add tools to the model (appends)
+- `getName()` : Get the model's display name
+
+**Execution Methods (IAiRunnable):**
+- `run( input, params, options )` : Execute with messages
+- `stream( onChunk, input, params, options )` : Stream responses
+- `to( next )` : Chain to another runnable
+
+### Examples
+
+**Basic Model Creation:**
+
+```java
+// Use default provider
+model = aiModel()
+
+// Specific provider
+model = aiModel( "claude" )
+
+// With API key
+model = aiModel( "openai", "sk-..." )
+
+// Fluent configuration
+model = aiModel()
+    .configure( provider: "openai", apiKey: "sk-..." )
+```
+
+**Binding Tools:**
+
+```java
+// Create tools
+weatherTool = aiTool(
+    "get_weather",
+    "Get weather for a location",
+    location => getWeatherData( location )
+).describeLocation( "City name" )
+
+searchTool = aiTool(
+    "search",
+    "Search for information",
+    query => performSearch( query )
+).describeQuery( "Search query" )
+
+// Bind tools to model (replaces any existing tools)
+model = aiModel( "openai" ).bindTools( [ weatherTool, searchTool ] )
+
+// Add tools to existing model (appends)
+model = aiModel( "openai" )
+    .bindTools( [ weatherTool ] )
+    .addTools( [ searchTool ] )  // Now has both tools
+```
+
+**Using in Pipelines:**
+
+```java
+// Model in a pipeline
+pipeline = aiMessage()
+    .user( "What's the weather in ${city}?" )
+    .to( aiModel( "openai" ).bindTools( [ weatherTool ] ) )
+
+result = pipeline.run( { city: "Boston" } )
+```
+
+**Using in Agents:**
+
+```java
+// Model with tools for agent
+model = aiModel( "claude" )
+    .bindTools( [ tool1, tool2, tool3 ] )
+
+agent = aiAgent(
+    name: "Assistant",
+    model: model
+)
+```
+
+**Passing Tools via run() Parameters:**
+
+```java
+// Tools can also be passed at runtime
+model = aiModel( "openai" )
+
+// Tools in params override/merge with bound tools
+result = model.run(
+    messages: [ { role: "user", content: "What's the weather?" } ],
+    params: { tools: [ weatherTool ] }
+)
+```
+
+**Combining Bound and Runtime Tools:**
+
+```java
+// Bind default tools
+model = aiModel( "openai" ).bindTools( [ commonTool1, commonTool2 ] )
+
+// Add context-specific tools at runtime
+result = model.run(
+    messages: messages,
+    params: {
+        tools: [ contextSpecificTool ],  // Merged with bound tools
+        temperature: 0.7
+    }
+)
+```
+
+### Tool Binding vs Runtime Tools
+
+**Bound Tools (via bindTools/addTools):**
+- Attached to the model permanently
+- Useful for tools that are always needed
+- Used in agents automatically
+- Efficient for reusable models
+
+**Runtime Tools (via params.tools):**
+- Passed per execution
+- Useful for context-specific tools
+- Merged with bound tools
+- Flexible for dynamic tool selection
+
+**Example - Both Approaches:**
+
+```java
+// Create model with common tools
+helpdesk = aiModel( "openai" )
+    .bindTools( [
+        lookupUserTool,      // Always available
+        checkStatusTool      // Always available
+    ] )
+
+// Add admin tools only for admin users
+if ( isAdmin( user ) ) {
+    result = helpdesk.run(
+        messages: messages,
+        params: {
+            tools: [ resetPasswordTool, deleteUserTool ]  // Admin-only tools
+        }
+    )
+} else {
+    result = helpdesk.run( messages: messages )  // Only common tools
+}
+```
+
+### Best Practices
+
+1. **Bind common tools to models** - Tools used frequently should be bound
+2. **Pass contextual tools at runtime** - Use params.tools for dynamic scenarios
+3. **Reuse configured models** - Create once, use many times
+4. **Use descriptive names** - Model names help with debugging and logging
+5. **Combine with agents** - Models with tools work great in agents
+
 ## aiTool() - Create a Tool Object
 
 This function allows you to create a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiAiRequest()` functions.
@@ -940,6 +1133,210 @@ result = aiChat( "How hot is it in Kansas City? What about San Salvador? Answer 
 
 println( result )
 ```
+
+## aiAgent() - Create Autonomous AI Agents
+
+The `aiAgent()` function creates autonomous AI agents that can maintain conversation memory, use tools, and execute tasks. Agents simplify complex AI workflows by managing state and context automatically, inspired by LangChain agents but "Boxified" for simplicity and productivity.
+
+### Function Signature
+
+```java
+aiAgent(
+    string name = "BxAi",
+    string description = "",
+    string instructions = "",
+    AiModel model = aiModel(),
+    any memory = aiMemory(),
+    array tools = [],
+    struct params = {},
+    struct options = {}
+)
+```
+
+### Parameters
+
+- `name` : The agent's name (default: "BxAi")
+- `description` : The agent's role/description (used in system message)
+- `instructions` : System instructions for the agent's behavior
+- `model` : An `AiModel` instance (default: uses global settings)
+- `memory` : Memory instance(s) for conversation history. Can be:
+  - A single `IAiMemory` instance
+  - An array of memory instances for multiple memory systems
+  - Default: Simple memory (conversation history)
+- `tools` : Array of `Tool` objects for function calling
+- `params` : Default model parameters (temperature, max_tokens, etc.)
+- `options` : Runtime options including:
+  - `returnFormat` : "single" (default), "all", or "raw"
+
+### Return Value
+
+Returns an `AiAgent` object with the following methods:
+
+**Execution Methods:**
+- `run( input, params={}, options={} )` : Execute the agent with a task/prompt
+- `stream( onChunk, input, params={}, options={} )` : Stream agent responses
+
+**Configuration Methods (Fluent API):**
+- `setName( name )` : Set the agent's name
+- `setDescription( description )` : Set the agent's description
+- `setInstructions( instructions )` : Set the agent's instructions
+- `setModel( model )` : Set the AI model
+- `setTools( tools )` : Replace all tools
+- `addTool( tool )` : Add a single tool
+- `setMemory( memory )` : Set a single memory (replaces existing)
+- `setMemories( memories )` : Set multiple memories (replaces existing)
+- `addMemory( memory )` : Add a memory instance
+- `clearMemory()` : Clear all conversation history
+- `setParam( key, value )` : Set a model parameter
+
+**Query Methods:**
+- `getConfig()` : Get agent configuration
+- `getMemoryMessages()` : Get all messages from memory
+
+### Examples
+
+**Basic Agent:**
+
+```java
+// Create a simple agent
+agent = aiAgent(
+    name: "Assistant",
+    description: "A helpful AI assistant",
+    instructions: "Be concise and friendly"
+)
+
+// Use the agent
+response = agent.run( "What is BoxLang?" )
+println( response )
+```
+
+**Agent with Tools:**
+
+```java
+// Create tools
+weatherTool = aiTool(
+    "get_weather",
+    "Get current weather for a location",
+    location => {
+        // Tool implementation
+        return "Temperature: 72°F"
+    }
+).describeLocation( "City name" )
+
+searchTool = aiTool(
+    "search",
+    "Search for information",
+    query => performSearch( query )
+).describeQuery( "Search query" )
+
+// Create agent with tools
+agent = aiAgent(
+    name: "ResearchAgent",
+    description: "An agent that can search and check weather",
+    instructions: "Use tools when needed to provide accurate information",
+    tools: [ weatherTool, searchTool ]
+)
+
+response = agent.run( "What's the weather in New York?" )
+```
+
+**Agent with Memory:**
+
+```java
+// Create agent with conversation memory
+agent = aiAgent(
+    name: "ChatBot",
+    description: "A conversational assistant",
+    memory: aiMemory( "simple" )  // Maintains conversation history
+)
+
+// First interaction
+agent.run( "My name is Luis" )  // "Nice to meet you, Luis!"
+
+// Memory is preserved across calls
+agent.run( "What's my name?" )  // "Your name is Luis"
+
+// Clear memory when needed
+agent.clearMemory()
+```
+
+**Fluent API Configuration:**
+
+```java
+// Build agent with fluent API
+agent = aiAgent()
+    .setName( "CodeReviewer" )
+    .setDescription( "A code review specialist" )
+    .setInstructions( "Review code for best practices and security" )
+    .setModel( aiModel( "claude" ) )
+    .addTool( codeTool )
+    .addMemory( aiMemory( "simple" ) )
+    .setParam( "temperature", 0.3 )
+
+response = agent.run( "Review this function: function test() { return true; }" )
+```
+
+**Agent in Pipelines:**
+
+```java
+// Agents implement IAiRunnable, so they work in pipelines
+pipeline = aiMessage()
+    .user( "Task: ${task}" )
+    .to( agent )
+    .transform( r => r.toUpper() )
+
+result = pipeline.run( { task: "Summarize AI trends" } )
+```
+
+**Return Formats:**
+
+```java
+// Get content string (default)
+content = agent.run( "Hello", {}, { returnFormat: "single" } )
+println( content )  // "Hello! How can I help you?"
+
+// Get all messages including memory
+allMessages = agent.run( "Hello", {}, { returnFormat: "all" } )
+// Returns: [{ role: "system", content: "..." }, { role: "user", content: "Hello" }, { role: "assistant", content: "..." }]
+
+// Get raw provider response
+rawResponse = agent.run( "Hello", {}, { returnFormat: "raw" } )
+// Returns full OpenAI/Claude/etc response structure
+```
+
+**Custom Model Configuration:**
+
+```java
+// Agent with specific model and parameters
+customModel = aiModel( "openai" )
+    .configure( apiKey: "sk-..." )
+    .bindTools( [ tool1, tool2 ] )
+
+agent = aiAgent(
+    name: "CustomAgent",
+    model: customModel,
+    params: { temperature: 0.7, max_tokens: 500 }
+)
+```
+
+### Agent Architecture
+
+Agents automatically handle:
+
+- **Memory Management**: Stores user and assistant messages across interactions
+- **Tool Execution**: Delegates to the AI model/service for tool calling loops
+- **System Messages**: Combines description and instructions into system message
+- **Parameter Merging**: Combines default params with runtime params
+- **Event Interception**: Fires `beforeAIAgentRun` and `afterAIAgentRun` events
+
+### Best Practices
+
+1. **Use descriptive names and descriptions** - Helps the AI understand its role
+2. **Provide clear instructions** - Guide the agent's behavior
+3. **Choose appropriate memory** - Simple memory for conversations, custom for complex state
+4. **Bind tools to agents** - Tools are bound to the model for efficiency
+5. **Clear memory when needed** - Reset conversation context for new topics
+6. **Use returnFormat wisely** - "single" for content, "all" for full context, "raw" for debugging
 
 ## aiEmbed() - Generate Text Embeddings
 

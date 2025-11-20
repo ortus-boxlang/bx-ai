@@ -71,7 +71,10 @@ Direct service control, custom requests, headers, and managing multiple provider
 🔗 **[Understanding Pipelines](pipelines/overview.md)**
 Core concepts of AI pipelines, composability, and building workflows.
 
-🤖 **[Working with Models](pipelines/models.md)**
+🤖 **[AI Agents](pipelines/agents.md)**
+Create autonomous agents with memory, tools, and reasoning capabilities. Simplify complex AI workflows.
+
+🧠 **[Working with Models](pipelines/models.md)**
 Creating model runnables, configuration, and integrating AI providers into pipelines.
 
 ✉️ **[Message Templates](pipelines/messages.md)**

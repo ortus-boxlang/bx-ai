@@ -448,6 +448,153 @@ steps.each( (s, i) => {
 })
 ```
 
+## Binding Tools to Models
+
+Models can have tools bound to them for function calling capabilities. Tools bound to a model are automatically available when the model is used.
+
+### Basic Tool Binding
+
+```java
+// Create tools
+weatherTool = aiTool(
+    "get_weather",
+    "Get current weather for a location",
+    location => getWeatherData( location )
+).describeLocation( "City name" )
+
+// Bind tools to model
+model = aiModel( "openai" )
+    .bindTools( [ weatherTool ] )
+
+// Tools are automatically used when needed
+pipeline = aiMessage()
+    .user( "What's the weather in ${city}?" )
+    .to( model )
+
+result = pipeline.run( { city: "Boston" } )
+```
+
+### Multiple Tools
+
+```java
+// Create multiple tools
+searchTool = aiTool(
+    "search",
+    "Search for information",
+    query => performSearch( query )
+).describeQuery( "Search query" )
+
+calculatorTool = aiTool(
+    "calculate",
+    "Perform calculations",
+    expression => evaluate( expression )
+).describeExpression( "Math expression" )
+
+// Bind all tools at once
+model = aiModel( "openai" )
+    .bindTools( [ searchTool, calculatorTool, weatherTool ] )
+```
+
+### Adding Tools Incrementally
+
+```java
+// Start with base tools
+model = aiModel( "openai" )
+    .bindTools( [ commonTool1, commonTool2 ] )
+
+// Add more tools (appends, doesn't replace)
+model = model.addTools( [ specialTool ] )
+
+// Now has all three tools
+```
+
+### Tools in Agents
+
+Models with bound tools work seamlessly in agents:
+
+```java
+// Create model with tools
+tooledModel = aiModel( "claude" )
+    .bindTools( [ weatherTool, searchTool ] )
+
+// Agent automatically uses the model's tools
+agent = aiAgent(
+    name: "Assistant",
+    model: tooledModel
+)
+
+response = agent.run( "What's the weather in Paris?" )
+// Agent uses weatherTool automatically
+```
+
+### Runtime Tools vs Bound Tools
+
+**Bound Tools (via bindTools/addTools):**
+
+- Permanently attached to the model
+- Available in all executions
+- Ideal for reusable models
+- Used automatically in agents
+
+**Runtime Tools (via params.tools):**
+
+- Passed per execution
+- Merged with bound tools
+- Useful for context-specific needs
+
+```java
+// Model with common tools
+model = aiModel( "openai" )
+    .bindTools( [ lookupTool, validateTool ] )
+
+// Add admin tools at runtime
+if ( isAdmin( user ) ) {
+    result = model.run(
+        messages: messages,
+        params: {
+            tools: [ adminTool, deleteTool ]  // Merged with bound tools
+        }
+    )
+} else {
+    result = model.run( messages: messages )  // Only bound tools
+}
+```
+
+### Tool Execution Flow
+
+When a model has tools:
+
+1. **Request Sent**: Model receives message with available tools
+2. **AI Decides**: Model determines if tool call is needed
+3. **Tool Invoked**: Service executes the tool function
+4. **Result Returned**: Tool result sent back to model
+5. **Final Response**: Model generates answer using tool result
+
+All tool execution is handled automatically by the service layer.
+
+```java
+weatherTool = aiTool(
+    "get_weather",
+    "Get weather data",
+    location => {
+        // This code executes automatically when AI calls the tool
+        return getWeatherAPI( location )
+    }
+).describeLocation( "City and country" )
+
+model = aiModel( "openai" ).bindTools( [ weatherTool ] )
+
+// User asks question
+result = model.run(
+    { role: "user", content: "What's the weather in London?" }
+)
+// 1. Model receives question and tool definition
+// 2. Model calls get_weather tool with "London"
+// 3. Tool function executes getWeatherAPI("London")
+// 4. Result sent back to model
+// 5. Model responds: "It's 15°C and cloudy in London"
+```
+
 ## Best Practices
 
 1. **Name Your Models**: Use `.withName()` for debugging

@@ -1,0 +1,204 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Windowed AI conversation storage leveraging the BoxLang session scope
+ * Automatically keeps only the last N messages (sliding window buffer)
+ * Perfect for managing conversation context window limits with session persistence
+ */
+class extends="WindowMemory" {
+
+	/**
+	 * Constructor
+	 * Initializes the session storage structure
+	 *
+	 * @key The unique key for this memory instance, defaults to the current session ID
+	 * @maxMessages Maximum number of messages to keep (default: 20)
+	 */
+	function init( string key = session.jsessionId, numeric maxMessages ) {
+		super.init( argumentCollection: arguments );
+
+		// Initialize session.bxai container if not exists
+		if ( !structKeyExists( session, "bxai" ) ) {
+			session.bxai = {};
+		}
+
+		// Initialize this memory's storage in session
+		if ( !structKeyExists( session.bxai, variables.key ) ) {
+			session.bxai[ variables.key ] = {
+				messages: [],
+				metadata: {},
+				config: {}
+			};
+		}
+
+		return this;
+	}
+
+	/**
+	 * Override getAll to read from session storage
+	 *
+	 * @return Array of message structs
+	 */
+	public array function getAll() {
+		this.ensureSessionStorage();
+		return session.bxai[ variables.key ].messages;
+	}
+
+	/**
+	 * Override clear to clear session storage
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function clear() {
+		this.ensureSessionStorage();
+		session.bxai[ variables.key ].messages = [];
+		return this;
+	}
+
+	/**
+	 * Override add to store in session
+	 * Uses parent's logic but stores in session instead of variables
+	 *
+	 * @message The message to add
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function add( required any message ) {
+		this.ensureSessionStorage();
+
+		// Temporarily sync messages to variables for parent logic
+		variables.messages = session.bxai[ variables.key ].messages;
+
+		// Use parent's add logic (handles string, struct, array, AiMessage)
+		super.add( arguments.message );
+
+		// Sync back to session
+		session.bxai[ variables.key ].messages = variables.messages;
+
+		return this;
+	}
+
+	/**
+	 * Override metadata getter/setter to use session storage
+	 *
+	 * @metadata Optional struct to merge with existing metadata
+	 *
+	 * @return Struct (getter) or IAiMemory (setter)
+	 */
+	public any function metadata( struct metadata ) {
+		this.ensureSessionStorage();
+
+		if ( !isNull( arguments.metadata ) ) {
+			session.bxai[ variables.key ].metadata.append( arguments.metadata, true );
+			return this;
+		}
+
+		return session.bxai[ variables.key ].metadata;
+	}
+
+	/**
+	 * Override export to read from session
+	 *
+	 * @return Struct containing all memory data
+	 */
+	public struct function export() {
+		this.ensureSessionStorage();
+
+		return {
+			key: variables.key,
+			name: variables.name,
+			maxMessages: variables.maxMessages,
+			messages: session.bxai[ variables.key ].messages,
+			metadata: session.bxai[ variables.key ].metadata,
+			config: session.bxai[ variables.key ].config
+		};
+	}
+
+	/**
+	 * Override import to write to session
+	 *
+	 * @data The exported memory data
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function import( required struct data ) {
+		this.ensureSessionStorage();
+
+		// Import key and maxMessages
+		if ( arguments.data.keyExists( "key" ) ) {
+			variables.key = arguments.data.key;
+		}
+		if ( arguments.data.keyExists( "maxMessages" ) ) {
+			variables.maxMessages = arguments.data.maxMessages;
+		}
+
+		// Import into session storage
+		if ( arguments.data.keyExists( "messages" ) ) {
+			session.bxai[ variables.key ].messages = arguments.data.messages;
+		}
+		if ( arguments.data.keyExists( "metadata" ) ) {
+			session.bxai[ variables.key ].metadata = arguments.data.metadata;
+		}
+		if ( arguments.data.keyExists( "config" ) ) {
+			session.bxai[ variables.key ].config = arguments.data.config;
+		}
+
+		// Sync to variables for parent trim logic
+		variables.messages = session.bxai[ variables.key ].messages;
+		this.trim();
+		session.bxai[ variables.key ].messages = variables.messages;
+
+		return this;
+	}
+
+	/**
+	 * Override count to read from session
+	 *
+	 * @return Numeric count
+	 */
+	public numeric function count() {
+		this.ensureSessionStorage();
+		return session.bxai[ variables.key ].messages.len();
+	}
+
+	/**
+	 * Override isEmpty to check session storage
+	 *
+	 * @return True if empty, false otherwise
+	 */
+	public boolean function isEmpty() {
+		this.ensureSessionStorage();
+		return session.bxai[ variables.key ].messages.isEmpty();
+	}
+
+	/**
+	 * Ensure session storage exists for this memory instance
+	 * Creates the bxai container and memory key if needed
+	 *
+	 * @return void
+	 */
+	private void function ensureSessionStorage() {
+		if ( !structKeyExists( session, "bxai" ) ) {
+			session.bxai = {};
+		}
+		if ( !structKeyExists( session.bxai, variables.key ) ) {
+			session.bxai[ variables.key ] = {
+				messages: [],
+				metadata: {},
+				config: {}
+			};
+		}
+	}
+
+}
