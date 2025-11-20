@@ -131,21 +131,22 @@ class {
 		 * A list of custom interception points to register into the runtime
 		 */
 		customInterceptionPoints = [
-			"onAIRequest",
-			"onAIResponse",
-			"onAIProviderRequest",
-			"onAIProviderCreate",
-			"onAIRequestCreate",
-			"onAIMessageCreate",
-			"onAITransformCreate",
-			"onAiMemoryCreate",
-			"onAIModelCreate",
-            "beforeAIModelInvoke",
-            "afterAIModelInvoke",
+			"afterAIEmbed",
+			"beforeAIEmbed",
+			"onAIAgentCreate",
 			"onAIEmbedRequest",
 			"onAIEmbedResponse",
-			"beforeAIEmbed",
-			"afterAIEmbed"
+			"onAiMemoryCreate",
+			"onAIMessageCreate",
+			"onAIModelCreate",
+			"onAIProviderCreate",
+			"onAIProviderRequest",
+			"onAIRequest",
+			"onAIRequestCreate",
+			"onAIResponse",
+			"onAITransformCreate",
+            "afterAIModelInvoke",
+            "beforeAIModelInvoke"
 		 ];
 	}
 
