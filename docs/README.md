@@ -90,6 +90,12 @@ Real-time streaming through pipelines for responsive applications.
 🎪 **[Event System](advanced/events.md)**
 Intercept and customize AI operations with comprehensive event hooks for monitoring, security, and extensibility.
 
+🛠️ **[Utility Functions](advanced/utilities.md)**
+Text chunking, token counting, and optimization techniques for AI processing. Learn to manage large documents and estimate costs.
+
+🔢 **[Embeddings](advanced/embeddings.md)**
+Generate vector representations for semantic search, recommendations, clustering, and similarity detection. Complete guide to embeddings.
+
 ---
 
 ## Quick Examples

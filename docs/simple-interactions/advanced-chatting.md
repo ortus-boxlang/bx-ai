@@ -412,6 +412,186 @@ aiChatStream(
 )
 ```
 
+## Structured Data with JSON and XML
+
+### JSON Return Format for Complex Data
+
+Use `returnFormat: "json"` to automatically parse structured responses:
+
+```java
+// Generate complex user profile
+profile = aiChat(
+    "Create a user profile with name, email, age, skills array, and preferences object",
+    {},
+    { returnFormat: "json" }
+)
+
+// Direct access to parsed data
+println( "Name: #profile.name#" )
+println( "Email: #profile.email#" )
+println( "Skills:" )
+profile.skills.each( skill => println( "  - #skill#" ) )
+println( "Theme: #profile.preferences.theme#" )
+```
+
+### Multi-Turn Conversation with JSON
+
+```java
+conversation = [
+    { role: "system", content: "You are a data generator. Always respond with valid JSON." },
+    { role: "user", content: "Create 3 products with id, name, and price" }
+]
+
+products = aiChat(
+    conversation,
+    { temperature: 0.3 },
+    { returnFormat: "json" }
+)
+
+// Use the structured data
+products.each( product => {
+    println( "##product.id#: #product.name# - $#product.price#" )
+} )
+
+// Continue conversation with context
+conversation.append({
+    role: "assistant",
+    content: serializeJSON( products )
+})
+conversation.append({
+    role: "user",
+    content: "Now add a 'category' field to each"
+})
+
+updatedProducts = aiChat(
+    conversation,
+    {},
+    { returnFormat: "json" }
+)
+```
+
+### JSON with Tools
+
+```java
+// Tool returns structured data
+dataTool = aiTool(
+    "get_user_data",
+    "Fetch user data from database",
+    ( args ) => {
+        return {
+            id: args.userId,
+            name: "John Doe",
+            email: "john@example.com",
+            purchases: [ "item1", "item2" ]
+        }
+    }
+).addParameter( "userId", "string", "User ID", true )
+
+// AI response will be JSON formatted
+userData = aiChat(
+    "Get data for user 123 and format as JSON",
+    { tools: [ dataTool ] },
+    { returnFormat: "json" }
+)
+
+println( "User: #userData.name#" )
+println( "Purchases: #userData.purchases.len()#" )
+```
+
+### XML Return Format for Documents
+
+```java
+// Generate configuration XML
+config = aiChat(
+    "Create server config XML with host, port, database settings, and SSL enabled",
+    {},
+    { returnFormat: "xml" }
+)
+
+// Access parsed XML
+println( "Host: #config.xmlRoot.server.host.xmlText#" )
+println( "Port: #config.xmlRoot.server.port.xmlText#" )
+println( "SSL: #config.xmlRoot.server.ssl.xmlText#" )
+```
+
+### XML Report Generation
+
+```java
+// Generate report as XML
+report = aiChat(
+    "Create a monthly sales report XML for January 2025 with 3 regions and their sales figures",
+    { temperature: 0.3 },
+    { returnFormat: "xml" }
+)
+
+// Parse and display
+totalSales = 0
+report.xmlRoot.report.regions.xmlChildren.each( region => {
+    sales = val( region.sales.xmlText )
+    totalSales += sales
+    println( "#region.name.xmlText#: $#numberFormat( sales, '9,999' )#" )
+} )
+println( "Total: $#numberFormat( totalSales, '9,999' )#" )
+```
+
+### Async JSON Requests
+
+```java
+// Multiple async JSON requests
+productsFuture = aiChatAsync(
+    "Generate 3 products as JSON array",
+    {},
+    { returnFormat: "json" }
+)
+
+categoriesFuture = aiChatAsync(
+    "Generate 5 product categories as JSON array",
+    {},
+    { returnFormat: "json" }
+)
+
+// Wait and use
+products = productsFuture.get()
+categories = categoriesFuture.get()
+
+println( "Products: #products.len()#" )
+println( "Categories: #categories.len()#" )
+
+// Combine data
+catalog = {
+    categories: categories,
+    products: products,
+    timestamp: now()
+}
+```
+
+### Streaming with JSON Accumulation
+
+```java
+// Stream response and parse JSON at end
+jsonBuffer = ""
+
+aiChatStream(
+    "Generate a large JSON array of 20 cities with name, country, and population",
+    ( chunk ) => {
+        content = chunk.choices?.first()?.delta?.content ?: ""
+        jsonBuffer &= content
+        print( "." )
+    },
+    { temperature: 0.3 }
+)
+
+println( " Done!" )
+
+// Parse accumulated JSON
+cities = deserializeJSON( jsonBuffer )
+println( "Generated #cities.len()# cities" )
+
+// Process
+cities.sort( (a, b) => b.population - a.population )
+println( "Largest: #cities.first().name# (#numberFormat( cities.first().population )#)" )
+```
+
 ## Practical Examples
 
 ### Interactive Chat Application

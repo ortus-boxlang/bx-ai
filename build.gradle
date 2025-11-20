@@ -192,6 +192,10 @@ task createModuleStructure(type: Copy) {
 			filter{ line -> line.replaceAll( '@build.number@', project.buildID ) }
 		}
     }
+    from( 'docs' ) {
+        include '**/*.md'
+        into 'docs'
+    }
 
     destinationDir = file( 'build/module' )
 }

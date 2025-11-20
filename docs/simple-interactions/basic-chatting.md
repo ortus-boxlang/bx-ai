@@ -266,6 +266,97 @@ println( "Tokens: " & raw.usage.total_tokens )
 println( "Answer: " & raw.choices[1].message.content )
 ```
 
+### JSON Format (Auto-Parse)
+
+Automatically parses JSON responses into BoxLang structs/arrays:
+
+```java
+// Ask for structured data
+person = aiChat(
+    "Create a JSON object for a person named Alice, age 30, with email alice@example.com",
+    {},
+    { returnFormat: "json" }
+)
+
+// Directly access as struct - no manual parsing needed!
+println( "Name: #person.name#" )        // "Alice"
+println( "Age: #person.age#" )          // 30
+println( "Email: #person.email#" )      // "alice@example.com"
+```
+
+**More JSON Examples:**
+
+```java
+// Get array data
+colors = aiChat(
+    "List 5 colors as a JSON array",
+    {},
+    { returnFormat: "json" }
+)
+
+colors.each( color => println( color ) )
+// Outputs: red, blue, green, yellow, purple
+
+// Complex nested structure
+product = aiChat(
+    "Create a JSON product with name, price, and an array of 3 features",
+    {},
+    { returnFormat: "json" }
+)
+
+println( "Product: #product.name#" )
+println( "Price: $#product.price#" )
+println( "Features:" )
+product.features.each( feature => println( "  - #feature#" ) )
+```
+
+### XML Format (Auto-Parse)
+
+Automatically parses XML responses into BoxLang XML objects:
+
+```java
+// Ask for XML document
+book = aiChat(
+    "Create XML for a book: title 'Learning BoxLang', author 'John Doe', year 2025",
+    {},
+    { returnFormat: "xml" }
+)
+
+// Access XML nodes directly
+println( "Title: #book.xmlRoot.book.title.xmlText#" )
+println( "Author: #book.xmlRoot.book.author.xmlText#" )
+println( "Year: #book.xmlRoot.book.year.xmlText#" )
+```
+
+**More XML Examples:**
+
+```java
+// Generate RSS feed
+feed = aiChat(
+    "Create an RSS 2.0 feed XML with 2 news articles",
+    {},
+    { returnFormat: "xml" }
+)
+
+// Iterate through XML items
+feed.xmlRoot.channel.xmlChildren
+    .filter( node => node.xmlName == "item" )
+    .each( item => {
+        println( "Title: #item.title.xmlText#" )
+        println( "Description: #item.description.xmlText#" )
+        println( "---" )
+    } )
+
+// Configuration file
+config = aiChat(
+    "Create an XML config with database settings: host=localhost, port=3306, dbname=mydb",
+    {},
+    { returnFormat: "xml" }
+)
+
+println( "Database: #config.xmlRoot.config.database.host.xmlText#" )
+```
+
 ## Practical Examples
 
 ### FAQ Bot
@@ -345,22 +436,54 @@ println( french )   // "Merci"
 println( german )   // "Bis später"
 ```
 
-### Data Extraction
+### Data Extraction with JSON
 
 ```java
+// Old way - manual parsing
 text = "John Doe, 123 Main St, New York, NY 10001, Phone: 555-1234"
 
 structured = aiChat(
     "Extract contact info as JSON from: " & text,
-    {
-        temperature: 0.2,
-        model: "gpt-4"
-    }
+    { temperature: 0.2 }
+)
+data = deserializeJSON( structured )  // Manual parsing
+
+// New way - automatic parsing with returnFormat: "json"
+text = "Jane Smith, 456 Oak Ave, Boston, MA 02101, Phone: 555-5678"
+
+contact = aiChat(
+    "Extract contact info as JSON from: " & text,
+    { temperature: 0.2 },
+    { returnFormat: "json" }  // Auto-parses!
 )
 
-data = deserializeJSON( structured )
-println( "Name: " & data.name )
-println( "Phone: " & data.phone )
+// Direct access - no manual parsing needed
+println( "Name: #contact.name#" )
+println( "Address: #contact.address#" )
+println( "City: #contact.city#" )
+println( "Phone: #contact.phone#" )
+```
+
+### Form Data Generation
+
+```java
+// Generate structured form data as JSON
+formData = aiChat(
+    "Create a user registration form data with username, email, password, and preferences",
+    {},
+    { returnFormat: "json" }
+)
+
+// Use the structured data directly
+println( "Creating user: #formData.username#" )
+println( "Email: #formData.email#" )
+println( "Preferences: #formData.preferences.newsletter#" )
+
+// Perfect for database inserts
+queryExecute(
+    "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
+    [ formData.username, formData.email, formData.password ]
+)
 ```
 
 ### Code Generator
