@@ -20,6 +20,7 @@ class extends="BaseService"{
 	 */
 	function init(){
 		variables.chatURL = "https://api.deepseek.com/v1/chat/completions"
+		variables.embeddingsURL = "https://api.deepseek.com/v1/embeddings"
 		variables.name = "DeepSeek"
 		defaults( {
 			// according to the docs, this is the default model

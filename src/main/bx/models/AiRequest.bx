@@ -14,7 +14,7 @@
  * ----------------------------------------------------------------------------------
  * This models a chat request that will be sent to a provider
  */
-class{
+class extends="AiBaseRequest"{
 
 	/**
 	 * The chat message holder
@@ -25,70 +25,6 @@ class{
 	 * The original chat message object, in case we need to reference it
 	 */
 	property name="aiMessage" type="AiMessage";
-
-	/**
-	 * The params struct to pass to the provider in the request
-	 */
-	property name="params" type="struct" default={};
-
-	/**
-	 * The provider to use for the chat request
-	 */
-	property name="provider" default="";
-
-	/**
-	 * The API key to use for the provider
-	 */
-	property name="apiKey" default="";
-
-	/**
-	 * Log request
-	 */
-	property name="logRequest" type="boolean" default=false;
-
-	/**
-	 * Log request to console
-	 * This is usually used for debugging purposes
-	 */
-	property name="logRequestToConsole" type="boolean" default=false;
-
-	/**
-	 * Log response
-	 */
-	property name="logResponse" type="boolean" default=false;
-
-	/**
-	 * Log response to console
-	 * This is usually used for debugging purposes
-	 */
-	property name="logResponseToConsole" type="boolean" default=false;
-
-	/**
-	 * The return format of the response
-	 * Valid formats: 'raw' (full response), 'single' (content string), 'all' (array of messages)
-	 */
-	property name="returnFormat" default="raw";
-
-	/**
-	 * The LLM Model to use for the request
-	 */
-	property name="model" default="";
-
-	/**
-	 * The timeout for the request
-	 */
-	property name="timeout" type="numeric" default=30;
-
-	/**
-	 * Send an auth header or not with the API Key
-	 * This is usually determined by the provider
-	 */
-	property name="sendAuthHeader" type="boolean" default=true;
-
-	/**
-	 * A collection of headers to send with the request
-	 */
-	property name="headers" type="struct" default={};
 
 	/**
 	 * Whether to stream the response or not
@@ -120,17 +56,6 @@ class{
 		variables.model = options.params?.model ?: "";
 		variables.timeout = options.timeout ?: 30;
 		variables.stream = options.stream ?: false;
-		return this;
-	}
-
-	/**
-	 * Add a header to the chat request
-	 *
-	 * @name The name of the header
-	 * @value The value of the header
-	 */
-	AiRequest function addHeader( required string name, required string value ){
-		variables.headers[ arguments.name ] = arguments.value;
 		return this;
 	}
 
@@ -169,56 +94,10 @@ class{
 	}
 
 	/**
-	 * Set the model to use for the request if empty
-	 *
-	 * @model The model to use for the request
-	 *
-	 * @return The chat request instance
-	 */
-	AiRequest function setModelIfEmpty( required string model ){
-		if( !hasModel() ){
-			variables.model = arguments.model;
-		}
-		return this;
-	}
-
-	/**
 	 * Verify if you have an incoming API Key
 	 */
 	boolean function hasApiKey(){
 		return !variables.apiKey.isEmpty()
-	}
-
-	/**
-	 * Set the API key to use for the request if empty
-	 *
-	 * @apiKey The API key to use for the request
-	 *
-	 * @return The chat request instance
-	 */
-	AiRequest function setApiKeyIfEmpty( required string apiKey ){
-		if( !hasApiKey() ){
-			variables.apiKey = arguments.apiKey;
-		}
-		return this;
-	}
-
-	/**
-	 * Update the chat request params from the service defaults
-	 * but only if the params are not already set
-	 */
-	AiRequest function mergeServiceParams( required struct params ){
-		variables.params.append( arguments.params, false );
-		return this;
-	}
-
-	/**
-	 * Update the chat request headers from the service defaults
-	 * but only if the headers are not already set
-	 */
-	AiRequest function mergeServiceHeaders( required struct headers ){
-		variables.headers.append( arguments.headers, false );
-		return this;
 	}
 
 }

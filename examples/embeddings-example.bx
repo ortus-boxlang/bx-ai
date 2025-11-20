@@ -1,0 +1,189 @@
+/**
+ * BoxLang AI - Embeddings Example
+ *
+ * This example demonstrates how to generate embeddings for text using various AI providers.
+ * Embeddings are numerical representations of text that capture semantic meaning,
+ * useful for semantic search, clustering, recommendations, and more.
+ *
+ * Prerequisites:
+ * - Set OPENAI_API_KEY environment variable for OpenAI examples
+ * - Or install Ollama locally for free embeddings
+ *
+ * Use Cases:
+ * - 🔍 Semantic Search: Find similar documents
+ * - 📊 Text Clustering: Group related content
+ * - 🎯 Recommendations: Find similar items
+ * - 📈 Text Classification: Categorize content
+ */
+
+// ============================================================================
+// Basic Single Text Embedding
+// ============================================================================
+println( "=== Single Text Embedding ===" )
+
+embedding = aiEmbedding( "BoxLang is a dynamic JVM language" )
+println( "Full Response Keys: " & embedding.keyList() )
+println( "Embedding Dimensions: " & embedding.data.first().embedding.len() )
+println( "Model Used: " & embedding.model )
+
+// ============================================================================
+// Get Just the Embedding Vector
+// ============================================================================
+println( "\n=== Embedding Vector Only ===" )
+
+vector = aiEmbedding(
+    input: "Hello World",
+    options: { returnFormat: "first" }
+)
+println( "Vector Length: " & vector.len() )
+println( "First 5 values: " & vector.slice( 1, 5 ) )
+
+// ============================================================================
+// Batch Embeddings (Multiple Texts at Once)
+// ============================================================================
+println( "\n=== Batch Embeddings ===" )
+
+texts = [
+    "BoxLang is amazing",
+    "Java is a programming language",
+    "Python is easy to learn"
+]
+
+batchResult = aiEmbedding(
+    input: texts,
+    options: { returnFormat: "embeddings" }
+)
+println( "Generated " & batchResult.len() & " embeddings" )
+println( "Each embedding has " & batchResult.first().len() & " dimensions" )
+
+// ============================================================================
+// Using Different Models
+// ============================================================================
+println( "\n=== Different Embedding Models ===" )
+
+// OpenAI text-embedding-3-small (1536 dimensions, faster, cheaper)
+smallEmbedding = aiEmbedding(
+    input: "Sample text",
+    params: { model: "text-embedding-3-small" },
+    options: { provider: "openai" }
+)
+println( "Small Model Dimensions: " & smallEmbedding.data.first().embedding.len() )
+
+// OpenAI text-embedding-3-large (3072 dimensions, more accurate, costlier)
+largeEmbedding = aiEmbedding(
+    input: "Sample text",
+    params: { model: "text-embedding-3-large" },
+    options: { provider: "openai" }
+)
+println( "Large Model Dimensions: " & largeEmbedding.data.first().embedding.len() )
+
+// ============================================================================
+// Local Embeddings with Ollama (Free, Private)
+// ============================================================================
+println( "\n=== Local Ollama Embeddings ===" )
+
+// Note: First pull an embedding model: ollama pull nomic-embed-text
+localEmbedding = aiEmbedding(
+    input: "Local embedding generation",
+    params: { model: "nomic-embed-text" },
+    options: { provider: "ollama" }
+)
+println( "Local Embedding Dimensions: " & localEmbedding.data.first().embedding.len() )
+
+// ============================================================================
+// Practical Example: Semantic Similarity
+// ============================================================================
+println( "\n=== Semantic Similarity Example ===" )
+
+/**
+ * Calculate cosine similarity between two vectors
+ */
+function cosineSimilarity( vector1, vector2 ) {
+    var dotProduct = 0
+    var magnitude1 = 0
+    var magnitude2 = 0
+    
+    for( var i = 1; i <= vector1.len(); i++ ) {
+        dotProduct += vector1[i] * vector2[i]
+        magnitude1 += vector1[i] * vector1[i]
+        magnitude2 += vector2[i] * vector2[i]
+    }
+    
+    return dotProduct / ( sqrt( magnitude1 ) * sqrt( magnitude2 ) )
+}
+
+// Compare similarity of different sentences
+sentences = [
+    "The cat sat on the mat",
+    "A feline rested on the rug",
+    "Dogs are loyal animals"
+]
+
+embeddings = aiEmbedding(
+    input: sentences,
+    options: { returnFormat: "embeddings" }
+)
+
+// Compare first sentence with others
+similarity1_2 = cosineSimilarity( embeddings[1], embeddings[2] )
+similarity1_3 = cosineSimilarity( embeddings[1], embeddings[3] )
+
+println( "Similarity between sentence 1 and 2 (similar meaning): " & numberFormat( similarity1_2, ".999" ) )
+println( "Similarity between sentence 1 and 3 (different meaning): " & numberFormat( similarity1_3, ".999" ) )
+
+// ============================================================================
+// Advanced: Document Search
+// ============================================================================
+println( "\n=== Document Search Example ===" )
+
+// Sample knowledge base
+documents = [
+    "BoxLang is a dynamic language that runs on the JVM",
+    "Java is a statically typed object-oriented language",
+    "Python is known for its simplicity and readability",
+    "JavaScript is the language of the web browser",
+    "BoxLang provides CFML compatibility and modern features"
+]
+
+// Generate embeddings for all documents
+docEmbeddings = aiEmbedding(
+    input: documents,
+    options: { returnFormat: "embeddings" }
+)
+
+// User search query
+query = "Tell me about BoxLang"
+queryEmbedding = aiEmbedding(
+    input: query,
+    options: { returnFormat: "first" }
+)
+
+// Find most relevant document
+scores = []
+for( var i = 1; i <= docEmbeddings.len(); i++ ) {
+    scores.append({
+        "index": i,
+        "document": documents[i],
+        "score": cosineSimilarity( queryEmbedding, docEmbeddings[i] )
+    })
+}
+
+// Sort by score
+scores.sort( ( a, b ) => b.score - a.score )
+
+println( "Query: " & query )
+println( "Most relevant document: " & scores.first().document )
+println( "Similarity score: " & numberFormat( scores.first().score, ".999" ) )
+
+// ============================================================================
+// Tips for Production Use
+// ============================================================================
+println( "\n=== Best Practices ===" )
+println( "✅ Use batch embeddings to reduce API calls" )
+println( "✅ Cache embeddings for frequently used texts" )
+println( "✅ Choose model based on your accuracy/cost tradeoff" )
+println( "✅ Consider Ollama for privacy-sensitive data" )
+println( "✅ Normalize vectors before computing similarity" )
+println( "✅ Use appropriate distance metrics (cosine, euclidean)" )
+
+println( "\n✅ Embeddings examples completed!" )

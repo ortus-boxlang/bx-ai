@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Embeddings Support**: Complete embeddings functionality for semantic search, clustering, and recommendations
+    - New `aiEmbedding()` BIF for generating text embeddings
+    - New `AiEmbeddingRequest` class to model embedding requests
+    - New `embeddings()` method in `IAiService` interface
+    - Support for single text and batch text embedding generation
+    - Multiple return formats: raw, embeddings, first
+    - **Provider Support**:
+        - OpenAI: `text-embedding-3-small` and `text-embedding-3-large` models
+        - Ollama: Local embeddings for privacy-sensitive use cases
+        - DeepSeek: OpenAI-compatible embeddings API
+        - Grok: OpenAI-compatible embeddings API
+        - OpenRouter: Aggregated embeddings via multiple models
+        - Gemini: Custom implementation with `text-embedding-004` model
+    - New embedding-specific events: `onAIEmbeddingRequest`, `onAIEmbeddingResponse`, `beforeAIEmbedding`, `afterAIEmbedding`
+    - Comprehensive embeddings documentation in README with examples
+    - New `examples/embeddings-example.bx` demonstrating practical use cases
+    - Integration tests for embeddings functionality
 - ChatMessage now has the following new methods:
     - `format(bindings)` - Formats messages with provided bindings.
     - `render()` - Renders messages using stored bindings.

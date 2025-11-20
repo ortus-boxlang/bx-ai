@@ -21,6 +21,7 @@ class extends="BaseService"{
 	function init(){
 		// Default to local Ollama instance
 		variables.chatURL = "http://localhost:11434/api/generate"
+		variables.embeddingsURL = "http://localhost:11434/api/embeddings"
 		variables.name = "Ollama"
 
 		defaults( {

@@ -56,4 +56,13 @@ interface{
 	 */
 	function invokeStream( required AiRequest aiRequest, required function callback );
 
+	/**
+	 * Generate embeddings for the given input text(s)
+	 *
+	 * @embeddingRequest The embedding request object containing input and parameters
+	 *
+	 * @return The embeddings response from the provider
+	 */
+	function embeddings( required AiEmbeddingRequest embeddingRequest );
+
 }

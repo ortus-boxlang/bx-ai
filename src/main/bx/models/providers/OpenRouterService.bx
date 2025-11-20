@@ -21,6 +21,7 @@ class extends="BaseService"{
 	 */
 	function init(){
 		variables.chatURL = "https://openrouter.ai/api/v1/chat/completions"
+		variables.embeddingsURL = "https://openrouter.ai/api/v1/embeddings"
 		variables.name = "OpenRouter"
 		defaults( {
 			// https://openrouter.ai/docs/quickstart

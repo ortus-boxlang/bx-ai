@@ -20,6 +20,7 @@ class extends="BaseService"{
 	 */
 	function init(){
 		variables.chatURL = "https://api.x.ai/v1/chat/completions"
+		variables.embeddingsURL = "https://api.x.ai/v1/embeddings"
 		variables.name = "Grok"
 		defaults( {
 			// according to the docs, this is the default model

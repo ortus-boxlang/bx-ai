@@ -1,0 +1,99 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Generate embeddings for the given input text or array of texts using an AI provider
+ *
+ * @example
+ * ```
+ * // Single text embedding
+ * embedding = aiEmbedding( "Hello World" )
+ * println( embedding.data.first().embedding )
+ *
+ * // Batch embeddings
+ * embeddings = aiEmbedding( ["Hello", "World", "BoxLang"] )
+ * println( embeddings.data.map( d => d.embedding ) )
+ *
+ * // With specific provider and model
+ * embedding = aiEmbedding(
+ *     input: "Hello World",
+ *     params: { model: "text-embedding-3-large" },
+ *     options: { provider: "openai" }
+ * )
+ *
+ * // Get just the embeddings array
+ * embeddings = aiEmbedding(
+ *     input: "Hello",
+ *     options: { returnFormat: "embeddings" }
+ * )
+ * ```
+ */
+@BoxBIF
+class {
+
+	static MODULE_SETTINGS = getModuleInfo( "bxai" ).settings;
+
+	/**
+	 * Generate embeddings for the given input text(s)
+	 *
+	 * @input The input text or array of texts to generate embeddings for
+	 * @params A set of request params to pass to the provider (e.g., model, encoding_format)
+	 * @options A set of request options (e.g., provider, apiKey, returnFormat, timeout)
+	 *
+	 * @return The embeddings response from the provider. Format depends on returnFormat option:
+	 *         - "raw" (default): Full API response with metadata
+	 *         - "embeddings": Array of embedding vectors only
+	 *         - "first": Single embedding vector (first item if batch)
+	 */
+	function invoke(
+		required any input,
+		struct params = {},
+		struct options = {}
+	){
+		// Default the provider from the module settings if not provided
+		arguments.options.provider = arguments.options.provider ?: static.MODULE_SETTINGS.provider;
+
+		// By convention check if there is a <PROVIDER>_API_KEY setting override it
+		var conventionAPIKey = getSystemSetting( "#arguments.options.provider.ucase()#_API_KEY", "" );
+		if( isNull( arguments.options.apiKey ) && len( conventionAPIKey ) ){
+			arguments.options.apiKey = conventionAPIKey;
+		}
+		// Else use the module setting
+		arguments.options.apiKey = arguments.options.apiKey ?: static.MODULE_SETTINGS.apiKey;
+
+		// Create the embedding request
+		var embeddingRequest = new bxModules.bxai.models.AiEmbeddingRequest(
+			input   = arguments.input,
+			params  = arguments.params,
+			options = arguments.options
+		);
+
+		// Get the service
+		var service = aiService(
+			provider: arguments.options.provider,
+			apiKey: arguments.options.apiKey
+		);
+
+		// Announce the embedding request
+		BoxAnnounce( "beforeAIEmbedding", { embeddingRequest: embeddingRequest, service: service } );
+
+		// Generate embeddings
+		var result = service.embeddings( embeddingRequest );
+
+		// Announce the response
+		BoxAnnounce( "afterAIEmbedding", { embeddingRequest: embeddingRequest, service: service, result: result } );
+
+		return result;
+	}
+
+}
