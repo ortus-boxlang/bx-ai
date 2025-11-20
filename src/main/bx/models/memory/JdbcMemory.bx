@@ -263,7 +263,7 @@ class extends="BaseMemory" {
 
 		// Get database-specific CLOB-to-string conversion SQL
 		var selectSQL = getDatabaseSpecificSelectSQL();
-		
+
 		var result = queryExecute(
 			selectSQL,
 			{ key: variables.key },
@@ -294,27 +294,27 @@ class extends="BaseMemory" {
 			name="dbVersion"
 			type="version"
 			datasource="#variables.datasource#" {};
-		
+
 		var dbType = dbVersion.database_productname.toLowerCase();
 
 		// Build database-specific SELECT with appropriate CLOB conversion
 		if ( dbType.findNoCase( "mysql" ) || dbType.findNoCase( "mariadb" ) ) {
 			// MySQL/MariaDB: CAST to CHAR (LONGTEXT is already string-compatible)
-			return "SELECT 
+			return "SELECT
 				CAST(memory_data AS CHAR) as memory_data,
 				CAST(metadata_data AS CHAR) as metadata_data,
 				CAST(config_data AS CHAR) as config_data
 			FROM #variables.table# WHERE memory_key = :key";
 		} else if ( dbType.findNoCase( "postgresql" ) || dbType.findNoCase( "postgres" ) ) {
 			// PostgreSQL: TEXT type is already string-compatible, but explicit cast for safety
-			return "SELECT 
+			return "SELECT
 				memory_data::text as memory_data,
 				metadata_data::text as metadata_data,
 				config_data::text as config_data
 			FROM #variables.table# WHERE memory_key = :key";
 		} else if ( dbType.findNoCase( "microsoft" ) || dbType.findNoCase( "sql server" ) ) {
 			// SQL Server: CAST to VARCHAR(MAX) or just select (NVARCHAR(MAX) is string-compatible)
-			return "SELECT 
+			return "SELECT
 				CAST(memory_data AS VARCHAR(MAX)) as memory_data,
 				CAST(metadata_data AS VARCHAR(MAX)) as metadata_data,
 				CAST(config_data AS VARCHAR(MAX)) as config_data
@@ -322,7 +322,7 @@ class extends="BaseMemory" {
 		} else if ( dbType.findNoCase( "oracle" ) ) {
 			// Oracle: Use TO_CHAR or DBMS_LOB.SUBSTR for CLOB conversion
 			// TO_CHAR has 4000 char limit, so use CAST for consistency
-			return "SELECT 
+			return "SELECT
 				TO_CLOB(memory_data) as memory_data,
 				TO_CLOB(metadata_data) as metadata_data,
 				TO_CLOB(config_data) as config_data
@@ -330,7 +330,7 @@ class extends="BaseMemory" {
 		} else {
 			// Derby and other databases: CAST to VARCHAR with max size
 			// Derby's max VARCHAR is 32672
-			return "SELECT 
+			return "SELECT
 				CAST(memory_data AS VARCHAR(32672)) as memory_data,
 				CAST(metadata_data AS VARCHAR(32672)) as metadata_data,
 				CAST(config_data AS VARCHAR(32672)) as config_data

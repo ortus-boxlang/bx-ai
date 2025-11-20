@@ -23,6 +23,24 @@ class extends="BaseClass" implements="IInterface" {
     }
 }
 
+// Imports and static method calls
+import bxModules.bxai.models.util.TextChunker;
+
+// Call static methods using :: operator
+result = TextChunker::chunk( text, options )
+
+// Static variables must be referenced via static scope
+static {
+    DEFAULT_OPTIONS = { key: "value" };
+}
+
+function someMethod() {
+    var config = static.DEFAULT_OPTIONS; // Must use static. prefix
+}
+
+// Struct append() without duplicate
+var merged = sourceStruct.append( defaultStruct, false ); // false = no override
+
 // Null-safe navigation and Elvis operator
 result = service?.invoke( request ) ?: "default"
 
@@ -37,6 +55,9 @@ messages.map( m => m.content ).filter( c => !isNull(c) )
 - **Implicit returns**: Last expression in function is returned
 - **String interpolation**: `"Hello, ${name}!"` or `"#name#"`
 - **OnMissingMethod**: Dynamic method handling (see `AiMessage` for roled messages)
+- **Rich string functions**: Comprehensive string manipulation BIFs + full Java String API access
+  - Reference: https://boxlang.ortusbooks.com/boxlang-language/reference/built-in-functions/string
+  - Examples: `char(10)` (newline), `left()`, `right()`, `reReplace()`, `trim()`, etc.
 
 ## Development Workflows
 
