@@ -223,9 +223,11 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 - `aiChatRequest( messages, struct params, struct options, struct headers)` - This allows you to compose a raw chat request that you can then later send to an AI service.  The return is a `ChatRequest` object that you can then send to the AI service.
 
 ### Embedding Functions
+
 - `aiEmbed( input, struct params={}, struct options={} )` : Generate embeddings for text input. Input can be a single string or an array of strings. Returns numerical vectors that capture semantic meaning, useful for semantic search, clustering, and recommendations.
 
 ### Text Processing Functions
+
 - `aiChunk( text, struct options={} )` : Split text into chunks for processing within AI token limits. Supports multiple chunking strategies (recursive, characters, words, sentences, paragraphs) with configurable chunk size and overlap.
 - `aiTokens( text, struct options={} )` : Estimate token count for text using character-based or word-based methods. Useful for planning API usage and managing token budgets.
 
@@ -612,6 +614,8 @@ The `ChatMessage` object has several methods that you can use to interact with t
 - `singleMessage():ChatMessage` : Convenience for `.withOptions({ returnFormat: "single" })` - returns content string
 - `allMessages():ChatMessage` : Convenience for `.withOptions({ returnFormat: "all" })` - returns array of messages
 - `rawResponse():ChatMessage` : Convenience for `.withOptions({ returnFormat: "raw" })` - returns full API response (default for pipelines)
+- `asJson():ChatMessage` : Convenience for `.withOptions({ returnFormat: "json" })` - auto-parses JSON response
+- `asXml():ChatMessage` : Convenience for `.withOptions({ returnFormat: "xml" })` - auto-parses XML response
 - `clearOptions():ChatMessage` : Clear all default options
 
 **Parameter Management:**
@@ -937,9 +941,9 @@ result = aiChat( "How hot is it in Kansas City? What about San Salvador? Answer 
 println( result )
 ```
 
-## aiEmbedding() - Generate Text Embeddings
+## aiEmbed() - Generate Text Embeddings
 
-The `aiEmbedding()` function generates numerical vector representations of text that capture semantic meaning. These embeddings are useful for:
+The `aiEmbed()` function generates numerical vector representations of text that capture semantic meaning. These embeddings are useful for:
 
 - 🔍 **Semantic Search**: Find documents similar to a query
 - 📊 **Text Clustering**: Group related content together
@@ -950,7 +954,7 @@ The `aiEmbedding()` function generates numerical vector representations of text 
 ### Function Signature
 
 ```js
-aiEmbedding( input, struct params={}, struct options={} )
+aiEmbed( input, struct params={}, struct options={} )
 ```
 
 ### Parameters
@@ -1008,7 +1012,7 @@ The return value depends on the `returnFormat` option:
 
 ```js
 // Generate embedding for a single text
-embedding = aiEmbedding( "BoxLang is awesome" )
+embedding = aiEmbed( "BoxLang is awesome" )
 println( "Model: " & embedding.model )
 println( "Dimensions: " & embedding.data.first().embedding.len() )
 ```
@@ -1017,7 +1021,7 @@ println( "Dimensions: " & embedding.data.first().embedding.len() )
 
 ```js
 // Get just the embedding vector
-vector = aiEmbedding(
+vector = aiEmbed(
     input: "Hello World",
     options: { returnFormat: "first" }
 )
@@ -1034,7 +1038,7 @@ texts = [
     "Python is easy to learn"
 ]
 
-embeddings = aiEmbedding(
+embeddings = aiEmbed(
     input: texts,
     options: { returnFormat: "embeddings" }
 )
@@ -1045,7 +1049,7 @@ println( "Generated " & embeddings.len() & " embeddings" )
 
 ```js
 // Use a specific embedding model
-embedding = aiEmbedding(
+embedding = aiEmbed(
     input: "Sample text",
     params: { model: "text-embedding-3-large" },
     options: { provider: "openai" }
@@ -1057,7 +1061,7 @@ embedding = aiEmbedding(
 ```js
 // Use Ollama for free, local embeddings
 // First: ollama pull nomic-embed-text
-localEmbedding = aiEmbedding(
+localEmbedding = aiEmbed(
     input: "Private data stays local",
     params: { model: "nomic-embed-text" },
     options: { provider: "ollama" }
@@ -1080,10 +1084,10 @@ function cosineSimilarity( v1, v2 ) {
 
 // Generate embeddings for documents and query
 docs = ["Doc 1", "Doc 2", "Doc 3"]
-docEmbeddings = aiEmbedding( docs, {}, { returnFormat: "embeddings" } )
+docEmbeddings = aiEmbed( docs, {}, { returnFormat: "embeddings" } )
 
 query = "My search query"
-queryEmbedding = aiEmbedding( query, {}, { returnFormat: "first" } )
+queryEmbedding = aiEmbed( query, {}, { returnFormat: "first" } )
 
 // Find most similar document
 scores = docEmbeddings.map( (docEmb, i) => {
@@ -1133,14 +1137,14 @@ results = findSimilarDocs( userQuery, docEmbeddings )
 **Text Clustering**
 ```js
 // Group similar articles together
-embeddings = aiEmbedding( articles )
+embeddings = aiEmbed( articles )
 clusters = clusterByEmbedding( embeddings )
 ```
 
 **Recommendations**
 ```js
 // Find similar products/content
-itemEmbedding = aiEmbedding( currentItem )
+itemEmbedding = aiEmbed( currentItem )
 similar = findSimilarItems( itemEmbedding, allItemEmbeddings )
 ```
 
@@ -1161,10 +1165,10 @@ The BoxLang AI module emits several events throughout the AI processing lifecycl
 |-------|------------|--------------|-----------|
 | `onAIRequest` | Before sending request to AI provider | `dataPacket`, `chatRequest`, `provider` | Request logging, modification, authentication |
 | `onAIResponse` | After receiving response from AI provider | `chatRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
-| `onAIEmbeddingRequest` | Before sending embedding request to AI provider | `dataPacket`, `embeddingRequest`, `provider` | Request logging, modification, authentication |
-| `onAIEmbeddingResponse` | After receiving embedding response from AI provider | `embeddingRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
-| `beforeAIEmbedding` | Before generating embeddings | `embeddingRequest`, `service` | Request validation, preprocessing |
-| `afterAIEmbedding` | After generating embeddings | `embeddingRequest`, `service`, `result` | Result processing, caching |
+| `onAIEmbedRequest` | Before sending embedding request to AI provider | `dataPacket`, `embeddingRequest`, `provider` | Request logging, modification, authentication |
+| `onAIEmbedResponse` | After receiving embedding response from AI provider | `embeddingRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
+| `beforeAIEmbed` | Before generating embeddings | `embeddingRequest`, `service` | Request validation, preprocessing |
+| `afterAIEmbed` | After generating embeddings | `embeddingRequest`, `service`, `result` | Result processing, caching |
 | `onAIProviderRequest` | When unsupported provider is requested | `provider`, `apiKey`, `service` | Custom provider registration |
 | `onAIProviderCreate` | After AI service provider is created | `provider` | Provider initialization, configuration |
 | `onAIRequestCreate` | After AiRequestobject is created | `chatRequest` | Request validation, modification |
