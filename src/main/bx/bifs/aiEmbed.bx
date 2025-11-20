@@ -61,6 +61,7 @@ class {
 		struct options = {}
 	){
 		// Append defaults
+		arguments.params.append( moduleRecord.settings.defaultParams, false );
 		arguments.options.append( static.MODULE_SETTINGS, false );
 
 		// Create the embedding request

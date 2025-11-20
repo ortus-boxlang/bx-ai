@@ -102,13 +102,13 @@ function cosineSimilarity( vector1, vector2 ) {
     var dotProduct = 0
     var magnitude1 = 0
     var magnitude2 = 0
-    
+
     for( var i = 1; i <= vector1.len(); i++ ) {
         dotProduct += vector1[i] * vector2[i]
         magnitude1 += vector1[i] * vector1[i]
         magnitude2 += vector2[i] * vector2[i]
     }
-    
+
     return dotProduct / ( sqrt( magnitude1 ) * sqrt( magnitude2 ) )
 }
 

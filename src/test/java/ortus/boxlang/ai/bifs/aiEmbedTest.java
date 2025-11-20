@@ -16,9 +16,11 @@ package ortus.boxlang.ai.bifs;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import io.github.cdimascio.dotenv.Dotenv;
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
 
@@ -26,6 +28,14 @@ import ortus.boxlang.runtime.scopes.Key;
  * Integration tests for aiEmbed BIF
  */
 public class aiEmbedTest extends BaseIntegrationTest {
+
+	static Dotenv dotenv = Dotenv.load();
+
+	@BeforeEach
+	public void beforeEach() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "openai" );
+	}
 
 	@DisplayName( "Test aiEmbed with single text (raw format)" )
 	@Test
