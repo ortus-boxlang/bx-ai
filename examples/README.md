@@ -217,7 +217,7 @@ Have a great example? Please contribute!
 // example-name.bxs
 /**
  * [Example Title]
- * 
+ *
  * Brief description of what this example demonstrates.
  *
  * Prerequisites:
