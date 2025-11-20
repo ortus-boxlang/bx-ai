@@ -648,7 +648,7 @@ rssPipeline = aiMessage()
     .toDefaultModel()
     .asXml()
 
-feed = rssPipeline.run({ 
+feed = rssPipeline.run({
     topic: "Technology News",
     count: 3
 })
@@ -677,7 +677,7 @@ reportPipeline = aiMessage()
         // Extract and summarize from XML
         total = 0
         regions = []
-        
+
         xml.xmlRoot.report.regions.xmlChildren.each( region => {
             sales = val( region.sales.xmlText )
             total += sales
@@ -686,7 +686,7 @@ reportPipeline = aiMessage()
                 sales: sales
             })
         } )
-        
+
         return {
             total: total,
             regions: regions,
