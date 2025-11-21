@@ -60,14 +60,26 @@ println( memory.count() )  // 5 (trimmed oldest)
 
 ### Summary Memory
 
-Summarizes old messages:
+Intelligently compresses old messages while preserving context:
 
 ```java
-memory = aiMemory( "summary", { maxMessages: 10 } )
+memory = aiMemory( "summary", {
+    maxMessages: 20,           // Total message limit
+    summaryThreshold: 10,      // Keep last 10 uncompressed
+    summaryModel: "gpt-4o-mini"
+} )
 
-// After 10 messages, auto-summarizes oldest
-// Keeps summary + recent messages
+// After 20 messages:
+// - Oldest messages get summarized
+// - Summary preserved as context
+// - Last 10 messages kept intact
+// - No sudden context loss!
 ```
+
+**When to use:**
+- Long conversations (customer support, research)
+- Need to reference earlier facts
+- Acceptable moderate token cost for better context
 
 ### Session Memory
 
@@ -139,10 +151,19 @@ Build a chatbot that remembers conversation context.
 ## Key Takeaways
 
 ✅ Memory enables context-aware conversations
-✅ Windowed memory keeps recent N messages
-✅ Summary memory condenses old conversations
-✅ Session memory persists across requests
-✅ Choose memory type based on use case
+✅ **Windowed memory**: Simple, low-cost, discards old messages
+✅ **Summary memory**: Intelligent compression preserves full context
+✅ **Session memory**: Web-persistent across page refreshes
+✅ Choose memory type based on conversation length and context needs
+
+### Memory Selection Guide
+
+| Scenario | Best Memory | Why |
+|----------|-------------|-----|
+| Quick Q&A | Windowed | Low cost, simple |
+| Customer Support | Summary | Long chats, need history |
+| Web Chatbot | Session | Persists across pages |
+| Research Assistant | Summary | Complex multi-turn analysis |
 
 ---
 

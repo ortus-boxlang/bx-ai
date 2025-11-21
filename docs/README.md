@@ -83,6 +83,9 @@ Creating model runnables, configuration, and integrating AI providers into pipel
 ✉️ **[Message Templates](pipelines/messages.md)**
 Building reusable prompts with dynamic placeholders and binding strategies.
 
+💭 **[Memory Systems](pipelines/memory.md)**
+Maintain conversation context with multiple memory types. Compare Windowed, Summary, Session, and File memory for different use cases.
+
 🔧 **[Transformers](pipelines/transformers.md)**
 Processing and transforming data between pipeline steps.
 
@@ -116,7 +119,7 @@ BoxLang AI provides a comprehensive set of BIFs for different AI operations:
 | `aiChatStream()` | Real-time streaming responses | void | Live chat, progressive output |
 | `aiChunk()` | Split text into manageable chunks | Array | Processing large documents |
 | `aiEmbed()` | Generate vector embeddings | Array/Struct | Semantic search, similarity |
-| `aiMemory()` | Create conversation memory | Memory | Persistent chat history |
+| `aiMemory()` | Create conversation memory systems | Memory | Context-aware conversations, history |
 | `aiMessage()` | Build message pipelines | AiMessage | Reusable prompts, templates |
 | `aiModel()` | Create model runnables | AiModel | Pipeline integration |
 | `aiService()` | Get AI service instances | Service | Multi-provider management |

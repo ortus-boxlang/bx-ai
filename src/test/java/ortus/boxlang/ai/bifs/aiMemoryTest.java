@@ -345,4 +345,57 @@ public class aiMemoryTest extends BaseIntegrationTest {
 		assertThat( metadata.getAsBoolean( Key.of( "test" ) ) ).isTrue();
 	}
 
+	@Test
+	@DisplayName( "Test SummaryMemory creation" )
+	public void testSummaryMemoryCreation() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "summary",
+		        config: {
+		            maxMessages: 20,
+		            summaryThreshold: 10,
+		            summaryModel: "gpt-4o-mini"
+		        }
+		    )
+		    
+		    summary = memory.getSummary()
+		    """,
+		    context
+		);
+
+		var summary = variables.getAsStruct( Key.of( "summary" ) );
+		assertThat( summary.get( "maxMessages" ) ).isEqualTo( 20 );
+		assertThat( summary.get( "summaryThreshold" ) ).isEqualTo( 10 );
+		assertThat( summary.getAsString( Key.of( "summaryModel" ) ) ).isEqualTo( "gpt-4o-mini" );
+	}
+
+	@Test
+	@DisplayName( "Test SummaryMemory basic operations" )
+	public void testSummaryMemoryBasicOps() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "summary",
+		        config: {
+		            maxMessages: 5,
+		            summaryThreshold: 2
+		        }
+		    )
+		    
+		    // Add messages below threshold
+		    memory.add( "Message 1" )
+		    memory.add( "Message 2" )
+		    memory.add( "Message 3" )
+		    
+		    count = memory.count()
+		    isEmpty = memory.isEmpty()
+		    """,
+		    context
+		);
+
+		assertThat( variables.get( "count" ) ).isEqualTo( 3 );
+		assertThat( variables.getAsBoolean( Key.of( "isEmpty" ) ) ).isFalse();
+	}
+
 }

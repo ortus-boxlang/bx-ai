@@ -248,7 +248,14 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 ### Agent Functions
 
 - `aiAgent( name, description, instructions, model, memory, tools, params, options )` - Creates an autonomous AI agent that can maintain conversation memory, use tools, and execute tasks. Agents simplify complex AI workflows by managing state and context automatically.
-- `aiMemory( type )` - Creates a memory instance for agents. Types include "simple" (default) for basic conversation history.
+- `aiMemory( type, config )` - Creates a memory instance for agents and pipelines. Available types:
+  - **`simple`** - Basic in-memory storage (default)
+  - **`windowed`** - Keeps last N messages, discards older ones
+  - **`summary`** - Intelligently compresses old messages while preserving context
+  - **`session`** - Web session-persisted memory
+  - **`file`** - File-based persistent storage
+  - **`cache`** - CacheBox-backed storage
+  - **`jdbc`** - Database-backed storage
 
 ### Helper Functions
 
@@ -1373,6 +1380,86 @@ Agents automatically handle:
 4. **Bind tools to agents** - Tools are bound to the model for efficiency
 5. **Clear memory when needed** - Reset conversation context for new topics
 6. **Use returnFormat wisely** - "single" for content, "all" for full context, "raw" for debugging
+
+## aiMemory() - Conversation Memory Systems
+
+The `aiMemory()` function creates memory instances that enable AI agents and pipelines to maintain context across multiple interactions. Memory is essential for building conversational AI applications.
+
+### Function Signature
+
+```java
+aiMemory(
+    string memory = "simple",
+    string key = createUUID(),
+    struct config = {}
+)
+```
+
+### Memory Types
+
+#### Windowed Memory - Recent Messages Only
+
+Keeps last N messages, discards older ones:
+
+```java
+memory = aiMemory( "windowed", config = { maxMessages: 10 } )
+```
+
+**Best for:** Short conversations, cost-conscious apps
+
+#### Summary Memory ⭐ - Intelligent Compression
+
+Compresses old messages while preserving context:
+
+```java
+memory = aiMemory( "summary", config = {
+    maxMessages: 20,
+    summaryThreshold: 10,
+    summaryModel: "gpt-4o-mini"
+} )
+```
+
+**Best for:** Long conversations, customer support, research
+
+#### Session Memory - Web Persistent
+
+Survives page refreshes via session scope:
+
+```java
+memory = aiMemory( "session", config = { key: "chatbot" } )
+```
+
+**Best for:** Web chatbots, multi-page apps
+
+#### File/Cache/JDBC Memory
+
+For long-term persistence and enterprise needs.
+
+### Quick Comparison
+
+| Type | Token Cost | Context Loss | Best Use Case |
+|------|------------|--------------|---------------|
+| Windowed | Low | High | Quick chats |
+| Summary | Moderate | Low | Long conversations |
+| Session | Low | Medium | Web apps |
+| File | High | None | Audit trails |
+
+### Usage Example
+
+```java
+memory = aiMemory( "summary", config = { maxMessages: 20 } )
+
+agent = aiAgent(
+    name: "Support",
+    memory: memory
+)
+
+agent.run( "My order is #12345" )
+// ... 25 messages later ...
+agent.run( "What was my order number?" )  // Still remembers!
+```
+
+**See:** [Memory Documentation](docs/pipelines/memory.md) for complete guide
 
 ## aiEmbed() - Generate Text Embeddings
 

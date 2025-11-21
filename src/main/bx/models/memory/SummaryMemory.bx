@@ -1,0 +1,315 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Summary Memory - Intelligent conversation compression
+ * Automatically summarizes older messages when limit reached
+ * Keeps: [System Message] + [Summary of Old Messages] + [Recent Messages]
+ * Perfect for long conversations where context must be preserved
+ */
+class extends="SimpleMemory" {
+
+	/**
+	 * Maximum total messages before triggering summarization
+	 */
+	property name="maxMessages" type="numeric";
+
+	/**
+	 * Number of recent messages to keep unsummarized
+	 */
+	property name="summaryThreshold" type="numeric";
+
+	/**
+	 * AI model to use for summarization
+	 */
+	property name="summaryModel" default="";
+
+	/**
+	 * AI provider to use for summarization
+	 */
+	property name="summaryProvider" default="";
+
+	/**
+	 * Current cached summary text
+	 */
+	property name="currentSummary" default="";
+
+	/**
+	 * Whether a summary message exists in memory
+	 */
+	property name="hasSummary" type="boolean" default=false;
+
+	static {
+		final DEFAULT_MAX_MESSAGES = 20
+		final DEFAULT_SUMMARY_THRESHOLD = 10
+		final DEFAULT_SUMMARY_MODEL = "gpt-4o-mini"
+		final DEFAULT_SUMMARY_PROVIDER = "openai"
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @key The unique key for this memory instance
+	 * @maxMessages Maximum total messages (default: 20)
+	 * @summaryThreshold Number of recent messages to keep (default: 10)
+	 * @summaryModel Model for summarization (default: gpt-4o-mini)
+	 * @summaryProvider Provider for summarization (default: openai)
+	 */
+	function init(
+		string key = createUUID(),
+		numeric maxMessages = static.DEFAULT_MAX_MESSAGES,
+		numeric summaryThreshold = static.DEFAULT_SUMMARY_THRESHOLD,
+		string summaryModel = static.DEFAULT_SUMMARY_MODEL,
+		string summaryProvider = static.DEFAULT_SUMMARY_PROVIDER
+	) {
+		super.init( arguments.key );
+		variables.maxMessages = arguments.maxMessages;
+		variables.summaryThreshold = arguments.summaryThreshold;
+		variables.summaryModel = arguments.summaryModel;
+		variables.summaryProvider = arguments.summaryProvider;
+		variables.currentSummary = "";
+		variables.hasSummary = false;
+		return this;
+	}
+
+	/**
+	 * Configure the memory instance
+	 * Supports maxMessages, summaryThreshold, summaryModel, summaryProvider in config
+	 */
+	public IAiMemory function configure( required struct config ) {
+		super.configure( arguments.config );
+
+		if ( arguments.config.keyExists( "maxMessages" ) ) {
+			variables.maxMessages = arguments.config.maxMessages;
+		}
+
+		if ( arguments.config.keyExists( "summaryThreshold" ) ) {
+			variables.summaryThreshold = arguments.config.summaryThreshold;
+		}
+
+		if ( arguments.config.keyExists( "summaryModel" ) ) {
+			variables.summaryModel = arguments.config.summaryModel;
+		}
+
+		if ( arguments.config.keyExists( "summaryProvider" ) ) {
+			variables.summaryProvider = arguments.config.summaryProvider;
+		}
+
+		return this;
+	}
+
+	/**
+	 * Add a message to memory with auto-summarization
+	 * Automatically summarizes older messages when threshold is reached
+	 *
+	 * @message The message to add
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function add( required any message ) {
+		// Use parent's add logic
+		super.add( arguments.message );
+
+		// Check if we need to summarize
+		var nonSystemCount = getNonSystemMessages().len();
+		if ( nonSystemCount > variables.maxMessages ) {
+			summarizeOldMessages();
+		}
+
+		return this;
+	}
+
+	/**
+	 * Summarize older messages, keeping recent ones intact
+	 *
+	 * @return void
+	 */
+	private function summarizeOldMessages() {
+		var messages = getNonSystemMessages();
+
+		// Don't summarize if we don't have enough messages
+		if ( messages.len() <= variables.summaryThreshold ) {
+			return;
+		}
+
+		// Calculate split point
+		var messagesToSummarize = messages.len() - variables.summaryThreshold;
+
+		// Split: messages to summarize vs recent to keep
+		var toSummarize = messages.slice( 1, messagesToSummarize );
+		var toKeep = messages.slice( messagesToSummarize + 1, messages.len() );
+
+		// Build summarization prompt
+		var summaryPrompt = "Summarize the following conversation concisely, preserving key facts, decisions, user preferences, and important context. Be brief but complete.\n\n";
+
+		// Include previous summary if exists
+		if ( variables.currentSummary.len() ) {
+			summaryPrompt &= "Previous conversation summary:\n#variables.currentSummary#\n\nNew messages to add to summary:\n";
+		} else {
+			summaryPrompt &= "Messages to summarize:\n";
+		}
+
+		// Add messages to summarize
+		toSummarize.each( function( msg ) {
+			// Skip if it's already a summary
+			if ( msg.keyExists( "isSummary" ) && msg.isSummary ) {
+				return;
+			}
+			summaryPrompt &= "#msg.role#: #msg.content#\n";
+		} );
+
+		// Call AI to generate summary
+		try {
+			var summary = aiChat(
+				aiMessage().user( summaryPrompt ),
+				{},
+				{
+					provider: variables.summaryProvider.len() ? variables.summaryProvider : static.DEFAULT_SUMMARY_PROVIDER,
+					model: variables.summaryModel.len() ? variables.summaryModel : static.DEFAULT_SUMMARY_MODEL
+				}
+			);
+
+			// Rebuild memory structure
+			var systemMsg = hasSystemMessage() ? getSystemMessage() : null;
+
+			clear();
+
+			// Re-add system message
+			if ( systemMsg ) {
+				setSystemMessage( systemMsg );
+			}
+
+			// Add summary as special assistant message
+			super.add( {
+				role: "assistant",
+				content: "[Previous conversation summary]: #summary#",
+				isSummary: true,
+				timestamp: now()
+			} );
+
+			variables.currentSummary = summary;
+			variables.hasSummary = true;
+
+			// Add back recent messages
+			toKeep.each( function( msg ) {
+				super.add( msg );
+			} );
+
+		} catch ( any e ) {
+			// If summarization fails, fall back to simple truncation
+			writeLog(
+				text: "SummaryMemory: Failed to generate summary - #e.message#. Falling back to truncation.",
+				type: "error",
+				log: "ai"
+			);
+
+			// Keep only recent messages
+			var systemMsg = hasSystemMessage() ? getSystemMessage() : null;
+			clear();
+
+			if ( systemMsg ) {
+				setSystemMessage( systemMsg );
+			}
+
+			toKeep.each( function( msg ) {
+				super.add( msg );
+			} );
+		}
+	}
+
+	/**
+	 * Clear all messages and reset summary
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function clear() {
+		super.clear();
+		variables.currentSummary = "";
+		variables.hasSummary = false;
+		return this;
+	}
+
+	/**
+	 * Get a summary of this memory instance
+	 * Overrides base to add summary-specific fields
+	 *
+	 * @return Struct with memory information
+	 */
+	public struct function getSummary() {
+		var summary = super.getSummary();
+		summary.maxMessages = variables.maxMessages;
+		summary.summaryThreshold = variables.summaryThreshold;
+		summary.summaryModel = variables.summaryModel;
+		summary.summaryProvider = variables.summaryProvider;
+		summary.hasSummary = variables.hasSummary;
+		return summary;
+	}
+
+	/**
+	 * Export messages to a serializable format
+	 * Overrides base to add summary-specific configuration
+	 *
+	 * @return Struct containing all memory data
+	 */
+	public struct function export() {
+		var exported = super.export();
+		exported.maxMessages = variables.maxMessages;
+		exported.summaryThreshold = variables.summaryThreshold;
+		exported.summaryModel = variables.summaryModel;
+		exported.summaryProvider = variables.summaryProvider;
+		exported.currentSummary = variables.currentSummary;
+		exported.hasSummary = variables.hasSummary;
+		return exported;
+	}
+
+	/**
+	 * Import messages from a previously exported format
+	 * Overrides base to restore summary state
+	 *
+	 * @data The exported memory data
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function import( required struct data ) {
+		// Import base fields
+		super.import( arguments.data );
+
+		// Restore summary-specific fields
+		if ( arguments.data.keyExists( "maxMessages" ) ) {
+			variables.maxMessages = arguments.data.maxMessages;
+		}
+
+		if ( arguments.data.keyExists( "summaryThreshold" ) ) {
+			variables.summaryThreshold = arguments.data.summaryThreshold;
+		}
+
+		if ( arguments.data.keyExists( "summaryModel" ) ) {
+			variables.summaryModel = arguments.data.summaryModel;
+		}
+
+		if ( arguments.data.keyExists( "summaryProvider" ) ) {
+			variables.summaryProvider = arguments.data.summaryProvider;
+		}
+
+		if ( arguments.data.keyExists( "currentSummary" ) ) {
+			variables.currentSummary = arguments.data.currentSummary;
+		}
+
+		if ( arguments.data.keyExists( "hasSummary" ) ) {
+			variables.hasSummary = arguments.data.hasSummary;
+		}
+
+		return this;
+	}
+
+}

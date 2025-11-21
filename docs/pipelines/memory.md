@@ -32,6 +32,21 @@ Without memory, each AI call is independent with no knowledge of previous intera
 
 BoxLang AI provides several memory implementations:
 
+### Memory Type Comparison
+
+Choose the right memory type for your use case:
+
+| Feature | Windowed | Summary | Session | File |
+|---------|----------|---------|---------|------|
+| **Context Preservation** | Recent only | Full (compressed) | Recent only | All messages |
+| **Old Messages** | Discarded | Summarized | Discarded/windowed | Kept |
+| **Token Usage** | Low | Moderate | Low-Moderate | High |
+| **Memory Loss** | High | Low | Medium | None |
+| **Best For** | Quick chats | Long conversations | Web apps | Audit trails |
+| **Setup Complexity** | Simple | Moderate | Simple | Simple |
+| **Cost** | Lowest | Low-Medium | Low | Medium |
+| **Historical Awareness** | None | Excellent | Limited | Perfect |
+
 ### Windowed Memory
 
 Maintains the most recent N messages, automatically discarding older messages when the limit is reached.
@@ -48,22 +63,48 @@ memory = aiMemory( "windowed", {
 - Cost-conscious applications
 - Simple context requirements
 
+**Limitations:**
+- Loses all context from discarded messages
+- No awareness of earlier conversation history
+- Can lose important facts mentioned earlier
+
 ### Summary Memory
 
-Automatically summarizes older messages when the limit is reached, keeping summaries + recent messages.
+Automatically summarizes older messages when the limit is reached, keeping summaries + recent messages. This provides the best of both worlds: full context awareness with controlled token usage.
 
 ```java
 memory = aiMemory( "summary", {
-    maxMessages: 20,  // Trigger summary after 20 messages
-    summaryModel: "gpt-3.5-turbo"  // Model to use for summarization
+    maxMessages: 20,           // Total messages before summarization
+    summaryThreshold: 10,      // Keep last 10 messages unsummarized
+    summaryModel: "gpt-4o-mini",  // Model for generating summaries
+    summaryProvider: "openai"  // Provider for summarization
 } )
 ```
 
+**How it works:**
+
+1. Messages accumulate normally until `maxMessages` is reached
+2. When threshold exceeded, older messages are summarized
+3. Summary is kept as a special assistant message
+4. Recent messages (last N) remain unmodified
+5. Progressive summarization: new summaries build on previous ones
+
 **Best for:**
-- Long conversations
+
+- Long conversations with important history
 - Complex context requirements
 - Applications needing historical awareness
 - Customer support systems
+- Research or analysis tasks
+- Multi-session interactions
+
+**Advantages:**
+
+- Preserves key facts and decisions from old messages
+- Maintains full conversation awareness
+- Moderate token usage (lower than keeping all messages)
+- No sudden context loss
+- AI can reference earlier conversation points
 
 ### Session Memory
 
@@ -188,6 +229,32 @@ pipeline = aiModel( "openai" )
 // Run pipeline - automatically manages memory
 response = pipeline.run( "Hello!" )
 response = pipeline.run( "What did I just say?" )  // Context preserved
+```
+
+### Summary Memory in Long Conversations
+
+```java
+// Create summary memory for customer support
+memory = aiMemory( "summary", {
+    maxMessages: 30,
+    summaryThreshold: 15,
+    summaryModel: "gpt-4o-mini"
+} )
+
+agent = aiAgent(
+    name: "SupportAgent",
+    memory: memory,
+    instructions: "Help customers with their orders"
+)
+
+// Long conversation - history is preserved via summarization
+agent.run( "My order #12345 is late" )
+agent.run( "I ordered it 2 weeks ago" )
+agent.run( "It was supposed to arrive last Friday" )
+// ... 20 more exchanges about refunds, shipping, etc ...
+agent.run( "By the way, what was my order number again?" )
+// Agent responds: "Your order number is #12345"
+// Context preserved even though it was mentioned 25 messages ago!
 ```
 
 ### Streaming with Memory

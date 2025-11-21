@@ -1,21 +1,25 @@
-// summary-memory.bxs
 /**
- * Summary Memory Demo
- * Summarizes old messages to preserve context
+ * Summary Memory Example
+ * Demonstrates intelligent conversation compression
+ * 
+ * Run with: boxlang summary-memory.bxs
  */
 
 println( "=== Summary Memory Demo ===" )
 println()
 
-// Create summary memory
+// Create summary memory with explicit configuration
 memory = aiMemory( "summary", {
-    maxMessages: 10,
-    summaryModel: "gpt-3.5-turbo"
+    maxMessages: 12,           // Trigger summary after 12 messages
+    summaryThreshold: 6,       // Keep last 6 messages uncompressed
+    summaryModel: "gpt-4o-mini",
+    summaryProvider: "openai"
 } )
 
-memory.add( aiMessage().system( "You are a helpful tutor" ) )
+memory.add( aiMessage().system( "You are a helpful customer support agent" ) )
 
-println( "Memory type: Summary (preserves context through summarization)" )
+println( "Config: Max 12 messages, keep last 6 uncompressed" )
+println( "Memory type: Summary (intelligent compression)" )
 println()
 
 // Have a longer conversation
