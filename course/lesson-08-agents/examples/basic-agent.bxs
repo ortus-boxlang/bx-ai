@@ -34,14 +34,15 @@ searchTool = aiTool()
     } )
 
 // Create agent
-agent = aiAgent()
-    .setName( "Research Assistant" )
-    .setInstructions( "
+agent = aiAgent(
+    name: "Research Assistant",
+    instructions: "
         You are a helpful research assistant.
         Use tools to gather information and perform calculations.
         Always cite your sources.
-    " )
-    .setTools( [ calculatorTool, searchTool ] )
+    ",
+    tools: [ calculatorTool, searchTool ]
+)
 
 // Test tasks
 tasks = [

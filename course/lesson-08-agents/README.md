@@ -49,10 +49,11 @@ result = agent.run()
 ### Basic Agent
 
 ```java
-agent = aiAgent()
-    .setName( "Research Assistant" )
-    .setInstructions( "You research topics and provide detailed reports" )
-    .setTools( [ webSearchTool, calculatorTool ] )
+agent = aiAgent(
+    name: "Research Assistant",
+    instructions: "You research topics and provide detailed reports",
+    tools: [ webSearchTool, calculatorTool ]
+)
 
 result = agent.run( "Research BoxLang and count its features" )
 ```
@@ -60,10 +61,11 @@ result = agent.run( "Research BoxLang and count its features" )
 ### Agent with Memory
 
 ```java
-agent = aiAgent()
-    .setName( "Personal Assistant" )
-    .setMemory( aiMemory( "windowed", { maxMessages: 20 } ) )
-    .setTools( [ calendarTool, emailTool, todoTool ] )
+agent = aiAgent(
+    name: "Personal Assistant",
+    memory: aiMemory( "windowed", { maxMessages: 20 } ),
+    tools: [ calendarTool, emailTool, todoTool ]
+)
 
 // Agent remembers across calls
 agent.run( "Schedule meeting with John" )
@@ -77,23 +79,24 @@ agent.run( "What meetings do I have this week?" )
 ### Research Agent
 
 ```java
-researchAgent = aiAgent()
-    .setName( "Researcher" )
-    .setInstructions( "
+researchAgent = aiAgent(
+    name: "Researcher",
+    instructions: "
         You are a thorough researcher.
         1. Search for information
         2. Verify from multiple sources
         3. Summarize findings
-    " )
-    .setTools( [ searchTool, fetchWebpageTool ] )
+    ",
+    tools: [ searchTool, fetchWebpageTool ]
+)
 ```
 
 ### Code Assistant Agent
 
 ```java
-codeAgent = aiAgent()
-    .setName( "Code Helper" )
-    .setInstructions( "
+codeAgent = aiAgent(
+    name: "Code Helper",
+    instructions: "
         You help with coding tasks.
         1. Search documentation
         2. Write code

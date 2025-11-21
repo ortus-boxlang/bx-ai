@@ -61,9 +61,9 @@ lintCodeTool = aiTool()
     } )
 
 // Create code agent
-codeAgent = aiAgent()
-    .setName( "Code Helper" )
-    .setInstructions( "
+codeAgent = aiAgent(
+    name: "Code Helper",
+    instructions: "
         You are an expert programming assistant for BoxLang.
         Help users with:
         1. Writing code
@@ -71,8 +71,9 @@ codeAgent = aiAgent()
         3. Debugging issues
         4. Suggesting improvements
         Use available tools to execute and check code.
-    " )
-    .setTools( [ runCodeTool, lintCodeTool ] )
+    ",
+    tools: [ runCodeTool, lintCodeTool ]
+)
 
 // Coding tasks
 tasks = [

@@ -51,10 +51,11 @@ println()
 //     .setHandler( ( args ) => { /* search logic */ } )
 //
 // Step 2: Create agent
-// agent = aiAgent()
-//     .setName( "Researcher" )
-//     .setInstructions( "Research thoroughly..." )
-//     .setTools( [ searchTool ] )
+// agent = aiAgent(
+//     name: "Researcher",
+//     instructions: "Research thoroughly...",
+//     tools: [ searchTool ]
+// )
 //
 // Step 3: Run research
 // report = agent.run( "Research topic X" )

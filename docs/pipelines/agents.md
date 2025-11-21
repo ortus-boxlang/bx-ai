@@ -121,23 +121,41 @@ agent = aiAgent(
 agent.run( "Remember this fact: BoxLang is awesome" )
 ```
 
-## Fluent API
+## Configuration
 
-Build and configure agents with a fluent interface:
+### Constructor-Based Configuration
+
+Agents are configured primarily through the constructor:
 
 ```java
-agent = aiAgent()
-    .setName( "CodeReviewer" )
-    .setDescription( "A code review specialist" )
-    .setInstructions( "Review code for best practices, security, and performance" )
-    .setModel( aiModel( "openai" ) )
-    .addTool( lintTool )
-    .addTool( securityTool )
-    .addMemory( aiMemory( "simple" ) )
-    .setParam( "temperature", 0.3 )
-    .setParam( "max_tokens", 1000 )
+agent = aiAgent(
+    name: "CodeReviewer",
+    description: "A code review specialist",
+    instructions: "Review code for best practices, security, and performance",
+    model: aiModel( "openai" ),
+    tools: [ lintTool, securityTool ],
+    memory: aiMemory( "simple" ),
+    params: { temperature: 0.3, max_tokens: 1000 }
+)
 
 response = agent.run( "Review this function: ${codeSnippet}" )
+```
+
+### Fluent Configuration
+
+For runtime configuration changes, use setter methods:
+
+```java
+agent = aiAgent(
+    name: "Assistant",
+    description: "Helpful assistant"
+)
+    .setModel( aiModel( "claude" ) )
+    .addTool( searchTool )
+    .addMemory( customMemory )
+    .setParam( "temperature", 0.7 )
+
+response = agent.run( "Help me with this task" )
 ```
 
 ## Return Formats
@@ -146,9 +164,14 @@ Agents support five return formats: `single`, `all`, `json`, `xml`, and `raw`.
 
 ### Single (Default)
 
-Returns just the assistant's content as a string:
+Agents default to "single" format, returning just the assistant's content as a string:
 
 ```java
+// Default behavior - returns string
+content = agent.run( "Hello" )
+println( content )  // "Hello! How can I help you?"
+
+// Explicitly specify (same result)
 content = agent.run( "Hello", {}, { returnFormat: "single" } )
 println( content )  // "Hello! How can I help you?"
 ```
@@ -268,17 +291,44 @@ agent = aiAgent( name: "ContextAgent" )
     .setTools( getToolsForUser( getCurrentUserRole() ) )
 ```
 
-### Agent Configuration Object
+### Agent Introspection
+
+Inspect agent configuration at runtime using `getConfig()`:
 
 ```java
-// Get agent configuration
-agent = aiAgent( name: "Inspector" )
+// Create an agent
+agent = aiAgent(
+    name: "Inspector",
+    description: "Analysis agent",
+    instructions: "Analyze data carefully",
+    model: aiModel( "openai", { temperature: 0.7 } ),
+    tools: [ searchTool, calculatorTool ],
+    params: { maxTokens: 2000 }
+)
+
+// Get comprehensive configuration
 config = agent.getConfig()
 
+// Access agent properties
 println( config.name )          // "Inspector"
-println( config.toolCount )     // Number of tools
-println( config.memoryCount )   // Number of memory systems
-println( config.model )         // Model name
+println( config.description )   // "Analysis agent"
+println( config.instructions )  // "Analyze data carefully"
+
+// Access model configuration object
+println( config.model.name )         // "gpt-4o-mini"
+println( config.model.provider )     // "openai"
+println( config.model.toolCount )    // 2
+println( config.model.params.temperature )  // 0.7
+
+// Access memories (array of memory summaries)
+config.memories.each( function( mem ) {
+    println( mem.type )          // e.g., "SessionMemory"
+    println( mem.messageCount )  // Number of stored messages
+} )
+
+// Access execution parameters
+println( config.params.maxTokens )  // 2000
+println( config.options.returnFormat )  // "single" (default)
 ```
 
 ### Conditional Agent Execution

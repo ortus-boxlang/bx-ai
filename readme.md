@@ -1203,8 +1203,6 @@ Returns an `AiAgent` object with the following methods:
 
 **Configuration Methods (Fluent API):**
 - `setName( name )` : Set the agent's name
-- `setDescription( description )` : Set the agent's description
-- `setInstructions( instructions )` : Set the agent's instructions
 - `setModel( model )` : Set the AI model
 - `setTools( tools )` : Replace all tools
 - `addTool( tool )` : Add a single tool
@@ -1215,7 +1213,7 @@ Returns an `AiAgent` object with the following methods:
 - `setParam( key, value )` : Set a model parameter
 
 **Query Methods:**
-- `getConfig()` : Get agent configuration
+- `getConfig()` : Get agent configuration (returns model config object, memories array, params, options)
 - `getMemoryMessages()` : Get all messages from memory
 
 ### Examples
@@ -1285,20 +1283,33 @@ agent.run( "What's my name?" )  // "Your name is Luis"
 agent.clearMemory()
 ```
 
-**Fluent API Configuration:**
+**Constructor-Based Configuration (Recommended):**
 
 ```java
-// Build agent with fluent API
-agent = aiAgent()
-    .setName( "CodeReviewer" )
-    .setDescription( "A code review specialist" )
-    .setInstructions( "Review code for best practices and security" )
+// Configure agent via constructor
+agent = aiAgent(
+    name: "CodeReviewer",
+    description: "A code review specialist",
+    instructions: "Review code for best practices and security",
+    model: aiModel( "claude", { temperature: 0.3 } ),
+    tools: [ codeTool ],
+    memory: aiMemory( "simple" )
+)
+
+response = agent.run( "Review this function: function test() { return true; }" )
+```
+
+**Fluent API (Optional Chaining):**
+
+```java
+// Can still use fluent methods for dynamic configuration
+agent = aiAgent( name: "CodeReviewer" )
     .setModel( aiModel( "claude" ) )
     .addTool( codeTool )
     .addMemory( aiMemory( "simple" ) )
     .setParam( "temperature", 0.3 )
 
-response = agent.run( "Review this function: function test() { return true; }" )
+response = agent.run( "Review code" )
 ```
 
 **Agent in Pipelines:**

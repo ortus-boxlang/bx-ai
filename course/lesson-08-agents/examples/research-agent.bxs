@@ -46,17 +46,18 @@ searchTool = aiTool()
     } )
 
 // Create research agent
-researchAgent = aiAgent()
-    .setName( "Research Agent" )
-    .setInstructions( "
+researchAgent = aiAgent(
+    name: "Research Agent",
+    instructions: "
         You are a thorough researcher.
         When given a topic:
         1. Use research_topic to gather information
         2. Analyze the findings
         3. Present a clear summary
         4. Provide recommendations
-    " )
-    .setTools( [ searchTool ] )
+    ",
+    tools: [ searchTool ]
+)
 
 // Research tasks
 topics = [

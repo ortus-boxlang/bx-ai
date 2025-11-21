@@ -102,12 +102,13 @@ calcTool = aiTool(
 ).describeExpression( "Math expression to evaluate" )
 
 // Build agent with multiple tools
-agent = aiAgent( name: "Support Agent" )
-    .setDescription( "Customer support assistant" )
-    .setInstructions( "You help customers with account questions and calculations" )
-    .addTool( dbTool )
-    .addTool( calcTool )
-    .setMemories( aiMemory( "simple", "support-session-123" ) )
+agent = aiAgent(
+    name: "Support Agent",
+    description: "Customer support assistant",
+    instructions: "You help customers with account questions and calculations",
+    tools: [ dbTool, calcTool ],
+    memory: aiMemory( "simple", "support-session-123" )
+)
 
 // Agent can now look up users and do math
 response = agent.run(

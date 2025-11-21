@@ -20,22 +20,23 @@ calculatorTool = aiTool()
     .setHandler( ( args ) => evaluate( args.expression ) )
 
 // Researcher Agent
-researcher = aiAgent()
-    .setName( "Researcher" )
-    .setInstructions( "Research topics and gather facts. Be concise." )
-    .setTools( [] )
+researcher = aiAgent(
+    name: "Researcher",
+    instructions: "Research topics and gather facts. Be concise."
+)
 
 // Analyst Agent
-analyst = aiAgent()
-    .setName( "Analyst" )
-    .setInstructions( "Analyze data and provide insights. Use calculations." )
-    .setTools( [ calculatorTool ] )
+analyst = aiAgent(
+    name: "Analyst",
+    instructions: "Analyze data and provide insights. Use calculations.",
+    tools: [ calculatorTool ]
+)
 
 // Writer Agent
-writer = aiAgent()
-    .setName( "Writer" )
-    .setInstructions( "Write clear, engaging summaries of findings." )
-    .setTools( [] )
+writer = aiAgent(
+    name: "Writer",
+    instructions: "Write clear, engaging summaries of findings."
+)
 
 // Multi-step task
 println( "Task: Research AI, analyze trends, write summary" )
