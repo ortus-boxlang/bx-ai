@@ -2,25 +2,24 @@
 
 Comprehensive examples demonstrating all features of the BoxLang AI module, organized by complexity and use case.
 
-## 📁 Directory Structure
+## 📁 Example Files
 
-### `/basic` - Getting Started
+Practical examples demonstrating key features:
 
-Simple, focused examples perfect for learning the fundamentals:
+### Basic Features
 
-- **simple-chat.bxs** - Basic AI chat interactions
-- **ollama-local.bxs** - Using local AI with Ollama
-- **streaming-responses.bxs** - Real-time streaming output
-- **return-formats.bxs** - Different response formats (single, all, raw)
+- **ollama-example.bxs** - Using local AI with Ollama (no API key needed)
+- **streaming-example.bxs** - Real-time streaming output
+- **return-formats-example.bxs** - Different response formats (single, all, raw)
+- **runnable-example.bxs** - Pipeline workflows and runnables
 
-### `/advanced` - Advanced Features
+### Advanced Features
 
-More complex examples showcasing advanced capabilities:
-
-- **embeddings.bxs** - Vector embeddings for semantic search
-- **token-counting.bxs** - Estimating and managing token usage
-- **json-xml-formats.bxs** - Structured output formats
-- **memory-systems.bxs** - Different memory implementations
+- **vision-example.bxs** - Image analysis with vision-capable models (NEW!)
+- **embeddings-example.bxs** - Vector embeddings for semantic search
+- **token-counting-example.bxs** - Estimating and managing token usage
+- **json-xml-formats-example.bxs** - Structured output formats
+- **memory-file.bxs** - File-based conversation memory
 
 ### `/agents` - AI Agents
 
@@ -45,20 +44,20 @@ Composable multi-step AI workflows:
 ### Run Any Example
 
 ```bash
-# Basic examples
-boxlang examples/basic/simple-chat.bxs
+# Local AI (no API key needed)
+boxlang examples/ollama-example.bxs
 
-# With Ollama (no API key needed)
-boxlang examples/basic/ollama-local.bxs
+# Streaming responses
+boxlang examples/streaming-example.bxs
 
-# Advanced features
-boxlang examples/advanced/embeddings.bxs
+# Vision/image analysis (NEW!)
+boxlang examples/vision-example.bxs
 
-# Agents
-boxlang examples/agents/basic-agent.bxs
+# Vector embeddings
+boxlang examples/embeddings-example.bxs
 
-# Pipelines
-boxlang examples/pipelines/simple-pipeline.bxs
+# Pipeline workflows
+boxlang examples/runnable-example.bxs
 ```
 
 ### Environment Setup
@@ -106,88 +105,77 @@ ollama serve
 
 **🟢 Beginner**
 
-- `basic/simple-chat.bxs` - Start here!
-- `basic/ollama-local.bxs` - Local AI basics
-- `basic/return-formats.bxs` - Understanding responses
+- `ollama-example.bxs` - Local AI basics
+- `streaming-example.bxs` - Real-time responses
+- `return-formats-example.bxs` - Understanding responses
 
 **🟡 Intermediate**
 
-- `advanced/memory-systems.bxs` - Managing conversation history
-- `agents/basic-agent.bxs` - Your first agent
-- `pipelines/simple-pipeline.bxs` - Pipeline fundamentals
+- `vision-example.bxs` - Image analysis (NEW!)
+- `memory-file.bxs` - Managing conversation history
+- `runnable-example.bxs` - Pipeline fundamentals
+- `json-xml-formats-example.bxs` - Structured output
 
 **🔴 Advanced**
 
-- `agents/customer-support-agent.bxs` - Production-ready agent
-- `pipelines/multi-model-pipeline.bxs` - Complex workflows
-- `advanced/embeddings.bxs` - Vector search
+- `embeddings-example.bxs` - Vector search and semantic similarity
+- `token-counting-example.bxs` - Cost optimization
 
 ### By Use Case
 
 **💬 Chat & Conversation**
 
-- `basic/simple-chat.bxs` - Basic Q&A
-- `basic/streaming-responses.bxs` - Real-time chat
-- `agents/basic-agent.bxs` - Conversational agent
+- `streaming-example.bxs` - Real-time chat responses
+- `memory-file.bxs` - Conversation history
 
-**🛠️ Function Calling**
+**👁️ Vision & Images (NEW!)**
 
-- `agents/agent-with-tools.bxs` - Basic tool usage
-- `agents/customer-support-agent.bxs` - Multiple tools
-- `agents/research-agent.bxs` - Web search tools
+- `vision-example.bxs` - Image analysis, document scanning, multi-image comparison
 
 **🔄 Workflows**
 
-- `pipelines/simple-pipeline.bxs` - Basic workflow
-- `pipelines/message-template-pipeline.bxs` - Reusable templates
-- `pipelines/multi-model-pipeline.bxs` - Model chaining
+- `runnable-example.bxs` - Pipeline basics and chaining
+- `return-formats-example.bxs` - Response format options
 
 **📊 Data Processing**
 
-- `advanced/embeddings.bxs` - Semantic search
-- `advanced/token-counting.bxs` - Cost estimation
-- `advanced/json-xml-formats.bxs` - Structured output
-
-**🧠 Memory & State**
-
-- `advanced/memory-systems.bxs` - All memory types
-- `agents/basic-agent.bxs` - Agent with memory
-- File, cache, session memory examples
+- `embeddings-example.bxs` - Semantic search and similarity
+- `token-counting-example.bxs` - Cost estimation
+- `json-xml-formats-example.bxs` - Structured output
 
 ### By Provider
 
 **☁️ Cloud Providers**
 
-- OpenAI - Most examples use GPT models
-- Claude - See provider-specific examples
-- Gemini - Google AI examples
+- OpenAI - GPT models (including vision with gpt-4o)
+- Claude - Anthropic models (claude-3 with vision)
+- Gemini - Google AI models (gemini-pro-vision)
 
 **💻 Local AI**
 
-- `basic/ollama-local.bxs` - Ollama basics
-- Privacy-focused examples
-- Offline capabilities
+- `ollama-example.bxs` - Ollama basics
+- Privacy-focused, offline-capable AI
 
 ## 🎯 Learning Path
 
 ### Path 1: Absolute Beginner
-1. `basic/simple-chat.bxs` - Learn the basics
-2. `basic/return-formats.bxs` - Understand responses
-3. `basic/streaming-responses.bxs` - Real-time output
-4. `agents/basic-agent.bxs` - Add memory
-5. `agents/agent-with-tools.bxs` - Function calling
+1. `ollama-example.bxs` - Start with local AI (no API key)
+2. `return-formats-example.bxs` - Understand responses
+3. `streaming-example.bxs` - Real-time output
+4. `runnable-example.bxs` - Build pipelines
+5. `memory-file.bxs` - Add conversation memory
 
-### Path 2: Quick to Advanced
-1. `basic/simple-chat.bxs` - Start here
-2. `agents/basic-agent.bxs` - Jump to agents
-3. `agents/customer-support-agent.bxs` - Production patterns
-4. `pipelines/simple-pipeline.bxs` - Learn workflows
-5. `pipelines/multi-model-pipeline.bxs` - Complex systems
+### Path 2: Cloud AI & Advanced Features
+1. `streaming-example.bxs` - Start here (needs API key)
+2. `vision-example.bxs` - Image analysis
+3. `json-xml-formats-example.bxs` - Structured output
+4. `embeddings-example.bxs` - Semantic search
+5. `token-counting-example.bxs` - Optimize costs
 
 ### Path 3: Local/Privacy Focused
-1. `basic/ollama-local.bxs` - Local AI setup
-2. `agents/basic-agent.bxs` - Change to Ollama provider
-3. `advanced/memory-systems.bxs` - File-based memory
+1. `ollama-example.bxs` - Local AI setup
+2. `memory-file.bxs` - File-based memory
+3. `runnable-example.bxs` - Build offline workflows
 4. Build privacy-first applications
 
 ## 📖 Documentation Links
