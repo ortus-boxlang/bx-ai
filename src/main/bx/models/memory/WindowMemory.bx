@@ -81,13 +81,13 @@ class extends="SimpleMemory" {
 		var hasSystem = false;
 
 		// Extract system message if exists
-		if ( len( this.getSystemMessage() ) ) {
-			systemMsg = this.getSystemMessage();
+		if ( hasSystemMessage() ) {
+			systemMsg = getSystemMessage();
 			hasSystem = true;
 		}
 
 		// Get non-system messages
-		var nonSystemMessages = this.getNonSystemMessages();
+		var nonSystemMessages = getNonSystemMessages();
 
 		// If we're over the limit, keep only the last N
 		if ( nonSystemMessages.len() > variables.maxMessages ) {
@@ -95,16 +95,16 @@ class extends="SimpleMemory" {
 			var kept = nonSystemMessages.slice( start, nonSystemMessages.len() );
 
 			// Clear and rebuild
-			variables.messages = [];
+			clear();
 
 			// Re-add system message first if it existed
 			if ( hasSystem ) {
-				this.setSystemMessage( systemMsg );
+				setSystemMessage( systemMsg );
 			}
 
 			// Add back the kept messages
 			kept.each( msg => {
-				variables.messages.append( msg );
+				this.add( msg );
 			} );
 		}
 

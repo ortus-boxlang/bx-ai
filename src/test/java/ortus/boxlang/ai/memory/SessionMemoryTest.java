@@ -15,14 +15,16 @@ public class SessionMemoryTest extends BaseIntegrationTest {
 	@BeforeEach
 	public void setupEach() {
 		super.setupEach();
+		// @formatter:off
 		runtime.executeSource(
 		    """
-		       // Setup session management
-		       bx:application name="unit-test1" sessionmanagement="true";
-		    structClear( session )
-		       """,
+				// Setup session management
+				bx:application name="unit-test1" sessionmanagement="true";
+				structClear( session )
+		     """,
 		    context
 		);
+		// @formatter:on
 	}
 
 	@Test

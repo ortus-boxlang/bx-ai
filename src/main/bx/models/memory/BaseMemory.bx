@@ -91,7 +91,7 @@ abstract class implements="IAiMemory" {
 	 */
 	public any function metadata( struct metadata ) {
 		if ( !isNull( arguments.metadata ) ) {
-			variables.metadata.append( arguments.metadata, true );
+			variables.metadata = arguments.metadata;
 			return this;
 		}
 		return variables.metadata;
@@ -109,36 +109,34 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function add( required any message ) {
-		// String - add as user message
-		if ( isSimpleValue( arguments.message ) ) {
-			variables.messages.append( {
-				role: "user",
-				content: arguments.message,
-				timestamp: now()
-			} );
+
+		// AiMessage instance - get its messages and process them
+ 		if ( arguments.message instanceof "AiMessage" ) {
+			return 	this.add( arguments.message.getMessages() )
 		}
-		// AiMessage instance - get its messages
-		else if ( arguments.message instanceof "AiMessage" ) {
-			add( arguments.message.getMessages() );
-		}
+
 		// Struct - must have role and content
-		else if ( isStruct( arguments.message ) ) {
+		if ( isStruct( arguments.message ) ) {
 			if ( !arguments.message.keyExists( "role" ) || !arguments.message.keyExists( "content" ) ) {
 				throw(
 					type: "InvalidMessage",
 					message: "Message struct must contain 'role' and 'content' keys"
 				);
 			}
-			var msg = duplicate( arguments.message );
-			// Add timestamp if not present
-			if ( !msg.keyExists( "timestamp" ) ) {
-				msg.timestamp = now();
-			}
-			variables.messages.append( msg );
+			param arguments.message.timestamp = now();
+			variables.messages.append( arguments.message );
 		}
 		// Array - process each element
 		else if ( isArray( arguments.message ) ) {
-			arguments.message.each( ( m ) => add( m ) );
+			arguments.message.each( ( m ) => this.add( m ) );
+		}
+		// String - add as user message
+		else if ( isSimpleValue( arguments.message ) ) {
+			variables.messages.append( {
+				role: "user",
+				content: arguments.message,
+				timestamp: now()
+			} );
 		}
 		// Invalid type
 		else {
@@ -369,12 +367,12 @@ abstract class implements="IAiMemory" {
 	public struct function getSummary() {
 		var allMessages = getAll();
 		return {
-			"type": name(),
-			"key": key(),
+			"type": this.name(),
+			"key": this.key(),
 			"messageCount": count(),
 			"nonSystemCount": getNonSystemMessages().len(),
 			"hasSystemMessage": hasSystemMessage(),
-			"metadata": metadata(),
+			"metadata": this.metadata(),
 			"config": getConfig(),
 			"firstMessageAt": allMessages.isEmpty() ? "" : allMessages.first().timestamp,
         	"lastMessageAt": allMessages.isEmpty() ? "" : allMessages.last().timestamp
@@ -389,9 +387,9 @@ abstract class implements="IAiMemory" {
 	 */
 	public struct function export() {
 		return {
-			"type": name(),
-			"key": key(),
-			"metadata": metadata(),
+			"type":this. name(),
+			"key": this.key(),
+			"metadata": this.metadata(),
 			"config": getConfig(),
 			"messages": getAll()
 		};

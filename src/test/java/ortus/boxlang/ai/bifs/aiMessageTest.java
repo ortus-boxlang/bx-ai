@@ -572,7 +572,7 @@ public class aiMessageTest extends BaseIntegrationTest {
 				message = aiMessage()
 					.user( "What is in this image?" )
 					.image( "https://example.com/image.jpg" )
-				
+
 				result = message.getMessages()
 		    """,
 		    context
@@ -612,7 +612,7 @@ public class aiMessageTest extends BaseIntegrationTest {
 				message = aiMessage()
 					.user( "Analyze this image" )
 					.image( "https://example.com/image.jpg", "high" )
-				
+
 				result = message.getMessages()
 		    """,
 		    context
@@ -643,7 +643,7 @@ public class aiMessageTest extends BaseIntegrationTest {
 					.user( "Compare these images" )
 					.image( "https://example.com/image1.jpg" )
 					.image( "https://example.com/image2.jpg" )
-				
+
 				result = message.getMessages()
 		    """,
 		    context
@@ -678,7 +678,7 @@ public class aiMessageTest extends BaseIntegrationTest {
 		    """
 				message = aiMessage()
 					.image( "https://example.com/image.jpg" )
-				
+
 				result = message.getMessages()
 		    """,
 		    context
@@ -712,11 +712,11 @@ public class aiMessageTest extends BaseIntegrationTest {
 				// Minimal 1x1 PNG image (base64: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==)
 				testImageData = toBinary( "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" )
 				fileWrite( testImagePath, testImageData )
-				
+
 				message = aiMessage()
 					.user( "Analyze this embedded image" )
 					.embedImage( testImagePath )
-				
+
 				result = message.getMessages()
 		    """,
 		    context
@@ -750,11 +750,11 @@ public class aiMessageTest extends BaseIntegrationTest {
 				testImagePath = "/tmp/test-image.jpg"
 				testImageData = toBinary( "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" )
 				fileWrite( testImagePath, testImageData )
-				
+
 				message = aiMessage()
 					.user( "Analyze this" )
 					.embedImage( testImagePath, "low" )
-				
+
 				result = message.getMessages()
 		    """,
 		    context

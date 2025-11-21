@@ -27,10 +27,6 @@ class extends="WindowMemory" {
 	 */
 	function init( string key = "bxai", numeric maxMessages ) {
 		super.init( argumentCollection: arguments );
-
-		// Initialize session memory storage if not exists
-		ensureSessionStorage();
-
 		return this;
 	}
 
@@ -64,15 +60,43 @@ class extends="WindowMemory" {
 	 */
 	public IAiMemory function add( required any message ) {
 		ensureSessionStorage();
+		var container = session[ variables.key ];
 
-		// Temporarily sync messages to variables for parent logic
-		variables.messages = session[ variables.key ].messages;
+		// AiMessage instance - get its messages and process them
+ 		if ( arguments.message instanceof "AiMessage" ) {
+			arguments.messages =  arguments.message.getMessages();
+		}
 
-		// Use parent's add logic (handles string, struct, array, AiMessage)
-		super.add( arguments.message );
-
-		// Sync back to session
-		session[ variables.key ].messages = variables.messages;
+		// Array - process each element
+		if ( isArray( arguments.message ) ) {
+			container.messages.append( arguments.message, true );
+		}
+		// Struct - must have role and content
+		else if ( isStruct( arguments.message ) ) {
+			if ( !arguments.message.keyExists( "role" ) || !arguments.message.keyExists( "content" ) ) {
+				throw(
+					type: "InvalidMessage",
+					message: "Message struct must contain 'role' and 'content' keys"
+				);
+			}
+			param arguments.message.timestamp = now();
+			container.messages.append( arguments.message );
+		}
+		// String - add as user message
+		else if ( isSimpleValue( arguments.message ) ) {
+			container.messages.append( {
+				role: "user",
+				content: arguments.message,
+				timestamp: now()
+			} );
+		}
+		// Invalid type
+		else {
+			throw(
+				type: "InvalidMessage",
+				message: "Message must be a string, struct, array, or AiMessage instance"
+			);
+		}
 
 		return this;
 	}
@@ -88,11 +112,38 @@ class extends="WindowMemory" {
 		ensureSessionStorage();
 
 		if ( !isNull( arguments.metadata ) ) {
-			session[ variables.key ].metadata.append( arguments.metadata, true );
+			session[ variables.key ].metadata = arguments.metadata;
 			return this;
 		}
 
 		return session[ variables.key ].metadata;
+	}
+
+	/**
+	 * Remove the system message
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function removeSystemMessage() {
+		ensureSessionStorage();
+		session[ variables.key ].messages = getAll().filter( ( m ) => m.role != "system" );
+		return this;
+	}
+
+	/**
+	 * Configure the memory instance for operation
+	 *
+	 * @config Configuration struct to merge
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function configure( required struct config ) {
+		variables.config.append( arguments.config, true );
+
+		// Initialize session memory storage if not exists
+		ensureSessionStorage();
+
+		return this;
 	}
 
 	/**
@@ -102,15 +153,7 @@ class extends="WindowMemory" {
 	 */
 	public struct function export() {
 		ensureSessionStorage();
-
-		return {
-			key: variables.key,
-			name: variables.name,
-			maxMessages: variables.maxMessages,
-			messages: session[ variables.key ].messages,
-			metadata: session[ variables.key ].metadata,
-			config: session[ variables.key ].config
-		};
+		return super.export();
 	}
 
 	/**
@@ -142,10 +185,7 @@ class extends="WindowMemory" {
 			session[ variables.key ].config = arguments.data.config;
 		}
 
-		// Sync to variables for parent trim logic
-		variables.messages = session[ variables.key ].messages;
 		this.trim();
-		session[ variables.key ].messages = variables.messages;
 
 		return this;
 	}
