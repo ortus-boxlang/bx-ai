@@ -1,0 +1,76 @@
+// multi-agent.bxs
+/**
+ * Multi-Agent System Demo
+ * Multiple specialized agents working together
+ */
+
+println( "=== Multi-Agent System Demo ===" )
+println()
+
+// Shared tools
+calculatorTool = aiTool()
+    .setName( "calculate" )
+    .setDescription( "Perform calculations" )
+    .setParameters( {
+        type: "object",
+        properties: {
+            expression: { type: "string" }
+        }
+    } )
+    .setHandler( ( args ) => evaluate( args.expression ) )
+
+// Researcher Agent
+researcher = aiAgent()
+    .setName( "Researcher" )
+    .setInstructions( "Research topics and gather facts. Be concise." )
+    .setTools( [] )
+
+// Analyst Agent
+analyst = aiAgent()
+    .setName( "Analyst" )
+    .setInstructions( "Analyze data and provide insights. Use calculations." )
+    .setTools( [ calculatorTool ] )
+
+// Writer Agent
+writer = aiAgent()
+    .setName( "Writer" )
+    .setInstructions( "Write clear, engaging summaries of findings." )
+    .setTools( [] )
+
+// Multi-step task
+println( "Task: Research AI, analyze trends, write summary" )
+println( "=".repeat( 70 ) )
+println()
+
+// Step 1: Research
+println( "Step 1: Researcher gathering information..." )
+researchFindings = researcher.run( "Research current AI trends in 2-3 sentences" )
+println( "Researcher: #researchFindings#" )
+println()
+
+// Step 2: Analysis
+println( "Step 2: Analyst analyzing findings..." )
+analysisPrompt = "Analyze these findings and calculate potential market growth: #researchFindings#"
+analysis = analyst.run( analysisPrompt )
+println( "Analyst: #analysis#" )
+println()
+
+// Step 3: Write summary
+println( "Step 3: Writer creating summary..." )
+summaryPrompt = "Write a brief summary combining these insights: Research: #researchFindings#. Analysis: #analysis#"
+summary = writer.run( summaryPrompt )
+println( "Writer: #summary#" )
+println()
+
+println( "=".repeat( 70 ) )
+println( "💡 Multi-Agent Benefits:" )
+println( "- Specialized agents for specific tasks" )
+println( "- Complex workflows broken into steps" )
+println( "- Each agent has focused expertise" )
+println( "- Results can be chained together" )
+println()
+println( "Use Cases:" )
+println( "- Content creation pipelines" )
+println( "- Research and analysis workflows" )
+println( "- Customer service routing" )
+println( "- Complex decision making" )

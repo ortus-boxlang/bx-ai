@@ -1,0 +1,66 @@
+// streaming-chat.bxs
+/**
+ * LAB: Streaming Chat Bot
+ * 
+ * OBJECTIVE:
+ * Build an interactive chat bot with real-time streaming responses
+ * 
+ * REQUIREMENTS:
+ * 1. Implement multi-turn conversation with memory
+ * 2. Stream responses in real-time (show chunks as received)
+ * 3. Display typing indicator while waiting for first chunk
+ * 4. Handle errors gracefully during streaming
+ * 5. Support commands: /reset, /exit, /save
+ * 
+ * BONUS CHALLENGES:
+ * - Add word count and token count per response
+ * - Show streaming speed (words per second)
+ * - Implement "stop" command to interrupt streaming
+ * - Add multiple personalities that can be switched
+ * - Save conversation history to file
+ * 
+ * EXAMPLE OUTPUT:
+ * You: Hello!
+ * AI: ⏳ Thinking...
+ * AI: Hello! How can I help you today?
+ * 
+ * You: Tell me a story
+ * AI: ⏳ Thinking...
+ * AI: Once upon a time, in a digital realm...
+ * (streams in real-time)
+ * 
+ * HINTS:
+ * - Use aiChatStream() with callback
+ * - Accumulate chunks in fullResponse variable
+ * - Use print() without newline for streaming effect
+ * - Add conversation history management
+ */
+
+println( "=== Streaming Chat Bot Lab ===" )
+println()
+
+// YOUR CODE HERE
+//
+// Step 1: Initialize conversation
+// conversation = [ aiMessage().system( "You are helpful" ) ]
+//
+// Step 2: Create chat loop
+// while ( true ) {
+//     userInput = console.readLine()
+//     
+//     if ( userInput == "/exit" ) break
+//     
+//     conversation.append( aiMessage().user( userInput ) )
+//     
+//     print( "AI: " )
+//     fullResponse = ""
+//     
+//     aiChatStream( conversation, ( chunk ) => {
+//         fullResponse &= chunk
+//         print( chunk )
+//     } )
+//     
+//     conversation.append( aiMessage().assistant( fullResponse ) )
+// }
+
+println( "💡 Implement your streaming chat bot above!" )

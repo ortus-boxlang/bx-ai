@@ -1,0 +1,98 @@
+// memory-comparison.bxs
+/**
+ * Memory Comparison
+ * Compare different memory types
+ */
+
+import bxModules.bxai.models.util.TokenCounter;
+
+println( "=== Memory Type Comparison ===" )
+println()
+
+// Create different memory types
+windowedMemory = aiMemory( "windowed", { maxMessages: 5 } )
+windowedLargeMemory = aiMemory( "windowed", { maxMessages: 20 } )
+
+// Add system messages
+windowedMemory.add( aiMessage().system( "You are helpful" ) )
+windowedLargeMemory.add( aiMessage().system( "You are helpful" ) )
+
+// Simulate 10-turn conversation
+conversationTurns = [
+    { user: "My name is Alice", ai: "Nice to meet you, Alice!" },
+    { user: "I work as a developer", ai: "That's a great profession!" },
+    { user: "I love BoxLang", ai: "BoxLang is fantastic!" },
+    { user: "I have a cat named Whiskers", ai: "Cats make great pets!" },
+    { user: "I like to cook", ai: "Cooking is a wonderful hobby!" },
+    { user: "My favorite food is pasta", ai: "Pasta is delicious!" },
+    { user: "I play guitar", ai: "Music is a great creative outlet!" },
+    { user: "I enjoy hiking", ai: "Hiking is excellent exercise!" },
+    { user: "I read sci-fi books", ai: "Sci-fi is an exciting genre!" },
+    { user: "What's my name?", ai: "" }
+]
+
+// Test each memory type
+println( "Memory Type 1: Windowed (5 messages)" )
+println( "-".repeat( 70 ) )
+
+conversationTurns.each( turn => {
+    windowedMemory.add( aiMessage().user( turn.user ) )
+    if ( len( turn.ai ) ) {
+        windowedMemory.add( aiMessage().assistant( turn.ai ) )
+    }
+} )
+
+response1 = aiChat( windowedMemory.getAll() )
+tokens1 = 0
+windowedMemory.getAll().each( msg => {
+    tokens1 += TokenCounter::count( msg.content )
+} )
+
+println( "Messages in memory: #windowedMemory.count()#" )
+println( "Total tokens: #tokens1#" )
+println( "Response: #response1#" )
+println()
+
+println( "Memory Type 2: Windowed (20 messages)" )
+println( "-".repeat( 70 ) )
+
+conversationTurns.each( turn => {
+    windowedLargeMemory.add( aiMessage().user( turn.user ) )
+    if ( len( turn.ai ) ) {
+        windowedLargeMemory.add( aiMessage().assistant( turn.ai ) )
+    }
+} )
+
+response2 = aiChat( windowedLargeMemory.getAll() )
+tokens2 = 0
+windowedLargeMemory.getAll().each( msg => {
+    tokens2 += TokenCounter::count( msg.content )
+} )
+
+println( "Messages in memory: #windowedLargeMemory.count()#" )
+println( "Total tokens: #tokens2#" )
+println( "Response: #response2#" )
+println()
+
+// Comparison
+println( "=== Comparison ===" )
+println( "-".repeat( 70 ) )
+println( "Windowed (5):" )
+println( "  ✓ Low token usage (#tokens1# tokens)" )
+println( "  ✓ Low cost" )
+println( "  ✗ Limited context" )
+println( "  Use for: Simple chats, cost-sensitive apps" )
+println()
+println( "Windowed (20):" )
+println( "  ✓ Better context retention" )
+println( "  ✓ Remembers more history" )
+println( "  ✗ Higher token usage (#tokens2# tokens)" )
+println( "  ✗ Higher cost" )
+println( "  Use for: Complex conversations, customer support" )
+println()
+
+println( "💡 Choosing Memory Type:" )
+println( "- Small windowed (5-10): Quick chats, FAQs" )
+println( "- Large windowed (20-50): Customer support" )
+println( "- Summary: Long conversations, tutoring" )
+println( "- Session: Web apps, persistent chats" )

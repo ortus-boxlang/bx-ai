@@ -1,0 +1,75 @@
+// session-memory.bxs
+/**
+ * Session Memory Demo
+ * NOTE: This requires a web context (session scope)
+ * For CLI testing, we'll simulate session storage
+ */
+
+println( "=== Session Memory Demo ===" )
+println()
+
+// In a real web app, this would use session scope automatically
+// For demo, we'll show the concept
+
+println( "Session Memory Concept:" )
+println( "-".repeat( 60 ) )
+println()
+
+println( "In a web application:" )
+println()
+println( "// Create session-persisted memory" )
+println( 'memory = aiMemory( "session", { key: "chatbot" } )' )
+println()
+println( "// Add messages - automatically saved to session" )
+println( 'memory.add( aiMessage().user( "My name is Bob" ) )' )
+println()
+println( "// On next page request, memory persists!" )
+println( 'memory = aiMemory( "session", { key: "chatbot" } )' )
+println( 'response = aiChat( memory.getAll() )  // AI remembers!' )
+println()
+
+// Simulate with a struct
+println( "Simulated Session Storage:" )
+println( "-".repeat( 60 ) )
+
+// Simulate session scope
+session = {}
+
+// Create memory with session-like storage
+memory = aiMemory( "windowed", { maxMessages: 10 } )
+memory.add( aiMessage().system( "You are a helpful assistant" ) )
+
+// Conversation 1
+memory.add( aiMessage().user( "I'm planning a trip to Paris" ) )
+memory.add( aiMessage().assistant( "That sounds exciting! When are you planning to go?" ) )
+
+// Save to "session"
+session.chatMemory = memory.export()
+
+println( "After first interaction:" )
+println( "  Saved #session.chatMemory.messages.len()# messages to session" )
+println()
+
+// Simulate page refresh / new request
+println( "--- Simulating page refresh ---" )
+println()
+
+// Restore from "session"
+restoredMemory = aiMemory( "windowed", { maxMessages: 10 } )
+session.chatMemory.messages.each( msg => restoredMemory.add( msg ) )
+
+// Continue conversation
+restoredMemory.add( aiMessage().user( "What did I just tell you?" ) )
+response = aiChat( restoredMemory.getAll() )
+
+println( "After page refresh:" )
+println( "  You: What did I just tell you?" )
+println( "  AI: #response#" )
+println()
+
+println( "💡 Session Memory:" )
+println( "- Persists across page requests" )
+println( "- Stored in web session scope" )
+println( "- Good for: web chat applications" )
+println( "- Survives page refreshes" )
+println( "- Separate memory per user" )

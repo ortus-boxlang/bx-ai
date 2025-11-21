@@ -1,0 +1,66 @@
+// tool-assistant.bxs
+/**
+ * LAB: Tool-Based Assistant
+ * 
+ * OBJECTIVE:
+ * Build an AI assistant with multiple useful tools
+ * 
+ * REQUIREMENTS:
+ * 1. Create at least 3 different tools
+ * 2. Each tool must have proper parameters and descriptions
+ * 3. Tool handlers must work correctly
+ * 4. AI should choose appropriate tools for questions
+ * 5. Handle tool errors gracefully
+ * 
+ * SUGGESTED TOOLS:
+ * - Calculator (math operations)
+ * - Time/Date (current time, date calculations)
+ * - Text Analysis (word count, character count, etc.)
+ * - Unit Converter (temperature, distance, etc.)
+ * - Random Generator (random numbers, UUIDs, etc.)
+ * 
+ * BONUS CHALLENGES:
+ * - Add file operations tool (read/write files)
+ * - Add web search tool (simulated)
+ * - Track which tools are called and how often
+ * - Create tool usage statistics report
+ * - Implement tool chaining (one tool uses another)
+ * 
+ * EXAMPLE OUTPUT:
+ * You: What's the square root of 144?
+ * AI: [calls calculator tool]
+ * AI: The square root of 144 is 12.
+ * 
+ * You: What time is it?
+ * AI: [calls time tool]
+ * AI: It's currently 2:30 PM.
+ * 
+ * HINTS:
+ * - Use aiTool() to define each tool
+ * - Set clear descriptions so AI knows when to use them
+ * - Test each tool individually first
+ * - Pass array of tools to aiChat()
+ */
+
+println( "=== Tool-Based Assistant Lab ===" )
+println()
+
+// YOUR CODE HERE
+//
+// Step 1: Define your tools
+// calculatorTool = aiTool()
+//     .setName( "calculate" )
+//     .setDescription( "..." )
+//     .setParameters( {...} )
+//     .setHandler( ( args ) => {
+//         // tool logic
+//     } )
+//
+// Step 2: Create tool array
+// tools = [ calculatorTool, timeTool, textTool ]
+//
+// Step 3: Test with questions
+// question = "What's 15 * 23?"
+// answer = aiChat( question, { tools: tools } )
+
+println( "💡 Implement your tool-based assistant above!" )

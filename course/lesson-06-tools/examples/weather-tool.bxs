@@ -1,0 +1,77 @@
+// weather-tool.bxs
+/**
+ * Weather Tool Demo
+ * Simulated weather API integration
+ */
+
+println( "=== Weather Tool Demo ===" )
+println()
+
+// Simulated weather data (in real app, call actual API)
+weatherData = {
+    "Seattle": { temp: 55, condition: "Rainy", humidity: 85 },
+    "Miami": { temp: 82, condition: "Sunny", humidity: 70 },
+    "Denver": { temp: 45, condition: "Snowy", humidity: 40 },
+    "Boston": { temp: 38, condition: "Cloudy", humidity: 60 }
+}
+
+// Define weather tool
+weatherTool = aiTool()
+    .setName( "get_weather" )
+    .setDescription( "Get current weather information for a city" )
+    .setParameters( {
+        type: "object",
+        properties: {
+            city: {
+                type: "string",
+                description: "City name, e.g., 'Seattle', 'Miami'"
+            }
+        },
+        required: [ "city" ]
+    } )
+    .setHandler( ( args ) => {
+        city = args.city
+        
+        // In real app: call weather API
+        // For demo: use mock data
+        if ( weatherData.keyExists( city ) ) {
+            data = weatherData[ city ]
+            return "Current weather in #city#: #data.temp#°F, #data.condition#, #data.humidity#% humidity"
+        } else {
+            return "Weather data not available for #city#"
+        }
+    } )
+
+// Test questions
+questions = [
+    "What's the weather in Seattle?",
+    "How's the weather in Miami today?",
+    "Is it raining in Denver?",
+    "Should I bring an umbrella in Boston?"
+]
+
+questions.each( question => {
+    println( "-".repeat( 70 ) )
+    println( "Question: #question#" )
+    println()
+    
+    try {
+        answer = aiChat(
+            question,
+            { tools: [ weatherTool ] }
+        )
+        
+        println( "AI: #answer#" )
+        
+    } catch( any e ) {
+        println( "❌ Error: #e.message#" )
+    }
+    
+    println()
+} )
+
+println( "💡 Real-World Integration:" )
+println( "Replace mock data with actual API calls:" )
+println( "- OpenWeatherMap API" )
+println( "- Weather.gov API" )
+println( "- AccuWeather API" )

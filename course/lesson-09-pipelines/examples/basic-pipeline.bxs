@@ -1,0 +1,58 @@
+// basic-pipeline.bxs
+/**
+ * Basic Pipeline Demo
+ * Chain AI operations together
+ */
+
+println( "=== Basic Pipeline Demo ===" )
+println()
+
+// Create a simple transformation pipeline
+println( "Example 1: Text Processing Pipeline" )
+println( "-".repeat( 70 ) )
+
+// Pipeline: User input -> AI enhancement -> Uppercase -> Trim
+uppercase = aiTransform( ( text ) => uCase( text ) )
+trimmer = aiTransform( ( text ) => trim( text ) )
+
+pipeline = aiModel( "gpt-4o-mini" )
+    .to( uppercase )
+    .to( trimmer )
+
+input = "  make this text better  "
+println( "Input: '#input#'" )
+
+result = pipeline.run( aiMessage().user( "Improve this: #input#" ) )
+println( "Output: '#result#'" )
+println()
+
+// Example 2: Data extraction pipeline
+println( "Example 2: Data Extraction Pipeline" )
+println( "-".repeat( 70 ) )
+
+// Extract JSON data
+jsonExtractor = aiTransform( ( text ) => {
+    // Parse JSON from AI response
+    try {
+        return deserializeJSON( text )
+    } catch( any e ) {
+        return { error: "Invalid JSON", raw: text }
+    }
+} )
+
+extractPipeline = aiModel( "gpt-4o-mini" )
+    .to( jsonExtractor )
+
+result = extractPipeline.run( 
+    aiMessage().user( "Extract person data as JSON: John Doe, age 30, engineer" )
+)
+
+println( "Extracted data:" )
+println( serializeJSON( result, true ) )
+println()
+
+println( "💡 Pipeline Benefits:" )
+println( "- Chain multiple operations" )
+println( "- Reusable transformations" )
+println( "- Clear data flow" )
+println( "- Easy to test and debug" )

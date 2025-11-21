@@ -1,0 +1,104 @@
+// cost-analysis.bxs
+/**
+ * Cost Analysis Across Providers
+ * Calculate and compare costs
+ */
+
+import bxModules.bxai.models.util.TokenCounter;
+
+println( "=== Provider Cost Analysis ===" )
+println()
+
+// Sample prompt
+prompt = "Write a detailed explanation of object-oriented programming with examples"
+estimatedInputTokens = TokenCounter::count( prompt )
+estimatedOutputTokens = 500  // Assume 500 token response
+
+println( "Scenario: #estimatedInputTokens# input tokens, #estimatedOutputTokens# output tokens" )
+println()
+
+// Pricing data (per 1M tokens, as of 2024)
+pricing = {
+    "OpenAI GPT-3.5": {
+        input: 0.50,
+        output: 1.50
+    },
+    "OpenAI GPT-4": {
+        input: 30.00,
+        output: 60.00
+    },
+    "OpenAI GPT-4 Turbo": {
+        input: 10.00,
+        output: 30.00
+    },
+    "Claude Haiku": {
+        input: 0.25,
+        output: 1.25
+    },
+    "Claude Sonnet": {
+        input: 3.00,
+        output: 15.00
+    },
+    "Claude Opus": {
+        input: 15.00,
+        output: 75.00
+    },
+    "Gemini Pro": {
+        input: 0.25,
+        output: 0.50
+    },
+    "Ollama (any)": {
+        input: 0.00,
+        output: 0.00
+    }
+}
+
+// Calculate costs
+println( "Cost per request:" )
+println( "-".repeat( 70 ) )
+
+sortedProviders = pricing.sort( ( a, b ) => {
+    costA = ( estimatedInputTokens / 1000000 * a.input ) + ( estimatedOutputTokens / 1000000 * a.output )
+    costB = ( estimatedInputTokens / 1000000 * b.input ) + ( estimatedOutputTokens / 1000000 * b.output )
+    return costA - costB
+} )
+
+sortedProviders.each( ( model, prices ) => {
+    inputCost = ( estimatedInputTokens / 1000000 ) * prices.input
+    outputCost = ( estimatedOutputTokens / 1000000 ) * prices.output
+    totalCost = inputCost + outputCost
+    
+    println( "#model.ljust( 25 )# $#numberFormat( totalCost, '0.000000' )#" )
+} )
+
+println()
+println( "Cost for 1,000 requests:" )
+println( "-".repeat( 70 ) )
+
+sortedProviders.each( ( model, prices ) => {
+    inputCost = ( estimatedInputTokens / 1000000 ) * prices.input * 1000
+    outputCost = ( estimatedOutputTokens / 1000000 ) * prices.output * 1000
+    totalCost = inputCost + outputCost
+    
+    println( "#model.ljust( 25 )# $#numberFormat( totalCost, '0.00' )#" )
+} )
+
+println()
+println( "Cost for 1,000,000 requests:" )
+println( "-".repeat( 70 ) )
+
+sortedProviders.each( ( model, prices ) => {
+    inputCost = ( estimatedInputTokens / 1000000 ) * prices.input * 1000000
+    outputCost = ( estimatedOutputTokens / 1000000 ) * prices.output * 1000000
+    totalCost = inputCost + outputCost
+    
+    println( "#model.ljust( 25 )# $#numberFormat( totalCost, ',.2' )#" )
+} )
+
+println()
+println( "💡 Cost Optimization Tips:" )
+println( "1. Use GPT-3.5/Gemini Pro for simple tasks" )
+println( "2. Use Ollama for development and testing (FREE)" )
+println( "3. Reserve GPT-4/Claude Opus for complex tasks" )
+println( "4. Implement caching to avoid repeated calls" )
+println( "5. Use shorter prompts when possible" )

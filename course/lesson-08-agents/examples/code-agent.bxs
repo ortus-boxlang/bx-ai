@@ -1,0 +1,105 @@
+// code-agent.bxs
+/**
+ * Code Assistant Agent Demo
+ * Agent that helps with coding tasks
+ */
+
+println( "=== Code Assistant Agent Demo ===" )
+println()
+
+// Code execution tool (simulated)
+runCodeTool = aiTool()
+    .setName( "execute_code" )
+    .setDescription( "Execute BoxLang code and return result" )
+    .setParameters( {
+        type: "object",
+        properties: {
+            code: { type: "string", description: "BoxLang code to execute" }
+        }
+    } )
+    .setHandler( ( args ) => {
+        try {
+            // In real implementation: use runtime.executeSource()
+            // For demo: simulate execution
+            if ( args.code.findNoCase( "5 + 3" ) ) {
+                return "8"
+            } else if ( args.code.findNoCase( "hello" ) ) {
+                return "Hello, World!"
+            }
+            return "Code executed successfully"
+        } catch( any e ) {
+            return "Error: #e.message#"
+        }
+    } )
+
+// Code lint tool (simulated)
+lintCodeTool = aiTool()
+    .setName( "lint_code" )
+    .setDescription( "Check code for issues and best practices" )
+    .setParameters( {
+        type: "object",
+        properties: {
+            code: { type: "string" }
+        }
+    } )
+    .setHandler( ( args ) => {
+        issues = []
+        
+        if ( !args.code.findNoCase( "function" ) && !args.code.findNoCase( "=>" ) ) {
+            issues.append( "Consider using functions for better organization" )
+        }
+        
+        if ( args.code.len() > 200 ) {
+            issues.append( "Code is long, consider breaking into smaller functions" )
+        }
+        
+        if ( issues.len() == 0 ) {
+            return "No issues found. Code looks good!"
+        }
+        
+        return "Issues found: " & issues.toList( ", " )
+    } )
+
+// Create code agent
+codeAgent = aiAgent()
+    .setName( "Code Helper" )
+    .setInstructions( "
+        You are an expert programming assistant for BoxLang.
+        Help users with:
+        1. Writing code
+        2. Testing code
+        3. Debugging issues
+        4. Suggesting improvements
+        Use available tools to execute and check code.
+    " )
+    .setTools( [ runCodeTool, lintCodeTool ] )
+
+// Coding tasks
+tasks = [
+    "Write a simple hello world example",
+    "Write code to add 5 + 3 and test it",
+    "Check if this code is good: x = 1; y = 2; println(x + y)"
+]
+
+tasks.each( task => {
+    println( "-".repeat( 70 ) )
+    println( "Task: #task#" )
+    println()
+    
+    try {
+        result = codeAgent.run( task )
+        println( "Agent: #result#" )
+        
+    } catch( any e ) {
+        println( "❌ Error: #e.message#" )
+    }
+    
+    println()
+} )
+
+println( "💡 Code Agent Use Cases:" )
+println( "- Code generation and review" )
+println( "- Automated testing" )
+println( "- Code quality checks" )
+println( "- Refactoring suggestions" )
+println( "- Documentation generation" )

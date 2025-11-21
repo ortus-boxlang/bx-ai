@@ -1,0 +1,58 @@
+// parameter-tuner.bxs
+/**
+ * LAB: Parameter Tuner
+ * 
+ * OBJECTIVE:
+ * Create a tool that tests different parameter combinations
+ * 
+ * REQUIREMENTS:
+ * 1. Test same prompt with at least 3 different temperatures
+ * 2. Test same prompt with at least 3 different max_tokens values
+ * 3. Compare response quality, length, and cost
+ * 4. Create at least 3 reusable parameter presets
+ * 5. Show recommendations for different use cases
+ * 
+ * BONUS CHALLENGES:
+ * - Test top_p parameter
+ * - Test frequency_penalty and presence_penalty
+ * - Compare multiple models with same parameters
+ * - Create interactive parameter tuner with user input
+ * - Generate parameter recommendation based on prompt analysis
+ * 
+ * HINTS:
+ * - Use TokenCounter to measure response length
+ * - Calculate cost: tokens / 1000000 * 0.002
+ * - Store results in array for comparison
+ * - Use serializeJSON to display parameter configs
+ */
+
+println( "=== Parameter Tuner Lab ===" )
+println()
+
+// YOUR CODE HERE
+//
+// Step 1: Define test prompt
+// prompt = "Your test prompt here"
+//
+// Step 2: Define parameter variations to test
+// temperatures = [ 0.0, 0.5, 1.0, 1.5 ]
+// maxTokens = [ 100, 300, 500 ]
+//
+// Step 3: Test each combination
+// results = []
+// temperatures.each( temp => {
+//     answer = aiChat( prompt, { temperature: temp } )
+//     results.append( { temp: temp, answer: answer } )
+// } )
+//
+// Step 4: Analyze and compare results
+// results.each( result => {
+//     println( "Temperature: #result.temp#" )
+//     println( "Response: #result.answer#" )
+// } )
+//
+// Step 5: Create recommended presets
+// FACTUAL_PRESET = { temperature: 0.1, max_tokens: 300 }
+// CREATIVE_PRESET = { temperature: 1.2, max_tokens: 500 }
+
+println( "💡 Implement your parameter tuner above!" )

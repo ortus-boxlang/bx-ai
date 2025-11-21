@@ -1,0 +1,98 @@
+// multi-stage-pipeline.bxs
+/**
+ * Multi-Stage Pipeline Demo
+ * Complex workflow with multiple AI models and transformations
+ */
+
+println( "=== Multi-Stage Pipeline Demo ===" )
+println()
+
+// Input: Customer feedback
+feedback = "The product is great but shipping took too long. Customer service was helpful though."
+
+println( "Customer Feedback:" )
+println( feedback )
+println()
+println( "=".repeat( 70 ) )
+println()
+
+// Stage 1: Sentiment Analysis
+println( "Stage 1: Sentiment Analysis" )
+sentimentAnalyzer = aiModel( "gpt-4o-mini" )
+
+sentimentPrompt = "Analyze sentiment (positive/negative/mixed): #feedback#. Reply with JSON: {sentiment: '', confidence: 0.0-1.0}"
+sentimentResult = sentimentAnalyzer.run( aiMessage().user( sentimentPrompt ) )
+println( "Result: #sentimentResult#" )
+println()
+
+// Stage 2: Topic Extraction
+println( "Stage 2: Topic Extraction" )
+topicExtractor = aiModel( "gpt-4o-mini" )
+
+topicPrompt = "Extract main topics as JSON array: #feedback#. Reply with: {topics: ['topic1', 'topic2']}"
+topicsResult = topicExtractor.run( aiMessage().user( topicPrompt ) )
+println( "Result: #topicsResult#" )
+println()
+
+// Stage 3: Action Items
+println( "Stage 3: Action Items Generation" )
+actionGenerator = aiModel( "gpt-4o-mini" )
+
+actionPrompt = "Generate action items from feedback: #feedback#. Reply with JSON: {actions: [{action: '', department: ''}]}"
+actionsResult = actionGenerator.run( aiMessage().user( actionPrompt ) )
+println( "Result: #actionsResult#" )
+println()
+
+// Stage 4: Generate Report
+println( "Stage 4: Report Generation" )
+reportGenerator = aiModel( "gpt-4o-mini" )
+
+reportPrompt = "Create a brief executive summary combining:
+Sentiment: #sentimentResult#
+Topics: #topicsResult#
+Actions: #actionsResult#"
+
+report = reportGenerator.run( aiMessage().user( reportPrompt ) )
+
+println( "=".repeat( 70 ) )
+println( "EXECUTIVE SUMMARY" )
+println( "=".repeat( 70 ) )
+println( report )
+println()
+
+// Now as a unified pipeline
+println()
+println( "=== Running as Unified Pipeline ===" )
+println()
+
+// Create complete pipeline
+completePipeline = aiTransform( ( input ) => {
+    return {
+        sentiment: aiChat( "Analyze sentiment briefly: #input#", { max_tokens: 50 } ),
+        topics: aiChat( "List main topics (comma-separated): #input#", { max_tokens: 30 } ),
+        actions: aiChat( "List 1-2 action items: #input#", { max_tokens: 50 } ),
+        originalFeedback: input
+    }
+} )
+.to( aiTransform( ( data ) => {
+    return "Create executive summary:
+    Original: #data.originalFeedback#
+    Sentiment: #data.sentiment#
+    Topics: #data.topics#
+    Actions: #data.actions#"
+} ) )
+.to( aiModel( "gpt-4o-mini" ) )
+
+pipelineResult = completePipeline.run( feedback )
+
+println( "Pipeline Result:" )
+println( "-".repeat( 70 ) )
+println( pipelineResult )
+println()
+
+println( "💡 Multi-Stage Pipeline Benefits:" )
+println( "- Break complex tasks into steps" )
+println( "- Use different models for different tasks" )
+println( "- Intermediate results for debugging" )
+println( "- Reusable stages" )
+println( "- Parallel processing opportunities" )

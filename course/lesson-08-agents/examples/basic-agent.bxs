@@ -1,0 +1,73 @@
+// basic-agent.bxs
+/**
+ * Basic Agent Demo
+ * Simple autonomous agent with tools
+ */
+
+println( "=== Basic Agent Demo ===" )
+println()
+
+// Define tools for the agent
+calculatorTool = aiTool()
+    .setName( "calculate" )
+    .setDescription( "Perform calculations" )
+    .setParameters( {
+        type: "object",
+        properties: {
+            expression: { type: "string" }
+        }
+    } )
+    .setHandler( ( args ) => evaluate( args.expression ) )
+
+searchTool = aiTool()
+    .setName( "search" )
+    .setDescription( "Search for information (simulated)" )
+    .setParameters( {
+        type: "object",
+        properties: {
+            query: { type: "string" }
+        }
+    } )
+    .setHandler( ( args ) => {
+        // Simulated search
+        return "BoxLang is a modern dynamic JVM language with CFML compatibility"
+    } )
+
+// Create agent
+agent = aiAgent()
+    .setName( "Research Assistant" )
+    .setInstructions( "
+        You are a helpful research assistant.
+        Use tools to gather information and perform calculations.
+        Always cite your sources.
+    " )
+    .setTools( [ calculatorTool, searchTool ] )
+
+// Test tasks
+tasks = [
+    "What is BoxLang?",
+    "Calculate 15 * 23 and then add 100",
+    "Search for BoxLang and tell me what it is"
+]
+
+tasks.each( task => {
+    println( "-".repeat( 70 ) )
+    println( "Task: #task#" )
+    println()
+    
+    try {
+        result = agent.run( task )
+        println( "Agent: #result#" )
+        
+    } catch( any e ) {
+        println( "❌ Error: #e.message#" )
+    }
+    
+    println()
+} )
+
+println( "💡 Agent vs Simple Chat:" )
+println( "- Agent decides which tools to use" )
+println( "- Agent can plan multi-step tasks" )
+println( "- Agent is autonomous" )
+println( "- Simple chat just responds to prompts" )

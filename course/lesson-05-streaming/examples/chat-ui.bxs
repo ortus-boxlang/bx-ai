@@ -1,0 +1,57 @@
+// chat-ui.bxs
+/**
+ * Interactive Chat with Streaming
+ * Build a simple chat interface with real-time responses
+ */
+
+println( "=== Interactive Streaming Chat ===" )
+println( "Type 'exit' to quit" )
+println()
+
+// Initialize conversation
+conversation = [
+    aiMessage().system( "You are a helpful and friendly assistant" )
+]
+
+// Chat loop
+while ( true ) {
+    // Get user input
+    print( "You: " )
+    userInput = console.readLine()
+    
+    if ( userInput.trim() == "exit" ) {
+        println( "Goodbye!" )
+        break
+    }
+    
+    if ( userInput.trim() == "" ) {
+        continue
+    }
+    
+    // Add to conversation
+    conversation.append( aiMessage().user( userInput ) )
+    
+    // Stream response
+    print( "AI: " )
+    fullResponse = ""
+    
+    try {
+        aiChatStream(
+            conversation,
+            ( chunk ) => {
+                fullResponse &= chunk
+                print( chunk )
+            }
+        )
+        
+        println()
+        
+        // Add to conversation
+        conversation.append( aiMessage().assistant( fullResponse ) )
+        
+    } catch( any e ) {
+        println( "❌ Error: #e.message#" )
+    }
+    
+    println()
+}

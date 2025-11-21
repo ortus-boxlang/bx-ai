@@ -1,0 +1,58 @@
+// windowed-memory.bxs
+/**
+ * Windowed Memory Demo
+ * Keeps most recent N messages
+ */
+
+println( "=== Windowed Memory Demo ===" )
+println()
+
+// Create windowed memory (keeps last 5 messages)
+memory = aiMemory( "windowed", { maxMessages: 5 } )
+
+// Add system message
+memory.add( aiMessage().system( "You are a helpful assistant" ) )
+
+println( "Memory limit: 5 messages" )
+println()
+
+// Simulate conversation
+messages = [
+    { role: "user", text: "My name is Alice" },
+    { role: "assistant", text: "Nice to meet you, Alice!" },
+    { role: "user", text: "I like programming" },
+    { role: "assistant", text: "That's great! What languages do you know?" },
+    { role: "user", text: "I know BoxLang and Java" },
+    { role: "assistant", text: "Excellent choices!" },
+    { role: "user", text: "What's my name?" }
+]
+
+messages.each( ( msg, index ) => {
+    if ( msg.role == "user" ) {
+        println( "Turn #index#: You: #msg.text#" )
+        memory.add( aiMessage().user( msg.text ) )
+    } else {
+        println( "         AI: #msg.text#" )
+        memory.add( aiMessage().assistant( msg.text ) )
+    }
+    
+    println( "         Memory count: #memory.count()#" )
+    
+    if ( memory.count() > 5 ) {
+        println( "         ⚠️  Trimmed oldest message" )
+    }
+    
+    println()
+} )
+
+// Test if AI remembers
+println( "Final test - asking AI:" )
+response = aiChat( memory.getAll() )
+println( "AI: #response#" )
+println()
+
+println( "💡 Windowed Memory:" )
+println( "- Keeps only recent N messages" )
+println( "- Automatically trims oldest" )
+println( "- Good for: short chats, cost control" )
+println( "- May lose early context" )

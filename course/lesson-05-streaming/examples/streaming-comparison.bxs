@@ -1,0 +1,74 @@
+// streaming-comparison.bxs
+/**
+ * Streaming vs Non-Streaming Comparison
+ * Compare performance and user experience
+ */
+
+println( "=== Streaming Comparison ===" )
+println()
+
+prompts = [
+    "Explain what a database is",
+    "Write a short story about a robot",
+    "List 10 programming best practices"
+]
+
+prompts.each( prompt => {
+    println( "=".repeat( 70 ) )
+    println( "Prompt: '#prompt#'" )
+    println( "=".repeat( 70 ) )
+    println()
+    
+    // Non-streaming
+    println( "Non-Streaming:" )
+    println( "-".repeat( 60 ) )
+    println( "⏳ Waiting..." )
+    
+    startTime1 = getTickCount()
+    answer1 = aiChat( prompt, { max_tokens: 200 } )
+    elapsed1 = getTickCount() - startTime1
+    
+    println( "✅ Complete after #elapsed1#ms" )
+    println( "Response: #answer1.left( 100 )#..." )
+    println()
+    
+    // Streaming
+    println( "Streaming:" )
+    println( "-".repeat( 60 ) )
+    print( "📡 " )
+    
+    startTime2 = getTickCount()
+    fullResponse = ""
+    firstChunkTime = 0
+    
+    aiChatStream(
+        prompt,
+        { max_tokens: 200 },
+        ( chunk ) => {
+            if ( firstChunkTime == 0 ) {
+                firstChunkTime = getTickCount() - startTime2
+            }
+            fullResponse &= chunk
+            print( "." )  // Show progress
+        }
+    )
+    
+    elapsed2 = getTickCount() - startTime2
+    
+    println()
+    println( "✅ Complete after #elapsed2#ms (first chunk: #firstChunkTime#ms)" )
+    println()
+    
+    // Comparison
+    println( "Comparison:" )
+    println( "  Non-streaming: #elapsed1#ms (wait for all)" )
+    println( "  Streaming: #elapsed2#ms total, #firstChunkTime#ms to first chunk" )
+    println( "  Perceived improvement: #numberFormat( (1 - firstChunkTime/elapsed1) * 100, '0.0' )#% faster" )
+    println()
+} )
+
+println( "💡 Key Insights:" )
+println( "- Streaming shows content immediately" )
+println( "- Total time is similar" )
+println( "- User experience is much better" )
+println( "- Use streaming for interactive applications" )

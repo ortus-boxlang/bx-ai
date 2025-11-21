@@ -1,0 +1,116 @@
+// provider-benchmark.bxs
+/**
+ * Provider Benchmark
+ * Compare speed and quality across providers
+ */
+
+import bxModules.bxai.models.util.TokenCounter;
+
+println( "=== Provider Benchmark ===" )
+println()
+
+// Test prompts of varying complexity
+testCases = [
+    {
+        name: "Simple Math",
+        prompt: "What is 15 * 23?",
+        complexity: "simple"
+    },
+    {
+        name: "Explanation",
+        prompt: "Explain what an API is in one paragraph",
+        complexity: "medium"
+    },
+    {
+        name: "Code Generation",
+        prompt: "Write a BoxLang function that calculates fibonacci numbers recursively",
+        complexity: "complex"
+    }
+]
+
+// Providers to test
+providers = [
+    { name: "GPT-3.5", provider: "openai", model: "gpt-3.5-turbo" },
+    { name: "Ollama", provider: "ollama", model: "llama3.2" }
+]
+
+// Run benchmarks
+results = []
+
+testCases.each( testCase => {
+    println( "Test: #testCase.name# (#testCase.complexity#)" )
+    println( "-".repeat( 70 ) )
+    
+    providers.each( config => {
+        try {
+            // Measure time
+            startTime = getTickCount()
+            
+            answer = aiChat(
+                testCase.prompt,
+                { model: config.model, temperature: 0.1 },
+                { provider: config.provider }
+            )
+            
+            elapsed = getTickCount() - startTime
+            
+            // Calculate tokens
+            inputTokens = TokenCounter::count( testCase.prompt )
+            outputTokens = TokenCounter::count( answer )
+            
+            // Store result
+            result = {
+                test: testCase.name,
+                provider: config.name,
+                time: elapsed,
+                inputTokens: inputTokens,
+                outputTokens: outputTokens,
+                totalTokens: inputTokens + outputTokens,
+                answerLength: len( answer ),
+                success: true
+            }
+            
+            results.append( result )
+            
+            println( "#config.name.ljust( 15 )# ✅ #elapsed#ms (#outputTokens# tokens)" )
+            
+        } catch( any e ) {
+            println( "#config.name.ljust( 15 )# ❌ Failed" )
+            
+            results.append( {
+                test: testCase.name,
+                provider: config.name,
+                success: false,
+                error: e.message
+            } )
+        }
+    } )
+    
+    println()
+} )
+
+// Summary statistics
+println( "=== Summary Statistics ===" )
+println( "-".repeat( 70 ) )
+
+providers.each( config => {
+    providerResults = results.filter( r => r.provider == config.name && r.success )
+    
+    if ( providerResults.len() > 0 ) {
+        avgTime = providerResults.reduce( ( sum, r ) => sum + r.time, 0 ) / providerResults.len()
+        avgTokens = providerResults.reduce( ( sum, r ) => sum + r.outputTokens, 0 ) / providerResults.len()
+        successRate = ( providerResults.len() / testCases.len() ) * 100
+        
+        println( config.name )
+        println( "  Avg response time: #numberFormat( avgTime, '0' )#ms" )
+        println( "  Avg output tokens: #numberFormat( avgTokens, '0' )#" )
+        println( "  Success rate: #numberFormat( successRate, '0' )#%" )
+        println()
+    }
+} )
+
+println( "💡 Benchmark Insights:" )
+println( "- Ollama is typically fastest (no network)" )
+println( "- Cloud providers have variable latency" )
+println( "- Quality can vary by task complexity" )
+println( "- Cost should be weighed against speed/quality" )

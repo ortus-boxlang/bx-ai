@@ -1,0 +1,49 @@
+// basic-streaming.bxs
+/**
+ * Basic Streaming Demo
+ * See real-time AI response generation
+ */
+
+println( "=== Basic Streaming Demo ===" )
+println()
+
+// Demo 1: Non-streaming (wait for complete response)
+println( "Demo 1: Non-Streaming (traditional)" )
+println( "-".repeat( 60 ) )
+println( "Waiting for response..." )
+
+startTime = getTickCount()
+answer = aiChat( "Write a short poem about coding" )
+elapsed = getTickCount() - startTime
+
+println( "AI: #answer#" )
+println( "Time: #elapsed#ms (showed all at once)" )
+println()
+
+// Demo 2: Streaming (real-time chunks)
+println( "Demo 2: Streaming (real-time)" )
+println( "-".repeat( 60 ) )
+println( "AI: " )
+
+startTime = getTickCount()
+fullResponse = ""
+
+aiChatStream(
+    "Write a short poem about coding",
+    ( chunk ) => {
+        fullResponse &= chunk
+        print( chunk )  // Show immediately as received
+    }
+)
+
+elapsed = getTickCount() - startTime
+
+println()
+println( "Time: #elapsed#ms (showed progressively)" )
+println()
+
+println( "💡 Streaming Benefits:" )
+println( "- User sees immediate feedback" )
+println( "- Perceived faster response" )
+println( "- Better user experience" )
+println( "- Can interrupt if needed" )

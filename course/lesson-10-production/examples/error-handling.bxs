@@ -1,0 +1,172 @@
+// error-handling.bxs
+/**
+ * Error Handling Best Practices
+ * Robust error handling for production AI apps
+ */
+
+println( "=== Error Handling Demo ===" )
+println()
+
+// Pattern 1: Try-Catch with Fallback
+println( "Pattern 1: Try-Catch with Fallback" )
+println( "-".repeat( 70 ) )
+
+function safeChat( prompt, fallback = "Service unavailable" ) {
+    try {
+        return aiChat( prompt, { timeout: 5 } )
+    } catch( any e ) {
+        println( "❌ Error: #e.message#" )
+        return fallback
+    }
+}
+
+result = safeChat( "Hello", "Could not connect to AI service" )
+println( "Result: #result#" )
+println()
+
+// Pattern 2: Retry Logic
+println( "Pattern 2: Retry with Exponential Backoff" )
+println( "-".repeat( 70 ) )
+
+function chatWithRetry( prompt, maxRetries = 3 ) {
+    retries = 0
+    
+    while ( retries < maxRetries ) {
+        try {
+            return aiChat( prompt )
+            
+        } catch( any e ) {
+            retries++
+            
+            if ( retries >= maxRetries ) {
+                println( "❌ Failed after #maxRetries# retries: #e.message#" )
+                throw e
+            }
+            
+            // Exponential backoff
+            waitTime = 2 ^ retries * 1000  // 2s, 4s, 8s
+            println( "⚠️  Retry #retries# after #waitTime#ms..." )
+            sleep( waitTime )
+        }
+    }
+}
+
+try {
+    result = chatWithRetry( "Tell me a fact", 2 )
+    println( "Result: #result#" )
+} catch( any e ) {
+    println( "Final failure: #e.message#" )
+}
+println()
+
+// Pattern 3: Provider Fallback Chain
+println( "Pattern 3: Provider Fallback Chain" )
+println( "-".repeat( 70 ) )
+
+function chatWithFallback( prompt ) {
+    providers = [ "openai", "claude", "ollama" ]
+    
+    for ( provider in providers ) {
+        try {
+            println( "Trying provider: #provider#" )
+            return aiChat( prompt, { provider: provider } )
+            
+        } catch( any e ) {
+            println( "❌ #provider# failed: #e.message#" )
+            continue
+        }
+    }
+    
+    throw( message: "All providers failed" )
+}
+
+try {
+    result = chatWithFallback( "Hello world" )
+    println( "Result: #result#" )
+} catch( any e ) {
+    println( "Complete failure: #e.message#" )
+}
+println()
+
+// Pattern 4: Validation and Sanitization
+println( "Pattern 4: Input Validation" )
+println( "-".repeat( 70 ) )
+
+function safePrompt( userInput, maxLength = 1000 ) {
+    // Validate input
+    if ( isNull( userInput ) || !len( trim( userInput ) ) ) {
+        throw( message: "Input cannot be empty" )
+    }
+    
+    // Sanitize
+    sanitized = trim( userInput )
+    
+    // Check length
+    if ( len( sanitized ) > maxLength ) {
+        sanitized = left( sanitized, maxLength )
+        println( "⚠️  Input truncated to #maxLength# chars" )
+    }
+    
+    // Check for injection attempts
+    if ( sanitized.findNoCase( "ignore previous" ) ) {
+        println( "⚠️  Potential prompt injection detected" )
+        // Log security event
+    }
+    
+    return sanitized
+}
+
+try {
+    userInput = "What is AI? " & " extra ".repeat( 200 )  // Very long input
+    safe = safePrompt( userInput, 500 )
+    result = aiChat( safe )
+    println( "Result: #left( result, 50 )#..." )
+} catch( any e ) {
+    println( "❌ Validation error: #e.message#" )
+}
+println()
+
+// Pattern 5: Timeout Protection
+println( "Pattern 5: Timeout Protection" )
+println( "-".repeat( 70 ) )
+
+function chatWithTimeout( prompt, timeoutSeconds = 30 ) {
+    startTime = getTickCount()
+    
+    try {
+        result = aiChat( prompt, { timeout: timeoutSeconds } )
+        
+        duration = getTickCount() - startTime
+        println( "✓ Completed in #duration#ms" )
+        
+        return result
+        
+    } catch( any e ) {
+        duration = getTickCount() - startTime
+        
+        if ( e.message.findNoCase( "timeout" ) ) {
+            println( "⏱  Request timed out after #duration#ms" )
+        } else {
+            println( "❌ Error after #duration#ms: #e.message#" )
+        }
+        
+        throw e
+    }
+}
+
+try {
+    result = chatWithTimeout( "Quick response please", 10 )
+    println( "Result: #result#" )
+} catch( any e ) {
+    println( "Request failed" )
+}
+println()
+
+println( "💡 Error Handling Checklist:" )
+println( "✓ Always use try-catch" )
+println( "✓ Implement retry logic" )
+println( "✓ Have fallback providers" )
+println( "✓ Validate and sanitize input" )
+println( "✓ Set reasonable timeouts" )
+println( "✓ Log errors properly" )
+println( "✓ Return user-friendly messages" )

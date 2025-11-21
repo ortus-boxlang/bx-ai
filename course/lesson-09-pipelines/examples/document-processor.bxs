@@ -1,0 +1,93 @@
+// document-processor.bxs
+/**
+ * Document Processing Pipeline Demo
+ * Process multiple documents through AI pipeline
+ */
+
+println( "=== Document Processing Pipeline ===" )
+println()
+
+// Mock documents
+documents = [
+    { id: 1, type: "email", content: "Dear team, please review the Q1 report. Thanks!" },
+    { id: 2, type: "email", content: "URGENT: Server maintenance tonight at 10 PM" },
+    { id: 3, type: "note", content: "Remember to update documentation" },
+    { id: 4, type: "email", content: "Meeting rescheduled to Friday 2 PM" }
+]
+
+// Pipeline steps
+classifyStep = aiTransform( ( doc ) => {
+    prompt = "Classify this as 'urgent', 'normal', or 'info': #doc.content#. Reply with one word only."
+    
+    classification = aiChat( aiMessage().user( prompt ), {
+        model: "gpt-4o-mini",
+        max_tokens: 10
+    } )
+    
+    doc.priority = trim( classification )
+    return doc
+} )
+
+summarizeStep = aiTransform( ( doc ) => {
+    if ( doc.priority == "urgent" ) {
+        prompt = "Summarize in 5 words: #doc.content#"
+        doc.summary = aiChat( aiMessage().user( prompt ), { max_tokens: 20 } )
+    } else {
+        doc.summary = doc.content.left( 50 ) & "..."
+    }
+    return doc
+} )
+
+formatStep = aiTransform( ( doc ) => {
+    return {
+        id: doc.id,
+        type: doc.type,
+        priority: doc.priority,
+        summary: doc.summary,
+        needsAction: doc.priority == "urgent"
+    }
+} )
+
+// Create pipeline
+docPipeline = classifyStep
+    .to( summarizeStep )
+    .to( formatStep )
+
+// Process documents
+println( "Processing #documents.len()# documents..." )
+println()
+
+results = documents.map( doc => {
+    processed = docPipeline.run( doc )
+    
+    println( "Document ##processed.id#: [#uCase( processed.priority )#]" )
+    println( "  Type: #processed.type#" )
+    println( "  Summary: #processed.summary#" )
+    println( "  Needs Action: #processed.needsAction ? 'YES' : 'NO'#" )
+    println()
+    
+    return processed
+} )
+
+// Summary
+urgent = results.filter( r => r.priority == "urgent" )
+println( "=".repeat( 70 ) )
+println( "Processing Complete" )
+println( "Total documents: #results.len()#" )
+println( "Urgent items: #urgent.len()#" )
+
+if ( urgent.len() > 0 ) {
+    println()
+    println( "⚠️  Urgent Items Requiring Action:" )
+    urgent.each( item => {
+        println( "  - Document ##item.id#: #item.summary#" )
+    } )
+}
+
+println()
+println( "💡 Document Processing Use Cases:" )
+println( "- Email triage and prioritization" )
+println( "- Document classification" )
+println( "- Content moderation" )
+println( "- Batch summarization" )
+println( "- Automated routing" )

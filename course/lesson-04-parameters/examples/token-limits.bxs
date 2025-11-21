@@ -1,0 +1,52 @@
+// token-limits.bxs
+/**
+ * Token Limits Demo
+ * Control response length with max_tokens
+ */
+
+import bxModules.bxai.models.util.TokenCounter;
+
+println( "=== Token Limits Demo ===" )
+println()
+
+prompt = "Explain what object-oriented programming is and provide examples"
+
+tokenLimits = [ 50, 150, 300, 500 ]
+
+println( "Prompt: '#prompt#'" )
+println()
+
+tokenLimits.each( maxTokens => {
+    println( "-".repeat( 70 ) )
+    println( "Max Tokens: #maxTokens#" )
+    println( "-".repeat( 70 ) )
+    
+    try {
+        answer = aiChat(
+            prompt,
+            { 
+                max_tokens: maxTokens,
+                temperature: 0.7
+            }
+        )
+        
+        actualTokens = TokenCounter::count( answer )
+        wordCount = listLen( answer, " " )
+        
+        println( answer )
+        println()
+        println( "Actual tokens: #actualTokens# (~#wordCount# words)" )
+        
+    } catch( any e ) {
+        println( "❌ Error: #e.message#" )
+    }
+    
+    println()
+} )
+
+println( "💡 Key Insights:" )
+println( "- 50 tokens: Very brief (~37 words)" )
+println( "- 150 tokens: Short explanation (~110 words)" )
+println( "- 300 tokens: Detailed explanation (~220 words)" )
+println( "- 500 tokens: Comprehensive answer (~375 words)" )
+println( "- Use max_tokens to control cost and response length" )
