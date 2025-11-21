@@ -620,6 +620,8 @@ The `ChatMessage` object has several methods that you can use to interact with t
 
 - `add( content ):ChatMessage` : Add a message to the messages array
 - `history( messages ):ChatMessage` : Inflate the message with prior conversation history (array or AiMessage)
+- `image( path, detail = "auto" ):ChatMessage` : Add an image URL to the message (for vision-capable models)
+- `embedImage( filePath, detail = "auto" ):ChatMessage` : Embed a local image file as base64 (for vision-capable models)
 - `count():numeric` : Get the count of messages
 - `clear():ChatMessage` : Clear the messages
 - `getMessages():array` : Get the messages
@@ -667,11 +669,34 @@ aiMessage()
 Here are a few examples of building up messages and sending them to the `aiChat()` or `aiAiRequest()` functions:
 
 ```js
+// Basic message with multiple roles
 aiChat(
 	aiMessage()
 		.system( "You are a helpful assistant." )
 		.user( "Write a haiku about recursion in programming." )
 		.user( "What is the capital of France?" )
+)
+
+// Message with image URL (vision-capable models)
+aiChat(
+	aiMessage()
+		.user( "What is in this image?" )
+		.image( "https://example.com/photo.jpg" )
+)
+
+// Message with embedded local image
+aiChat(
+	aiMessage()
+		.user( "Analyze this screenshot for UI issues" )
+		.embedImage( "/path/to/screenshot.png", "high" )
+)
+
+// Multiple images for comparison
+aiChat(
+	aiMessage()
+		.user( "Compare these product photos and describe the differences" )
+		.image( "https://example.com/product-before.jpg" )
+		.image( "https://example.com/product-after.jpg" )
 )
 ```
 

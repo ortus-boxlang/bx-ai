@@ -350,6 +350,155 @@ message = aiMessage()
     .user( "Follow up question" )
 ```
 
+### Images
+
+Add images to messages for vision-capable AI models like GPT-4 Vision, Claude 3, or Gemini.
+
+#### Image URLs
+
+Use `image()` to add an image by URL:
+
+```java
+message = aiMessage()
+    .user( "What is in this image?" )
+    .image( "https://example.com/photo.jpg" )
+
+// With detail level (auto, low, high)
+message = aiMessage()
+    .user( "Analyze this image in detail" )
+    .image( "https://example.com/photo.jpg", "high" )
+```
+
+#### Embedded Images
+
+Use `embedImage()` to read a local file and embed it as base64:
+
+```java
+message = aiMessage()
+    .user( "What does this screenshot show?" )
+    .embedImage( "/path/to/screenshot.png" )
+
+// With detail level
+message = aiMessage()
+    .user( "Analyze this diagram" )
+    .embedImage( "/path/to/diagram.jpg", "low" )
+```
+
+#### Multiple Images
+
+Add multiple images to compare or analyze together:
+
+```java
+message = aiMessage()
+    .user( "Compare these two images" )
+    .image( "https://example.com/before.jpg" )
+    .image( "https://example.com/after.jpg" )
+
+// Or mix URLs and embedded images
+message = aiMessage()
+    .user( "Which one matches the reference?" )
+    .embedImage( "/path/to/reference.png" )
+    .image( "https://example.com/candidate1.jpg" )
+    .image( "https://example.com/candidate2.jpg" )
+```
+
+#### Detail Levels
+
+Control image processing with the `detail` parameter:
+
+- **`auto`** (default): Model chooses based on image and task
+- **`low`**: 512x512 resolution, faster and cheaper
+- **`high`**: Full detail, better for complex images
+
+```java
+// Quick overview
+message = aiMessage()
+    .user( "Describe this image briefly" )
+    .image( imageUrl, "low" )
+
+// Detailed analysis
+message = aiMessage()
+    .user( "Count all objects in this image" )
+    .image( imageUrl, "high" )
+```
+
+#### Practical Examples
+
+##### Image Analysis Pipeline
+
+```java
+analyzer = aiMessage()
+    .system( "You are an expert image analyst" )
+    .user( "Analyze this image for ${aspect}" )
+    .toDefaultModel()
+    .transform( r => r.content )
+
+// Analyze from URL
+safetyReport = analyzer
+    .image( "https://example.com/workplace.jpg" )
+    .run( { aspect: "safety hazards" } )
+
+// Analyze from file
+qualityReport = analyzer
+    .embedImage( "/photos/product.jpg" )
+    .run( { aspect: "quality defects" } )
+```
+
+##### Document Scanner
+
+```java
+scanner = aiMessage()
+    .system( "Extract text and key information from documents" )
+    .user( "Extract ${fields} from this document" )
+    .toDefaultModel()
+
+// Scan invoice
+result = scanner
+    .embedImage( "/documents/invoice.pdf" )
+    .run( { fields: "invoice number, date, total" } )
+
+// Scan receipt
+result = scanner
+    .embedImage( "/receipts/receipt001.jpg", "high" )
+    .run( { fields: "merchant, items, total" } )
+```
+
+##### Multi-Image Comparison
+
+```java
+comparer = aiMessage()
+    .system( "Compare images and identify differences" )
+    .user( "List all differences between these images" )
+    .toDefaultModel()
+
+differences = comparer
+    .image( "https://example.com/original.jpg" )
+    .image( "https://example.com/modified.jpg" )
+    .run()
+```
+
+##### Vision-Based Content Generation
+
+```java
+generator = aiMessage()
+    .system( "Generate ${format} based on images" )
+    .user( "Create a ${format} describing these images" )
+    .toDefaultModel()
+
+// Generate alt text
+altText = generator
+    .embedImage( "/web/images/hero.jpg" )
+    .run( { format: "concise alt text" } )
+
+// Generate product description
+description = generator
+    .image( productImageUrl1 )
+    .image( productImageUrl2 )
+    .run( { format: "detailed product description" } )
+```
+
+**Note:** Image support requires vision-capable AI models. Check your provider's documentation for supported models and pricing.
+
 ### Streaming Messages
 
 Messages can stream their content:
