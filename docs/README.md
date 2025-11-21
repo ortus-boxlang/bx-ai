@@ -105,6 +105,9 @@ Text chunking, token counting, and optimization techniques for AI processing. Le
 🔢 **[Embeddings](advanced/embeddings.md)**
 Generate vector representations for semantic search, recommendations, clustering, and similarity detection. Complete guide to embeddings.
 
+🔌 **[MCP Client](advanced/mcp-client.md)**
+Connect to Model Context Protocol (MCP) servers for external tools, resources, and prompts. Fluent API for MCP integration.
+
 ---
 
 ## Built-In Functions (BIFs) Overview
@@ -126,6 +129,7 @@ BoxLang AI provides a comprehensive set of BIFs for different AI operations:
 | `aiTokens()` | Estimate token counts | Numeric | Cost estimation, limits |
 | `aiTool()` | Define callable functions | Tool | Real-time data, function calling |
 | `aiTransform()` | Create data transformers | Transformer | Pipeline data processing |
+| `MCP()` | Connect to MCP servers | MCPClient | External tools, resources, prompts |
 
 **Quick Reference:**
 
