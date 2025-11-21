@@ -65,7 +65,7 @@ class {
 		arguments.options.append( static.MODULE_SETTINGS, false );
 
 		// Create the embedding request
-		var embeddingRequest = new bxModules.bxai.models.AiEmbeddingRequest(
+		var embeddingRequest = new bxModules.bxai.models.requests.AiEmbeddingRequest(
 			input   = arguments.input,
 			params  = arguments.params,
 			options = arguments.options

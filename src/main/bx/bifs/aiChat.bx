@@ -77,7 +77,7 @@ class {
 		}
 
 		// Build out a chat request
-		var oRequest = new bxModules.bxai.models.AiRequest(
+		var oRequest = new bxModules.bxai.models.requests.AiRequest(
 			aiMessage( arguments.messages ),
 			arguments.params,
 			arguments.options

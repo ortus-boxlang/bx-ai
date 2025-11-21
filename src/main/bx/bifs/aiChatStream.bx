@@ -70,7 +70,7 @@ class {
 		arguments.options.stream = true;
 
 		// Build out a chat request
-		var oAiRequest = new bxModules.bxai.models.AiRequest(
+		var oAiRequest = new bxModules.bxai.models.requests.AiRequest(
 			aiMessage( arguments.messages ),
 			arguments.params,
 			arguments.options

@@ -50,7 +50,7 @@ class {
 			arguments.messages = aiMessage( arguments.messages );
 		}
 
-		var oAiRequest = new bxModules.bxai.models.AiRequest(
+		var oAiRequest = new bxModules.bxai.models.requests.AiRequest(
 			arguments.messages,
 			arguments.params,
 			arguments.options
