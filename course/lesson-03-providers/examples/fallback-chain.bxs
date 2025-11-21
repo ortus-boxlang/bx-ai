@@ -19,42 +19,42 @@ function aiChatWithFallback( prompt, options = {} ) {
         { provider: "gemini", model: "gemini-pro" },
         { provider: "ollama", model: "llama3.2" }
     ]
-    
+
     // Try each provider
     for ( config in providerChain ) {
         try {
             println( "Trying #config.provider# (#config.model#)..." )
-            
+
             answer = aiChat(
                 prompt,
                 { model: config.model },
                 { provider: config.provider }
             )
-            
+
             println( "✅ Success with #config.provider#!" )
             return answer
-            
+
         } catch( any e ) {
             println( "❌ #config.provider# failed: #e.message#" )
             println( "   Moving to next provider..." )
         }
     }
-    
+
     throw( "All providers in fallback chain failed" )
 }
 
 // Test the fallback chain
 try {
     prompt = "What is the capital of France?"
-    
+
     println( "Prompt: '#prompt#'" )
     println()
-    
+
     answer = aiChatWithFallback( prompt )
-    
+
     println()
     println( "Final answer: #answer#" )
-    
+
 } catch( any e ) {
     println()
     println( "❌ Complete failure: #e.message#" )

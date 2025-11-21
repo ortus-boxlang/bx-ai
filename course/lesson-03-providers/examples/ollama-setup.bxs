@@ -17,10 +17,10 @@ try {
         { model: "llama3.2" },
         { provider: "ollama" }
     )
-    
+
     println( "✅ Ollama is running!" )
     println( "Response: #answer#" )
-    
+
 } catch( any e ) {
     println( "❌ Ollama is not running or not configured" )
     println()
@@ -68,22 +68,22 @@ modelsToTest = [ "llama3.2", "qwen2.5:0.5b-instruct" ]
 modelsToTest.each( modelName => {
     println()
     println( "Testing: #modelName#" )
-    
+
     try {
         startTime = getTickCount()
-        
+
         answer = aiChat(
             testPrompt,
             { model: modelName },
             { provider: "ollama" }
         )
-        
+
         elapsed = getTickCount() - startTime
-        
+
         println( "  Response: #answer.left( 100 )#..." )
         println( "  Time: #elapsed#ms" )
         println( "  ✅ Model works!" )
-        
+
     } catch( any e ) {
         println( "  ❌ Model not available" )
         println( "  Run: ollama pull #modelName#" )

@@ -8,7 +8,7 @@ println( "=== Summary Memory Demo ===" )
 println()
 
 // Create summary memory
-memory = aiMemory( "summary", { 
+memory = aiMemory( "summary", {
     maxMessages: 10,
     summaryModel: "gpt-3.5-turbo"
 } )
@@ -30,10 +30,10 @@ topics = [
 topics.each( ( topic, index ) => {
     println( "Turn #index + 1#:" )
     println( "  You: #topic.q#" )
-    
+
     memory.add( aiMessage().user( topic.q ) )
     memory.add( aiMessage().assistant( topic.a ) )
-    
+
     println( "  AI: #topic.a.left( 50 )#..." )
     println( "  Memory: #memory.count()# messages" )
     println()

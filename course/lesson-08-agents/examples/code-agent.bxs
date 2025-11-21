@@ -44,19 +44,19 @@ lintCodeTool = aiTool()
     } )
     .setHandler( ( args ) => {
         issues = []
-        
+
         if ( !args.code.findNoCase( "function" ) && !args.code.findNoCase( "=>" ) ) {
             issues.append( "Consider using functions for better organization" )
         }
-        
+
         if ( args.code.len() > 200 ) {
             issues.append( "Code is long, consider breaking into smaller functions" )
         }
-        
+
         if ( issues.len() == 0 ) {
             return "No issues found. Code looks good!"
         }
-        
+
         return "Issues found: " & issues.toList( ", " )
     } )
 
@@ -85,15 +85,15 @@ tasks.each( task => {
     println( "-".repeat( 70 ) )
     println( "Task: #task#" )
     println()
-    
+
     try {
         result = codeAgent.run( task )
         println( "Agent: #result#" )
-        
+
     } catch( any e ) {
         println( "❌ Error: #e.message#" )
     }
-    
+
     println()
 } )
 

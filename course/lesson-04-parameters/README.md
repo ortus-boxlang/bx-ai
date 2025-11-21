@@ -1,6 +1,6 @@
 # Lesson 4: Model Parameters
 
-**Duration:** 45 minutes  
+**Duration:** 45 minutes
 **Prerequisites:** Lessons 1-3 completed
 
 ## Learning Objectives
@@ -222,7 +222,7 @@ Reduce costs with smart parameters
 
 **File:** `labs/parameter-tuner.bxs`
 
-**Objective:**  
+**Objective:**
 Create a tool that tests different parameter combinations and shows results.
 
 **Requirements:**
@@ -236,10 +236,10 @@ Create a tool that tests different parameter combinations and shows results.
 
 ## Key Takeaways
 
-✅ Temperature controls creativity (0 = consistent, 2 = wild)  
-✅ max_tokens limits response length and cost  
-✅ Use low temperature for facts, high for creativity  
-✅ Presets make parameter management easier  
+✅ Temperature controls creativity (0 = consistent, 2 = wild)
+✅ max_tokens limits response length and cost
+✅ Use low temperature for facts, high for creativity
+✅ Presets make parameter management easier
 ✅ Always set max_tokens for cost control
 
 ---

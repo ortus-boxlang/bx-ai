@@ -31,7 +31,7 @@ weatherTool = aiTool()
     } )
     .setHandler( ( args ) => {
         city = args.city
-        
+
         // In real app: call weather API
         // For demo: use mock data
         if ( weatherData.keyExists( city ) ) {
@@ -54,19 +54,19 @@ questions.each( question => {
     println( "-".repeat( 70 ) )
     println( "Question: #question#" )
     println()
-    
+
     try {
         answer = aiChat(
             question,
             { tools: [ weatherTool ] }
         )
-        
+
         println( "AI: #answer#" )
-        
+
     } catch( any e ) {
         println( "❌ Error: #e.message#" )
     }
-    
+
     println()
 } )
 

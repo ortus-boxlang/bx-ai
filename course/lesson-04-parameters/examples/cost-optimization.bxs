@@ -28,15 +28,15 @@ totalCost1 = 0
 
 products.each( product => {
     prompt = "Write a detailed product description for: #product#"
-    
+
     answer = aiChat( prompt, { temperature: 0.7 } )
-    
+
     tokens = TokenCounter::count( prompt ) + TokenCounter::count( answer )
     cost = tokens / 1000000 * 0.002
-    
+
     totalTokens1 += tokens
     totalCost1 += cost
-    
+
     println( "#product#: #tokens# tokens, $#numberFormat( cost, '0.000000' )#" )
 } )
 
@@ -52,21 +52,21 @@ totalCost2 = 0
 
 products.each( product => {
     prompt = "Write a concise product description for: #product#"
-    
+
     answer = aiChat(
         prompt,
-        { 
+        {
             temperature: 0.7,
             max_tokens: 100  // Limit response length
         }
     )
-    
+
     tokens = TokenCounter::count( prompt ) + TokenCounter::count( answer )
     cost = tokens / 1000000 * 0.002
-    
+
     totalTokens2 += tokens
     totalCost2 += cost
-    
+
     println( "#product#: #tokens# tokens, $#numberFormat( cost, '0.000000' )#" )
 } )
 

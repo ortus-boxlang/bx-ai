@@ -1,6 +1,6 @@
 # Lesson 3: AI Providers
 
-**Duration:** 60 minutes  
+**Duration:** 60 minutes
 **Prerequisites:** Lessons 1-2 completed
 
 ## Learning Objectives
@@ -290,7 +290,7 @@ models = {
 answer = aiChat(
     "Hello!",
     { model: "llama3.2" },
-    { 
+    {
         provider: "ollama",
         baseURL: "http://localhost:11434"
     }
@@ -299,10 +299,10 @@ answer = aiChat(
 
 ### Ollama Advantages
 
-✅ **FREE** - No API costs  
-✅ **Private** - Data never leaves your machine  
-✅ **Offline** - Works without internet  
-✅ **Fast** - No network latency  
+✅ **FREE** - No API costs
+✅ **Private** - Data never leaves your machine
+✅ **Offline** - Works without internet
+✅ **Fast** - No network latency
 ✅ **Development** - Perfect for testing
 
 ---
@@ -318,7 +318,7 @@ aiChat( "What is 2+2?", { model: "gpt-3.5-turbo" } )
 aiChat( "What is 2+2?", { model: "llama3.2" }, { provider: "ollama" } )
 
 // Complex reasoning - Use powerful models
-aiChat( 
+aiChat(
     "Analyze the philosophical implications...",
     { model: "gpt-4-turbo" }
 )
@@ -357,7 +357,7 @@ aiChat( "Test prompt", { model: "llama3.2" }, { provider: "ollama" } )
 ```java
 function aiChatWithFallback( prompt ) {
     providers = [ "openai", "claude", "gemini", "ollama" ]
-    
+
     for ( provider in providers ) {
         try {
             return aiChat( prompt, {}, { provider: provider } )
@@ -365,7 +365,7 @@ function aiChatWithFallback( prompt ) {
             println( "Provider #provider# failed, trying next..." )
         }
     }
-    
+
     throw( "All providers failed" )
 }
 ```
@@ -375,20 +375,20 @@ function aiChatWithFallback( prompt ) {
 ```java
 function aiChatSmart( prompt, complexity = "simple" ) {
     configs = {
-        "simple": { 
-            model: "gpt-3.5-turbo", 
-            provider: "openai" 
+        "simple": {
+            model: "gpt-3.5-turbo",
+            provider: "openai"
         },
-        "medium": { 
-            model: "gemini-pro", 
-            provider: "gemini" 
+        "medium": {
+            model: "gemini-pro",
+            provider: "gemini"
         },
-        "complex": { 
-            model: "claude-3-opus-20240229", 
-            provider: "claude" 
+        "complex": {
+            model: "claude-3-opus-20240229",
+            provider: "claude"
         }
     }
-    
+
     config = configs[ complexity ]
     return aiChat( prompt, { model: config.model }, { provider: config.provider } )
 }
@@ -399,23 +399,23 @@ function aiChatSmart( prompt, complexity = "simple" ) {
 ```java
 function compareProviders( prompt ) {
     results = {}
-    
+
     providers = [
         { name: "OpenAI", provider: "openai", model: "gpt-4-turbo" },
         { name: "Claude", provider: "claude", model: "claude-3-sonnet-20240229" },
         { name: "Ollama", provider: "ollama", model: "llama3.2" }
     ]
-    
+
     providers.each( config => {
         startTime = getTickCount()
-        
+
         try {
             answer = aiChat(
                 prompt,
                 { model: config.model },
                 { provider: config.provider }
             )
-            
+
             results[ config.name ] = {
                 success: true,
                 answer: answer,
@@ -428,7 +428,7 @@ function compareProviders( prompt ) {
             }
         }
     } )
-    
+
     return results
 }
 ```
@@ -499,7 +499,7 @@ Speed and quality comparison
 
 **File:** `labs/multi-provider-bot.bxs`
 
-**Objective:**  
+**Objective:**
 Create a chat bot that can switch between providers based on user commands or task complexity.
 
 **Requirements:**
@@ -551,12 +551,12 @@ Build a function that automatically routes requests to the best provider based o
 
 ## Key Takeaways
 
-✅ Multiple providers offer different strengths  
-✅ OpenAI: Industry standard, reliable  
-✅ Claude: Long context, excellent analysis  
-✅ Gemini: Cost-effective, fast  
-✅ Ollama: Free, local, private  
-✅ Use provider fallbacks for reliability  
+✅ Multiple providers offer different strengths
+✅ OpenAI: Industry standard, reliable
+✅ Claude: Long context, excellent analysis
+✅ Gemini: Cost-effective, fast
+✅ Ollama: Free, local, private
+✅ Use provider fallbacks for reliability
 ✅ Match provider to task complexity
 
 ---

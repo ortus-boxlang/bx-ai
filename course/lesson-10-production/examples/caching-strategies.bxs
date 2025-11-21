@@ -17,11 +17,11 @@ println( "-".repeat( 70 ) )
 function cachedChat( prompt, ttlMinutes = 60 ) {
     // Generate cache key
     cacheKey = hash( prompt )
-    
+
     // Check cache
     if ( cache.keyExists( cacheKey ) ) {
         cached = cache[ cacheKey ]
-        
+
         // Check if expired
         age = dateDiff( "n", cached.timestamp, now() )
         if ( age < ttlMinutes ) {
@@ -32,16 +32,16 @@ function cachedChat( prompt, ttlMinutes = 60 ) {
             cache.delete( cacheKey )
         }
     }
-    
+
     println( "✗ Cache miss - calling AI" )
     response = aiChat( prompt )
-    
+
     // Store in cache
     cache[ cacheKey ] = {
         response: response,
         timestamp: now()
     }
-    
+
     return response
 }
 
@@ -66,7 +66,7 @@ function semanticCachedChat( prompt, similarityThreshold = 0.8 ) {
     // Check for semantically similar prompts
     for ( entry in semanticCache ) {
         similarity = calculateSimilarity( prompt, entry.prompt )
-        
+
         if ( similarity >= similarityThreshold ) {
             println( "✓ Semantic cache hit (similarity: #numberFormat( similarity, '0.00' )#)" )
             println( "  Original: #entry.prompt#" )
@@ -74,17 +74,17 @@ function semanticCachedChat( prompt, similarityThreshold = 0.8 ) {
             return entry.response
         }
     }
-    
+
     println( "✗ Semantic cache miss - calling AI" )
     response = aiChat( prompt )
-    
+
     // Store in semantic cache
     semanticCache.append( {
         prompt: prompt,
         response: response,
         timestamp: now()
     } )
-    
+
     return response
 }
 
@@ -92,10 +92,10 @@ function calculateSimilarity( str1, str2 ) {
     // Simple Jaccard similarity (word overlap)
     words1 = str1.listToArray( " " )
     words2 = str2.listToArray( " " )
-    
+
     intersection = words1.filter( w => words2.findNoCase( w ) > 0 ).len()
     union = words1.len() + words2.len() - intersection
-    
+
     return union > 0 ? intersection / union : 0
 }
 
@@ -119,7 +119,7 @@ println( "-".repeat( 70 ) )
 function cachedPipeline( input ) {
     // Cache expensive preprocessing
     cacheKey = "preprocess_" & hash( input )
-    
+
     if ( cache.keyExists( cacheKey ) ) {
         println( "✓ Using cached preprocessing" )
         preprocessed = cache[ cacheKey ]
@@ -128,7 +128,7 @@ function cachedPipeline( input ) {
         preprocessed = input.uCase().trim()
         cache[ cacheKey ] = preprocessed
     }
-    
+
     // Fresh AI call with preprocessed input
     return aiChat( "Process: #preprocessed#" )
 }

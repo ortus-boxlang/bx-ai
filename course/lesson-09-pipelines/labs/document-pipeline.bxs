@@ -1,17 +1,17 @@
 // document-pipeline.bxs
 /**
  * LAB: Document Processing Pipeline
- * 
+ *
  * OBJECTIVE:
  * Build a pipeline that processes documents through multiple AI stages
- * 
+ *
  * REQUIREMENTS:
  * 1. Accept document input (text)
  * 2. Classify document type (email, report, note, etc.)
  * 3. Extract key information (dates, people, actions)
  * 4. Generate summary
  * 5. Output structured result
- * 
+ *
  * BONUS CHALLENGES:
  * - Handle multiple documents in batch
  * - Add priority/urgency detection
@@ -20,20 +20,20 @@
  * - Create pipeline visualization (show stages)
  * - Add error handling and retries
  * - Cache intermediate results
- * 
+ *
  * EXAMPLE OUTPUT:
  * Processing document...
  * Stage 1: Classification -> "email"
  * Stage 2: Extraction -> {date: "2024-01-15", person: "John"}
  * Stage 3: Summary -> "Meeting request for..."
- * 
+ *
  * Result: {
  *   type: "email",
  *   metadata: {...},
  *   summary: "...",
  *   priority: "normal"
  * }
- * 
+ *
  * HINTS:
  * - Use aiModel() for AI stages
  * - Use aiTransform() for data transformations

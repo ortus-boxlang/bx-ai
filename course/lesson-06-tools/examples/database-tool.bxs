@@ -42,13 +42,13 @@ databaseTool = aiTool()
     } )
     .setHandler( ( args ) => {
         table = args.table
-        
+
         if ( !database.keyExists( table ) ) {
             return "Table '#table#' does not exist"
         }
-        
+
         records = database[ table ]
-        
+
         // Apply filter if provided
         if ( args.keyExists( "filter" ) && len( args.filter ) ) {
             // Simple filter parsing (in real app, use proper query engine)
@@ -58,7 +58,7 @@ databaseTool = aiTool()
                 records = records.filter( r => r.price < 100 )
             }
         }
-        
+
         return serializeJSON( records )
     } )
 
@@ -74,19 +74,19 @@ questions.each( question => {
     println( "-".repeat( 70 ) )
     println( "Question: #question#" )
     println()
-    
+
     try {
         answer = aiChat(
             question,
             { tools: [ databaseTool ] }
         )
-        
+
         println( "AI: #answer#" )
-        
+
     } catch( any e ) {
         println( "❌ Error: #e.message#" )
     }
-    
+
     println()
 } )
 

@@ -19,22 +19,22 @@ temperatures.each( temp => {
     println( "-".repeat( 70 ) )
     println( "Temperature: #temp#" )
     println( "-".repeat( 70 ) )
-    
+
     try {
         answer = aiChat(
             prompt,
-            { 
+            {
                 temperature: temp,
                 max_tokens: 100
             }
         )
-        
+
         println( answer )
-        
+
     } catch( any e ) {
         println( "❌ Error: #e.message#" )
     }
-    
+
     println()
 } )
 

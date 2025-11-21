@@ -1,23 +1,23 @@
 // multi-provider-bot.bxs
 /**
  * LAB: Multi-Provider Chat Bot
- * 
+ *
  * OBJECTIVE:
  * Create a chat bot that can switch between AI providers
- * 
+ *
  * REQUIREMENTS:
  * 1. Support at least 3 providers (OpenAI, Claude, Ollama)
  * 2. Allow switching with commands like "/use openai"
  * 3. Show current provider in bot responses
  * 4. Implement fallback if provider fails
  * 5. Track and display cost per provider
- * 
+ *
  * BONUS CHALLENGES:
  * - A/B test same prompt across all providers
  * - Benchmark response times
  * - Auto-suggest best provider based on prompt
  * - Save provider usage statistics to file
- * 
+ *
  * EXAMPLE OUTPUT:
  * [OpenAI] Bot: Hello! Ask me anything or type /help
  * You: What is AI?
@@ -26,7 +26,7 @@
  * [Ollama] Bot: Switched to Ollama (llama3.2)
  * You: /compare What is AI?
  * [Comparison] Testing across 3 providers...
- * 
+ *
  * HINTS:
  * - Use a variable to track current provider
  * - Check if input starts with "/" for commands

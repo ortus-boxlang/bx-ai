@@ -1,6 +1,6 @@
 # Lesson 5: Streaming Responses
 
-**Duration:** 60 minutes  
+**Duration:** 60 minutes
 **Prerequisites:** Lessons 1-4 completed
 
 ## Learning Objectives
@@ -38,9 +38,9 @@ aiChatStream(
 
 ### Benefits
 
-✅ **Better UX** - Immediate feedback  
-✅ **Perceived speed** - Feels faster  
-✅ **Interruptible** - Can stop early  
+✅ **Better UX** - Immediate feedback
+✅ **Perceived speed** - Feels faster
+✅ **Interruptible** - Can stop early
 ✅ **Real-time** - Like ChatGPT interface
 
 ---
@@ -106,10 +106,10 @@ conversation = []
 
 function streamChat( prompt ) {
     conversation.append( aiMessage().user( prompt ) )
-    
+
     fullResponse = ""
     println( "AI: " )
-    
+
     aiChatStream(
         conversation,
         ( chunk ) => {
@@ -117,7 +117,7 @@ function streamChat( prompt ) {
             print( chunk )
         }
     )
-    
+
     conversation.append( aiMessage().assistant( fullResponse ) )
     println()
 }
@@ -145,17 +145,17 @@ Streaming vs. non-streaming speed
 
 **File:** `labs/streaming-chat.bxs`
 
-**Objective:**  
+**Objective:**
 Build an interactive chat bot with real-time streaming.
 
 ---
 
 ## Key Takeaways
 
-✅ Streaming shows responses in real-time  
-✅ Better user experience (perceived speed)  
-✅ Use aiChatStream() with callback  
-✅ Accumulate chunks for full response  
+✅ Streaming shows responses in real-time
+✅ Better user experience (perceived speed)
+✅ Use aiChatStream() with callback
+✅ Accumulate chunks for full response
 ✅ Handle errors gracefully
 
 ---

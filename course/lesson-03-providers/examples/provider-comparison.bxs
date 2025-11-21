@@ -25,28 +25,28 @@ providers.each( config => {
     println( "-".repeat( 70 ) )
     println( "Provider: #config.name#" )
     println( "-".repeat( 70 ) )
-    
+
     startTime = getTickCount()
-    
+
     try {
         answer = aiChat(
             prompt,
             { model: config.model },
             { provider: config.provider }
         )
-        
+
         elapsed = getTickCount() - startTime
-        
+
         println( "Response:" )
         println( answer )
         println()
         println( "⏱️  Time: #elapsed#ms" )
-        
+
     } catch( any e ) {
         println( "❌ Error: #e.message#" )
         println( "   (Provider may not be configured)" )
     }
-    
+
     println()
 } )
 

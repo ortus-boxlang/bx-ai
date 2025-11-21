@@ -1,24 +1,24 @@
 // parameter-tuner.bxs
 /**
  * LAB: Parameter Tuner
- * 
+ *
  * OBJECTIVE:
  * Create a tool that tests different parameter combinations
- * 
+ *
  * REQUIREMENTS:
  * 1. Test same prompt with at least 3 different temperatures
  * 2. Test same prompt with at least 3 different max_tokens values
  * 3. Compare response quality, length, and cost
  * 4. Create at least 3 reusable parameter presets
  * 5. Show recommendations for different use cases
- * 
+ *
  * BONUS CHALLENGES:
  * - Test top_p parameter
  * - Test frequency_penalty and presence_penalty
  * - Compare multiple models with same parameters
  * - Create interactive parameter tuner with user input
  * - Generate parameter recommendation based on prompt analysis
- * 
+ *
  * HINTS:
  * - Use TokenCounter to measure response length
  * - Calculate cost: tokens / 1000000 * 0.002

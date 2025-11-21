@@ -18,12 +18,12 @@ documents = [
 // Pipeline steps
 classifyStep = aiTransform( ( doc ) => {
     prompt = "Classify this as 'urgent', 'normal', or 'info': #doc.content#. Reply with one word only."
-    
+
     classification = aiChat( aiMessage().user( prompt ), {
         model: "gpt-4o-mini",
         max_tokens: 10
     } )
-    
+
     doc.priority = trim( classification )
     return doc
 } )
@@ -59,13 +59,13 @@ println()
 
 results = documents.map( doc => {
     processed = docPipeline.run( doc )
-    
+
     println( "Document ##processed.id#: [#uCase( processed.priority )#]" )
     println( "  Type: #processed.type#" )
     println( "  Summary: #processed.summary#" )
     println( "  Needs Action: #processed.needsAction ? 'YES' : 'NO'#" )
     println()
-    
+
     return processed
 } )
 

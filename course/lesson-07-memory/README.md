@@ -1,6 +1,6 @@
 # Lesson 7: Memory Systems
 
-**Duration:** 75 minutes  
+**Duration:** 75 minutes
 **Prerequisites:** Lessons 1-6 completed
 
 ## Learning Objectives
@@ -74,7 +74,7 @@ memory = aiMemory( "summary", { maxMessages: 10 } )
 Web session-persisted:
 
 ```java
-memory = aiMemory( "session", { 
+memory = aiMemory( "session", {
     key: "chatbot",
     maxMessages: 20
 } )
@@ -96,11 +96,11 @@ memory = aiMemory( "windowed", { maxMessages: 10 } )
 // Chat function
 function chat( prompt ) {
     memory.add( aiMessage().user( prompt ) )
-    
+
     answer = aiChat( memory.getAll() )
-    
+
     memory.add( aiMessage().assistant( answer ) )
-    
+
     return answer
 }
 
@@ -131,17 +131,17 @@ Compare memory types
 
 **File:** `labs/memory-chatbot.bxs`
 
-**Objective:**  
+**Objective:**
 Build a chatbot that remembers conversation context.
 
 ---
 
 ## Key Takeaways
 
-✅ Memory enables context-aware conversations  
-✅ Windowed memory keeps recent N messages  
-✅ Summary memory condenses old conversations  
-✅ Session memory persists across requests  
+✅ Memory enables context-aware conversations
+✅ Windowed memory keeps recent N messages
+✅ Summary memory condenses old conversations
+✅ Session memory persists across requests
 ✅ Choose memory type based on use case
 
 ---

@@ -1,6 +1,6 @@
 # Lesson 8: AI Agents
 
-**Duration:** 90 minutes  
+**Duration:** 90 minutes
 **Prerequisites:** Lessons 1-7 completed
 
 ## Learning Objectives
@@ -100,10 +100,10 @@ codeAgent = aiAgent()
         3. Test code
         4. Explain solution
     " )
-    .setTools( [ 
-        searchDocsTool, 
-        runCodeTool, 
-        lintTool 
+    .setTools( [
+        searchDocsTool,
+        runCodeTool,
+        lintTool
     ] )
 ```
 
@@ -129,7 +129,7 @@ Multiple agents working together
 
 **File:** `labs/research-agent.bxs`
 
-**Objective:**  
+**Objective:**
 Build an agent that researches topics and creates reports.
 
 **Requirements:**
@@ -143,10 +143,10 @@ Build an agent that researches topics and creates reports.
 
 ## Key Takeaways
 
-✅ Agents are autonomous AI systems  
-✅ Agents plan and execute multi-step tasks  
-✅ Tools give agents capabilities  
-✅ Memory makes agents context-aware  
+✅ Agents are autonomous AI systems
+✅ Agents plan and execute multi-step tasks
+✅ Tools give agents capabilities
+✅ Memory makes agents context-aware
 ✅ Good instructions guide agent behavior
 
 ---

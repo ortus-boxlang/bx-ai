@@ -20,27 +20,27 @@ tokenLimits.each( maxTokens => {
     println( "-".repeat( 70 ) )
     println( "Max Tokens: #maxTokens#" )
     println( "-".repeat( 70 ) )
-    
+
     try {
         answer = aiChat(
             prompt,
-            { 
+            {
                 max_tokens: maxTokens,
                 temperature: 0.7
             }
         )
-        
+
         actualTokens = TokenCounter::count( answer )
         wordCount = listLen( answer, " " )
-        
+
         println( answer )
         println()
         println( "Actual tokens: #actualTokens# (~#wordCount# words)" )
-        
+
     } catch( any e ) {
         println( "❌ Error: #e.message#" )
     }
-    
+
     println()
 } )
 

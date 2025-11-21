@@ -19,16 +19,16 @@ metrics = {
 function monitoredChat( prompt, options = {} ) {
     startTime = getTickCount()
     requestId = createUUID()
-    
+
     try {
         // Make request
         response = aiChat( prompt, options )
-        
+
         // Record metrics
         duration = getTickCount() - startTime
         tokens = estimateTokens( prompt, response )
         cost = estimateCost( tokens, options.model ?: "gpt-4o-mini" )
-        
+
         metrics.requests.append( {
             id: requestId,
             timestamp: now(),
@@ -39,17 +39,17 @@ function monitoredChat( prompt, options = {} ) {
             duration: duration,
             status: "success"
         } )
-        
+
         metrics.totalCost += cost
         metrics.totalTokens += tokens
-        
+
         println( "✓ Request #requestId.left( 8 )# completed in #duration#ms (#tokens# tokens, $#numberFormat( cost, '0.0000' )#)" )
-        
+
         return response
-        
+
     } catch( any e ) {
         duration = getTickCount() - startTime
-        
+
         // Record error
         metrics.errors.append( {
             id: requestId,
@@ -57,7 +57,7 @@ function monitoredChat( prompt, options = {} ) {
             error: e.message,
             duration: duration
         } )
-        
+
         println( "❌ Request #requestId.left( 8 )# failed after #duration#ms: #e.message#" )
         throw e
     }
@@ -75,7 +75,7 @@ function estimateCost( tokens, model ) {
         "gpt-4o": 0.0025,
         "gpt-3.5-turbo": 0.0005
     }
-    
+
     rate = costs[ model ] ?: 0.0001
     return ( tokens / 1000 ) * rate
 }
@@ -120,7 +120,7 @@ if ( metrics.requests.len() > 0 ) {
     avgDuration = metrics.requests.reduce( ( sum, req ) => sum + req.duration, 0 ) / metrics.requests.len()
     avgTokens = metrics.totalTokens / metrics.requests.len()
     avgCost = metrics.totalCost / metrics.requests.len()
-    
+
     println( "Average Performance:" )
     println( "  Duration: #numberFormat( avgDuration, '0' )#ms" )
     println( "  Tokens: #numberFormat( avgTokens, '0' )# per request" )

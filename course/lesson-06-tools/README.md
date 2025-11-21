@@ -1,6 +1,6 @@
 # Lesson 6: Function Calling (Tools)
 
-**Duration:** 90 minutes  
+**Duration:** 90 minutes
 **Prerequisites:** Lessons 1-5 completed
 
 ## Learning Objectives
@@ -64,9 +64,9 @@ calculatorTool = aiTool()
     .setParameters( {
         type: "object",
         properties: {
-            expression: { 
-                type: "string", 
-                description: "Math expression like '5 * 10'" 
+            expression: {
+                type: "string",
+                description: "Math expression like '5 * 10'"
             }
         }
     } )
@@ -92,8 +92,8 @@ databaseTool = aiTool()
     } )
     .setHandler( ( args ) => {
         // Execute database query
-        return queryExecute( 
-            "SELECT * FROM #args.table# WHERE #args.condition# LIMIT #args.limit#" 
+        return queryExecute(
+            "SELECT * FROM #args.table# WHERE #args.condition# LIMIT #args.limit#"
         )
     } )
 ```
@@ -151,7 +151,7 @@ Agent with multiple tools
 
 **File:** `labs/tool-assistant.bxs`
 
-**Objective:**  
+**Objective:**
 Build an assistant with multiple tools (calculator, time, search).
 
 **Requirements:**
@@ -165,10 +165,10 @@ Build an assistant with multiple tools (calculator, time, search).
 
 ## Key Takeaways
 
-✅ Tools give AI access to external data/functions  
-✅ Define with aiTool() - name, description, parameters, handler  
-✅ AI decides when and how to use tools  
-✅ Multiple tools enable complex agents  
+✅ Tools give AI access to external data/functions
+✅ Define with aiTool() - name, description, parameters, handler
+✅ AI decides when and how to use tools
+✅ Multiple tools enable complex agents
 ✅ Tool handlers execute your BoxLang code
 
 ---

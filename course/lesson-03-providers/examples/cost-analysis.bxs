@@ -67,7 +67,7 @@ sortedProviders.each( ( model, prices ) => {
     inputCost = ( estimatedInputTokens / 1000000 ) * prices.input
     outputCost = ( estimatedOutputTokens / 1000000 ) * prices.output
     totalCost = inputCost + outputCost
-    
+
     println( "#model.ljust( 25 )# $#numberFormat( totalCost, '0.000000' )#" )
 } )
 
@@ -79,7 +79,7 @@ sortedProviders.each( ( model, prices ) => {
     inputCost = ( estimatedInputTokens / 1000000 ) * prices.input * 1000
     outputCost = ( estimatedOutputTokens / 1000000 ) * prices.output * 1000
     totalCost = inputCost + outputCost
-    
+
     println( "#model.ljust( 25 )# $#numberFormat( totalCost, '0.00' )#" )
 } )
 
@@ -91,7 +91,7 @@ sortedProviders.each( ( model, prices ) => {
     inputCost = ( estimatedInputTokens / 1000000 ) * prices.input * 1000000
     outputCost = ( estimatedOutputTokens / 1000000 ) * prices.output * 1000000
     totalCost = inputCost + outputCost
-    
+
     println( "#model.ljust( 25 )# $#numberFormat( totalCost, ',.2' )#" )
 } )
 

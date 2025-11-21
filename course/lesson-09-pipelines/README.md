@@ -1,6 +1,6 @@
 # Lesson 9: Advanced Pipelines
 
-**Duration:** 90 minutes  
+**Duration:** 90 minutes
 **Prerequisites:** Lessons 1-8 completed
 
 ## Learning Objectives
@@ -105,17 +105,17 @@ Complex multi-step workflow
 
 **File:** `labs/document-pipeline.bxs`
 
-**Objective:**  
+**Objective:**
 Build a pipeline that processes documents through multiple stages.
 
 ---
 
 ## Key Takeaways
 
-✅ Pipelines chain AI operations  
-✅ Use aiTransform() for data manipulation  
-✅ RAG combines retrieval + generation  
-✅ Pipelines are reusable and composable  
+✅ Pipelines chain AI operations
+✅ Use aiTransform() for data manipulation
+✅ RAG combines retrieval + generation
+✅ Pipelines are reusable and composable
 ✅ Great for complex workflows
 
 ---

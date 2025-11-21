@@ -35,13 +35,13 @@ messages.each( ( msg, index ) => {
         println( "         AI: #msg.text#" )
         memory.add( aiMessage().assistant( msg.text ) )
     }
-    
+
     println( "         Memory count: #memory.count()#" )
-    
+
     if ( memory.count() > 5 ) {
         println( "         ⚠️  Trimmed oldest message" )
     }
-    
+
     println()
 } )
 

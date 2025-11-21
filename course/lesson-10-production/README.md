@@ -1,6 +1,6 @@
 # Lesson 10: Production Deployment
 
-**Duration:** 90 minutes  
+**Duration:** 90 minutes
 **Prerequisites:** Lessons 1-9 completed
 
 ## Learning Objectives
@@ -29,11 +29,11 @@ function safeAIChat( prompt, retries = 3 ) {
             if ( i == retries ) {
                 // Log error
                 logger.error( "AI call failed: #e.message#" )
-                
+
                 // Return fallback
                 return "I'm having trouble processing that. Please try again."
             }
-            
+
             // Wait before retry (exponential backoff)
             sleep( 2 ^ i * 1000 )
         }
@@ -71,14 +71,14 @@ cache = {}
 
 function cachedAIChat( prompt ) {
     cacheKey = hash( prompt, "MD5" )
-    
+
     if ( cache.keyExists( cacheKey ) ) {
         return cache[ cacheKey ]
     }
-    
+
     answer = aiChat( prompt )
     cache[ cacheKey ] = answer
-    
+
     return answer
 }
 ```
@@ -90,22 +90,22 @@ cache = {}
 
 function cachedAIChatWithTTL( prompt, ttlMinutes = 60 ) {
     cacheKey = hash( prompt, "MD5" )
-    
+
     if ( cache.keyExists( cacheKey ) ) {
         entry = cache[ cacheKey ]
         age = dateDiff( "n", entry.timestamp, now() )
-        
+
         if ( age < ttlMinutes ) {
             return entry.response
         }
     }
-    
+
     answer = aiChat( prompt )
     cache[ cacheKey ] = {
         response: answer,
         timestamp: now()
     }
-    
+
     return answer
 }
 ```
@@ -119,10 +119,10 @@ function cachedAIChatWithTTL( prompt, ttlMinutes = 60 ) {
 ```java
 component {
     property name="usageStats" default="{}";
-    
+
     function trackUsage( provider, model, tokens, cost ) {
         key = "#provider#_#model#"
-        
+
         if ( !variables.usageStats.keyExists( key ) ) {
             variables.usageStats[ key ] = {
                 calls: 0,
@@ -130,12 +130,12 @@ component {
                 cost: 0
             }
         }
-        
+
         variables.usageStats[ key ].calls++
         variables.usageStats[ key ].tokens += tokens
         variables.usageStats[ key ].cost += cost
     }
-    
+
     function getStats() {
         return variables.usageStats
     }
@@ -147,23 +147,23 @@ component {
 ```java
 function aiChatWithCostTracking( prompt ) {
     startTime = getTickCount()
-    
+
     answer = aiChat( prompt )
-    
+
     elapsed = getTickCount() - startTime
-    
+
     // Calculate cost
     tokens = TokenCounter::count( prompt ) + TokenCounter::count( answer )
     cost = tokens / 1000000 * 0.002
-    
+
     // Log metrics
     logger.info( "AI call: #tokens# tokens, $#cost#, #elapsed#ms" )
-    
+
     // Alert if expensive
     if ( cost > 0.10 ) {
         sendAlert( "Expensive AI call: $#cost#" )
     }
-    
+
     return answer
 }
 ```
@@ -177,13 +177,13 @@ function aiChatWithCostTracking( prompt ) {
 ```java
 function processBatch( prompts ) {
     results = []
-    
+
     prompts.each( prompt => {
         // Process with delay to avoid rate limits
         results.append( aiChat( prompt ) )
         sleep( 100 )  // 100ms delay
     } )
-    
+
     return results
 }
 ```
@@ -236,12 +236,12 @@ function sanitizeInput( prompt ) {
         .reReplace( "<script[^>]*>.*?</script>", "", "ALL" )
         .reReplace( "javascript:", "", "ALL" )
         .trim()
-    
+
     // Limit length
     if ( len( cleaned ) > 5000 ) {
         cleaned = cleaned.left( 5000 )
     }
-    
+
     return cleaned
 }
 ```
@@ -252,16 +252,16 @@ function sanitizeInput( prompt ) {
 component {
     property name="requestCounts" default="{}";
     property name="maxRequestsPerMinute" default="60";
-    
+
     function checkRateLimit( userId ) {
         key = "#userId#_#dateFormat( now(), 'yyyy-mm-dd-HH-mm' )#"
-        
+
         if ( !variables.requestCounts.keyExists( key ) ) {
             variables.requestCounts[ key ] = 0
         }
-        
+
         variables.requestCounts[ key ]++
-        
+
         if ( variables.requestCounts[ key ] > variables.maxRequestsPerMinute ) {
             throw( "Rate limit exceeded. Please try again later." )
         }
@@ -327,7 +327,7 @@ Complete production-ready setup
 
 **File:** `labs/production-service.bxs`
 
-**Objective:**  
+**Objective:**
 Build a production-ready AI service with all best practices.
 
 **Requirements:**
@@ -376,11 +376,11 @@ Build a production-ready AI service with all best practices.
 
 ## Key Takeaways
 
-✅ Production requires robust error handling  
-✅ Caching reduces costs and improves speed  
-✅ Monitor usage, costs, and performance  
-✅ Security is critical (API keys, input validation)  
-✅ Use multiple providers for reliability  
+✅ Production requires robust error handling
+✅ Caching reduces costs and improves speed
+✅ Monitor usage, costs, and performance
+✅ Security is critical (API keys, input validation)
+✅ Use multiple providers for reliability
 ✅ Plan for scale from the start
 
 ---

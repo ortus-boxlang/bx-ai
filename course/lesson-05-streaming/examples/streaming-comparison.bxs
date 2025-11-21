@@ -18,29 +18,29 @@ prompts.each( prompt => {
     println( "Prompt: '#prompt#'" )
     println( "=".repeat( 70 ) )
     println()
-    
+
     // Non-streaming
     println( "Non-Streaming:" )
     println( "-".repeat( 60 ) )
     println( "⏳ Waiting..." )
-    
+
     startTime1 = getTickCount()
     answer1 = aiChat( prompt, { max_tokens: 200 } )
     elapsed1 = getTickCount() - startTime1
-    
+
     println( "✅ Complete after #elapsed1#ms" )
     println( "Response: #answer1.left( 100 )#..." )
     println()
-    
+
     // Streaming
     println( "Streaming:" )
     println( "-".repeat( 60 ) )
     print( "📡 " )
-    
+
     startTime2 = getTickCount()
     fullResponse = ""
     firstChunkTime = 0
-    
+
     aiChatStream(
         prompt,
         { max_tokens: 200 },
@@ -52,13 +52,13 @@ prompts.each( prompt => {
             print( "." )  // Show progress
         }
     )
-    
+
     elapsed2 = getTickCount() - startTime2
-    
+
     println()
     println( "✅ Complete after #elapsed2#ms (first chunk: #firstChunkTime#ms)" )
     println()
-    
+
     // Comparison
     println( "Comparison:" )
     println( "  Non-streaming: #elapsed1#ms (wait for all)" )

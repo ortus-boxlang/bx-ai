@@ -12,7 +12,7 @@ class AIService {
     property name="cache" default={};
     property name="metrics" default={};
     property name="config" default={};
-    
+
     function init( config = {} ) {
         variables.config = {
             maxRetries: 3,
@@ -20,21 +20,21 @@ class AIService {
             cacheTTL: 60,
             providers: [ "openai", "claude" ]
         }.append( config )
-        
+
         variables.cache = {}
         variables.metrics = {
             requests: 0,
             errors: 0,
             cacheHits: 0
         }
-        
+
         return this
     }
-    
+
     function chat( prompt, options = {} ) {
         // Validate input
         validatePrompt( prompt )
-        
+
         // Check cache
         if ( shouldUseCache( options ) ) {
             cached = getFromCache( prompt )
@@ -43,50 +43,50 @@ class AIService {
                 return cached
             }
         }
-        
+
         // Execute with retry and fallback
         response = executeWithRetry( prompt, options )
-        
+
         // Cache result
         if ( shouldUseCache( options ) ) {
             saveToCache( prompt, response )
         }
-        
+
         return response
     }
-    
+
     private function validatePrompt( prompt ) {
         if ( isNull( prompt ) || !len( trim( prompt ) ) ) {
             throw( type: "ValidationError", message: "Prompt cannot be empty" )
         }
-        
+
         if ( len( prompt ) > 10000 ) {
             throw( type: "ValidationError", message: "Prompt exceeds maximum length" )
         }
     }
-    
+
     private function executeWithRetry( prompt, options ) {
         retries = 0
         lastError = ""
-        
+
         while ( retries < variables.config.maxRetries ) {
             try {
                 variables.metrics.requests++
-                
-                result = aiChat( 
-                    prompt, 
-                    options.append( { 
-                        timeout: variables.config.timeout 
+
+                result = aiChat(
+                    prompt,
+                    options.append( {
+                        timeout: variables.config.timeout
                     } )
                 )
-                
+
                 return result
-                
+
             } catch( any e ) {
                 retries++
                 lastError = e.message
                 variables.metrics.errors++
-                
+
                 if ( retries >= variables.config.maxRetries ) {
                     // Try fallback provider
                     if ( options.keyExists( "provider" ) ) {
@@ -94,13 +94,13 @@ class AIService {
                     }
                     throw e
                 }
-                
+
                 // Exponential backoff
                 sleep( 2 ^ retries * 1000 )
             }
         }
     }
-    
+
     private function tryFallbackProvider( prompt, options ) {
         for ( provider in variables.config.providers ) {
             if ( provider != options.provider ) {
@@ -111,32 +111,32 @@ class AIService {
                 }
             }
         }
-        
+
         throw( type: "ServiceError", message: "All providers failed" )
     }
-    
+
     private function shouldUseCache( options ) {
         return options.cache ?: true
     }
-    
+
     private function getFromCache( prompt ) {
         cacheKey = hash( prompt )
-        
+
         if ( variables.cache.keyExists( cacheKey ) ) {
             entry = variables.cache[ cacheKey ]
-            
+
             // Check TTL
             age = dateDiff( "n", entry.timestamp, now() )
             if ( age < variables.config.cacheTTL ) {
                 return entry.response
             }
-            
+
             variables.cache.delete( cacheKey )
         }
-        
+
         return null
     }
-    
+
     private function saveToCache( prompt, response ) {
         cacheKey = hash( prompt )
         variables.cache[ cacheKey ] = {
@@ -144,21 +144,21 @@ class AIService {
             timestamp: now()
         }
     }
-    
+
     function getMetrics() {
         return {
             requests: variables.metrics.requests,
             errors: variables.metrics.errors,
             cacheHits: variables.metrics.cacheHits,
-            errorRate: variables.metrics.requests > 0 
-                ? ( variables.metrics.errors / variables.metrics.requests ) * 100 
+            errorRate: variables.metrics.requests > 0
+                ? ( variables.metrics.errors / variables.metrics.requests ) * 100
                 : 0,
-            cacheHitRate: variables.metrics.requests > 0 
-                ? ( variables.metrics.cacheHits / variables.metrics.requests ) * 100 
+            cacheHitRate: variables.metrics.requests > 0
+                ? ( variables.metrics.cacheHits / variables.metrics.requests ) * 100
                 : 0
         }
     }
-    
+
     function clearCache() {
         variables.cache = {}
     }
@@ -188,14 +188,14 @@ println( "-".repeat( 70 ) )
 
 testPrompts.each( ( prompt, index ) => {
     println( "Request #index#: #prompt#" )
-    
+
     try {
         response = service.chat( prompt )
         println( "Response: #left( response, 60 )#..." )
     } catch( any e ) {
         println( "❌ Error: #e.message#" )
     }
-    
+
     println()
 } )
 

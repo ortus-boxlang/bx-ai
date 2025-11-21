@@ -47,15 +47,15 @@ presets.each( ( name, config ) => {
     println( "Preset: #name#" )
     println( "Config: #serializeJSON( config )#" )
     println( "-".repeat( 70 ) )
-    
+
     try {
         answer = aiChat( prompt, config )
         println( answer )
-        
+
     } catch( any e ) {
         println( "❌ Error: #e.message#" )
     }
-    
+
     println()
 } )
 

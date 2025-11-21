@@ -65,19 +65,19 @@ questions.each( question => {
     println( "-".repeat( 70 ) )
     println( "Question: #question#" )
     println()
-    
+
     try {
         answer = aiChat(
             question,
             { tools: tools }
         )
-        
+
         println( "AI: #answer#" )
-        
+
     } catch( any e ) {
         println( "❌ Error: #e.message#" )
     }
-    
+
     println()
 } )
 

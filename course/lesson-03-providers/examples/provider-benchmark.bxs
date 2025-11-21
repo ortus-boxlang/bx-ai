@@ -40,24 +40,24 @@ results = []
 testCases.each( testCase => {
     println( "Test: #testCase.name# (#testCase.complexity#)" )
     println( "-".repeat( 70 ) )
-    
+
     providers.each( config => {
         try {
             // Measure time
             startTime = getTickCount()
-            
+
             answer = aiChat(
                 testCase.prompt,
                 { model: config.model, temperature: 0.1 },
                 { provider: config.provider }
             )
-            
+
             elapsed = getTickCount() - startTime
-            
+
             // Calculate tokens
             inputTokens = TokenCounter::count( testCase.prompt )
             outputTokens = TokenCounter::count( answer )
-            
+
             // Store result
             result = {
                 test: testCase.name,
@@ -69,14 +69,14 @@ testCases.each( testCase => {
                 answerLength: len( answer ),
                 success: true
             }
-            
+
             results.append( result )
-            
+
             println( "#config.name.ljust( 15 )# ✅ #elapsed#ms (#outputTokens# tokens)" )
-            
+
         } catch( any e ) {
             println( "#config.name.ljust( 15 )# ❌ Failed" )
-            
+
             results.append( {
                 test: testCase.name,
                 provider: config.name,
@@ -85,7 +85,7 @@ testCases.each( testCase => {
             } )
         }
     } )
-    
+
     println()
 } )
 
@@ -95,12 +95,12 @@ println( "-".repeat( 70 ) )
 
 providers.each( config => {
     providerResults = results.filter( r => r.provider == config.name && r.success )
-    
+
     if ( providerResults.len() > 0 ) {
         avgTime = providerResults.reduce( ( sum, r ) => sum + r.time, 0 ) / providerResults.len()
         avgTokens = providerResults.reduce( ( sum, r ) => sum + r.outputTokens, 0 ) / providerResults.len()
         successRate = ( providerResults.len() / testCases.len() ) * 100
-        
+
         println( config.name )
         println( "  Avg response time: #numberFormat( avgTime, '0' )#ms" )
         println( "  Avg output tokens: #numberFormat( avgTokens, '0' )#" )

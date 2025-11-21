@@ -54,15 +54,15 @@ tasks.each( task => {
     println( "-".repeat( 70 ) )
     println( "Task: #task#" )
     println()
-    
+
     try {
         result = agent.run( task )
         println( "Agent: #result#" )
-        
+
     } catch( any e ) {
         println( "❌ Error: #e.message#" )
     }
-    
+
     println()
 } )
 

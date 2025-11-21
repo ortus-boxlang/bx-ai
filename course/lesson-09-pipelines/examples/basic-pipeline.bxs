@@ -43,7 +43,7 @@ jsonExtractor = aiTransform( ( text ) => {
 extractPipeline = aiModel( "gpt-4o-mini" )
     .to( jsonExtractor )
 
-result = extractPipeline.run( 
+result = extractPipeline.run(
     aiMessage().user( "Extract person data as JSON: John Doe, age 30, engineer" )
 )
 

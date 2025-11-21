@@ -33,7 +33,7 @@ searchTool = aiTool()
     } )
     .setHandler( ( args ) => {
         topic = args.topic
-        
+
         // Find matching topic (case-insensitive)
         for ( key in researchData ) {
             if ( topic.findNoCase( key ) ) {
@@ -41,7 +41,7 @@ searchTool = aiTool()
                 return serializeJSON( data )
             }
         }
-        
+
         return "No information found for topic: #topic#"
     } )
 
@@ -70,15 +70,15 @@ topics.each( topic => {
     println( "Research Task: #topic#" )
     println( "=".repeat( 70 ) )
     println()
-    
+
     try {
         report = researchAgent.run( topic )
         println( report )
-        
+
     } catch( any e ) {
         println( "❌ Error: #e.message#" )
     }
-    
+
     println()
 } )
 

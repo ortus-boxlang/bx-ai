@@ -160,13 +160,13 @@ memory.add( aiMessage().system( "You are a friendly assistant" ) )
 function chat( userInput ) {
     // Add user message
     memory.add( aiMessage().user( userInput ) )
-    
+
     // Get AI response with full context
     response = aiChat( memory.getAll() )
-    
+
     // Add assistant response to memory
     memory.add( aiMessage().assistant( response ) )
-    
+
     return response
 }
 
@@ -198,9 +198,9 @@ memory.add( aiMessage().system( "You are a concise assistant" ) )
 
 function streamChat( userInput ) {
     memory.add( aiMessage().user( userInput ) )
-    
+
     fullResponse = ""
-    
+
     aiChatStream(
         memory.getAll(),
         ( chunk ) => {
@@ -208,7 +208,7 @@ function streamChat( userInput ) {
             print( chunk )
         }
     )
-    
+
     memory.add( aiMessage().assistant( fullResponse ) )
     println()
 }
@@ -226,28 +226,28 @@ Encapsulate memory logic in a reusable component:
 component {
     property name="memory";
     property name="systemPrompt";
-    
+
     function init( type = "windowed", config = {} ) {
         variables.memory = aiMemory( arguments.type, arguments.config )
         return this
     }
-    
+
     function setSystemPrompt( prompt ) {
         variables.systemPrompt = arguments.prompt
         variables.memory.add( aiMessage().system( arguments.prompt ) )
         return this
     }
-    
+
     function chat( userInput ) {
         variables.memory.add( aiMessage().user( arguments.userInput ) )
-        
+
         response = aiChat( variables.memory.getAll() )
-        
+
         variables.memory.add( aiMessage().assistant( response ) )
-        
+
         return response
     }
-    
+
     function reset() {
         variables.memory.clear()
         if ( !isNull( variables.systemPrompt ) ) {
@@ -255,11 +255,11 @@ component {
         }
         return this
     }
-    
+
     function export() {
         return variables.memory.export()
     }
-    
+
     function getHistory() {
         return variables.memory.getAll()
     }
@@ -280,7 +280,7 @@ Separate memory per user:
 ```java
 component {
     property name="userMemories" default="{}";
-    
+
     function getUserMemory( userId ) {
         if ( !variables.userMemories.keyExists( arguments.userId ) ) {
             variables.userMemories[ arguments.userId ] = aiMemory( "windowed", {
@@ -289,15 +289,15 @@ component {
         }
         return variables.userMemories[ arguments.userId ]
     }
-    
+
     function chat( userId, message ) {
         memory = getUserMemory( arguments.userId )
         memory.add( aiMessage().user( arguments.message ) )
-        
+
         response = aiChat( memory.getAll() )
-        
+
         memory.add( aiMessage().assistant( response ) )
-        
+
         return response
     }
 }
@@ -320,27 +320,27 @@ Switch memory contexts based on conversation topics:
 component {
     property name="memories" default="{}";
     property name="currentContext" default="general";
-    
+
     function switchContext( context ) {
         variables.currentContext = arguments.context
-        
+
         if ( !variables.memories.keyExists( arguments.context ) ) {
             variables.memories[ arguments.context ] = aiMemory( "windowed", {
                 maxMessages: 10
             } )
         }
-        
+
         return this
     }
-    
+
     function chat( message ) {
         memory = variables.memories[ variables.currentContext ]
         memory.add( aiMessage().user( arguments.message ) )
-        
+
         response = aiChat( memory.getAll() )
-        
+
         memory.add( aiMessage().assistant( response ) )
-        
+
         return response
     }
 }
@@ -387,15 +387,15 @@ Explicitly summarize conversation history:
 ```java
 function summarizeConversation( memory ) {
     messages = memory.getAll()
-    
+
     summaryPrompt = "Summarize this conversation in 3 bullet points:\n\n"
-    
+
     messages.each( msg => {
         summaryPrompt &= "#msg.role#: #msg.content#\n"
     } )
-    
+
     summary = aiChat( summaryPrompt )
-    
+
     return summary
 }
 
@@ -445,7 +445,7 @@ memory = aiMemory( "windowed", {
 memory = aiMemory( "windowed", { maxMessages: 10 } )
 
 // Set behavior upfront
-memory.add( aiMessage().system( 
+memory.add( aiMessage().system(
     "You are a helpful assistant. Be concise and accurate."
 ) )
 ```
@@ -474,11 +474,11 @@ import bxModules.bxai.models.util.TokenCounter;
 function estimateMemoryCost( memory ) {
     messages = memory.getAll()
     totalTokens = 0
-    
+
     messages.each( msg => {
         totalTokens += TokenCounter::count( msg.content )
     } )
-    
+
     return totalTokens
 }
 
@@ -507,13 +507,13 @@ function loadMemoryState( filename ) {
     if ( !fileExists( filename ) ) {
         return aiMemory( "windowed", { maxMessages: 10 } )
     }
-    
+
     state = deserializeJSON( fileRead( filename ) )
     memory = aiMemory( "windowed", { maxMessages: 10 } )
-    
+
     state.messages.each( msg => memory.add( msg ) )
     memory.metadata( state.metadata )
-    
+
     return memory
 }
 ```
@@ -527,7 +527,7 @@ function safeMemoryAdd( memory, message ) {
     } catch( any e ) {
         // Memory full or other error
         logger.error( "Failed to add to memory: #e.message#" )
-        
+
         // Clear oldest messages and retry
         memory.clear()
         memory.add( aiMessage().system( systemPrompt ) )
@@ -550,19 +550,19 @@ memory = aiMemory( "windowed", { maxMessages: 10 } )
 function chatWithKnowledge( userQuery ) {
     // Retrieve relevant documents
     relevantDocs = searchDocuments( userQuery )
-    
+
     // Build context
     context = "Relevant information:\n" & relevantDocs.toList()
-    
+
     // Add to memory
     memory.add( aiMessage().system( context ) )
     memory.add( aiMessage().user( userQuery ) )
-    
+
     // Generate response
     response = aiChat( memory.getAll() )
-    
+
     memory.add( aiMessage().assistant( response ) )
-    
+
     return response
 }
 ```
@@ -596,33 +596,33 @@ Adjust memory size based on conversation complexity:
 component {
     property name="memory";
     property name="baseLimit" default="10";
-    
+
     function init() {
         variables.memory = aiMemory( "windowed", { maxMessages: variables.baseLimit } )
         return this
     }
-    
+
     function chat( message ) {
         variables.memory.add( aiMessage().user( message ) )
-        
+
         // Detect if conversation is getting complex
         if ( isComplexQuery( message ) ) {
             // Increase memory limit temporarily
             expandMemory( variables.baseLimit * 2 )
         }
-        
+
         response = aiChat( variables.memory.getAll() )
-        
+
         variables.memory.add( aiMessage().assistant( response ) )
-        
+
         return response
     }
-    
+
     function isComplexQuery( message ) {
         keywords = [ "explain", "detailed", "comprehensive", "analyze" ]
         return keywords.some( kw => message.findNoCase( kw ) > 0 )
     }
-    
+
     function expandMemory( newLimit ) {
         // Create new memory with larger limit
         oldMessages = variables.memory.getAll()

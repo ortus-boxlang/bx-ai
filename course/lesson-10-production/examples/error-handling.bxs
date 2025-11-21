@@ -30,19 +30,19 @@ println( "-".repeat( 70 ) )
 
 function chatWithRetry( prompt, maxRetries = 3 ) {
     retries = 0
-    
+
     while ( retries < maxRetries ) {
         try {
             return aiChat( prompt )
-            
+
         } catch( any e ) {
             retries++
-            
+
             if ( retries >= maxRetries ) {
                 println( "❌ Failed after #maxRetries# retries: #e.message#" )
                 throw e
             }
-            
+
             // Exponential backoff
             waitTime = 2 ^ retries * 1000  // 2s, 4s, 8s
             println( "⚠️  Retry #retries# after #waitTime#ms..." )
@@ -65,18 +65,18 @@ println( "-".repeat( 70 ) )
 
 function chatWithFallback( prompt ) {
     providers = [ "openai", "claude", "ollama" ]
-    
+
     for ( provider in providers ) {
         try {
             println( "Trying provider: #provider#" )
             return aiChat( prompt, { provider: provider } )
-            
+
         } catch( any e ) {
             println( "❌ #provider# failed: #e.message#" )
             continue
         }
     }
-    
+
     throw( message: "All providers failed" )
 }
 
@@ -97,22 +97,22 @@ function safePrompt( userInput, maxLength = 1000 ) {
     if ( isNull( userInput ) || !len( trim( userInput ) ) ) {
         throw( message: "Input cannot be empty" )
     }
-    
+
     // Sanitize
     sanitized = trim( userInput )
-    
+
     // Check length
     if ( len( sanitized ) > maxLength ) {
         sanitized = left( sanitized, maxLength )
         println( "⚠️  Input truncated to #maxLength# chars" )
     }
-    
+
     // Check for injection attempts
     if ( sanitized.findNoCase( "ignore previous" ) ) {
         println( "⚠️  Potential prompt injection detected" )
         // Log security event
     }
-    
+
     return sanitized
 }
 
@@ -132,24 +132,24 @@ println( "-".repeat( 70 ) )
 
 function chatWithTimeout( prompt, timeoutSeconds = 30 ) {
     startTime = getTickCount()
-    
+
     try {
         result = aiChat( prompt, { timeout: timeoutSeconds } )
-        
+
         duration = getTickCount() - startTime
         println( "✓ Completed in #duration#ms" )
-        
+
         return result
-        
+
     } catch( any e ) {
         duration = getTickCount() - startTime
-        
+
         if ( e.message.findNoCase( "timeout" ) ) {
             println( "⏱  Request timed out after #duration#ms" )
         } else {
             println( "❌ Error after #duration#ms: #e.message#" )
         }
-        
+
         throw e
     }
 }
