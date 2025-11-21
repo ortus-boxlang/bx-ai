@@ -56,6 +56,7 @@ class extends="AiBaseRequest"{
 		variables.model = options.params?.model ?: "";
 		variables.timeout = options.timeout ?: 30;
 		variables.stream = options.stream ?: false;
+		variables.maxInteractions = options.maxInteractions ?: 0;
 		return this;
 	}
 

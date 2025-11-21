@@ -80,6 +80,12 @@ abstract class{
 	property name="headers" type="struct" default={};
 
 	/**
+	 * Maximum number of tool call interactions allowed
+	 * If not set, will use the service default (10)
+	 */
+	property name="maxInteractions" type="numeric" default=0;
+
+	/**
 	 * Add a header to the request
 	 *
 	 * @name The name of the header

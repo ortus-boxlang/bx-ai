@@ -59,6 +59,12 @@ abstract class implements="IAiService" {
 	property name = "headers" type = "struct" default = {};
 
 	/**
+	 * Maximum number of tool call interactions allowed to prevent infinite loops
+	 * Default: 10
+	 */
+	property name = "maxInteractions" type = "numeric" default = 10;
+
+	/**
 	 * Constants
 	 */
 	static {
@@ -163,12 +169,14 @@ abstract class implements="IAiService" {
 	 * If the provider does not support this standard, it should override this method.
 	 *
 	 * @aiRequest The AIRequest object to send to the provider
+	 * @interactionCount Current tool call interaction count (used internally)
 	 *
 	 * @throws ProviderError if the provider returns an error from the request
+	 * @throws MaxInteractionsExceeded if tool calls exceed the maximum allowed interactions
 	 *
 	 * @return The response from the provider according to the return format in the AI request
 	 */
-	public function chat( required AiRequest aiRequest ){
+	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ){
 		// Build the packet according to the OpenAI standard
 		var dataPacket = {
 			"model"   : arguments.aiRequest.getModel(),
@@ -220,6 +228,20 @@ abstract class implements="IAiService" {
 		 * Tool Chains
 		 * ---------------------------------------------------------------------------------------------------------
 		 */
+		// Check if we've exceeded max interactions
+		var maxAllowed = aiRequest.getMaxInteractions() > 0 ? aiRequest.getMaxInteractions() : variables.maxInteractions;
+		if( arguments.interactionCount >= maxAllowed ){
+			writeLog(
+				text: "Max tool call interactions (#maxAllowed#) exceeded",
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "MaxInteractionsExceeded",
+				message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
+			);
+		}
+
 		var newMessages = aiRequest.getMessages().map( message -> message );
 		result.choices.each( ( choice, i ) => {
 
@@ -255,7 +277,7 @@ abstract class implements="IAiService" {
 
 		aiRequest.setMessages( newMessages )
 
-		return chat( aiRequest )
+		return chat( aiRequest, arguments.interactionCount + 1 )
 	}
 
 	/**
