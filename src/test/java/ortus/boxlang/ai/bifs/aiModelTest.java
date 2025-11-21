@@ -185,7 +185,7 @@ public class aiModelTest extends BaseIntegrationTest {
 		assertThat( config.get( Key.of( "name" ) ) ).isEqualTo( "TestModel" );
 		assertThat( config.get( Key.of( "provider" ) ) ).isEqualTo( "OpenAI" );
 		assertThat( config.get( Key.of( "toolCount" ) ) ).isEqualTo( 0 );
-		
+
 		var params = ( ortus.boxlang.runtime.types.IStruct ) config.get( Key.of( "params" ) );
 		assertThat( params.get( Key.of( "model" ) ) ).isEqualTo( "gpt-4" );
 		assertThat( params.get( Key.of( "temperature" ) ).toString() ).isEqualTo( "0.7" );
@@ -201,16 +201,16 @@ public class aiModelTest extends BaseIntegrationTest {
 					"Performs calculations",
 					args => evaluate( args.expression )
 				).describeExpression( "Math expression to evaluate" )
-				
+
 				tool2 = aiTool(
 					"search",
 					"Searches information",
 					args => "Search result"
 				).describeQuery( "Search query" )
-				
+
 				model = aiModel( "openai" )
 					.bindTools( [ tool1, tool2 ] )
-				
+
 				config = model.getConfig()
 			""",
 			context

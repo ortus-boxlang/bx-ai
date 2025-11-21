@@ -24,10 +24,10 @@ class extends="AiBaseRunnable" {
 	/**
 	 * The agent's name
 	 */
-	property name="agentName" type="string" default="Agent";
+	property name="agentName" type="string" default="";
 
 	/**
-	 * The agent's description/role
+	 * The agent's description
 	 */
 	property name="description" type="string" default="";
 
@@ -37,12 +37,13 @@ class extends="AiBaseRunnable" {
 	property name="instructions" type="string" default="";
 
 	/**
-	 * The AI model to use
+	 * The AI model to use for this agent
 	 */
 	property name="aiModel" type="AiModel";
 
 	/**
-	 * Tools available to the agent
+	 * Tools available to the agent to use.
+	 * It will also use any tools bound to the aiModel.
 	 */
 	property name="tools" type="array" default=[];
 
@@ -52,12 +53,12 @@ class extends="AiBaseRunnable" {
 	property name="memories" type="array" default=[];
 
 	/**
-	 * Model parameters
+	 * Model parameters to use by default
 	 */
 	property name="params" type="struct" default={};
 
 	/**
-	 * Agent options
+	 * Agent options to use by default
 	 */
 	property name="options" type="struct" default={};
 
@@ -67,10 +68,19 @@ class extends="AiBaseRunnable" {
 
 	/**
 	 * Constructor
+	 *
+	 * @name The agent's name
+	 * @description The agent's description
+	 * @instructions The agent's instructions
+	 * @model The AI model to use, defaults to the default BoxLang AI model
+	 * @memory The memory instance or array of memories, defaults to a simple in-memory store
+	 * @tools Array of tools for the agent
+	 * @params Default model parameters
+	 * @options Default agent options
 	 */
 	function init(
 		string name = static.DEFAULT_AGENT_NAME,
-		string description = "",
+		string description = "My BoxLang AI Agent",
 		string instructions = "",
 		AiModel model = aiModel(),
 		any memory = aiMemory(),
@@ -85,7 +95,10 @@ class extends="AiBaseRunnable" {
 		variables.params = arguments.params;
 		variables.options = arguments.options;
 
-		// If the agent name is empty, use default
+		// param the options return format to "single"
+		param variables.options.returnFormat = "single";
+
+		// If the agent name is empty, use the default
 		if ( arguments.name.len() == 0 ) {
 			arguments.name = static.DEFAULT_AGENT_NAME;
 		}
@@ -123,17 +136,6 @@ class extends="AiBaseRunnable" {
 	 * @return The agent's response (format depends on returnFormat option)
 	 */
 	public any function run( any input = "", struct params = {}, struct options = {} ) {
-		// Default returnFormat to "single" if not specified
-		if ( !arguments.options.keyExists( "returnFormat" ) ) {
-			arguments.options.returnFormat = "single";
-		}
-
-		// Build system message from instructions and description
-		var systemMessage = buildSystemMessage();
-
-		// Load context from all memories
-		var memoryMessages = loadMemoryMessages();
-
 		// Create the user message
 		var userMessage = isStruct( arguments.input ) && arguments.input.keyExists( "content" )
 			? arguments.input
@@ -141,10 +143,14 @@ class extends="AiBaseRunnable" {
 
 		// Build complete message set
 		var messages = [];
+		// Build system message from instructions and description
+		var systemMessage = buildSystemMessage();
 		if ( systemMessage.len() > 0 ) {
 			messages.append( { role: "system", content: systemMessage } );
 		}
-		messages.append( memoryMessages, true );
+		// Load memory messages
+		messages.append( loadMemoryMessages(), true );
+		// Add user message
 		messages.append( userMessage );
 
 		// Merge parameters
@@ -157,7 +163,9 @@ class extends="AiBaseRunnable" {
 		BoxAnnounce( "beforeAIAgentRun", {
 			agent: this,
 			input: arguments.input,
-			messages: messages
+			messages: messages,
+			params: effectiveParams,
+			options: effectiveOptions
 		} );
 
 		// Execute via model - service handles returnFormat and returns formatted result
@@ -240,7 +248,7 @@ class extends="AiBaseRunnable" {
 	 */
 
 	 /**
-	 * Add memory to the agent
+	 * Add another memory to the agent
 	 *
 	 * @memory The memory instance to add
 	 *
@@ -252,24 +260,24 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
-	 * Set a single memory (replaces existing)
+	 * Set a single memory (replaces existing) with a single one
 	 *
 	 * @memory The memory instance
 	 *
 	 * @return this for chaining
 	 */
-	function setMemory( required any memory ) {
+	function setMemory( required IAiMemory memory ) {
 		variables.memories = [ arguments.memory ];
 		return this;
 	}
 
 	/**
-	 * Clear all memories
+	 * Clear all registered memories
 	 *
 	 * @return this for chaining
 	 */
 	function clearMemory() {
-		variables.memories.each( mem => mem.clear() );
+		variables.memories.each( .clear() );
 		return this;
 	}
 
@@ -302,38 +310,14 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
-	 * Set the agent's description
-	 *
-	 * @description The agent's description
-	 *
-	 * @return this for chaining
-	 */
-	AiAgent function setDescription( required string description ) {
-		variables.description = arguments.description;
-		return this;
-	}
-
-	/**
-	 * Set the agent's instructions
-	 *
-	 * @instructions The agent's instructions
-	 *
-	 * @return this for chaining
-	 */
-	AiAgent function setInstructions( required string instructions ) {
-		variables.instructions = arguments.instructions;
-		return this;
-	}
-
-	/**
 	 * Set the AI model for the agent
 	 *
 	 * @model The AI model to use
 	 *
 	 * @return this for chaining
 	 */
-	AiAgent function setModel( required any model ) {
-		variables.aiModel = arguments.model;
+	AiAgent function setModel( required AiModel model ) {
+		variables.aiModel = arguments.model.addTools( variables.tools );
 		return this;
 	}
 
@@ -385,9 +369,12 @@ class extends="AiBaseRunnable" {
 			"name": variables.agentName,
 			"description": variables.description,
 			"instructions": variables.instructions,
-			"model": variables.aiModel.getName(),
+			"model": variables.aiModel.getConfig(),
 			"toolCount": variables.tools.len(),
-			"memoryCount": variables.memories.len()
+			"memoryCount": variables.memories.len(),
+			"memories": variables.memories.map( mem => mem.getSummary() ),
+			"params": variables.params,
+			"options": variables.options
 		};
 	}
 
@@ -430,30 +417,32 @@ class extends="AiBaseRunnable" {
 
 	/**
 	 * Store messages in all memories
+	 *
+	 * @userMessage The user message struct
+	 * @response The assistant response (string or struct)
+	 *
+	 * @return void
 	 */
 	private void function storeInMemory( required struct userMessage, required any response ) {
+		// No memories, nothing to do
 		if ( variables.memories.isEmpty() ) {
 			return;
 		}
 
-		// Capture function arguments before using in closures
-		var userMsg = arguments.userMessage;
-		var responseData = arguments.response;
-
-		// Add user message
-		variables.memories.each( mem => mem.add( userMsg ) );
+		// Add user message to all memories
+		variables.memories.each( .add( userMessage ) );
 
 		// Extract assistant message from response
 		var assistantContent = "";
-		if ( isStruct( responseData ) ) {
+		if ( isStruct( arguments.response ) ) {
 			// Handle structured response
-			if ( responseData.keyExists( "choices" ) && !responseData.choices.isEmpty() ) {
-				assistantContent = responseData.choices[ 1 ].message?.content ?: "";
-			} else if ( responseData.keyExists( "content" ) ) {
-				assistantContent = responseData.content;
+			if ( arguments.response.keyExists( "choices" ) && !arguments.response.choices.isEmpty() ) {
+				assistantContent = arguments.response.choices[  1  ].message?.content ?: "";
+			} else if ( arguments.response.keyExists( "content" ) ) {
+				assistantContent = arguments.response.content;
 			}
 		} else {
-			assistantContent = toString( responseData );
+			assistantContent = toString( arguments.response );
 		}
 
 		// Add assistant message
