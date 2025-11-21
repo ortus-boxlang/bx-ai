@@ -437,8 +437,8 @@ The `getConfig()` method returns a comprehensive view of the model's configurati
 
 ```java
 model = aiModel( "openai" )
-    .withParams({ 
-        model: "gpt-4", 
+    .withParams({
+        model: "gpt-4",
         temperature: 0.7,
         max_tokens: 1000
     })
@@ -483,15 +483,15 @@ logger.debug( "Tools available: #config.toolCount#" )
 ```java
 function validateModel( required model ) {
     config = model.getConfig()
-    
+
     if ( config.provider != "openai" && config.provider != "claude" ) {
         throw( message: "Unsupported provider: #config.provider#" )
     }
-    
+
     if ( config.params.temperature > 1.0 ) {
         throw( message: "Temperature too high: #config.params.temperature#" )
     }
-    
+
     return true
 }
 ```
