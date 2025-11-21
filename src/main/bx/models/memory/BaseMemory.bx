@@ -186,7 +186,7 @@ abstract class implements="IAiMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getByRole( required string role ) {
-		return getAll().filter( ( m ) => m.role == role );
+		return this.getAll().filter( ( m ) => m.role == role );
 	}
 
 	/**

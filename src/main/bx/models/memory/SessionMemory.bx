@@ -64,7 +64,7 @@ class extends="WindowMemory" {
 
 		// AiMessage instance - get its messages and process them
  		if ( arguments.message instanceof "AiMessage" ) {
-			arguments.messages =  arguments.message.getMessages();
+			return this.add( arguments.message.getMessages() );
 		}
 
 		// Array - process each element
@@ -97,6 +97,8 @@ class extends="WindowMemory" {
 				message: "Message must be a string, struct, array, or AiMessage instance"
 			);
 		}
+
+		this.trim();
 
 		return this;
 	}
