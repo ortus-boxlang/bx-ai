@@ -268,7 +268,7 @@ public class aiPipelinesTest extends BaseIntegrationTest {
 					.toDefaultModel()
 					.asJson()
 					.run()
-				println( results )
+				println( results.count() )
 			""",
 			context
 		);

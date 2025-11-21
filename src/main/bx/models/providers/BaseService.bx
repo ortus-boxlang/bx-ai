@@ -198,6 +198,8 @@ abstract class implements="IAiService" {
 
 		// Result returns, only if we are not using tool calls
 		if( !result.choices.first().message.keyExists( "tool_calls" ) ){
+			var content = result.choices.first().message.content;
+
 			// Determine return formats
 			switch( aiRequest.getReturnFormat() ){
 				case "all":
@@ -205,11 +207,11 @@ abstract class implements="IAiService" {
 				case "raw":
 					return result;
 				case "json":
-					return jsonDeserialize( result.choices.first().message.content );
+					return jsonDeserialize( extractFromCodeBlock( content, "json" ) );
 				case "xml":
-					return xmlParse( result.choices.first().message.content );
+					return xmlParse( extractFromCodeBlock( content, "xml" ) );
 				case "single": default:
-					return result.choices.first().message.content;
+					return content;
 			}
 		}
 
@@ -671,6 +673,47 @@ abstract class implements="IAiService" {
 		BoxAnnounce( "onAIEmbedResponse", iData );
 
 		return iData.response;
+	}
+
+	/**
+	 * Extract content from markdown code blocks
+	 * LLMs often wrap JSON/XML in markdown code blocks like ```json ... ```
+	 * This method extracts the actual content
+	 *
+	 * @content The content that may contain markdown code blocks
+	 * @language Optional language identifier (json, xml, etc.)
+	 *
+	 * @return The extracted content or original content if no code block found
+	 */
+	private string function extractFromCodeBlock( required string content, string language = "" ){
+		var trimmed = arguments.content.trim();
+
+		// Check for code block with language identifier
+		if( arguments.language.len() && trimmed.startsWith( "```#arguments.language#" ) ){
+			// Extract content between ```language and ```
+			var startPos = trimmed.find( char(10) );  // Find first newline after ```language
+			if( startPos > 0 ){
+				var endMarker = "```";
+				var endPos = trimmed.find( endMarker, startPos );
+				if( endPos > 0 ){
+					return trimmed.substring( startPos, endPos - 1 ).trim();
+				}
+			}
+		}
+
+		// Check for generic code block ``` without language
+		if( trimmed.startsWith( "```" ) ){
+			var lines = trimmed.split( char(10) );
+			if( lines.len() > 2 ){
+				// Remove first and last lines (the ``` markers)
+				lines.deleteAt( 1 );
+				lines.deleteAt( lines.len() );
+				return lines.toList( char(10) ).trim();
+			}
+		}
+
+		// No code block found, return original content
+		return arguments.content;
 	}
 
 }
