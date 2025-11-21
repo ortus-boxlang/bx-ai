@@ -250,19 +250,19 @@ public class mcpClientTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "invoke method exists" )
-	public void testInvokeMethod() {
+	@DisplayName( "send method exists" )
+	public void testSendMethod() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
 				client = MCP( "http://localhost:3000" )
-				hasInvoke = structKeyExists( client, "invoke" )
+				hasSend = structKeyExists( client, "send" )
 			""",
 			context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( Key.of( "hasInvoke" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasSend" ) ) ).isEqualTo( true );
 	}
 
 	@Test

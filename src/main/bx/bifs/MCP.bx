@@ -26,7 +26,7 @@ class {
 	 * Example:
 	 * ```
 	 * // Simple usage
-	 * result = MCP( "http://localhost:3000" ).invoke( "searchDocs", { query: "syntax" } )
+	 * result = MCP( "http://localhost:3000" ).send( "searchDocs", { query: "syntax" } )
 	 *
 	 * // With configuration
 	 * client = MCP( "http://localhost:3000" )

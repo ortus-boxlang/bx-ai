@@ -195,13 +195,13 @@ class {
 	 */
 
 	/**
-	 * Invoke a tool on the MCP server
+	 * Send a request to invoke a tool on the MCP server
 	 *
-	 * @tool Name of the tool to invoke
+	 * @tool Name of the tool to send to
 	 * @args Arguments to pass to the tool
 	 * @return MCPResponse with invocation result
 	 */
-	function invoke( required string tool, struct args = {} ) {
+	function send( required string tool, struct args = {} ) {
 		var body = { "params": arguments.args };
 		return makeRequest( "POST", "/tools/#arguments.tool#/invoke", body );
 	}
