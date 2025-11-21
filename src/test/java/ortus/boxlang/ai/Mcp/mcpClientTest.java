@@ -324,10 +324,10 @@ public class mcpClientTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "success" ) ) ).isEqualTo( true );
 		assertThat( variables.get( Key.of( "statusCode" ) ) ).isEqualTo( 200 );
 		assertThat( variables.get( Key.of( "error" ) ) ).isEqualTo( "" );
-		
+
 		var data = variables.getAsStruct( Key.of( "data" ) );
 		assertThat( data.get( Key.of( "test" ) ) ).isEqualTo( "data" );
-		
+
 		var headers = variables.getAsStruct( Key.of( "headers" ) );
 		assertThat( headers.get( Key.of( "Content-Type" ) ) ).isEqualTo( "application/json" );
 	}
