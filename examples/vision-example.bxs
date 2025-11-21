@@ -1,0 +1,146 @@
+/**
+ * BoxLang AI Module - Vision/Image Analysis Example
+ * 
+ * This example demonstrates how to use the image() and embedImage() methods
+ * to analyze images with vision-capable AI models like GPT-4 Vision, Claude 3, or Gemini.
+ * 
+ * Prerequisites:
+ * - Vision-capable model (e.g., gpt-4-vision-preview, claude-3-opus, gemini-pro-vision)
+ * - API key for your chosen provider (set in environment or boxlang.json)
+ */
+
+println( "=== BoxLang AI Vision Examples ===" )
+println( "" )
+
+// Example 1: Analyze an image from URL
+println( "1. Analyzing image from URL..." )
+try {
+    result = aiChat(
+        aiMessage()
+            .user( "What objects do you see in this image? List them." )
+            .image( "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg" ),
+        { model: "gpt-4-vision-preview" }
+    )
+    println( "Response: " & result )
+} catch( any e ) {
+    println( "Note: This requires a vision-capable model and API key" )
+    println( "Error: " & e.message )
+}
+println( "" )
+
+// Example 2: Analyze with detail level
+println( "2. High-detail image analysis..." )
+try {
+    result = aiChat(
+        aiMessage()
+            .user( "Describe this image in detail, including colors, composition, and mood." )
+            .image( "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/1200px-Cat03.jpg", "high" ),
+        { model: "gpt-4-vision-preview", max_tokens: 500 }
+    )
+    println( "Detailed description: " & result )
+} catch( any e ) {
+    println( "Error: " & e.message )
+}
+println( "" )
+
+// Example 3: Compare multiple images
+println( "3. Comparing multiple images..." )
+try {
+    result = aiChat(
+        aiMessage()
+            .user( "Compare these two images. What are the main differences?" )
+            .image( "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/June_odd-eyed-cat.jpg/1200px-June_odd-eyed-cat.jpg" )
+            .image( "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/1200px-Cat03.jpg" ),
+        { model: "gpt-4-vision-preview", max_tokens: 300 }
+    )
+    println( "Comparison: " & result )
+} catch( any e ) {
+    println( "Error: " & e.message )
+}
+println( "" )
+
+// Example 4: Embed a local image (if file exists)
+println( "4. Embedding local image..." )
+try {
+    // Create a small test image file for demonstration
+    testImagePath = "/tmp/test-vision-image.png"
+    
+    // This is a minimal 1x1 red PNG image in base64
+    testImageData = toBinary( "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==" )
+    fileWrite( testImagePath, testImageData )
+    
+    result = aiChat(
+        aiMessage()
+            .user( "What color is the pixel in this image?" )
+            .embedImage( testImagePath ),
+        { model: "gpt-4-vision-preview" }
+    )
+    println( "Embedded image analysis: " & result )
+    
+    // Clean up test file
+    fileDelete( testImagePath )
+} catch( any e ) {
+    println( "Error: " & e.message )
+}
+println( "" )
+
+// Example 5: Using image analysis in a pipeline
+println( "5. Image analysis pipeline..." )
+try {
+    analyzer = aiMessage()
+        .system( "You are an expert image analyst. Be concise and specific." )
+        .user( "Analyze this image for ${aspect}" )
+        .toDefaultModel()
+        .withParams( { model: "gpt-4-vision-preview", max_tokens: 200 } )
+        .transform( r => r.content )
+    
+    // Analyze different aspects of the same image
+    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/1200px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
+    
+    println( "Color analysis:" )
+    result = analyzer
+        .image( imageUrl, "low" )
+        .run( { aspect: "dominant colors and color palette" } )
+    println( result )
+    println( "" )
+    
+    println( "Composition analysis:" )
+    result = analyzer
+        .image( imageUrl, "low" )
+        .run( { aspect: "composition and framing" } )
+    println( result )
+} catch( any e ) {
+    println( "Error: " & e.message )
+}
+println( "" )
+
+// Example 6: Document/screenshot analysis
+println( "6. Document text extraction (simulated)..." )
+try {
+    // In a real scenario, you would use an actual screenshot or document image
+    result = aiChat(
+        aiMessage()
+            .system( "Extract text and key information from documents." )
+            .user( "Extract the main text and any important details from this document." )
+            .image( "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/Declaration_of_Independence_%28США%29.jpg/1200px-Declaration_of_Independence_%28США%29.jpg" ),
+        { model: "gpt-4-vision-preview", max_tokens: 500 }
+    )
+    println( "Extracted text: " & result )
+} catch( any e ) {
+    println( "Error: " & e.message )
+}
+println( "" )
+
+println( "=== Vision Examples Complete ===" )
+println( "" )
+println( "Tips:" )
+println( "- Use 'low' detail for quick overviews and lower costs" )
+println( "- Use 'high' detail for precise analysis and text extraction" )
+println( "- 'auto' (default) lets the model choose based on the task" )
+println( "- embedImage() is useful for local files, screenshot, or generated images" )
+println( "- image() is better for public URLs or already-hosted images" )
+println( "" )
+println( "Supported providers with vision models:" )
+println( "- OpenAI: gpt-4-vision-preview, gpt-4o, gpt-4o-mini" )
+println( "- Claude: claude-3-opus, claude-3-sonnet, claude-3-haiku" )
+println( "- Gemini: gemini-pro-vision, gemini-1.5-pro, gemini-1.5-flash" )
