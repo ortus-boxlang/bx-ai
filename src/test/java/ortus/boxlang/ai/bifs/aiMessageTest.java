@@ -746,7 +746,7 @@ public class aiMessageTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				// Create a test JPEG file
+				// Create a test file with .jpg extension (tests MIME type detection)
 				testImagePath = "/tmp/test-image.jpg"
 				testImageData = toBinary( "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" )
 				fileWrite( testImagePath, testImageData )

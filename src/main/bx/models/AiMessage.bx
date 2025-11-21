@@ -356,7 +356,16 @@ class extends="AiBaseRunnable"{
 		var base64Data = toBase64( binaryData );
 		
 		// Determine MIME type from file extension
-		var fileExtension = listLast( arguments.filePath, "." ).toLowerCase();
+		var fileExtension = "";
+		if ( arguments.filePath.contains( "." ) ) {
+			fileExtension = listLast( arguments.filePath, "." ).toLowerCase();
+		}
+		
+		// Default to png if no extension found
+		if ( fileExtension.isEmpty() ) {
+			fileExtension = "png";
+		}
+		
 		var mimeType = "image/" & fileExtension;
 		
 		// Handle common variations
