@@ -99,6 +99,9 @@ Process multiple documents
 ### 4. `multi-stage-pipeline.bxs`
 Complex multi-step workflow
 
+### 5. `model-introspection.bxs`
+Inspect and debug model configurations using `getConfig()`
+
 ---
 
 ## Lab Exercise: Document Processing Pipeline

@@ -60,7 +60,7 @@ class extends="AiBaseRunnable" {
 		if( !isArray( arguments.tools ) ){
 			arguments.tools = [ arguments.tools ];
 		}
-		variables.tools = arguments.tools;
+		variables.tools.append( arguments.tools, true )
 		return this;
 	}
 
@@ -82,6 +82,21 @@ class extends="AiBaseRunnable" {
 		}
 
 		return this;
+	}
+
+	/**
+	 * Get model configuration as a struct
+	 *
+	 * @return Struct of model configuration
+	 */
+	public struct function getConfig() {
+		return {
+			"name": variables.name,
+			"provider": variables.service.getName(),
+			"toolCount": variables.tools.len(),
+			"params": getMergedParams(),
+			"options": getMergedOptions()
+		};
 	}
 
 	/**

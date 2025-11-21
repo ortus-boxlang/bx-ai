@@ -431,6 +431,101 @@ params = model.getMergedParams()
 println( params )  // { model: "gpt-4", temperature: 0.7 }
 ```
 
+### Getting Complete Configuration
+
+The `getConfig()` method returns a comprehensive view of the model's configuration:
+
+```java
+model = aiModel( "openai" )
+    .withParams({ 
+        model: "gpt-4", 
+        temperature: 0.7,
+        max_tokens: 1000
+    })
+    .withName( "my-custom-model" )
+    .bindTools( [ weatherTool, searchTool ] )
+
+config = model.getConfig()
+println( serializeJSON( config, true ) )
+
+/* Output:
+{
+    "name": "my-custom-model",
+    "provider": "OpenAI",
+    "toolCount": 2,
+    "params": {
+        "model": "gpt-4",
+        "temperature": 0.7,
+        "max_tokens": 1000
+    },
+    "options": {
+        "returnFormat": "raw"
+    }
+}
+*/
+```
+
+### Configuration Use Cases
+
+**Debugging and Logging:**
+
+```java
+model = aiModel( "openai" ).withParams({ temperature: 0.9 })
+config = model.getConfig()
+
+logger.info( "Using model: #config.name# (provider: #config.provider#)" )
+logger.debug( "Temperature: #config.params.temperature#" )
+logger.debug( "Tools available: #config.toolCount#" )
+```
+
+**Configuration Validation:**
+
+```java
+function validateModel( required model ) {
+    config = model.getConfig()
+    
+    if ( config.provider != "openai" && config.provider != "claude" ) {
+        throw( message: "Unsupported provider: #config.provider#" )
+    }
+    
+    if ( config.params.temperature > 1.0 ) {
+        throw( message: "Temperature too high: #config.params.temperature#" )
+    }
+    
+    return true
+}
+```
+
+**Model Comparison:**
+
+```java
+models = [
+    aiModel( "openai" ).withParams({ temperature: 0.3 }),
+    aiModel( "claude" ).withParams({ temperature: 0.7 }),
+    aiModel( "ollama" ).withParams({ model: "llama3.2" })
+]
+
+models.each( m => {
+    config = m.getConfig()
+    println( "#config.provider#: temp=#config.params.temperature ?: 'default'#" )
+})
+```
+
+**Saving/Restoring Configuration:**
+
+```java
+// Save configuration
+model = aiModel( "openai" ).withParams({ temperature: 0.8 })
+config = model.getConfig()
+fileWrite( "model-config.json", serializeJSON( config ) )
+
+// Restore configuration (conceptually)
+savedConfig = deserializeJSON( fileRead( "model-config.json" ) )
+restoredModel = aiModel( savedConfig.provider.toLower() )
+    .withParams( savedConfig.params )
+    .withName( savedConfig.name )
+```
+
 ### Pipeline Inspection
 
 ```java

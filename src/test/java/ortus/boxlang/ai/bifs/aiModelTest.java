@@ -166,4 +166,78 @@ public class aiModelTest extends BaseIntegrationTest {
 
 		assertThat( ( ( Number ) variables.get( result ) ).intValue() ).isEqualTo( 2 );
 	}
+
+	@Test
+	public void testGetConfig() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				model = aiModel( "openai" )
+					.withParams( { temperature: 0.7, model: "gpt-4" } )
+					.withName( "TestModel" )
+				config = model.getConfig()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var config = variables.getAsStruct( Key.of( "config" ) );
+		assertThat( config.get( Key.of( "name" ) ) ).isEqualTo( "TestModel" );
+		assertThat( config.get( Key.of( "provider" ) ) ).isEqualTo( "OpenAI" );
+		assertThat( config.get( Key.of( "toolCount" ) ) ).isEqualTo( 0 );
+		
+		var params = ( ortus.boxlang.runtime.types.IStruct ) config.get( Key.of( "params" ) );
+		assertThat( params.get( Key.of( "model" ) ) ).isEqualTo( "gpt-4" );
+		assertThat( params.get( Key.of( "temperature" ) ).toString() ).isEqualTo( "0.7" );
+	}
+
+	@Test
+	public void testGetConfigWithTools() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				tool1 = aiTool(
+					"calculator",
+					"Performs calculations",
+					args => evaluate( args.expression )
+				).describeExpression( "Math expression to evaluate" )
+				
+				tool2 = aiTool(
+					"search",
+					"Searches information",
+					args => "Search result"
+				).describeQuery( "Search query" )
+				
+				model = aiModel( "openai" )
+					.bindTools( [ tool1, tool2 ] )
+				
+				config = model.getConfig()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var config = variables.getAsStruct( Key.of( "config" ) );
+		assertThat( config.get( Key.of( "toolCount" ) ) ).isEqualTo( 2 );
+	}
+
+	@Test
+	public void testGetConfigDefaultModel() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				model = aiModel()
+				config = model.getConfig()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var config = variables.getAsStruct( Key.of( "config" ) );
+		assertThat( config.get( Key.of( "name" ) ).toString() ).contains( "AiModel" );
+		assertThat( config.get( Key.of( "provider" ) ) ).isNotNull();
+		assertThat( config.containsKey( Key.of( "toolCount" ) ) ).isTrue();
+		assertThat( config.containsKey( Key.of( "params" ) ) ).isTrue();
+		assertThat( config.containsKey( Key.of( "options" ) ) ).isTrue();
+	}
 }
