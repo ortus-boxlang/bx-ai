@@ -252,6 +252,17 @@ class {
 		var mcpResponse = null;
 
 		try {
+			// Build authentication credentials
+			var authHeader = "";
+			if( len( variables.bearerToken ) ){
+				authHeader = "Bearer #variables.bearerToken#";
+			} else if( len( variables.authUser ) ){
+				// Create Basic Auth header with Base64 encoding
+				var credentials = variables.authUser & ":" & variables.authPassword;
+				var encodedCredentials = toBase64( credentials );
+				authHeader = "Basic #encodedCredentials#";
+			}
+
 			// Make HTTP request using bx:http component
 			bx: http
 				url     = targetUrl
@@ -262,15 +273,9 @@ class {
 			{
 				bx:httpParam type="header" name="content-type" value="application/json";
 
-				// Bearer token authentication
-				if( len( variables.bearerToken ) ){
-					bx:httpParam type="header" name="Authorization" value="Bearer #variables.bearerToken#";
-				}
-
-				// Basic authentication
-				if( len( variables.authUser ) ){
-					bx:httpParam type="header" name="username" value="#variables.authUser#";
-					bx:httpParam type="header" name="password" value="#variables.authPassword#";
+				// Authentication header
+				if( len( authHeader ) ){
+					bx:httpParam type="header" name="Authorization" value="#authHeader#";
 				}
 
 				// Custom headers
