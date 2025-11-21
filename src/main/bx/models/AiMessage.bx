@@ -285,6 +285,93 @@ class extends="AiBaseRunnable"{
 	}
 
 	/**
+	 * Add an image URL to the message. This creates a message with multipart content
+	 * containing the image reference. If there's already a message with multipart content,
+	 * the image will be added to it. Otherwise, a new message is created.
+	 *
+	 * @path The URL or path to the image
+	 * @detail The detail level for image processing. Can be "auto", "low", or "high". Default is "auto"
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function image( required string path, string detail = "auto" ) {
+		var imageContent = {
+			"type": "image_url",
+			"image_url": {
+				"url": arguments.path
+			}
+		};
+
+		// Add detail if not default
+		if ( arguments.detail != "auto" ) {
+			imageContent.image_url.detail = arguments.detail;
+		}
+
+		// Check if the last message has an array content (multipart message)
+		if ( variables.messages.len() > 0 ) {
+			var lastMessage = variables.messages[ variables.messages.len() ];
+			
+			// If content is already an array, append to it
+			if ( isArray( lastMessage.content ) ) {
+				lastMessage.content.append( imageContent );
+				return this;
+			}
+			
+			// If content is a string, convert to array with text and image
+			if ( isSimpleValue( lastMessage.content ) ) {
+				lastMessage.content = [
+					{
+						"type": "text",
+						"text": lastMessage.content
+					},
+					imageContent
+				];
+				return this;
+			}
+		}
+
+		// No previous message or can't append, create new message with image
+		variables.messages.push( {
+			"role": static.DEFAULT_ROLE,
+			"content": [ imageContent ]
+		} );
+
+		return this;
+	}
+
+	/**
+	 * Embed an image from a file path by reading it and converting to base64.
+	 * This creates a data URI that can be used inline in the message.
+	 *
+	 * @filePath The file system path to the image file
+	 * @detail The detail level for image processing. Can be "auto", "low", or "high". Default is "auto"
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function embedImage( required string filePath, string detail = "auto" ) {
+		// Read the file as binary
+		var binaryData = fileReadBinary( arguments.filePath );
+		
+		// Convert to base64
+		var base64Data = toBase64( binaryData );
+		
+		// Determine MIME type from file extension
+		var fileExtension = listLast( arguments.filePath, "." ).toLowerCase();
+		var mimeType = "image/" & fileExtension;
+		
+		// Handle common variations
+		if ( fileExtension == "jpg" ) {
+			mimeType = "image/jpeg";
+		}
+		
+		// Create data URI
+		var dataUri = "data:#mimeType#;base64,#base64Data#";
+		
+		// Use the image() method to add the embedded image
+		return this.image( dataUri, arguments.detail );
+	}
+
+	/**
 	 * Dynamic messages using onMissingMethod.
 	 * The missing method name should be add<role> where <role> is the role of the message.
 	 */

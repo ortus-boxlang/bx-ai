@@ -561,4 +561,217 @@ public class aiMessageTest extends BaseIntegrationTest {
 		IStruct user2 = ( IStruct ) result.get( 3 );
 		assertThat( user2.getAsString( Key.of( "content" ) ) ).isEqualTo( "Second question" );
 	}
+
+	@DisplayName( "Can add an image URL to a message" )
+	@Test
+	public void testImageWithUrl() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "What is in this image?" )
+					.image( "https://example.com/image.jpg" )
+				
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		assertThat( firstMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "user" );
+		
+		// Content should be an array with text and image parts
+		Array content = ( Array ) firstMessage.get( Key.of( "content" ) );
+		assertThat( content.size() ).isEqualTo( 2 );
+		
+		// First part should be text
+		IStruct textPart = ( IStruct ) content.get( 0 );
+		assertThat( textPart.getAsString( Key.of( "type" ) ) ).isEqualTo( "text" );
+		assertThat( textPart.getAsString( Key.of( "text" ) ) ).isEqualTo( "What is in this image?" );
+		
+		// Second part should be image
+		IStruct imagePart = ( IStruct ) content.get( 1 );
+		assertThat( imagePart.getAsString( Key.of( "type" ) ) ).isEqualTo( "image_url" );
+		IStruct imageUrl = ( IStruct ) imagePart.get( Key.of( "image_url" ) );
+		assertThat( imageUrl.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://example.com/image.jpg" );
+	}
+
+	@DisplayName( "Can add an image with detail level" )
+	@Test
+	public void testImageWithDetail() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Analyze this image" )
+					.image( "https://example.com/image.jpg", "high" )
+				
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		Array content = ( Array ) firstMessage.get( Key.of( "content" ) );
+		
+		IStruct imagePart = ( IStruct ) content.get( 1 );
+		IStruct imageUrl = ( IStruct ) imagePart.get( Key.of( "image_url" ) );
+		assertThat( imageUrl.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://example.com/image.jpg" );
+		assertThat( imageUrl.getAsString( Key.of( "detail" ) ) ).isEqualTo( "high" );
+	}
+
+	@DisplayName( "Can add multiple images to a message" )
+	@Test
+	public void testMultipleImages() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Compare these images" )
+					.image( "https://example.com/image1.jpg" )
+					.image( "https://example.com/image2.jpg" )
+				
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		Array content = ( Array ) firstMessage.get( Key.of( "content" ) );
+		assertThat( content.size() ).isEqualTo( 3 ); // text + 2 images
+		
+		// Verify first image
+		IStruct imagePart1 = ( IStruct ) content.get( 1 );
+		IStruct imageUrl1 = ( IStruct ) imagePart1.get( Key.of( "image_url" ) );
+		assertThat( imageUrl1.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://example.com/image1.jpg" );
+		
+		// Verify second image
+		IStruct imagePart2 = ( IStruct ) content.get( 2 );
+		IStruct imageUrl2 = ( IStruct ) imagePart2.get( Key.of( "image_url" ) );
+		assertThat( imageUrl2.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://example.com/image2.jpg" );
+	}
+
+	@DisplayName( "Can add image without prior text message" )
+	@Test
+	public void testImageWithoutText() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.image( "https://example.com/image.jpg" )
+				
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		assertThat( firstMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "user" );
+		
+		// Content should be an array with just the image
+		Array content = ( Array ) firstMessage.get( Key.of( "content" ) );
+		assertThat( content.size() ).isEqualTo( 1 );
+		
+		IStruct imagePart = ( IStruct ) content.get( 0 );
+		assertThat( imagePart.getAsString( Key.of( "type" ) ) ).isEqualTo( "image_url" );
+	}
+
+	@DisplayName( "Can embed an image from file path" )
+	@Test
+	public void testEmbedImage() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Create a test image file with minimal PNG data
+				testImagePath = "/tmp/test-image.png"
+				// Minimal 1x1 PNG image (base64: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==)
+				testImageData = toBinary( "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" )
+				fileWrite( testImagePath, testImageData )
+				
+				message = aiMessage()
+					.user( "Analyze this embedded image" )
+					.embedImage( testImagePath )
+				
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		Array content = ( Array ) firstMessage.get( Key.of( "content" ) );
+		assertThat( content.size() ).isEqualTo( 2 );
+		
+		// Verify the image part contains a data URI
+		IStruct imagePart = ( IStruct ) content.get( 1 );
+		IStruct imageUrl = ( IStruct ) imagePart.get( Key.of( "image_url" ) );
+		String url = imageUrl.getAsString( Key.of( "url" ) );
+		assertThat( url ).startsWith( "data:image/png;base64," );
+		assertThat( url ).contains( "iVBORw0KGgo" ); // Beginning of base64 PNG data
+	}
+
+	@DisplayName( "Can embed an image with detail level" )
+	@Test
+	public void testEmbedImageWithDetail() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Create a test JPEG file
+				testImagePath = "/tmp/test-image.jpg"
+				testImageData = toBinary( "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" )
+				fileWrite( testImagePath, testImageData )
+				
+				message = aiMessage()
+					.user( "Analyze this" )
+					.embedImage( testImagePath, "low" )
+				
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) result.get( 0 );
+		Array content = ( Array ) firstMessage.get( Key.of( "content" ) );
+		
+		IStruct imagePart = ( IStruct ) content.get( 1 );
+		IStruct imageUrl = ( IStruct ) imagePart.get( Key.of( "image_url" ) );
+		String url = imageUrl.getAsString( Key.of( "url" ) );
+		assertThat( url ).startsWith( "data:image/jpeg;base64," );
+		assertThat( imageUrl.getAsString( Key.of( "detail" ) ) ).isEqualTo( "low" );
+	}
 }
