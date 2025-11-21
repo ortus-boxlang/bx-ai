@@ -180,12 +180,12 @@ class extends="SimpleMemory" {
 			);
 
 			// Rebuild memory structure
-			var systemMsg = hasSystemMessage() ? getSystemMessage() : null;
+			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
 
 			clear();
 
 			// Re-add system message
-			if ( systemMsg ) {
+			if ( systemMsg.len() ) {
 				setSystemMessage( systemMsg );
 			}
 
@@ -201,9 +201,9 @@ class extends="SimpleMemory" {
 			variables.hasSummary = true;
 
 			// Add back recent messages
-			toKeep.each( function( msg ) {
+			for( var msg in toKeep ){
 				super.add( msg );
-			} );
+			}
 
 		} catch ( any e ) {
 			// If summarization fails, fall back to simple truncation
@@ -214,16 +214,17 @@ class extends="SimpleMemory" {
 			);
 
 			// Keep only recent messages
-			var systemMsg = hasSystemMessage() ? getSystemMessage() : null;
+			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
 			clear();
 
-			if ( systemMsg ) {
+			if ( systemMsg.len() ) {
 				setSystemMessage( systemMsg );
 			}
 
-			toKeep.each( function( msg ) {
+			for( var msg in toKeep ){
 				super.add( msg );
-			} );
+			}
+
 		}
 	}
 

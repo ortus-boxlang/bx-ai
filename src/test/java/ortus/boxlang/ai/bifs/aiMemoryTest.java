@@ -358,7 +358,7 @@ public class aiMemoryTest extends BaseIntegrationTest {
 		            summaryModel: "gpt-4o-mini"
 		        }
 		    )
-		    
+
 		    summary = memory.getSummary()
 		    """,
 		    context
@@ -382,12 +382,12 @@ public class aiMemoryTest extends BaseIntegrationTest {
 		            summaryThreshold: 2
 		        }
 		    )
-		    
+
 		    // Add messages below threshold
 		    memory.add( "Message 1" )
 		    memory.add( "Message 2" )
 		    memory.add( "Message 3" )
-		    
+
 		    count = memory.count()
 		    isEmpty = memory.isEmpty()
 		    """,
@@ -396,6 +396,76 @@ public class aiMemoryTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( "count" ) ).isEqualTo( 3 );
 		assertThat( variables.getAsBoolean( Key.of( "isEmpty" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "Test SummaryMemory with actual LLM summarization (integration)" )
+	public void testSummaryMemoryWithLLM() {
+		runtime.executeSource(
+		    """
+		    // Create summary memory with small limits to force summarization
+		    memory = aiMemory(
+		        memory: "summary",
+		        config: {
+		            maxMessages: 6,
+		            summaryThreshold: 3,
+		            summaryModel: "gpt-4o-mini",
+		            summaryProvider: "openai"
+		        }
+		    )
+
+		    // Add system message
+		    memory.add( aiMessage().system( "You are a helpful assistant" ) )
+
+		    // Simulate a conversation that will trigger summarization
+		    memory.add( aiMessage().user( "My favorite color is blue" ) )
+		    memory.add( aiMessage().assistant( "That's nice! Blue is a calming color." ) )
+		    memory.add( aiMessage().user( "I also love playing guitar" ) )
+		    memory.add( aiMessage().assistant( "Guitar is a wonderful instrument!" ) )
+		    memory.add( aiMessage().user( "And my name is Alice" ) )
+		    memory.add( aiMessage().assistant( "Nice to meet you, Alice!" ) )
+
+		    // This should trigger summarization (7 total messages, exceeds maxMessages of 6)
+		    memory.add( aiMessage().user( "What's my favorite color?" ) )
+
+		    // Get all messages to verify summarization occurred
+		    allMessages = memory.getAll()
+		    summary = memory.getSummary()
+
+		    // Check that we have a summary
+		    hasSummaryMessage = false
+		    summaryContent = ""
+
+		    allMessages.each( function( msg ) {
+		        if ( msg.keyExists( "isSummary" ) && msg.isSummary ) {
+		            hasSummaryMessage = true
+		            summaryContent = msg.content
+		        }
+		    } )
+
+		    result = {
+		        hasSummary: summary.hasSummary,
+		        hasSummaryMessage: hasSummaryMessage,
+		        messageCount: allMessages.len(),
+		        summaryContainsBlue: summaryContent.findNoCase( "blue" ) > 0,
+		        summaryContainsGuitar: summaryContent.findNoCase( "guitar" ) > 0
+		    }
+		    """,
+		    context
+		);
+
+		var result = variables.getAsStruct( Key.of( "result" ) );
+
+		// Verify summarization occurred
+		assertThat( result.getAsBoolean( Key.of( "hasSummary" ) ) ).isTrue();
+		assertThat( result.getAsBoolean( Key.of( "hasSummaryMessage" ) ) ).isTrue();
+
+		// Verify messages were compressed (should be less than 7)
+		assertThat( ( int ) result.get( "messageCount" ) ).isLessThan( 7 );
+
+		// Verify summary contains key information from old messages
+		assertThat( result.getAsBoolean( Key.of( "summaryContainsBlue" ) ) ).isTrue();
+		assertThat( result.getAsBoolean( Key.of( "summaryContainsGuitar" ) ) ).isTrue();
 	}
 
 }
