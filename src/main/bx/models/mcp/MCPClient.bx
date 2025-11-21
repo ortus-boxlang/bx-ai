@@ -229,8 +229,16 @@ class {
 	 * @return MCPResponse with invocation result
 	 */
 	function send( required string tool, struct args = {} ) {
-		var body = { "params": arguments.args };
-		return makeRequest( "POST", "/tools/#arguments.tool#/invoke", body );
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "tools/call",
+			"params": {
+				"name": arguments.tool,
+				"arguments": arguments.args
+			},
+			"id": createUUID()
+		};
+		return makeRequest( "POST", "", body );
 	}
 
 	/**
@@ -240,8 +248,15 @@ class {
 	 * @return MCPResponse with resource data
 	 */
 	function readResource( required string uri ) {
-		var body = { "uri": arguments.uri };
-		return makeRequest( "POST", "/resources/read", body );
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "resources/read",
+			"params": {
+				"uri": arguments.uri
+			},
+			"id": createUUID()
+		};
+		return makeRequest( "POST", "", body );
 	}
 
 	/**
@@ -252,8 +267,16 @@ class {
 	 * @return MCPResponse with prompt data
 	 */
 	function getPrompt( required string name, struct args = {} ) {
-		var body = { "params": arguments.args };
-		return makeRequest( "POST", "/prompts/#arguments.name#", body );
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "prompts/get",
+			"params": {
+				"name": arguments.name,
+				"arguments": arguments.args
+			},
+			"id": createUUID()
+		};
+		return makeRequest( "POST", "", body );
 	}
 
 	/**

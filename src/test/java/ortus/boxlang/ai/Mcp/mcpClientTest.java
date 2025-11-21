@@ -413,4 +413,38 @@ public class mcpClientTest extends BaseIntegrationTest {
 
 	}
 
+	@DisplayName( "Can query real MCP server with searchDocumentation tool" )
+	@Test
+	public void testQueryRealMCPServer() {
+		// Test calling the searchDocumentation tool
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				target = MCP( "https://boxlang.ortusbooks.com/~gitbook/mcp" )
+				response = target.send( "searchDocumentation", { "query": "variables scope" } )
+				success = response.getSuccess()
+				hasData = isStruct( response.getData() )
+
+				println( "Success: " & success )
+				println( "Error: " & response.getError() )
+				println( "Status Code: " & response.getStatusCode() )
+				println( "Has data: " & hasData )
+				if( hasData ) {
+					println( "Response keys: " & structKeyList( response.getData() ) )
+				}
+			""",
+			context
+		);
+		// @formatter:on
+
+		var	success		= variables.getAsBoolean( Key.of( "success" ) );
+		var	hasData		= variables.getAsBoolean( Key.of( "hasData" ) );
+
+		assertThat( success ).isEqualTo( true );
+		assertThat( hasData ).isEqualTo( true );
+
+	}
+
 }
+
+
