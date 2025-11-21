@@ -1,0 +1,52 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Creates a fluent MCP (Model Context Protocol) client for consuming MCP servers
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Creates a fluent MCP client for consuming Model Context Protocol servers
+	 * <p>
+	 * MCP is a protocol for connecting AI models to external tools and data sources.
+	 * This BIF provides a convenient way to interact with MCP servers.
+	 *
+	 * Example:
+	 * ```
+	 * // Simple usage
+	 * result = MCP( "http://localhost:3000" ).invoke( "searchDocs", { query: "syntax" } )
+	 *
+	 * // With configuration
+	 * client = MCP( "http://localhost:3000" )
+	 *     .withTimeout( 5000 )
+	 *     .withBearerToken( "token" )
+	 *     .onSuccess( ( response ) => { writeLog( "Success: #response.getData()#" ) } )
+	 *     .onError( ( response ) => { writeLog( "Error: #response.getError()#" ) } )
+	 *
+	 * // Discovery
+	 * tools = MCP( "http://localhost:3000" ).listTools()
+	 * resources = MCP( "http://localhost:3000" ).listResources()
+	 * prompts = MCP( "http://localhost:3000" ).listPrompts()
+	 * ```
+	 *
+	 * @baseURL The base URL of the MCP server (required)
+	 *
+	 * @return An MCPClient instance with fluent API
+	 */
+	function invoke( required string baseURL ) {
+		return new bxModules.bxai.models.mcp.MCPClient( arguments.baseURL );
+	}
+
+}

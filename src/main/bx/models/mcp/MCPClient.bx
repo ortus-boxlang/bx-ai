@@ -1,0 +1,371 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Fluent client for consuming Model Context Protocol (MCP) servers
+ */
+class {
+
+	/**
+	 * The base URL of the MCP server
+	 */
+	property name="baseURL" type="string";
+
+	/**
+	 * Request timeout in milliseconds
+	 */
+	property name="timeout" type="numeric" default=30000;
+
+	/**
+	 * Additional headers to include in requests
+	 */
+	property name="headers" type="struct" default={};
+
+	/**
+	 * Basic authentication username
+	 */
+	property name="authUser" type="string" default="";
+
+	/**
+	 * Basic authentication password
+	 */
+	property name="authPassword" type="string" default="";
+
+	/**
+	 * Bearer token for authentication
+	 */
+	property name="bearerToken" type="string" default="";
+
+	/**
+	 * Success callback function
+	 */
+	property name="successCallback" type="any";
+
+	/**
+	 * Error callback function
+	 */
+	property name="errorCallback" type="any";
+
+	/**
+	 * Constructor
+	 *
+	 * @baseURL The base URL of the MCP server
+	 */
+	function init( required string baseURL ) {
+		variables.baseURL = arguments.baseURL.trim();
+		variables.headers = {};
+		variables.timeout = 30000;
+		variables.authUser = "";
+		variables.authPassword = "";
+		variables.bearerToken = "";
+
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Configuration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Set the request timeout
+	 *
+	 * @ms Timeout in milliseconds
+	 * @return This client for chaining
+	 */
+	function withTimeout( required numeric ms ) {
+		variables.timeout = arguments.ms;
+		return this;
+	}
+
+	/**
+	 * Set custom headers for requests
+	 *
+	 * @headers Struct of header key-value pairs
+	 * @return This client for chaining
+	 */
+	function withHeaders( required struct headers ) {
+		variables.headers.append( arguments.headers, true );
+		return this;
+	}
+
+	/**
+	 * Set basic authentication credentials
+	 *
+	 * @user Username
+	 * @pass Password
+	 * @return This client for chaining
+	 */
+	function withAuth( required string user, required string pass ) {
+		variables.authUser = arguments.user;
+		variables.authPassword = arguments.pass;
+		return this;
+	}
+
+	/**
+	 * Set bearer token authentication
+	 *
+	 * @token Bearer token
+	 * @return This client for chaining
+	 */
+	function withBearerToken( required string token ) {
+		variables.bearerToken = arguments.token;
+		return this;
+	}
+
+	/**
+	 * Register a success callback function
+	 *
+	 * @callback Function to call on successful responses
+	 * @return This client for chaining
+	 */
+	function onSuccess( required function callback ) {
+		variables.successCallback = arguments.callback;
+		return this;
+	}
+
+	/**
+	 * Register an error callback function
+	 *
+	 * @callback Function to call on error responses
+	 * @return This client for chaining
+	 */
+	function onError( required function callback ) {
+		variables.errorCallback = arguments.callback;
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Discovery Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * List available tools from the MCP server
+	 *
+	 * @return MCPResponse with tools data
+	 */
+	function listTools() {
+		return makeRequest( "GET", "/tools" );
+	}
+
+	/**
+	 * List available resources from the MCP server
+	 *
+	 * @return MCPResponse with resources data
+	 */
+	function listResources() {
+		return makeRequest( "GET", "/resources" );
+	}
+
+	/**
+	 * List available prompts from the MCP server
+	 *
+	 * @return MCPResponse with prompts data
+	 */
+	function listPrompts() {
+		return makeRequest( "GET", "/prompts" );
+	}
+
+	/**
+	 * Get server capabilities
+	 *
+	 * @return MCPResponse with capabilities data
+	 */
+	function getCapabilities() {
+		return makeRequest( "GET", "/capabilities" );
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Execution Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Invoke a tool on the MCP server
+	 *
+	 * @tool Name of the tool to invoke
+	 * @args Arguments to pass to the tool
+	 * @return MCPResponse with invocation result
+	 */
+	function invoke( required string tool, struct args = {} ) {
+		var body = { "params": arguments.args };
+		return makeRequest( "POST", "/tools/#arguments.tool#/invoke", body );
+	}
+
+	/**
+	 * Read a resource from the MCP server
+	 *
+	 * @uri URI of the resource to read
+	 * @return MCPResponse with resource data
+	 */
+	function readResource( required string uri ) {
+		var body = { "uri": arguments.uri };
+		return makeRequest( "POST", "/resources/read", body );
+	}
+
+	/**
+	 * Get a prompt from the MCP server
+	 *
+	 * @name Name of the prompt
+	 * @args Arguments for the prompt
+	 * @return MCPResponse with prompt data
+	 */
+	function getPrompt( required string name, struct args = {} ) {
+		var body = { "params": arguments.args };
+		return makeRequest( "POST", "/prompts/#arguments.name#", body );
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Make an HTTP request to the MCP server
+	 *
+	 * @method HTTP method (GET, POST, etc.)
+	 * @path Path to append to base URL
+	 * @body Optional request body
+	 * @return MCPResponse with normalized response data
+	 */
+	private function makeRequest( required string method, required string path, any body ) {
+		var url = variables.baseURL & arguments.path;
+		var response = null;
+		var mcpResponse = null;
+
+		try {
+			// Build the HTTP request
+			var httpReq = httpRequest( url )
+				.setMethod( arguments.method )
+				.setTimeout( variables.timeout );
+
+			// Add custom headers
+			for( var headerName in variables.headers ) {
+				httpReq.addHeader( headerName, variables.headers[ headerName ] );
+			}
+
+			// Add authentication
+			if( len( variables.bearerToken ) ) {
+				httpReq.addHeader( "Authorization", "Bearer #variables.bearerToken#" );
+			} else if( len( variables.authUser ) ) {
+				httpReq.setUsername( variables.authUser );
+				httpReq.setPassword( variables.authPassword );
+			}
+
+			// Add body for POST requests
+			if( !isNull( arguments.body ) ) {
+				httpReq.addHeader( "Content-Type", "application/json" );
+				httpReq.setBody( serializeJSON( arguments.body ) );
+			}
+
+			// Send the request
+			response = httpReq.send();
+
+			// Parse response
+			var statusCode = response.status_code;
+			var responseHeaders = {};
+
+			// Convert headers array to struct
+			if( !isNull( response.responseheader ) ) {
+				for( var headerName in response.responseheader ) {
+					responseHeaders[ headerName ] = response.responseheader[ headerName ];
+				}
+			}
+
+			// Determine success based on status code
+			var isSuccess = statusCode >= 200 && statusCode < 300;
+			var responseData = {};
+			var errorMessage = "";
+
+			// Parse response body
+			if( len( response.filecontent ) ) {
+				try {
+					responseData = deserializeJSON( response.filecontent );
+				} catch( any e ) {
+					responseData = response.filecontent;
+				}
+			}
+
+			// Set error message for failed requests
+			if( !isSuccess ) {
+				errorMessage = "HTTP #statusCode#";
+				if( isStruct( responseData ) && structKeyExists( responseData, "error" ) ) {
+					errorMessage = responseData.error;
+				} else if( isSimpleValue( responseData ) ) {
+					errorMessage = responseData;
+				}
+			}
+
+			// Create normalized response
+			mcpResponse = new bxModules.bxai.models.mcp.MCPResponse(
+				success: isSuccess,
+				data: responseData,
+				error: errorMessage,
+				statusCode: statusCode,
+				headers: responseHeaders
+			);
+
+		} catch( any e ) {
+			// Handle network and other errors
+			mcpResponse = new bxModules.bxai.models.mcp.MCPResponse(
+				success: false,
+				data: {},
+				error: e.message,
+				statusCode: 0,
+				headers: {}
+			);
+		}
+
+		// Invoke callbacks
+		if( mcpResponse.getSuccess() && !isNull( variables.successCallback ) ) {
+			variables.successCallback( mcpResponse );
+		} else if( !mcpResponse.getSuccess() && !isNull( variables.errorCallback ) ) {
+			variables.errorCallback( mcpResponse );
+		}
+
+		return mcpResponse;
+	}
+
+	/**
+	 * Get the base URL
+	 *
+	 * @return String base URL
+	 */
+	function getBaseURL() {
+		return variables.baseURL;
+	}
+
+	/**
+	 * Get the timeout
+	 *
+	 * @return Numeric timeout in milliseconds
+	 */
+	function getTimeout() {
+		return variables.timeout;
+	}
+
+	/**
+	 * Get custom headers
+	 *
+	 * @return Struct of headers
+	 */
+	function getHeaders() {
+		return variables.headers;
+	}
+
+}
