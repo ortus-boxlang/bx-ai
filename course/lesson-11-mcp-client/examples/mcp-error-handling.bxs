@@ -1,0 +1,94 @@
+// mcp-error-handling.bxs
+/**
+ * MCP Error Handling Demo
+ * Shows proper error handling patterns
+ */
+
+println( "=== MCP Error Handling Demo ===" )
+println()
+
+// Example 1: Network errors
+println( "=== Example 1: Handling Network Errors ===" )
+println()
+
+println( "Attempting connection to invalid host..." )
+result = MCP( "http://invalid-host-that-does-not-exist:9999" )
+    .withTimeout( 2000 )
+    .listTools()
+
+if ( !result.getSuccess() ) {
+    println( "❌ Connection failed (as expected)" )
+    println( "   Error: #result.getError()#" )
+    println( "   Status: #result.getStatusCode()# (0 indicates network error)" )
+}
+
+println()
+println( "-".repeat( 70 ) )
+
+// Example 2: HTTP errors
+println( "=== Example 2: Handling HTTP Errors ===" )
+println()
+
+println( "Attempting to invoke non-existent tool..." )
+result = MCP( "http://localhost:3000" )
+    .send( "toolThatDoesNotExist", {} )
+
+if ( !result.getSuccess() ) {
+    println( "❌ Tool not found (as expected)" )
+    println( "   Error: #result.getError()#" )
+    println( "   Status: #result.getStatusCode()#" )
+}
+
+println()
+println( "-".repeat( 70 ) )
+
+// Example 3: Robust error handling with retry
+println( "=== Example 3: Retry Pattern ===" )
+println()
+
+function callWithRetry( required any mcpClient, required string tool, struct args = {}, numeric maxRetries = 3 ) {
+    var attempts = 0
+    var lastError = ""
+    
+    while ( attempts < arguments.maxRetries ) {
+        attempts++
+        println( "Attempt #attempts# of #arguments.maxRetries#..." )
+        
+        result = arguments.mcpClient.send( arguments.tool, arguments.args )
+        
+        if ( result.getSuccess() ) {
+            println( "✅ Success on attempt #attempts#" )
+            return result
+        }
+        
+        lastError = result.getError()
+        println( "❌ Failed: #lastError#" )
+        
+        if ( attempts < arguments.maxRetries ) {
+            println( "   Retrying in 1 second..." )
+            sleep( 1000 )
+        }
+    }
+    
+    throw( 
+        type: "MCPError",
+        message: "Failed after #arguments.maxRetries# attempts: #lastError#"
+    )
+}
+
+client = MCP( "http://localhost:3000" )
+
+try {
+    result = callWithRetry( client, "searchDocs", { query: "test" } )
+    println( "Data received: #serializeJSON( result.getData() )#" )
+} catch( any e ) {
+    println( "❌ All retries exhausted: #e.message#" )
+}
+
+println()
+println( "💡 Error Handling Best Practices:" )
+println( "- Always check result.getSuccess() first" )
+println( "- Use status code 0 to detect network errors" )
+println( "- Implement retry logic for transient failures" )
+println( "- Use callbacks for centralized error logging" )
+println( "- Provide fallback behavior when MCP unavailable" )

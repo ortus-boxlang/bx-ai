@@ -1,0 +1,140 @@
+// mcp-documentation-assistant.bxs
+/**
+ * LAB: Documentation Assistant with MCP
+ *
+ * OBJECTIVE:
+ * Build a complete documentation assistant that uses MCP to provide
+ * accurate answers to user questions
+ *
+ * REQUIREMENTS:
+ * 1. Connect to an MCP server (use http://localhost:3000 or provided URL)
+ * 2. Implement search functionality using MCP tools
+ * 3. Read resource content from MCP
+ * 4. Integrate with AI chat for intelligent answers
+ * 5. Handle errors gracefully (network, HTTP, invalid tools)
+ * 6. Cache results to avoid duplicate requests
+ * 7. Provide clear user feedback throughout the process
+ *
+ * FEATURES TO IMPLEMENT:
+ * - Search documentation via MCP
+ * - Display search results with titles and excerpts
+ * - Read full content of selected documents
+ * - Ask AI with document context (RAG pattern)
+ * - Error handling with helpful messages
+ * - Response caching for performance
+ * - Usage statistics (searches performed, cache hits, etc.)
+ *
+ * BONUS CHALLENGES:
+ * - Implement retry logic for failed requests
+ * - Add support for multiple MCP servers (fallback)
+ * - Create a simple CLI interface for user interaction
+ * - Add semantic search using embeddings
+ * - Implement streaming responses for AI answers
+ * - Save conversation history to file
+ *
+ * EXAMPLE OUTPUT:
+ * > search: BoxLang installation
+ * 🔍 Searching documentation...
+ * Found 3 results:
+ * 1. Getting Started with BoxLang
+ * 2. Installation Guide
+ * 3. Quick Start Tutorial
+ * 
+ * > read: 2
+ * 📄 Reading: Installation Guide
+ * [document content displayed]
+ * 
+ * > ask: How do I install on Windows?
+ * 🤖 Asking AI with context...
+ * Answer: To install BoxLang on Windows...
+ *
+ * STARTER CODE STRUCTURE:
+ */
+
+println( "=== Documentation Assistant Lab ===" )
+println()
+
+// TODO: Step 1 - Create MCP client with configuration
+// mcpClient = MCP( "http://localhost:3000" )
+//     .withTimeout( 10000 )
+//     .onSuccess( callback )
+//     .onError( callback )
+
+// TODO: Step 2 - Implement search function
+// function searchDocs( required string query ) {
+//     // Use mcpClient.send( "searchDocs", { query: arguments.query } )
+//     // Return formatted results
+// }
+
+// TODO: Step 3 - Implement read resource function
+// function readResource( required string uri ) {
+//     // Use mcpClient.readResource( arguments.uri )
+//     // Return content
+// }
+
+// TODO: Step 4 - Implement ask with context function
+// function askAI( required string question ) {
+//     // 1. Search relevant docs
+//     // 2. Read resource content
+//     // 3. Build context
+//     // 4. Ask AI with context
+//     // 5. Return answer
+// }
+
+// TODO: Step 5 - Implement caching
+// cache = {}
+// function getCached( required string key, required function fetcher ) {
+//     // Check cache first
+//     // If not found, call fetcher() and cache result
+// }
+
+// TODO: Step 6 - Test your implementation
+// testQuestions = [
+//     "How do I install BoxLang?",
+//     "What are the supported AI providers?",
+//     "How do I use streaming responses?"
+// ]
+//
+// testQuestions.each( question => {
+//     println( "Question: #question#" )
+//     answer = askAI( question )
+//     println( "Answer: #answer#" )
+//     println()
+// } )
+
+// TODO: Step 7 - Display statistics
+// function showStats() {
+//     println( "=== Usage Statistics ===" )
+//     println( "Total searches: ???" )
+//     println( "Cache hits: ???" )
+//     println( "API calls: ???" )
+// }
+
+println( "💡 Tips:" )
+println( "- Start by testing MCP connection with listTools()" )
+println( "- Always check result.getSuccess() before using data" )
+println( "- Use try-catch for error handling" )
+println( "- Test with invalid URLs to verify error handling" )
+println( "- Cache search results using a struct with query as key" )
+println()
+
+println( "📚 Reference:" )
+println( "- MCP Client Docs: docs/advanced/mcp-client.md" )
+println( "- Example Files: lesson-11-mcp-client/examples/" )
+println()
+
+println( "🎯 Your implementation goes below this line!" )
+println()
+
+// ============================================================================
+// YOUR CODE HERE
+// ============================================================================
+
+// Example starter:
+// mcpClient = MCP( "http://localhost:3000" )
+// println( "Testing connection..." )
+// tools = mcpClient.listTools()
+// if ( tools.getSuccess() ) {
+//     println( "✅ Connected! Available tools:" )
+//     tools.getData().each( tool => println( "  - #tool.name#" ) )
+// }

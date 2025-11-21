@@ -16,6 +16,10 @@
  */
 class {
 
+	static {
+		DEFAULT_TIMEOUT = 30000;
+	}
+
 	/**
 	 * The base URL of the MCP server
 	 */
@@ -64,7 +68,7 @@ class {
 	function init( required string baseURL ) {
 		variables.baseURL = arguments.baseURL.trim();
 		variables.headers = {};
-		variables.timeout = 30000;
+		variables.timeout = static.DEFAULT_TIMEOUT;
 		variables.authUser = "";
 		variables.authPassword = "";
 		variables.bearerToken = "";
@@ -244,46 +248,53 @@ class {
 	 * @return MCPResponse with normalized response data
 	 */
 	private function makeRequest( required string method, required string path, any body ) {
-		var url = variables.baseURL & arguments.path;
-		var response = null;
+		var targetUrl = variables.baseURL & arguments.path;
 		var mcpResponse = null;
 
 		try {
-			// Build the HTTP request
-			var httpReq = httpRequest( url )
-				.setMethod( arguments.method )
-				.setTimeout( variables.timeout );
+			// Make HTTP request using bx:http component
+			bx: http
+				url     = targetUrl
+				method  = arguments.method
+				result  = "httpResult"
+				charset = "utf-8"
+				timeout = variables.timeout
+			{
+				bx:httpParam type="header" name="content-type" value="application/json";
 
-			// Add custom headers
-			for( var headerName in variables.headers ) {
-				httpReq.addHeader( headerName, variables.headers[ headerName ] );
+				// Bearer token authentication
+				if( len( variables.bearerToken ) ){
+					bx:httpParam type="header" name="Authorization" value="Bearer #variables.bearerToken#";
+				}
+
+				// Basic authentication
+				if( len( variables.authUser ) ){
+					bx:httpParam type="header" name="username" value="#variables.authUser#";
+					bx:httpParam type="header" name="password" value="#variables.authPassword#";
+				}
+
+				// Custom headers
+				for( var thisHeader in variables.headers ){
+					bx:httpParam
+						type="header"
+						name="#thisHeader#"
+						value="#variables.headers[ thisHeader ]#";
+				}
+
+				// Body for POST requests
+				if( !isNull( arguments.body ) ){
+					bx:httpParam type="body" value=serializeJSON( arguments.body );
+				}
 			}
-
-			// Add authentication
-			if( len( variables.bearerToken ) ) {
-				httpReq.addHeader( "Authorization", "Bearer #variables.bearerToken#" );
-			} else if( len( variables.authUser ) ) {
-				httpReq.setUsername( variables.authUser );
-				httpReq.setPassword( variables.authPassword );
-			}
-
-			// Add body for POST requests
-			if( !isNull( arguments.body ) ) {
-				httpReq.addHeader( "Content-Type", "application/json" );
-				httpReq.setBody( serializeJSON( arguments.body ) );
-			}
-
-			// Send the request
-			response = httpReq.send();
 
 			// Parse response
-			var statusCode = response.status_code;
+			var statusCode = httpResult.status_code ?: 0;
 			var responseHeaders = {};
 
-			// Convert headers array to struct
-			if( !isNull( response.responseheader ) ) {
-				for( var headerName in response.responseheader ) {
-					responseHeaders[ headerName ] = response.responseheader[ headerName ];
+			// Convert headers to struct
+			if( !isNull( httpResult.responseheader ) ) {
+				for( var headerName in httpResult.responseheader ) {
+					responseHeaders[ headerName ] = httpResult.responseheader[ headerName ];
 				}
 			}
 
@@ -293,11 +304,11 @@ class {
 			var errorMessage = "";
 
 			// Parse response body
-			if( len( response.filecontent ) ) {
+			if( len( httpResult.filecontent ?: "" ) ) {
 				try {
-					responseData = deserializeJSON( response.filecontent );
+					responseData = deserializeJSON( httpResult.filecontent );
 				} catch( any e ) {
-					responseData = response.filecontent;
+					responseData = httpResult.filecontent;
 				}
 			}
 
@@ -341,31 +352,5 @@ class {
 		return mcpResponse;
 	}
 
-	/**
-	 * Get the base URL
-	 *
-	 * @return String base URL
-	 */
-	function getBaseURL() {
-		return variables.baseURL;
-	}
-
-	/**
-	 * Get the timeout
-	 *
-	 * @return Numeric timeout in milliseconds
-	 */
-	function getTimeout() {
-		return variables.timeout;
-	}
-
-	/**
-	 * Get custom headers
-	 *
-	 * @return Struct of headers
-	 */
-	function getHeaders() {
-		return variables.headers;
-	}
 
 }
