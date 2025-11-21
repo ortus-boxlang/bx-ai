@@ -186,6 +186,7 @@ The AI module supports different return formats for the responses. You can speci
 | `aiModel()` | Create AI model wrapper | `provider`, `apiKey` | AiModel Object | N/A |
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
+| `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
 
 > **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](docs/pipelines/overview.md#return-formats) documentation for details.
 
@@ -225,6 +226,12 @@ service = aiService( "openai", "my-key" ).defaults( { temperature: 0.7 } )
 
 // Tool for function calling
 tool = aiTool( "weather", "Get weather data", location => getWeather(location) )
+
+// MCP client for Model Context Protocol servers
+client = MCP( "http://localhost:3000" )
+    .withTimeout( 5000 )
+    .withBearerToken( "token" )
+result = client.send( "searchDocs", { query: "syntax" } )
 ```
 
 This module exposes the following BoxLang global functions (BIFs) for you to interact with the AI providers:
@@ -263,6 +270,7 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 - `aiModel( provider, apiKey )` - Creates an AI model wrapper that can be configured with tools and used in agents or pipelines. Provides a fluent API for model configuration.
 - `aiService( provider, apiKey )` - Creates a reference to an AI Service provider that you can then use to interact with the AI service.  This is useful if you want to create a service object and then use it multiple times.  You can pass in optional `provider` and `apiKey` to override the global settings.
 - `aiTool( name, description, callable)` - Creates a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiAiRequest()` functions.
+- `MCP( baseURL )` - Creates a fluent client for consuming Model Context Protocol (MCP) servers. MCP provides standardized access to external tools, resources, and prompts that AI models can use.
 
 ## aiChat()/aiChatAsync() - Chat with the AI
 
@@ -1460,6 +1468,181 @@ agent.run( "What was my order number?" )  // Still remembers!
 ```
 
 **See:** [Memory Documentation](docs/pipelines/memory.md) for complete guide
+
+## MCP() - Model Context Protocol Client
+
+The `MCP()` function creates a fluent client for consuming Model Context Protocol (MCP) servers. MCP is a standardized protocol for connecting AI models to external tools and data sources.
+
+**Signature:**
+```java
+MCP( required string baseURL )
+```
+
+### Features
+
+- 🔌 **Server Discovery**: List available tools, resources, and prompts
+- ⚡ **Tool Execution**: Send requests to MCP tools
+- 📦 **Resource Access**: Read resources from MCP servers
+- 💬 **Prompt Templates**: Get and use server-defined prompts
+- 🔒 **Authentication**: Bearer token and basic auth support
+- ⚙️ **Configuration**: Timeout, headers, and callbacks
+- 📊 **Normalized Responses**: Consistent response structure with success/error handling
+
+### Basic Usage
+
+```java
+// Simple tool invocation
+result = MCP( "http://localhost:3000" ).send( "searchDocs", { query: "syntax" } )
+
+// Check response
+if ( result.getSuccess() ) {
+    writeOutput( result.getData() )
+} else {
+    writeOutput( "Error: " & result.getError() )
+}
+```
+
+### Configuration Methods
+
+All configuration methods return `this` for fluent chaining:
+
+```java
+client = MCP( "http://localhost:3000" )
+    .withTimeout( 5000 )                          // Set timeout in milliseconds
+    .withHeaders( { "X-API-Key": "key123" } )     // Add custom headers
+    .withBearerToken( "your-token" )              // Bearer authentication
+    .withAuth( "username", "password" )           // Basic authentication
+    .onSuccess( ( response ) => {                 // Success callback
+        writeLog( "Success: #response.getData()#" )
+    } )
+    .onError( ( response ) => {                   // Error callback
+        writeLog( "Error: #response.getError()#" )
+    } )
+```
+
+### Discovery Methods
+
+Discover available capabilities on an MCP server:
+
+```java
+// List all available tools
+tools = MCP( "http://localhost:3000" ).listTools()
+if ( tools.getSuccess() ) {
+    for ( tool in tools.getData() ) {
+        writeOutput( "Tool: #tool.name# - #tool.description#" )
+    }
+}
+
+// List available resources
+resources = MCP( "http://localhost:3000" ).listResources()
+
+// List available prompts
+prompts = MCP( "http://localhost:3000" ).listPrompts()
+
+// Get server capabilities
+capabilities = MCP( "http://localhost:3000" ).getCapabilities()
+```
+
+### Execution Methods
+
+Execute operations on an MCP server:
+
+```java
+// Send request to a tool
+result = MCP( "http://localhost:3000" )
+    .send( "searchDocs", { 
+        query: "BoxLang syntax",
+        maxResults: 10 
+    } )
+
+// Read a resource
+content = MCP( "http://localhost:3000" )
+    .readResource( "docs://getting-started.md" )
+
+// Get a prompt with arguments
+prompt = MCP( "http://localhost:3000" )
+    .getPrompt( "generateCode", { 
+        language: "java",
+        description: "Sort array"
+    } )
+```
+
+### Response Structure
+
+All MCP methods return an `MCPResponse` object with normalized structure:
+
+```java
+response = {
+    "success": true/false,      // Boolean indicating success
+    "data": {},                 // Response data from server
+    "error": "",                // Error message if failed
+    "statusCode": 200,          // HTTP status code
+    "headers": {}               // Response headers
+}
+
+// Access response properties
+response.getSuccess()    // Boolean
+response.getData()       // Any
+response.getError()      // String
+response.getStatusCode() // Numeric
+response.getHeaders()    // Struct
+response.toStruct()      // Convert to struct
+```
+
+### Real-World Example
+
+```java
+// Initialize MCP client with configuration
+mcpClient = MCP( "https://boxlang.ortusbooks.com/~gitbook/mcp" )
+    .withTimeout( 10000 )
+    .withBearerToken( getSystemSetting( "MCP_TOKEN" ) )
+    .onError( ( response ) => {
+        writeLog( 
+            type: "error",
+            text: "MCP Error: #response.getError()#"
+        )
+    } )
+
+// Discover available tools
+toolList = mcpClient.listTools()
+if ( !toolList.getSuccess() ) {
+    throw( "Cannot connect to MCP server" )
+}
+
+// Use a tool
+searchResult = mcpClient.send( "search", {
+    query: "BoxLang installation",
+    category: "getting-started"
+} )
+
+if ( searchResult.getSuccess() ) {
+    results = searchResult.getData()
+    // Process search results
+    for ( item in results.items ) {
+        writeOutput( "<h3>#item.title#</h3>" )
+        writeOutput( "<p>#item.excerpt#</p>" )
+    }
+}
+```
+
+### Error Handling
+
+MCP client handles network, HTTP, and protocol errors gracefully:
+
+```java
+result = MCP( "http://invalid-server:9999" )
+    .withTimeout( 1000 )
+    .send( "tool", {} )
+
+// Always check success
+if ( !result.getSuccess() ) {
+    // Access error details
+    writeOutput( "Error: " & result.getError() )
+    writeOutput( "Status: " & result.getStatusCode() )
+}
+```
+
+**See:** [MCP Client Documentation](docs/advanced/mcp-client.md) for complete guide
 
 ## aiEmbed() - Generate Text Embeddings
 

@@ -1,0 +1,70 @@
+// mcp-tool-invocation.bxs
+/**
+ * MCP Tool Invocation Demo
+ * Shows how to invoke tools on an MCP server
+ */
+
+println( "=== MCP Tool Invocation Demo ===" )
+println()
+
+// Create configured client
+client = MCP( "http://localhost:3000" )
+    .withTimeout( 10000 )
+    .withHeaders( { "X-Client-Version": "1.0" } )
+    .onSuccess( ( response ) => {
+        println( "✅ Request succeeded (status: #response.getStatusCode()#)" )
+    } )
+    .onError( ( response ) => {
+        println( "❌ Request failed: #response.getError()#" )
+    } )
+
+println( "Configured MCP client with callbacks" )
+println()
+
+// Example 1: Search documentation
+println( "=== Example 1: Search Documentation ===" )
+println()
+
+searchQuery = "BoxLang installation"
+println( "Searching for: '#searchQuery#'" )
+
+result = client.send( "searchDocs", {
+    query: searchQuery,
+    limit: 5
+} )
+
+if ( result.getSuccess() ) {
+    data = result.getData()
+    println( "Found #data.results.len()# results:" )
+    println()
+    
+    data.results.each( ( item, index ) => {
+        println( "#index#. #item.title#" )
+        println( "   #item.excerpt#" )
+        println()
+    } )
+}
+
+println( "-".repeat( 70 ) )
+
+// Example 2: Calculate something
+println( "=== Example 2: Calculator Tool ===" )
+println()
+
+expression = "15 * 24 + 8"
+println( "Calculating: #expression#" )
+
+calcResult = client.send( "calculate", {
+    expression: expression
+} )
+
+if ( calcResult.getSuccess() ) {
+    data = calcResult.getData()
+    println( "Result: #data.result#" )
+}
+
+println()
+println( "💡 Integration Tips:" )
+println( "- Always check result.getSuccess() before using data" )
+println( "- Use callbacks for logging and monitoring" )
+println( "- Configure timeout based on expected operation time" )

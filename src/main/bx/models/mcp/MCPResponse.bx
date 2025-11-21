@@ -1,0 +1,129 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Represents a normalized response from an MCP server
+ */
+class {
+
+	/**
+	 * Indicates if the request was successful
+	 */
+	property name="success" type="boolean" default=false;
+
+	/**
+	 * The response data from the MCP server
+	 */
+	property name="data" type="any" default={};
+
+	/**
+	 * Error message if the request failed
+	 */
+	property name="error" type="string" default="";
+
+	/**
+	 * HTTP status code
+	 */
+	property name="statusCode" type="numeric" default=0;
+
+	/**
+	 * Response headers
+	 */
+	property name="headers" type="struct" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @success Whether the request was successful
+	 * @data The response data
+	 * @error Error message if failed
+	 * @statusCode HTTP status code
+	 * @headers Response headers
+	 */
+	function init(
+		boolean success = false,
+		any data = {},
+		string error = "",
+		numeric statusCode = 0,
+		struct headers = {}
+	) {
+		variables.success = arguments.success;
+		variables.data = arguments.data;
+		variables.error = arguments.error;
+		variables.statusCode = arguments.statusCode;
+		variables.headers = arguments.headers;
+
+		return this;
+	}
+
+	/**
+	 * Convert the response to a struct
+	 *
+	 * @return Struct representation of the response
+	 */
+	function toStruct() {
+		return {
+			"success": variables.success,
+			"data": variables.data,
+			"error": variables.error,
+			"statusCode": variables.statusCode,
+			"headers": variables.headers
+		};
+	}
+
+	/**
+	 * Get the success status
+	 *
+	 * @return Boolean success status
+	 */
+	function getSuccess() {
+		return variables.success;
+	}
+
+	/**
+	 * Get the response data
+	 *
+	 * @return The response data
+	 */
+	function getData() {
+		return variables.data;
+	}
+
+	/**
+	 * Get the error message
+	 *
+	 * @return String error message
+	 */
+	function getError() {
+		return variables.error;
+	}
+
+	/**
+	 * Get the status code
+	 *
+	 * @return Numeric status code
+	 */
+	function getStatusCode() {
+		return variables.statusCode;
+	}
+
+	/**
+	 * Get the response headers
+	 *
+	 * @return Struct of headers
+	 */
+	function getHeaders() {
+		return variables.headers;
+	}
+
+}
