@@ -585,16 +585,16 @@ public class aiMessageTest extends BaseIntegrationTest {
 
 		IStruct firstMessage = ( IStruct ) result.get( 0 );
 		assertThat( firstMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "user" );
-		
+
 		// Content should be an array with text and image parts
 		Array content = ( Array ) firstMessage.get( Key.of( "content" ) );
 		assertThat( content.size() ).isEqualTo( 2 );
-		
+
 		// First part should be text
 		IStruct textPart = ( IStruct ) content.get( 0 );
 		assertThat( textPart.getAsString( Key.of( "type" ) ) ).isEqualTo( "text" );
 		assertThat( textPart.getAsString( Key.of( "text" ) ) ).isEqualTo( "What is in this image?" );
-		
+
 		// Second part should be image
 		IStruct imagePart = ( IStruct ) content.get( 1 );
 		assertThat( imagePart.getAsString( Key.of( "type" ) ) ).isEqualTo( "image_url" );
@@ -623,11 +623,11 @@ public class aiMessageTest extends BaseIntegrationTest {
 		Array result = ( Array ) variables.get( "result" );
 		assertThat( result.size() ).isEqualTo( 1 );
 
-		IStruct firstMessage = ( IStruct ) result.get( 0 );
-		Array content = ( Array ) firstMessage.get( Key.of( "content" ) );
-		
-		IStruct imagePart = ( IStruct ) content.get( 1 );
-		IStruct imageUrl = ( IStruct ) imagePart.get( Key.of( "image_url" ) );
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+
+		IStruct	imagePart		= ( IStruct ) content.get( 1 );
+		IStruct	imageUrl		= ( IStruct ) imagePart.get( Key.of( "image_url" ) );
 		assertThat( imageUrl.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://example.com/image.jpg" );
 		assertThat( imageUrl.getAsString( Key.of( "detail" ) ) ).isEqualTo( "high" );
 	}
@@ -654,18 +654,18 @@ public class aiMessageTest extends BaseIntegrationTest {
 		Array result = ( Array ) variables.get( "result" );
 		assertThat( result.size() ).isEqualTo( 1 );
 
-		IStruct firstMessage = ( IStruct ) result.get( 0 );
-		Array content = ( Array ) firstMessage.get( Key.of( "content" ) );
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
 		assertThat( content.size() ).isEqualTo( 3 ); // text + 2 images
-		
+
 		// Verify first image
-		IStruct imagePart1 = ( IStruct ) content.get( 1 );
-		IStruct imageUrl1 = ( IStruct ) imagePart1.get( Key.of( "image_url" ) );
+		IStruct	imagePart1	= ( IStruct ) content.get( 1 );
+		IStruct	imageUrl1	= ( IStruct ) imagePart1.get( Key.of( "image_url" ) );
 		assertThat( imageUrl1.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://example.com/image1.jpg" );
-		
+
 		// Verify second image
-		IStruct imagePart2 = ( IStruct ) content.get( 2 );
-		IStruct imageUrl2 = ( IStruct ) imagePart2.get( Key.of( "image_url" ) );
+		IStruct	imagePart2	= ( IStruct ) content.get( 2 );
+		IStruct	imageUrl2	= ( IStruct ) imagePart2.get( Key.of( "image_url" ) );
 		assertThat( imageUrl2.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://example.com/image2.jpg" );
 	}
 
@@ -691,11 +691,11 @@ public class aiMessageTest extends BaseIntegrationTest {
 
 		IStruct firstMessage = ( IStruct ) result.get( 0 );
 		assertThat( firstMessage.getAsString( Key.of( "role" ) ) ).isEqualTo( "user" );
-		
+
 		// Content should be an array with just the image
 		Array content = ( Array ) firstMessage.get( Key.of( "content" ) );
 		assertThat( content.size() ).isEqualTo( 1 );
-		
+
 		IStruct imagePart = ( IStruct ) content.get( 0 );
 		assertThat( imagePart.getAsString( Key.of( "type" ) ) ).isEqualTo( "image_url" );
 	}
@@ -727,14 +727,14 @@ public class aiMessageTest extends BaseIntegrationTest {
 		Array result = ( Array ) variables.get( "result" );
 		assertThat( result.size() ).isEqualTo( 1 );
 
-		IStruct firstMessage = ( IStruct ) result.get( 0 );
-		Array content = ( Array ) firstMessage.get( Key.of( "content" ) );
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
 		assertThat( content.size() ).isEqualTo( 2 );
-		
+
 		// Verify the image part contains a data URI
-		IStruct imagePart = ( IStruct ) content.get( 1 );
-		IStruct imageUrl = ( IStruct ) imagePart.get( Key.of( "image_url" ) );
-		String url = imageUrl.getAsString( Key.of( "url" ) );
+		IStruct	imagePart	= ( IStruct ) content.get( 1 );
+		IStruct	imageUrl	= ( IStruct ) imagePart.get( Key.of( "image_url" ) );
+		String	url			= imageUrl.getAsString( Key.of( "url" ) );
 		assertThat( url ).startsWith( "data:image/png;base64," );
 		assertThat( url ).contains( "iVBORw0KGgo" ); // Beginning of base64 PNG data
 	}
@@ -765,12 +765,12 @@ public class aiMessageTest extends BaseIntegrationTest {
 		Array result = ( Array ) variables.get( "result" );
 		assertThat( result.size() ).isEqualTo( 1 );
 
-		IStruct firstMessage = ( IStruct ) result.get( 0 );
-		Array content = ( Array ) firstMessage.get( Key.of( "content" ) );
-		
-		IStruct imagePart = ( IStruct ) content.get( 1 );
-		IStruct imageUrl = ( IStruct ) imagePart.get( Key.of( "image_url" ) );
-		String url = imageUrl.getAsString( Key.of( "url" ) );
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+
+		IStruct	imagePart		= ( IStruct ) content.get( 1 );
+		IStruct	imageUrl		= ( IStruct ) imagePart.get( Key.of( "image_url" ) );
+		String	url				= imageUrl.getAsString( Key.of( "url" ) );
 		assertThat( url ).startsWith( "data:image/jpeg;base64," );
 		assertThat( imageUrl.getAsString( Key.of( "detail" ) ) ).isEqualTo( "low" );
 	}
