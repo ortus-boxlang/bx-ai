@@ -128,7 +128,7 @@ public class mcpClientTest extends BaseIntegrationTest {
 					.withTimeout( 5000 )
 					.withHeaders( { "X-API-Key": "key123" } )
 					.withBearerToken( "token" )
-				
+
 				timeout = result.getTimeout()
 				headers = result.getHeaders()
 				baseURL = result.getBaseURL()
@@ -310,7 +310,7 @@ public class mcpClientTest extends BaseIntegrationTest {
 					statusCode: 200,
 					headers: { "Content-Type": "application/json" }
 				)
-				
+
 				success = response.getSuccess()
 				data = response.getData()
 				error = response.getError()
@@ -345,7 +345,7 @@ public class mcpClientTest extends BaseIntegrationTest {
 					statusCode: 200,
 					headers: {}
 				)
-				
+
 				result = response.toStruct()
 			""",
 			context
@@ -367,7 +367,7 @@ public class mcpClientTest extends BaseIntegrationTest {
 				result = MCP( "http://invalid-host-that-does-not-exist:9999" )
 					.withTimeout( 1000 )
 					.listTools()
-				
+
 				success = result.getSuccess()
 				error = result.getError()
 			""",
@@ -379,6 +379,38 @@ public class mcpClientTest extends BaseIntegrationTest {
 		assertThat( response ).isNotNull();
 		assertThat( variables.get( Key.of( "success" ) ) ).isEqualTo( false );
 		assertThat( variables.get( Key.of( "error" ) ).toString() ).isNotEmpty();
+	}
+
+	@DisplayName( "Test Real MCP Server" )
+	@Test
+	public void testRealMCPServer() {
+		// Test against BoxLang documentation MCP server
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				target = MCP( "https://boxlang.ortusbooks.com/~gitbook/mcp" )
+				response = target.listTools()
+				success = response.getSuccess()
+				hasTools = isStruct( response.getData() ) && structKeyExists( response.getData(), "tools" )
+
+				println( "Success: " & success )
+				println( "Error: " & response.getError() )
+				println( "Status Code: " & response.getStatusCode() )
+				println( "Has tools: " & hasTools )
+				if( hasTools ) {
+					println( "Tool count: " & arrayLen( response.getData().tools ) )
+				}
+			""",
+			context
+		);
+		// @formatter:on
+
+		var success = variables.getAsBoolean( Key.of( "success" ) );
+		var hasTools = variables.getAsBoolean( Key.of( "hasTools" ) );
+		
+		assertThat( success ).isEqualTo( true );
+		assertThat( hasTools ).isEqualTo( true );
+
 	}
 
 }

@@ -51,7 +51,7 @@ messages.map( m => m.content ).filter( c => !isNull(c) )
 ### Key Differences from Java
 - **No semicolons required** (but allowed)
 - **Duck typing**: `any` type allows dynamic dispatch
-- **Built-in serialization**: `serializeJSON()`, `deserializeJSON()`
+- **Built-in serialization**: `jsonSerialize()`, `jsonDeserialize()` (NOT serializeJSON/deserializeJSON)
 - **Implicit returns**: Last expression in function is returned
 - **String interpolation**: `"Hello, ${name}!"` or `"#name#"`
 - **OnMissingMethod**: Dynamic method handling (see `AiMessage` for roled messages)

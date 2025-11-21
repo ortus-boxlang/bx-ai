@@ -162,7 +162,12 @@ class {
 	 * @return MCPResponse with tools data
 	 */
 	function listTools() {
-		return makeRequest( "GET", "/tools" );
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "tools/list",
+			"id": createUUID()
+		};
+		return makeRequest( "POST", "", body );
 	}
 
 	/**
@@ -171,7 +176,12 @@ class {
 	 * @return MCPResponse with resources data
 	 */
 	function listResources() {
-		return makeRequest( "GET", "/resources" );
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "resources/list",
+			"id": createUUID()
+		};
+		return makeRequest( "POST", "", body );
 	}
 
 	/**
@@ -180,7 +190,12 @@ class {
 	 * @return MCPResponse with prompts data
 	 */
 	function listPrompts() {
-		return makeRequest( "GET", "/prompts" );
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "prompts/list",
+			"id": createUUID()
+		};
+		return makeRequest( "POST", "", body );
 	}
 
 	/**
@@ -189,7 +204,15 @@ class {
 	 * @return MCPResponse with capabilities data
 	 */
 	function getCapabilities() {
-		return makeRequest( "GET", "/capabilities" );
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "initialize",
+			"id": createUUID(),
+			"params": {
+				"capabilities": {}
+			}
+		};
+		return makeRequest( "POST", "", body );
 	}
 
 	/**
@@ -272,6 +295,7 @@ class {
 				timeout = variables.timeout
 			{
 				bx:httpParam type="header" name="content-type" value="application/json";
+				bx:httpParam type="header" name="accept" value="application/json, text/event-stream";
 
 				// Authentication header
 				if( len( authHeader ) ){
@@ -288,7 +312,7 @@ class {
 
 				// Body for POST requests
 				if( !isNull( arguments.body ) ){
-					bx:httpParam type="body" value=serializeJSON( arguments.body );
+					bx:httpParam type="body" value=jsonSerialize( arguments.body );
 				}
 			}
 
@@ -308,17 +332,57 @@ class {
 			var responseData = {};
 			var errorMessage = "";
 
-			// Parse response body
+			// Parse response body (handles both SSE and plain JSON)
 			if( len( httpResult.filecontent ?: "" ) ) {
 				try {
-					responseData = deserializeJSON( httpResult.filecontent );
+					var content = httpResult.filecontent;
+
+					// Check if this is an SSE response
+					if( content.startsWith( "event:" ) || content.contains( char(10) & "data:" ) ) {
+						// Parse SSE format: extract JSON from "data:" line
+						var lines = content.listToArray( char(10) );
+						for( var line in lines ) {
+							if( line.trim().startsWith( "data:" ) ) {
+								var jsonData = line.trim().replaceNoCase( "data:", "" ).trim();
+								responseData = jsonDeserialize( jsonData );
+
+								// Check for JSON-RPC error
+								if( isStruct( responseData ) && structKeyExists( responseData, "error" ) ) {
+									isSuccess = false;
+									errorMessage = isStruct( responseData.error )
+										? ( responseData.error.message ?: "Unknown error" )
+										: responseData.error;
+								}
+								// Extract result from JSON-RPC response
+								else if( isStruct( responseData ) && structKeyExists( responseData, "result" ) ) {
+									responseData = responseData.result;
+								}
+								break;
+							}
+						}
+					} else {
+						// Plain JSON response
+						responseData = jsonDeserialize( content );
+
+						// Check for JSON-RPC error
+						if( isStruct( responseData ) && structKeyExists( responseData, "error" ) ) {
+							isSuccess = false;
+							errorMessage = isStruct( responseData.error )
+								? ( responseData.error.message ?: "Unknown error" )
+								: responseData.error;
+						}
+						// Extract result from JSON-RPC response
+						else if( isStruct( responseData ) && structKeyExists( responseData, "result" ) ) {
+							responseData = responseData.result;
+						}
+					}
 				} catch( any e ) {
 					responseData = httpResult.filecontent;
 				}
 			}
 
 			// Set error message for failed requests
-			if( !isSuccess ) {
+			if( !isSuccess && !len( errorMessage ) ) {
 				errorMessage = "HTTP #statusCode#";
 				if( isStruct( responseData ) && structKeyExists( responseData, "error" ) ) {
 					errorMessage = responseData.error;
