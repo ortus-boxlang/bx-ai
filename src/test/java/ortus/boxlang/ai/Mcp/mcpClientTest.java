@@ -437,8 +437,8 @@ public class mcpClientTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var	success		= variables.getAsBoolean( Key.of( "success" ) );
-		var	hasData		= variables.getAsBoolean( Key.of( "hasData" ) );
+		var	success	= variables.getAsBoolean( Key.of( "success" ) );
+		var	hasData	= variables.getAsBoolean( Key.of( "hasData" ) );
 
 		assertThat( success ).isEqualTo( true );
 		assertThat( hasData ).isEqualTo( true );
@@ -446,5 +446,3 @@ public class mcpClientTest extends BaseIntegrationTest {
 	}
 
 }
-
-
