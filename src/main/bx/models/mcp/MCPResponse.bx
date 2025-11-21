@@ -82,48 +82,20 @@ class {
 	}
 
 	/**
-	 * Get the success status
+	 * Check if the response has an error
 	 *
-	 * @return Boolean success status
+	 * @return True if there was an error, false otherwise
 	 */
-	function getSuccess() {
+	boolean function hasError(){
+		return !variables.success;
+	}
+
+	/**
+	 * Check if the response is successful
+	 * @return True if successful, false otherwise
+	 */
+	boolean function isSuccess(){
 		return variables.success;
-	}
-
-	/**
-	 * Get the response data
-	 *
-	 * @return The response data
-	 */
-	function getData() {
-		return variables.data;
-	}
-
-	/**
-	 * Get the error message
-	 *
-	 * @return String error message
-	 */
-	function getError() {
-		return variables.error;
-	}
-
-	/**
-	 * Get the status code
-	 *
-	 * @return Numeric status code
-	 */
-	function getStatusCode() {
-		return variables.statusCode;
-	}
-
-	/**
-	 * Get the response headers
-	 *
-	 * @return Struct of headers
-	 */
-	function getHeaders() {
-		return variables.headers;
 	}
 
 }
