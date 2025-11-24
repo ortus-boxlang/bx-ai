@@ -7,12 +7,14 @@ Get up and running with AI Agents in BoxLang - autonomous AI assistants with mem
 ## What are AI Agents?
 
 AI Agents are autonomous assistants that:
+
 - **Remember context** across conversations using memory systems
 - **Use tools** to perform actions and access real-time data
 - **Reason** about tasks and break them into steps
 - **Maintain state** across multiple interactions
 
 Think of agents as AI assistants that can:
+
 - Answer questions while remembering previous context
 - Search databases or APIs when they need information
 - Execute functions to perform actions
@@ -73,6 +75,7 @@ println( response )
 ```
 
 **What happens:**
+
 1. Agent receives: "What's the weather in Boston?"
 2. Agent thinks: "I need to use the weather tool"
 3. Agent calls: `get_weather("Boston")`
@@ -119,6 +122,7 @@ response = agent.run(
 ## Different Memory Types
 
 ### Simple Memory (Default)
+
 Stores everything in RAM - good for single sessions:
 
 ```java
@@ -129,6 +133,7 @@ agent = aiAgent(
 ```
 
 ### Window Memory
+
 Keeps only recent messages - good for managing context limits:
 
 ```java
@@ -143,6 +148,7 @@ agent = aiAgent(
 ```
 
 ### Session Memory
+
 Persists across requests in web applications:
 
 ```java
@@ -154,6 +160,7 @@ agent = aiAgent(
 ```
 
 ### File Memory
+
 Saves to disk - persists across application restarts:
 
 ```java
@@ -168,6 +175,7 @@ agent = aiAgent(
 ```
 
 ### Multiple Memories
+
 Combine different memory types:
 
 ```java
@@ -403,6 +411,7 @@ agent = aiAgent(
 ```
 
 ### 2. Tool Descriptions
+
 ```java
 // ❌ Unclear
 tool = aiTool(
@@ -420,6 +429,7 @@ tool = aiTool(
 ```
 
 ### 3. Choose Right Memory
+
 ```java
 // Short-lived chat (web request)
 webAgent = aiAgent( name: "Chat" )
@@ -437,6 +447,7 @@ botAgent = aiAgent( name: "Bot" )
 ```
 
 ### 4. Error Handling
+
 ```java
 try {
     response = agent.run( userInput )
@@ -453,6 +464,7 @@ try {
 ```
 
 ### 5. Test Tools Independently
+
 ```java
 // Test tool before giving to agent
 testResult = weatherTool.execute( "Boston" )
@@ -466,6 +478,7 @@ agent = aiAgent( name: "WeatherBot" )
 ## Common Patterns
 
 ### Conversation History
+
 ```java
 // Add user message to agent
 agent.addMemory( { role: "user", content: "Hello" } )
@@ -481,6 +494,7 @@ agent.clearMemory()
 ```
 
 ### Dynamic Tool Selection
+
 ```java
 // Start with basic tools
 agent = aiAgent( name: "Assistant" )
@@ -494,6 +508,7 @@ if ( user.hasRole( "admin" ) ) {
 ```
 
 ### Multi-Step Workflows
+
 ```java
 // Agent can handle multi-step tasks
 agent = aiAgent(
@@ -512,9 +527,102 @@ result = agent.run(
 // 4. Return comprehensive analysis
 ```
 
+## Agents with Structured Output
+
+Agents can return type-safe, structured data instead of plain text responses:
+
+### Extract Structured Data
+
+```java
+class CustomerInfo {
+    property name="customerId" type="string";
+    property name="name" type="string";
+    property name="email" type="string";
+    property name="accountBalance" type="numeric";
+}
+
+// Agent extracts structured customer data
+agent = aiAgent(
+    name: "DataExtractor",
+    instructions: "Extract customer information from conversations"
+)
+
+customerData = agent
+    .run( "Customer John Doe, ID: C123, email: john@example.com, balance: $1500" )
+    .structuredOutput( new CustomerInfo() )
+
+// Type-safe access
+println( customerData.getName() )           // John Doe
+println( customerData.getAccountBalance() ) // 1500 (numeric)
+```
+
+### Agents with Tools and Structured Output
+
+```java
+class AnalysisReport {
+    property name="summary" type="string";
+    property name="keyFindings" type="array";
+    property name="recommendation" type="string";
+    property name="confidence" type="numeric";
+}
+
+// Tool that fetches data
+dataTool = aiTool(
+    name: "fetch_sales",
+    description: "Fetch sales data for a period",
+    action: ( period ) => querySalesData( period )
+).describePeriod( "Time period like 'Q4 2024'" )
+
+// Agent analyzes and returns structured report
+agent = aiAgent(
+    name: "Analyst",
+    instructions: "Analyze sales data and provide structured insights",
+    tools: [ dataTool ]
+)
+
+report = agent
+    .run( "Analyze Q4 2024 sales performance" )
+    .structuredOutput( new AnalysisReport() )
+
+// Access structured results
+println( "Summary: #report.getSummary()#" )
+report.getKeyFindings().each( finding => println( "- #finding#" ) )
+println( "Confidence: #report.getConfidence()#%" )
+```
+
+### Multiple Structured Outputs
+
+```java
+class UserProfile {
+    property name="name" type="string";
+    property name="role" type="string";
+}
+
+class TaskList {
+    property name="urgent" type="array";
+    property name="normal" type="array";
+}
+
+// Agent extracts multiple entities
+agent = aiAgent( name: "Organizer" )
+
+result = agent
+    .run( "John (admin) needs to: fix bug (urgent), write docs (normal), update tests (urgent)" )
+    .structuredOutputs({
+        "user": new UserProfile(),
+        "tasks": new TaskList()
+    })
+
+println( "User: #result.user.getName()# (#result.user.getRole()#)" )
+println( "Urgent: #result.tasks.urgent.len()# tasks" )
+```
+
+**Learn more:** [Structured Output Guide](../simple-interactions/structured-output.md)
+
 ## Debugging Agents
 
 ### Enable Raw Format Temporarily
+
 ```java
 // See what the AI actually receives/returns
 agent.setReturnFormat( "raw" )
@@ -523,6 +631,7 @@ writeDump( response )
 ```
 
 ### Log Tool Calls
+
 ```java
 debugTool = aiTool(
     name: "debug_tool",
@@ -537,6 +646,7 @@ debugTool = aiTool(
 ```
 
 ### Monitor Memory
+
 ```java
 // Check memory state
 summary = agent.getMemory().getSummary()
@@ -575,21 +685,25 @@ Check the [examples directory](../../examples/) for complete, runnable examples:
 ## Common Issues
 
 **"Agent not remembering context"**
+
 - Ensure memory is configured: `.setMemories( aiMemory(...) )`
 - Check memory isn't being cleared between calls
 - Verify session/key is consistent across calls
 
 **"Tools not being called"**
+
 - Make tool descriptions clear and specific
 - Check tool is added to agent: `.addTool()`
 - Verify tool function doesn't throw errors
 
 **"Responses too slow"**
+
 - Use smaller/faster model for simple tasks
 - Reduce maxMessages in window memory
 - Consider async: `agent.runAsync()`
 
 **"Memory growing too large"**
+
 - Use WindowMemory with maxMessages limit
 - Clear memory periodically: `agent.clearMemory()`
 - Export important conversations before clearing

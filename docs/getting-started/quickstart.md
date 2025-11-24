@@ -545,6 +545,61 @@ pipeline = template
 
 Learn more about pipelines in the [Pipeline Overview](../pipelines/overview.md) section.
 
+## Structured Output
+
+Get type-safe responses by defining the expected structure using classes or struct templates.
+
+### With a Class
+
+```java
+class Person {
+    property name="name" type="string";
+    property name="age" type="numeric";
+    property name="email" type="string";
+}
+
+// Extract structured data
+person = aiChat( "Extract: John Doe, 30, john@example.com" )
+    .structuredOutput( new Person() )
+
+// Type-safe access
+println( person.getName() )   // John Doe
+println( person.getAge() )    // 30 (numeric)
+```
+
+### With a Struct Template
+
+```java
+template = {
+    "title": "",
+    "summary": "",
+    "tags": [],
+    "sentiment": ""
+}
+
+result = aiChat( "Analyze: Great product, highly recommended!" )
+    .structuredOutput( template )
+
+println( result.sentiment )  // positive
+println( result.tags.len() ) // 3
+```
+
+### Extracting Arrays
+
+```java
+class Task {
+    property name="title" type="string";
+    property name="priority" type="string";
+}
+
+tasks = aiChat( "Extract: Finish report (high), Review code (medium)" )
+    .structuredOutput( [ new Task() ] )
+
+tasks.each( t => println( "#t.getTitle()# [#t.getPriority()#]" ) )
+```
+
+**Learn more:** [Structured Output Guide](../simple-interactions/structured-output.md)
+
 ## Next Steps
 
 Now that you're comfortable with the basics, explore:

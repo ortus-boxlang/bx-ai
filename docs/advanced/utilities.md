@@ -2,6 +2,14 @@
 
 The bx-ai module provides powerful utility functions for text processing, token management, and working with AI models. These utilities help you prepare data, estimate costs, and optimize your AI interactions.
 
+## Table of Contents
+
+- [Text Chunking](#text-chunking)
+- [Token Counting](#token-counting)
+- [Combining Utilities](#combining-utilities)
+- [Tips and Tricks](#tips-and-tricks)
+- [Object Population](#object-population)
+
 ## Text Chunking
 
 Break large texts into manageable segments that fit within AI token limits. Essential for processing long documents, articles, or books.
@@ -649,3 +657,259 @@ function smartChunk( text, type = "general" ) {
 codeChunks = smartChunk( sourceCode, "code" )
 docChunks = smartChunk( documentation, "docs" )
 ```
+
+## Object Population
+
+The `aiPopulate()` function lets you manually convert JSON data or structs into typed BoxLang objects. Perfect for testing, caching AI responses, or working with pre-existing data.
+
+### `aiPopulate()` Function
+
+```java
+aiPopulate( template, data )
+```
+
+Populate a class instance, struct template, or array from JSON string or struct data.
+
+#### Basic Usage with Classes
+
+```java
+class Person {
+    property name="name" type="string";
+    property name="age" type="numeric";
+    property name="email" type="string";
+}
+
+// From JSON string
+jsonData = '{"name":"John Doe","age":30,"email":"john@example.com"}'
+person = aiPopulate( new Person(), jsonData )
+
+println( person.getName() )  // John Doe
+println( person.getAge() )   // 30
+
+// From struct
+data = { name: "Jane Smith", age: 25, email: "jane@example.com" }
+person = aiPopulate( new Person(), data )
+```
+
+#### Array Population
+
+```java
+class Task {
+    property name="title" type="string";
+    property name="priority" type="string";
+    property name="completed" type="boolean";
+}
+
+// From JSON array string
+tasksJson = '[
+    {"title":"Task 1","priority":"high","completed":false},
+    {"title":"Task 2","priority":"low","completed":true}
+]'
+tasks = aiPopulate( [ new Task() ], tasksJson )
+
+tasks.each( task => {
+    println( "#task.getTitle()# [#task.getPriority()#]" )
+} )
+```
+
+#### Struct Template Population
+
+```java
+// Define struct template
+template = {
+    "productId": 0,
+    "productName": "",
+    "price": 0.0,
+    "inStock": false
+}
+
+// Populate from JSON
+productJson = '{"productId":123,"productName":"Laptop","price":999.99,"inStock":true}'
+product = aiPopulate( template, productJson )
+
+println( "Product: #product.productName# - $#product.price#" )
+```
+
+### Use Cases
+
+#### Testing with Mock Data
+
+```java
+// Create test fixtures without AI calls
+function createTestPerson( name = "Test User" ) {
+    return aiPopulate( new Person(), {
+        name: arguments.name,
+        age: 30,
+        email: "#lCase(arguments.name.replace(' ',''))#@test.com"
+    } )
+}
+
+// Use in tests
+testPerson = createTestPerson( "John Doe" )
+assert( testPerson.getName() == "John Doe" )
+assert( testPerson.getEmail() == "johndoe@test.com" )
+```
+
+#### Caching AI Responses
+
+```java
+// Cache expensive AI extractions
+function getPersonInfo( text ) {
+    cacheKey = hash( text )
+
+    // Check cache first
+    if ( cacheExists( cacheKey ) ) {
+        cachedJson = cacheGet( cacheKey )
+        return aiPopulate( new Person(), cachedJson )
+    }
+
+    // Make AI call
+    person = aiChat( "Extract person info from: #text#" )
+        .structuredOutput( new Person() )
+
+    // Cache the result as JSON
+    cachePut(
+        cacheKey,
+        serializeJSON({
+            name: person.getName(),
+            age: person.getAge(),
+            email: person.getEmail()
+        }),
+        60  // 60 minute timeout
+    )
+
+    return person
+}
+
+// First call hits AI, subsequent calls use cache
+person1 = getPersonInfo( "John Doe, 30, john@example.com" )
+person2 = getPersonInfo( "John Doe, 30, john@example.com" )  // From cache!
+```
+
+#### Converting Existing Data
+
+```java
+// You have legacy data in structs, need typed objects
+legacyUsers = queryExecute( "SELECT * FROM users" )
+
+typedUsers = legacyUsers.map( user => {
+    return aiPopulate( new User(), {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        createdDate: user.created_at
+    } )
+} )
+
+// Now work with type-safe objects
+typedUsers.each( user => {
+    sendEmail( user.getEmail(), "Welcome!" )
+} )
+```
+
+#### Transforming API Responses
+
+```java
+// External API returns JSON
+apiResponse = httpRequest( "https://api.example.com/products" )
+    .send()
+    .json()
+
+// Convert to typed objects
+products = apiResponse.data.map( item => {
+    return aiPopulate( new Product(), item )
+} )
+
+// Type-safe operations
+expensiveProducts = products.filter( p => p.getPrice() > 100 )
+```
+
+### With Nested Objects
+
+```java
+class Address {
+    property name="street" type="string";
+    property name="city" type="string";
+    property name="zipCode" type="string";
+}
+
+class Customer {
+    property name="name" type="string";
+    property name="email" type="string";
+    property name="address" type="any";  // Will contain Address instance
+}
+
+// Nested data
+data = {
+    "name": "John Doe",
+    "email": "john@example.com",
+    "address": {
+        "street": "123 Main St",
+        "city": "San Francisco",
+        "zipCode": "94102"
+    }
+}
+
+// Populate with nested objects
+customer = aiPopulate( new Customer(), data )
+
+// Access nested properties
+println( customer.getName() )
+println( customer.getAddress().getCity() )  // San Francisco
+```
+
+### Validation and Error Handling
+
+```java
+try {
+    // Invalid JSON
+    person = aiPopulate( new Person(), "not valid json" )
+} catch( any e ) {
+    println( "Invalid JSON: #e.message#" )
+}
+
+try {
+    // Wrong data type for template
+    result = aiPopulate( "not a template", { name: "Test" } )
+} catch( any e ) {
+    println( "Invalid template: #e.message#" )
+}
+
+try {
+    // Mismatched array types
+    tasks = aiPopulate( [ new Task() ], "not an array json" )
+} catch( any e ) {
+    println( "Invalid array data: #e.message#" )
+}
+```
+
+### Comparison: aiPopulate vs Structured Output
+
+| Feature | `aiPopulate()` | `.structuredOutput()` |
+|---------|----------------|----------------------|
+| Purpose | Manual population | AI extraction |
+| Input | JSON/struct data | Natural language prompt |
+| AI Call | ❌ No (instant) | ✅ Yes (costs tokens) |
+| Use Case | Testing, caching, conversion | Live AI extraction |
+| Type Safety | ✅ Yes | ✅ Yes |
+| Validation | ✅ Yes | ✅ Yes |
+| Best For | Known data, offline processing | Unknown data, AI parsing |
+
+**Use `aiPopulate()` when:**
+- Writing tests with mock data
+- Working with cached responses
+- Converting existing JSON/structs to typed objects
+- No AI interpretation needed
+
+**Use `.structuredOutput()` when:**
+- Extracting data from natural language
+- Need AI to understand and parse content
+- Dealing with unstructured text
+- Real-time data extraction
+
+### Learn More
+
+For complete details on structured output and object population:
+- **[Structured Output Guide](../simple-interactions/structured-output.md)** - Full documentation
+- **[Advanced Chatting](../simple-interactions/advanced-chatting.md#structured-output)** - Integration examples
+- **[Course Lesson 12](../../course/lesson-12-structured-output/)** - Interactive learning

@@ -498,6 +498,213 @@ println( "User: #userData.name#" )
 println( "Purchases: #userData.purchases.len()#" )
 ```
 
+## Structured Output
+
+Get **type-safe, validated responses** using BoxLang classes or struct templates. Unlike `returnFormat: "json"`, structured output provides compile-time type safety and automatic validation.
+
+### Why Structured Output?
+
+- **Type Safety**: Get validated objects with proper types, not generic structs
+- **Automatic Validation**: Schema constraints ensure correct data structure
+- **Better Reliability**: Reduces hallucinations by strictly constraining format
+- **IDE Support**: Full autocomplete and type checking with classes
+- **No Manual Parsing**: Direct access to typed properties and methods
+
+### Using Classes
+
+```java
+class UserProfile {
+    property name="name" type="string";
+    property name="email" type="string";
+    property name="age" type="numeric";
+    property name="skills" type="array";
+    property name="preferences" type="struct";
+}
+
+// Get type-safe response
+profile = aiChat( "Create a user profile for a senior developer" )
+    .structuredOutput( new UserProfile() )
+
+// Access with getters (type-safe)
+println( "Name: #profile.getName()#" )
+println( "Email: #profile.getEmail()#" )
+println( "Age: #profile.getAge()#" )  // Guaranteed numeric
+profile.getSkills().each( skill => println( "  - #skill#" ) )
+```
+
+### Using Struct Templates
+
+```java
+// Define expected structure
+template = {
+    "productId": 0,
+    "productName": "",
+    "price": 0.0,
+    "category": "",
+    "inStock": false,
+    "tags": []
+}
+
+// Get structured response
+product = aiChat( "Generate a product for a laptop" )
+    .structuredOutput( template )
+
+// All fields guaranteed to exist with correct types
+println( "Product: #product.productName#" )
+println( "Price: $#product.price#" )
+println( "In Stock: #product.inStock#" )
+```
+
+### Multi-Turn Conversations with Structured Output
+
+```java
+class Analysis {
+    property name="sentiment" type="string";
+    property name="keyPoints" type="array";
+    property name="score" type="numeric";
+    property name="recommendation" type="string";
+}
+
+conversation = [
+    { role: "system", content: "You are a product review analyzer" },
+    { role: "user", content: "Analyze: Great laptop but expensive" }
+]
+
+// First analysis
+analysis = aiChat( conversation )
+    .structuredOutput( new Analysis() )
+
+println( "Sentiment: #analysis.getSentiment()#" )
+println( "Score: #analysis.getScore()#" )
+
+// Continue conversation with typed context
+conversation.append({
+    role: "assistant",
+    content: serializeJSON({
+        sentiment: analysis.getSentiment(),
+        score: analysis.getScore(),
+        recommendation: analysis.getRecommendation()
+    })
+})
+conversation.append({
+    role: "user",
+    content: "Compare with: Affordable but slow performance"
+})
+
+comparison = aiChat( conversation )
+    .structuredOutput( new Analysis() )
+```
+
+### Extracting Arrays
+
+```java
+class Task {
+    property name="title" type="string";
+    property name="priority" type="string";
+    property name="estimatedHours" type="numeric";
+}
+
+// Extract multiple items
+tasks = aiChat( "Extract tasks from: Finish report by Friday (high, 4hrs), Review code tomorrow (medium, 2hrs), Update docs (low, 1hr)" )
+    .structuredOutput( [ new Task() ] )
+
+// Iterate with full type safety
+tasks.each( task => {
+    println( "#task.getTitle()# [#task.getPriority()#] - #task.getEstimatedHours()#hrs" )
+} )
+```
+
+### Multiple Schemas (Extract Different Types)
+
+```java
+class Customer {
+    property name="name" type="string";
+    property name="email" type="string";
+    property name="phone" type="string";
+}
+
+class Order {
+    property name="orderId" type="string";
+    property name="items" type="array";
+    property name="total" type="numeric";
+}
+
+// Extract multiple related entities
+result = aiChat( "Extract info: John Doe (john@example.com, 555-1234) ordered items A, B, C for $150, order #12345" )
+    .structuredOutputs({
+        "customer": new Customer(),
+        "order": new Order()
+    })
+
+// Access each typed entity
+println( "Customer: #result.customer.getName()#" )
+println( "Email: #result.customer.getEmail()#" )
+println( "Order: #result.order.getOrderId()#" )
+println( "Total: $#result.order.getTotal()#" )
+```
+
+### With Tools
+
+```java
+class WeatherData {
+    property name="temperature" type="numeric";
+    property name="condition" type="string";
+    property name="humidity" type="numeric";
+    property name="forecast" type="string";
+}
+
+weatherTool = aiTool(
+    "get_weather",
+    "Get current weather",
+    ( args ) => {
+        return {
+            temperature: 72,
+            condition: "Sunny",
+            humidity: 45,
+            forecast: "Clear skies all day"
+        }
+    }
+).addParameter( "location", "string", "City name", true )
+
+// Get typed response with tool data
+weather = aiChat( "What's the weather in San Francisco?" )
+    .tools( [ weatherTool ] )
+    .structuredOutput( new WeatherData() )
+
+println( "Temperature: #weather.getTemperature()#°F" )
+println( "Condition: #weather.getCondition()#" )
+println( "Humidity: #weather.getHumidity()#%" )
+```
+
+### Structured Output vs JSON Return Format
+
+| Feature | Structured Output | JSON Return Format |
+|---------|------------------|-------------------|
+| Type Safety | ✅ Full type safety with classes | ❌ Generic structs |
+| Validation | ✅ Schema validation | ⚠️ Manual validation needed |
+| IDE Support | ✅ Autocomplete, type hints | ❌ No type information |
+| Reliability | ✅ Strict schema enforcement | ⚠️ May return invalid JSON |
+| Complexity | Simple classes/templates | Manual parsing logic |
+| Best For | Production code, type safety | Quick prototypes, flexible data |
+
+**When to use Structured Output:**
+- Production applications requiring reliability
+- Type-safe code with compile-time checks
+- Complex nested data structures
+- When consistency is critical
+
+**When to use JSON Return Format:**
+- Quick prototypes or scripts
+- Dynamic/unknown data structures
+- When flexibility > type safety
+
+### Learn More
+
+For complete details on structured output including inheritance, validation, and advanced patterns, see:
+- **[Structured Output Guide](structured-output.md)** - Complete documentation
+- **[Pipeline Integration](../pipelines/structured-output.md)** - Advanced patterns
+- **[Course Lesson 12](../../course/lesson-12-structured-output/)** - Interactive learning
+
 ### XML Return Format for Documents
 
 ```java
