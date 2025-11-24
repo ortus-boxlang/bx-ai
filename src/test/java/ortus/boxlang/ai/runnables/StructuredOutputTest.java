@@ -29,7 +29,7 @@ import ortus.boxlang.runtime.scopes.Key;
 /**
  * Integration tests for structured output functionality with OpenAI
  */
-public class StructuredOutput extends BaseIntegrationTest {
+public class StructuredOutputTest extends BaseIntegrationTest {
 
 	@BeforeEach
 	public void setupEach() {
@@ -53,9 +53,8 @@ public class StructuredOutput extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 			result = aiChat(
-				model = "openai",
 				messages = "Extract the person: John Doe, age 30",
-				returnFormat = new src.test.bx.Person()
+				options = { returnFormat = new src.test.bx.Person() }
 			);
 
 			firstName = result.getFirstName();
@@ -86,9 +85,8 @@ public class StructuredOutput extends BaseIntegrationTest {
 			};
 
 			result = aiChat(
-				model = "openai",
 				messages = "Extract contact info: Name is Jane Smith, email jane@example.com, phone 555-1234",
-				returnFormat = structDef
+				options = { returnFormat = structDef }
 			);
 
 			name = result.name;

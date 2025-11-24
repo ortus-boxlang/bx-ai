@@ -776,19 +776,16 @@ abstract class implements="IAiService" {
 
 		// Class instance - populate and return
 		if( isObject( outputDefinition ) ){
-			println( "Populating class instance..." )
 			return SchemaBuilder::populateClass( outputDefinition, jsonContent );
 		}
 
 		// Array of class instances
 		if( isArray( outputDefinition ) ){
-			println( "Populating array of class instances..." )
 			return SchemaBuilder::populateArray( outputDefinition.first(), jsonContent );
 		}
 
 		// Struct schema - deserialize
 		if( isStruct( outputDefinition ) ){
-			println( "Populating struct..." )
 			return SchemaBuilder::populateStruct( jsonContent );
 		}
 

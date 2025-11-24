@@ -291,11 +291,24 @@ class {
 
 			// Handle default values
 			if( property.keyExists( "defaultValue" ) && !isNull( property.defaultValue ) ) {
-				propertySchema.default = property.defaultValue;
-			} else {
-				// No default means it's required
-				schema.required.append( propertyName );
+				// Ensure boolean defaults are proper booleans
+				if( property.type == "boolean" ) {
+					propertySchema.default = booleanFormat( property.defaultValue );
+				}
+				// Handle numeric types
+				else if( listFindNoCase(
+					"numeric, integer, int, float, double",
+					property.type
+				)  ) {
+					propertySchema.default = numericFormat( property.defaultValue );
+				}
+				else {
+					propertySchema.default = property.defaultValue;
+				}
 			}
+
+			// OpenAI strict mode requires ALL properties in required array
+			schema.required.append( propertyName );
 
 			schema.properties[ propertyName ] = propertySchema;
 		}
