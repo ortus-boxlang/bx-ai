@@ -1,0 +1,43 @@
+/**
+ * Structured Output - Basic Class Example
+ * 
+ * Demonstrates extracting structured data from text into a typed BoxLang class.
+ * The AI automatically parses the text and populates the class with proper types.
+ */
+
+// Define a Person class with typed properties
+class Person {
+    property name="name" type="string";
+    property name="age" type="numeric";
+    property name="email" type="string";
+    property name="occupation" type="string";
+}
+
+println( "=== Basic Structured Output with Class ===" )
+println( "" )
+
+// Extract person information from natural language
+text = "John Doe is a 30-year-old software engineer. You can reach him at john.doe@example.com"
+
+println( "Input text:" )
+println( text )
+println( "" )
+println( "Extracting structured data..." )
+println( "" )
+
+// Use structured output to get typed object
+person = aiChat( "Extract person information from this text: #text#" )
+    .structuredOutput( new Person() )
+
+// Access with type-safe getters
+println( "=== Extracted Person ===" )
+println( "Name: #person.getName()#" )
+println( "Age: #person.getAge()# (type: #person.getAge().getClass().getSimpleName()#)" )
+println( "Email: #person.getEmail()#" )
+println( "Occupation: #person.getOccupation()#" )
+println( "" )
+
+// Demonstrate type safety - age is numeric, not string
+println( "=== Type Safety Demo ===" )
+println( "Age in 5 years: #person.getAge() + 5#" )  // Math works because it's numeric
+println( "Email domain: #listLast(person.getEmail(), '@')#" )

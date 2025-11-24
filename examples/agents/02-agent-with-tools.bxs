@@ -1,0 +1,111 @@
+/**
+ * Agent with Tools Example
+ * 
+ * Demonstrates an AI agent that can call functions to perform actions
+ * and access real-time data. The agent decides when to use tools automatically.
+ */
+
+println( "=== AI Agent with Function Tools ===" )
+println( "" )
+
+// Define tools the agent can use
+
+// 1. Weather lookup tool
+weatherTool = aiTool(
+    name: "get_weather",
+    description: "Get current weather for a city",
+    action: ( city ) => {
+        // Simulate weather API call
+        weatherData = {
+            "San Francisco": { temp: 62, condition: "Foggy", humidity: 75 },
+            "New York": { temp: 45, condition: "Cloudy", humidity: 65 },
+            "Miami": { temp: 78, condition: "Sunny", humidity: 80 },
+            "Seattle": { temp: 52, condition: "Rainy", humidity: 85 }
+        }
+        
+        data = weatherData[ arguments.city ] ?: { temp: 70, condition: "Unknown", humidity: 50 }
+        
+        return {
+            temperature: data.temp,
+            condition: data.condition,
+            humidity: data.humidity,
+            city: arguments.city
+        }
+    }
+).addParameter( "city", "string", "The city name", true )
+
+// 2. Calculator tool
+calcTool = aiTool(
+    name: "calculate",
+    description: "Perform mathematical calculations. Supports +, -, *, /, and parentheses.",
+    action: ( expression ) => {
+        // Simple eval (in production, use a safe math parser)
+        try {
+            result = evaluate( arguments.expression )
+            return { expression: arguments.expression, result: result }
+        } catch( any e ) {
+            return { error: "Invalid expression", expression: arguments.expression }
+        }
+    }
+).addParameter( "expression", "string", "Mathematical expression to evaluate", true )
+
+// 3. Database lookup tool
+userLookupTool = aiTool(
+    name: "lookup_user",
+    description: "Look up user information by email",
+    action: ( email ) => {
+        // Simulate database query
+        users = {
+            "john@example.com": { name: "John Doe", role: "Developer", joined: "2020-01-15" },
+            "jane@example.com": { name: "Jane Smith", role: "Designer", joined: "2021-03-20" },
+            "bob@example.com": { name: "Bob Johnson", role: "Manager", joined: "2019-06-10" }
+        }
+        
+        return users[ arguments.email ] ?: { error: "User not found" }
+    }
+).addParameter( "email", "string", "User's email address", true )
+
+// Create agent with all tools
+agent = aiAgent(
+    name: "SuperAgent",
+    instructions: "You are a helpful assistant with access to weather data, a calculator, and user database. Use these tools when needed to provide accurate information.",
+    tools: [ weatherTool, calcTool, userLookupTool ]
+)
+
+println( "Agent created with #agent.getConfig().tools.len()# tools" )
+println( "" )
+
+// Test 1: Weather query
+println( "=== Test 1: Weather Query ===" )
+println( "User: What's the weather in San Francisco?" )
+response = agent.run( "What's the weather in San Francisco?" )
+println( "Agent: #response#" )
+println( "" )
+
+// Test 2: Calculation
+println( "=== Test 2: Calculation ===" )
+println( "User: What is 45 * 23 + 100?" )
+response = agent.run( "What is 45 * 23 + 100?" )
+println( "Agent: #response#" )
+println( "" )
+
+// Test 3: User lookup
+println( "=== Test 3: User Lookup ===" )
+println( "User: Can you find information about john@example.com?" )
+response = agent.run( "Can you find information about john@example.com?" )
+println( "Agent: #response#" )
+println( "" )
+
+// Test 4: Multiple tools in one query
+println( "=== Test 4: Multiple Tools ===" )
+println( "User: What's the weather in Miami and New York? Also calculate the temperature difference." )
+response = agent.run( "What's the weather in Miami and New York? Also calculate the temperature difference." )
+println( "Agent: #response#" )
+println( "" )
+
+// Test 5: No tool needed
+println( "=== Test 5: No Tool Needed ===" )
+println( "User: What is the capital of France?" )
+response = agent.run( "What is the capital of France?" )
+println( "Agent: #response#" )
+println( "(Agent answered from knowledge, no tool call needed)" )

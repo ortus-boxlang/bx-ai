@@ -1,0 +1,41 @@
+/**
+ * Example 2: Using Struct Templates
+ *
+ * Quick schemas without creating class files.
+ * Perfect for prototyping and one-off scripts.
+ */
+
+// Define structure inline
+productTemplate = {
+    name: "",
+    price: 0.0,
+    category: "",
+    inStock: false,
+    rating: 0.0
+}
+
+// Extract product data
+product = aiChat(
+    "Extract product: Premium Wireless Mouse, $49.99, Electronics, In Stock, 4.5 stars",
+    {},
+    { returnFormat = productTemplate }
+)
+
+println( "=== Product Information ===" )
+println( "Name: #product.name#" )
+println( "Price: $#numberFormat(product.price, '0.00')#" )
+println( "Category: #product.category#" )
+println( "In Stock: #product.inStock#" )
+println( "Rating: #product.rating# stars" )
+
+// Try with different input
+product2 = aiChat(
+    "Gaming Keyboard - $129.99, category: Electronics, out of stock, rated 4.8/5",
+    {},
+    { returnFormat = productTemplate }
+)
+
+println( "\n=== Product 2 ===" )
+println( "Name: #product2.name#" )
+println( "Price: $#numberFormat(product2.price, '0.00')#" )
+println( "In Stock: #product2.inStock#" )

@@ -1,0 +1,117 @@
+/**
+ * Structured Output - aiPopulate() Example
+ *
+ * Demonstrates manual object population from JSON data without AI calls.
+ * Perfect for testing, caching, and working with existing data.
+ */
+
+// Define domain classes
+class Employee {
+    property name="id" type="string";
+    property name="name" type="string";
+    property name="department" type="string";
+    property name="salary" type="numeric";
+    property name="active" type="boolean";
+}
+
+println( "=== aiPopulate() - Manual Object Population ===" )
+println( "" )
+
+// Example 1: Populate from JSON string
+println( "1. From JSON String" )
+jsonData = '{"id":"E001","name":"Alice Johnson","department":"Engineering","salary":95000,"active":true}'
+employee = aiPopulate( new Employee(), jsonData )
+
+println( "Employee: #employee.getName()#" )
+println( "Department: #employee.getDepartment()#" )
+println( "Salary: $#employee.getSalary()#" )
+println( "" )
+
+// Example 2: Populate from struct
+println( "2. From Struct" )
+structData = {
+    "id": "E002",
+    "name": "Bob Smith",
+    "department": "Marketing",
+    "salary": 75000,
+    "active": true
+}
+employee2 = aiPopulate( new Employee(), structData )
+
+println( "Employee: #employee2.getName()#" )
+println( "Department: #employee2.getDepartment()#" )
+println( "" )
+
+// Example 3: Populate array from JSON
+println( "3. From JSON Array" )
+jsonArray = '[
+    {"id":"E003","name":"Carol White","department":"Sales","salary":80000,"active":true},
+    {"id":"E004","name":"David Brown","department":"Engineering","salary":98000,"active":false}
+]'
+employees = aiPopulate( [ new Employee() ], jsonArray )
+
+println( "Loaded #employees.len()# employees:" )
+employees.each( emp => {
+    println( "  • #emp.getName()# - #emp.getDepartment()# ($#emp.getSalary()#)" )
+} )
+println( "" )
+
+// Example 4: Cache simulation
+println( "4. Caching Use Case" )
+println( "Simulating cached AI response..." )
+
+// Imagine this came from a cache
+cachedResponse = {
+    "id": "E005",
+    "name": "Eve Davis",
+    "department": "HR",
+    "salary": 72000,
+    "active": true
+}
+
+// Instantly populate without AI call
+cachedEmployee = aiPopulate( new Employee(), cachedResponse )
+println( "Loaded from cache: #cachedEmployee.getName()#" )
+println( "" )
+
+// Example 5: Testing mock data
+println( "5. Testing with Mock Data" )
+
+function createTestEmployee( name, dept, salary ) {
+    return aiPopulate( new Employee(), {
+        "id": "TEST-#hash(name)#",
+        "name": arguments.name,
+        "department": arguments.dept,
+        "salary": arguments.salary,
+        "active": true
+    } )
+}
+
+testEmp = createTestEmployee( "Test User", "QA", 70000 )
+println( "Test employee created: #testEmp.getName()#" )
+println( "Department: #testEmp.getDepartment()#" )
+println( "" )
+
+// Example 6: Struct template population
+println( "6. With Struct Template" )
+template = {
+    "title": "",
+    "priority": "",
+    "completed": false
+}
+
+taskData = '{"title":"Review code","priority":"high","completed":false}'
+task = aiPopulate( template, taskData )
+
+println( "Task: #task.title#" )
+println( "Priority: #task.priority#" )
+println( "Completed: #task.completed#" )
+println( "" )
+
+println( "=== Summary ===" )
+println( "aiPopulate() is perfect for:" )
+println( "  • Converting cached AI responses to objects" )
+println( "  • Creating mock data for tests" )
+println( "  • Transforming API responses to typed objects" )
+println( "  • Working with existing JSON data" )
+println( "  • No AI call needed = instant and free!" )

@@ -2,42 +2,57 @@
 
 Comprehensive examples demonstrating all features of the BoxLang AI module, organized by complexity and use case.
 
-## 📁 Example Files
+## 📁 Example Organization
 
-Practical examples demonstrating key features:
+All examples are organized into folders by topic for easy navigation.
 
-### Basic Features
+### `/basic` - Getting Started
+
+Essential examples for learning the basics:
 
 - **ollama-example.bxs** - Using local AI with Ollama (no API key needed)
 - **streaming-example.bxs** - Real-time streaming output
 - **return-formats-example.bxs** - Different response formats (single, all, raw)
-- **runnable-example.bxs** - Pipeline workflows and runnables
+- **json-xml-formats-example.bxs** - JSON and XML output formats
 
-### Advanced Features
+### `/structured` - Structured Output 🆕
 
-- **vision-example.bxs** - Image analysis with vision-capable models (NEW!)
-- **embeddings-example.bxs** - Vector embeddings for semantic search
-- **token-counting-example.bxs** - Estimating and managing token usage
-- **json-xml-formats-example.bxs** - Structured output formats
-- **memory-file.bxs** - File-based conversation memory
+Type-safe AI responses with classes and templates:
 
-### `/agents` - AI Agents
-
-Autonomous agents with memory and tools:
-
-- **basic-agent.bxs** - Simple agent with memory
-- **agent-with-tools.bxs** - Agent that can execute functions
-- **customer-support-agent.bxs** - Support bot with multiple tools
-- **research-agent.bxs** - Agent that searches and synthesizes information
+- **01-basic-class.bxs** - Extract data into typed classes
+- **02-struct-template.bxs** - Using struct templates for quick extraction
+- **03-array-extraction.bxs** - Extracting multiple items into arrays
+- **04-multiple-schemas.bxs** - Extract different entity types simultaneously
+- **05-aipopulate.bxs** - Manual population from JSON (testing/caching)
+- **06-pipeline-structured-output.bxs** - Structured output in reusable pipelines
 
 ### `/pipelines` - Pipeline Workflows
 
 Composable multi-step AI workflows:
 
-- **simple-pipeline.bxs** - Basic pipeline with transforms
-- **message-template-pipeline.bxs** - Reusable prompt templates
-- **multi-model-pipeline.bxs** - Chaining different AI models
-- **streaming-pipeline.bxs** - Real-time pipeline execution
+- **runnable-example.bxs** - Basic pipeline workflows and runnables
+- **01-simple-pipeline.bxs** - Message templates, transformations, and reusable patterns
+- **02-multi-model-pipeline.bxs** - Using different AI models in workflows
+- **03-streaming-pipeline.bxs** - Real-time pipeline execution with progress tracking
+- **04-message-templates.bxs** - Reusable prompt templates and few-shot learning
+
+### `/agents` - AI Agents
+
+Autonomous agents with memory and tools:
+
+- **01-basic-agent.bxs** - Simple agent with memory and context
+- **02-agent-with-tools.bxs** - Agent with weather, calculator, and database tools
+- **03-customer-support-agent.bxs** - Production-ready support bot with multiple tools
+- **04-research-agent.bxs** - Multi-source research agent with citations
+
+### `/advanced` - Advanced Features
+
+Advanced capabilities and integrations:
+
+- **vision-example.bxs** - Image analysis with vision-capable models
+- **embeddings-example.bxs** - Vector embeddings for semantic search
+- **token-counting-example.bxs** - Estimating and managing token usage
+- **memory-file.bxs** - File-based conversation memory
 
 ## 🚀 Quick Start
 
@@ -45,19 +60,25 @@ Composable multi-step AI workflows:
 
 ```bash
 # Local AI (no API key needed)
-boxlang examples/ollama-example.bxs
+boxlang examples/basic/ollama-example.bxs
 
 # Streaming responses
-boxlang examples/streaming-example.bxs
+boxlang examples/basic/streaming-example.bxs
 
-# Vision/image analysis (NEW!)
-boxlang examples/vision-example.bxs
+# Structured output - Extract data into typed classes
+boxlang examples/structured/01-basic-class.bxs
+
+# Structured output - Extract multiple items
+boxlang examples/structured/03-array-extraction.bxs
+
+# Vision/image analysis
+boxlang examples/advanced/vision-example.bxs
 
 # Vector embeddings
-boxlang examples/embeddings-example.bxs
+boxlang examples/advanced/embeddings-example.bxs
 
 # Pipeline workflows
-boxlang examples/runnable-example.bxs
+boxlang examples/pipelines/runnable-example.bxs
 ```
 
 ### Environment Setup
@@ -105,43 +126,77 @@ ollama serve
 
 **🟢 Beginner**
 
-- `ollama-example.bxs` - Local AI basics
-- `streaming-example.bxs` - Real-time responses
-- `return-formats-example.bxs` - Understanding responses
+- `basic/ollama-example.bxs` - Local AI basics
+- `basic/streaming-example.bxs` - Real-time responses
+- `basic/return-formats-example.bxs` - Understanding responses
+- `structured/01-basic-class.bxs` - Type-safe data extraction
 
 **🟡 Intermediate**
 
-- `vision-example.bxs` - Image analysis (NEW!)
-- `memory-file.bxs` - Managing conversation history
-- `runnable-example.bxs` - Pipeline fundamentals
-- `json-xml-formats-example.bxs` - Structured output
+- `structured/02-struct-template.bxs` - Quick structured extraction
+- `structured/03-array-extraction.bxs` - Extract multiple items
+- `structured/04-multiple-schemas.bxs` - Multiple entity types
+- `pipelines/01-simple-pipeline.bxs` - Basic pipeline patterns
+- `pipelines/04-message-templates.bxs` - Reusable templates
+- `agents/01-basic-agent.bxs` - Agent with memory
+- `agents/02-agent-with-tools.bxs` - Agent with function calling
+- `advanced/vision-example.bxs` - Image analysis
+- `advanced/memory-file.bxs` - Managing conversation history
+- `pipelines/runnable-example.bxs` - Pipeline fundamentals
+- `basic/json-xml-formats-example.bxs` - JSON/XML output
 
 **🔴 Advanced**
 
-- `embeddings-example.bxs` - Vector search and semantic similarity
-- `token-counting-example.bxs` - Cost optimization
+- `structured/05-aipopulate.bxs` - Manual population & caching
+- `structured/06-pipeline-structured-output.bxs` - Pipeline integration
+- `pipelines/02-multi-model-pipeline.bxs` - Multi-model workflows
+- `pipelines/03-streaming-pipeline.bxs` - Streaming pipelines
+- `agents/03-customer-support-agent.bxs` - Production support bot
+- `agents/04-research-agent.bxs` - Multi-source research agent
+- `advanced/embeddings-example.bxs` - Vector search and semantic similarity
+- `advanced/token-counting-example.bxs` - Cost optimization
 
 ### By Use Case
 
 **💬 Chat & Conversation**
 
-- `streaming-example.bxs` - Real-time chat responses
-- `memory-file.bxs` - Conversation history
+- `basic/streaming-example.bxs` - Real-time chat responses
+- `advanced/memory-file.bxs` - Conversation history
 
-**👁️ Vision & Images (NEW!)**
+**🎯 Structured Output (NEW!)**
 
-- `vision-example.bxs` - Image analysis, document scanning, multi-image comparison
+- `structured/01-basic-class.bxs` - Extract into typed classes
+- `structured/02-struct-template.bxs` - Quick struct templates
+- `structured/03-array-extraction.bxs` - Extract multiple items
+- `structured/04-multiple-schemas.bxs` - Multiple entity types
+- `structured/05-aipopulate.bxs` - Manual population & caching
+- `structured/06-pipeline-structured-output.bxs` - Pipeline integration
 
-**🔄 Workflows**
+**👁️ Vision & Images**
 
-- `runnable-example.bxs` - Pipeline basics and chaining
-- `return-formats-example.bxs` - Response format options
+- `advanced/vision-example.bxs` - Image analysis, document scanning, multi-image comparison
+
+**🔄 Workflows & Pipelines**
+
+- `pipelines/runnable-example.bxs` - Pipeline basics and chaining
+- `pipelines/01-simple-pipeline.bxs` - Message templates and transformations
+- `pipelines/02-multi-model-pipeline.bxs` - Multi-model workflows
+- `pipelines/03-streaming-pipeline.bxs` - Real-time streaming
+- `pipelines/04-message-templates.bxs` - Reusable prompt patterns
+- `basic/return-formats-example.bxs` - Response format options
+
+**🤖 AI Agents**
+
+- `agents/01-basic-agent.bxs` - Memory and context
+- `agents/02-agent-with-tools.bxs` - Function calling
+- `agents/03-customer-support-agent.bxs` - Production support bot
+- `agents/04-research-agent.bxs` - Research and synthesis
 
 **📊 Data Processing**
 
-- `embeddings-example.bxs` - Semantic search and similarity
-- `token-counting-example.bxs` - Cost estimation
-- `json-xml-formats-example.bxs` - Structured output
+- `advanced/embeddings-example.bxs` - Semantic search and similarity
+- `advanced/token-counting-example.bxs` - Cost estimation
+- `basic/json-xml-formats-example.bxs` - JSON/XML formats
 
 ### By Provider
 

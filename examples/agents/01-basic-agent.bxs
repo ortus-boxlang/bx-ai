@@ -1,0 +1,65 @@
+/**
+ * Basic Agent Example
+ * 
+ * Demonstrates a simple AI agent with memory that can maintain context
+ * across multiple interactions. Perfect for chatbots and conversational interfaces.
+ */
+
+println( "=== Basic AI Agent with Memory ===" )
+println( "" )
+
+// Create an agent with simple memory
+agent = aiAgent(
+    name: "Assistant",
+    description: "A helpful AI assistant with memory"
+)
+
+println( "Agent created: #agent.getName()#" )
+println( "" )
+
+// First interaction - introduce yourself
+println( "User: My name is Alice and I'm learning BoxLang AI" )
+response1 = agent.run( "My name is Alice and I'm learning BoxLang AI" )
+println( "Agent: #response1#" )
+println( "" )
+
+// Second interaction - agent remembers context
+println( "User: What's my name?" )
+response2 = agent.run( "What's my name?" )
+println( "Agent: #response2#" )
+println( "" )
+
+// Third interaction - agent remembers what you're learning
+println( "User: What am I learning about?" )
+response3 = agent.run( "What am I learning about?" )
+println( "Agent: #response3#" )
+println( "" )
+
+// Add more context
+println( "User: I'm particularly interested in agents and pipelines" )
+response4 = agent.run( "I'm particularly interested in agents and pipelines" )
+println( "Agent: #response4#" )
+println( "" )
+
+// Agent uses accumulated context
+println( "User: Can you summarize what you know about me?" )
+response5 = agent.run( "Can you summarize what you know about me?" )
+println( "Agent: #response5#" )
+println( "" )
+
+// Check memory state
+println( "=== Memory State ===" )
+memoryConfig = agent.getConfig()
+println( "Messages in memory: #memoryConfig.memories.first().getMessageCount()#" )
+println( "" )
+
+// Clear memory and start fresh
+println( "=== Clearing Memory ===" )
+agent.clearMemory()
+println( "Memory cleared" )
+println( "" )
+
+println( "User: What's my name?" )
+response6 = agent.run( "What's my name?" )
+println( "Agent: #response6#" )
+println( "(Agent no longer remembers your name)" )

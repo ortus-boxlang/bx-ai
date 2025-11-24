@@ -1,0 +1,157 @@
+/**
+ * Customer Support Agent Example
+ * 
+ * A realistic customer support bot with multiple tools for account lookup,
+ * order tracking, and knowledge base search. Demonstrates a production-ready agent.
+ */
+
+println( "=== Customer Support AI Agent ===" )
+println( "" )
+
+// Mock databases
+customers = {
+    "C123": { 
+        name: "Alice Johnson", 
+        email: "alice@example.com", 
+        tier: "Premium",
+        accountBalance: 1500.00,
+        joinDate: "2022-06-15"
+    },
+    "C456": { 
+        name: "Bob Smith", 
+        email: "bob@example.com", 
+        tier: "Standard",
+        accountBalance: 450.00,
+        joinDate: "2023-01-20"
+    }
+}
+
+orders = {
+    "ORD-001": { 
+        customerId: "C123", 
+        status: "Shipped", 
+        items: ["Laptop", "Mouse"], 
+        total: 1299.99,
+        trackingNumber: "TRK-ABC123"
+    },
+    "ORD-002": { 
+        customerId: "C456", 
+        status: "Processing", 
+        items: ["Keyboard"], 
+        total: 89.99,
+        trackingNumber: null
+    }
+}
+
+knowledgeBase = {
+    "refund": "Refunds are processed within 5-7 business days. Premium members get priority processing within 2-3 days.",
+    "shipping": "Standard shipping takes 5-7 business days. Express shipping (Premium members only) takes 2-3 days.",
+    "returns": "Items can be returned within 30 days of purchase. Must be in original packaging.",
+    "account": "You can upgrade to Premium for $9.99/month to get faster shipping and priority support."
+}
+
+// Define support tools
+
+accountTool = aiTool(
+    name: "lookup_account",
+    description: "Look up customer account information",
+    action: ( customerId ) => {
+        customer = customers[ arguments.customerId ]
+        if ( isNull( customer ) ) {
+            return { error: "Customer not found", customerId: arguments.customerId }
+        }
+        return customer
+    }
+).addParameter( "customerId", "string", "Customer ID (format: C123)", true )
+
+orderTool = aiTool(
+    name: "lookup_order",
+    description: "Look up order status and details",
+    action: ( orderId ) => {
+        order = orders[ arguments.orderId ]
+        if ( isNull( order ) ) {
+            return { error: "Order not found", orderId: arguments.orderId }
+        }
+        return order
+    }
+).addParameter( "orderId", "string", "Order ID (format: ORD-001)", true )
+
+kbSearchTool = aiTool(
+    name: "search_knowledge_base",
+    description: "Search company knowledge base for policies and information",
+    action: ( topic ) => {
+        topic = lCase( arguments.topic )
+        result = ""
+        
+        // Simple keyword search
+        for ( key in knowledgeBase ) {
+            if ( topic.contains( key ) ) {
+                result = knowledgeBase[ key ]
+                break
+            }
+        }
+        
+        return result.len() ? result : "No information found for that topic. Please contact a human agent."
+    }
+).addParameter( "topic", "string", "Topic to search for (refund, shipping, returns, account, etc.)", true )
+
+// Create support agent
+supportAgent = aiAgent(
+    name: "SupportBot",
+    instructions: "You are a friendly customer support agent. Help customers with their questions about accounts, orders, and policies. 
+    
+    Guidelines:
+    - Always be polite and empathetic
+    - Use tools to look up accurate information
+    - If you can't help, suggest contacting human support
+    - For Premium members, mention their benefits
+    - Always provide order tracking numbers when available",
+    tools: [ accountTool, orderTool, kbSearchTool ]
+)
+
+println( "Support agent initialized with #supportAgent.getConfig().tools.len()# tools" )
+println( "" )
+
+// Scenario 1: Account inquiry
+println( "=== Scenario 1: Account Balance Inquiry ===" )
+println( "Customer: Hi, I'm customer C123. What's my account balance?" )
+response = supportAgent.run( "Hi, I'm customer C123. What's my account balance?" )
+println( "SupportBot: #response#" )
+println( "" )
+
+// Scenario 2: Order tracking
+println( "=== Scenario 2: Order Status Check ===" )
+println( "Customer: Can you check the status of order ORD-001?" )
+response = supportAgent.run( "Can you check the status of order ORD-001?" )
+println( "SupportBot: #response#" )
+println( "" )
+
+// Scenario 3: Policy question
+println( "=== Scenario 3: Return Policy Question ===" )
+println( "Customer: What is your return policy?" )
+response = supportAgent.run( "What is your return policy?" )
+println( "SupportBot: #response#" )
+println( "" )
+
+// Scenario 4: Complex multi-tool query
+println( "=== Scenario 4: Complex Query ===" )
+println( "Customer: I'm customer C456, can you check my order ORD-002 status and tell me about shipping options?" )
+response = supportAgent.run( "I'm customer C456, can you check my order ORD-002 status and tell me about shipping options?" )
+println( "SupportBot: #response#" )
+println( "" )
+
+// Scenario 5: Follow-up (using memory)
+println( "=== Scenario 5: Follow-up Question ===" )
+println( "Customer: When will my order be shipped?" )
+response = supportAgent.run( "When will my order be shipped?" )
+println( "SupportBot: #response#" )
+println( "(Agent remembers context from previous query)" )
+println( "" )
+
+println( "=== Summary ===" )
+println( "This support agent demonstrates:" )
+println( "  • Multiple specialized tools" )
+println( "  • Context-aware responses" )
+println( "  • Policy enforcement" )
+println( "  • Multi-step problem solving" )
+println( "  • Memory across conversation" )

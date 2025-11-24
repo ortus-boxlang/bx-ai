@@ -1,0 +1,176 @@
+/**
+ * Streaming Pipeline Example
+ * 
+ * Demonstrates real-time streaming responses through pipelines,
+ * with progress tracking and chunk processing.
+ */
+
+println( "=== Streaming Pipeline Examples ===" )
+println( "" )
+
+// Example 1: Basic streaming pipeline
+println( "1. Basic Streaming Pipeline" )
+println( "Generating story..." )
+println( "=" .repeatString( 60 ) )
+
+storyGenerator = aiMessage()
+    .system( "You are a creative storyteller" )
+    .user( "Write a short story about ${topic}" )
+    .toDefaultModel()
+
+fullText = ""
+chunkCount = 0
+
+storyGenerator.stream(
+    ( chunk ) => {
+        content = chunk.choices?.first()?.delta?.content ?: ""
+        fullText &= content
+        chunkCount++
+        writeOutput( content )
+        flush()
+    },
+    { topic: "a robot learning to paint" },
+    { temperature: 0.8 }
+)
+
+println( "" )
+println( "=" .repeatString( 60 ) )
+println( "Received #chunkCount# chunks, #fullText.len()# characters" )
+println( "" )
+
+// Example 2: Streaming with progress indicators
+println( "2. Streaming with Progress Tracking" )
+println( "" )
+
+explainer = aiMessage()
+    .user( "Explain ${concept} in detail" )
+    .toDefaultModel()
+
+println( "Explaining AI pipelines..." )
+println( "" )
+
+fullResponse = ""
+wordCount = 0
+progressMarkers = [ 100, 200, 300, 400, 500 ]
+
+explainer.stream(
+    ( chunk ) => {
+        content = chunk.choices?.first()?.delta?.content ?: ""
+        fullResponse &= content
+        
+        // Update word count
+        if ( content.trim().len() ) {
+            wordCount = fullResponse.split( " " ).len()
+        }
+        
+        // Show progress at milestones
+        if ( progressMarkers.len() && wordCount >= progressMarkers.first() ) {
+            milestone = progressMarkers.first()
+            progressMarkers.deleteAt( 1 )
+            println( "" )
+            println( "[Progress: #milestone# words generated]" )
+            println( "" )
+        }
+        
+        writeOutput( content )
+        flush()
+    },
+    { concept: "AI pipelines" },
+    { max_tokens: 500 }
+)
+
+println( "" )
+println( "" )
+println( "Final word count: #wordCount# words" )
+println( "" )
+
+// Example 3: Streaming with line buffering
+println( "3. Streaming with Line Buffering" )
+println( "Generating list..." )
+println( "" )
+
+listGenerator = aiMessage()
+    .user( "List 5 ${items}" )
+    .toDefaultModel()
+
+buffer = ""
+lineNumber = 0
+
+listGenerator.stream(
+    ( chunk ) => {
+        content = chunk.choices?.first()?.delta?.content ?: ""
+        buffer &= content
+        
+        // Process complete lines
+        while ( buffer.contains( chr(10) ) ) {
+            lineEnd = buffer.find( chr(10) )
+            line = buffer.left( lineEnd ).trim()
+            buffer = buffer.right( buffer.len() - lineEnd - 1 )
+            
+            if ( line.len() ) {
+                lineNumber++
+                println( "Line #lineNumber#: #line#" )
+            }
+        }
+    },
+    { items: "benefits of using AI pipelines" }
+)
+
+// Print remaining buffer
+if ( buffer.trim().len() ) {
+    lineNumber++
+    println( "Line #lineNumber#: #buffer.trim()#" )
+}
+
+println( "" )
+println( "Total lines: #lineNumber#" )
+println( "" )
+
+// Example 4: Streaming with transformation
+println( "4. Streaming with Real-time Transformation" )
+println( "Generating and analyzing..." )
+println( "" )
+
+codeGenerator = aiMessage()
+    .user( "Write a BoxLang function to ${task}" )
+    .toDefaultModel()
+
+fullCode = ""
+codeBlockDetected = false
+
+codeGenerator.stream(
+    ( chunk ) => {
+        content = chunk.choices?.first()?.delta?.content ?: ""
+        fullCode &= content
+        
+        // Detect code blocks
+        if ( content.contains( "```" ) ) {
+            codeBlockDetected = !codeBlockDetected
+            if ( codeBlockDetected ) {
+                writeOutput( chr(27) & "[32m" )  // Green color for code
+            } else {
+                writeOutput( chr(27) & "[0m" )   // Reset color
+            }
+        }
+        
+        writeOutput( content )
+        flush()
+    },
+    { task: "calculate factorial recursively" },
+    { temperature: 0.3 }
+)
+
+println( "" )
+println( "" )
+
+// Count lines of code
+codeLines = fullCode.split( chr(10) ).len()
+println( "Generated #codeLines# lines of code" )
+println( "" )
+
+println( "=== Streaming Pipeline Benefits ===" )
+println( "✓ Real-time user feedback" )
+println( "✓ Better perceived performance" )
+println( "✓ Progress tracking and indicators" )
+println( "✓ Early cancellation opportunity" )
+println( "✓ Chunk-by-chunk processing" )

@@ -1,0 +1,57 @@
+/**
+ * Example 3: Extracting Arrays of Structured Data
+ *
+ * Extract multiple items in one request.
+ * Perfect for parsing lists, tables, or multiple records.
+ */
+
+class Task {
+    property name="title" type="string";
+    property name="priority" type="string";
+    property name="assignee" type="string";
+    property name="dueDate" type="string";
+}
+
+// Extract multiple tasks
+text = "
+    High priority: Fix login bug - assigned to Alice - due Friday
+    Medium priority: Update documentation - assigned to Bob - due next week
+    Low priority: Refactor utility functions - assigned to Carol - no deadline
+    High priority: Review pull requests - assigned to Alice - due today
+"
+
+tasks = aiChat(
+    "Extract all tasks from: #text#",
+    {},
+    { returnFormat = [new Task()] }
+)
+
+println( "=== Extracted #tasks.len()# Tasks ===\n" )
+
+tasks.each( (task, index) => {
+    println( "Task ##index#:" )
+    println( "  Title: #task.getTitle()#" )
+    println( "  Priority: #task.getPriority()#" )
+    println( "  Assignee: #task.getAssignee()#" )
+    println( "  Due: #task.getDueDate()#" )
+    println( "" )
+} )
+
+// Filter high priority
+highPriority = tasks.filter( t => t.getPriority() == "High" )
+println( "High Priority Tasks: #highPriority.len()#" )
+
+// Group by assignee
+byAssignee = {}
+tasks.each( task => {
+    assignee = task.getAssignee()
+    if( !byAssignee.keyExists(assignee) ) {
+        byAssignee[assignee] = []
+    }
+    byAssignee[assignee].append(task)
+} )
+
+println( "\n=== Tasks by Assignee ===" )
+byAssignee.each( (assignee, assigneeTasks) => {
+    println( "#assignee#: #assigneeTasks.len()# tasks" )
+} )

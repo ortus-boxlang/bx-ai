@@ -1,0 +1,180 @@
+/**
+ * Message Template Pipeline Example
+ * 
+ * Demonstrates creating reusable message templates with variables,
+ * system prompts, and complex prompt engineering patterns.
+ */
+
+println( "=== Message Template Pipelines ===" )
+println( "" )
+
+// Example 1: Simple template with variables
+println( "1. Variable Substitution Template" )
+println( "" )
+
+translator = aiMessage()
+    .system( "You are a professional translator" )
+    .user( "Translate this ${from_lang} text to ${to_lang}: ${text}" )
+    .toDefaultModel()
+    .transform( r => r.content )
+
+// Reuse template with different inputs
+result1 = translator.run({
+    from_lang: "English",
+    to_lang: "Spanish",
+    text: "Hello, how are you today?"
+})
+println( "EN → ES: #result1#" )
+
+result2 = translator.run({
+    from_lang: "English",
+    to_lang: "French",
+    text: "Good morning, welcome to our store"
+})
+println( "EN → FR: #result2#" )
+println( "" )
+
+// Example 2: Multi-role conversation template
+println( "2. Multi-Role Conversation Template" )
+println( "" )
+
+reviewer = aiMessage()
+    .system( "You are a ${expertise} expert providing ${tone} reviews" )
+    .user( "Review this ${item_type}: ${item}" )
+    .toDefaultModel()
+    .transform( r => r.content )
+
+// Technical review
+techReview = reviewer.run({
+    expertise: "software engineering",
+    tone: "technical and detailed",
+    item_type: "code",
+    item: "function calculateTotal(items) { return items.reduce((sum, i) => sum + i.price, 0) }"
+})
+println( "Technical Review:" )
+println( techReview )
+println( "" )
+
+// Creative review
+creativeReview = reviewer.run({
+    expertise: "creative writing",
+    tone: "encouraging and constructive",
+    item_type: "story opening",
+    item: "The rain fell hard against the window as Sarah stared into the darkness."
+})
+println( "Creative Review:" )
+println( creativeReview )
+println( "" )
+
+// Example 3: Few-shot learning template
+println( "3. Few-Shot Learning Template" )
+println( "" )
+
+classifier = aiMessage()
+    .system( "You are a sentiment classifier. Classify text as positive, negative, or neutral." )
+    .user( "Positive example: 'I love this product!' → positive" )
+    .assistant( "Understood. I'll classify sentiment as positive, negative, or neutral." )
+    .user( "Negative example: 'Terrible experience, very disappointed' → negative" )
+    .assistant( "Got it. I'll identify negative sentiment." )
+    .user( "Now classify: ${text}" )
+    .toDefaultModel()
+    .transform( r => lCase(r.content.trim()) )
+
+tests = [
+    "This is absolutely amazing!",
+    "I'm very unhappy with the service",
+    "It's okay, nothing special"
+]
+
+println( "Sentiment Classification:" )
+tests.each( text => {
+    sentiment = classifier.run({ text: text })
+    println( "'#text#' → #sentiment#" )
+} )
+println( "" )
+
+// Example 4: Chain-of-thought template
+println( "4. Chain-of-Thought Reasoning Template" )
+println( "" )
+
+reasoner = aiMessage()
+    .system( "You are a logical problem solver. Always show your reasoning step by step." )
+    .user( "Problem: ${problem}
+
+Think through this step by step:
+1. Understand what is being asked
+2. Identify key information
+3. Plan the solution
+4. Execute the plan
+5. Verify the answer
+
+Show your work:" )
+    .toDefaultModel()
+    .transform( r => r.content )
+
+problem = "If a train travels 120 miles in 2 hours, then slows down and travels 90 miles in 3 hours, what is its average speed for the entire journey?"
+
+result = reasoner.run({ problem: problem })
+println( "Chain-of-Thought Solution:" )
+println( result )
+println( "" )
+
+// Example 5: Template composition
+println( "5. Composable Template Pattern" )
+println( "" )
+
+// Base analyzer template
+baseAnalyzer = aiMessage()
+    .system( "You are an expert ${domain} analyst" )
+    .user( "${instruction}: ${content}" )
+
+// Extend for different domains
+sentimentAnalyzer = baseAnalyzer
+    .to( aiModel( "openai", { temperature: 0.3 } ) )
+    .transform( r => {
+        return {
+            analysis: r.content,
+            domain: "sentiment",
+            timestamp: now()
+        }
+    } )
+
+complexityAnalyzer = baseAnalyzer
+    .to( aiModel( "openai", { temperature: 0.2 } ) )
+    .transform( r => {
+        return {
+            analysis: r.content,
+            domain: "complexity",
+            timestamp: now()
+        }
+    } )
+
+text = "The implementation uses a recursive algorithm with memoization for optimal performance."
+
+sentiment = sentimentAnalyzer.run({
+    domain: "technical writing",
+    instruction: "Analyze the tone and clarity",
+    content: text
+})
+
+complexity = complexityAnalyzer.run({
+    domain: "code complexity",
+    instruction: "Rate the complexity level (1-5) and explain",
+    content: text
+})
+
+println( "Sentiment Analysis:" )
+println( sentiment.analysis )
+println( "" )
+
+println( "Complexity Analysis:" )
+println( complexity.analysis )
+println( "" )
+
+println( "=== Message Template Benefits ===" )
+println( "✓ Reusable prompt patterns" )
+println( "✓ Consistent prompt engineering" )
+println( "✓ Easy to test and iterate" )
+println( "✓ Version control for prompts" )
+println( "✓ Few-shot learning support" )
+println( "✓ Template composition" )

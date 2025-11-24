@@ -1,0 +1,82 @@
+/**
+ * Structured Output - Array Extraction Example
+ *
+ * Demonstrates extracting multiple items from text into an array of typed objects.
+ * Perfect for extracting lists, tasks, products, etc.
+ */
+
+// Define a Task class
+class Task {
+    property name="title" type="string";
+    property name="priority" type="string";
+    property name="estimatedHours" type="numeric";
+    property name="assignee" type="string";
+}
+
+println( "=== Extracting Arrays with Structured Output ===" )
+println( "" )
+
+// Text containing multiple tasks
+taskList = "Project tasks:
+1. Finish quarterly report - high priority, 4 hours, assigned to John
+2. Review pull requests - medium priority, 2 hours, assigned to Sarah
+3. Update documentation - low priority, 3 hours, assigned to Mike
+4. Fix critical bug - high priority, 6 hours, assigned to Lisa"
+
+println( "Task list:" )
+println( taskList )
+println( "" )
+println( "Extracting tasks..." )
+println( "" )
+
+// Extract array of tasks (note the array syntax: [ new Task() ])
+tasks = aiChat( "Extract all tasks from this list: #taskList#" )
+    .structuredOutput( [ new Task() ] )
+
+// Iterate and display
+println( "=== Extracted Tasks ===" )
+println( "Total tasks: #tasks.len()#" )
+println( "" )
+
+tasks.each( ( task, index ) => {
+    println( "Task ##index#: #task.getTitle()#" )
+    println( "  Priority: #task.getPriority()#" )
+    println( "  Estimated: #task.getEstimatedHours()# hours" )
+    println( "  Assignee: #task.getAssignee()#" )
+    println( "" )
+} )
+
+// Perform analysis on the structured data
+println( "=== Task Analysis ===" )
+
+// Group by priority
+highPriority = tasks.filter( t => t.getPriority() == "high" )
+mediumPriority = tasks.filter( t => t.getPriority() == "medium" )
+lowPriority = tasks.filter( t => t.getPriority() == "low" )
+
+println( "High priority tasks: #highPriority.len()#" )
+println( "Medium priority tasks: #mediumPriority.len()#" )
+println( "Low priority tasks: #lowPriority.len()#" )
+println( "" )
+
+// Calculate total hours
+totalHours = tasks.reduce( ( sum, task ) => sum + task.getEstimatedHours(), 0 )
+println( "Total estimated hours: #totalHours#" )
+println( "" )
+
+// Group by assignee
+assignees = {}
+tasks.each( task => {
+    assignee = task.getAssignee()
+    if ( !assignees.keyExists( assignee ) ) {
+        assignees[ assignee ] = []
+    }
+    assignees[ assignee ].append( task.getTitle() )
+} )
+
+println( "=== Tasks by Assignee ===" )
+assignees.each( ( person, taskList ) => {
+    println( "#person# (#taskList.len()# tasks):" )
+    taskList.each( task => println( "  • #task#" ) )
+    println( "" )
+} )

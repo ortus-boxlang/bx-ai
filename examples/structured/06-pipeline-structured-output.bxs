@@ -1,0 +1,132 @@
+/**
+ * Structured Output - Pipeline Integration Example
+ *
+ * Demonstrates using structured output within reusable AI pipelines.
+ * Combines the power of pipelines with type-safe responses.
+ */
+
+// Define result classes
+class SentimentAnalysis {
+    property name="sentiment" type="string";
+    property name="score" type="numeric";
+    property name="confidence" type="numeric";
+    property name="keywords" type="array";
+}
+
+class Summary {
+    property name="title" type="string";
+    property name="summary" type="string";
+    property name="wordCount" type="numeric";
+}
+
+println( "=== Structured Output in Pipelines ===" )
+println( "" )
+
+// Example 1: Reusable sentiment analyzer pipeline
+println( "1. Reusable Sentiment Analysis Pipeline" )
+println( "" )
+
+sentimentPipeline = aiMessage()
+    .system( "You are a sentiment analysis expert" )
+    .user( "Analyze the sentiment: ${text}" )
+    .toDefaultModel()
+    .structuredOutput( new SentimentAnalysis() )
+
+// Use the pipeline multiple times
+reviews = [
+    "This product is absolutely amazing! Best purchase ever!",
+    "Terrible experience. Would not recommend to anyone.",
+    "It's okay, nothing special but does the job."
+]
+
+println( "Analyzing #reviews.len()# reviews..." )
+println( "" )
+
+reviews.each( ( review, index ) => {
+    analysis = sentimentPipeline.run({ text: review })
+
+    println( "Review ##index#:" )
+    println( 'Text: "#left(review, 50)#..."' )
+    println( "Sentiment: #analysis.getSentiment()#" )
+    println( "Score: #analysis.getScore()#" )
+    println( "Confidence: #analysis.getConfidence()#%" )
+    println( "Keywords: #analysis.getKeywords().toList()#" )
+    println( "" )
+} )
+
+// Example 2: Pipeline with transformation
+println( "2. Pipeline with Post-Processing Transform" )
+println( "" )
+
+summaryPipeline = aiMessage()
+    .user( "Summarize this article: ${article}" )
+    .toDefaultModel()
+    .structuredOutput( new Summary() )
+    .transform( summary => {
+        // Post-process the structured output
+        return {
+            "title": summary.getTitle().uCase(),
+            "summary": summary.getSummary(),
+            "wordCount": summary.getWordCount(),
+            "readTime": ceiling( summary.getWordCount() / 200 ) & " min"
+        }
+    } )
+
+article = "Artificial intelligence is rapidly transforming how we work and live.
+From automated customer service to advanced medical diagnostics, AI systems are
+becoming more sophisticated and useful every day. However, these advances also
+raise important questions about privacy, ethics, and the future of employment."
+
+result = summaryPipeline.run({ article: article })
+
+println( "Title: #result.title#" )
+println( "Summary: #result.summary#" )
+println( "Word count: #result.wordCount#" )
+println( "Read time: #result.readTime#" )
+println( "" )
+
+// Example 3: Multi-model pipeline with structured output
+println( "3. Multi-Model Pipeline Chain" )
+println( "" )
+
+class KeyPoints {
+    property name="points" type="array";
+    property name="mainTheme" type="string";
+}
+
+// First pipeline extracts key points
+extractor = aiMessage()
+    .user( "Extract key points from: ${text}" )
+    .to( aiModel( "openai", { model: "gpt-4o-mini", temperature: 0.3 } ) )
+    .structuredOutput( new KeyPoints() )
+
+// Second pipeline expands on main theme
+expander = aiMessage()
+    .user( "Explain this theme in detail: ${theme}" )
+    .to( aiModel( "openai", { temperature: 0.7 } ) )
+    .transform( r => r.content )
+
+text = "Climate change is one of the most pressing issues of our time.
+Rising temperatures, extreme weather events, and ecosystem disruption
+require immediate global action and sustainable solutions."
+
+// Execute pipeline chain
+println( "Step 1: Extracting key points..." )
+keyPoints = extractor.run({ text: text })
+
+println( "Key points extracted: #keyPoints.getPoints().len()#" )
+println( "Main theme: #keyPoints.getMainTheme()#" )
+println( "" )
+
+println( "Step 2: Expanding on main theme..." )
+explanation = expander.run({ theme: keyPoints.getMainTheme() })
+
+println( "Detailed explanation:" )
+println( explanation )
+println( "" )
+
+println( "=== Pipeline Benefits ===" )
+println( "✓ Reusable templates with structured output" )
+println( "✓ Type-safe results throughout pipeline" )
+println( "✓ Easy to test with mock data" )
+println( "✓ Composable multi-step workflows" )

@@ -1,0 +1,88 @@
+/**
+ * Structured Output - Multiple Schemas Example
+ *
+ * Demonstrates extracting multiple different entity types from a single text.
+ * Perfect for complex documents with multiple data types.
+ */
+
+// Define multiple entity classes
+class Customer {
+    property name="name" type="string";
+    property name="email" type="string";
+    property name="phone" type="string";
+    property name="memberSince" type="string";
+}
+
+class Order {
+    property name="orderId" type="string";
+    property name="items" type="array";
+    property name="total" type="numeric";
+    property name="status" type="string";
+}
+
+class ShippingAddress {
+    property name="street" type="string";
+    property name="city" type="string";
+    property name="state" type="string";
+    property name="zipCode" type="string";
+}
+
+println( "=== Multiple Schemas - Extract Different Entities ===" )
+println( "" )
+
+// Complex text with multiple entity types
+orderText = "Customer: Jane Smith (jane.smith@example.com, 555-0123)
+Member since: 2022-01-15
+
+Order #ORD-12345
+Items: Laptop, Wireless Mouse, USB-C Cable
+Total: $1,299.97
+Status: Processing
+
+Shipping Address:
+123 Main Street
+San Francisco, CA 94102"
+
+println( "Order information:" )
+println( orderText )
+println( "" )
+println( "Extracting multiple entity types..." )
+println( "" )
+
+// Extract all entities in one call
+result = aiChat( "Extract customer, order, and shipping information: #orderText#" )
+    .structuredOutputs({
+        "customer": new Customer(),
+        "order": new Order(),
+        "shipping": new ShippingAddress()
+    })
+
+// Access each typed entity
+println( "=== Extracted Entities ===" )
+println( "" )
+
+println( "CUSTOMER INFORMATION" )
+println( "Name: #result.customer.getName()#" )
+println( "Email: #result.customer.getEmail()#" )
+println( "Phone: #result.customer.getPhone()#" )
+println( "Member since: #result.customer.getMemberSince()#" )
+println( "" )
+
+println( "ORDER DETAILS" )
+println( "Order ID: #result.order.getOrderId()#" )
+println( "Status: #result.order.getStatus()#" )
+println( "Total: $#result.order.getTotal()#" )
+println( "Items:" )
+result.order.getItems().each( item => println( "  • #item#" ) )
+println( "" )
+
+println( "SHIPPING ADDRESS" )
+println( "#result.shipping.getStreet()#" )
+println( "#result.shipping.getCity()#, #result.shipping.getState()# #result.shipping.getZipCode()#" )
+println( "" )
+
+// Use the structured data
+println( "=== Processing ===" )
+println( "Sending confirmation email to: #result.customer.getEmail()#" )
+println( "Shipping #result.order.getItems().len()# items to: #result.shipping.getCity()#, #result.shipping.getState()#" )
+println( "Order total: $#result.order.getTotal()#" )
