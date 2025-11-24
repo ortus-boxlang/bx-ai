@@ -188,11 +188,14 @@ class {
 	 * Note: JSON Schema only supports homogeneous arrays (all items same type).
 	 * This method takes a SINGLE item template and generates a schema for an array of those items.
 	 *
+	 * OpenAI structured output requires root schema to be type: "object", so we wrap
+	 * the array in an object with an "items" property.
+	 *
 	 * Typically you don't call this directly - pass an array to fromObject() and it will
 	 * automatically extract the first element as the template.
 	 *
 	 * @itemSchema SINGLE item template (class instance, struct, or JSON schema) - NOT an array
-	 * @return JSON schema for array with items matching the template
+	 * @return JSON schema for array wrapped in object (OpenAI requirement)
 	 */
 	static struct function fromArray( required any itemSchema ) {
 		var itemSchemaStruct = {};
@@ -206,9 +209,17 @@ class {
 			itemSchemaStruct = fromJSONSchema( arguments.itemSchema );
 		}
 
+		// OpenAI requires root type to be "object", so wrap the array
 		return {
-			"type": "array",
-			"items": itemSchemaStruct
+			"type": "object",
+			"properties": {
+				"items": {
+					"type": "array",
+					"items": itemSchemaStruct
+				}
+			},
+			"required": [ "items" ],
+			"additionalProperties": false
 		};
 	}
 

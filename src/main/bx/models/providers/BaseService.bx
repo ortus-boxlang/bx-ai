@@ -780,8 +780,12 @@ abstract class implements="IAiService" {
 		}
 
 		// Array of class instances
+		// Note: Arrays are wrapped in { items: [...] } due to OpenAI requirement
 		if( isArray( outputDefinition ) ){
-			return SchemaBuilder::populateArray( outputDefinition.first(), jsonContent );
+			var data = jsonDeserialize( jsonContent );
+			// Extract the items array from the wrapper object
+			var itemsArray = data.keyExists( "items" ) ? data.items : data;
+			return SchemaBuilder::populateArray( outputDefinition.first(), jsonSerialize( itemsArray ) );
 		}
 
 		// Struct schema - deserialize

@@ -170,8 +170,8 @@ public class StructuredOutputTest extends BaseIntegrationTest {
 				messages = "Extract tasks: 1. Write report (high priority, not done) 2. Send email (low priority, completed)",
 				options = {
 					returnFormat = [ new src.test.bx.Task() ],
-					logRequestToConsole : true,
-					logResponseToConsole : true
+					logRequestToConsole : false,
+					logResponseToConsole : false
 				}
 			);
 
@@ -225,8 +225,8 @@ public class StructuredOutputTest extends BaseIntegrationTest {
 				messages = "Extract employee: Alice Johnson, ID EMP001, Engineering department",
 				options = {
 					returnFormat : new src.test.bx.Employee(),
-					logRequestToConsole : true,
-					logResponseToConsole : true
+					logRequestToConsole : false,
+					logResponseToConsole : false
 				}
 			);
 
@@ -260,8 +260,8 @@ public class StructuredOutputTest extends BaseIntegrationTest {
 					{ name: "event", schema: new src.test.bx.Event() }
 				])
 				.withOptions( {
-					logRequestToConsole : true,
-					logResponseToConsole : true
+					logRequestToConsole : false,
+					logResponseToConsole : false
 				} )
 				.run( "Extract: Contact is John (john@example.com), Event is Meeting on Monday" );
 
