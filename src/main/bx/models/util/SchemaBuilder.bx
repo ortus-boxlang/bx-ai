@@ -183,6 +183,20 @@ class {
 	}
 
 	/**
+	 * Clean internal metadata from schema before sending to AI provider
+	 * Removes keys like _originalSchemas and _isSchema that are only used internally
+	 *
+	 * @schema The schema to clean
+	 * @return Cleaned schema without internal metadata
+	 */
+	static struct function cleanSchema( required struct schema ) {
+		var cleaned = duplicate( arguments.schema );
+		cleaned.delete( "_originalSchemas" );
+		cleaned.delete( "_isSchema" );
+		return cleaned;
+	}
+
+	/**
 	 * Build schema for array of items
 	 *
 	 * Note: JSON Schema only supports homogeneous arrays (all items same type).
@@ -235,7 +249,8 @@ class {
 			"type": "object",
 			"properties": {},
 			"required": [],
-			"additionalProperties": false
+			"additionalProperties": false,
+			"_originalSchemas": []  // Store for population later
 		};
 
 		for( var schemaDefinition in arguments.schemas ) {
@@ -254,6 +269,12 @@ class {
 
 			mergedSchema.properties[ name ] = propertySchema;
 			mergedSchema.required.append( name );
+			
+			// Store original for population
+			mergedSchema._originalSchemas.append( {
+				"name": name,
+				"schema": schema
+			} );
 		}
 
 		return mergedSchema;

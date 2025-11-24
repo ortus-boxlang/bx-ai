@@ -266,14 +266,14 @@ public class StructuredOutputTest extends BaseIntegrationTest {
 				.run( "Extract: Contact is John (john@example.com), Event is Meeting on Monday" );
 
 			contactName = result.contact.getName();
-			eventTitle = result.event.getTitle();
+			eventName = result.event.getName();
 			""",
 			context
 		);
 		// @formatter:on
 
 		assertThat( variables.get( Key.of( "contactName" ) ).toString() ).isEqualTo( "John" );
-		assertThat( variables.get( Key.of( "eventTitle" ) ).toString() ).contains( "Meeting" );
+		assertThat( variables.get( Key.of( "eventName" ) ).toString() ).contains( "Meeting" );
 	}
 
 	@Test

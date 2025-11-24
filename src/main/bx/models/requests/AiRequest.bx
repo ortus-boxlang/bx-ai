@@ -148,7 +148,15 @@ class extends="AiBaseRequest"{
 	AiRequest function setStructuredOutput( any schema ){
 		variables.returnFormat = "structuredOutput";
 		variables.structuredOutputDefinition = schema;
-		variables.structuredOutput = SchemaBuilder::fromObject( schema );
+		
+		// Check if this is already a schema (from merge())
+		if( isStruct( schema ) && schema.keyExists( "_isSchema" ) && schema._isSchema ) {
+			// Already a schema - use as-is
+			variables.structuredOutput = schema;
+		} else {
+			// Convert to schema
+			variables.structuredOutput = SchemaBuilder::fromObject( schema );
+		}
 		return this;
 	}
 
