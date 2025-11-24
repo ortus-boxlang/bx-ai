@@ -167,31 +167,38 @@ class {
 	 *
 	 * @classInstance Empty class instance to populate
 	 * @data Response data from LLM (can be JSON string or struct)
+	 *
 	 * @return Populated class instance
 	 */
 	static any function populateClass( required any classInstance, required any data ) {
 		// Parse JSON if data is a string
-		var dataStruct = isSimpleValue( arguments.data )
+		var memento = isSimpleValue( arguments.data )
 			? jsonDeserialize( arguments.data )
 			: arguments.data;
 
 		// Get metadata to know what properties exist
 		var metadata = getMetadata( arguments.classInstance );
-		var properties = metadata.properties ?: [];
+		// Go over the properties and just keep an array of names
+		var properties = ( duplicate( metadata.properties ) ?: [] ).map( .name );
 
-		// Populate each property using setters
-		for( var property in properties ) {
-			var propertyName = property.name;
-			var setterName = "set#propertyName#";
+		// If no properties, return instance as-is
+		if( properties.isEmpty() ) {
+			return arguments.classInstance;
+		}
 
-			// Check if data has this property
-			if( dataStruct.keyExists( propertyName ) ) {
-				var value = dataStruct[ propertyName ];
+		// If the memento is not a struct, cannot populate
+		if( !isStruct( memento ) ) {
+			return arguments.classInstance;
+		}
 
-				// If setter exists, call it (enables custom deserialization)
-				if( structKeyExists( arguments.classInstance, setterName ) ) {
-					invoke( arguments.classInstance, setterName, [ value ] );
-				}
+		for( var thisKey in memento ) {
+			// If the key exists as a property, set it
+			if( properties.contains( thisKey ) ) {
+				invoke(
+					arguments.classInstance,
+					"set#thisKey#",
+					memento[ thisKey ]
+				)
 			}
 		}
 
