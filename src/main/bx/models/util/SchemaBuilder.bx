@@ -269,7 +269,7 @@ class {
 
 			mergedSchema.properties[ name ] = propertySchema;
 			mergedSchema.required.append( name );
-			
+
 			// Store original for population
 			mergedSchema._originalSchemas.append( {
 				"name": name,

@@ -797,16 +797,16 @@ abstract class implements="IAiService" {
 				// Merged schema - deserialize and populate each property
 				var result = {};
 				var data = jsonDeserialize( jsonContent );
-				
+
 				// Populate each named schema
 				for( var schemaInfo in outputDefinition._originalSchemas ) {
 					var name = schemaInfo.name;
 					var schema = schemaInfo.schema;
-					
+
 					// Get the data for this property
 					if( data.keyExists( name ) ) {
 						var propertyData = jsonSerialize( data[ name ] );
-						
+
 						// Populate based on schema type
 						if( isObject( schema ) ) {
 							result[ name ] = SchemaBuilder::populateClass( schema, propertyData );
@@ -818,10 +818,10 @@ abstract class implements="IAiService" {
 						}
 					}
 				}
-				
+
 				return result;
 			}
-			
+
 			// Regular struct schema
 			return SchemaBuilder::populateStruct( jsonContent );
 		}
