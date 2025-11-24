@@ -150,7 +150,7 @@ class extends="AiBaseRequest"{
 		variables.structuredOutputDefinition = schema;
 
 		// Check if this is already a schema (from merge())
-		if( isStruct( schema ) && schema.keyExists( "_isSchema" ) && schema._isSchema ) {
+		if( !isObject( schema ) && isStruct( schema ) && schema.keyExists( "_isSchema" ) && schema._isSchema ) {
 			// Already a schema - use as-is
 			variables.structuredOutput = schema;
 		} else {
