@@ -67,39 +67,25 @@ class extends="AiBaseRequest"{
 		variables.model = options.params?.model ?: "";
 		variables.timeout = options.timeout ?: 30;
 		variables.stream = options.stream ?: false;
-	variables.maxInteractions = options.maxInteractions ?: 0;
+		variables.maxInteractions = options.maxInteractions ?: 0;
 
-	// Check for explicit schema first (from schema() method)
-	if( options.keyExists( "schema" ) ) {
-		variables.structuredOutputDefinition = options.schema;
-		variables.structuredOutput = SchemaBuilder::fromJSONSchema( options.schema );
-		variables.returnFormat = "structuredOutput";
-	} else {
-		// Default handling of returnFormat if no schema provided
-		var returnFormat = options.returnFormat ?: "raw";
-
-		// Check if returnFormat is a complex value (class instance, struct, or array)
-		if( !isSimpleValue( returnFormat ) ) {
-			variables.structuredOutputDefinition = returnFormat;
-
-			// Build schema using SchemaBuilder
-			if( isObject( returnFormat ) ) {
-				variables.structuredOutput = SchemaBuilder::fromClass( returnFormat );
-			} else if( isArray( returnFormat ) ) {
-				// Array indicates array of structured objects
-				variables.structuredOutput = SchemaBuilder::fromArray( returnFormat[1] );
-			} else if( isStruct( returnFormat ) ) {
-				// Struct definition - infer schema from values
-				variables.structuredOutput = SchemaBuilder::fromStruct( returnFormat );
-			}
-			// Override returnFormat to "structuredOutput" for provider handling
+		// Check for explicit schema first (from schema() method)
+		if( options.keyExists( "schema" ) ) {
+			variables.structuredOutputDefinition = options.schema;
+			variables.structuredOutput = SchemaBuilder::fromJSONSchema( options.schema );
 			variables.returnFormat = "structuredOutput";
 		} else {
-			// Simple value - use as-is
-			variables.returnFormat = returnFormat;
+			// Default handling of returnFormat if no schema provided
+			var returnFormat = options.returnFormat ?: "raw";
+			// Check if returnFormat is a complex value (class instance, struct, or array)
+			if( !isSimpleValue( returnFormat ) ) {
+				setStructuredOutput( returnFormat );
+			} else {
+				// Simple value - use as-is
+				variables.returnFormat = returnFormat;
+			}
 		}
-	}
-	return this;
+		return this;
 	}
 
 	/**
@@ -150,6 +136,20 @@ class extends="AiBaseRequest"{
 	 */
 	boolean function isStructuredOutput(){
 		return !variables.structuredOutput.isEmpty();
+	}
+
+	/**
+	 * Set structured output schema for the response
+	 *
+	 * @schema A structured output definition (class instance, struct, or array)
+	 *
+	 * @return The AiRequest for chaining
+	 */
+	AiRequest function setStructuredOutput( any schema ){
+		variables.returnFormat = "structuredOutput";
+		variables.structuredOutputDefinition = schema;
+		variables.structuredOutput = SchemaBuilder::fromObject( schema );
+		return this;
 	}
 
 }

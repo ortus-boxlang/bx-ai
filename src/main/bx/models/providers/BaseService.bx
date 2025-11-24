@@ -765,9 +765,9 @@ abstract class implements="IAiService" {
 	 */
 	private any function populateStructuredOutput( required string content, required AiRequest aiRequest ){
 
-		println( "Populating structured output..." )
-		println( "Content: #arguments.content#" )
-		println( "Definition: #arguments.aiRequest.getStructuredOutput().toString()#" )
+		// println( "Populating structured output..." )
+		// println( "Content: #arguments.content#" )
+		// println( "Definition: #arguments.aiRequest.getStructuredOutput().toString()#" )
 
 		// Extract from code block if needed
 		var jsonContent = extractFromCodeBlock( arguments.content, "json" );

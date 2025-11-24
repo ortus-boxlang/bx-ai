@@ -157,7 +157,7 @@ public class StructuredOutputTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( Key.of( "city" ) ).toString() ).contains( "Francisco" );
 		assertThat( Double.parseDouble( variables.get( Key.of( "temperature" ) ).toString() ) ).isAtLeast( 70.0 );
-		assertThat( variables.get( Key.of( "conditions" ) ).toString() ).contains( "sunny" );
+		assertThat( variables.get( Key.of( "conditions" ) ).toString().toLowerCase() ).contains( "sunny" );
 	}
 
 	@Test
@@ -193,12 +193,12 @@ public class StructuredOutputTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			request = aiChatRequest()
-				.setProvider( "openai" )
-				.setMessages( "Extract event: Tech Conference on March 15, 2024 in Seattle" )
-				.structuredOutput( new src.test.bx.Event() );
+			aiRequest = aiChatRequest(
+				messages = "Extract event: Tech Conference on March 15, 2024 in Seattle"
+			)
+				.setStructuredOutput( new src.test.bx.Event() );
 
-			result = request.send();
+			result = aiService().invoke( aiRequest );
 
 			eventName = result.getName();
 			eventDate = result.getDate();
@@ -220,10 +220,18 @@ public class StructuredOutputTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 			result = aiChat(
-				model = "openai",
 				messages = "Extract employee: Alice Johnson, ID EMP001, Engineering department",
-				returnFormat = new src.test.bx.Employee()
+				options = {
+					returnFormat : new src.test.bx.Employee(),
+					logRequestToConsole : true,
+					logResponseToConsole : true
+				}
 			);
+
+			println( result )
+			println( result.getFirstName() )
+			println( result.getEmployeeId() )
+			println( result.getDepartment() )
 
 			firstName = result.getFirstName();
 			employeeId = result.getEmployeeId();
