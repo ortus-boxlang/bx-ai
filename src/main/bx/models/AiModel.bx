@@ -201,7 +201,7 @@ class extends="AiBaseRunnable" {
 
 		// Array of messages, return as-is
 		if( isArray( arguments.input ) ) {
-			return arguments.input;
+			return arguments.input.map( m => extractMessages( m ) );
 		}
 
 		// Struct with messages key

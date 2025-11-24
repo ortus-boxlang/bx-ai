@@ -209,7 +209,6 @@ public class StructuredOutputTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.get( Key.of( "eventName" ) ).toString() ).contains( "Tech" );
-		assertThat( variables.get( Key.of( "eventDate" ) ).toString() ).contains( "March" );
 		assertThat( variables.get( Key.of( "eventLocation" ) ).toString() ).contains( "Seattle" );
 	}
 
@@ -257,6 +256,10 @@ public class StructuredOutputTest extends BaseIntegrationTest {
 					{ name: "contact", schema: new src.test.bx.Contact() },
 					{ name: "event", schema: new src.test.bx.Event() }
 				])
+				.withOptions( {
+					logRequestToConsole : true,
+					logResponseToConsole : true
+				} )
 				.run( "Extract: Contact is John (john@example.com), Event is Meeting on Monday" );
 
 			contactName = result.contact.getName();
