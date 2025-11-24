@@ -6,179 +6,337 @@ This comprehensive, hands-on course will take you from zero AI knowledge to buil
 
 ## 🎯 Course Overview
 
-**Duration**: 10 Lessons (~20 hours total)
-**Level**: Beginner to Intermediate
+**Duration**: 12 Lessons (~24 hours total)
+**Level**: Beginner to Advanced
 **Prerequisites**: Basic BoxLang knowledge
+**Updated**: November 2025 - Now includes Structured Output, Advanced Agents, and Production Patterns
 
 ### What You'll Learn
 
 - ✅ Integrate AI into BoxLang applications
-- ✅ Work with multiple AI providers (OpenAI, Claude, Ollama)
-- ✅ Build conversational interfaces with context
+- ✅ Work with multiple AI providers (OpenAI, Claude, Ollama, and more)
+- ✅ Build conversational interfaces with context and memory
+- ✅ Extract type-safe data with structured output
 - ✅ Create AI tools and function calling
 - ✅ Implement persistent memory systems
-- ✅ Build autonomous AI agents
-- ✅ Design AI pipelines and workflows
-- ✅ Deploy production AI applications
+- ✅ Build autonomous AI agents with tools and memory
+- ✅ Design reusable AI pipelines and workflows
+- ✅ Deploy and monitor production AI applications
 
 ### What You'll Build
 
 By the end of this course, you'll have built:
-- 🤖 A customer support chatbot with tools
-- 📝 A code review assistant
-- 🔍 A research agent with web search
-- 📊 An AI-powered data analysis system
-- 🌐 A production-ready AI API
+- 🤖 A customer support chatbot with tools and structured output
+- 📝 A code review assistant with type-safe responses
+- 🔍 A research agent with web search and citations
+- 📊 An AI-powered data extraction and analysis system
+- 🔄 Multi-model pipelines for content generation
+- 🌐 A production-ready AI API with monitoring
 
 ## 📚 Course Curriculum
 
-### [Lesson 1: Introduction to AI in BoxLang](lesson-01-introduction/)
-**Duration**: 1.5 hours
-**Objective**: Understand AI fundamentals and setup your development environment
+> **Note**: This curriculum represents the recommended learning path. Folder names in `course/` may differ from lesson numbers (e.g., `lesson-06-tools` is conceptually "Lesson 6: Structured Output" in the path below). Follow the conceptual order for best learning experience.
 
+### Part 1: Foundations (Lessons 1-3)
+
+### [Lesson 1: Introduction to AI in BoxLang](lesson-01-introduction/)
+**Duration**: 1.5 hours | **Level**: Beginner
+
+**Learning Objectives**:
+- Understand AI fundamentals, LLMs, and tokens
+- Install and configure the bx-ai module
+- Make your first AI call
+- Understand costs and token management
+
+**Topics**:
 - What is AI and LLM?
 - BoxLang AI module overview
 - Installation and configuration
 - Your first "Hello AI" program
 - Understanding tokens and costs
 
-**Lab**: Install the module and make your first AI call
+**Examples**: hello-ai.bxs, token-calculation.bxs
+**Lab**: Setup environment and create a simple AI chatbot
+**Project**: Build a "Magic 8-Ball" AI fortune teller
 
 ---
 
-### [Lesson 2: Your First AI Chat](lesson-02-first-chat/)
-**Duration**: 2 hours
-**Objective**: Master basic AI chat interactions
+### [Lesson 2: Basic AI Conversations](lesson-02-first-chat/)
+**Duration**: 2 hours | **Level**: Beginner
 
-- The `aiChat()` function
+**Learning Objectives**:
+- Master the `aiChat()` function
+- Build multi-turn conversations
+- Understand message roles and context
+- Handle different return formats
+
+**Topics**:
+- The `aiChat()` function in depth
 - Sending messages and receiving responses
-- Multi-turn conversations
+- Multi-turn conversations with history
 - Message roles (system, user, assistant)
 - Return formats (single, all, raw)
+- Building conversation arrays
 
-**Lab**: Build a simple Q&A bot
+**Examples**: basic-chat.bxs, conversation-history.bxs, system-prompts.bxs
+**Lab**: Build a Q&A bot with conversation history
+**Project**: Create a personal coding tutor chatbot
 
 ---
 
 ### [Lesson 3: Working with AI Providers](lesson-03-providers/)
-**Duration**: 2 hours
-**Objective**: Learn to work with different AI providers
+**Duration**: 2 hours | **Level**: Beginner
 
-- OpenAI / GPT models
-- Claude / Anthropic
+**Learning Objectives**:
+- Work with multiple AI providers
+- Switch providers dynamically
+- Use local AI with Ollama
+- Implement provider fallbacks
+
+**Topics**:
+- OpenAI / GPT models (gpt-4o, gpt-4o-mini)
+- Claude / Anthropic (claude-3.5-sonnet)
 - Google Gemini
-- Local AI with Ollama
+- Ollama for local/private AI
 - Provider switching and fallbacks
-- API key management
+- API key management and security
 
+**Examples**: multi-provider.bxs, ollama-local.bxs, provider-fallback.bxs
 **Lab**: Create a multi-provider AI application
+**Project**: Build a provider comparison dashboard
 
 ---
 
-### [Lesson 4: Controlling AI Behavior](lesson-04-parameters/)
-**Duration**: 2 hours
-**Objective**: Fine-tune AI responses with parameters
+### Part 2: Advanced Interactions (Lessons 4-6)
 
+### [Lesson 4: Controlling AI Behavior with Parameters](lesson-04-parameters/)
+**Duration**: 2 hours | **Level**: Intermediate
+
+**Learning Objectives**:
+- Fine-tune AI responses with parameters
+- Control creativity and randomness
+- Optimize for different use cases
+- Handle errors and timeouts
+
+**Topics**:
 - Temperature (creativity vs consistency)
-- Max tokens (response length)
-- Top-p and frequency penalty
-- Model selection
+- Max tokens (response length control)
+- Top-p (nucleus sampling)
+- Frequency and presence penalties
+- Model selection strategies
 - Timeout and error handling
 - Best practices for parameter tuning
 
+**Examples**: temperature-control.bxs, token-limits.bxs, creative-vs-factual.bxs
 **Lab**: Build a creative writing assistant with parameter controls
+**Project**: Create a tone-adjustable content generator
 
 ---
 
 ### [Lesson 5: Real-Time Streaming](lesson-05-streaming/)
-**Duration**: 2 hours
-**Objective**: Implement streaming responses for better UX
+**Duration**: 2 hours | **Level**: Intermediate
 
-- Understanding streaming
+**Learning Objectives**:
+- Implement streaming responses
+- Build responsive user interfaces
+- Handle streaming errors
+- Use async operations
+
+**Topics**:
+- Understanding streaming and chunking
 - The `aiChatStream()` function
-- Handling chunks and deltas
+- Processing chunks and deltas
 - Building responsive interfaces
+- Progress indicators and feedback
 - Error handling in streams
-- Async operations
+- Async operations with futures
 
+**Examples**: basic-streaming.bxs, streaming-with-progress.bxs, async-operations.bxs
 **Lab**: Create a live chat interface with streaming
+**Project**: Build a real-time code generator with streaming
 
 ---
 
-### [Lesson 6: AI Tools and Function Calling](lesson-06-tools/)
-**Duration**: 2.5 hours
-**Objective**: Enable AI to execute functions and access data
+### [Lesson 6: Structured Output - Type-Safe AI Responses](lesson-06-structured-output/)
+**Duration**: 2.5 hours | **Level**: Intermediate
 
-- What are AI tools?
+**Learning Objectives**:
+- Extract structured data from AI responses
+- Use classes and struct templates
+- Extract arrays and multiple schemas
+- Validate and transform AI output
+
+**Topics**:
+- Why structured output matters
+- Using classes for type safety
+- Struct templates for quick extraction
+- Extracting arrays of objects
+- Multiple schemas (different entity types)
+- The `aiPopulate()` function
+- Testing with mock data
+- Structured output in pipelines
+
+**Examples**: basic-person.bxs, struct-template.bxs, array-extraction.bxs, multiple-schemas.bxs
+**Lab**: Build a data extraction tool with type-safe output
+**Project**: Create an invoice parser with structured output
+
+---
+
+### Part 3: Tools and Memory (Lessons 7-8)
+
+### [Lesson 7: AI Tools and Function Calling](lesson-07-tools/)
+**Duration**: 2.5 hours | **Level**: Intermediate
+
+**Learning Objectives**:
+- Enable AI to execute functions
+- Create tools with proper descriptions
+- Handle tool results and errors
+- Chain multiple tools
+
+**Topics**:
+- What are AI tools and function calling?
 - Creating tools with `aiTool()`
 - Tool descriptions and arguments
 - Real-time data access
-- Multiple tools and tool chaining
+- Multiple tools and tool selection
+- Tool chaining and composition
 - Error handling and fallbacks
+- Tool result formatting
 
+**Examples**: weather-tool.bxs, database-tool.bxs, multi-tool-agent.bxs
 **Lab**: Build a weather bot with live data lookup
+**Project**: Create a smart assistant with calculator, weather, and database tools
 
 ---
 
-### [Lesson 7: Memory Systems](lesson-07-memory/)
-**Duration**: 2 hours
-**Objective**: Implement conversation memory and context
+### [Lesson 8: Memory Systems](lesson-08-memory/)
+**Duration**: 2 hours | **Level**: Intermediate
 
-- Why memory matters
+**Learning Objectives**:
+- Implement conversation memory
+- Manage context windows
+- Persist conversations
+- Optimize memory usage
+
+**Topics**:
+- Why memory matters in AI
 - Simple memory (RAM-based)
 - Window memory (sliding buffer)
-- Session memory (web apps)
+- Session memory (web applications)
 - File memory (persistence)
-- Cache memory (distributed)
+- Cache memory (distributed systems)
 - Memory management strategies
+- Context window optimization
 
+**Examples**: simple-memory.bxs, window-memory.bxs, file-persistence.bxs
 **Lab**: Build a conversational assistant that remembers context
+**Project**: Create a multi-session chatbot with persistent history
 
 ---
 
-### [Lesson 8: Building AI Agents](lesson-08-agents/)
-**Duration**: 3 hours
-**Objective**: Create autonomous AI agents with memory and tools
+### Part 4: Advanced Patterns (Lessons 9-10)
 
+### [Lesson 9: Building AI Agents](lesson-09-agents/)
+**Duration**: 3 hours | **Level**: Advanced
+
+**Learning Objectives**:
+- Build autonomous AI agents
+- Combine memory, tools, and instructions
+- Implement multi-step reasoning
+- Debug and monitor agents
+
+**Topics**:
 - What are AI agents?
 - Creating agents with `aiAgent()`
 - Combining memory and tools
-- Agent instructions and behavior
-- Multi-step reasoning
-- Agent debugging and monitoring
+- Agent instructions and system prompts
+- Multi-step reasoning and planning
+- Agent debugging techniques
+- Monitoring and logging
+- Production agent patterns
 
+**Examples**: basic-agent.bxs, agent-with-tools.bxs, support-agent.bxs, research-agent.bxs
 **Lab**: Build a customer support agent with order management
+**Project**: Create a research agent with web search and citations
 
 ---
 
-### [Lesson 9: AI Pipelines and Workflows](lesson-09-pipelines/)
-**Duration**: 2.5 hours
-**Objective**: Design complex multi-step AI workflows
+### [Lesson 10: AI Pipelines and Workflows](lesson-10-pipelines/)
+**Duration**: 2.5 hours | **Level**: Advanced
 
-- Understanding pipelines
+**Learning Objectives**:
+- Design reusable AI pipelines
+- Chain transformations
+- Use multiple models in workflows
+- Stream through pipelines
+
+**Topics**:
+- Understanding pipelines and runnables
 - Message templates and reusability
 - Chaining transformations
 - Multi-model workflows
 - Pipeline streaming
-- Error handling in pipelines
+- Structured output in pipelines
+- Error handling and fallbacks
+- Testing pipelines
 
+**Examples**: simple-pipeline.bxs, multi-model.bxs, streaming-pipeline.bxs, templates.bxs
 **Lab**: Create a content generation pipeline
+**Project**: Build a multi-stage document processor
 
 ---
 
-### [Lesson 10: Production Deployment](lesson-10-production/)
-**Duration**: 2.5 hours
-**Objective**: Deploy and maintain AI applications in production
+### Part 5: Production (Lessons 11-12)
 
-- Performance optimization
+### [Lesson 11: Production Deployment](lesson-11-production/)
+**Duration**: 2.5 hours | **Level**: Advanced
+
+**Learning Objectives**:
+- Deploy AI applications to production
+- Optimize performance and costs
+- Implement security best practices
+- Monitor and maintain AI systems
+
+**Topics**:
+- Performance optimization techniques
 - Cost management and monitoring
 - Security best practices
-- Rate limiting and caching
+- API key rotation and management
+- Rate limiting and throttling
+- Caching strategies
 - Error handling and fallbacks
 - Testing AI applications
 - Monitoring and observability
+- Logging and debugging
 
+**Examples**: caching.bxs, rate-limiting.bxs, error-handling.bxs, monitoring.bxs
 **Lab**: Deploy a production-ready AI API
+**Project**: Build a fully monitored AI service with all best practices
+
+---
+
+### [Lesson 12: Advanced Topics and Integration](lesson-12-advanced/)
+**Duration**: 2 hours | **Level**: Advanced
+
+**Learning Objectives**:
+- Integrate embeddings and vector search
+- Use vision models for image analysis
+- Implement custom integrations
+- Build complete AI systems
+
+**Topics**:
+- Vector embeddings with `aiEmbed()`
+- Semantic search and similarity
+- Vision models and image analysis
+- Text chunking and processing
+- Token counting and estimation
+- Event system and interceptors
+- Custom provider integration
+- Building complete AI systems
+
+**Examples**: embeddings.bxs, vision-analysis.bxs, chunking.bxs, events.bxs
+**Lab**: Build a semantic search system
+**Project**: Create a complete AI-powered application
 
 ---
 
@@ -266,43 +424,61 @@ Before starting this course, ensure you have:
 ## 🎓 Learning Path
 
 ```
-Lesson 1: Setup & Basics
+Part 1: Foundations (Lessons 1-3)
+Lesson 1: AI Basics & Setup
     ↓
-Lesson 2-3: Core AI Interaction
+Lesson 2: Basic Conversations
     ↓
-Lesson 4-5: Advanced Features
+Lesson 3: Multiple Providers
     ↓
-Lesson 6-7: Tools & Memory
+Part 2: Advanced Interactions (Lessons 4-6)
+Lesson 4: Parameters & Control
     ↓
-Lesson 8: AI Agents
+Lesson 5: Streaming
     ↓
-Lesson 9: Pipelines
+Lesson 6: Structured Output ⭐
     ↓
-Lesson 10: Production
+Part 3: Tools & Memory (Lessons 7-8)
+Lesson 7: Tools & Functions
+    ↓
+Lesson 8: Memory Systems
+    ↓
+Part 4: Advanced Patterns (Lessons 9-10)
+Lesson 9: AI Agents
+    ↓
+Lesson 10: Pipelines & Workflows
+    ↓
+Part 5: Production (Lessons 11-12)
+Lesson 11: Production Deployment
+    ↓
+Lesson 12: Advanced Topics
 ```
 
 ### Recommended Pace
 
-- **Week 1**: Lessons 1-3 (Foundation)
-- **Week 2**: Lessons 4-5 (Advanced Interactions)
-- **Week 3**: Lessons 6-7 (Tools & Memory)
-- **Week 4**: Lessons 8-9 (Agents & Pipelines)
-- **Week 5**: Lesson 10 + Final Project
+- **Week 1**: Lessons 1-3 (Foundations)
+- **Week 2**: Lessons 4-6 (Advanced Interactions + Structured Output)
+- **Week 3**: Lessons 7-8 (Tools & Memory)
+- **Week 4**: Lessons 9-10 (Agents & Pipelines)
+- **Week 5**: Lessons 11-12 (Production & Advanced)
+- **Week 6**: Final Project Integration
 
 ## 🏆 Course Projects
 
 Throughout the course, you'll build progressively more complex projects:
 
-1. **Hello AI** (Lesson 1) - Your first AI interaction
-2. **Q&A Bot** (Lesson 2) - Simple chatbot
-3. **Multi-Provider App** (Lesson 3) - Provider switching
-4. **Writing Assistant** (Lesson 4) - Parameter-controlled generation
-5. **Live Chat** (Lesson 5) - Streaming interface
-6. **Weather Bot** (Lesson 6) - Tool-enabled assistant
-7. **Context Bot** (Lesson 7) - Memory-enabled conversations
-8. **Support Agent** (Lesson 8) - Full-featured agent
-9. **Content Pipeline** (Lesson 9) - Multi-step workflow
-10. **Production API** (Lesson 10) - Deployable AI service
+1. **Magic 8-Ball AI** (Lesson 1) - Your first AI interaction with token management
+2. **Coding Tutor Bot** (Lesson 2) - Multi-turn conversation chatbot
+3. **Provider Dashboard** (Lesson 3) - Multi-provider comparison tool
+4. **Tone-Adjustable Writer** (Lesson 4) - Parameter-controlled content generator
+5. **Real-Time Code Gen** (Lesson 5) - Streaming code generation interface
+6. **Invoice Parser** (Lesson 6) - Structured data extraction with type safety ⭐
+7. **Smart Assistant** (Lesson 7) - Multi-tool AI with calculator, weather, database
+8. **Multi-Session Chat** (Lesson 8) - Persistent conversation history
+9. **Research Agent** (Lesson 9) - Autonomous agent with web search and citations
+10. **Document Processor** (Lesson 10) - Multi-stage content pipeline
+11. **Monitored AI Service** (Lesson 11) - Production-ready API with observability
+12. **AI-Powered App** (Lesson 12) - Complete system with embeddings and vision
 
 ## 📋 Assessment
 
@@ -321,11 +497,13 @@ Each lesson includes:
 
 ## 📜 Certificate of Completion
 
-After completing all 10 lessons and projects, you'll have:
-- ✅ Built 10 complete AI applications
-- ✅ Mastered BoxLang AI development
-- ✅ Portfolio-ready projects
-- ✅ Production deployment experience
+After completing all 12 lessons and projects, you'll have:
+
+- ✅ Built 12 complete AI applications
+- ✅ Mastered BoxLang AI development from basics to advanced
+- ✅ Experience with structured output, agents, pipelines, and production deployment
+- ✅ Portfolio-ready projects demonstrating real-world AI integration
+- ✅ Deep understanding of AI tools, memory systems, and best practices
 
 ## 📚 Additional Resources
 
