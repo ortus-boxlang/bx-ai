@@ -167,9 +167,12 @@ public class StructuredOutputTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 			result = aiChat(
-				model = "openai",
 				messages = "Extract tasks: 1. Write report (high priority, not done) 2. Send email (low priority, completed)",
-				returnFormat = [ new src.test.bx.Task() ]
+				options = {
+					returnFormat = [ new src.test.bx.Task() ],
+					logRequestToConsole : true,
+					logResponseToConsole : true
+				}
 			);
 
 			count = result.len();

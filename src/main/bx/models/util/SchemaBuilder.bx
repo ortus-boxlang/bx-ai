@@ -66,7 +66,15 @@ class {
 			return fromClass( arguments.target );
 		}
 		else if( isArray( arguments.target ) ){
-			return fromArray( arguments.target );
+			// Array must have at least one element to infer schema
+			if( arguments.target.isEmpty() ) {
+				throw(
+					"InvalidArgument",
+					"Cannot generate schema from empty array. Provide an array with at least one item."
+				);
+			}
+			// Extract first element as the item template
+			return fromArray( arguments.target.first() );
 		}
 		else if( isStruct( arguments.target ) ){
 			return fromStruct( arguments.target );
@@ -177,8 +185,14 @@ class {
 	/**
 	 * Build schema for array of items
 	 *
-	 * @itemSchema Schema for array items (class, struct, or JSON schema)
-	 * @return JSON schema for array
+	 * Note: JSON Schema only supports homogeneous arrays (all items same type).
+	 * This method takes a SINGLE item template and generates a schema for an array of those items.
+	 *
+	 * Typically you don't call this directly - pass an array to fromObject() and it will
+	 * automatically extract the first element as the template.
+	 *
+	 * @itemSchema SINGLE item template (class instance, struct, or JSON schema) - NOT an array
+	 * @return JSON schema for array with items matching the template
 	 */
 	static struct function fromArray( required any itemSchema ) {
 		var itemSchemaStruct = {};
