@@ -65,6 +65,7 @@ The following are the AI providers supported by this module.  **Please note that
 Here are some of the features of this module:
 
 - Integration with multiple AI providers
+- **Structured Output** - Type-safe AI responses using BoxLang classes, structs, or JSON schemas
 - Compose raw chat requests
 - Build message objects
 - Create AI service objects
@@ -79,16 +80,128 @@ Here are some of the features of this module:
 
 Here is a matrix of the providers and their feature support.  Please keep checking as we will be adding more providers and features to this module.
 
-| Provider   | Real-time Tools | Embeddings |
-|------------|-----------------|------------|
-| Claude    	| ✅ | ❌ |
-| DeepSeek  | ✅ | ✅ |
-| Gemini    	| [Coming Soon]   | ✅ |
-| Grok      	 | ✅ | ✅ |
-| Ollama       | ✅ | ✅ |
-| OpenAI       | ✅ | ✅ |
-| OpenRouter   | ✅ | ✅ |
-| Perplexity   | ✅ | ❌ |
+| Provider   | Real-time Tools | Embeddings | Structured Output |
+|------------|-----------------|------------|-------------------|
+| Claude    	| ✅ | ❌ | ✅ |
+| DeepSeek  | ✅ | ✅ | ✅ |
+| Gemini    	| [Coming Soon]   | ✅ | ✅ |
+| Grok      	 | ✅ | ✅ | ✅ |
+| Ollama       | ✅ | ✅ | ✅ |
+| OpenAI       | ✅ | ✅ | ✅ (Native) |
+| OpenRouter   | ✅ | ✅ | ✅ |
+| Perplexity   | ✅ | ❌ | ✅ |
+
+**Note:** OpenAI provides native structured output support with strict schema validation. Other providers use JSON mode with schema constraints, which provides excellent results but may occasionally require prompt refinement.
+
+## Structured Output
+
+Get **type-safe, validated responses** from AI providers by defining expected output schemas using BoxLang classes, structs, or JSON schemas. The module automatically converts AI responses into properly typed objects, eliminating manual parsing and validation.
+
+### Why Use Structured Output?
+
+- **Type Safety**: Get validated objects instead of parsing JSON strings
+- **Automatic Validation**: Schema constraints ensure correct data types and required fields
+- **Better Reliability**: Reduces hallucinations by constraining response format
+- **Developer Experience**: Work with native BoxLang objects immediately
+- **Testing & Caching**: Use `aiPopulate()` to create objects from JSON for tests or cached responses
+
+### Quick Examples
+
+**Using a Class:**
+
+```java
+class Person {
+    property name="name" type="string";
+    property name="age" type="numeric";
+    property name="email" type="string";
+}
+
+result = aiChat( "Extract person info: John Doe, 30, john@example.com" )
+    .structuredOutput( new Person() );
+
+writeOutput( "Name: #result.getName()#, Age: #result.getAge()#" );
+```
+
+**Using a Struct Template:**
+
+```java
+template = {
+    "title": "",
+    "summary": "",
+    "tags": [],
+    "sentiment": ""
+};
+
+result = aiChat( "Analyze this article: [long text]" )
+    .structuredOutput( template );
+
+writeOutput( "Tags: #result.tags.toList()#" );
+```
+
+**Extracting Arrays:**
+
+```java
+class Task {
+    property name="title" type="string";
+    property name="priority" type="string";
+    property name="dueDate" type="string";
+}
+
+tasks = aiChat( "Extract tasks from: Finish report by Friday (high priority), Review code tomorrow" )
+    .structuredOutput( [ new Task() ] );
+
+for( task in tasks ) {
+    writeOutput( "#task.getTitle()# - Priority: #task.getPriority()#<br>" );
+}
+```
+
+**Multiple Schemas (Extract Different Types Simultaneously):**
+
+```java
+result = aiChat( "Extract person and company: John Doe, 30 works at Acme Corp, founded 2020" )
+    .structuredOutputs( {
+        "person": new Person(),
+        "company": new Company()
+    } );
+
+writeOutput( "Person: #result.person.getName()#<br>" );
+writeOutput( "Company: #result.company.getName()#<br>" );
+```
+
+### Manual Population with aiPopulate()
+
+Convert JSON responses or cached data into typed objects without making AI calls:
+
+```java
+// From JSON string
+jsonData = '{"name":"John Doe","age":30,"email":"john@example.com"}';
+person = aiPopulate( new Person(), jsonData );
+
+// From struct
+data = { name: "Jane", age: 25, email: "jane@example.com" };
+person = aiPopulate( new Person(), data );
+
+// Populate array
+tasksJson = '[{"title":"Task 1","priority":"high"},{"title":"Task 2","priority":"low"}]';
+tasks = aiPopulate( [ new Task() ], tasksJson );
+```
+
+**Perfect for:**
+- Testing with mock data
+- Using cached AI responses
+- Converting existing JSON data to typed objects
+- Validating data structures
+
+### Provider Support
+
+All providers support structured output! OpenAI offers native structured output with strict validation, while others use JSON mode with schema guidance (which works excellently in practice).
+
+### Learn More
+
+- **Quick Start**: [Simple Interactions Guide](docs/simple-interactions/structured-output.md)
+- **Advanced Pipelines**: [Pipeline Integration Guide](docs/pipelines/structured-output.md)
+- **Interactive Course**: [Lesson 12 - Structured Output](course/lesson-12-structured-output/)
+- **Examples**: Check `examples/structured/` for complete working examples
 
 ## Settings
 
@@ -184,6 +297,7 @@ The AI module supports different return formats for the responses. You can speci
 | `aiAiRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | AiRequestObject | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
 | `aiModel()` | Create AI model wrapper | `provider`, `apiKey` | AiModel Object | N/A |
+| `aiPopulate()` | Populate class/struct from JSON | `target`, `data` | Populated Object | N/A |
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
@@ -1550,9 +1664,9 @@ Execute operations on an MCP server:
 ```java
 // Send request to a tool
 result = MCP( "http://localhost:3000" )
-    .send( "searchDocs", { 
+    .send( "searchDocs", {
         query: "BoxLang syntax",
-        maxResults: 10 
+        maxResults: 10
     } )
 
 // Read a resource
@@ -1561,7 +1675,7 @@ content = MCP( "http://localhost:3000" )
 
 // Get a prompt with arguments
 prompt = MCP( "http://localhost:3000" )
-    .getPrompt( "generateCode", { 
+    .getPrompt( "generateCode", {
         language: "java",
         description: "Sort array"
     } )
@@ -1597,7 +1711,7 @@ mcpClient = MCP( "https://boxlang.ortusbooks.com/~gitbook/mcp" )
     .withTimeout( 10000 )
     .withBearerToken( getSystemSetting( "MCP_TOKEN" ) )
     .onError( ( response ) => {
-        writeLog( 
+        writeLog(
             type: "error",
             text: "MCP Error: #response.getError()#"
         )
