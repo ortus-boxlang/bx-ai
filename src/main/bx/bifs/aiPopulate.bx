@@ -1,0 +1,134 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Populate a class instance, struct, or array from JSON data or struct
+ */
+import bxModules.bxai.models.util.SchemaBuilder;
+
+@BoxBIF
+class {
+
+	/**
+	 * Inject the following references into the class
+	 * - moduleRecord : The ModuleRecord instance
+	 * - boxRuntime : The BoxRuntime instance
+	 * - interceptorService : The BoxLang InterceptorService
+	 * - log : A logger for the module config itself
+	 */
+
+	/**
+	 * Populate a class instance, struct, or array from JSON data or struct.
+	 * This is useful for testing, custom workflows, or working with cached AI responses.
+	 * <p>
+	 * Examples:
+	 * <pre>
+	 * // Populate a class instance from JSON string
+	 * person = aiPopulate( new Person(), '{"firstName":"John","lastName":"Doe","age":30}' );
+	 *
+	 * // Populate a class instance from struct
+	 * person = aiPopulate( new Person(), { firstName: "John", lastName: "Doe", age: 30 } );
+	 *
+	 * // Populate an array of class instances
+	 * people = aiPopulate( [new Person()], '[{"firstName":"John"},{"firstName":"Jane"}]' );
+	 *
+	 * // Works with structs too (returns deserialized data)
+	 * data = aiPopulate( { name: "", age: 0 }, '{"name":"John","age":30}' );
+	 * </pre>
+	 *
+	 * @target The target to populate - can be:
+	 *         - A class instance to populate
+	 *         - An array with a single class instance [new MyClass()] for array population
+	 *         - A struct definition (will return deserialized data)
+	 * @data The data to populate from - can be:
+	 *       - A JSON string
+	 *       - A struct
+	 * @return The populated target (class instance, array of instances, or struct)
+	 * @throws InvalidArgument if target or data types are invalid
+	 */
+	function invoke( required any target, required any data ) {
+		// Parse data if it's a JSON string
+		var parsedData = arguments.data;
+		if( isSimpleValue( arguments.data ) ) {
+			try {
+				parsedData = jsonDeserialize( arguments.data );
+			} catch( any e ) {
+				throw(
+					type: "InvalidArgument",
+					message: "Invalid JSON data provided: #e.message#"
+				);
+			}
+		}
+
+		// Validate data is now a struct or array
+		if( !isStruct( parsedData ) && !isArray( parsedData ) ) {
+			throw(
+				type: "InvalidArgument",
+				message: "Data must be a JSON string, struct, or array. Got: #parsedData.getClass().getName()#"
+			);
+		}
+
+		// Handle array target (array of class instances)
+		if( isArray( arguments.target ) ) {
+			// Must have exactly one element (the template class instance)
+			if( arguments.target.len() != 1 ) {
+				throw(
+					type: "InvalidArgument",
+					message: "Array target must contain exactly one class instance as template. Got #arguments.target.len()# elements."
+				);
+			}
+
+			var templateInstance = arguments.target[ 1 ];
+			if( !isObject( templateInstance ) ) {
+				throw(
+					type: "InvalidArgument",
+					message: "Array target must contain a class instance. Got: #templateInstance.getClass().getName()#"
+				);
+			}
+
+			// Data must be an array
+			if( !isArray( parsedData ) ) {
+				throw(
+					type: "InvalidArgument",
+					message: "When target is an array, data must also be an array. Got: #parsedData.getClass().getName()#"
+				);
+			}
+
+			return SchemaBuilder::populateArray( templateInstance, parsedData );
+		}
+
+		// Handle class instance target
+		if( isObject( arguments.target ) ) {
+			if( !isStruct( parsedData ) ) {
+				throw(
+					type: "InvalidArgument",
+					message: "When target is a class instance, data must be a struct. Got: #parsedData.getClass().getName()#"
+				);
+			}
+
+			return SchemaBuilder::populateClass( arguments.target, parsedData );
+		}
+
+		// Handle struct target (just return the parsed data)
+		if( isStruct( arguments.target ) ) {
+			return SchemaBuilder::populateStruct( parsedData );
+		}
+
+		// Invalid target type
+		throw(
+			type: "InvalidArgument",
+			message: "Target must be a class instance, array [new MyClass()], or struct. Got: #arguments.target.getClass().getName()#"
+		);
+	}
+
+}
