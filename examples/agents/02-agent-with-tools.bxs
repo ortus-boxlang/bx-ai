@@ -1,6 +1,6 @@
 /**
  * Agent with Tools Example
- * 
+ *
  * Demonstrates an AI agent that can call functions to perform actions
  * and access real-time data. The agent decides when to use tools automatically.
  */
@@ -22,9 +22,9 @@ weatherTool = aiTool(
             "Miami": { temp: 78, condition: "Sunny", humidity: 80 },
             "Seattle": { temp: 52, condition: "Rainy", humidity: 85 }
         }
-        
+
         data = weatherData[ arguments.city ] ?: { temp: 70, condition: "Unknown", humidity: 50 }
-        
+
         return {
             temperature: data.temp,
             condition: data.condition,
@@ -60,7 +60,7 @@ userLookupTool = aiTool(
             "jane@example.com": { name: "Jane Smith", role: "Designer", joined: "2021-03-20" },
             "bob@example.com": { name: "Bob Johnson", role: "Manager", joined: "2019-06-10" }
         }
-        
+
         return users[ arguments.email ] ?: { error: "User not found" }
     }
 ).addParameter( "email", "string", "User's email address", true )

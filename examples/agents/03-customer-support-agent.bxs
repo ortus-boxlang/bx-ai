@@ -1,6 +1,6 @@
 /**
  * Customer Support Agent Example
- * 
+ *
  * A realistic customer support bot with multiple tools for account lookup,
  * order tracking, and knowledge base search. Demonstrates a production-ready agent.
  */
@@ -10,16 +10,16 @@ println( "" )
 
 // Mock databases
 customers = {
-    "C123": { 
-        name: "Alice Johnson", 
-        email: "alice@example.com", 
+    "C123": {
+        name: "Alice Johnson",
+        email: "alice@example.com",
         tier: "Premium",
         accountBalance: 1500.00,
         joinDate: "2022-06-15"
     },
-    "C456": { 
-        name: "Bob Smith", 
-        email: "bob@example.com", 
+    "C456": {
+        name: "Bob Smith",
+        email: "bob@example.com",
         tier: "Standard",
         accountBalance: 450.00,
         joinDate: "2023-01-20"
@@ -27,17 +27,17 @@ customers = {
 }
 
 orders = {
-    "ORD-001": { 
-        customerId: "C123", 
-        status: "Shipped", 
-        items: ["Laptop", "Mouse"], 
+    "ORD-001": {
+        customerId: "C123",
+        status: "Shipped",
+        items: ["Laptop", "Mouse"],
         total: 1299.99,
         trackingNumber: "TRK-ABC123"
     },
-    "ORD-002": { 
-        customerId: "C456", 
-        status: "Processing", 
-        items: ["Keyboard"], 
+    "ORD-002": {
+        customerId: "C456",
+        status: "Processing",
+        items: ["Keyboard"],
         total: 89.99,
         trackingNumber: null
     }
@@ -82,7 +82,7 @@ kbSearchTool = aiTool(
     action: ( topic ) => {
         topic = lCase( arguments.topic )
         result = ""
-        
+
         // Simple keyword search
         for ( key in knowledgeBase ) {
             if ( topic.contains( key ) ) {
@@ -90,7 +90,7 @@ kbSearchTool = aiTool(
                 break
             }
         }
-        
+
         return result.len() ? result : "No information found for that topic. Please contact a human agent."
     }
 ).addParameter( "topic", "string", "Topic to search for (refund, shipping, returns, account, etc.)", true )
@@ -98,8 +98,8 @@ kbSearchTool = aiTool(
 // Create support agent
 supportAgent = aiAgent(
     name: "SupportBot",
-    instructions: "You are a friendly customer support agent. Help customers with their questions about accounts, orders, and policies. 
-    
+    instructions: "You are a friendly customer support agent. Help customers with their questions about accounts, orders, and policies.
+
     Guidelines:
     - Always be polite and empathetic
     - Use tools to look up accurate information

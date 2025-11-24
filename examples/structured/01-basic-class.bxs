@@ -1,6 +1,6 @@
 /**
  * Structured Output - Basic Class Example
- * 
+ *
  * Demonstrates extracting structured data from text into a typed BoxLang class.
  * The AI automatically parses the text and populates the class with proper types.
  */

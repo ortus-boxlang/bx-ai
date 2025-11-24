@@ -1,6 +1,6 @@
 /**
  * Research Agent Example
- * 
+ *
  * Demonstrates an agent that can perform research by searching multiple sources,
  * synthesizing information, and providing comprehensive answers with citations.
  */
@@ -58,7 +58,7 @@ searchArticlesTool = aiTool(
     action: ( query ) => {
         query = lCase( arguments.query )
         results = []
-        
+
         // Simple keyword search
         articles.each( article => {
             if ( lCase( article.title ).contains( query ) || lCase( article.content ).contains( query ) ) {
@@ -71,7 +71,7 @@ searchArticlesTool = aiTool(
                 })
             }
         } )
-        
+
         return results.len() ? results : [ { message: "No articles found" } ]
     }
 ).addParameter( "query", "string", "Search keywords", true )
@@ -110,8 +110,8 @@ citationTool = aiTool(
 // Create research agent
 researchAgent = aiAgent(
     name: "ResearchBot",
-    instructions: "You are a research assistant specializing in AI and BoxLang AI. 
-    
+    instructions: "You are a research assistant specializing in AI and BoxLang AI.
+
     Research Process:
     1. Search for relevant articles on the topic
     2. Retrieve full content of promising articles
@@ -119,7 +119,7 @@ researchAgent = aiAgent(
     4. Synthesize information from multiple sources
     5. Provide citations for all information
     6. Give a comprehensive, well-structured answer
-    
+
     Always cite your sources using article IDs and provide code examples when relevant.",
     tools: [ searchArticlesTool, getArticleTool, findCodeTool, citationTool ]
 )

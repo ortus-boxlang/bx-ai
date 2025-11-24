@@ -1,6 +1,6 @@
 /**
  * Multi-Model Pipeline Example
- * 
+ *
  * Demonstrates using different AI models in a workflow, combining their
  * strengths for different tasks (e.g., fast model for drafts, smart model for refinement).
  */
@@ -58,7 +58,7 @@ println( "" )
 println( "=== Parallel Multi-Model Analysis ===" )
 println( "" )
 
-text = "This product exceeded my expectations. The quality is outstanding, 
+text = "This product exceeded my expectations. The quality is outstanding,
 though the price is a bit high. Customer service was excellent and shipping was fast."
 
 // Model 1: Fast sentiment analysis
@@ -93,10 +93,10 @@ println( "=== Dynamic Model Selection ===" )
 println( "" )
 
 function createSmartPipeline( useAdvanced = false ) {
-    model = useAdvanced ? 
+    model = useAdvanced ?
         aiModel( "openai", { model: "gpt-4o", temperature: 0.3 } ) :
         aiModel( "openai", { model: "gpt-4o-mini", temperature: 0.5 } )
-    
+
     return aiMessage()
         .user( "${prompt}" )
         .to( model )
@@ -111,8 +111,8 @@ println( "" )
 
 // Complex task - use advanced model
 complexPipeline = createSmartPipeline( true )
-complexResult = complexPipeline.run({ 
-    prompt: "Explain the implications of quantum computing on current encryption methods" 
+complexResult = complexPipeline.run({
+    prompt: "Explain the implications of quantum computing on current encryption methods"
 })
 println( "Complex Task (Advanced Model):" )
 println( complexResult )

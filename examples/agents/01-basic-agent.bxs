@@ -1,6 +1,6 @@
 /**
  * Basic Agent Example
- * 
+ *
  * Demonstrates a simple AI agent with memory that can maintain context
  * across multiple interactions. Perfect for chatbots and conversational interfaces.
  */

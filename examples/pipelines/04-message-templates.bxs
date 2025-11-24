@@ -1,6 +1,6 @@
 /**
  * Message Template Pipeline Example
- * 
+ *
  * Demonstrates creating reusable message templates with variables,
  * system prompts, and complex prompt engineering patterns.
  */

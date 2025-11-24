@@ -1,6 +1,6 @@
 /**
  * Simple Pipeline Example
- * 
+ *
  * Demonstrates basic pipeline concepts: creating reusable templates,
  * chaining transformations, and running with different inputs.
  */
@@ -67,8 +67,8 @@ summarizer = aiMessage()
         }
     } )
 
-article = "Artificial intelligence is transforming industries worldwide. 
-From healthcare to finance, AI systems are improving efficiency and decision-making. 
+article = "Artificial intelligence is transforming industries worldwide.
+From healthcare to finance, AI systems are improving efficiency and decision-making.
 However, ethical considerations and responsible development remain crucial challenges."
 
 result = summarizer.run({ article: article })
