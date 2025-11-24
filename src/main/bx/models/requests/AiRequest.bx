@@ -14,6 +14,8 @@
  * ----------------------------------------------------------------------------------
  * This models a chat request that will be sent to a provider
  */
+import bxModules.bxai.models.util.SchemaBuilder;
+
 class extends="AiBaseRequest"{
 
 	/**
@@ -32,19 +34,29 @@ class extends="AiBaseRequest"{
 	property name="stream" type="boolean" default=false;
 
 	/**
+	 * Structured output schema for the response (JSON schema format)
+	 */
+	property name="structuredOutput" type="struct" default={};
+
+	/**
+	 * The original returnFormat value (if it was a class/struct for structured output)
+	 */
+	property name="structuredOutputDefinition" type="any" default={};
+
+	/**
 	 * Constructor
 	 *
-	 * @aiMessage The messages to use for the chat request
-	 * @params A set of request params to pass to the provider
-	 * @options A set of request options to pass to the provider
+	 * @aiMessage The messages to use for the chat request, or empty for none
+	 * @params A set of request params to pass to the provider, or empty for none
+	 * @options A set of request options to pass to the provider, or empty for none
 	 */
 	function init(
-		aiMessage aiMessage = new aiMessage(),
+		aiMessage aiMessage = new bxModules.bxai.models.AiMessage(),
 		struct params = {},
 		struct options = {}
 	){
-		variables.messages = arguments.aiMessage.getMessages();
 		variables.aiMessage = arguments.aiMessage;
+		variables.messages = arguments.aiMessage.getMessages();
 		variables.params = params;
 		variables.provider = options.provider ?: "";
 		variables.apiKey = options.apiKey ?: "";
@@ -52,12 +64,42 @@ class extends="AiBaseRequest"{
 		variables.logRequestToConsole = options.logRequestToConsole ?: false;
 		variables.logResponse = options.logResponse ?: false;
 		variables.logResponseToConsole = options.logResponseToConsole ?: false;
-		variables.returnFormat = options.returnFormat ?: "raw";
 		variables.model = options.params?.model ?: "";
 		variables.timeout = options.timeout ?: 30;
 		variables.stream = options.stream ?: false;
-		variables.maxInteractions = options.maxInteractions ?: 0;
-		return this;
+	variables.maxInteractions = options.maxInteractions ?: 0;
+
+	// Check for explicit schema first (from schema() method)
+	if( options.keyExists( "schema" ) ) {
+		variables.structuredOutputDefinition = options.schema;
+		variables.structuredOutput = SchemaBuilder::fromJSONSchema( options.schema );
+		variables.returnFormat = "structuredOutput";
+	} else {
+		// Default handling of returnFormat if no schema provided
+		var returnFormat = options.returnFormat ?: "raw";
+
+		// Check if returnFormat is a complex value (class instance, struct, or array)
+		if( !isSimpleValue( returnFormat ) ) {
+			variables.structuredOutputDefinition = returnFormat;
+
+			// Build schema using SchemaBuilder
+			if( isObject( returnFormat ) ) {
+				variables.structuredOutput = SchemaBuilder::fromClass( returnFormat );
+			} else if( isArray( returnFormat ) ) {
+				// Array indicates array of structured objects
+				variables.structuredOutput = SchemaBuilder::fromArray( returnFormat[1] );
+			} else if( isStruct( returnFormat ) ) {
+				// Struct definition - infer schema from values
+				variables.structuredOutput = SchemaBuilder::fromStruct( returnFormat );
+			}
+			// Override returnFormat to "structuredOutput" for provider handling
+			variables.returnFormat = "structuredOutput";
+		} else {
+			// Simple value - use as-is
+			variables.returnFormat = returnFormat;
+		}
+	}
+	return this;
 	}
 
 	/**
@@ -99,6 +141,15 @@ class extends="AiBaseRequest"{
 	 */
 	boolean function hasApiKey(){
 		return !variables.apiKey.isEmpty()
+	}
+
+	/**
+	 * Check if structured output is enabled
+	 *
+	 * @return True if structured output is configured
+	 */
+	boolean function isStructuredOutput(){
+		return !variables.structuredOutput.isEmpty();
 	}
 
 }

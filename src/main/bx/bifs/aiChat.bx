@@ -68,11 +68,12 @@ class {
 		arguments.options.append( static.DEFAULT_OPTIONS, false );
 		arguments.options.append( static.MODULE_SETTINGS, false );
 
-		// Validate or fail
-		if( !static.VALID_RESPONSE_FORMATS.contains( arguments.options.returnFormat ) ){
+		// Validate returnFormat only if it's a simple string value
+		// Complex values (class instances, structs, arrays) are for structured output
+		if( isSimpleValue( arguments.options.returnFormat ) && !static.VALID_RESPONSE_FORMATS.contains( arguments.options.returnFormat ) ){
 			throw(
 				type : "InvalidArgument",
-				message : "Invalid return format [#arguments.options.returnFormat#]. Valid formats are: #static.VALID_RESPONSE_FORMATS.toList()# "
+				message : "Invalid return format [#arguments.options.returnFormat#]. Valid formats are: #static.VALID_RESPONSE_FORMATS.toList()# or a class/struct/array for structured output"
 			);
 		}
 

@@ -26,6 +26,8 @@
  * - chatURL                                  : The chat URL of the provider API
  * - params                                   : The default params request properties
  */
+import bxModules.bxai.models.util.SchemaBuilder;
+
 abstract class implements="IAiService" {
 
 	/**
@@ -188,6 +190,18 @@ abstract class implements="IAiService" {
 			dataPacket.tools = dataPacket.tools.map( .getSchema )
 		}
 
+		// Structured output support (OpenAI format)
+		if( arguments.aiRequest.isStructuredOutput() ){
+			dataPacket.response_format = {
+				"type": "json_schema",
+				"json_schema": {
+					"name": "response",
+					"strict": true,
+					"schema": arguments.aiRequest.getStructuredOutput()
+				}
+			};
+		}
+
 		// Send it
 		var result = sendRequest( aiRequest, dataPacket )
 
@@ -218,6 +232,8 @@ abstract class implements="IAiService" {
 					return jsonDeserialize( extractFromCodeBlock( content, "json" ) );
 				case "xml":
 					return xmlParse( extractFromCodeBlock( content, "xml" ) );
+				case "structuredOutput":
+					return populateStructuredOutput( content, aiRequest );
 				case "single": default:
 					return content;
 			}
@@ -736,6 +752,48 @@ abstract class implements="IAiService" {
 
 		// No code block found, return original content
 		return arguments.content;
+	}
+
+	/**
+	 * Populate structured output from LLM response
+	 * Handles classes, structs, and arrays based on the original definition
+	 *
+	 * @content The JSON content from the LLM
+	 * @aiRequest The request containing the structured output definition
+	 *
+	 * @return Populated class instance, struct, or array
+	 */
+	private any function populateStructuredOutput( required string content, required AiRequest aiRequest ){
+
+		println( "Populating structured output..." )
+		println( "Content: #arguments.content#" )
+		println( "Definition: #arguments.aiRequest.getStructuredOutput().toString()#" )
+
+		// Extract from code block if needed
+		var jsonContent = extractFromCodeBlock( arguments.content, "json" );
+		// The structured output definition: class, struct, or array
+		var outputDefinition = arguments.aiRequest.getStructuredOutputDefinition();
+
+		// Class instance - populate and return
+		if( isObject( outputDefinition ) ){
+			println( "Populating class instance..." )
+			return SchemaBuilder::populateClass( outputDefinition, jsonContent );
+		}
+
+		// Array of class instances
+		if( isArray( outputDefinition ) ){
+			println( "Populating array of class instances..." )
+			return SchemaBuilder::populateArray( outputDefinition.first(), jsonContent );
+		}
+
+		// Struct schema - deserialize
+		if( isStruct( outputDefinition ) ){
+			println( "Populating struct..." )
+			return SchemaBuilder::populateStruct( jsonContent );
+		}
+
+		// Raw JSON schema - just deserialize
+		return jsonDeserialize( jsonContent );
 	}
 
 }

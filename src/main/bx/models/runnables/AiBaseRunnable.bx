@@ -16,6 +16,7 @@
  * Provides common functionality for naming, parameter management, and chaining operations.
  */
 import bxModules.bxai.models.transformers.*;
+import bxModules.bxai.models.util.SchemaBuilder;
 
 abstract class implements="IAiRunnable" {
 
@@ -341,6 +342,80 @@ abstract class implements="IAiRunnable" {
 	 */
 	public IAiRunnable function rawResponse() {
 		return this.withOptions( { returnFormat: "raw" } );
+	}
+
+	/**
+	 * Define structured output using a class, struct, or JSON schema
+	 * The LLM response will be validated against this schema and populated accordingly
+	 *
+	 * Example with class:
+	 * ```
+	 * class Person {
+	 *     property name="firstName" type="string";
+	 *     property name="age" type="numeric";
+	 * }
+	 * var person = aiModel().structuredOutput( new Person() ).run( "Extract: John Doe, age 30" );
+	 * ```
+	 *
+	 * Example with struct:
+	 * ```
+	 * var schema = { name: "", age: 0, active: true };
+	 * var result = aiModel().structuredOutput( schema ).run( "Parse this data" );
+	 * ```
+	 *
+	 * @schema Class instance, struct definition, JSON schema, or array notation [classInstance]
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function structuredOutput( required any schema ) {
+		return this.withOptions( { returnFormat: arguments.schema } );
+	}
+
+	/**
+	 * Define structured output using a raw JSON schema
+	 * Use this when you have a pre-built JSON schema object
+	 *
+	 * Example:
+	 * ```
+	 * var jsonSchema = {
+	 *     "type": "object",
+	 *     "properties": {
+	 *         "name": { "type": "string" },
+	 *         "age": { "type": "number" }
+	 *     },
+	 *     "required": ["name", "age"]
+	 * };
+	 * var result = aiModel().schema( jsonSchema ).run( "Extract data" );
+	 * ```
+	 *
+	 * @jsonSchema JSON schema struct or string
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function schema( required any jsonSchema ) {
+		return this.withOptions( { schema: arguments.jsonSchema } );
+	}
+
+	/**
+	 * Define multiple structured outputs with named schemas
+	 * Useful when you need to extract multiple different data structures
+	 *
+	 * Example:
+	 * ```
+	 * var result = aiModel()
+	 *     .structuredOutputs([
+	 *         { name: "contact", schema: new ContactInfo() },
+	 *         { name: "event", schema: new EventDetails() }
+	 *     ])
+	 *     .run( "Extract contact and event info" );
+	 * // result.contact.name, result.event.date, etc.
+	 * ```
+	 *
+	 * @schemas Array of schema definitions: [{ name: "schemaName", schema: definition }]
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function structuredOutputs( required array schemas ) {
+		// Merge the schemas into a single struct-based schema
+		var mergedSchema = SchemaBuilder::merge( arguments.schemas );
+		return this.withOptions( { returnFormat: mergedSchema } );
 	}
 
 }

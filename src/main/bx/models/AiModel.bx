@@ -199,7 +199,7 @@ class extends="AiBaseRunnable" {
 			return arguments.input.render();
 		}
 
-		// Array of messages
+		// Array of messages, return as-is
 		if( isArray( arguments.input ) ) {
 			return arguments.input;
 		}
@@ -214,9 +214,14 @@ class extends="AiBaseRunnable" {
 			return [];
 		}
 
+		// Simple string - convert to user message
+		if( isSimpleValue( arguments.input ) ) {
+			return [ { "role": "user", "content": arguments.input } ];
+		}
+
 		throw(
 			type: "InvalidInput",
-			message: "Input must be: AiMessage, array of messages, or struct with 'messages' key"
+			message: "Input must be: AiMessage, array of messages, struct with 'messages' key, or string"
 		);
 	}
 

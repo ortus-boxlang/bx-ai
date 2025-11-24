@@ -23,15 +23,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import io.github.cdimascio.dotenv.Dotenv;
-
 /**
  * This loads the module and runs integration tests on core module functionality.
  * Provider-specific tests are in the providers package.
  */
 public class IntegrationTest extends BaseIntegrationTest {
-
-	static Dotenv dotenv = Dotenv.load();
 
 	@BeforeEach
 	public void beforeEach() {

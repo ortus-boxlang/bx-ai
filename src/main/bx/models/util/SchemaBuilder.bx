@@ -1,0 +1,428 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Utility class for building JSON schemas from BoxLang data structures
+ * and populating responses into structured objects
+ */
+class {
+
+	static {
+		/**
+		 * Schema cache keyed by class path to avoid regenerating schemas
+		 */
+		SCHEMA_CACHE = {};
+	}
+
+	/**
+	 * Clear the schema cache - primarily used for testing
+	 */
+	static void function clearCache() {
+		static.SCHEMA_CACHE = {};
+	}
+
+	/**
+	 * Build a JSON schema from a BoxLang class instance
+	 * Uses metadata to extract properties and types
+	 * Caches schemas by class path for performance
+	 *
+	 * @classInstance Instance of a BoxLang class with properties
+	 * @return JSON schema struct compatible with OpenAI structured output
+	 */
+	static struct function fromClass( required any classInstance ) {
+		var metadata = getMetadata( arguments.classInstance );
+		var classPath = metadata.path ?: metadata.name;
+
+		// Check cache first
+		if( static.SCHEMA_CACHE.keyExists( classPath ) ) {
+			return static.SCHEMA_CACHE[ classPath ];
+		}
+
+		// Build schema from metadata
+		var schema = metadataToSchema( metadata );
+
+		// Cache for future use
+		static.SCHEMA_CACHE[ classPath ] = schema;
+
+		return schema;
+	}
+
+	/**
+	 * Build a JSON schema from a BoxLang struct definition
+	 * Uses value types to infer schema types
+	 *
+	 * @structDefinition Struct with sample values to infer types
+	 * @return JSON schema struct
+	 */
+	static struct function fromStruct( required struct structDefinition ) {
+		var schema = {
+			"type": "object",
+			"properties": {},
+			"required": [],
+			"additionalProperties": false
+		};
+
+		// Iterate through struct keys and infer types
+		for( var key in arguments.structDefinition ) {
+			var value = arguments.structDefinition[ key ];
+			var propertySchema = buildPropertySchema( value );
+
+			schema.properties[ key ] = propertySchema;
+			schema.required.append( key );
+		}
+
+		return schema;
+	}
+
+	/**
+	 * Build a JSON schema from a raw JSON schema string or struct
+	 * Normalizes and validates the schema
+	 *
+	 * @schema JSON schema as string or struct
+	 * @return Normalized JSON schema struct
+	 */
+	static struct function fromJSONSchema( required any schema ) {
+		// If string, deserialize it
+		if( isSimpleValue( arguments.schema ) ) {
+			return jsonDeserialize( arguments.schema );
+		}
+
+		// Already a struct, return as-is
+		return arguments.schema;
+	}
+
+	/**
+	 * Build schema for array of items
+	 *
+	 * @itemSchema Schema for array items (class, struct, or JSON schema)
+	 * @return JSON schema for array
+	 */
+	static struct function fromArray( required any itemSchema ) {
+		var itemSchemaStruct = {};
+
+		// Determine item schema type
+		if( isObject( arguments.itemSchema ) ) {
+			itemSchemaStruct = fromClass( arguments.itemSchema );
+		} else if( isStruct( arguments.itemSchema ) ) {
+			itemSchemaStruct = fromStruct( arguments.itemSchema );
+		} else {
+			itemSchemaStruct = fromJSONSchema( arguments.itemSchema );
+		}
+
+		return {
+			"type": "array",
+			"items": itemSchemaStruct
+		};
+	}
+
+	/**
+	 * Merge multiple schemas into a single schema with multiple properties
+	 * Useful for multiple structured outputs
+	 *
+	 * @schemas Array of schema definitions with names: [{ name: "contact", schema: contactClass }]
+	 * @return Combined JSON schema
+	 */
+	static struct function merge( required array schemas ) {
+		var mergedSchema = {
+			"type": "object",
+			"properties": {},
+			"required": [],
+			"additionalProperties": false
+		};
+
+		for( var schemaDefinition in arguments.schemas ) {
+			var name = schemaDefinition.name ?: "item#arguments.schemas.find( schemaDefinition )#";
+			var schema = schemaDefinition.schema;
+
+			// Convert to schema if needed
+			var propertySchema = {};
+			if( isObject( schema ) ) {
+				propertySchema = fromClass( schema );
+			} else if( isStruct( schema ) ) {
+				propertySchema = fromStruct( schema );
+			} else {
+				propertySchema = fromJSONSchema( schema );
+			}
+
+			mergedSchema.properties[ name ] = propertySchema;
+			mergedSchema.required.append( name );
+		}
+
+		return mergedSchema;
+	}
+
+	/**
+	 * Populate a class instance from LLM response
+	 * Uses BoxLang's native setters for custom deserialization
+	 *
+	 * @classInstance Empty class instance to populate
+	 * @data Response data from LLM (can be JSON string or struct)
+	 * @return Populated class instance
+	 */
+	static any function populateClass( required any classInstance, required any data ) {
+		// Parse JSON if data is a string
+		var dataStruct = isSimpleValue( arguments.data )
+			? jsonDeserialize( arguments.data )
+			: arguments.data;
+
+		// Get metadata to know what properties exist
+		var metadata = getMetadata( arguments.classInstance );
+		var properties = metadata.properties ?: [];
+
+		// Populate each property using setters
+		for( var property in properties ) {
+			var propertyName = property.name;
+			var setterName = "set#propertyName#";
+
+			// Check if data has this property
+			if( dataStruct.keyExists( propertyName ) ) {
+				var value = dataStruct[ propertyName ];
+
+				// If setter exists, call it (enables custom deserialization)
+				if( structKeyExists( arguments.classInstance, setterName ) ) {
+					invoke( arguments.classInstance, setterName, [ value ] );
+				}
+			}
+		}
+
+		return arguments.classInstance;
+	}
+
+	/**
+	 * Validate and deserialize struct response
+	 * For struct schemas, we just need to parse JSON
+	 *
+	 * @data Response data from LLM (string or struct)
+	 * @return Validated struct
+	 */
+	static struct function populateStruct( required any data ) {
+		// Parse JSON if data is a string
+		if( isSimpleValue( arguments.data ) ) {
+			return jsonDeserialize( arguments.data );
+		}
+
+		// Already a struct
+		return arguments.data;
+	}
+
+	/**
+	 * Populate an array of class instances from LLM response
+	 *
+	 * @classInstance Empty class instance to use as template
+	 * @data Array of response data from LLM
+	 * @return Array of populated class instances
+	 */
+	static array function populateArray( required any classInstance, required any data ) {
+		// Parse JSON if data is a string
+		var dataArray = isSimpleValue( arguments.data )
+			? jsonDeserialize( arguments.data )
+			: arguments.data;
+
+		var results = [];
+
+		// Populate each item
+		for( var item in dataArray ) {
+			// Create new instance for each item
+			var className = getMetadata( arguments.classInstance ).name;
+			var newInstance = createObject( className );
+
+			results.append( populateClass( newInstance, item ) );
+		}
+
+		return results;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Helper Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Convert BoxLang class metadata to JSON schema
+	 * Handles inheritance by traversing the extends chain
+	 *
+	 * @metadata Result from getMetadata(instance)
+	 * @return JSON schema struct
+	 */
+	private static struct function metadataToSchema( required struct metadata ) {
+		var schema = {
+			"type": "object",
+			"properties": {},
+			"required": [],
+			"additionalProperties": false
+		};
+
+		// Collect all properties including inherited ones
+		var allProperties = collectProperties( arguments.metadata );
+
+		// Convert each property to JSON schema
+		for( var property in allProperties ) {
+			var propertyName = property.name;
+			var propertyType = property.type ?: "any";
+			var annotations = property.annotations ?: {};
+
+			// Build property schema based on type
+			var propertySchema = {
+				"type": mapBoxLangTypeToJSONType( propertyType )
+			};
+
+			// Add description if available
+			if( annotations.keyExists( "description" ) ) {
+				propertySchema.description = annotations.description;
+			}
+
+			// Handle default values
+			if( property.keyExists( "defaultValue" ) && !isNull( property.defaultValue ) ) {
+				propertySchema.default = property.defaultValue;
+			} else {
+				// No default means it's required
+				schema.required.append( propertyName );
+			}
+
+			schema.properties[ propertyName ] = propertySchema;
+		}
+
+		return schema;
+	}
+
+	/**
+	 * Collect all properties from a class including inherited properties
+	 * Traverses the extends chain recursively
+	 *
+	 * @metadata Class metadata
+	 * @return Array of all properties
+	 */
+	private static array function collectProperties( required struct metadata ) {
+		// Make a copy since metadata.properties might be unmodifiable
+		var properties = duplicate( arguments.metadata.properties ?: [] );
+
+		// Check if this class extends another
+		if( arguments.metadata.keyExists( "extends" ) && !arguments.metadata.extends.isEmpty() ) {
+			// Recursively collect parent properties
+			var parentProperties = collectProperties( arguments.metadata.extends );
+			// Parent properties come first, then child properties (child can override)
+			properties = parentProperties.append( properties, true );
+		}
+
+		return properties;
+	}
+
+	/**
+	 * Build property schema from a value
+	 * Used for struct-based schema inference
+	 *
+	 * @value The value to inspect
+	 * @return Property schema struct
+	 */
+	private static struct function buildPropertySchema( required any value ) {
+		var propertySchema = {};
+
+		// Nested struct
+		if( isStruct( arguments.value ) ) {
+			return fromStruct( arguments.value );
+		}
+
+		// Array
+		if( isArray( arguments.value ) ) {
+			// Empty array - assume string items
+			if( arguments.value.isEmpty() ) {
+				return {
+					"type": "array",
+					"items": { "type": "string" }
+				};
+			}
+
+			// Infer from first item
+			var firstItem = arguments.value[1];
+			return {
+				"type": "array",
+				"items": buildPropertySchema( firstItem )
+			};
+		}
+
+		// Simple value - detect type
+		propertySchema.type = detectType( arguments.value );
+
+		return propertySchema;
+	}
+
+	/**
+	 * Detect JSON schema type from BoxLang value
+	 *
+	 * @value The value to inspect
+	 * @return JSON schema type (string, number, boolean, object, array, null)
+	 */
+	private static string function detectType( required any value ) {
+		// Null
+		if( isNull( arguments.value ) ) {
+			return "null";
+		}
+
+		// Get Java class name for type detection
+		var className = arguments.value.getClass().getName();
+
+		// Numeric types
+		if( className.findNoCase( "Integer" ) ||
+		    className.findNoCase( "Long" ) ||
+		    className.findNoCase( "Double" ) ||
+		    className.findNoCase( "Float" ) ||
+		    className.findNoCase( "BigDecimal" ) ||
+		    isNumeric( arguments.value ) ) {
+			return "number";
+		}
+
+		// Boolean
+		if( className.findNoCase( "Boolean" ) || isBoolean( arguments.value ) ) {
+			return "boolean";
+		}
+
+		// Array/List
+		if( isArray( arguments.value ) ) {
+			return "array";
+		}
+
+		// Struct/Map
+		if( isStruct( arguments.value ) ) {
+			return "object";
+		}
+
+		// Default to string
+		return "string";
+	}
+
+	/**
+	 * Map BoxLang property type to JSON schema type
+	 *
+	 * @boxLangType The BoxLang type string
+	 * @return JSON schema type
+	 */
+	private static string function mapBoxLangTypeToJSONType( required string boxLangType ) {
+		var typeMap = {
+			"string": "string",
+			"numeric": "number",
+			"boolean": "boolean",
+			"array": "array",
+			"struct": "object",
+			"any": "string",
+			"date": "string",
+			"datetime": "string",
+			"integer": "number",
+			"float": "number",
+			"double": "number"
+		};
+
+		return typeMap[ arguments.boxLangType.lcase() ] ?: "string";
+	}
+
+}

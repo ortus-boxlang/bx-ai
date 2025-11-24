@@ -1,0 +1,7 @@
+class{
+	property name="firstName";
+	property name="lastName";
+	property name="email" type="string";
+	property name="age" type="numeric";
+	property name="isActive" type="boolean" default="true";
+}

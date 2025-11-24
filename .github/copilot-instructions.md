@@ -23,7 +23,8 @@ class extends="BaseClass" implements="IInterface" {
     }
 }
 
-// Imports and static method calls
+// Imports - CRITICAL: Classes ALWAYS require imports defined at the top of the class definition
+// Do NOT use inline imports inside methods/functions, that can only be used in scripts (bxs) or (bxm)
 import bxModules.bxai.models.util.TextChunker;
 
 // Call static methods using :: operator
