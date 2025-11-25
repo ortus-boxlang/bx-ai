@@ -607,12 +607,13 @@ abstract class
 	 * ------------------------------------------------------------------------------
 	 * ABSTRACT METHODS (Provider-specific implementations)
 	 * ------------------------------------------------------------------------------
+	 * The following methods must be implemented by concrete vector memory classes
 	 */
 
 	/**
 	 * Ensure collection/index exists (provider-specific)
 	 */
-	abstract private void function ensureCollection();
+	abstract IVectorMemory function ensureCollection();
 
 	/**
 	 * Store a document in the vector database (provider-specific)
@@ -622,7 +623,7 @@ abstract class
 	 * @embedding Vector embedding
 	 * @metadata Document metadata
 	 */
-	abstract private void function storeDocument(
+	abstract IVectorMemory function storeDocument(
 		required string id,
 		required string text,
 		required array embedding,
@@ -638,7 +639,7 @@ abstract class
 	 *
 	 * @return Array of results
 	 */
-	abstract private array function searchByVector(
+	abstract array function searchByVector(
 		required array embedding,
 		required numeric limit,
 		required struct filter
@@ -649,7 +650,7 @@ abstract class
 	 *
 	 * @return Array of documents
 	 */
-	abstract private array function getAllDocuments();
+	abstract array function getAllDocuments();
 
 	/**
 	 * Get document by ID (provider-specific)
@@ -658,7 +659,7 @@ abstract class
 	 *
 	 * @return Struct document or empty struct
 	 */
-	abstract private struct function getDocumentById( required string id );
+	abstract struct function getDocumentById( required string id );
 
 	/**
 	 * Delete document by ID (provider-specific)
@@ -667,7 +668,7 @@ abstract class
 	 *
 	 * @return Boolean success
 	 */
-	abstract private boolean function deleteDocument( required string id );
+	abstract boolean function deleteDocument( required string id );
 
 	/**
 	 * Delete documents by filter (provider-specific)
@@ -676,11 +677,11 @@ abstract class
 	 *
 	 * @return Numeric count deleted
 	 */
-	abstract private numeric function deleteDocumentsByFilter( required struct filter );
+	abstract numeric function deleteDocumentsByFilter( required struct filter );
 
 	/**
 	 * Clear entire collection (provider-specific)
 	 */
-	abstract private void function clearCollection();
+	abstract IVectorMemory function clearCollection();
 
 }

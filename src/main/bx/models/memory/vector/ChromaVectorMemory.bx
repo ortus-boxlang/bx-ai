@@ -86,10 +86,11 @@ class extends="BaseVectorMemory" {
 	/**
 	 * Ensure collection exists in ChromaDB
 	 */
-	private void function ensureCollection() {
+	IVectorMemory function ensureCollection() {
 		if ( !collectionExists( variables.collection ) ) {
 			createCollection( variables.collection );
 		}
+		return this;
 	}
 
 	/**
@@ -100,7 +101,7 @@ class extends="BaseVectorMemory" {
 	 * @embedding Vector embedding
 	 * @metadata Document metadata
 	 */
-	private void function storeDocument(
+	IVectorMemory function storeDocument(
 		required string id,
 		required string text,
 		required array embedding,
@@ -114,11 +115,12 @@ class extends="BaseVectorMemory" {
 		};
 
 		var response = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/upsert" )
-			.setMethod( "POST" )
-			.addHeader( "Content-Type", "application/json" )
-			.setBody( jsonSerialize( payload ) )
-			.setTimeout( variables.timeout )
-			.setReadTimeout( variables.readTimeout )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
 			.send();
 
 		if ( response.statusCode != 200 ) {
@@ -128,6 +130,8 @@ class extends="BaseVectorMemory" {
 				detail = response.fileContent
 			);
 		}
+
+		return this;
 	}
 
 	/**
@@ -139,7 +143,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return Array of results with similarity scores
 	 */
-	private array function searchByVector(
+	array function searchByVector(
 		required array embedding,
 		required numeric limit,
 		required struct filter
@@ -156,11 +160,12 @@ class extends="BaseVectorMemory" {
 		}
 
 		var response = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/query" )
-			.setMethod( "POST" )
-			.addHeader( "Content-Type", "application/json" )
-			.setBody( jsonSerialize( payload ) )
-			.setTimeout( variables.timeout )
-			.setReadTimeout( variables.readTimeout )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
 			.send();
 
 		if ( response.statusCode != 200 ) {
@@ -180,17 +185,18 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return Array of documents
 	 */
-	private array function getAllDocuments() {
+	array function getAllDocuments() {
 		var payload = {
 			include: [ "documents", "metadatas", "embeddings" ]
 		};
 
 		var response = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/get" )
-			.setMethod( "POST" )
-			.addHeader( "Content-Type", "application/json" )
-			.setBody( jsonSerialize( payload ) )
-			.setTimeout( variables.timeout )
-			.setReadTimeout( variables.readTimeout )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
 			.send();
 
 		if ( response.statusCode != 200 ) {
@@ -212,18 +218,19 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return Struct document or empty struct
 	 */
-	private struct function getDocumentById( required string id ) {
+	struct function getDocumentById( required string id ) {
 		var payload = {
 			ids: [ arguments.id ],
 			include: [ "documents", "metadatas", "embeddings" ]
 		};
 
 		var response = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/get" )
-			.setMethod( "POST" )
-			.addHeader( "Content-Type", "application/json" )
-			.setBody( jsonSerialize( payload ) )
-			.setTimeout( variables.timeout )
-			.setReadTimeout( variables.readTimeout )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
 			.send();
 
 		if ( response.statusCode != 200 ) {
@@ -243,17 +250,18 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return Boolean success
 	 */
-	private boolean function deleteDocument( required string id ) {
+	boolean function deleteDocument( required string id ) {
 		var payload = {
 			ids: [ arguments.id ]
 		};
 
 		var response = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/delete" )
-			.setMethod( "POST" )
-			.addHeader( "Content-Type", "application/json" )
-			.setBody( jsonSerialize( payload ) )
-			.setTimeout( variables.timeout )
-			.setReadTimeout( variables.readTimeout )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
 			.send();
 
 		return response.statusCode == 200;
@@ -266,7 +274,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return Numeric count deleted (ChromaDB doesn't return count, so we estimate)
 	 */
-	private numeric function deleteDocumentsByFilter( required struct filter ) {
+	numeric function deleteDocumentsByFilter( required struct filter ) {
 		// First, get documents matching filter to count them
 		var payload = {
 			where: arguments.filter,
@@ -274,11 +282,12 @@ class extends="BaseVectorMemory" {
 		};
 
 		var getResponse = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/get" )
-			.setMethod( "POST" )
-			.addHeader( "Content-Type", "application/json" )
-			.setBody( jsonSerialize( payload ) )
-			.setTimeout( variables.timeout )
-			.setReadTimeout( variables.readTimeout )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
 			.send();
 
 		if ( getResponse.statusCode != 200 ) {
@@ -294,11 +303,12 @@ class extends="BaseVectorMemory" {
 		};
 
 		var deleteResponse = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/delete" )
-			.setMethod( "POST" )
-			.addHeader( "Content-Type", "application/json" )
-			.setBody( jsonSerialize( deletePayload ) )
-			.setTimeout( variables.timeout )
-			.setReadTimeout( variables.readTimeout )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( deletePayload ) }
+			])
+			.timeout( variables.timeout )
 			.send();
 
 		return deleteResponse.statusCode == 200 ? count : 0;
@@ -307,12 +317,12 @@ class extends="BaseVectorMemory" {
 	/**
 	 * Clear entire collection by deleting and recreating it
 	 */
-	private void function clearCollection() {
+	IVectorMemory function clearCollection() {
 		// Delete collection
 		deleteCollection( variables.collection );
-
 		// Recreate it
 		createCollection( variables.collection );
+		return this;
 	}
 
 	/**
@@ -328,7 +338,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	private any function doCreateCollection( required string name ) {
+	any function createCollection( required string name ) {
 		var payload = {
 			name: arguments.name,
 			metadata: {
@@ -352,7 +362,7 @@ class extends="BaseVectorMemory" {
 			.send();
 
 		if ( response.statusCode != 200 ) {
-			throw( 
+			throw(
 				type = "ChromaVectorMemory.CreateCollectionError",
 				message = "Failed to create collection in ChromaDB: " & response.statusText,
 				detail = response.fileContent
@@ -369,7 +379,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return Boolean exists
 	 */
-	private boolean function doCollectionExists( required string name ) {
+	boolean function collectionExists( required string name ) {
 		var response = httpRequest( variables.baseUrl & "/collections/" & arguments.name )
 			.setMethod( "GET" )
 			.setTimeout( variables.timeout )
@@ -386,7 +396,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	private any function doDeleteCollection( required string name ) {
+	any function deleteCollection( required string name ) {
 		var response = httpRequest( variables.baseUrl & "/collections/" & arguments.name )
 			.setMethod( "DELETE" )
 			.setTimeout( variables.timeout )
@@ -394,7 +404,7 @@ class extends="BaseVectorMemory" {
 			.send();
 
 		if ( response.statusCode != 200 ) {
-			throw( 
+			throw(
 				type = "ChromaVectorMemory.DeleteCollectionError",
 				message = "Failed to delete collection from ChromaDB: " & response.statusText,
 				detail = response.fileContent
