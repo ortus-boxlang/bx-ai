@@ -45,7 +45,7 @@ public class aiAgentTest extends BaseIntegrationTest {
 		assertEquals( "TestAgent", result.get( "name" ) );
 		assertEquals( "A test agent", result.get( "description" ) );
 		assertEquals( "You are a helpful assistant", result.get( "instructions" ) );
-		// Should have default simple memory
+		// Should have default window memory
 		assertEquals( 1L, ( long ) ( ( Number ) result.get( "memoryCount" ) ).intValue() );
 	}
 
@@ -102,8 +102,8 @@ public class aiAgentTest extends BaseIntegrationTest {
 	public void testAgentWithMultipleMemories() {
 		runtime.executeSource(
 		    """
-		    memory1 = aiMemory( type: "simple" )
-		    memory2 = aiMemory( type: "simple" )
+		    memory1 = aiMemory( type: "window" )
+		    memory2 = aiMemory( type: "window" )
 
 		    agent = aiAgent(
 		        name: "MultiMemoryAgent",
@@ -155,8 +155,8 @@ public class aiAgentTest extends BaseIntegrationTest {
 	public void testFluentMemoryAPI() {
 		runtime.executeSource(
 		    """
-		    memory1 = aiMemory( type: "simple" )
-		    memory2 = aiMemory( type: "simple" )
+		    memory1 = aiMemory( type: "window" )
+		    memory2 = aiMemory( type: "window" )
 
 		    agent = aiAgent()
 		        .addMemory( memory1 )
@@ -195,7 +195,7 @@ public class aiAgentTest extends BaseIntegrationTest {
 	public void testClearMemory() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( type: "simple" )
+		    memory = aiMemory( type: "window" )
 		    memory.add({ role: "user", content: "Hello" })
 
 		    agent = aiAgent( memory: memory )

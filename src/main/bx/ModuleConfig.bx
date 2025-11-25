@@ -103,7 +103,7 @@ class {
 			},
 			// The default memory to use
 			memory : {
-				provider = "simple",
+				provider = "window",
 				config = {}
 			},
 			// The default timeout of the ai requests

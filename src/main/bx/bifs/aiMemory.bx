@@ -17,7 +17,7 @@
  * ----------------------------------------------------------------------------------
  * Create an AI memory instance for storing conversation history
  *
- * @param memory The memory type to create (default: "InMemory")
+ * @param memory The memory type to create (default: "window")
  * @param config Configuration struct for the memory instance
  */
 @BoxBIF
@@ -26,7 +26,7 @@ class {
 	/**
 	 * Create an AI memory instance
 	 *
-	 * @memory The memory type to create. Defaults to "simple".
+	 * @memory The memory type to create. Defaults to "window".
 	 * @key The key to identify the memory instance. Defaults to a new UUID.
 	 * @config Configuration struct for the memory instance
 	 *
@@ -42,10 +42,6 @@ class {
 		// Map memory types to their class paths
 		switch( memoryType.lcase() ) {
 			case "memory":
-			case "simple":
-			case "simplememory":
-				memoryClass = "bxModules.bxai.models.memory.SimpleMemory";
-				break;
 			case "buffered":
 			case "buffer":
 			case "window":
@@ -74,11 +70,37 @@ class {
 			case "sessionmemory":
 				memoryClass = "bxModules.bxai.models.memory.SessionMemory";
 				break;
+			// Vector Memory Types
+			case "vector":
+			case "vectormemory":
+			case "chroma":
+			case "vector:chroma":
+				memoryClass = "bxModules.bxai.models.memory.vector.ChromaVectorMemory";
+				break;
+			case "vector:postgres":
+			case "postgres":
+			case "postgresql":
+			case "pgvector":
+				memoryClass = "bxModules.bxai.models.memory.vector.PostgresVectorMemory";
+				break;
+			case "vector:pinecone":
+			case "pinecone":
+				memoryClass = "bxModules.bxai.models.memory.vector.PineconeVectorMemory";
+				break;
+			case "hybrid":
+			case "hybridmemory":
+				memoryClass = "bxModules.bxai.models.memory.HybridMemory";
+				break;
 			default:
-				throw(
-					type: "InvalidMemoryType",
-					message: "Unknown memory type: #memoryType#. Available types: SimpleMemory, WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory"
-				);
+				// Check if it's a full class path
+				if ( memoryType.findNoCase( "." ) ) {
+					memoryClass = memoryType;
+				} else {
+					throw(
+						type: "InvalidMemoryType",
+						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, HybridMemory"
+					);
+				}
 		}
 
 		BoxAnnounce( "onAiMemoryCreate", {

@@ -16,12 +16,7 @@
  * Automatically keeps only the last N messages (sliding window buffer)
  * Perfect for managing conversation context window limits
  */
-class extends="SimpleMemory" {
-
-	/**
-	 * Maximum number of messages to keep in memory (excluding system message)
-	 */
-	property name="maxMessages" type="numeric";
+class extends="BaseMemory" {
 
 	static {
 		final DEFAULT_MAX_MESSAGES = 20
@@ -35,7 +30,7 @@ class extends="SimpleMemory" {
 	 */
 	function init( string key = createUUID(), numeric maxMessages = static.DEFAULT_MAX_MESSAGES ) {
 		super.init( arguments.key );
-		variables.maxMessages = arguments.maxMessages;
+		setMaxMessages( arguments.maxMessages );
 		return this;
 	}
 

@@ -121,20 +121,9 @@ response = agent.run(
 
 ## Different Memory Types
 
-### Simple Memory (Default)
+### Window Memory (Default)
 
-Stores everything in RAM - good for single sessions:
-
-```java
-agent = aiAgent(
-    name: "Helper",
-    memories: aiMemory( "simple", "session-1" )
-)
-```
-
-### Window Memory
-
-Keeps only recent messages - good for managing context limits:
+Keeps only recent messages in RAM - good for managing context limits:
 
 ```java
 agent = aiAgent(

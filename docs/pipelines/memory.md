@@ -188,7 +188,7 @@ initialMessages.each( msg => memory.add( msg ) )
 
 ## Using Memory in Pipelines
 
-### Simple Memory-Enabled Chat
+### Window Memory-Enabled Chat
 
 ```java
 // Create memory

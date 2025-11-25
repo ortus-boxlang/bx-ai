@@ -78,7 +78,7 @@ response = agent.run( "What's the weather in Boston and what's 15% of 250?" )
 
 Agents automatically maintain conversation history:
 
-### Simple Memory (Default)
+### Window Memory (Default)
 
 ```java
 // Agent with conversation memory

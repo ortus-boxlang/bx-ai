@@ -43,6 +43,11 @@ abstract class implements="IAiMemory" {
 	property name="messages" type="array" default=[];
 
 	/**
+	 * Maximum number of messages to store (0 = unlimited)
+	 */
+	property name="maxMessages" type="numeric" default=100;
+
+	/**
 	 * Constants
 	 */
 	static {

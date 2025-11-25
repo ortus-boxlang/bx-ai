@@ -31,7 +31,7 @@ class {
 	 * @description The agent's role/purpose description
 	 * @instructions System instructions for the agent's behavior
 	 * @model The AI model provider to use. Defaults to configured default model
-	 * @memory Single IAiMemory instance or array of memory instances, defaults to SimpleMemory
+	 * @memory Single IAiMemory instance or array of memory instances, defaults to WindowMemory
 	 * @tools Array of Tool objects the agent can use
 	 * @params Additional provider parameters (model,temperature, max_tokens, etc.)
 	 * @options Additional options (timeout, logging, etc.)

@@ -22,7 +22,7 @@ articles = [
     {
         id: "ART-002",
         title: "Memory Systems in AI",
-        content: "AI memory systems allow agents to store and retrieve information across interactions. Common types include simple memory (stores everything), window memory (keeps recent context), and vector memory (semantic search).",
+        content: "AI memory systems allow agents to store and retrieve information across interactions. Common types include window memory (keeps recent context), vector memory (semantic search), and summary memory (compressed history).",
         author: "Prof. Michael Chen",
         date: "2024-05-20"
     },
@@ -46,7 +46,7 @@ articles = [
 codeExamples = {
     "agent": 'agent = aiAgent( name: "Assistant", tools: [ myTool ] )',
     "tool": 'tool = aiTool( name: "search", action: (q) => search(q) )',
-    "memory": 'memory = aiMemory( type: "simple", key: "session-1" )',
+    "memory": 'memory = aiMemory( type: "window", key: "session-1" )',
     "pipeline": 'pipeline = aiMessage().user("${prompt}").toDefaultModel()'
 }
 

@@ -220,7 +220,7 @@ By the end of this course, you'll have built:
 
 **Topics**:
 - Why memory matters in AI
-- Simple memory (RAM-based)
+- Window memory (RAM-based, recent messages)
 - Window memory (sliding buffer)
 - Session memory (web applications)
 - File memory (persistence)
@@ -228,7 +228,7 @@ By the end of this course, you'll have built:
 - Memory management strategies
 - Context window optimization
 
-**Examples**: simple-memory.bxs, window-memory.bxs, file-persistence.bxs
+**Examples**: window-memory.bxs, file-persistence.bxs, cache-memory.bxs
 **Lab**: Build a conversational assistant that remembers context
 **Project**: Create a multi-session chatbot with persistent history
 

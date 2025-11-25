@@ -1,0 +1,96 @@
+/**
+ * Vector Memory Example
+ * Demonstrates semantic search capabilities with ChromaDB
+ * 
+ * Prerequisites:
+ * - docker compose up chromadb
+ * - OPENAI_API_KEY environment variable set
+ */
+
+// Create a vector memory instance using ChromaDB
+memory = aiMemory( "chroma", createUUID(), {
+    collection: "demo_conversation",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    useCache: true,
+    cacheName: "vectors"
+} );
+
+// Add some conversation history
+memory.add( "Hello, I'm interested in learning about artificial intelligence." );
+memory.add( "Can you explain how machine learning algorithms work?" );
+memory.add( "What's the difference between supervised and unsupervised learning?" );
+memory.add( "I'm also curious about neural networks and deep learning." );
+memory.add( "How do transformers work in natural language processing?" );
+memory.add( "What are some practical applications of AI in healthcare?" );
+memory.add( "Can AI help with medical diagnosis and treatment recommendations?" );
+memory.add( "I'd like to know more about computer vision and image recognition." );
+memory.add( "How accurate are modern AI systems for object detection?" );
+memory.add( "What about AI in autonomous vehicles and self-driving cars?" );
+
+println( "Added 10 messages to vector memory" );
+
+// Test semantic search - find messages related to healthcare
+println( "\n=== Semantic Search: Healthcare AI ===" );
+var healthcareMessages = memory.getRelevant( "medical applications and healthcare AI", 3 );
+healthcareMessages.each( ( msg, index ) => {
+    println( "#index#. [Score: #numberFormat(msg.score, '0.000')#] #msg.text#" );
+} );
+
+// Test semantic search - find messages about learning types
+println( "\n=== Semantic Search: Types of Learning ===" );
+var learningMessages = memory.getRelevant( "different types of machine learning", 3 );
+learningMessages.each( ( msg, index ) => {
+    println( "#index#. [Score: #numberFormat(msg.score, '0.000')#] #msg.text#" );
+} );
+
+// Test semantic search - find messages about computer vision
+println( "\n=== Semantic Search: Computer Vision ===" );
+var visionMessages = memory.getRelevant( "image processing and visual recognition", 3 );
+visionMessages.each( ( msg, index ) => {
+    println( "#index#. [Score: #numberFormat(msg.score, '0.000')#] #msg.text#" );
+} );
+
+// Demonstrate batch seeding
+println( "\n=== Batch Seeding Example ===" );
+var additionalDocs = [
+    "Reinforcement learning involves training agents through rewards and penalties.",
+    "Generative AI models like GPT can create human-like text and content.",
+    "Convolutional neural networks are particularly effective for image processing.",
+    "Natural language processing enables computers to understand human language."
+];
+
+var results = memory.seed( additionalDocs );
+println( "Seeded #results.added# documents, #results.failed# failed" );
+
+// Test hybrid memory combining recent + semantic
+println( "\n=== Hybrid Memory Example ===" );
+hybridMemory = aiMemory( "hybrid", createUUID(), {
+    recentLimit: 3,
+    semanticLimit: 3,
+    totalLimit: 5,
+    recentWeight: 0.6,
+    vectorProvider: "chroma",
+    vectorConfig: {
+        collection: "hybrid_demo",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small"
+    }
+} );
+
+// Add some conversation
+hybridMemory.add( "I want to learn programming." );
+hybridMemory.add( "What's the best programming language for beginners?" );
+hybridMemory.add( "How about Python vs JavaScript?" );
+hybridMemory.add( "I'm interested in web development." );
+hybridMemory.add( "What frameworks should I learn for frontend development?" );
+
+// Get relevant messages - combines recent + semantic
+var relevantMessages = hybridMemory.getRelevant( "learning to code and programming languages", 5 );
+println( "Hybrid memory returned #relevantMessages.len()# relevant messages:" );
+relevantMessages.each( ( msg, index ) => {
+    var scoreText = msg.keyExists( "score" ) ? " [Score: #numberFormat(msg.score, '0.000')#]" : " [Recent]";
+    println( "#index#.#scoreText# #msg.text ?: msg.content#" );
+} );
+
+println( "\n=== Vector Memory Demo Complete ===" );

@@ -101,6 +101,24 @@ interface {
      */
     IAiMemory function clear();
 
+    /**
+     * Get the maximum number of messages this memory can store
+     * 0 means unlimited
+     *
+     * @return Numeric max messages
+     */
+    numeric function getMaxMessages();
+
+    /**
+     * Set the maximum number of messages this memory can store
+     * 0 means unlimited
+     *
+     * @maxMessages Maximum number of messages (0 = unlimited)
+     *
+     * @return IAiMemory for chaining
+     */
+    IAiMemory function setMaxMessages( required numeric maxMessages );
+
 	/**
 	 * ------------------------------------------------------------------------------
 	 *  QUANTITY MANAGEMENT METHODS

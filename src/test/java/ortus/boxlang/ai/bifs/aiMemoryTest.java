@@ -14,7 +14,7 @@ import ortus.boxlang.runtime.types.exceptions.BoxRuntimeException;
 public class aiMemoryTest extends BaseIntegrationTest {
 
 	@Test
-	@DisplayName( "Test aiMemory() creates SimpleMemory instance by default" )
+	@DisplayName( "Test aiMemory() creates WindowMemory instance by default" )
 	public void testDefaultMemoryCreation() {
 		runtime.executeSource(
 		    """
@@ -31,11 +31,11 @@ public class aiMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test aiMemory() with explicit SimpleMemory type" )
-	public void testExplicitSimpleMemory() {
+	@DisplayName( "Test aiMemory() with explicit WindowMemory type" )
+	public void testExplicitWindowMemory() {
 		runtime.executeSource(
 		    """
-		    result = aiMemory( "SimpleMemory" )
+		    result = aiMemory( "WindowMemory" )
 		    """,
 		    context
 		);
@@ -314,7 +314,7 @@ public class aiMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Test SimpleMemory export/import" )
+	@DisplayName( "Test WindowMemory export/import" )
 	public void testExportImport() {
 		runtime.executeSource(
 		    """
