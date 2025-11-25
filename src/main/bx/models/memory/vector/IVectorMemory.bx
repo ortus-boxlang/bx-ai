@@ -108,35 +108,7 @@ interface extends="bxModules.bxai.models.memory.IAiMemory" {
 	 *
 	 * @return Struct with results: { added: numeric, failed: numeric, errors: array }
 	 */
-	default struct function seed( required array documents ){
-		var added = 0;
-		var failed = 0;
-		var errors = [];
-
-		for( var doc in arguments.documents ){
-			try {
-				if( isStruct( doc ) && structKeyExists( doc, "text" ) ){
-					var id = doc?.id ?: createUUID();
-					this.addWithId( id, doc.text, doc?.metadata ?: {} );
-				} else if( isSimpleValue( doc ) ){
-					var id = createUUID();
-					this.addWithId( id, toString( doc ), {} );
-				} else {
-					throw( "Invalid document format" );
-				}
-				added++;
-			} catch( any e ){
-				failed++;
-				errors.append( { document: doc, error: e } );
-			}
-		}
-
-		return {
-			added: added,
-			failed: failed,
-			errors: errors
-		};
-	}
+	struct function seed( required array documents );
 
 	/**
 	 * Seed the vector store with multiple documents at once asynchronously

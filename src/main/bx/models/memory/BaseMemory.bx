@@ -205,6 +205,29 @@ abstract class implements="IAiMemory" {
 	}
 
 	/**
+	 * Get the maximum number of messages this memory can store
+	 * 0 means unlimited
+	 *
+	 * @return Numeric max messages
+	 */
+	public numeric function getMaxMessages() {
+		return variables.maxMessages;
+	}
+
+	/**
+	 * Set the maximum number of messages this memory can store
+	 * 0 means unlimited
+	 *
+	 * @maxMessages Maximum number of messages (0 = unlimited)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function setMaxMessages( required numeric maxMessages ) {
+		variables.maxMessages = arguments.maxMessages;
+		return this;
+	}
+
+	/**
 	 * Get the count of messages in memory
 	 *
 	 * @return Numeric count

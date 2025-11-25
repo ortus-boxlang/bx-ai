@@ -1,7 +1,7 @@
 /**
  * Vector Memory Example
  * Demonstrates semantic search capabilities with ChromaDB
- * 
+ *
  * Prerequisites:
  * - docker compose up chromadb
  * - OPENAI_API_KEY environment variable set

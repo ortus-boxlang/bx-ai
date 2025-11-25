@@ -370,13 +370,14 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 
 - `aiAgent( name, description, instructions, model, memory, tools, params, options )` - Creates an autonomous AI agent that can maintain conversation memory, use tools, and execute tasks. Agents simplify complex AI workflows by managing state and context automatically.
 - `aiMemory( type, config )` - Creates a memory instance for agents and pipelines. Available types:
-  - **`simple`** - Basic in-memory storage (default)
-  - **`windowed`** - Keeps last N messages, discards older ones
+  - **`window`** - Windowed memory keeping last N messages (default, configurable via `maxMessages`)
   - **`summary`** - Intelligently compresses old messages while preserving context
   - **`session`** - Web session-persisted memory
   - **`file`** - File-based persistent storage
   - **`cache`** - CacheBox-backed storage
   - **`jdbc`** - Database-backed storage
+  - **`chroma`** - Vector memory with semantic search (ChromaDB)
+  - **`hybrid`** - Combines recent + semantic memory
 
 ### Helper Functions
 
@@ -1316,7 +1317,7 @@ aiAgent(
 - `memory` : Memory instance(s) for conversation history. Can be:
   - A single `IAiMemory` instance
   - An array of memory instances for multiple memory systems
-  - Default: Simple memory (conversation history)
+  - Default: Window memory (recent conversation history)
 - `tools` : Array of `Tool` objects for function calling
 - `params` : Default model parameters (temperature, max_tokens, etc.)
 - `options` : Runtime options including:
@@ -1498,7 +1499,7 @@ Agents automatically handle:
 
 1. **Use descriptive names and descriptions** - Helps the AI understand its role
 2. **Provide clear instructions** - Guide the agent's behavior
-3. **Choose appropriate memory** - Simple memory for conversations, custom for complex state
+3. **Choose appropriate memory** - Window memory for conversations, vector for semantic search, hybrid for complex context
 4. **Bind tools to agents** - Tools are bound to the model for efficiency
 5. **Clear memory when needed** - Reset conversation context for new topics
 6. **Use returnFormat wisely** - "single" for content, "all" for full context, "raw" for debugging

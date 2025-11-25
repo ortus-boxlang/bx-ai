@@ -1,0 +1,681 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Base abstract class for Vector Memory implementations
+ * Provides common functionality for semantic search and embedding generation
+ */
+abstract class
+	extends="bxModules.bxai.models.memory.BaseMemory"
+	implements="IVectorMemory" {
+
+	/**
+	 * Collection/index name for this vector store
+	 */
+	property name="collection" default="";
+
+	/**
+	 * Embedding provider (e.g., "openai", "ollama")
+	 */
+	property name="embeddingProvider" default="";
+
+	/**
+	 * Embedding model name
+	 */
+	property name="embeddingModel" default="";
+
+	/**
+	 * Vector dimensions (auto-detected from first embedding if not specified)
+	 */
+	property name="dimensions" type="numeric" default=0;
+
+	/**
+	 * Distance metric: "cosine", "euclidean", "dot_product"
+	 */
+	property name="metric" type="string" default="#static.DEFAULT_METRIC#";
+
+	/**
+	 * Cache configuration for embeddings and query results
+	 */
+	property name="useCache" type="boolean" default=false;
+	property name="cacheName" type="string" default="default";
+	property name="cacheTimeout" type="numeric" default="";  // empty = defaults to cache provider
+	property name="cacheLastAccessTimeout" type="numeric" default="";  // empty = defaults to cache provider
+	property name="cacheInstance" type="any";
+
+	static{
+		DEFAULT_COLLECTION = "ai_memory";
+		DEFAULT_METRIC = "cosine";
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @key The unique key for this memory instance, typically a UUID, defaults to random UUID
+	 * @collection The collection/index name (default: "ai_memory")
+	 */
+	function init( string key = createUUID(), string collection = static.DEFAULT_COLLECTION ) {
+		super.init( arguments.key );
+		variables.collection = arguments.collection;
+		return this;
+	}
+
+	/**
+	 * Configure the vector memory instance
+	 *
+	 * @config Configuration struct with provider-specific options
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IAiMemory function configure( required struct config ) {
+		super.configure( arguments.config );
+
+		// Extract common vector config
+		if ( arguments.config.keyExists( "collection" ) ) {
+			variables.collection = arguments.config.collection;
+		}
+		if ( arguments.config.keyExists( "embeddingProvider" ) ) {
+			variables.embeddingProvider = arguments.config.embeddingProvider;
+		}
+		if ( arguments.config.keyExists( "embeddingModel" ) ) {
+			variables.embeddingModel = arguments.config.embeddingModel;
+		}
+		if ( arguments.config.keyExists( "dimensions" ) ) {
+			variables.dimensions = arguments.config.dimensions;
+		}
+		if ( arguments.config.keyExists( "metric" ) ) {
+			variables.metric = arguments.config.metric;
+		}
+
+		// Cache configuration
+		if ( arguments.config.keyExists( "cache" ) ) {
+			variables.useCache = arguments.config.cache;
+		}
+		if ( arguments.config.keyExists( "cacheName" ) ) {
+			variables.cacheName = arguments.config.cacheName;
+		}
+		if ( arguments.config.keyExists( "cacheTimeout" ) ) {
+			variables.cacheTimeout = arguments.config.cacheTimeout;
+		}
+		if ( arguments.config.keyExists( "cacheLastAccessTimeout" ) ) {
+			variables.cacheLastAccessTimeout = arguments.config.cacheLastAccessTimeout;
+		}
+
+		// Initialize cache if enabled
+		if ( variables.useCache ) {
+			variables.cacheInstance = cache( variables.cacheName );
+		}
+
+		// Ensure collection exists (provider-specific implementation)
+		ensureCollection();
+
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * IAiMemory INTERFACE OVERRIDES
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Add a message to vector memory with auto-generated ID
+	 * Automatically generates embedding and stores in vector database
+	 *
+	 * @message The message to add (string, struct, or AiMessage)
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IAiMemory function add( required any message ) {
+		var text = normalizeMessageText( arguments.message );
+		var metadata = extractMetadata( arguments.message );
+		var id = generateId( text );
+
+		return addWithId( id, text, metadata );
+	}
+
+	/**
+	 * Get all messages (delegates to provider implementation)
+	 * For vector stores, this typically returns recent messages or all with limit
+	 *
+	 * @return Array of message structs
+	 */
+	array function getAll() {
+		// Provider-specific implementation
+		return getAllDocuments();
+	}
+
+	/**
+	 * Clear all messages from this memory (delegates to collection deletion)
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IAiMemory function clear() {
+		clearCollection();
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * IVectorMemory INTERFACE IMPLEMENTATIONS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get relevant messages based on semantic similarity
+	 * Uses caching if enabled for query embeddings
+	 *
+	 * @query The text query to find similar messages for
+	 * @limit Maximum number of results to return
+	 * @filter Optional metadata filter
+	 * @minScore Minimum similarity score threshold
+	 *
+	 * @return Array of message structs with similarity scores
+	 */
+	array function getRelevant(
+		required string query,
+		numeric limit = 5,
+		struct filter = {},
+		numeric minScore = 0.0
+	) {
+		// Use cache for query embeddings if enabled
+		if ( variables.useCache ) {
+			var cacheKey = "vector:query:" & hash( arguments.query );
+			return variables.cacheInstance.getOrSet(
+				key = cacheKey,
+				produce = () => {
+					var embedding = generateEmbedding( arguments.query );
+					return findSimilar(
+						embedding = embedding,
+						limit = arguments.limit,
+						filter = arguments.filter
+					).filter( ( doc ) => doc.score >= arguments.minScore );
+				},
+				timeout = variables.cacheTimeout,
+				lastAccessTimeout = variables.cacheLastAccessTimeout
+			);
+		}
+
+		// No cache - generate embedding and search
+		var embedding = generateEmbedding( arguments.query );
+		var results = findSimilar(
+			embedding = embedding,
+			limit = arguments.limit,
+			filter = arguments.filter
+		);
+
+		// Filter by minimum score
+		return results.filter( ( doc ) => doc.score >= arguments.minScore );
+	}
+
+	/**
+	 * Find similar messages using a pre-computed embedding
+	 * Delegates to provider-specific implementation
+	 *
+	 * @embedding The vector embedding to search with
+	 * @limit Maximum number of results to return
+	 * @filter Optional metadata filter
+	 *
+	 * @return Array of message structs with similarity scores
+	 */
+	array function findSimilar(
+		required array embedding,
+		numeric limit = 5,
+		struct filter = {}
+	) {
+		// Announce event for observability
+		announce( "onVectorSearch", {
+			collection: variables.collection,
+			limit: arguments.limit,
+			hasFilter: !arguments.filter.isEmpty(),
+			timestamp: now()
+		} );
+
+		// Provider-specific implementation
+		return searchByVector( arguments.embedding, arguments.limit, arguments.filter );
+	}
+
+	/**
+	 * Add a message with explicit ID (upsert behavior)
+	 *
+	 * @id The unique identifier
+	 * @text The text content
+	 * @metadata Optional metadata
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function addWithId(
+		required string id,
+		required string text,
+		struct metadata = {}
+	) {
+		// Generate embedding
+		var embedding = generateEmbedding( arguments.text );
+
+		// Store in vector database (provider-specific)
+		storeDocument(
+			id = arguments.id,
+			text = arguments.text,
+			embedding = embedding,
+			metadata = arguments.metadata
+		);
+
+		// Announce event
+		announce( "onVectorStore", {
+			collection: variables.collection,
+			documentId: arguments.id,
+			hasMetadata: !arguments.metadata.isEmpty(),
+			timestamp: now()
+		} );
+
+		return this;
+	}
+
+	/**
+	 * Seed the vector store with multiple documents
+	 * Optimized for batch insertion
+	 *
+	 * @documents Array of documents (strings or structs)
+	 *
+	 * @return Struct with results
+	 */
+	public struct function seed( required array documents ) {
+		var results = {
+			added: 0,
+			failed: 0,
+			errors: []
+		};
+
+		// Normalize documents
+		var normalized = arguments.documents.map( ( doc ) => {
+			if ( isSimpleValue( doc ) ) {
+				return {
+					id: generateId( doc ),
+					text: doc,
+					metadata: {}
+				};
+			}
+			return {
+				id: doc.id ?: generateId( doc.text ),
+				text: doc.text,
+				metadata: doc.metadata ?: {}
+			};
+		} );
+
+		// Extract all text for batch embedding
+		var texts = normalized.map( ( doc ) => doc.text );
+
+		// Generate embeddings in batch
+		var embeddings = generateEmbeddingBatch( texts );
+
+		// Store each document
+		normalized.each( ( doc, index ) => {
+			try {
+				storeDocument(
+					id = doc.id,
+					text = doc.text,
+					embedding = embeddings[ index ],
+					metadata = doc.metadata
+				);
+				results.added++;
+			} catch ( any e ) {
+				results.failed++;
+				results.errors.append({
+					id: doc.id,
+					error: e.message
+				});
+			}
+		} );
+
+		// Announce batch event
+		announce( "onVectorBatchStore", {
+			collection: variables.collection,
+			added: results.added,
+			failed: results.failed,
+			timestamp: now()
+		} );
+
+		return results;
+	}
+
+	/**
+	 * Get a document by ID
+	 * Delegates to provider implementation
+	 *
+	 * @id The document ID
+	 *
+	 * @return Struct with document data or empty struct
+	 */
+	struct function getById( required string id ) {
+		return getDocumentById( arguments.id );
+	}
+
+	/**
+	 * Remove a document by ID
+	 * Delegates to provider implementation
+	 *
+	 * @id The document ID
+	 *
+	 * @return Boolean success
+	 */
+	boolean function remove( required string id ) {
+		var success = deleteDocument( arguments.id );
+
+		if ( success ) {
+			announce( "onVectorDelete", {
+				collection: variables.collection,
+				documentId: arguments.id,
+				timestamp: now()
+			} );
+		}
+
+		return success;
+	}
+
+	/**
+	 * Remove documents by metadata filter
+	 * Delegates to provider implementation
+	 *
+	 * @filter Metadata filter
+	 *
+	 * @return Numeric count removed
+	 */
+	numeric function removeWhere( required struct filter ) {
+		var count = deleteDocumentsByFilter( arguments.filter );
+
+		announce( "onVectorDeleteBatch", {
+			collection: variables.collection,
+			count: count,
+			timestamp: now()
+		} );
+
+		return count;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * IVectorMemory COLLECTION MANAGEMENT (Delegates to concrete implementations)
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Create a new collection/index
+	 * Delegates to concrete implementation
+	 *
+	 * @name The collection/index name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	abstract IVectorMemory function createCollection( required string name );
+
+	/**
+	 * Check if a collection/index exists
+	 * Delegates to concrete implementation
+	 *
+	 * @name The collection/index name to check
+	 *
+	 * @return Boolean indicating existence
+	 */
+	abstract boolean function collectionExists( required string name );
+
+	/**
+	 * Delete a collection/index and all its documents
+	 * Delegates to concrete implementation
+	 *
+	 * @name The collection/index name to delete
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	abstract IVectorMemory function deleteCollection( required string name );
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * HELPER METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Generate embedding for a single text using aiEmbed() BIF
+	 *
+	 * @text The text to embed
+	 *
+	 * @return Array embedding vector
+	 */
+	private array function generateEmbedding( required string text ) {
+		// Use cache if enabled
+		if ( variables.useCache ) {
+			var cacheKey = "embedding:" & hash( arguments.text, "SHA-256" );
+			return variables.cacheInstance.getOrSet(
+				key = cacheKey,
+				produce = () => {
+					return generateEmbeddingUncached( arguments.text );
+				},
+				timeout = variables.cacheTimeout,
+				lastAccessTimeout = variables.cacheLastAccessTimeout
+			);
+		}
+
+		// No cache - generate directly
+		return generateEmbeddingUncached( arguments.text );
+	}
+
+	/**
+	 * Generate embeddings for multiple texts in batch
+	 *
+	 * @texts Array of texts to embed
+	 *
+	 * @return Array of embedding vectors
+	 */
+	private array function generateEmbeddingBatch( required array texts ) {
+		// Build params
+		var params = {};
+		if ( len( variables.embeddingModel ) ) {
+			params.model = variables.embeddingModel;
+		}
+
+		var options = {
+			returnFormat: "embeddings"  // Get array of vectors
+		};
+		if ( len( variables.embeddingProvider ) ) {
+			options.provider = variables.embeddingProvider;
+		}
+
+		// Generate batch embeddings
+		var embeddings = aiEmbed(
+			input = arguments.texts,
+			params = params,
+			options = options
+		);
+
+		// Cache each embedding if enabled
+		if ( variables.useCache ) {
+			arguments.texts.each( ( text, index ) => {
+				var cacheKey = "embedding:" & hash( text, "SHA-256" );
+				variables.cacheInstance.set(
+					key = cacheKey,
+					value = embeddings[ index ],
+					timeout = variables.cacheTimeout,
+					lastAccessTimeout = variables.cacheLastAccessTimeout
+				);
+			} );
+		}
+
+		return embeddings;
+	}
+
+	/**
+	 * Generate embedding without cache (internal helper)
+	 *
+	 * @text The text to embed
+	 *
+	 * @return Array embedding vector
+	 */
+	private array function generateEmbeddingUncached( required string text ) {
+		// Build params for aiEmbed()
+		var params = {};
+		if ( len( variables.embeddingModel ) ) {
+			params.model = variables.embeddingModel;
+		}
+
+		var options = {
+			returnFormat: "first"  // Get just the vector array
+		};
+		if ( len( variables.embeddingProvider ) ) {
+			options.provider = variables.embeddingProvider;
+		}
+
+		// Generate embedding
+		var embedding = aiEmbed(
+			input = arguments.text,
+			params = params,
+			options = options
+		);
+
+		// Auto-detect dimensions from first embedding
+		if ( variables.dimensions == 0 ) {
+			variables.dimensions = embedding.len();
+		}
+
+		return embedding;
+	}
+
+	/**
+	 * Generate a unique ID from text content (SHA-256 hash)
+	 *
+	 * @text The text to generate ID from
+	 *
+	 * @return String UUID-style ID
+	 */
+	private string function generateId( required string text ) {
+		// Use hash of text + timestamp for uniqueness
+		return hash( arguments.text & now().getTime(), "SHA-256" ).left( 32 );
+	}
+
+	/**
+	 * Normalize message to text string
+	 *
+	 * @message Message in any format
+	 *
+	 * @return String text
+	 */
+	private string function normalizeMessageText( required any message ) {
+		if ( isSimpleValue( arguments.message ) ) {
+			return arguments.message;
+		}
+		if ( isStruct( arguments.message ) ) {
+			return arguments.message.content ?: arguments.message.text ?: "";
+		}
+		if ( isObject( arguments.message ) && arguments.message.hasMethod( "getContent" ) ) {
+			return arguments.message.getContent();
+		}
+		return "";
+	}
+
+	/**
+	 * Extract metadata from message object
+	 *
+	 * @message Message in any format
+	 *
+	 * @return Struct metadata
+	 */
+	private struct function extractMetadata( required any message ) {
+		if ( isStruct( arguments.message ) ) {
+			var meta = arguments.message.duplicate();
+			meta.delete( "content" );
+			meta.delete( "text" );
+			return meta;
+		}
+		return {};
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * ABSTRACT METHODS (Provider-specific implementations)
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure collection/index exists (provider-specific)
+	 */
+	abstract private void function ensureCollection();
+
+	/**
+	 * Store a document in the vector database (provider-specific)
+	 *
+	 * @id Document ID
+	 * @text Document text
+	 * @embedding Vector embedding
+	 * @metadata Document metadata
+	 */
+	abstract private void function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	);
+
+	/**
+	 * Search by vector embedding (provider-specific)
+	 *
+	 * @embedding Vector to search with
+	 * @limit Max results
+	 * @filter Metadata filter
+	 *
+	 * @return Array of results
+	 */
+	abstract private array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	);
+
+	/**
+	 * Get all documents from collection (provider-specific)
+	 *
+	 * @return Array of documents
+	 */
+	abstract private array function getAllDocuments();
+
+	/**
+	 * Get document by ID (provider-specific)
+	 *
+	 * @id Document ID
+	 *
+	 * @return Struct document or empty struct
+	 */
+	abstract private struct function getDocumentById( required string id );
+
+	/**
+	 * Delete document by ID (provider-specific)
+	 *
+	 * @id Document ID
+	 *
+	 * @return Boolean success
+	 */
+	abstract private boolean function deleteDocument( required string id );
+
+	/**
+	 * Delete documents by filter (provider-specific)
+	 *
+	 * @filter Metadata filter
+	 *
+	 * @return Numeric count deleted
+	 */
+	abstract private numeric function deleteDocumentsByFilter( required struct filter );
+
+	/**
+	 * Clear entire collection (provider-specific)
+	 */
+	abstract private void function clearCollection();
+
+}

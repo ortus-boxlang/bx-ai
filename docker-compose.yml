@@ -32,6 +32,21 @@ services:
       - WEBUI_ADMIN_PASS=rocks
     restart: unless-stopped
 
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+      - ALLOW_RESET=TRUE
+    restart: unless-stopped
+
 volumes:
   ollama_data:
     name: ollama_data
+  chromadb_data:
+    name: chromadb_data
