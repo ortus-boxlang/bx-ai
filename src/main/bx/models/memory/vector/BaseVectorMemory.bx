@@ -48,9 +48,9 @@ abstract class
 	 * Cache configuration for embeddings and query results
 	 */
 	property name="useCache" type="boolean" default=false;
-	property name="cacheName" type="string" default="default";
-	property name="cacheTimeout" type="numeric" default="";  // empty = defaults to cache provider
-	property name="cacheLastAccessTimeout" type="numeric" default="";  // empty = defaults to cache provider
+	property name="cacheName" default="default";
+	property name="cacheTimeout" type="numeric";  // empty = defaults to cache provider
+	property name="cacheLastAccessTimeout" type="numeric";  // empty = defaults to cache provider
 	property name="cacheInstance" type="any";
 
 	static{
@@ -69,6 +69,12 @@ abstract class
 		variables.collection = arguments.collection;
 		return this;
 	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * IAiMemory INTERFACE OVERRIDES
+	 * ------------------------------------------------------------------------------
+	 */
 
 	/**
 	 * Configure the vector memory instance
@@ -121,12 +127,6 @@ abstract class
 
 		return this;
 	}
-
-	/**
-	 * ------------------------------------------------------------------------------
-	 * IAiMemory INTERFACE OVERRIDES
-	 * ------------------------------------------------------------------------------
-	 */
 
 	/**
 	 * Add a message to vector memory with auto-generated ID
@@ -194,12 +194,13 @@ abstract class
 			return variables.cacheInstance.getOrSet(
 				key = cacheKey,
 				produce = () => {
-					var embedding = generateEmbedding( arguments.query );
+					var embedding = generateEmbedding( query );
+					var minimumScore = minScore;
 					return findSimilar(
 						embedding = embedding,
-						limit = arguments.limit,
-						filter = arguments.filter
-					).filter( ( doc ) => doc.score >= arguments.minScore );
+						limit = limit,
+						filter = filter
+					).filter( ( doc ) => doc.score >= minimumScore );
 				},
 				timeout = variables.cacheTimeout,
 				lastAccessTimeout = variables.cacheLastAccessTimeout
@@ -410,33 +411,37 @@ abstract class
 
 	/**
 	 * Create a new collection/index
-	 * Delegates to concrete implementation
+	 * Most implementations auto-create on first use, but this allows explicit creation
 	 *
 	 * @name The collection/index name
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	abstract IVectorMemory function createCollection( required string name );
+	IVectorMemory function createCollection( required string name ){
+		throw( type="NotImplementedException", message="createCollection() must be implemented by concrete vector memory classes." );
+	}
 
 	/**
 	 * Check if a collection/index exists
-	 * Delegates to concrete implementation
 	 *
 	 * @name The collection/index name to check
 	 *
 	 * @return Boolean indicating existence
 	 */
-	abstract boolean function collectionExists( required string name );
+	boolean function collectionExists( required string name ){
+		throw( type="NotImplementedException", message="collectionExists() must be implemented by concrete vector memory classes." );
+	}
 
 	/**
 	 * Delete a collection/index and all its documents
-	 * Delegates to concrete implementation
 	 *
 	 * @name The collection/index name to delete
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	abstract IVectorMemory function deleteCollection( required string name );
+	IVectorMemory function deleteCollection( required string name ){
+		throw( type="NotImplementedException", message="deleteCollection() must be implemented by concrete vector memory classes." );
+	}
 
 	/**
 	 * ------------------------------------------------------------------------------
