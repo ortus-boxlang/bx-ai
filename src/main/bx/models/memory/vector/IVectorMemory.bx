@@ -1,0 +1,222 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Vector Memory Interface - Semantic search through conversation history
+ * Extends IAiMemory with vector-specific operations for similarity-based retrieval
+ */
+interface extends="bxModules.bxai.models.memory.IAiMemory" {
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * VECTOR-SPECIFIC RETRIEVAL METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get relevant messages based on semantic similarity to a query
+	 * This is the primary method for retrieving contextually relevant history
+	 *
+	 * @query The text query to find similar messages for
+	 * @limit Maximum number of results to return (default: 5)
+	 * @filter Optional metadata filter (provider-specific)
+	 * @minScore Minimum similarity score threshold (0.0 - 1.0, default: 0.0)
+	 *
+	 * @return Array of message structs with similarity scores: [{ id, text, score, metadata, embedding }, ...]
+	 */
+	array function getRelevant(
+		required string query,
+		numeric limit = 5,
+		struct filter = {},
+		numeric minScore = 0.0
+	);
+
+	/**
+	 * Find similar messages using a pre-computed embedding vector
+	 * Useful when you already have an embedding and want to skip the embedding generation step
+	 *
+	 * @embedding The vector embedding to search with
+	 * @limit Maximum number of results to return (default: 5)
+	 * @filter Optional metadata filter (provider-specific)
+	 *
+	 * @return Array of message structs with similarity scores
+	 */
+	array function findSimilar(
+		required array embedding,
+		numeric limit = 5,
+		struct filter = {}
+	);
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * VECTOR-SPECIFIC STORAGE METHODS
+	 * ------------------------------------------------------------------------------
+	 * All the other memory methods are also available from IAiMemory
+	 */
+
+	/**
+	 * Add a message/document with an explicit ID
+	 * If ID exists, updates the existing document (upsert behavior)
+	 *
+	 * @id The unique identifier for this document
+	 * @text The text content to store and embed
+	 * @metadata Optional metadata to store with the document
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function addWithId(
+		required string id,
+		required string text,
+		struct metadata = {}
+	);
+
+	/**
+	 * Alias for addWithId() - upsert behavior (insert or update)
+	 * Provided for compatibility with other vector database libraries
+	 *
+	 * @id The unique identifier for this document
+	 * @text The text content to store and embed
+	 * @metadata Optional metadata to store with the document
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	default IVectorMemory function upsert(
+		required string id,
+		required string text,
+		struct metadata = {}
+	){
+		return this.addWithId( arguments.id, arguments.text, arguments.metadata );
+	}
+
+	/**
+	 * Seed the vector store with multiple documents at once
+	 * Optimized for batch insertion with single embedding API call
+	 *
+	 * @documents Array of documents to add. Each document can be:
+	 *   - String: Simple text (auto-generates ID)
+	 *   - Struct: { text, metadata, id? } (id is optional)
+	 *
+	 * @return Struct with results: { added: numeric, failed: numeric, errors: array }
+	 */
+	default struct function seed( required array documents ){
+		var added = 0;
+		var failed = 0;
+		var errors = [];
+
+		for( var doc in arguments.documents ){
+			try {
+				if( isStruct( doc ) && structKeyExists( doc, "text" ) ){
+					var id = doc?.id ?: createUUID();
+					this.addWithId( id, doc.text, doc?.metadata ?: {} );
+				} else if( isSimpleValue( doc ) ){
+					var id = createUUID();
+					this.addWithId( id, toString( doc ), {} );
+				} else {
+					throw( "Invalid document format" );
+				}
+				added++;
+			} catch( any e ){
+				failed++;
+				errors.append( { document: doc, error: e } );
+			}
+		}
+
+		return {
+			added: added,
+			failed: failed,
+			errors: errors
+		};
+	}
+
+	/**
+	 * Seed the vector store with multiple documents at once asynchronously
+	 * This returns a BoxFuture for non-blocking operation
+	 *
+	 * @documents Array of documents to add. Each document can be:
+	 *   - String: Simple text (auto-generates ID)
+	 *   - Struct: { text, metadata, id? } (id is optional)
+	 *
+	 * @return Struct with results: { added: numeric, failed: numeric, errors: array }
+	 */
+	default struct function seedAsync( required array documents ){
+		return runAsync( () => this.seed( documents ) );
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * DOCUMENT MANAGEMENT
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get a document by its unique ID
+	 *
+	 * @id The document ID to retrieve
+	 *
+	 * @return Struct with document data: { id, text, metadata, embedding }, or empty struct if not found
+	 */
+	struct function getById( required string id );
+
+	/**
+	 * Remove a document by its ID
+	 *
+	 * @id The document ID to remove
+	 *
+	 * @return Boolean indicating success
+	 */
+	boolean function remove( required string id );
+
+	/**
+	 * Remove documents matching a metadata filter
+	 *
+	 * @filter Metadata filter struct (provider-specific)
+	 *
+	 * @return Numeric count of documents removed
+	 */
+	numeric function removeWhere( required struct filter );
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * COLLECTION/INDEX MANAGEMENT
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Create a new collection/index
+	 * Most implementations auto-create on first use, but this allows explicit creation
+	 *
+	 * @name The collection/index name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function createCollection( required string name );
+
+	/**
+	 * Check if a collection/index exists
+	 *
+	 * @name The collection/index name to check
+	 *
+	 * @return Boolean indicating existence
+	 */
+	boolean function collectionExists( required string name );
+
+	/**
+	 * Delete a collection/index and all its documents
+	 *
+	 * @name The collection/index name to delete
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function deleteCollection( required string name );
+
+}
