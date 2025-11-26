@@ -175,7 +175,7 @@ abstract class
 
 	/**
 	 * Get relevant messages based on semantic similarity
-	 * Uses caching if enabled for query embeddings
+	 * Embedding generation is cached (if enabled), but search results are always fresh
 	 *
 	 * @query The text query to find similar messages for
 	 * @limit Maximum number of results to return
@@ -190,27 +190,10 @@ abstract class
 		struct filter = {},
 		numeric minScore = 0.0
 	) {
-		// Use cache for query embeddings if enabled
-		if ( variables.useCache ) {
-			var cacheKey = "vector:query:" & hash( arguments.query );
-			return variables.cacheInstance.getOrSet(
-				key = cacheKey,
-				produce = () => {
-					var embedding = generateEmbedding( query );
-					var minimumScore = minScore;
-					return findSimilar(
-						embedding = embedding,
-						limit = limit,
-						filter = filter
-					).filter( ( doc ) => doc.score >= minimumScore );
-				},
-				timeout = variables.cacheTimeout,
-				lastAccessTimeout = variables.cacheLastAccessTimeout
-			);
-		}
-
-		// No cache - generate embedding and search
+		// Generate embedding (cached internally if enabled)
 		var embedding = generateEmbedding( arguments.query );
+
+		// Search with fresh results (new documents may have been added)
 		var results = findSimilar(
 			embedding = embedding,
 			limit = arguments.limit,
