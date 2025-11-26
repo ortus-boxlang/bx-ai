@@ -1,14 +1,14 @@
 /**
  * Multimodal AI Example - Audio, Video, Documents, and Images
- * 
+ *
  * This example demonstrates how to use the BoxLang AI module with multiple
  * media types including images, audio, video, and documents.
- * 
+ *
  * Prerequisites:
  * - API keys configured in environment variables
  * - Sample media files (or use URLs)
  * - Vision-capable models (GPT-4o, Claude 3+, Gemini)
- * 
+ *
  * Run: boxlang examples/advanced/multimodal-example.bxs
  */
 

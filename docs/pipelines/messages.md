@@ -577,7 +577,7 @@ videoAnalyzer = aiMessage()
 // Content moderation
 report = videoAnalyzer
     .embedVideo( "/uploads/user-video.mp4" )
-    .run( 
+    .run(
         { purpose: "policy violations and inappropriate content" },
         {},
         { provider: "gemini" }
@@ -586,7 +586,7 @@ report = videoAnalyzer
 // Tutorial analysis
 summary = videoAnalyzer
     .video( tutorialUrl )
-    .run( 
+    .run(
         { purpose: "step-by-step instructions and key concepts" },
         {},
         { provider: "gemini" }
