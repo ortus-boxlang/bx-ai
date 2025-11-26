@@ -69,7 +69,7 @@ class extends="BaseVectorMemory" {
 
 		// Optional properties
 		variables.environment = arguments.config.environment ?: variables.environment
-		variables.namespace = arguments.config.namespace ?: variables.namespace
+		variables.collection = variables.namespace = arguments.config.namespace ?: variables.namespace
 		variables.timeout = arguments.config.timeout ?: variables.timeout
 		variables.host = arguments.config.host ?: ""
 
@@ -105,19 +105,19 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @id Document identifier
 	 * @text Text content to store
+	 * @embedding Pre-computed embedding vector
 	 * @metadata Additional metadata
-	 * @embedding Pre-computed embedding vector (optional)
 	 *
 	 * @return PineconeVectorMemory for chaining
 	 */
-	function storeDocument(
+	IVectorMemory function storeDocument(
 		required string id,
 		required string text,
-		struct metadata = {},
-		array embedding
+		required array embedding,
+		required struct metadata
 	) {
-		// Generate embedding if not provided
-		var vector = arguments.keyExists( "embedding" ) ? arguments.embedding : generateEmbedding( arguments.text )
+		// Use provided embedding
+		var vector = arguments.embedding
 
 		// Prepare metadata with text
 		var fullMetadata = arguments.metadata.copy()
@@ -166,15 +166,13 @@ class extends="BaseVectorMemory" {
 	 * @embedding Query embedding vector
 	 * @limit Maximum number of results
 	 * @filter Metadata filters
-	 * @minScore Minimum similarity score threshold
 	 *
 	 * @return Array of matching documents with scores
 	 */
-	function searchByVector(
+	array function searchByVector(
 		required array embedding,
-		numeric limit = 5,
-		struct filter = {},
-		numeric minScore = 0.0
+		required numeric limit,
+		required struct filter
 	) {
 		// Prepare query payload
 		var payload = {
@@ -234,7 +232,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return Array of all documents (limited by Pinecone's capabilities)
 	 */
-	function getAllDocuments() {
+	array function getAllDocuments() {
 		// Pinecone doesn't support retrieving all documents efficiently
 		// This is a limitation of managed vector databases
 		// We'll return an empty array and log a warning
@@ -249,7 +247,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return Document struct or empty struct if not found
 	 */
-	function getDocumentById( required string id ) {
+	struct function getDocumentById( required string id ) {
 		// Prepare fetch payload
 		var payload = {
 			"ids": [ arguments.id ]
@@ -302,7 +300,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return Boolean indicating success
 	 */
-	function deleteDocument( required string id ) {
+	boolean function deleteDocument( required string id ) {
 		// Prepare delete payload
 		var payload = {
 			"ids": [ arguments.id ]
@@ -329,11 +327,45 @@ class extends="BaseVectorMemory" {
 	}
 
 	/**
+	 * Delete documents by metadata filter
+	 *
+	 * @filter Metadata filter
+	 *
+	 * @return Number of documents deleted
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		// Pinecone doesn't support delete by filter in a way that returns count
+		// We'll delete with filter and return 0
+		var payload = {
+			"filter": convertFilterToPinecone( arguments.filter )
+		}
+
+		// Add namespace if configured
+		if ( len( variables.namespace ) ) {
+			payload.namespace = variables.namespace
+		}
+
+		// Make delete request
+		var response = httpRequest( "#variables.baseUrl#/vectors/delete" )
+			.post()
+			.params( [
+				{ type : "header", name: "Api-Key", value: variables.apiKey },
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
+			.send()
+
+		// Pinecone doesn't return count, so we return 0
+		return 0
+	}
+
+	/**
 	 * Clear all documents from the namespace
 	 *
 	 * @return PineconeVectorMemory for chaining
 	 */
-	function clearAll() {
+	IVectorMemory function clearCollection() {
 		// Prepare delete all payload
 		var payload = {
 			"deleteAll": true
@@ -363,6 +395,13 @@ class extends="BaseVectorMemory" {
 		}
 
 		return this
+	}
+
+	/**
+	 * Clear all documents (alias for clearCollection)
+	 */
+	function clearAll() {
+		return clearCollection()
 	}
 
 	/**

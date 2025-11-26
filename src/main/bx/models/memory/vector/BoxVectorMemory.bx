@@ -15,10 +15,14 @@ class extends="BaseVectorMemory" {
 		super.init();
 
 		// In-memory storage for vectors and metadata
-		variables.vectors = [];
-		variables.metadata = [];
-		variables.ids = [];
-		variables.nextId = 1;
+		variables.vectors    = []; // array of embeddings
+		variables.metadata   = []; // array of structs
+		variables.ids        = []; // array of ids
+		variables.nextId     = 1;
+		variables.configured = false;
+
+		// 0 = not set yet, first insert defines it
+		variables.dimension  = 0;
 
 		return this;
 	}
@@ -27,10 +31,10 @@ class extends="BaseVectorMemory" {
 	 * Configure the memory store
 	 *
 	 * @options Struct of configuration options (not needed for in-memory, but here for interface consistency)
-	 *
-	 * @return BoxVectorMemory
 	 */
 	function configure( struct options = {} ) {
+		// could accept dimension in options later:
+		// if ( options.keyExists( "dimension" ) ) variables.dimension = options.dimension;
 		variables.configured = true;
 		return this;
 	}
@@ -38,15 +42,26 @@ class extends="BaseVectorMemory" {
 	/**
 	 * Add a vector with metadata to memory
 	 *
-	 * @vector Array of numbers representing the embedding vector
+	 * @vector   Array of numbers representing the embedding vector
 	 * @metadata Struct of metadata associated with the vector
-	 * @id Optional custom ID, auto-generated if not provided
+	 * @id       Optional custom ID, auto-generated if not provided
 	 *
 	 * @return string The ID of the stored vector
 	 */
 	function add( required array vector, struct metadata = {}, string id = "" ) {
 		if ( !variables.configured ) {
 			configure();
+		}
+
+		// Set dimension on first add
+		if ( variables.dimension == 0 ) {
+			variables.dimension = arguments.vector.len();
+		} else if ( arguments.vector.len() != variables.dimension ) {
+			throw(
+				type    = "VectorDimensionMismatch",
+				message = "All vectors must have the same dimensions",
+				detail  = "Expected #variables.dimension#, got #arguments.vector.len()#"
+			);
 		}
 
 		// Generate ID if not provided
@@ -63,15 +78,25 @@ class extends="BaseVectorMemory" {
 	/**
 	 * Search for similar vectors using cosine similarity
 	 *
-	 * @vector Array of numbers representing the query vector
-	 * @limit Number of results to return (default: 5)
+	 * @vector    Array of numbers representing the query vector
+	 * @limit     Number of results to return (default: 5)
 	 * @threshold Minimum similarity score threshold (default: 0.0)
 	 *
 	 * @return Array of structs containing { id, score, metadata, vector }
 	 */
 	function search( required array vector, numeric limit = 5, numeric threshold = 0.0 ) {
-		if ( variables.vectors.isEmpty() ) {
+		// No data
+		if ( variables.vectors.len() == 0 ) {
 			return [];
+		}
+
+		// Dim check
+		if ( variables.dimension > 0 && arguments.vector.len() != variables.dimension ) {
+			throw(
+				type    = "VectorDimensionMismatch",
+				message = "Query vector must have the same dimensions as stored vectors",
+				detail  = "Expected #variables.dimension#, got #arguments.vector.len()#"
+			);
 		}
 
 		var results = [];
@@ -82,10 +107,10 @@ class extends="BaseVectorMemory" {
 
 			if ( similarity >= arguments.threshold ) {
 				results.append({
-					id: variables.ids[ i ],
-					score: similarity,
+					id      : variables.ids[ i ],
+					score   : similarity,
 					metadata: variables.metadata[ i ],
-					vector: variables.vectors[ i ]
+					vector  : variables.vectors[ i ]
 				});
 			}
 		}
@@ -93,12 +118,14 @@ class extends="BaseVectorMemory" {
 		// Sort by similarity score (descending)
 		results.sort( function( a, b ) {
 			return b.score - a.score;
-		});
+		} );
 
 		// Return top N results
-		return results.len() > arguments.limit
-			? results.slice( 1, arguments.limit )
-			: results;
+		if ( results.len() > arguments.limit ) {
+			results = results.slice( 1, arguments.limit );
+		}
+
+		return results;
 	}
 
 	/**
@@ -113,9 +140,9 @@ class extends="BaseVectorMemory" {
 
 		if ( index > 0 ) {
 			return {
-				id: variables.ids[ index ],
+				id      : variables.ids[ index ],
 				metadata: variables.metadata[ index ],
-				vector: variables.vectors[ index ]
+				vector  : variables.vectors[ index ]
 			};
 		}
 
@@ -144,21 +171,18 @@ class extends="BaseVectorMemory" {
 
 	/**
 	 * Clear all vectors from memory
-	 *
-	 * @return BoxVectorMemory
 	 */
 	function clear() {
-		variables.vectors = [];
-		variables.metadata = [];
-		variables.ids = [];
-		variables.nextId = 1;
+		variables.vectors   = [];
+		variables.metadata  = [];
+		variables.ids       = [];
+		variables.nextId    = 1;
+		variables.dimension = 0;
 		return this;
 	}
 
 	/**
 	 * Get the count of stored vectors
-	 *
-	 * @return numeric
 	 */
 	function count() {
 		return variables.vectors.len();
@@ -175,9 +199,9 @@ class extends="BaseVectorMemory" {
 	private function cosineSimilarity( required array vector1, required array vector2 ) {
 		if ( arguments.vector1.len() != arguments.vector2.len() ) {
 			throw(
-				type = "VectorDimensionMismatch",
+				type    = "VectorDimensionMismatch",
 				message = "Vectors must have the same dimensions",
-				detail = "Vector1 has #arguments.vector1.len()# dimensions, Vector2 has #arguments.vector2.len()# dimensions"
+				detail  = "Vector1 has #arguments.vector1.len()# dimensions, Vector2 has #arguments.vector2.len()# dimensions"
 			);
 		}
 
@@ -203,8 +227,6 @@ class extends="BaseVectorMemory" {
 
 	/**
 	 * Get the name of this memory provider
-	 *
-	 * @return string
 	 */
 	function getName() {
 		return "BoxVectorMemory";

@@ -33,18 +33,13 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 	public void beforeEach() {
 		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
 		moduleRecord.settings.put( "provider", "openai" );
+		System.setProperty( "PINECONE_API_KEY", PINECONE_API_KEY );
+		System.setProperty( "PINECONE_INDEX", PINECONE_INDEX );
+		System.setProperty( "PINECONE_HOST", PINECONE_HOST );
 	}
 
 	@BeforeAll
 	static void checkPineconeAvailability() {
-		// For local development, use docker-compose Pinecone service
-		// Override with environment variables if connecting to real Pinecone
-		if ( System.getenv( "PINECONE_API_KEY" ) != null ) {
-			PINECONE_API_KEY	= System.getenv( "PINECONE_API_KEY" );
-			PINECONE_INDEX		= System.getenv( "PINECONE_INDEX" );
-			PINECONE_HOST		= System.getenv( "PINECONE_HOST" );
-		}
-
 		// Verify Pinecone Local is accessible and create index if needed
 		try {
 			HttpClient				client			= HttpClient.newHttpClient();
@@ -113,30 +108,32 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    """
-		    	import java.lang.System;
+		      	// Get Pinecone config from environment
+		      	apiKey = getSystemSetting( "PINECONE_API_KEY" );
+		      	indexName = getSystemSetting( "PINECONE_INDEX" );
+		      	host = getSystemSetting( "PINECONE_HOST" );
 
-		    	// Get Pinecone config from environment
-		    	apiKey = System.getenv( "PINECONE_API_KEY" );
-		    	indexName = System.getenv( "PINECONE_INDEX" );
-		    	host = System.getenv( "PINECONE_HOST" );
+		    println( "Using Pinecone Host: " & host )
+		    println( "Using Pinecone Index: " & indexName )
+		    println( "Using Pinecone API Key: " & apiKey )
 
-		    // Create PineconeVectorMemory instance
-		    memory = aiMemory( "pinecone", createUUID(), {
-		        apiKey: apiKey,
-		        indexName: indexName,
-		        host: host,
-		        namespace: "test_namespace",
-		        embeddingProvider: "openai",
-		        embeddingModel: "text-embedding-3-small",
-		        useCache: true
-		    } );
+		      // Create PineconeVectorMemory instance
+		      memory = aiMemory( "pinecone", createUUID(), {
+		          apiKey: apiKey,
+		          indexName: indexName,
+		          host: host,
+		          namespace: "test_namespace",
+		          embeddingProvider: "openai",
+		          embeddingModel: "text-embedding-3-small",
+		          useCache: true
+		      } );
 
-		    result = {
-		        type: memory.getName(),
-		        collection: memory.getCollection(),
-		        configured: true
-		    };
-		    """,
+		      result = {
+		          type: memory.getName(),
+		          collection: memory.getCollection(),
+		          configured: true
+		      };
+		      """,
 		    context );
 
 		IStruct testResult = variables.getAsStruct( result );
@@ -153,12 +150,10 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    """
-		    	import java.lang.System;
-
 		    	// Get Pinecone config
-		    	apiKey = System.getenv( "PINECONE_API_KEY" );
-		    	indexName = System.getenv( "PINECONE_INDEX" );
-		    	host = System.getenv( "PINECONE_HOST" );
+		    	apiKey = getSystemSetting( "PINECONE_API_KEY" );
+		    	indexName = getSystemSetting( "PINECONE_INDEX" );
+		    	host = getSystemSetting( "PINECONE_HOST" );
 
 		    // Create memory with unique namespace
 		    testNamespace = "test_store_" & left( createUUID(), 8 );
@@ -213,12 +208,10 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    """
-		    	import java.lang.System;
-
 		    	// Get Pinecone config
-		    	apiKey = System.getenv( "PINECONE_API_KEY" );
-		    	indexName = System.getenv( "PINECONE_INDEX" );
-		    	host = System.getenv( "PINECONE_HOST" );
+		    	apiKey = getSystemSetting( "PINECONE_API_KEY" );
+		    	indexName = getSystemSetting( "PINECONE_INDEX" );
+		    	host = getSystemSetting( "PINECONE_HOST" );
 
 		    // Create memory
 		    testNamespace = "test_search_" & left( createUUID(), 8 );
@@ -277,9 +270,9 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 		    	import java.lang.System;
 
 		    	// Get Pinecone config
-		    	apiKey = System.getenv( "PINECONE_API_KEY" );
-		    	indexName = System.getenv( "PINECONE_INDEX" );
-		    	host = System.getenv( "PINECONE_HOST" );
+		    	apiKey = getSystemSetting( "PINECONE_API_KEY" );
+		    	indexName = getSystemSetting( "PINECONE_INDEX" );
+		    	host = getSystemSetting( "PINECONE_HOST" );
 
 		    // Create memory
 		    testNamespace = "test_getbyid_" & left( createUUID(), 8 );
@@ -336,9 +329,9 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 		    	import java.lang.System;
 
 		    	// Get Pinecone config
-		    	apiKey = System.getenv( "PINECONE_API_KEY" );
-		    	indexName = System.getenv( "PINECONE_INDEX" );
-		    	host = System.getenv( "PINECONE_HOST" );
+		    	apiKey = getSystemSetting( "PINECONE_API_KEY" );
+		    	indexName = getSystemSetting( "PINECONE_INDEX" );
+		    	host = getSystemSetting( "PINECONE_HOST" );
 
 		    // Create memory
 		    testNamespace = "test_delete_" & left( createUUID(), 8 );
@@ -397,9 +390,9 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 		    	import java.lang.System;
 
 		    	// Get Pinecone config
-		    	apiKey = System.getenv( "PINECONE_API_KEY" );
-		    	indexName = System.getenv( "PINECONE_INDEX" );
-		    	host = System.getenv( "PINECONE_HOST" );
+		    	apiKey = getSystemSetting( "PINECONE_API_KEY" );
+		    	indexName = getSystemSetting( "PINECONE_INDEX" );
+		    	host = getSystemSetting( "PINECONE_HOST" );
 
 		    // Create memory
 		    testNamespace = "test_filter_" & left( createUUID(), 8 );
@@ -464,9 +457,9 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 		    	import java.lang.System;
 
 		    	// Get Pinecone config
-		    	apiKey = System.getenv( "PINECONE_API_KEY" );
-		    	indexName = System.getenv( "PINECONE_INDEX" );
-		    	host = System.getenv( "PINECONE_HOST" );
+		    	apiKey = getSystemSetting( "PINECONE_API_KEY" );
+		    	indexName = getSystemSetting( "PINECONE_INDEX" );
+		    	host = getSystemSetting( "PINECONE_HOST" );
 
 		    // Create memory
 		    testNamespace = "test_batch_" & left( createUUID(), 8 );
@@ -521,9 +514,9 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 		    	import java.lang.System;
 
 		    	// Get Pinecone config
-		    	apiKey = System.getenv( "PINECONE_API_KEY" );
-		    	indexName = System.getenv( "PINECONE_INDEX" );
-		    	host = System.getenv( "PINECONE_HOST" );
+		    	apiKey = getSystemSetting( "PINECONE_API_KEY" );
+		    	indexName = getSystemSetting( "PINECONE_INDEX" );
+		    	host = getSystemSetting( "PINECONE_HOST" );
 
 		    // Create hybrid memory with Pinecone
 		    testNamespace = "test_hybrid_" & left( createUUID(), 8 );
