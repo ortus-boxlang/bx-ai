@@ -310,13 +310,13 @@ class extends="AiBaseRunnable"{
 		// Check if the last message has an array content (multipart message)
 		if ( variables.messages.len() > 0 ) {
 			var lastMessage = variables.messages[ variables.messages.len() ];
-			
+
 			// If content is already an array, append to it
 			if ( isArray( lastMessage.content ) ) {
 				lastMessage.content.append( imageContent );
 				return this;
 			}
-			
+
 			// If content is a string, convert to array with text and image
 			if ( isSimpleValue( lastMessage.content ) ) {
 				lastMessage.content = [
@@ -340,6 +340,65 @@ class extends="AiBaseRunnable"{
 	}
 
 	/**
+	 * Private helper to determine MIME type from file extension
+	 *
+	 * @filePath The file path to analyze
+	 * @mediaType The media type category: "image", "audio", "video", or "document"
+	 *
+	 * @return The MIME type string (e.g., "image/jpeg", "audio/mp3")
+	 */
+	private string function getMimeType( required string filePath, required string mediaType ) {
+		var fileExtension = "";
+		if ( arguments.filePath.contains( "." ) ) {
+			fileExtension = listLast( arguments.filePath, "." ).toLowerCase();
+		}
+
+		// Image MIME types
+		if ( arguments.mediaType == "image" ) {
+			if ( fileExtension == "jpg" ) return "image/jpeg";
+			if ( fileExtension.isEmpty() ) return "image/png";
+			return "image/" & fileExtension;
+		}
+
+		// Audio MIME types
+		if ( arguments.mediaType == "audio" ) {
+			if ( fileExtension == "mp3" ) return "audio/mpeg";
+			if ( fileExtension == "m4a" ) return "audio/mp4";
+			if ( fileExtension == "wav" ) return "audio/wav";
+			if ( fileExtension == "webm" ) return "audio/webm";
+			if ( fileExtension == "mpeg" ) return "audio/mpeg";
+			if ( fileExtension == "mpga" ) return "audio/mpeg";
+			if ( fileExtension.isEmpty() ) return "audio/mpeg";
+			return "audio/" & fileExtension;
+		}
+
+		// Video MIME types
+		if ( arguments.mediaType == "video" ) {
+			if ( fileExtension == "mp4" ) return "video/mp4";
+			if ( fileExtension == "mpeg" ) return "video/mpeg";
+			if ( fileExtension == "mov" ) return "video/quicktime";
+			if ( fileExtension == "avi" ) return "video/x-msvideo";
+			if ( fileExtension == "webm" ) return "video/webm";
+			if ( fileExtension.isEmpty() ) return "video/mp4";
+			return "video/" & fileExtension;
+		}
+
+		// Document MIME types
+		if ( arguments.mediaType == "document" ) {
+			if ( fileExtension == "pdf" ) return "application/pdf";
+			if ( fileExtension == "doc" ) return "application/msword";
+			if ( fileExtension == "docx" ) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+			if ( fileExtension == "xls" ) return "application/vnd.ms-excel";
+			if ( fileExtension == "xlsx" ) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+			if ( fileExtension == "txt" ) return "text/plain";
+			if ( fileExtension.isEmpty() ) return "application/pdf";
+			return "application/" & fileExtension;
+		}
+
+		return "application/octet-stream";
+	}
+
+	/**
 	 * Embed an image from a file path by reading it and converting to base64.
 	 * This creates a data URI that can be used inline in the message.
 	 *
@@ -351,33 +410,300 @@ class extends="AiBaseRunnable"{
 	AiMessage function embedImage( required string filePath, string detail = "auto" ) {
 		// Read the file as binary
 		var binaryData = fileReadBinary( arguments.filePath );
-		
+
 		// Convert to base64
 		var base64Data = toBase64( binaryData );
-		
-		// Determine MIME type from file extension
-		var fileExtension = "";
-		if ( arguments.filePath.contains( "." ) ) {
-			fileExtension = listLast( arguments.filePath, "." ).toLowerCase();
-		}
-		
-		// Default to png if no extension found
-		if ( fileExtension.isEmpty() ) {
-			fileExtension = "png";
-		}
-		
-		var mimeType = "image/" & fileExtension;
-		
-		// Handle common variations
-		if ( fileExtension == "jpg" ) {
-			mimeType = "image/jpeg";
-		}
-		
+
+		// Determine MIME type
+		var mimeType = getMimeType( arguments.filePath, "image" );
+
 		// Create data URI
 		var dataUri = "data:#mimeType#;base64,#base64Data#";
-		
+
 		// Use the image() method to add the embedded image
 		return this.image( dataUri, arguments.detail );
+	}
+
+	/**
+	 * Add an audio URL to the message. This creates a message with multipart content
+	 * containing the audio reference.
+	 *
+	 * Supported by: OpenAI (GPT-4o-audio), Gemini
+	 * Formats: mp3, mp4, mpeg, mpga, m4a, wav, webm
+	 *
+	 * @path The URL or path to the audio file
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function audio( required string path ) {
+		var audioContent = {
+			"type": "input_audio",
+			"input_audio": {
+				"data": arguments.path,
+				"format": "mp3"
+			}
+		};
+
+		// Check if the last message has an array content (multipart message)
+		if ( variables.messages.len() > 0 ) {
+			var lastMessage = variables.messages[ variables.messages.len() ];
+
+			// If content is already an array, append to it
+			if ( isArray( lastMessage.content ) ) {
+				lastMessage.content.append( audioContent );
+				return this;
+			}
+
+			// If content is a string, convert to array with text and audio
+			if ( isSimpleValue( lastMessage.content ) ) {
+				lastMessage.content = [
+					{
+						"type": "text",
+						"text": lastMessage.content
+					},
+					audioContent
+				];
+				return this;
+			}
+		}
+
+		// No previous message or can't append, create new message with audio
+		variables.messages.push( {
+			"role": static.DEFAULT_ROLE,
+			"content": [ audioContent ]
+		} );
+
+		return this;
+	}
+
+	/**
+	 * Embed an audio file from a file path by reading it and converting to base64.
+	 * This creates a data URI that can be used inline in the message.
+	 *
+	 * Supported by: OpenAI (GPT-4o-audio), Gemini
+	 * Formats: mp3, mp4, mpeg, mpga, m4a, wav, webm
+	 *
+	 * @filePath The file system path to the audio file
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function embedAudio( required string filePath ) {
+		// Read the file as binary
+		var binaryData = fileReadBinary( arguments.filePath );
+
+		// Convert to base64
+		var base64Data = toBase64( binaryData );
+
+		// Determine MIME type
+		var mimeType = getMimeType( arguments.filePath, "audio" );
+
+		// Create data URI
+		var dataUri = "data:#mimeType#;base64,#base64Data#";
+
+		// Use the audio() method to add the embedded audio
+		return this.audio( dataUri );
+	}
+
+	/**
+	 * Add a video URL to the message. This creates a message with multipart content
+	 * containing the video reference.
+	 *
+	 * Supported by: Gemini (gemini-1.5-pro, gemini-2.0-flash)
+	 * Formats: mp4, mpeg, mov, avi, flv, mpg, webm, wmv
+	 *
+	 * @path The URL or path to the video file
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function video( required string path ) {
+		var videoContent = {
+			"type": "video",
+			"video": {
+				"url": arguments.path
+			}
+		};
+
+		// Check if the last message has an array content (multipart message)
+		if ( variables.messages.len() > 0 ) {
+			var lastMessage = variables.messages[ variables.messages.len() ];
+
+			// If content is already an array, append to it
+			if ( isArray( lastMessage.content ) ) {
+				lastMessage.content.append( videoContent );
+				return this;
+			}
+
+			// If content is a string, convert to array with text and video
+			if ( isSimpleValue( lastMessage.content ) ) {
+				lastMessage.content = [
+					{
+						"type": "text",
+						"text": lastMessage.content
+					},
+					videoContent
+				];
+				return this;
+			}
+		}
+
+		// No previous message or can't append, create new message with video
+		variables.messages.push( {
+			"role": static.DEFAULT_ROLE,
+			"content": [ videoContent ]
+		} );
+
+		return this;
+	}
+
+	/**
+	 * Embed a video file from a file path by reading it and converting to base64.
+	 * This creates a data URI that can be used inline in the message.
+	 *
+	 * Supported by: Gemini (gemini-1.5-pro, gemini-2.0-flash)
+	 * Formats: mp4, mpeg, mov, avi, flv, mpg, webm, wmv
+	 *
+	 * @filePath The file system path to the video file
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function embedVideo( required string filePath ) {
+		// Read the file as binary
+		var binaryData = fileReadBinary( arguments.filePath );
+
+		// Convert to base64
+		var base64Data = toBase64( binaryData );
+
+		// Determine MIME type
+		var mimeType = getMimeType( arguments.filePath, "video" );
+
+		// Create data URI
+		var dataUri = "data:#mimeType#;base64,#base64Data#";
+
+		// Use the video() method to add the embedded video
+		return this.video( dataUri );
+	}
+
+	/**
+	 * Add a document URL to the message. This creates a message with multipart content
+	 * containing the document reference.
+	 *
+	 * Supported by: Claude (Opus, Sonnet), OpenAI (inline or file API)
+	 * Formats: pdf, doc, docx, txt, xls, xlsx
+	 *
+	 * @path The URL or path to the document file
+	 * @name Optional document name for display purposes
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function document( required string path, string name = "" ) {
+		var documentContent = {
+			"type": "document",
+			"source": {
+				"type": "url",
+				"url": arguments.path
+			}
+		};
+
+		// Add name if provided
+		if ( !arguments.name.isEmpty() ) {
+			documentContent.name = arguments.name;
+		}
+
+		// Check if the last message has an array content (multipart message)
+		if ( variables.messages.len() > 0 ) {
+			var lastMessage = variables.messages[ variables.messages.len() ];
+
+			// If content is already an array, append to it
+			if ( isArray( lastMessage.content ) ) {
+				lastMessage.content.append( documentContent );
+				return this;
+			}
+
+			// If content is a string, convert to array with text and document
+			if ( isSimpleValue( lastMessage.content ) ) {
+				lastMessage.content = [
+					{
+						"type": "text",
+						"text": lastMessage.content
+					},
+					documentContent
+				];
+				return this;
+			}
+		}
+
+		// No previous message or can't append, create new message with document
+		variables.messages.push( {
+			"role": static.DEFAULT_ROLE,
+			"content": [ documentContent ]
+		} );
+
+		return this;
+	}
+
+	/**
+	 * Embed a document from a file path by reading it and converting to base64.
+	 * This creates a data URI that can be used inline in the message.
+	 *
+	 * Supported by: Claude (Opus, Sonnet), OpenAI (inline or file API)
+	 * Formats: pdf, doc, docx, txt, xls, xlsx
+	 *
+	 * @filePath The file system path to the document file
+	 * @name Optional document name for display purposes
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function embedDocument( required string filePath, string name = "" ) {
+		// Read the file as binary
+		var binaryData = fileReadBinary( arguments.filePath );
+
+		// Convert to base64
+		var base64Data = toBase64( binaryData );
+
+		// Determine MIME type
+		var mimeType = getMimeType( arguments.filePath, "document" );
+
+		// Create data URI
+		var dataUri = "data:#mimeType#;base64,#base64Data#";
+
+		// Extract filename if name not provided
+		var docName = arguments.name;
+		if ( docName.isEmpty() && arguments.filePath.contains( "/" ) ) {
+			docName = listLast( arguments.filePath, "/" );
+		} else if ( docName.isEmpty() && arguments.filePath.contains( "\\" ) ) {
+			docName = listLast( arguments.filePath, "\\" );
+		}
+
+		// Use the document() method to add the embedded document
+		return this.document( dataUri, docName );
+	}
+
+	/**
+	 * Add a PDF URL to the message. Convenience alias for document().
+	 *
+	 * Supported by: Claude (Opus, Sonnet), OpenAI (inline or file API)
+	 *
+	 * @path The URL or path to the PDF file
+	 * @name Optional PDF name for display purposes
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function pdf( required string path, string name = "" ) {
+		return this.document( arguments.path, arguments.name );
+	}
+
+	/**
+	 * Embed a PDF from a file path. Convenience alias for embedDocument().
+	 *
+	 * Supported by: Claude (Opus, Sonnet), OpenAI (inline or file API)
+	 *
+	 * @filePath The file system path to the PDF file
+	 * @name Optional PDF name for display purposes
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function embedPdf( required string filePath, string name = "" ) {
+		return this.embedDocument( arguments.filePath, arguments.name );
 	}
 
 	/**

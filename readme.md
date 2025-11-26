@@ -750,8 +750,6 @@ The `ChatMessage` object has several methods that you can use to interact with t
 
 - `add( content ):ChatMessage` : Add a message to the messages array
 - `history( messages ):ChatMessage` : Inflate the message with prior conversation history (array or AiMessage)
-- `image( path, detail = "auto" ):ChatMessage` : Add an image URL to the message (for vision-capable models)
-- `embedImage( filePath, detail = "auto" ):ChatMessage` : Embed a local image file as base64 (for vision-capable models)
 - `count():numeric` : Get the count of messages
 - `clear():ChatMessage` : Clear the messages
 - `getMessages():array` : Get the messages
@@ -760,6 +758,19 @@ The `ChatMessage` object has several methods that you can use to interact with t
 - `hasSystemMessage():boolean` : Check if the message has a system message
 - `replaceSystemMessage( content )` : Replace the system message with a new one
 - `setMessages( messages ):ChatMessage` : Set the messages
+
+**Multimodal Content (Images, Audio, Video, Documents):**
+
+- `image( path, detail = "auto" ):ChatMessage` : Add an image URL to the message (OpenAI, Claude, Gemini)
+- `embedImage( filePath, detail = "auto" ):ChatMessage` : Embed a local image file as base64 (OpenAI, Claude, Gemini)
+- `audio( path ):ChatMessage` : Add an audio URL to the message (OpenAI GPT-4o-audio, Gemini)
+- `embedAudio( filePath ):ChatMessage` : Embed a local audio file as base64 (OpenAI GPT-4o-audio, Gemini)
+- `video( path ):ChatMessage` : Add a video URL to the message (Gemini only)
+- `embedVideo( filePath ):ChatMessage` : Embed a local video file as base64 (Gemini only)
+- `document( path, name = "" ):ChatMessage` : Add a document URL to the message (Claude, OpenAI)
+- `embedDocument( filePath, name = "" ):ChatMessage` : Embed a local document file as base64 (Claude, OpenAI)
+- `pdf( path, name = "" ):ChatMessage` : Add a PDF URL (alias for document)
+- `embedPdf( filePath, name = "" ):ChatMessage` : Embed a local PDF file (alias for embedDocument)
 
 **Options Management (for pipelines):**
 
@@ -828,7 +839,64 @@ aiChat(
 		.image( "https://example.com/product-before.jpg" )
 		.image( "https://example.com/product-after.jpg" )
 )
+
+// Audio message (OpenAI GPT-4o-audio, Gemini)
+aiChat(
+	aiMessage()
+		.user( "Transcribe and summarize this audio" )
+		.embedAudio( "/path/to/recording.mp3" )
+)
+
+// Video analysis (Gemini only)
+aiChat(
+	aiMessage()
+		.user( "What is happening in this video?" )
+		.embedVideo( "/path/to/video.mp4" ),
+	{},
+	{ provider: "gemini" }
+)
+
+// PDF document analysis (Claude, OpenAI)
+aiChat(
+	aiMessage()
+		.user( "Summarize the key points from this contract" )
+		.embedPdf( "/path/to/contract.pdf" )
+)
+
+// Mixed multimodal content
+aiChat(
+	aiMessage()
+		.user( "Compare this document to the images and audio" )
+		.embedDocument( "/path/to/report.pdf", "Quarterly Report" )
+		.embedImage( "/path/to/chart.png" )
+		.embedAudio( "/path/to/summary.mp3" )
+)
 ```
+
+### Multimodal Provider Support
+
+| Feature | OpenAI | Claude | Gemini | Ollama |
+|---------|--------|--------|--------|--------|
+| **Images** | ✅ GPT-4o, GPT-4-turbo | ✅ Claude 3 (Opus, Sonnet, Haiku) | ✅ Gemini Pro Vision, 1.5+, 2.0 | ✅ LLaVA, Bakllava |
+| **Audio** | ✅ GPT-4o-audio-preview | ❌ | ✅ Gemini 1.5+, 2.0 | ❌ |
+| **Video** | ❌ | ❌ | ✅ Gemini 1.5+, 2.0 | ❌ |
+| **Documents/PDFs** | ✅ GPT-4o (inline) | ✅ Claude 3+ | ⚠️ Via text extraction | ❌ |
+
+**Supported Formats:**
+
+- **Images**: png, jpg, jpeg, gif, webp
+- **Audio**: mp3, mp4, mpeg, mpga, m4a, wav, webm
+- **Video**: mp4, mpeg, mov, avi, flv, mpg, webm, wmv (Gemini only)
+- **Documents**: pdf, doc, docx, txt, xls, xlsx
+
+**Size Limits:**
+
+- Images: 20MB per image (varies by provider)
+- Audio: 25MB (OpenAI), 2GB (Gemini)
+- Video: 2GB (Gemini only)
+- Documents: ~10MB inline, larger files require file upload API
+
+> **Note:** For large files (>10MB), consider using the provider's file upload API endpoints (OpenAI `/v1/files`, Gemini File API). The inline base64 embedding approach is best for small-to-medium files that fit within context limits.
 
 ## aiService() - Create an AI Service Object
 

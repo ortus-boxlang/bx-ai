@@ -49,6 +49,7 @@ Autonomous agents with memory and tools:
 
 Advanced capabilities and integrations:
 
+- **multimodal-example.bxs** - 🆕 Images, audio, video, and documents in AI conversations
 - **vision-example.bxs** - Image analysis with vision-capable models
 - **embeddings-example.bxs** - Vector embeddings for semantic search
 - **token-counting-example.bxs** - Estimating and managing token usage

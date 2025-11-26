@@ -499,6 +499,201 @@ description = generator
 
 **Note:** Image support requires vision-capable AI models. Check your provider's documentation for supported models and pricing.
 
+### Audio
+
+Add audio files to messages for AI models that support audio processing.
+
+**Supported by:** OpenAI (GPT-4o-audio-preview), Gemini (1.5+, 2.0)
+
+**Formats:** mp3, mp4, mpeg, mpga, m4a, wav, webm
+
+#### Audio URLs
+
+```java
+message = aiMessage()
+    .user( "Transcribe and summarize this audio" )
+    .audio( "https://example.com/recording.mp3" )
+```
+
+#### Embedded Audio
+
+```java
+message = aiMessage()
+    .user( "What language is spoken in this audio?" )
+    .embedAudio( "/path/to/conversation.mp3" )
+```
+
+#### Audio Analysis Pipeline
+
+```java
+transcriber = aiMessage()
+    .system( "Transcribe audio and extract ${info}" )
+    .user( "Process this audio file" )
+    .toDefaultModel()
+
+// Transcribe meeting
+transcript = transcriber
+    .embedAudio( "/meetings/team-standup.mp3" )
+    .run( { info: "action items and decisions" } )
+
+// Analyze podcast
+summary = transcriber
+    .audio( podcastUrl )
+    .run( { info: "key topics and timestamps" } )
+```
+
+### Video
+
+Add video files to messages for AI models with video understanding capabilities.
+
+**Supported by:** Gemini (gemini-1.5-pro, gemini-2.0-flash)
+
+**Formats:** mp4, mpeg, mov, avi, flv, mpg, webm, wmv
+
+#### Video URLs
+
+```java
+message = aiMessage()
+    .user( "What is happening in this video?" )
+    .video( "https://example.com/demo.mp4" )
+```
+
+#### Embedded Videos
+
+```java
+message = aiMessage()
+    .user( "Analyze the actions in this security footage" )
+    .embedVideo( "/videos/security-cam-01.mp4" )
+```
+
+#### Video Analysis Pipeline
+
+```java
+videoAnalyzer = aiMessage()
+    .system( "You are a video content analyst" )
+    .user( "Analyze this video for ${purpose}" )
+    .toDefaultModel()
+
+// Content moderation
+report = videoAnalyzer
+    .embedVideo( "/uploads/user-video.mp4" )
+    .run( 
+        { purpose: "policy violations and inappropriate content" },
+        {},
+        { provider: "gemini" }
+    )
+
+// Tutorial analysis
+summary = videoAnalyzer
+    .video( tutorialUrl )
+    .run( 
+        { purpose: "step-by-step instructions and key concepts" },
+        {},
+        { provider: "gemini" }
+    )
+```
+
+### Documents and PDFs
+
+Add documents and PDFs to messages for AI models that support document understanding.
+
+**Supported by:** Claude (Opus, Sonnet), OpenAI (GPT-4o)
+
+**Formats:** pdf, doc, docx, txt, xls, xlsx
+
+#### Document URLs
+
+```java
+message = aiMessage()
+    .user( "Summarize this contract" )
+    .document( "https://example.com/contract.pdf", "Service Agreement" )
+
+// PDF alias
+message = aiMessage()
+    .user( "Extract key dates from this PDF" )
+    .pdf( "https://example.com/schedule.pdf" )
+```
+
+#### Embedded Documents
+
+```java
+message = aiMessage()
+    .user( "What are the main conclusions?" )
+    .embedDocument( "/reports/quarterly-review.pdf", "Q4 2024 Review" )
+
+// PDF alias
+message = aiMessage()
+    .user( "Find all mentions of security concerns" )
+    .embedPdf( "/documents/audit-report.pdf" )
+```
+
+#### Document Analysis Pipeline
+
+```java
+docAnalyzer = aiMessage()
+    .system( "You are a document analysis expert" )
+    .user( "Analyze this document for ${focus}" )
+    .toDefaultModel()
+
+// Legal document review
+findings = docAnalyzer
+    .embedPdf( "/legal/contract-v2.pdf", "Software License" )
+    .run( { focus: "liability clauses and termination conditions" } )
+
+// Financial report analysis
+insights = docAnalyzer
+    .document( reportUrl, "Annual Report" )
+    .run( { focus: "revenue trends and expense categories" } )
+```
+
+### Mixed Multimodal Content
+
+Combine multiple media types in a single message:
+
+```java
+// Document + Images
+message = aiMessage()
+    .user( "Compare the document specs with these product images" )
+    .embedPdf( "/specs/product-specs.pdf" )
+    .embedImage( "/photos/product-front.jpg" )
+    .embedImage( "/photos/product-back.jpg" )
+
+// Video + Audio analysis
+message = aiMessage()
+    .user( "Does the audio match the video content?" )
+    .embedVideo( "/media/video-clip.mp4" )
+    .embedAudio( "/media/separate-audio.mp3" )
+
+// Complete multimedia analysis
+analyzer = aiMessage()
+    .system( "Analyze all provided media comprehensively" )
+    .user( "Review these materials for ${purpose}" )
+    .toDefaultModel()
+
+result = analyzer
+    .embedDocument( "/reports/brief.pdf", "Project Brief" )
+    .embedImage( "/mockups/ui-design.png" )
+    .embedVideo( "/demos/prototype-demo.mp4" )
+    .embedAudio( "/recordings/stakeholder-feedback.mp3" )
+    .run( { purpose: "alignment with project requirements" } )
+```
+
+### Multimodal Provider Support
+
+| Feature | OpenAI | Claude | Gemini |
+|---------|--------|--------|--------|
+| **Images** | ✅ GPT-4o, GPT-4-turbo | ✅ Claude 3+ | ✅ All vision models |
+| **Audio** | ✅ GPT-4o-audio | ❌ | ✅ Gemini 1.5+, 2.0 |
+| **Video** | ❌ | ❌ | ✅ Gemini 1.5+, 2.0 |
+| **Documents** | ✅ GPT-4o | ✅ Claude 3+ | ⚠️ Via OCR |
+
+**Important Notes:**
+
+- **File Size Limits:** Images (20MB), Audio (25MB for OpenAI), Video (2GB for Gemini), Documents (~10MB inline)
+- **Large Files:** For files >10MB, consider using provider-specific file upload APIs
+- **Base64 Inline:** All `embed*` methods use base64 inline encoding for simplicity
+- **Context Limits:** Large media files consume significant context tokens
+
 ### Streaming Messages
 
 Messages can stream their content:

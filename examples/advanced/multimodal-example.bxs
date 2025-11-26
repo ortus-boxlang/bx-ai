@@ -1,0 +1,247 @@
+/**
+ * Multimodal AI Example - Audio, Video, Documents, and Images
+ * 
+ * This example demonstrates how to use the BoxLang AI module with multiple
+ * media types including images, audio, video, and documents.
+ * 
+ * Prerequisites:
+ * - API keys configured in environment variables
+ * - Sample media files (or use URLs)
+ * - Vision-capable models (GPT-4o, Claude 3+, Gemini)
+ * 
+ * Run: boxlang examples/advanced/multimodal-example.bxs
+ */
+
+println( "=== BoxLang AI - Multimodal Content Example ===" )
+println()
+
+// ============================================================================
+// 1. IMAGE ANALYSIS
+// ============================================================================
+println( "--- 1. Image Analysis ---" )
+
+// Using image URLs
+imageAnalysis = aiChat(
+    aiMessage()
+        .system( "You are an expert image analyst" )
+        .user( "Describe this image in detail" )
+        .image( "https://picsum.photos/800/600" ),
+    { model: "gpt-4o" }
+)
+
+println( "Image Analysis (URL):" )
+println( imageAnalysis )
+println()
+
+// Embedding local images (if you have a local file)
+// Uncomment and update path as needed:
+/*
+localImageAnalysis = aiChat(
+    aiMessage()
+        .user( "What UI issues can you spot in this screenshot?" )
+        .embedImage( "/path/to/screenshot.png", "high" )
+)
+println( "Local Image Analysis:" )
+println( localImageAnalysis )
+println()
+*/
+
+// Multiple image comparison
+/*
+comparison = aiChat(
+    aiMessage()
+        .user( "Compare these two images and describe the differences" )
+        .embedImage( "/path/to/before.jpg" )
+        .embedImage( "/path/to/after.jpg" )
+)
+println( "Image Comparison:" )
+println( comparison )
+println()
+*/
+
+// ============================================================================
+// 2. AUDIO PROCESSING
+// ============================================================================
+println( "--- 2. Audio Processing ---" )
+println( "Note: Requires OpenAI GPT-4o-audio or Gemini" )
+
+// Audio transcription and analysis
+// Uncomment when you have an audio file:
+/*
+audioAnalysis = aiChat(
+    aiMessage()
+        .user( "Transcribe and summarize this audio recording" )
+        .embedAudio( "/path/to/recording.mp3" ),
+    { model: "gpt-4o-audio-preview" },
+    { provider: "openai" }
+)
+println( "Audio Transcription:" )
+println( audioAnalysis )
+println()
+*/
+
+// Extract action items from meeting
+/*
+actionItems = aiChat(
+    aiMessage()
+        .system( "Extract action items, owners, and deadlines from meeting recordings" )
+        .user( "Process this meeting recording" )
+        .embedAudio( "/meetings/team-standup.mp3" )
+)
+println( "Meeting Action Items:" )
+println( actionItems )
+println()
+*/
+
+// ============================================================================
+// 3. VIDEO ANALYSIS
+// ============================================================================
+println( "--- 3. Video Analysis ---" )
+println( "Note: Only supported by Gemini (gemini-1.5-pro, gemini-2.0-flash)" )
+
+// Video content analysis
+// Uncomment when you have a video file:
+/*
+videoSummary = aiChat(
+    aiMessage()
+        .user( "Summarize what happens in this video" )
+        .embedVideo( "/path/to/demo.mp4" ),
+    { model: "gemini-2.0-flash-exp" },
+    { provider: "gemini" }
+)
+println( "Video Summary:" )
+println( videoSummary )
+println()
+*/
+
+// Tutorial step extraction
+/*
+tutorialSteps = aiChat(
+    aiMessage()
+        .system( "You are a technical writer extracting tutorial steps" )
+        .user( "List the step-by-step instructions shown in this video" )
+        .video( "https://example.com/tutorial.mp4" ),
+    {},
+    { provider: "gemini" }
+)
+println( "Tutorial Steps:" )
+println( tutorialSteps )
+println()
+*/
+
+// ============================================================================
+// 4. DOCUMENT AND PDF ANALYSIS
+// ============================================================================
+println( "--- 4. Document & PDF Analysis ---" )
+println( "Note: Supported by Claude (Opus, Sonnet) and OpenAI (GPT-4o)" )
+
+// PDF document analysis
+// Uncomment when you have a PDF file:
+/*
+pdfSummary = aiChat(
+    aiMessage()
+        .user( "Summarize the key points from this document" )
+        .embedPdf( "/path/to/report.pdf" ),
+    {},
+    { provider: "claude" }
+)
+println( "PDF Summary:" )
+println( pdfSummary )
+println()
+*/
+
+// Extract specific information
+/*
+extractedDates = aiChat(
+    aiMessage()
+        .system( "Extract dates, deadlines, and milestones from documents" )
+        .user( "List all important dates from this project plan" )
+        .embedDocument( "/path/to/project-plan.pdf", "Project Plan Q4" )
+)
+println( "Extracted Dates:" )
+println( extractedDates )
+println()
+*/
+
+// Legal document review
+/*
+legalReview = aiChat(
+    aiMessage()
+        .system( "You are a legal analyst. Identify risks and unusual clauses." )
+        .user( "Review this contract for potential issues" )
+        .embedPdf( "/contracts/vendor-agreement.pdf", "Vendor Contract" )
+)
+println( "Legal Review:" )
+println( legalReview )
+println()
+*/
+
+// ============================================================================
+// 5. MIXED MULTIMODAL CONTENT
+// ============================================================================
+println( "--- 5. Mixed Multimodal Analysis ---" )
+
+// Combining multiple media types
+// Uncomment when you have all media files:
+/*
+comprehensiveAnalysis = aiChat(
+    aiMessage()
+        .system( "You are a project quality analyst" )
+        .user( "Review all these project materials for consistency and quality" )
+        .embedDocument( "/project/requirements.pdf", "Requirements" )
+        .embedImage( "/project/mockup.png" )
+        .embedVideo( "/project/demo.mp4" )
+        .embedAudio( "/project/stakeholder-feedback.mp3" ),
+    {},
+    { provider: "gemini" }
+)
+println( "Comprehensive Analysis:" )
+println( comprehensiveAnalysis )
+println()
+*/
+
+// Document + Images comparison
+/*
+specComparison = aiChat(
+    aiMessage()
+        .user( "Does the product in these images match the specifications?" )
+        .embedPdf( "/specs/product-spec.pdf" )
+        .embedImage( "/photos/product-front.jpg" )
+        .embedImage( "/photos/product-back.jpg" )
+)
+println( "Spec Comparison:" )
+println( specComparison )
+println()
+*/
+
+// ============================================================================
+// PROVIDER SUPPORT MATRIX
+// ============================================================================
+println( "--- Provider Support Matrix ---" )
+println( "Images:    OpenAI ✓  Claude ✓  Gemini ✓  Ollama ✓" )
+println( "Audio:     OpenAI ✓  Claude ✗  Gemini ✓  Ollama ✗" )
+println( "Video:     OpenAI ✗  Claude ✗  Gemini ✓  Ollama ✗" )
+println( "Documents: OpenAI ✓  Claude ✓  Gemini ⚠  Ollama ✗" )
+println()
+
+println( "--- File Format Support ---" )
+println( "Images:    png, jpg, jpeg, gif, webp" )
+println( "Audio:     mp3, mp4, mpeg, mpga, m4a, wav, webm" )
+println( "Video:     mp4, mpeg, mov, avi, flv, mpg, webm, wmv (Gemini only)" )
+println( "Documents: pdf, doc, docx, txt, xls, xlsx" )
+println()
+
+println( "--- Size Limits ---" )
+println( "Images:    Up to 20MB per image" )
+println( "Audio:     Up to 25MB (OpenAI), 2GB (Gemini)" )
+println( "Video:     Up to 2GB (Gemini only)" )
+println( "Documents: ~10MB inline (base64), larger files need upload API" )
+println()
+
+println( "=== Example Complete ===" )
+println()
+println( "💡 Tips:" )
+println( "  - Uncomment sections above with your actual media files" )
+println( "  - For large files (>10MB), consider provider file upload APIs" )
+println( "  - Image detail levels: 'auto', 'low' (faster), 'high' (detailed)" )
+println( "  - Mixed multimodal works best with Gemini" )

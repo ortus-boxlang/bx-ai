@@ -774,4 +774,532 @@ public class aiMessageTest extends BaseIntegrationTest {
 		assertThat( url ).startsWith( "data:image/jpeg;base64," );
 		assertThat( imageUrl.getAsString( Key.of( "detail" ) ) ).isEqualTo( "low" );
 	}
+
+	// ============================================================================
+	// AUDIO TESTS
+	// ============================================================================
+
+	@DisplayName( "Can add audio URL to message" )
+	@Test
+	public void testAudio() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Transcribe this audio" )
+					.audio( "https://example.com/recording.mp3" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		assertThat( content.size() ).isEqualTo( 2 );
+
+		// Verify the audio part
+		IStruct audioPart = ( IStruct ) content.get( 1 );
+		assertThat( audioPart.getAsString( Key.of( "type" ) ) ).isEqualTo( "input_audio" );
+		IStruct inputAudio = ( IStruct ) audioPart.get( Key.of( "input_audio" ) );
+		assertThat( inputAudio.getAsString( Key.of( "data" ) ) ).isEqualTo( "https://example.com/recording.mp3" );
+	}
+
+	@DisplayName( "Can embed audio from file path" )
+	@Test
+	public void testEmbedAudio() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Create a test audio file with minimal MP3 data
+				testAudioPath = "/tmp/test-audio.mp3"
+				testAudioData = toBinary( "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA" )
+				fileWrite( testAudioPath, testAudioData )
+
+				message = aiMessage()
+					.user( "Analyze this audio" )
+					.embedAudio( testAudioPath )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		assertThat( content.size() ).isEqualTo( 2 );
+
+		// Verify the audio part contains a data URI
+		IStruct	audioPart	= ( IStruct ) content.get( 1 );
+		IStruct	inputAudio	= ( IStruct ) audioPart.get( Key.of( "input_audio" ) );
+		String	data		= inputAudio.getAsString( Key.of( "data" ) );
+		assertThat( data ).startsWith( "data:audio/mpeg;base64," );
+	}
+
+	@DisplayName( "Can embed WAV audio file" )
+	@Test
+	public void testEmbedAudioWav() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				testAudioPath = "/tmp/test-audio.wav"
+				testAudioData = toBinary( "UklGRiQAAABXQVZFZm10IBAAAAABAAEA" )
+				fileWrite( testAudioPath, testAudioData )
+
+				message = aiMessage()
+					.user( "Process this" )
+					.embedAudio( testAudioPath )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array	result			= ( Array ) variables.get( "result" );
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		IStruct	audioPart		= ( IStruct ) content.get( 1 );
+		IStruct	inputAudio		= ( IStruct ) audioPart.get( Key.of( "input_audio" ) );
+		String	data			= inputAudio.getAsString( Key.of( "data" ) );
+		assertThat( data ).startsWith( "data:audio/wav;base64," );
+	}
+
+	// ============================================================================
+	// VIDEO TESTS
+	// ============================================================================
+
+	@DisplayName( "Can add video URL to message" )
+	@Test
+	public void testVideo() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "What happens in this video?" )
+					.video( "https://example.com/demo.mp4" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		assertThat( content.size() ).isEqualTo( 2 );
+
+		// Verify the video part
+		IStruct videoPart = ( IStruct ) content.get( 1 );
+		assertThat( videoPart.getAsString( Key.of( "type" ) ) ).isEqualTo( "video" );
+		IStruct video = ( IStruct ) videoPart.get( Key.of( "video" ) );
+		assertThat( video.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://example.com/demo.mp4" );
+	}
+
+	@DisplayName( "Can embed video from file path" )
+	@Test
+	public void testEmbedVideo() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Create a test video file
+				testVideoPath = "/tmp/test-video.mp4"
+				testVideoData = toBinary( "AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDE=" )
+				fileWrite( testVideoPath, testVideoData )
+
+				message = aiMessage()
+					.user( "Analyze this video" )
+					.embedVideo( testVideoPath )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		assertThat( content.size() ).isEqualTo( 2 );
+
+		// Verify the video part contains a data URI
+		IStruct	videoPart	= ( IStruct ) content.get( 1 );
+		IStruct	video		= ( IStruct ) videoPart.get( Key.of( "video" ) );
+		String	url			= video.getAsString( Key.of( "url" ) );
+		assertThat( url ).startsWith( "data:video/mp4;base64," );
+	}
+
+	@DisplayName( "Can embed MOV video file with correct MIME type" )
+	@Test
+	public void testEmbedVideoMov() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				testVideoPath = "/tmp/test-video.mov"
+				testVideoData = toBinary( "AAAAIGZ0eXBxdCAgAAAAACBxdCAgAA==" )
+				fileWrite( testVideoPath, testVideoData )
+
+				message = aiMessage()
+					.user( "Process this" )
+					.embedVideo( testVideoPath )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array	result			= ( Array ) variables.get( "result" );
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		IStruct	videoPart		= ( IStruct ) content.get( 1 );
+		IStruct	video			= ( IStruct ) videoPart.get( Key.of( "video" ) );
+		String	url				= video.getAsString( Key.of( "url" ) );
+		assertThat( url ).startsWith( "data:video/quicktime;base64," );
+	}
+
+	// ============================================================================
+	// DOCUMENT TESTS
+	// ============================================================================
+
+	@DisplayName( "Can add document URL to message" )
+	@Test
+	public void testDocument() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Summarize this document" )
+					.document( "https://example.com/report.pdf", "Annual Report" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		assertThat( content.size() ).isEqualTo( 2 );
+
+		// Verify the document part
+		IStruct docPart = ( IStruct ) content.get( 1 );
+		assertThat( docPart.getAsString( Key.of( "type" ) ) ).isEqualTo( "document" );
+		assertThat( docPart.getAsString( Key.of( "name" ) ) ).isEqualTo( "Annual Report" );
+		IStruct source = ( IStruct ) docPart.get( Key.of( "source" ) );
+		assertThat( source.getAsString( Key.of( "type" ) ) ).isEqualTo( "url" );
+		assertThat( source.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://example.com/report.pdf" );
+	}
+
+	@DisplayName( "Can add document without name" )
+	@Test
+	public void testDocumentWithoutName() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Review this" )
+					.document( "https://example.com/doc.pdf" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array	result			= ( Array ) variables.get( "result" );
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		IStruct	docPart			= ( IStruct ) content.get( 1 );
+		assertThat( docPart.getAsString( Key.of( "type" ) ) ).isEqualTo( "document" );
+		assertThat( docPart.containsKey( Key.of( "name" ) ) ).isFalse();
+	}
+
+	@DisplayName( "Can embed document from file path" )
+	@Test
+	public void testEmbedDocument() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Create a test PDF file
+				testPdfPath = "/tmp/test-document.pdf"
+				testPdfData = toBinary( "JVBERi0xLjQKJeLjz9MKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PgplbmRvYmoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDAvS2lkc1tdPj4KZW5kb2JqCnhyZWYKMCAzCjAwMDAwMDAwMDAgNjU1MzUgZgowMDAwMDAwMDEwIDAwMDAwIG4KMDAwMDAwMDA1MyAwMDAwMCBuCnRyYWlsZXIKPDwvU2l6ZSAzL1Jvb3QgMSAwIFI+PgpzdGFydHhyZWYKMTAyCiUlRU9G" )
+				fileWrite( testPdfPath, testPdfData )
+
+				message = aiMessage()
+					.user( "Analyze this document" )
+					.embedDocument( testPdfPath, "Test Document" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		assertThat( content.size() ).isEqualTo( 2 );
+
+		// Verify the document part contains a data URI
+		IStruct docPart = ( IStruct ) content.get( 1 );
+		assertThat( docPart.getAsString( Key.of( "type" ) ) ).isEqualTo( "document" );
+		assertThat( docPart.getAsString( Key.of( "name" ) ) ).isEqualTo( "Test Document" );
+		IStruct	source	= ( IStruct ) docPart.get( Key.of( "source" ) );
+		String	url		= source.getAsString( Key.of( "url" ) );
+		assertThat( url ).startsWith( "data:application/pdf;base64," );
+	}
+
+	@DisplayName( "Can embed document with auto-extracted filename" )
+	@Test
+	public void testEmbedDocumentAutoName() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				testPdfPath = "/tmp/contract-v2.pdf"
+				testPdfData = toBinary( "JVBERi0xLjQKJeLjz9MKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PgplbmRvYmoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDAvS2lkc1tdPj4KZW5kb2JqCnhyZWYKMCAzCjAwMDAwMDAwMDAgNjU1MzUgZgowMDAwMDAwMDEwIDAwMDAwIG4KMDAwMDAwMDA1MyAwMDAwMCBuCnRyYWlsZXIKPDwvU2l6ZSAzL1Jvb3QgMSAwIFI+PgpzdGFydHhyZWYKMTAyCiUlRU9G" )
+				fileWrite( testPdfPath, testPdfData )
+
+				message = aiMessage()
+					.user( "Review this" )
+					.embedDocument( testPdfPath )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array	result			= ( Array ) variables.get( "result" );
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		IStruct	docPart			= ( IStruct ) content.get( 1 );
+		assertThat( docPart.getAsString( Key.of( "name" ) ) ).isEqualTo( "contract-v2.pdf" );
+	}
+
+	@DisplayName( "Can use pdf() alias for document" )
+	@Test
+	public void testPdfAlias() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Analyze this PDF" )
+					.pdf( "https://example.com/report.pdf", "Report" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array	result			= ( Array ) variables.get( "result" );
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		IStruct	docPart			= ( IStruct ) content.get( 1 );
+		assertThat( docPart.getAsString( Key.of( "type" ) ) ).isEqualTo( "document" );
+		assertThat( docPart.getAsString( Key.of( "name" ) ) ).isEqualTo( "Report" );
+	}
+
+	@DisplayName( "Can use embedPdf() alias for embedDocument" )
+	@Test
+	public void testEmbedPdfAlias() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				testPdfPath = "/tmp/test.pdf"
+				testPdfData = toBinary( "JVBERi0xLjQKJeLjz9MKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PgplbmRvYmoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDAvS2lkc1tdPj4KZW5kb2JqCnhyZWYKMCAzCjAwMDAwMDAwMDAgNjU1MzUgZgowMDAwMDAwMDEwIDAwMDAwIG4KMDAwMDAwMDA1MyAwMDAwMCBuCnRyYWlsZXIKPDwvU2l6ZSAzL1Jvb3QgMSAwIFI+PgpzdGFydHhyZWYKMTAyCiUlRU9G" )
+				fileWrite( testPdfPath, testPdfData )
+
+				message = aiMessage()
+					.user( "Review this PDF" )
+					.embedPdf( testPdfPath, "Contract" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array	result			= ( Array ) variables.get( "result" );
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		IStruct	docPart			= ( IStruct ) content.get( 1 );
+		assertThat( docPart.getAsString( Key.of( "type" ) ) ).isEqualTo( "document" );
+		String url = ( ( IStruct ) docPart.get( Key.of( "source" ) ) ).getAsString( Key.of( "url" ) );
+		assertThat( url ).startsWith( "data:application/pdf;base64," );
+	}
+
+	// ============================================================================
+	// MIXED MULTIMODAL TESTS
+	// ============================================================================
+
+	@DisplayName( "Can combine multiple media types in one message" )
+	@Test
+	public void testMixedMultimodal() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				testImagePath = "/tmp/test.png"
+				testImageData = toBinary( "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" )
+				fileWrite( testImagePath, testImageData )
+
+				testAudioPath = "/tmp/test.mp3"
+				testAudioData = toBinary( "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA" )
+				fileWrite( testAudioPath, testAudioData )
+
+				message = aiMessage()
+					.user( "Analyze all these media files" )
+					.embedImage( testImagePath )
+					.embedAudio( testAudioPath )
+					.document( "https://example.com/report.pdf", "Report" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "message" ) ).isNotNull();
+		Array result = ( Array ) variables.get( "result" );
+		assertThat( result.size() ).isEqualTo( 1 );
+
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		assertThat( content.size() ).isEqualTo( 4 ); // text + image + audio + document
+
+		// Verify each content type
+		IStruct textPart = ( IStruct ) content.get( 0 );
+		assertThat( textPart.getAsString( Key.of( "type" ) ) ).isEqualTo( "text" );
+
+		IStruct imagePart = ( IStruct ) content.get( 1 );
+		assertThat( imagePart.getAsString( Key.of( "type" ) ) ).isEqualTo( "image_url" );
+
+		IStruct audioPart = ( IStruct ) content.get( 2 );
+		assertThat( audioPart.getAsString( Key.of( "type" ) ) ).isEqualTo( "input_audio" );
+
+		IStruct docPart = ( IStruct ) content.get( 3 );
+		assertThat( docPart.getAsString( Key.of( "type" ) ) ).isEqualTo( "document" );
+	}
+
+	@DisplayName( "Can chain multiple images, audio, and documents" )
+	@Test
+	public void testMultipleMultimodalItems() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage()
+					.user( "Compare these materials" )
+					.image( "https://example.com/image1.jpg" )
+					.image( "https://example.com/image2.jpg" )
+					.audio( "https://example.com/audio1.mp3" )
+					.document( "https://example.com/doc1.pdf", "Doc 1" )
+					.document( "https://example.com/doc2.pdf", "Doc 2" )
+
+				result = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array	result			= ( Array ) variables.get( "result" );
+		IStruct	firstMessage	= ( IStruct ) result.get( 0 );
+		Array	content			= ( Array ) firstMessage.get( Key.of( "content" ) );
+		assertThat( content.size() ).isEqualTo( 6 ); // 1 text + 2 images + 1 audio + 2 documents
+	}
+
+	@DisplayName( "MIME type detection works for various file extensions" )
+	@Test
+	public void testMimeTypeDetection() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Test various audio formats
+				testData = toBinary( "AAAA" )
+
+				// DOCX
+				testPath = "/tmp/test.docx"
+				fileWrite( testPath, testData )
+				message = aiMessage().user( "Test" ).embedDocument( testPath )
+				docxResult = message.getMessages()
+
+				// XLSX
+				testPath = "/tmp/test.xlsx"
+				fileWrite( testPath, testData )
+				message = aiMessage().user( "Test" ).embedDocument( testPath )
+				xlsxResult = message.getMessages()
+
+				// TXT
+				testPath = "/tmp/test.txt"
+				fileWrite( testPath, testData )
+				message = aiMessage().user( "Test" ).embedDocument( testPath )
+				txtResult = message.getMessages()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		// Check DOCX MIME type
+		Array	docxMessages	= ( Array ) variables.get( "docxResult" );
+		IStruct	docxMessage		= ( IStruct ) docxMessages.get( 0 );
+		Array	docxContent		= ( Array ) docxMessage.get( Key.of( "content" ) );
+		IStruct	docxPart		= ( IStruct ) docxContent.get( 1 );
+		String	docxUrl			= ( ( IStruct ) docxPart.get( Key.of( "source" ) ) ).getAsString( Key.of( "url" ) );
+		assertThat( docxUrl ).startsWith( "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64," );
+
+		// Check XLSX MIME type
+		Array	xlsxMessages	= ( Array ) variables.get( "xlsxResult" );
+		IStruct	xlsxMessage		= ( IStruct ) xlsxMessages.get( 0 );
+		Array	xlsxContent		= ( Array ) xlsxMessage.get( Key.of( "content" ) );
+		IStruct	xlsxPart		= ( IStruct ) xlsxContent.get( 1 );
+		String	xlsxUrl			= ( ( IStruct ) xlsxPart.get( Key.of( "source" ) ) ).getAsString( Key.of( "url" ) );
+		assertThat( xlsxUrl ).startsWith( "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64," );
+
+		// Check TXT MIME type
+		Array	txtMessages	= ( Array ) variables.get( "txtResult" );
+		IStruct	txtMessage	= ( IStruct ) txtMessages.get( 0 );
+		Array	txtContent	= ( Array ) txtMessage.get( Key.of( "content" ) );
+		IStruct	txtPart		= ( IStruct ) txtContent.get( 1 );
+		String	txtUrl		= ( ( IStruct ) txtPart.get( Key.of( "source" ) ) ).getAsString( Key.of( "url" ) );
+		assertThat( txtUrl ).startsWith( "data:text/plain;base64," );
+	}
 }
