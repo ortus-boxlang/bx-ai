@@ -75,7 +75,37 @@ class extends="BaseVectorMemory" {
 
 		// Build base URL - if host is provided, use it directly, otherwise construct from index and environment
 		if ( len( variables.host ) ) {
-			variables.baseUrl = variables.host
+			// For Pinecone Local, host is the database endpoint
+			// We need to get the actual index host by describing the index
+			if ( variables.host.findNoCase( "localhost" ) || variables.host.findNoCase( "127.0.0.1" ) ) {
+				// This is Pinecone Local - get the index host
+				try {
+					var describeResponse = http( "#variables.host#/indexes/#variables.indexName#" )
+						.get()
+						.header( "Api-Key", variables.apiKey )
+						.timeout( variables.timeout )
+						.send()
+
+					if ( describeResponse.statusCode == 200 ) {
+						var indexInfo = jsonDeserialize( describeResponse.fileContent )
+						var indexHost = indexInfo.host ?: variables.host
+						// Ensure http:// prefix for local hosts
+						if ( !indexHost.startsWith( "http" ) ) {
+							indexHost = "http://#indexHost#"
+						}
+						variables.baseUrl = indexHost
+					} else {
+						// Index doesn't exist yet, use host as baseUrl for now
+						variables.baseUrl = variables.host
+					}
+				} catch( any e ) {
+					// If we can't reach the server, use host as baseUrl
+					variables.baseUrl = variables.host
+				}
+			} else {
+				// Production Pinecone - host is the index host
+				variables.baseUrl = variables.host
+			}
 		} else {
 			// Pinecone URL format: https://{index-name}-{project-id}.svc.{environment}.pinecone.io
 			// For simplicity, we'll require the host to be provided or construct basic URL
@@ -142,11 +172,9 @@ class extends="BaseVectorMemory" {
 		// Make upsert request
 		var response = http( "#variables.baseUrl#/vectors/upsert" )
 			.post()
-			.params( [
-				{ type : "header", name: "Api-Key", value: variables.apiKey },
-				{ type : "header", name: "Content-Type", value: "application/json" },
-				{ type: "body", name: "", value: jsonSerialize( payload ) }
-			])
+			.header( "Api-Key", variables.apiKey )
+			.header( "Content-Type", "application/json" )
+			.body( jsonSerialize( payload ) )
 			.timeout( variables.timeout )
 			.send()
 
@@ -195,11 +223,9 @@ class extends="BaseVectorMemory" {
 		// Make query request
 		var response = http( "#variables.baseUrl#/query" )
 			.post()
-			.params( [
-				{ type : "header", name: "Api-Key", value: variables.apiKey },
-				{ type : "header", name: "Content-Type", value: "application/json" },
-				{ type: "body", name: "", value: jsonSerialize( payload ) }
-			])
+			.header( "Api-Key", variables.apiKey )
+			.header( "Content-Type", "application/json" )
+			.body( jsonSerialize( payload ) )
 			.timeout( variables.timeout )
 			.send()
 
@@ -213,9 +239,8 @@ class extends="BaseVectorMemory" {
 		var result = jsonDeserialize( response.fileContent )
 		var matches = result.matches ?: []
 
-		// Convert to standard format
+		// Convert to standard format (no minScore filtering since it's not a parameter)
 		return matches
-			.filter( ( match ) => match.score >= minScore )
 			.map( ( match ) => {
 				var metadata = match.metadata ?: {};
 				return {
@@ -248,24 +273,16 @@ class extends="BaseVectorMemory" {
 	 * @return Document struct or empty struct if not found
 	 */
 	struct function getDocumentById( required string id ) {
-		// Prepare fetch payload
-		var payload = {
-			"ids": [ arguments.id ]
-		}
-
-		// Add namespace if configured
+		// Build query string
+		var queryParams = "ids=#arguments.id#"
 		if ( len( variables.namespace ) ) {
-			payload.namespace = variables.namespace
+			queryParams &= "&namespace=#variables.namespace#"
 		}
 
-		// Make fetch request
-		var response = http( "#variables.baseUrl#/vectors/fetch" )
-			.post()
-			.params( [
-				{ type : "header", name: "Api-Key", value: variables.apiKey },
-				{ type : "header", name: "Content-Type", value: "application/json" },
-				{ type: "body", name: "", value: jsonSerialize( payload ) }
-			])
+		// Make fetch request (GET with query parameters)
+		var response = http( "#variables.baseUrl#/vectors/fetch?#queryParams#" )
+			.get()
+			.header( "Api-Key", variables.apiKey )
 			.timeout( variables.timeout )
 			.send()
 
@@ -314,11 +331,9 @@ class extends="BaseVectorMemory" {
 		// Make delete request
 		var response = http( "#variables.baseUrl#/vectors/delete" )
 			.post()
-			.params( [
-				{ type : "header", name: "Api-Key", value: variables.apiKey },
-				{ type : "header", name: "Content-Type", value: "application/json" },
-				{ type: "body", name: "", value: jsonSerialize( payload ) }
-			])
+			.header( "Api-Key", variables.apiKey )
+			.header( "Content-Type", "application/json" )
+			.body( jsonSerialize( payload ) )
 			.timeout( variables.timeout )
 			.send()
 
@@ -348,11 +363,9 @@ class extends="BaseVectorMemory" {
 		// Make delete request
 		var response = http( "#variables.baseUrl#/vectors/delete" )
 			.post()
-			.params( [
-				{ type : "header", name: "Api-Key", value: variables.apiKey },
-				{ type : "header", name: "Content-Type", value: "application/json" },
-				{ type: "body", name: "", value: jsonSerialize( payload ) }
-			])
+			.header( "Api-Key", variables.apiKey )
+			.header( "Content-Type", "application/json" )
+			.body( jsonSerialize( payload ) )
 			.timeout( variables.timeout )
 			.send()
 
@@ -379,11 +392,9 @@ class extends="BaseVectorMemory" {
 		// Make delete request
 		var response = http( "#variables.baseUrl#/vectors/delete" )
 			.post()
-			.params( [
-				{ type : "header", name: "Api-Key", value: variables.apiKey },
-				{ type : "header", name: "Content-Type", value: "application/json" },
-				{ type: "body", name: "", value: jsonSerialize( payload ) }
-			])
+			.header( "Api-Key", variables.apiKey )
+			.header( "Content-Type", "application/json" )
+			.body( jsonSerialize( payload ) )
 			.timeout( variables.timeout )
 			.send()
 
@@ -412,11 +423,9 @@ class extends="BaseVectorMemory" {
 	function getStats() {
 		var response = http( "#variables.baseUrl#/describe_index_stats" )
 			.post()
-			.params( [
-				{ type : "header", name: "Api-Key", value: variables.apiKey },
-				{ type : "header", name: "Content-Type", value: "application/json" },
-				{ type: "body", name: "", value: jsonSerialize( "{}" ) }
-			])
+			.header( "Api-Key", variables.apiKey )
+			.header( "Content-Type", "application/json" )
+			.body( "{}" )
 			.timeout( variables.timeout )
 			.send()
 

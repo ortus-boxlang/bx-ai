@@ -41,54 +41,53 @@ class {
 
 		// Map memory types to their class paths
 		switch( memoryType.lcase() ) {
-			case "memory":
 			case "buffered":
 			case "buffer":
 			case "window":
-			case "windowmemory":
+			case "WindowMemory":
 				memoryClass = "bxModules.bxai.models.memory.WindowMemory";
 				break;
 			case "cache":
-			case "cachememory":
+			case "CacheMemory":
 				memoryClass = "bxModules.bxai.models.memory.CacheMemory";
 				break;
 			case "file":
-			case "filememory":
+			case "FileMemory":
 				memoryClass = "bxModules.bxai.models.memory.FileMemory";
 				break;
 			case "jdbc":
-			case "jdbcmemory":
+			case "JdbcMemory":
 			case "database":
 			case "db":
 				memoryClass = "bxModules.bxai.models.memory.JdbcMemory";
 				break;
 			case "summary":
-			case "summarymemory":
+			case "SummaryMemory":
 				memoryClass = "bxModules.bxai.models.memory.SummaryMemory";
 				break;
 			case "session":
-			case "sessionmemory":
+			case "SessionMemory":
 				memoryClass = "bxModules.bxai.models.memory.SessionMemory";
 				break;
 			// Vector Memory Types
-			case "vector":
-			case "vectormemory":
 			case "chroma":
-			case "vector:chroma":
+			case "ChromaVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.ChromaVectorMemory";
 				break;
-			case "vector:postgres":
 			case "postgres":
-			case "postgresql":
+			case "PostgresVectorMemory":
 			case "pgvector":
 				memoryClass = "bxModules.bxai.models.memory.vector.PostgresVectorMemory";
 				break;
-			case "vector:pinecone":
 			case "pinecone":
 				memoryClass = "bxModules.bxai.models.memory.vector.PineconeVectorMemory";
 				break;
+			case "BoxVectorMemory":
+			case "boxvector":
+				memoryClass = "bxModules.bxai.models.memory.vector.BoxVectorMemory";
+				break;
 			case "hybrid":
-			case "hybridmemory":
+			case "HybridMemory":
 				memoryClass = "bxModules.bxai.models.memory.HybridMemory";
 				break;
 			default:
@@ -98,7 +97,7 @@ class {
 				} else {
 					throw(
 						type: "InvalidMemoryType",
-						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, HybridMemory"
+						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, HybridMemory"
 					);
 				}
 		}

@@ -40,6 +40,16 @@ class extends="BaseVectorMemory" {
 	}
 
 	/**
+	 * Ensure the collection exists (no-op for in-memory storage)
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function ensureCollection() {
+		// No-op: In-memory storage doesn't require explicit collection creation
+		return this;
+	}
+
+	/**
 	 * Add a vector with metadata to memory
 	 *
 	 * @vector   Array of numbers representing the embedding vector
@@ -231,4 +241,149 @@ class extends="BaseVectorMemory" {
 	function getName() {
 		return "BoxVectorMemory";
 	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * ABSTRACT METHOD IMPLEMENTATIONS (BaseVectorMemory interface)
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Store a document in the vector database
+	 *
+	 * @id Document ID
+	 * @text Document text
+	 * @embedding Vector embedding
+	 * @metadata Document metadata
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	) {
+		// Use the add() method internally
+		add(
+			vector   = arguments.embedding,
+			metadata = arguments.metadata.append( { text: arguments.text } ),
+			id       = arguments.id
+		);
+		return this;
+	}
+
+	/**
+	 * Search by vector embedding
+	 *
+	 * @embedding Vector to search with
+	 * @limit Max results
+	 * @filter Metadata filter (not implemented for in-memory)
+	 *
+	 * @return Array of results with { id, score, metadata, text }
+	 */
+	array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		// Use search() method and transform results to match interface
+		var results = search(
+			vector = arguments.embedding,
+			limit  = arguments.limit
+		);
+
+		// Transform to expected format
+		return results.map( ( result ) => {
+			return {
+				id       : result.id,
+				score    : result.score,
+				metadata : result.metadata,
+				text     : result.metadata.text ?: ""
+			};
+		} );
+	}
+
+	/**
+	 * Get all documents from collection
+	 *
+	 * @return Array of documents
+	 */
+	array function getAllDocuments() {
+		var docs = [];
+		for ( var i = 1; i <= variables.ids.len(); i++ ) {
+			docs.append({
+				id       : variables.ids[ i ],
+				metadata : variables.metadata[ i ],
+				text     : variables.metadata[ i ].text ?: "",
+				vector   : variables.vectors[ i ]
+			});
+		}
+		return docs;
+	}
+
+	/**
+	 * Get document by ID
+	 *
+	 * @id Document ID
+	 *
+	 * @return Struct document or empty struct
+	 */
+	struct function getDocumentById( required string id ) {
+		var result = get( arguments.id );
+		if ( !result.isEmpty() ) {
+			result.text = result.metadata.text ?: "";
+		}
+		return result;
+	}
+
+	/**
+	 * Delete document by ID
+	 *
+	 * @id Document ID
+	 *
+	 * @return Boolean success
+	 */
+	boolean function deleteDocument( required string id ) {
+		return delete( arguments.id );
+	}
+
+	/**
+	 * Delete documents by filter (not efficiently implemented for in-memory)
+	 *
+	 * @filter Metadata filter
+	 *
+	 * @return Numeric count deleted
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		var count = 0;
+		// Simple implementation: iterate and check each metadata field
+		for ( var i = variables.ids.len(); i >= 1; i-- ) {
+			var matches = true;
+			for ( var key in arguments.filter ) {
+				if ( !variables.metadata[ i ].keyExists( key ) || variables.metadata[ i ][ key ] != arguments.filter[ key ] ) {
+					matches = false;
+					break;
+				}
+			}
+			if ( matches ) {
+				variables.vectors.deleteAt( i );
+				variables.metadata.deleteAt( i );
+				variables.ids.deleteAt( i );
+				count++;
+			}
+		}
+		return count;
+	}
+
+	/**
+	 * Clear entire collection
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function clearCollection() {
+		clear();
+		return this;
+	}
+
 }
