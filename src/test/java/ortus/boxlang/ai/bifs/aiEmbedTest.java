@@ -34,13 +34,38 @@ public class aiEmbedTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "provider", "openai" );
 	}
 
-	@DisplayName( "Test aiEmbed with single text (raw format)" )
+	@DisplayName( "Test aiEmbed with single text (default first format)" )
 	@Test
-	public void testEmbeddingSingleTextRaw() {
+	public void testEmbeddingSingleTextDefault() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
 			result = aiEmbed( "Hello World" )
+			println( "Embedding vectors count: " & result.len() )
+			isArray = isArray( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var	result	= variables.getAsArray( Key.of( "result" ) );
+		var	isArray	= variables.getAsBoolean( Key.of( "isArray" ) );
+		assertThat( result ).isNotNull();
+		// Default format now returns array of embedding vectors
+		assertThat( isArray ).isTrue();
+		assertThat( result.size() ).isGreaterThan( 1000 );
+	}
+
+	@DisplayName( "Test aiEmbed with single text (raw format)" )
+	@Test
+	public void testEmbedSingleTextRawFormat() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiEmbed(
+				input: "Hello World",
+				options: { returnFormat: "raw" }
+			)
 			println( "Embedding result keys: " & result.keyList() )
 			""",
 			context
@@ -49,29 +74,8 @@ public class aiEmbedTest extends BaseIntegrationTest {
 
 		var result = variables.getAsStruct( Key.of( "result" ) );
 		assertThat( result ).isNotNull();
-		// OpenAI format should have "data", "model", "usage" keys
+		// Raw format should have "data", "model", "usage" keys
 		assertThat( result.containsKey( "data" ) ).isTrue();
-	}
-
-	@DisplayName( "Test aiEmbed with single text (embeddings format)" )
-	@Test
-	public void testEmbedSingleTextEmbeddingsFormat() {
-		// @formatter:off
-		runtime.executeSource(
-			"""
-			result = aiEmbed(
-				input: "Hello World",
-				options: { returnFormat: "embeddings" }
-			)
-			println( "Embedding vectors count: " & result.len() )
-			""",
-			context
-		);
-		// @formatter:on
-
-		var result = variables.getAsArray( Key.of( "result" ) );
-		assertThat( result ).isNotNull();
-		assertThat( result.size() ).isGreaterThan( 0 );
 	}
 
 	@DisplayName( "Test aiEmbed with single text (first format)" )
@@ -105,19 +109,19 @@ public class aiEmbedTest extends BaseIntegrationTest {
 			"""
 			result = aiEmbed(
 				input: ["Hello", "World", "BoxLang"],
-				options: { returnFormat: "raw" }
+				options : { returnFormat: "embeddings" }
 			)
-			println( "Batch result: " & result.keyList() )
-			embeddingCount = result.data.len()
+			println( "Batch embeddings count: " & result.len() )
+			embeddingCount = result.len()
 			""",
 			context
 		);
 		// @formatter:on
 
-		var	result			= variables.getAsStruct( Key.of( "result" ) );
+		var	result			= variables.getAsArray( Key.of( "result" ) );
 		var	embeddingCount	= variables.getAsInteger( Key.of( "embeddingCount" ) );
 		assertThat( result ).isNotNull();
-		assertThat( result.containsKey( "data" ) ).isTrue();
+		// Default format returns array of embeddings
 		assertThat( embeddingCount ).isEqualTo( 3 );
 	}
 

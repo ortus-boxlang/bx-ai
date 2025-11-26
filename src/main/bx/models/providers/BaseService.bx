@@ -372,10 +372,10 @@ abstract class implements="IAiService" {
 		switch( embeddingRequest.getReturnFormat() ){
 			case "embeddings":
 				return result.data.map( item => item.embedding );
-			case "first":
-				return result.data.first().embedding;
-			case "raw": default:
+			case "raw":
 				return result;
+			case "first": default:
+				return result.data.first().embedding;
 		}
 	}
 

@@ -189,10 +189,12 @@ var response = httpRequest( variables.chatURL )
 ```
 
 ### Event System
-Leverage BoxLang's `announce()` for module interception:
+Leverage BoxLang's `BoxAnnounce()` BIF for module interception:
 ```java
-announce( "onAIRequest", { dataPacket: payload, chatRequest: request, provider: this } );
+BoxAnnounce( "onAIRequest", { dataPacket: payload, chatRequest: request, provider: this } );
 ```
+
+**Important:** Use `BoxAnnounce()` (capital B, capital A) - this is the correct BoxLang BIF for event announcements, not `announce()`.
 
 ### GitHub Actions CI/CD
 - Uses `hoverkraft-tech/compose-action@v2.0.2` to start Ollama service

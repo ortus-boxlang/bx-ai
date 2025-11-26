@@ -31,12 +31,16 @@ class extends="BaseVectorMemory" {
 	 * HTTP client timeout settings
 	 */
 	property name="timeout" type="numeric" default=30;
-	property name="readTimeout" type="numeric" default=30;
 
 	/**
 	 * Base URL for ChromaDB API (computed from host/port/protocol)
 	 */
 	property name="baseUrl" type="string" default="";
+
+	/**
+	 * Collection ID (UUID from ChromaDB after creation/retrieval)
+	 */
+	property name="collectionId" type="string" default="";
 
 	/**
 	 * Configure the ChromaDB vector memory instance
@@ -46,33 +50,28 @@ class extends="BaseVectorMemory" {
 	 * @return ChromaVectorMemory for chaining
 	 */
 	public any function configure( required struct config ) {
+		// Param config defaults
+		param arguments.config.host = "localhost";
+		param arguments.config.port = 8000;
+		param arguments.config.protocol = "http";
+		param arguments.config.tenant = "default_tenant";
+		param arguments.config.database = "default_database";
+		param arguments.config.timeout = 30;
+
+		// Extract ChromaDB specific config FIRST (before super.configure() calls ensureCollection())
+		variables.host = arguments.config.host;
+		variables.port = arguments.config.port;
+		variables.protocol = arguments.config.protocol;
+		variables.tenant = arguments.config.tenant;
+		variables.database = arguments.config.database;
+		variables.timeout = arguments.config.timeout;
+
+		// Build base URL (using v2 API with tenant/database structure) - MUST happen before super.configure()
+		variables.baseUrl = variables.protocol & "://" & variables.host & ":" & variables.port;
+		variables.collectionsPath = "/api/v2/tenants/" & variables.tenant & "/databases/" & variables.database & "/collections";
+
+		// Now call parent configure which will call ensureCollection()
 		super.configure( arguments.config );
-
-		// Extract ChromaDB specific config
-		if ( arguments.config.keyExists( "host" ) ) {
-			variables.host = arguments.config.host;
-		}
-		if ( arguments.config.keyExists( "port" ) ) {
-			variables.port = arguments.config.port;
-		}
-		if ( arguments.config.keyExists( "protocol" ) ) {
-			variables.protocol = arguments.config.protocol;
-		}
-		if ( arguments.config.keyExists( "tenant" ) ) {
-			variables.tenant = arguments.config.tenant;
-		}
-		if ( arguments.config.keyExists( "database" ) ) {
-			variables.database = arguments.config.database;
-		}
-		if ( arguments.config.keyExists( "timeout" ) ) {
-			variables.timeout = arguments.config.timeout;
-		}
-		if ( arguments.config.keyExists( "readTimeout" ) ) {
-			variables.readTimeout = arguments.config.readTimeout;
-		}
-
-		// Build base URL (using v2 API)
-		variables.baseUrl = variables.protocol & "://" & variables.host & ":" & variables.port & "/api/v2";
 
 		return this;
 	}
@@ -114,7 +113,7 @@ class extends="BaseVectorMemory" {
 			metadatas: [ arguments.metadata ]
 		};
 
-		var response = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/upsert" )
+		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/upsert" )
 			.post()
 			.params( [
 				{ type : "header", name: "Content-Type", value: "application/json" },
@@ -159,7 +158,7 @@ class extends="BaseVectorMemory" {
 			payload.where = arguments.filter;
 		}
 
-		var response = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/query" )
+		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/query" )
 			.post()
 			.params( [
 				{ type : "header", name: "Content-Type", value: "application/json" },
@@ -190,7 +189,7 @@ class extends="BaseVectorMemory" {
 			include: [ "documents", "metadatas", "embeddings" ]
 		};
 
-		var response = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/get" )
+		var response = http( variables.baseUrl & "/collections/" & variables.collectionId & "/get" )
 			.post()
 			.params( [
 				{ type : "header", name: "Content-Type", value: "application/json" },
@@ -224,7 +223,7 @@ class extends="BaseVectorMemory" {
 			include: [ "documents", "metadatas", "embeddings" ]
 		};
 
-		var response = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/get" )
+		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/get" )
 			.post()
 			.params( [
 				{ type : "header", name: "Content-Type", value: "application/json" },
@@ -255,7 +254,7 @@ class extends="BaseVectorMemory" {
 			ids: [ arguments.id ]
 		};
 
-		var response = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/delete" )
+		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/delete" )
 			.post()
 			.params( [
 				{ type : "header", name: "Content-Type", value: "application/json" },
@@ -281,7 +280,7 @@ class extends="BaseVectorMemory" {
 			include: [ "documents" ]
 		};
 
-		var getResponse = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/get" )
+		var getResponse = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/get" )
 			.post()
 			.params( [
 				{ type : "header", name: "Content-Type", value: "application/json" },
@@ -302,7 +301,7 @@ class extends="BaseVectorMemory" {
 			where: arguments.filter
 		};
 
-		var deleteResponse = httpRequest( variables.baseUrl & "/collections/" & variables.collection & "/delete" )
+			var deleteResponse = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/delete" )
 			.post()
 			.params( [
 				{ type : "header", name: "Content-Type", value: "application/json" },
@@ -353,12 +352,13 @@ class extends="BaseVectorMemory" {
 			payload.metadata.hnsw_space = chromaMetric;
 		}
 
-		var response = httpRequest( variables.baseUrl & "/collections" )
-			.setMethod( "POST" )
-			.addHeader( "Content-Type", "application/json" )
-			.setBody( jsonSerialize( payload ) )
-			.setTimeout( variables.timeout )
-			.setReadTimeout( variables.readTimeout )
+		var response = http( variables.baseUrl & variables.collectionsPath )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
 			.send();
 
 		if ( response.statusCode != 200 ) {
@@ -369,38 +369,67 @@ class extends="BaseVectorMemory" {
 			);
 		}
 
+		// Extract and store the collection ID (CRN) from response
+		var result = jsonDeserialize( response.fileContent );
+		variables.collectionId = result.id;
+
 		return this;
 	}
 
 	/**
 	 * Check if collection exists in ChromaDB (provider-specific)
+	 * v2 API: Lists all collections from tenant/database path and searches by name
 	 *
 	 * @name Collection name
 	 *
 	 * @return Boolean exists
 	 */
 	boolean function collectionExists( required string name ) {
-		var response = httpRequest( variables.baseUrl & "/collections/" & arguments.name )
-			.setMethod( "GET" )
-			.setTimeout( variables.timeout )
-			.setReadTimeout( variables.readTimeout )
+		// List all collections from tenant/database path
+		var response = http( variables.baseUrl & variables.collectionsPath )
+			.get()
+			.timeout( variables.timeout )
 			.send();
 
-		return response.statusCode == 200;
+		if ( response.statusCode != 200 ) {
+			return false;
+		}
+
+		var collections = jsonDeserialize( response.fileContent );
+
+		// Search for collection by name
+		for ( var coll in collections ) {
+			if ( coll.name == arguments.name ) {
+				// Store the collection ID (CRN) for future operations
+				variables.collectionId = coll.id;
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
 	 * Delete a collection from ChromaDB (provider-specific)
+	 * v2 API: Requires collection ID in path
 	 *
 	 * @name Collection name
 	 *
 	 * @return IVectorMemory for chaining
 	 */
 	any function deleteCollection( required string name ) {
-		var response = httpRequest( variables.baseUrl & "/collections/" & arguments.name )
-			.setMethod( "DELETE" )
-			.setTimeout( variables.timeout )
-			.setReadTimeout( variables.readTimeout )
+		// First, get the collection ID
+		if ( !collectionExists( arguments.name ) ) {
+			throw(
+				type = "ChromaVectorMemory.CollectionNotFound",
+				message = "Collection not found: " & arguments.name
+			);
+		}
+
+		// Use tenant/database/collection path for deletion
+		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId )
+			.delete()
+			.timeout( variables.timeout )
 			.send();
 
 		if ( response.statusCode != 200 ) {
@@ -410,6 +439,9 @@ class extends="BaseVectorMemory" {
 				detail = response.fileContent
 			);
 		}
+
+		// Clear the stored collection ID
+		variables.collectionId = "";
 
 		return this;
 	}

@@ -111,7 +111,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 		variables.vectorMemory.add( arguments.message );
 
 		// Announce hybrid event
-		announce( "onHybridMemoryAdd", {
+		BoxAnnounce( "onHybridMemoryAdd", {
 			key: variables.key,
 			hasMessage: !isNull( arguments.message ),
 			timestamp: now()

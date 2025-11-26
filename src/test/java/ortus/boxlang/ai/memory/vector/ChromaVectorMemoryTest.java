@@ -54,7 +54,7 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		    } );
 
 		    result = {
-		        type: memory.getClass().getSimpleName(),
+		        type: memory.getName(),
 		        collection: memory.getCollection(),
 		        configured: true
 		    };
@@ -188,7 +188,7 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		     relevantMessages = hybridMemory.getRelevant( "cooking and recipes", 4 );
 
 		     result = {
-		         type: hybridMemory.getClass().getSimpleName(),
+		         type: hybridMemory.getName(),
 		         messageCount: relevantMessages.len(),
 		         hasRecentAndSemantic: relevantMessages.len() > 0
 		     };

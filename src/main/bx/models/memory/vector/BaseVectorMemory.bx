@@ -54,8 +54,10 @@ abstract class
 	property name="cacheInstance" type="any";
 
 	static{
-		DEFAULT_COLLECTION = "ai_memory";
-		DEFAULT_METRIC = "cosine";
+		DEFAULT_COLLECTION = "ai_memory"
+		DEFAULT_METRIC = "cosine"
+		HASH_ALGORITHM = "SHA-256"
+		CACHE_EMBEDDINGS_PREFIX = "embedding:"
 	}
 
 	/**
@@ -216,7 +218,7 @@ abstract class
 		);
 
 		// Filter by minimum score
-		return results.filter( ( doc ) => doc.score >= arguments.minScore );
+		return results.filter( ( doc ) => doc.score >= minScore );
 	}
 
 	/**
@@ -235,7 +237,7 @@ abstract class
 		struct filter = {}
 	) {
 		// Announce event for observability
-		announce( "onVectorSearch", {
+		BoxAnnounce( "onVectorSearch", {
 			collection: variables.collection,
 			limit: arguments.limit,
 			hasFilter: !arguments.filter.isEmpty(),
@@ -272,7 +274,7 @@ abstract class
 		);
 
 		// Announce event
-		announce( "onVectorStore", {
+		BoxAnnounce( "onVectorStore", {
 			collection: variables.collection,
 			documentId: arguments.id,
 			hasMetadata: !arguments.metadata.isEmpty(),
@@ -339,7 +341,7 @@ abstract class
 		} );
 
 		// Announce batch event
-		announce( "onVectorBatchStore", {
+		BoxAnnounce( "onVectorBatchStore", {
 			collection: variables.collection,
 			added: results.added,
 			failed: results.failed,
@@ -373,7 +375,7 @@ abstract class
 		var success = deleteDocument( arguments.id );
 
 		if ( success ) {
-			announce( "onVectorDelete", {
+			BoxAnnounce( "onVectorDelete", {
 				collection: variables.collection,
 				documentId: arguments.id,
 				timestamp: now()
@@ -394,7 +396,7 @@ abstract class
 	numeric function removeWhere( required struct filter ) {
 		var count = deleteDocumentsByFilter( arguments.filter );
 
-		announce( "onVectorDeleteBatch", {
+		BoxAnnounce( "onVectorDeleteBatch", {
 			collection: variables.collection,
 			count: count,
 			timestamp: now()
@@ -459,19 +461,66 @@ abstract class
 	private array function generateEmbedding( required string text ) {
 		// Use cache if enabled
 		if ( variables.useCache ) {
-			var cacheKey = "embedding:" & hash( arguments.text, "SHA-256" );
+			var cacheKey = getCacheKey( arguments.text );
 			return variables.cacheInstance.getOrSet(
 				key = cacheKey,
-				produce = () => {
-					return generateEmbeddingUncached( arguments.text );
-				},
+				produce = () => _generateEmbedding( text ),
 				timeout = variables.cacheTimeout,
 				lastAccessTimeout = variables.cacheLastAccessTimeout
 			);
 		}
 
 		// No cache - generate directly
-		return generateEmbeddingUncached( arguments.text );
+		return _generateEmbedding( arguments.text );
+	}
+
+	/**
+	 * Generate embedding without cache (internal helper)
+	 *
+	 * @text The text to embed
+	 *
+	 * @return Array embedding vector
+	 */
+	private array function _generateEmbedding( required string text ) {
+		// Prep request params
+		var params = {};
+		if ( len( variables.embeddingModel ) ) {
+			params.model = variables.embeddingModel;
+		}
+
+		// Prep request options
+		var options = {};
+		if ( len( variables.embeddingProvider ) ) {
+			options.provider = variables.embeddingProvider;
+		}
+
+		// Generate embedding
+		var embedding = aiEmbed(
+			input : arguments.text,
+			params : params,
+			options : options
+		);
+
+		// Auto-detect dimensions from first embedding
+		if ( variables.dimensions == 0 ) {
+			variables.dimensions = embedding.len();
+		}
+
+		return embedding;
+	}
+
+	/**
+	 * Generate cache key for a given text
+	 *
+	 * @text The text to generate cache key for
+	 *
+	 * @return String cache key
+	 */
+	private string function getCacheKey( required string text ) {
+		return static.CACHE_EMBEDDINGS_PREFIX &
+			variables.embeddingProvider & ":" &
+			variables.embeddingModel & ":" &
+			hash( arguments.text, static.HASH_ALGORITHM );
 	}
 
 	/**
@@ -505,7 +554,7 @@ abstract class
 		// Cache each embedding if enabled
 		if ( variables.useCache ) {
 			arguments.texts.each( ( text, index ) => {
-				var cacheKey = "embedding:" & hash( text, "SHA-256" );
+				var cacheKey = getCacheKey( text );
 				variables.cacheInstance.set(
 					key = cacheKey,
 					value = embeddings[ index ],
@@ -519,42 +568,6 @@ abstract class
 	}
 
 	/**
-	 * Generate embedding without cache (internal helper)
-	 *
-	 * @text The text to embed
-	 *
-	 * @return Array embedding vector
-	 */
-	private array function generateEmbeddingUncached( required string text ) {
-		// Build params for aiEmbed()
-		var params = {};
-		if ( len( variables.embeddingModel ) ) {
-			params.model = variables.embeddingModel;
-		}
-
-		var options = {
-			returnFormat: "first"  // Get just the vector array
-		};
-		if ( len( variables.embeddingProvider ) ) {
-			options.provider = variables.embeddingProvider;
-		}
-
-		// Generate embedding
-		var embedding = aiEmbed(
-			input = arguments.text,
-			params = params,
-			options = options
-		);
-
-		// Auto-detect dimensions from first embedding
-		if ( variables.dimensions == 0 ) {
-			variables.dimensions = embedding.len();
-		}
-
-		return embedding;
-	}
-
-	/**
 	 * Generate a unique ID from text content (SHA-256 hash)
 	 *
 	 * @text The text to generate ID from
@@ -563,7 +576,7 @@ abstract class
 	 */
 	private string function generateId( required string text ) {
 		// Use hash of text + timestamp for uniqueness
-		return hash( arguments.text & now().getTime(), "SHA-256" ).left( 32 );
+		return hash( arguments.text & now().getTime(), static.HASH_ALGORITHM ).left( 32 );
 	}
 
 	/**
