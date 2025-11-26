@@ -387,7 +387,14 @@ public class PostgresVectorMemoryTest extends BaseIntegrationTest {
 			// Get relevant messages (should combine recent + semantic)
 			results = memory.getRelevant( "Tell me about Alice", 5 );
 			resultCount = results.len();
-			hasName = results.toList( "text" ).findNoCase( "Alice" ) > 0;
+
+			// Check if any result contains "Alice"
+			hasName = false;
+			results.each( function( item ) {
+				if ( item.keyExists( "text" ) && item.text.findNoCase( "Alice" ) > 0 ) {
+					hasName = true;
+				}
+			} );
 
 			// Clean up
 			memory.clear();

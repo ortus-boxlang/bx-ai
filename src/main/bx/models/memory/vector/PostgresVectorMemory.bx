@@ -198,7 +198,7 @@ class extends="BaseVectorMemory" {
 		var params = {
 			embedding: vectorStr,
 			collection: variables.collection,
-			limit: arguments.limit
+			limit: { value: arguments.limit, type: "integer" }
 		};
 
 		// Add JSONB metadata filters if provided
