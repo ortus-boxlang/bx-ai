@@ -58,6 +58,20 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
+  # Pinecone Local Development Server
+  # Official local development server for testing
+  # Docs: https://docs.pinecone.io/guides/operations/local-development
+  pinecone:
+    image: ghcr.io/pinecone-io/pinecone-local:latest
+    container_name: pinecone-local
+    ports:
+      - "5080-5090:5080-5090"
+    environment:
+      - PORT=5080
+      - PINECONE_HOST=localhost
+    platform: linux/amd64
+    restart: unless-stopped
+
 volumes:
   ollama_data:
     name: ollama_data

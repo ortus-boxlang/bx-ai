@@ -1,0 +1,212 @@
+/**
+ * BoxLang In-Memory Vector Memory Implementation
+ *
+ * A simple vector-based memory store for testing and development purposes.
+ * Stores embeddings in memory using BoxLang arrays and provides similarity search.
+ *
+ * @singleton
+ */
+class extends="BaseVectorMemory" {
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		super.init();
+
+		// In-memory storage for vectors and metadata
+		variables.vectors = [];
+		variables.metadata = [];
+		variables.ids = [];
+		variables.nextId = 1;
+
+		return this;
+	}
+
+	/**
+	 * Configure the memory store
+	 *
+	 * @options Struct of configuration options (not needed for in-memory, but here for interface consistency)
+	 *
+	 * @return BoxVectorMemory
+	 */
+	function configure( struct options = {} ) {
+		variables.configured = true;
+		return this;
+	}
+
+	/**
+	 * Add a vector with metadata to memory
+	 *
+	 * @vector Array of numbers representing the embedding vector
+	 * @metadata Struct of metadata associated with the vector
+	 * @id Optional custom ID, auto-generated if not provided
+	 *
+	 * @return string The ID of the stored vector
+	 */
+	function add( required array vector, struct metadata = {}, string id = "" ) {
+		if ( !variables.configured ) {
+			configure();
+		}
+
+		// Generate ID if not provided
+		var vectorId = len( arguments.id ) ? arguments.id : "vec_#variables.nextId++#";
+
+		// Store vector and metadata
+		variables.vectors.append( arguments.vector );
+		variables.metadata.append( arguments.metadata );
+		variables.ids.append( vectorId );
+
+		return vectorId;
+	}
+
+	/**
+	 * Search for similar vectors using cosine similarity
+	 *
+	 * @vector Array of numbers representing the query vector
+	 * @limit Number of results to return (default: 5)
+	 * @threshold Minimum similarity score threshold (default: 0.0)
+	 *
+	 * @return Array of structs containing { id, score, metadata, vector }
+	 */
+	function search( required array vector, numeric limit = 5, numeric threshold = 0.0 ) {
+		if ( variables.vectors.isEmpty() ) {
+			return [];
+		}
+
+		var results = [];
+
+		// Calculate similarity for each stored vector
+		for ( var i = 1; i <= variables.vectors.len(); i++ ) {
+			var similarity = cosineSimilarity( arguments.vector, variables.vectors[ i ] );
+
+			if ( similarity >= arguments.threshold ) {
+				results.append({
+					id: variables.ids[ i ],
+					score: similarity,
+					metadata: variables.metadata[ i ],
+					vector: variables.vectors[ i ]
+				});
+			}
+		}
+
+		// Sort by similarity score (descending)
+		results.sort( function( a, b ) {
+			return b.score - a.score;
+		});
+
+		// Return top N results
+		return results.len() > arguments.limit
+			? results.slice( 1, arguments.limit )
+			: results;
+	}
+
+	/**
+	 * Get a vector by ID
+	 *
+	 * @id The ID of the vector to retrieve
+	 *
+	 * @return Struct with { id, metadata, vector } or empty struct if not found
+	 */
+	function get( required string id ) {
+		var index = variables.ids.findNoCase( arguments.id );
+
+		if ( index > 0 ) {
+			return {
+				id: variables.ids[ index ],
+				metadata: variables.metadata[ index ],
+				vector: variables.vectors[ index ]
+			};
+		}
+
+		return {};
+	}
+
+	/**
+	 * Delete a vector by ID
+	 *
+	 * @id The ID of the vector to delete
+	 *
+	 * @return boolean True if deleted, false if not found
+	 */
+	function delete( required string id ) {
+		var index = variables.ids.findNoCase( arguments.id );
+
+		if ( index > 0 ) {
+			variables.vectors.deleteAt( index );
+			variables.metadata.deleteAt( index );
+			variables.ids.deleteAt( index );
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Clear all vectors from memory
+	 *
+	 * @return BoxVectorMemory
+	 */
+	function clear() {
+		variables.vectors = [];
+		variables.metadata = [];
+		variables.ids = [];
+		variables.nextId = 1;
+		return this;
+	}
+
+	/**
+	 * Get the count of stored vectors
+	 *
+	 * @return numeric
+	 */
+	function count() {
+		return variables.vectors.len();
+	}
+
+	/**
+	 * Calculate cosine similarity between two vectors
+	 *
+	 * @vector1 First vector
+	 * @vector2 Second vector
+	 *
+	 * @return numeric Similarity score between -1 and 1
+	 */
+	private function cosineSimilarity( required array vector1, required array vector2 ) {
+		if ( arguments.vector1.len() != arguments.vector2.len() ) {
+			throw(
+				type = "VectorDimensionMismatch",
+				message = "Vectors must have the same dimensions",
+				detail = "Vector1 has #arguments.vector1.len()# dimensions, Vector2 has #arguments.vector2.len()# dimensions"
+			);
+		}
+
+		var dotProduct = 0;
+		var magnitude1 = 0;
+		var magnitude2 = 0;
+
+		for ( var i = 1; i <= arguments.vector1.len(); i++ ) {
+			dotProduct += arguments.vector1[ i ] * arguments.vector2[ i ];
+			magnitude1 += arguments.vector1[ i ] * arguments.vector1[ i ];
+			magnitude2 += arguments.vector2[ i ] * arguments.vector2[ i ];
+		}
+
+		magnitude1 = sqr( magnitude1 );
+		magnitude2 = sqr( magnitude2 );
+
+		if ( magnitude1 == 0 || magnitude2 == 0 ) {
+			return 0;
+		}
+
+		return dotProduct / ( magnitude1 * magnitude2 );
+	}
+
+	/**
+	 * Get the name of this memory provider
+	 *
+	 * @return string
+	 */
+	function getName() {
+		return "BoxVectorMemory";
+	}
+}
