@@ -22,22 +22,22 @@ import bxModules.bxai.models.runnables.*;
 class extends="AiBaseRunnable" {
 
 	/**
-	 * The agent's name
+	 * The agent's unique name
 	 */
 	property name="agentName" type="string" default="";
 
 	/**
-	 * The agent's description
+	 * The agent's description. This is used as the `role` in the system message.
 	 */
 	property name="description" type="string" default="";
 
 	/**
-	 * System instructions for the agent
+	 * System instructions for the agent. These are used as the `content` in the system message.
 	 */
 	property name="instructions" type="string" default="";
 
 	/**
-	 * The AI model to use for this agent
+	 * The AI model instance to use for this agent
 	 */
 	property name="aiModel" type="AiModel";
 
@@ -49,6 +49,7 @@ class extends="AiBaseRunnable" {
 
 	/**
 	 * Memory instances (array of IAiMemory)
+	 * You can add multiple memories for different purposes.
 	 */
 	property name="memories" type="array" default=[];
 
@@ -62,8 +63,13 @@ class extends="AiBaseRunnable" {
 	 */
 	property name="options" type="struct" default={};
 
+	/**
+	 * Default agent name constant
+	 */
 	static {
-		DEFAULT_AGENT_NAME = "BxAi";
+		DEFAULT_AGENT_NAME = "BxAi"
+		DEFAULT_AGENT_DESCRIPTION = "Role: BoxLang AI Agent"
+		DEFAULT_AGENT_INSTRUCTIONS = "You are a helpful AI assistant. Use the available tools when needed to accomplish tasks."
 	}
 
 	/**
@@ -80,14 +86,15 @@ class extends="AiBaseRunnable" {
 	 */
 	function init(
 		string name = static.DEFAULT_AGENT_NAME,
-		string description = "My BoxLang AI Agent",
-		string instructions = "",
+		string description = static.DEFAULT_AGENT_DESCRIPTION,
+		string instructions = static.DEFAULT_AGENT_INSTRUCTIONS,
 		AiModel model = aiModel(),
 		any memory = aiMemory(),
 		array tools = [],
 		struct params = {},
 		struct options = {}
 	) {
+		// Set them up baby!
 		variables.description = arguments.description;
 		variables.instructions = arguments.instructions;
 		variables.aiModel = arguments.model.addTools( arguments.tools );
@@ -96,11 +103,20 @@ class extends="AiBaseRunnable" {
 		variables.options = arguments.options;
 
 		// param the options return format to "single"
+		// Agent's by default return just the assistant's content
 		param variables.options.returnFormat = "single";
 
 		// If the agent name is empty, use the default
 		if ( arguments.name.len() == 0 ) {
 			arguments.name = static.DEFAULT_AGENT_NAME;
+		}
+		// If the agent description is empty, use the default
+		if ( arguments.description.len() == 0 ) {
+			variables.description = static.DEFAULT_AGENT_DESCRIPTION;
+		}
+		// If the agent instructions is empty, use the default
+		if ( arguments.instructions.len() == 0 ) {
+			variables.instructions = static.DEFAULT_AGENT_INSTRUCTIONS;
 		}
 
 		// Set internal name
@@ -392,11 +408,6 @@ class extends="AiBaseRunnable" {
 
 		if ( variables.instructions.len() > 0 ) {
 			parts.append( variables.instructions );
-		}
-
-		// Add default agent instructions if none provided
-		if ( parts.isEmpty() ) {
-			parts.append( "You are a helpful AI assistant. Use the available tools when needed to accomplish tasks." );
 		}
 
 		return parts.toList( char( 10 ) & char( 10 ) );
