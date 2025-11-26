@@ -46,11 +46,11 @@ class extends="BaseVectorMemory" {
 
 	static {
 		// Default configurations
-		DEFAULT_DISTANCE_FUNCTION = "COSINE";
+		DEFAULT_DISTANCE_FUNCTION = "COSINE"
 		DEFAULT_TABLE = "bx_ai_vectors"
-		DEFAULT_INDEX_TYPE = "HNSW";
-		DEFAULT_HNSW_M = 16;
-		DEFAULT_HNSW_EF_CONSTRUCTION = 64;
+		DEFAULT_INDEX_TYPE = "HNSW"
+		DEFAULT_HNSW_M = 16
+		DEFAULT_HNSW_EF_CONSTRUCTION = 64
 		// Distance operators for pgvector
 		DISTANCE_OPERATORS = {
 			"L2": "<->",           // Euclidean distance
@@ -73,40 +73,40 @@ class extends="BaseVectorMemory" {
 	 */
 	public any function configure( required struct config ) {
 		// Extract Postgres-specific config FIRST
-		param arguments.config.datasource = "";
-		param arguments.config.table = static.DEFAULT_TABLE;
-		param arguments.config.distanceFunction = static.DEFAULT_DISTANCE_FUNCTION;
-		param arguments.config.indexType = static.DEFAULT_INDEX_TYPE;
-		param arguments.config.hnswM = static.DEFAULT_HNSW_M;
-		param arguments.config.hnswEfConstruction = static.DEFAULT_HNSW_EF_CONSTRUCTION;
+		param arguments.config.datasource = ""
+		param arguments.config.table = static.DEFAULT_TABLE
+		param arguments.config.distanceFunction = static.DEFAULT_DISTANCE_FUNCTION
+		param arguments.config.indexType = static.DEFAULT_INDEX_TYPE
+		param arguments.config.hnswM = static.DEFAULT_HNSW_M
+		param arguments.config.hnswEfConstruction = static.DEFAULT_HNSW_EF_CONSTRUCTION
 
 		// Validate required config
 		if ( !len( arguments.config.datasource ) ) {
 			throw(
 				type = "PostgresVectorMemory.MissingDatasource",
 				message = "Datasource is required for PostgresVectorMemory. Provide it in the config."
-			);
+			)
 		}
 
-		variables.datasource = arguments.config.datasource;
-		variables.table = arguments.config.table;
-		variables.distanceFunction = arguments.config.distanceFunction.ucase();
-		variables.indexType = arguments.config.indexType.ucase();
-		variables.hnswM = arguments.config.hnswM;
-		variables.hnswEfConstruction = arguments.config.hnswEfConstruction;
+		variables.datasource = arguments.config.datasource
+		variables.table = arguments.config.table
+		variables.distanceFunction = arguments.config.distanceFunction.ucase()
+		variables.indexType = arguments.config.indexType.ucase()
+		variables.hnswM = arguments.config.hnswM
+		variables.hnswEfConstruction = arguments.config.hnswEfConstruction
 
 		// Validate distance function
 		if ( !static.DISTANCE_OPERATORS.keyExists( variables.distanceFunction ) ) {
 			throw(
 				type = "PostgresVectorMemory.InvalidDistanceFunction",
 				message = "Invalid distance function: #variables.distanceFunction#. Must be L2, COSINE, or INNER_PRODUCT."
-			);
+			)
 		}
 
 		// Now call parent configure which will call ensureCollection()
-		super.configure( arguments.config );
+		super.configure( arguments.config )
 
-		return this;
+		return this
 	}
 
 	/**
@@ -120,14 +120,14 @@ class extends="BaseVectorMemory" {
 	 */
 	IVectorMemory function ensureCollection() {
 		// Enable pgvector extension
-		ensurePgvectorExtension();
+		ensurePgvectorExtension()
 
 		// Create table if it doesn't exist
 		if ( !collectionExists( variables.collection ) ) {
-			createCollection( variables.collection );
+			createCollection( variables.collection )
 		}
 
-		return this;
+		return this
 	}
 
 	/**
@@ -145,10 +145,10 @@ class extends="BaseVectorMemory" {
 		required struct metadata
 	) {
 		// Convert embedding array to pgvector format
-		var vectorStr = "[" & arguments.embedding.toList() & "]";
+		var vectorStr = "[" & arguments.embedding.toList() & "]"
 
 		// Serialize metadata to JSON
-		var metadataJson = jsonSerialize( arguments.metadata );
+		var metadataJson = jsonSerialize( arguments.metadata )
 
 		// Upsert (INSERT ... ON CONFLICT UPDATE)
 		queryExecute(
@@ -171,7 +171,7 @@ class extends="BaseVectorMemory" {
 				collection: variables.collection
 			},
 			{ datasource: variables.datasource }
-		);
+		)
 
 		return this;
 	}
@@ -190,23 +190,23 @@ class extends="BaseVectorMemory" {
 		required numeric limit,
 		required struct filter
 	) {
-		var vectorStr = "[" & arguments.embedding.toList() & "]";
-		var distanceOp = static.DISTANCE_OPERATORS[ variables.distanceFunction ];
+		var vectorStr = "[" & arguments.embedding.toList() & "]"
+		var distanceOp = static.DISTANCE_OPERATORS[ variables.distanceFunction ]
 
 		// Build WHERE clause with optional metadata filter
-		var whereClause = "collection = :collection";
+		var whereClause = "collection = :collection"
 		var params = {
 			embedding: vectorStr,
 			collection: variables.collection,
 			limit: { value: arguments.limit, type: "integer" }
-		};
+		}
 
 		// Add JSONB metadata filters if provided
 		if ( !arguments.filter.isEmpty() ) {
 			arguments.filter.each( ( key, value ) => {
 				whereClause &= " AND metadata->>'#key#' = :#key#";
 				params[ key ] = value;
-			} );
+			} )
 		}
 
 		// Execute search with distance calculation
@@ -223,7 +223,7 @@ class extends="BaseVectorMemory" {
 			LIMIT :limit",
 			params,
 			{ datasource: variables.datasource, returntype: "array" }
-		);
+		)
 
 		// Transform to standard format with scores (convert distance to similarity)
 		return result.map( ( row ) => {
@@ -234,7 +234,7 @@ class extends="BaseVectorMemory" {
 				metadata: jsonDeserialize( row.metadata_json ),
 				embedding: parseVectorString( row.embedding_str )
 			};
-		} );
+		} )
 	}
 
 	/**
@@ -254,7 +254,7 @@ class extends="BaseVectorMemory" {
 			ORDER BY created_at DESC",
 			{ collection: variables.collection },
 			{ datasource: variables.datasource, returntype: "array" }
-		);
+		)
 
 		return result.map( ( row ) => {
 			return {
@@ -262,8 +262,8 @@ class extends="BaseVectorMemory" {
 				text: row.text,
 				metadata: jsonDeserialize( row.metadata_json ),
 				embedding: parseVectorString( row.embedding_str )
-			};
-		} );
+			}
+		} )
 	}
 
 	/**
@@ -287,19 +287,19 @@ class extends="BaseVectorMemory" {
 				collection: variables.collection
 			},
 			{ datasource: variables.datasource, returntype: "array" }
-		);
+		)
 
 		if ( result.isEmpty() ) {
-			return {};
+			return {}
 		}
 
-		var row = result[ 1 ];
+		var row = result.first()
 		return {
 			id: row.id,
 			text: row.text,
 			metadata: jsonDeserialize( row.metadata_json ),
 			embedding: parseVectorString( row.embedding_str )
-		};
+		}
 	}
 
 	/**
@@ -318,9 +318,9 @@ class extends="BaseVectorMemory" {
 				collection: variables.collection
 			},
 			{ datasource: variables.datasource, result: "deleteResult" }
-		);
+		)
 
-		return deleteResult.recordCount > 0;
+		return deleteResult.recordCount > 0
 	}
 
 	/**
@@ -331,15 +331,15 @@ class extends="BaseVectorMemory" {
 	 * @return Numeric count deleted
 	 */
 	numeric function deleteDocumentsByFilter( required struct filter ) {
-		var whereClause = "collection = :collection";
-		var params = { collection: variables.collection };
+		var whereClause = "collection = :collection"
+		var params = { collection: variables.collection }
 
 		// Add JSONB metadata filters
 		if ( !arguments.filter.isEmpty() ) {
 			arguments.filter.each( ( key, value ) => {
-				whereClause &= " AND metadata->>'#key#' = :#key#";
-				params[ key ] = value;
-			} );
+				whereClause &= " AND metadata->>'#key#' = :#key#"
+				params[ key ] = value
+			} )
 		}
 
 		var result = queryExecute(
@@ -347,9 +347,9 @@ class extends="BaseVectorMemory" {
 			 WHERE #whereClause#",
 			params,
 			{ datasource: variables.datasource, result: "deleteResult" }
-		);
+		)
 
-		return deleteResult.recordCount;
+		return deleteResult.recordCount
 	}
 
 	/**
@@ -360,9 +360,9 @@ class extends="BaseVectorMemory" {
 			"DELETE FROM #variables.table# WHERE collection = :collection",
 			{ collection: variables.collection },
 			{ datasource: variables.datasource }
-		);
+		)
 
-		return this;
+		return this
 	}
 
 	/**
@@ -381,9 +381,9 @@ class extends="BaseVectorMemory" {
 	IVectorMemory function createCollection( required string name ) {
 		// In PostgreSQL, we use a single table with a collection column
 		// So we just need to ensure the table exists
-		ensureTable();
+		ensureTable()
 
-		return this;
+		return this
 	}
 
 	/**
@@ -394,7 +394,7 @@ class extends="BaseVectorMemory" {
 	 * @return Boolean
 	 */
 	boolean function collectionExists( required string name ) {
-		return tableExists();
+		return tableExists()
 	}
 
 	/**
@@ -409,9 +409,9 @@ class extends="BaseVectorMemory" {
 			"DELETE FROM #variables.table# WHERE collection = :collection",
 			{ collection: arguments.name },
 			{ datasource: variables.datasource }
-		);
+		)
 
-		return this;
+		return this
 	}
 
 	/**
@@ -429,13 +429,13 @@ class extends="BaseVectorMemory" {
 				"CREATE EXTENSION IF NOT EXISTS vector",
 				{},
 				{ datasource: variables.datasource }
-			);
+			)
 		} catch ( any e ) {
 			throw(
 				type = "PostgresVectorMemory.PgvectorError",
 				message = "Failed to enable pgvector extension. Ensure PostgreSQL has pgvector installed.",
 				detail = e.message
-			);
+			)
 		}
 	}
 
@@ -445,7 +445,7 @@ class extends="BaseVectorMemory" {
 	private void function ensureTable() {
 		// If table exists, nothing to do
 		if ( tableExists() ) {
-			return;
+			return
 		}
 
 		// Determine dimensions (must be set or detected)
@@ -465,7 +465,7 @@ class extends="BaseVectorMemory" {
 			)",
 			{},
 			{ datasource: variables.datasource }
-		);
+		)
 
 		// Create index for collection lookups
 		queryExecute(
@@ -473,7 +473,7 @@ class extends="BaseVectorMemory" {
 			 ON #variables.table# (collection)",
 			{},
 			{ datasource: variables.datasource }
-		);
+		)
 
 		// Create GIN index for metadata JSONB queries
 		queryExecute(
@@ -481,18 +481,18 @@ class extends="BaseVectorMemory" {
 			 ON #variables.table# USING gin (metadata)",
 			{},
 			{ datasource: variables.datasource }
-		);
+		)
 
 		// Create vector index based on indexType
-		createVectorIndex();
+		createVectorIndex()
 	}
 
 	/**
 	 * Create vector similarity index
 	 */
 	private void function createVectorIndex() {
-		var distanceOp = static.DISTANCE_OPERATORS[ variables.distanceFunction ];
-		var indexMethod = static.INDEX_TYPES[ variables.indexType ];
+		var distanceOp = static.DISTANCE_OPERATORS[ variables.distanceFunction ]
+		var indexMethod = static.INDEX_TYPES[ variables.indexType ]
 
 		if ( variables.indexType == "HNSW" ) {
 			// HNSW index with configurable parameters
@@ -502,7 +502,7 @@ class extends="BaseVectorMemory" {
 				 WITH (m = #variables.hnswM#, ef_construction = #variables.hnswEfConstruction#)",
 				{},
 				{ datasource: variables.datasource }
-			);
+			)
 		} else {
 			// IVFFlat index (faster build, less accurate)
 			queryExecute(
@@ -511,7 +511,7 @@ class extends="BaseVectorMemory" {
 				 WITH (lists = 100)",
 				{},
 				{ datasource: variables.datasource }
-			);
+			)
 		}
 	}
 
@@ -525,17 +525,17 @@ class extends="BaseVectorMemory" {
 		bx:dbinfo
 			name="tables"
 			type="tables"
-			datasource="#variables.datasource#" {};
+			datasource="#variables.datasource#" {}
 
 		var tableExists = false;
 		for ( var tableInfo in tables ) {
 			if ( tableInfo.table_name.toLowerCase() == variables.table.toLowerCase() ) {
-				tableExists = true;
-				break;
+				tableExists = true
+				break
 			}
 		}
 
-		return tableExists;
+		return tableExists
 	}
 
 	/**
@@ -552,14 +552,14 @@ class extends="BaseVectorMemory" {
 
 		switch ( variables.distanceFunction ) {
 			case "COSINE":
-				return max( 0, 1 - arguments.distance );
+				return max( 0, 1 - arguments.distance )
 			case "L2":
-				return 1 / ( 1 + arguments.distance );
+				return 1 / ( 1 + arguments.distance )
 			case "INNER_PRODUCT":
 				// Inner product is negative distance, higher is better
-				return -arguments.distance;
+				return -arguments.distance
 			default:
-				return 1 - arguments.distance;
+				return 1 - arguments.distance
 		}
 	}
 
@@ -572,7 +572,7 @@ class extends="BaseVectorMemory" {
 	 */
 	private array function parseVectorString( required string vectorStr ) {
 		// Remove brackets and split by comma
-		var cleaned = arguments.vectorStr.replace( "[", "" ).replace( "]", "" );
+		var cleaned = arguments.vectorStr.replace( "[", "" ).replace( "]", "" )
 		return cleaned
 			.listToArray( "," )
 			.map( target => val( target ) )
