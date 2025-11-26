@@ -13,9 +13,7 @@ build/**
 /libs/
 src/test/resources/libs/*
 !src/test/resources/libs/.gitkeep
-src/test/resources/modules/bx-derby-*.zip
-src/test/resources/modules/bx-derby/**
-!src/test/resources/modules/bx-derby/.gitkeep
+src/test/resources/modules/**
 testbox/**
 tests/results
 derby.log

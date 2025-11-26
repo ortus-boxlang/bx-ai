@@ -45,8 +45,23 @@ services:
       - ALLOW_RESET=TRUE
     restart: unless-stopped
 
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: postgres-vector
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=vectordb
+      - POSTGRES_USER=boxlang
+      - POSTGRES_PASSWORD=boxlang
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
 volumes:
   ollama_data:
     name: ollama_data
   chromadb_data:
     name: chromadb_data
+  postgres_data:
+    name: postgres_data
