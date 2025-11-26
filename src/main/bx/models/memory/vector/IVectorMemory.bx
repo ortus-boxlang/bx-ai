@@ -120,8 +120,9 @@ interface extends="bxModules.bxai.models.memory.IAiMemory" {
 	 *
 	 * @return Struct with results: { added: numeric, failed: numeric, errors: array }
 	 */
-	default struct function seedAsync( required array documents ){
-		return runAsync( () => this.seed( documents ) );
+	default BoxFuture function seedAsync( required array documents ){
+		// Async in the virtual threads	pool
+		return asyncRun( () => this.seed( documents ), "io-tasks" );
 	}
 
 	/**

@@ -157,6 +157,51 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@Order( 3 )
+	@DisplayName( "Test async batch seeding with ChromaVectorMemory" )
+	void testAsyncBatchSeeding() throws Exception {
+
+		runtime.executeSource(
+		    """
+		        // Create memory for seeding test
+		        memory = aiMemory( "chroma", createUUID(), {
+		            host: "localhost",
+		            port: 8000,
+		            collection: "test_seeding",
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        } );
+
+		        // Prepare documents for seeding
+		        documents = [
+		            "Artificial intelligence is transforming technology",
+		            "Machine learning algorithms improve with data",
+		            "Deep learning uses neural networks",
+		            "Natural language processing understands text"
+		        ];
+
+		        // Seed the documents, this returns a BoxFuture
+		        future = memory.seedAsync( documents )
+
+		    // Await the future to get results
+		    seedResults = future.get()
+
+		        result = {
+		            added: seedResults.added,
+		            failed: seedResults.failed,
+		            totalDocuments: documents.len()
+		        }
+		       """,
+		    context );
+
+		IStruct result = variables.getAsStruct( Key.of( "result" ) );
+
+		assertEquals( 4, result.getAsInteger( Key.of( "totalDocuments" ) ) );
+		assertTrue( result.getAsInteger( Key.of( "added" ) ) > 0 );
+		assertEquals( 0, result.getAsInteger( Key.of( "failed" ) ) );
+	}
+
+	@Test
 	@Order( 4 )
 	@DisplayName( "Test HybridMemory with ChromaDB backend" )
 	void testHybridMemory() throws Exception {
