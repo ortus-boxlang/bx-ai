@@ -1,6 +1,17 @@
+---
+description: "Installation and configuration guide for the BoxLang AI module."
+icon: download
+---
+
 # Installation & Configuration
 
 Learn how to install the BoxLang AI module and configure it for your preferred AI provider.
+
+## System Requirements
+
+- **BoxLang Runtime**: 1.7+
+- **Internet**: Required for cloud providers (OpenAI, Claude, etc.)
+- **Optional**: Docker for running Ollama locally
 
 ## Installation Methods
 
@@ -39,6 +50,7 @@ Add to your `box.json` for managed dependencies:
 ```
 
 Then run:
+
 ```bash
 box install
 ```
@@ -112,6 +124,7 @@ Configure the module in your `boxlang.json` file to set defaults for your applic
 **Get your API key**: [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
 
 **Popular models**:
+
 - `gpt-4` - Most capable, best for complex tasks
 - `gpt-4-turbo` - Faster, more cost-effective
 - `gpt-3.5-turbo` - Fast and affordable
@@ -138,6 +151,7 @@ Configure the module in your `boxlang.json` file to set defaults for your applic
 **Get your API key**: [https://console.anthropic.com/](https://console.anthropic.com/)
 
 **Popular models**:
+
 - `claude-3-opus-20240229` - Most capable
 - `claude-3-sonnet-20240229` - Balanced
 - `claude-3-haiku-20240307` - Fastest
@@ -169,6 +183,7 @@ Configure the module in your `boxlang.json` file to set defaults for your applic
 #### 1. Install Ollama
 
 Download from [https://ollama.ai](https://ollama.ai) for your platform:
+
 - **macOS**: `brew install ollama`
 - **Linux**: `curl -fsSL https://ollama.ai/install.sh | sh`
 - **Windows**: Download installer from website
@@ -224,6 +239,7 @@ ollama run llama3.2 "Hello!"
 ### Other Providers
 
 **Grok (xAI)**:
+
 ```json
 {
   "provider": "grok",
@@ -232,6 +248,7 @@ ollama run llama3.2 "Hello!"
 ```
 
 **DeepSeek**:
+
 ```json
 {
   "provider": "deepseek",
@@ -240,6 +257,7 @@ ollama run llama3.2 "Hello!"
 ```
 
 **OpenRouter** (Multi-model gateway):
+
 ```json
 {
   "provider": "openrouter",
@@ -248,6 +266,7 @@ ollama run llama3.2 "Hello!"
 ```
 
 **Perplexity**:
+
 ```json
 {
   "provider": "perplexity",
@@ -302,6 +321,7 @@ You can use environment variables for API keys:
 ```
 
 Then set the environment variable:
+
 ```bash
 export OPENAI_API_KEY="sk-..."
 ```
@@ -317,6 +337,7 @@ println( answer )
 ```
 
 Run it:
+
 ```bash
 boxlang test-ai.bxs
 ```
@@ -328,6 +349,7 @@ If configured correctly, you should see a response from your AI provider.
 ### "No API key provided"
 
 Make sure your API key is set in `boxlang.json` or passed directly:
+
 ```java
 answer = aiChat( "Hello", {}, { provider: "openai", apiKey: "sk-..." } )
 ```
@@ -335,6 +357,7 @@ answer = aiChat( "Hello", {}, { provider: "openai", apiKey: "sk-..." } )
 ### "Connection timeout"
 
 Increase the timeout setting:
+
 ```json
 {
   "modules": {
@@ -350,11 +373,13 @@ Increase the timeout setting:
 ### Ollama not responding
 
 Make sure Ollama is running:
+
 ```bash
 ollama serve
 ```
 
 Or check if it's already running:
+
 ```bash
 curl http://localhost:11434/api/tags
 ```
@@ -362,5 +387,5 @@ curl http://localhost:11434/api/tags
 ## Next Steps
 
 - [Quick Start Guide](quickstart.md) - Get started with simple examples
-- [Basic Chatting](../simple-interactions/basic-chatting.md) - Learn the basics
+- [Basic Chatting](../chatting/basic-chatting.md) - Learn the basics
 - [Provider Comparison](../appendix/providers.md) - Compare features and costs

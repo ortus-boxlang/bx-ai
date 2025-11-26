@@ -242,14 +242,14 @@ ollama serve
 - [Agent Quick Start](../docs/getting-started/agent-quickstart.md)
 
 ### Core Concepts
-- [Basic Chatting](../docs/simple-interactions/basic-chatting.md)
-- [Advanced Chatting](../docs/simple-interactions/advanced-chatting.md)
-- [Pipeline Overview](../docs/pipelines/overview.md)
+- [Basic Chatting](../docs/chatting/basic-chatting.md)
+- [Advanced Chatting](../docs/chatting/advanced-chatting.md)
+- [Pipeline Overview](../docs/main-components/overview.md)
 
 ### Deep Dives
-- [AI Agents](../docs/pipelines/agents.md)
-- [Working with Models](../docs/pipelines/models.md)
-- [Message Templates](../docs/pipelines/messages.md)
+- [AI Agents](../docs/main-components/agents.md)
+- [Working with Models](../docs/main-components/models.md)
+- [Message Templates](../docs/main-components/messages.md)
 
 ## 🤝 Contributing Examples
 

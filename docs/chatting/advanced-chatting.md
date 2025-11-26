@@ -1,3 +1,8 @@
+---
+description: "Master advanced AI interaction techniques including multi-turn conversations, AI tools, async operations, and streaming responses."
+icon: user-ninja
+---
+
 # Advanced Chatting
 
 Master advanced AI interaction techniques including multi-turn conversations, AI tools, async operations, and streaming responses.
@@ -927,7 +932,7 @@ println( "Humidity: #weather.getHumidity()#%" )
 
 For complete details on structured output including inheritance, validation, and advanced patterns, see:
 - **[Structured Output Guide](structured-output.md)** - Complete documentation
-- **[Pipeline Integration](../pipelines/structured-output.md)** - Advanced patterns
+- **[Pipeline Integration](../main-components/structured-output.md)** - Advanced patterns
 - **[Course Lesson 12](../../course/lesson-12-structured-output/)** - Interactive learning
 
 ### XML Return Format for Documents
@@ -1151,5 +1156,5 @@ function codeAssistant( required string task ) {
 ## Next Steps
 
 - **[Service-Level Chatting](service-chatting.md)** - Direct service control
-- **[Pipeline Overview](../pipelines/overview.md)** - Learn about AI pipelines
-- **[Message Templates](../pipelines/messages.md)** - Advanced templating
+- **[Pipeline Overview](../main-components/overview.md)** - Learn about AI pipelines
+- **[Message Templates](../main-components/messages.md)** - Advanced templating

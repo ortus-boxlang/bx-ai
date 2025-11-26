@@ -1,3 +1,8 @@
+---
+description: "The quick start guide to building AI Agents in BoxLang with memory, tools, and reasoning."
+icon: robot
+---
+
 # AI Agents Quick Start
 
 Get up and running with AI Agents in BoxLang - autonomous AI assistants with memory, tools, and reasoning capabilities.
@@ -606,7 +611,7 @@ println( "User: #result.user.getName()# (#result.user.getRole()#)" )
 println( "Urgent: #result.tasks.urgent.len()# tasks" )
 ```
 
-**Learn more:** [Structured Output Guide](../simple-interactions/structured-output.md)
+**Learn more:** [Structured Output Guide](../chatting/structured-output.md)
 
 ## Debugging Agents
 
@@ -653,14 +658,14 @@ Ready to dive deeper?
 
 ### Learn More About Agents
 
-- **[Full Agent Documentation](../pipelines/agents.md)** - Complete guide to agent features
+- **[Full Agent Documentation](../main-components/agents.md)** - Complete guide to agent features
 - **[Agent Examples](../../examples/agents/)** - Working code examples
 
 ### Related Topics
 
-- **[Working with Tools](../simple-interactions/advanced-chatting.md#function-calling-tools)** - Deep dive into AI tools
-- **[Memory Systems](../pipelines/agents.md#memory-management)** - Understanding memory types
-- **[Pipeline Integration](../pipelines/overview.md)** - Using agents in pipelines
+- **[Working with Tools](../chatting/advanced-chatting.md#function-calling-tools)** - Deep dive into AI tools
+- **[Memory Systems](../main-components/agents.md#memory-management)** - Understanding memory types
+- **[Pipeline Integration](../main-components/overview.md)** - Using agents in pipelines
 
 ### Example Code
 

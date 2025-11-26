@@ -1,3 +1,8 @@
+---
+description: "Build reusable, dynamic prompts with placeholders that get filled in at runtime. Message templates are the foundation of flexible AI pipelines."
+icon: message
+---
+
 # Message Templates
 
 Build reusable, dynamic prompts with placeholders that get filled in at runtime. Message templates are the foundation of flexible AI pipelines.

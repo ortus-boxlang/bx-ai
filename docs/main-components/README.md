@@ -1,8 +1,230 @@
-# Understanding AI Pipelines
+---
+description: Main components for building AI agents and pipelines in BoxLang
+icon: puzzle-piece
+---
 
-Learn how to build powerful, composable AI workflows using the pipeline pattern. Pipelines allow you to chain operations together, creating reusable and maintainable AI processing flows.
+# Main Components
 
-## What are Pipelines?
+Welcome to the core building blocks of BoxLang AI. This section covers the essential components you need to build sophisticated AI agents and composable pipelines.
+
+## Overview
+
+BoxLang AI is built on a **runnable pipeline architecture** that allows you to:
+
+- **🔗 Chain operations** - Connect AI models, messages, transforms, and agents
+- **♻️ Reuse workflows** - Define once, execute with different inputs
+- **🧩 Compose freely** - Mix and match components to create complex flows
+- **🎯 Stay flexible** - Swap providers, add steps, or modify behavior without refactoring
+
+Think of these components as LEGO blocks - each piece has a specific purpose, but the real power comes from how you combine them.
+
+---
+
+## Core Components
+
+### 🧠 [AI Models](models.md)
+
+AI provider integrations wrapped as runnable pipeline components.
+
+**What it does:**
+- Wraps OpenAI, Claude, Gemini, Ollama, and other providers
+- Makes them composable in pipelines
+- Provides consistent interface across all providers
+
+**Quick example:**
+```java
+model = aiModel( "openai" )
+    .withModel( "gpt-4o" )
+    .withTemperature( 0.7 );
+
+response = model.run( "What is BoxLang?" );
+```
+
+**Use when:** You need direct model control, want to swap providers, or build custom workflows.
+
+→ [Full Models Documentation](models.md)
+
+---
+
+### ✉️ [Messages & Templates](messages.md)
+
+Reusable message builders with dynamic placeholders and role management.
+
+**What it does:**
+- Builds conversation messages (system, user, assistant)
+- Supports dynamic placeholders for variable injection
+- Handles multimodal content (images, audio, video, documents)
+- Creates reusable prompt templates
+
+**Quick example:**
+```java
+template = aiMessage()
+    .system( "You are a ${role}" )
+    .user( "Explain ${topic} in ${style} style" );
+
+response = template
+    .to( aiModel( "claude" ) )
+    .run( {
+        role: "teacher",
+        topic: "quantum computing",
+        style: "simple"
+    } );
+```
+
+**Use when:** You have repeated prompts, need dynamic content, or want organized message management.
+
+→ [Full Messages Documentation](messages.md)
+
+---
+
+### 🤖 [AI Agents](agents.md)
+
+Autonomous AI entities with memory, tools, and reasoning capabilities.
+
+**What it does:**
+- Maintains conversation context across multiple turns
+- Automatically decides when to use tools
+- Manages multiple memory strategies (windowed, summary, session, file)
+- Provides autonomous reasoning and planning
+
+**Quick example:**
+```java
+agent = aiAgent()
+    .withInstructions( "You are a helpful research assistant" )
+    .withTools( [ searchTool, calculatorTool ] )
+    .withMemory( "windowed", { maxMessages: 20 } )
+    .build();
+
+response = agent.run( "What's the weather in Boston?" );
+// Agent automatically calls weather tool
+```
+
+**Use when:** You need context-aware conversations, autonomous tool use, or complex multi-turn interactions.
+
+→ [Full Agents Documentation](agents.md)
+
+---
+
+### 💭 [Memory Systems](memory.md)
+
+Context management strategies for maintaining conversation history.
+
+**What it does:**
+- Windowed memory - Keep recent N messages
+- Summary memory - Compress old context
+- Session memory - Persist across application restarts
+- File memory - Store conversations on disk
+- Vector memory - Semantic similarity search
+
+**Quick example:**
+```java
+// Keep last 20 messages
+memory = aiMemory( "windowed", { maxMessages: 20 } );
+
+// Summarize old conversations
+memory = aiMemory( "summary", {
+    maxMessages: 10,
+    summaryInstructions: "Summarize key points"
+} );
+
+// Use in agent
+agent.withMemory( memory );
+```
+
+**Use when:** Building chatbots, maintaining context, or managing long conversations.
+
+→ [Full Memory Documentation](memory.md)
+
+---
+
+### 🔧 [Transformers](transformers.md)
+
+Data processing and transformation steps in pipelines.
+
+**What it does:**
+- Transform AI responses into desired formats
+- Extract specific data from responses
+- Chain multiple transformations
+- Apply custom logic between pipeline steps
+
+**Quick example:**
+```java
+pipeline = aiModel( "openai" )
+    .transform( response => response.content )
+    .transform( text => text.toUpper() )
+    .transform( text => text.trim() );
+
+result = pipeline.run( "hello world" );
+// Output: "HELLO WORLD"
+```
+
+**Use when:** You need data processing, format conversion, or custom business logic in workflows.
+
+→ [Full Transformers Documentation](transformers.md)
+
+---
+
+### 📊 [Structured Output](structured-output.md)
+
+Extract structured data from AI responses into classes, structs, or arrays.
+
+**What it does:**
+- Define schemas for AI output
+- Populate BoxLang classes automatically
+- Extract arrays of data
+- Validate and type-check responses
+
+**Quick example:**
+```java
+// Define schema
+result = aiChat(
+    message: "Extract: John is 30, works as a developer",
+    structured: {
+        name: "string",
+        age: "numeric",
+        job: "string"
+    }
+);
+
+println( result.name ); // "John"
+println( result.age );  // 30
+```
+
+**Use when:** Extracting data from text, generating forms, or parsing documents into structured formats.
+
+→ [Full Structured Output Documentation](structured-output.md)
+
+---
+
+### 📡 [Streaming](streaming.md)
+
+Real-time response streaming for better user experience.
+
+**What it does:**
+- Stream AI responses token-by-token
+- Works with models, agents, and pipelines
+- Provides callbacks for real-time updates
+- Enables responsive UIs
+
+**Quick example:**
+```java
+aiModel( "openai" ).stream(
+    onChunk: ( chunk ) => {
+        print( chunk );
+    },
+    input: "Write a short story"
+);
+```
+
+**Use when:** Building interactive UIs, chatbots, or any application where real-time feedback matters.
+
+→ [Full Streaming Documentation](streaming.md)
+
+---
+
+## Understanding Pipelines
+
+### What are Pipelines?
 
 Pipelines are sequences of **runnables** - components that process data and pass results to the next step. Think of them as assembly lines for AI processing.
 
@@ -23,13 +245,13 @@ Each step:
 **Composability**: Chain multiple operations together
 
 ```java
-pipeline = aiMessage().user( "Hello" ).toDefaultModel().transform( r => r.content )
+pipeline = aiMessage().user( "Hello" ).to( aiModel( "openai" ) ).transform( r => r.content )
 ```
 
 **Reusability**: Define once, use with different inputs
 
 ```java
-greeter = aiMessage().user( "Greet ${name}" ).toDefaultModel()
+greeter = aiMessage().user( "Greet ${name}" ).to( aiModel( "openai" ) )
 greeter.run( { name: "Alice" } )  // "Hello Alice!"
 greeter.run( { name: "Bob" } )    // "Hello Bob!"
 ```
@@ -38,7 +260,7 @@ greeter.run( { name: "Bob" } )    // "Hello Bob!"
 
 ```java
 base = aiMessage().user( "Hello" )
-pipeline1 = base.toDefaultModel()  // Doesn't modify base
+pipeline1 = base.to( aiModel( "openai" ) )  // Doesn't modify base
 pipeline2 = base.to( aiModel( "claude" ) )  // Different pipeline
 ```
 
@@ -53,7 +275,7 @@ complex = aiMessage()
     .to( aiModel( "claude" ) )
 ```
 
-## Core Concepts
+## Runnable Interface
 
 ### Runnables
 

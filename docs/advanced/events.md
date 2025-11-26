@@ -1174,8 +1174,8 @@ Now that you understand the event system, you can:
 
 ### Related Documentation
 
-- **[Pipeline Overview](../pipelines/overview.md)** - Understanding AI pipelines
-- **[Service-Level Chatting](../simple-interactions/service-chatting.md)** - Direct service control
+- **[Pipeline Overview](../main-components/overview.md)** - Understanding AI pipelines
+- **[Service-Level Chatting](../chatting/service-chatting.md)** - Direct service control
 
 ### Additional Resources
 

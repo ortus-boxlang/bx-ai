@@ -910,6 +910,6 @@ try {
 ### Learn More
 
 For complete details on structured output and object population:
-- **[Structured Output Guide](../simple-interactions/structured-output.md)** - Full documentation
-- **[Advanced Chatting](../simple-interactions/advanced-chatting.md#structured-output)** - Integration examples
+- **[Structured Output Guide](../chatting/structured-output.md)** - Full documentation
+- **[Advanced Chatting](../chatting/advanced-chatting.md#structured-output)** - Integration examples
 - **[Course Lesson 12](../../course/lesson-12-structured-output/)** - Interactive learning

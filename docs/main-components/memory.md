@@ -1,3 +1,8 @@
+---
+description: "Comprehensive guide on using memory systems in BoxLang AI pipelines for context retention and coherent conversations."
+icon: memory
+---
+
 # Memory in Pipelines
 
 Memory systems enable AI to maintain context across multiple interactions, making conversations more coherent and contextually aware. This guide covers how to use memory within BoxLang AI pipelines.

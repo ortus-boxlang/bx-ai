@@ -198,8 +198,8 @@ All providers support structured output! OpenAI offers native structured output 
 
 ### Learn More
 
-- **Quick Start**: [Simple Interactions Guide](docs/simple-interactions/structured-output.md)
-- **Advanced Pipelines**: [Pipeline Integration Guide](docs/pipelines/structured-output.md)
+- **Quick Start**: [Simple Interactions Guide](docs/chatting/structured-output.md)
+- **Advanced Pipelines**: [Pipeline Integration Guide](docs/main-components/structured-output.md)
 - **Interactive Course**: [Lesson 12 - Structured Output](course/lesson-12-structured-output/)
 - **Examples**: Check `examples/structured/` for complete working examples
 
@@ -302,7 +302,7 @@ The AI module supports different return formats for the responses. You can speci
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
 
-> **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](docs/pipelines/overview.md#return-formats) documentation for details.
+> **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](docs/main-components/overview.md#return-formats) documentation for details.
 
 ### Quick Usage Examples
 
@@ -1090,7 +1090,7 @@ singleResult = pipeline.singleMessage().run()  // "Hello! How can I help?"
 result = aiChat( "Hello" )  // "Hello! How can I help?"
 ```
 
-See the [Pipeline Documentation](docs/pipelines/overview.md#options-and-return-formats) for more details.
+See the [Pipeline Documentation](docs/main-components/overview.md#options-and-return-formats) for more details.
 
 ## aiModel() - Create an AI Model Wrapper
 
@@ -1650,7 +1650,7 @@ agent.run( "My order is #12345" )
 agent.run( "What was my order number?" )  // Still remembers!
 ```
 
-**See:** [Memory Documentation](docs/pipelines/memory.md) for complete guide
+**See:** [Memory Documentation](docs/main-components/memory.md) for complete guide
 
 ## MCP() - Model Context Protocol Client
 

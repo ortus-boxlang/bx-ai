@@ -1,3 +1,8 @@
+---
+description: "Stream data through AI pipelines in real-time for responsive applications."
+icon: signal-stream
+---
+
 # Pipeline Streaming
 
 Stream data through pipelines in real-time for responsive applications. Streaming provides immediate feedback as AI generates responses.

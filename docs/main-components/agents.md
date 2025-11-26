@@ -1,3 +1,8 @@
+---
+description: "The complete guide to AI Agents in BoxLang, covering creation, memory management, tool usage, configuration, and advanced patterns."
+icon: robot
+---
+
 # AI Agents
 
 AI Agents are autonomous entities that can reason, use tools, and maintain conversation memory. Inspired by LangChain agents but "Boxified" for simplicity and productivity, agents handle complex AI workflows by automatically managing state, context, and tool execution.

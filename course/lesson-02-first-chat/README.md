@@ -442,7 +442,7 @@ Create two AI "debaters" with opposing views. Have them debate a topic with 3 ro
 
 ## Additional Resources
 
-- [Message Roles Documentation](../../docs/simple-interactions/basic-chatting.md)
+- [Message Roles Documentation](../../docs/chatting/basic-chatting.md)
 - [aiMessage() Reference](../../readme.md#aimessage)
 - [Return Formats Guide](../../docs/advanced/return-formats.md)
-- [Conversation Patterns](../../docs/pipelines/messages.md)
+- [Conversation Patterns](../../docs/main-components/messages.md)

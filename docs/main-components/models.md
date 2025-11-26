@@ -1,3 +1,8 @@
+---
+description: "The comprehensive guide to working with AI models in BoxLang, covering creation, configuration, pipeline integration, parameters, options, and advanced usage."
+icon: brain
+---
+
 # Working with Models
 
 Learn how to use AI models as pipeline-compatible runnables. Models wrap AI service providers for seamless integration into pipelines.

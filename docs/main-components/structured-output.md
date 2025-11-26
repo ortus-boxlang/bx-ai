@@ -1,3 +1,8 @@
+---
+description: "Use structured output with AI pipelines for type-safe, composable workflows. Combine the power of runnables with guaranteed data structures for robust AI applications."
+icon: box
+---
+
 # Structured Output in Pipelines
 
 Use structured output with AI pipelines for type-safe, composable workflows. Combine the power of runnables with guaranteed data structures for robust AI applications.
@@ -499,7 +504,7 @@ article = aiModel()
 
 ## Related Documentation
 
-- [Simple Structured Output](../simple-interactions/structured-output.md) - Basic usage patterns
+- [Simple Structured Output](../chatting/structured-output.md) - Basic usage patterns
 - [Working with Models](models.md) - Model configuration and setup
 - [Message Templates](messages.md) - Creating reusable prompts
 - [Transformers](transformers.md) - Data transformation in pipelines

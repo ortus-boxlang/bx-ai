@@ -1,3 +1,8 @@
+---
+description: "The guide to data transformation between AI pipeline steps using built-in return formats and custom transformers."
+icon: arrow-right-arrow-left
+---
+
 # Transformers & Return Formats
 
 Transform and process data between pipeline steps. Learn about built-in transformers (return formats) and custom data transformations.

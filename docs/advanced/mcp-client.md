@@ -77,14 +77,14 @@ Register success and error callbacks:
 ```java
 client = MCP( "http://localhost:3000" )
     .onSuccess( ( response ) => {
-        writeLog( 
+        writeLog(
             type: "info",
             text: "MCP Success: #serializeJSON( response.getData() )#"
         )
     } )
     .onError( ( response ) => {
         writeLog(
-            type: "error", 
+            type: "error",
             text: "MCP Error [#response.getStatusCode()#]: #response.getError()#"
         )
     } )
@@ -284,22 +284,22 @@ if ( !result.getSuccess() ) {
 try {
     client = MCP( "http://localhost:3000" )
         .withTimeout( 5000 )
-    
+
     result = client.send( "tool", { param: "value" } )
-    
+
     if ( !result.getSuccess() ) {
-        throw( 
+        throw(
             type: "MCPError",
             message: result.getError(),
             detail: "Status: #result.getStatusCode()#"
         )
     }
-    
+
     // Process successful result
     return result.getData()
-    
+
 } catch ( any e ) {
-    writeLog( 
+    writeLog(
         type: "error",
         text: "MCP operation failed: #e.message#"
     )
@@ -317,17 +317,17 @@ function searchDocs( required string query, numeric limit = 10 ) {
     var client = MCP( "https://boxlang.ortusbooks.com/~gitbook/mcp" )
         .withTimeout( 10000 )
         .withBearerToken( getSystemSetting( "MCP_TOKEN" ) )
-    
+
     var result = client.send( "search", {
         query: arguments.query,
         limit: arguments.limit,
         type: "documentation"
     } )
-    
+
     if ( !result.getSuccess() ) {
         throw( "Search failed: " & result.getError() )
     }
-    
+
     return result.getData().results
 }
 
@@ -350,20 +350,20 @@ function aiWithMCP( required string userMessage ) {
     var searchResult = mcpClient.send( "searchDocs", {
         query: arguments.userMessage
     } )
-    
+
     if ( searchResult.getSuccess() ) {
         var docs = searchResult.getData().results
         var context = docs.map( d => d.content ).toList( chr(10) )
-        
+
         // Use context with AI
         var response = aiChat( [
             aiMessage().system( "Answer using this context: #context#" ),
             aiMessage().user( arguments.userMessage )
         ] )
-        
+
         return response
     }
-    
+
     // Fallback without context
     return aiChat( arguments.userMessage )
 }
@@ -379,27 +379,27 @@ writeOutput( answer )
 component {
     property name="mcpClient";
     property name="cache";
-    
+
     function init() {
         variables.mcpClient = MCP( "http://localhost:3000" )
             .withTimeout( 30000 )
         variables.cache = {}
         return this
     }
-    
+
     function getResource( required string uri ) {
         // Check cache
         if ( structKeyExists( variables.cache, arguments.uri ) ) {
             return variables.cache[ arguments.uri ]
         }
-        
+
         // Fetch from MCP
         var result = variables.mcpClient.readResource( arguments.uri )
-        
+
         if ( !result.getSuccess() ) {
             throw( "Failed to read resource: " & result.getError() )
         }
-        
+
         // Cache and return
         variables.cache[ arguments.uri ] = result.getData()
         return result.getData()
@@ -444,9 +444,9 @@ function createMCPClient( string env = "production" ) {
             token: getSystemSetting( "MCP_TOKEN" )
         }
     }
-    
+
     var settings = config[ arguments.env ]
-    
+
     return MCP( settings.url )
         .withTimeout( settings.timeout )
         .withBearerToken( settings.token )
@@ -473,10 +473,10 @@ if ( result.getSuccess() ) {
 ```java
 client = MCP( "http://localhost:3000" )
     .onSuccess( ( response ) => {
-        writeLog( 
+        writeLog(
             type: "info",
             text: "MCP request succeeded",
-            extraInfo: { 
+            extraInfo: {
                 statusCode: response.getStatusCode(),
                 dataSize: len( serializeJSON( response.getData() ) )
             }
@@ -521,22 +521,22 @@ client = MCP( "http://localhost:3000" )
 
 ```java
 component extends="testbox.system.BaseSpec" {
-    
+
     function run() {
         describe( "MCP Client", () => {
-            
+
             it( "can create client", () => {
                 var client = MCP( "http://localhost:3000" )
                 expect( client ).toBeComponent()
                 expect( client.getBaseURL() ).toBe( "http://localhost:3000" )
             } )
-            
+
             it( "can configure timeout", () => {
                 var client = MCP( "http://localhost:3000" )
                     .withTimeout( 5000 )
                 expect( client.getTimeout() ).toBe( 5000 )
             } )
-            
+
             it( "handles network errors", () => {
                 var result = MCP( "http://invalid:9999" )
                     .withTimeout( 1000 )
@@ -544,18 +544,18 @@ component extends="testbox.system.BaseSpec" {
                 expect( result.getSuccess() ).toBeFalse()
                 expect( result.getError() ).notToBeEmpty()
             } )
-            
+
         } )
     }
-    
+
 }
 ```
 
 ## Related Documentation
 
 - [BoxLang AI Module](../../readme.md)
-- [AI Tools](../pipelines/tools.md)
-- [AI Agents](../pipelines/agents.md)
+- [AI Tools](../main-components/tools.md)
+- [AI Agents](../main-components/agents.md)
 
 ## External Resources
 

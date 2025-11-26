@@ -1,3 +1,8 @@
+---
+description: "This guide helps you get started quickly with BoxLang AI, covering installation, basic usage, and key features."
+icon: circle-play
+---
+
 # Quick Start Guide
 
 Get up and running with BoxLang AI in minutes. This guide walks you through your first AI interactions.
@@ -543,7 +548,7 @@ pipeline = template
     .transform( r => r.content )
 ```
 
-Learn more about pipelines in the [Pipeline Overview](../pipelines/overview.md) section.
+Learn more about pipelines in the [Pipeline Overview](../main-components/overview.md) section.
 
 ## Structured Output
 
@@ -598,7 +603,7 @@ tasks = aiChat( "Extract: Finish report (high), Review code (medium)" )
 tasks.each( t => println( "#t.getTitle()# [#t.getPriority()#]" ) )
 ```
 
-**Learn more:** [Structured Output Guide](../simple-interactions/structured-output.md)
+**Learn more:** [Structured Output Guide](../chatting/structured-output.md)
 
 ## Next Steps
 
@@ -608,14 +613,14 @@ Now that you're comfortable with the basics, explore:
 - **[AI Agents Quick Start](agent-quickstart.md)** - Build autonomous agents with memory and tools
 
 ### Simple Interactions
-- **[Basic Chatting](../simple-interactions/basic-chatting.md)** - Master the fundamentals
-- **[Advanced Chatting](../simple-interactions/advanced-chatting.md)** - Tools, async, streaming
-- **[Service-Level Control](../simple-interactions/service-chatting.md)** - Direct service management
+- **[Basic Chatting](../chatting/basic-chatting.md)** - Master the fundamentals
+- **[Advanced Chatting](../chatting/advanced-chatting.md)** - Tools, async, streaming
+- **[Service-Level Control](../chatting/service-chatting.md)** - Direct service management
 
 ### AI Pipelines
-- **[Pipeline Overview](../pipelines/overview.md)** - Learn about composable workflows
-- **[Working with Models](../pipelines/models.md)** - Pipeline-compatible AI models
-- **[Message Templates](../pipelines/messages.md)** - Reusable prompts
+- **[Pipeline Overview](../main-components/overview.md)** - Learn about composable workflows
+- **[Working with Models](../main-components/models.md)** - Pipeline-compatible AI models
+- **[Message Templates](../main-components/messages.md)** - Reusable prompts
 
 ### Advanced Topics
 - **[Event System](../advanced/events.md)** - Intercept and customize AI operations

@@ -61,38 +61,38 @@ Build autonomous AI agents with memory, tools, and reasoning capabilities.
 
 ### Simple AI Interactions
 
-💬 **[Basic Chatting](simple-interactions/basic-chatting.md)**
+💬 **[Basic Chatting](chatting/basic-chatting.md)**
 Simple question-answer interactions, parameters, and provider switching.
 
-🎯 **[Advanced Chatting](simple-interactions/advanced-chatting.md)**
+🎯 **[Advanced Chatting](chatting/advanced-chatting.md)**
 Multi-message conversations, AI tools, async requests, and streaming responses.
 
-⚙️ **[Service-Level Chatting](simple-interactions/service-chatting.md)**
+⚙️ **[Service-Level Chatting](chatting/service-chatting.md)**
 Direct service control, custom requests, headers, and managing multiple providers.
 
 ---
 
 ### AI Pipelines
 
-🔗 **[Understanding Pipelines](pipelines/overview.md)**
+🔗 **[Understanding Pipelines](main-components/overview.md)**
 Core concepts of AI pipelines, composability, and building workflows.
 
-🤖 **[AI Agents](pipelines/agents.md)**
+🤖 **[AI Agents](main-components/agents.md)**
 Create autonomous agents with memory, tools, and reasoning capabilities. Simplify complex AI workflows.
 
-🧠 **[Working with Models](pipelines/models.md)**
+🧠 **[Working with Models](main-components/models.md)**
 Creating model runnables, configuration, and integrating AI providers into pipelines.
 
-✉️ **[Message Templates](pipelines/messages.md)**
+✉️ **[Message Templates](main-components/messages.md)**
 Building reusable prompts with dynamic placeholders and binding strategies.
 
-💭 **[Memory Systems](pipelines/memory.md)**
+💭 **[Memory Systems](main-components/memory.md)**
 Maintain conversation context with multiple memory types. Compare Windowed, Summary, Session, and File memory for different use cases.
 
-🔧 **[Transformers](pipelines/transformers.md)**
+🔧 **[Transformers](main-components/transformers.md)**
 Processing and transforming data between pipeline steps.
 
-📡 **[Pipeline Streaming](pipelines/streaming.md)**
+📡 **[Pipeline Streaming](main-components/streaming.md)**
 Real-time streaming through pipelines for responsive applications.
 
 ---

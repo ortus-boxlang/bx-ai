@@ -1,3 +1,8 @@
+---
+description: "Learn the fundamentals of interacting with AI using simple, straightforward chat requests."
+icon: message
+---
+
 # Basic Chatting
 
 Learn the fundamentals of interacting with AI using simple, straightforward chat requests.
@@ -652,4 +657,4 @@ println( "Cost estimate: $" & (raw.usage.total_tokens * 0.00002) )
 
 - **[Advanced Chatting](advanced-chatting.md)** - Multi-turn conversations, tools, async, streaming
 - **[Service-Level Chatting](service-chatting.md)** - Direct service control
-- **[Message Templates](../pipelines/messages.md)** - Reusable prompt templates
+- **[Message Templates](../main-components/messages.md)** - Reusable prompt templates

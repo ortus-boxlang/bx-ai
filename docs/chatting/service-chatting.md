@@ -1,3 +1,8 @@
+---
+description: "Take full control of AI interactions with service-level chatting in BoxLang, ideal for advanced use cases requiring custom configurations and multiple providers."
+icon: bus
+---
+
 # Service-Level Chatting
 
 Take full control of AI interactions by working directly with service objects. Perfect for advanced scenarios requiring custom configuration, multiple providers, or direct API access.
@@ -423,6 +428,6 @@ function abTest( required string question, modelA, modelB ) {
 
 ## Next Steps
 
-- **[Pipeline Overview](../pipelines/overview.md)** - Learn about AI pipelines
-- **[Working with Models](../pipelines/models.md)** - Services in pipelines
+- **[Pipeline Overview](../main-components/overview.md)** - Learn about AI pipelines
+- **[Working with Models](../main-components/models.md)** - Services in pipelines
 - **[Basic Chatting](basic-chatting.md)** - Back to basics
