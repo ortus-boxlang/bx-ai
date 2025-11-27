@@ -191,7 +191,7 @@ class extends="BaseVectorMemory" {
 			throw(
 				type = "WeaviateVectorMemory.StoreError",
 				message = "Failed to store document in Weaviate",
-				detail = response
+				detail = response.toString()
 			);
 		}
 
@@ -233,27 +233,12 @@ class extends="BaseVectorMemory" {
 			throw(
 				type = "WeaviateVectorMemory.SearchError",
 				message = "Failed to search Weaviate: #jsonSerialize( response )#",
-				detail = jsonSerialize( response )
+				detail = response.toString()
 			);
 		}
 
 		// Transform results
 		return transformWeaviateResults( response.data.Get[ variables.className ] ?: [] );
-	}
-
-	/**
-	 * Asynchronously seed vector memory with multiple documents using batch operations.
-	 * Returns a BoxFuture that resolves to a result struct.
-	 *
-	 * @documents Array of documents (strings or structs with text/metadata)
-	 *
-	 * @return BoxFuture that resolves to struct with added/failed counts
-	 */
-	any function seedAsync( required array documents ) {
-		// Use BoxLang's async() BIF to return a BoxFuture
-		return async( () => {
-			return seed( arguments.documents );
-		} );
 	}
 
 	/**
@@ -454,7 +439,7 @@ class extends="BaseVectorMemory" {
 			throw(
 				type = "WeaviateVectorMemory.CreateCollectionError",
 				message = "Failed to create collection in Weaviate",
-				detail = response
+				detail = response.toString()
 			);
 		}
 
@@ -497,7 +482,7 @@ class extends="BaseVectorMemory" {
 			throw(
 				type = "WeaviateVectorMemory.DeleteCollectionError",
 				message = "Failed to delete collection from Weaviate",
-				detail = response
+				detail = response.toString()
 			);
 		}
 

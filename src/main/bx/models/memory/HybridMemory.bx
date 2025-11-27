@@ -92,8 +92,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 		variables.recentMemory = new WindowMemory( variables.key & ":recent" ).configure( recentConfig );
 
 		// Initialize vector memory based on provider
-		var vectorClass = getVectorMemoryClass( variables.vectorProvider );
-		variables.vectorMemory = new "#vectorClass#"( variables.key & ":vector" ).configure( variables.vectorConfig );
+		variables.vectorMemory = aiMemory( memory: variables.vectorProvider, config: variables.vectorConfig )
 
 		return this;
 	}
@@ -251,30 +250,6 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 * HELPER METHODS
 	 * ------------------------------------------------------------------------------
 	 */
-
-	/**
-	 * Get vector memory class based on provider
-	 *
-	 * @provider Vector provider name
-	 *
-	 * @return String class path
-	 */
-	private string function getVectorMemoryClass( required string provider ) {
-		switch ( arguments.provider.lcase() ) {
-			case "chroma":
-			case "chromadb":
-				return "bxModules.bxai.models.memory.vector.ChromaVectorMemory";
-			case "postgres":
-			case "postgresql":
-			case "pgvector":
-				return "bxModules.bxai.models.memory.vector.PostgresVectorMemory";
-			case "pinecone":
-				return "bxModules.bxai.models.memory.vector.PineconeVectorMemory";
-			default:
-				// Assume it's a full class path
-				return arguments.provider;
-		}
-	}
 
 	/**
 	 * Combine recent and semantic messages with deduplication
