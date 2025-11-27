@@ -86,13 +86,13 @@ class {
 			case "boxvector":
 				memoryClass = "bxModules.bxai.models.memory.vector.BoxVectorMemory";
 				break;
-			case "jvector":
-			case "JVectorMemory":
-				memoryClass = "bxModules.bxai.models.memory.vector.JVectorMemory";
-				break;
 			case "milvus":
 			case "MilvusVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.MilvusVectorMemory";
+				break;
+			case "weaviate":
+			case "WeaviateVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.WeaviateVectorMemory";
 				break;
 			case "hybrid":
 			case "HybridMemory":
