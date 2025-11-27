@@ -164,10 +164,13 @@ class extends="BaseVectorMemory" {
 		required array embedding,
 		required struct metadata
 	) {
+		// Normalize UUID format
+		var normalizedId = normalizeUUID( arguments.id );
+
 		// Build object payload
 		var payload = {
 			"class": variables.className,
-			"id": arguments.id,
+			"id": normalizedId,
 			"properties": {
 				"text": arguments.text,
 				"metadata": jsonSerialize( arguments.metadata ),
@@ -176,10 +179,10 @@ class extends="BaseVectorMemory" {
 			"vector": arguments.embedding
 		};
 
-		// Make request (PUT for upsert behavior)
+		// Make request (POST for create/upsert)
 		var response = makeRequest(
-			method = "PUT",
-			path = "/#static.API_VERSION#/objects/#variables.className#/#arguments.id#",
+			method = "POST",
+			path = "/#static.API_VERSION#/objects",
 			body = payload
 		);
 
@@ -229,8 +232,8 @@ class extends="BaseVectorMemory" {
 		if ( response.keyExists( "errors" ) || response.keyExists( "error" ) ) {
 			throw(
 				type = "WeaviateVectorMemory.SearchError",
-				message = "Failed to search Weaviate",
-				detail = response
+				message = "Failed to search Weaviate: #jsonSerialize( response )#",
+				detail = jsonSerialize( response )
 			);
 		}
 
@@ -284,7 +287,7 @@ class extends="BaseVectorMemory" {
 			results.append({
 				id: obj._additional.id,
 				text: obj.text,
-				metadata: isJSON( obj.metadata ) ? deserializeJSON( obj.metadata ) : {},
+				metadata: isJSON( obj.metadata ) ? jsonDeserialize( obj.metadata ) : {},
 				embedding: obj._additional.vector ?: []
 			});
 		} );
@@ -300,8 +303,9 @@ class extends="BaseVectorMemory" {
 	 * @return Struct document or empty struct
 	 */
 	struct function getDocumentById( required string id ) {
+		var normalizedId = normalizeUUID( arguments.id );
 		var response = makeRequest(
-			path = "/#static.API_VERSION#/objects/#variables.className#/#arguments.id#?include=vector"
+			path = "/#static.API_VERSION#/objects/#variables.className#/#normalizedId#?include=vector"
 		);
 
 		// Check if object exists
@@ -313,7 +317,7 @@ class extends="BaseVectorMemory" {
 		return {
 			id: response.id,
 			text: response.properties.text ?: "",
-			metadata: isJSON( response.properties.metadata ) ? deserializeJSON( response.properties.metadata ) : {},
+			metadata: isJSON( response.properties.metadata ) ? jsonDeserialize( response.properties.metadata ) : {},
 			embedding: response.vector ?: []
 		};
 	}
@@ -326,14 +330,15 @@ class extends="BaseVectorMemory" {
 	 * @return Boolean success
 	 */
 	boolean function deleteDocument( required string id ) {
+		var normalizedId = normalizeUUID( arguments.id );
 		var response = makeRequest(
 			method = "DELETE",
-			path = "/#static.API_VERSION#/objects/#variables.className#/#arguments.id#"
+			path = "/#static.API_VERSION#/objects/#variables.className#/#normalizedId#"
 		);
 
 		// Weaviate returns 204 No Content on successful deletion
 		// Our makeRequest will return empty struct for 204
-		return !response.keyExists( "error" );
+		return ( response?.statusCode == 204 ) ? true : false;
 	}
 
 	/**
@@ -506,6 +511,31 @@ class extends="BaseVectorMemory" {
 	 */
 
 	/**
+	 * Normalize UUID format to ensure it has proper dashes
+	 * Weaviate requires UUIDs in format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+	 *
+	 * @id The UUID string to normalize
+	 *
+	 * @return Properly formatted UUID string
+	 */
+	private string function normalizeUUID( required string id ) {
+		// Remove any existing dashes
+		var cleaned = arguments.id.replaceAll( "-", "" );
+
+		// Check if it's a valid length (32 hex characters)
+		if ( cleaned.len() != 32 ) {
+			return arguments.id; // Return as-is if not valid length
+		}
+
+		// Format as: 8-4-4-4-12 (using 1-based indexing for mid())
+		return cleaned.left( 8 ) & "-" &
+		       cleaned.mid( 9, 4 ) & "-" &
+		       cleaned.mid( 13, 4 ) & "-" &
+		       cleaned.mid( 17, 4 ) & "-" &
+		       cleaned.right( 12 );
+	}
+
+	/**
 	 * Make HTTP request to Weaviate REST API
 	 *
 	 * @method HTTP method (GET, POST, etc.)
@@ -522,6 +552,7 @@ class extends="BaseVectorMemory" {
 		// Build HTTP request
 		var httpService = http( variables.baseUrl & arguments.path )
 			.method( arguments.method )
+			.throwOnError( false )
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
 			.header( "Content-Type", "application/json; charset=UTF-8" )
@@ -545,6 +576,9 @@ class extends="BaseVectorMemory" {
 		// Execute request
 		var result = httpService.send();
 
+		// Debugging output
+		println( isJson( result.fileContent ) ? jsonDeserialize( result.fileContent ) : result.fileContent )
+
 		// Parse response
 		if ( result.errorDetail.isEmpty() &&  result.filecontent.len() > 0 ) {
 			return jsonDeserialize( result.filecontent );
@@ -552,6 +586,7 @@ class extends="BaseVectorMemory" {
 
 		// Return empty struct for successful requests with no content (like 204)
 		return {
+			"statusCode": result.statusCode,
 			"error": [
 				{ "message" : "Status code: #result.statusCode#, Error Detail: #result.errorDetail#" },
 			 ]
@@ -575,14 +610,14 @@ class extends="BaseVectorMemory" {
 		var query = "{ Get { #variables.className#";
 
 		// Add nearVector search
-		query &= "(nearVector: { vector: [#arguments.embedding.toList()#], certainty: 0.0 }, limit: #arguments.limit#";
+		query &= "(nearVector: { vector: [#arguments.embedding.toList()#] }, limit: #arguments.limit#";
 
 		// Add where filter if provided
 		if ( !arguments.filter.isEmpty() ) {
 			query &= ", where: #jsonSerialize( buildWhereFilter( arguments.filter ) )#";
 		}
 
-		query &= ") { _additional { id distance certainty } text metadata timestamp } } }";
+		query &= ") { _additional { id distance } text metadata timestamp } } }";
 
 		return query;
 	}
@@ -641,7 +676,7 @@ class extends="BaseVectorMemory" {
 			results.append({
 				id: obj._additional.id,
 				text: obj.text,
-				metadata: isJSON( obj.metadata ) ? deserializeJSON( obj.metadata ) : {},
+				metadata: isJSON( obj.metadata ) ? jsonDeserialize( obj.metadata ) : {},
 				score: score,
 				distance: obj._additional.distance ?: ( 1.0 - score ),
 				embedding: []  // Weaviate doesn't return vectors by default in searches

@@ -1,0 +1,659 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Qdrant Vector Memory Implementation
+ * Provides high-performance vector storage and semantic search using Qdrant REST API
+ * Designed for production deployments with advanced filtering capabilities
+ */
+class extends="BaseVectorMemory" {
+
+	/**
+	 * Qdrant server configuration
+	 */
+	property name="host" type="string" default="localhost";
+	property name="port" type="numeric" default=6333;
+	property name="scheme" type="string" default="http";
+	property name="apiKey" type="string" default="";
+	property name="timeout" type="numeric" default=30;
+
+	/**
+	 * Base URL for Qdrant API (computed from host/port/scheme)
+	 */
+	property name="baseUrl" type="string" default="";
+
+	/**
+	 * Collection configuration
+	 */
+	property name="vectorSize" type="numeric" default=0;  // Auto-detected from first embedding
+	property name="onDisk" type="boolean" default=true;  // Store vectors on disk
+	property name="hnswConfig" type="struct" default={};  // HNSW index configuration
+	property name="quantizationConfig" type="struct" default={};  // Quantization settings
+	property name="walConfig" type="struct" default={};  // Write-ahead log config
+
+	/**
+	 * Search configuration
+	 */
+	property name="searchParams" type="struct" default={};  // Custom search parameters
+	property name="exactSearch" type="boolean" default=false;  // Use exact search instead of HNSW
+
+	/**
+	 * Batch configuration
+	 */
+	property name="batchSize" type="numeric" default=100;
+	property name="wait" type="boolean" default=true;  // Wait for indexing after writes
+
+	static {
+		// Default collection name
+		DEFAULT_COLLECTION = "bxai_memory"
+
+		// API paths
+		API_COLLECTIONS = "/collections"
+		API_POINTS = "/points"
+		API_SEARCH = "/points/search"
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @key The unique key for this memory instance
+	 * @collection The collection name
+	 */
+	function init( string key = createUUID(), string collection = static.DEFAULT_COLLECTION ) {
+		super.init( arguments.key, arguments.collection );
+		return this;
+	}
+
+	/**
+	 * Configure the Qdrant vector memory instance
+	 *
+	 * @config Configuration struct with Qdrant-specific options
+	 *
+	 * @return QdrantVectorMemory for chaining
+	 */
+	public any function configure( required struct config ) {
+		// Param config defaults
+		param arguments.config.host = "localhost";
+		param arguments.config.port = 6333;
+		param arguments.config.scheme = "http";
+		param arguments.config.apiKey = "";
+		param arguments.config.timeout = 30;
+		param arguments.config.onDisk = true;
+		param arguments.config.hnswConfig = {};
+		param arguments.config.quantizationConfig = {};
+		param arguments.config.walConfig = {};
+		param arguments.config.searchParams = {};
+		param arguments.config.exactSearch = false;
+		param arguments.config.batchSize = 100;
+		param arguments.config.wait = true;
+
+		// Extract Qdrant specific config FIRST
+		variables.host = arguments.config.host;
+		variables.port = arguments.config.port;
+		variables.scheme = arguments.config.scheme;
+		variables.apiKey = arguments.config.apiKey;
+		variables.timeout = arguments.config.timeout;
+		variables.onDisk = arguments.config.onDisk;
+		variables.hnswConfig = arguments.config.hnswConfig;
+		variables.quantizationConfig = arguments.config.quantizationConfig;
+		variables.walConfig = arguments.config.walConfig;
+		variables.searchParams = arguments.config.searchParams;
+		variables.exactSearch = arguments.config.exactSearch;
+		variables.batchSize = arguments.config.batchSize;
+		variables.wait = arguments.config.wait;
+
+		// Build base URL
+		variables.baseUrl = variables.scheme & "://" & variables.host & ":" & variables.port;
+
+		// Now call parent configure which will call ensureCollection()
+		super.configure( arguments.config );
+
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * ABSTRACT METHOD IMPLEMENTATIONS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure collection exists in Qdrant
+	 */
+	IVectorMemory function ensureCollection() {
+		if ( !collectionExists( variables.collection ) ) {
+			createCollection( variables.collection );
+		}
+		return this;
+	}
+
+	/**
+	 * Store a document in Qdrant
+	 *
+	 * @id Document ID
+	 * @text Document text
+	 * @embedding Vector embedding
+	 * @metadata Document metadata
+	 */
+	IVectorMemory function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	) {
+		// Auto-detect dimensions from first embedding
+		if ( variables.dimensions == 0 ) {
+			variables.dimensions = arguments.embedding.len();
+			variables.vectorSize = arguments.embedding.len();
+		}
+
+		// Build point payload
+		var point = {
+			"id": arguments.id,
+			"vector": arguments.embedding,
+			"payload": {
+				"text": arguments.text,
+				"metadata": arguments.metadata,
+				"timestamp": now().getTime()
+			}
+		};
+
+		// Upsert point (single point batch)
+		var payload = {
+			"points": [ point ]
+		};
+
+		if ( variables.wait ) {
+			payload.wait = true;
+		}
+
+		var response = makeRequest(
+			method = "PUT",
+			path = static.API_COLLECTIONS & "/#variables.collection#" & static.API_POINTS,
+			body = payload
+		);
+
+		// Check for errors
+		if ( response.keyExists( "status" ) && response.status.keyExists( "error" ) ) {
+			throw(
+				type = "QdrantVectorMemory.StoreError",
+				message = "Failed to store document in Qdrant",
+				detail = response.status.error
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * Search by vector embedding in Qdrant
+	 *
+	 * @embedding Vector to search with
+	 * @limit Max results
+	 * @filter Metadata filter
+	 *
+	 * @return Array of results with similarity scores
+	 */
+	array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		// Build search payload
+		var payload = {
+			"vector": arguments.embedding,
+			"limit": arguments.limit,
+			"with_payload": true,
+			"with_vector": false  // Don't return vectors to save bandwidth
+		};
+
+		// Add filter if provided
+		if ( !arguments.filter.isEmpty() ) {
+			payload.filter = buildQdrantFilter( arguments.filter );
+		}
+
+		// Add search params if configured
+		if ( !variables.searchParams.isEmpty() ) {
+			payload.params = variables.searchParams;
+		}
+
+		// Use exact search if configured
+		if ( variables.exactSearch ) {
+			payload.params = payload.params ?: {};
+			payload.params.exact = true;
+		}
+
+		var response = makeRequest(
+			method = "POST",
+			path = static.API_COLLECTIONS & "/#variables.collection#" & static.API_SEARCH,
+			body = payload
+		);
+
+		// Check for errors
+		if ( response.keyExists( "status" ) && response.status.keyExists( "error" ) ) {
+			throw(
+				type = "QdrantVectorMemory.SearchError",
+				message = "Failed to search Qdrant",
+				detail = response.status.error
+			);
+		}
+
+		// Transform results
+		return transformQdrantResults( response.result ?: [] );
+	}
+
+	/**
+	 * Get all documents from Qdrant collection
+	 *
+	 * @return Array of documents
+	 */
+	array function getAllDocuments() {
+		// Qdrant doesn't have a direct "get all" - use scroll API
+		var payload = {
+			"limit": 100,
+			"with_payload": true,
+			"with_vector": true
+		};
+
+		var response = makeRequest(
+			method = "POST",
+			path = static.API_COLLECTIONS & "/#variables.collection#/points/scroll",
+			body = payload
+		);
+
+		// Check for errors
+		if ( response.keyExists( "status" ) && response.status.keyExists( "error" ) ) {
+			return [];
+		}
+
+		// Transform results
+		var results = [];
+		var points = response.result.points ?: [];
+
+		points.each( ( point ) => {
+			results.append({
+				id: point.id,
+				text: point.payload.text ?: "",
+				metadata: point.payload.metadata ?: {},
+				embedding: point.vector ?: []
+			});
+		} );
+
+		return results;
+	}
+
+	/**
+	 * Get document by ID from Qdrant
+	 *
+	 * @id Document ID
+	 *
+	 * @return Struct document or empty struct
+	 */
+	struct function getDocumentById( required string id ) {
+		var response = makeRequest(
+			method = "GET",
+			path = static.API_COLLECTIONS & "/#variables.collection#/points/#arguments.id#"
+		);
+
+		// Check if point exists
+		if ( response.keyExists( "status" ) && response.status.keyExists( "error" ) ) {
+			return {};
+		}
+
+		if ( !response.keyExists( "result" ) ) {
+			return {};
+		}
+
+		var point = response.result;
+
+		// Transform to standard format
+		return {
+			id: point.id,
+			text: point.payload.text ?: "",
+			metadata: point.payload.metadata ?: {},
+			embedding: point.vector ?: []
+		};
+	}
+
+	/**
+	 * Delete document by ID from Qdrant
+	 *
+	 * @id Document ID
+	 *
+	 * @return Boolean success
+	 */
+	boolean function deleteDocument( required string id ) {
+		var payload = {
+			"points": [ arguments.id ]
+		};
+
+		if ( variables.wait ) {
+			payload.wait = true;
+		}
+
+		var response = makeRequest(
+			method = "POST",
+			path = static.API_COLLECTIONS & "/#variables.collection#/points/delete",
+			body = payload
+		);
+
+		// Check response
+		if ( response.keyExists( "status" ) && response.status == "ok" ) {
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Delete documents by filter from Qdrant
+	 *
+	 * @filter Metadata filter
+	 *
+	 * @return Numeric count deleted
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		// First, count matching documents
+		var countPayload = {
+			"filter": buildQdrantFilter( arguments.filter )
+		};
+
+		var countResponse = makeRequest(
+			method = "POST",
+			path = static.API_COLLECTIONS & "/#variables.collection#/points/count",
+			body = countPayload
+		);
+
+		var count = countResponse.result.count ?: 0;
+
+		if ( count == 0 ) {
+			return 0;
+		}
+
+		// Delete by filter
+		var payload = {
+			"filter": buildQdrantFilter( arguments.filter )
+		};
+
+		if ( variables.wait ) {
+			payload.wait = true;
+		}
+
+		var response = makeRequest(
+			method = "POST",
+			path = static.API_COLLECTIONS & "/#variables.collection#/points/delete",
+			body = payload
+		);
+
+		// Return count if successful
+		if ( response.keyExists( "status" ) && response.status == "ok" ) {
+			return count;
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Clear entire collection by deleting and recreating it
+	 */
+	IVectorMemory function clearCollection() {
+		// Delete collection
+		deleteCollection( variables.collection );
+		// Recreate it
+		createCollection( variables.collection );
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * IVectorMemory COLLECTION MANAGEMENT METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Create a new collection in Qdrant
+	 *
+	 * @name Collection name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	any function createCollection( required string name ) {
+		// Build collection config
+		var config = {
+			"vectors": {
+				"size": variables.dimensions > 0 ? variables.dimensions : 1536,  // Default if not set
+				"distance": mapDistanceMetric( variables.metric ),
+				"on_disk": variables.onDisk
+			}
+		};
+
+		// Add HNSW config if provided
+		if ( !variables.hnswConfig.isEmpty() ) {
+			config.vectors.hnsw_config = variables.hnswConfig;
+		}
+
+		// Add quantization config if provided
+		if ( !variables.quantizationConfig.isEmpty() ) {
+			config.vectors.quantization_config = variables.quantizationConfig;
+		}
+
+		// Add WAL config if provided
+		if ( !variables.walConfig.isEmpty() ) {
+			config.wal_config = variables.walConfig;
+		}
+
+		var response = makeRequest(
+			method = "PUT",
+			path = static.API_COLLECTIONS & "/#arguments.name#",
+			body = config
+		);
+
+		// Check for errors
+		if ( response.keyExists( "status" ) && response.status.keyExists( "error" ) ) {
+			throw(
+				type = "QdrantVectorMemory.CreateCollectionError",
+				message = "Failed to create collection in Qdrant",
+				detail = response.status.error
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * Check if collection exists in Qdrant
+	 *
+	 * @name Collection name
+	 *
+	 * @return Boolean exists
+	 */
+	boolean function collectionExists( required string name ) {
+		var response = makeRequest(
+			method = "GET",
+			path = static.API_COLLECTIONS & "/#arguments.name#"
+		);
+
+		// Collection exists if status is ok
+		return response.keyExists( "status" ) && response.status == "ok";
+	}
+
+	/**
+	 * Delete a collection from Qdrant
+	 *
+	 * @name Collection name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	any function deleteCollection( required string name ) {
+		var response = makeRequest(
+			method = "DELETE",
+			path = static.API_COLLECTIONS & "/#arguments.name#"
+		);
+
+		// Check for errors
+		if ( response.keyExists( "status" ) && response.status.keyExists( "error" ) ) {
+			throw(
+				type = "QdrantVectorMemory.DeleteCollectionError",
+				message = "Failed to delete collection from Qdrant",
+				detail = response.status.error
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * HELPER METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Make HTTP request to Qdrant REST API
+	 *
+	 * @method HTTP method (GET, POST, etc.)
+	 * @path API path
+	 * @body Request body (optional)
+	 *
+	 * @return Parsed response struct
+	 */
+	private struct function makeRequest(
+		required string method,
+		required string path,
+		struct body = {}
+	) {
+		try {
+			// Build HTTP request
+			var httpService = http( variables.baseUrl & arguments.path )
+				.method( arguments.method )
+				.charset( "UTF-8" )
+				.timeout( variables.timeout )
+				.header( "Content-Type", "application/json; charset=UTF-8" )
+				.header( "Accept", "application/json" );
+
+			// Add API key authentication if provided
+			if ( variables.apiKey.len() > 0 ) {
+				httpService.header( "api-key", variables.apiKey );
+			}
+
+			// Add body for POST/PUT requests
+			if ( ( arguments.method == "POST" || arguments.method == "PUT" ) && !arguments.body.isEmpty() ) {
+				httpService.body( jsonSerialize( arguments.body ) );
+			}
+
+			// Execute request
+			var result = httpService.send();
+
+			// Parse response
+			if ( result.filecontent.len() > 0 ) {
+				return jsonDeserialize( result.filecontent );
+			}
+
+			// Return empty struct for successful requests with no content
+			return { "status": "ok" };
+
+		} catch ( any e ) {
+			throw(
+				type = "QdrantHTTPError",
+				message = "HTTP request to Qdrant failed: #arguments.method# #arguments.path#",
+				detail = e.message
+			);
+		}
+	}
+
+	/**
+	 * Build Qdrant filter from metadata filter
+	 * Qdrant has powerful filtering - this is a basic implementation
+	 *
+	 * @filter Metadata filter struct
+	 *
+	 * @return Struct Qdrant filter
+	 */
+	private struct function buildQdrantFilter( required struct filter ) {
+		if ( arguments.filter.isEmpty() ) {
+			return {};
+		}
+
+		var conditions = [];
+
+		// Build "must" conditions for exact matches
+		arguments.filter.each( ( key, value ) => {
+			conditions.append({
+				"key": "metadata.#key#",
+				"match": {
+					"value": value
+				}
+			});
+		} );
+
+		// Return single condition or AND operator
+		if ( conditions.len() == 1 ) {
+			return {
+				"must": [ conditions[ 1 ] ]
+			};
+		}
+
+		return {
+			"must": conditions
+		};
+	}
+
+	/**
+	 * Transform Qdrant search results to standard format
+	 *
+	 * @qdrantResults Raw Qdrant search response
+	 *
+	 * @return Array of standardized results
+	 */
+	private array function transformQdrantResults( required array qdrantResults ) {
+		var results = [];
+
+		arguments.qdrantResults.each( ( point ) => {
+			// Qdrant returns score (higher is better)
+			// Distance depends on metric: cosine uses similarity (0-1)
+			var score = point.score ?: 0;
+
+			results.append({
+				id: point.id,
+				text: point.payload.text ?: "",
+				metadata: point.payload.metadata ?: {},
+				score: score,
+				distance: 1.0 - score,  // Approximate distance
+				embedding: []  // Not returned by default in searches
+			});
+		} );
+
+		return results;
+	}
+
+	/**
+	 * Map our standard distance metrics to Qdrant metrics
+	 *
+	 * @metric Our metric ("cosine", "euclidean", "dot_product")
+	 *
+	 * @return String Qdrant metric
+	 */
+	private string function mapDistanceMetric( required string metric ) {
+		switch ( arguments.metric ) {
+			case "cosine":
+				return "Cosine";
+			case "euclidean":
+				return "Euclid";
+			case "dot_product":
+				return "Dot";
+			default:
+				return "Cosine";
+		}
+	}
+
+}

@@ -149,6 +149,18 @@ services:
       ENABLE_MODULES: ""
       CLUSTER_HOSTNAME: "node1"
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333" # HTTP/REST API
+      - "6334:6334" # gRPC API (optional)
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__LOG_LEVEL: INFO
+
 volumes:
   ollama_data:
     name: ollama_data
@@ -164,3 +176,5 @@ volumes:
     name: milvus_data
   weaviate_data:
     name: weaviate_data
+  qdrant_data:
+    name: qdrant_data
