@@ -1,0 +1,674 @@
+/**
+ * Milvus Vector Database Implementation (REST API)
+ *
+ * High-performance vector database using Milvus for production-scale vector similarity search.
+ * Uses Milvus REST API to avoid heavy Java SDK dependencies.
+ *
+ * @see https://milvus.io/api-reference/restful/v2.4.x/About.md
+ */
+class extends="BaseVectorMemory" {
+
+	/**
+	 * Milvus server configuration
+	 */
+	property name="host" type="string" default="localhost";
+	property name="port" type="numeric" default=19530;
+	property name="token" type="string" default="";
+	property name="databaseName" type="string" default="default";
+
+	/**
+	 * Base URL for Milvus REST API
+	 */
+	property name="baseUrl" type="string" default="";
+
+	/**
+	 * HTTP timeout in seconds
+	 */
+	property name="timeout" type="numeric" default=30;
+
+	/**
+	 * Vector dimension (auto-detected or configured)
+	 */
+	property name="dimension" type="numeric" default=0;
+
+	/**
+	 * Metric type for similarity (L2, IP, COSINE)
+	 */
+	property name="metricType" type="string" default="COSINE";
+
+	/**
+	 * Initialize MilvusVectorMemory
+	 */
+	function init() {
+		super.init();
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * CONFIGURATION
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Configure the Milvus vector memory instance
+	 *
+	 * @config Configuration struct with Milvus-specific options
+	 *
+	 * @return MilvusVectorMemory for chaining
+	 */
+	function configure( required struct config ) {
+		// Extract Milvus specific config
+		if ( arguments.config.keyExists( "host" ) ) {
+			variables.host = arguments.config.host;
+		}
+		if ( arguments.config.keyExists( "port" ) ) {
+			variables.port = arguments.config.port;
+		}
+		if ( arguments.config.keyExists( "token" ) ) {
+			variables.token = arguments.config.token;
+		}
+		if ( arguments.config.keyExists( "databaseName" ) ) {
+			variables.databaseName = arguments.config.databaseName;
+		}
+		if ( arguments.config.keyExists( "dimension" ) ) {
+			variables.dimension = arguments.config.dimension;
+		}
+		if ( arguments.config.keyExists( "metricType" ) ) {
+			variables.metricType = arguments.config.metricType;
+		}
+		if ( arguments.config.keyExists( "timeout" ) ) {
+			variables.timeout = arguments.config.timeout;
+		}
+
+		// Build base URL for REST API
+		variables.baseUrl = "http://#variables.host#:#variables.port#";
+
+		// Call parent configure
+		super.configure( arguments.config );
+
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * ABSTRACT METHOD IMPLEMENTATIONS (Required by BaseVectorMemory)
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure collection exists in Milvus
+	 */
+	IVectorMemory function ensureCollection() {
+		// Check if collection exists
+		if ( !collectionExists( variables.collection ) ) {
+			doCreateCollection();
+		} else {
+			// Load collection into memory
+			loadCollection();
+		}
+
+		return this;
+	}
+
+	/**
+	 * Store a document with its vector embedding
+	 */
+	IVectorMemory function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	) {
+		// Auto-detect dimension from first vector
+		if ( variables.dimension == 0 ) {
+			variables.dimension = arguments.embedding.len();
+			ensureCollection();
+		}
+
+		// Validate dimension
+		if ( arguments.embedding.len() != variables.dimension ) {
+			throw(
+				type    = "VectorDimensionMismatch",
+				message = "All vectors must have the same dimensions",
+				detail  = "Expected #variables.dimension#, got #arguments.embedding.len()#"
+			);
+		}
+
+		try {
+			// Serialize metadata as JSON string for v1 API
+			var enrichedMetadata = arguments.metadata.copy();
+			enrichedMetadata.text = arguments.text;
+			var metadataJson = jsonSerialize( enrichedMetadata );
+
+			// Prepare insert payload
+			var payload = {
+				"collectionName" : variables.collection,
+				"data" : [
+					{
+						"id"     : arguments.id,
+						"vector" : arguments.embedding
+					}
+				]
+			};
+
+			// Insert via REST API
+			var response = makeRequest(
+				method = "POST",
+				path   = "/v1/vector/insert",
+				body   = payload
+			);
+
+			if ( response.code != 0 ) {
+				throw(
+					type    = "MilvusInsertError",
+					message = "Milvus insert failed: #response.message#"
+				);
+			}
+
+			return this;
+		} catch ( any e ) {
+			throw(
+				type    = "MilvusInsertError",
+				message = "Failed to insert document into Milvus",
+				detail  = e.message
+			);
+		}
+	}
+
+	/**
+	 * Search by vector similarity
+	 */
+	array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		if ( variables.dimension > 0 && arguments.embedding.len() != variables.dimension ) {
+			throw(
+				type    = "VectorDimensionMismatch",
+				message = "Query vector must have the same dimensions as stored vectors",
+				detail  = "Expected #variables.dimension#, got #arguments.embedding.len()#"
+			);
+		}
+
+		try {
+			// Build search expression for filtering
+			var filterExpression = "";
+			if ( !arguments.filter.isEmpty() ) {
+				var expressions = [];
+				for ( var key in arguments.filter ) {
+					expressions.append( 'metadata["#key#"] == "#arguments.filter[ key ]#"' );
+				}
+				filterExpression = expressions.toList( " && " );
+			}
+
+			// Prepare search payload
+			var payload = {
+				"collectionName" : variables.collection,
+				"data" : [ arguments.embedding ],
+				"annsField" : "vector",
+				"limit" : arguments.limit,
+				"outputFields" : [ "id", "metadata" ]
+			};
+
+			// Add filter if provided
+			if ( filterExpression.len() > 0 ) {
+				payload.filter = filterExpression;
+			}
+
+			// Search via REST API
+			var response = makeRequest(
+				method = "POST",
+				path   = "/v1/vector/search",
+				body   = payload
+			);
+
+			if ( response.code != 0 ) {
+				throw(
+					type    = "MilvusSearchError",
+					message = "Milvus search failed: #response.message#"
+				);
+			}
+
+			// Parse results
+			var results = [];
+			if ( response.keyExists( "data" ) && isArray( response.data ) ) {
+				for ( var item in response.data ) {
+					var score = item.keyExists( "distance" ) ? item.distance : 0;
+
+					// Extract text from metadata if present
+					var metadata = item.keyExists( "metadata" ) ? item.metadata : {};
+					var text = metadata.keyExists( "text" ) ? metadata.text : "";
+
+					results.append( {
+						"id"        : item.id,
+						"score"     : score,
+						"text"      : text,
+						"embedding" : [],  // Milvus doesn't return vectors by default
+						"metadata"  : metadata
+					} );
+				}
+			}
+
+			return results;
+		} catch ( any e ) {
+			throw(
+				type    = "MilvusSearchError",
+				message = "Failed to search in Milvus",
+				detail  = e.message
+			);
+		}
+	}
+
+	/**
+	 * Get all documents
+	 */
+	array function getAllDocuments() {
+		try {
+			// Prepare query payload
+			var payload = {
+				"collectionName" : variables.collection,
+				"filter" : 'id != ""',
+				"outputFields" : [ "id", "metadata" ],
+				"limit" : 1000
+			};
+
+			// Query via REST API
+			var response = makeRequest(
+				method = "POST",
+				path   = "/v1/vector/query",
+				body   = payload
+			);
+
+			if ( response.code != 0 ) {
+				return [];
+			}
+
+			// Parse results
+			var results = [];
+			if ( response.keyExists( "data" ) && isArray( response.data ) ) {
+				for ( var item in response.data ) {
+					var metadata = item.keyExists( "metadata" ) ? item.metadata : {};
+					var text = metadata.keyExists( "text" ) ? metadata.text : "";
+
+					results.append( {
+						"id"        : item.id,
+						"text"      : text,
+						"embedding" : [],
+						"metadata"  : metadata
+					} );
+				}
+			}
+
+			return results;
+		} catch ( any e ) {
+			return [];
+		}
+	}
+
+	/**
+	 * Get a document by ID
+	 */
+	struct function getDocumentById( required string id ) {
+		try {
+			// Prepare query payload
+			var payload = {
+				"collectionName" : variables.collection,
+				"filter" : 'id == "#arguments.id#"',
+				"outputFields" : [ "id", "metadata" ],
+				"limit" : 1
+			};
+
+			// Query via REST API
+			var response = makeRequest(
+				method = "POST",
+				path   = "/v1/vector/query",
+				body   = payload
+			);
+
+			if ( response.code == 0 && response.keyExists( "data" ) && response.data.len() > 0 ) {
+				var item = response.data[ 1 ];
+				var metadata = item.keyExists( "metadata" ) ? item.metadata : {};
+				var text = metadata.keyExists( "text" ) ? metadata.text : "";
+
+				return {
+					"id"        : item.id,
+					"text"      : text,
+					"embedding" : [],
+					"metadata"  : metadata
+				};
+			}
+
+			return {};
+		} catch ( any e ) {
+			return {};
+		}
+	}
+
+	/**
+	 * Delete a document by ID
+	 */
+	boolean function deleteDocument( required string id ) {
+		try {
+			// Prepare delete payload
+			var payload = {
+				"collectionName" : variables.collection,
+				"filter" : 'id == "#arguments.id#"'
+			};
+
+			// Delete via REST API
+			var response = makeRequest(
+				method = "POST",
+				path   = "/v1/vector/delete",
+				body   = payload
+			);
+
+			return response.code == 0;
+		} catch ( any e ) {
+			return false;
+		}
+	}
+
+	/**
+	 * Delete documents by metadata filter
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		try {
+			// Build filter expression
+			var expressions = [];
+			for ( var key in arguments.filter ) {
+				expressions.append( 'metadata["#key#"] == "#arguments.filter[ key ]#"' );
+			}
+			var filterExpression = expressions.toList( " && " );
+
+			// Prepare delete payload
+			var payload = {
+				"collectionName" : variables.collection,
+				"filter" : filterExpression
+			};
+
+			// Delete via REST API
+			var response = makeRequest(
+				method = "POST",
+				path   = "/v1/vector/delete",
+				body   = payload
+			);
+
+			// Return count if available
+			if ( response.code == 0 && response.keyExists( "data" ) && response.data.keyExists( "deleteCount" ) ) {
+				return response.data.deleteCount;
+			}
+
+			return response.code == 0 ? 1 : 0;
+		} catch ( any e ) {
+			return 0;
+		}
+	}
+
+	/**
+	 * Clear all documents in collection
+	 */
+	IVectorMemory function clearCollection() {
+		try {
+			// Drop and recreate collection
+			deleteCollection( variables.collection );
+
+			// Recreate collection if dimension is known
+			if ( variables.dimension > 0 ) {
+				doCreateCollection();
+			}
+
+			return this;
+		} catch ( any e ) {
+			throw(
+				type    = "MilvusDropError",
+				message = "Failed to clear collection",
+				detail  = e.message
+			);
+		}
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * COLLECTION MANAGEMENT METHODS (IVectorMemory Interface)
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Create a new collection/index
+	 *
+	 * @name The collection/index name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function createCollection( required string name ) {
+		var oldCollection = variables.collection;
+		variables.collection = arguments.name;
+
+		try {
+			doCreateCollection();
+			return this;
+		} catch ( any e ) {
+			variables.collection = oldCollection;
+			throw(
+				type    = "MilvusCollectionError",
+				message = "Failed to create collection '#arguments.name#'",
+				detail  = e.message
+			);
+		}
+	}
+
+	/**
+	 * Check if a collection/index exists
+	 *
+	 * @name The collection/index name to check
+	 *
+	 * @return Boolean indicating existence
+	 */
+	boolean function collectionExists( required string name ) {
+		try {
+			// List all collections
+			var response = makeRequest(
+				method = "GET",
+				path   = "/v1/vector/collections"
+			);
+
+			// Check if our collection is in the list
+			if ( response.code == 200 && response.keyExists( "data" ) && isArray( response.data ) ) {
+				return response.data.contains( arguments.name );
+			}
+
+			return false;
+		} catch ( any e ) {
+			return false;
+		}
+	}
+
+	/**
+	 * Delete a collection/index and all its documents
+	 *
+	 * @name The collection/index name to delete
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function deleteCollection( required string name ) {
+		try {
+			// Prepare drop collection payload
+			var payload = {
+				"collectionName" : arguments.name
+			};
+
+			// Drop via REST API
+			makeRequest(
+				method = "POST",
+				path   = "/v1/vector/collections/drop",
+				body   = payload
+			);
+
+			return this;
+		} catch ( any e ) {
+			throw(
+				type    = "MilvusDropError",
+				message = "Failed to delete collection '#arguments.name#'",
+				detail  = e.message
+			);
+		}
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * UTILITY METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get the name of the memory store
+	 */
+	function getName() {
+		return "MilvusVectorMemory";
+	}
+
+	/**
+	 * Close connection (no-op for REST API)
+	 */
+	function close() {
+		// No persistent connection to close with REST API
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * PRIVATE HELPER METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Create a new collection in Milvus (internal implementation)
+	 */
+	private function doCreateCollection() {
+		if ( variables.dimension == 0 ) {
+			throw(
+				type    = "MilvusDimensionError",
+				message = "Vector dimension must be specified before creating collection",
+				detail  = "Set dimension in configure() or add a vector first"
+			);
+		}
+
+		try {
+			// Prepare collection payload for v1 API (simplified)
+			var payload = {
+				"collectionName" : variables.collection,
+				"dimension" : variables.dimension,
+				"metricType" : variables.metricType,
+				"primaryFieldName" : "id",
+				"idType" : "VarChar",
+				"autoId" : false,
+				"params" : {
+					"max_length" : "255"
+				}
+			};
+
+			// Create collection via REST API
+			var response = makeRequest(
+				method = "POST",
+				path   = "/v1/vector/collections/create",
+				body   = payload
+			);
+
+			if ( response.code != 200 ) {
+				throw(
+					type    = "MilvusCollectionError",
+					message = "Failed to create collection: #response.keyExists('message') ? response.message : 'Unknown error'#"
+				);
+			}
+
+			// Collection is automatically loaded in v1 API
+		} catch ( any e ) {
+			throw(
+				type    = "MilvusCollectionError",
+				message = "Failed to create collection",
+				detail  = e.message
+			);
+		}
+	}
+
+	/**
+	 * Load collection into memory
+	 */
+	private function loadCollection() {
+		try {
+			var payload = {
+				"collectionName" : variables.collection
+			};
+
+			makeRequest(
+				method = "POST",
+				path   = "/v1/vector/collections/load",
+				body   = payload
+			);
+		} catch ( any e ) {
+			// Collection might already be loaded, continue
+		}
+	}
+
+	/**
+	 * Make HTTP request to Milvus REST API
+	 *
+	 * @method HTTP method (GET, POST, etc.)
+	 * @path API path
+	 * @body Request body (optional)
+	 *
+	 * @return Parsed response struct
+	 */
+	private struct function makeRequest(
+		required string method,
+		required string path,
+		struct body = {}
+	) {
+		try {
+			// Build HTTP request
+			var httpService = http( variables.baseUrl & arguments.path )
+				.method( arguments.method )
+				.charset( "UTF-8" )
+				.timeout( variables.timeout )
+				.header( "Content-Type", "application/json; charset=UTF-8" )
+				.header( "Accept", "application/json" )
+
+			// Add auth token if provided
+			if ( variables.token.len() > 0 ) {
+				httpService.header( "Authorization", "Bearer #variables.token#" )
+			}
+
+			// Add database name if not default
+			if ( variables.databaseName != "default" ) {
+				httpService.header( "db-name", variables.databaseName )
+			}
+
+			// Add body for POST requests
+			if ( arguments.method == "POST" && !arguments.body.isEmpty() ) {
+				httpService.body( jsonSerialize( arguments.body ) )
+			}
+
+			// Execute request
+			var result = httpService.send()
+
+			// Parse response
+			if ( result.filecontent.len() > 0 ) {
+				return jsonDeserialize( result.filecontent );
+			}
+
+			// Return error response if no content
+			return {
+				"code" : result.statusCode ?: 500,
+				"message" : "Empty response from Milvus"
+			};
+		} catch ( any e ) {
+			throw(
+				type    = "MilvusHTTPError",
+				message = "HTTP request to Milvus failed",
+				detail  = e.message
+			);
+		}
+	}
+
+}

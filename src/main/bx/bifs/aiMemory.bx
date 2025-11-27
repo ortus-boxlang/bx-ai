@@ -90,6 +90,10 @@ class {
 			case "JVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.JVectorMemory";
 				break;
+			case "milvus":
+			case "MilvusVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.MilvusVectorMemory";
+				break;
 			case "hybrid":
 			case "HybridMemory":
 				memoryClass = "bxModules.bxai.models.memory.HybridMemory";
@@ -101,7 +105,7 @@ class {
 				} else {
 					throw(
 						type: "InvalidMemoryType",
-						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, JVectorMemory, HybridMemory"
+						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, JVectorMemory, MilvusVectorMemory, HybridMemory"
 					);
 				}
 		}
