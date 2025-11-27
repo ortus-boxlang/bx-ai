@@ -184,11 +184,11 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.keyExists( "error" ) ) {
+		if ( response.keyExists( "error" ) || response.keyExists( "errors" ) ) {
 			throw(
 				type = "WeaviateVectorMemory.StoreError",
 				message = "Failed to store document in Weaviate",
-				detail = response.error[ 1 ].message ?: "Unknown error"
+				detail = response
 			);
 		}
 
@@ -226,16 +226,31 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.keyExists( "errors" ) ) {
+		if ( response.keyExists( "errors" ) || response.keyExists( "error" ) ) {
 			throw(
 				type = "WeaviateVectorMemory.SearchError",
 				message = "Failed to search Weaviate",
-				detail = response.errors[ 1 ].message ?: "Unknown error"
+				detail = response
 			);
 		}
 
 		// Transform results
 		return transformWeaviateResults( response.data.Get[ variables.className ] ?: [] );
+	}
+
+	/**
+	 * Asynchronously seed vector memory with multiple documents using batch operations.
+	 * Returns a BoxFuture that resolves to a result struct.
+	 *
+	 * @documents Array of documents (strings or structs with text/metadata)
+	 *
+	 * @return BoxFuture that resolves to struct with added/failed counts
+	 */
+	any function seedAsync( required array documents ) {
+		// Use BoxLang's async() BIF to return a BoxFuture
+		return async( () => {
+			return seed( arguments.documents );
+		} );
 	}
 
 	/**
@@ -257,7 +272,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.keyExists( "errors" ) ) {
+		if ( response.keyExists( "errors" ) || response.keyExists( "error" ) ) {
 			return [];
 		}
 
@@ -290,7 +305,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check if object exists
-		if ( response.keyExists( "error" ) || !response.keyExists( "id" ) ) {
+		if ( response.keyExists( "error" ) || response.keyExists( "errors" ) || !response.keyExists( "id" ) ) {
 			return {};
 		}
 
@@ -430,11 +445,11 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.keyExists( "error" ) ) {
+		if ( response.keyExists( "error" ) || response.keyExists( "errors" ) ) {
 			throw(
 				type = "WeaviateVectorMemory.CreateCollectionError",
 				message = "Failed to create collection in Weaviate",
-				detail = response.error[ 1 ].message ?: "Unknown error"
+				detail = response
 			);
 		}
 
@@ -450,13 +465,11 @@ class extends="BaseVectorMemory" {
 	 */
 	boolean function collectionExists( required string name ) {
 		var pascalName = pascalCase( arguments.name );
-
 		var response = makeRequest(
 			path = "/#static.API_VERSION#/schema/#pascalName#"
 		);
-
-		// Class exists if no error
-		return !response.keyExists( "error" );
+		// Class exists if we got a successful response
+		return !response.keyExists( "error" ) && !response.keyExists( "errors" );
 	}
 
 	/**
@@ -475,11 +488,11 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.keyExists( "error" ) ) {
+		if ( response.keyExists( "error" ) || response.keyExists( "errors" ) ) {
 			throw(
 				type = "WeaviateVectorMemory.DeleteCollectionError",
 				message = "Failed to delete collection from Weaviate",
-				detail = response.error[ 1 ].message ?: "Unknown error"
+				detail = response
 			);
 		}
 
@@ -499,7 +512,7 @@ class extends="BaseVectorMemory" {
 	 * @path API path
 	 * @body Request body (optional)
 	 *
-	 * @return Parsed response struct
+	 * @return Parsed response struct if JSON, else the full response struct
 	 */
 	private struct function makeRequest(
 		required string path,
@@ -524,8 +537,8 @@ class extends="BaseVectorMemory" {
 			httpService.header( "Authorization", "Bearer #variables.oidcToken#" );
 		}
 
-		// Add body for POST/PUT requests
-		if ( ( arguments.method == "POST" || arguments.method == "PUT" ) && !arguments.body.isEmpty() ) {
+		// Add body for POST/PUT/DELETE requests
+		if ( ( arguments.method == "POST" || arguments.method == "PUT" || arguments.method == "DELETE" ) && !arguments.body.isEmpty() ) {
 			httpService.body( jsonSerialize( arguments.body ) );
 		}
 
@@ -533,12 +546,16 @@ class extends="BaseVectorMemory" {
 		var result = httpService.send();
 
 		// Parse response
-		if ( result.filecontent.len() > 0 ) {
+		if ( result.errorDetail.isEmpty() &&  result.filecontent.len() > 0 ) {
 			return jsonDeserialize( result.filecontent );
 		}
 
 		// Return empty struct for successful requests with no content (like 204)
-		return {};
+		return {
+			"error": [
+				{ "message" : "Status code: #result.statusCode#, Error Detail: #result.errorDetail#" },
+			 ]
+		};
 	}
 
 	/**

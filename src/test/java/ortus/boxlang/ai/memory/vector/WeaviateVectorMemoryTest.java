@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
 import org.junit.jupiter.api.BeforeAll;
@@ -30,7 +31,6 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
-import io.github.jbellis.jvector.graph.OnHeapGraphIndex;
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.IStruct;
@@ -54,7 +54,6 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		// Verify Weaviate is accessible
 		try {
 			HttpClient				client		= HttpClient.newHttpClient();
-			OnHeapGraphIndex
 			// Check meta endpoint
 			HttpRequest				request		= HttpRequest.newBuilder()
 			    .uri( URI.create( WEAVIATE_URL + "/v1/meta" ) )
