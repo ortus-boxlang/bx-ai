@@ -59,19 +59,20 @@ class extends="BaseVectorMemory" {
 
 	static {
 		// JVector classes
-		GRAPH_INDEX_BUILDER_CLASS = "io.github.jbellis.jvector.graph.GraphIndexBuilder"
-		GRAPH_INDEX_CLASS = "io.github.jbellis.jvector.graph.GraphIndex"
-		GRAPH_SEARCHER_CLASS = "io.github.jbellis.jvector.graph.GraphSearcher"
-		ON_HEAP_GRAPH_INDEX_CLASS = "io.github.jbellis.jvector.graph.OnHeapGraphIndex"
-		VECTOR_SIMILARITY_FUNCTION_CLASS = "io.github.jbellis.jvector.vector.VectorSimilarityFunction"
-		LIST_RANDOM_ACCESS_VECTOR_VALUES_CLASS = "io.github.jbellis.jvector.vector.types.VectorFloat"
+		GRAPH_INDEX_BUILDER_CLASS = "java:io.github.jbellis.jvector.graph.GraphIndexBuilder@bxai"
+		GRAPH_INDEX_CLASS = "java:io.github.jbellis.jvector.graph.GraphIndex@bxai"
+		GRAPH_SEARCHER_CLASS = "java:io.github.jbellis.jvector.graph.GraphSearcher@bxai"
+		ON_HEAP_GRAPH_INDEX_CLASS = "java:io.github.jbellis.jvector.graph.OnHeapGraphIndex@bxai"
+		VECTOR_SIMILARITY_FUNCTION_CLASS = "java:io.github.jbellis.jvector.vector.VectorSimilarityFunction@bxai"
+		LIST_RANDOM_ACCESS_VECTOR_VALUES_CLASS = "java:io.github.jbellis.jvector.vector.types.VectorFloat@bxai"
 
-		// Default paths
-		DEFAULT_INDEX_DIR = expandPath( "./jvector-indexes" )
-
+		// Default paths in temp directory
+		DEFAULT_INDEX_DIR = getTempDirectory() & "/jvector-indexes"
 		// Metadata file suffix
 		METADATA_SUFFIX = ".metadata.json"
 		DOCUMENTS_SUFFIX = ".documents.json"
+		// Default Collection Name
+		DEFAULT_COLLECTION = "bxai"
 	}
 
 	/**
