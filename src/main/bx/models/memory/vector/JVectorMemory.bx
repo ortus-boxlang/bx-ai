@@ -57,27 +57,21 @@ class extends="BaseVectorMemory" {
 	property name="isIndexLoaded" type="boolean" default=false;
 	property name="indexVersion" type="numeric" default=1;
 
-	/**
-	 * Thread safety
-	 */
-	property name="lock" type="any";  // ReentrantReadWriteLock for thread-safe operations
-
 	static {
 		// JVector classes
-		GRAPH_INDEX_BUILDER_CLASS = "java:io.github.jbellis.jvector.graph.GraphIndexBuilder@bxai"
-		GRAPH_INDEX_CLASS = "java:io.github.jbellis.jvector.graph.GraphIndex@bxai"
-		GRAPH_SEARCHER_CLASS = "java:io.github.jbellis.jvector.graph.GraphSearcher@bxai"
-		ON_HEAP_GRAPH_INDEX_CLASS = "java:io.github.jbellis.jvector.graph.OnHeapGraphIndex@bxai"
-		VECTOR_SIMILARITY_FUNCTION_CLASS = "java:io.github.jbellis.jvector.vector.VectorSimilarityFunction@bxai"
-		LIST_RANDOM_ACCESS_VECTOR_VALUES_CLASS = "java:io.github.jbellis.jvector.vector.types.VectorFloat@bxai"
+		GRAPH_INDEX_BUILDER_CLASS = "io.github.jbellis.jvector.graph.GraphIndexBuilder"
+		GRAPH_INDEX_CLASS = "io.github.jbellis.jvector.graph.GraphIndex"
+		GRAPH_SEARCHER_CLASS = "io.github.jbellis.jvector.graph.GraphSearcher"
+		ON_HEAP_GRAPH_INDEX_CLASS = "io.github.jbellis.jvector.graph.OnHeapGraphIndex"
+		VECTOR_SIMILARITY_FUNCTION_CLASS = "io.github.jbellis.jvector.vector.VectorSimilarityFunction"
+		LIST_RANDOM_ACCESS_VECTOR_VALUES_CLASS = "io.github.jbellis.jvector.vector.types.VectorFloat"
 
-		// Default paths in temp directory
-		DEFAULT_INDEX_DIR = getTempDirectory() & "/jvector-indexes"
+		// Default paths
+		DEFAULT_INDEX_DIR = expandPath( "./jvector-indexes" )
+
 		// Metadata file suffix
 		METADATA_SUFFIX = ".metadata.json"
 		DOCUMENTS_SUFFIX = ".documents.json"
-		// Default Collection Name
-		DEFAULT_COLLECTION = "bxai"
 	}
 
 	/**
@@ -88,9 +82,6 @@ class extends="BaseVectorMemory" {
 	 */
 	function init( string key = createUUID(), string collection = static.DEFAULT_COLLECTION ) {
 		super.init( arguments.key, arguments.collection );
-
-		// Initialize thread-safe lock
-		variables.lock = createObject( "java", "java.util.concurrent.locks.ReentrantReadWriteLock" ).init();
 
 		// Initialize empty documents cache
 		variables.documents = {};
@@ -147,8 +138,7 @@ class extends="BaseVectorMemory" {
 	 * Ensure collection/index exists or load it
 	 */
 	IVectorMemory function ensureCollection() {
-		variables.lock.writeLock().lock();
-		try {
+		lock name="jvector_#variables.collection#_ensure" type="exclusive" timeout="30" {
 			if ( !variables.isIndexLoaded ) {
 				if ( indexExists() ) {
 					loadIndex();
@@ -157,8 +147,6 @@ class extends="BaseVectorMemory" {
 				}
 				variables.isIndexLoaded = true;
 			}
-		} finally {
-			variables.lock.writeLock().unlock();
 		}
 		return this;
 	}
@@ -177,8 +165,7 @@ class extends="BaseVectorMemory" {
 		required array embedding,
 		required struct metadata
 	) {
-		variables.lock.writeLock().lock();
-		try {
+		lock name="jvector_#variables.collection#_write" type="exclusive" timeout="30" {
 			// Ensure index is loaded
 			if ( !variables.isIndexLoaded ) {
 				ensureCollection();
@@ -216,9 +203,6 @@ class extends="BaseVectorMemory" {
 
 			// Persist changes
 			saveIndexToDisk();
-
-		} finally {
-			variables.lock.writeLock().unlock();
 		}
 
 		return this;
@@ -238,8 +222,7 @@ class extends="BaseVectorMemory" {
 		required numeric limit,
 		required struct filter
 	) {
-		variables.lock.readLock().lock();
-		try {
+		lock name="jvector_#variables.collection#_read" type="readonly" timeout="30" {
 			// Ensure index is loaded
 			if ( !variables.isIndexLoaded ) {
 				return [];
@@ -287,9 +270,6 @@ class extends="BaseVectorMemory" {
 			}
 
 			return results;
-
-		} finally {
-			variables.lock.readLock().unlock();
 		}
 	}
 
@@ -299,11 +279,8 @@ class extends="BaseVectorMemory" {
 	 * @return Array of documents
 	 */
 	array function getAllDocuments() {
-		variables.lock.readLock().lock();
-		try {
+		lock name="jvector_#variables.collection#_read" type="readonly" timeout="30" {
 			return variables.documents.valueArray();
-		} finally {
-			variables.lock.readLock().unlock();
 		}
 	}
 
@@ -315,13 +292,10 @@ class extends="BaseVectorMemory" {
 	 * @return Struct document or empty struct
 	 */
 	struct function getDocumentById( required string id ) {
-		variables.lock.readLock().lock();
-		try {
+		lock name="jvector_#variables.collection#_read" type="readonly" timeout="30" {
 			return variables.documents.keyExists( arguments.id )
 				? variables.documents[ arguments.id ]
 				: {};
-		} finally {
-			variables.lock.readLock().unlock();
 		}
 	}
 
@@ -333,8 +307,7 @@ class extends="BaseVectorMemory" {
 	 * @return Boolean success
 	 */
 	boolean function deleteDocument( required string id ) {
-		variables.lock.writeLock().lock();
-		try {
+		lock name="jvector_#variables.collection#_write" type="exclusive" timeout="30" {
 			if ( !variables.documents.keyExists( arguments.id ) ) {
 				return false;
 			}
@@ -348,8 +321,6 @@ class extends="BaseVectorMemory" {
 			saveDocumentsToDisk();
 
 			return true;
-		} finally {
-			variables.lock.writeLock().unlock();
 		}
 	}
 
@@ -361,8 +332,7 @@ class extends="BaseVectorMemory" {
 	 * @return Numeric count deleted
 	 */
 	numeric function deleteDocumentsByFilter( required struct filter ) {
-		variables.lock.writeLock().lock();
-		try {
+		lock name="jvector_#variables.collection#_write" type="exclusive" timeout="30" {
 			var count = 0;
 			var toDelete = [];
 
@@ -381,8 +351,6 @@ class extends="BaseVectorMemory" {
 			} );
 
 			return count;
-		} finally {
-			variables.lock.writeLock().unlock();
 		}
 	}
 
@@ -390,8 +358,7 @@ class extends="BaseVectorMemory" {
 	 * Clear entire collection by deleting and recreating index
 	 */
 	IVectorMemory function clearCollection() {
-		variables.lock.writeLock().lock();
-		try {
+		lock name="jvector_#variables.collection#_write" type="exclusive" timeout="30" {
 			// Clear documents cache
 			variables.documents = {};
 
@@ -410,8 +377,6 @@ class extends="BaseVectorMemory" {
 			variables.isIndexLoaded = true;
 
 			return this;
-		} finally {
-			variables.lock.writeLock().unlock();
 		}
 	}
 
@@ -429,8 +394,7 @@ class extends="BaseVectorMemory" {
 	 * @return IVectorMemory for chaining
 	 */
 	any function createCollection( required string name ) {
-		variables.lock.writeLock().lock();
-		try {
+		lock name="jvector_#arguments.name#_create" type="exclusive" timeout="30" {
 			// Update collection name
 			variables.collection = arguments.name;
 
@@ -447,8 +411,6 @@ class extends="BaseVectorMemory" {
 			variables.isIndexLoaded = true;
 
 			return this;
-		} finally {
-			variables.lock.writeLock().unlock();
 		}
 	}
 
@@ -472,8 +434,7 @@ class extends="BaseVectorMemory" {
 	 * @return IVectorMemory for chaining
 	 */
 	any function deleteCollection( required string name ) {
-		variables.lock.writeLock().lock();
-		try {
+		lock name="jvector_#arguments.name#_delete" type="exclusive" timeout="30" {
 			var deletePath = static.DEFAULT_INDEX_DIR & "/" & arguments.name;
 
 			if ( directoryExists( deletePath ) ) {
@@ -487,8 +448,6 @@ class extends="BaseVectorMemory" {
 			}
 
 			return this;
-		} finally {
-			variables.lock.writeLock().unlock();
 		}
 	}
 
@@ -660,13 +619,10 @@ class extends="BaseVectorMemory" {
 	 * Cleanup resources when memory is destroyed
 	 */
 	public void function onDestroy() {
-		variables.lock.writeLock().lock();
-		try {
+		lock name="jvector_#variables.collection#_destroy" type="exclusive" timeout="30" {
 			if ( variables.isIndexLoaded ) {
 				saveIndexToDisk();
 			}
-		} finally {
-			variables.lock.writeLock().unlock();
 		}
 	}
 
