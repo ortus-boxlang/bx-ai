@@ -86,6 +86,10 @@ class {
 			case "boxvector":
 				memoryClass = "bxModules.bxai.models.memory.vector.BoxVectorMemory";
 				break;
+			case "jvector":
+			case "JVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.JVectorMemory";
+				break;
 			case "hybrid":
 			case "HybridMemory":
 				memoryClass = "bxModules.bxai.models.memory.HybridMemory";
@@ -97,7 +101,7 @@ class {
 				} else {
 					throw(
 						type: "InvalidMemoryType",
-						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, HybridMemory"
+						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, JVectorMemory, HybridMemory"
 					);
 				}
 		}

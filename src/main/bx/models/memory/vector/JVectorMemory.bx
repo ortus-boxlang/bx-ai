@@ -1,0 +1,466 @@
+/**
+ * JVector Vector Database Implementation
+ *
+ * High-performance embedded vector search using JVector's HNSW graph index.
+ * JVector is a pure Java vector database with graph-based indexing for
+ * fast approximate nearest neighbor (ANN) search.
+ *
+ * @see https://github.com/jbellis/jvector
+ */
+
+// Import JVector core classes
+import java:io.github.jbellis.jvector.graph.GraphIndex@bxai;
+import java:io.github.jbellis.jvector.graph.GraphIndexBuilder@bxai;
+import java:io.github.jbellis.jvector.graph.ListRandomAccessVectorValues@bxai;
+import java:io.github.jbellis.jvector.graph.RandomAccessVectorValues@bxai;
+import java:io.github.jbellis.jvector.graph.similarity.BuildScoreProvider@bxai;
+import java:io.github.jbellis.jvector.graph.similarity.SearchScoreProvider@bxai;
+import java:io.github.jbellis.jvector.vector.VectorSimilarityFunction@bxai;
+import java:io.github.jbellis.jvector.vector.types.VectorFloat@bxai;
+import java:io.github.jbellis.jvector.util.Bits@bxai;
+
+class extends="BaseVectorMemory" {
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		super.init();
+
+		// Storage
+		variables.vectors    = [];  // ArrayList<VectorFloat>
+		variables.metadata   = [];  // Array of metadata structs
+		variables.ids        = [];  // Array of document IDs
+		variables.nextId     = 1;
+		variables.dimension  = 0;
+		variables.graphIndex = null;
+
+		// HNSW parameters
+		variables.maxConnections      = 16;    // Max connections per node
+		variables.constructionDepth   = 100;   // Construction search depth
+		variables.diversityFactor     = 1.2;   // Diversity factor
+		variables.neighborOverflow    = 1.2;   // Neighbor overflow factor
+
+		return this;
+	}
+
+	/**
+	 * Configure the memory store
+	 *
+	 * @config Configuration options
+	 *   - maxConnections: Maximum connections per node (default: 16)
+	 *   - constructionDepth: Construction search depth (default: 100)
+	 *   - diversityFactor: Diversity factor (default: 1.2)
+	 *   - neighborOverflow: Neighbor overflow factor (default: 1.2)
+	 *   - dimension: Vector dimension (auto-detected if not specified)
+	 */
+	function configure( struct config = {} ) {
+		if ( arguments.config.keyExists( "maxConnections" ) ) {
+			variables.maxConnections = arguments.config.maxConnections;
+		}
+		if ( arguments.config.keyExists( "constructionDepth" ) ) {
+			variables.constructionDepth = arguments.config.constructionDepth;
+		}
+		if ( arguments.config.keyExists( "diversityFactor" ) ) {
+			variables.diversityFactor = arguments.config.diversityFactor castAs "float";
+		}
+		if ( arguments.config.keyExists( "neighborOverflow" ) ) {
+			variables.neighborOverflow = arguments.config.neighborOverflow castAs "float";
+		}
+		if ( arguments.config.keyExists( "dimension" ) ) {
+			variables.dimension = arguments.config.dimension;
+		}
+
+		return this;
+	}
+
+	/**
+	 * Ensure collection exists (no-op for in-memory)
+	 */
+	function ensureCollection() {
+		return this;
+	}
+
+	/**
+	 * Add a vector to the database
+	 *
+	 * @vector   Array of numbers representing the vector
+	 * @metadata Struct containing document metadata
+	 * @id       Optional ID for the vector (auto-generated if not provided)
+	 *
+	 * @return The ID of the stored vector
+	 */
+	function add( required array vector, struct metadata = {}, string id = "" ) {
+		// Auto-detect dimension from first vector
+		if ( variables.dimension == 0 ) {
+			variables.dimension = arguments.vector.len();
+		}
+
+		// Validate dimension
+		if ( arguments.vector.len() != variables.dimension ) {
+			throw(
+				type    = "VectorDimensionMismatch",
+				message = "All vectors must have the same dimensions",
+				detail  = "Expected #variables.dimension#, got #arguments.vector.len()#"
+			);
+		}
+
+		// Generate ID if not provided
+		var vectorId = arguments.id.len() > 0 ? arguments.id : "vec_#variables.nextId++#";
+
+		// Convert BoxLang array to Java float[] for VectorFloat
+		var floats = createObject( "java", "java.util.ArrayList" ).init();
+		arguments.vector.each( function( val ) {
+			floats.add( val castAs "float" );
+		} );
+
+		// Create VectorFloat and add to storage
+		var vectorFloat = VectorFloat.init( floats );
+		variables.vectors.add( vectorFloat );
+		variables.metadata.append( arguments.metadata );
+		variables.ids.append( vectorId );
+
+		// Rebuild index with new vector
+		rebuildIndex();
+
+		return vectorId;
+	}
+
+	/**
+	 * Rebuild the JVector graph index
+	 */
+	private function rebuildIndex() {
+		if ( variables.vectors.size() == 0 ) {
+			variables.graphIndex = null;
+			return;
+		}
+
+		try {
+			// Create RandomAccessVectorValues from our ArrayList
+			var ravv = ListRandomAccessVectorValues.init( variables.vectors, variables.dimension );
+
+			// Create BuildScoreProvider for graph construction
+			var bsp = BuildScoreProvider.randomAccessScoreProvider(
+				ravv,
+				VectorSimilarityFunction.COSINE
+			);
+
+			// Build the graph index using GraphIndexBuilder
+			var builder = GraphIndexBuilder.init(
+				bsp,
+				variables.dimension,
+				variables.maxConnections,
+				variables.constructionDepth,
+				variables.neighborOverflow castAs "float",
+				variables.diversityFactor castAs "float",
+				true  // use hierarchical index
+			);
+
+			variables.graphIndex = builder.build( ravv );
+		} catch ( any e ) {
+			// Fall back to null index on error (will use brute force)
+			variables.graphIndex = null;
+			systemOutput( "JVector index build failed: #e.message#", true );
+		}
+	}
+
+	/**
+	 * Search for similar vectors using JVector HNSW index
+	 *
+	 * @vector    Array of numbers representing the query vector
+	 * @limit     Number of results to return (default: 5)
+	 * @threshold Minimum similarity score threshold (default: 0.0)
+	 *
+	 * @return Array of structs containing { id, score, metadata, vector }
+	 */
+	function search( required array vector, numeric limit = 5, numeric threshold = 0.0 ) {
+		// No data
+		if ( variables.vectors.size() == 0 ) {
+			return [];
+		}
+
+		// Dimension check
+		if ( variables.dimension > 0 && arguments.vector.len() != variables.dimension ) {
+			throw(
+				type    = "VectorDimensionMismatch",
+				message = "Query vector must have the same dimensions as stored vectors",
+				detail  = "Expected #variables.dimension#, got #arguments.vector.len()#"
+			);
+		}
+
+		// If no index, fall back to brute force
+		if ( isNull( variables.graphIndex ) ) {
+			return bruteForceSearch( arguments.vector, arguments.limit, arguments.threshold );
+		}
+
+		try {
+			// Convert query to VectorFloat
+			var floats = createObject( "java", "java.util.ArrayList" ).init();
+			arguments.vector.each( function( val ) {
+				floats.add( val castAs "float" );
+			} );
+			var queryVector = VectorFloat.init( floats );
+
+			// Create RandomAccessVectorValues for searching
+			var ravv = ListRandomAccessVectorValues.init( variables.vectors, variables.dimension );
+
+			// Create SearchScoreProvider
+			var ssp = SearchScoreProvider.exact(
+				queryVector,
+				VectorSimilarityFunction.COSINE,
+				ravv
+			);
+
+			// Perform search using GraphSearcher
+			var GraphSearcher = createObject( "java", "io.github.jbellis.jvector.graph.GraphSearcher" );
+			var searcher      = GraphSearcher.init( variables.graphIndex );
+			var searchResult  = searcher.search( ssp, arguments.limit, Bits.ALL );
+
+			// Convert results to BoxLang format
+			var results   = [];
+			var nodeIter  = searchResult.getNodes().iterator();
+
+			while ( nodeIter.hasNext() ) {
+				var nodeScore = nodeIter.next();
+				var ordinal   = nodeScore.node;
+				var score     = nodeScore.score;
+
+				// Apply threshold filtering
+				if ( score >= arguments.threshold ) {
+					results.append( {
+						"id"       : variables.ids[ ordinal + 1 ],
+						"score"    : score,
+						"metadata" : variables.metadata[ ordinal + 1 ],
+						"vector"   : vectorFloatToArray( variables.vectors.get( ordinal ) )
+					} );
+				}
+			}
+
+			return results;
+		} catch ( any e ) {
+			systemOutput( "JVector search failed: #e.message#, falling back to brute force", true );
+			return bruteForceSearch( arguments.vector, arguments.limit, arguments.threshold );
+		}
+	}
+
+	/**
+	 * Brute-force search fallback
+	 */
+	private function bruteForceSearch( required array vector, numeric limit = 5, numeric threshold = 0.0 ) {
+		var results = [];
+
+		// Calculate similarity scores for all vectors
+		for ( var i = 0; i < variables.vectors.size(); i++ ) {
+			var storedVector = vectorFloatToArray( variables.vectors.get( i ) );
+			var score        = cosineSimilarity( arguments.vector, storedVector );
+
+			// Apply threshold filtering
+			if ( score >= arguments.threshold ) {
+				results.append( {
+					"id"       : variables.ids[ i + 1 ],
+					"score"    : score,
+					"metadata" : variables.metadata[ i + 1 ],
+					"vector"   : storedVector
+				} );
+			}
+		}
+
+		// Sort by score descending
+		results.sort( function( a, b ) {
+			return b.score - a.score;
+		} );
+
+		// Limit results
+		if ( results.len() > arguments.limit ) {
+			results = results.slice( 1, arguments.limit );
+		}
+
+		return results;
+	}
+
+	/**
+	 * Convert VectorFloat to BoxLang array
+	 */
+	private function vectorFloatToArray( required any vectorFloat ) {
+		var result = [];
+		var len    = arguments.vectorFloat.length();
+
+		for ( var i = 0; i < len; i++ ) {
+			result.append( arguments.vectorFloat.get( i ) );
+		}
+
+		return result;
+	}
+
+	/**
+	 * Calculate cosine similarity between two vectors
+	 */
+	private function cosineSimilarity( required array vec1, required array vec2 ) {
+		var dotProduct = 0;
+		var magnitude1 = 0;
+		var magnitude2 = 0;
+
+		for ( var i = 1; i <= arguments.vec1.len(); i++ ) {
+			dotProduct += arguments.vec1[ i ] * arguments.vec2[ i ];
+			magnitude1 += arguments.vec1[ i ] * arguments.vec1[ i ];
+			magnitude2 += arguments.vec2[ i ] * arguments.vec2[ i ];
+		}
+
+		magnitude1 = sqr( magnitude1 );
+		magnitude2 = sqr( magnitude2 );
+
+		if ( magnitude1 == 0 || magnitude2 == 0 ) {
+			return 0;
+		}
+
+		return dotProduct / ( magnitude1 * magnitude2 );
+	}
+
+	/**
+	 * Get a specific vector by ID
+	 */
+	function get( required string id ) {
+		var idx = variables.ids.findNoCase( arguments.id );
+
+		if ( idx == 0 ) {
+			return {};
+		}
+
+		return {
+			"id"       : variables.ids[ idx ],
+			"vector"   : vectorFloatToArray( variables.vectors.get( idx - 1 ) ),
+			"metadata" : variables.metadata[ idx ]
+		};
+	}
+
+	/**
+	 * Delete a vector by ID
+	 */
+	function delete( required string id ) {
+		var idx = variables.ids.findNoCase( arguments.id );
+
+		if ( idx == 0 ) {
+			return false;
+		}
+
+		variables.ids.deleteAt( idx );
+		variables.vectors.remove( idx - 1 );
+		variables.metadata.deleteAt( idx );
+
+		// Rebuild index after deletion
+		rebuildIndex();
+
+		return true;
+	}
+
+	/**
+	 * Clear all vectors
+	 */
+	function clear() {
+		variables.vectors.clear();
+		variables.metadata = [];
+		variables.ids      = [];
+		variables.nextId   = 1;
+		variables.dimension = 0;
+		variables.graphIndex = null;
+
+		return this;
+	}
+
+	/**
+	 * Get count of vectors
+	 */
+	function count() {
+		return variables.vectors.size();
+	}
+
+	/**
+	 * Get the name of the memory store
+	 */
+	function getName() {
+		return "JVectorMemory";
+	}
+
+	// ========== Abstract Method Implementations from BaseVectorMemory ==========
+
+	function storeDocument(
+		required string id,
+		required array vector,
+		required struct metadata
+	) {
+		return add( arguments.vector, arguments.metadata, arguments.id );
+	}
+
+	function searchByVector(
+		required array vector,
+		numeric limit = 5,
+		numeric threshold = 0.0,
+		struct filter = {}
+	) {
+		return search( arguments.vector, arguments.limit, arguments.threshold );
+	}
+
+	function getAllDocuments( numeric limit = 100, numeric offset = 0 ) {
+		var results = [];
+		var start   = arguments.offset;
+		var end     = min( start + arguments.limit, variables.vectors.size() );
+
+		for ( var i = start; i < end; i++ ) {
+			results.append( {
+				"id"       : variables.ids[ i + 1 ],
+				"vector"   : vectorFloatToArray( variables.vectors.get( i ) ),
+				"metadata" : variables.metadata[ i + 1 ]
+			} );
+		}
+
+		return results;
+	}
+
+	function getDocumentById( required string id ) {
+		return get( arguments.id );
+	}
+
+	function deleteDocument( required string id ) {
+		return delete( arguments.id );
+	}
+
+	function deleteDocumentsByFilter( required struct filter ) {
+		var deleted = 0;
+
+		// Iterate backwards to safely delete
+		for ( var i = variables.ids.len(); i >= 1; i-- ) {
+			var matches = true;
+
+			// Check if metadata matches all filter criteria
+			for ( var key in arguments.filter ) {
+				if (
+					!variables.metadata[ i ].keyExists( key ) || variables.metadata[ i ][ key ] != arguments.filter[
+						key
+					]
+				) {
+					matches = false;
+					break;
+				}
+			}
+
+			if ( matches ) {
+				variables.ids.deleteAt( i );
+				variables.vectors.remove( i - 1 );
+				variables.metadata.deleteAt( i );
+				deleted++;
+			}
+		}
+
+		// Rebuild index if we deleted anything
+		if ( deleted > 0 ) {
+			rebuildIndex();
+		}
+
+		return deleted;
+	}
+
+	function clearCollection() {
+		return clear();
+	}
+
+}

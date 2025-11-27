@@ -60,6 +60,19 @@ messages.map( m => m.content ).filter( c => !isNull(c) )
   - Reference: https://boxlang.ortusbooks.com/boxlang-language/reference/built-in-functions/string
   - Examples: `char(10)` (newline), `left()`, `right()`, `reReplace()`, `trim()`, etc.
 
+### Code Quality Standards
+- **No cryptic variable names**: Use descriptive, self-documenting names (e.g., `maxConnections` not `M`)
+- **Avoid acronyms**: Only use acronyms that are universally known (HTTP, URL, API). Prefer full words.
+- **Type casting**: Use `castAs` operator instead of `javaCast()` function
+  ```java
+  // Good
+  arguments.config.diversityFactor castAs "float"
+  arguments.config.diversityFactor castAs float
+  
+  // Bad
+  javaCast( "float", arguments.config.diversityFactor )
+  ```
+
 ## Development Workflows
 
 ### Build & Test
