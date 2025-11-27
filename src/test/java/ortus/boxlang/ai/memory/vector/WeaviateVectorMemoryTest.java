@@ -125,8 +125,16 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    doc1Id = createUUID();
 		    doc2Id = createUUID();
 
-		    memory.add( doc1Id, "BoxLang is a modern JVM language", { category: "programming" } );
-		    memory.add( doc2Id, "Vector databases store embeddings", { category: "database" } );
+		    memory.add( {
+		        id: doc1Id,
+		        text: "BoxLang is a modern JVM language",
+		        metadata: { category: "programming" }
+		    } );
+		    memory.add( {
+		        id: doc2Id,
+		        text: "Vector databases store embeddings",
+		        metadata: { category: "database" }
+		    } );
 
 		    // Small delay to allow indexing
 		    sleep( 1000 );
@@ -233,7 +241,11 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 
 		    // Store with explicit ID
 		    testId = createUUID();
-		    memory.add( testId, "Test document content", { type: "test", author: "tester" } );
+		    memory.add( {
+		        id: testId,
+		        text: "Test document content",
+		        metadata: { type: "test", author: "tester" }
+		    } );
 
 		    // Wait for indexing
 		    sleep( 1000 );
@@ -286,7 +298,11 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 
 		    // Store document
 		    testId = createUUID();
-		    memory.add( testId, "This will be deleted", { status: "temporary" } );
+		    memory.add( {
+		        id: testId,
+		        text: "This will be deleted",
+		        metadata: { status: "temporary" }
+		    } );
 
 		    // Wait for indexing
 		    sleep( 1000 );

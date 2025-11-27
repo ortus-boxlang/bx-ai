@@ -577,7 +577,7 @@ class extends="BaseVectorMemory" {
 		var result = httpService.send();
 
 		// Debugging output
-		println( isJson( result.fileContent ) ? jsonDeserialize( result.fileContent ) : result.fileContent )
+		//println( isJson( result.fileContent ) ? jsonDeserialize( result.fileContent ) : result.fileContent )
 
 		// Parse response
 		if ( result.errorDetail.isEmpty() &&  result.filecontent.len() > 0 ) {

@@ -131,17 +131,24 @@ abstract class
 	}
 
 	/**
-	 * Add a message to vector memory with auto-generated ID
+	 * Add a message to this memory
 	 * Automatically generates embedding and stores in vector database
 	 *
-	 * @message The message to add (string, struct, or AiMessage)
+	 * @message The message to add (string, struct with id/text/metadata, or AiMessage)
 	 *
 	 * @return IVectorMemory for chaining
 	 */
 	IAiMemory function add( required any message ) {
 		var text = normalizeMessageText( arguments.message );
 		var metadata = extractMetadata( arguments.message );
-		var id = generateId( text );
+
+		// Check if message struct contains an explicit id
+		var id = "";
+		if ( isStruct( arguments.message ) && arguments.message.keyExists( "id" ) ) {
+			id = arguments.message.id;
+		} else {
+			id = generateId( text );
+		}
 
 		return addWithId( id, text, metadata );
 	}
