@@ -184,7 +184,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.keyExists( "status" ) && response.status.keyExists( "error" ) ) {
+		if ( response.status.keyExists( "error" ) ) {
 			throw(
 				type = "QdrantVectorMemory.StoreError",
 				message = "Failed to store document in Qdrant",
@@ -240,7 +240,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.keyExists( "status" ) && response.status.keyExists( "error" ) ) {
+		if ( response.status.keyExists( "error" ) ) {
 			throw(
 				type = "QdrantVectorMemory.SearchError",
 				message = "Failed to search Qdrant",
@@ -272,7 +272,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.keyExists( "status" ) && response.status.keyExists( "error" ) ) {
+		if ( response.status.keyExists( "error" ) ) {
 			return [];
 		}
 
@@ -306,7 +306,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check if point exists
-		if ( response.keyExists( "status" ) && response.status.keyExists( "error" ) ) {
+		if ( response.status.keyExists( "error" ) ) {
 			return {};
 		}
 
@@ -348,7 +348,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check response
-		if ( response.keyExists( "status" ) && response.status == "ok" ) {
+		if ( response?.statusCode == 200 ) {
 			return true;
 		}
 
@@ -396,7 +396,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Return count if successful
-		if ( response.keyExists( "status" ) && response.status == "ok" ) {
+		if ( response?.statusCode == 200 ) {
 			return count;
 		}
 
@@ -459,7 +459,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.keyExists( "status" ) && response.status.keyExists( "error" ) ) {
+		if ( response.status.keyExists( "error" ) ) {
 			throw(
 				type = "QdrantVectorMemory.CreateCollectionError",
 				message = "Failed to create collection in Qdrant",
@@ -484,7 +484,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Collection exists if status is ok
-		return response.keyExists( "status" ) && response.status == "ok";
+		return response?.statusCode == 200;
 	}
 
 	/**
@@ -501,7 +501,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.keyExists( "status" ) && response.status.keyExists( "error" ) ) {
+		if (  response.status.keyExists( "error" ) ) {
 			throw(
 				type = "QdrantVectorMemory.DeleteCollectionError",
 				message = "Failed to delete collection from Qdrant",
@@ -532,43 +532,38 @@ class extends="BaseVectorMemory" {
 		required string path,
 		struct body = {}
 	) {
-		try {
-			// Build HTTP request
-			var httpService = http( variables.baseUrl & arguments.path )
-				.method( arguments.method )
-				.charset( "UTF-8" )
-				.timeout( variables.timeout )
-				.header( "Content-Type", "application/json; charset=UTF-8" )
-				.header( "Accept", "application/json" );
+		// Build HTTP request
+		var httpService = http( variables.baseUrl & arguments.path )
+			.method( arguments.method )
+			.throwOnError( false )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "Content-Type", "application/json; charset=UTF-8" )
+			.header( "Accept", "application/json" );
 
-			// Add API key authentication if provided
-			if ( variables.apiKey.len() > 0 ) {
-				httpService.header( "api-key", variables.apiKey );
-			}
-
-			// Add body for POST/PUT requests
-			if ( ( arguments.method == "POST" || arguments.method == "PUT" ) && !arguments.body.isEmpty() ) {
-				httpService.body( jsonSerialize( arguments.body ) );
-			}
-
-			// Execute request
-			var result = httpService.send();
-
-			// Parse response
-			if ( result.filecontent.len() > 0 ) {
-				return jsonDeserialize( result.filecontent );
-			}
-
-			// Return empty struct for successful requests with no content
-			return { "status": "ok" };
-
-		} catch ( any e ) {
-			throw(
-				type = "QdrantHTTPError",
-				message = "HTTP request to Qdrant failed: #arguments.method# #arguments.path#",
-				detail = e.message
-			);
+		// Add API key authentication if provided
+		if ( variables.apiKey.len() > 0 ) {
+			httpService.header( "api-key", variables.apiKey );
 		}
+
+		// Add body for POST/PUT requests
+		if ( ( arguments.method == "POST" || arguments.method == "PUT" ) && !arguments.body.isEmpty() ) {
+			httpService.body( jsonSerialize( arguments.body ) );
+		}
+
+		// Execute request
+		var result = httpService.send();
+
+		// Parse response
+		if ( result.errorDetail.isEmpty() &&  result.filecontent.len() > 0 ) {
+			return jsonDeserialize( result.filecontent );
+		}
+
+		// Return empty struct for successful requests with no content
+		return {
+			"statusCode": result.statusCode,
+			"error": result.errorDetail
+		};
 	}
 
 	/**

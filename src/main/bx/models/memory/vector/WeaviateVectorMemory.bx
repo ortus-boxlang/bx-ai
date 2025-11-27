@@ -472,13 +472,24 @@ class extends="BaseVectorMemory" {
 	any function deleteCollection( required string name ) {
 		var pascalName = pascalCase( arguments.name );
 
+		// Check if collection exists before trying to delete
+		if ( !collectionExists( pascalName ) ) {
+			// Collection doesn't exist, nothing to delete
+			return this;
+		}
+
 		var response = makeRequest(
 			method = "DELETE",
 			path = "/#static.API_VERSION#/schema/#pascalName#"
 		);
 
-		// Check for errors
-		if ( response.keyExists( "error" ) || response.keyExists( "errors" ) ) {
+		// Check for errors (but ignore 404 since collection might have been deleted already)
+		if( response?.statusCode == 404 ) {
+			return this;
+		}
+
+
+		if ( response.keyExists( "error" ) ) {
 			throw(
 				type = "WeaviateVectorMemory.DeleteCollectionError",
 				message = "Failed to delete collection from Weaviate",
@@ -599,7 +610,7 @@ class extends="BaseVectorMemory" {
 
 		// Add where filter if provided
 		if ( !arguments.filter.isEmpty() ) {
-			query &= ", where: #jsonSerialize( buildWhereFilter( arguments.filter ) )#";
+			query &= ", where: #buildWhereFilterGraphQL( arguments.filter )#";
 		}
 
 		query &= ") { _additional { id distance } text metadata timestamp } } }";
@@ -608,7 +619,7 @@ class extends="BaseVectorMemory" {
 	}
 
 	/**
-	 * Build Weaviate where filter from metadata filter
+	 * Build Weaviate where filter from metadata filter (for REST API)
 	 *
 	 * @filter Metadata filter struct
 	 *
@@ -640,6 +651,36 @@ class extends="BaseVectorMemory" {
 			"operator": "And",
 			"operands": conditions
 		};
+	}
+
+	/**
+	 * Build Weaviate where filter as GraphQL syntax string
+	 *
+	 * @filter Metadata filter struct
+	 *
+	 * @return String GraphQL where filter syntax
+	 */
+	private string function buildWhereFilterGraphQL( required struct filter ) {
+		if ( arguments.filter.isEmpty() ) {
+			return "";
+		}
+
+		var conditions = [];
+
+		arguments.filter.each( ( key, value ) => {
+			// GraphQL syntax - escape quotes with backslash for GraphQL string literals
+			// The pattern searches for the key:value pair within the metadata JSON string
+			// Use \" to escape quotes in GraphQL strings
+			var pattern = '*\"#key#\":\"#value#\"*';
+			conditions.append( '{ path: ["metadata"], operator: Like, valueText: "' & pattern & '" }' );
+		} );
+
+		// Return single condition or AND operator
+		if ( conditions.len() == 1 ) {
+			return conditions[ 1 ];
+		}
+
+		return '{ operator: And, operands: [#conditions.toList()#] }';
 	}
 
 	/**
