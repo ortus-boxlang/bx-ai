@@ -68,7 +68,7 @@ messages.map( m => m.content ).filter( c => !isNull(c) )
   // Good
   arguments.config.diversityFactor castAs "float"
   arguments.config.diversityFactor castAs float
-  
+
   // Bad
   javaCast( "float", arguments.config.diversityFactor )
   ```
