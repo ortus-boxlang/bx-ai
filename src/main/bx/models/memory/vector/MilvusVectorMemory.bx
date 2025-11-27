@@ -631,50 +631,42 @@ class extends="BaseVectorMemory" {
 		string method = "GET",
 		struct body = {}
 	) {
-		try {
-			// Build HTTP request
-			var httpService = http( variables.baseUrl & arguments.path )
-				.method( arguments.method )
-				.charset( "UTF-8" )
-				.timeout( variables.timeout )
-				.header( "Content-Type", "application/json; charset=UTF-8" )
-				.header( "Accept", "application/json" )
+		// Build HTTP request
+		var httpService = http( variables.baseUrl & arguments.path )
+			.method( arguments.method )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "Content-Type", "application/json; charset=UTF-8" )
+			.header( "Accept", "application/json" )
 
-			// Add auth token if provided
-			if ( variables.token.len() > 0 ) {
-				httpService.header( "Authorization", "Bearer #variables.token#" )
-			}
-
-			// Add database name if not default
-			if ( variables.databaseName != "default" ) {
-				httpService.header( "db-name", variables.databaseName )
-			}
-
-			// Add body for POST requests
-			if ( arguments.method == "POST" && !arguments.body.isEmpty() ) {
-				httpService.body( jsonSerialize( arguments.body ) )
-			}
-
-			// Execute request
-			var result = httpService.send()
-
-			// Parse response
-			if ( result.filecontent.len() > 0 ) {
-				return jsonDeserialize( result.filecontent );
-			}
-
-			// Return error response if no content
-			return {
-				"code" : result.statusCode ?: 500,
-				"message" : "Empty response from Milvus"
-			};
-		} catch ( any e ) {
-			throw(
-				type    = "MilvusHTTPError",
-				message = "HTTP request to Milvus failed",
-				detail  = e.message
-			);
+		// Add auth token if provided
+		if ( variables.token.len() > 0 ) {
+			httpService.header( "Authorization", "Bearer #variables.token#" )
 		}
+
+		// Add database name if not default
+		if ( variables.databaseName != "default" ) {
+			httpService.header( "db-name", variables.databaseName )
+		}
+
+		// Add body for POST requests
+		if ( arguments.method == "POST" && !arguments.body.isEmpty() ) {
+			httpService.body( jsonSerialize( arguments.body ) )
+		}
+
+		// Execute request
+		var result = httpService.send()
+
+		// Parse response, making sure no hard errors
+		if ( result.errorDetail.isEmpty() &&  result.filecontent.len() > 0 ) {
+			return jsonDeserialize( result.filecontent );
+		}
+
+		// Return error response if no content
+		return {
+			"code" : result.statusCode ?: 500,
+			"message" : "Empty response from Milvus"
+		};
 	}
 
 }
