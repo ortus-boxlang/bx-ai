@@ -50,42 +50,6 @@ class extends="BaseVectorMemory" {
 	}
 
 	/**
-	 * Add a vector with metadata to memory
-	 *
-	 * @vector   Array of numbers representing the embedding vector
-	 * @metadata Struct of metadata associated with the vector
-	 * @id       Optional custom ID, auto-generated if not provided
-	 *
-	 * @return string The ID of the stored vector
-	 */
-	function add( required array vector, struct metadata = {}, string id = "" ) {
-		if ( !variables.configured ) {
-			configure();
-		}
-
-		// Set dimension on first add
-		if ( variables.dimension == 0 ) {
-			variables.dimension = arguments.vector.len();
-		} else if ( arguments.vector.len() != variables.dimension ) {
-			throw(
-				type    = "VectorDimensionMismatch",
-				message = "All vectors must have the same dimensions",
-				detail  = "Expected #variables.dimension#, got #arguments.vector.len()#"
-			);
-		}
-
-		// Generate ID if not provided
-		var vectorId = len( arguments.id ) ? arguments.id : "vec_#variables.nextId++#";
-
-		// Store vector and metadata
-		variables.vectors.append( arguments.vector );
-		variables.metadata.append( arguments.metadata );
-		variables.ids.append( vectorId );
-
-		return vectorId;
-	}
-
-	/**
 	 * Search for similar vectors using cosine similarity
 	 *
 	 * @vector    Array of numbers representing the query vector
@@ -236,13 +200,6 @@ class extends="BaseVectorMemory" {
 	}
 
 	/**
-	 * Get the name of this memory provider
-	 */
-	function getName() {
-		return "BoxVectorMemory";
-	}
-
-	/**
 	 * ------------------------------------------------------------------------------
 	 * ABSTRACT METHOD IMPLEMENTATIONS (BaseVectorMemory interface)
 	 * ------------------------------------------------------------------------------
@@ -264,12 +221,29 @@ class extends="BaseVectorMemory" {
 		required array embedding,
 		required struct metadata
 	) {
-		// Use the add() method internally
-		add(
-			vector   = arguments.embedding,
-			metadata = arguments.metadata.append( { text: arguments.text } ),
-			id       = arguments.id
-		);
+		if ( !variables.configured ) {
+			configure();
+		}
+
+		// Set dimension on first add
+		if ( variables.dimension == 0 ) {
+			variables.dimension = arguments.embedding.len();
+		} else if ( arguments.embedding.len() != variables.dimension ) {
+			throw(
+				type    = "VectorDimensionMismatch",
+				message = "All vectors must have the same dimensions",
+				detail  = "Expected #variables.dimension#, got #arguments.embedding.len()#"
+			);
+		}
+
+		// Store vector and metadata (include text in metadata)
+		var fullMetadata = arguments.metadata.duplicate();
+		fullMetadata.text = arguments.text;
+
+		variables.vectors.append( arguments.embedding );
+		variables.metadata.append( fullMetadata );
+		variables.ids.append( arguments.id );
+
 		return this;
 	}
 
