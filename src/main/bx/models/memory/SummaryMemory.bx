@@ -17,12 +17,7 @@
  * Keeps: [System Message] + [Summary of Old Messages] + [Recent Messages]
  * Perfect for long conversations where context must be preserved
  */
-class extends="SimpleMemory" {
-
-	/**
-	 * Maximum total messages before triggering summarization
-	 */
-	property name="maxMessages" type="numeric";
+class extends="WindowMemory" {
 
 	/**
 	 * Number of recent messages to keep unsummarized
@@ -54,6 +49,7 @@ class extends="SimpleMemory" {
 		final DEFAULT_SUMMARY_THRESHOLD = 10
 		final DEFAULT_SUMMARY_MODEL = "gpt-4o-mini"
 		final DEFAULT_SUMMARY_PROVIDER = "openai"
+		final SUMMARY_PROMPT = "Summarize the following conversation concisely, preserving key facts, decisions, user preferences, and important context. Be brief but complete.\n\n"
 	}
 
 	/**
@@ -88,10 +84,6 @@ class extends="SimpleMemory" {
 	 */
 	public IAiMemory function configure( required struct config ) {
 		super.configure( arguments.config );
-
-		if ( arguments.config.keyExists( "maxMessages" ) ) {
-			variables.maxMessages = arguments.config.maxMessages;
-		}
 
 		if ( arguments.config.keyExists( "summaryThreshold" ) ) {
 			variables.summaryThreshold = arguments.config.summaryThreshold;
@@ -150,7 +142,7 @@ class extends="SimpleMemory" {
 		var toKeep = messages.slice( messagesToSummarize + 1, messages.len() );
 
 		// Build summarization prompt
-		var summaryPrompt = "Summarize the following conversation concisely, preserving key facts, decisions, user preferences, and important context. Be brief but complete.\n\n";
+		var summaryPrompt = static.SUMMARY_PROMPT;
 
 		// Include previous summary if exists
 		if ( variables.currentSummary.len() ) {
