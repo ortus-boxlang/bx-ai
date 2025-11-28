@@ -70,6 +70,11 @@ class extends="AiBaseRunnable" {
 	property name="subAgents" type="array" default=[];
 
 	/**
+	 * Tools created for sub-agents (tracked separately for cleanup)
+	 */
+	property name="subAgentTools" type="array" default=[];
+
+	/**
 	 * Default agent name constant
 	 */
 	static {
@@ -108,6 +113,7 @@ class extends="AiBaseRunnable" {
 		variables.aiModel = arguments.model.addTools( arguments.tools );
 		variables.tools = arguments.tools;
 		variables.subAgents = [];
+		variables.subAgentTools = [];
 		variables.params = arguments.params;
 		variables.options = arguments.options;
 
@@ -408,6 +414,9 @@ class extends="AiBaseRunnable" {
 		// Create an internal tool for the sub-agent
 		var subAgentTool = createSubAgentTool( arguments.subAgent );
 
+		// Track the sub-agent tool for potential cleanup
+		variables.subAgentTools.append( subAgentTool );
+
 		// Add the tool to this agent's model
 		variables.aiModel.addTools( [ subAgentTool ] );
 
@@ -417,13 +426,21 @@ class extends="AiBaseRunnable" {
 	/**
 	 * Set the sub-agents for the agent (replaces existing sub-agents)
 	 *
+	 * This method removes old sub-agent delegation tools and registers new ones.
+	 *
 	 * @subAgents Array of sub-agents to register
 	 *
 	 * @return this for chaining
 	 */
 	AiAgent function setSubAgents( required array subAgents ) {
-		// Clear existing sub-agents
+		// Remove old sub-agent tools from the model
+		if ( !variables.subAgentTools.isEmpty() ) {
+			variables.aiModel.removeTools( variables.subAgentTools );
+		}
+
+		// Clear existing sub-agents and their tools
 		variables.subAgents = [];
+		variables.subAgentTools = [];
 
 		// Add each sub-agent
 		arguments.subAgents.each( subAgent => addSubAgent( subAgent ) );
@@ -578,11 +595,15 @@ class extends="AiBaseRunnable" {
 		var agentDescription = agentConfig.description;
 
 		// Build tool name: delegate_to_{agent_name}
-		var toolName = "delegate_to_" & agentName.lCase().reReplace( "[^a-zA-Z0-9_]", "_", "all" );
+		// Regex only needs to match non-alphanumeric and non-underscore since we already lowercase
+		var toolName = "delegate_to_" & agentName.lCase().reReplace( "[^a-z0-9_]", "_", "all" );
 
 		// Build description for the tool
 		var toolDescription = "Delegate a task to the '#agentName#' sub-agent. "
 			& "Use this tool when the task matches the sub-agent's specialty: #agentDescription#";
+
+		// Capture the sub-agent reference for the closure
+		var targetSubAgent = arguments.subAgent;
 
 		// Create a tool that wraps the sub-agent
 		return aiTool(
@@ -590,7 +611,7 @@ class extends="AiBaseRunnable" {
 			description: toolDescription,
 			callable: ( task ) => {
 				// Invoke the sub-agent with the task
-				return arguments.subAgent.run( task );
+				return targetSubAgent.run( task );
 			}
 		).describeArg( "task", "The task or question to delegate to the sub-agent" );
 	}
