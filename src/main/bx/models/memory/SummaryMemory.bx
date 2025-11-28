@@ -104,10 +104,8 @@ class extends="WindowMemory" {
 		}
 
 		// Create the AI model instance for reuse
-		variables.summaryModelInstance = aiModel(
-			variables.summaryProvider,
-			variables.summaryModelName
-		);
+		variables.summaryModelInstance = aiModel( variables.summaryProvider )
+			.withParams( { model: variables.summaryModelName } );
 
 		return this;
 	}
@@ -121,13 +119,21 @@ class extends="WindowMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function add( required any message ) {
-		// Use parent's add logic
-		super.add( arguments.message );
-
-		// Check if we need to summarize
+		// Check if we'll exceed the limit BEFORE adding (since WindowMemory will auto-trim)
 		var nonSystemCount = getNonSystemMessages().len();
-		if ( nonSystemCount > variables.maxMessages ) {
+		var willExceed = (nonSystemCount + 1) > variables.maxMessages;
+
+		systemOutput( "SummaryMemory.add: nonSystemCount=#nonSystemCount#, willExceed=#willExceed#, maxMessages=#variables.maxMessages#", true );
+
+		// If adding this message will exceed limit, summarize first
+		if ( willExceed ) {
+			systemOutput( "SummaryMemory.add: Triggering summarization BEFORE add", true );
+			// Add the message temporarily to include it in summarization decision
+			super.add( arguments.message );
 			summarizeOldMessages();
+		} else {
+			// Normal add
+			super.add( arguments.message );
 		}
 
 		return this;
@@ -140,9 +146,11 @@ class extends="WindowMemory" {
 	 */
 	private function summarizeOldMessages() {
 		var messages = getNonSystemMessages();
+		systemOutput( "summarizeOldMessages: messages.len()=#messages.len()#, summaryThreshold=#variables.summaryThreshold#", true );
 
 		// Don't summarize if we don't have enough messages
 		if ( messages.len() <= variables.summaryThreshold ) {
+			systemOutput( "summarizeOldMessages: Skipping - not enough messages", true );
 			return;
 		}
 
@@ -174,7 +182,9 @@ class extends="WindowMemory" {
 
 		// Call AI to generate summary
 		try {
+			systemOutput( "summarizeOldMessages: Calling AI model", true );
 			var summary = variables.summaryModelInstance.run( aiMessage().user( summaryPrompt ) );
+			systemOutput( "summarizeOldMessages: Got summary: #left(summary, 50)#...", true );
 
 			// Rebuild memory structure
 			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
@@ -196,6 +206,7 @@ class extends="WindowMemory" {
 
 			variables.currentSummary = summary;
 			variables.hasSummary = true;
+			systemOutput( "summarizeOldMessages: Set hasSummary=true", true );
 
 			// Add back recent messages
 			for( var msg in toKeep ){
@@ -204,6 +215,7 @@ class extends="WindowMemory" {
 
 		} catch ( any e ) {
 			// If summarization fails, fall back to simple truncation
+			systemOutput( "summarizeOldMessages: ERROR - #e.message#", true );
 			writeLog(
 				text: "SummaryMemory: Failed to generate summary - #e.message#. Falling back to truncation.",
 				type: "error",
