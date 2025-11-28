@@ -69,7 +69,9 @@ class {
 			case "SessionMemory":
 				memoryClass = "bxModules.bxai.models.memory.SessionMemory";
 				break;
+			// --------------------------------------------------------------------------------
 			// Vector Memory Types
+			// --------------------------------------------------------------------------------
 			case "chroma":
 			case "ChromaVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.ChromaVectorMemory";
@@ -89,6 +91,10 @@ class {
 			case "milvus":
 			case "MilvusVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.MilvusVectorMemory";
+				break;
+			case "qdrant":
+			case "QdrantVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.QdrantVectorMemory";
 				break;
 			case "weaviate":
 			case "WeaviateVectorMemory":

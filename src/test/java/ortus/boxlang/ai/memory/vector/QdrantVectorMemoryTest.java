@@ -15,6 +15,7 @@
 package ortus.boxlang.ai.memory.vector;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -36,12 +37,12 @@ import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.IStruct;
 
 @TestMethodOrder( MethodOrderer.OrderAnnotation.class )
-@DisplayName( "WeaviateVectorMemory Integration Tests" )
-public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
+@DisplayName( "QdrantVectorMemory Integration Tests" )
+public class QdrantVectorMemoryTest extends BaseIntegrationTest {
 
-	private static final String	WEAVIATE_HOST	= "localhost";
-	private static final int	WEAVIATE_PORT	= 8080;
-	private static final String	WEAVIATE_URL	= "http://" + WEAVIATE_HOST + ":" + WEAVIATE_PORT;
+	private static final String	QDRANT_HOST	= "localhost";
+	private static final int	QDRANT_PORT	= 6333;
+	private static final String	QDRANT_URL	= "http://" + QDRANT_HOST + ":" + QDRANT_PORT;
 
 	@BeforeEach
 	public void beforeEach() {
@@ -50,76 +51,76 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 	}
 
 	@BeforeAll
-	static void checkWeaviateAvailability() {
-		// Verify Weaviate is accessible
+	static void checkQdrantAvailability() {
+		// Verify Qdrant is accessible
 		try {
 			HttpClient				client		= HttpClient.newHttpClient();
-			// Check meta endpoint
+			// Check health endpoint
 			HttpRequest				request		= HttpRequest.newBuilder()
-			    .uri( URI.create( WEAVIATE_URL + "/v1/meta" ) )
+			    .uri( URI.create( QDRANT_URL + "/healthz" ) )
 			    .GET()
 			    .build();
 
 			HttpResponse<String>	response	= client.send( request, HttpResponse.BodyHandlers.ofString() );
 			assumeTrue( response.statusCode() == 200,
-			    "Weaviate not accessible at " + WEAVIATE_URL + ". Start with: docker compose up weaviate" );
+			    "Qdrant not accessible at " + QDRANT_URL + ". Start with: docker compose up qdrant" );
 
 			// Clean up any existing test collections
-			cleanupWeaviateCollections( client );
+			cleanupQdrantCollections( client );
 
 		} catch ( Exception e ) {
 			assumeTrue( false,
-			    "Failed to connect to Weaviate at " + WEAVIATE_URL + ": " + e.getMessage() + ". Start with: docker compose up weaviate" );
+			    "Failed to connect to Qdrant at " + QDRANT_URL + ": " + e.getMessage() + ". Start with: docker compose up qdrant" );
 		}
 	}
 
 	/**
-	 * Delete all collections from Weaviate to ensure clean test state
+	 * Delete all collections from Qdrant to ensure clean test state
 	 */
-	private static void cleanupWeaviateCollections( HttpClient client ) {
+	private static void cleanupQdrantCollections( HttpClient client ) {
 		try {
-			// Get all classes
-			HttpRequest				schemaRequest	= HttpRequest.newBuilder()
-			    .uri( URI.create( WEAVIATE_URL + "/v1/schema" ) )
+			// Get all collections
+			HttpRequest				collectionsRequest	= HttpRequest.newBuilder()
+			    .uri( URI.create( QDRANT_URL + "/collections" ) )
 			    .GET()
 			    .build();
 
-			HttpResponse<String>	schemaResponse	= client.send( schemaRequest, HttpResponse.BodyHandlers.ofString() );
+			HttpResponse<String>	collectionsResponse	= client.send( collectionsRequest, HttpResponse.BodyHandlers.ofString() );
 
-			if ( schemaResponse.statusCode() == 200 ) {
-				String	body	= schemaResponse.body();
-				// Parse JSON to extract class names (simple regex approach)
-				var		pattern	= java.util.regex.Pattern.compile( "\"class\"\\s*:\\s*\"([^\"]+)\"" );
+			if ( collectionsResponse.statusCode() == 200 ) {
+				String	body	= collectionsResponse.body();
+				// Parse JSON to extract collection names (simple regex approach)
+				var		pattern	= java.util.regex.Pattern.compile( "\"name\"\\s*:\\s*\"([^\"]+)\"" );
 				var		matcher	= pattern.matcher( body );
 
 				while ( matcher.find() ) {
-					String		className		= matcher.group( 1 );
-					// Delete the class
+					String		collectionName	= matcher.group( 1 );
+					// Delete the collection
 					HttpRequest	deleteRequest	= HttpRequest.newBuilder()
-					    .uri( URI.create( WEAVIATE_URL + "/v1/schema/" + className ) )
+					    .uri( URI.create( QDRANT_URL + "/collections/" + collectionName ) )
 					    .DELETE()
 					    .build();
 
 					client.send( deleteRequest, HttpResponse.BodyHandlers.ofString() );
-					System.out.println( "Deleted Weaviate collection: " + className );
+					System.out.println( "Deleted Qdrant collection: " + collectionName );
 				}
 			}
 		} catch ( Exception e ) {
-			System.err.println( "Warning: Failed to cleanup Weaviate collections: " + e.getMessage() );
+			System.err.println( "Warning: Failed to cleanup Qdrant collections: " + e.getMessage() );
 		}
 	}
 
 	@Test
 	@Order( 1 )
-	@DisplayName( "Test WeaviateVectorMemory creation and configuration" )
-	void testWeaviateVectorMemoryCreation() throws Exception {
+	@DisplayName( "Test QdrantVectorMemory creation and configuration" )
+	void testQdrantVectorMemoryCreation() throws Exception {
 
 		runtime.executeSource(
 		    """
-		    // Create WeaviateVectorMemory instance
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    // Create QdrantVectorMemory instance
+		    memory = aiMemory( "qdrant", createUUID(), {
 		        host: "localhost",
-		        port: 8080,
+		        port: 6333,
 		        scheme: "http",
 		        collection: "test_collection",
 		        embeddingProvider: "openai",
@@ -137,23 +138,23 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 
 		IStruct testResult = variables.getAsStruct( result );
 
-		assertEquals( "WeaviateVectorMemory", testResult.getAsString( Key.of( "type" ) ) );
-		assertEquals( "TestCollection", testResult.getAsString( Key.of( "collection" ) ) );
+		assertEquals( "QdrantVectorMemory", testResult.getAsString( Key.of( "type" ) ) );
+		assertEquals( "test_collection", testResult.getAsString( Key.of( "collection" ) ) );
 		assertTrue( testResult.getAsBoolean( Key.of( "configured" ) ) );
 	}
 
 	@Test
 	@Order( 2 )
-	@DisplayName( "Test storing and retrieving documents with WeaviateVectorMemory" )
+	@DisplayName( "Test storing and retrieving documents with QdrantVectorMemory" )
 	void testStoreAndRetrieve() throws Exception {
 
 		runtime.executeSource(
 		    """
 		    // Create memory with unique collection
-		    testCollection = "TestStore" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    testCollection = "test_store_" & left( createUUID(), 8 );
+		    memory = aiMemory( "qdrant", createUUID(), {
 		        host: "localhost",
-		        port: 8080,
+		        port: 6333,
 		        scheme: "http",
 		        collection: testCollection,
 		        embeddingProvider: "openai",
@@ -207,16 +208,16 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 
 	@Test
 	@Order( 3 )
-	@DisplayName( "Test semantic search with WeaviateVectorMemory" )
+	@DisplayName( "Test semantic search with QdrantVectorMemory" )
 	void testSemanticSearch() throws Exception {
 
 		runtime.executeSource(
 		    """
 		    // Create memory
-		    testCollection = "TestSearch" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    testCollection = "test_search_" & left( createUUID(), 8 );
+		    memory = aiMemory( "qdrant", createUUID(), {
 		        host: "localhost",
-		        port: 8080,
+		        port: 6333,
 		        scheme: "http",
 		        collection: testCollection,
 		        embeddingProvider: "openai",
@@ -268,10 +269,10 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory
-		    testCollection = "TestGetById" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    testCollection = "test_getbyid_" & left( createUUID(), 8 );
+		    memory = aiMemory( "qdrant", createUUID(), {
 		        host: "localhost",
-		        port: 8080,
+		        port: 6333,
 		        scheme: "http",
 		        collection: testCollection,
 		        embeddingProvider: "openai",
@@ -325,10 +326,10 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory
-		    testCollection = "TestDelete" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    testCollection = "test_delete_" & left( createUUID(), 8 );
+		    memory = aiMemory( "qdrant", createUUID(), {
 		        host: "localhost",
-		        port: 8080,
+		        port: 6333,
 		        scheme: "http",
 		        collection: testCollection,
 		        embeddingProvider: "openai",
@@ -383,10 +384,10 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory
-		    testCollection = "TestFilter" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    testCollection = "test_filter_" & left( createUUID(), 8 );
+		    memory = aiMemory( "qdrant", createUUID(), {
 		        host: "localhost",
-		        port: 8080,
+		        port: 6333,
 		        scheme: "http",
 		        collection: testCollection,
 		        embeddingProvider: "openai",
@@ -410,7 +411,8 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 
 		    result = {
 		        resultCount: results.len(),
-		        hasResults: results.len() > 0
+		        hasResults: results.len() > 0,
+		        firstResult: results.len() > 0 ? results[1] : {}
 		    };
 
 		    // Cleanup
@@ -424,22 +426,30 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 
 		IStruct testResult = variables.getAsStruct( result );
 
-		// Weaviate should support metadata filtering
-		assertTrue( testResult.getAsInteger( Key.of( "resultCount" ) ) >= 0 );
+		// Qdrant has excellent metadata filtering support
+		assertTrue( testResult.getAsInteger( Key.of( "resultCount" ) ) >= 1 );
+		assertTrue( testResult.getAsBoolean( Key.of( "hasResults" ) ) );
+
+		// Verify the result has the correct category
+		IStruct firstResult = testResult.getAsStruct( Key.of( "firstResult" ) );
+		if ( !firstResult.isEmpty() ) {
+			IStruct metadata = firstResult.getAsStruct( Key.of( "metadata" ) );
+			assertEquals( "tutorial", metadata.getAsString( Key.of( "category" ) ) );
+		}
 	}
 
 	@Test
 	@Order( 7 )
-	@DisplayName( "Test batch seeding with WeaviateVectorMemory" )
+	@DisplayName( "Test batch seeding with QdrantVectorMemory" )
 	void testBatchSeeding() throws Exception {
 
 		runtime.executeSource(
 		    """
 		    // Create memory
-		    testCollection = "TestBatch" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    testCollection = "test_batch_" & left( createUUID(), 8 );
+		    memory = aiMemory( "qdrant", createUUID(), {
 		        host: "localhost",
-		        port: 8080,
+		        port: 6333,
 		        scheme: "http",
 		        collection: testCollection,
 		        embeddingProvider: "openai",
@@ -482,16 +492,16 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 
 	@Test
 	@Order( 8 )
-	@DisplayName( "Test async batch seeding with WeaviateVectorMemory" )
+	@DisplayName( "Test async batch seeding with QdrantVectorMemory" )
 	void testAsyncBatchSeeding() throws Exception {
 
 		runtime.executeSource(
 		    """
 		    // Create memory
-		    testCollection = "TestAsyncBatch" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    testCollection = "test_async_batch_" & left( createUUID(), 8 );
+		    memory = aiMemory( "qdrant", createUUID(), {
 		        host: "localhost",
-		        port: 8080,
+		        port: 6333,
 		        scheme: "http",
 		        collection: testCollection,
 		        embeddingProvider: "openai",
@@ -535,21 +545,21 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 
 	@Test
 	@Order( 9 )
-	@DisplayName( "Test HybridMemory integration with WeaviateVectorMemory" )
+	@DisplayName( "Test HybridMemory integration with QdrantVectorMemory" )
 	void testHybridMemory() throws Exception {
 
 		runtime.executeSource(
 		    """
-		    // Create hybrid memory with Weaviate backend
-		    testCollection = "TestHybrid" & left( createUUID(), 8 );
+		    // Create hybrid memory with Qdrant backend
+		    testCollection = "test_hybrid_" & left( createUUID(), 8 );
 		    hybridMemory = aiMemory( "hybrid", createUUID(), {
 		        recentLimit: 2,
 		        semanticLimit: 2,
 		        totalLimit: 4,
-		        vectorProvider: "weaviate",
+		        vectorProvider: "qdrant",
 		        vectorConfig: {
 		            host: "localhost",
-		            port: 8080,
+		            port: 6333,
 		            scheme: "http",
 		            collection: testCollection,
 		            embeddingProvider: "openai",
@@ -590,7 +600,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 
 		assertTrue( result.getAsBoolean( Key.of( "created" ) ) );
 		assertTrue( result.getAsBoolean( Key.of( "hasVectorMemory" ) ) );
-		assertEquals( "WeaviateVectorMemory", result.getAsString( Key.of( "vectorType" ) ) );
+		assertEquals( "QdrantVectorMemory", result.getAsString( Key.of( "vectorType" ) ) );
 		assertTrue( result.getAsInteger( Key.of( "messageCount" ) ) > 0 );
 		assertTrue( result.getAsBoolean( Key.of( "hasRecentAndSemantic" ) ) );
 	}
@@ -603,9 +613,9 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory instance
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    memory = aiMemory( "qdrant", createUUID(), {
 		        host: "localhost",
-		        port: 8080,
+		        port: 6333,
 		        scheme: "http",
 		        collection: "temp_test_collection",
 		        embeddingProvider: "openai",
@@ -615,28 +625,30 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    // Add a document to trigger collection creation
 		    memory.add( { id: createUUID(), text: "Test document", metadata: {} } );
 
-		    // // Check if collection was created
-		    // exists = memory.collectionExists( "TempTestCollection" );
+		    // Wait for indexing
+		    sleep( 500 );
 
-		    // // Delete collection
-		    // memory.deleteCollection( "TempTestCollection" );
+		    // Check if collection was created
+		    exists = memory.collectionExists( "temp_test_collection" );
 
-		    // // Weaviate uses eventual consistency for schema changes
-		    // // Add a small delay and retry to allow deletion to propagate
-		    // sleep( 1000 );
-		    // existsAfterDelete = memory.collectionExists( "TempTestCollection" );
+		    // Delete collection
+		    memory.deleteCollection( "temp_test_collection" );
 
-		    // result = {
-		    //     existedBefore: exists,
-		    //     existsAfter: existsAfterDelete
-		    // };
+		    // Verify deletion
+		    sleep( 500 );
+		    existsAfterDelete = memory.collectionExists( "temp_test_collection" );
+
+		    result = {
+		        existedBefore: exists,
+		        existsAfter: existsAfterDelete
+		    };
 		    """,
 		    context );
 
-		// IStruct result = variables.getAsStruct( Key.of( "result" ) );
+		IStruct result = variables.getAsStruct( Key.of( "result" ) );
 
-		// assertTrue( result.getAsBoolean( Key.of( "existedBefore" ) ) );
-		// assertFalse( result.getAsBoolean( Key.of( "existsAfter" ) ) );
+		assertTrue( result.getAsBoolean( Key.of( "existedBefore" ) ) );
+		assertFalse( result.getAsBoolean( Key.of( "existsAfter" ) ) );
 	}
 
 	@Test
@@ -647,10 +659,10 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory
-		    testCollection = "TestGetAll" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    testCollection = "test_getall_" & left( createUUID(), 8 );
+		    memory = aiMemory( "qdrant", createUUID(), {
 		        host: "localhost",
-		        port: 8080,
+		        port: 6333,
 		        scheme: "http",
 		        collection: testCollection,
 		        embeddingProvider: "openai",
@@ -660,17 +672,19 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    // Add documents
 		    memory.add( "First document" );
 		    memory.add( "Second document" );
-		    memory.add( "Third document" );
+		    memory.add( { text: "Third document", metadata: { order: 3 } } );
 
 		    // Wait for indexing
 		    sleep( 1000 );
 
 		    // Get all documents
-		    allDocs = memory.getAll();
+		    allDocs = memory.getAllDocuments();
 
 		    result = {
-		        totalDocs: allDocs.len(),
-		        hasDocuments: allDocs.len() >= 3
+		        count: allDocs.len(),
+		        hasDocuments: allDocs.len() > 0,
+		        hasText: allDocs.len() > 0 && allDocs[1].keyExists( "text" ),
+		        hasMetadata: allDocs.len() > 0 && allDocs[1].keyExists( "metadata" )
 		    };
 
 		    // Cleanup
@@ -684,7 +698,10 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 
 		IStruct result = variables.getAsStruct( Key.of( "result" ) );
 
-		assertTrue( result.getAsInteger( Key.of( "totalDocs" ) ) >= 3 );
+		assertTrue( result.getAsInteger( Key.of( "count" ) ) >= 3 );
 		assertTrue( result.getAsBoolean( Key.of( "hasDocuments" ) ) );
+		assertTrue( result.getAsBoolean( Key.of( "hasText" ) ) );
+		assertTrue( result.getAsBoolean( Key.of( "hasMetadata" ) ) );
 	}
+
 }

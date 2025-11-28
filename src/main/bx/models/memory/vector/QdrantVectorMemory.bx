@@ -184,7 +184,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.status.keyExists( "error" ) ) {
+		if ( response?.status?.keyExists( "error" ) ){
 			throw(
 				type = "QdrantVectorMemory.StoreError",
 				message = "Failed to store document in Qdrant",
@@ -240,7 +240,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.status.keyExists( "error" ) ) {
+		if ( response?.status?.keyExists( "error" ) ){
 			throw(
 				type = "QdrantVectorMemory.SearchError",
 				message = "Failed to search Qdrant",
@@ -272,7 +272,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.status.keyExists( "error" ) ) {
+		if ( response?.status?.keyExists( "error" ) ){
 			return [];
 		}
 
@@ -306,7 +306,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check if point exists
-		if ( response.status.keyExists( "error" ) ) {
+		if ( response?.status?.keyExists( "error" ) ){
 			return {};
 		}
 
@@ -459,7 +459,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if ( response.status.keyExists( "error" ) ) {
+		if ( response?.status?.keyExists( "error" ) ){
 			throw(
 				type = "QdrantVectorMemory.CreateCollectionError",
 				message = "Failed to create collection in Qdrant",
@@ -524,13 +524,15 @@ class extends="BaseVectorMemory" {
 	 * @method HTTP method (GET, POST, etc.)
 	 * @path API path
 	 * @body Request body (optional)
+	 * @debug Enable debugging output (optional)
 	 *
 	 * @return Parsed response struct
 	 */
 	private struct function makeRequest(
 		required string method,
 		required string path,
-		struct body = {}
+		struct body = {},
+		boolean debug = false
 	) {
 		// Build HTTP request
 		var httpService = http( variables.baseUrl & arguments.path )
@@ -553,6 +555,11 @@ class extends="BaseVectorMemory" {
 
 		// Execute request
 		var result = httpService.send();
+
+		// Debugging output
+		if ( arguments.debug ) {
+			println( isJson( result.fileContent ) ? jsonDeserialize( result.fileContent ) : result.fileContent );
+		}
 
 		// Parse response
 		if ( result.errorDetail.isEmpty() &&  result.filecontent.len() > 0 ) {
