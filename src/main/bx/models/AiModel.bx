@@ -85,6 +85,30 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
+	 * Remove specific tools from this model
+	 *
+	 * @tools One or more tools to remove (matched by reference)
+	 *
+	 * @return This model with tools removed
+	 */
+	public AiModel function removeTools( any tools ) {
+		// If simple value, wrap as array
+		if( !isArray( arguments.tools ) ){
+			arguments.tools = [ arguments.tools ];
+		}
+
+		// Remove each tool from the current tools array
+		arguments.tools.each( toolToRemove => {
+			var index = variables.tools.findIndex( t => t == toolToRemove );
+			if ( index >= 1 ) {
+				variables.tools.deleteAt( index );
+			}
+		} );
+
+		return this;
+	}
+
+	/**
 	 * Get model configuration as a struct
 	 *
 	 * @return Struct of model configuration

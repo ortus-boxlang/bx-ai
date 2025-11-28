@@ -26,6 +26,7 @@ class {
 	 * - Maintain conversation memory across interactions
 	 * - Execute multi-step tasks with planning
 	 * - Chain operations in pipelines
+	 * - Delegate tasks to sub-agents
 	 *
 	 * @name The agent's name (default: "BxAi")
 	 * @description The agent's role/purpose description
@@ -33,6 +34,7 @@ class {
 	 * @model The AI model provider to use. Defaults to configured default model
 	 * @memory Single IAiMemory instance or array of memory instances, defaults to WindowMemory
 	 * @tools Array of Tool objects the agent can use
+	 * @subAgents Array of sub-agents to register as internal tools for delegation
 	 * @params Additional provider parameters (model,temperature, max_tokens, etc.)
 	 * @options Additional options (timeout, logging, etc.)
 	 *
@@ -45,6 +47,7 @@ class {
 		AiModel model = aiModel(),
 		any memory = aiMemory(),
 		array tools = [],
+		array subAgents = [],
 		struct params = {},
 		struct options = {}
 	) {
