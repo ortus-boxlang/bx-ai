@@ -388,4 +388,4 @@ curl http://localhost:11434/api/tags
 
 - [Quick Start Guide](quickstart.md) - Get started with simple examples
 - [Basic Chatting](../chatting/basic-chatting.md) - Learn the basics
-- [Provider Comparison](../appendix/providers.md) - Compare features and costs
+- [Provider Information](../README.md#supported-providers) - Compare features and capabilities
