@@ -60,6 +60,7 @@ Advanced capabilities and memory systems:
 - **memory-session.bxs** - 🆕 Session-based memory for web applications
 - **memory-cache.bxs** - 🆕 Distributed cache memory with CacheBox
 - **memory-comparison.bxs** - 🆕 Side-by-side comparison of memory types
+- **test-multimodal.bxs** - Quick verification script for multimodal methods
 
 ### `/vector-memory` - Semantic Search Memory 🆕
 

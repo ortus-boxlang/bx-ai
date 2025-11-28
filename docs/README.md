@@ -70,6 +70,9 @@ Multi-message conversations, AI tools, async requests, and streaming responses.
 ⚙️ **[Service-Level Chatting](chatting/service-chatting.md)**
 Direct service control, custom requests, headers, and managing multiple providers.
 
+📦 **[Structured Output](chatting/structured-output.md)**
+Extract type-safe, validated data from AI responses using classes, structs, or schemas.
+
 ---
 
 ### AI Pipelines
