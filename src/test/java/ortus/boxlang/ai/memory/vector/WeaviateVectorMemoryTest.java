@@ -79,7 +79,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 	private static void cleanupWeaviateCollections( HttpClient client ) {
 		try {
 			// Get all classes
-			HttpRequest		schemaRequest	= HttpRequest.newBuilder()
+			HttpRequest				schemaRequest	= HttpRequest.newBuilder()
 			    .uri( URI.create( WEAVIATE_URL + "/v1/schema" ) )
 			    .GET()
 			    .build();
@@ -87,15 +87,15 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 			HttpResponse<String>	schemaResponse	= client.send( schemaRequest, HttpResponse.BodyHandlers.ofString() );
 
 			if ( schemaResponse.statusCode() == 200 ) {
-				String		body		= schemaResponse.body();
+				String	body	= schemaResponse.body();
 				// Parse JSON to extract class names (simple regex approach)
-				var			pattern		= java.util.regex.Pattern.compile( "\"class\"\\s*:\\s*\"([^\"]+)\"" );
-				var			matcher		= pattern.matcher( body );
+				var		pattern	= java.util.regex.Pattern.compile( "\"class\"\\s*:\\s*\"([^\"]+)\"" );
+				var		matcher	= pattern.matcher( body );
 
 				while ( matcher.find() ) {
-					String className = matcher.group( 1 );
+					String		className		= matcher.group( 1 );
 					// Delete the class
-					HttpRequest deleteRequest = HttpRequest.newBuilder()
+					HttpRequest	deleteRequest	= HttpRequest.newBuilder()
 					    .uri( URI.create( WEAVIATE_URL + "/v1/schema/" + className ) )
 					    .DELETE()
 					    .build();
