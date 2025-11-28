@@ -1,0 +1,749 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MCP Server - Model Context Protocol server implementation for exposing tools, resources, and prompts
+ *
+ * This class provides a fluent API for registering and managing MCP tools that can be exposed
+ * to AI clients via the Model Context Protocol (JSON-RPC 2.0).
+ *
+ * Usage:
+ * ```boxlang
+ * // Get or create an MCP server instance
+ * server = mcpServer( "myApp" )
+ *     .registerTool( aiTool( "search", "Search for documents", ( query ) => searchDocs( query ) ) )
+ *     .registerTool( aiTool( "calculate", "Perform calculations", ( expr ) => evaluate( expr ) ) );
+ *
+ * // Handle incoming MCP request
+ * response = server.handleRequest( requestBody );
+ * ```
+ */
+class {
+
+	/**
+	 * The unique name/identifier for this MCP server instance
+	 */
+	property name="serverName" type="string" default="default";
+
+	/**
+	 * Server description for MCP capabilities response
+	 */
+	property name="description" type="string" default="BoxLang AI MCP Server";
+
+	/**
+	 * Server version
+	 */
+	property name="version" type="string" default="1.0.0";
+
+	/**
+	 * Registered tools (map of tool name to ITool instance)
+	 */
+	property name="tools" type="struct" default={};
+
+	/**
+	 * Registered resources (map of resource URI to resource definition)
+	 */
+	property name="resources" type="struct" default={};
+
+	/**
+	 * Registered prompts (map of prompt name to prompt definition)
+	 */
+	property name="prompts" type="struct" default={};
+
+	/**
+	 * Static storage for application-scoped MCP servers
+	 */
+	static {
+		/**
+		 * Global registry of MCP server instances by name
+		 */
+		servers = {};
+
+		/**
+		 * Protocol version supported
+		 */
+		PROTOCOL_VERSION = "2024-11-05";
+
+		/**
+		 * Default server name
+		 */
+		DEFAULT_SERVER_NAME = "default";
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @name The unique name/identifier for this server instance
+	 * @description Server description
+	 * @version Server version
+	 */
+	function init(
+		string name = static.DEFAULT_SERVER_NAME,
+		string description = "BoxLang AI MCP Server",
+		string version = "1.0.0"
+	) {
+		variables.serverName = arguments.name;
+		variables.description = arguments.description;
+		variables.version = arguments.version;
+		variables.tools = {};
+		variables.resources = {};
+		variables.prompts = {};
+
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Static Factory Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get or create an MCP server instance by name.
+	 * Servers are stored globally and can be accessed from anywhere.
+	 *
+	 * @name The server name/identifier
+	 *
+	 * @return The MCPServer instance
+	 */
+	static function getInstance( string name = static.DEFAULT_SERVER_NAME ) {
+		if ( !static.servers.keyExists( arguments.name ) ) {
+			static.servers[ arguments.name ] = new MCPServer( name: arguments.name );
+		}
+		return static.servers[ arguments.name ];
+	}
+
+	/**
+	 * Check if a server instance exists
+	 *
+	 * @name The server name to check
+	 *
+	 * @return Boolean indicating if the server exists
+	 */
+	static boolean function hasInstance( required string name ) {
+		return static.servers.keyExists( arguments.name );
+	}
+
+	/**
+	 * Remove a server instance from the registry
+	 *
+	 * @name The server name to remove
+	 *
+	 * @return Boolean indicating if a server was removed
+	 */
+	static boolean function removeInstance( required string name ) {
+		if ( static.servers.keyExists( arguments.name ) ) {
+			static.servers.delete( arguments.name );
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Get all registered server names
+	 *
+	 * @return Array of server names
+	 */
+	static array function getInstanceNames() {
+		return static.servers.keyArray();
+	}
+
+	/**
+	 * Clear all server instances
+	 */
+	static function clearAllInstances() {
+		static.servers = {};
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Tool Registration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Register a single tool with the MCP server
+	 *
+	 * @tool The ITool instance to register
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function registerTool( required ITool tool ) {
+		variables.tools[ arguments.tool.getName() ] = arguments.tool;
+		return this;
+	}
+
+	/**
+	 * Register multiple tools at once
+	 *
+	 * @tools Array of ITool instances to register
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function registerTools( required array tools ) {
+		arguments.tools.each( tool => registerTool( tool ) );
+		return this;
+	}
+
+	/**
+	 * Unregister a tool by name
+	 *
+	 * @name The name of the tool to unregister
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function unregisterTool( required string name ) {
+		variables.tools.delete( arguments.name );
+		return this;
+	}
+
+	/**
+	 * Check if a tool is registered
+	 *
+	 * @name The name of the tool to check
+	 *
+	 * @return Boolean indicating if the tool exists
+	 */
+	boolean function hasTool( required string name ) {
+		return variables.tools.keyExists( arguments.name );
+	}
+
+	/**
+	 * Get a registered tool by name
+	 *
+	 * @name The name of the tool to retrieve
+	 *
+	 * @return The ITool instance or null if not found
+	 */
+	any function getTool( required string name ) {
+		return variables.tools[ arguments.name ] ?: javacast( "null", "" );
+	}
+
+	/**
+	 * Get all registered tools
+	 *
+	 * @return Struct of all registered tools
+	 */
+	struct function getTools() {
+		return variables.tools;
+	}
+
+	/**
+	 * List all registered tools in MCP format
+	 *
+	 * @return Array of tool definitions for MCP protocol
+	 */
+	array function listTools() {
+		return variables.tools.map( ( name, tool ) => {
+			var schema = tool.getSchema();
+			// Extract function details from OpenAI-format schema
+			var functionDef = schema.function ?: {};
+			return {
+				"name": name,
+				"description": functionDef.description ?: "",
+				"inputSchema": {
+					"type": "object",
+					"properties": functionDef.parameters?.properties ?: {},
+					"required": functionDef.parameters?.required ?: []
+				}
+			};
+		} ).valueArray();
+	}
+
+	/**
+	 * Get the count of registered tools
+	 *
+	 * @return Number of registered tools
+	 */
+	numeric function getToolCount() {
+		return variables.tools.count();
+	}
+
+	/**
+	 * Clear all registered tools
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function clearTools() {
+		variables.tools = {};
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Resource Registration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Register a resource with the MCP server
+	 *
+	 * @uri The unique URI for the resource
+	 * @name Display name for the resource
+	 * @description Description of the resource
+	 * @mimeType Optional MIME type (defaults to text/plain)
+	 * @handler Function that returns the resource content when read
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function registerResource(
+		required string uri,
+		required string name,
+		string description = "",
+		string mimeType = "text/plain",
+		required function handler
+	) {
+		variables.resources[ arguments.uri ] = {
+			"uri": arguments.uri,
+			"name": arguments.name,
+			"description": arguments.description,
+			"mimeType": arguments.mimeType,
+			"handler": arguments.handler
+		};
+		return this;
+	}
+
+	/**
+	 * Unregister a resource by URI
+	 *
+	 * @uri The URI of the resource to unregister
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function unregisterResource( required string uri ) {
+		variables.resources.delete( arguments.uri );
+		return this;
+	}
+
+	/**
+	 * Check if a resource is registered
+	 *
+	 * @uri The URI of the resource to check
+	 *
+	 * @return Boolean indicating if the resource exists
+	 */
+	boolean function hasResource( required string uri ) {
+		return variables.resources.keyExists( arguments.uri );
+	}
+
+	/**
+	 * List all registered resources in MCP format
+	 *
+	 * @return Array of resource definitions for MCP protocol
+	 */
+	array function listResources() {
+		return variables.resources.map( ( uri, resource ) => {
+			return {
+				"uri": resource.uri,
+				"name": resource.name,
+				"description": resource.description,
+				"mimeType": resource.mimeType
+			};
+		} ).valueArray();
+	}
+
+	/**
+	 * Read a resource content
+	 *
+	 * @uri The URI of the resource to read
+	 *
+	 * @return The resource content
+	 */
+	any function readResource( required string uri ) {
+		if ( !hasResource( arguments.uri ) ) {
+			throw( type: "MCPServer.ResourceNotFound", message: "Resource not found: #arguments.uri#" );
+		}
+
+		var resource = variables.resources[ arguments.uri ];
+		var content = resource.handler();
+
+		return {
+			"contents": [
+				{
+					"uri": resource.uri,
+					"mimeType": resource.mimeType,
+					"text": isSimpleValue( content ) ? content : jsonSerialize( content )
+				}
+			]
+		};
+	}
+
+	/**
+	 * Clear all registered resources
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function clearResources() {
+		variables.resources = {};
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Prompt Registration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Register a prompt with the MCP server
+	 *
+	 * @name The unique name for the prompt
+	 * @description Description of the prompt
+	 * @arguments Array of argument definitions with name, description, and required flag
+	 * @handler Function that returns the prompt messages when called
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function registerPrompt(
+		required string name,
+		string description = "",
+		array arguments = [],
+		required function handler
+	) {
+		variables.prompts[ arguments.name ] = {
+			"name": arguments.name,
+			"description": arguments.description,
+			"arguments": arguments.arguments,
+			"handler": arguments.handler
+		};
+		return this;
+	}
+
+	/**
+	 * Unregister a prompt by name
+	 *
+	 * @name The name of the prompt to unregister
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function unregisterPrompt( required string name ) {
+		variables.prompts.delete( arguments.name );
+		return this;
+	}
+
+	/**
+	 * Check if a prompt is registered
+	 *
+	 * @name The name of the prompt to check
+	 *
+	 * @return Boolean indicating if the prompt exists
+	 */
+	boolean function hasPrompt( required string name ) {
+		return variables.prompts.keyExists( arguments.name );
+	}
+
+	/**
+	 * List all registered prompts in MCP format
+	 *
+	 * @return Array of prompt definitions for MCP protocol
+	 */
+	array function listPrompts() {
+		return variables.prompts.map( ( name, prompt ) => {
+			return {
+				"name": prompt.name,
+				"description": prompt.description,
+				"arguments": prompt.arguments
+			};
+		} ).valueArray();
+	}
+
+	/**
+	 * Get a prompt by calling its handler
+	 *
+	 * @name The name of the prompt
+	 * @arguments The arguments to pass to the prompt handler
+	 *
+	 * @return The prompt messages
+	 */
+	struct function getPrompt( required string name, struct arguments = {} ) {
+		if ( !hasPrompt( arguments.name ) ) {
+			throw( type: "MCPServer.PromptNotFound", message: "Prompt not found: #arguments.name#" );
+		}
+
+		var prompt = variables.prompts[ arguments.name ];
+		var messages = prompt.handler( arguments.arguments );
+
+		// Ensure messages is an array
+		if ( !isArray( messages ) ) {
+			messages = [ messages ];
+		}
+
+		return {
+			"description": prompt.description,
+			"messages": messages.map( msg => {
+				if ( isStruct( msg ) ) {
+					return {
+						"role": msg.role ?: "user",
+						"content": {
+							"type": "text",
+							"text": msg.content ?: ""
+						}
+					};
+				}
+				return {
+					"role": "user",
+					"content": {
+						"type": "text",
+						"text": toString( msg )
+					}
+				};
+			} )
+		};
+	}
+
+	/**
+	 * Clear all registered prompts
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function clearPrompts() {
+		variables.prompts = {};
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Server Configuration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Set the server name
+	 *
+	 * @name The server name
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function setName( required string name ) {
+		variables.serverName = arguments.name;
+		return this;
+	}
+
+	/**
+	 * Set the server description
+	 *
+	 * @description The server description
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function setDescription( required string description ) {
+		variables.description = arguments.description;
+		return this;
+	}
+
+	/**
+	 * Set the server version
+	 *
+	 * @version The server version
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function setVersion( required string version ) {
+		variables.version = arguments.version;
+		return this;
+	}
+
+	/**
+	 * Get server capabilities in MCP format
+	 *
+	 * @return Struct of server capabilities
+	 */
+	struct function getCapabilities() {
+		var caps = {};
+
+		if ( variables.tools.count() > 0 ) {
+			caps[ "tools" ] = {};
+		}
+		if ( variables.resources.count() > 0 ) {
+			caps[ "resources" ] = {};
+		}
+		if ( variables.prompts.count() > 0 ) {
+			caps[ "prompts" ] = {};
+		}
+
+		return caps;
+	}
+
+	/**
+	 * Get server info for MCP protocol
+	 *
+	 * @return Struct of server information
+	 */
+	struct function getServerInfo() {
+		return {
+			"name": variables.serverName,
+			"version": variables.version
+		};
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * MCP Request Handling
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Handle an incoming MCP JSON-RPC request
+	 *
+	 * @requestBody The JSON string or struct of the MCP request
+	 *
+	 * @return Struct containing the JSON-RPC response
+	 */
+	struct function handleRequest( required any requestBody ) {
+		var request = isStruct( arguments.requestBody )
+			? arguments.requestBody
+			: jsonDeserialize( arguments.requestBody );
+
+		var requestId = request.id ?: javacast( "null", "" );
+		var method = request.method ?: "";
+		var params = request.params ?: {};
+
+		try {
+			var result = {};
+
+			switch ( method ) {
+				case "initialize":
+					result = handleInitialize( params );
+					break;
+				case "tools/list":
+					result = { "tools": listTools() };
+					break;
+				case "tools/call":
+					result = handleToolCall( params );
+					break;
+				case "resources/list":
+					result = { "resources": listResources() };
+					break;
+				case "resources/read":
+					result = readResource( params.uri ?: "" );
+					break;
+				case "prompts/list":
+					result = { "prompts": listPrompts() };
+					break;
+				case "prompts/get":
+					result = getPrompt( params.name ?: "", params.arguments ?: {} );
+					break;
+				case "ping":
+					result = {};
+					break;
+				default:
+					return buildErrorResponse( requestId, -32601, "Method not found: #method#" );
+			}
+
+			return buildSuccessResponse( requestId, result );
+		} catch ( any e ) {
+			return buildErrorResponse( requestId, -32000, e.message );
+		}
+	}
+
+	/**
+	 * Handle the initialize method
+	 *
+	 * @params The initialization parameters
+	 *
+	 * @return The initialization result
+	 */
+	private struct function handleInitialize( struct params = {} ) {
+		return {
+			"protocolVersion": static.PROTOCOL_VERSION,
+			"capabilities": getCapabilities(),
+			"serverInfo": getServerInfo()
+		};
+	}
+
+	/**
+	 * Handle a tools/call request
+	 *
+	 * @params The call parameters containing name and arguments
+	 *
+	 * @return The tool call result
+	 */
+	private struct function handleToolCall( required struct params ) {
+		var toolName = arguments.params.name ?: "";
+		var toolArgs = arguments.params.arguments ?: {};
+
+		if ( !hasTool( toolName ) ) {
+			throw( type: "MCPServer.ToolNotFound", message: "Tool not found: #toolName#" );
+		}
+
+		var tool = getTool( toolName );
+		var result = tool.invoke( toolArgs );
+
+		return {
+			"content": [
+				{
+					"type": "text",
+					"text": result
+				}
+			]
+		};
+	}
+
+	/**
+	 * Build a JSON-RPC success response
+	 *
+	 * @id The request ID
+	 * @result The result data
+	 *
+	 * @return The JSON-RPC response struct
+	 */
+	private struct function buildSuccessResponse( any id, struct result = {} ) {
+		var response = {
+			"jsonrpc": "2.0",
+			"result": arguments.result
+		};
+
+		if ( !isNull( arguments.id ) ) {
+			response[ "id" ] = arguments.id;
+		}
+
+		return response;
+	}
+
+	/**
+	 * Build a JSON-RPC error response
+	 *
+	 * @id The request ID
+	 * @code The error code
+	 * @message The error message
+	 *
+	 * @return The JSON-RPC error response struct
+	 */
+	private struct function buildErrorResponse( any id, required numeric code, required string message ) {
+		var response = {
+			"jsonrpc": "2.0",
+			"error": {
+				"code": arguments.code,
+				"message": arguments.message
+			}
+		};
+
+		if ( !isNull( arguments.id ) ) {
+			response[ "id" ] = arguments.id;
+		}
+
+		return response;
+	}
+
+	/**
+	 * Serialize response to JSON for HTTP output
+	 *
+	 * @response The response struct to serialize
+	 *
+	 * @return JSON string
+	 */
+	function toJSON( required struct response ) {
+		return jsonSerialize( arguments.response );
+	}
+
+}

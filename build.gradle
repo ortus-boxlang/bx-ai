@@ -172,6 +172,8 @@ task createModuleStructure(type: Copy) {
     }
     from( 'src/main/bx' ) {
 		include '**/*.bx'
+		include '**/*.bxm'
+		include '**/*.bxs'
 		// Token Replacements Go Here
 		filter{ line -> line.replaceAll( '@build.version@', project.version ) }
 		if( project.branch == "development" ){

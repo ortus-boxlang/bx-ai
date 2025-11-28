@@ -1,0 +1,50 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Get or create an MCP (Model Context Protocol) server instance
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Get or create an MCP server instance for registering and managing tools.
+	 * <p>
+	 * MCP servers are stored globally and can be accessed from anywhere by name.
+	 * This allows you to register tools in one place (e.g., Application.bx) and
+	 * expose them via an MCP endpoint (e.g., mcp.bxm).
+	 *
+	 * Example:
+	 * ```
+	 * // Register tools at application startup
+	 * mcpServer( "myApp" )
+	 *     .setDescription( "My Application MCP Server" )
+	 *     .registerTool( aiTool( "search", "Search documents", ( query ) => searchDocs( query ) ) )
+	 *     .registerTool( aiTool( "calculate", "Do math", ( expr ) => evaluate( expr ) ) );
+	 *
+	 * // List registered tools
+	 * tools = mcpServer( "myApp" ).listTools();
+	 *
+	 * // Handle MCP request in endpoint
+	 * response = mcpServer( "myApp" ).handleRequest( requestBody );
+	 * ```
+	 *
+	 * @name The unique name/identifier for the server instance (defaults to "default")
+	 *
+	 * @return An MCPServer instance with fluent API
+	 */
+	function invoke( string name = "default" ) {
+		return bxModules.bxai.models.mcp.MCPServer::getInstance( arguments.name );
+	}
+
+}
