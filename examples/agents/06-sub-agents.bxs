@@ -1,0 +1,144 @@
+/**
+ * Sub-Agents Example
+ *
+ * Demonstrates how to create a parent agent with specialized sub-agents.
+ * The parent agent can delegate tasks to sub-agents based on their expertise.
+ * Sub-agents are automatically registered as tools for the parent agent.
+ */
+
+println( "=== AI Agent with Sub-Agents ===" )
+println( "" )
+
+// Create specialized sub-agents
+
+// 1. Math Agent - handles mathematical calculations
+mathAgent = aiAgent(
+    name: "MathAgent",
+    description: "A mathematics expert that can solve calculations and explain math concepts",
+    instructions: """
+        You are a mathematics expert. You help with:
+        - Mathematical calculations
+        - Explaining math concepts
+        - Solving equations
+        - Statistical analysis
+        Be precise and show your work when solving problems.
+    """
+)
+
+// 2. Code Agent - handles coding tasks
+codeAgent = aiAgent(
+    name: "CodeAgent",
+    description: "A programming expert that can write, review, and explain code",
+    instructions: """
+        You are a programming expert. You help with:
+        - Writing code in various languages
+        - Code review and optimization
+        - Debugging issues
+        - Explaining programming concepts
+        Provide clean, well-documented code examples.
+    """
+)
+
+// 3. Research Agent - handles research and fact-finding
+researchAgent = aiAgent(
+    name: "ResearchAgent",
+    description: "A research specialist that can gather information and provide summaries",
+    instructions: """
+        You are a research specialist. You help with:
+        - Finding relevant information on topics
+        - Summarizing complex subjects
+        - Comparing different options or solutions
+        - Providing factual, well-organized responses
+        Cite sources when possible and present information clearly.
+    """
+)
+
+// Create the main orchestrator agent with sub-agents
+mainAgent = aiAgent(
+    name: "OrchestratorAgent",
+    description: "A main coordinator that delegates tasks to specialized sub-agents",
+    instructions: """
+        You are a task orchestrator. You have access to specialized sub-agents:
+        - MathAgent: For mathematical calculations and concepts
+        - CodeAgent: For programming tasks and code review
+        - ResearchAgent: For research and information gathering
+
+        Analyze each user request and delegate to the appropriate sub-agent when needed.
+        For simple queries, answer directly. For specialized tasks, use the delegation tools.
+        Summarize the sub-agent's response in a user-friendly way.
+    """,
+    subAgents: [ mathAgent, codeAgent, researchAgent ]
+)
+
+println( "Main agent created with #mainAgent.getConfig().subAgentCount# sub-agents" )
+println( "" )
+
+// Display sub-agent information
+println( "=== Registered Sub-Agents ===" )
+mainAgent.getConfig().subAgents.each( agent => {
+    println( "  • #agent.name#: #agent.description#" )
+} )
+println( "" )
+
+// Test 1: Math query (should delegate to MathAgent)
+println( "=== Test 1: Math Query ===" )
+println( "User: What is the quadratic formula and how do I solve x^2 + 5x + 6 = 0?" )
+response = mainAgent.run( "What is the quadratic formula and how do I solve x^2 + 5x + 6 = 0?" )
+println( "Agent: #response#" )
+println( "" )
+
+// Test 2: Code query (should delegate to CodeAgent)
+println( "=== Test 2: Code Query ===" )
+println( "User: Write a simple function in BoxLang that calculates factorial" )
+response = mainAgent.run( "Write a simple function in BoxLang that calculates factorial" )
+println( "Agent: #response#" )
+println( "" )
+
+// Test 3: Research query (should delegate to ResearchAgent)
+println( "=== Test 3: Research Query ===" )
+println( "User: What are the main differences between REST and GraphQL APIs?" )
+response = mainAgent.run( "What are the main differences between REST and GraphQL APIs?" )
+println( "Agent: #response#" )
+println( "" )
+
+// Test 4: Simple query (should be answered directly)
+println( "=== Test 4: Simple Query (Direct Answer) ===" )
+println( "User: Hello, how are you?" )
+response = mainAgent.run( "Hello, how are you?" )
+println( "Agent: #response#" )
+println( "" )
+
+// Alternative: Build sub-agents using fluent API
+println( "=== Alternative: Fluent API Sub-Agent Registration ===" )
+
+// Create sub-agent
+helperAgent = aiAgent(
+    name: "HelperAgent",
+    description: "A general helper for misc tasks"
+)
+
+// Create main agent and add sub-agent fluently
+fluentAgent = aiAgent( name: "FluentMainAgent" )
+    .addSubAgent( helperAgent )
+
+println( "Fluent agent created with #fluentAgent.getConfig().subAgentCount# sub-agents" )
+
+// Check if sub-agent exists
+println( "Has HelperAgent: #fluentAgent.hasSubAgent( 'HelperAgent' )#" )
+println( "Has NonExistent: #fluentAgent.hasSubAgent( 'NonExistent' )#" )
+println( "" )
+
+// Get a specific sub-agent
+helper = fluentAgent.getSubAgent( "HelperAgent" )
+if ( !isNull( helper ) ) {
+    println( "Found sub-agent: #helper.getConfig().name#" )
+}
+
+println( "" )
+println( "=== Summary ===" )
+println( "This example demonstrates:" )
+println( "  • Creating specialized sub-agents" )
+println( "  • Registering sub-agents with a parent agent" )
+println( "  • Automatic tool creation for sub-agent delegation" )
+println( "  • Sub-agent management using fluent API" )
+println( "  • Checking for and retrieving sub-agents by name" )
