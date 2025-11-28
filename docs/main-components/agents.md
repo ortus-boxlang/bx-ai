@@ -538,7 +538,8 @@ conversation = researchAgent.getMemoryMessages()
 
 ## Next Steps
 
-- Explore [Memory Systems](../advanced/memory.md) for custom memory implementations
+- Explore [Memory Systems](./memory.md) for conversation history and context management
+- See [Custom Memory](../advanced/custom-memory.md) for building custom memory implementations
 - Learn about [Tools](./tools.md) for function calling patterns
 - See [Events](../advanced/events.md) for agent event handling
-- Check [Pipeline Patterns](./overview.md) for advanced agent workflows
+- Check [Pipeline Overview](./overview.md) for advanced agent workflows

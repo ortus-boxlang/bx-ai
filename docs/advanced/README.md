@@ -164,8 +164,8 @@ chunks.each( function( chunk ) {
 ## Prerequisites
 
 These topics assume familiarity with:
-- Basic AI chatting ([Chatting Guide](../chatting/README.md))
-- AI agents ([Agents Documentation](../main-components/agents.md))
+- Basic AI chatting - See [Chatting Guide](../chatting/README.md)
+- AI agents - See [Agents Documentation](../main-components/agents.md)
 - BoxLang interceptors (for event system)
 
 ---

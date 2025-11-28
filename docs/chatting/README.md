@@ -71,6 +71,22 @@ Direct service instance management for reusability and control.
 
 ---
 
+### 📦 [Structured Output](structured-output.md)
+
+Extract type-safe, validated data from AI responses.
+
+**What you'll learn:**
+
+- Using BoxLang classes for typed responses
+- Struct templates for quick prototyping
+- Extracting arrays of data
+- Multiple schemas in one request
+- Manual population with `aiPopulate()`
+
+**Start here if:** You need reliable data extraction, type safety, or want to eliminate manual parsing.
+
+---
+
 ## Quick Examples
 
 ### Simple Chat
