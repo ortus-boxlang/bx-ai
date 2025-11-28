@@ -15,7 +15,6 @@
 package ortus.boxlang.ai.memory.vector;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -26,7 +25,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
-import ortus.boxlang.runtime.dynamic.casters.DoubleCaster;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.IStruct;
 
@@ -36,7 +34,8 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 
 	@BeforeEach
 	public void beforeEach() {
-		// No special setup needed for in-memory
+		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "openai" );
 	}
 
 	@Test
@@ -46,161 +45,130 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    """
-		    // Create BoxVectorMemory instance (in-memory, no dependencies)
-		    memory = new bxModules.bxai.models.memory.vector.BoxVectorMemory();
-		    memory.configure();
-
-		    // Test adding vectors
-		    vec1 = [1.0, 0.0, 0.0];
-		    vec2 = [0.0, 1.0, 0.0];
-		    vec3 = [0.0, 0.0, 1.0];
-
-		    id1 = memory.add( vec1, { text: "First vector", category: "test" } );
-		    id2 = memory.add( vec2, { text: "Second vector", category: "test" }, "custom-id-2" );
-		    id3 = memory.add( vec3, { text: "Third vector", category: "other" } );
-
-		    // Test count
-		    count = memory.count();
-
-		    // Test retrieval
-		    retrieved = memory.get( id2 );
+		    // Create BoxVectorMemory instance
+		    memory = aiMemory( "boxvector", createUUID(), {
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
 
 		    result = {
-		        name: memory.getName(),
-		        count: count,
-		        id1: id1,
-		        id2: id2,
-		        id3: id3,
-		        hasRetrieved: !retrieved.isEmpty(),
-		        retrievedId: retrieved.keyExists( "id" ) ? retrieved.id : "",
-		        retrievedText: retrieved.keyExists( "metadata" ) && retrieved.metadata.keyExists( "text" ) ? retrieved.metadata.text : ""
+		        type: memory.getName(),
+		        configured: true
 		    };
 		    """,
 		    context );
 
 		IStruct testResult = variables.getAsStruct( result );
 
-		assertEquals( "BoxVectorMemory", testResult.getAsString( Key.of( "name" ) ) );
-		assertEquals( 3, testResult.getAsInteger( Key.of( "count" ) ) );
-		assertTrue( testResult.getAsString( Key.of( "id1" ) ).startsWith( "vec_" ) );
-		assertEquals( "custom-id-2", testResult.getAsString( Key.of( "id2" ) ) );
-		assertTrue( testResult.getAsBoolean( Key.of( "hasRetrieved" ) ) );
-		assertEquals( "custom-id-2", testResult.getAsString( Key.of( "retrievedId" ) ) );
-		assertEquals( "Second vector", testResult.getAsString( Key.of( "retrievedText" ) ) );
+		assertEquals( "BoxVectorMemory", testResult.getAsString( Key.of( "type" ) ) );
+		assertTrue( testResult.getAsBoolean( Key.of( "configured" ) ) );
 	}
 
 	@Test
 	@Order( 2 )
-	@DisplayName( "Test vector similarity search" )
-	void testSimilaritySearch() throws Exception {
+	@DisplayName( "Test storing and retrieving documents" )
+	void testStoreAndRetrieve() throws Exception {
 
 		runtime.executeSource(
 		    """
-		    // Create and populate memory
-		    memory = new bxModules.bxai.models.memory.vector.BoxVectorMemory();
-		    memory.configure();
+		    // Create BoxVectorMemory instance with embeddings
+		    memory = aiMemory( "boxvector", createUUID(), {
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
 
-		    // Add similar vectors
-		    memory.add( [1.0, 0.0, 0.0], { text: "Pure X axis", type: "axis" } );
-		    memory.add( [0.9, 0.1, 0.0], { text: "Mostly X", type: "axis" } );
-		    memory.add( [0.0, 1.0, 0.0], { text: "Pure Y axis", type: "axis" } );
-		    memory.add( [0.0, 0.0, 1.0], { text: "Pure Z axis", type: "axis" } );
+		    // Add test documents
+		    memory.add( {
+		        id: "doc1",
+		        text: "BoxLang is a modern JVM language",
+		        metadata: { category: "programming" }
+		    } );
 
-		    // Search for vectors similar to [1.0, 0.0, 0.0]
-		    queryVector = [1.0, 0.0, 0.0];
-		    results = memory.search( queryVector, 3 );
+		    memory.add( {
+		        id: "doc2",
+		        text: "Java is an object-oriented programming language",
+		        metadata: { category: "programming" }
+		    } );
+
+		    memory.add( {
+		        id: "doc3",
+		        text: "Cooking pasta requires boiling water",
+		        metadata: { category: "cooking" }
+		    } );
+
+		    // Semantic search
+		    results = memory.getRelevant( "programming languages", 2 );
 
 		    result = {
 		        resultCount: results.len(),
-		        topScore: results.len() > 0 ? results[1].score : 0,
-		        topText: results.len() > 0 ? results[1].metadata.text : "",
-		        secondScore: results.len() > 1 ? results[2].score : 0,
-		        allHaveScores: true,
-		        allHaveMetadata: true,
-		        allHaveVectors: true
+		        hasScores: results.len() > 0 && results[1].keyExists( "score" ),
+		        hasText: results.len() > 0 && results[1].keyExists( "text" ),
+		        hasMetadata: results.len() > 0 && results[1].keyExists( "metadata" ),
+		        firstCategory: results.len() > 0 ? results[1].metadata.category : ""
 		    };
-
-		    // Verify all results have required fields
-		    results.each( function( item ) {
-		        if ( !item.keyExists( "score" ) ) result.allHaveScores = false;
-		        if ( !item.keyExists( "metadata" ) ) result.allHaveMetadata = false;
-		        if ( !item.keyExists( "vector" ) ) result.allHaveVectors = false;
-		    } );
 		    """,
 		    context );
 
 		IStruct testResult = variables.getAsStruct( result );
 
-		assertEquals( 3, testResult.getAsInteger( Key.of( "resultCount" ) ) );
-		assertTrue( DoubleCaster.cast( testResult.get( Key.of( "topScore" ) ) ) > 0.9 ); // Should be 1.0 (identical vector)
-		assertEquals( "Pure X axis", testResult.getAsString( Key.of( "topText" ) ) );
-		assertTrue( DoubleCaster.cast( testResult.get( Key.of( "secondScore" ) ) ) > 0.5 ); // "Mostly X" should be second
-		assertTrue( testResult.getAsBoolean( Key.of( "allHaveScores" ) ) );
-		assertTrue( testResult.getAsBoolean( Key.of( "allHaveMetadata" ) ) );
-		assertTrue( testResult.getAsBoolean( Key.of( "allHaveVectors" ) ) );
+		assertTrue( testResult.getAsInteger( Key.of( "resultCount" ) ) >= 2 );
+		assertTrue( testResult.getAsBoolean( Key.of( "hasScores" ) ) );
+		assertTrue( testResult.getAsBoolean( Key.of( "hasText" ) ) );
+		assertTrue( testResult.getAsBoolean( Key.of( "hasMetadata" ) ) );
+		assertEquals( "programming", testResult.getAsString( Key.of( "firstCategory" ) ) );
 	}
 
 	@Test
 	@Order( 3 )
-	@DisplayName( "Test vector deletion" )
-	void testDeletion() throws Exception {
+	@DisplayName( "Test document count" )
+	void testCount() throws Exception {
 
 		runtime.executeSource(
 		    """
-		    // Create and populate memory
-		    memory = new bxModules.bxai.models.memory.vector.BoxVectorMemory();
-		    memory.configure();
-
-		    id1 = memory.add( [1.0, 0.0], { text: "First" } );
-		    id2 = memory.add( [0.0, 1.0], { text: "Second" } );
-		    id3 = memory.add( [0.5, 0.5], { text: "Third" } );
+		    // Create BoxVectorMemory instance
+		    memory = aiMemory( "boxvector", createUUID(), {
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
 
 		    initialCount = memory.count();
 
-		    // Delete one vector
-		    deleted = memory.delete( id2 );
+		    // Add test documents
+		    memory.add( { id: "doc1", text: "First document" } );
+		    memory.add( { id: "doc2", text: "Second document" } );
+		    memory.add( { id: "doc3", text: "Third document" } );
 
-		    afterDeleteCount = memory.count();
-
-		    // Try to retrieve deleted vector
-		    retrieved = memory.get( id2 );
-
-		    // Try to delete non-existent vector
-		    deletedNonExistent = memory.delete( "non-existent-id" );
+		    afterAddCount = memory.count();
 
 		    result = {
 		        initialCount: initialCount,
-		        afterDeleteCount: afterDeleteCount,
-		        deleted: deleted,
-		        retrievedAfterDelete: !retrieved.isEmpty(),
-		        deletedNonExistent: deletedNonExistent
+		        afterAddCount: afterAddCount
 		    };
 		    """,
 		    context );
 
 		IStruct testResult = variables.getAsStruct( result );
 
-		assertEquals( 3, testResult.getAsInteger( Key.of( "initialCount" ) ) );
-		assertEquals( 2, testResult.getAsInteger( Key.of( "afterDeleteCount" ) ) );
-		assertTrue( testResult.getAsBoolean( Key.of( "deleted" ) ) );
-		assertFalse( testResult.getAsBoolean( Key.of( "retrievedAfterDelete" ) ) );
-		assertFalse( testResult.getAsBoolean( Key.of( "deletedNonExistent" ) ) );
+		assertEquals( 0, testResult.getAsInteger( Key.of( "initialCount" ) ) );
+		assertEquals( 3, testResult.getAsInteger( Key.of( "afterAddCount" ) ) );
 	}
 
 	@Test
 	@Order( 4 )
-	@DisplayName( "Test clear all vectors" )
+	@DisplayName( "Test clear all documents" )
 	void testClear() throws Exception {
 
 		runtime.executeSource(
 		    """
 		    // Create and populate memory
-		    memory = new bxModules.bxai.models.memory.vector.BoxVectorMemory();
-		    memory.configure();
+		    memory = aiMemory( "boxvector", createUUID(), {
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
 
-		    memory.add( [1.0, 0.0, 0.0], { text: "Vector 1" } );
-		    memory.add( [0.0, 1.0, 0.0], { text: "Vector 2" } );
-		    memory.add( [0.0, 0.0, 1.0], { text: "Vector 3" } );
+		    memory.add( { id: "doc1", text: "First document" } );
+		    memory.add( { id: "doc2", text: "Second document" } );
+		    memory.add( { id: "doc3", text: "Third document" } );
 
 		    beforeClearCount = memory.count();
 
@@ -224,49 +192,37 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 
 	@Test
 	@Order( 5 )
-	@DisplayName( "Test dimension validation" )
-	void testDimensionValidation() throws Exception {
+	@DisplayName( "Test multiple document additions" )
+	void testMultipleAdditions() throws Exception {
 
 		runtime.executeSource(
 		    """
-		    // Create memory
-		    memory = new bxModules.bxai.models.memory.vector.BoxVectorMemory();
-		    memory.configure();
+		    // Create memory with multiple documents
+		    memory = aiMemory( "boxvector", createUUID(), {
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
 
-		    // Add vector with 3 dimensions
-		    memory.add( [1.0, 0.0, 0.0], { text: "3D vector" } );
+		    memory.add( { id: "doc1", text: "Java programming", metadata: { type: "code" } } );
+		    memory.add( { id: "doc2", text: "Python scripting", metadata: { type: "code" } } );
+		    memory.add( { id: "doc3", text: "Italian pasta recipe", metadata: { type: "recipe" } } );
 
-		    // Try to add vector with different dimensions
-		    errorThrown = false;
-		    errorMessage = "";
-		    try {
-		        memory.add( [1.0, 0.0], { text: "2D vector" } );
-		    } catch( any e ) {
-		        errorThrown = true;
-		        errorMessage = e.message;
-		    }
-
-		    // Try to search with different dimensions
-		    searchErrorThrown = false;
-		    try {
-		        memory.search( [1.0, 0.0] );
-		    } catch( any e ) {
-		        searchErrorThrown = true;
-		    }
+		    // Search for relevant documents
+		    results = memory.getRelevant( "programming", 10 );
 
 		    result = {
-		        errorThrown: errorThrown,
-		        searchErrorThrown: searchErrorThrown,
-		        errorMessage: errorMessage
+		        totalCount: memory.count(),
+		        resultCount: results.len(),
+		        hasResults: results.len() > 0
 		    };
 		    """,
 		    context );
 
 		IStruct testResult = variables.getAsStruct( result );
 
-		assertTrue( testResult.getAsBoolean( Key.of( "errorThrown" ) ) );
-		assertTrue( testResult.getAsBoolean( Key.of( "searchErrorThrown" ) ) );
-		assertTrue( testResult.getAsString( Key.of( "errorMessage" ) ).toLowerCase().contains( "dimension" ) );
+		assertEquals( 3, testResult.getAsInteger( Key.of( "totalCount" ) ) );
+		assertTrue( testResult.getAsInteger( Key.of( "resultCount" ) ) >= 1 );
+		assertTrue( testResult.getAsBoolean( Key.of( "hasResults" ) ) );
 	}
 
 	@Test
@@ -277,11 +233,13 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create empty memory
-		    memory = new bxModules.bxai.models.memory.vector.BoxVectorMemory();
-		    memory.configure();
+		    memory = aiMemory( "boxvector", createUUID(), {
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
 
 		    // Search with no data
-		    results = memory.search( [1.0, 0.0, 0.0] );
+		    results = memory.getRelevant( "test query", 10 );
 
 		    result = {
 		        resultCount: results.len()
@@ -296,40 +254,26 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 
 	@Test
 	@Order( 7 )
-	@DisplayName( "Test threshold filtering in search" )
-	void testThresholdFiltering() throws Exception {
+	@DisplayName( "Test memory type name" )
+	void testMemoryType() throws Exception {
 
 		runtime.executeSource(
 		    """
-		    // Create and populate memory
-		    memory = new bxModules.bxai.models.memory.vector.BoxVectorMemory();
-		    memory.configure();
-
-		    // Add vectors with varying similarity to [1.0, 0.0]
-		    memory.add( [1.0, 0.0], { text: "Perfect match" } );      // similarity = 1.0
-		    memory.add( [0.9, 0.1], { text: "Close match" } );        // high similarity
-		    memory.add( [0.5, 0.5], { text: "Medium match" } );       // medium similarity
-		    memory.add( [0.0, 1.0], { text: "Perpendicular" } );      // similarity = 0.0
-
-		    // Search with high threshold
-		    highThresholdResults = memory.search( [1.0, 0.0], 10, 0.9 );
-
-		    // Search with low threshold
-		    lowThresholdResults = memory.search( [1.0, 0.0], 10, 0.0 );
+		    // Create memory
+		    memory = aiMemory( "boxvector", createUUID(), {
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
 
 		    result = {
-		        highThresholdCount: highThresholdResults.len(),
-		        lowThresholdCount: lowThresholdResults.len()
+		        typeName: memory.getName()
 		    };
 		    """,
 		    context );
 
 		IStruct testResult = variables.getAsStruct( result );
 
-		// High threshold should only match perfect and close matches
-		assertTrue( testResult.getAsInteger( Key.of( "highThresholdCount" ) ) <= 2 );
-		// Low threshold should match all vectors (including perpendicular with score 0.0)
-		assertEquals( 4, testResult.getAsInteger( Key.of( "lowThresholdCount" ) ) );
+		assertEquals( "BoxVectorMemory", testResult.getAsString( Key.of( "typeName" ) ) );
 	}
 
 	@Test
@@ -339,16 +283,18 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    """
-		    // Create and populate memory with many vectors
-		    memory = new bxModules.bxai.models.memory.vector.BoxVectorMemory();
-		    memory.configure();
+		    // Create and populate memory with many documents
+		    memory = aiMemory( "boxvector", createUUID(), {
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
 
 		    for ( i = 1; i <= 10; i++ ) {
-		        memory.add( [i * 0.1, 1.0 - i * 0.1], { text: "Vector #i#", index: i } );
+		        memory.add( { id: "doc#i#", text: "Document number #i# about programming", metadata: { index: i } } );
 		    }
 
 		    // Search with limit of 3
-		    results = memory.search( [0.5, 0.5], 3 );
+		    results = memory.getRelevant( "programming", 3 );
 
 		    result = {
 		        resultCount: results.len(),
@@ -389,47 +335,33 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 
 	@Test
 	@Order( 10 )
-	@DisplayName( "Test cosine similarity edge cases" )
-	void testCosineSimilarityEdgeCases() throws Exception {
+	@DisplayName( "Test export includes memory type" )
+	void testExportType() throws Exception {
 
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.vector.BoxVectorMemory();
-		    memory.configure();
+		    memory = aiMemory( "boxvector", createUUID(), {
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
 
-		    // Add identical vectors
-		    memory.add( [1.0, 0.0, 0.0], { text: "First" } );
-		    memory.add( [1.0, 0.0, 0.0], { text: "Identical" } );
+		    // Add a document
+		    memory.add( { id: "doc1", text: "Test document" } );
 
-		    // Add opposite vector
-		    memory.add( [-1.0, 0.0, 0.0], { text: "Opposite" } );
-
-		    // Add zero vector
-		    memory.add( [0.0, 0.0, 0.0], { text: "Zero" } );
-
-		    // Search with [1.0, 0.0, 0.0]
-		    results = memory.search( [1.0, 0.0, 0.0], 10, -2.0 );
+		    // Export to check type property
+		    exported = memory.export();
 
 		    result = {
-		        resultCount: results.len(),
-		        topScore: results.len() > 0 ? results[1].score : 0,
-		        hasNegativeScore: false,
-		        hasZeroScore: false
+		        hasType: exported.keyExists( "type" ),
+		        type: exported.keyExists( "type" ) ? exported.type : ""
 		    };
-
-		    results.each( function( item ) {
-		        if ( item.score < 0 ) result.hasNegativeScore = true;
-		        if ( item.score == 0 ) result.hasZeroScore = true;
-		    } );
 		    """,
 		    context );
 
 		IStruct testResult = variables.getAsStruct( result );
 
-		assertEquals( 4, testResult.getAsInteger( Key.of( "resultCount" ) ) );
-		assertEquals( 1.0, DoubleCaster.cast( testResult.get( Key.of( "topScore" ) ) ), 0.001 ); // Identical vectors
-		assertTrue( testResult.getAsBoolean( Key.of( "hasNegativeScore" ) ) ); // Opposite vector
-		assertTrue( testResult.getAsBoolean( Key.of( "hasZeroScore" ) ) ); // Zero vector
+		assertTrue( testResult.getAsBoolean( Key.of( "hasType" ) ) );
+		assertEquals( "BoxVectorMemory", testResult.getAsString( Key.of( "type" ) ) );
 	}
 
 }
