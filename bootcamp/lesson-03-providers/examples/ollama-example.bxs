@@ -1,0 +1,15 @@
+// ollama-example.bxs
+// Using Ollama for free, local AI
+// Prerequisites: Install Ollama and run: ollama pull llama3.2
+// Run with: boxlang ollama-example.bxs
+
+println( "🏠 Using Ollama (local AI)..." )
+println()
+
+answer = aiChat( 
+    "Write a haiku about programming",
+    { model: "llama3.2" },
+    { provider: "ollama" }
+)
+
+println( answer )

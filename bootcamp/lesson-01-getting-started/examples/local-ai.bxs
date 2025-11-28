@@ -1,0 +1,12 @@
+// local-ai.bxs
+// Use Ollama for free, local AI
+// Prerequisites: Install Ollama and run: ollama pull llama3.2
+// Run with: boxlang local-ai.bxs
+
+answer = aiChat(
+    "What is 2 + 2? Just give me the number.",
+    { model: "llama3.2" },
+    { provider: "ollama" }
+)
+
+println( "The AI says: " & answer )

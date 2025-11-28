@@ -1,0 +1,11 @@
+// safe-call.bxs
+// Always wrap AI calls in try/catch for proper error handling
+// Run with: boxlang safe-call.bxs
+
+try {
+    answer = aiChat( "Tell me a programming joke" )
+    println( answer )
+} catch( any e ) {
+    println( "❌ Error: " & e.message )
+    println( "💡 Check your API key!" )
+}

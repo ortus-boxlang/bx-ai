@@ -1,0 +1,27 @@
+// chat-loop.bxs
+// Interactive chat loop with conversation memory
+// Run with: boxlang chat-loop.bxs
+
+conversation = aiMessage()
+    .system( "You are a helpful assistant. Be concise." )
+
+println( "=== Chat with AI ===" )
+println( "Type 'quit' to exit" )
+println()
+
+running = true
+while( running ) {
+    print( "You: " )
+    userInput = readLine()
+    
+    if( userInput == "quit" ) {
+        running = false
+        println( "Goodbye!" )
+    } else {
+        conversation.user( userInput )
+        response = aiChat( conversation )
+        println( "AI: " & response )
+        conversation.assistant( response )
+        println()
+    }
+}

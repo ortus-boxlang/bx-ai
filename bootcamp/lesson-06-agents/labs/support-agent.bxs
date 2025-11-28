@@ -1,0 +1,106 @@
+// support-agent.bxs
+// Lab: Complete customer support agent
+// Run with: boxlang support-agent.bxs
+
+println( "🎧 Customer Support Agent" )
+println( "═".repeat( 50 ) )
+println()
+
+// Simulated database
+orders = {
+    "ORD-001": { status: "Shipped", item: "Widget Pro", customer: "Alex" },
+    "ORD-002": { status: "Processing", item: "Gadget X", customer: "Jordan" },
+    "ORD-003": { status: "Delivered", item: "Tool Kit", customer: "Sam" }
+}
+
+products = {
+    "Widget Pro": { price: 99.99, stock: 50 },
+    "Gadget X": { price: 149.99, stock: 0 },
+    "Tool Kit": { price: 79.99, stock: 25 }
+}
+
+// Tool: Look up order
+orderTool = aiTool(
+    "lookup_order",
+    "Look up order status by order ID",
+    ( args ) => {
+        orderId = args.orderId.uCase()
+        if( orders.keyExists( orderId ) ) {
+            order = orders[ orderId ]
+            return "Order #orderId#: #order.item# - Status: #order.status#"
+        }
+        return "Order #orderId# not found"
+    }
+).describeOrderId( "The order ID (e.g., ORD-001)" )
+
+// Tool: Check product
+productTool = aiTool(
+    "check_product",
+    "Check product price and availability",
+    ( args ) => {
+        productName = args.productName
+        for( name in products.keyList() ) {
+            if( name.findNoCase( productName ) > 0 ) {
+                product = products[ name ]
+                stock = product.stock > 0 ? "In Stock (#product.stock#)" : "Out of Stock"
+                return "#name#: $#product.price# - #stock#"
+            }
+        }
+        return "Product not found. Available: #products.keyList()#"
+    }
+).describeProductName( "Product name to check" )
+
+// Tool: Create ticket
+ticketTool = aiTool(
+    "create_ticket",
+    "Create a support ticket for issues that need human review",
+    ( args ) => {
+        ticketId = "TKT-" & randRange( 1000, 9999 )
+        return "Created ticket #ticketId#: #args.issue#. A human agent will follow up."
+    }
+).describeIssue( "Description of the issue" )
+
+// Create the support agent
+supportAgent = aiAgent(
+    name: "SupportBot",
+    description: "A customer support agent for order and product inquiries",
+    instructions: "
+        You are a helpful customer support agent.
+        
+        Guidelines:
+        - Be friendly and professional
+        - Look up orders when customers ask about their orders
+        - Check product info when asked about prices or availability
+        - Create a support ticket for complex issues
+        - If you don't know something, offer to create a ticket
+        
+        Always ask if there's anything else you can help with.
+    ",
+    tools: [ orderTool, productTool, ticketTool ],
+    memory: aiMemory( "windowed", { maxMessages: 10 } )
+)
+
+// Chat loop
+println( "Hi! I'm your support assistant. How can I help?" )
+println( "─".repeat( 50 ) )
+println()
+
+running = true
+while( running ) {
+    print( "You: " )
+    userInput = readLine()
+    
+    if( userInput.trim() == "quit" || userInput.trim() == "bye" ) {
+        running = false
+        println( "SupportBot: Thanks for contacting us! Have a great day! 👋" )
+    } else {
+        try {
+            response = supportAgent.run( userInput )
+            println( "SupportBot: " & response )
+            println()
+        } catch( any e ) {
+            println( "SupportBot: I'm having trouble right now. Please try again." )
+            println()
+        }
+    }
+}

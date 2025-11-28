@@ -1,0 +1,45 @@
+// magic-8-ball.bxs
+// Lab: Your first AI application - Magic 8-Ball
+// Run with: boxlang magic-8-ball.bxs
+
+println( "🎱 Welcome to the AI Magic 8-Ball! 🎱" )
+println( "Ask me a yes/no question..." )
+println( "" )
+
+// Get user's question
+print( "Your question: " )
+question = readLine()
+
+// Create the magic prompt
+prompt = "
+You are a mystical Magic 8-Ball. 
+Answer the following yes/no question with ONE of these classic responses:
+- It is certain
+- Without a doubt
+- Yes definitely
+- You may rely on it
+- Most likely
+- Outlook good
+- Signs point to yes
+- Reply hazy, try again
+- Ask again later
+- Cannot predict now
+- Don't count on it
+- My sources say no
+- Outlook not so good
+- Very doubtful
+
+Question: #question#
+
+Respond with ONLY the Magic 8-Ball phrase, nothing else.
+"
+
+// Get the mystical answer
+try {
+    answer = aiChat( prompt, { temperature: 0.9 } )
+    println( "" )
+    println( "🔮 The Magic 8-Ball says..." )
+    println( "   " & answer )
+} catch( any e ) {
+    println( "❌ The spirits are unclear: " & e.message )
+}

@@ -1,0 +1,13 @@
+// claude-call.bxs
+// Using Claude provider from Anthropic
+// Run with: boxlang claude-call.bxs
+// Requires: CLAUDE_API_KEY environment variable
+
+answer = aiChat( 
+    "What is 2 + 2?",
+    {},                        
+    { 
+        provider: "claude"
+    }
+)
+println( "Claude: " & answer )

@@ -1,0 +1,61 @@
+// smart-assistant.bxs
+// AI with multiple tools - it chooses the right one!
+// Run with: boxlang smart-assistant.bxs
+
+println( "🤖 Smart Assistant Demo" )
+println( "═".repeat( 40 ) )
+println( "This assistant has 3 tools: weather, calculator, and time" )
+println()
+
+// Tool 1: Weather
+weatherData = { "Boston": 72, "Miami": 85, "Denver": 65, "Seattle": 58 }
+weatherTool = aiTool(
+    "get_weather",
+    "Get current weather for a city",
+    ( args ) => {
+        city = args.city
+        temp = weatherData[ city ] ?: 70
+        return "#temp#°F in #city#"
+    }
+).describeCity( "City name (Boston, Miami, Denver, or Seattle)" )
+
+// Tool 2: Calculator
+calcTool = aiTool(
+    "calculate",
+    "Perform math calculations",
+    ( args ) => {
+        try {
+            return evaluate( args.expression )
+        } catch( any e ) {
+            return "Error: " & e.message
+        }
+    }
+).describeExpression( "Math expression like '2+2' or '100*0.2'" )
+
+// Tool 3: Time
+timeTool = aiTool(
+    "get_time",
+    "Get current date and time",
+    ( args ) => {
+        return now().format( "EEEE, MMMM d, yyyy 'at' h:mm a" )
+    }
+)
+
+// All tools available to AI
+tools = [ weatherTool, calcTool, timeTool ]
+
+// Different questions that use different tools
+questions = [
+    "What's the weather in Miami?",
+    "What's 25% of 400?",
+    "What day is it today?",
+    "Is Boston warmer than Denver?",
+    "Calculate 15 * 8 + 12"
+]
+
+for( question in questions ) {
+    println( "Q: " & question )
+    answer = aiChat( question, { tools: tools } )
+    println( "A: " & answer )
+    println( "─".repeat( 40 ) )
+}
