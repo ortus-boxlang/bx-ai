@@ -139,17 +139,23 @@ public class SchemaBuilderTest extends BaseIntegrationTest {
 			import bxModules.bxai.models.util.SchemaBuilder;
 
 			schema = SchemaBuilder::fromArray( new src.test.bx.Product() );
+
+			// fromArray wraps the array in an object per OpenAI requirements
 			schemaType = schema.type;
-			hasItems = schema.keyExists( "items" );
-			itemType = schema.items.type;
+			hasProperties = schema.keyExists( "properties" );
+			hasItemsProperty = schema.properties.keyExists( "items" );
+			itemsPropertyType = schema.properties.items.type;
+			itemSchemaType = schema.properties.items.items.type;
 			""",
 			context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( Key.of( "schemaType" ) ).toString() ).isEqualTo( "array" );
-		assertThat( variables.getAsBoolean( Key.of( "hasItems" ) ) ).isTrue();
-		assertThat( variables.get( Key.of( "itemType" ) ).toString() ).isEqualTo( "object" );
+		assertThat( variables.get( Key.of( "schemaType" ) ).toString() ).isEqualTo( "object" );
+		assertThat( variables.getAsBoolean( Key.of( "hasProperties" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasItemsProperty" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "itemsPropertyType" ) ).toString() ).isEqualTo( "array" );
+		assertThat( variables.get( Key.of( "itemSchemaType" ) ).toString() ).isEqualTo( "object" );
 	}
 
 	@Test
