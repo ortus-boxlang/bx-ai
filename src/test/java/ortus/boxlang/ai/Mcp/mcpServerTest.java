@@ -285,8 +285,8 @@ public class mcpServerTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var result = variables.getAsStruct( result );
-		assertThat( result.containsKey( Key.of( "contents" ) ) ).isTrue();
+		var readResult = variables.getAsStruct( result );
+		assertThat( readResult.containsKey( Key.of( "contents" ) ) ).isTrue();
 
 		var contents = variables.getAsStruct( Key.of( "contents" ) );
 		assertThat( contents.get( Key.of( "uri" ) ) ).isEqualTo( "config://settings" );
@@ -343,8 +343,8 @@ public class mcpServerTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var result = variables.getAsStruct( result );
-		assertThat( result.containsKey( Key.of( "messages" ) ) ).isTrue();
+		var getPromptResult = variables.getAsStruct( result );
+		assertThat( getPromptResult.containsKey( Key.of( "messages" ) ) ).isTrue();
 
 		var messages = variables.getAsArray( Key.of( "messages" ) );
 		assertThat( messages.size() ).isEqualTo( 1 );

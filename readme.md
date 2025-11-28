@@ -399,6 +399,7 @@ The AI module supports different return formats for the responses. You can speci
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
 | `aiTransform()` | Create data transformer | `transformer` | Transformer function | N/A |
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
+| `mcpServer()` | Get or create MCP server for exposing tools | `name="default"` | MCPServer Object | N/A |
 
 > **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](docs/main-components/overview.md#return-formats) documentation for details.
 
@@ -444,6 +445,11 @@ client = MCP( "http://localhost:3000" )
     .withTimeout( 5000 )
     .withBearerToken( "token" )
 result = client.send( "searchDocs", { query: "syntax" } )
+
+// MCP server for exposing tools to AI clients
+mcpServer( "myApp" )
+    .registerTool( aiTool( "search", "Search docs", ( query ) => searchDocs( query ) ) )
+    .registerResource( uri: "docs://readme", name: "README", handler: () => fileRead( "/readme.md" ) )
 ```
 
 This module exposes the following BoxLang global functions (BIFs) for you to interact with the AI providers:
@@ -484,6 +490,7 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 - `aiService( provider, apiKey )` - Creates a reference to an AI Service provider that you can then use to interact with the AI service.  This is useful if you want to create a service object and then use it multiple times.  You can pass in optional `provider` and `apiKey` to override the global settings.
 - `aiTool( name, description, callable)` - Creates a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiAiRequest()` functions.
 - `MCP( baseURL )` - Creates a fluent client for consuming Model Context Protocol (MCP) servers. MCP provides standardized access to external tools, resources, and prompts that AI models can use.
+- `mcpServer( name )` - Gets or creates an MCP server instance for registering tools, resources, and prompts that can be exposed to AI clients. Servers are singletons by name, stored globally for access across requests.
 
 ## aiChat()/aiChatAsync() - Chat with the AI
 
@@ -1924,6 +1931,188 @@ if ( !result.getSuccess() ) {
 ```
 
 **See:** [MCP Client Documentation](docs/advanced/mcp-client.md) for complete guide
+
+## mcpServer() - MCP Server for Exposing Tools
+
+The `mcpServer()` function gets or creates an MCP server instance for registering tools, resources, and prompts that can be exposed to AI clients via the Model Context Protocol.
+
+### Why Use MCP Servers?
+
+- 🔧 **Expose Tools**: Make your BoxLang functions available to AI clients
+- 📚 **Serve Resources**: Provide documents and data on demand
+- 💬 **Offer Prompts**: Define reusable prompt templates
+- 🌐 **HTTP Endpoint**: Access via the built-in `mcp.bxm` endpoint
+- 🔒 **Application Scoped**: Register tools per application context
+
+### Function Signature
+
+```js
+mcpServer( string name = "default" )
+```
+
+### Basic Usage
+
+```java
+// Get or create a server (singleton by name)
+server = mcpServer( "myApp" )
+
+// Register a tool
+server.registerTool(
+    aiTool( "search", "Search documents", ( query ) => searchDocs( query ) )
+)
+
+// List registered tools
+tools = server.listTools()
+```
+
+### Tool Registration
+
+```java
+// Register tools at application startup
+mcpServer( "myApp" )
+    .setDescription( "My Application API" )
+    .setVersion( "1.0.0" )
+    .registerTool(
+        aiTool( "getWeather", "Get weather for a location", ( location ) => {
+            return weatherService.getCurrent( location )
+        } )
+        .describeArg( "location", "City name or coordinates" )
+    )
+    .registerTool(
+        aiTool( "calculate", "Perform calculations", ( expression ) => {
+            return evaluate( expression )
+        } )
+    )
+```
+
+### Resource Registration
+
+```java
+// Expose documents and data
+mcpServer( "myApp" )
+    .registerResource(
+        uri: "docs://readme",
+        name: "README",
+        description: "Project documentation",
+        mimeType: "text/markdown",
+        handler: () => fileRead( expandPath( "/readme.md" ) )
+    )
+    .registerResource(
+        uri: "data://users",
+        name: "User List",
+        mimeType: "application/json",
+        handler: () => userService.getAllUsers()
+    )
+```
+
+### Prompt Registration
+
+```java
+// Define reusable prompt templates
+mcpServer( "myApp" )
+    .registerPrompt(
+        name: "codeReview",
+        description: "Code review prompt",
+        arguments: [
+            { name: "language", description: "Programming language", required: true }
+        ],
+        handler: ( args ) => [
+            { role: "system", content: "You are a code reviewer for #args.language#." },
+            { role: "user", content: "Review this code..." }
+        ]
+    )
+```
+
+### Handling MCP Requests
+
+```java
+// Handle JSON-RPC requests directly
+response = mcpServer( "myApp" ).handleRequest( {
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "id": "1"
+} )
+```
+
+### Built-in HTTP Endpoint
+
+The module provides `public/mcp.bxm` for HTTP access:
+
+```bash
+# Discovery
+curl http://localhost/bxai/public/mcp.bxm
+
+# List tools
+curl -X POST http://localhost/bxai/public/mcp.bxm \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","method":"tools/list","id":"1"}'
+
+# Access specific server
+curl http://localhost/bxai/public/mcp.bxm?server=myApp
+```
+
+### Tool Management Methods
+
+```java
+server = mcpServer( "myApp" )
+
+// Check if tool exists
+exists = server.hasTool( "search" )
+
+// Get tool count
+count = server.getToolCount()
+
+// Get specific tool
+tool = server.getTool( "search" )
+
+// Unregister a tool
+server.unregisterTool( "oldTool" )
+
+// Clear all tools
+server.clearTools()
+```
+
+### Static Server Management
+
+```java
+// Check if a server exists
+exists = bxModules.bxai.models.mcp.MCPServer::hasInstance( "myApp" )
+
+// Get all server names
+names = bxModules.bxai.models.mcp.MCPServer::getInstanceNames()
+
+// Remove a server
+bxModules.bxai.models.mcp.MCPServer::removeInstance( "myApp" )
+
+// Clear all servers
+bxModules.bxai.models.mcp.MCPServer::clearAllInstances()
+```
+
+### Application Integration
+
+```java
+// Application.bx
+class {
+
+    function onApplicationStart() {
+        // Register MCP server with tools
+        mcpServer( "myApp" )
+            .setDescription( "My Application MCP API" )
+            .registerTool( aiTool( "search", "Search", searchHandler ) )
+            .registerResource( uri: "docs://api", name: "API Docs", handler: getApiDocs )
+
+        return true
+    }
+
+    function onApplicationEnd() {
+        // Clean up on shutdown
+        bxModules.bxai.models.mcp.MCPServer::removeInstance( "myApp" )
+    }
+
+}
+```
+
+**See:** [MCP Server Documentation](docs/advanced/mcp-server.md) for complete guide
 
 ## aiEmbed() - Generate Text Embeddings
 
