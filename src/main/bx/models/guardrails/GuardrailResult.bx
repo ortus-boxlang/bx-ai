@@ -187,6 +187,18 @@ class {
 	}
 
 	/**
+	 * Set all violations at once
+	 *
+	 * @violations Array of violations to set
+	 *
+	 * @return This result for chaining
+	 */
+	GuardrailResult function setViolations( required array violations ) {
+		variables.violations = arguments.violations;
+		return this;
+	}
+
+	/**
 	 * Set metadata for the result
 	 *
 	 * @key The metadata key
