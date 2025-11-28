@@ -599,9 +599,15 @@ abstract class
 	 */
 	private struct function extractMetadata( required any message ) {
 		if ( isStruct( arguments.message ) ) {
+			// If message has explicit metadata field, use that
+			if ( arguments.message.keyExists( "metadata" ) ) {
+				return arguments.message.metadata;
+			}
+			// Otherwise, extract all fields except text/content/id
 			var meta = arguments.message.duplicate();
 			meta.delete( "content" );
 			meta.delete( "text" );
+			meta.delete( "id" );
 			return meta;
 		}
 		return {};
