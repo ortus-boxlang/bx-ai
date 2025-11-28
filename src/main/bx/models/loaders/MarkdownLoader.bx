@@ -1,0 +1,282 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Loads Markdown files into Document objects.
+ * Supports splitting by headers for better chunking and context.
+ */
+class extends="BaseDocumentLoader" {
+
+	/**
+	 * Static configuration for Markdown loader
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			encoding        : "UTF-8",
+			includeMetadata : true,
+			splitMode       : "none",
+			splitByHeaders  : false,
+			headerLevel     : 2,
+			removeCodeBlocks: false,
+			removeImages    : false,
+			removeLinks     : false
+		};
+	}
+
+	/**
+	 * Initialize the MarkdownLoader
+	 *
+	 * @source Path to the Markdown file
+	 * @config Configuration options
+	 *
+	 * @return MarkdownLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		super.init( source: arguments.source, config: {} );
+		variables.config = static.DEFAULT_CONFIG.append( arguments.config, true );
+		return this;
+	}
+
+	/**
+	 * Get the loader name
+	 *
+	 * @return The loader name
+	 */
+	string function getName() {
+		return "MarkdownLoader";
+	}
+
+	/**
+	 * Load the Markdown file into Document objects
+	 *
+	 * @return Array of Document objects
+	 */
+	array function load() {
+		// Validate source exists
+		if ( !len( variables.source ) ) {
+			throw(
+				type    : "MarkdownLoader.NoSource",
+				message : "No source file specified"
+			);
+		}
+
+		if ( !fileExists( variables.source ) ) {
+			throw(
+				type    : "MarkdownLoader.FileNotFound",
+				message : "File not found: #variables.source#"
+			);
+		}
+
+		// Read the file content
+		var content  = readFile( variables.source );
+		var fileInfo = getSourceInfo();
+
+		// Process content based on configuration
+		content = processMarkdown( content );
+
+		// Check if we should split by headers
+		if ( variables.config.splitByHeaders ) {
+			return splitByHeaders( content, fileInfo );
+		}
+
+		// Create single document with all content
+		var doc = createDocument(
+			content            : content,
+			additionalMetadata : {
+				"fileType"     : "markdown",
+				"fileName"     : fileInfo.name,
+				"fileSize"     : fileInfo.size,
+				"lastModified" : fileInfo.lastModified
+			}
+		);
+
+		return [ doc ];
+	}
+
+	/**
+	 * Process Markdown content based on configuration
+	 *
+	 * @content The raw Markdown content
+	 *
+	 * @return Processed content
+	 */
+	private string function processMarkdown( required string content ) {
+		var result = arguments.content;
+
+		// Remove code blocks if configured
+		if ( variables.config.removeCodeBlocks ) {
+			// Remove fenced code blocks
+			result = reReplace( result, "```[\s\S]*?```", "", "all" );
+			// Remove inline code
+			result = reReplace( result, "`[^`]+`", "", "all" );
+		}
+
+		// Remove images if configured
+		if ( variables.config.removeImages ) {
+			result = reReplace( result, "!\[[^\]]*\]\([^\)]+\)", "", "all" );
+		}
+
+		// Remove links but keep text if configured
+		if ( variables.config.removeLinks ) {
+			result = reReplace( result, "\[([^\]]+)\]\([^\)]+\)", "\1", "all" );
+		}
+
+		return result;
+	}
+
+	/**
+	 * Split content by headers into multiple documents
+	 *
+	 * @content The Markdown content
+	 * @fileInfo File information for metadata
+	 *
+	 * @return Array of Document objects
+	 */
+	private array function splitByHeaders( required string content, required struct fileInfo ) {
+		var documents    = [];
+		var headerLevel  = variables.config.headerLevel;
+		var headerPrefix = repeatString( "##", headerLevel - 1 ) & "#";
+
+		// Build regex pattern for headers at specified level and below
+		var pattern = "(^|\n)(#{1,#headerLevel#})\s+(.+?)(?=\n|$)";
+
+		// Split by headers
+		var sections   = [];
+		var lines      = listToArray( arguments.content, chr( 10 ), true );
+		var currentSection = {
+			header  : "",
+			level   : 0,
+			content : []
+		};
+
+		for ( var line in lines ) {
+			// Check if this is a header line
+			var headerMatch = reFind( "^(#{1,6})\s+(.+)$", line, 1, true );
+
+			if ( headerMatch.len[ 1 ] > 0 ) {
+				// Save previous section if it has content
+				if ( currentSection.content.len() > 0 || len( currentSection.header ) ) {
+					sections.append( duplicate( currentSection ) );
+				}
+
+				// Start new section
+				currentSection = {
+					header  : mid( line, headerMatch.pos[ 3 ], headerMatch.len[ 3 ] ),
+					level   : headerMatch.len[ 2 ],
+					content : []
+				};
+			} else {
+				currentSection.content.append( line );
+			}
+		}
+
+		// Don't forget the last section
+		if ( currentSection.content.len() > 0 || len( currentSection.header ) ) {
+			sections.append( currentSection );
+		}
+
+		// Convert sections to documents
+		var sectionIndex = 0;
+		for ( var section in sections ) {
+			sectionIndex++;
+			var sectionContent = section.content.toList( chr( 10 ) );
+
+			// Add header to content if present
+			if ( len( section.header ) ) {
+				sectionContent = section.header & chr( 10 ) & chr( 10 ) & sectionContent;
+			}
+
+			if ( len( trim( sectionContent ) ) ) {
+				documents.append(
+					createDocument(
+						content            : trim( sectionContent ),
+						additionalMetadata : {
+							"fileType"      : "markdown",
+							"fileName"      : arguments.fileInfo.name,
+							"fileSize"      : arguments.fileInfo.size,
+							"lastModified"  : arguments.fileInfo.lastModified,
+							"sectionHeader" : section.header,
+							"sectionLevel"  : section.level,
+							"sectionIndex"  : sectionIndex,
+							"totalSections" : sections.len()
+						}
+					)
+				);
+			}
+		}
+
+		// If no sections found, return single document
+		if ( documents.isEmpty() ) {
+			documents.append(
+				createDocument(
+					content            : arguments.content,
+					additionalMetadata : {
+						"fileType"     : "markdown",
+						"fileName"     : arguments.fileInfo.name,
+						"fileSize"     : arguments.fileInfo.size,
+						"lastModified" : arguments.fileInfo.lastModified
+					}
+				)
+			);
+		}
+
+		return documents;
+	}
+
+	/**
+	 * Enable splitting by headers
+	 *
+	 * @level The header level to split by (1-6)
+	 *
+	 * @return MarkdownLoader for chaining
+	 */
+	MarkdownLoader function splitByHeaders( numeric level = 2 ) {
+		variables.config.splitByHeaders = true;
+		variables.config.headerLevel    = arguments.level;
+		return this;
+	}
+
+	/**
+	 * Remove code blocks from content
+	 *
+	 * @return MarkdownLoader for chaining
+	 */
+	MarkdownLoader function removeCodeBlocks() {
+		variables.config.removeCodeBlocks = true;
+		return this;
+	}
+
+	/**
+	 * Remove images from content
+	 *
+	 * @return MarkdownLoader for chaining
+	 */
+	MarkdownLoader function removeImages() {
+		variables.config.removeImages = true;
+		return this;
+	}
+
+	/**
+	 * Remove links from content (keeps link text)
+	 *
+	 * @return MarkdownLoader for chaining
+	 */
+	MarkdownLoader function removeLinks() {
+		variables.config.removeLinks = true;
+		return this;
+	}
+
+}

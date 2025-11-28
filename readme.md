@@ -390,6 +390,7 @@ The AI module supports different return formats for the responses. You can speci
 | `aiChatStream()` | Stream chat responses from AI provider | `messages`, `callback`, `params={}`, `options={}` | void | N/A |
 | `aiChunk()` | Split text into chunks | `text`, `options={}` | Array of Strings | N/A |
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
+| `aiLoad()` | Load documents from files/URLs | `source`, `type=""`, `config={}` | Array of Documents | N/A |
 | `aiMemory()` | Create memory instance | `type`, `config={}` | IAiMemory Object | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
 | `aiModel()` | Create AI model wrapper | `provider`, `apiKey` | AiModel Object | N/A |
@@ -438,6 +439,10 @@ service = aiService( "openai", "my-key" ).defaults( { temperature: 0.7 } )
 
 // Tool for function calling
 tool = aiTool( "weather", "Get weather data", location => getWeather(location) )
+
+// Load documents from files or directories
+docs = aiLoad( "/path/to/document.txt" )
+docs = aiLoad( "/path/to/folder", "directory", { recursive: true } )
 
 // MCP client for Model Context Protocol servers
 client = MCP( "http://localhost:3000" )

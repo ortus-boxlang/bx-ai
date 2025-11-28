@@ -1,0 +1,294 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Loads all files from a directory using appropriate loaders.
+ * Automatically selects the right loader based on file extension.
+ */
+class extends="BaseDocumentLoader" {
+
+	/**
+	 * Static configuration and loader mappings
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			encoding        : "UTF-8",
+			includeMetadata : true,
+			recursive       : false,
+			extensions      : [],
+			excludePatterns : [],
+			includeHidden   : false
+		};
+
+		LOADER_MAP = {
+			"txt"  : "TextLoader",
+			"text" : "TextLoader",
+			"md"   : "MarkdownLoader",
+			"markdown" : "MarkdownLoader",
+			"html" : "HTMLLoader",
+			"htm"  : "HTMLLoader",
+			"csv"  : "CSVLoader",
+			"json" : "JSONLoader"
+		};
+	}
+
+	/**
+	 * Custom loader mappings
+	 */
+	property name="loaderMappings" type="struct";
+
+	/**
+	 * Initialize the DirectoryLoader
+	 *
+	 * @source Path to the directory
+	 * @config Configuration options
+	 *
+	 * @return DirectoryLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		super.init( source: arguments.source, config: {} );
+		variables.config         = static.DEFAULT_CONFIG.append( arguments.config, true );
+		variables.loaderMappings = duplicate( static.LOADER_MAP );
+		return this;
+	}
+
+	/**
+	 * Get the loader name
+	 *
+	 * @return The loader name
+	 */
+	string function getName() {
+		return "DirectoryLoader";
+	}
+
+	/**
+	 * Load all files from the directory
+	 *
+	 * @return Array of Document objects
+	 */
+	array function load() {
+		// Validate source exists
+		if ( !len( variables.source ) ) {
+			throw(
+				type    : "DirectoryLoader.NoSource",
+				message : "No source directory specified"
+			);
+		}
+
+		if ( !directoryExists( variables.source ) ) {
+			throw(
+				type    : "DirectoryLoader.DirectoryNotFound",
+				message : "Directory not found: #variables.source#"
+			);
+		}
+
+		var documents = [];
+		var files     = getFiles( variables.source );
+
+		for ( var filePath in files ) {
+			var loader = getLoaderForFile( filePath );
+
+			if ( !isNull( loader ) ) {
+				try {
+					var fileDocs = loader.load();
+					documents.append( fileDocs, true );
+				} catch ( any e ) {
+					// Log error but continue with other files
+					if ( variables.config.includeMetadata ) {
+						documents.append(
+							createDocument(
+								content            : "",
+								additionalMetadata : {
+									"loadError" : e.message,
+									"filePath"  : filePath,
+									"errorType" : e.type
+								}
+							)
+						);
+					}
+				}
+			}
+		}
+
+		return documents;
+	}
+
+	/**
+	 * Get all files from directory (optionally recursive)
+	 *
+	 * @directory The directory path
+	 *
+	 * @return Array of file paths
+	 */
+	private array function getFiles( required string directory ) {
+		var files     = [];
+		var contents  = directoryList( arguments.directory, false, "path" );
+
+		for ( var item in contents ) {
+			// Skip hidden files if configured
+			if ( !variables.config.includeHidden && isHiddenFile( item ) ) {
+				continue;
+			}
+
+			if ( directoryExists( item ) ) {
+				// Recurse into subdirectories if configured
+				if ( variables.config.recursive ) {
+					files.append( getFiles( item ), true );
+				}
+			} else if ( fileExists( item ) ) {
+				// Check if file matches filters
+				if ( shouldIncludeFile( item ) ) {
+					files.append( item );
+				}
+			}
+		}
+
+		return files;
+	}
+
+	/**
+	 * Check if a file is hidden
+	 *
+	 * @filePath The file path
+	 *
+	 * @return True if hidden
+	 */
+	private boolean function isHiddenFile( required string filePath ) {
+		var fileName = listLast( arguments.filePath, "/\" );
+		return left( fileName, 1 ) == ".";
+	}
+
+	/**
+	 * Check if a file should be included based on filters
+	 *
+	 * @filePath The file path
+	 *
+	 * @return True if file should be included
+	 */
+	private boolean function shouldIncludeFile( required string filePath ) {
+		var extension = listLast( arguments.filePath, "." ).lCase();
+		var fileName  = listLast( arguments.filePath, "/\" );
+
+		// Check extension filter
+		if ( !variables.config.extensions.isEmpty() ) {
+			var normalizedExtensions = variables.config.extensions.map( ext => ext.lCase().replace( ".", "" ) );
+			if ( !normalizedExtensions.findNoCase( extension ) ) {
+				return false;
+			}
+		}
+
+		// Check exclude patterns
+		for ( var pattern in variables.config.excludePatterns ) {
+			if ( reFindNoCase( pattern, fileName ) ) {
+				return false;
+			}
+		}
+
+		// Check if we have a loader for this extension
+		return variables.loaderMappings.keyExists( extension );
+	}
+
+	/**
+	 * Get the appropriate loader for a file
+	 *
+	 * @filePath The file path
+	 *
+	 * @return IDocumentLoader instance or null
+	 */
+	private any function getLoaderForFile( required string filePath ) {
+		var extension = listLast( arguments.filePath, "." ).lCase();
+
+		if ( !variables.loaderMappings.keyExists( extension ) ) {
+			return javacast( "null", "" );
+		}
+
+		var loaderName = variables.loaderMappings[ extension ];
+
+		// Create the appropriate loader
+		switch ( loaderName ) {
+			case "TextLoader":
+				return new TextLoader( source: arguments.filePath, config: variables.config );
+			case "MarkdownLoader":
+				return new MarkdownLoader( source: arguments.filePath, config: variables.config );
+			case "HTMLLoader":
+				return new HTMLLoader( source: arguments.filePath, config: variables.config );
+			case "CSVLoader":
+				return new CSVLoader( source: arguments.filePath, config: variables.config );
+			case "JSONLoader":
+				return new JSONLoader( source: arguments.filePath, config: variables.config );
+			default:
+				return javacast( "null", "" );
+		}
+	}
+
+	/**
+	 * Enable recursive directory scanning
+	 *
+	 * @return DirectoryLoader for chaining
+	 */
+	DirectoryLoader function recursive() {
+		variables.config.recursive = true;
+		return this;
+	}
+
+	/**
+	 * Filter by specific file extensions
+	 *
+	 * @extensions Array of extensions (e.g., ["txt", "md"])
+	 *
+	 * @return DirectoryLoader for chaining
+	 */
+	DirectoryLoader function extensions( required array extensions ) {
+		variables.config.extensions = arguments.extensions;
+		return this;
+	}
+
+	/**
+	 * Exclude files matching patterns
+	 *
+	 * @patterns Array of regex patterns to exclude
+	 *
+	 * @return DirectoryLoader for chaining
+	 */
+	DirectoryLoader function exclude( required array patterns ) {
+		variables.config.excludePatterns = arguments.patterns;
+		return this;
+	}
+
+	/**
+	 * Include hidden files
+	 *
+	 * @return DirectoryLoader for chaining
+	 */
+	DirectoryLoader function includeHidden() {
+		variables.config.includeHidden = true;
+		return this;
+	}
+
+	/**
+	 * Register a custom loader for an extension
+	 *
+	 * @extension The file extension
+	 * @loaderName The loader class name
+	 *
+	 * @return DirectoryLoader for chaining
+	 */
+	DirectoryLoader function registerLoader( required string extension, required string loaderName ) {
+		variables.loaderMappings[ arguments.extension.lCase() ] = arguments.loaderName;
+		return this;
+	}
+
+}

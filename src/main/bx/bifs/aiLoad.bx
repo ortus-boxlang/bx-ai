@@ -1,0 +1,142 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Load documents from various sources (files, directories, URLs).
+ * Automatically selects the appropriate loader based on source type.
+ *
+ * @param source The source to load (file path, directory, URL)
+ * @param config Configuration options for the loader
+ */
+import bxModules.bxai.models.loaders.TextLoader;
+import bxModules.bxai.models.loaders.MarkdownLoader;
+import bxModules.bxai.models.loaders.HTMLLoader;
+import bxModules.bxai.models.loaders.CSVLoader;
+import bxModules.bxai.models.loaders.JSONLoader;
+import bxModules.bxai.models.loaders.DirectoryLoader;
+
+@BoxBIF
+class {
+
+	/**
+	 * Static loader type mappings
+	 */
+	static {
+		EXTENSION_MAP = {
+			"txt"      : "text",
+			"text"     : "text",
+			"md"       : "markdown",
+			"markdown" : "markdown",
+			"html"     : "html",
+			"htm"      : "html",
+			"csv"      : "csv",
+			"json"     : "json"
+		};
+	}
+
+	/**
+	 * Load documents from a source
+	 *
+	 * @source The source to load from (file path, directory, or URL)
+	 * @type   Optional explicit loader type (text, markdown, html, csv, json, directory)
+	 * @config Configuration options for the loader
+	 *
+	 * @return Array of Document objects
+	 */
+	function invoke( required string source, string type = "", struct config = {} ) {
+		var loader = getLoader( arguments.source, arguments.type, arguments.config );
+		return loader.load();
+	}
+
+	/**
+	 * Get the appropriate loader for a source
+	 *
+	 * @source The source to load from
+	 * @type   Optional explicit loader type
+	 * @config Configuration options
+	 *
+	 * @return IDocumentLoader instance
+	 */
+	private function getLoader( required string source, string type = "", struct config = {} ) {
+		var loaderType = arguments.type;
+
+		// Auto-detect loader type if not specified
+		if ( !len( loaderType ) ) {
+			loaderType = detectLoaderType( arguments.source );
+		}
+
+		// Create the appropriate loader
+		switch ( loaderType.lCase() ) {
+			case "text":
+			case "txt":
+				return new TextLoader( source: arguments.source, config: arguments.config );
+
+			case "markdown":
+			case "md":
+				return new MarkdownLoader( source: arguments.source, config: arguments.config );
+
+			case "html":
+			case "htm":
+				return new HTMLLoader( source: arguments.source, config: arguments.config );
+
+			case "csv":
+				return new CSVLoader( source: arguments.source, config: arguments.config );
+
+			case "json":
+				return new JSONLoader( source: arguments.source, config: arguments.config );
+
+			case "directory":
+			case "dir":
+				return new DirectoryLoader( source: arguments.source, config: arguments.config );
+
+			default:
+				throw(
+					type    : "aiLoad.UnknownLoaderType",
+					message : "Unknown loader type: #loaderType#. Supported types: text, markdown, html, csv, json, directory"
+				);
+		}
+	}
+
+	/**
+	 * Detect the loader type from the source
+	 *
+	 * @source The source path or URL
+	 *
+	 * @return The detected loader type
+	 */
+	private string function detectLoaderType( required string source ) {
+		// Check if it's a directory
+		if ( directoryExists( arguments.source ) ) {
+			return "directory";
+		}
+
+		// Check if it's a URL
+		if ( reFindNoCase( "^https?://", arguments.source ) ) {
+			return "html";
+		}
+
+		// Check file extension
+		var extension = listLast( arguments.source, "." ).lCase();
+
+		if ( static.EXTENSION_MAP.keyExists( extension ) ) {
+			return static.EXTENSION_MAP[ extension ];
+		}
+
+		// Default to text
+		return "text";
+	}
+
+}

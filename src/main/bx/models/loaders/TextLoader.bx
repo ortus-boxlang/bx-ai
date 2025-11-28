@@ -1,0 +1,84 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Loads plain text files into Document objects.
+ * Supports .txt files and any plain text content.
+ */
+class extends="BaseDocumentLoader" {
+
+	/**
+	 * Initialize the TextLoader
+	 *
+	 * @source Path to the text file
+	 * @config Configuration options
+	 *
+	 * @return TextLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		super.init( argumentCollection: arguments );
+		return this;
+	}
+
+	/**
+	 * Get the loader name
+	 *
+	 * @return The loader name
+	 */
+	string function getName() {
+		return "TextLoader";
+	}
+
+	/**
+	 * Load the text file into Document objects
+	 *
+	 * @return Array of Document objects
+	 */
+	array function load() {
+		// Validate source exists
+		if ( !len( variables.source ) ) {
+			throw(
+				type    : "TextLoader.NoSource",
+				message : "No source file specified"
+			);
+		}
+
+		if ( !fileExists( variables.source ) ) {
+			throw(
+				type    : "TextLoader.FileNotFound",
+				message : "File not found: #variables.source#"
+			);
+		}
+
+		// Read the file content
+		var content  = readFile( variables.source );
+		var fileInfo = getSourceInfo();
+
+		// Create document with metadata
+		var doc = createDocument(
+			content            : content,
+			additionalMetadata : {
+				"fileType"     : "text",
+				"fileName"     : fileInfo.name,
+				"fileSize"     : fileInfo.size,
+				"lastModified" : fileInfo.lastModified
+			}
+		);
+
+		return [ doc ];
+	}
+
+}

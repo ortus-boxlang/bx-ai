@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Document Loaders**: New document loading system for importing content from various sources
+    - New `aiLoad()` BIF for loading documents with automatic type detection
+    - New `Document` class for standardized document representation with content and metadata
+    - New `IDocumentLoader` interface and `BaseDocumentLoader` abstract class for custom loaders
+    - **Built-in Loaders**:
+        - `TextLoader`: Plain text files (.txt, .text)
+        - `MarkdownLoader`: Markdown files with header splitting, code block removal
+        - `HTMLLoader`: HTML files and URLs with script/style removal, tag extraction
+        - `CSVLoader`: CSV files with row-as-document mode, column filtering
+        - `JSONLoader`: JSON files with field extraction, array-as-documents mode
+        - `DirectoryLoader`: Batch loading from directories with recursive scanning
+    - Fluent API for loader configuration
+    - Integration with memory systems via `loadTo()` method
+    - Automatic document chunking support for vector memory
+    - Comprehensive documentation in `docs/main-components/loaders.md`
 - **Embeddings Support**: Complete embeddings functionality for semantic search, clustering, and recommendations
     - New `aiEmbedding()` BIF for generating text embeddings
     - New `AiEmbeddingRequest` class to model embedding requests

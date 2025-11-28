@@ -1,0 +1,319 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Abstract base class for document loaders.
+ * Provides common functionality for all loader implementations.
+ */
+abstract class implements="IDocumentLoader" {
+
+	/**
+	 * The source to load from (file path, URL, etc.)
+	 */
+	property name="source" type="string" default="";
+
+	/**
+	 * Configuration options
+	 */
+	property name="config" type="struct";
+
+	/**
+	 * Documents loaded for lazy iteration
+	 */
+	property name="documents" type="array";
+
+	/**
+	 * Current index for lazy iteration
+	 */
+	property name="currentIndex" type="numeric" default="0";
+
+	/**
+	 * Whether documents have been loaded for lazy iteration
+	 */
+	property name="documentsLoaded" type="boolean" default="false";
+
+	/**
+	 * Static default configuration
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			encoding        : "UTF-8",
+			includeMetadata : true,
+			splitMode       : "none"
+		};
+	}
+
+	/**
+	 * Initialize the loader
+	 *
+	 * @source The source to load from
+	 * @config Configuration options
+	 *
+	 * @return BaseDocumentLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		variables.source          = arguments.source;
+		variables.config          = static.DEFAULT_CONFIG.append( arguments.config, true );
+		variables.documents       = [];
+		variables.currentIndex    = 0;
+		variables.documentsLoaded = false;
+		return this;
+	}
+
+	/**
+	 * Get the name of this loader (uses class name by default)
+	 *
+	 * @return The loader name
+	 */
+	string function getName() {
+		var metadata = getMetadata( this );
+		return metadata.keyExists( "name" ) ? metadata.name : "DocumentLoader";
+	}
+
+	/**
+	 * Get the source identifier
+	 *
+	 * @return The source identifier
+	 */
+	string function getSource() {
+		return variables.source;
+	}
+
+	/**
+	 * Set the source
+	 *
+	 * @source The source to load from
+	 *
+	 * @return BaseDocumentLoader for chaining
+	 */
+	function setSource( required string source ) {
+		variables.source = arguments.source;
+		// Reset lazy loading state when source changes
+		variables.documentsLoaded = false;
+		variables.currentIndex    = 0;
+		variables.documents       = [];
+		return this;
+	}
+
+	/**
+	 * Configure the loader
+	 *
+	 * @config Configuration struct to merge
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function configure( required struct config ) {
+		variables.config.append( arguments.config, true );
+		return this;
+	}
+
+	/**
+	 * Get the current configuration
+	 *
+	 * @return Configuration struct
+	 */
+	struct function getConfig() {
+		return variables.config;
+	}
+
+	/**
+	 * Abstract method: Load all documents from the source
+	 * Must be implemented by subclasses.
+	 *
+	 * @return Array of Document objects
+	 */
+	abstract array function load();
+
+	/**
+	 * Load the next document lazily
+	 * Default implementation loads all documents first, then iterates.
+	 *
+	 * @return The next Document or null if no more documents
+	 */
+	any function loadNext() {
+		// Load all documents if not yet loaded
+		if ( !variables.documentsLoaded ) {
+			variables.documents       = load();
+			variables.documentsLoaded = true;
+			variables.currentIndex    = 0;
+		}
+
+		// Return next document or null
+		if ( variables.currentIndex < variables.documents.len() ) {
+			variables.currentIndex++;
+			return variables.documents[ variables.currentIndex ];
+		}
+
+		return javacast( "null", "" );
+	}
+
+	/**
+	 * Check if there are more documents to load
+	 *
+	 * @return True if more documents are available
+	 */
+	boolean function hasNext() {
+		// Load documents if not yet loaded
+		if ( !variables.documentsLoaded ) {
+			variables.documents       = load();
+			variables.documentsLoaded = true;
+			variables.currentIndex    = 0;
+		}
+
+		return variables.currentIndex < variables.documents.len();
+	}
+
+	/**
+	 * Reset the lazy loader to start from the beginning
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function reset() {
+		variables.currentIndex    = 0;
+		variables.documentsLoaded = false;
+		variables.documents       = [];
+		return this;
+	}
+
+	/**
+	 * Create a new Document with standard metadata
+	 *
+	 * @content The document content
+	 * @additionalMetadata Additional metadata to merge
+	 *
+	 * @return Document instance
+	 */
+	Document function createDocument( required string content, struct additionalMetadata = {} ) {
+		var baseMetadata = {
+			"source"    : variables.source,
+			"loader"    : getName(),
+			"loadedAt"  : now()
+		};
+
+		// Merge additional metadata
+		baseMetadata.append( arguments.additionalMetadata, true );
+
+		return new Document( content: arguments.content, metadata: baseMetadata );
+	}
+
+	/**
+	 * Read file content with specified encoding
+	 *
+	 * @filePath Path to the file
+	 *
+	 * @return File content as string
+	 */
+	string function readFile( required string filePath ) {
+		return fileRead( arguments.filePath, variables.config.encoding );
+	}
+
+	/**
+	 * Check if the source file exists
+	 *
+	 * @return True if file exists
+	 */
+	boolean function sourceExists() {
+		return fileExists( variables.source ) || directoryExists( variables.source );
+	}
+
+	/**
+	 * Get file info for the source
+	 *
+	 * @return Struct with file information
+	 */
+	struct function getSourceInfo() {
+		if ( !sourceExists() ) {
+			return {};
+		}
+
+		var info = getFileInfo( variables.source );
+		return {
+			"name"         : info.name,
+			"path"         : info.path,
+			"size"         : info.size,
+			"lastModified" : info.lastModified,
+			"isDirectory"  : info.isDirectory,
+			"canRead"      : info.canRead
+		};
+	}
+
+	/**
+	 * Load documents and store them to a memory instance
+	 *
+	 * @memory The memory instance to store documents in
+	 * @chunkOptions Options for chunking (if provided, documents will be chunked before storing)
+	 *
+	 * @return Array of Document objects that were stored
+	 */
+	array function loadTo( required any memory, struct chunkOptions = {} ) {
+		var docs = load();
+
+		// If chunk options provided, chunk the documents
+		if ( !arguments.chunkOptions.isEmpty() ) {
+			docs = chunkDocuments( docs, arguments.chunkOptions );
+		}
+
+		// Store each document in memory
+		for ( var doc in docs ) {
+			// If memory has a store method (vector memory), use it
+			if ( structKeyExists( arguments.memory, "store" ) ) {
+				arguments.memory.store(
+					id       : createUUID(),
+					text     : doc.getContent(),
+					metadata : doc.getMetadata()
+				);
+			} else {
+				// Otherwise add as a message
+				arguments.memory.add( {
+					role    : "user",
+					content : doc.getContent()
+				} );
+			}
+		}
+
+		return docs;
+	}
+
+	/**
+	 * Chunk documents into smaller segments
+	 *
+	 * @documents Array of documents to chunk
+	 * @options Chunking options (chunkSize, overlap, strategy)
+	 *
+	 * @return Array of chunked Document objects
+	 */
+	array function chunkDocuments( required array documents, struct options = {} ) {
+		var chunkedDocs = [];
+
+		for ( var doc in arguments.documents ) {
+			var chunks = aiChunk( text: doc.getContent(), options: arguments.options );
+
+			for ( var i = 1; i <= chunks.len(); i++ ) {
+				var chunkMetadata = duplicate( doc.getMetadata() );
+				chunkMetadata[ "chunkIndex" ] = i;
+				chunkMetadata[ "totalChunks" ] = chunks.len();
+				chunkMetadata[ "isChunk" ] = true;
+
+				chunkedDocs.append(
+					new Document( content: chunks[ i ], metadata: chunkMetadata )
+				);
+			}
+		}
+
+		return chunkedDocs;
+	}
+
+}

@@ -98,6 +98,9 @@ Processing and transforming data between pipeline steps.
 📡 **[Pipeline Streaming](main-components/streaming.md)**
 Real-time streaming through pipelines for responsive applications.
 
+📄 **[Document Loaders](main-components/loaders.md)**
+Load documents from files, directories, and URLs. Supports text, Markdown, HTML, CSV, and JSON with automatic chunking and memory integration.
+
 ---
 
 ### Advanced Topics
@@ -134,6 +137,7 @@ BoxLang AI provides a comprehensive set of BIFs for different AI operations:
 | `aiChatStream()` | Real-time streaming responses | void | Live chat, progressive output |
 | `aiChunk()` | Split text into manageable chunks | Array | Processing large documents |
 | `aiEmbed()` | Generate vector embeddings | Array/Struct | Semantic search, similarity |
+| `aiLoad()` | Load documents from files/URLs | Array | Document processing, RAG |
 | `aiMemory()` | Create conversation memory systems | Memory | Context-aware conversations, history |
 | `aiMessage()` | Build message pipelines | AiMessage | Reusable prompts, templates |
 | `aiModel()` | Create model runnables | AiModel | Pipeline integration |
