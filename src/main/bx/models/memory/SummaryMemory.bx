@@ -73,15 +73,15 @@ class extends="WindowMemory" {
 		string summaryModel = static.DEFAULT_SUMMARY_MODEL,
 		string summaryProvider = static.DEFAULT_SUMMARY_PROVIDER
 	) {
-		super.init( arguments.key );
-		variables.maxMessages = arguments.maxMessages;
-		variables.summaryThreshold = arguments.summaryThreshold;
-		variables.summaryModelName = arguments.summaryModel;
-		variables.summaryProvider = arguments.summaryProvider;
-		variables.summaryModelInstance = "";
-		variables.currentSummary = "";
-		variables.hasSummary = false;
-		return this;
+		super.init( arguments.key )
+		variables.maxMessages = arguments.maxMessages
+		variables.summaryThreshold = arguments.summaryThreshold
+		variables.summaryModelName = arguments.summaryModel
+		variables.summaryProvider = arguments.summaryProvider
+		variables.summaryModelInstance = ""
+		variables.currentSummary = ""
+		variables.hasSummary = false
+		return this
 	}
 
 	/**
@@ -89,23 +89,24 @@ class extends="WindowMemory" {
 	 * Supports maxMessages, summaryThreshold, summaryModel, summaryProvider in config
 	 */
 	public IAiMemory function configure( required struct config ) {
-		super.configure( arguments.config );
+		super.configure( arguments.config )
 
 		if ( arguments.config.keyExists( "summaryThreshold" ) ) {
-			variables.summaryThreshold = arguments.config.summaryThreshold;
+			variables.summaryThreshold = arguments.config.summaryThreshold
 		}
 
 		if ( arguments.config.keyExists( "summaryModel" ) ) {
-			variables.summaryModelName = arguments.config.summaryModel;
+			variables.summaryModelName = arguments.config.summaryModel
 		}
 
 		if ( arguments.config.keyExists( "summaryProvider" ) ) {
-			variables.summaryProvider = arguments.config.summaryProvider;
+			variables.summaryProvider = arguments.config.summaryProvider
 		}
 
 		// Create the AI model instance for reuse
 		variables.summaryModelInstance = aiModel( variables.summaryProvider )
-			.withParams( { model: variables.summaryModelName } );
+			.withParams( { model: variables.summaryModelName } )
+			.withOptions( { returnFormat: "single" } )
 
 		return this;
 	}
@@ -119,15 +120,12 @@ class extends="WindowMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function add( required any message ) {
-		// Check if we'll exceed the limit BEFORE adding (since WindowMemory will auto-trim)
-		var nonSystemCount = getNonSystemMessages().len();
-		var willExceed = (nonSystemCount + 1) > variables.maxMessages;
+	// Check if we'll exceed the limit BEFORE adding (since WindowMemory will auto-trim)
+	var nonSystemCount = getNonSystemMessages().len();
+	var willExceed = (nonSystemCount + 1) > variables.maxMessages;
 
-		systemOutput( "SummaryMemory.add: nonSystemCount=#nonSystemCount#, willExceed=#willExceed#, maxMessages=#variables.maxMessages#", true );
-
-		// If adding this message will exceed limit, summarize first
-		if ( willExceed ) {
-			systemOutput( "SummaryMemory.add: Triggering summarization BEFORE add", true );
+	// If adding this message will exceed limit, summarize first
+	if ( willExceed ) {
 			// Add the message temporarily to include it in summarization decision
 			super.add( arguments.message );
 			summarizeOldMessages();
@@ -180,13 +178,11 @@ class extends="WindowMemory" {
 			summaryPrompt &= "#msg.role#: #msg.content#\n";
 		} );
 
-		// Call AI to generate summary
-		try {
-			systemOutput( "summarizeOldMessages: Calling AI model", true );
-			var summary = variables.summaryModelInstance.run( aiMessage().user( summaryPrompt ) );
-			systemOutput( "summarizeOldMessages: Got summary: #left(summary, 50)#...", true );
+	// Call AI to generate summary
+	try {
+		var summary = variables.summaryModelInstance.run( aiMessage().user( summaryPrompt ) );
 
-			// Rebuild memory structure
+		// Rebuild memory structure
 			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
 
 			clear();
@@ -204,19 +200,17 @@ class extends="WindowMemory" {
 				timestamp: now()
 			} );
 
-			variables.currentSummary = summary;
-			variables.hasSummary = true;
-			systemOutput( "summarizeOldMessages: Set hasSummary=true", true );
+		variables.currentSummary = summary;
+		variables.hasSummary = true;
 
-			// Add back recent messages
+		// Add back recent messages
 			for( var msg in toKeep ){
 				super.add( msg );
 			}
 
-		} catch ( any e ) {
-			// If summarization fails, fall back to simple truncation
-			systemOutput( "summarizeOldMessages: ERROR - #e.message#", true );
-			writeLog(
+	} catch ( any e ) {
+		// If summarization fails, fall back to simple truncation
+		writeLog(
 				text: "SummaryMemory: Failed to generate summary - #e.message#. Falling back to truncation.",
 				type: "error",
 				log: "ai"
