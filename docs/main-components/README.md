@@ -206,18 +206,19 @@ Extract structured data from AI responses into classes, structs, or arrays.
 
 **Quick example:**
 ```java
-// Define schema
-result = aiChat(
-    message: "Extract: John is 30, works as a developer",
-    structured: {
-        name: "string",
-        age: "numeric",
-        job: "string"
-    }
-);
+// Define a class for type-safe extraction
+class Person {
+    property name="name" type="string";
+    property name="age" type="numeric";
+    property name="job" type="string";
+}
 
-println( result.name ); // "John"
-println( result.age );  // 30
+// Extract data into typed class
+result = aiChat( "Extract: John is 30, works as a developer" )
+    .structuredOutput( new Person() );
+
+println( result.getName() ); // "John"
+println( result.getAge() );  // 30
 ```
 
 **Use when:** Extracting data from text, generating forms, or parsing documents into structured formats.
