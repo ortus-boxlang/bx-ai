@@ -60,7 +60,10 @@ compareTool = aiTool(
         }
         
         if( found1.len() > 0 && found2.len() > 0 ) {
-            return "Topic 1 (#topic1#): #left( found1, 100 )#...\nTopic 2 (#topic2#): #left( found2, 100 )#..."
+            // Extract first sentence for cleaner comparison (respects word boundaries)
+            summary1 = found1.listFirst( "." ) & "."
+            summary2 = found2.listFirst( "." ) & "."
+            return "Topic 1 (#topic1#): #summary1#\nTopic 2 (#topic2#): #summary2#"
         }
         
         return "Couldn't find both topics. Available: #knowledgeBase.keyList()#"

@@ -35,6 +35,7 @@ Respond with ONLY the Magic 8-Ball phrase, nothing else.
 "
 
 // Get the mystical answer
+// Using high temperature (0.9) for more random/varied responses - perfect for a fortune teller!
 try {
     answer = aiChat( prompt, { temperature: 0.9 } )
     println( "" )

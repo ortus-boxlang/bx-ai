@@ -61,11 +61,11 @@ try {
     println( "─".repeat( 40 ) )
     println( "Total: $#numberFormat( invoice.total, ',.00' )#" )
     
-    // Verify total
-    if( abs( calculatedTotal - invoice.total ) < 1 ) {
+    // Verify total (using penny precision for currency comparison)
+    if( abs( calculatedTotal - invoice.total ) < 0.01 ) {
         println( "✅ Total verified!" )
     } else {
-        println( "⚠️ Total mismatch! Calculated: $#calculatedTotal#" )
+        println( "⚠️ Total mismatch! Calculated: $#numberFormat( calculatedTotal, ',.00' )#" )
     }
     
 } catch( any e ) {
