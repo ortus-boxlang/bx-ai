@@ -69,7 +69,7 @@ When retrieving context, vector memory finds similar messages:
 
 ```java
 // Finds semantically similar messages, even with different wording
-relevant = memory.getRelevant( "payment issues", limit: 5 )
+relevant = memory.getRelevant( "payment issues", 5 )
 // Returns messages about billing, invoices, charges, etc.
 ```
 
