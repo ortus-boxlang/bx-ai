@@ -1,0 +1,19 @@
+// ejemplo-servicio.bxs
+// Usando aiService() para crear servicios reutilizables
+// Ejecutar con: boxlang ejemplo-servicio.bxs
+
+openaiService = aiService( "openai" )
+claudeService = aiService( "claude" )
+
+// Misma pregunta, diferentes proveedores
+question = aiMessage().user( "What is BoxLang?" )
+
+openaiAnswer = openaiService.invoke(
+    aiChatRequest( question )
+)
+claudeAnswer = claudeService.invoke(
+    aiChatRequest( question )
+)
+
+println( "OpenAI: " & openaiAnswer.choices[1].message.content )
+println( "Claude: " & claudeAnswer.choices[1].message.content )

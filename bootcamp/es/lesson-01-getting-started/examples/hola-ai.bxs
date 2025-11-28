@@ -1,0 +1,6 @@
+// hola-ai.bxs
+// ¡Tu primera llamada a IA!
+// Ejecutar con: boxlang hola-ai.bxs
+
+answer = aiChat( "Say hello to someone learning BoxLang AI!" )
+println( answer )

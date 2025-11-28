@@ -1,0 +1,12 @@
+// array-conversacion.bxs
+// Construyendo conversaciones con arrays
+// Ejecutar con: boxlang array-conversacion.bxs
+
+messages = [
+    { role: "system", content: "You are a friendly math tutor. Be encouraging!" },
+    { role: "user", content: "What is 5 + 3?" }
+]
+
+answer = aiChat( messages )
+println( answer )
+// Salida: "¡Gran pregunta! 5 + 3 es igual a 8. ¡Lo estás haciendo genial!"

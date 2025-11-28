@@ -1,0 +1,11 @@
+// llamada-segura.bxs
+// Llamada a IA con manejo de errores
+// Ejecutar con: boxlang llamada-segura.bxs
+
+try {
+    answer = aiChat( "Tell me a programming joke" )
+    println( answer )
+} catch( any e ) {
+    println( "❌ Error: " & e.message )
+    println( "💡 ¡Verifica tu clave de API!" )
+}

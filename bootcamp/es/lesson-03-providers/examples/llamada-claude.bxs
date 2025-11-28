@@ -1,0 +1,13 @@
+// llamada-claude.bxs
+// Usando el proveedor Claude
+// Ejecutar con: boxlang llamada-claude.bxs
+
+answer = aiChat(
+    "What is 2 + 2?",
+    {},
+    {
+        provider: "claude",
+        apiKey: getSystemSetting( "CLAUDE_API_KEY" )
+    }
+)
+println( "Claude: " & answer )
