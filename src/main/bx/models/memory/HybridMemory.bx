@@ -42,7 +42,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	/**
 	 * Vector memory provider configuration
 	 */
-	property name="vectorProvider" type="string" default="chroma";
+	property name="vectorProvider" type="string" default="BoxVectorMemory";
 	property name="vectorConfig" type="struct" default={};
 
 	/**
