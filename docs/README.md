@@ -87,7 +87,10 @@ Creating model runnables, configuration, and integrating AI providers into pipel
 Building reusable prompts with dynamic placeholders and binding strategies.
 
 💭 **[Memory Systems](main-components/memory.md)**
-Maintain conversation context with multiple memory types. Compare Windowed, Summary, Session, and File memory for different use cases.
+Maintain conversation context with standard memory types: Windowed, Summary, Session, File, Cache, and JDBC memory for different use cases.
+
+🧠 **[Vector Memory](main-components/vector-memory.md)**
+Semantic search and retrieval using vector embeddings. Integrate with ChromaDB, Pinecone, PostgreSQL, Qdrant, Weaviate, Milvus, or use in-memory vectors.
 
 🔧 **[Transformers](main-components/transformers.md)**
 Processing and transforming data between pipeline steps.
@@ -110,6 +113,12 @@ Generate vector representations for semantic search, recommendations, clustering
 
 🔌 **[MCP Client](advanced/mcp-client.md)**
 Connect to Model Context Protocol (MCP) servers for external tools, resources, and prompts. Fluent API for MCP integration.
+
+🎨 **[Custom Memory](advanced/custom-memory.md)**
+Build your own memory implementations by extending BaseMemory. Create specialized memory systems for unique requirements.
+
+🧩 **[Custom Vector Memory](advanced/custom-vector-memory.md)**
+Implement custom vector memory providers by extending BaseVectorMemory. Integrate with any vector database or search system.
 
 ---
 

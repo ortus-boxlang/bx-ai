@@ -187,6 +187,7 @@ tasks = aiPopulate( [ new Task() ], tasksJson );
 ```
 
 **Perfect for:**
+
 - Testing with mock data
 - Using cached AI responses
 - Converting existing JSON data to typed objects
@@ -202,6 +203,98 @@ All providers support structured output! OpenAI offers native structured output 
 - **Advanced Pipelines**: [Pipeline Integration Guide](docs/main-components/structured-output.md)
 - **Interactive Course**: [Lesson 12 - Structured Output](course/lesson-12-structured-output/)
 - **Examples**: Check `examples/structured/` for complete working examples
+
+## Memory Systems
+
+Build **stateful, context-aware AI applications** with flexible memory systems that maintain conversation history, enable semantic search, and preserve context across interactions. BoxLang AI provides both traditional conversation memory and advanced vector-based memory for semantic understanding.
+
+### Why Use Memory?
+
+- **Context Retention**: AI remembers previous messages and maintains coherent conversations
+- **Stateful Applications**: Build chat interfaces that remember user preferences and conversation history
+- **Semantic Search**: Find relevant past conversations using vector embeddings
+- **Flexible Storage**: Choose from in-memory, file-based, database, session, or vector storage
+- **Automatic Management**: Memory handles message limits, summarization, and context windows
+
+### Memory Types
+
+**Standard Memory** (Conversation History):
+
+| Type | Description | Best For |
+|------|-------------|----------|
+| **Windowed** | Keeps last N messages | Quick chats, cost-conscious apps |
+| **Summary** | Auto-summarizes old messages | Long conversations, context preservation |
+| **Session** | Web session persistence | Multi-page web applications |
+| **File** | File-based storage | Audit trails, long-term storage |
+| **Cache** | CacheBox-backed | Distributed applications |
+| **JDBC** | Database storage | Enterprise apps, multi-user systems |
+
+**Vector Memory** (Semantic Search):
+
+| Type | Description | Best For |
+|------|-------------|----------|
+| **BoxVector** | In-memory vectors | Development, testing, small datasets |
+| **Hybrid** | Recent + semantic | Best of both worlds approach |
+| **Chroma** | ChromaDB integration | Python-based infrastructure |
+| **Postgres** | PostgreSQL pgvector | Existing PostgreSQL deployments |
+| **Pinecone** | Cloud vector database | Production, scalable semantic search |
+| **Qdrant** | High-performance vectors | Large-scale deployments |
+| **Weaviate** | GraphQL vector database | Complex queries, knowledge graphs |
+| **Milvus** | Enterprise vector DB | Massive datasets, high throughput |
+
+### Quick Examples
+
+**Windowed Memory:**
+
+```java
+memory = aiMemory( "windowed", { maxMessages: 10 } )
+agent = aiAgent( name: "Assistant", memory: memory )
+
+agent.run( "My name is John" )
+agent.run( "What's my name?" )  // "Your name is John"
+```
+
+**Summary Memory (Preserves Full Context):**
+
+```java
+memory = aiMemory( "summary", {
+    maxMessages: 30,
+    summaryThreshold: 15,
+    summaryModel: "gpt-4o-mini"
+} )
+agent = aiAgent( name: "Support", memory: memory )
+// Long conversation - older messages summarized automatically
+```
+
+**Vector Memory (Semantic Search):**
+
+```java
+memory = aiMemory( "chroma", {
+    collection: "customer_support",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small"
+} )
+// Retrieves semantically relevant past conversations
+```
+
+**Hybrid Memory (Recent + Semantic):**
+
+```java
+memory = aiMemory( "hybrid", {
+    recentLimit: 5,       // Keep last 5 messages
+    semanticLimit: 5,     // Add 5 semantic matches
+    vectorProvider: "chroma"
+} )
+// Combines recency with relevance
+```
+
+### Learn More
+
+- **Standard Memory**: [Memory Systems Guide](docs/main-components/memory.md)
+- **Vector Memory**: [Vector Memory Guide](docs/main-components/vector-memory.md)
+- **Custom Memory**: [Building Custom Memory](docs/advanced/custom-memory.md)
+- **Interactive Course**: [Lesson 7 - Memory Systems](course/lesson-07-memory/)
+- **Examples**: Check `examples/advanced/` and `examples/vector-memory/` for complete examples
 
 ## Settings
 
@@ -293,13 +386,18 @@ The AI module supports different return formats for the responses. You can speci
 | `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `params`, `options` | AiAgent Object | ❌ |
 | `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
+| `aiChatRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | AiRequestObject | N/A |
 | `aiChatStream()` | Stream chat responses from AI provider | `messages`, `callback`, `params={}`, `options={}` | void | N/A |
-| `aiAiRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | AiRequestObject | N/A |
+| `aiChunk()` | Split text into chunks | `text`, `options={}` | Array of Strings | N/A |
+| `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
+| `aiMemory()` | Create memory instance | `type`, `config={}` | IAiMemory Object | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
 | `aiModel()` | Create AI model wrapper | `provider`, `apiKey` | AiModel Object | N/A |
 | `aiPopulate()` | Populate class/struct from JSON | `target`, `data` | Populated Object | N/A |
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
+| `aiTokens()` | Estimate token count | `text`, `options={}` | Numeric | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
+| `aiTransform()` | Create data transformer | `transformer` | Transformer function | N/A |
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
 
 > **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](docs/main-components/overview.md#return-formats) documentation for details.

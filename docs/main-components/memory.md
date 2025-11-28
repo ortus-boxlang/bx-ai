@@ -1,11 +1,13 @@
 ---
-description: "Comprehensive guide on using memory systems in BoxLang AI pipelines for context retention and coherent conversations."
+description: "Comprehensive guide on using standard memory systems in BoxLang AI for conversation history and context retention."
 icon: memory
 ---
 
-# Memory in Pipelines
+# Memory Systems
 
-Memory systems enable AI to maintain context across multiple interactions, making conversations more coherent and contextually aware. This guide covers how to use memory within BoxLang AI pipelines.
+Memory systems enable AI to maintain context across multiple interactions, making conversations more coherent and contextually aware. This guide covers **standard conversation memory** types that store and manage message history.
+
+> **Looking for Vector Memory?** For semantic search and retrieval using embeddings, see the [Vector Memory Guide](vector-memory.md).
 
 ---
 
@@ -17,6 +19,7 @@ Memory systems enable AI to maintain context across multiple interactions, makin
 - [Using Memory in Pipelines](#using-memory-in-pipelines)
 - [Memory Patterns](#memory-patterns)
 - [Best Practices](#best-practices)
+- [Advanced Memory](#advanced-memory)
 
 ---
 
@@ -27,30 +30,33 @@ Memory in AI systems allows for:
 - **Context retention** across multiple turns
 - **Conversation history** management
 - **State persistence** in long-running applications
-- **Selective context** for relevant information
+- **Flexible storage** options (memory, session, file, database)
 
-Without memory, each AI call is independent with no knowledge of previous interactions.
+Without memory, each AI call is independent with no knowledge of previous interactions. Standard memory types focus on managing conversation messages chronologically, while [Vector Memory](vector-memory.md) provides semantic search capabilities.
 
 ---
 
 ## Memory Types
 
-BoxLang AI provides several memory implementations:
+BoxLang AI provides several standard memory implementations for conversation history management:
 
 ### Memory Type Comparison
 
 Choose the right memory type for your use case:
 
-| Feature | Windowed | Summary | Session | File |
-|---------|----------|---------|---------|------|
-| **Context Preservation** | Recent only | Full (compressed) | Recent only | All messages |
-| **Old Messages** | Discarded | Summarized | Discarded/windowed | Kept |
-| **Token Usage** | Low | Moderate | Low-Moderate | High |
-| **Memory Loss** | High | Low | Medium | None |
-| **Best For** | Quick chats | Long conversations | Web apps | Audit trails |
-| **Setup Complexity** | Simple | Moderate | Simple | Simple |
-| **Cost** | Lowest | Low-Medium | Low | Medium |
-| **Historical Awareness** | None | Excellent | Limited | Perfect |
+| Feature | Windowed | Summary | Session | File | Cache | JDBC |
+|---------|----------|---------|---------|------|-------|------|
+| **Context Preservation** | Recent only | Full (compressed) | Recent only | All messages | Recent only | All messages |
+| **Old Messages** | Discarded | Summarized | Discarded | Kept | Expired | Kept |
+| **Token Usage** | Low | Moderate | Low-Moderate | High | Low | Medium-High |
+| **Memory Loss** | High | Low | Medium | None | Medium | None |
+| **Best For** | Quick chats | Long conversations | Web apps | Audit trails | Distributed apps | Enterprise systems |
+| **Setup Complexity** | Simple | Moderate | Simple | Simple | Moderate | Complex |
+| **Cost** | Lowest | Low-Medium | Low | Low | Medium | Medium-High |
+| **Historical Awareness** | None | Excellent | Limited | Perfect | None | Perfect |
+| **Persistence** | None | None | Session scope | File system | Cache provider | Database |
+
+> **Need Semantic Search?** Check out [Vector Memory](vector-memory.md) for embedding-based retrieval including BoxVector (in-memory), ChromaDB, PostgreSQL pgvector, Pinecone, Qdrant, Weaviate, Milvus, and Hybrid memory combining recent + semantic.
 
 ### Windowed Memory
 
@@ -144,6 +150,73 @@ memory = aiMemory( "file", {
 - Audit trails
 - Offline analysis
 - Cross-session continuity
+
+### Cache Memory
+
+Stores conversation history in CacheBox for distributed applications.
+
+```java
+memory = aiMemory( "cache", {
+    cacheName: "default",           // CacheBox cache name
+    cacheKey: "user123_chat",       // Unique key for this conversation
+    maxMessages: 30,
+    cacheTimeout: 3600,             // Timeout in seconds (optional)
+    cacheLastAccessTimeout: 1800    // Last access timeout (optional)
+} )
+```
+
+**Best for:**
+- Distributed applications
+- Load-balanced environments
+- Applications with existing CacheBox
+- Scalable session management
+
+**Features:**
+- Integrates with any CacheBox provider (Redis, Memcached, Couchbase, etc.)
+- Automatic expiration policies
+- Distributed cache support
+- High-performance access
+
+### JDBC Memory
+
+Stores conversation history in a database using JDBC for enterprise persistence.
+
+```java
+memory = aiMemory( "jdbc", {
+    datasource: "myDS",             // JDBC datasource name
+    tableName: "ai_conversations",   // Table to store messages
+    conversationId: "user123",       // Unique conversation identifier
+    maxMessages: 100,
+    autoCreate: true                 // Auto-create table if missing
+} )
+```
+
+**Best for:**
+- Enterprise applications
+- Multi-user systems
+- Compliance requirements
+- Centralized storage
+- Cross-platform access
+
+**Features:**
+- Works with any JDBC-compatible database
+- Automatic table creation
+- Query conversation history
+- Full ACID compliance
+- Supports PostgreSQL, MySQL, SQL Server, Oracle, etc.
+
+**Table Structure:**
+```sql
+CREATE TABLE ai_conversations (
+    id VARCHAR(50) PRIMARY KEY,
+    conversation_id VARCHAR(100),
+    role VARCHAR(20),
+    content TEXT,
+    metadata TEXT,
+    created_at TIMESTAMP,
+    INDEX idx_conversation (conversation_id)
+)
+```
 
 ---
 
@@ -706,13 +779,62 @@ component {
 
 ---
 
-## See Also
+## Advanced Memory
 
-- [Messages Documentation](messages.md)
-- [Agents Documentation](agents.md)
-- [Pipeline Overview](overview.md)
-- [Memory BIF Reference](../../readme.md#aimemory)
+### Vector Memory
+
+For semantic search and retrieval using embeddings, see the comprehensive [Vector Memory Guide](vector-memory.md) which covers:
+
+- **BoxVectorMemory** - In-memory vector storage for development
+- **HybridMemory** - Combines recent messages with semantic search
+- **ChromaVectorMemory** - ChromaDB integration
+- **PostgresVectorMemory** - PostgreSQL pgvector extension
+- **PineconeVectorMemory** - Pinecone cloud vector database
+- **QdrantVectorMemory** - Qdrant vector search engine
+- **WeaviateVectorMemory** - Weaviate knowledge graph
+- **MilvusVectorMemory** - Milvus vector database
+
+Vector memory enables finding relevant past conversations based on meaning rather than recency.
+
+### Custom Memory
+
+You can create custom memory implementations for specialized requirements:
+
+```java
+// Extend BaseMemory
+class extends="bxModules.bxai.models.memory.BaseMemory" {
+
+    function configure( required struct config ) {
+        super.configure( arguments.config );
+        // Custom configuration
+        return this;
+    }
+
+    function add( required any message ) {
+        // Custom storage logic
+        return this;
+    }
+
+    function getAll() {
+        // Custom retrieval logic
+        return [];
+    }
+}
+```
+
+See the [Custom Memory Guide](../advanced/custom-memory.md) for complete examples and patterns.
 
 ---
 
-**Next Steps:** Learn about [streaming in pipelines](streaming.md) for real-time responses.
+## See Also
+
+- [Vector Memory Guide](vector-memory.md) - Semantic search and retrieval
+- [Custom Memory Guide](../advanced/custom-memory.md) - Build your own memory types
+- [Messages Documentation](messages.md) - Building message objects
+- [Agents Documentation](agents.md) - Using memory in agents
+- [Pipeline Overview](overview.md) - Memory in pipelines
+- [Memory BIF Reference](../../readme.md#aimemory) - aiMemory() function reference
+
+---
+
+**Next Steps:** Learn about [Vector Memory](vector-memory.md) for semantic search or [streaming in pipelines](streaming.md) for real-time responses.

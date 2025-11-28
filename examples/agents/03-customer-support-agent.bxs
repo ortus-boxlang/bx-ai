@@ -95,9 +95,36 @@ kbSearchTool = aiTool(
     }
 ).addParameter( "topic", "string", "Topic to search for (refund, shipping, returns, account, etc.)", true )
 
-// Create support agent
+// Create hybrid memory for support (recent + past tickets)
+supportMemory = aiMemory( "hybrid", {
+    recentLimit: 7,               // Keep last 7 messages of current conversation
+    semanticLimit: 5,             // Add 5 relevant past interactions
+    vectorProvider: "boxvector",  // In-memory for demo (use Pinecone for production)
+    vectorConfig: {
+        collection: "support_tickets",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        dimensions: 1536,
+        metric: "cosine"
+    }
+} )
+
+// Add some past ticket resolutions to knowledge base
+println( "Loading past ticket resolutions into memory..." )
+pastTickets = [
+    "Customer asked about refund for order ORD-001. Processed full refund per Premium policy.",
+    "Customer C456 inquired about shipping delays. Explained standard 5-7 day timeline.",
+    "Premium upgrade question. Explained benefits: faster shipping, priority processing, dedicated support.",
+    "Account balance inquiry for C123. Confirmed $1500 credit available.",
+    "Tracking number request for ORD-001. Provided TRK-ABC123."
+]
+pastTickets.each( ticket => supportMemory.add( ticket ) )
+println( "✓ Loaded #pastTickets.len()# past tickets\n" )
+
+// Create support agent with hybrid memory
 supportAgent = aiAgent(
     name: "SupportBot",
+    memory: supportMemory,
     instructions: "You are a friendly customer support agent. Help customers with their questions about accounts, orders, and policies.
 
     Guidelines:
@@ -154,4 +181,9 @@ println( "  • Multiple specialized tools" )
 println( "  • Context-aware responses" )
 println( "  • Policy enforcement" )
 println( "  • Multi-step problem solving" )
-println( "  • Memory across conversation" )
+println( "  • Hybrid memory (recent conversation + relevant past tickets)" )
+println( "  • Semantic search for similar issues" )
+println( "\n💡 Memory Strategy:" )
+println( "  - Recent context: Maintains conversation flow" )
+println( "  - Semantic search: Finds relevant past resolutions" )
+println( "  - Result: Consistent support across all tickets" )

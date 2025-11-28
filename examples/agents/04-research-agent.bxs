@@ -95,6 +95,23 @@ findCodeTool = aiTool(
     }
 ).addParameter( "feature", "string", "Feature name (agent, tool, memory, pipeline)", true )
 
+// Create vector memory for research (semantic search across articles)
+researchMemory = aiMemory( "boxvector", {
+    collection: "research_articles",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    dimensions: 1536,
+    metric: "cosine"
+} )
+
+// Load articles into vector memory for semantic search
+println( "Loading articles into vector memory..." )
+articles.each( article => {
+    // Store article with metadata for retrieval
+    researchMemory.add( article.content )
+} )
+println( "✓ Loaded #articles.len()# articles into vector memory\n" )
+
 citationTool = aiTool(
     name: "create_citation",
     description: "Format a proper citation for an article",
@@ -107,9 +124,10 @@ citationTool = aiTool(
     }
 ).addParameter( "articleId", "string", "Article ID to cite", true )
 
-// Create research agent
+// Create research agent with vector memory
 researchAgent = aiAgent(
     name: "ResearchBot",
+    memory: researchMemory,
     instructions: "You are a research assistant specializing in AI and BoxLang AI.
 
     Research Process:
@@ -161,4 +179,10 @@ println( "  • Multi-source information gathering" )
 println( "  • Sequential tool use (search → retrieve → synthesize)" )
 println( "  • Proper citation of sources" )
 println( "  • Code example integration" )
+println( "  • Vector memory for semantic article search" )
 println( "  • Context-aware follow-up responses" )
+println( "\n💡 Memory Strategy:" )
+println( "  - Vector memory enables semantic search across all articles" )
+println( "  - Finds relevant information regardless of exact keywords" )
+println( "  - Combines tool-based search with memory-based retrieval" )
+println( "  - Result: Comprehensive research with proper citations" )

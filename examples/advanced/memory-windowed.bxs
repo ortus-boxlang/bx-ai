@@ -1,0 +1,88 @@
+/**
+ * Windowed Memory Example
+ *
+ * Demonstrates using windowed memory that keeps only the most recent N messages.
+ * Perfect for quick chats, real-time applications, and cost-conscious scenarios.
+ *
+ * Use Case: Chat applications where only recent context matters
+ */
+
+println( "=== Windowed Memory Example ===" )
+println( "Keeps only the last 5 messages\n" )
+
+// Create windowed memory with a small limit
+memory = aiMemory( "windowed", {
+    maxMessages: 5
+} )
+
+// Create agent with windowed memory
+agent = aiAgent(
+    name: "ChatBot",
+    description: "A quick response chatbot",
+    instructions: "Be concise and helpful",
+    memory: memory
+)
+
+println( "Adding 8 messages - watch memory window in action:\n" )
+
+// Add more messages than the window size
+agent.run( "My name is Alice" )
+println( "✓ Message 1 added. Memory size: #memory.getAll().len()#" )
+
+agent.run( "I live in Boston" )
+println( "✓ Message 2 added. Memory size: #memory.getAll().len()#" )
+
+agent.run( "I work as a software developer" )
+println( "✓ Message 3 added. Memory size: #memory.getAll().len()#" )
+
+agent.run( "I love BoxLang" )
+println( "✓ Message 4 added. Memory size: #memory.getAll().len()#" )
+
+agent.run( "I'm building an AI application" )
+println( "✓ Message 5 added. Memory size: #memory.getAll().len()#" )
+
+println( "\n📌 Window is now full (5 messages). Adding more will discard oldest:\n" )
+
+agent.run( "What AI providers does BoxLang support?" )
+println( "✓ Message 6 added. Memory size: #memory.getAll().len()# (oldest discarded)" )
+
+agent.run( "Tell me about agents" )
+println( "✓ Message 7 added. Memory size: #memory.getAll().len()# (oldest discarded)" )
+
+agent.run( "How do I use memory?" )
+println( "✓ Message 8 added. Memory size: #memory.getAll().len()# (oldest discarded)" )
+
+// Test memory window effect
+println( "\n=== Testing Memory Window Effect ===\n" )
+
+println( "Question: What's my name?" )
+response = agent.run( "What's my name?" )
+println( "Agent: #response#" )
+println( "❌ Agent doesn't remember (message discarded)\n" )
+
+println( "Question: What did I just ask about?" )
+response = agent.run( "What did I just ask about?" )
+println( "Agent: #response#" )
+println( "✓ Agent remembers recent context\n" )
+
+// Show current memory contents
+println( "=== Current Memory Window (last 5 exchanges) ===" )
+messages = memory.getAll()
+messages.each( ( msg, idx ) => {
+    if ( msg.role != "system" ) {
+        println( "#idx#. [#msg.role#] #left(msg.content, 50)#..." )
+    }
+} )
+
+println( "\n📊 Summary:" )
+println( "- Total messages added: 18 (9 user + 9 assistant)" )
+println( "- Messages kept: #messages.len()#" )
+println( "- Memory usage: Low ✓" )
+println( "- Cost: Minimal ✓" )
+println( "- Context loss: High ⚠️" )
+
+println( "\n💡 Best For:" )
+println( "- Quick Q&A sessions" )
+println( "- Real-time chat applications" )
+println( "- Cost-sensitive applications" )
+println( "- Simple context requirements" )

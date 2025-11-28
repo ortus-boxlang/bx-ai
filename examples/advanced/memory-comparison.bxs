@@ -1,0 +1,161 @@
+/**
+ * Memory Type Comparison Example
+ *
+ * Demonstrates the differences between windowed, summary, and file memory
+ * by running the same conversation through each type.
+ *
+ * Prerequisites: OPENAI_API_KEY environment variable set
+ */
+
+println( "=== Memory Type Comparison ===" )
+println( "Same conversation, three different memory types\n" )
+
+// Shared conversation script
+conversationMessages = [
+    "My name is Charlie",
+    "I live in Seattle",
+    "I work as a data scientist",
+    "I'm interested in machine learning",
+    "I use Python and BoxLang",
+    "I'm building a recommendation system",
+    "The project uses collaborative filtering",
+    "We have 1 million users in our database",
+    "The system needs to handle real-time recommendations",
+    "We're targeting sub-100ms response times"
+]
+
+// Test question that requires early context
+testQuestion = "What's my name and where do I live?"
+
+println( "Conversation: #conversationMessages.len()# messages" )
+println( "Test question: '#testQuestion#'\n" )
+println( "=" .repeatString( 70 ) )
+
+// =============== WINDOWED MEMORY ===============
+println( "\n1️⃣  WINDOWED MEMORY (keeps last 5 messages)" )
+println( "-" .repeatString( 70 ) )
+
+windowedMemory = aiMemory( "windowed", { maxMessages: 5 } )
+windowedAgent = aiAgent(
+    name: "WindowedBot",
+    description: "Agent with windowed memory",
+    memory: windowedMemory
+)
+
+// Run conversation
+conversationMessages.each( msg => windowedAgent.run( msg ) )
+
+println( "Messages after conversation: #windowedMemory.getAll().len()#" )
+println( "\nTesting memory recall:" )
+println( "Q: #testQuestion#" )
+response = windowedAgent.run( testQuestion )
+println( "A: #response#\n" )
+
+// Check if early information was retained
+hasName = response.findNoCase( "Charlie" ) > 0
+hasLocation = response.findNoCase( "Seattle" ) > 0
+
+println( "✓ Remembered name: #hasName ? 'Yes' : 'No (discarded)'#" )
+println( "✓ Remembered location: #hasLocation ? 'Yes' : 'No (discarded)'#" )
+println( "📊 Context retention: #hasName && hasLocation ? 'Good' : 'Limited'#" )
+println( "💰 Token usage: Low" )
+
+// =============== SUMMARY MEMORY ===============
+println( "\n2️⃣  SUMMARY MEMORY (summarizes old, keeps recent)" )
+println( "-" .repeatString( 70 ) )
+
+summaryMemory = aiMemory( "summary", {
+    maxMessages: 8,
+    summaryThreshold: 4,
+    summaryModel: "gpt-4o-mini",
+    summaryProvider: "openai"
+} )
+summaryAgent = aiAgent(
+    name: "SummaryBot",
+    description: "Agent with summary memory",
+    memory: summaryMemory
+)
+
+// Run same conversation
+conversationMessages.each( msg => summaryAgent.run( msg ) )
+
+println( "Messages after conversation: #summaryMemory.getAll().len()#" )
+println( "Has summary: #summaryMemory.hasSummary() ? 'Yes' : 'No'#" )
+
+if ( summaryMemory.hasSummary() ) {
+    summary = summaryMemory.getSummary()
+    println( "Summary: #left(summary, 80)#..." )
+}
+
+println( "\nTesting memory recall:" )
+println( "Q: #testQuestion#" )
+response = summaryAgent.run( testQuestion )
+println( "A: #response#\n" )
+
+// Check retention
+hasName = response.findNoCase( "Charlie" ) > 0
+hasLocation = response.findNoCase( "Seattle" ) > 0
+
+println( "✓ Remembered name: #hasName ? 'Yes (from summary)' : 'No'#" )
+println( "✓ Remembered location: #hasLocation ? 'Yes (from summary)' : 'No'#" )
+println( "📊 Context retention: #hasName && hasLocation ? 'Excellent' : 'Good'#" )
+println( "💰 Token usage: Moderate" )
+
+// =============== FILE MEMORY ===============
+println( "\n3️⃣  FILE MEMORY (keeps everything)" )
+println( "-" .repeatString( 70 ) )
+
+tempFile = getTempDirectory() & "comparison_#createUUID()#.json"
+fileMemory = aiMemory( "file", {
+    filePath: tempFile,
+    maxMessages: 100
+} )
+fileAgent = aiAgent(
+    name: "FileBot",
+    description: "Agent with file memory",
+    memory: fileMemory
+)
+
+// Run same conversation
+conversationMessages.each( msg => fileAgent.run( msg ) )
+
+println( "Messages after conversation: #fileMemory.getAll().len()#" )
+println( "File size: #numberFormat(getFileInfo(tempFile).size / 1024, '0.00')# KB" )
+
+println( "\nTesting memory recall:" )
+println( "Q: #testQuestion#" )
+response = fileAgent.run( testQuestion )
+println( "A: #response#\n" )
+
+// Check retention
+hasName = response.findNoCase( "Charlie" ) > 0
+hasLocation = response.findNoCase( "Seattle" ) > 0
+
+println( "✓ Remembered name: #hasName ? 'Yes (stored in file)' : 'No'#" )
+println( "✓ Remembered location: #hasLocation ? 'Yes (stored in file)' : 'No'#" )
+println( "📊 Context retention: Perfect" )
+println( "💰 Token usage: High" )
+
+// Cleanup
+fileDelete( tempFile )
+
+// =============== COMPARISON TABLE ===============
+println( "\n" & "=" .repeatString( 70 ) )
+println( "\n📊 COMPARISON SUMMARY\n" )
+
+println( "Feature               | Windowed | Summary    | File" )
+println( "-" .repeatString( 70 ) )
+println( "Memory Loss           | High     | Low        | None" )
+println( "Context Retention     | Recent   | Full       | Perfect" )
+println( "Token Usage           | Low      | Moderate   | High" )
+println( "Setup Complexity      | Simple   | Moderate   | Simple" )
+println( "Persistence           | No       | No         | Yes" )
+println( "Cost                  | Lowest   | Low-Medium | Medium" )
+println( "Best For              | Quick    | Long       | Audit" )
+println( "                      | Chats    | Context    | Trails" )
+
+println( "\n💡 RECOMMENDATIONS:\n" )
+println( "• Use WINDOWED for: Quick chats, cost-conscious apps" )
+println( "• Use SUMMARY for: Long conversations needing context" )
+println( "• Use FILE for: Audit trails, offline analysis" )
+println( "• Use VECTOR for: Semantic search across history (see vector-memory examples)" )

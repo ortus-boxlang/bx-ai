@@ -42,18 +42,33 @@ Autonomous agents with memory and tools:
 
 - **01-basic-agent.bxs** - Simple agent with memory and context
 - **02-agent-with-tools.bxs** - Agent with weather, calculator, and database tools
-- **03-customer-support-agent.bxs** - Production-ready support bot with multiple tools
-- **04-research-agent.bxs** - Multi-source research agent with citations
+- **03-customer-support-agent.bxs** - Production support bot with hybrid memory (recent + past tickets)
+- **04-research-agent.bxs** - Research agent with vector memory for semantic article search
+- **05-multi-memory-agent.bxs** - 🆕 One agent using multiple memory types simultaneously
 
 ### `/advanced` - Advanced Features
 
-Advanced capabilities and integrations:
+Advanced capabilities and memory systems:
 
 - **multimodal-example.bxs** - 🆕 Images, audio, video, and documents in AI conversations
 - **vision-example.bxs** - Image analysis with vision-capable models
 - **embeddings-example.bxs** - Vector embeddings for semantic search
 - **token-counting-example.bxs** - Estimating and managing token usage
-- **memory-file.bxs** - File-based conversation memory
+- **memory-file.bxs** - File-based persistent conversation memory
+- **memory-windowed.bxs** - 🆕 Windowed memory (keeps last N messages)
+- **memory-summary.bxs** - 🆕 Summary memory (auto-summarizes old messages)
+- **memory-session.bxs** - 🆕 Session-based memory for web applications
+- **memory-cache.bxs** - 🆕 Distributed cache memory with CacheBox
+- **memory-comparison.bxs** - 🆕 Side-by-side comparison of memory types
+
+### `/vector-memory` - Semantic Search Memory 🆕
+
+Vector-based memory for semantic search and knowledge retrieval:
+
+- **boxvector-memory.bxs** - In-memory vector storage (no external dependencies)
+- **hybrid-memory.bxs** - Combines recent messages + semantic search (best of both)
+- **memory-type-comparison.bxs** - Standard vs vector memory comparison
+- **vector-memory-demo.bxs** - ChromaDB vector memory demonstration
 
 ## 🚀 Quick Start
 
@@ -162,7 +177,29 @@ ollama serve
 **💬 Chat & Conversation**
 
 - `basic/streaming-example.bxs` - Real-time chat responses
-- `advanced/memory-file.bxs` - Conversation history
+- `advanced/memory-windowed.bxs` - Recent message memory
+- `advanced/memory-summary.bxs` - Auto-summarizing memory
+- `advanced/memory-file.bxs` - Persistent conversation storage
+- `advanced/memory-comparison.bxs` - Compare all memory types
+
+**🧠 Memory & Context Management (NEW!)**
+
+- `advanced/memory-windowed.bxs` - Keeps last N messages (cost-effective)
+- `advanced/memory-summary.bxs` - Auto-summarizes old messages (context preservation)
+- `advanced/memory-session.bxs` - Web session-based memory
+- `advanced/memory-cache.bxs` - Distributed cache with CacheBox
+- `advanced/memory-comparison.bxs` - Side-by-side memory comparison
+- `vector-memory/boxvector-memory.bxs` - In-memory semantic search
+- `vector-memory/hybrid-memory.bxs` - Recent + semantic combination
+- `vector-memory/memory-type-comparison.bxs` - Standard vs vector memory
+
+**🤖 AI Agents**
+
+- `agents/01-basic-agent.bxs` - Simple conversational agent
+- `agents/02-agent-with-tools.bxs` - Function calling and tool use
+- `agents/03-customer-support-agent.bxs` - Hybrid memory (recent + tickets)
+- `agents/04-research-agent.bxs` - Vector memory for knowledge retrieval
+- `agents/05-multi-memory-agent.bxs` - Multiple memory types in one agent
 
 **🎯 Structured Output (NEW!)**
 
@@ -218,21 +255,37 @@ ollama serve
 1. `ollama-example.bxs` - Start with local AI (no API key)
 2. `return-formats-example.bxs` - Understand responses
 3. `streaming-example.bxs` - Real-time output
-4. `runnable-example.bxs` - Build pipelines
-5. `memory-file.bxs` - Add conversation memory
+4. `memory-windowed.bxs` - Basic conversation memory
+5. `agents/01-basic-agent.bxs` - Simple agent
 
-### Path 2: Cloud AI & Advanced Features
+### Path 2: Memory & Context Management (NEW!)
+1. `memory-windowed.bxs` - Start with simple windowed memory
+2. `memory-summary.bxs` - Learn auto-summarization
+3. `memory-comparison.bxs` - Compare standard memory types
+4. `vector-memory/boxvector-memory.bxs` - Semantic search basics
+5. `vector-memory/hybrid-memory.bxs` - Best of both worlds
+6. `agents/05-multi-memory-agent.bxs` - Multiple memories together
+
+### Path 3: AI Agents
+1. `agents/01-basic-agent.bxs` - Basic agent with memory
+2. `agents/02-agent-with-tools.bxs` - Add tool calling
+3. `agents/03-customer-support-agent.bxs` - Hybrid memory in production
+4. `agents/04-research-agent.bxs` - Vector memory for knowledge
+5. `agents/05-multi-memory-agent.bxs` - Advanced memory strategies
+
+### Path 4: Cloud AI & Advanced Features
 1. `streaming-example.bxs` - Start here (needs API key)
 2. `vision-example.bxs` - Image analysis
 3. `json-xml-formats-example.bxs` - Structured output
 4. `embeddings-example.bxs` - Semantic search
 5. `token-counting-example.bxs` - Optimize costs
 
-### Path 3: Local/Privacy Focused
+### Path 5: Local/Privacy Focused
 1. `ollama-example.bxs` - Local AI setup
 2. `memory-file.bxs` - File-based memory
-3. `runnable-example.bxs` - Build offline workflows
-4. Build privacy-first applications
+3. `vector-memory/boxvector-memory.bxs` - In-memory vectors (no external DB)
+4. `runnable-example.bxs` - Build offline workflows
+5. Build privacy-first applications
 
 ## 📖 Documentation Links
 
@@ -250,6 +303,9 @@ ollama serve
 - [AI Agents](../docs/main-components/agents.md)
 - [Working with Models](../docs/main-components/models.md)
 - [Message Templates](../docs/main-components/messages.md)
+- [Memory Systems](../docs/main-components/memory.md) 🆕
+- [Vector Memory](../docs/main-components/vector-memory.md) 🆕
+- [Custom Memory](../docs/advanced/custom-memory.md) 🆕
 
 ## 🤝 Contributing Examples
 
