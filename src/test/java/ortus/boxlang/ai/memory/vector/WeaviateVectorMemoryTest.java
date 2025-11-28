@@ -15,6 +15,7 @@
 package ortus.boxlang.ai.memory.vector;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -564,7 +565,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory instance
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    memory = aiMemory( "moduleConfig", createUUID(), {
 		        host: "localhost",
 		        port: 8080,
 		        scheme: "http",
@@ -573,18 +574,23 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		        embeddingModel: "text-embedding-3-small"
 		    } );
 
+		    // Add a document to trigger collection creation
+		    memory.add({ id: createUUID(), text: "Test document", metadata: {} });
+
 		    // Check if collection was created
 		    exists = memory.collectionExists( "temp_test_collection" );
 
 		    // Delete collection
 		    memory.deleteCollection( "temp_test_collection" );
 
-		    // Verify deletion
+		    // Weaviate uses eventual consistency for schema changes
+		    // Add a small delay and retry to allow deletion to propagate
+		    sleep( 1000 );
 		    existsAfterDelete = memory.collectionExists( "temp_test_collection" );
 
 		    result = {
 		        existedBefore: exists,
-		        notExistsAfter: !existsAfterDelete
+		        existsAfter: existsAfterDelete
 		    };
 		    """,
 		    context );
@@ -592,7 +598,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		IStruct result = variables.getAsStruct( Key.of( "result" ) );
 
 		assertTrue( result.getAsBoolean( Key.of( "existedBefore" ) ) );
-		assertTrue( result.getAsBoolean( Key.of( "notExistsAfter" ) ) );
+		assertFalse( result.getAsBoolean( Key.of( "existsAfter" ) ) );
 	}
 
 	@Test

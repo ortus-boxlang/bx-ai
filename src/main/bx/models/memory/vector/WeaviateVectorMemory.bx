@@ -34,12 +34,6 @@ class extends="BaseVectorMemory" {
 	property name="baseUrl" type="string" default="";
 
 	/**
-	 * Weaviate class name (equivalent to collection)
-	 * Weaviate requires PascalCase class names
-	 */
-	property name="className" type="string" default="";
-
-	/**
 	 * Batch configuration
 	 */
 	property name="batchSize" type="numeric" default=100;
@@ -52,16 +46,24 @@ class extends="BaseVectorMemory" {
 	property name="vectorizeClassName" type="boolean" default=false;
 
 	/**
-	 * Additional class configuration
+	 * Class / Collection description
 	 */
 	property name="description" type="string" default="";
+
+	/**
+	 * Inverted index configuration
+	 * Example: { "indexTimestamps": true, "indexMetadata": true }
+	 */
 	property name="invertedIndexConfig" type="struct" default={};
+
+	/**
+	 * Weaviate module configuration
+	 */
 	property name="moduleConfig" type="struct" default={};
 
 	static {
 		// Default collection name (PascalCase for Weaviate)
-		DEFAULT_COLLECTION = "BxAiMemory"
-
+		DEFAULT_COLLECTION = "Bxaimemory"
 		// API version
 		API_VERSION = "v1"
 	}
@@ -73,11 +75,7 @@ class extends="BaseVectorMemory" {
 	 * @collection The collection/class name (will be converted to PascalCase)
 	 */
 	function init( string key = createUUID(), string collection = static.DEFAULT_COLLECTION ) {
-		super.init( arguments.key, arguments.collection );
-
-		// Convert collection name to PascalCase for Weaviate
-		variables.className = pascalCase( variables.collection );
-
+		super.init( arguments.key, pascalCase(  arguments.collection ) );
 		return this;
 	}
 
@@ -128,7 +126,12 @@ class extends="BaseVectorMemory" {
 			variables.baseUrl &= ":" & variables.port;
 		}
 
-		// Now call parent configure which will call ensureCollection()
+		// Seed collection from config if provided
+		if ( arguments.config?.collection?.len()  ) {
+			variables.collection = pascalCase( arguments.config.collection );
+		}
+
+		// Now call parent configure which will set variables.collection and call ensureCollection()
 		super.configure( arguments.config );
 
 		return this;
@@ -144,8 +147,8 @@ class extends="BaseVectorMemory" {
 	 * Ensure collection/class exists in Weaviate
 	 */
 	IVectorMemory function ensureCollection() {
-		if ( !collectionExists( variables.className ) ) {
-			createCollection( variables.className );
+		if ( !collectionExists( variables.collection ) ) {
+			createCollection( variables.collection );
 		}
 		return this;
 	}
@@ -169,7 +172,7 @@ class extends="BaseVectorMemory" {
 
 		// Build object payload
 		var payload = {
-			"class": variables.className,
+			"class": variables.collection,
 			"id": normalizedId,
 			"properties": {
 				"text": arguments.text,
@@ -238,7 +241,7 @@ class extends="BaseVectorMemory" {
 		}
 
 		// Transform results
-		return transformWeaviateResults( response.data.Get[ variables.className ] ?: [] );
+		return transformWeaviateResults( response.data.Get[ variables.collection ] ?: [] );
 	}
 
 	/**
@@ -249,7 +252,7 @@ class extends="BaseVectorMemory" {
 	array function getAllDocuments() {
 		// Build GraphQL query to get all objects
 		var graphqlQuery = {
-			"query": "{ Get { #variables.className# { _additional { id vector } text metadata timestamp } } }"
+			"query": "{ Get { #variables.collection# { _additional { id vector } text metadata timestamp } } }"
 		};
 
 		// Execute query
@@ -266,7 +269,7 @@ class extends="BaseVectorMemory" {
 
 		// Transform results
 		var results = [];
-		var objects = response.data.Get[ variables.className ] ?: [];
+		var objects = response.data.Get[ variables.collection ] ?: [];
 
 		objects.each( ( obj ) => {
 			results.append({
@@ -290,7 +293,7 @@ class extends="BaseVectorMemory" {
 	struct function getDocumentById( required string id ) {
 		var normalizedId = normalizeUUID( arguments.id );
 		var response = makeRequest(
-			path = "/#static.API_VERSION#/objects/#variables.className#/#normalizedId#?include=vector"
+			path = "/#static.API_VERSION#/objects/#variables.collection#/#normalizedId#?include=vector"
 		);
 
 		// Check if object exists
@@ -318,7 +321,7 @@ class extends="BaseVectorMemory" {
 		var normalizedId = normalizeUUID( arguments.id );
 		var response = makeRequest(
 			method = "DELETE",
-			path = "/#static.API_VERSION#/objects/#variables.className#/#normalizedId#"
+			path = "/#static.API_VERSION#/objects/#variables.collection#/#normalizedId#"
 		);
 
 		// Weaviate returns 204 No Content on successful deletion
@@ -340,7 +343,7 @@ class extends="BaseVectorMemory" {
 		// Build batch delete payload
 		var payload = {
 			"match": {
-				"class": variables.className,
+				"class": variables.collection,
 				"where": whereFilter
 			},
 			"output": "verbose"  // Get count of deleted objects
@@ -365,9 +368,9 @@ class extends="BaseVectorMemory" {
 	 */
 	IVectorMemory function clearCollection() {
 		// Delete class
-		deleteCollection( variables.className );
+		deleteCollection( variables.collection );
 		// Recreate it
-		createCollection( variables.className );
+		createCollection( variables.collection );
 		return this;
 	}
 
@@ -385,14 +388,12 @@ class extends="BaseVectorMemory" {
 	 * @return IVectorMemory for chaining
 	 */
 	any function createCollection( required string name ) {
-		var pascalName = pascalCase( arguments.name );
-
 		// Build class schema
 		var classSchema = {
-			"class": pascalName,
+			"class": arguments.name,
 			"description": variables.description.len() > 0
 				? variables.description
-				: "AI Memory Collection: #pascalName#",
+				: "AI Memory Collection: #arguments.name#",
 			"vectorizer": variables.vectorizer,
 			"vectorIndexType": "hnsw",
 			"vectorIndexConfig": {
@@ -454,9 +455,9 @@ class extends="BaseVectorMemory" {
 	 * @return Boolean exists
 	 */
 	boolean function collectionExists( required string name ) {
-		var pascalName = pascalCase( arguments.name );
+		// Name is already PascalCase (collection), use it directly
 		var response = makeRequest(
-			path = "/#static.API_VERSION#/schema/#pascalName#"
+			path = "/#static.API_VERSION#/schema/#arguments.name#"
 		);
 		// Class exists if we got a successful response
 		return !response.keyExists( "error" ) && !response.keyExists( "errors" );
@@ -470,29 +471,34 @@ class extends="BaseVectorMemory" {
 	 * @return IVectorMemory for chaining
 	 */
 	any function deleteCollection( required string name ) {
-		var pascalName = pascalCase( arguments.name );
+		// Name is already PascalCase (collection), use it directly
 
 		// Check if collection exists before trying to delete
-		if ( !collectionExists( pascalName ) ) {
+		if ( !collectionExists( arguments.name ) ) {
 			// Collection doesn't exist, nothing to delete
 			return this;
 		}
 
 		var response = makeRequest(
 			method = "DELETE",
-			path = "/#static.API_VERSION#/schema/#pascalName#"
+			path = "/#static.API_VERSION#/schema/#arguments.name#"
 		);
 
-		// Check for errors (but ignore 404 since collection might have been deleted already)
-		if( response?.statusCode == 404 ) {
+		// DELETE returns 200/204 on success, 404 if already deleted
+		// makeRequest returns error struct for both 204 (no content) and error responses
+		// So we need to check the status code, not just the error key
+		var statusCode = response.statusCode ?: 0;
+
+		// Success codes (200, 204) or 404 (already deleted) are OK
+		if ( statusCode >= 200 && statusCode < 300 || statusCode == 404 ) {
 			return this;
 		}
 
-
-		if ( response.keyExists( "error" ) ) {
+		// Any other response is an error
+		if ( response.keyExists( "error" ) || response.keyExists( "errors" ) ) {
 			throw(
 				type = "WeaviateVectorMemory.DeleteCollectionError",
-				message = "Failed to delete collection from Weaviate",
+				message = "Failed to delete collection from Weaviate (Status: #statusCode#)",
 				detail = response.toString()
 			);
 		}
@@ -537,13 +543,15 @@ class extends="BaseVectorMemory" {
 	 * @method HTTP method (GET, POST, etc.)
 	 * @path API path
 	 * @body Request body (optional)
+	 * @debug Enable debugging output (optional)
 	 *
 	 * @return Parsed response struct if JSON, else the full response struct
 	 */
 	private struct function makeRequest(
 		required string path,
 		string method="GET",
-		struct body = {}
+		struct body = {},
+		boolean debug = false
 	) {
 		// Build HTTP request
 		var httpService = http( variables.baseUrl & arguments.path )
@@ -573,7 +581,9 @@ class extends="BaseVectorMemory" {
 		var result = httpService.send();
 
 		// Debugging output
-		//println( isJson( result.fileContent ) ? jsonDeserialize( result.fileContent ) : result.fileContent )
+		if ( arguments.debug ) {
+			println( isJson( result.fileContent ) ? jsonDeserialize( result.fileContent ) : result.fileContent );
+		}
 
 		// Parse response
 		if ( result.errorDetail.isEmpty() &&  result.filecontent.len() > 0 ) {
@@ -603,7 +613,7 @@ class extends="BaseVectorMemory" {
 		required numeric limit,
 		required struct filter
 	) {
-		var query = "{ Get { #variables.className#";
+		var query = "{ Get { #variables.collection#";
 
 		// Add nearVector search
 		query &= "(nearVector: { vector: [#arguments.embedding.toList()#] }, limit: #arguments.limit#";

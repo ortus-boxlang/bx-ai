@@ -20,7 +20,8 @@ abstract class
 	implements="IVectorMemory" {
 
 	/**
-	 * Collection/index name for this vector store
+	 * Collection/index/class name for this vector store
+	 * Each implementation may have different naming conventions
 	 */
 	property name="collection" default="";
 
