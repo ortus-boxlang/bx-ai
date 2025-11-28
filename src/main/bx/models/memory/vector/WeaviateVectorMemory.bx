@@ -126,9 +126,9 @@ class extends="BaseVectorMemory" {
 			variables.baseUrl &= ":" & variables.port;
 		}
 
-		// Seed collection from config if provided
+		// Transform collection name to PascalCase as Weaviate requires
 		if ( arguments.config?.collection?.len()  ) {
-			variables.collection = pascalCase( arguments.config.collection );
+			arguments.config.collection = pascalCase( arguments.config.collection );
 		}
 
 		// Now call parent configure which will set variables.collection and call ensureCollection()
@@ -428,12 +428,18 @@ class extends="BaseVectorMemory" {
 			classSchema.invertedIndexConfig = variables.invertedIndexConfig;
 		}
 
-		// Create class
+		// Create the collection
 		var response = makeRequest(
 			method = "POST",
 			path = "/#static.API_VERSION#/schema",
 			body = classSchema
 		);
+
+		// Check if it's the same as existing class
+		// We can ignore "already exists" errors
+		if (response?.error?.first()?.message?.contains( "already exists" ) ) {
+			return this;
+		}
 
 		// Check for errors
 		if ( response.keyExists( "error" ) || response.keyExists( "errors" ) ) {
