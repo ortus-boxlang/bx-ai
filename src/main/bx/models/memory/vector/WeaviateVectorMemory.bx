@@ -519,31 +519,6 @@ class extends="BaseVectorMemory" {
 	 */
 
 	/**
-	 * Normalize UUID format to ensure it has proper dashes
-	 * Weaviate requires UUIDs in format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-	 *
-	 * @id The UUID string to normalize
-	 *
-	 * @return Properly formatted UUID string
-	 */
-	private string function normalizeUUID( required string id ) {
-		// Remove any existing dashes
-		var cleaned = arguments.id.replaceAll( "-", "" );
-
-		// Check if it's a valid length (32 hex characters)
-		if ( cleaned.len() != 32 ) {
-			return arguments.id; // Return as-is if not valid length
-		}
-
-		// Format as: 8-4-4-4-12 (using 1-based indexing for mid())
-		return cleaned.left( 8 ) & "-" &
-		       cleaned.mid( 9, 4 ) & "-" &
-		       cleaned.mid( 13, 4 ) & "-" &
-		       cleaned.mid( 17, 4 ) & "-" &
-		       cleaned.right( 12 );
-	}
-
-	/**
 	 * Make HTTP request to Weaviate REST API
 	 *
 	 * @method HTTP method (GET, POST, etc.)

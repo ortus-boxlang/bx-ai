@@ -608,6 +608,35 @@ abstract class
 	}
 
 	/**
+	 * Normalize a given ID to UUID format
+	 *
+	 * @id The ID to normalize
+	 *
+	 * @return String normalized UUID
+	 */
+	private string function normalizeUUID( required string id ) {
+		// Quick check - if already formatted, return immediately
+		if ( arguments.id.len() == 36 && arguments.id.charAt( 8 ) == "-" ) {
+			return arguments.id;
+		}
+
+		// Remove dashes
+		var cleaned = arguments.id.replace( "-", "", "all" );
+
+		// Validate length
+		if ( cleaned.len() != 32 ) {
+			return arguments.id;
+		}
+
+		// Format using substring (0-indexed, much faster than mid)
+		return cleaned.substring( 0, 8 ) & "-" &
+			cleaned.substring( 8, 12 ) & "-" &
+			cleaned.substring( 12, 16 ) & "-" &
+			cleaned.substring( 16, 20 ) & "-" &
+			cleaned.substring( 20 );
+	}
+
+	/**
 	 * ------------------------------------------------------------------------------
 	 * ABSTRACT METHODS (Provider-specific implementations)
 	 * ------------------------------------------------------------------------------

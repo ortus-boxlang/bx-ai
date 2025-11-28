@@ -159,7 +159,7 @@ class extends="BaseVectorMemory" {
 
 		// Build point payload
 		var point = {
-			"id": arguments.id,
+			"id": normalizeUUID( arguments.id ),
 			"vector": arguments.embedding,
 			"payload": {
 				"text": arguments.text,
@@ -187,7 +187,7 @@ class extends="BaseVectorMemory" {
 		if ( response?.status?.keyExists( "error" ) ){
 			throw(
 				type = "QdrantVectorMemory.StoreError",
-				message = "Failed to store document in Qdrant",
+				message = "Failed to store document in Qdrant: #response.toString()#",
 				detail = response.status.error
 			);
 		}
@@ -282,7 +282,7 @@ class extends="BaseVectorMemory" {
 
 		points.each( ( point ) => {
 			results.append({
-				id: point.id,
+				id: normalizeUUID( point.id ),
 				text: point.payload.text ?: "",
 				metadata: point.payload.metadata ?: {},
 				embedding: point.vector ?: []
@@ -302,7 +302,7 @@ class extends="BaseVectorMemory" {
 	struct function getDocumentById( required string id ) {
 		var response = makeRequest(
 			method = "GET",
-			path = static.API_COLLECTIONS & "/#variables.collection#/points/#arguments.id#"
+			path = static.API_COLLECTIONS & "/#variables.collection#/points/#normalizeUUID( arguments.id )#"
 		);
 
 		// Check if point exists
@@ -318,7 +318,7 @@ class extends="BaseVectorMemory" {
 
 		// Transform to standard format
 		return {
-			id: point.id,
+			id: normalizeUUID( point.id ),
 			text: point.payload.text ?: "",
 			metadata: point.payload.metadata ?: {},
 			embedding: point.vector ?: []
@@ -334,7 +334,7 @@ class extends="BaseVectorMemory" {
 	 */
 	boolean function deleteDocument( required string id ) {
 		var payload = {
-			"points": [ arguments.id ]
+			"points": [ normalizeUUID( arguments.id ) ]
 		};
 
 		if ( variables.wait ) {
@@ -348,7 +348,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check response
-		if ( response?.statusCode == 200 ) {
+		if ( isSimplevalue( response.status ) && response.status == "ok" ) {
 			return true;
 		}
 
@@ -396,7 +396,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Return count if successful
-		if ( response?.statusCode == 200 ) {
+		if ( isSimplevalue( response.status ) && response.status == "ok" ) {
 			return count;
 		}
 
@@ -475,7 +475,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @name Collection name
 	 *
-	 * @return Boolean exists
+	 * @return Boolean existssearchByVector
 	 */
 	boolean function collectionExists( required string name ) {
 		var response = makeRequest(
@@ -484,7 +484,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Collection exists if status is ok
-		return response?.statusCode == 200;
+		return isSimplevalue( response.status ) && response.status == "ok";
 	}
 
 	/**
@@ -501,7 +501,7 @@ class extends="BaseVectorMemory" {
 		);
 
 		// Check for errors
-		if (  response.status.keyExists( "error" ) ) {
+		if ( response?.status?.keyExists( "error" ) ){
 			throw(
 				type = "QdrantVectorMemory.DeleteCollectionError",
 				message = "Failed to delete collection from Qdrant",
@@ -626,7 +626,7 @@ class extends="BaseVectorMemory" {
 			var score = point.score ?: 0;
 
 			results.append({
-				id: point.id,
+				id: normalizeUUID( point.id ),
 				text: point.payload.text ?: "",
 				metadata: point.payload.metadata ?: {},
 				score: score,
