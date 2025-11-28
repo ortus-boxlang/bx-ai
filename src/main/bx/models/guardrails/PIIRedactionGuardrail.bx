@@ -1,0 +1,386 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * PII Redaction Guardrail
+ *
+ * Detects and optionally redacts Personally Identifiable Information (PII)
+ * from AI requests and responses. Supports common PII patterns like:
+ * - Email addresses
+ * - Phone numbers
+ * - Social Security Numbers (SSN)
+ * - Credit card numbers
+ * - IP addresses
+ * - Custom patterns
+ */
+class extends="AiBaseGuardrail" {
+
+	/**
+	 * Action to take when PII is found: "block", "redact", or "warn"
+	 */
+	property name="action" type="string" default="warn";
+
+	/**
+	 * Which PII types to detect
+	 */
+	property name="piiTypes" type="struct" default={};
+
+	/**
+	 * Custom patterns to detect
+	 */
+	property name="customPatterns" type="array" default=[];
+
+	/**
+	 * Whether to check requests
+	 */
+	property name="checkRequests" type="boolean" default=true;
+
+	/**
+	 * Whether to check responses
+	 */
+	property name="checkResponses" type="boolean" default=true;
+
+	/**
+	 * Default PII patterns
+	 */
+	static {
+		final PII_PATTERNS = {
+			// Email addresses
+			"email": {
+				"pattern": "\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+				"replacement": "[EMAIL]",
+				"description": "Email address"
+			},
+			// US Phone numbers (various formats)
+			"phone": {
+				"pattern": "\b(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
+				"replacement": "[PHONE]",
+				"description": "Phone number"
+			},
+			// Social Security Numbers
+			"ssn": {
+				"pattern": "\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b",
+				"replacement": "[SSN]",
+				"description": "Social Security Number"
+			},
+			// Credit Card Numbers (major formats)
+			"creditCard": {
+				"pattern": "\b(?:\d{4}[-\s]?){3}\d{4}\b|\b\d{16}\b",
+				"replacement": "[CREDIT_CARD]",
+				"description": "Credit card number"
+			},
+			// IP Addresses (IPv4)
+			"ipAddress": {
+				"pattern": "\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b",
+				"replacement": "[IP_ADDRESS]",
+				"description": "IP address"
+			},
+			// Date of Birth patterns
+			"dateOfBirth": {
+				"pattern": "\b(?:0?[1-9]|1[0-2])[-/](?:0?[1-9]|[12][0-9]|3[01])[-/](?:19|20)\d{2}\b|\b(?:19|20)\d{2}[-/](?:0?[1-9]|1[0-2])[-/](?:0?[1-9]|[12][0-9]|3[01])\b",
+				"replacement": "[DOB]",
+				"description": "Date of birth"
+			}
+		}
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @config Optional configuration struct
+	 */
+	function init( struct config = {} ) {
+		super.init(
+			name: "PIIRedaction",
+			description: "Detects and optionally redacts PII from content",
+			config: config
+		);
+
+		// Set action (block, redact, or warn)
+		variables.action = arguments.config.action ?: "warn";
+
+		// Initialize PII types to detect (all enabled by default)
+		variables.piiTypes = arguments.config.piiTypes ?: {
+			"email": true,
+			"phone": true,
+			"ssn": true,
+			"creditCard": true,
+			"ipAddress": false,
+			"dateOfBirth": false
+		};
+
+		variables.customPatterns = arguments.config.customPatterns ?: [];
+		variables.checkRequests = arguments.config.checkRequests ?: true;
+		variables.checkResponses = arguments.config.checkResponses ?: true;
+
+		return this;
+	}
+
+	/**
+	 * Set the action to take when PII is detected
+	 *
+	 * @action "block", "redact", or "warn"
+	 *
+	 * @return This guardrail for chaining
+	 */
+	PIIRedactionGuardrail function setAction( required string action ) {
+		if ( ![ "block", "redact", "warn" ].find( arguments.action ) ) {
+			throw( "Invalid action. Must be 'block', 'redact', or 'warn'" );
+		}
+		variables.action = arguments.action;
+		return this;
+	}
+
+	/**
+	 * Enable or disable a PII type
+	 *
+	 * @type The PII type (email, phone, ssn, creditCard, ipAddress, dateOfBirth)
+	 * @enabled True to enable detection
+	 *
+	 * @return This guardrail for chaining
+	 */
+	PIIRedactionGuardrail function setPIIType( required string type, required boolean enabled ) {
+		variables.piiTypes[ arguments.type ] = arguments.enabled;
+		return this;
+	}
+
+	/**
+	 * Enable all PII types
+	 *
+	 * @return This guardrail for chaining
+	 */
+	PIIRedactionGuardrail function enableAll() {
+		for ( var type in static.PII_PATTERNS ) {
+			variables.piiTypes[ type ] = true;
+		}
+		return this;
+	}
+
+	/**
+	 * Disable all PII types
+	 *
+	 * @return This guardrail for chaining
+	 */
+	PIIRedactionGuardrail function disableAll() {
+		for ( var type in static.PII_PATTERNS ) {
+			variables.piiTypes[ type ] = false;
+		}
+		return this;
+	}
+
+	/**
+	 * Add a custom PII pattern
+	 *
+	 * @name The name for this pattern
+	 * @pattern The regex pattern
+	 * @replacement The replacement text for redaction
+	 *
+	 * @return This guardrail for chaining
+	 */
+	PIIRedactionGuardrail function addPattern( required string name, required string pattern, string replacement = "[REDACTED]" ) {
+		variables.customPatterns.append( {
+			"name": arguments.name,
+			"pattern": arguments.pattern,
+			"replacement": arguments.replacement
+		} );
+		return this;
+	}
+
+	/**
+	 * Validate request content for PII
+	 *
+	 * @data The interceptor data
+	 *
+	 * @return GuardrailResult
+	 */
+	GuardrailResult function validateRequest( required struct data ) {
+		if ( !variables.checkRequests ) {
+			return pass();
+		}
+
+		var messages = arguments.data.aiRequest?.getMessages() ?: arguments.data.dataPacket?.messages ?: [];
+		var content = extractTextFromMessages( messages );
+
+		return checkForPII( content, "request", arguments.data );
+	}
+
+	/**
+	 * Validate response content for PII
+	 *
+	 * @data The interceptor data
+	 *
+	 * @return GuardrailResult
+	 */
+	GuardrailResult function validateResponse( required struct data ) {
+		if ( !variables.checkResponses ) {
+			return pass();
+		}
+
+		var content = extractTextFromResponse( arguments.data.response ?: {} );
+		return checkForPII( content, "response", arguments.data );
+	}
+
+	/**
+	 * Check content for PII
+	 *
+	 * @content The content to check
+	 * @source "request" or "response"
+	 * @data The original data (for redaction modifications)
+	 *
+	 * @return GuardrailResult
+	 */
+	private GuardrailResult function checkForPII( required string content, required string source, required struct data ) {
+		var detectedPII = [];
+		var redactedContent = arguments.content;
+
+		// Check each enabled PII type
+		for ( var type in variables.piiTypes ) {
+			if ( variables.piiTypes[ type ] && static.PII_PATTERNS.keyExists( type ) ) {
+				var patternDef = static.PII_PATTERNS[ type ];
+				var matches = findPIIMatches( arguments.content, patternDef.pattern );
+
+				if ( !matches.isEmpty() ) {
+					detectedPII.append( {
+						"type": type,
+						"description": patternDef.description,
+						"count": matches.len(),
+						"source": arguments.source
+					} );
+
+					// If action is redact, replace the content
+					if ( variables.action == "redact" ) {
+						redactedContent = reReplace( redactedContent, patternDef.pattern, patternDef.replacement, "all" );
+					}
+				}
+			}
+		}
+
+		// Check custom patterns
+		for ( var customPattern in variables.customPatterns ) {
+			var matches = findPIIMatches( arguments.content, customPattern.pattern );
+			if ( !matches.isEmpty() ) {
+				detectedPII.append( {
+					"type": "custom:" & customPattern.name,
+					"description": customPattern.name,
+					"count": matches.len(),
+					"source": arguments.source
+				} );
+
+				if ( variables.action == "redact" ) {
+					redactedContent = reReplace( redactedContent, customPattern.pattern, customPattern.replacement, "all" );
+				}
+			}
+		}
+
+		// No PII found
+		if ( detectedPII.isEmpty() ) {
+			return pass();
+		}
+
+		// Handle based on action
+		var message = "Detected PII in #arguments.source#: " & detectedPII.map( pii => pii.description & " (#pii.count#)" ).toList( ", " );
+
+		switch ( variables.action ) {
+			case "block":
+				log( message, "warning" );
+				return fail( message, detectedPII );
+
+			case "redact":
+				log( message & " - Content redacted", "info" );
+				var result = pass( "PII detected and redacted" );
+				result.withModification( arguments.content, redactedContent );
+
+				// Update the original data with redacted content
+				if ( arguments.source == "request" ) {
+					redactRequestContent( arguments.data, redactedContent );
+				} else {
+					redactResponseContent( arguments.data, redactedContent );
+				}
+
+				return result.addViolation( { "redacted": true, "types": detectedPII } );
+
+			case "warn": default:
+				log( message, "info" );
+				return warning( message, detectedPII );
+		}
+	}
+
+	/**
+	 * Find all matches of a pattern in content
+	 *
+	 * @content The content to search
+	 * @pattern The regex pattern
+	 *
+	 * @return Array of matches
+	 */
+	private array function findPIIMatches( required string content, required string pattern ) {
+		var matches = [];
+		var startPos = 1;
+		var found = reFind( arguments.pattern, arguments.content, startPos, true );
+
+		while ( found.pos[ 1 ] > 0 ) {
+			matches.append( mid( arguments.content, found.pos[ 1 ], found.len[ 1 ] ) );
+			startPos = found.pos[ 1 ] + found.len[ 1 ];
+			found = reFind( arguments.pattern, arguments.content, startPos, true );
+		}
+
+		return matches;
+	}
+
+	/**
+	 * Redact content in the request
+	 *
+	 * @data The request data
+	 * @redactedContent The redacted content
+	 */
+	private void function redactRequestContent( required struct data, required string redactedContent ) {
+		// Update messages in the dataPacket if available
+		if ( arguments.data.keyExists( "dataPacket" ) && arguments.data.dataPacket.keyExists( "messages" ) ) {
+			var messages = arguments.data.dataPacket.messages;
+			for ( var i = 1; i <= messages.len(); i++ ) {
+				if ( isSimpleValue( messages[ i ].content ?: "" ) ) {
+					for ( var type in variables.piiTypes ) {
+						if ( variables.piiTypes[ type ] && static.PII_PATTERNS.keyExists( type ) ) {
+							var patternDef = static.PII_PATTERNS[ type ];
+							messages[ i ].content = reReplace( messages[ i ].content, patternDef.pattern, patternDef.replacement, "all" );
+						}
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Redact content in the response
+	 *
+	 * @data The response data
+	 * @redactedContent The redacted content
+	 */
+	private void function redactResponseContent( required struct data, required string redactedContent ) {
+		// Update response content if available
+		if ( arguments.data.keyExists( "response" ) && arguments.data.response.keyExists( "choices" ) ) {
+			var choices = arguments.data.response.choices;
+			for ( var i = 1; i <= choices.len(); i++ ) {
+				if ( choices[ i ].keyExists( "message" ) && isSimpleValue( choices[ i ].message.content ?: "" ) ) {
+					for ( var type in variables.piiTypes ) {
+						if ( variables.piiTypes[ type ] && static.PII_PATTERNS.keyExists( type ) ) {
+							var patternDef = static.PII_PATTERNS[ type ];
+							choices[ i ].message.content = reReplace( choices[ i ].message.content, patternDef.pattern, patternDef.replacement, "all" );
+						}
+					}
+				}
+			}
+		}
+	}
+
+}

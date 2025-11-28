@@ -1,0 +1,306 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Guardrail Chain
+ *
+ * Composes multiple guardrails together and executes them in sequence.
+ * The chain stops on the first failure, but can collect warnings from all guardrails.
+ * Supports both synchronous and registered (event-based) execution modes.
+ */
+class {
+
+	/**
+	 * Array of guardrails in the chain
+	 */
+	property name="guardrails" type="array" default=[];
+
+	/**
+	 * Whether to stop on the first failure
+	 */
+	property name="stopOnFirstFailure" type="boolean" default=true;
+
+	/**
+	 * Whether to throw an exception on failure
+	 */
+	property name="throwOnFailure" type="boolean" default=true;
+
+	/**
+	 * Callback for handling guardrail results
+	 */
+	property name="onResult" type="function";
+
+	/**
+	 * Whether this chain is registered as an interceptor
+	 */
+	property name="isRegistered" type="boolean" default=false;
+
+	/**
+	 * Name of the chain for identification
+	 */
+	property name="name" type="string" default="GuardrailChain";
+
+	/**
+	 * Constructor
+	 *
+	 * @guardrails Optional initial array of guardrails
+	 * @config Optional configuration struct
+	 */
+	function init( array guardrails = [], struct config = {} ) {
+		variables.guardrails = arguments.guardrails;
+		variables.stopOnFirstFailure = arguments.config.stopOnFirstFailure ?: true;
+		variables.throwOnFailure = arguments.config.throwOnFailure ?: true;
+		variables.name = arguments.config.name ?: "GuardrailChain";
+		variables.isRegistered = false;
+		return this;
+	}
+
+	/**
+	 * Add a guardrail to the chain
+	 *
+	 * @guardrail The guardrail to add
+	 *
+	 * @return This chain for chaining
+	 */
+	GuardrailChain function add( required IAiGuardrail guardrail ) {
+		variables.guardrails.append( arguments.guardrail );
+		return this;
+	}
+
+	/**
+	 * Add multiple guardrails to the chain
+	 *
+	 * @guardrails Array of guardrails to add
+	 *
+	 * @return This chain for chaining
+	 */
+	GuardrailChain function addAll( required array guardrails ) {
+		arguments.guardrails.each( guardrail => add( guardrail ) );
+		return this;
+	}
+
+	/**
+	 * Remove a guardrail from the chain by name
+	 *
+	 * @name The name of the guardrail to remove
+	 *
+	 * @return This chain for chaining
+	 */
+	GuardrailChain function remove( required string name ) {
+		variables.guardrails = variables.guardrails.filter( guardrail => guardrail.getName() != arguments.name );
+		return this;
+	}
+
+	/**
+	 * Clear all guardrails from the chain
+	 *
+	 * @return This chain for chaining
+	 */
+	GuardrailChain function clear() {
+		variables.guardrails = [];
+		return this;
+	}
+
+	/**
+	 * Get all guardrails in the chain
+	 *
+	 * @return Array of guardrails
+	 */
+	array function getGuardrails() {
+		return variables.guardrails;
+	}
+
+	/**
+	 * Get a guardrail by name
+	 *
+	 * @name The name of the guardrail
+	 *
+	 * @return The guardrail or null if not found
+	 */
+	any function getGuardrail( required string name ) {
+		for ( var guardrail in variables.guardrails ) {
+			if ( guardrail.getName() == arguments.name ) {
+				return guardrail;
+			}
+		}
+		return javacast( "null", "" );
+	}
+
+	/**
+	 * Check if a guardrail exists in the chain
+	 *
+	 * @name The name of the guardrail
+	 *
+	 * @return True if the guardrail exists
+	 */
+	boolean function hasGuardrail( required string name ) {
+		return !isNull( getGuardrail( arguments.name ) );
+	}
+
+	/**
+	 * Set a callback to handle guardrail results
+	 *
+	 * @callback Function that receives (GuardrailResult, data)
+	 *
+	 * @return This chain for chaining
+	 */
+	GuardrailChain function onResultCallback( required function callback ) {
+		variables.onResult = arguments.callback;
+		return this;
+	}
+
+	/**
+	 * Execute all guardrails for a request validation
+	 *
+	 * @data The interceptor data
+	 *
+	 * @return A ChainResult containing all individual results
+	 */
+	ChainResult function validateRequest( required struct data ) {
+		return executeChain( arguments.data, "validateRequest" );
+	}
+
+	/**
+	 * Execute all guardrails for a response validation
+	 *
+	 * @data The interceptor data
+	 *
+	 * @return A ChainResult containing all individual results
+	 */
+	ChainResult function validateResponse( required struct data ) {
+		return executeChain( arguments.data, "validateResponse" );
+	}
+
+	/**
+	 * Register this chain as an event interceptor for AI requests/responses
+	 *
+	 * @return This chain for chaining
+	 */
+	GuardrailChain function register() {
+		if ( !variables.isRegistered ) {
+			BoxRegisterInterceptor( this );
+			variables.isRegistered = true;
+		}
+		return this;
+	}
+
+	/**
+	 * Unregister this chain from event interception
+	 *
+	 * @return This chain for chaining
+	 */
+	GuardrailChain function unregister() {
+		if ( variables.isRegistered ) {
+			BoxUnregisterInterceptor( this );
+			variables.isRegistered = false;
+		}
+		return this;
+	}
+
+	/**
+	 * Event handler for AI request interception
+	 * Called automatically when registered as an interceptor
+	 *
+	 * @data The event data
+	 */
+	function onAIRequest( required struct data ) {
+		var chainResult = validateRequest( arguments.data );
+		handleChainResult( chainResult, arguments.data, "request" );
+	}
+
+	/**
+	 * Event handler for AI response interception
+	 * Called automatically when registered as an interceptor
+	 *
+	 * @data The event data
+	 */
+	function onAIResponse( required struct data ) {
+		var chainResult = validateResponse( arguments.data );
+		handleChainResult( chainResult, arguments.data, "response" );
+	}
+
+	/**
+	 * Execute the guardrail chain
+	 *
+	 * @data The interceptor data
+	 * @method The validation method to call (validateRequest or validateResponse)
+	 *
+	 * @return A ChainResult containing all results
+	 */
+	private ChainResult function executeChain( required struct data, required string method ) {
+		var results = [];
+		var overallPassed = true;
+		var hasWarnings = false;
+
+		for ( var guardrail in variables.guardrails ) {
+			// Skip disabled guardrails
+			if ( !guardrail.isEnabled() ) {
+				continue;
+			}
+
+			// Execute the guardrail
+			var result = invoke( guardrail, arguments.method, { data: arguments.data } );
+			results.append( result );
+
+			// Handle the result callback if set
+			if ( !isNull( variables.onResult ) ) {
+				variables.onResult( result, arguments.data );
+			}
+
+			// Track overall status
+			if ( result.isFailed() ) {
+				overallPassed = false;
+				if ( variables.stopOnFirstFailure ) {
+					break;
+				}
+			} else if ( result.isWarning() ) {
+				hasWarnings = true;
+			}
+		}
+
+		return new ChainResult( results, overallPassed, hasWarnings );
+	}
+
+	/**
+	 * Handle the chain result - throw or log as configured
+	 *
+	 * @chainResult The chain execution result
+	 * @data The original data
+	 * @phase "request" or "response"
+	 */
+	private void function handleChainResult( required ChainResult chainResult, required struct data, required string phase ) {
+		if ( !arguments.chainResult.isPassed() && variables.throwOnFailure ) {
+			var failures = arguments.chainResult.getFailures();
+			var message = failures.map( result => result.getMessage() ).toList( "; " );
+
+			throw(
+				type: "GuardrailViolation",
+				message: "AI #arguments.phase# blocked by guardrails: #message#",
+				detail: arguments.chainResult.toJSON()
+			);
+		}
+
+		// Log warnings
+		if ( arguments.chainResult.hasWarnings() ) {
+			var warnings = arguments.chainResult.getWarnings();
+			for ( var warning in warnings ) {
+				writeLog(
+					text: "[GuardrailChain] Warning in #arguments.phase#: #warning.getMessage()#",
+					type: "warning",
+					log: "ai"
+				);
+			}
+		}
+	}
+
+}

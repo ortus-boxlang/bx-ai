@@ -1,0 +1,251 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Abstract Base Guardrail
+ *
+ * Provides common functionality for all guardrail implementations.
+ * Extend this class to create custom guardrails.
+ */
+abstract class implements="IAiGuardrail" {
+
+	/**
+	 * The unique name of this guardrail
+	 */
+	property name="name" type="string" default="";
+
+	/**
+	 * The description of what this guardrail does
+	 */
+	property name="description" type="string" default="";
+
+	/**
+	 * Whether this guardrail is enabled
+	 */
+	property name="enabled" type="boolean" default=true;
+
+	/**
+	 * Configuration options for this guardrail
+	 */
+	property name="config" type="struct" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @name The name of the guardrail
+	 * @description The description of the guardrail
+	 * @config Optional configuration
+	 */
+	function init(
+		string name = "",
+		string description = "",
+		struct config = {}
+	) {
+		variables.name = arguments.name;
+		variables.description = arguments.description;
+		variables.enabled = true;
+		variables.config = arguments.config;
+		return this;
+	}
+
+	/**
+	 * Get the unique name of this guardrail
+	 *
+	 * @return The guardrail name
+	 */
+	string function getName() {
+		return variables.name;
+	}
+
+	/**
+	 * Get the description of what this guardrail does
+	 *
+	 * @return The guardrail description
+	 */
+	string function getDescription() {
+		return variables.description;
+	}
+
+	/**
+	 * Check if this guardrail is enabled
+	 *
+	 * @return True if the guardrail is enabled
+	 */
+	boolean function isEnabled() {
+		return variables.enabled;
+	}
+
+	/**
+	 * Enable or disable this guardrail
+	 *
+	 * @enabled True to enable, false to disable
+	 *
+	 * @return This guardrail for chaining
+	 */
+	IAiGuardrail function setEnabled( required boolean enabled ) {
+		variables.enabled = arguments.enabled;
+		return this;
+	}
+
+	/**
+	 * Configure the guardrail with options
+	 *
+	 * @config A struct of configuration options
+	 *
+	 * @return This guardrail for chaining
+	 */
+	IAiGuardrail function configure( required struct config ) {
+		variables.config.append( arguments.config, true );
+		return this;
+	}
+
+	/**
+	 * Get a configuration value by key
+	 *
+	 * @key The configuration key
+	 * @defaultValue Default value if key not found
+	 *
+	 * @return The configuration value
+	 */
+	any function getConfigValue( required string key, any defaultValue = "" ) {
+		return variables.config[ arguments.key ] ?: arguments.defaultValue;
+	}
+
+	/**
+	 * Set a configuration value
+	 *
+	 * @key The configuration key
+	 * @value The value to set
+	 *
+	 * @return This guardrail for chaining
+	 */
+	IAiGuardrail function setConfigValue( required string key, required any value ) {
+		variables.config[ arguments.key ] = arguments.value;
+		return this;
+	}
+
+	/**
+	 * Create a passing result
+	 *
+	 * @message Optional message
+	 *
+	 * @return A GuardrailResult with pass status
+	 */
+	GuardrailResult function pass( string message = "Validation passed" ) {
+		return GuardrailResult::pass( getName(), arguments.message );
+	}
+
+	/**
+	 * Create a failing result
+	 *
+	 * @message The reason for failure
+	 * @violations Optional array of specific violations
+	 *
+	 * @return A GuardrailResult with fail status
+	 */
+	GuardrailResult function fail( string message = "Validation failed", array violations = [] ) {
+		return GuardrailResult::fail( getName(), arguments.message, arguments.violations );
+	}
+
+	/**
+	 * Create a warning result
+	 *
+	 * @message The warning message
+	 * @violations Optional array of specific warnings
+	 *
+	 * @return A GuardrailResult with warning status
+	 */
+	GuardrailResult function warning( string message = "Validation warning", array violations = [] ) {
+		return GuardrailResult::warning( getName(), arguments.message, arguments.violations );
+	}
+
+	/**
+	 * Default implementation for request validation - passes by default.
+	 * Override in subclasses for specific validation logic.
+	 *
+	 * @data The interceptor data
+	 *
+	 * @return A passing GuardrailResult
+	 */
+	GuardrailResult function validateRequest( required struct data ) {
+		return pass();
+	}
+
+	/**
+	 * Default implementation for response validation - passes by default.
+	 * Override in subclasses for specific validation logic.
+	 *
+	 * @data The interceptor data
+	 *
+	 * @return A passing GuardrailResult
+	 */
+	GuardrailResult function validateResponse( required struct data ) {
+		return pass();
+	}
+
+	/**
+	 * Log a guardrail event
+	 *
+	 * @message The log message
+	 * @type The log type (info, warning, error)
+	 */
+	function log( required string message, string type = "info" ) {
+		writeLog(
+			text: "[Guardrail: #getName()#] #arguments.message#",
+			type: arguments.type,
+			log: "ai"
+		);
+	}
+
+	/**
+	 * Helper to extract text content from messages for validation
+	 *
+	 * @messages Array of message structs
+	 *
+	 * @return Combined text content from all messages
+	 */
+	string function extractTextFromMessages( required array messages ) {
+		var texts = [];
+
+		for ( var msg in arguments.messages ) {
+			if ( isSimpleValue( msg.content ?: "" ) ) {
+				texts.append( msg.content );
+			} else if ( isArray( msg.content ) ) {
+				// Handle multimodal content
+				for ( var part in msg.content ) {
+					if ( isStruct( part ) && part.keyExists( "text" ) ) {
+						texts.append( part.text );
+					}
+				}
+			}
+		}
+
+		return texts.toList( " " );
+	}
+
+	/**
+	 * Helper to extract response text content
+	 *
+	 * @response The AI response struct
+	 *
+	 * @return The text content from the response
+	 */
+	string function extractTextFromResponse( required struct response ) {
+		if ( arguments.response.keyExists( "choices" ) && !arguments.response.choices.isEmpty() ) {
+			var content = arguments.response.choices.first().message?.content ?: "";
+			return isSimpleValue( content ) ? content : "";
+		}
+		return "";
+	}
+
+}

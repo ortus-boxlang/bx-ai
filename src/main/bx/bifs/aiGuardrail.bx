@@ -1,0 +1,67 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * aiGuardrail - Create and configure AI guardrails
+ *
+ * Creates guardrail instances for validating AI requests and responses.
+ * Supports built-in guardrail types and custom implementations.
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Built-in guardrail types
+	 */
+	static {
+		final GUARDRAIL_TYPES = {
+			"contentFilter": "bxModules.bxai.models.guardrails.ContentFilterGuardrail",
+			"pii": "bxModules.bxai.models.guardrails.PIIRedactionGuardrail",
+			"tokenLimit": "bxModules.bxai.models.guardrails.TokenLimitGuardrail"
+		}
+	}
+
+	/**
+	 * Create a guardrail instance
+	 *
+	 * <p>
+	 * Creates guardrails for validating AI requests and responses.
+	 * <p>
+	 * Available built-in types:
+	 * <ul>
+	 * <li>contentFilter - Filter prohibited content patterns</li>
+	 * <li>pii - Detect and redact personally identifiable information</li>
+	 * <li>tokenLimit - Validate token limits</li>
+	 * </ul>
+	 *
+	 * @type The type of guardrail to create (contentFilter, pii, tokenLimit) or a fully qualified class path
+	 * @config Optional configuration struct for the guardrail
+	 *
+	 * @return The configured guardrail instance
+	 */
+	function invoke( required string type, struct config = {} ) {
+		var guardrailClass = "";
+
+		// Check if it's a built-in type
+		if ( static.GUARDRAIL_TYPES.keyExists( arguments.type ) ) {
+			guardrailClass = static.GUARDRAIL_TYPES[ arguments.type ];
+		} else {
+			// Assume it's a fully qualified class path
+			guardrailClass = arguments.type;
+		}
+
+		// Create and return the guardrail
+		return new "#guardrailClass#"( arguments.config );
+	}
+
+}

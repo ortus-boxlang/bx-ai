@@ -145,8 +145,10 @@ class {
 			"onAIRequestCreate",
 			"onAIResponse",
 			"onAITransformCreate",
-            "afterAIModelInvoke",
-            "beforeAIModelInvoke"
+			"afterAIModelInvoke",
+			"beforeAIModelInvoke",
+			"onAIGuardrailValidation",
+			"onAIGuardrailViolation"
 		 ];
 	}
 

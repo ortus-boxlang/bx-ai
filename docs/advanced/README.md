@@ -65,6 +65,22 @@ Integrate with the Model Context Protocol to access external tools and resources
 
 ---
 
+### 🛡️ [Guardrails](guardrails.md)
+
+Protect AI interactions with content filtering, PII detection, and token limits.
+
+**What you'll learn:**
+- Content filtering and pattern matching
+- PII (Personally Identifiable Information) detection and redaction
+- Token limit validation
+- Creating guardrail chains
+- Building custom guardrails
+- Integrating with the event system
+
+**Use when:** Building production AI systems that need content moderation, data protection, or cost controls.
+
+---
+
 ### 🛠️ [Utilities](utilities.md)
 
 Helper functions for text processing, token counting, and data manipulation.
@@ -99,6 +115,20 @@ function onAIRequest( event, interceptData ) {
 }
 ```
 
+### Add Guardrails
+```java
+// Create a guardrail chain for content safety
+chain = aiGuardrailChain( [
+    aiGuardrail( "contentFilter" ).block( "harmful" ),
+    aiGuardrail( "pii" ).setAction( "redact" ),
+    aiGuardrail( "tokenLimit" ).setMaxTokens( 4000 )
+] ).register();
+
+// All AI operations are now protected!
+result = aiChat( "Hello, my email is john@example.com" );
+// PII is automatically redacted
+```
+
 ### Use MCP Tools
 ```java
 agent = aiAgent()
@@ -127,6 +157,10 @@ chunks.each( function( chunk ) {
 
 ## Integration Patterns
 
+### Safety and Compliance Pipeline
+**Components:** Guardrails + Event system + Logging
+**Guide:** [Guardrails Documentation](guardrails.md)
+
 ### Semantic Search Pipeline
 **Components:** Embeddings + Vector storage + Similarity search
 **Guide:** [Embeddings Documentation](embeddings.md)
@@ -146,6 +180,9 @@ chunks.each( function( chunk ) {
 ---
 
 ## Choosing Your Path
+
+**"I need content moderation or data protection"**
+→ [Guardrails](guardrails.md)
 
 **"I need semantic search or recommendations"**
 → [Embeddings](embeddings.md)

@@ -1,0 +1,219 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Chain Result
+ *
+ * Aggregates results from multiple guardrails executed in a chain.
+ * Provides methods to query the overall status and individual results.
+ */
+class {
+
+	/**
+	 * Array of individual GuardrailResult objects
+	 */
+	property name="results" type="array" default=[];
+
+	/**
+	 * Whether all guardrails passed
+	 */
+	property name="passed" type="boolean" default=true;
+
+	/**
+	 * Whether any guardrails produced warnings
+	 */
+	property name="hasWarnings" type="boolean" default=false;
+
+	/**
+	 * Timestamp when the chain was executed
+	 */
+	property name="timestamp" type="date";
+
+	/**
+	 * Constructor
+	 *
+	 * @results Array of GuardrailResult objects
+	 * @passed Whether all guardrails passed
+	 * @hasWarnings Whether any guardrails produced warnings
+	 */
+	function init(
+		array results = [],
+		boolean passed = true,
+		boolean hasWarnings = false
+	) {
+		variables.results = arguments.results;
+		variables.passed = arguments.passed;
+		variables.hasWarnings = arguments.hasWarnings;
+		variables.timestamp = now();
+		return this;
+	}
+
+	/**
+	 * Check if all guardrails passed
+	 *
+	 * @return True if all passed
+	 */
+	boolean function isPassed() {
+		return variables.passed;
+	}
+
+	/**
+	 * Check if any guardrails failed
+	 *
+	 * @return True if any failed
+	 */
+	boolean function hasFailed() {
+		return !variables.passed;
+	}
+
+	/**
+	 * Check if there are any warnings
+	 *
+	 * @return True if there are warnings
+	 */
+	boolean function hasWarnings() {
+		return variables.hasWarnings;
+	}
+
+	/**
+	 * Get all results
+	 *
+	 * @return Array of GuardrailResult objects
+	 */
+	array function getResults() {
+		return variables.results;
+	}
+
+	/**
+	 * Get only the failed results
+	 *
+	 * @return Array of failed GuardrailResult objects
+	 */
+	array function getFailures() {
+		return variables.results.filter( result => result.isFailed() );
+	}
+
+	/**
+	 * Get only the warning results
+	 *
+	 * @return Array of warning GuardrailResult objects
+	 */
+	array function getWarnings() {
+		return variables.results.filter( result => result.isWarning() );
+	}
+
+	/**
+	 * Get only the passed results
+	 *
+	 * @return Array of passed GuardrailResult objects
+	 */
+	array function getPassed() {
+		return variables.results.filter( result => result.isPassed() );
+	}
+
+	/**
+	 * Get count of results by status
+	 *
+	 * @return Struct with counts for each status
+	 */
+	struct function getCounts() {
+		return {
+			"total": variables.results.len(),
+			"passed": getPassed().len(),
+			"failed": getFailures().len(),
+			"warnings": getWarnings().len()
+		};
+	}
+
+	/**
+	 * Get all violation messages from failed guardrails
+	 *
+	 * @return Array of violation messages
+	 */
+	array function getAllViolations() {
+		var violations = [];
+		getFailures().each( result => {
+			if ( result.hasViolations() ) {
+				violations.append( result.getViolations(), true );
+			}
+		} );
+		return violations;
+	}
+
+	/**
+	 * Get the first failure result
+	 *
+	 * @return The first failed GuardrailResult or null
+	 */
+	any function getFirstFailure() {
+		var failures = getFailures();
+		return failures.isEmpty() ? javacast( "null", "" ) : failures.first();
+	}
+
+	/**
+	 * Get a result by guardrail name
+	 *
+	 * @name The guardrail name
+	 *
+	 * @return The GuardrailResult or null
+	 */
+	any function getResultByName( required string name ) {
+		for ( var result in variables.results ) {
+			if ( result.getGuardrailName() == arguments.name ) {
+				return result;
+			}
+		}
+		return javacast( "null", "" );
+	}
+
+	/**
+	 * Convert to a struct for serialization
+	 *
+	 * @return Struct representation
+	 */
+	struct function toStruct() {
+		return {
+			"passed": variables.passed,
+			"hasWarnings": variables.hasWarnings,
+			"timestamp": variables.timestamp,
+			"counts": getCounts(),
+			"results": variables.results.map( result => result.toStruct() )
+		};
+	}
+
+	/**
+	 * Convert to JSON
+	 *
+	 * @return JSON string
+	 */
+	string function toJSON() {
+		return jsonSerialize( toStruct() );
+	}
+
+	/**
+	 * Get a summary message of the chain execution
+	 *
+	 * @return Summary string
+	 */
+	string function getSummary() {
+		var counts = getCounts();
+		if ( variables.passed && !variables.hasWarnings ) {
+			return "All #counts.total# guardrails passed";
+		} else if ( variables.passed && variables.hasWarnings ) {
+			return "#counts.passed# passed, #counts.warnings# warnings";
+		} else {
+			return "#counts.failed# failed, #counts.warnings# warnings, #counts.passed# passed";
+		}
+	}
+
+}

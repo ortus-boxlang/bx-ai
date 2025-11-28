@@ -1,0 +1,237 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Content Filter Guardrail
+ *
+ * Filters AI requests and responses for prohibited content patterns.
+ * Can be configured with custom patterns for blocking or warning.
+ */
+class extends="AiBaseGuardrail" {
+
+	/**
+	 * Patterns that will cause a failure (blocked)
+	 */
+	property name="blockedPatterns" type="array" default=[];
+
+	/**
+	 * Patterns that will cause a warning but still allow through
+	 */
+	property name="warnPatterns" type="array" default=[];
+
+	/**
+	 * Whether to check requests
+	 */
+	property name="checkRequests" type="boolean" default=true;
+
+	/**
+	 * Whether to check responses
+	 */
+	property name="checkResponses" type="boolean" default=true;
+
+	/**
+	 * Whether pattern matching is case-insensitive
+	 */
+	property name="caseInsensitive" type="boolean" default=true;
+
+	/**
+	 * Constructor
+	 *
+	 * @config Optional configuration struct
+	 */
+	function init( struct config = {} ) {
+		super.init(
+			name: "ContentFilter",
+			description: "Filters content for prohibited patterns",
+			config: config
+		);
+
+		// Initialize pattern lists
+		variables.blockedPatterns = arguments.config.blockedPatterns ?: [];
+		variables.warnPatterns = arguments.config.warnPatterns ?: [];
+		variables.checkRequests = arguments.config.checkRequests ?: true;
+		variables.checkResponses = arguments.config.checkResponses ?: true;
+		variables.caseInsensitive = arguments.config.caseInsensitive ?: true;
+
+		return this;
+	}
+
+	/**
+	 * Add a blocked pattern
+	 *
+	 * @pattern The pattern to block (string or regex)
+	 *
+	 * @return This guardrail for chaining
+	 */
+	ContentFilterGuardrail function block( required string pattern ) {
+		variables.blockedPatterns.append( arguments.pattern );
+		return this;
+	}
+
+	/**
+	 * Add multiple blocked patterns
+	 *
+	 * @patterns Array of patterns to block
+	 *
+	 * @return This guardrail for chaining
+	 */
+	ContentFilterGuardrail function blockAll( required array patterns ) {
+		variables.blockedPatterns.append( arguments.patterns, true );
+		return this;
+	}
+
+	/**
+	 * Add a warning pattern
+	 *
+	 * @pattern The pattern that triggers a warning
+	 *
+	 * @return This guardrail for chaining
+	 */
+	ContentFilterGuardrail function warn( required string pattern ) {
+		variables.warnPatterns.append( arguments.pattern );
+		return this;
+	}
+
+	/**
+	 * Add multiple warning patterns
+	 *
+	 * @patterns Array of patterns that trigger warnings
+	 *
+	 * @return This guardrail for chaining
+	 */
+	ContentFilterGuardrail function warnAll( required array patterns ) {
+		variables.warnPatterns.append( arguments.patterns, true );
+		return this;
+	}
+
+	/**
+	 * Clear all patterns
+	 *
+	 * @return This guardrail for chaining
+	 */
+	ContentFilterGuardrail function clearPatterns() {
+		variables.blockedPatterns = [];
+		variables.warnPatterns = [];
+		return this;
+	}
+
+	/**
+	 * Validate request content
+	 *
+	 * @data The interceptor data
+	 *
+	 * @return GuardrailResult
+	 */
+	GuardrailResult function validateRequest( required struct data ) {
+		if ( !variables.checkRequests ) {
+			return pass();
+		}
+
+		// Extract messages from the request
+		var messages = arguments.data.aiRequest?.getMessages() ?: arguments.data.dataPacket?.messages ?: [];
+		var content = extractTextFromMessages( messages );
+
+		return checkContent( content, "request" );
+	}
+
+	/**
+	 * Validate response content
+	 *
+	 * @data The interceptor data
+	 *
+	 * @return GuardrailResult
+	 */
+	GuardrailResult function validateResponse( required struct data ) {
+		if ( !variables.checkResponses ) {
+			return pass();
+		}
+
+		var content = extractTextFromResponse( arguments.data.response ?: {} );
+		return checkContent( content, "response" );
+	}
+
+	/**
+	 * Check content against patterns
+	 *
+	 * @content The content to check
+	 * @source "request" or "response" for logging
+	 *
+	 * @return GuardrailResult
+	 */
+	private GuardrailResult function checkContent( required string content, required string source ) {
+		var violations = [];
+		var warnings = [];
+
+		// Check blocked patterns
+		for ( var pattern in variables.blockedPatterns ) {
+			if ( matchesPattern( arguments.content, pattern ) ) {
+				violations.append( {
+					"pattern": pattern,
+					"source": arguments.source,
+					"type": "blocked"
+				} );
+			}
+		}
+
+		// If we have blocked content, fail immediately
+		if ( !violations.isEmpty() ) {
+			log( "Blocked content found in #arguments.source#: #violations.len()# violation(s)", "warning" );
+			return fail( "Prohibited content detected in #arguments.source#", violations );
+		}
+
+		// Check warning patterns
+		for ( var pattern in variables.warnPatterns ) {
+			if ( matchesPattern( arguments.content, pattern ) ) {
+				warnings.append( {
+					"pattern": pattern,
+					"source": arguments.source,
+					"type": "warning"
+				} );
+			}
+		}
+
+		// If we have warnings, return warning status
+		if ( !warnings.isEmpty() ) {
+			log( "Warning patterns found in #arguments.source#: #warnings.len()# warning(s)", "info" );
+			return warning( "Potentially concerning content in #arguments.source#", warnings );
+		}
+
+		return pass();
+	}
+
+	/**
+	 * Check if content matches a pattern
+	 *
+	 * @content The content to check
+	 * @pattern The pattern to match (supports regex)
+	 *
+	 * @return True if pattern matches
+	 */
+	private boolean function matchesPattern( required string content, required string pattern ) {
+		if ( variables.caseInsensitive ) {
+			// Try as a simple substring match first (case-insensitive)
+			if ( findNoCase( arguments.pattern, arguments.content ) > 0 ) {
+				return true;
+			}
+			// Try as regex with case-insensitive flag
+			return reFindNoCase( arguments.pattern, arguments.content ) > 0;
+		} else {
+			// Case-sensitive
+			if ( find( arguments.pattern, arguments.content ) > 0 ) {
+				return true;
+			}
+			return reFind( arguments.pattern, arguments.content ) > 0;
+		}
+	}
+
+}

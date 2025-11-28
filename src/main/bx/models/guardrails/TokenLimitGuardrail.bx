@@ -1,0 +1,241 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Token Limit Guardrail
+ *
+ * Validates that AI requests do not exceed configured token limits.
+ * Uses token estimation based on character or word count since exact
+ * tokenization varies by provider and model.
+ */
+class extends="AiBaseGuardrail" {
+
+	/**
+	 * Maximum tokens allowed per request
+	 */
+	property name="maxTokens" type="numeric" default=0;
+
+	/**
+	 * Maximum tokens for a single message
+	 */
+	property name="maxTokensPerMessage" type="numeric" default=0;
+
+	/**
+	 * Warning threshold (percentage of max before warning)
+	 */
+	property name="warningThreshold" type="numeric" default=0.8;
+
+	/**
+	 * Token estimation method: "characters" or "words"
+	 */
+	property name="estimationMethod" type="string" default="characters";
+
+	/**
+	 * Characters per token estimate (default 4 for English)
+	 */
+	property name="charsPerToken" type="numeric" default=4;
+
+	/**
+	 * Words per token estimate
+	 */
+	property name="wordsPerToken" type="numeric" default=0.75;
+
+	/**
+	 * Constructor
+	 *
+	 * @config Optional configuration struct
+	 */
+	function init( struct config = {} ) {
+		super.init(
+			name: "TokenLimit",
+			description: "Validates token limits for AI requests",
+			config: config
+		);
+
+		variables.maxTokens = arguments.config.maxTokens ?: 0;
+		variables.maxTokensPerMessage = arguments.config.maxTokensPerMessage ?: 0;
+		variables.warningThreshold = arguments.config.warningThreshold ?: 0.8;
+		variables.estimationMethod = arguments.config.estimationMethod ?: "characters";
+		variables.charsPerToken = arguments.config.charsPerToken ?: 4;
+		variables.wordsPerToken = arguments.config.wordsPerToken ?: 0.75;
+
+		return this;
+	}
+
+	/**
+	 * Set the maximum tokens allowed
+	 *
+	 * @maxTokens The maximum number of tokens
+	 *
+	 * @return This guardrail for chaining
+	 */
+	TokenLimitGuardrail function setMaxTokens( required numeric maxTokens ) {
+		variables.maxTokens = arguments.maxTokens;
+		return this;
+	}
+
+	/**
+	 * Set the maximum tokens per message
+	 *
+	 * @maxTokens The maximum number of tokens per message
+	 *
+	 * @return This guardrail for chaining
+	 */
+	TokenLimitGuardrail function setMaxTokensPerMessage( required numeric maxTokens ) {
+		variables.maxTokensPerMessage = arguments.maxTokens;
+		return this;
+	}
+
+	/**
+	 * Set the warning threshold
+	 *
+	 * @threshold Percentage (0-1) of max tokens before warning
+	 *
+	 * @return This guardrail for chaining
+	 */
+	TokenLimitGuardrail function setWarningThreshold( required numeric threshold ) {
+		variables.warningThreshold = arguments.threshold;
+		return this;
+	}
+
+	/**
+	 * Set the estimation method
+	 *
+	 * @method "characters" or "words"
+	 *
+	 * @return This guardrail for chaining
+	 */
+	TokenLimitGuardrail function setEstimationMethod( required string method ) {
+		if ( ![ "characters", "words" ].find( arguments.method ) ) {
+			throw( "Invalid estimation method. Must be 'characters' or 'words'" );
+		}
+		variables.estimationMethod = arguments.method;
+		return this;
+	}
+
+	/**
+	 * Validate request token count
+	 *
+	 * @data The interceptor data
+	 *
+	 * @return GuardrailResult
+	 */
+	GuardrailResult function validateRequest( required struct data ) {
+		// Skip if no limits are set
+		if ( variables.maxTokens <= 0 && variables.maxTokensPerMessage <= 0 ) {
+			return pass();
+		}
+
+		var messages = arguments.data.aiRequest?.getMessages() ?: arguments.data.dataPacket?.messages ?: [];
+		var violations = [];
+		var totalTokens = 0;
+
+		// Check each message
+		for ( var i = 1; i <= messages.len(); i++ ) {
+			var messageContent = "";
+			if ( isSimpleValue( messages[ i ].content ?: "" ) ) {
+				messageContent = messages[ i ].content;
+			} else if ( isArray( messages[ i ].content ) ) {
+				// Handle multimodal content
+				for ( var part in messages[ i ].content ) {
+					if ( isStruct( part ) && part.keyExists( "text" ) ) {
+						messageContent &= part.text & " ";
+					}
+				}
+			}
+
+			var messageTokens = estimateTokens( messageContent );
+			totalTokens += messageTokens;
+
+			// Check per-message limit
+			if ( variables.maxTokensPerMessage > 0 && messageTokens > variables.maxTokensPerMessage ) {
+				violations.append( {
+					"type": "message_limit_exceeded",
+					"messageIndex": i,
+					"role": messages[ i ].role ?: "user",
+					"tokens": messageTokens,
+					"limit": variables.maxTokensPerMessage
+				} );
+			}
+		}
+
+		// Check total limit
+		if ( variables.maxTokens > 0 && totalTokens > variables.maxTokens ) {
+			violations.append( {
+				"type": "total_limit_exceeded",
+				"tokens": totalTokens,
+				"limit": variables.maxTokens
+			} );
+		}
+
+		// Return failure if limits exceeded
+		if ( !violations.isEmpty() ) {
+			var message = "Token limit exceeded: estimated #totalTokens# tokens";
+			if ( variables.maxTokens > 0 ) {
+				message &= " (max: #variables.maxTokens#)";
+			}
+			log( message, "warning" );
+			return fail( message, violations )
+				.setMeta( "estimatedTokens", totalTokens )
+				.setMeta( "maxTokens", variables.maxTokens );
+		}
+
+		// Check warning threshold
+		if ( variables.maxTokens > 0 ) {
+			var warningLevel = variables.maxTokens * variables.warningThreshold;
+			if ( totalTokens >= warningLevel ) {
+				var percentUsed = round( ( totalTokens / variables.maxTokens ) * 100 );
+				var message = "Token usage at #percentUsed#% (#totalTokens# / #variables.maxTokens#)";
+				log( message, "info" );
+				return warning( message )
+					.setMeta( "estimatedTokens", totalTokens )
+					.setMeta( "maxTokens", variables.maxTokens )
+					.setMeta( "percentUsed", percentUsed );
+			}
+		}
+
+		return pass()
+			.setMeta( "estimatedTokens", totalTokens );
+	}
+
+	/**
+	 * Estimate token count from text
+	 *
+	 * @text The text to estimate
+	 *
+	 * @return Estimated token count
+	 */
+	numeric function estimateTokens( required string text ) {
+		if ( arguments.text.isEmpty() ) {
+			return 0;
+		}
+
+		if ( variables.estimationMethod == "words" ) {
+			// Word-based estimation
+			var words = arguments.text.trim().split( "\s+" );
+			return ceiling( words.len() / variables.wordsPerToken );
+		} else {
+			// Character-based estimation (default)
+			return ceiling( arguments.text.len() / variables.charsPerToken );
+		}
+	}
+
+	/**
+	 * Response validation - pass by default since token limits
+	 * are primarily a request concern
+	 */
+	GuardrailResult function validateResponse( required struct data ) {
+		return pass();
+	}
+
+}

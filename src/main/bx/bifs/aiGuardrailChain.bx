@@ -1,0 +1,44 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * aiGuardrailChain - Create a chain of guardrails
+ *
+ * Creates a guardrail chain that can execute multiple guardrails
+ * in sequence and optionally register as an event interceptor.
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Create a guardrail chain
+	 *
+	 * <p>
+	 * Creates a chain that executes multiple guardrails in sequence.
+	 * The chain can be manually invoked or registered as an interceptor
+	 * for automatic request/response validation.
+	 * <p>
+	 *
+	 * @guardrails Optional array of guardrails to add to the chain
+	 * @config Optional configuration struct:
+	 *         - stopOnFirstFailure: Stop on first failure (default: true)
+	 *         - throwOnFailure: Throw exception on failure (default: true)
+	 *         - name: Name of the chain (default: "GuardrailChain")
+	 *
+	 * @return The configured GuardrailChain instance
+	 */
+	function invoke( array guardrails = [], struct config = {} ) {
+		return new bxModules.bxai.models.guardrails.GuardrailChain( arguments.guardrails, arguments.config );
+	}
+
+}

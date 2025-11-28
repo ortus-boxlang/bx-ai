@@ -1,0 +1,94 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Interface for AI Guardrails
+ *
+ * Guardrails are safety mechanisms that intercept AI requests and responses
+ * to validate, filter, or modify content according to defined policies.
+ * They can be used for:
+ * - Content filtering (blocking prohibited content)
+ * - PII detection and redaction
+ * - Token limit enforcement
+ * - Rate limiting
+ * - Custom validation rules
+ */
+interface {
+
+	/**
+	 * Get the unique name of this guardrail
+	 *
+	 * @return The guardrail name
+	 */
+	string function getName();
+
+	/**
+	 * Get the description of what this guardrail does
+	 *
+	 * @return The guardrail description
+	 */
+	string function getDescription();
+
+	/**
+	 * Validate an incoming AI request before it is sent to the provider.
+	 * This method can block, modify, or pass through the request.
+	 *
+	 * @data The interceptor data containing:
+	 *       - dataPacket: The request payload
+	 *       - aiRequest: The AiRequest object
+	 *       - provider: The AI service provider
+	 *
+	 * @return A GuardrailResult indicating pass, fail, or warning
+	 */
+	GuardrailResult function validateRequest( required struct data );
+
+	/**
+	 * Validate an AI response after it is received from the provider.
+	 * This method can block, modify, or pass through the response.
+	 *
+	 * @data The interceptor data containing:
+	 *       - aiRequest: The original request
+	 *       - response: The deserialized response
+	 *       - rawResponse: The raw HTTP response
+	 *       - provider: The AI service provider
+	 *
+	 * @return A GuardrailResult indicating pass, fail, or warning
+	 */
+	GuardrailResult function validateResponse( required struct data );
+
+	/**
+	 * Check if this guardrail is enabled
+	 *
+	 * @return True if the guardrail is enabled
+	 */
+	boolean function isEnabled();
+
+	/**
+	 * Enable or disable this guardrail
+	 *
+	 * @enabled True to enable, false to disable
+	 *
+	 * @return This guardrail for chaining
+	 */
+	IAiGuardrail function setEnabled( required boolean enabled );
+
+	/**
+	 * Configure the guardrail with options
+	 *
+	 * @config A struct of configuration options
+	 *
+	 * @return This guardrail for chaining
+	 */
+	IAiGuardrail function configure( required struct config );
+
+}
