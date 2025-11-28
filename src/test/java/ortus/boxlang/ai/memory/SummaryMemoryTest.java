@@ -43,7 +43,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 		    memory = aiMemory( "summary" )
 		    maxMessages = memory.getMaxMessages()
 		    summaryThreshold = memory.getSummaryThreshold()
-		    summaryModel = memory.getSummaryModel()
+		    summaryModel = memory.getSummaryModelName()
 		    summaryProvider = memory.getSummaryProvider()
 		    hasSummary = memory.getHasSummary()
 		    """,
@@ -71,7 +71,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 
 		    maxMessages = memory.getMaxMessages()
 		    summaryThreshold = memory.getSummaryThreshold()
-		    summaryModel = memory.getSummaryModel()
+		    summaryModel = memory.getSummaryModelName()
 		    summaryProvider = memory.getSummaryProvider()
 		    """,
 		    context
@@ -282,7 +282,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 
 		    maxMessages = memory.getMaxMessages()
 		    summaryThreshold = memory.getSummaryThreshold()
-		    summaryModel = memory.getSummaryModel()
+		    summaryModel = memory.getSummaryModelName()
 		    summaryProvider = memory.getSummaryProvider()
 		    currentSummary = memory.getCurrentSummary()
 		    hasSummary = memory.getHasSummary()
@@ -315,7 +315,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 
 		    maxMessages = memory.getMaxMessages()
 		    summaryThreshold = memory.getSummaryThreshold()
-		    summaryModel = memory.getSummaryModel()
+		    summaryModel = memory.getSummaryModelName()
 		    summaryProvider = memory.getSummaryProvider()
 		    """,
 		    context
@@ -342,7 +342,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 
 		    maxMessages = memory.getMaxMessages()
 		    summaryThreshold = memory.getSummaryThreshold()
-		    summaryModel = memory.getSummaryModel()
+		    summaryModel = memory.getSummaryModelName()
 		    summaryProvider = memory.getSummaryProvider()
 		    """,
 		    context

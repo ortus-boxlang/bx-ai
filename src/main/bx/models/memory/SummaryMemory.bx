@@ -25,14 +25,19 @@ class extends="WindowMemory" {
 	property name="summaryThreshold" type="numeric";
 
 	/**
-	 * AI model to use for summarization
+	 * AI model name to use for summarization
 	 */
-	property name="summaryModel" default="";
+	property name="summaryModelName" default="";
 
 	/**
 	 * AI provider to use for summarization
 	 */
 	property name="summaryProvider" default="";
+
+	/**
+	 * Cached AI model instance for summarization
+	 */
+	property name="summaryModelInstance" default="";
 
 	/**
 	 * Current cached summary text
@@ -71,8 +76,9 @@ class extends="WindowMemory" {
 		super.init( arguments.key );
 		variables.maxMessages = arguments.maxMessages;
 		variables.summaryThreshold = arguments.summaryThreshold;
-		variables.summaryModel = arguments.summaryModel;
+		variables.summaryModelName = arguments.summaryModel;
 		variables.summaryProvider = arguments.summaryProvider;
+		variables.summaryModelInstance = "";
 		variables.currentSummary = "";
 		variables.hasSummary = false;
 		return this;
@@ -90,12 +96,18 @@ class extends="WindowMemory" {
 		}
 
 		if ( arguments.config.keyExists( "summaryModel" ) ) {
-			variables.summaryModel = arguments.config.summaryModel;
+			variables.summaryModelName = arguments.config.summaryModel;
 		}
 
 		if ( arguments.config.keyExists( "summaryProvider" ) ) {
 			variables.summaryProvider = arguments.config.summaryProvider;
 		}
+
+		// Create the AI model instance for reuse
+		variables.summaryModelInstance = aiModel(
+			variables.summaryProvider,
+			variables.summaryModelName
+		);
 
 		return this;
 	}
@@ -162,14 +174,7 @@ class extends="WindowMemory" {
 
 		// Call AI to generate summary
 		try {
-			var summary = aiChat(
-				aiMessage().user( summaryPrompt ),
-				{},
-				{
-					provider: variables.summaryProvider.len() ? variables.summaryProvider : static.DEFAULT_SUMMARY_PROVIDER,
-					model: variables.summaryModel.len() ? variables.summaryModel : static.DEFAULT_SUMMARY_MODEL
-				}
-			);
+			var summary = variables.summaryModelInstance.run( aiMessage().user( summaryPrompt ) );
 
 			// Rebuild memory structure
 			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
@@ -242,7 +247,7 @@ class extends="WindowMemory" {
 		var summary = super.getSummary();
 		summary.maxMessages = variables.maxMessages;
 		summary.summaryThreshold = variables.summaryThreshold;
-		summary.summaryModel = variables.summaryModel;
+		summary.summaryModel = variables.summaryModelName;
 		summary.summaryProvider = variables.summaryProvider;
 		summary.hasSummary = variables.hasSummary;
 		return summary;
@@ -258,7 +263,7 @@ class extends="WindowMemory" {
 		var exported = super.export();
 		exported.maxMessages = variables.maxMessages;
 		exported.summaryThreshold = variables.summaryThreshold;
-		exported.summaryModel = variables.summaryModel;
+		exported.summaryModel = variables.summaryModelName;
 		exported.summaryProvider = variables.summaryProvider;
 		exported.currentSummary = variables.currentSummary;
 		exported.hasSummary = variables.hasSummary;
@@ -287,12 +292,18 @@ class extends="WindowMemory" {
 		}
 
 		if ( arguments.data.keyExists( "summaryModel" ) ) {
-			variables.summaryModel = arguments.data.summaryModel;
+			variables.summaryModelName = arguments.data.summaryModel;
 		}
 
 		if ( arguments.data.keyExists( "summaryProvider" ) ) {
 			variables.summaryProvider = arguments.data.summaryProvider;
 		}
+
+		// Recreate the AI model instance
+		variables.summaryModelInstance = aiModel(
+			variables.summaryProvider,
+			variables.summaryModelName
+		);
 
 		if ( arguments.data.keyExists( "currentSummary" ) ) {
 			variables.currentSummary = arguments.data.currentSummary;
