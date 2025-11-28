@@ -395,11 +395,11 @@ public class QdrantVectorMemoryTest extends BaseIntegrationTest {
 		    } );
 
 		    // Add documents with metadata
-		    memory.add( "Programming tutorials for beginners", { category: "tutorial", level: "beginner" } );
-		    memory.add( "Advanced programming concepts", { category: "advanced", level: "expert" } );
-		    memory.add( "Programming reference guide", { category: "reference", level: "all" } );
+		    memory.add( { text: "Programming tutorials for beginners", metadata: { category: "tutorial", level: "beginner" } } );
+		    memory.add( { text: "Advanced programming concepts", metadata: { category: "advanced", level: "expert" } } );
+		    memory.add( { text: "Programming reference guide", metadata: { category: "reference", level: "all" } } );
 
-		    // Wait for indexing
+		    // Wait for indexing (Qdrant may need more time for metadata indexing)
 		    sleep( 1000 );
 
 		    // Search with filter
@@ -427,7 +427,7 @@ public class QdrantVectorMemoryTest extends BaseIntegrationTest {
 		IStruct testResult = variables.getAsStruct( result );
 
 		// Qdrant has excellent metadata filtering support
-		assertTrue( testResult.getAsInteger( Key.of( "resultCount" ) ) >= 1 );
+		assertTrue( testResult.getAsInteger( Key.of( "resultCount" ) ) >= 1, "Should have filtered results" );
 		assertTrue( testResult.getAsBoolean( Key.of( "hasResults" ) ) );
 
 		// Verify the result has the correct category
