@@ -1,0 +1,37 @@
+// basic-agent.bxs
+// Your first AI agent - simple but with memory!
+// Run with: boxlang basic-agent.bxs
+
+println( "🤖 Basic Agent Demo" )
+println( "─".repeat( 40 ) )
+println()
+
+// Create a simple agent
+agent = aiAgent(
+    name: "Helper",
+    description: "A helpful AI assistant",
+    instructions: "Be concise and friendly. Help users with their questions. Remember information they share."
+)
+
+// First interaction
+println( "User: Hi, my name is Alex" )
+response1 = agent.run( "Hi, my name is Alex" )
+println( "Agent: " & response1 )
+println()
+
+// Second interaction - agent should remember!
+println( "User: What's my name?" )
+response2 = agent.run( "What's my name?" )
+println( "Agent: " & response2 )
+println()
+
+// Third interaction
+println( "User: I work as a developer" )
+response3 = agent.run( "I work as a developer" )
+println( "Agent: " & response3 )
+println()
+
+// Fourth interaction - check memory
+println( "User: What do you know about me?" )
+response4 = agent.run( "What do you know about me?" )
+println( "Agent: " & response4 )

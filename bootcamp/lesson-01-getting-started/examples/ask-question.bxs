@@ -1,0 +1,9 @@
+// ask-question.bxs
+// Ask the AI a question and get an answer
+// Run with: boxlang ask-question.bxs
+
+question = "What is BoxLang in one sentence?"
+answer = aiChat( question )
+
+println( "Q: " & question )
+println( "A: " & answer )

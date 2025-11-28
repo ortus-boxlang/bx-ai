@@ -1,0 +1,54 @@
+// tool-agent.bxs
+// Agent with multiple tools - it decides which to use!
+// Run with: boxlang tool-agent.bxs
+
+println( "🛠️ Tool Agent Demo" )
+println( "═".repeat( 40 ) )
+println()
+
+// Tool 1: Weather lookup
+weatherData = { "Boston": 72, "Miami": 85, "Denver": 65, "Seattle": 58 }
+weatherTool = aiTool(
+    "get_weather",
+    "Get current weather for a city",
+    ( args ) => {
+        temp = weatherData[ args.city ] ?: 70
+        return "#temp#°F in #args.city#"
+    }
+).describeCity( "City name (Boston, Miami, Denver, or Seattle)" )
+
+// Tool 2: Calculator
+calculatorTool = aiTool(
+    "calculate",
+    "Perform math calculations",
+    ( args ) => {
+        try {
+            return evaluate( args.expression )
+        } catch( any e ) {
+            return "Error: " & e.message
+        }
+    }
+).describeExpression( "Math expression like '2+2' or '100*0.2'" )
+
+// Create agent with tools
+agent = aiAgent(
+    name: "SmartAssistant",
+    description: "An assistant that can check weather and do math",
+    instructions: "Help users with weather info and calculations. Be brief and friendly.",
+    tools: [ weatherTool, calculatorTool ]
+)
+
+// Test different questions
+questions = [
+    "What's the weather in Miami?",
+    "What's 15% of 200?",
+    "Is Boston warmer than Denver?",
+    "Calculate 50 * 3 + 25"
+]
+
+for( question in questions ) {
+    println( "User: " & question )
+    response = agent.run( question )
+    println( "Agent: " & response )
+    println( "─".repeat( 40 ) )
+}

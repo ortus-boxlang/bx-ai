@@ -1,0 +1,45 @@
+// weather-tool.bxs
+// Create a weather lookup tool
+// Run with: boxlang weather-tool.bxs
+
+println( "🌤️ Weather Tool Demo" )
+println( "─".repeat( 40 ) )
+println()
+
+// Simulated weather data (in real app, you'd call a weather API)
+weatherDatabase = {
+    "Boston": { temp: 72, condition: "Sunny" },
+    "New York": { temp: 68, condition: "Cloudy" },
+    "Miami": { temp: 85, condition: "Hot and humid" },
+    "San Francisco": { temp: 62, condition: "Foggy" },
+    "Denver": { temp: 65, condition: "Clear" }
+}
+
+weatherTool = aiTool(
+    "get_weather",
+    "Get current weather for a city. Use when asked about weather conditions.",
+    ( args ) => {
+        city = args.city
+        
+        if( weatherDatabase.keyExists( city ) ) {
+            data = weatherDatabase[ city ]
+            return "Weather in #city#: #data.temp#°F, #data.condition#"
+        }
+        
+        return "Weather data not available for #city#. Try: #weatherDatabase.keyList()#"
+    }
+).describeCity( "The city name to get weather for (e.g., 'Boston', 'Miami')" )
+
+// Test questions
+questions = [
+    "What's the weather like in Boston today?",
+    "Is it warm in Miami?",
+    "How's the weather in San Francisco?"
+]
+
+for( question in questions ) {
+    println( "Q: " & question )
+    answer = aiChat( question, { tools: [ weatherTool ] } )
+    println( "A: " & answer )
+    println()
+}
