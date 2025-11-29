@@ -37,12 +37,19 @@ class extends="BaseVectorMemory" {
 		// Default configurations
 		DEFAULT_DISTANCE_FUNCTION = "COSINE"
 		DEFAULT_TABLE = "bx_ai_vectors"
+		DEFAULT_DIMENSIONS = 1536
 		// Distance function mappings for MySQL 9 vector operations
 		// MySQL 9 uses DISTANCE() with algorithm parameter or dedicated functions
 		DISTANCE_FUNCTIONS = {
 			"L2": "L2",                // DISTANCE(v1, v2, 'L2') or direct L2 distance
 			"COSINE": "COSINE",        // DISTANCE(v1, v2, 'COSINE')
 			"DOT": "DOT"               // DISTANCE(v1, v2, 'DOT') - dot product
+		}
+		// Mapping from distance functions to index metric names
+		DISTANCE_METRICS = {
+			"L2": "EUCLIDEAN",
+			"COSINE": "COSINE",
+			"DOT": "DOT"
 		}
 	}
 
@@ -69,7 +76,8 @@ class extends="BaseVectorMemory" {
 
 		variables.datasource = arguments.config.datasource
 		variables.table = arguments.config.table
-		variables.distanceFunction = arguments.config.distanceFunction.ucase()
+		// Safe uppercase conversion - distanceFunction has a default from param statement
+		variables.distanceFunction = ( arguments.config.distanceFunction ?: static.DEFAULT_DISTANCE_FUNCTION ).ucase()
 
 		// Validate distance function
 		if ( !static.DISTANCE_FUNCTIONS.keyExists( variables.distanceFunction ) ) {
@@ -118,8 +126,7 @@ class extends="BaseVectorMemory" {
 		required struct metadata
 	) {
 		// Convert embedding array to MySQL vector format
-		// MySQL 9 uses STRING_TO_VECTOR('[x,y,z]') or direct vector literal
-		var vectorStr = "[" & arguments.embedding.toList() & "]"
+		var vectorStr = formatVectorString( arguments.embedding )
 
 		// Serialize metadata to JSON
 		var metadataJson = jsonSerialize( arguments.metadata )
@@ -163,7 +170,7 @@ class extends="BaseVectorMemory" {
 		required numeric limit,
 		required struct filter
 	) {
-		var vectorStr = "[" & arguments.embedding.toList() & "]"
+		var vectorStr = formatVectorString( arguments.embedding )
 		var distanceFunc = variables.distanceFunction
 
 		// Build WHERE clause with optional metadata filter
@@ -404,7 +411,7 @@ class extends="BaseVectorMemory" {
 		}
 
 		// Determine dimensions (must be set or detected)
-		var dims = variables.dimensions > 0 ? variables.dimensions : 1536; // Default to OpenAI dimensions
+		var dims = variables.dimensions > 0 ? variables.dimensions : static.DEFAULT_DIMENSIONS;
 
 		// Create table with vector column
 		// MySQL 9 uses VECTOR(n) data type
@@ -443,8 +450,8 @@ class extends="BaseVectorMemory" {
 	private void function createVectorIndex() {
 		try {
 			// MySQL 9 uses VECTOR INDEX with HNSW algorithm
-			// DISTANCE_METRIC options: EUCLIDEAN, COSINE, DOT
-			var distanceMetric = variables.distanceFunction == "L2" ? "EUCLIDEAN" : variables.distanceFunction
+			// Get the appropriate distance metric for the index
+			var distanceMetric = static.DISTANCE_METRICS[ variables.distanceFunction ]
 
 			queryExecute(
 				"ALTER TABLE #variables.table#
@@ -456,7 +463,7 @@ class extends="BaseVectorMemory" {
 			)
 		} catch ( any e ) {
 			// Index may already exist or MySQL version may not support VECTOR INDEX
-			// Silently ignore as the table will still work without an index
+			// This is expected in some scenarios, log for debugging if needed
 		}
 	}
 
@@ -522,6 +529,17 @@ class extends="BaseVectorMemory" {
 		return cleaned
 			.listToArray( "," )
 			.map( target => val( target ) )
+	}
+
+	/**
+	 * Format an array of numbers as a MySQL vector string
+	 *
+	 * @embedding Array of embedding values
+	 *
+	 * @return String in format "[x,y,z,...]"
+	 */
+	private string function formatVectorString( required array embedding ) {
+		return "[" & arguments.embedding.toList() & "]"
 	}
 
 }
