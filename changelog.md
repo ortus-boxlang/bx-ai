@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Mistral AI Provider Support**: Full integration with Mistral AI services
+    - New `MistralService` provider class with OpenAI-compatible API
+    - Chat completions with streaming support
+    - Embeddings support with `mistral-embed` model
+    - Tool/function calling support
+    - Default model: `mistral-small-latest`
+    - API key detection via `MISTRAL_API_KEY` environment variable
+    - Comprehensive integration tests
 - **Embeddings Support**: Complete embeddings functionality for semantic search, clustering, and recommendations
     - New `aiEmbedding()` BIF for generating text embeddings
     - New `AiEmbeddingRequest` class to model embedding requests

@@ -65,6 +65,7 @@ The following are the AI providers supported by this module. **Please note that 
 - 🔍 [DeepSeek](https://www.deepseek.com/)
 - 💎 [Gemini](https://gemini.google.com/)
 - ⚡ [Grok](https://grok.com/)
+- 🌀 [Mistral](https://mistral.ai/)
 - 🦙 [Ollama](https://ollama.ai/)
 - 🟢 [OpenAI](https://www.openai.com/)
 - 🔀 [OpenRouter](https://openrouter.ai/)
@@ -97,6 +98,7 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | DeepSeek  | ✅ | ✅ | ✅ |
 | Gemini    	| [Coming Soon]   | ✅ | ✅ |
 | Grok      	 | ✅ | ✅ | ✅ |
+| Mistral      | ✅ | ✅ | ✅ |
 | Ollama       | ✅ | ✅ | ✅ |
 | OpenAI       | ✅ | ✅ | ✅ (Native) |
 | OpenRouter   | ✅ | ✅ | ✅ |
@@ -316,7 +318,7 @@ Here are the settings you can place in your `boxlang.json` file:
 	"modules" : {
 		"bxai" : {
 			"settings": {
-				// The default provider to use: openai, claude, deepseek, gemini, grok, ollama, openrouter, perplexity
+				// The default provider to use: openai, claude, deepseek, gemini, grok, mistral, ollama, openrouter, perplexity
 				"provider" : "openai",
 				// The default API Key for the provider
 				"apiKey" : "",
