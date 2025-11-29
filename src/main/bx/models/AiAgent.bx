@@ -611,7 +611,7 @@ class extends="AiBaseRunnable" {
 			description: toolDescription,
 			callable: ( task ) => {
 				// Invoke the sub-agent with the task
-				return  .run( task );
+				return targetSubAgent.run( task );
 			}
 		).describeArg( "task", "The task or question to delegate to the sub-agent" );
 	}
