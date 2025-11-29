@@ -449,28 +449,19 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
-	 * Get all registered sub-agents
-	 *
-	 * @return Array of sub-agents
-	 */
-	array function getSubAgents() {
-		return variables.subAgents;
-	}
-
-	/**
 	 * Get a sub-agent by name
 	 *
 	 * @name The name of the sub-agent to find
 	 *
 	 * @return The sub-agent if found, or null
 	 */
-	any function getSubAgent( required string name ) {
+	AiAgent function getSubAgent( required string name ) {
 		for ( var subAgent in variables.subAgents ) {
-			if ( subAgent.getConfig().name == arguments.name ) {
+			if ( subAgent.getAgentName() == arguments.name ) {
 				return subAgent;
 			}
 		}
-		return javacast( "null", "" );
+		return null
 	}
 
 	/**
@@ -482,6 +473,15 @@ class extends="AiBaseRunnable" {
 	 */
 	boolean function hasSubAgent( required string name ) {
 		return !isNull( getSubAgent( arguments.name ) );
+	}
+
+	/**
+	 * Get the names of all registered sub-agents
+	 *
+	 * @return Array of sub-agent names
+	 */
+	Array function getSubAgentNames() {
+		return variables.subAgents.map( agent => agent.getAgentName() );
 	}
 
 	/**
@@ -611,7 +611,7 @@ class extends="AiBaseRunnable" {
 			description: toolDescription,
 			callable: ( task ) => {
 				// Invoke the sub-agent with the task
-				return targetSubAgent.run( task );
+				return  .run( task );
 			}
 		).describeArg( "task", "The task or question to delegate to the sub-agent" );
 	}
