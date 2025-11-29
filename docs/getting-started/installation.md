@@ -247,6 +247,23 @@ ollama run llama3.2 "Hello!"
 }
 ```
 
+**HuggingFace**:
+
+```json
+{
+  "provider": "huggingface",
+  "apiKey": "hf_..."
+}
+```
+
+**Get your API key**: [https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+
+**Popular models**:
+
+- `Qwen/Qwen2.5-72B-Instruct` - Default, powerful general-purpose model
+- `meta-llama/Llama-3.1-8B-Instruct` - Meta's Llama model
+- `mistralai/Mistral-7B-Instruct-v0.3` - Fast and efficient
+
 **DeepSeek**:
 
 ```json
