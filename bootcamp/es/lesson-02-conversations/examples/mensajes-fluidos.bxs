@@ -1,0 +1,10 @@
+// mensajes-fluidos.bxs
+// Usando aiMessage() para construcción fluida
+// Ejecutar con: boxlang mensajes-fluidos.bxs
+
+messages = aiMessage()
+    .system( "You are a friendly math tutor. Be encouraging!" )
+    .user( "What is 5 + 3?" )
+
+answer = aiChat( messages )
+println( answer )

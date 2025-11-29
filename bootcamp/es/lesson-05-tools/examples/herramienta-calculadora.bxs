@@ -1,0 +1,23 @@
+// herramienta-calculadora.bxs
+// Herramienta de calculadora para la IA
+// Ejecutar con: boxlang herramienta-calculadora.bxs
+
+calculatorTool = aiTool(
+    "calculator",
+    "Performs mathematical calculations. Use for any math operations.",
+    ( args ) => {
+        // Parsea la expresión y calcula
+        expression = args.expression
+        result = evaluate( expression )
+        return "Result: " & result
+    }
+).describeExpression( "The math expression to calculate, e.g. '2 + 2' or '100 * 0.15'" )
+
+// Usa la herramienta
+answer = aiChat(
+    "What is 15% of 200?",
+    { tools: [ calculatorTool ] }
+)
+
+println( answer )
+// Salida: "15% de 200 es 30"

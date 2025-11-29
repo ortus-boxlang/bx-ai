@@ -562,7 +562,7 @@ You've completed the BoxLang AI Bootcamp! You now know:
 
 ### Deep Dive: Full Course
 
-Take the [12-lesson course](../course/) for:
+Take the [12-lesson course](../../course/) for:
 - Streaming responses
 - Pipeline workflows
 - Advanced memory systems
@@ -572,7 +572,7 @@ Take the [12-lesson course](../course/) for:
 
 ### Explore Examples
 
-Check out the [examples folder](../examples/) for more code.
+Check out the [examples folder](../../examples/) for more code.
 
 ### Build Something!
 
