@@ -223,19 +223,15 @@ class extends="AiBaseRunnable" {
 			return arguments.input.render();
 		}
 
-		// Array of messages, return as-is
+		// Array of messages
+		// Process each message
 		if( isArray( arguments.input ) ) {
 			return arguments.input.map( m => extractMessages( m ) );
 		}
 
-		// Struct with messages key
-		if( isStruct( arguments.input ) && structKeyExists( arguments.input, "messages" ) ) {
-			return arguments.input.messages;
-		}
-
-		// Empty struct - no messages
-		if( isStruct( arguments.input ) && arguments.input.isEmpty() ) {
-			return [];
+		// Struct message, this can be different per LLM, just pass it through
+		if( isStruct( arguments.input ) ) {
+			return [ arguments.input ];
 		}
 
 		// Simple string - convert to user message
