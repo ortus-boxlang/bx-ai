@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **HuggingFace Provider Support**: Full integration with HuggingFace Inference API
+    - New `HuggingFaceService` provider class extending BaseService
+    - OpenAI-compatible API endpoint at `router.huggingface.co/v1`
+    - Default model: `Qwen/Qwen2.5-72B-Instruct`
+    - Support for chat completions and embeddings
+    - Integration tests for HuggingFace provider
+    - API key pattern: `HUGGINGFACE_API_KEY`
 - **Embeddings Support**: Complete embeddings functionality for semantic search, clustering, and recommendations
     - New `aiEmbedding()` BIF for generating text embeddings
     - New `AiEmbeddingRequest` class to model embedding requests
