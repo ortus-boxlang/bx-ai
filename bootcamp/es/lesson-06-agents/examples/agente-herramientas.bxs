@@ -1,0 +1,35 @@
+// agente-herramientas.bxs
+// Agente con herramientas
+// Ejecutar con: boxlang agente-herramientas.bxs
+
+// Crear herramientas
+weatherTool = aiTool(
+    "get_weather",
+    "Get weather for a city",
+    ( args ) => {
+        data = { "Boston": 72, "Miami": 85, "Denver": 65 }
+        return "#data[ args.city ] ?: 70#°F in #args.city#"
+    }
+).describeCity( "City name" )
+
+calculatorTool = aiTool(
+    "calculate",
+    "Perform math calculations",
+    ( args ) => evaluate( args.expression )
+).describeExpression( "Math expression" )
+
+// Crear agente con herramientas
+agent = aiAgent(
+    name: "SmartAssistant",
+    description: "An assistant that can check weather and do math",
+    instructions: "Help users with weather info and calculations.",
+    tools: [ weatherTool, calculatorTool ]
+)
+
+// ¡El agente usa herramientas automáticamente!
+println( "Pregunta: ¿Cuál es el clima en Miami?" )
+println( agent.run( "What's the weather in Miami?" ) )
+println()
+
+println( "Pregunta: ¿Cuánto es 20% de 150?" )
+println( agent.run( "What's 20% of 150?" ) )

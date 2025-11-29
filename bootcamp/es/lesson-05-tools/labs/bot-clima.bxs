@@ -1,0 +1,108 @@
+// bot-clima.bxs
+// Laboratorio: Bot del clima con múltiples herramientas
+// Ejecutar con: boxlang bot-clima.bxs
+
+println( "🌤️ Bot del Clima" )
+println( "═".repeat( 40 ) )
+println()
+
+// Datos de clima (simulados)
+weatherData = {
+    "Boston": { temp: 72, condition: "Sunny", humidity: 45 },
+    "New York": { temp: 68, condition: "Cloudy", humidity: 60 },
+    "Miami": { temp: 85, condition: "Hot", humidity: 80 },
+    "San Francisco": { temp: 62, condition: "Foggy", humidity: 70 },
+    "Denver": { temp: 58, condition: "Clear", humidity: 30 }
+}
+
+// Herramienta 1: Obtener clima
+weatherTool = aiTool(
+    "get_weather",
+    "Get current weather for a city. Returns temperature in Fahrenheit.",
+    ( args ) => {
+        city = args.city
+
+        if( weatherData.keyExists( city ) ) {
+            data = weatherData[ city ]
+            return "Weather in #city#: #data.temp#°F, #data.condition#, Humidity: #data.humidity#%"
+        }
+
+        return "No weather data for #city#. Available cities: #weatherData.keyList()#"
+    }
+).describeCity( "City name exactly as: Boston, New York, Miami, San Francisco, or Denver" )
+
+// Herramienta 2: Convertir temperatura
+convertTool = aiTool(
+    "convert_temperature",
+    "Convert temperature between Fahrenheit and Celsius",
+    ( args ) => {
+        temp = args.temperature
+        from = args.fromUnit.uCase()
+
+        if( from == "F" || from == "FAHRENHEIT" ) {
+            celsius = ( temp - 32 ) * 5/9
+            return "#temp#°F = #numberFormat( celsius, '0.0' )#°C"
+        } else {
+            fahrenheit = ( temp * 9/5 ) + 32
+            return "#temp#°C = #numberFormat( fahrenheit, '0.0' )#°F"
+        }
+    }
+)
+.describeTemperature( "The temperature value as a number" )
+.describeFromUnit( "The unit to convert FROM: 'F' for Fahrenheit or 'C' for Celsius" )
+
+// Herramienta 3: Comparar ciudades
+compareTool = aiTool(
+    "compare_cities",
+    "Compare weather between two cities",
+    ( args ) => {
+        city1 = args.city1
+        city2 = args.city2
+
+        if( !weatherData.keyExists( city1 ) || !weatherData.keyExists( city2 ) ) {
+            return "Can't compare - need valid cities"
+        }
+
+        data1 = weatherData[ city1 ]
+        data2 = weatherData[ city2 ]
+        diff = data1.temp - data2.temp
+
+        if( diff > 0 ) {
+            return "#city1# is #abs(diff)#°F warmer than #city2#"
+        } else if( diff < 0 ) {
+            return "#city2# is #abs(diff)#°F warmer than #city1#"
+        } else {
+            return "#city1# and #city2# are the same temperature"
+        }
+    }
+)
+.describeCity1( "First city to compare" )
+.describeCity2( "Second city to compare" )
+
+// Todas las herramientas
+tools = [ weatherTool, convertTool, compareTool ]
+
+// Bucle de chat
+println( "¡Pregúntame sobre el clima! Escribe 'salir' para terminar." )
+println( "─".repeat( 40 ) )
+println()
+
+running = true
+while( running ) {
+    print( "Tú: " )
+    question = readLine()
+
+    if( question.trim() == "salir" ) {
+        running = false
+        println( "☀️ ¡Adiós!" )
+    } else {
+        try {
+            answer = aiChat( question, { tools: tools } )
+            println( "Bot: " & answer )
+            println()
+        } catch( any e ) {
+            println( "❌ Error: " & e.message )
+            println()
+        }
+    }
+}

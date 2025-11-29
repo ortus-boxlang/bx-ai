@@ -1,0 +1,13 @@
+// extraccion-clase.bxs
+// Usando clases para salida estructurada con tipos seguros
+// Ejecutar con: boxlang extraccion-clase.bxs
+
+// Extrae en la clase Persona
+result = aiChat(
+    "Extract: Sarah Connor, 35, sarah@resistance.org"
+).structuredOutput( new Persona() )
+
+// ¡Usa getters!
+println( "Nombre: " & result.getName() )
+println( "Edad: " & result.getAge() )
+println( "Email: " & result.getEmail() )

@@ -1,0 +1,82 @@
+// agente-investigacion.bxs
+// Laboratorio: Agente de investigación
+// Ejecutar con: boxlang agente-investigacion.bxs
+
+println( "🔍 Agente de Investigación" )
+println( "═".repeat( 40 ) )
+println()
+
+// Base de conocimiento simulada
+knowledgeBase = {
+    "boxlang": "BoxLang is a modern dynamic JVM language with CFML compatibility.",
+    "java": "Java is a widely-used programming language for enterprise applications.",
+    "ai": "Artificial Intelligence enables machines to simulate human intelligence.",
+    "llm": "Large Language Models are AI systems trained on vast text datasets."
+}
+
+// Crear herramienta de búsqueda
+searchTool = aiTool(
+    "search",
+    "Search the knowledge base for information",
+    ( args ) => {
+        query = args.query.lCase()
+        for( topic in knowledgeBase.keyList() ) {
+            if( query.findNoCase( topic ) > 0 ) {
+                return "Found: " & knowledgeBase[ topic ]
+            }
+        }
+        return "No results for '#args.query#'. Try: #knowledgeBase.keyList()#"
+    }
+).describeQuery( "What to search for" )
+
+// Crear herramienta de resumen
+summarizeTool = aiTool(
+    "summarize",
+    "Create a brief summary of given text",
+    ( args ) => {
+        text = args.text
+        // Simulación simple - en app real, podría usar IA
+        return "Summary: " & left( text, 100 ) & "..."
+    }
+).describeText( "Text to summarize" )
+
+// Crear el agente de investigación
+researchAgent = aiAgent(
+    name: "Researcher",
+    description: "A research agent that searches and summarizes information",
+    instructions: "
+        You are a research assistant.
+        - Search for topics when asked
+        - Provide clear explanations
+        - Summarize when requested
+        - Remember what the user has asked about
+    ",
+    tools: [ searchTool, summarizeTool ],
+    memory: aiMemory( "windowed", { maxMessages: 10 } )
+)
+
+// Bucle de chat
+println( "¡Pídeme que investigue algo!" )
+println( "Temas que conozco: #knowledgeBase.keyList()#" )
+println( "─".repeat( 40 ) )
+println()
+
+running = true
+while( running ) {
+    print( "Tú: " )
+    userInput = readLine()
+
+    if( userInput.trim() == "salir" ) {
+        running = false
+        println( "¡Adiós! 📚" )
+    } else {
+        try {
+            response = researchAgent.run( userInput )
+            println( "Investigador: " & response )
+            println()
+        } catch( any e ) {
+            println( "Error: " & e.message )
+            println()
+        }
+    }
+}
