@@ -65,6 +65,23 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
+  # MySQL 9 with native vector support
+  # MySQL 9.0+ includes native VECTOR type for semantic search
+  # Docs: https://dev.mysql.com/doc/refman/9.0/en/vector-functions.html
+  mysql:
+    image: mysql:9.0
+    container_name: mysql-vector
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_DATABASE=vectordb
+      - MYSQL_USER=boxlang
+      - MYSQL_PASSWORD=boxlang
+      - MYSQL_ROOT_PASSWORD=boxlang
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+
   # Pinecone Local Development Server
   # Official local development server for testing
   # Docs: https://docs.pinecone.io/guides/operations/local-development
@@ -175,6 +192,8 @@ volumes:
     name: chromadb_data
   postgres_data:
     name: postgres_data
+  mysql_data:
+    name: mysql_data
   milvus_etcd_data:
     name: milvus_etcd_data
   milvus_minio_data:
