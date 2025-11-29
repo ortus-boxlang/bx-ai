@@ -21,6 +21,7 @@ model = aiModel()
 model = aiModel( "openai" )
 model = aiModel( "claude" )
 model = aiModel( "gemini" )
+model = aiModel( "mistral" )
 model = aiModel( "ollama" )
 
 // With custom API key
