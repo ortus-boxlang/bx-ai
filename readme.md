@@ -16,19 +16,29 @@
 
 <p>&nbsp;</p>
 
-## Welcome
+## 👋 Welcome
 
 ![BoxLang AI Module](BoxLangAI.png)
 
-Welcome to the BoxLang AI Module. This module provides AI generation capabilities to your [BoxLang](www.boxlang.io) applications in an easy to use and abstracted API, so you can interact with ANY AI provider in a consistent manner.
+Welcome to the **BoxLang AI Module** 🚀 This module provides AI generation capabilities to your [BoxLang](www.boxlang.io) applications in an easy to use and abstracted API, so you can interact with ANY AI provider in a consistent manner. Our core focus is productivity, fluency and ease of use. ✨
 
-> We also have an `bx-aiplus` module that enhances this module with more AI providers, capabilities and features.  The `bx-aiplus` module is part of our [BoxLang +/++ subscriptions](https://boxlang.io/plans).
+BoxLang AI eliminates the complexity of working with multiple AI providers by offering a unified interface. Whether you're using OpenAI, Claude, Gemini, Grok, DeepSeek, or Perplexity, your code remains the same—just change a configuration setting to switch providers. 🔄
 
-## License
+### ✨ Key Features
 
-BoxLang is open source and licensed under the [Apache 2](https://www.apache.org/licenses/LICENSE-2.0.html) license.
+- 🔌 **Multi-Provider Support** - Seamlessly integrate with leading AI providers through a single API
+- 💬 **Fluent Interface** - Chainable, expressive syntax that makes AI integration intuitive
+- 📝 **Flexible Messaging** - Send simple strings, structured messages, or complex conversation arrays
+- ⚡ **Async Support** - Built-in asynchronous capabilities with futures for non-blocking operations
+- ⚙️ **Configurable** - Global defaults, per-request overrides, and comprehensive logging options
+- 🎯 **Event-Driven** - Intercept and extend AI processing with lifecycle events
+- 🏭 **Production-Ready** - Timeout controls, error handling, and debugging tools
 
-## Getting Started
+## 📄 License
+
+BoxLang is open source and licensed under the [Apache 2](https://www.apache.org/licenses/LICENSE-2.0.html) license. 🎉 You can also get a professionally supported version with enterprise features and support via our BoxLang +/++ Plans (www.boxlang.io/plans). 💼
+
+## 🚀 Getting Started
 
 You can easily get started with BoxLang AI by using the module installer:
 
@@ -36,9 +46,10 @@ You can easily get started with BoxLang AI by using the module installer:
 install-bx-module bx-ai
 ```
 
-If you would like to leverage it in your CommandBox Based Web applications, make sure you add it to your `server.json` or use `box install bx-ai`.
+> If you would like to leverage it in your CommandBox Based Web applications, make sure you add it to your `server.json` or use `box install bx-ai`.
 
-Once installed you can leverage the global functions (BIFs) in your BoxLang code.  Here is a simple example:
+Once installed, make sure you setup any of the supported AI providers and their API keys in your `boxlang.json` configuration file.  After that
+you can leverage the global functions (BIFs) in your BoxLang code.  Here is a simple example:
 
 ```java
 // chat.bxs
@@ -46,39 +57,39 @@ answer = aiChat( "How amazing is BoxLang?" )
 println( answer )
 ```
 
-## Providers
+## 🤖 Providers
 
-The following are the AI providers supported by this module.  **Please note that in order to interact with these providers you will need to have an account with them and an API key.**
+The following are the AI providers supported by this module. **Please note that in order to interact with these providers you will need to have an account with them and an API key.** 🔑
 
-- [Claude Anthropic](https://www.anthropic.com/claude)
-- [DeepSeek](https://www.deepseek.com/)
-- [Gemini](https://gemini.google.com/)
-- [Grok](https://grok.com/)
-- [OpenAI](https://www.openai.com/)
-- [OpenRouter](https://openrouter.ai/)
-- [Perplexity](https://docs.perplexity.ai/)
+- 🧠 [Claude Anthropic](https://www.anthropic.com/claude)
+- 🔍 [DeepSeek](https://www.deepseek.com/)
+- 💎 [Gemini](https://gemini.google.com/)
+- ⚡ [Grok](https://grok.com/)
+- 🦙 [Ollama](https://ollama.ai/)
+- 🟢 [OpenAI](https://www.openai.com/)
+- 🔀 [OpenRouter](https://openrouter.ai/)
+- 🔮 [Perplexity](https://docs.perplexity.ai/)
 
-> More providers and features are available in our `bx-aiplus` module.
-
-## Features
+## 🎯 Features
 
 Here are some of the features of this module:
 
-- Integration with multiple AI providers
-- **Structured Output** - Type-safe AI responses using BoxLang classes, structs, or JSON schemas
-- Compose raw chat requests
-- Build message objects
-- Create AI service objects
-- Create AI tool objects
-- Generate embeddings for semantic search
-- Fluent API
-- Asynchronous chat requests
-- Global defaults
-- And much more
+- 🔌 Integration with multiple AI providers
+- 📦 **Structured Output** - Type-safe AI responses using BoxLang classes, structs, or JSON schemas
+- 🤖 **AI Agents** - Autonomous agents with memory, tools, and sub-agent orchestration
+- 📝 Compose raw chat requests
+- 💬 Build message objects
+- 🛠️ Create AI service objects
+- 🔧 Create AI tool objects
+- 🔍 Generate embeddings for semantic search
+- ⛓️ Fluent API
+- ⚡ Asynchronous chat requests
+- 🌐 Global defaults
+- ✨ And much more
 
-## Provider Support Matrix
+## 📊 Provider Support Matrix
 
-Here is a matrix of the providers and their feature support.  Please keep checking as we will be adding more providers and features to this module.
+Here is a matrix of the providers and their feature support. Please keep checking as we will be adding more providers and features to this module. 🔄
 
 | Provider   | Real-time Tools | Embeddings | Structured Output |
 |------------|-----------------|------------|-------------------|
@@ -93,19 +104,19 @@ Here is a matrix of the providers and their feature support.  Please keep checki
 
 **Note:** OpenAI provides native structured output support with strict schema validation. Other providers use JSON mode with schema constraints, which provides excellent results but may occasionally require prompt refinement.
 
-## Structured Output
+## 📦 Structured Output
 
-Get **type-safe, validated responses** from AI providers by defining expected output schemas using BoxLang classes, structs, or JSON schemas. The module automatically converts AI responses into properly typed objects, eliminating manual parsing and validation.
+Get **type-safe, validated responses** ✅ from AI providers by defining expected output schemas using BoxLang classes, structs, or JSON schemas. The module automatically converts AI responses into properly typed objects, eliminating manual parsing and validation. 🎯
 
-### Why Use Structured Output?
+### 🤔 Why Use Structured Output?
 
-- **Type Safety**: Get validated objects instead of parsing JSON strings
-- **Automatic Validation**: Schema constraints ensure correct data types and required fields
-- **Better Reliability**: Reduces hallucinations by constraining response format
-- **Developer Experience**: Work with native BoxLang objects immediately
-- **Testing & Caching**: Use `aiPopulate()` to create objects from JSON for tests or cached responses
+- ✅ **Type Safety** - Get validated objects instead of parsing JSON strings
+- 🔒 **Automatic Validation** - Schema constraints ensure correct data types and required fields
+- 🎯 **Better Reliability** - Reduces hallucinations by constraining response format
+- 💻 **Developer Experience** - Work with native BoxLang objects immediately
+- 🧪 **Testing & Caching** - Use `aiPopulate()` to create objects from JSON for tests or cached responses
 
-### Quick Examples
+### 💡 Quick Examples
 
 **Using a Class:**
 
@@ -168,7 +179,7 @@ writeOutput( "Person: #result.person.getName()#<br>" );
 writeOutput( "Company: #result.company.getName()#<br>" );
 ```
 
-### Manual Population with aiPopulate()
+### 🔧 Manual Population with aiPopulate()
 
 Convert JSON responses or cached data into typed objects without making AI calls:
 
@@ -186,39 +197,39 @@ tasksJson = '[{"title":"Task 1","priority":"high"},{"title":"Task 2","priority":
 tasks = aiPopulate( [ new Task() ], tasksJson );
 ```
 
-**Perfect for:**
+**Perfect for:** ⭐
 
-- Testing with mock data
-- Using cached AI responses
-- Converting existing JSON data to typed objects
-- Validating data structures
+- 🧪 Testing with mock data
+- 💾 Using cached AI responses
+- 🔄 Converting existing JSON data to typed objects
+- ✅ Validating data structures
 
-### Provider Support
+### ✅ Provider Support
 
-All providers support structured output! OpenAI offers native structured output with strict validation, while others use JSON mode with schema guidance (which works excellently in practice).
+All providers support structured output! 🎉 OpenAI offers native structured output with strict validation, while others use JSON mode with schema guidance (which works excellently in practice). 💪
 
-### Learn More
+### 📚 Learn More
 
-- **Quick Start**: [Simple Interactions Guide](docs/chatting/structured-output.md)
-- **Advanced Pipelines**: [Pipeline Integration Guide](docs/main-components/structured-output.md)
-- **Interactive Course**: [Lesson 12 - Structured Output](course/lesson-12-structured-output/)
-- **Examples**: Check `examples/structured/` for complete working examples
+- 🚀 **Quick Start**: [Simple Interactions Guide](docs/chatting/structured-output.md)
+- 🔧 **Advanced Pipelines**: [Pipeline Integration Guide](docs/main-components/structured-output.md)
+- 🎓 **Interactive Course**: [Lesson 12 - Structured Output](course/lesson-12-structured-output/)
+- 💻 **Examples**: Check `examples/structured/` for complete working examples
 
-## Memory Systems
+## 🧠 Memory Systems
 
-Build **stateful, context-aware AI applications** with flexible memory systems that maintain conversation history, enable semantic search, and preserve context across interactions. BoxLang AI provides both traditional conversation memory and advanced vector-based memory for semantic understanding.
+Build **stateful, context-aware AI applications** 🎯 with flexible memory systems that maintain conversation history, enable semantic search, and preserve context across interactions. BoxLang AI provides both traditional conversation memory and advanced vector-based memory for semantic understanding. 💡
 
-### Why Use Memory?
+### 🤔 Why Use Memory?
 
-- **Context Retention**: AI remembers previous messages and maintains coherent conversations
-- **Stateful Applications**: Build chat interfaces that remember user preferences and conversation history
-- **Semantic Search**: Find relevant past conversations using vector embeddings
-- **Flexible Storage**: Choose from in-memory, file-based, database, session, or vector storage
-- **Automatic Management**: Memory handles message limits, summarization, and context windows
+- 💭 **Context Retention** - AI remembers previous messages and maintains coherent conversations
+- 💬 **Stateful Applications** - Build chat interfaces that remember user preferences and conversation history
+- 🔍 **Semantic Search** - Find relevant past conversations using vector embeddings
+- 💾 **Flexible Storage** - Choose from in-memory, file-based, database, session, or vector storage
+- ⚙️ **Automatic Management** - Memory handles message limits, summarization, and context windows
 
-### Memory Types
+### 📋 Memory Types
 
-**Standard Memory** (Conversation History):
+**Standard Memory** 💬 (Conversation History):
 
 | Type | Description | Best For |
 |------|-------------|----------|
@@ -229,7 +240,7 @@ Build **stateful, context-aware AI applications** with flexible memory systems t
 | **Cache** | CacheBox-backed | Distributed applications |
 | **JDBC** | Database storage | Enterprise apps, multi-user systems |
 
-**Vector Memory** (Semantic Search):
+**Vector Memory** 🔍 (Semantic Search):
 
 | Type | Description | Best For |
 |------|-------------|----------|
@@ -242,7 +253,7 @@ Build **stateful, context-aware AI applications** with flexible memory systems t
 | **Weaviate** | GraphQL vector database | Complex queries, knowledge graphs |
 | **Milvus** | Enterprise vector DB | Massive datasets, high throughput |
 
-### Quick Examples
+### 💡 Quick Examples
 
 **Windowed Memory:**
 
@@ -288,15 +299,15 @@ memory = aiMemory( "hybrid", {
 // Combines recency with relevance
 ```
 
-### Learn More
+### 📚 Learn More
 
-- **Standard Memory**: [Memory Systems Guide](docs/main-components/memory.md)
-- **Vector Memory**: [Vector Memory Guide](docs/main-components/vector-memory.md)
-- **Custom Memory**: [Building Custom Memory](docs/advanced/custom-memory.md)
-- **Interactive Course**: [Lesson 7 - Memory Systems](course/lesson-07-memory/)
-- **Examples**: Check `examples/advanced/` and `examples/vector-memory/` for complete examples
+- 💬 **Standard Memory**: [Memory Systems Guide](docs/main-components/memory.md)
+- 🔍 **Vector Memory**: [Vector Memory Guide](docs/main-components/vector-memory.md)
+- 🔧 **Custom Memory**: [Building Custom Memory](docs/advanced/custom-memory.md)
+- 🎓 **Interactive Course**: [Lesson 7 - Memory Systems](course/lesson-07-memory/)
+- 💻 **Examples**: Check `examples/advanced/` and `examples/vector-memory/` for complete examples
 
-## Settings
+## ⚙️ Settings
 
 Here are the settings you can place in your `boxlang.json` file:
 
@@ -332,17 +343,17 @@ Here are the settings you can place in your `boxlang.json` file:
 }
 ```
 
-### Ollama Configuration
+### 🦙 Ollama Configuration
 
-**Ollama** allows you to run AI models locally on your machine. It's perfect for privacy, offline use, and cost savings.
+**Ollama** allows you to run AI models locally on your machine. It's perfect for privacy, offline use, and cost savings. 💰
 
-#### Setup Ollama
+#### 🔧 Setup Ollama
 
-1. **Install**: Download from [https://ollama.ai](https://ollama.ai)
-2. **Pull a model**: `ollama pull llama3.2` (or any supported model)
-3. **Start service**: Ollama runs on `http://localhost:11434` by default
+1. 📥 **Install**: Download from [https://ollama.ai](https://ollama.ai)
+2. ⬇️ **Pull a model**: `ollama pull llama3.2` (or any supported model)
+3. ▶️ **Start service**: Ollama runs on `http://localhost:11434` by default
 
-#### Configuration
+#### 📝 Configuration
 
 ```json
 {
@@ -361,17 +372,17 @@ Here are the settings you can place in your `boxlang.json` file:
 }
 ```
 
-#### Popular Ollama Models
+#### 🌟 Popular Ollama Models
 
-- `llama3.2` - Latest Llama model (recommended)
-- `llama3.2:1b` - Smaller, faster model
-- `codellama` - Code-focused model
-- `mistral` - High-quality general model
-- `phi3` - Microsoft's efficient model
+- 🦙 `llama3.2` - Latest Llama model (recommended)
+- ⚡ `llama3.2:1b` - Smaller, faster model
+- 💻 `codellama` - Code-focused model
+- 🎯 `mistral` - High-quality general model
+- 🔷 `phi3` - Microsoft's efficient model
 
-## Return Formats
+## 📤 Return Formats
 
-The AI module supports different return formats for the responses. You can specify the return format in the `options` struct when calling the `aiChat()` or `aiChatAsync()` functions, globally in the settings (as we saw above), or in the `ChatRequest` object.
+The AI module supports different return formats for the responses. You can specify the return format in the `options` struct when calling the `aiChat()` or `aiChatAsync()` functions, globally in the settings (as we saw above), or in the `ChatRequest` object. 🎯
 
 | Format | Description |
 |--------|-------------|
@@ -379,7 +390,7 @@ The AI module supports different return formats for the responses. You can speci
 | `all` | Returns an array of messages. Each message is a struct with `role` and `content` keys, or whatever the LLM returns |
 | `raw` | Returns the raw response from the AI provider. This is useful for debugging or when you need the full response structure so you can mold it as you see fit |
 
-## Global Functions (BIFs)
+## 🛠️ Global Functions (BIFs)
 
 | Function | Purpose | Parameters | Return Type | Async Support |
 |----------|---------|------------|-------------|---------------|
@@ -402,7 +413,7 @@ The AI module supports different return formats for the responses. You can speci
 
 > **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](docs/main-components/overview.md#return-formats) documentation for details.
 
-### Quick Usage Examples
+### 💡 Quick Usage Examples
 
 ```java
 // Simple chat
@@ -448,23 +459,23 @@ result = client.send( "searchDocs", { query: "syntax" } )
 
 This module exposes the following BoxLang global functions (BIFs) for you to interact with the AI providers:
 
-### Chat Functions
+### 💬 Chat Functions
 
 - `aiChat( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get responses back.  This is the easiest way to interact with the AI providers.
 - `aiChatAsync( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get a BoxLang future back so you can build fluent asynchronous code pipelines.
 - `aiChatStream( messages, callback, struct params={}, struct options={} )` : This function will allow you to stream responses from the AI provider in real-time. A callback function is invoked for each chunk of data received.
 - `aiChatRequest( messages, struct params, struct options, struct headers)` - This allows you to compose a raw chat request that you can then later send to an AI service.  The return is a `ChatRequest` object that you can then send to the AI service.
 
-### Embedding Functions
+### 🔢 Embedding Functions
 
 - `aiEmbed( input, struct params={}, struct options={} )` : Generate embeddings for text input. Input can be a single string or an array of strings. Returns numerical vectors that capture semantic meaning, useful for semantic search, clustering, and recommendations.
 
-### Text Processing Functions
+### ✂️ Text Processing Functions
 
 - `aiChunk( text, struct options={} )` : Split text into chunks for processing within AI token limits. Supports multiple chunking strategies (recursive, characters, words, sentences, paragraphs) with configurable chunk size and overlap.
 - `aiTokens( text, struct options={} )` : Estimate token count for text using character-based or word-based methods. Useful for planning API usage and managing token budgets.
 
-### Agent Functions
+### 🤖 Agent Functions
 
 - `aiAgent( name, description, instructions, model, memory, tools, params, options )` - Creates an autonomous AI agent that can maintain conversation memory, use tools, and execute tasks. Agents simplify complex AI workflows by managing state and context automatically.
 - `aiMemory( type, config )` - Creates a memory instance for agents and pipelines. Available types:
@@ -477,7 +488,7 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
   - **`chroma`** - Vector memory with semantic search (ChromaDB)
   - **`hybrid`** - Combines recent + semantic memory
 
-### Helper Functions
+### 🧰 Helper Functions
 
 - `aiMessage( message )` - Allows you to build a message object that you can then use to send to the `aiChat()` or `aiAiRequest()` functions.  It allows you to fluently build up messages as well.
 - `aiModel( provider, apiKey )` - Creates an AI model wrapper that can be configured with tools and used in agents or pipelines. Provides a fluent API for model configuration.
@@ -485,9 +496,9 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 - `aiTool( name, description, callable)` - Creates a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiAiRequest()` functions.
 - `MCP( baseURL )` - Creates a fluent client for consuming Model Context Protocol (MCP) servers. MCP provides standardized access to external tools, resources, and prompts that AI models can use.
 
-## aiChat()/aiChatAsync() - Chat with the AI
+## 💬 aiChat()/aiChatAsync() - Chat with the AI
 
-The `aiChat(), aiChatAsync()` functions are the easiest way to interact with the AI providers in a consistent and abstracted way.  Here are the signatures of the function:
+The `aiChat(), aiChatAsync()` functions are the easiest way to interact with the AI providers in a consistent and abstracted way. Here are the signatures of the function:
 
 ```js
 aiChat( messages, struct params={}, struct options={} )
@@ -519,11 +530,11 @@ The `aiChat()` function will return a message according to the `options.returnFo
 
 > Don't worry that you must do a `role` and `content` in your messages if you use a struct or an array of structs.  The ai providers will understand the structure and process it accordingly.
 
-### System Messages
+### 🎯 System Messages
 
-The `messages` argument as explained allows you to send 3 different types of messages.  Another caveat is that there can only be one `system` message per request.
+The `messages` argument as explained allows you to send 3 different types of messages. Another caveat is that there can only be one `system` message per request. ⚠️
 
-### Examples
+### 💡 Examples
 
 Here are some examples of chatting with the AI:
 
@@ -603,9 +614,9 @@ var future = aiChatAsync( "Write a haiku about recursion in programming." )
 println( future.get() );
 ```
 
-## aiChatStream() - Stream Chat Responses
+## 🌊 aiChatStream() - Stream Chat Responses
 
-The `aiChatStream()` function allows you to receive AI responses in real-time as they are generated, rather than waiting for the complete response. This is ideal for building interactive chat interfaces or showing progressive output to users.
+The `aiChatStream()` function allows you to receive AI responses in real-time as they are generated, rather than waiting for the complete response. This is ideal for building interactive chat interfaces or showing progressive output to users. ⚡
 
 ```js
 aiChatStream( messages, callback, struct params={}, struct options={} )
@@ -703,7 +714,7 @@ aiChatStream(
 println( "\n\nExtracted " & codeBlocks.len() & " code blocks" )
 ```
 
-### Streaming Response Format
+### 📡 Streaming Response Format
 
 The chunk data passed to the callback function follows the Server-Sent Events (SSE) format used by most AI providers. For OpenAI-compatible providers, each chunk typically has this structure:
 
@@ -728,9 +739,9 @@ The chunk data passed to the callback function follows the Server-Sent Events (S
 
 Different providers may have slightly different formats, so consult your provider's documentation for exact details.
 
-## aiAiRequest() - Compose a Chat Request
+## 📝 aiAiRequest() - Compose a Chat Request
 
-The `aiAiRequest()` function allows you to compose a raw chat request that you can then later send to an AI service.  The return is a `ChatRequest` object that you can then send to the AI service.
+The `aiAiRequest()` function allows you to compose a raw chat request that you can then later send to an AI service. The return is a `ChatRequest` object that you can then send to the AI service. 🎯
 
 ```js
 aiChatRequest( messages, struct params, struct options, struct headers )
@@ -760,9 +771,9 @@ Here are the parameters:
     - `xml` : Automatically parse response as XML (uses `xmlParse()`)
 - `headers` : This is a struct of headers that can be used to send to the AI provider.
 
-### AiRequestProperties
+### 🔧 AiRequestProperties
 
-The `ChatRequest` object has several properties that you can use to interact with the request.  All of them have a getter and a setter.
+The `ChatRequest` object has several properties that you can use to interact with the request. All of them have a getter and a setter.
 
 - `messages:array` : The messages to send to the AI provider
 - `chatMessage:ChatMessage` : The original `ChatMessage` object that was used to create the request
@@ -779,7 +790,7 @@ The `ChatRequest` object has several properties that you can use to interact wit
 - `sendAuthHeader:boolean` : Send the API Key as an Authorization header. Default is `true`
 - `headers:struct` : The headers to send to the AI provider
 
-### AiRequestMethods
+### 🛠️ AiRequestMethods
 
 The `ChatRequest` object has several methods that you can use to interact with the request apart from the aforementioned properties setters and getters.
 
@@ -818,9 +829,9 @@ aiRequest = aiChatRequest( "Write a haiku about recursion in programming.", {
 response = aiService().invoke( aiRequest)
 ```
 
-## aiMessage() - Build a Message Object
+## 💬 aiMessage() - Build a Message Object
 
-This function allows you to build up messages that you can then use to send to the `aiChat()` or `aiAiRequest()` functions.  It allows you to fluently build up messages as well as it implements `onMissingMethod()`. Meaning that any method call that is not found in the `ChatMessage` object will be treated as `roled` message: `system( "message" ), user( "message" ), assistant( "message" )`.  This method returns a `ChatMessage` object.
+This function allows you to build up messages that you can then use to send to the `aiChat()` or `aiAiRequest()` functions. It allows you to fluently build up messages as well as it implements `onMissingMethod()`. Meaning that any method call that is not found in the `ChatMessage` object will be treated as `roled` message: `system( "message" ), user( "message" ), assistant( "message" )`. This method returns a `ChatMessage` object. ✨
 
 This is also useful so you can keep track of your messages.
 
@@ -840,11 +851,11 @@ Here are the parameters:
   - An `array of structs` : An array of messages that must have a `role` and a `content` keys
   - A `ChatMessage` object itself.
 
-### ChatMessage Methods
+### 🔧 ChatMessage Methods
 
 The `ChatMessage` object has several methods that you can use to interact with the message.
 
-**Message Management:**
+**Message Management:** 📋
 
 - `add( content ):ChatMessage` : Add a message to the messages array
 - `history( messages ):ChatMessage` : Inflate the message with prior conversation history (array or AiMessage)
@@ -857,7 +868,7 @@ The `ChatMessage` object has several methods that you can use to interact with t
 - `replaceSystemMessage( content )` : Replace the system message with a new one
 - `setMessages( messages ):ChatMessage` : Set the messages
 
-**Multimodal Content (Images, Audio, Video, Documents):**
+**Multimodal Content (Images, Audio, Video, Documents):** 🎨🎵📹📄
 
 - `image( path, detail = "auto" ):ChatMessage` : Add an image URL to the message (OpenAI, Claude, Gemini)
 - `embedImage( filePath, detail = "auto" ):ChatMessage` : Embed a local image file as base64 (OpenAI, Claude, Gemini)
@@ -870,7 +881,7 @@ The `ChatMessage` object has several methods that you can use to interact with t
 - `pdf( path, name = "" ):ChatMessage` : Add a PDF URL (alias for document)
 - `embedPdf( filePath, name = "" ):ChatMessage` : Embed a local PDF file (alias for embedDocument)
 
-**Options Management (for pipelines):**
+**Options Management (for pipelines):** ⚙️
 
 - `withOptions( options ):ChatMessage` : Set default runtime options (returnFormat, timeout, logging, etc.)
 - `singleMessage():ChatMessage` : Convenience for `.withOptions({ returnFormat: "single" })` - returns content string
@@ -880,21 +891,21 @@ The `ChatMessage` object has several methods that you can use to interact with t
 - `asXml():ChatMessage` : Convenience for `.withOptions({ returnFormat: "xml" })` - auto-parses XML response
 - `clearOptions():ChatMessage` : Clear all default options
 
-**Parameter Management:**
+**Parameter Management:** 🎛️
 
 - `withParams( params ):ChatMessage` : Set default AI parameters (temperature, max_tokens, etc.)
 - `clearParams():ChatMessage` : Clear all default parameters
 
-**Chaining Methods:**
+**Chaining Methods:** ⛓️
 
 - `to( runnable ):IAiRunnable` : Chain this message to another runnable
 - `toDefaultModel():IAiRunnable` : Convenience for `.to( aiModel() )` - connect to default model
 - `toModel( provider, apiKey ):IAiRunnable` : Convenience for `.to( aiModel( provider, apiKey ) )`
 - `transform( transformer ):IAiRunnable` : Add a transformation step to the pipeline
 
-### ChatMessage Dynamic Methods
+### ✨ ChatMessage Dynamic Methods
 
-The `ChatMessage` object is dynamic and will treat any method call that is not found as a **roled** message according to the name of the method you call.  This allows you to build up messages fluently.
+The `ChatMessage` object is dynamic and will treat any method call that is not found as a **roled** message according to the name of the method you call. This allows you to build up messages fluently. 🌊
 
 ```java
 aiMessage()
@@ -971,7 +982,7 @@ aiChat(
 )
 ```
 
-### Multimodal Provider Support
+### 🎨 Multimodal Provider Support
 
 | Feature | OpenAI | Claude | Gemini | Ollama |
 |---------|--------|--------|--------|--------|
@@ -980,14 +991,14 @@ aiChat(
 | **Video** | ❌ | ❌ | ✅ Gemini 1.5+, 2.0 | ❌ |
 | **Documents/PDFs** | ✅ GPT-4o (inline) | ✅ Claude 3+ | ⚠️ Via text extraction | ❌ |
 
-**Supported Formats:**
+**Supported Formats:** 📁
 
-- **Images**: png, jpg, jpeg, gif, webp
-- **Audio**: mp3, mp4, mpeg, mpga, m4a, wav, webm
-- **Video**: mp4, mpeg, mov, avi, flv, mpg, webm, wmv (Gemini only)
-- **Documents**: pdf, doc, docx, txt, xls, xlsx
+- 🖼️ **Images**: png, jpg, jpeg, gif, webp
+- 🎵 **Audio**: mp3, mp4, mpeg, mpga, m4a, wav, webm
+- 📹 **Video**: mp4, mpeg, mov, avi, flv, mpg, webm, wmv (Gemini only)
+- 📄 **Documents**: pdf, doc, docx, txt, xls, xlsx
 
-**Size Limits:**
+**Size Limits:** ⚖️
 
 - Images: 20MB per image (varies by provider)
 - Audio: 25MB (OpenAI), 2GB (Gemini)
@@ -996,9 +1007,9 @@ aiChat(
 
 > **Note:** For large files (>10MB), consider using the provider's file upload API endpoints (OpenAI `/v1/files`, Gemini File API). The inline base64 embedding approach is best for small-to-medium files that fit within context limits.
 
-## aiService() - Create an AI Service Object
+## 🤖 aiService() - Create an AI Service Object
 
-This function allows you to create a reference to an AI Service provider that you can then use to interact with an AI service.  This is useful when you need to interact with a specific implementation of our `IAService` interface.
+This function allows you to create a reference to an AI Service provider that you can then use to interact with an AI service. This is useful when you need to interact with a specific implementation of our `IAService` interface. 🔌
 
 The `aiService()` function has the following signature:
 
@@ -1012,7 +1023,7 @@ Here are the parameters:
 - `apiKey` : The API Key to use, if not passed it will use the global setting
 
 
-### Service Methods
+### 🔧 Service Methods
 
 Here are some useful methods each provider implements and gets via the `BaseService` abstract class.
 
@@ -1023,7 +1034,7 @@ Here are some useful methods each provider implements and gets via the `BaseServ
 - `setChatURL( url ):IService` : Set the chat URL of the provider
 - `defaults( struct params ):IService` : Set the default parameters for the provider
 
-### IAiService Interface
+### 📐 IAiService Interface
 
 Here is the interface that all AI Service providers must implement:
 
@@ -1059,9 +1070,9 @@ interface{
 }
 ```
 
-### BaseService
+### 🏗️ BaseService
 
-We have also provided a `BaseService` that implements the interface using the `OpenAI` standard.  This is a great starting point for you to create your own AI Service provider if needed.
+We have also provided a `BaseService` that implements the interface using the `OpenAI` standard. This is a great starting point for you to create your own AI Service provider if needed. 🎯
 
 ### Examples
 
@@ -1081,11 +1092,11 @@ response = service.invoke(
 )
 ```
 
-## Pipeline Options
+## ⚙️ Pipeline Options
 
-All runnables (message templates, models, transforms, sequences) support an `options` parameter that controls runtime behavior. This provides a consistent API across all pipeline components.
+All runnables (message templates, models, transforms, sequences) support an `options` parameter that controls runtime behavior. This provides a consistent API across all pipeline components. 🔧
 
-### Options Parameter
+### 🎛️ Options Parameter
 
 The `options` struct can be passed to `run()` and `stream()` methods:
 
@@ -1094,7 +1105,7 @@ pipeline.run( input, params, options )
 pipeline.stream( onChunk, input, params, options )
 ```
 
-**Available Options:**
+**Available Options:** 🎯
 
 - `returnFormat:string` : Format of the response - `"raw"` (default for pipelines), `"single"`, or `"all"`
 - `timeout:numeric` : Request timeout in seconds (default: 30)
@@ -1502,6 +1513,11 @@ Returns an `AiAgent` object with the following methods:
 - `setModel( model )` : Set the AI model
 - `setTools( tools )` : Replace all tools
 - `addTool( tool )` : Add a single tool
+- `setSubAgents( subAgents )` : Replace all sub-agents
+- `addSubAgent( agent )` : Add a single sub-agent
+- `getSubAgent( name )` : Get a specific sub-agent by name
+- `getSubAgents()` : Get all sub-agents
+- `hasSubAgent( name )` : Check if a sub-agent exists
 - `setMemory( memory )` : Set a single memory (replaces existing)
 - `setMemories( memories )` : Set multiple memories (replaces existing)
 - `addMemory( memory )` : Add a memory instance
@@ -1555,6 +1571,48 @@ agent = aiAgent(
     instructions: "Use tools when needed to provide accurate information",
     tools: [ weatherTool, searchTool ]
 )
+
+// Agent automatically uses tools when needed
+response = agent.run( "What's the weather in Boston?" )
+```
+
+**Agent with Sub-Agents (Orchestration):**
+
+Sub-agents allow you to create specialized agents that can be delegated to by a parent agent. When you register a sub-agent, it is automatically wrapped as an internal tool that the parent agent can invoke.
+
+```java
+// Create specialized sub-agents
+mathAgent = aiAgent(
+    name: "MathAgent",
+    description: "A mathematics expert",
+    instructions: "You help with mathematical calculations and concepts"
+)
+
+codeAgent = aiAgent(
+    name: "CodeAgent",
+    description: "A programming expert",
+    instructions: "You help with code review and writing"
+)
+
+// Create parent agent with sub-agents
+mainAgent = aiAgent(
+    name: "OrchestratorAgent",
+    description: "Main coordinator that delegates to specialists",
+    instructions: """
+        Analyze each request and delegate to appropriate sub-agents:
+        - MathAgent: For mathematical tasks
+        - CodeAgent: For programming tasks
+        Answer directly for simple queries.
+    """,
+    subAgents: [ mathAgent, codeAgent ]
+)
+
+// The parent agent automatically delegates to sub-agents when appropriate
+response = mainAgent.run( "Write a function to calculate factorial" )
+// Automatically delegates to CodeAgent
+
+response = mainAgent.run( "What is the square root of 144?" )
+// Automatically delegates to MathAgent
 
 response = agent.run( "What's the weather in New York?" )
 ```
