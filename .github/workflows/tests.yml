@@ -47,11 +47,10 @@ jobs:
           # Setup .env
           touch .env
 
-      - name: Start Ollama Test Service
-        uses: hoverkraft-tech/compose-action@v2.0.2
+      - name: Start Test Services
+        uses: hoverkraft-tech/compose-action@v2.4.1
         with:
           compose-file: "./docker-compose.yml"
-          services: "ollama"
 
       - name: Wait for Ollama to be ready
         run: |

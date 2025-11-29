@@ -1,4 +1,7 @@
 services:
+  ################################################################
+  # Ollama LLM Server and Web UI
+  ###############################################################
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
@@ -31,6 +34,10 @@ services:
       - WEBUI_ADMIN_USER=boxlang
       - WEBUI_ADMIN_PASS=rocks
     restart: unless-stopped
+
+  ###############################################################
+  # Vector Databases
+  ###############################################################
 
   chromadb:
     image: chromadb/chroma:latest
