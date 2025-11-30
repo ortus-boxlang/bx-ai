@@ -137,6 +137,6 @@ public class MistralTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		assertThat( variables.get( result ) ).isEqualTo( "San Salvador" );
+		assertThat( variables.get( "result" ) ).isEqualTo( "San Salvador" );
 	}
 }

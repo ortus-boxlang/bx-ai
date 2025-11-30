@@ -79,7 +79,7 @@ class {
 				break
 			case "mistral":
 				oTargetService = new bxModules.bxai.models.providers.MistralService().configure( arguments.apiKey )
-        break
+				break
 			case "huggingface":
 				oTargetService = new bxModules.bxai.models.providers.HuggingFaceService().configure( arguments.apiKey )
 				break
