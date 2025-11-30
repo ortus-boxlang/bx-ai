@@ -78,6 +78,7 @@ class {
 				break
 			case "huggingface":
 				oTargetService = new bxModules.bxai.models.providers.HuggingFaceService().configure( arguments.apiKey )
+				break
 			case "groq":
 				oTargetService = new bxModules.bxai.models.providers.GroqService().configure( arguments.apiKey )
 				break
