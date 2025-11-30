@@ -26,6 +26,7 @@ BoxLang AI is a comprehensive module that brings artificial intelligence capabil
 | **Claude** | Cloud | Long context, detailed analysis |
 | **Gemini** | Cloud | Google integration, multimodal |
 | **Grok** | Cloud | Real-time data, Twitter integration |
+| **HuggingFace** | Cloud | Open-source models, community-driven |
 | **Groq** | Cloud | Ultra-fast inference, LPU architecture |
 | **DeepSeek** | Cloud | Code generation, reasoning |
 | **Ollama** | Local | Privacy, offline use, no API costs |
