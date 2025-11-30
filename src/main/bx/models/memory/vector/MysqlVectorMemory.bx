@@ -13,8 +13,14 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  * MySQL 9 Vector Memory Implementation with native VECTOR type
- * Provides vector storage and semantic search using MySQL 9's native vector capabilities
- * Ideal for enterprise deployments with existing MySQL infrastructure
+ * Provides vector storage and semantic search using MySQL 9's native VECTOR data type.
+ * 
+ * Note: MySQL 9 Community Edition supports the VECTOR data type for storage
+ * (STRING_TO_VECTOR, VECTOR_TO_STRING), but the DISTANCE() function is only
+ * available in MySQL HeatWave (Oracle Cloud). Distance calculations are
+ * performed in the application layer for compatibility with all MySQL 9 editions.
+ * 
+ * Ideal for enterprise deployments with existing MySQL infrastructure.
  */
 class extends="BaseVectorMemory" {
 
@@ -38,14 +44,16 @@ class extends="BaseVectorMemory" {
 		DEFAULT_DISTANCE_FUNCTION = "COSINE"
 		DEFAULT_TABLE = "bx_ai_vectors"
 		DEFAULT_DIMENSIONS = 1536
-		// Distance function mappings for MySQL 9 vector operations
-		// MySQL 9 uses DISTANCE() with algorithm parameter or dedicated functions
+		// Distance function options for vector operations
+		// Note: MySQL 9 Community Edition doesn't have DISTANCE() function,
+		// so distances are computed in the application layer
 		DISTANCE_FUNCTIONS = {
-			"L2": "L2",                // DISTANCE(v1, v2, 'L2') or direct L2 distance
-			"COSINE": "COSINE",        // DISTANCE(v1, v2, 'COSINE')
-			"DOT": "DOT"               // DISTANCE(v1, v2, 'DOT') - dot product
+			"L2": "L2",                // Euclidean distance
+			"COSINE": "COSINE",        // Cosine distance
+			"DOT": "DOT"               // Dot product (similarity)
 		}
 		// Mapping from distance functions to index metric names
+		// Used for VECTOR INDEX if available (MySQL HeatWave only)
 		DISTANCE_METRICS = {
 			"L2": "EUCLIDEAN",
 			"COSINE": "COSINE",
@@ -158,6 +166,8 @@ class extends="BaseVectorMemory" {
 
 	/**
 	 * Search by vector embedding in MySQL
+	 * Note: MySQL 9 Community Edition does not have DISTANCE() function,
+	 * so we compute distances in the application layer
 	 *
 	 * @embedding Vector to search with
 	 * @limit Max results
@@ -170,15 +180,10 @@ class extends="BaseVectorMemory" {
 		required numeric limit,
 		required struct filter
 	) {
-		var vectorStr = formatVectorString( arguments.embedding )
-		var distanceFunc = variables.distanceFunction
-
 		// Build WHERE clause with optional metadata filter
 		var whereClause = "collection = :collection"
 		var params = {
-			embedding: vectorStr,
-			collection: variables.collection,
-			limit: { value: arguments.limit, type: "integer" }
+			collection: variables.collection
 		}
 
 		// Add JSON metadata filters if provided
@@ -189,33 +194,42 @@ class extends="BaseVectorMemory" {
 			} )
 		}
 
-		// Execute search with distance calculation
-		// MySQL 9 DISTANCE() function syntax
+		// Retrieve all matching documents - MySQL 9 Community doesn't have DISTANCE()
+		// We'll compute similarity in the application layer
 		var result = queryExecute(
 			"SELECT
 				id,
 				text,
 				metadata as metadata_json,
-				VECTOR_TO_STRING(embedding) as embedding_str,
-				DISTANCE(embedding, STRING_TO_VECTOR(:embedding), '#distanceFunc#') as distance
+				VECTOR_TO_STRING(embedding) as embedding_str
 			FROM #variables.table#
-			WHERE #whereClause#
-			ORDER BY DISTANCE(embedding, STRING_TO_VECTOR(:embedding), '#distanceFunc#') ASC
-			LIMIT :limit",
+			WHERE #whereClause#",
 			params,
 			{ datasource: variables.datasource, returntype: "array" }
 		)
 
-		// Transform to standard format with scores (convert distance to similarity)
-		return result.map( ( row ) => {
+		// Compute distances in application layer and sort
+		var resultsWithScores = result.map( ( row ) => {
+			var storedEmbedding = parseVectorString( row.embedding_str );
+			var distance = computeDistance( arguments.embedding, storedEmbedding );
 			return {
 				id: row.id,
 				text: row.text,
-				score: convertDistanceToScore( row.distance ),
+				score: convertDistanceToScore( distance ),
 				metadata: jsonDeserialize( row.metadata_json ),
-				embedding: parseVectorString( row.embedding_str )
+				embedding: storedEmbedding
 			};
-		} )
+		} );
+
+		// Sort by score descending (higher score = more similar)
+		resultsWithScores.sort( ( a, b ) => b.score - a.score );
+
+		// Limit results
+		if ( resultsWithScores.len() > arguments.limit ) {
+			return resultsWithScores.slice( 1, arguments.limit );
+		}
+
+		return resultsWithScores;
 	}
 
 	/**
@@ -496,9 +510,100 @@ class extends="BaseVectorMemory" {
 	}
 
 	/**
+	 * Compute distance between two vectors based on configured distance function
+	 * MySQL 9 Community Edition doesn't have DISTANCE(), so we compute it here
+	 *
+	 * @vector1 First vector (query embedding)
+	 * @vector2 Second vector (stored embedding)
+	 *
+	 * @return Numeric distance value
+	 */
+	private numeric function computeDistance( required array vector1, required array vector2 ) {
+		switch ( variables.distanceFunction ) {
+			case "COSINE":
+				return computeCosineDistance( arguments.vector1, arguments.vector2 )
+			case "L2":
+				return computeL2Distance( arguments.vector1, arguments.vector2 )
+			case "DOT":
+				return computeDotProduct( arguments.vector1, arguments.vector2 )
+			default:
+				return computeCosineDistance( arguments.vector1, arguments.vector2 )
+		}
+	}
+
+	/**
+	 * Compute cosine distance between two vectors
+	 * Cosine distance = 1 - cosine similarity
+	 *
+	 * @vector1 First vector
+	 * @vector2 Second vector
+	 *
+	 * @return Numeric cosine distance (0 = identical, 2 = opposite)
+	 */
+	private numeric function computeCosineDistance( required array vector1, required array vector2 ) {
+		var dotProduct = 0;
+		var magnitude1 = 0;
+		var magnitude2 = 0;
+
+		for ( var i = 1; i <= arguments.vector1.len(); i++ ) {
+			dotProduct += arguments.vector1[ i ] * arguments.vector2[ i ];
+			magnitude1 += arguments.vector1[ i ] * arguments.vector1[ i ];
+			magnitude2 += arguments.vector2[ i ] * arguments.vector2[ i ];
+		}
+
+		magnitude1 = sqr( magnitude1 );
+		magnitude2 = sqr( magnitude2 );
+
+		if ( magnitude1 == 0 || magnitude2 == 0 ) {
+			return 1; // Return max distance if either vector is zero
+		}
+
+		var cosineSimilarity = dotProduct / ( magnitude1 * magnitude2 );
+		return 1 - cosineSimilarity; // Convert similarity to distance
+	}
+
+	/**
+	 * Compute L2 (Euclidean) distance between two vectors
+	 *
+	 * @vector1 First vector
+	 * @vector2 Second vector
+	 *
+	 * @return Numeric L2 distance
+	 */
+	private numeric function computeL2Distance( required array vector1, required array vector2 ) {
+		var sumSquares = 0;
+
+		for ( var i = 1; i <= arguments.vector1.len(); i++ ) {
+			var diff = arguments.vector1[ i ] - arguments.vector2[ i ];
+			sumSquares += diff * diff;
+		}
+
+		return sqr( sumSquares );
+	}
+
+	/**
+	 * Compute dot product between two vectors
+	 * Note: For dot product, higher values mean MORE similar, not less
+	 *
+	 * @vector1 First vector
+	 * @vector2 Second vector
+	 *
+	 * @return Numeric dot product
+	 */
+	private numeric function computeDotProduct( required array vector1, required array vector2 ) {
+		var result = 0;
+
+		for ( var i = 1; i <= arguments.vector1.len(); i++ ) {
+			result += arguments.vector1[ i ] * arguments.vector2[ i ];
+		}
+
+		return result;
+	}
+
+	/**
 	 * Convert distance to similarity score (0-1, higher is better)
 	 *
-	 * @distance The distance from MySQL
+	 * @distance The distance value
 	 *
 	 * @return Numeric score between 0 and 1
 	 */
