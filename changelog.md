@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Default model: `mistral-small-latest`
     - API key detection via `MISTRAL_API_KEY` environment variable
     - Comprehensive integration tests
+- **Groq Provider Support**: Full integration with Groq AI services for fast inference
+    - Uses OpenAI-compatible API at `api.groq.com`
+    - Default model: `llama-3.3-70b-versatile`
+    - Support for chat completions, streaming, and embeddings
+    - Environment variable: `GROQ_API_KEY`
 - **Embeddings Support**: Complete embeddings functionality for semantic search, clustering, and recommendations
     - New `aiEmbedding()` BIF for generating text embeddings
     - New `AiEmbeddingRequest` class to model embedding requests

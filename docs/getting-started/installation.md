@@ -247,6 +247,15 @@ ollama run llama3.2 "Hello!"
 }
 ```
 
+**Groq**:
+
+```json
+{
+  "provider": "groq",
+  "apiKey": "gsk_..."
+}
+```
+
 **DeepSeek**:
 
 ```json

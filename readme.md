@@ -66,6 +66,7 @@ The following are the AI providers supported by this module. **Please note that 
 - 💎 [Gemini](https://gemini.google.com/)
 - ⚡ [Grok](https://grok.com/)
 - 🌀 [Mistral](https://mistral.ai/)
+- 🚀 [Groq](https://groq.com/)
 - 🦙 [Ollama](https://ollama.ai/)
 - 🟢 [OpenAI](https://www.openai.com/)
 - 🔀 [OpenRouter](https://openrouter.ai/)
@@ -99,6 +100,7 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | Gemini    	| [Coming Soon]   | ✅ | ✅ |
 | Grok      	 | ✅ | ✅ | ✅ |
 | Mistral      | ✅ | ✅ | ✅ |
+| Groq         | ✅ | ✅ | ✅ |
 | Ollama       | ✅ | ✅ | ✅ |
 | OpenAI       | ✅ | ✅ | ✅ (Native) |
 | OpenRouter   | ✅ | ✅ | ✅ |
@@ -2154,6 +2156,7 @@ println( "Most relevant: " & scores.first().doc )
 | Ollama | ✅ | nomic-embed-text | Varies |
 | DeepSeek | ✅ | (inherits from chat model) | Varies |
 | Grok | ✅ | (inherits from chat model) | Varies |
+| Groq | ✅ | (OpenAI compatible) | Varies |
 | OpenRouter | ✅ | (depends on routed model) | Varies |
 | Gemini | ✅ | text-embedding-004 | 768 |
 | Claude | ❌ | N/A | N/A |
