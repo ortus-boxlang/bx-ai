@@ -72,7 +72,7 @@ services:
     image: mysql:9.0
     container_name: mysql-vector
     ports:
-      - "3306:3306"
+      - "3307:3306"
     environment:
       - MYSQL_DATABASE=vectordb
       - MYSQL_USER=boxlang

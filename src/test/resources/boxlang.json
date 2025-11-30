@@ -16,7 +16,7 @@
 		},
 		"mysql_vector_test": {
 			"driver": "mysql",
-			"connectionString": "jdbc:mysql://localhost:3306/vectordb",
+			"connectionString": "jdbc:mysql://localhost:3307/vectordb",
 			"username": "boxlang",
 			"password": "boxlang"
 		},
