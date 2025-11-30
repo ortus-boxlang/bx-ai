@@ -264,6 +264,15 @@ ollama run llama3.2 "Hello!"
 - `meta-llama/Llama-3.1-8B-Instruct` - Meta's Llama model, balanced performance and speed
 - `mistralai/Mistral-7B-Instruct-v0.3` - Fast and efficient for quick responses
 
+**Groq**:
+
+```json
+{
+  "provider": "groq",
+  "apiKey": "gsk_..."
+}
+```
+
 **DeepSeek**:
 
 ```json
