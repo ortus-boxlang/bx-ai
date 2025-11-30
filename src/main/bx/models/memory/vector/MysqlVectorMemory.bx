@@ -431,12 +431,17 @@ class extends="BaseVectorMemory" {
 		)
 
 		// Create index for collection lookups
-		queryExecute(
-			"CREATE INDEX IF NOT EXISTS idx_#variables.table#_collection
-			 ON #variables.table# (collection)",
-			{},
-			{ datasource: variables.datasource }
-		)
+		// MySQL doesn't support CREATE INDEX IF NOT EXISTS, so use try-catch
+		try {
+			queryExecute(
+				"CREATE INDEX idx_#variables.table#_collection
+				 ON #variables.table# (collection)",
+				{},
+				{ datasource: variables.datasource }
+			)
+		} catch ( any e ) {
+			// Index may already exist - this is expected
+		}
 
 		// Create vector index using MySQL 9 VECTOR INDEX
 		// MySQL 9 supports different index types for vectors
