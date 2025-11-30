@@ -13,10 +13,10 @@
  * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
- * MCP Server Entry Point
+ * MCP Server Entry Point (Front Controller)
  *
- * This file serves as the HTTP entry point for the Model Context Protocol (MCP) server.
- * It handles incoming JSON-RPC requests and routes them to the configured MCP server instance.
+ * This file serves as the HTTP front controller for the Model Context Protocol (MCP) server.
+ * It receives and validates requests, then delegates processing to MCPRequestProcessor.
  *
  * Usage:
  * 1. Register your tools in Application.bx or a startup script:
@@ -33,89 +33,33 @@
  *    }
  */
 --->
+<!--- Get request parameters --->
 <bx:set serverName = url.server ?: "default">
-<bx:set server = mcpServer( serverName )>
-<bx:set contentType = "application/json">
+<bx:set requestMethod = cgi.REQUEST_METHOD>
+<bx:set requestBody = requestMethod eq "POST" ? getHTTPRequestData().content : "">
+<bx:set acceptHeader = cgi.HTTP_ACCEPT ?: "application/json">
 
-<!--- Handle CORS preflight --->
-<bx:if cgi.REQUEST_METHOD eq "OPTIONS">
-	<bx:header name="Access-Control-Allow-Origin" value="*">
-	<bx:header name="Access-Control-Allow-Methods" value="POST, GET, OPTIONS">
-	<bx:header name="Access-Control-Allow-Headers" value="Content-Type, Authorization">
-	<bx:header name="Access-Control-Max-Age" value="86400">
-	<bx:abort>
-</bx:if>
+<!--- Delegate to the request processor --->
+<bx:set processor = new bxModules.bxai.models.mcp.MCPRequestProcessor()>
+<bx:set result = processor.process(
+	serverName: serverName,
+	requestMethod: requestMethod,
+	requestBody: requestBody,
+	acceptHeader: acceptHeader,
+	urlParams: url
+)>
 
 <!--- Set response headers --->
-<bx:header name="Content-Type" value="#contentType#">
-<bx:header name="Access-Control-Allow-Origin" value="*">
+<bx:header name="Content-Type" value="#result.contentType#">
+<bx:loop collection="#result.headers#" item="headerValue" index="headerName">
+	<bx:header name="#headerName#" value="#headerValue#">
+</bx:loop>
 
-<!--- Handle GET requests for discovery --->
-<bx:if cgi.REQUEST_METHOD eq "GET">
-	<!--- Return server capabilities --->
-	<bx:set response = {
-		"jsonrpc": "2.0",
-		"result": {
-			"protocolVersion": "2024-11-05",
-			"capabilities": server.getCapabilities(),
-			"serverInfo": server.getServerInfo()
-		},
-		"id": url.id ?: javacast( "null", "" )
-	}>
-	#jsonSerialize( response )#
-	<bx:abort>
+<!--- Set status code if not 200 --->
+<bx:if result.statusCode neq 200>
+	<bx:header statusCode="#result.statusCode#" statusText="#result.statusText#">
 </bx:if>
 
-<!--- Handle POST requests for JSON-RPC --->
-<bx:if cgi.REQUEST_METHOD eq "POST">
-	<bx:try>
-		<!--- Read request body --->
-		<bx:set requestBody = getHTTPRequestData().content>
-
-		<!--- Handle SSE format if Accept header requests it --->
-		<bx:set acceptHeader = cgi.HTTP_ACCEPT ?: "application/json">
-		<bx:set useSSE = acceptHeader contains "text/event-stream">
-
-		<!--- Process the MCP request --->
-		<bx:set response = server.handleRequest( requestBody )>
-
-		<!--- Output response --->
-		<bx:if useSSE>
-			<bx:header name="Content-Type" value="text/event-stream">
-			<bx:header name="Cache-Control" value="no-cache">
-			<bx:header name="Connection" value="keep-alive">
-event: message
-data: #jsonSerialize( response )#
-
-		<bx:else>
-			#jsonSerialize( response )#
-		</bx:if>
-
-	<bx:catch type="any">
-		<!--- Return JSON-RPC error response --->
-		<bx:set errorResponse = {
-			"jsonrpc": "2.0",
-			"error": {
-				"code": -32700,
-				"message": "Parse error: #bxcatch.message#"
-			},
-			"id": javacast( "null", "" )
-		}>
-		#jsonSerialize( errorResponse )#
-	</bx:catch>
-	</bx:try>
-	<bx:abort>
-</bx:if>
-
-<!--- Method not allowed --->
-<bx:header statusCode="405" statusText="Method Not Allowed">
-<bx:set errorResponse = {
-	"jsonrpc": "2.0",
-	"error": {
-		"code": -32600,
-		"message": "Method not allowed. Use POST for JSON-RPC requests or GET for discovery."
-	},
-	"id": javacast( "null", "" )
-}>
-#jsonSerialize( errorResponse )#
+<!--- Output response content --->
+#result.content#
 </bx:output>

@@ -113,12 +113,22 @@ class {
 	 * Servers are stored globally and can be accessed from anywhere.
 	 *
 	 * @name The server name/identifier
+	 * @description The server description (only used when creating a new instance)
+	 * @version The server version (only used when creating a new instance)
 	 *
 	 * @return The MCPServer instance
 	 */
-	static function getInstance( string name = static.DEFAULT_SERVER_NAME ) {
+	static function getInstance(
+		string name = static.DEFAULT_SERVER_NAME,
+		string description = "BoxLang AI MCP Server",
+		string version = "1.0.0"
+	) {
 		if ( !static.servers.keyExists( arguments.name ) ) {
-			static.servers[ arguments.name ] = new MCPServer( name: arguments.name );
+			static.servers[ arguments.name ] = new MCPServer(
+				name: arguments.name,
+				description: arguments.description,
+				version: arguments.version
+			);
 		}
 		return static.servers[ arguments.name ];
 	}
@@ -277,6 +287,238 @@ class {
 	MCPServer function clearTools() {
 		variables.tools = {};
 		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Annotation-Based Discovery Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Scan a class or directory for methods annotated with @mcpTool, @mcpResource, or @mcpPrompt.
+	 * Annotated methods are automatically registered with the MCP server.
+	 *
+	 * Annotation formats:
+	 * - @mcpTool "Description" - Uses method name as tool name, version defaults to 1.0.0
+	 * - @mcpTool { name: "toolName", description: "Description", version: "1.0.0" }
+	 * - @mcpResource { uri: "docs://readme", name: "README", description: "..." }
+	 * - @mcpPrompt { name: "greeting", description: "...", arguments: [...] }
+	 *
+	 * @path The path to a BoxLang class file or directory to scan
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function scan( required string path ) {
+		var targetPath = expandPath( arguments.path );
+
+		// Check if path exists
+		if ( !fileExists( targetPath ) && !directoryExists( targetPath ) ) {
+			throw( type: "MCPServer.PathNotFound", message: "Path not found: #arguments.path#" );
+		}
+
+		// If it's a directory, scan all .bx files
+		if ( directoryExists( targetPath ) ) {
+			var files = directoryList( targetPath, true, "path", "*.bx" );
+			files.each( file => scanClass( file ) );
+		} else {
+			// Single file
+			scanClass( targetPath );
+		}
+
+		return this;
+	}
+
+	/**
+	 * Scan a single class file for MCP annotations
+	 *
+	 * @classPath The path to the class file
+	 */
+	private void function scanClass( required string classPath ) {
+		try {
+			// Create an instance of the class to get its metadata
+			var instance = createObject( arguments.classPath );
+			var metadata = instance.$bx.meta;
+
+			if ( isNull( metadata ) || !isStruct( metadata ) ) {
+				return;
+			}
+
+			// Get functions from metadata
+			var functions = metadata.functions ?: [];
+
+			// Scan each function for annotations
+			functions.each( func => {
+				var annotations = func.annotations ?: {};
+
+				// Check for @mcpTool annotation
+				if ( annotations.keyExists( "mcpTool" ) ) {
+					registerAnnotatedTool( instance, func, annotations.mcpTool );
+				}
+
+				// Check for @mcpResource annotation
+				if ( annotations.keyExists( "mcpResource" ) ) {
+					registerAnnotatedResource( instance, func, annotations.mcpResource );
+				}
+
+				// Check for @mcpPrompt annotation
+				if ( annotations.keyExists( "mcpPrompt" ) ) {
+					registerAnnotatedPrompt( instance, func, annotations.mcpPrompt );
+				}
+			} );
+		} catch ( any e ) {
+			// Log error but continue scanning other classes
+			// In production, you might want to log this somewhere
+		}
+	}
+
+	/**
+	 * Register a tool from an annotated method
+	 *
+	 * @instance The class instance containing the method
+	 * @funcMetadata The function metadata
+	 * @annotation The @mcpTool annotation value
+	 */
+	private void function registerAnnotatedTool(
+		required any instance,
+		required struct funcMetadata,
+		required any annotation
+	) {
+		var methodName = arguments.funcMetadata.name;
+		var toolName = methodName;
+		var toolDescription = "";
+		var toolVersion = "1.0.0";
+
+		// Parse annotation value
+		if ( isSimpleValue( arguments.annotation ) ) {
+			// String annotation: @mcpTool "Description"
+			toolDescription = arguments.annotation;
+		} else if ( isStruct( arguments.annotation ) ) {
+			// Struct annotation: @mcpTool { name: "...", description: "...", version: "..." }
+			toolName = arguments.annotation.name ?: methodName;
+			toolDescription = arguments.annotation.description ?: "";
+			toolVersion = arguments.annotation.version ?: "1.0.0";
+		}
+
+		// Build argument descriptions from function parameters
+		var argDescriptions = {};
+		var parameters = arguments.funcMetadata.parameters ?: [];
+		parameters.each( param => {
+			argDescriptions[ param.name ] = param.hint ?: param.name;
+		} );
+
+		// Capture instance reference for closure
+		var targetInstance = arguments.instance;
+
+		// Create the tool callable
+		var callable = ( args ) => {
+			return invoke( targetInstance, methodName, args );
+		};
+
+		// Create and register the tool
+		var tool = aiTool( toolName, toolDescription, callable );
+
+		// Add argument descriptions
+		argDescriptions.each( ( argName, argDesc ) => {
+			tool.describeArg( argName, argDesc );
+		} );
+
+		registerTool( tool );
+	}
+
+	/**
+	 * Register a resource from an annotated method
+	 *
+	 * @instance The class instance containing the method
+	 * @funcMetadata The function metadata
+	 * @annotation The @mcpResource annotation value
+	 */
+	private void function registerAnnotatedResource(
+		required any instance,
+		required struct funcMetadata,
+		required any annotation
+	) {
+		if ( !isStruct( arguments.annotation ) ) {
+			throw( type: "MCPServer.InvalidAnnotation", message: "@mcpResource annotation must be a struct with uri and name" );
+		}
+
+		var methodName = arguments.funcMetadata.name;
+		var uri = arguments.annotation.uri ?: "resource://" & methodName;
+		var name = arguments.annotation.name ?: methodName;
+		var description = arguments.annotation.description ?: "";
+		var mimeType = arguments.annotation.mimeType ?: "text/plain";
+
+		// Capture instance reference for closure
+		var targetInstance = arguments.instance;
+
+		// Create the handler
+		var handler = () => {
+			return invoke( targetInstance, methodName );
+		};
+
+		registerResource(
+			uri: uri,
+			name: name,
+			description: description,
+			mimeType: mimeType,
+			handler: handler
+		);
+	}
+
+	/**
+	 * Register a prompt from an annotated method
+	 *
+	 * @instance The class instance containing the method
+	 * @funcMetadata The function metadata
+	 * @annotation The @mcpPrompt annotation value
+	 */
+	private void function registerAnnotatedPrompt(
+		required any instance,
+		required struct funcMetadata,
+		required any annotation
+	) {
+		var methodName = arguments.funcMetadata.name;
+		var promptName = methodName;
+		var promptDescription = "";
+		var promptArguments = [];
+
+		// Parse annotation value
+		if ( isSimpleValue( arguments.annotation ) ) {
+			// String annotation: @mcpPrompt "Description"
+			promptDescription = arguments.annotation;
+		} else if ( isStruct( arguments.annotation ) ) {
+			// Struct annotation: @mcpPrompt { name: "...", description: "...", arguments: [...] }
+			promptName = arguments.annotation.name ?: methodName;
+			promptDescription = arguments.annotation.description ?: "";
+			promptArguments = arguments.annotation.arguments ?: [];
+		}
+
+		// If no arguments specified, build from function parameters
+		if ( promptArguments.isEmpty() ) {
+			var parameters = arguments.funcMetadata.parameters ?: [];
+			parameters.each( param => {
+				promptArguments.append( {
+					"name": param.name,
+					"description": param.hint ?: param.name,
+					"required": !param.keyExists( "default" )
+				} );
+			} );
+		}
+
+		// Capture instance reference for closure
+		var targetInstance = arguments.instance;
+
+		// Create the handler
+		var handler = ( args ) => {
+			return invoke( targetInstance, methodName, args );
+		};
+
+		registerPrompt(
+			name: promptName,
+			description: promptDescription,
+			arguments: promptArguments,
+			handler: handler
+		);
 	}
 
 	/**

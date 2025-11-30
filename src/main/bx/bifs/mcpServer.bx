@@ -27,8 +27,7 @@ class {
 	 * Example:
 	 * ```
 	 * // Register tools at application startup
-	 * mcpServer( "myApp" )
-	 *     .setDescription( "My Application MCP Server" )
+	 * mcpServer( "myApp", "My Application MCP Server", "1.0.0" )
 	 *     .registerTool( aiTool( "search", "Search documents", ( query ) => searchDocs( query ) ) )
 	 *     .registerTool( aiTool( "calculate", "Do math", ( expr ) => evaluate( expr ) ) );
 	 *
@@ -40,11 +39,21 @@ class {
 	 * ```
 	 *
 	 * @name The unique name/identifier for the server instance (defaults to "default")
+	 * @description The server description for MCP capabilities response
+	 * @version The server version
 	 *
 	 * @return An MCPServer instance with fluent API
 	 */
-	function invoke( string name = "default" ) {
-		return bxModules.bxai.models.mcp.MCPServer::getInstance( arguments.name );
+	function invoke(
+		string name = "default",
+		string description = "BoxLang AI MCP Server",
+		string version = "1.0.0"
+	) {
+		return bxModules.bxai.models.mcp.MCPServer::getInstance(
+			name: arguments.name,
+			description: arguments.description,
+			version: arguments.version
+		);
 	}
 
 }

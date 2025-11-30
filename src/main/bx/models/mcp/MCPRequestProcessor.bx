@@ -1,0 +1,185 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MCP Request Processor
+ *
+ * Handles incoming HTTP requests for the MCP server endpoint.
+ * This class encapsulates all request processing logic, including:
+ * - CORS handling
+ * - Request validation
+ * - Response formatting (JSON and SSE)
+ * - Error handling
+ */
+class {
+
+	/**
+	 * Process an incoming MCP HTTP request
+	 *
+	 * @serverName The name of the MCP server to use
+	 * @requestMethod The HTTP request method (GET, POST, OPTIONS)
+	 * @requestBody The request body content (for POST requests)
+	 * @acceptHeader The Accept header value
+	 * @urlParams URL parameters struct
+	 *
+	 * @return Struct containing response data: { content, contentType, headers, statusCode, statusText }
+	 */
+	struct function process(
+		string serverName = "default",
+		required string requestMethod,
+		string requestBody = "",
+		string acceptHeader = "application/json",
+		struct urlParams = {}
+	) {
+		var server = mcpServer( arguments.serverName );
+		var response = {
+			"content": "",
+			"contentType": "application/json",
+			"headers": {
+				"Access-Control-Allow-Origin": "*"
+			},
+			"statusCode": 200,
+			"statusText": "OK"
+		};
+
+		// Handle CORS preflight
+		if ( arguments.requestMethod == "OPTIONS" ) {
+			return handleCORSPreflight( response );
+		}
+
+		// Handle GET requests for discovery
+		if ( arguments.requestMethod == "GET" ) {
+			return handleDiscovery( server, response, arguments.urlParams );
+		}
+
+		// Handle POST requests for JSON-RPC
+		if ( arguments.requestMethod == "POST" ) {
+			return handleJSONRPC( server, response, arguments.requestBody, arguments.acceptHeader );
+		}
+
+		// Method not allowed
+		return handleMethodNotAllowed( response );
+	}
+
+	/**
+	 * Handle CORS preflight requests
+	 *
+	 * @response The response struct to populate
+	 *
+	 * @return The populated response struct
+	 */
+	private struct function handleCORSPreflight( required struct response ) {
+		arguments.response.headers[ "Access-Control-Allow-Methods" ] = "POST, GET, OPTIONS";
+		arguments.response.headers[ "Access-Control-Allow-Headers" ] = "Content-Type, Authorization";
+		arguments.response.headers[ "Access-Control-Max-Age" ] = "86400";
+		arguments.response.content = "";
+		return arguments.response;
+	}
+
+	/**
+	 * Handle GET requests for server discovery
+	 *
+	 * @server The MCP server instance
+	 * @response The response struct to populate
+	 * @urlParams URL parameters
+	 *
+	 * @return The populated response struct
+	 */
+	private struct function handleDiscovery( required any server, required struct response, struct urlParams = {} ) {
+		var discoveryResponse = {
+			"jsonrpc": "2.0",
+			"result": {
+				"protocolVersion": "2024-11-05",
+				"capabilities": arguments.server.getCapabilities(),
+				"serverInfo": arguments.server.getServerInfo()
+			},
+			"id": arguments.urlParams.id ?: javacast( "null", "" )
+		};
+
+		arguments.response.content = jsonSerialize( discoveryResponse );
+		return arguments.response;
+	}
+
+	/**
+	 * Handle POST requests for JSON-RPC
+	 *
+	 * @server The MCP server instance
+	 * @response The response struct to populate
+	 * @requestBody The request body
+	 * @acceptHeader The Accept header value
+	 *
+	 * @return The populated response struct
+	 */
+	private struct function handleJSONRPC(
+		required any server,
+		required struct response,
+		required string requestBody,
+		string acceptHeader = "application/json"
+	) {
+		try {
+			// Determine if SSE format is requested
+			var useSSE = arguments.acceptHeader contains "text/event-stream";
+
+			// Process the MCP request
+			var mcpResponse = arguments.server.handleRequest( arguments.requestBody );
+
+			// Format response
+			if ( useSSE ) {
+				arguments.response.contentType = "text/event-stream";
+				arguments.response.headers[ "Cache-Control" ] = "no-cache";
+				arguments.response.headers[ "Connection" ] = "keep-alive";
+				arguments.response.content = "event: message" & chr( 10 ) & "data: " & jsonSerialize( mcpResponse ) & chr( 10 ) & chr( 10 );
+			} else {
+				arguments.response.content = jsonSerialize( mcpResponse );
+			}
+		} catch ( any e ) {
+			// Return JSON-RPC error response
+			var errorResponse = {
+				"jsonrpc": "2.0",
+				"error": {
+					"code": -32700,
+					"message": "Parse error: " & e.message
+				},
+				"id": javacast( "null", "" )
+			};
+			arguments.response.content = jsonSerialize( errorResponse );
+		}
+
+		return arguments.response;
+	}
+
+	/**
+	 * Handle unsupported HTTP methods
+	 *
+	 * @response The response struct to populate
+	 *
+	 * @return The populated response struct
+	 */
+	private struct function handleMethodNotAllowed( required struct response ) {
+		arguments.response.statusCode = 405;
+		arguments.response.statusText = "Method Not Allowed";
+
+		var errorResponse = {
+			"jsonrpc": "2.0",
+			"error": {
+				"code": -32600,
+				"message": "Method not allowed. Use POST for JSON-RPC requests or GET for discovery."
+			},
+			"id": javacast( "null", "" )
+		};
+
+		arguments.response.content = jsonSerialize( errorResponse );
+		return arguments.response;
+	}
+
+}
