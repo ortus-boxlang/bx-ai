@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **HuggingFace Provider Support**: Full integration with HuggingFace Inference API
+    - New `HuggingFaceService` provider class extending BaseService
+    - OpenAI-compatible API endpoint at `router.huggingface.co/v1`
+    - Default model: `Qwen/Qwen2.5-72B-Instruct`
+    - Support for chat completions and embeddings
+    - Integration tests for HuggingFace provider
+    - API key pattern: `HUGGINGFACE_API_KEY`
 - **Groq Provider Support**: Full integration with Groq AI services for fast inference
     - Uses OpenAI-compatible API at `api.groq.com`
     - Default model: `llama-3.3-70b-versatile`

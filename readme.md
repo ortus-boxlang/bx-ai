@@ -65,6 +65,7 @@ The following are the AI providers supported by this module. **Please note that 
 - 🔍 [DeepSeek](https://www.deepseek.com/)
 - 💎 [Gemini](https://gemini.google.com/)
 - ⚡ [Grok](https://grok.com/)
+- 🤗 [HuggingFace](https://huggingface.co/)
 - 🚀 [Groq](https://groq.com/)
 - 🦙 [Ollama](https://ollama.ai/)
 - 🟢 [OpenAI](https://www.openai.com/)
@@ -98,6 +99,7 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | DeepSeek  | ✅ | ✅ | ✅ |
 | Gemini    	| [Coming Soon]   | ✅ | ✅ |
 | Grok      	 | ✅ | ✅ | ✅ |
+| HuggingFace | ✅ | ✅ | ✅ |
 | Groq         | ✅ | ✅ | ✅ |
 | Ollama       | ✅ | ✅ | ✅ |
 | OpenAI       | ✅ | ✅ | ✅ (Native) |
@@ -2154,6 +2156,7 @@ println( "Most relevant: " & scores.first().doc )
 | Ollama | ✅ | nomic-embed-text | Varies |
 | DeepSeek | ✅ | (inherits from chat model) | Varies |
 | Grok | ✅ | (inherits from chat model) | Varies |
+| HuggingFace | ✅ | (depends on model) | Varies |
 | Groq | ✅ | (OpenAI compatible) | Varies |
 | OpenRouter | ✅ | (depends on routed model) | Varies |
 | Gemini | ✅ | text-embedding-004 | 768 |
