@@ -56,8 +56,6 @@ class extends="BaseMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function configure( required struct config ) {
-		super.configure( arguments.config );
-
 		// Override cacheName if provided, else we use the default cache
 		if ( arguments.config.keyExists( "cacheName" ) ) {
 			variables.cacheName = arguments.config.cacheName;
@@ -71,6 +69,8 @@ class extends="BaseMemory" {
 		// (and NOT config - that's just for instance configuration)
 		var data = getCacheData();
 		variables.metadata = data.metadata;
+
+		super.configure( arguments.config );
 
 		return this;
 	}
@@ -111,20 +111,16 @@ class extends="BaseMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function add( required any message ) {
-		var data = getCacheData();
-		var messages = data.messages;
-
-		// Use parent's logic to process the message into proper format
-		// but don't let it store in variables.messages
-		var tempMessages = [];
-		variables.messages = tempMessages;
-		super.add( arguments.message );
+		var data = getCacheData()
 
 		// Append the processed message(s) to cache messages
-		messages.append( tempMessages, true );
+		data.messages.append( processMessage( arguments.message ), true );
 
 		// Save back to cache
-		setCacheData( messages, data.metadata );
+		setCacheData( data.messages, data.metadata );
+
+		// Trim if necessary
+		this.trim();
 
 		return this;
 	}
@@ -433,7 +429,6 @@ class extends="BaseMemory" {
 
 		// Trim non-system messages
 		var nonSystem = messages.filter( m => m.role != "system" );
-
 		if ( nonSystem.len() > variables.maxMessages ) {
 			var start = nonSystem.len() - variables.maxMessages + 1;
 			var keep = nonSystem.slice( start, variables.maxMessages );

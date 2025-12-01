@@ -116,41 +116,10 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function add( required any message ) {
-		// AiMessage instance - get its messages and process them
- 		if ( arguments.message instanceof "AiMessage" ) {
-			return 	this.add( arguments.message.getMessages() )
-		}
-
-		// Struct - must have role and content
-		if ( isStruct( arguments.message ) ) {
-			if ( !arguments.message.keyExists( "role" ) || !arguments.message.keyExists( "content" ) ) {
-				throw(
-					type: "InvalidMessage",
-					message: "Message struct must contain 'role' and 'content' keys"
-				);
-			}
-			param arguments.message.timestamp = now();
-			variables.messages.append( arguments.message );
-		}
-		// Array - process each element
-		else if ( isArray( arguments.message ) ) {
-			arguments.message.each( ( m ) => this.add( m ) );
-		}
-		// String - add as user message
-		else if ( isSimpleValue( arguments.message ) ) {
-			variables.messages.append( {
-				role: "user",
-				content: arguments.message,
-				timestamp: now()
+		processMessage( arguments.message )
+			.each( msg => {
+				variables.messages.append( msg );
 			} );
-		}
-		// Invalid type
-		else {
-			throw(
-				type: "InvalidMessage",
-				message: "Message must be a string, struct, array, or AiMessage instance"
-			);
-		}
 
 		// Trim to max size (excluding system message)
 		this.trim();
@@ -548,6 +517,58 @@ abstract class implements="IAiMemory" {
 		variables.maxMessages = arguments.maxMessages;
 		this.trim();
 		return this;
+	}
+
+	/**
+	 * Take a raw message input and convert it to a standard message struct
+	 *
+	 * Supports:
+	 * - A string: The message will be added with the default role (user)
+	 * - A struct: The struct must contain at least 'role' and 'content' keys
+	 * - An array: Each element will be processed as above
+	 * - An AiMessage instance: Its messages will be added
+	 *
+	 * @message The message to process
+	 *
+	 * @return The processed message as an array of message structs
+	 */
+	private array function processMessage( required any message){
+		// AiMessage instance - return it's state, it is supposed to be clean
+ 		if ( arguments.message instanceof "AiMessage" ) {
+			return 	arguments.message.getMessages()
+		}
+
+		// Struct - must have role and content
+		if ( isStruct( arguments.message ) ) {
+			param arguments.message.role = "user"
+			param arguments.message.timestamp = now();
+			if ( !arguments.message.keyExists( "content" ) ) {
+				throw(
+					type: "InvalidMessage",
+					message: "Message struct must contain a 'content' key"
+				)
+			}
+			return [ arguments.message ]
+		}
+
+		// Array - process each element and return the array of processed messages
+		 if ( isArray( arguments.message ) ) {
+			return arguments.message.map( ( m ) =>processMessage( m ) )
+		}
+
+		// String - Create user message struct
+		if ( isSimpleValue( arguments.message ) ) {
+			return [ {
+				role: "user",
+				content: arguments.message,
+				timestamp: now()
+			} ]
+		}
+
+		throw(
+			type: "InvalidMessage",
+			message: "Message must be a string, struct, array, or AiMessage instance"
+		)
 	}
 
 }
