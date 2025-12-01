@@ -23,7 +23,7 @@ class extends="WindowMemory" {
 	 * Initializes the session storage structure
 	 *
 	 * @key The unique key for this memory instance, defaults to the current session ID
-	 * @maxMessages Maximum number of messages to keep (default: 20)
+	 * @maxMessages Maximum number of messages to keep (default: 100)
 	 */
 	function init( string key = "bxai", numeric maxMessages ) {
 		super.init( argumentCollection: arguments );
@@ -140,10 +140,10 @@ class extends="WindowMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function configure( required struct config ) {
-		variables.config.append( arguments.config, true );
-
 		// Initialize session memory storage if not exists
 		ensureSessionStorage();
+
+		super.configure( arguments.config );
 
 		return this;
 	}
@@ -210,6 +210,55 @@ class extends="WindowMemory" {
 	public boolean function isEmpty() {
 		ensureSessionStorage();
 		return session[ variables.key ].messages.isEmpty();
+	}
+
+	/**
+	 * Trim session-stored messages based on maxMessages
+	 * (0 = unbounded, otherwise keep last N, preserve system message)
+	 */
+	public IAiMemory function trim() {
+		// Do nothing if unbounded
+		if ( variables.maxMessages == 0 ) {
+			return this
+		}
+		ensureSessionStorage()
+		var messages = session[ variables.key ].messages
+
+		// Extract system message if exists
+		var systemMsg = ""
+		var hasSystem = false
+
+		var systemMessages = messages.filter( m => m.role == "system" )
+		if ( !systemMessages.isEmpty() ) {
+			systemMsg = systemMessages.first().content
+			hasSystem = true
+		}
+
+		// Filter non-system messages
+		var nonSystem = messages.filter( m => m.role != "system" )
+
+		// If no trimming needed, exit early
+		if ( nonSystem.len() <= variables.maxMessages ) {
+			return this
+		}
+
+		// Determine which messages to keep
+		var start = nonSystem.len() - variables.maxMessages + 1
+		var keep  = nonSystem.slice( start, variables.maxMessages ) // slice(start, length)
+
+		// Preserve system message at top
+		if ( hasSystem ) {
+			keep.prepend( {
+				role: "system",
+				content: systemMsg,
+				timestamp: now()
+			} )
+		}
+
+		// Save back to session
+		session[ variables.key ].messages = keep
+
+		return this
 	}
 
 	/**

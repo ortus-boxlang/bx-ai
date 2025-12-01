@@ -421,26 +421,33 @@ class extends="BaseMemory" {
 
 		// Extract system message if present
 		var systemMsg = "";
-		var foundSystemMessage = false;
-		if ( hasSystemMessage() ) {
-			systemMsg = getSystemMessage();
-			foundSystemMessage = true;
+		var hasSystem = false;
+
+		var systemMessages = messages.filter( m => m.role == "system" )
+		if ( !systemMessages.isEmpty() ) {
+			systemMsg = systemMessages.first().content
+			hasSystem = true;
 		}
 
 		// Trim non-system messages
 		var nonSystem = messages.filter( m => m.role != "system" );
-		if ( nonSystem.len() > variables.maxMessages ) {
-			var start = nonSystem.len() - variables.maxMessages + 1;
-			var keep = nonSystem.slice( start, variables.maxMessages );
 
-			var newSet = [];
-			if ( foundSystemMessage ){
-				newSet.append( { role:"system", content:systemMsg, timestamp:now() } );
-			}
-			keep.each( m => newSet.append( m ) );
-
-			setCacheData( newSet, data.metadata );
+		// If no trimming needed, exit early
+		if ( nonSystem.len() <= variables.maxMessages ) {
+			return this;
 		}
+
+		// Determine which messages to keep
+		var start = nonSystem.len() - variables.maxMessages + 1;
+		var keep = nonSystem.slice( start, variables.maxMessages );
+
+		// Preserve system message at top
+		if ( hasSystem ){
+			keep.prepend( { role:"system", content:systemMsg, timestamp:now() } );
+		}
+
+		// Save back to cache
+		setCacheData( keep, data.metadata );
 
 		return this;
 	}
