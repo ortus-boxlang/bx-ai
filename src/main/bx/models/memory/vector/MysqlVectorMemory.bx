@@ -1,0 +1,655 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MySQL 9 Vector Memory Implementation with native VECTOR type
+ * Provides vector storage and semantic search using MySQL 9's native VECTOR data type.
+ * 
+ * Note: MySQL 9 Community Edition supports the VECTOR data type for storage
+ * (STRING_TO_VECTOR, VECTOR_TO_STRING), but the DISTANCE() function is only
+ * available in MySQL HeatWave (Oracle Cloud). Distance calculations are
+ * performed in the application layer for compatibility with all MySQL 9 editions.
+ * 
+ * Ideal for enterprise deployments with existing MySQL infrastructure.
+ */
+class extends="BaseVectorMemory" {
+
+	/**
+	 * MySQL datasource name
+	 */
+	property name="datasource" type="string";
+
+	/**
+	 * Table name for vector storage
+	 */
+	property name="table" type="string";
+
+	/**
+	 * Distance function: L2 (Euclidean), COSINE, or DOT
+	 */
+	property name="distanceFunction" type="string";
+
+	static {
+		// Default configurations
+		DEFAULT_DISTANCE_FUNCTION = "COSINE"
+		DEFAULT_TABLE = "bx_ai_vectors"
+		DEFAULT_DIMENSIONS = 1536
+		// Distance function options for vector operations
+		// Note: MySQL 9 Community Edition doesn't have DISTANCE() function,
+		// so distances are computed in the application layer
+		DISTANCE_FUNCTIONS = {
+			"L2": "L2",                // Euclidean distance
+			"COSINE": "COSINE",        // Cosine distance
+			"DOT": "DOT"               // Dot product (similarity)
+		}
+		// Mapping from distance functions to index metric names
+		// Used for VECTOR INDEX if available (MySQL HeatWave only)
+		DISTANCE_METRICS = {
+			"L2": "EUCLIDEAN",
+			"COSINE": "COSINE",
+			"DOT": "DOT"
+		}
+	}
+
+	/**
+	 * Configure the MySQL vector memory instance
+	 *
+	 * @config Configuration struct with MySQL-specific options
+	 *
+	 * @return MysqlVectorMemory for chaining
+	 */
+	public any function configure( required struct config ) {
+		// Extract MySQL-specific config FIRST
+		param arguments.config.datasource = ""
+		param arguments.config.table = static.DEFAULT_TABLE
+		param arguments.config.distanceFunction = static.DEFAULT_DISTANCE_FUNCTION
+
+		// Validate required config
+		if ( !len( arguments.config.datasource ) ) {
+			throw(
+				type = "MysqlVectorMemory.MissingDatasource",
+				message = "Datasource is required for MysqlVectorMemory. Provide it in the config."
+			)
+		}
+
+		variables.datasource = arguments.config.datasource
+		variables.table = arguments.config.table
+		// Safe uppercase conversion - distanceFunction has a default from param statement
+		variables.distanceFunction = ( arguments.config.distanceFunction ?: static.DEFAULT_DISTANCE_FUNCTION ).ucase()
+
+		// Validate distance function
+		if ( !static.DISTANCE_FUNCTIONS.keyExists( variables.distanceFunction ) ) {
+			throw(
+				type = "MysqlVectorMemory.InvalidDistanceFunction",
+				message = "Invalid distance function: #variables.distanceFunction#. Must be L2, COSINE, or DOT."
+			)
+		}
+
+		// Now call parent configure which will call ensureCollection()
+		super.configure( arguments.config )
+
+		return this
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * ABSTRACT METHOD IMPLEMENTATIONS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure table exists for vector storage
+	 */
+	IVectorMemory function ensureCollection() {
+		// Create table if it doesn't exist
+		if ( !collectionExists( variables.collection ) ) {
+			createCollection( variables.collection )
+		}
+
+		return this
+	}
+
+	/**
+	 * Store a document in MySQL
+	 *
+	 * @id Document ID
+	 * @text Document text
+	 * @embedding Vector embedding
+	 * @metadata Document metadata
+	 */
+	IVectorMemory function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	) {
+		// Convert embedding array to MySQL vector format
+		var vectorStr = formatVectorString( arguments.embedding )
+
+		// Serialize metadata to JSON
+		var metadataJson = jsonSerialize( arguments.metadata )
+
+		// Check if document exists - MySQL uses INSERT ... ON DUPLICATE KEY UPDATE
+		queryExecute(
+			"INSERT INTO #variables.table# (
+				id, text, embedding, metadata, collection, created_at, updated_at
+			) VALUES (
+				:id, :text, STRING_TO_VECTOR(:embedding), :metadata, :collection, NOW(), NOW()
+			)
+			ON DUPLICATE KEY UPDATE
+				text = VALUES(text),
+				embedding = VALUES(embedding),
+				metadata = VALUES(metadata),
+				updated_at = NOW()",
+			{
+				id: arguments.id,
+				text: arguments.text,
+				embedding: vectorStr,
+				metadata: metadataJson,
+				collection: variables.collection
+			},
+			{ datasource: variables.datasource }
+		)
+
+		return this;
+	}
+
+	/**
+	 * Search by vector embedding in MySQL
+	 * Note: MySQL 9 Community Edition does not have DISTANCE() function,
+	 * so we compute distances in the application layer
+	 *
+	 * @embedding Vector to search with
+	 * @limit Max results
+	 * @filter Metadata filter (JSON path query)
+	 *
+	 * @return Array of results with similarity scores
+	 */
+	array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		// Build WHERE clause with optional metadata filter
+		var whereClause = "collection = :collection"
+		var params = {
+			collection: variables.collection
+		}
+
+		// Add JSON metadata filters if provided
+		if ( !arguments.filter.isEmpty() ) {
+			arguments.filter.each( ( key, value ) => {
+				whereClause &= " AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$." & key & "')) = :" & key;
+				params[ key ] = value;
+			} )
+		}
+
+		// Retrieve all matching documents - MySQL 9 Community doesn't have DISTANCE()
+		// We'll compute similarity in the application layer
+		var result = queryExecute(
+			"SELECT
+				id,
+				text,
+				metadata as metadata_json,
+				VECTOR_TO_STRING(embedding) as embedding_str
+			FROM #variables.table#
+			WHERE #whereClause#",
+			params,
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		// Compute distances in application layer and sort
+		var resultsWithScores = result.map( ( row ) => {
+			var storedEmbedding = parseVectorString( row.embedding_str );
+			var distance = computeDistance( arguments.embedding, storedEmbedding );
+			return {
+				id: row.id,
+				text: row.text,
+				score: convertDistanceToScore( distance ),
+				metadata: jsonDeserialize( row.metadata_json ),
+				embedding: storedEmbedding
+			};
+		} );
+
+		// Sort by score descending (higher score = more similar)
+		resultsWithScores.sort( ( a, b ) => b.score - a.score );
+
+		// Limit results
+		if ( resultsWithScores.len() > arguments.limit ) {
+			return resultsWithScores.slice( 1, arguments.limit );
+		}
+
+		return resultsWithScores;
+	}
+
+	/**
+	 * Get all documents from MySQL collection
+	 *
+	 * @return Array of documents
+	 */
+	array function getAllDocuments() {
+		var result = queryExecute(
+			"SELECT
+				id,
+				text,
+				metadata as metadata_json,
+				VECTOR_TO_STRING(embedding) as embedding_str
+			FROM #variables.table#
+			WHERE collection = :collection
+			ORDER BY created_at DESC",
+			{ collection: variables.collection },
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		return result.map( ( row ) => {
+			return {
+				id: row.id,
+				text: row.text,
+				metadata: jsonDeserialize( row.metadata_json ),
+				embedding: parseVectorString( row.embedding_str )
+			}
+		} )
+	}
+
+	/**
+	 * Get document by ID from MySQL
+	 *
+	 * @id Document ID
+	 *
+	 * @return Struct document or empty struct
+	 */
+	struct function getDocumentById( required string id ) {
+		var result = queryExecute(
+			"SELECT
+				id,
+				text,
+				metadata as metadata_json,
+				VECTOR_TO_STRING(embedding) as embedding_str
+			FROM #variables.table#
+			WHERE id = :id AND collection = :collection",
+			{
+				id: arguments.id,
+				collection: variables.collection
+			},
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		if ( result.isEmpty() ) {
+			return {}
+		}
+
+		var row = result.first()
+		return {
+			id: row.id,
+			text: row.text,
+			metadata: jsonDeserialize( row.metadata_json ),
+			embedding: parseVectorString( row.embedding_str )
+		}
+	}
+
+	/**
+	 * Delete document by ID from MySQL
+	 *
+	 * @id Document ID
+	 *
+	 * @return Boolean success
+	 */
+	boolean function deleteDocument( required string id ) {
+		var result = queryExecute(
+			"DELETE FROM #variables.table#
+			 WHERE id = :id AND collection = :collection",
+			{
+				id: arguments.id,
+				collection: variables.collection
+			},
+			{ datasource: variables.datasource, result: "deleteResult" }
+		)
+
+		return deleteResult.recordCount > 0
+	}
+
+	/**
+	 * Delete documents by filter from MySQL
+	 *
+	 * @filter Metadata filter (JSON path query)
+	 *
+	 * @return Numeric count deleted
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		var whereClause = "collection = :collection"
+		var params = { collection: variables.collection }
+
+		// Add JSON metadata filters
+		if ( !arguments.filter.isEmpty() ) {
+			arguments.filter.each( ( key, value ) => {
+				whereClause &= " AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$." & key & "')) = :" & key
+				params[ key ] = value
+			} )
+		}
+
+		var result = queryExecute(
+			"DELETE FROM #variables.table#
+			 WHERE #whereClause#",
+			params,
+			{ datasource: variables.datasource, result: "deleteResult" }
+		)
+
+		return deleteResult.recordCount
+	}
+
+	/**
+	 * Clear entire collection (delete all documents in this collection)
+	 */
+	IVectorMemory function clearCollection() {
+		queryExecute(
+			"DELETE FROM #variables.table# WHERE collection = :collection",
+			{ collection: variables.collection },
+			{ datasource: variables.datasource }
+		)
+
+		return this
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * COLLECTION MANAGEMENT
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Create a new collection (table doesn't need per-collection creation, uses collection column)
+	 *
+	 * @name The collection name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function createCollection( required string name ) {
+		// In MySQL, we use a single table with a collection column
+		// So we just need to ensure the table exists
+		ensureTable()
+
+		return this
+	}
+
+	/**
+	 * Check if a collection exists (always true if table exists, as we use collection column)
+	 *
+	 * @name The collection name
+	 *
+	 * @return Boolean
+	 */
+	boolean function collectionExists( required string name ) {
+		return tableExists()
+	}
+
+	/**
+	 * Delete a collection and all its documents
+	 *
+	 * @name The collection name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function deleteCollection( required string name ) {
+		queryExecute(
+			"DELETE FROM #variables.table# WHERE collection = :collection",
+			{ collection: arguments.name },
+			{ datasource: variables.datasource }
+		)
+
+		return this
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * PRIVATE HELPER METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure the vector table exists
+	 */
+	private void function ensureTable() {
+		// If table exists, nothing to do
+		if ( tableExists() ) {
+			return
+		}
+
+		// Determine dimensions (must be set or detected)
+		var dims = variables.dimensions > 0 ? variables.dimensions : static.DEFAULT_DIMENSIONS;
+
+		// Create table with vector column
+		// MySQL 9 uses VECTOR(n) data type
+		queryExecute(
+			"CREATE TABLE IF NOT EXISTS #variables.table# (
+				id VARCHAR(255) NOT NULL,
+				collection VARCHAR(255) NOT NULL DEFAULT 'default',
+				text TEXT NOT NULL,
+				embedding VECTOR(#dims#) NOT NULL,
+				metadata JSON DEFAULT (JSON_OBJECT()),
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				PRIMARY KEY (id, collection)
+			)",
+			{},
+			{ datasource: variables.datasource }
+		)
+
+		// Create index for collection lookups
+		// MySQL doesn't support CREATE INDEX IF NOT EXISTS, so use try-catch
+		try {
+			queryExecute(
+				"CREATE INDEX idx_#variables.table#_collection
+				 ON #variables.table# (collection)",
+				{},
+				{ datasource: variables.datasource }
+			)
+		} catch ( any e ) {
+			// Index may already exist - this is expected
+		}
+
+		// Create vector index using MySQL 9 VECTOR INDEX
+		// MySQL 9 supports different index types for vectors
+		createVectorIndex()
+	}
+
+	/**
+	 * Create vector similarity index for MySQL 9
+	 * MySQL 9 Innovation uses VECTOR INDEX with HNSW algorithm
+	 */
+	private void function createVectorIndex() {
+		try {
+			// MySQL 9 uses VECTOR INDEX with HNSW algorithm
+			// Get the appropriate distance metric for the index
+			var distanceMetric = static.DISTANCE_METRICS[ variables.distanceFunction ]
+
+			queryExecute(
+				"ALTER TABLE #variables.table#
+				ADD VECTOR INDEX idx_#variables.table#_embedding (embedding)
+				DISTANCE_METRIC=#distanceMetric#
+				ALGORITHM=HNSW",
+				{},
+				{ datasource: variables.datasource }
+			)
+		} catch ( any e ) {
+			// Index may already exist or MySQL version may not support VECTOR INDEX
+			// This is expected in some scenarios, log for debugging if needed
+		}
+	}
+
+	/**
+	 * Check if table exists
+	 *
+	 * @return Boolean
+	 */
+	private boolean function tableExists() {
+		// Check if table exists using DBInfo
+		bx:dbinfo
+			name="tables"
+			type="tables"
+			datasource="#variables.datasource#" {}
+
+		var exists = false;
+		for ( var tableInfo in tables ) {
+			if ( tableInfo.table_name.toLowerCase() == variables.table.toLowerCase() ) {
+				exists = true
+				break
+			}
+		}
+
+		return exists
+	}
+
+	/**
+	 * Compute distance between two vectors based on configured distance function
+	 * MySQL 9 Community Edition doesn't have DISTANCE(), so we compute it here
+	 *
+	 * @vector1 First vector (query embedding)
+	 * @vector2 Second vector (stored embedding)
+	 *
+	 * @return Numeric distance value
+	 */
+	private numeric function computeDistance( required array vector1, required array vector2 ) {
+		switch ( variables.distanceFunction ) {
+			case "COSINE":
+				return computeCosineDistance( arguments.vector1, arguments.vector2 )
+			case "L2":
+				return computeL2Distance( arguments.vector1, arguments.vector2 )
+			case "DOT":
+				return computeDotProduct( arguments.vector1, arguments.vector2 )
+			default:
+				return computeCosineDistance( arguments.vector1, arguments.vector2 )
+		}
+	}
+
+	/**
+	 * Compute cosine distance between two vectors
+	 * Cosine distance = 1 - cosine similarity
+	 *
+	 * @vector1 First vector
+	 * @vector2 Second vector
+	 *
+	 * @return Numeric cosine distance (0 = identical, 2 = opposite)
+	 */
+	private numeric function computeCosineDistance( required array vector1, required array vector2 ) {
+		var dotProduct = 0;
+		var magnitude1 = 0;
+		var magnitude2 = 0;
+
+		for ( var i = 1; i <= arguments.vector1.len(); i++ ) {
+			dotProduct += arguments.vector1[ i ] * arguments.vector2[ i ];
+			magnitude1 += arguments.vector1[ i ] * arguments.vector1[ i ];
+			magnitude2 += arguments.vector2[ i ] * arguments.vector2[ i ];
+		}
+
+		magnitude1 = sqr( magnitude1 );
+		magnitude2 = sqr( magnitude2 );
+
+		if ( magnitude1 == 0 || magnitude2 == 0 ) {
+			return 1; // Return max distance if either vector is zero
+		}
+
+		var cosineSimilarity = dotProduct / ( magnitude1 * magnitude2 );
+		return 1 - cosineSimilarity; // Convert similarity to distance
+	}
+
+	/**
+	 * Compute L2 (Euclidean) distance between two vectors
+	 *
+	 * @vector1 First vector
+	 * @vector2 Second vector
+	 *
+	 * @return Numeric L2 distance
+	 */
+	private numeric function computeL2Distance( required array vector1, required array vector2 ) {
+		var sumSquares = 0;
+
+		for ( var i = 1; i <= arguments.vector1.len(); i++ ) {
+			var diff = arguments.vector1[ i ] - arguments.vector2[ i ];
+			sumSquares += diff * diff;
+		}
+
+		return sqr( sumSquares );
+	}
+
+	/**
+	 * Compute dot product between two vectors
+	 * Note: For dot product, higher values mean MORE similar, not less
+	 *
+	 * @vector1 First vector
+	 * @vector2 Second vector
+	 *
+	 * @return Numeric dot product
+	 */
+	private numeric function computeDotProduct( required array vector1, required array vector2 ) {
+		var result = 0;
+
+		for ( var i = 1; i <= arguments.vector1.len(); i++ ) {
+			result += arguments.vector1[ i ] * arguments.vector2[ i ];
+		}
+
+		return result;
+	}
+
+	/**
+	 * Convert distance to similarity score (0-1, higher is better)
+	 *
+	 * @distance The distance value
+	 *
+	 * @return Numeric score between 0 and 1
+	 */
+	private numeric function convertDistanceToScore( required numeric distance ) {
+		// For cosine distance: score = 1 - distance (distance is 0-2, we want 0-1)
+		// For L2 distance: score = 1 / (1 + distance)
+		// For dot product: higher is more similar, so we normalize
+
+		switch ( variables.distanceFunction ) {
+			case "COSINE":
+				return max( 0, 1 - arguments.distance )
+			case "L2":
+				return 1 / ( 1 + arguments.distance )
+			case "DOT":
+				// Dot product: higher values = more similar
+				// Normalize to 0-1 range (assuming normalized vectors)
+				return ( arguments.distance + 1 ) / 2
+			default:
+				return 1 - arguments.distance
+		}
+	}
+
+	/**
+	 * Parse MySQL vector string format back to array
+	 *
+	 * @vectorStr Vector string like "[0.1,0.2,0.3]"
+	 *
+	 * @return Array of numbers
+	 */
+	private array function parseVectorString( required string vectorStr ) {
+		// Remove brackets and split by comma
+		var cleaned = arguments.vectorStr.replace( "[", "" ).replace( "]", "" )
+		return cleaned
+			.listToArray( "," )
+			.map( target => val( target ) )
+	}
+
+	/**
+	 * Format an array of numbers as a MySQL vector string
+	 *
+	 * @embedding Array of embedding values
+	 *
+	 * @return String in format "[x,y,z,...]"
+	 */
+	private string function formatVectorString( required array embedding ) {
+		return "[" & arguments.embedding.toList() & "]"
+	}
+
+}
