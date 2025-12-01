@@ -99,6 +99,7 @@ agent.run( "What was my last invoice amount?" )
 | **Hybrid** | Balanced recent + semantic | ✅ Easy | Low | Excellent |
 | **ChromaDB** | Python integration, local dev | ⚙️ Moderate | Free | Good |
 | **PostgreSQL** | Existing Postgres infrastructure | ⚙️ Moderate | Low | Good |
+| **MySQL** | Existing MySQL 9+ infrastructure | ⚙️ Moderate | Low | Good |
 | **Pinecone** | Production, cloud-first | ⚙️ Easy | Paid | Excellent |
 | **Qdrant** | Self-hosted, high performance | ⚙️ Complex | Free/Paid | Excellent |
 | **Weaviate** | GraphQL, knowledge graphs | ⚙️ Complex | Free/Paid | Excellent |
@@ -107,19 +108,24 @@ agent.run( "What was my last invoice amount?" )
 ### Detailed Recommendations
 
 **Start Development:**
+
 - Use **BoxVector** for immediate prototyping
 - Use **Hybrid** when you need both recent and semantic context
 
 **Production (Cloud):**
+
 - **Pinecone**: Best for cloud-native, managed service
 - **Qdrant Cloud**: Excellent performance, generous free tier
 
 **Production (Self-Hosted):**
+
 - **PostgreSQL**: If you already use Postgres
+- **MySQL**: If you already use MySQL 9+
 - **Qdrant**: Best performance for self-hosted
 - **Milvus**: Enterprise-grade, handles billions of vectors
 
 **Special Use Cases:**
+
 - **ChromaDB**: Python ML infrastructure
 - **Weaviate**: Complex queries, GraphQL API
 - **Hybrid**: Best of both worlds (recent + semantic)
@@ -244,6 +250,129 @@ memory = aiMemory( "postgres", {
 - Applications requiring SQL access
 - Strong consistency requirements
 - Medium-large datasets
+
+---
+
+### MysqlVectorMemory
+
+MySQL 9+ with native [VECTOR](https://dev.mysql.com/doc/refman/9.0/en/vector-functions.html) data type support.
+
+**Features:**
+
+- Native vector storage (MySQL 9+)
+- Use existing MySQL infrastructure
+- ACID compliance
+- Familiar SQL ecosystem
+- Application-layer distance calculations (MySQL Community Edition compatible)
+
+**Requirements:**
+
+- MySQL 9.0 or later (Community or Enterprise Edition)
+- Configured BoxLang datasource
+- VECTOR data type support
+
+**Setup:**
+
+MySQL 9 Community Edition includes native VECTOR data type support. No extensions needed - tables are auto-created:
+
+```sql
+-- Tables are created automatically, but here's the structure:
+CREATE TABLE bx_ai_vectors (
+    id VARCHAR(255) PRIMARY KEY,
+    text LONGTEXT NOT NULL,
+    embedding VECTOR(1536) NOT NULL,  -- Native VECTOR type
+    metadata JSON,
+    collection VARCHAR(255) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_collection (collection)
+);
+```
+
+**Configuration:**
+
+```java
+memory = aiMemory( "mysql", {
+    collection: "ai_memory",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    datasource: "myMysqlDS",         // JDBC datasource name
+    table: "bx_ai_vectors",          // Optional: default is "bx_ai_vectors"
+    dimensions: 1536,                // Embedding dimensions
+    distanceFunction: "COSINE",      // L2, COSINE, or DOT
+    autoCreate: true                 // Auto-create table (default: true)
+} )
+```
+
+**BoxLang Datasource Setup:**
+
+```json
+// boxlang.json
+{
+    "runtime": {
+        "datasources": {
+            "myMysqlDS": {
+                "driver": "mysql",
+                "connectionString": "jdbc:mysql://localhost:3306/mydb",
+                "username": "user",
+                "password": "pass"
+            }
+        }
+    }
+}
+```
+
+**Distance Functions:**
+
+- **COSINE**: Cosine distance (1 - cosine similarity), best for semantic search
+- **L2**: Euclidean distance (L2 norm), good for spatial data
+- **DOT**: Dot product similarity, efficient for normalized vectors
+
+**Usage Example:**
+
+```java
+// Create MySQL vector memory
+memory = aiMemory( "mysql", {
+    collection: "customer_support",
+    datasource: "myMysqlDS",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    distanceFunction: "COSINE"
+} )
+
+// Use with agent
+agent = aiAgent(
+    name: "Support Bot",
+    memory: memory
+)
+
+// Conversations are stored with vector embeddings
+agent.run( "I need help with billing" )
+agent.run( "What are the payment options?" )
+
+// Semantically similar past conversations are automatically retrieved
+agent.run( "Tell me about invoices" )  // Finds billing-related history
+```
+
+**Best For:**
+
+- Existing MySQL 9+ deployments
+- Organizations standardized on MySQL
+- Applications requiring SQL access
+- ACID compliance requirements
+- Medium-large datasets (millions of vectors)
+
+**Performance Notes:**
+
+- Distance calculations performed in application layer (MySQL Community Edition compatible)
+- MySQL HeatWave (Oracle Cloud) provides native DISTANCE() function for optimal performance
+- Suitable for production use with proper indexing
+- Table is automatically created with collection-based indexing
+
+**MySQL Community vs HeatWave:**
+
+- **Community Edition** (Free): VECTOR data type, app-layer distance calculations
+- **HeatWave** (Oracle Cloud): Native DISTANCE() function, VECTOR INDEX, GPU acceleration
 
 ---
 

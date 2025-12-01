@@ -72,9 +72,25 @@ class {
 			// --------------------------------------------------------------------------------
 			// Vector Memory Types
 			// --------------------------------------------------------------------------------
+			case "BoxVectorMemory":
+			case "boxvector":
+				memoryClass = "bxModules.bxai.models.memory.vector.BoxVectorMemory";
+				break;
 			case "chroma":
 			case "ChromaVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.ChromaVectorMemory";
+				break;
+			case "milvus":
+			case "MilvusVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.MilvusVectorMemory";
+				break;
+			case "mysql":
+			case "MysqlVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.MysqlVectorMemory";
+				break;
+			case "hybrid":
+			case "HybridMemory":
+				memoryClass = "bxModules.bxai.models.memory.HybridMemory";
 				break;
 			case "postgres":
 			case "PostgresVectorMemory":
@@ -84,14 +100,6 @@ class {
 			case "pinecone":
 				memoryClass = "bxModules.bxai.models.memory.vector.PineconeVectorMemory";
 				break;
-			case "BoxVectorMemory":
-			case "boxvector":
-				memoryClass = "bxModules.bxai.models.memory.vector.BoxVectorMemory";
-				break;
-			case "milvus":
-			case "MilvusVectorMemory":
-				memoryClass = "bxModules.bxai.models.memory.vector.MilvusVectorMemory";
-				break;
 			case "qdrant":
 			case "QdrantVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.QdrantVectorMemory";
@@ -99,14 +107,6 @@ class {
 			case "weaviate":
 			case "WeaviateVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.WeaviateVectorMemory";
-				break;
-			case "mysql":
-			case "MysqlVectorMemory":
-				memoryClass = "bxModules.bxai.models.memory.vector.MysqlVectorMemory";
-				break;
-			case "hybrid":
-			case "HybridMemory":
-				memoryClass = "bxModules.bxai.models.memory.HybridMemory";
 				break;
 			default:
 				// Check if it's a full class path

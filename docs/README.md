@@ -95,7 +95,7 @@ Building reusable prompts with dynamic placeholders and binding strategies.
 Maintain conversation context with standard memory types: Windowed, Summary, Session, File, Cache, and JDBC memory for different use cases.
 
 🧠 **[Vector Memory](main-components/vector-memory.md)**
-Semantic search and retrieval using vector embeddings. Integrate with ChromaDB, Pinecone, PostgreSQL, Qdrant, Weaviate, Milvus, or use in-memory vectors.
+Semantic search and retrieval using vector embeddings. Integrate with ChromaDB, Pinecone, PostgreSQL, MySQL, Qdrant, Weaviate, Milvus, or use in-memory vectors.
 
 🔧 **[Transformers](main-components/transformers.md)**
 Processing and transforming data between pipeline steps.

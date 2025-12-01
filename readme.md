@@ -254,6 +254,7 @@ Build **stateful, context-aware AI applications** 🎯 with flexible memory syst
 | **Hybrid** | Recent + semantic | Best of both worlds approach |
 | **Chroma** | ChromaDB integration | Python-based infrastructure |
 | **Postgres** | PostgreSQL pgvector | Existing PostgreSQL deployments |
+| **MySQL** | MySQL 9 native vectors | Existing MySQL infrastructure |
 | **Pinecone** | Cloud vector database | Production, scalable semantic search |
 | **Qdrant** | High-performance vectors | Large-scale deployments |
 | **Weaviate** | GraphQL vector database | Complex queries, knowledge graphs |
@@ -492,6 +493,7 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
   - **`cache`** - CacheBox-backed storage
   - **`jdbc`** - Database-backed storage
   - **`chroma`** - Vector memory with semantic search (ChromaDB)
+  - **`mysql`** - MySQL 9 native vector support
   - **`hybrid`** - Combines recent + semantic memory
 
 ### 🧰 Helper Functions

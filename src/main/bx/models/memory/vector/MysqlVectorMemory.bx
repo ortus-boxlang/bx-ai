@@ -14,12 +14,12 @@
  * ----------------------------------------------------------------------------------
  * MySQL 9 Vector Memory Implementation with native VECTOR type
  * Provides vector storage and semantic search using MySQL 9's native VECTOR data type.
- * 
+ *
  * Note: MySQL 9 Community Edition supports the VECTOR data type for storage
  * (STRING_TO_VECTOR, VECTOR_TO_STRING), but the DISTANCE() function is only
  * available in MySQL HeatWave (Oracle Cloud). Distance calculations are
  * performed in the application layer for compatibility with all MySQL 9 editions.
- * 
+ *
  * Ideal for enterprise deployments with existing MySQL infrastructure.
  */
 class extends="BaseVectorMemory" {
@@ -189,7 +189,7 @@ class extends="BaseVectorMemory" {
 		// Add JSON metadata filters if provided
 		if ( !arguments.filter.isEmpty() ) {
 			arguments.filter.each( ( key, value ) => {
-				whereClause &= " AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$." & key & "')) = :" & key;
+				whereClause &= " AND JSON_UNQUOTE( JSON_EXTRACT( metadata, '$." & key & "' ) ) = :" & key;
 				params[ key ] = value;
 			} )
 		}
@@ -201,7 +201,7 @@ class extends="BaseVectorMemory" {
 				id,
 				text,
 				metadata as metadata_json,
-				VECTOR_TO_STRING(embedding) as embedding_str
+				VECTOR_TO_STRING( embedding ) as embedding_str
 			FROM #variables.table#
 			WHERE #whereClause#",
 			params,
@@ -209,9 +209,10 @@ class extends="BaseVectorMemory" {
 		)
 
 		// Compute distances in application layer and sort
+		var incomingEmbedding = arguments.embedding;
 		var resultsWithScores = result.map( ( row ) => {
 			var storedEmbedding = parseVectorString( row.embedding_str );
-			var distance = computeDistance( arguments.embedding, storedEmbedding );
+			var distance = computeDistance( incomingEmbedding, storedEmbedding );
 			return {
 				id: row.id,
 				text: row.text,

@@ -426,7 +426,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 				}
 			);
 
-			className = memory.getClass().getName();
+			className = memory.getName();
 			isMysqlMemory = className.findNoCase( "MysqlVectorMemory" ) > 0;
 			"""
 			.formatted( DATASOURCE_NAME ),
