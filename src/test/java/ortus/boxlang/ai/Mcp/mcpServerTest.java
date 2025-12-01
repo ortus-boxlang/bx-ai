@@ -54,7 +54,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var server = variables.get( result );
+		var server = variables.get( Key.of( "result" ) );
 		assertThat( server ).isNotNull();
 		assertThat( variables.get( Key.of( "serverName" ) ) ).isEqualTo( "default" );
 	}
@@ -72,7 +72,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var server = variables.get( result );
+		var server = variables.get( Key.of( "result" ) );
 		assertThat( server ).isNotNull();
 		assertThat( variables.get( Key.of( "serverName" ) ) ).isEqualTo( "myApp" );
 	}
@@ -285,7 +285,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var readResult = variables.getAsStruct( result );
+		var readResult = variables.getAsStruct( Key.of( "result" ) );
 		assertThat( readResult.containsKey( Key.of( "contents" ) ) ).isTrue();
 
 		var contents = variables.getAsStruct( Key.of( "contents" ) );
@@ -343,7 +343,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var getPromptResult = variables.getAsStruct( result );
+		var getPromptResult = variables.getAsStruct( Key.of( "result" ) );
 		assertThat( getPromptResult.containsKey( Key.of( "messages" ) ) ).isTrue();
 
 		var messages = variables.getAsArray( Key.of( "messages" ) );

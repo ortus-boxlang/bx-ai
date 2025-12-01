@@ -377,7 +377,7 @@ class {
 			} );
 		} catch ( any e ) {
 			// Log error but continue scanning other classes
-			// In production, you might want to log this somewhere
+			systemOutput( "MCP scan error for #arguments.classPath#: #e.message#", true );
 		}
 	}
 
@@ -813,33 +813,6 @@ class {
 	MCPServer function setVersion( required string version ) {
 		variables.version = arguments.version;
 		return this;
-	}
-
-	/**
-	 * Get the server name
-	 *
-	 * @return The server name
-	 */
-	string function getServerName() {
-		return variables.serverName;
-	}
-
-	/**
-	 * Get the server description
-	 *
-	 * @return The server description
-	 */
-	string function getDescription() {
-		return variables.description;
-	}
-
-	/**
-	 * Get the server version
-	 *
-	 * @return The server version
-	 */
-	string function getVersion() {
-		return variables.version;
 	}
 
 	/**
