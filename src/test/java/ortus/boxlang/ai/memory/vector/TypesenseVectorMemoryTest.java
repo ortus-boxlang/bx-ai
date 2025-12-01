@@ -444,35 +444,37 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 	public void testGetAllDocuments() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "typesense", createUUID(), {
-		        collection: "test_get_all",
-		        host: "localhost",
-		        port: 8108,
-		        apiKey: "xyz"
-		    } );
+		       memory = aiMemory( "typesense", createUUID(), {
+		           collection: "test_get_all",
+		           host: "localhost",
+		           port: 8108,
+		           apiKey: "xyz"
+		       } )
 
-		    // Add multiple documents
-		    messages = [
-		        "First document",
-		        "Second document",
-		        "Third document"
-		    ];
+		    memory.clear()
 
-		    for( msg in messages ) {
-		        memory.add( msg );
-		    }
+		       // Add multiple documents
+		       messages = [
+		           "First document",
+		           "Second document",
+		           "Third document"
+		       ]
 
-		    // Get all documents
-		    allDocs = memory.getAll();
+		       for( msg in messages ) {
+		           memory.add( msg )
+		       }
 
-		    result = {
-		        count: arrayLen(allDocs),
-		        hasText: allDocs.len() > 0 && structKeyExists(allDocs[1], "text"),
-		        hasMetadata: allDocs.len() > 0 && structKeyExists(allDocs[1], "metadata"),
-		        hasEmbedding: allDocs.len() > 0 && structKeyExists(allDocs[1], "embedding"),
-		        hasId: allDocs.len() > 0 && structKeyExists(allDocs[1], "id")
-		    };
-		    """,
+		       // Get all documents
+		       allDocs = memory.getAll()
+
+		       result = {
+		           count: arrayLen(allDocs),
+		           hasText: allDocs.len() > 0 && structKeyExists(allDocs[1], "text"),
+		           hasMetadata: allDocs.len() > 0 && structKeyExists(allDocs[1], "metadata"),
+		           hasEmbedding: allDocs.len() > 0 && structKeyExists(allDocs[1], "embedding"),
+		           hasId: allDocs.len() > 0 && structKeyExists(allDocs[1], "id")
+		       }
+		       """,
 		    context );
 
 		IStruct result = variables.getAsStruct( Key.of( "result" ) );
