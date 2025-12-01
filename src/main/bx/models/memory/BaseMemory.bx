@@ -549,7 +549,11 @@ abstract class implements="IAiMemory" {
 
 		// Array - process each element and return the array of processed messages
 		 if ( isArray( arguments.message ) ) {
-			return arguments.message.map( ( m ) =>processMessage( m ) )
+			var result = []
+			arguments.message.each( ( m ) => {
+				result.append( processMessage( m ), true ) // true = appendAll / deep append
+			} )
+			return result
 		}
 
 		// String - Create user message struct
