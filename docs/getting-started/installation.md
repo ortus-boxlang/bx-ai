@@ -282,6 +282,23 @@ ollama run llama3.2 "Hello!"
 }
 ```
 
+**Mistral**:
+
+```json
+{
+  "provider": "mistral",
+  "apiKey": "..."
+}
+```
+
+**Get your API key**: [https://console.mistral.ai/](https://console.mistral.ai/)
+
+**Popular models**:
+
+- `mistral-small-latest` - Cost-effective, fast (default)
+- `mistral-medium-latest` - Balanced performance
+- `mistral-large-latest` - Most capable
+
 **OpenRouter** (Multi-model gateway):
 
 ```json
