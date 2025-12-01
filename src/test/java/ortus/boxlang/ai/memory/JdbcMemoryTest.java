@@ -382,4 +382,49 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( count2 ).isEqualTo( 3 ); // 1 original + 2 new
 		assertThat( count3 ).isEqualTo( 3 ); // Should persist
 	}
+
+	@DisplayName( "Test that it can trim when you set a limit" )
+	@Test
+	public void testTrimWhenLimitSet() {
+		runtime.executeSource(
+		    """
+		    // Create memory with maxMessages limit
+		    memory = aiMemory( "jdbc", "trim-test", { datasource: "bxai_test" } )
+		    	.configure( {
+		    		maxMessages: 5
+		    	} )
+
+		    // Add 10 messages
+		    for( i = 1; i <= 10; i++ ) {
+		    	memory.add( "Message " & i )
+		    }
+
+		    count = memory.count()
+		    messages = memory.getAll()
+		    firstMessage = messages[ 1 ].content
+		    lastMessage = messages[ count ].content
+
+		    // Verify oldest messages were removed
+		    hasMessage1 = memory.search( "Message 1" ).len() > 0
+		    hasMessage6 = memory.search( "Message 6" ).len() > 0
+		    hasMessage10 = memory.search( "Message 10" ).len() > 0
+
+		    // Create new instance to verify persistence
+		    memory2 = aiMemory( "cache", "trim-test" )
+		    	.configure( { cacheName: "default" } )
+
+		    persistedCount = memory2.count()
+
+		    // Cleanup
+		    memory2.clear()
+		    """,
+		    context
+		);
+
+		var	count			= variables.getAsInteger( Key.of( "count" ) );
+		var	persistedCount	= variables.getAsInteger( Key.of( "persistedCount" ) );
+
+		assertThat( count ).isEqualTo( 5 );
+		assertThat( persistedCount ).isEqualTo( 5 ); // Persisted trimmed state
+	}
 }

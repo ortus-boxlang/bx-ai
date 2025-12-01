@@ -39,11 +39,15 @@ class extends="BaseMemory" {
 	 * @cacheName Name of the cache to use (default: "default")
 	 * @maxMessages Maximum number of messages to retain (0 = unbounded)
 	 */
-	function init( required string key, string cacheName = static.DEFAULT_CACHE_NAME, numeric maxMessages = 0 ) {
+	function init(
+		required string key,
+		string cacheName = static.DEFAULT_CACHE_NAME,
+		numeric maxMessages = 0
+	) {
 		// Call parent constructor with 0 max messages to be unbounded
-		super.init( arguments.key, arguments.maxMessages );
-		variables.cacheName = arguments.cacheName;
-		return this;
+		super.init( argumentCollection: arguments )
+		variables.cacheName = arguments.cacheName
+		return this
 	}
 
 	/**
@@ -58,21 +62,21 @@ class extends="BaseMemory" {
 	public IAiMemory function configure( required struct config ) {
 		// Override cacheName if provided, else we use the default cache
 		if ( arguments.config.keyExists( "cacheName" ) ) {
-			variables.cacheName = arguments.config.cacheName;
+			variables.cacheName = arguments.config.cacheName
 		}
 
 		// Get the cache provider instance
-		variables.cache = cache( variables.cacheName );
+		variables.cache = cache( variables.cacheName )
 
 		// Load metadata from cache if it exists
 		// (but NOT messages - those are accessed on-demand via getAll())
 		// (and NOT config - that's just for instance configuration)
-		var data = getCacheData();
-		variables.metadata = data.metadata;
+		var data = getCacheData()
+		variables.metadata = data.metadata
 
-		super.configure( arguments.config );
+		super.configure( arguments.config )
 
-		return this;
+		return this
 	}
 
 	/**
@@ -85,13 +89,13 @@ class extends="BaseMemory" {
 	public any function metadata( struct metadata ) {
 		if ( !isNull( arguments.metadata ) ) {
 			// Update variables.metadata
-			variables.metadata.append( arguments.metadata, true );
+			variables.metadata.append( arguments.metadata, true )
 			// Persist to cache
-			var data = getCacheData();
-			setCacheData( data.messages, variables.metadata );
-			return this;
+			var data = getCacheData()
+			setCacheData( data.messages, variables.metadata )
+			return this
 		}
-		return variables.metadata;
+		return variables.metadata
 	}
 
 	/**
@@ -100,7 +104,7 @@ class extends="BaseMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getAll() {
-		return getCacheData().messages;
+		return getCacheData().messages
 	}
 
 	/**
@@ -114,15 +118,15 @@ class extends="BaseMemory" {
 		var data = getCacheData()
 
 		// Append the processed message(s) to cache messages
-		data.messages.append( processMessage( arguments.message ), true );
+		data.messages.append( processMessage( arguments.message ), true )
 
 		// Save back to cache
-		setCacheData( data.messages, data.metadata );
+		setCacheData( data.messages, data.metadata )
 
 		// Trim if necessary
-		this.trim();
+		this.trim()
 
-		return this;
+		return this
 	}
 
 	/**
@@ -132,9 +136,9 @@ class extends="BaseMemory" {
 	 */
 	public IAiMemory function clear() {
 		if ( !isNull( variables.cache ) && len( variables.key ) ) {
-			variables.cache.clear( variables.key );
+			variables.cache.clear( variables.key )
 		}
-		return this;
+		return this
 	}
 
 	/**
@@ -143,7 +147,7 @@ class extends="BaseMemory" {
 	 * @return Numeric count
 	 */
 	public numeric function count() {
-		return getCacheData().messages.len();
+		return getCacheData().messages.len()
 	}
 
 	/**
@@ -152,7 +156,7 @@ class extends="BaseMemory" {
 	 * @return True if empty, false otherwise
 	 */
 	public boolean function isEmpty() {
-		return getCacheData().messages.isEmpty();
+		return getCacheData().messages.isEmpty()
 	}
 
 	/**
@@ -163,7 +167,7 @@ class extends="BaseMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getByRole( required string role ) {
-		return getCacheData().messages.filter( ( m ) => m.role == role );
+		return getCacheData().messages.filter( ( m ) => m.role == role )
 	}
 
 	/**
@@ -172,11 +176,11 @@ class extends="BaseMemory" {
 	 * @return The system message content or an empty string
 	 */
 	public string function getSystemMessage() {
-		var systemMessages = this.getByRole( "system" );
+		var systemMessages = this.getByRole( "system" )
 		if ( systemMessages.isEmpty() ) {
-			return "";
+			return ""
 		}
-		return systemMessages.first().content;
+		return systemMessages.first().content
 	}
 
 	/**
@@ -187,21 +191,21 @@ class extends="BaseMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function setSystemMessage( required string message ) {
-		var data = getCacheData();
-		var messages = data.messages;
+		var data = getCacheData()
+		var messages = data.messages
 
 		// Remove existing system message
-		messages = messages.filter( ( m ) => m.role != "system" );
+		messages = messages.filter( ( m ) => m.role != "system" )
 
 		// Add new system message at the beginning
 		messages.prepend( {
 			role: "system",
 			content: arguments.message,
 			timestamp: now()
-		} );
+		} )
 
-		setCacheData( messages, data.metadata );
-		return this;
+		setCacheData( messages, data.metadata )
+		return this
 	}
 
 	/**
@@ -210,10 +214,10 @@ class extends="BaseMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function removeSystemMessage() {
-		var data = getCacheData();
-		var messages = data.messages.filter( ( m ) => m.role != "system" );
-		setCacheData( messages, data.metadata );
-		return this;
+		var data = getCacheData()
+		var messages = data.messages.filter( ( m ) => m.role != "system" )
+		setCacheData( messages, data.metadata )
+		return this
 	}
 
 	/**
@@ -222,7 +226,7 @@ class extends="BaseMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getNonSystemMessages() {
-		return getCacheData().messages.filter( ( m ) => m.role != "system" );
+		return getCacheData().messages.filter( ( m ) => m.role != "system" )
 	}
 
 	/**
@@ -233,13 +237,13 @@ class extends="BaseMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getRecent( numeric limit = 10 ) {
-		var messages = this.getAll();
-		var total = messages.len();
+		var messages = this.getAll()
+		var total = messages.len()
 		if ( total <= arguments.limit ) {
-			return messages;
+			return messages
 		}
-		var start = total - arguments.limit + 1;
-		return messages.slice( start, total );
+		var start = total - arguments.limit + 1
+		return messages.slice( start, total )
 	}
 
 	/**
@@ -251,14 +255,14 @@ class extends="BaseMemory" {
 	 * @return Array of matching message structs
 	 */
 	public array function search( required string searchTerm, boolean caseSensitive = false ) {
-		var term = arguments.searchTerm;
-		var isCaseSensitive = arguments.caseSensitive;
+		var term = arguments.searchTerm
+		var isCaseSensitive = arguments.caseSensitive
 
 		return this.getAll().filter( ( message ) => {
 			return isCaseSensitive
 				? message.content.find( term ) > 0
-				: message.content.findNoCase( term ) > 0;
-		} );
+				: message.content.findNoCase( term ) > 0
+		} )
 	}
 
 	/**
@@ -270,30 +274,30 @@ class extends="BaseMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getRange( required numeric startIndex, numeric endIndex ) {
-		var messages = this.getAll();
-		var total = messages.len();
+		var messages = this.getAll()
+		var total = messages.len()
 
 		// Validate startIndex - must be within bounds
 		if ( arguments.startIndex < 1 || arguments.startIndex > total ) {
-			return [];
+			return []
 		}
 
 		// Default endIndex to last message if not provided
-		var finalEndIndex = isNull( arguments.endIndex ) ? total : arguments.endIndex;
+		var finalEndIndex = isNull( arguments.endIndex ) ? total : arguments.endIndex
 
 		// Clamp endIndex to valid range
 		if ( finalEndIndex > total ) {
-			finalEndIndex = total;
+			finalEndIndex = total
 		}
 
 		// If endIndex is before startIndex, return empty
 		if ( finalEndIndex < arguments.startIndex ) {
-			return [];
+			return []
 		}
 
 		// Calculate length for slice (slice takes start and length, not start and end)
-		var length = finalEndIndex - arguments.startIndex + 1;
-		return messages.slice( arguments.startIndex, length );
+		var length = finalEndIndex - arguments.startIndex + 1
+		return messages.slice( arguments.startIndex, length )
 	}
 
 	/**
@@ -303,10 +307,10 @@ class extends="BaseMemory" {
 	 * @return Struct with memory information
 	 */
 	public struct function getSummary() {
-		var summary = super.getSummary();
-		summary.cacheName = variables.cacheName;
-		summary.cached = !isNull( variables.cache );
-		return summary;
+		var summary = super.getSummary()
+		summary.cacheName = variables.cacheName
+		summary.cached = !isNull( variables.cache )
+		return summary
 	}
 
 	/**
@@ -316,9 +320,9 @@ class extends="BaseMemory" {
 	 * @return Struct containing all memory data
 	 */
 	public struct function export() {
-		var exported = super.export();
-		exported.cacheName = variables.cacheName;
-		return exported;
+		var exported = super.export()
+		exported.cacheName = variables.cacheName
+		return exported
 	}
 
 	/**
@@ -332,27 +336,27 @@ class extends="BaseMemory" {
 	public IAiMemory function import( required struct data ) {
 		// Handle cacheName specific to CacheMemory
 		if ( arguments.data.keyExists( "cacheName" ) ) {
-			variables.cacheName = arguments.data.cacheName;
+			variables.cacheName = arguments.data.cacheName
 			// Reinitialize cache if cacheName changed
-			variables.cache = cache( variables.cacheName );
+			variables.cache = cache( variables.cacheName )
 		}
 
 		// Import key, metadata, config
 		if ( arguments.data.keyExists( "key" ) ) {
-			variables.key = arguments.data.key;
+			variables.key = arguments.data.key
 		}
 		if ( arguments.data.keyExists( "metadata" ) ) {
-			variables.metadata = arguments.data.metadata;
+			variables.metadata = arguments.data.metadata
 		}
 		if ( arguments.data.keyExists( "config" ) ) {
-			variables.config = arguments.data.config;
+			variables.config = arguments.data.config
 		}
 
 		// Import messages directly to cache (don't use variables.messages)
-		var messages = arguments.data.messages ?: [];
-		setCacheData( messages, variables.metadata );
+		var messages = arguments.data.messages ?: []
+		setCacheData( messages, variables.metadata )
 
-		return this;
+		return this
 	}
 
 	/**
@@ -363,18 +367,18 @@ class extends="BaseMemory" {
 	 */
 	public IAiMemory function clone() {
 		// Export current state and deep copy it
-		var exported = duplicate( this.export() );
+		var exported = duplicate( this.export() )
 
 		// Generate new unique key to avoid cache conflicts
-		var newKey = variables.key & "_clone_" & createUUID();
-		exported.key = newKey;
+		var newKey = variables.key & "_clone_" & createUUID()
+		exported.key = newKey
 
 		// Create new instance with new key and same cache name
 		var cloned = new CacheMemory( newKey, variables.cacheName )
-			.configure( exported.config );
+			.configure( exported.config )
 
 		// Import data (will create new cache entry)
-		return cloned.import( exported );
+		return cloned.import( exported )
 	}
 
 	/**
@@ -387,26 +391,26 @@ class extends="BaseMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function merge( required IAiMemory otherMemory, boolean skipDuplicates = false ) {
-		var data = getCacheData();
-		var currentMessages = data.messages;
-		var otherMessages = arguments.otherMemory.getAll();
+		var data = getCacheData()
+		var currentMessages = data.messages
+		var otherMessages = arguments.otherMemory.getAll()
 
 		if ( arguments.skipDuplicates ) {
 			// Filter out duplicates by comparing role and content
 			otherMessages = otherMessages.filter( ( newMsg ) => {
 				return !currentMessages.some( ( existingMsg ) =>
 					existingMsg.role == newMsg.role && existingMsg.content == newMsg.content
-				);
-			} );
+				)
+			} )
 		}
 
 		// Append filtered messages
-		currentMessages.append( otherMessages, true );
+		currentMessages.append( otherMessages, true )
 
 		// Write back to cache
-		setCacheData( currentMessages, data.metadata );
+		setCacheData( currentMessages, data.metadata )
 
-		return this;
+		return this
 	}
 
 	/**
@@ -414,42 +418,42 @@ class extends="BaseMemory" {
 	 */
 	public IAiMemory function trim() {
 		// If unbounded → do nothing
-		if ( variables.maxMessages == 0 ) return this;
+		if ( variables.maxMessages == 0 ) return this
 
-		var data = getCacheData();
-		var messages = data.messages;
+		var data = getCacheData()
+		var messages = data.messages
 
 		// Extract system message if present
-		var systemMsg = "";
-		var hasSystem = false;
+		var systemMsg = ""
+		var hasSystem = false
 
 		var systemMessages = messages.filter( m => m.role == "system" )
 		if ( !systemMessages.isEmpty() ) {
 			systemMsg = systemMessages.first().content
-			hasSystem = true;
+			hasSystem = true
 		}
 
 		// Trim non-system messages
-		var nonSystem = messages.filter( m => m.role != "system" );
+		var nonSystem = messages.filter( m => m.role != "system" )
 
 		// If no trimming needed, exit early
 		if ( nonSystem.len() <= variables.maxMessages ) {
-			return this;
+			return this
 		}
 
 		// Determine which messages to keep
-		var start = nonSystem.len() - variables.maxMessages + 1;
-		var keep = nonSystem.slice( start, variables.maxMessages );
+		var start = nonSystem.len() - variables.maxMessages + 1
+		var keep = nonSystem.slice( start, variables.maxMessages )
 
 		// Preserve system message at top
 		if ( hasSystem ){
-			keep.prepend( { role:"system", content:systemMsg, timestamp:now() } );
+			keep.prepend( { role:"system", content:systemMsg, timestamp:now() } )
 		}
 
 		// Save back to cache
-		setCacheData( keep, data.metadata );
+		setCacheData( keep, data.metadata )
 
-		return this;
+		return this
 	}
 
 	/**
@@ -470,9 +474,9 @@ class extends="BaseMemory" {
 				return {
 					"messages"  : [],
 					"metadata"  : {}
-				};
+				}
 			}
-		);
+		)
 	}
 
 	/**
@@ -492,7 +496,7 @@ class extends="BaseMemory" {
 					messages  : arguments.messages,
 					metadata  : arguments.metadata
 				}
-			);
+			)
 		}
 	}
 

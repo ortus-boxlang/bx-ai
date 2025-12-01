@@ -3,7 +3,7 @@
  *
  * Copyright [2023] [Ortus Solutions, Corp]
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * Licensed under the Apache License, Version 2.0 (the "License") you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
  *
  * http://www.apache.org/licenses/LICENSE-2.0
@@ -42,12 +42,13 @@ class extends="BaseMemory" {
 	function init(
 		required string key,
 		string datasource = "",
-		string table = static.DEFAULT_TABLE
+		string table = static.DEFAULT_TABLE,
+		numeric maxMessages = 0
 	) {
-		super.init( arguments.key );
-		variables.datasource = arguments.datasource;
-		variables.table = arguments.table;
-		return this;
+		super.init( argumentCollection: arguments )
+		variables.datasource = arguments.datasource
+		variables.table = arguments.table
+		return this
 	}
 
 	/**
@@ -55,14 +56,14 @@ class extends="BaseMemory" {
 	 * Supports datasource and table in config, ensures table exists
 	 */
 	public IAiMemory function configure( required struct config ) {
-		super.configure( arguments.config );
+		super.configure( arguments.config )
 
 		if ( arguments.config.keyExists( "datasource" ) ) {
-			variables.datasource = arguments.config.datasource;
+			variables.datasource = arguments.config.datasource
 		}
 
 		if ( arguments.config.keyExists( "table" ) ) {
-			variables.table = arguments.config.table;
+			variables.table = arguments.config.table
 		}
 
 		// Ensure we have a datasource
@@ -70,16 +71,16 @@ class extends="BaseMemory" {
 			throw(
 				type = "JdbcMemory.MissingDatasource",
 				message = "Datasource is required for JdbcMemory. Provide it via constructor or configure()."
-			);
+			)
 		}
 
 		// Ensure table exists
-		ensureTable();
+		ensureTable()
 
 		// Load existing data from database if it exists
-		loadFromDatabase();
+		loadFromDatabase()
 
-		return this;
+		return this
 	}
 
 	/**
@@ -91,13 +92,13 @@ class extends="BaseMemory" {
 	 */
 	public any function datasource( string datasource ) {
 		if ( !isNull( arguments.datasource ) ) {
-			variables.datasource = arguments.datasource;
+			variables.datasource = arguments.datasource
 			// Ensure table and reload data
-			ensureTable();
-			loadFromDatabase();
-			return this;
+			ensureTable()
+			loadFromDatabase()
+			return this
 		}
-		return variables.datasource;
+		return variables.datasource
 	}
 
 	/**
@@ -109,79 +110,93 @@ class extends="BaseMemory" {
 	 */
 	public any function table( string table ) {
 		if ( !isNull( arguments.table ) ) {
-			variables.table = arguments.table;
+			variables.table = arguments.table
 			// Ensure table and reload data
-			ensureTable();
-			loadFromDatabase();
-			return this;
+			ensureTable()
+			loadFromDatabase()
+			return this
 		}
-		return variables.table;
+		return variables.table
 	}
 
 	/**
 	 * Add a message or messages to memory and persist to database
 	 */
 	public IAiMemory function add( required any message ) {
-		super.add( arguments.message );
-		saveToDatabase();
-		return this;
+		super.add( arguments.message )
+
+		// apply trimming before saving
+    	this.trim()
+
+		saveToDatabase()
+
+		return this
 	}
 
 	/**
 	 * Set the system message and persist to database
 	 */
 	public IAiMemory function setSystemMessage( required string message ) {
-		super.setSystemMessage( arguments.message );
-		saveToDatabase();
-		return this;
+		super.setSystemMessage( arguments.message )
+		saveToDatabase()
+		return this
 	}
 
 	/**
 	 * Clear all messages and remove from database
 	 */
 	public IAiMemory function clear() {
-		super.clear();
-		deleteFromDatabase();
-		return this;
+		super.clear()
+		deleteFromDatabase()
+		return this
 	}
 
 	/**
 	 * Export memory state including database-specific fields
 	 */
 	public struct function export() {
-		var exported = super.export();
-		exported.datasource = variables.datasource;
-		exported.table = variables.table;
-		return exported;
+		var exported = super.export()
+		exported.datasource = variables.datasource
+		exported.table = variables.table
+		return exported
 	}
 
 	/**
 	 * Import memory state and persist to database
 	 */
 	public IAiMemory function import( required struct data ) {
-		super.import( arguments.data );
+		super.import( arguments.data )
 
 		// Import database-specific fields
 		if ( arguments.data.keyExists( "datasource" ) ) {
-			variables.datasource = arguments.data.datasource;
+			variables.datasource = arguments.data.datasource
 		}
 		if ( arguments.data.keyExists( "table" ) ) {
-			variables.table = arguments.data.table;
+			variables.table = arguments.data.table
 		}
 
-		saveToDatabase();
-		return this;
+		saveToDatabase()
+		return this
 	}
 
 	/**
 	 * Get summary including database connection info
 	 */
 	public struct function getSummary() {
-		var summary = super.getSummary();
-		summary.datasource = variables.datasource;
-		summary.table = variables.table;
-		summary.persisted = recordExists();
-		return summary;
+		var summary = super.getSummary()
+		summary.datasource = variables.datasource
+		summary.table = variables.table
+		summary.persisted = recordExists()
+		return summary
+	}
+
+	/**
+	 * Trim memory and persist changes to database
+	 */
+	public IAiMemory function trim() {
+		super.trim();     // performs memory-side window cutoff
+		saveToDatabase(); // sync DB storage
+		return this;
 	}
 
 	// ========================================
@@ -196,18 +211,18 @@ class extends="BaseMemory" {
 		bx:dbinfo
 			name="tables"
 			type="tables"
-			datasource="#variables.datasource#" {};
+			datasource="#variables.datasource#" {}
 
-		var tableExists = false;
+		var tableExists = false
 		for ( var tableInfo in tables ) {
 			if ( tableInfo.table_name.toLowerCase() == variables.table.toLowerCase() ) {
-				tableExists = true;
-				break;
+				tableExists = true
+				break
 			}
 		}
 
 		if ( !tableExists ) {
-			createTable();
+			createTable()
 		}
 	}
 
@@ -219,8 +234,8 @@ class extends="BaseMemory" {
 		bx:dbinfo
 			name="dbVersion"
 			type="version"
-			datasource="#variables.datasource#" {};
-		var dbType = dbVersion.database_productname.toLowerCase();
+			datasource="#variables.datasource#" {}
+		var dbType = dbVersion.database_productname.toLowerCase()
 
 		// Build CREATE TABLE statement
 		// Using CLOB/TEXT for large JSON data storage
@@ -233,15 +248,15 @@ class extends="BaseMemory" {
 				created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			)
-		";
+		"
 
 		// Adjust for database-specific types
 		if ( dbType.contains( "mysql" ) || dbType.contains( "mariadb" ) ) {
-			sql = sql.replace( "CLOB", "LONGTEXT" );
+			sql = sql.replace( "CLOB", "LONGTEXT" )
 		} else if ( dbType.contains( "postgres" ) ) {
-			sql = sql.replace( "CLOB", "TEXT" );
+			sql = sql.replace( "CLOB", "TEXT" )
 		} else if ( dbType.contains( "sqlserver" ) || dbType.contains( "microsoft" ) ) {
-			sql = sql.replace( "CLOB", "NVARCHAR(MAX)" );
+			sql = sql.replace( "CLOB", "NVARCHAR(MAX)" )
 		} else if ( dbType.contains( "oracle" ) ) {
 			// Oracle uses CLOB
 		}
@@ -250,7 +265,7 @@ class extends="BaseMemory" {
 			sql,
 			{},
 			{ datasource: variables.datasource }
-		);
+		)
 	}
 
 	/**
@@ -258,28 +273,28 @@ class extends="BaseMemory" {
 	 */
 	private void function loadFromDatabase() {
 		if ( !recordExists() ) {
-			return;
+			return
 		}
 
 		// Get database-specific CLOB-to-string conversion SQL
-		var selectSQL = getDatabaseSpecificSelectSQL();
+		var selectSQL = getDatabaseSpecificSelectSQL()
 
 		var result = queryExecute(
 			selectSQL,
 			{ key: variables.key },
 			{ datasource: variables.datasource }
-		);
+		)
 
 		if ( result.recordCount > 0 ) {
 			// Access as string values (conversion handled by database)
-			var messagesStr = result.memory_data[1];
-			var metadataStr = result.metadata_data[1];
-			var configStr = result.config_data[1];
+			var messagesStr = result.memory_data[1]
+			var metadataStr = result.metadata_data[1]
+			var configStr = result.config_data[1]
 
 			// Deserialize JSON strings
-			variables.messages = jsonDeserialize( messagesStr );
-			variables.metadata = jsonDeserialize( metadataStr );
-			variables.config = jsonDeserialize( configStr );
+			variables.messages = jsonDeserialize( messagesStr )
+			variables.metadata = jsonDeserialize( metadataStr )
+			variables.config = jsonDeserialize( configStr )
 		}
 	}
 
@@ -293,9 +308,9 @@ class extends="BaseMemory" {
 		bx:dbinfo
 			name="dbVersion"
 			type="version"
-			datasource="#variables.datasource#" {};
+			datasource="#variables.datasource#" {}
 
-		var dbType = dbVersion.database_productname.toLowerCase();
+		var dbType = dbVersion.database_productname.toLowerCase()
 
 		// Build database-specific SELECT with appropriate CLOB conversion
 		if ( dbType.findNoCase( "mysql" ) || dbType.findNoCase( "mariadb" ) ) {
@@ -304,21 +319,21 @@ class extends="BaseMemory" {
 				CAST(memory_data AS CHAR) as memory_data,
 				CAST(metadata_data AS CHAR) as metadata_data,
 				CAST(config_data AS CHAR) as config_data
-			FROM #variables.table# WHERE memory_key = :key";
+			FROM #variables.table# WHERE memory_key = :key"
 		} else if ( dbType.findNoCase( "postgresql" ) || dbType.findNoCase( "postgres" ) ) {
 			// PostgreSQL: TEXT type is already string-compatible, but explicit cast for safety
 			return "SELECT
 				memory_data::text as memory_data,
 				metadata_data::text as metadata_data,
 				config_data::text as config_data
-			FROM #variables.table# WHERE memory_key = :key";
+			FROM #variables.table# WHERE memory_key = :key"
 		} else if ( dbType.findNoCase( "microsoft" ) || dbType.findNoCase( "sql server" ) ) {
 			// SQL Server: CAST to VARCHAR(MAX) or just select (NVARCHAR(MAX) is string-compatible)
 			return "SELECT
 				CAST(memory_data AS VARCHAR(MAX)) as memory_data,
 				CAST(metadata_data AS VARCHAR(MAX)) as metadata_data,
 				CAST(config_data AS VARCHAR(MAX)) as config_data
-			FROM #variables.table# WHERE memory_key = :key";
+			FROM #variables.table# WHERE memory_key = :key"
 		} else if ( dbType.findNoCase( "oracle" ) ) {
 			// Oracle: Use TO_CHAR or DBMS_LOB.SUBSTR for CLOB conversion
 			// TO_CHAR has 4000 char limit, so use CAST for consistency
@@ -326,7 +341,7 @@ class extends="BaseMemory" {
 				TO_CLOB(memory_data) as memory_data,
 				TO_CLOB(metadata_data) as metadata_data,
 				TO_CLOB(config_data) as config_data
-			FROM #variables.table# WHERE memory_key = :key";
+			FROM #variables.table# WHERE memory_key = :key"
 		} else {
 			// Derby and other databases: CAST to VARCHAR with max size
 			// Derby's max VARCHAR is 32672
@@ -334,7 +349,7 @@ class extends="BaseMemory" {
 				CAST(memory_data AS VARCHAR(32672)) as memory_data,
 				CAST(metadata_data AS VARCHAR(32672)) as metadata_data,
 				CAST(config_data AS VARCHAR(32672)) as config_data
-			FROM #variables.table# WHERE memory_key = :key";
+			FROM #variables.table# WHERE memory_key = :key"
 		}
 	}
 
@@ -343,12 +358,12 @@ class extends="BaseMemory" {
 	 */
 	private void function saveToDatabase() {
 		if ( !len( variables.datasource ) ) {
-			return;
+			return
 		}
 
-		var messagesJson = jsonSerialize( variables.messages );
-		var metadataJson = jsonSerialize( variables.metadata );
-		var configJson = jsonSerialize( variables.config );
+		var messagesJson = jsonSerialize( variables.messages )
+		var metadataJson = jsonSerialize( variables.metadata )
+		var configJson = jsonSerialize( variables.config )
 
 		if ( recordExists() ) {
 			// Update existing record
@@ -366,7 +381,7 @@ class extends="BaseMemory" {
 					config: configJson
 				},
 				{ datasource: variables.datasource }
-			);
+			)
 		} else {
 			// Insert new record
 			queryExecute(
@@ -379,7 +394,7 @@ class extends="BaseMemory" {
 					config: configJson
 				},
 				{ datasource: variables.datasource }
-			);
+			)
 		}
 	}
 
@@ -388,14 +403,14 @@ class extends="BaseMemory" {
 	 */
 	private void function deleteFromDatabase() {
 		if ( !len( variables.datasource ) ) {
-			return;
+			return
 		}
 
 		queryExecute(
 			"DELETE FROM #variables.table# WHERE memory_key = :key",
 			{ key: variables.key },
 			{ datasource: variables.datasource }
-		);
+		)
 	}
 
 	/**
@@ -405,16 +420,16 @@ class extends="BaseMemory" {
 	 */
 	private boolean function recordExists() {
 		if ( !len( variables.datasource ) ) {
-			return false;
+			return false
 		}
 
 		var result = queryExecute(
 			"SELECT COUNT(*) as record_count FROM #variables.table# WHERE memory_key = :key",
 			{ key: variables.key },
 			{ datasource: variables.datasource, returntype: "array" }
-		);
+		)
 
-		return result.len() > 0 && result[1].record_count > 0;
+		return result.len() > 0 && result[1].record_count > 0
 	}
 
 }
