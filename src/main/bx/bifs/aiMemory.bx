@@ -28,16 +28,32 @@ class {
 	 *
 	 * @memory The memory type to create. Defaults to "window".
 	 * @key The key to identify the memory instance. Defaults to a new UUID.
+	 * @userId The user identifier for multi-tenant isolation.
+	 * @conversationId The conversation identifier for multiple conversations per user.
 	 * @config Configuration struct for the memory instance
 	 *
 	 * @return IAiMemory instance
 	 */
-	function invoke( string memory, string key = createUUID(), struct config = {} ) {
+	function invoke(
+		string memory,
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = "",
+		struct config = {}
+	) {
 
 		// Default the memory type from the module settings if not provided
 		var memoryType = arguments.memory ?: moduleRecord.settings.memory.provider;
 		var memoryConfig = arguments.config ?: moduleRecord.settings.memory.config;
 		var memoryClass = "";
+
+		// Add userId and conversationId to config if provided
+		if ( len( arguments.userId ) ) {
+			memoryConfig.userId = arguments.userId;
+		}
+		if ( len( arguments.conversationId ) ) {
+			memoryConfig.conversationId = arguments.conversationId;
+		}
 
 		// Map memory types to their class paths
 		switch( memoryType.lcase() ) {
@@ -131,7 +147,11 @@ class {
 		} );
 
 		// Create and configure the memory instance
-		return new "#memoryClass#"( arguments.key ).configure( memoryConfig );
+		return new "#memoryClass#"(
+			key: arguments.key,
+			userId: arguments.userId,
+			conversationId: arguments.conversationId
+		).configure( memoryConfig );
 	}
 
 }

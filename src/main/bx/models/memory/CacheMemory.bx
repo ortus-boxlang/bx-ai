@@ -36,11 +36,15 @@ class extends="BaseMemory" {
 	 * Constructor
 	 *
 	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
 	 * @cacheName Name of the cache to use (default: "default")
 	 * @maxMessages Maximum number of messages to retain (0 = unbounded)
 	 */
 	function init(
 		required string key,
+		string userId = "",
+		string conversationId = "",
 		string cacheName = static.DEFAULT_CACHE_NAME,
 		numeric maxMessages = 0
 	) {

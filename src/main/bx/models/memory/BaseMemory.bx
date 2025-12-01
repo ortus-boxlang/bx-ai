@@ -23,6 +23,16 @@ abstract class implements="IAiMemory" {
 	property name="key" type="string" default="";
 
 	/**
+	 * User identifier for multi-tenant memory isolation
+	 */
+	property name="userId" type="string" default="";
+
+	/**
+	 * Conversation identifier for multiple conversations per user
+	 */
+	property name="conversationId" type="string" default="";
+
+	/**
 	 * Metadata for this memory instance
 	 */
 	property name="metadata" type="struct" default={};
@@ -59,9 +69,19 @@ abstract class implements="IAiMemory" {
 	 * Constructor - sets default name from class metadata
 	 *
 	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
+	 * @maxMessages Maximum number of messages to store
 	 */
-	function init( string key = createUUID(), numeric maxMessages = static.DEFAULT_MAX_MESSAGES  ) {
+	function init(
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = "",
+		numeric maxMessages = static.DEFAULT_MAX_MESSAGES
+	) {
 		variables.key = arguments.key
+		variables.userId = arguments.userId
+		variables.conversationId = arguments.conversationId
 		var fullName = getMetadata( this ).name ?: "BaseMemory"
 		variables.name = fullName.listLast( "." )
 		variables.maxMessages = arguments.maxMessages
@@ -342,6 +362,12 @@ abstract class implements="IAiMemory" {
 		if ( arguments.config.keyExists( "maxMessages" ) ) {
 			variables.maxMessages = arguments.config.maxMessages
 		}
+		if ( arguments.config.keyExists( "userId" ) ) {
+			variables.userId = arguments.config.userId
+		}
+		if ( arguments.config.keyExists( "conversationId" ) ) {
+			variables.conversationId = arguments.config.conversationId
+		}
 
 		return this
 	}
@@ -357,6 +383,8 @@ abstract class implements="IAiMemory" {
 		var summary = {
 			"type": this.name(),
 			"key": this.key(),
+			"userId": this.getUserId(),
+			"conversationId": this.getConversationId(),
 			"messageCount": count(),
 			"maxMessages": variables.maxMessages,
 			"nonSystemCount": getNonSystemMessages().len(),
@@ -403,6 +431,8 @@ abstract class implements="IAiMemory" {
 		return {
 			"type":this. name(),
 			"key": this.key(),
+			"userId": this.getUserId(),
+			"conversationId": this.getConversationId(),
 			"metadata": this.metadata(),
 			"config": getConfig(),
 			"messages": getAll(),
@@ -421,6 +451,12 @@ abstract class implements="IAiMemory" {
 	public IAiMemory function import( required struct data ) {
 		if ( arguments.data.keyExists( "key" ) ) {
 			variables.key = arguments.data.key
+		}
+		if ( arguments.data.keyExists( "userId" ) ) {
+			variables.userId = arguments.data.userId
+		}
+		if ( arguments.data.keyExists( "conversationId" ) ) {
+			variables.conversationId = arguments.data.conversationId
 		}
 		if ( arguments.data.keyExists( "metadata" ) ) {
 			variables.metadata = arguments.data.metadata

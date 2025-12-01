@@ -49,8 +49,14 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 * Constructor
 	 *
 	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
 	 */
-	function init( string key = createUUID() ) {
+	function init(
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = ""
+	) {
 		super.init( argumentCollection: arguments );
 		return this;
 	}
@@ -87,12 +93,18 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 		var recentConfig = {
 			maxMessages: variables.recentLimit * 2  // Keep more in window than we return
 		};
-		variables.recentMemory = new WindowMemory( variables.key & ":recent" ).configure( recentConfig );
+		variables.recentMemory = new WindowMemory(
+			key: variables.key & ":recent",
+			userId: variables.userId,
+			conversationId: variables.conversationId
+		).configure( recentConfig );
 
 		// Initialize vector memory based on provider
 		variables.vectorMemory = aiMemory(
 			memory: variables.vectorProvider,
 			key: variables.key & ":vector",
+			userId: variables.userId,
+			conversationId: variables.conversationId,
 			config: variables.vectorConfig
 		);
 

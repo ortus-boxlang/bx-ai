@@ -22,9 +22,16 @@ class extends="BaseMemory" {
 	 * Constructor
 	 *
 	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
 	 * @maxMessages Maximum number of messages to keep (default: 100)
 	 */
-	function init( string key = createUUID(), numeric maxMessages ) {
+	function init(
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = "",
+		numeric maxMessages
+	) {
 		super.init( argumentCollection: arguments );
 		return this;
 	}

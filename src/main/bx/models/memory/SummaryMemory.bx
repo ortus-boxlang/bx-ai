@@ -61,6 +61,8 @@ class extends="WindowMemory" {
 	 * Constructor
 	 *
 	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
 	 * @maxMessages Maximum total messages (default: 20)
 	 * @summaryThreshold Number of recent messages to keep (default: 10)
 	 * @summaryModel Model for summarization (default: gpt-4o-mini)
@@ -68,12 +70,18 @@ class extends="WindowMemory" {
 	 */
 	function init(
 		string key = createUUID(),
+		string userId = "",
+		string conversationId = "",
 		numeric maxMessages = static.DEFAULT_MAX_MESSAGES,
 		numeric summaryThreshold = static.DEFAULT_SUMMARY_THRESHOLD,
 		string summaryModel = static.DEFAULT_SUMMARY_MODEL,
 		string summaryProvider = static.DEFAULT_SUMMARY_PROVIDER
 	) {
-		super.init( arguments.key )
+		super.init(
+			key: arguments.key,
+			userId: arguments.userId,
+			conversationId: arguments.conversationId
+		)
 		variables.maxMessages = arguments.maxMessages
 		variables.summaryThreshold = arguments.summaryThreshold
 		variables.summaryModelName = arguments.summaryModel

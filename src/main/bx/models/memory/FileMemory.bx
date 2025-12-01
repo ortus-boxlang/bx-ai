@@ -31,10 +31,21 @@ class extends="BaseMemory" {
 	 * Constructor
 	 *
 	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
 	 * @directoryPath Path to the directory for storing memory files (optional)
 	 */
-	function init( required string key, string directoryPath = static.DEFAULT_DIRECTORY_PATH ) {
-		super.init( arguments.key );
+	function init(
+		required string key,
+		string userId = "",
+		string conversationId = "",
+		string directoryPath = static.DEFAULT_DIRECTORY_PATH
+	) {
+		super.init(
+			key: arguments.key,
+			userId: arguments.userId,
+			conversationId: arguments.conversationId
+		);
 		variables.directoryPath = arguments.directoryPath;
 		return this;
 	}
