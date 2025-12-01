@@ -119,7 +119,7 @@ class extends="BaseVectorMemory" {
 			id: arguments.id,
 			text: arguments.text,
 			embedding: arguments.embedding,
-			metadata: jsonSerialize( arguments.metadata )
+			metadata: arguments.metadata
 		}
 
 		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents?action=upsert" )
@@ -250,7 +250,7 @@ class extends="BaseVectorMemory" {
 				results.append({
 					id: doc.id,
 					text: doc.text,
-					metadata: isJSON( doc.metadata ) ? jsonDeserialize( doc.metadata ) : {},
+					metadata: doc.metadata ?: {},
 					embedding: doc.embedding ?: []
 				})
 			}
@@ -283,7 +283,7 @@ class extends="BaseVectorMemory" {
 		return {
 			id: doc.id,
 			text: doc.text,
-			metadata: isJSON( doc.metadata ) ? jsonDeserialize( doc.metadata ) : {},
+			metadata: doc.metadata ?: {},
 			embedding: doc.embedding ?: []
 		}
 	}
@@ -373,7 +373,7 @@ class extends="BaseVectorMemory" {
 					type: "float[]",
 					num_dim: variables.dimensions
 				},
-				{ name: "metadata", type: "string", optional: true }
+				{ name: "metadata", type: "auto", optional: true }
 			]
 		}
 
@@ -466,7 +466,7 @@ class extends="BaseVectorMemory" {
 			results.append({
 				id: doc.id,
 				text: doc.text,
-				metadata: isJSON( doc.metadata ) ? jsonDeserialize( doc.metadata ) : {},
+				metadata: doc.metadata ?: {},
 				score: convertDistanceToScore( hit.vector_distance ?: 0 ),
 				distance: hit.vector_distance ?: 0
 			})
@@ -501,7 +501,10 @@ class extends="BaseVectorMemory" {
 
 		arguments.filter.each( ( key, value ) => {
 			if ( isSimpleValue( value ) ) {
-				filters.append( "metadata:" & key & ":=" & value )
+				// TypeSense v29 nested field syntax: metadata.key:=value
+				// String values must be quoted
+				var filterValue = isNumeric( value ) ? value : "'" & value & "'"
+				filters.append( "metadata." & key & ":=" & filterValue )
 			}
 		} )
 

@@ -48,6 +48,55 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 		// Skip tests if TypeSense is not available
 		boolean typesenseAvailable = isTypesenseAvailable();
 		assumeTrue( typesenseAvailable, "TypeSense not available at " + TYPESENSE_HOST + ":" + TYPESENSE_PORT );
+
+		// Clean up all existing collections
+		if ( typesenseAvailable ) {
+			cleanupTypesenseCollections();
+		}
+	}
+
+	/**
+	 * Delete all collections from TypeSense to ensure clean test state
+	 */
+	private static void cleanupTypesenseCollections() {
+		try {
+			java.net.http.HttpClient			client				= java.net.http.HttpClient.newHttpClient();
+
+			// Get all collections
+			java.net.http.HttpRequest			collectionsRequest	= java.net.http.HttpRequest.newBuilder()
+			    .uri( java.net.URI.create( "http://" + TYPESENSE_HOST + ":" + TYPESENSE_PORT + "/collections" ) )
+			    .header( "X-TYPESENSE-API-KEY", "xyz" )
+			    .GET()
+			    .build();
+
+			java.net.http.HttpResponse<String>	collectionsResponse	= client.send(
+			    collectionsRequest,
+			    java.net.http.HttpResponse.BodyHandlers.ofString()
+			);
+
+			if ( collectionsResponse.statusCode() == 200 ) {
+				String body = collectionsResponse.body();
+				// Parse JSON array of collections and delete each one
+				if ( body.contains( "[" ) && body.contains( "name" ) ) {
+					// Simple JSON parsing - extract collection names
+					String[] parts = body.split( "\"name\"\\s*:\\s*\"" );
+					for ( int i = 1; i < parts.length; i++ ) {
+						String						collectionName	= parts[ i ].split( "\"" )[ 0 ];
+
+						// Delete collection
+						java.net.http.HttpRequest	deleteRequest	= java.net.http.HttpRequest.newBuilder()
+						    .uri( java.net.URI.create( "http://" + TYPESENSE_HOST + ":" + TYPESENSE_PORT + "/collections/" + collectionName ) )
+						    .header( "X-TYPESENSE-API-KEY", "xyz" )
+						    .DELETE()
+						    .build();
+
+						client.send( deleteRequest, java.net.http.HttpResponse.BodyHandlers.ofString() );
+					}
+				}
+			}
+		} catch ( Exception e ) {
+			System.err.println( "Warning: Failed to cleanup TypeSense collections: " + e.getMessage() );
+		}
 	}
 
 	@Test
@@ -354,38 +403,40 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 	public void testMetadataFiltering() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "typesense", createUUID(), {
-		        collection: "test_filtering",
-		        host: "localhost",
-		        port: 8108,
-		        apiKey: "xyz"
-		    } );
+		       memory = aiMemory( "typesense", createUUID(), {
+		           collection: "test_filtering",
+		           host: "localhost",
+		           port: 8108,
+		           apiKey: "xyz"
+		       } )
 
-		    // Add documents with different metadata
-		    memory.add( "Message from user Alice", { user: "alice", priority: "high" } );
-		    memory.add( "Message from user Bob", { user: "bob", priority: "low" } );
-		    memory.add( "Another message from Alice", { user: "alice", priority: "low" } );
+		    memory.clear()
 
-		    // Search with metadata filter
-		    aliceMessages = memory.getRelevant(
-		        "message",
-		        3,
-		        { user: "alice" }
-		    );
+		       // Add documents with different metadata
+		       memory.add( "Message from user Alice", { user: "alice", priority: "high" } )
+		       memory.add( "Message from user Bob", { user: "bob", priority: "low" } )
+		       memory.add( "Another message from Alice", { user: "alice", priority: "low" } )
 
-		    result = {
-		        count: arrayLen(aliceMessages),
-		        allFromAlice: true
-		    };
+		       // Search with metadata filter
+		       aliceMessages = memory.getRelevant(
+		           "message",
+		           3,
+		           { user: "alice" }
+		       );
 
-		    // Verify all results are from Alice
-		    for( msg in aliceMessages ) {
-		        if( !structKeyExists(msg, "metadata") || msg.metadata.user != "alice" ) {
-		            result.allFromAlice = false;
-		            break;
-		        }
-		    }
-		    """,
+		       result = {
+		           count: arrayLen( aliceMessages ),
+		           allFromAlice: true
+		       }
+
+		       // Verify all results are from Alice
+		       for( msg in aliceMessages ) {
+		           if( !structKeyExists(msg, "metadata") || msg.metadata.user != "alice" ) {
+		               result.allFromAlice = false
+		               break
+		           }
+		       }
+		       """,
 		    context );
 
 		IStruct result = variables.getAsStruct( Key.of( "result" ) );
