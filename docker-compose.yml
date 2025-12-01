@@ -185,6 +185,22 @@ services:
       QDRANT__SERVICE__GRPC_PORT: 6334
       QDRANT__LOG_LEVEL: INFO
 
+  # TypeSense - Fast typo-tolerant search engine with vector support
+  # Docs: https://typesense.org/docs/
+  typesense:
+    image: typesense/typesense:29.0
+    container_name: typesense
+    ports:
+      - "8108:8108"
+    volumes:
+      - typesense_data:/data
+    environment:
+      - TYPESENSE_DATA_DIR=/data
+      - TYPESENSE_API_KEY=xyz
+      - TYPESENSE_ENABLE_CORS=true
+    command: "--data-dir /data --api-key=xyz --enable-cors"
+    restart: unless-stopped
+
 volumes:
   ollama_data:
     name: ollama_data
@@ -204,3 +220,5 @@ volumes:
     name: weaviate_data
   qdrant_data:
     name: qdrant_data
+  typesense_data:
+    name: typesense_data

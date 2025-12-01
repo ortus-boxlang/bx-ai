@@ -100,6 +100,7 @@ agent.run( "What was my last invoice amount?" )
 | **ChromaDB** | Python integration, local dev | ⚙️ Moderate | Free | Good |
 | **PostgreSQL** | Existing Postgres infrastructure | ⚙️ Moderate | Low | Good |
 | **MySQL** | Existing MySQL 9+ infrastructure | ⚙️ Moderate | Low | Good |
+| **TypeSense** | Fast typo-tolerant search, autocomplete | ⚙️ Easy | Free/Paid | Excellent |
 | **Pinecone** | Production, cloud-first | ⚙️ Easy | Paid | Excellent |
 | **Qdrant** | Self-hosted, high performance | ⚙️ Complex | Free/Paid | Excellent |
 | **Weaviate** | GraphQL, knowledge graphs | ⚙️ Complex | Free/Paid | Excellent |
@@ -121,6 +122,7 @@ agent.run( "What was my last invoice amount?" )
 
 - **PostgreSQL**: If you already use Postgres
 - **MySQL**: If you already use MySQL 9+
+- **TypeSense**: Fast typo-tolerant search with low latency
 - **Qdrant**: Best performance for self-hosted
 - **Milvus**: Enterprise-grade, handles billions of vectors
 
@@ -373,6 +375,151 @@ agent.run( "Tell me about invoices" )  // Finds billing-related history
 
 - **Community Edition** (Free): VECTOR data type, app-layer distance calculations
 - **HeatWave** (Oracle Cloud): Native DISTANCE() function, VECTOR INDEX, GPU acceleration
+
+---
+
+### TypesenseVectorMemory
+
+[TypeSense](https://typesense.org/) is a fast, typo-tolerant search engine optimized for instant search experiences and vector similarity search.
+
+**Features:**
+
+- Lightning-fast search with typo tolerance
+- Native vector search support
+- Easy Docker deployment
+- RESTful API
+- Built-in relevance tuning
+- Excellent for autocomplete and instant search
+
+**Requirements:**
+
+- TypeSense Server 0.23.0+ (vector search support)
+- HTTP/HTTPS access to TypeSense instance
+- API key for authentication
+
+**Setup:**
+
+```bash
+# Docker (quickest way)
+export TYPESENSE_API_KEY=xyz
+docker run -p 8108:8108 \
+  -v $(pwd)/typesense-data:/data \
+  typesense/typesense:29.0 \
+  --data-dir /data \
+  --api-key=$TYPESENSE_API_KEY \
+  --enable-cors
+
+# Docker Compose
+services:
+  typesense:
+    image: typesense/typesense:29.0
+    restart: on-failure
+    ports:
+      - "8108:8108"
+    volumes:
+      - ./typesense-data:/data
+    command: '--data-dir /data --api-key=xyz --enable-cors'
+
+# Or use TypeSense Cloud (managed service)
+# Sign up at https://cloud.typesense.org/
+```
+
+**Configuration:**
+
+```java
+memory = aiMemory( "typesense", {
+    collection: "ai_conversations",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    host: "localhost",               // TypeSense host
+    port: 8108,                      // Default TypeSense port
+    protocol: "http",                // Use "https" for TypeSense Cloud
+    apiKey: "xyz",                   // Or use TYPESENSE_API_KEY env var
+    dimensions: 1536,                // Must match embedding model
+    timeout: 30                      // Connection timeout in seconds
+} )
+```
+
+**TypeSense Cloud Configuration:**
+
+```java
+// For TypeSense Cloud (managed service)
+memory = aiMemory( "typesense", {
+    collection: "production_memory",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    host: "xxx.a1.typesense.net",    // From TypeSense Cloud dashboard
+    port: 443,
+    protocol: "https",
+    apiKey: "your-cloud-api-key",    // From TypeSense Cloud dashboard
+    dimensions: 1536
+} )
+```
+
+**Usage Example:**
+
+```java
+// Create TypeSense vector memory
+memory = aiMemory( "typesense", {
+    collection: "customer_support",
+    host: "localhost",
+    port: 8108,
+    protocol: "http",
+    apiKey: "xyz",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small"
+} )
+
+// Use with agent
+agent = aiAgent(
+    name: "Support Bot",
+    memory: memory
+)
+
+// Fast, typo-tolerant semantic search
+agent.run( "How do I reset my pasword?" )  // Finds "password" results despite typo
+agent.run( "What are the paiment options?" )  // Finds "payment" results
+```
+
+**Best For:**
+
+- Applications requiring fast, low-latency search
+- Autocomplete and instant search features
+- Typo-tolerant semantic search
+- E-commerce product search
+- Documentation search
+- Customer support systems
+- Small to medium datasets (< 10M vectors)
+
+**TypeSense Advantages:**
+
+- **Speed**: Sub-50ms search latency
+- **Typo Tolerance**: Built-in fuzzy search
+- **Simple Setup**: Single binary, easy Docker deployment
+- **RESTful API**: Simple HTTP API, easy integration
+- **Relevance Tuning**: Fine-grained control over ranking
+
+**Pricing:**
+
+- **Self-Hosted**: Free (open source)
+- **TypeSense Cloud**:
+  - Free tier: Development clusters
+  - Paid: Production clusters from $0.03/hour
+
+**When to Choose TypeSense:**
+
+- Need instant search with typo tolerance
+- Want simple deployment and management
+- Require low-latency semantic search
+- Building search-heavy applications
+- Need both keyword and vector search
+
+**Performance Notes:**
+
+- Optimized for low-latency queries (< 50ms)
+- In-memory index for fast access
+- Horizontal scaling support
+- Efficient resource usage
 
 ---
 

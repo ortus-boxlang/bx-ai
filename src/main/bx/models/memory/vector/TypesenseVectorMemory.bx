@@ -1,0 +1,498 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * TypeSense Vector Memory Implementation
+ * Provides vector storage and semantic search using TypeSense REST API
+ * Designed for fast, typo-tolerant search with low latency
+ */
+class extends="BaseVectorMemory" {
+
+	/**
+	 * TypeSense server configuration
+	 */
+	property name="host" type="string" default="localhost";
+	property name="port" type="numeric" default=8108;
+	property name="protocol" type="string" default="http";
+	property name="apiKey" type="string" default="";
+
+	/**
+	 * HTTP client timeout settings
+	 */
+	property name="timeout" type="numeric" default=30;
+
+	/**
+	 * Base URL for TypeSense API (computed from host/port/protocol)
+	 */
+	property name="baseUrl" type="string" default="";
+
+	/**
+	 * Configure the TypeSense vector memory instance
+	 *
+	 * @config Configuration struct with TypeSense-specific options
+	 *
+	 * @return TypesenseVectorMemory for chaining
+	 */
+	public any function configure( required struct config ) {
+		// Param config defaults
+		param arguments.config.host = "localhost";
+		param arguments.config.port = 8108;
+		param arguments.config.protocol = "http";
+		param arguments.config.apiKey = "";
+		param arguments.config.timeout = 30;
+
+		// Validate API key
+		if ( !len( arguments.config.apiKey ) ) {
+			throw(
+				type = "TypesenseVectorMemory.MissingApiKey",
+				message = "API key is required for TypeSense. Provide it in config or set TYPESENSE_API_KEY environment variable."
+			);
+		}
+
+		// Extract TypeSense specific config FIRST (before super.configure() calls ensureCollection())
+		variables.host = arguments.config.host;
+		variables.port = arguments.config.port;
+		variables.protocol = arguments.config.protocol;
+		variables.apiKey = arguments.config.apiKey;
+		variables.timeout = arguments.config.timeout;
+
+		// Build base URL - MUST happen before super.configure()
+		variables.baseUrl = variables.protocol & "://" & variables.host & ":" & variables.port;
+
+		// Now call parent configure which will call ensureCollection()
+		super.configure( arguments.config );
+
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * ABSTRACT METHOD IMPLEMENTATIONS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure collection exists in TypeSense
+	 */
+	IVectorMemory function ensureCollection() {
+		if ( !collectionExists( variables.collection ) ) {
+			createCollection( variables.collection );
+		}
+		return this;
+	}
+
+	/**
+	 * Store a document in TypeSense
+	 *
+	 * @id Document ID
+	 * @text Document text
+	 * @embedding Vector embedding
+	 * @metadata Document metadata
+	 */
+	IVectorMemory function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	) {
+		var document = {
+			id: arguments.id,
+			text: arguments.text,
+			embedding: arguments.embedding,
+			metadata: jsonSerialize( arguments.metadata )
+		};
+
+		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents?action=upsert" )
+			.post()
+			.throwOnError( false )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "Content-Type", "application/json" )
+			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
+			.body( jsonSerialize( document ) )
+			.send();
+
+		if ( response.statusCode < 200 || response.statusCode >= 300 ) {
+			throw(
+				type = "TypesenseVectorMemory.StoreError",
+				message = "Failed to store document in TypeSense: " & response.statusText,
+				detail = response.fileContent
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * Search by vector embedding in TypeSense
+	 *
+	 * @embedding Vector to search with
+	 * @limit Max results
+	 * @filter Metadata filter
+	 *
+	 * @return Array of results with similarity scores
+	 */
+	array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		// Use multi_search endpoint to avoid query string length limitations
+		var searchRequest = {
+			collection: variables.collection,
+			q: "*",
+			vector_query: "embedding:([" & arguments.embedding.toList() & "], k:" & arguments.limit & ")",
+			exclude_fields: "embedding"
+		};
+
+		// Add metadata filter if provided
+		if ( !arguments.filter.isEmpty() ) {
+			var filterStr = buildFilterString( arguments.filter );
+			if ( len( filterStr ) ) {
+				searchRequest.filter_by = filterStr;
+			}
+		}
+
+		var payload = {
+			searches: [ searchRequest ]
+		};
+
+		var response = http( variables.baseUrl & "/multi_search" )
+			.post()
+			.throwOnError( false )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "Content-Type", "application/json" )
+			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
+			.body( jsonSerialize( payload ) )
+			.send();
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type = "TypesenseVectorMemory.SearchError",
+				message = "Failed to search TypeSense: " & response.statusText,
+				detail = response.fileContent
+			);
+		}
+
+		var result = jsonDeserialize( response.fileContent );
+		// multi_search returns results array, get first result
+		var searchResult = result.results[1];
+
+		// Debug: print search results
+		systemOutput( "TypeSense multi_search result: " & jsonSerialize( searchResult ), true );
+
+		// Check for errors in search result
+		if ( searchResult.keyExists( "code" ) && searchResult.keyExists( "error" ) ) {
+			throw(
+				type = "TypesenseVectorMemory.SearchError",
+				message = "TypeSense search returned error: " & searchResult.error,
+				detail = jsonSerialize( searchResult )
+			);
+		}
+
+		return transformTypesenseResults( searchResult );
+	}
+
+	/**
+	 * Get all documents from TypeSense collection
+	 *
+	 * @return Array of documents
+	 */
+	array function getAllDocuments() {
+		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents/export" )
+			.throwOnError( false )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
+			.send();
+
+		// Return empty array if collection doesn't exist yet
+		if ( response.statusCode == 404 ) {
+			return [];
+		}
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type = "TypesenseVectorMemory.GetAllError",
+				message = "Failed to get all documents from TypeSense: " & response.statusText,
+				detail = response.fileContent
+			);
+		}
+
+		// TypeSense export returns JSONL (one JSON per line)
+		var results = [];
+		var lines = response.fileContent.listToArray( char( 10 ) );
+
+		lines.each( ( line ) => {
+			if ( len( trim( line ) ) ) {
+				var doc = jsonDeserialize( line );
+				results.append({
+					id: doc.id,
+					text: doc.text,
+					metadata: isJSON( doc.metadata ) ? jsonDeserialize( doc.metadata ) : {},
+					embedding: doc.embedding ?: []
+				});
+			}
+		} );
+
+		return results;
+	}
+
+	/**
+	 * Get document by ID from TypeSense
+	 *
+	 * @id Document ID
+	 *
+	 * @return Struct document or empty struct
+	 */
+	struct function getDocumentById( required string id ) {
+		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents/" & arguments.id )
+			.throwOnError( false )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
+			.send();
+
+		if ( response.statusCode != 200 ) {
+			return {};
+		}
+
+		var doc = jsonDeserialize( response.fileContent );
+		return {
+			id: doc.id,
+			text: doc.text,
+			metadata: isJSON( doc.metadata ) ? jsonDeserialize( doc.metadata ) : {},
+			embedding: doc.embedding ?: []
+		};
+	}
+
+	/**
+	 * Delete document by ID from TypeSense
+	 *
+	 * @id Document ID
+	 *
+	 * @return Boolean success
+	 */
+	boolean function deleteDocument( required string id ) {
+		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents/" & arguments.id )
+			.delete()
+			.throwOnError( false )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
+			.send();
+
+		return response.statusCode == 200;
+	}
+
+	/**
+	 * Delete documents by filter from TypeSense
+	 *
+	 * @filter Metadata filter
+	 *
+	 * @return Numeric count deleted
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		var filterStr = buildFilterString( arguments.filter );
+
+		if ( !len( filterStr ) ) {
+			return 0;
+		}
+
+		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents?filter_by=" & urlEncodedFormat( filterStr ) )
+			.delete()
+			.throwOnError( false )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
+			.send();
+
+		if ( response.statusCode != 200 ) {
+			return 0;
+		}
+
+		var result = jsonDeserialize( response.fileContent );
+		return result.num_deleted ?: 0;
+	}
+
+	/**
+	 * Clear entire collection by deleting and recreating it
+	 */
+	IVectorMemory function clearCollection() {
+		// Delete collection
+		deleteCollection( variables.collection );
+		// Recreate it
+		createCollection( variables.collection );
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * IVectorMemory COLLECTION MANAGEMENT METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Create a new collection in TypeSense (provider-specific)
+	 *
+	 * @name Collection name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	any function createCollection( required string name ) {
+		var schema = {
+			name: arguments.name,
+			fields: [
+				{ name: "text", type: "string" },
+				{
+					name: "embedding",
+					type: "float[]",
+					num_dim: variables.dimensions
+				},
+				{ name: "metadata", type: "string", optional: true }
+			]
+		};
+
+		var response = http( variables.baseUrl & "/collections" )
+			.post()
+			.throwOnError( false )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "Content-Type", "application/json" )
+			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
+			.body( jsonSerialize( schema ) )
+			.send();
+
+		if ( response.statusCode < 200 || response.statusCode >= 300 ) {
+			throw(
+				type = "TypesenseVectorMemory.CreateCollectionError",
+				message = "Failed to create collection in TypeSense: " & response.statusText,
+				detail = response.fileContent
+			);
+		}
+
+		return this;
+	}	/**
+	 * Check if collection exists in TypeSense (provider-specific)
+	 *
+	 * @name Collection name
+	 *
+	 * @return Boolean exists
+	 */
+	boolean function collectionExists( required string name ) {
+		var response = http( variables.baseUrl & "/collections/" & arguments.name )
+			.throwOnError( false )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
+			.send();
+
+		return response.statusCode == 200;
+	}
+
+	/**
+	 * Delete a collection from TypeSense (provider-specific)
+	 *
+	 * @name Collection name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	any function deleteCollection( required string name ) {
+		var response = http( variables.baseUrl & "/collections/" & arguments.name )
+			.delete()
+			.throwOnError( false )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
+			.send();
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type = "TypesenseVectorMemory.DeleteCollectionError",
+				message = "Failed to delete collection from TypeSense: " & response.statusText,
+				detail = response.fileContent
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * HELPER METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Transform TypeSense search results to standard format
+	 *
+	 * @typesenseResult Raw TypeSense search response
+	 *
+	 * @return Array of standardized results
+	 */
+	private array function transformTypesenseResults( required struct typesenseResult ) {
+		var results = [];
+
+		if ( !arguments.typesenseResult.keyExists( "hits" ) || !arguments.typesenseResult.hits.len() ) {
+			return results;
+		}
+
+		arguments.typesenseResult.hits.each( ( hit ) => {
+			var doc = hit.document;
+			results.append({
+				id: doc.id,
+				text: doc.text,
+				metadata: isJSON( doc.metadata ) ? jsonDeserialize( doc.metadata ) : {},
+				score: convertDistanceToScore( hit.vector_distance ?: 0 ),
+				distance: hit.vector_distance ?: 0
+			});
+		} );
+
+		return results;
+	}
+
+	/**
+	 * Convert TypeSense vector distance to similarity score (0.0-1.0)
+	 * TypeSense returns cosine distance - convert to similarity
+	 *
+	 * @distance TypeSense distance value
+	 *
+	 * @return Numeric similarity score
+	 */
+	private numeric function convertDistanceToScore( required numeric distance ) {
+		// For cosine distance, similarity = 1 - distance
+		// TypeSense returns distance values, so smaller is better
+		return 1.0 / ( 1.0 + arguments.distance );
+	}
+
+	/**
+	 * Build TypeSense filter string from struct
+	 *
+	 * @filter Metadata filter struct
+	 *
+	 * @return String filter expression
+	 */
+	private string function buildFilterString( required struct filter ) {
+		var filters = [];
+
+		arguments.filter.each( ( key, value ) => {
+			if ( isSimpleValue( value ) ) {
+				filters.append( "metadata:" & key & ":=" & value );
+			}
+		} );
+
+		return filters.toList( " && " );
+	}
+
+}

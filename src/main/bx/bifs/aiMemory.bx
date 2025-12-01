@@ -88,6 +88,10 @@ class {
 			case "MysqlVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.MysqlVectorMemory";
 				break;
+			case "typesense":
+			case "TypesenseVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.TypesenseVectorMemory";
+				break;
 			case "hybrid":
 			case "HybridMemory":
 				memoryClass = "bxModules.bxai.models.memory.HybridMemory";
@@ -115,7 +119,7 @@ class {
 				} else {
 					throw(
 						type: "InvalidMemoryType",
-						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, MilvusVectorMemory, MysqlVectorMemory, HybridMemory"
+						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, MilvusVectorMemory, MysqlVectorMemory, TypesenseVectorMemory, HybridMemory"
 					);
 				}
 		}
