@@ -105,6 +105,7 @@ curl http://localhost:11434/api/tags  # Verify model availability
 - Test class pattern: `extends BaseIntegrationTest` → access `runtime`, `context`, `variables` properties
 - Provider tests are `@Disabled` by default (require API keys in env vars like `OPENAI_API_KEY`)
 - Ollama tests require `docker compose up ollama` (auto-pulls `qwen2.5:0.5b-instruct`)
+- **Debugging AI Provider HTTP responses**: Add `logResponseToConsole: true` to AI service provider config (OpenAI, Claude, etc.) to see raw API responses in console output - useful for debugging provider integration issues
 
 **BaseIntegrationTest provides:**
 ```java
