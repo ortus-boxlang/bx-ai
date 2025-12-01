@@ -56,6 +56,7 @@ class extends="BaseMemory" {
 	 * Supports datasource and table in config, ensures table exists
 	 */
 	public IAiMemory function configure( required struct config ) {
+		// Super Size this
 		super.configure( arguments.config )
 
 		if ( arguments.config.keyExists( "datasource" ) ) {
@@ -117,29 +118,6 @@ class extends="BaseMemory" {
 			return this
 		}
 		return variables.table
-	}
-
-	/**
-	 * Add a message or messages to memory and persist to database
-	 */
-	public IAiMemory function add( required any message ) {
-		super.add( arguments.message )
-
-		// apply trimming before saving
-    	this.trim()
-
-		saveToDatabase()
-
-		return this
-	}
-
-	/**
-	 * Set the system message and persist to database
-	 */
-	public IAiMemory function setSystemMessage( required string message ) {
-		super.setSystemMessage( arguments.message )
-		saveToDatabase()
-		return this
 	}
 
 	/**
@@ -357,10 +335,6 @@ class extends="BaseMemory" {
 	 * Save current state to database (INSERT or UPDATE)
 	 */
 	private void function saveToDatabase() {
-		if ( !len( variables.datasource ) ) {
-			return
-		}
-
 		var messagesJson = jsonSerialize( variables.messages )
 		var metadataJson = jsonSerialize( variables.metadata )
 		var configJson = jsonSerialize( variables.config )
@@ -402,10 +376,6 @@ class extends="BaseMemory" {
 	 * Delete record from database
 	 */
 	private void function deleteFromDatabase() {
-		if ( !len( variables.datasource ) ) {
-			return
-		}
-
 		queryExecute(
 			"DELETE FROM #variables.table# WHERE memory_key = :key",
 			{ key: variables.key },
@@ -419,10 +389,6 @@ class extends="BaseMemory" {
 	 * @return Boolean
 	 */
 	private boolean function recordExists() {
-		if ( !len( variables.datasource ) ) {
-			return false
-		}
-
 		var result = queryExecute(
 			"SELECT COUNT(*) as record_count FROM #variables.table# WHERE memory_key = :key",
 			{ key: variables.key },

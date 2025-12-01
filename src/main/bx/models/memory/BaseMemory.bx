@@ -3,7 +3,7 @@
  *
  * Copyright [2023] [Ortus Solutions, Corp]
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * Licensed under the Apache License, Version 2.0 (the "License") you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
  *
  * http://www.apache.org/licenses/LICENSE-2.0
@@ -61,11 +61,11 @@ abstract class implements="IAiMemory" {
 	 * @key The unique key for this memory instance
 	 */
 	function init( string key = createUUID(), numeric maxMessages = static.DEFAULT_MAX_MESSAGES  ) {
-		variables.key = arguments.key;
-		var fullName = getMetadata( this ).name ?: "BaseMemory";
-		variables.name = fullName.listLast( "." );
-		variables.maxMessages = arguments.maxMessages;
-		return this;
+		variables.key = arguments.key
+		var fullName = getMetadata( this ).name ?: "BaseMemory"
+		variables.name = fullName.listLast( "." )
+		variables.maxMessages = arguments.maxMessages
+		return this
 	}
 
 	/**
@@ -83,10 +83,10 @@ abstract class implements="IAiMemory" {
 	 */
 	public any function key( string key ) {
 		if ( !isNull( arguments.key ) ) {
-			variables.key = arguments.key;
-			return this;
+			variables.key = arguments.key
+			return this
 		}
-		return variables.key;
+		return variables.key
 	}
 
 	/**
@@ -98,10 +98,10 @@ abstract class implements="IAiMemory" {
 	 */
 	public any function metadata( struct metadata ) {
 		if ( !isNull( arguments.metadata ) ) {
-			variables.metadata = arguments.metadata;
-			return this;
+			variables.metadata = arguments.metadata
+			return this
 		}
-		return variables.metadata;
+		return variables.metadata
 	}
 
 	/**
@@ -118,13 +118,13 @@ abstract class implements="IAiMemory" {
 	public IAiMemory function add( required any message ) {
 		processMessage( arguments.message )
 			.each( msg => {
-				variables.messages.append( msg );
-			} );
+				variables.messages.append( msg )
+			} )
 
 		// Trim to max size (excluding system message)
-		this.trim();
+		this.trim()
 
-		return this;
+		return this
 	}
 
 	/**
@@ -144,16 +144,16 @@ abstract class implements="IAiMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getRecent( numeric limit = 10 ) {
-		var allMessages = getAll();
-		var total = allMessages.len();
+		var allMessages = getAll()
+		var total = allMessages.len()
 
 		// If total messages less than or equal to limit, return all
 		if ( total <= arguments.limit ) {
-			return allMessages;
+			return allMessages
 		}
 
-		var start = total - arguments.limit + 1;
-		return allMessages.slice( start, total );
+		var start = total - arguments.limit + 1
+		return allMessages.slice( start, total )
 	}
 
 	/**
@@ -164,7 +164,7 @@ abstract class implements="IAiMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getByRole( required string role ) {
-		return this.getAll().filter( ( m ) => m.role == role );
+		return this.getAll().filter( ( m ) => m.role == role )
 	}
 
 	/**
@@ -173,8 +173,8 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function clear() {
-		variables.messages = [];
-		return this;
+		variables.messages = []
+		return this
 	}
 
 	/**
@@ -183,7 +183,7 @@ abstract class implements="IAiMemory" {
 	 * @return Numeric count
 	 */
 	public numeric function count() {
-		return getAll().len();
+		return getAll().len()
 	}
 
 	/**
@@ -192,7 +192,7 @@ abstract class implements="IAiMemory" {
 	 * @return True if empty, false otherwise
 	 */
 	public boolean function isEmpty() {
-		return getAll().isEmpty();
+		return getAll().isEmpty()
 	}
 
 	/**
@@ -201,11 +201,11 @@ abstract class implements="IAiMemory" {
 	 * @return The system message content or an empty string
 	 */
 	public string function getSystemMessage() {
-		var systemMessages = getByRole( "system" );
+		var systemMessages = getByRole( "system" )
 		if ( systemMessages.isEmpty() ) {
-			return "";
+			return ""
 		}
-		return systemMessages.first().content;
+		return systemMessages.first().content
 	}
 
 	/**
@@ -214,7 +214,7 @@ abstract class implements="IAiMemory" {
 	 * @return True if a system message exists, false otherwise
 	 */
 	public boolean function hasSystemMessage() {
-		return !getByRole( "system" ).isEmpty();
+		return !getByRole( "system" ).isEmpty()
 	}
 
 	/**
@@ -226,16 +226,19 @@ abstract class implements="IAiMemory" {
 	 */
 	public IAiMemory function setSystemMessage( required string message ) {
 		// Remove existing system message if any
-		removeSystemMessage();
+		removeSystemMessage()
 
 		// Add new system message at the beginning
 		getAll().prepend( {
 			role: "system",
 			content: arguments.message,
 			timestamp: now()
-		} );
+		} )
 
-		return this;
+		// Trim to max size, just in case
+		this.trim()
+
+		return this
 	}
 
 	/**
@@ -244,8 +247,8 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function removeSystemMessage() {
-		variables.messages = getAll().filter( ( m ) => m.role != "system" );
-		return this;
+		variables.messages = getAll().filter( ( m ) => m.role != "system" )
+		return this
 	}
 
 	/**
@@ -254,7 +257,7 @@ abstract class implements="IAiMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getNonSystemMessages() {
-		return getAll().filter( ( m ) => m.role != "system" );
+		return getAll().filter( ( m ) => m.role != "system" )
 	}
 
 	/**
@@ -266,14 +269,14 @@ abstract class implements="IAiMemory" {
 	 * @return Array of matching message structs
 	 */
 	public array function search( required string searchTerm, boolean caseSensitive = false ) {
-		var term = arguments.searchTerm;
-		var isCaseSensitive = arguments.caseSensitive;
+		var term = arguments.searchTerm
+		var isCaseSensitive = arguments.caseSensitive
 
 		return getAll().filter( ( message ) => {
 			return isCaseSensitive
 				? message.content.find( term ) > 0
-				: message.content.findNoCase( term ) > 0;
-		} );
+				: message.content.findNoCase( term ) > 0
+		} )
 	}
 
 	/**
@@ -285,30 +288,30 @@ abstract class implements="IAiMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getRange( required numeric startIndex, numeric endIndex ) {
-		var messages = getAll();
-		var total = messages.len();
+		var messages = getAll()
+		var total = messages.len()
 
 		// Validate startIndex - must be within bounds
 		if ( arguments.startIndex < 1 || arguments.startIndex > total ) {
-			return [];
+			return []
 		}
 
 		// Default endIndex to last message if not provided
-		var finalEndIndex = isNull( arguments.endIndex ) ? total : arguments.endIndex;
+		var finalEndIndex = isNull( arguments.endIndex ) ? total : arguments.endIndex
 
 		// Clamp endIndex to valid range
 		if ( finalEndIndex > total ) {
-			finalEndIndex = total;
+			finalEndIndex = total
 		}
 
 		// If endIndex is before startIndex, return empty
 		if ( finalEndIndex < arguments.startIndex ) {
-			return [];
+			return []
 		}
 
 		// Calculate length for slice (slice takes start and length, not start and end)
-		var length = finalEndIndex - arguments.startIndex + 1;
-		return messages.slice( arguments.startIndex, length );
+		var length = finalEndIndex - arguments.startIndex + 1
+		return messages.slice( arguments.startIndex, length )
 	}
 
 	/**
@@ -320,10 +323,10 @@ abstract class implements="IAiMemory" {
 	 */
 	public any function name( string name ) {
 		if ( !isNull( arguments.name ) ) {
-			variables.name = arguments.name;
-			return this;
+			variables.name = arguments.name
+			return this
 		}
-		return variables.name;
+		return variables.name
 	}
 
 	/**
@@ -334,16 +337,13 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function configure( required struct config ) {
-		variables.config.append( arguments.config, true );
+		variables.config.append( arguments.config, true )
 
 		if ( arguments.config.keyExists( "maxMessages" ) ) {
-			variables.maxMessages = arguments.config.maxMessages;
+			variables.maxMessages = arguments.config.maxMessages
 		}
 
-		// Trim to max size (excluding system message)
-		this.trim();
-
-		return this;
+		return this
 	}
 
 	/**
@@ -353,7 +353,7 @@ abstract class implements="IAiMemory" {
 	 * @return Struct with memory information
 	 */
 	public struct function getSummary() {
-		var allMessages = getAll();
+		var allMessages = getAll()
 		return {
 			"type": this.name(),
 			"key": this.key(),
@@ -365,7 +365,7 @@ abstract class implements="IAiMemory" {
 			"config": getConfig(),
 			"firstMessageAt": allMessages.isEmpty() ? "" : allMessages.first().timestamp,
         	"lastMessageAt": allMessages.isEmpty() ? "" : allMessages.last().timestamp
-		};
+		}
 	}
 
 	/**
@@ -382,7 +382,7 @@ abstract class implements="IAiMemory" {
 			"config": getConfig(),
 			"messages": getAll(),
 			"maxMessages": variables.maxMessages
-		};
+		}
 	}
 
 	/**
@@ -412,7 +412,7 @@ abstract class implements="IAiMemory" {
 
 		// Ensure we respect maxMessages after import
 		this.trim()
-		return this;
+		return this
 	}
 
 	/**
@@ -458,7 +458,7 @@ abstract class implements="IAiMemory" {
 		// Add all messages (duplicates already filtered if requested)
 		otherMessages.each( ( msg ) => this.add( msg ) )
 
-		return this;
+		return this
 	}
 
 	/**
@@ -469,40 +469,36 @@ abstract class implements="IAiMemory" {
 	public IAiMemory function trim() {
 		// If maxMessages is 0, do not trim
 		if ( variables.maxMessages == 0 ) {
-			return this;
-		}
-		var systemMsg = "";
-		var hasSystem = false;
-
-		// Extract system message if exists
-		if ( hasSystemMessage() ) {
-			systemMsg = getSystemMessage();
-			hasSystem = true;
+			return this
 		}
 
-		// Get non-system messages
-		var nonSystemMessages = getNonSystemMessages();
+		var hasSystem = hasSystemMessage()
+    	var systemMsg = hasSystem ? getSystemMessage() : ""
+		var nonSystemMessages = getNonSystemMessages()
 
 		// If we're over the limit, keep only the last N
 		if ( nonSystemMessages.len() > variables.maxMessages ) {
-			var start = nonSystemMessages.len() - variables.maxMessages + 1;
-			var kept = nonSystemMessages.slice( start, nonSystemMessages.len() );
+			var start = nonSystemMessages.len() - variables.maxMessages + 1
+        	var keep = nonSystemMessages.slice( start, nonSystemMessages.len() )
 
-			// Clear and rebuild
-			clear();
+			// Clear all messages
+        	this.clear()
 
-			// Re-add system message first if it existed
+			// Add back system message if it existed
+			// Avoid calling add to prevent trimming again
 			if ( hasSystem ) {
-				setSystemMessage( systemMsg );
+				keep.prepend( {
+					role: "system",
+					content: systemMsg,
+					timestamp: now()
+				} )
 			}
 
 			// Add back the kept messages
-			kept.each( msg => {
-				this.add( msg );
-			} );
+			variables.messages = keep
 		}
 
-		return this;
+		return this
 	}
 
 	/**
@@ -514,9 +510,9 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function setMaxMessages( required numeric maxMessages ) {
-		variables.maxMessages = arguments.maxMessages;
-		this.trim();
-		return this;
+		variables.maxMessages = arguments.maxMessages
+		this.trim()
+		return this
 	}
 
 	/**
@@ -541,7 +537,7 @@ abstract class implements="IAiMemory" {
 		// Struct - must have role and content
 		if ( isStruct( arguments.message ) ) {
 			param arguments.message.role = "user"
-			param arguments.message.timestamp = now();
+			param arguments.message.timestamp = now()
 			if ( !arguments.message.keyExists( "content" ) ) {
 				throw(
 					type: "InvalidMessage",

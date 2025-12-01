@@ -118,19 +118,6 @@ class extends="BaseMemory" {
 	}
 
 	/**
-	 * Set or replace the system message and persist to file
-	 *
-	 * @message The system message content (string)
-	 *
-	 * @return IAiMemory for chaining
-	 */
-	public IAiMemory function setSystemMessage( required string message ) {
-		super.setSystemMessage( arguments.message );
-		saveToFile();
-		return this;
-	}
-
-	/**
 	 * Remove the system message and persist to file
 	 *
 	 * @return IAiMemory for chaining
