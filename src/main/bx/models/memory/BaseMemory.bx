@@ -45,13 +45,14 @@ abstract class implements="IAiMemory" {
 	/**
 	 * Maximum number of messages to store (0 = unlimited)
 	 */
-	property name="maxMessages" type="numeric" default=100;
+	property name="maxMessages" type="numeric";
 
 	/**
 	 * Constants
 	 */
 	static {
 		final settings = getModuleInfo( "bxai" ).settings
+		final DEFAULT_MAX_MESSAGES = 100
 	}
 
 	/**
@@ -59,10 +60,11 @@ abstract class implements="IAiMemory" {
 	 *
 	 * @key The unique key for this memory instance
 	 */
-	function init( string key = createUUID() ) {
+	function init( string key = createUUID(), numeric maxMessages = static.DEFAULT_MAX_MESSAGES  ) {
 		variables.key = arguments.key;
 		var fullName = getMetadata( this ).name ?: "BaseMemory";
 		variables.name = fullName.listLast( "." );
+		variables.maxMessages = arguments.maxMessages;
 		return this;
 	}
 
@@ -114,7 +116,6 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function add( required any message ) {
-
 		// AiMessage instance - get its messages and process them
  		if ( arguments.message instanceof "AiMessage" ) {
 			return 	this.add( arguments.message.getMessages() )
@@ -150,6 +151,9 @@ abstract class implements="IAiMemory" {
 				message: "Message must be a string, struct, array, or AiMessage instance"
 			);
 		}
+
+		// Trim to max size (excluding system message)
+		this.trim();
 
 		return this;
 	}
@@ -201,29 +205,6 @@ abstract class implements="IAiMemory" {
 	 */
 	public IAiMemory function clear() {
 		variables.messages = [];
-		return this;
-	}
-
-	/**
-	 * Get the maximum number of messages this memory can store
-	 * 0 means unlimited
-	 *
-	 * @return Numeric max messages
-	 */
-	public numeric function getMaxMessages() {
-		return variables.maxMessages;
-	}
-
-	/**
-	 * Set the maximum number of messages this memory can store
-	 * 0 means unlimited
-	 *
-	 * @maxMessages Maximum number of messages (0 = unlimited)
-	 *
-	 * @return IAiMemory for chaining
-	 */
-	public IAiMemory function setMaxMessages( required numeric maxMessages ) {
-		variables.maxMessages = arguments.maxMessages;
 		return this;
 	}
 
@@ -324,7 +305,9 @@ abstract class implements="IAiMemory" {
 				? message.content.find( term ) > 0
 				: message.content.findNoCase( term ) > 0;
 		} );
-	}	/**
+	}
+
+	/**
 	 * Get messages in a specific range
 	 *
 	 * @startIndex Starting index (1-based)
@@ -383,6 +366,14 @@ abstract class implements="IAiMemory" {
 	 */
 	public IAiMemory function configure( required struct config ) {
 		variables.config.append( arguments.config, true );
+
+		if ( arguments.config.keyExists( "maxMessages" ) ) {
+			variables.maxMessages = arguments.config.maxMessages;
+		}
+
+		// Trim to max size (excluding system message)
+		this.trim();
+
 		return this;
 	}
 
@@ -398,6 +389,7 @@ abstract class implements="IAiMemory" {
 			"type": this.name(),
 			"key": this.key(),
 			"messageCount": count(),
+			"maxMessages": variables.maxMessages,
 			"nonSystemCount": getNonSystemMessages().len(),
 			"hasSystemMessage": hasSystemMessage(),
 			"metadata": this.metadata(),
@@ -419,7 +411,8 @@ abstract class implements="IAiMemory" {
 			"key": this.key(),
 			"metadata": this.metadata(),
 			"config": getConfig(),
-			"messages": getAll()
+			"messages": getAll(),
+			"maxMessages": variables.maxMessages
 		};
 	}
 
@@ -433,17 +426,23 @@ abstract class implements="IAiMemory" {
 	 */
 	public IAiMemory function import( required struct data ) {
 		if ( arguments.data.keyExists( "key" ) ) {
-			variables.key = arguments.data.key;
+			variables.key = arguments.data.key
 		}
 		if ( arguments.data.keyExists( "metadata" ) ) {
-			variables.metadata = arguments.data.metadata;
+			variables.metadata = arguments.data.metadata
 		}
 		if ( arguments.data.keyExists( "config" ) ) {
-			variables.config = arguments.data.config;
+			variables.config = arguments.data.config
+		}
+		if ( arguments.data.keyExists( "maxMessages" ) ) {
+			variables.maxMessages = arguments.data.maxMessages
 		}
 		if ( arguments.data.keyExists( "messages" ) && isArray( arguments.data.messages ) ) {
-			variables.messages = arguments.data.messages;
+			variables.messages = arguments.data.messages
 		}
+
+		// Ensure we respect maxMessages after import
+		this.trim()
 		return this;
 	}
 
@@ -454,15 +453,15 @@ abstract class implements="IAiMemory" {
 	 */
 	public IAiMemory function clone() {
 		// Export current state and deep copy it
-		var exported = duplicate( this.export() );
+		var exported = duplicate( this.export() )
 
 		// Create new instance of same type with the same key
-		var cloned = createObject( "component", getMetadata( this ).name ).init( exported.key );
+		var cloned = createObject( "component", getMetadata( this ).name ).init( exported.key )
 
 		// Import data into new instance
-		cloned.import( exported );
+		cloned.import( exported )
 
-		return cloned;
+		return cloned
 	}
 
 	/**
@@ -474,22 +473,76 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function merge( required IAiMemory otherMemory, boolean skipDuplicates = false ) {
-		var otherMessages = arguments.otherMemory.getAll();
+		var otherMessages = arguments.otherMemory.getAll()
 
 		if ( arguments.skipDuplicates ) {
-			var existingMessages = this.getAll();
+			var existingMessages = this.getAll()
 
 			// Filter out duplicates by comparing role and content
 			otherMessages = otherMessages.filter( ( newMsg ) => {
 				return !existingMessages.some( ( existingMsg ) =>
 					existingMsg.role == newMsg.role && existingMsg.content == newMsg.content
-				);
-			} );
+				)
+			} )
 		}
 
 		// Add all messages (duplicates already filtered if requested)
-		otherMessages.each( ( msg ) => this.add( msg ) );
+		otherMessages.each( ( msg ) => this.add( msg ) )
 
+		return this;
+	}
+
+	/**
+	 * Trim messages to keep only the last N (excluding system message)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function trim() {
+		var systemMsg = "";
+		var hasSystem = false;
+
+		// Extract system message if exists
+		if ( hasSystemMessage() ) {
+			systemMsg = getSystemMessage();
+			hasSystem = true;
+		}
+
+		// Get non-system messages
+		var nonSystemMessages = getNonSystemMessages();
+
+		// If we're over the limit, keep only the last N
+		if ( nonSystemMessages.len() > variables.maxMessages ) {
+			var start = nonSystemMessages.len() - variables.maxMessages + 1;
+			var kept = nonSystemMessages.slice( start, nonSystemMessages.len() );
+
+			// Clear and rebuild
+			clear();
+
+			// Re-add system message first if it existed
+			if ( hasSystem ) {
+				setSystemMessage( systemMsg );
+			}
+
+			// Add back the kept messages
+			kept.each( msg => {
+				this.add( msg );
+			} );
+		}
+
+		return this;
+	}
+
+	/**
+	 * Set the maximum messages limit
+	 * Triggers trim if current count exceeds new limit
+	 *
+	 * @maxMessages The new maximum
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function setMaxMessages( required numeric maxMessages ) {
+		variables.maxMessages = arguments.maxMessages;
+		this.trim();
 		return this;
 	}
 

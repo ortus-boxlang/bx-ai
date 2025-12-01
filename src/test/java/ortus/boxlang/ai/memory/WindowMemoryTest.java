@@ -29,7 +29,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		);
 
 		var maxMessages = variables.getAsInteger( Key.of( "maxMessages" ) );
-		assertThat( maxMessages ).isEqualTo( 20 );
+		assertThat( maxMessages ).isEqualTo( 100 );
 	}
 
 	@Test
