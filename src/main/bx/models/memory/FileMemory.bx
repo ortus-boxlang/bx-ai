@@ -44,8 +44,6 @@ class extends="BaseMemory" {
 	 * Supports directoryPath in config and loads data from file if it exists
 	 */
 	public IAiMemory function configure( required struct config ) {
-		super.configure( arguments.config );
-
 		if ( arguments.config.keyExists( "directoryPath" ) ) {
 			variables.directoryPath = arguments.config.directoryPath;
 		}
@@ -59,6 +57,8 @@ class extends="BaseMemory" {
 		if ( fileExists( getFilePath() ) ) {
 			loadFromFile();
 		}
+
+		super.configure( arguments.config );
 
 		return this;
 	}
@@ -208,6 +208,20 @@ class extends="BaseMemory" {
 	}
 
 	/**
+	 * Trim messages to keep only the last N (excluding system message)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function trim() {
+		super.trim();
+
+		// Persist to file
+		saveToFile();
+
+		return this;
+	}
+
+	/**
 	 * --------------------------------------------------------------------------
 	 * Private Helpers
 	 * --------------------------------------------------------------------------
@@ -301,10 +315,8 @@ class extends="BaseMemory" {
 				messages: this.getAll()
 			};
 
-			var jsonContent = jsonSerialize( data );
-
 			// Write to file
-			fileWrite( filePath, jsonContent );
+			fileWrite( filePath, jsonSerialize( data ) );
 		} catch( any e ) {
 			throw(
 				type: "FileMemoryError",
