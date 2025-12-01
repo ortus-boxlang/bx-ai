@@ -498,6 +498,10 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function trim() {
+		// If maxMessages is 0, do not trim
+		if ( variables.maxMessages == 0 ) {
+			return this;
+		}
 		var systemMsg = "";
 		var hasSystem = false;
 
