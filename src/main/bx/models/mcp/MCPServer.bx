@@ -51,6 +51,18 @@ class {
 	property name="cors" type="string" default="";
 
 	/**
+	 * Callback invoked before processing each request (for authentication/inspection)
+	 * Signature: function( requestData ) => requestData or throws exception to halt
+	 */
+	property name="onRequest" type="any" default="";
+
+	/**
+	 * Callback invoked after processing each request (for transformation/logging)
+	 * Signature: function( response, requestData ) => response
+	 */
+	property name="onResponse" type="any" default="";
+
+	/**
 	 * Registered tools (map of tool name to ITool instance)
 	 */
 	property name="tools" type="struct" default={};
@@ -103,6 +115,8 @@ class {
 		variables.description = arguments.description;
 		variables.version = arguments.version;
 		variables.cors = arguments.cors;
+		variables.onRequest = "";
+		variables.onResponse = "";
 		variables.tools = {};
 		variables.resources = {};
 		variables.prompts = {};
@@ -835,6 +849,33 @@ class {
 	 */
 	MCPServer function setCors( required string cors ) {
 		variables.cors = arguments.cors;
+		return this;
+	}
+
+	/**
+	 * Set the onRequest callback for authentication and request inspection
+	 * The callback receives the request data struct and should return it (possibly modified)
+	 * or throw an exception to halt processing (e.g., for authentication failure)
+	 *
+	 * @callback The callback function: ( requestData ) => requestData
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function setOnRequest( required any callback ) {
+		variables.onRequest = arguments.callback;
+		return this;
+	}
+
+	/**
+	 * Set the onResponse callback for response transformation and logging
+	 * The callback receives the response struct and request data, and should return the response
+	 *
+	 * @callback The callback function: ( response, requestData ) => response
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function setOnResponse( required any callback ) {
+		variables.onResponse = arguments.callback;
 		return this;
 	}
 

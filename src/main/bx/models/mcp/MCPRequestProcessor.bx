@@ -51,28 +51,71 @@ class {
 			"statusText": "OK"
 		};
 
+		// Build request data for callbacks
+		var requestData = {
+			"serverName": arguments.serverName,
+			"method": arguments.requestMethod,
+			"body": arguments.requestBody,
+			"acceptHeader": arguments.acceptHeader,
+			"urlParams": arguments.urlParams
+		};
+
 		// Only add CORS header if cors is configured (secure by default)
 		if ( len( corsOrigin ) > 0 ) {
 			response.headers[ "Access-Control-Allow-Origin" ] = corsOrigin;
 		}
 
-		// Handle CORS preflight
+		// Handle CORS preflight (bypass callbacks for preflight)
 		if ( arguments.requestMethod == "OPTIONS" ) {
 			return handleCORSPreflight( response );
 		}
 
+		// Execute onRequest callback if defined (for authentication/inspection)
+		var onRequestCallback = server.getOnRequest();
+		if ( !isSimpleValue( onRequestCallback ) || len( onRequestCallback ) > 0 ) {
+			try {
+				requestData = onRequestCallback( requestData );
+			} catch ( any e ) {
+				// Authentication or validation failure - return error response
+				response.statusCode = 401;
+				response.statusText = "Unauthorized";
+				response.content = jsonSerialize( {
+					"jsonrpc": "2.0",
+					"error": {
+						"code": -32001,
+						"message": e.message ?: "Request rejected by onRequest callback"
+					},
+					"id": javacast( "null", "" )
+				} );
+				return response;
+			}
+		}
+
 		// Handle GET requests for discovery
 		if ( arguments.requestMethod == "GET" ) {
-			return handleDiscovery( server, response, arguments.urlParams );
+			response = handleDiscovery( server, response, arguments.urlParams );
 		}
-
 		// Handle POST requests for JSON-RPC
-		if ( arguments.requestMethod == "POST" ) {
-			return handleJSONRPC( server, response, arguments.requestBody, arguments.acceptHeader );
+		else if ( arguments.requestMethod == "POST" ) {
+			response = handleJSONRPC( server, response, arguments.requestBody, arguments.acceptHeader );
+		}
+		// Method not allowed
+		else {
+			response = handleMethodNotAllowed( response );
 		}
 
-		// Method not allowed
-		return handleMethodNotAllowed( response );
+		// Execute onResponse callback if defined (for transformation/logging)
+		var onResponseCallback = server.getOnResponse();
+		if ( !isSimpleValue( onResponseCallback ) || len( onResponseCallback ) > 0 ) {
+			try {
+				response = onResponseCallback( response, requestData );
+			} catch ( any e ) {
+				// Log error but don't fail the response
+				systemOutput( "MCP onResponse callback error: #e.message#", true );
+			}
+		}
+
+		return response;
 	}
 
 	/**
