@@ -122,13 +122,6 @@ class extends="BaseVectorMemory" {
 			metadata: arguments.metadata
 		}
 
-		// Flatten metadata into metadata_* fields for filtering
-		// arguments.metadata.each( ( key, value ) => {
-		// 	if ( isSimpleValue( value ) ) {
-		// 		document[ "metadata_" & key ] = value
-		// 	}
-		// } )
-
 		systemOutput( "Storing document: " & jsonSerialize( document ), true )
 
 		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents?action=upsert" )
@@ -288,18 +281,11 @@ class extends="BaseVectorMemory" {
 		}
 
 		var doc = jsonDeserialize( response.fileContent )
-		// Extract metadata from metadata_* fields
-		var metadata = {}
-		doc.each( ( key, value ) => {
-			if ( key.startsWith( "metadata_" ) ) {
-				metadata[ key.replace( "metadata_", "" ) ] = value
-			}
-		} )
-
+		
 		return {
 			id: doc.id,
 			text: doc.text,
-			metadata: metadata,
+			metadata: doc.metadata ?: {},
 			embedding: doc.embedding ?: []
 		}
 	}
