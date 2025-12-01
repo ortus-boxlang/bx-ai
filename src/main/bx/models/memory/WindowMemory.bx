@@ -22,7 +22,7 @@ class extends="BaseMemory" {
 	 * Constructor
 	 *
 	 * @key The unique key for this memory instance
-	 * @maxMessages Maximum number of messages to keep (default: 20)
+	 * @maxMessages Maximum number of messages to keep (default: 100)
 	 */
 	function init( string key = createUUID(), numeric maxMessages ) {
 		super.init( argumentCollection: arguments );

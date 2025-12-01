@@ -104,37 +104,29 @@ class extends="WindowMemory" {
 		}
 
 		// Create the AI model instance for reuse
-		variables.summaryModelInstance = aiModel( variables.summaryProvider )
-			.withParams( { model: variables.summaryModelName } )
-			.withOptions( { returnFormat: "single" } )
+		variables.summaryModelInstance = buildSummaryModel()
 
 		return this;
 	}
 
 	/**
-	 * Add a message to memory with auto-summarization
-	 * Automatically summarizes older messages when threshold is reached
-	 *
-	 * @message The message to add
+	 * Trim messages to keep only the last N (excluding system message)
+	 * Overrides base to add summarization behavior
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function add( required any message ) {
-	// Check if we'll exceed the limit BEFORE adding (since WindowMemory will auto-trim)
-	var nonSystemCount = getNonSystemMessages().len();
-	var willExceed = (nonSystemCount + 1) > variables.maxMessages;
+	public IAiMemory function trim() {
+		var nonSystemMessages = getNonSystemMessages()
 
-	// If adding this message will exceed limit, summarize first
-	if ( willExceed ) {
-			// Add the message temporarily to include it in summarization decision
-			super.add( arguments.message );
-			summarizeOldMessages();
-		} else {
-			// Normal add
-			super.add( arguments.message );
+		// If we're under the normal window limit, just use the base trim
+		if ( nonSystemMessages.len() <= variables.maxMessages ) {
+			return super.trim()
 		}
 
-		return this;
+		// We're over limit → run summarization instead of raw trimming
+    	summarizeOldMessages()
+
+		return this
 	}
 
 	/**
@@ -286,40 +278,48 @@ class extends="WindowMemory" {
 	 */
 	public IAiMemory function import( required struct data ) {
 		// Import base fields
-		super.import( arguments.data );
+		super.import( arguments.data )
 
 		// Restore summary-specific fields
 		if ( arguments.data.keyExists( "maxMessages" ) ) {
-			variables.maxMessages = arguments.data.maxMessages;
+			variables.maxMessages = arguments.data.maxMessages
 		}
 
 		if ( arguments.data.keyExists( "summaryThreshold" ) ) {
-			variables.summaryThreshold = arguments.data.summaryThreshold;
+			variables.summaryThreshold = arguments.data.summaryThreshold
 		}
 
 		if ( arguments.data.keyExists( "summaryModel" ) ) {
-			variables.summaryModelName = arguments.data.summaryModel;
+			variables.summaryModelName = arguments.data.summaryModel
 		}
 
 		if ( arguments.data.keyExists( "summaryProvider" ) ) {
-			variables.summaryProvider = arguments.data.summaryProvider;
+			variables.summaryProvider = arguments.data.summaryProvider
 		}
 
 		// Recreate the AI model instance
-		variables.summaryModelInstance = aiModel(
-			variables.summaryProvider,
-			variables.summaryModelName
-		);
+		variables.summaryModelInstance = buildSummaryModel()
 
 		if ( arguments.data.keyExists( "currentSummary" ) ) {
-			variables.currentSummary = arguments.data.currentSummary;
+			variables.currentSummary = arguments.data.currentSummary
 		}
 
 		if ( arguments.data.keyExists( "hasSummary" ) ) {
-			variables.hasSummary = arguments.data.hasSummary;
+			variables.hasSummary = arguments.data.hasSummary
 		}
 
 		return this;
+	}
+
+	/**
+	 * Build or retrieve the AI model for summarization
+	 *
+	 * @return AiModel instance
+	 */
+	private AiModel function buildSummaryModel(){
+		return aiModel( variables.summaryProvider )
+			.withParams( { model: variables.summaryModelName } )
+    		.withOptions( { returnFormat: "single" } )
 	}
 
 }
