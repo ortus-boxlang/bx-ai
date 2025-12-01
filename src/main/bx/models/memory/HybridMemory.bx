@@ -51,7 +51,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 * @key The unique key for this memory instance
 	 */
 	function init( string key = createUUID() ) {
-		super.init( arguments.key );
+		super.init( argumentCollection: arguments );
 		return this;
 	}
 
@@ -85,7 +85,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 
 		// Initialize recent memory (WindowMemory)
 		var recentConfig = {
-			windowSize: variables.recentLimit * 2  // Keep more in window than we return
+			maxMessages: variables.recentLimit * 2  // Keep more in window than we return
 		};
 		variables.recentMemory = new WindowMemory( variables.key & ":recent" ).configure( recentConfig );
 
@@ -167,35 +167,44 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 		var recentCount = ceiling( arguments.limit * variables.recentWeight );
 		var semanticCount = arguments.limit - recentCount;
 
-		// Get recent messages
+		// Get recent messages (all of them for now)
 		var recentMessages = variables.recentMemory.getAll();
-		if ( recentMessages.len() > recentCount ) {
-			recentMessages = recentMessages.slice( -recentCount );  // Get last N messages
-		}
 
 		// Get semantic messages
-		var semanticMessages = variables.vectorMemory.getRelevant( arguments.query, semanticCount );
+		var semanticMessages = variables.vectorMemory.getRelevant(
+			arguments.query,
+			semanticCount
+		);
 
-		// Combine and deduplicate
+		// Combine and deduplicate FIRST
 		var combinedMessages = combineMessages( recentMessages, semanticMessages );
 
-		// Re-sort by relevance score (semantic) and recency
+		// Sort by: semantic score > recency
 		combinedMessages.sort( ( a, b ) => {
-			// Messages with scores (semantic) get priority
 			var aScore = a.score ?: 0;
 			var bScore = b.score ?: 0;
 
 			if ( aScore > 0 && bScore > 0 ) {
-				return bScore - aScore;  // Higher score first
+				// Both semantic - higher score first
+				return bScore - aScore;
 			} else if ( aScore > 0 ) {
-				return -1;  // a has score, b doesn't
+				// Only a is semantic - a wins
+				return -1;
 			} else if ( bScore > 0 ) {
-				return 1;   // b has score, a doesn't
+				// Only b is semantic - b wins
+				return 1;
 			} else {
-				// Both are recent - maintain original order (already recent-first)
-				return 0;
+				// Both recent - compare timestamps (newer first)
+				var aTime = a.timestamp ?: 0;
+				var bTime = b.timestamp ?: 0;
+				return bTime - aTime;
 			}
 		} );
+
+		// Now slice to the limit (after dedup and sort)
+		if ( combinedMessages.len() > arguments.limit ) {
+			combinedMessages = combinedMessages.slice( 1, arguments.limit );
+		}
 
 		return combinedMessages;
 	}
@@ -247,6 +256,16 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 		if ( arguments.data.keyExists( "vectorMemory" ) ) {
 			variables.vectorMemory.import( arguments.data.vectorMemory );
 		}
+		return this;
+	}
+
+	/**
+	 * Trim both memories to their limits
+	 *
+	 * @return HybridMemory for chaining
+	 */
+	public IAiMemory function trim() {
+		variables.recentMemory.trim();
 		return this;
 	}
 
