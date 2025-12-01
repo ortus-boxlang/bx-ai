@@ -46,6 +46,11 @@ class {
 	property name="version" type="string" default="1.0.0";
 
 	/**
+	 * CORS allowed origin (empty string means no CORS header - secure by default)
+	 */
+	property name="cors" type="string" default="";
+
+	/**
 	 * Registered tools (map of tool name to ITool instance)
 	 */
 	property name="tools" type="struct" default={};
@@ -86,15 +91,18 @@ class {
 	 * @name The unique name/identifier for this server instance
 	 * @description Server description
 	 * @version Server version
+	 * @cors CORS allowed origin (empty string means no CORS header - secure by default)
 	 */
 	function init(
 		string name = static.DEFAULT_SERVER_NAME,
 		string description = "BoxLang AI MCP Server",
-		string version = "1.0.0"
+		string version = "1.0.0",
+		string cors = ""
 	) {
 		variables.serverName = arguments.name;
 		variables.description = arguments.description;
 		variables.version = arguments.version;
+		variables.cors = arguments.cors;
 		variables.tools = {};
 		variables.resources = {};
 		variables.prompts = {};
@@ -115,19 +123,22 @@ class {
 	 * @name The server name/identifier
 	 * @description The server description (only used when creating a new instance)
 	 * @version The server version (only used when creating a new instance)
+	 * @cors CORS allowed origin (only used when creating a new instance)
 	 *
 	 * @return The MCPServer instance
 	 */
 	static function getInstance(
 		string name = static.DEFAULT_SERVER_NAME,
 		string description = "BoxLang AI MCP Server",
-		string version = "1.0.0"
+		string version = "1.0.0",
+		string cors = ""
 	) {
 		if ( !static.servers.keyExists( arguments.name ) ) {
 			static.servers[ arguments.name ] = new MCPServer(
 				name: arguments.name,
 				description: arguments.description,
-				version: arguments.version
+				version: arguments.version,
+				cors: arguments.cors
 			);
 		}
 		return static.servers[ arguments.name ];
@@ -812,6 +823,18 @@ class {
 	 */
 	MCPServer function setVersion( required string version ) {
 		variables.version = arguments.version;
+		return this;
+	}
+
+	/**
+	 * Set the CORS allowed origin
+	 *
+	 * @cors The allowed origin (empty string means no CORS header - secure by default)
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function setCors( required string cors ) {
+		variables.cors = arguments.cors;
 		return this;
 	}
 

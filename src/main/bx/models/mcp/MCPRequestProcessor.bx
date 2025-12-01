@@ -42,15 +42,19 @@ class {
 		struct urlParams = {}
 	) {
 		var server = mcpServer( arguments.serverName );
+		var corsOrigin = server.getCors();
 		var response = {
 			"content": "",
 			"contentType": "application/json",
-			"headers": {
-				"Access-Control-Allow-Origin": "*"
-			},
+			"headers": {},
 			"statusCode": 200,
 			"statusText": "OK"
 		};
+
+		// Only add CORS header if cors is configured (secure by default)
+		if ( len( corsOrigin ) > 0 ) {
+			response.headers[ "Access-Control-Allow-Origin" ] = corsOrigin;
+		}
 
 		// Handle CORS preflight
 		if ( arguments.requestMethod == "OPTIONS" ) {

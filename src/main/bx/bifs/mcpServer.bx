@@ -26,8 +26,8 @@ class {
 	 *
 	 * Example:
 	 * ```
-	 * // Register tools at application startup
-	 * mcpServer( "myApp", "My Application MCP Server", "1.0.0" )
+	 * // Register tools at application startup with CORS enabled for a specific domain
+	 * mcpServer( "myApp", "My Application MCP Server", "1.0.0", "https://myapp.com" )
 	 *     .registerTool( aiTool( "search", "Search documents", ( query ) => searchDocs( query ) ) )
 	 *     .registerTool( aiTool( "calculate", "Do math", ( expr ) => evaluate( expr ) ) );
 	 *
@@ -41,18 +41,21 @@ class {
 	 * @name The unique name/identifier for the server instance (defaults to "default")
 	 * @description The server description for MCP capabilities response
 	 * @version The server version
+	 * @cors CORS allowed origin (empty string means no CORS header - secure by default)
 	 *
 	 * @return An MCPServer instance with fluent API
 	 */
 	function invoke(
 		string name = "default",
 		string description = "BoxLang AI MCP Server",
-		string version = "1.0.0"
+		string version = "1.0.0",
+		string cors = ""
 	) {
 		return bxModules.bxai.models.mcp.MCPServer::getInstance(
 			name: arguments.name,
 			description: arguments.description,
-			version: arguments.version
+			version: arguments.version,
+			cors: arguments.cors
 		);
 	}
 

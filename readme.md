@@ -399,7 +399,7 @@ The AI module supports different return formats for the responses. You can speci
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
 | `aiTransform()` | Create data transformer | `transformer` | Transformer function | N/A |
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
-| `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version` | MCPServer Object | N/A |
+| `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors` | MCPServer Object | N/A |
 
 > **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](docs/main-components/overview.md#return-formats) documentation for details.
 
@@ -490,7 +490,7 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 - `aiService( provider, apiKey )` - Creates a reference to an AI Service provider that you can then use to interact with the AI service.  This is useful if you want to create a service object and then use it multiple times.  You can pass in optional `provider` and `apiKey` to override the global settings.
 - `aiTool( name, description, callable)` - Creates a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiAiRequest()` functions.
 - `MCP( baseURL )` - Creates a fluent client for consuming Model Context Protocol (MCP) servers. MCP provides standardized access to external tools, resources, and prompts that AI models can use.
-- `mcpServer( name, description, version )` - Gets or creates an MCP server instance for registering tools, resources, and prompts that can be exposed to AI clients. Servers are singletons by name, stored globally for access across requests. The `description` and `version` parameters allow you to provide additional metadata for the server instance.
+- `mcpServer( name, description, version, cors )` - Gets or creates an MCP server instance for registering tools, resources, and prompts that can be exposed to AI clients. Servers are singletons by name, stored globally for access across requests. The `description` and `version` parameters allow you to provide additional metadata for the server instance. The `cors` parameter sets the allowed CORS origin (empty string by default for secure-by-default behavior).
 
 ## aiChat()/aiChatAsync() - Chat with the AI
 
@@ -1947,7 +1947,7 @@ The `mcpServer()` function gets or creates an MCP server instance for registerin
 ### Function Signature
 
 ```js
-mcpServer( string name = "default", string description = "BoxLang AI MCP Server", string version = "1.0.0" )
+mcpServer( string name = "default", string description = "BoxLang AI MCP Server", string version = "1.0.0", string cors = "" )
 ```
 
 ### Basic Usage
