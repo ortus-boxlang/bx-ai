@@ -37,9 +37,11 @@ class extends="BaseMemory" {
 	 *
 	 * @key The unique key for this memory instance
 	 * @cacheName Name of the cache to use (default: "default")
+	 * @maxMessages Maximum number of messages to retain (0 = unbounded)
 	 */
-	function init( required string key, string cacheName = static.DEFAULT_CACHE_NAME ) {
-		super.init( arguments.key );
+	function init( required string key, string cacheName = static.DEFAULT_CACHE_NAME, numeric maxMessages = 0 ) {
+		// Call parent constructor with 0 max messages to be unbounded
+		super.init( arguments.key, arguments.maxMessages );
 		variables.cacheName = arguments.cacheName;
 		return this;
 	}
@@ -407,6 +409,43 @@ class extends="BaseMemory" {
 
 		// Write back to cache
 		setCacheData( currentMessages, data.metadata );
+
+		return this;
+	}
+
+	/**
+	 * Trim messages stored in cache based on maxMessages
+	 */
+	public IAiMemory function trim() {
+		// If unbounded → do nothing
+		if ( variables.maxMessages == 0 ) return this;
+
+		var data = getCacheData();
+		var messages = data.messages;
+
+		// Extract system message if present
+		var systemMsg = "";
+		var foundSystemMessage = false;
+		if ( hasSystemMessage() ) {
+			systemMsg = getSystemMessage();
+			foundSystemMessage = true;
+		}
+
+		// Trim non-system messages
+		var nonSystem = messages.filter( m => m.role != "system" );
+
+		if ( nonSystem.len() > variables.maxMessages ) {
+			var start = nonSystem.len() - variables.maxMessages + 1;
+			var keep = nonSystem.slice( start, variables.maxMessages );
+
+			var newSet = [];
+			if ( foundSystemMessage ){
+				newSet.append( { role:"system", content:systemMsg, timestamp:now() } );
+			}
+			keep.each( m => newSet.append( m ) );
+
+			setCacheData( newSet, data.metadata );
+		}
 
 		return this;
 	}
