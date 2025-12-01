@@ -287,28 +287,27 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 		required array recentMessages,
 		required array semanticMessages
 	) {
-		var combined = [];
-		var seenIds = {};
+		var messageMap = {};
 
-		// Add recent messages first (maintain recency)
-		arguments.recentMessages.each( ( message ) => {
-			var messageId = getMessageId( message );
-			if ( !seenIds.keyExists( messageId ) ) {
-				combined.append( message );
-				seenIds[ messageId ] = true;
-			}
-		} );
-
-		// Add semantic messages (skip duplicates)
+		// Add semantic messages first (they have scores we want to preserve)
 		arguments.semanticMessages.each( ( message ) => {
 			var messageId = getMessageId( message );
-			if ( !seenIds.keyExists( messageId ) ) {
-				combined.append( message );
-				seenIds[ messageId ] = true;
+			messageMap[ messageId ] = message;
+		} );
+
+		// Add recent messages (only if not already present from semantic)
+		arguments.recentMessages.each( ( message ) => {
+			var messageId = getMessageId( message );
+			if ( !messageMap.keyExists( messageId ) ) {
+				messageMap[ messageId ] = message;
 			}
 		} );
 
-		return combined;
+		// Convert map back to array
+		return messageMap.reduce( ( acc, id, message ) => {
+			acc.append( message );
+			return acc;
+		}, [] );
 	}
 
 	/**
