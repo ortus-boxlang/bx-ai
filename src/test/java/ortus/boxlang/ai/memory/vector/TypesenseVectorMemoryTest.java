@@ -34,9 +34,8 @@ import ortus.boxlang.runtime.types.IStruct;
 @DisplayName( "TypesenseVectorMemory Integration Tests" )
 public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 
-	private static final String	TYPESENSE_HOST		= "localhost";
-	private static final int	TYPESENSE_PORT		= 8108;
-	private static final String	TYPESENSE_API_KEY	= "xyz";	// Default API key for local TypeSense
+	private static final String	TYPESENSE_HOST	= "localhost";
+	private static final int	TYPESENSE_PORT	= 8108;
 
 	@BeforeEach
 	public void beforeEach() {
@@ -121,7 +120,6 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 		    context );
 
 		IStruct	testResult		= variables.getAsStruct( result );
-
 		int		messageCount	= testResult.getAsInteger( Key.of( "messageCount" ) );
 		boolean	hasScores		= testResult.getAsBoolean( Key.of( "hasScores" ) );
 		System.out.println( "Message Count: " + messageCount + ", Has Scores: " + hasScores );

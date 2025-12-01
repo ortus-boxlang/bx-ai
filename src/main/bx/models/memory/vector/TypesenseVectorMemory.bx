@@ -117,7 +117,7 @@ class extends="BaseVectorMemory" {
 			.throwOnError( false )
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
-			.header( "Content-Type", "application/json" )
+			.header( "Content-Type", "application/json; charset=UTF-8" )
 			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
 			.body( jsonSerialize( document ) )
 			.send();
@@ -172,7 +172,7 @@ class extends="BaseVectorMemory" {
 			.throwOnError( false )
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
-			.header( "Content-Type", "application/json" )
+			.header( "Content-Type", "application/json; charset=UTF-8" )
 			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
 			.body( jsonSerialize( payload ) )
 			.send();
@@ -369,7 +369,7 @@ class extends="BaseVectorMemory" {
 			.throwOnError( false )
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
-			.header( "Content-Type", "application/json" )
+			.header( "Content-Type", "application/json; charset=UTF-8" )
 			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
 			.body( jsonSerialize( schema ) )
 			.send();

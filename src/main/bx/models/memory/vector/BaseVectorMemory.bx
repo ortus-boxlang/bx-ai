@@ -203,9 +203,9 @@ abstract class
 
 		// Search with fresh results (new documents may have been added)
 		var results = findSimilar(
-			embedding = embedding,
-			limit = arguments.limit,
-			filter = arguments.filter
+			embedding : embedding,
+			limit : arguments.limit,
+			filter : arguments.filter
 		);
 
 		// Filter by minimum score
@@ -236,7 +236,7 @@ abstract class
 		} );
 
 		// Provider-specific implementation
-		return searchByVector( arguments.embedding, arguments.limit, arguments.filter );
+		return searchByVector( argumentCollection: arguments );
 	}
 
 	/**
@@ -258,10 +258,10 @@ abstract class
 
 		// Store in vector database (provider-specific)
 		storeDocument(
-			id = arguments.id,
-			text = arguments.text,
-			embedding = embedding,
-			metadata = arguments.metadata
+			id : arguments.id,
+			text : arguments.text,
+			embedding : embedding,
+			metadata : arguments.metadata
 		);
 
 		// Announce event
