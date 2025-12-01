@@ -122,8 +122,6 @@ class extends="BaseVectorMemory" {
 			metadata: arguments.metadata
 		}
 
-		systemOutput( "Storing document: " & jsonSerialize( document ), true )
-
 		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents?action=upsert" )
 			.post()
 			.throwOnError( false )
@@ -281,7 +279,7 @@ class extends="BaseVectorMemory" {
 		}
 
 		var doc = jsonDeserialize( response.fileContent )
-		
+
 		return {
 			id: doc.id,
 			text: doc.text,
