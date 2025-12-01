@@ -20,7 +20,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import io.github.cdimascio.dotenv.Dotenv;
 import ortus.boxlang.ai.BaseIntegrationTest;
 
 /**
@@ -30,8 +29,6 @@ import ortus.boxlang.ai.BaseIntegrationTest;
  * to be set. The API key can be obtained from https://huggingface.co/settings/tokens
  */
 public class HuggingFaceTest extends BaseIntegrationTest {
-
-	static Dotenv dotenv = Dotenv.load();
 
 	@BeforeEach
 	public void beforeEach() {

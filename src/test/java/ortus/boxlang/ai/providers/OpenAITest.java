@@ -20,15 +20,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import io.github.cdimascio.dotenv.Dotenv;
 import ortus.boxlang.ai.BaseIntegrationTest;
 
 /**
  * Integration tests for OpenAI provider
  */
 public class OpenAITest extends BaseIntegrationTest {
-
-	static Dotenv dotenv = Dotenv.load();
 
 	@BeforeEach
 	public void beforeEach() {

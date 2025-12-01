@@ -17,21 +17,16 @@ package ortus.boxlang.ai.providers;
 import static com.google.common.truth.Truth.assertThat;
 
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import io.github.cdimascio.dotenv.Dotenv;
 import ortus.boxlang.ai.BaseIntegrationTest;
 
 /**
  * Integration tests for Mistral AI provider
  * These tests require a valid MISTRAL_API_KEY environment variable
  */
-@Disabled( "Requires MISTRAL_API_KEY environment variable to be set in repository secrets" )
 public class MistralTest extends BaseIntegrationTest {
-
-	static Dotenv dotenv = Dotenv.load();
 
 	@BeforeEach
 	public void beforeEach() {

@@ -29,9 +29,9 @@ class {
 		"deepseek",
 		"gemini",
 		"grok",
-		"mistral",
-		"huggingface",
 		"groq",
+		"huggingface",
+		"mistral",
 		"ollama",
 		"openai",
 		"openrouter",
@@ -77,14 +77,14 @@ class {
 			case "grok":
 				oTargetService = new bxModules.bxai.models.providers.GrokService().configure( arguments.apiKey )
 				break
-			case "mistral":
-				oTargetService = new bxModules.bxai.models.providers.MistralService().configure( arguments.apiKey )
+			case "groq":
+				oTargetService = new bxModules.bxai.models.providers.GroqService().configure( arguments.apiKey )
 				break
 			case "huggingface":
 				oTargetService = new bxModules.bxai.models.providers.HuggingFaceService().configure( arguments.apiKey )
 				break
-			case "groq":
-				oTargetService = new bxModules.bxai.models.providers.GroqService().configure( arguments.apiKey )
+			case "mistral":
+				oTargetService = new bxModules.bxai.models.providers.MistralService().configure( arguments.apiKey )
 				break
 			case "ollama":
 				oTargetService = new bxModules.bxai.models.providers.OllamaService().configure( arguments.apiKey )
