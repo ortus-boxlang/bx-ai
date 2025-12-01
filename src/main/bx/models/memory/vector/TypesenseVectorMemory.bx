@@ -122,6 +122,15 @@ class extends="BaseVectorMemory" {
 			metadata: arguments.metadata
 		}
 
+		// Flatten metadata into metadata_* fields for filtering
+		// arguments.metadata.each( ( key, value ) => {
+		// 	if ( isSimpleValue( value ) ) {
+		// 		document[ "metadata_" & key ] = value
+		// 	}
+		// } )
+
+		systemOutput( "Storing document: " & jsonSerialize( document ), true )
+
 		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents?action=upsert" )
 			.post()
 			.throwOnError( false )
@@ -247,6 +256,7 @@ class extends="BaseVectorMemory" {
 		lines.each( ( line ) => {
 			if ( len( trim( line ) ) ) {
 				var doc = jsonDeserialize( line )
+
 				results.append({
 					id: doc.id,
 					text: doc.text,
@@ -254,9 +264,7 @@ class extends="BaseVectorMemory" {
 					embedding: doc.embedding ?: []
 				})
 			}
-		} )
-
-		return results
+		} )		return results
 	}
 
 	/**
@@ -280,10 +288,18 @@ class extends="BaseVectorMemory" {
 		}
 
 		var doc = jsonDeserialize( response.fileContent )
+		// Extract metadata from metadata_* fields
+		var metadata = {}
+		doc.each( ( key, value ) => {
+			if ( key.startsWith( "metadata_" ) ) {
+				metadata[ key.replace( "metadata_", "" ) ] = value
+			}
+		} )
+
 		return {
 			id: doc.id,
 			text: doc.text,
-			metadata: doc.metadata ?: {},
+			metadata: metadata,
 			embedding: doc.embedding ?: []
 		}
 	}
@@ -366,6 +382,7 @@ class extends="BaseVectorMemory" {
 	any function createCollection( required string name ) {
 		var schema = {
 			name: arguments.name,
+			enable_nested_fields: true,
 			fields: [
 				{ name: "text", type: "string" },
 				{
@@ -373,7 +390,8 @@ class extends="BaseVectorMemory" {
 					type: "float[]",
 					num_dim: variables.dimensions
 				},
-				{ name: "metadata", type: "auto", optional: true }
+				//{ name: "metadata_.*", type: "auto", optional: true }
+				{ name: "metadata", type: "object", optional: true }
 			]
 		}
 
@@ -463,6 +481,7 @@ class extends="BaseVectorMemory" {
 
 		arguments.typesenseResult.hits.each( ( hit ) => {
 			var doc = hit.document
+
 			results.append({
 				id: doc.id,
 				text: doc.text,
@@ -470,9 +489,7 @@ class extends="BaseVectorMemory" {
 				score: convertDistanceToScore( hit.vector_distance ?: 0 ),
 				distance: hit.vector_distance ?: 0
 			})
-		} )
-
-		return results
+		} )		return results
 	}
 
 	/**
@@ -501,7 +518,7 @@ class extends="BaseVectorMemory" {
 
 		arguments.filter.each( ( key, value ) => {
 			if ( isSimpleValue( value ) ) {
-				// TypeSense v29 nested field syntax: metadata.key:=value
+				// Use nested field syntax for object fields
 				// String values must be quoted
 				var filterValue = isNumeric( value ) ? value : "'" & value & "'"
 				filters.append( "metadata." & key & ":=" & filterValue )

@@ -401,43 +401,42 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 	@Order( 8 )
 	@DisplayName( "Test metadata filtering" )
 	public void testMetadataFiltering() {
+		// @formatter:off
 		runtime.executeSource(
 		    """
-		       memory = aiMemory( "typesense", createUUID(), {
-		           collection: "test_filtering",
-		           host: "localhost",
-		           port: 8108,
-		           apiKey: "xyz"
-		       } )
+				memory = aiMemory( "typesense", createUUID(), {
+					collection: "test_filtering",
+					host: "localhost",
+					port: 8108,
+					apiKey: "xyz"
+				} )
 
-		    memory.clear()
+				// Add documents with different metadata
+				memory.add( { text: "Message from user Alice", metadata: { user: "alice", priority: "high" } } )
+				memory.add( { text: "Message from user Bob", metadata: { user: "bob", priority: "low" } } )
+				memory.add( { text: "Another message from Alice", metadata: { user: "alice", priority: "low" } } )		    // Search with metadata filter
 
-		       // Add documents with different metadata
-		       memory.add( "Message from user Alice", { user: "alice", priority: "high" } )
-		       memory.add( "Message from user Bob", { user: "bob", priority: "low" } )
-		       memory.add( "Another message from Alice", { user: "alice", priority: "low" } )
+				aliceMessages = memory.getRelevant(
+					"message",
+					3,
+					{ user: "alice" }
+				);
 
-		       // Search with metadata filter
-		       aliceMessages = memory.getRelevant(
-		           "message",
-		           3,
-		           { user: "alice" }
-		       );
+				result = {
+					count: arrayLen( aliceMessages ),
+					allFromAlice: true
+				}
 
-		       result = {
-		           count: arrayLen( aliceMessages ),
-		           allFromAlice: true
-		       }
-
-		       // Verify all results are from Alice
-		       for( msg in aliceMessages ) {
-		           if( !structKeyExists(msg, "metadata") || msg.metadata.user != "alice" ) {
-		               result.allFromAlice = false
-		               break
-		           }
-		       }
+				// Verify all results are from Alice
+				for( msg in aliceMessages ) {
+					if( !structKeyExists(msg, "metadata") || msg.metadata.user != "alice" ) {
+						result.allFromAlice = false
+						break
+					}
+				}
 		       """,
 		    context );
+		// @formatter:on
 
 		IStruct result = variables.getAsStruct( Key.of( "result" ) );
 
