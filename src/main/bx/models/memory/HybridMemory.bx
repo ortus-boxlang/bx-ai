@@ -63,9 +63,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 * @return HybridMemory for chaining
 	 */
 	public any function configure( required struct config ) {
-		super.configure( arguments.config );
-
-		// Extract hybrid configuration
+		// Extract hybrid configuration FIRST (before super.configure which may call getAll())
 		if ( arguments.config.keyExists( "recentLimit" ) ) {
 			variables.recentLimit = arguments.config.recentLimit;
 		}
@@ -92,7 +90,14 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 		variables.recentMemory = new WindowMemory( variables.key & ":recent" ).configure( recentConfig );
 
 		// Initialize vector memory based on provider
-		variables.vectorMemory = aiMemory( memory: variables.vectorProvider, config: variables.vectorConfig )
+		variables.vectorMemory = aiMemory(
+			memory: variables.vectorProvider,
+			key: variables.key & ":vector",
+			config: variables.vectorConfig
+		);
+
+		// Now call super.configure which may call trim() -> getAll()
+		super.configure( arguments.config );
 
 		return this;
 	}
