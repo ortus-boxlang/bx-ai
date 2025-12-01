@@ -3,7 +3,7 @@
  *
  * Copyright [2023] [Ortus Solutions, Corp]
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * Licensed under the Apache License, Version 2.0 (the "License") you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
  *
  * http://www.apache.org/licenses/LICENSE-2.0
@@ -45,34 +45,44 @@ class extends="BaseVectorMemory" {
 	 */
 	public any function configure( required struct config ) {
 		// Param config defaults
-		param arguments.config.host = "localhost";
-		param arguments.config.port = 8108;
-		param arguments.config.protocol = "http";
-		param arguments.config.apiKey = "";
-		param arguments.config.timeout = 30;
+		param arguments.config.host = "localhost"
+		param arguments.config.port = 8108
+		param arguments.config.protocol = "http"
+		param arguments.config.apiKey = ""
+		param arguments.config.timeout = 30
+		param arguments.config.dimensions = 1536
 
 		// Validate API key
 		if ( !len( arguments.config.apiKey ) ) {
 			throw(
 				type = "TypesenseVectorMemory.MissingApiKey",
 				message = "API key is required for TypeSense. Provide it in config or set TYPESENSE_API_KEY environment variable."
-			);
+			)
 		}
 
 		// Extract TypeSense specific config FIRST (before super.configure() calls ensureCollection())
-		variables.host = arguments.config.host;
-		variables.port = arguments.config.port;
-		variables.protocol = arguments.config.protocol;
-		variables.apiKey = arguments.config.apiKey;
-		variables.timeout = arguments.config.timeout;
+		variables.host = arguments.config.host
+		variables.port = arguments.config.port
+		variables.protocol = arguments.config.protocol
+		variables.apiKey = arguments.config.apiKey
+		variables.timeout = arguments.config.timeout
 
 		// Build base URL - MUST happen before super.configure()
-		variables.baseUrl = variables.protocol & "://" & variables.host & ":" & variables.port;
+		variables.baseUrl = variables.protocol & "://" & variables.host & ":" & variables.port
+
+		// If dimensions is 0, throw an exception
+		if ( arguments.config.dimensions <= 0 ) {
+			throw(
+				type = "TypesenseVectorMemory.InvalidDimensions",
+				message = "Cannot create collection without valid dimensions. Set 'dimensions' in config or generate an embedding first.",
+				detail = "TypeSense requires num_dim to be specified for vector fields. Provide dimensions in config (e.g., dimensions: 1536 for OpenAI text-embedding-3-small)."
+			)
+		}
 
 		// Now call parent configure which will call ensureCollection()
-		super.configure( arguments.config );
+		super.configure( arguments.config )
 
-		return this;
+		return this
 	}
 
 	/**
@@ -86,9 +96,9 @@ class extends="BaseVectorMemory" {
 	 */
 	IVectorMemory function ensureCollection() {
 		if ( !collectionExists( variables.collection ) ) {
-			createCollection( variables.collection );
+			createCollection( variables.collection )
 		}
-		return this;
+		return this
 	}
 
 	/**
@@ -110,27 +120,27 @@ class extends="BaseVectorMemory" {
 			text: arguments.text,
 			embedding: arguments.embedding,
 			metadata: jsonSerialize( arguments.metadata )
-		};
+		}
 
 		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents?action=upsert" )
 			.post()
 			.throwOnError( false )
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
-			.header( "Content-Type", "application/json; charset=UTF-8" )
+			.header( "Content-Type", "application/json charset=UTF-8" )
 			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
 			.body( jsonSerialize( document ) )
-			.send();
+			.send()
 
 		if ( response.statusCode < 200 || response.statusCode >= 300 ) {
 			throw(
 				type = "TypesenseVectorMemory.StoreError",
 				message = "Failed to store document in TypeSense: " & response.statusText,
 				detail = response.fileContent
-			);
+			)
 		}
 
-		return this;
+		return this
 	}
 
 	/**
@@ -147,50 +157,49 @@ class extends="BaseVectorMemory" {
 		required numeric limit,
 		required struct filter
 	) {
-		// Use multi_search endpoint to avoid query string length limitations
+		// Build vector query string properly
+		var vectorStr = "[" & arguments.embedding.toList() & "]"
+		// Build search request payload
 		var searchRequest = {
-			collection: variables.collection,
-			q: "*",
-			vector_query: "embedding:([" & arguments.embedding.toList() & "], k:" & arguments.limit & ")",
-			exclude_fields: "embedding"
-		};
+			"collection": variables.collection,
+			"q": "*",
+			"vector_query": "embedding:(" & vectorStr & ", k:" & arguments.limit & ")",
+			"exclude_fields": "embedding"
+		}
 
 		// Add metadata filter if provided
 		if ( !arguments.filter.isEmpty() ) {
-			var filterStr = buildFilterString( arguments.filter );
+			var filterStr = buildFilterString( arguments.filter )
 			if ( len( filterStr ) ) {
-				searchRequest.filter_by = filterStr;
+				searchRequest[ "filter_by" ] = filterStr
 			}
 		}
 
 		var payload = {
-			searches: [ searchRequest ]
-		};
+			"searches": [ searchRequest ]
+		}
 
 		var response = http( variables.baseUrl & "/multi_search" )
 			.post()
 			.throwOnError( false )
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
-			.header( "Content-Type", "application/json; charset=UTF-8" )
+			.header( "Content-Type", "application/json charset=UTF-8" )
 			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
 			.body( jsonSerialize( payload ) )
-			.send();
+			.send()
 
 		if ( response.statusCode != 200 ) {
 			throw(
 				type = "TypesenseVectorMemory.SearchError",
 				message = "Failed to search TypeSense: " & response.statusText,
 				detail = response.fileContent
-			);
+			)
 		}
 
-		var result = jsonDeserialize( response.fileContent );
+		var result = jsonDeserialize( response.fileContent )
 		// multi_search returns results array, get first result
-		var searchResult = result.results[1];
-
-		// Debug: print search results
-		systemOutput( "TypeSense multi_search result: " & jsonSerialize( searchResult ), true );
+		var searchResult = result.results[1]
 
 		// Check for errors in search result
 		if ( searchResult.keyExists( "code" ) && searchResult.keyExists( "error" ) ) {
@@ -198,10 +207,10 @@ class extends="BaseVectorMemory" {
 				type = "TypesenseVectorMemory.SearchError",
 				message = "TypeSense search returned error: " & searchResult.error,
 				detail = jsonSerialize( searchResult )
-			);
+			)
 		}
 
-		return transformTypesenseResults( searchResult );
+		return transformTypesenseResults( searchResult )
 	}
 
 	/**
@@ -214,12 +223,13 @@ class extends="BaseVectorMemory" {
 			.throwOnError( false )
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
+			.header( "Content-Type", "application/json charset=UTF-8" )
 			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
-			.send();
+			.send()
 
 		// Return empty array if collection doesn't exist yet
 		if ( response.statusCode == 404 ) {
-			return [];
+			return []
 		}
 
 		if ( response.statusCode != 200 ) {
@@ -227,26 +237,26 @@ class extends="BaseVectorMemory" {
 				type = "TypesenseVectorMemory.GetAllError",
 				message = "Failed to get all documents from TypeSense: " & response.statusText,
 				detail = response.fileContent
-			);
+			)
 		}
 
 		// TypeSense export returns JSONL (one JSON per line)
-		var results = [];
-		var lines = response.fileContent.listToArray( char( 10 ) );
+		var results = []
+		var lines = response.fileContent.listToArray( char( 10 ) )
 
 		lines.each( ( line ) => {
 			if ( len( trim( line ) ) ) {
-				var doc = jsonDeserialize( line );
+				var doc = jsonDeserialize( line )
 				results.append({
 					id: doc.id,
 					text: doc.text,
 					metadata: isJSON( doc.metadata ) ? jsonDeserialize( doc.metadata ) : {},
 					embedding: doc.embedding ?: []
-				});
+				})
 			}
-		} );
+		} )
 
-		return results;
+		return results
 	}
 
 	/**
@@ -261,20 +271,21 @@ class extends="BaseVectorMemory" {
 			.throwOnError( false )
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
+			.header( "Content-Type", "application/json charset=UTF-8" )
 			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
-			.send();
+			.send()
 
 		if ( response.statusCode != 200 ) {
-			return {};
+			return {}
 		}
 
-		var doc = jsonDeserialize( response.fileContent );
+		var doc = jsonDeserialize( response.fileContent )
 		return {
 			id: doc.id,
 			text: doc.text,
 			metadata: isJSON( doc.metadata ) ? jsonDeserialize( doc.metadata ) : {},
 			embedding: doc.embedding ?: []
-		};
+		}
 	}
 
 	/**
@@ -290,10 +301,11 @@ class extends="BaseVectorMemory" {
 			.throwOnError( false )
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
+			.header( "Content-Type", "application/json charset=UTF-8" )
 			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
-			.send();
+			.send()
 
-		return response.statusCode == 200;
+		return response.statusCode == 200
 	}
 
 	/**
@@ -304,10 +316,10 @@ class extends="BaseVectorMemory" {
 	 * @return Numeric count deleted
 	 */
 	numeric function deleteDocumentsByFilter( required struct filter ) {
-		var filterStr = buildFilterString( arguments.filter );
+		var filterStr = buildFilterString( arguments.filter )
 
 		if ( !len( filterStr ) ) {
-			return 0;
+			return 0
 		}
 
 		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents?filter_by=" & urlEncodedFormat( filterStr ) )
@@ -315,15 +327,16 @@ class extends="BaseVectorMemory" {
 			.throwOnError( false )
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
+			.header( "Content-Type", "application/json charset=UTF-8" )
 			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
-			.send();
+			.send()
 
 		if ( response.statusCode != 200 ) {
-			return 0;
+			return 0
 		}
 
-		var result = jsonDeserialize( response.fileContent );
-		return result.num_deleted ?: 0;
+		var result = jsonDeserialize( response.fileContent )
+		return result.num_deleted ?: 0
 	}
 
 	/**
@@ -331,10 +344,10 @@ class extends="BaseVectorMemory" {
 	 */
 	IVectorMemory function clearCollection() {
 		// Delete collection
-		deleteCollection( variables.collection );
+		deleteCollection( variables.collection )
 		// Recreate it
-		createCollection( variables.collection );
-		return this;
+		createCollection( variables.collection )
+		return this
 	}
 
 	/**
@@ -362,27 +375,27 @@ class extends="BaseVectorMemory" {
 				},
 				{ name: "metadata", type: "string", optional: true }
 			]
-		};
+		}
 
 		var response = http( variables.baseUrl & "/collections" )
 			.post()
 			.throwOnError( false )
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
-			.header( "Content-Type", "application/json; charset=UTF-8" )
+			.header( "Content-Type", "application/json charset=UTF-8" )
 			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
 			.body( jsonSerialize( schema ) )
-			.send();
+			.send()
 
 		if ( response.statusCode < 200 || response.statusCode >= 300 ) {
 			throw(
 				type = "TypesenseVectorMemory.CreateCollectionError",
 				message = "Failed to create collection in TypeSense: " & response.statusText,
 				detail = response.fileContent
-			);
+			)
 		}
 
-		return this;
+		return this
 	}	/**
 	 * Check if collection exists in TypeSense (provider-specific)
 	 *
@@ -396,9 +409,9 @@ class extends="BaseVectorMemory" {
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
 			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
-			.send();
+			.send()
 
-		return response.statusCode == 200;
+		return response.statusCode == 200
 	}
 
 	/**
@@ -415,17 +428,17 @@ class extends="BaseVectorMemory" {
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
 			.header( "X-TYPESENSE-API-KEY", variables.apiKey )
-			.send();
+			.send()
 
 		if ( response.statusCode != 200 ) {
 			throw(
 				type = "TypesenseVectorMemory.DeleteCollectionError",
 				message = "Failed to delete collection from TypeSense: " & response.statusText,
 				detail = response.fileContent
-			);
+			)
 		}
 
-		return this;
+		return this
 	}
 
 	/**
@@ -442,24 +455,24 @@ class extends="BaseVectorMemory" {
 	 * @return Array of standardized results
 	 */
 	private array function transformTypesenseResults( required struct typesenseResult ) {
-		var results = [];
+		var results = []
 
 		if ( !arguments.typesenseResult.keyExists( "hits" ) || !arguments.typesenseResult.hits.len() ) {
-			return results;
+			return results
 		}
 
 		arguments.typesenseResult.hits.each( ( hit ) => {
-			var doc = hit.document;
+			var doc = hit.document
 			results.append({
 				id: doc.id,
 				text: doc.text,
 				metadata: isJSON( doc.metadata ) ? jsonDeserialize( doc.metadata ) : {},
 				score: convertDistanceToScore( hit.vector_distance ?: 0 ),
 				distance: hit.vector_distance ?: 0
-			});
-		} );
+			})
+		} )
 
-		return results;
+		return results
 	}
 
 	/**
@@ -473,7 +486,7 @@ class extends="BaseVectorMemory" {
 	private numeric function convertDistanceToScore( required numeric distance ) {
 		// For cosine distance, similarity = 1 - distance
 		// TypeSense returns distance values, so smaller is better
-		return 1.0 / ( 1.0 + arguments.distance );
+		return 1.0 / ( 1.0 + arguments.distance )
 	}
 
 	/**
@@ -484,15 +497,15 @@ class extends="BaseVectorMemory" {
 	 * @return String filter expression
 	 */
 	private string function buildFilterString( required struct filter ) {
-		var filters = [];
+		var filters = []
 
 		arguments.filter.each( ( key, value ) => {
 			if ( isSimpleValue( value ) ) {
-				filters.append( "metadata:" & key & ":=" & value );
+				filters.append( "metadata:" & key & ":=" & value )
 			}
-		} );
+		} )
 
-		return filters.toList( " && " );
+		return filters.toList( " && " )
 	}
 
 }
