@@ -248,6 +248,9 @@ class extends="WindowMemory" {
 		summary.summaryModel = variables.summaryModelName;
 		summary.summaryProvider = variables.summaryProvider;
 		summary.hasSummary = variables.hasSummary;
+		summary.summaryLength = len( variables.currentSummary );
+		summary.summarizedMessageCount = variables.hasSummary ? summary.messageCount - variables.summaryThreshold : 0;
+		summary.recentMessageCount = variables.summaryThreshold;
 		return summary;
 	}
 

@@ -349,4 +349,24 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 		return "";
 	}
 
+	/**
+	 * Get summary including hybrid-specific configuration
+	 *
+	 * @return Struct with memory information
+	 */
+	public struct function getSummary() {
+		var summary = super.getSummary();
+		summary.recentLimit = variables.recentLimit;
+		summary.semanticLimit = variables.semanticLimit;
+		summary.totalLimit = variables.totalLimit;
+		summary.recentWeight = variables.recentWeight;
+		summary.semanticWeight = 1 - variables.recentWeight;
+		summary.vectorProvider = variables.vectorProvider;
+		summary.recentMemoryCount = variables.recentMemory.count();
+		summary.vectorMemoryCount = variables.vectorMemory.count();
+		summary.recentMemorySummary = variables.recentMemory.getSummary();
+		summary.vectorMemorySummary = variables.vectorMemory.getSummary();
+		return summary;
+	}
+
 }

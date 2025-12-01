@@ -354,7 +354,7 @@ abstract class implements="IAiMemory" {
 	 */
 	public struct function getSummary() {
 		var allMessages = getAll()
-		return {
+		var summary = {
 			"type": this.name(),
 			"key": this.key(),
 			"messageCount": count(),
@@ -366,6 +366,31 @@ abstract class implements="IAiMemory" {
 			"firstMessageAt": allMessages.isEmpty() ? "" : allMessages.first().timestamp,
         	"lastMessageAt": allMessages.isEmpty() ? "" : allMessages.last().timestamp
 		}
+
+		// Add role distribution stats
+		summary.roleDistribution = {
+			"user": getByRole( "user" ).len(),
+			"assistant": getByRole( "assistant" ).len(),
+			"system": getByRole( "system" ).len(),
+			"tool": getByRole( "tool" ).len()
+		}
+
+		// Add conversation age and rate
+		if ( !allMessages.isEmpty() && allMessages.len() > 1 ) {
+			var firstTime = allMessages.first().timestamp
+			var lastTime = allMessages.last().timestamp
+			var durationMinutes = dateDiff( "n", firstTime, lastTime )
+			summary.conversationAgeMinutes = durationMinutes
+			if ( durationMinutes > 0 ) {
+				summary.messagesPerHour = ( allMessages.len() / durationMinutes ) * 60
+			}
+		}
+
+		// Add estimated token count (rough approximation: ~4 chars per token)
+		var totalChars = allMessages.reduce( ( sum, msg ) => sum + len( msg.content ), 0 )
+		summary.estimatedTokens = ceiling( totalChars / 4 )
+
+		return summary
 	}
 
 	/**
