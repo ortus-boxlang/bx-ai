@@ -816,6 +816,33 @@ class {
 	}
 
 	/**
+	 * Get the server name
+	 *
+	 * @return The server name
+	 */
+	string function getServerName() {
+		return variables.serverName;
+	}
+
+	/**
+	 * Get the server description
+	 *
+	 * @return The server description
+	 */
+	string function getDescription() {
+		return variables.description;
+	}
+
+	/**
+	 * Get the server version
+	 *
+	 * @return The server version
+	 */
+	string function getVersion() {
+		return variables.version;
+	}
+
+	/**
 	 * Get server capabilities in MCP format
 	 *
 	 * @return Struct of server capabilities
