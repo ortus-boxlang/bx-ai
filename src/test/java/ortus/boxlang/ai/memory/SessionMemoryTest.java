@@ -40,7 +40,7 @@ public class SessionMemoryTest extends BaseIntegrationTest {
 		);
 
 		assertThat( variables.getAsString( Key.of( "key" ) ) ).isEqualTo( "bxai" );
-		assertThat( variables.getAsInteger( Key.of( "maxMessages" ) ) ).isEqualTo( 20 );
+		assertThat( variables.getAsInteger( Key.of( "maxMessages" ) ) ).isEqualTo( 100 );
 	}
 
 	@Test
