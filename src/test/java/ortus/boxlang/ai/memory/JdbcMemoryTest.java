@@ -401,17 +401,12 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 
 		    count = memory.count()
 		    messages = memory.getAll()
-		    firstMessage = messages[ 1 ].content
-		    lastMessage = messages[ count ].content
-
-		    // Verify oldest messages were removed
-		    hasMessage1 = memory.search( "Message 1" ).len() > 0
-		    hasMessage6 = memory.search( "Message 6" ).len() > 0
-		    hasMessage10 = memory.search( "Message 10" ).len() > 0
 
 		    // Create new instance to verify persistence
-		    memory2 = aiMemory( "cache", "trim-test" )
-		    	.configure( { cacheName: "default" } )
+		    memory2 = aiMemory( "jdbc", "trim-test", { datasource: "bxai_test" } )
+		    	.configure( {
+		    		maxMessages: 5
+		    	} )
 
 		    persistedCount = memory2.count()
 
