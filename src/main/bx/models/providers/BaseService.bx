@@ -221,7 +221,8 @@ abstract class implements="IAiService" {
 		}
 
 		// Result returns, only if we are not using tool calls
-		if( !result.choices.first().message.keyExists( "tool_calls" ) ){
+		var toolCalls = result.choices.first().message?.tool_calls ?: arrayNew()
+		if( !toolCalls.len() ){
 			var content = result.choices.first().message.content;
 
 			// Determine return formats
@@ -243,10 +244,10 @@ abstract class implements="IAiService" {
 
 		/**
 		 * ---------------------------------------------------------------------------------------------------------
-		 * Tool Chains
+		 * Max Interactions Check
 		 * ---------------------------------------------------------------------------------------------------------
 		 */
-		// Check if we've exceeded max interactions
+
 		var maxAllowed = aiRequest.getMaxInteractions() > 0 ? aiRequest.getMaxInteractions() : variables.maxInteractions;
 		if( arguments.interactionCount >= maxAllowed ){
 			writeLog(
@@ -260,8 +261,14 @@ abstract class implements="IAiService" {
 			);
 		}
 
+		/**
+		 * ---------------------------------------------------------------------------------------------------------
+		 * Tool Chains
+		 * ---------------------------------------------------------------------------------------------------------
+		 */
+
 		var newMessages = aiRequest.getMessages().map( message -> message );
-		result.choices.each( ( choice, i ) => {
+		result.choices.each( ( choice, index ) => {
 
 			// add the tool call into our message history
 			newMessages.append( choice.message );

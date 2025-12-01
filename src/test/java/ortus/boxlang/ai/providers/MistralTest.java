@@ -40,7 +40,7 @@ public class MistralTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			result = aiChat( "what is boxlang?" )
+			result = aiChat( "what is boxlang?", {}, {} )
 			println( result )
 			""",
 			context
