@@ -154,6 +154,133 @@ server.unregisterTool( "oldTool" )
 server.clearTools()
 ```
 
+## Annotation-Based Discovery
+
+The MCP server can automatically discover and register tools, resources, and prompts from annotated methods using the `scan()` method.
+
+### Scan for Annotations
+
+```java
+// Scan a class file
+mcpServer( "myApp" ).scan( "/path/to/MyTools.bx" )
+
+// Scan a directory (recursively scans all .bx files)
+mcpServer( "myApp" ).scan( "/path/to/tools/" )
+```
+
+### @mcpTool Annotation
+
+Register methods as MCP tools:
+
+```java
+class {
+
+    /**
+     * Search for documents
+     * @query The search query
+     */
+    @mcpTool
+    function search( required string query ) {
+        return searchService.find( query )
+    }
+
+    /**
+     * @query The query to search
+     */
+    @mcpTool( "Search for documents in the knowledge base" )
+    function searchDocs( required string query ) {
+        return docService.search( query )
+    }
+
+    @mcpTool( { name: "calculator", description: "Perform calculations", version: "2.0.0" } )
+    function calculate( required string expression ) {
+        return evaluate( expression )
+    }
+
+}
+```
+
+Annotation formats:
+- `@mcpTool` - Name from method name, description from function hint, version defaults to 1.0.0
+- `@mcpTool( "Description" )` - Name from method name, custom description
+- `@mcpTool( { name: "...", description: "...", version: "..." } )` - All custom values
+
+### @mcpResource Annotation
+
+Register methods as MCP resources:
+
+```java
+class {
+
+    /**
+     * Returns the README file
+     */
+    @mcpResource
+    function readme() {
+        return fileRead( "/readme.md" )
+    }
+
+    @mcpResource( "API documentation for developers" )
+    function apiDocs() {
+        return generateApiDocs()
+    }
+
+    @mcpResource( { uri: "config://app", name: "App Config", description: "Application settings", mimeType: "application/json" } )
+    function getConfig() {
+        return application.settings
+    }
+
+}
+```
+
+Annotation formats:
+- `@mcpResource` - URI and name from method name, description from function hint
+- `@mcpResource( "Description" )` - URI and name from method name, custom description
+- `@mcpResource( { uri: "...", name: "...", description: "...", mimeType: "..." } )` - All custom values
+
+### @mcpPrompt Annotation
+
+Register methods as MCP prompts:
+
+```java
+class {
+
+    /**
+     * Generate a greeting message
+     * @name The person's name
+     */
+    @mcpPrompt
+    function greeting( required string name ) {
+        return [
+            { role: "system", content: "You are a friendly assistant." },
+            { role: "user", content: "Say hello to #name#" }
+        ]
+    }
+
+    @mcpPrompt( "Generate code based on a description" )
+    function codeGen( required string description, string language = "java" ) {
+        return [
+            { role: "system", content: "You are a code generator for #language#." },
+            { role: "user", content: description }
+        ]
+    }
+
+    @mcpPrompt( { name: "reviewer", description: "Code review prompt", arguments: [ { name: "code", required: true } ] } )
+    function reviewCode( required string code ) {
+        return [
+            { role: "system", content: "Review this code for issues." },
+            { role: "user", content: code }
+        ]
+    }
+
+}
+```
+
+Annotation formats:
+- `@mcpPrompt` - Name from method name, description from function hint
+- `@mcpPrompt( "Description" )` - Name from method name, custom description
+- `@mcpPrompt( { name: "...", description: "...", arguments: [...] } )` - All custom values
+
 ## Resource Registration
 
 Resources provide access to documents and data:

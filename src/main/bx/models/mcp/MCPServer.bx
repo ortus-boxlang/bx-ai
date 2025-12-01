@@ -299,11 +299,20 @@ class {
 	 * Scan a class or directory for methods annotated with @mcpTool, @mcpResource, or @mcpPrompt.
 	 * Annotated methods are automatically registered with the MCP server.
 	 *
-	 * Annotation formats:
-	 * - @mcpTool "Description" - Uses method name as tool name, version defaults to 1.0.0
-	 * - @mcpTool { name: "toolName", description: "Description", version: "1.0.0" }
-	 * - @mcpResource { uri: "docs://readme", name: "README", description: "..." }
-	 * - @mcpPrompt { name: "greeting", description: "...", arguments: [...] }
+	 * Annotation formats for @mcpTool:
+	 * - @mcpTool - Uses method name as tool name, function hint as description, version defaults to 1.0.0
+	 * - @mcpTool( "Description" ) - Uses method name as tool name, version defaults to 1.0.0
+	 * - @mcpTool( { name: "toolName", description: "Description", version: "1.0.0" } )
+	 *
+	 * Annotation formats for @mcpResource:
+	 * - @mcpResource - Uses method name for uri and name, function hint as description
+	 * - @mcpResource( "Description" ) - Uses method name for uri and name
+	 * - @mcpResource( { uri: "docs://readme", name: "README", description: "...", mimeType: "text/plain" } )
+	 *
+	 * Annotation formats for @mcpPrompt:
+	 * - @mcpPrompt - Uses method name as prompt name, function hint as description
+	 * - @mcpPrompt( "Description" ) - Uses method name as prompt name
+	 * - @mcpPrompt( { name: "greeting", description: "...", arguments: [...] } )
 	 *
 	 * @path The path to a BoxLang class file or directory to scan
 	 *
@@ -386,19 +395,20 @@ class {
 	) {
 		var methodName = arguments.funcMetadata.name;
 		var toolName = methodName;
-		var toolDescription = "";
+		var toolDescription = arguments.funcMetadata.hint ?: "";
 		var toolVersion = "1.0.0";
 
-		// Parse annotation value
-		if ( isSimpleValue( arguments.annotation ) ) {
-			// String annotation: @mcpTool "Description"
-			toolDescription = arguments.annotation;
-		} else if ( isStruct( arguments.annotation ) ) {
-			// Struct annotation: @mcpTool { name: "...", description: "...", version: "..." }
+		// Parse annotation value based on format
+		if ( isStruct( arguments.annotation ) ) {
+			// Struct annotation: @mcpTool( { name: "...", description: "...", version: "..." } )
 			toolName = arguments.annotation.name ?: methodName;
-			toolDescription = arguments.annotation.description ?: "";
+			toolDescription = arguments.annotation.description ?: toolDescription;
 			toolVersion = arguments.annotation.version ?: "1.0.0";
+		} else if ( isSimpleValue( arguments.annotation ) && len( trim( arguments.annotation ) ) > 0 && arguments.annotation != true ) {
+			// String annotation: @mcpTool( "Description" )
+			toolDescription = arguments.annotation;
 		}
+		// else: @mcpTool with no arguments - uses defaults (name from method, description from hint)
 
 		// Build argument descriptions from function parameters
 		var argDescriptions = {};
@@ -438,15 +448,24 @@ class {
 		required struct funcMetadata,
 		required any annotation
 	) {
-		if ( !isStruct( arguments.annotation ) ) {
-			throw( type: "MCPServer.InvalidAnnotation", message: "@mcpResource annotation must be a struct with uri and name" );
-		}
-
 		var methodName = arguments.funcMetadata.name;
-		var uri = arguments.annotation.uri ?: "resource://" & methodName;
-		var name = arguments.annotation.name ?: methodName;
-		var description = arguments.annotation.description ?: "";
-		var mimeType = arguments.annotation.mimeType ?: "text/plain";
+		var uri = "resource://" & methodName;
+		var name = methodName;
+		var description = arguments.funcMetadata.hint ?: "";
+		var mimeType = "text/plain";
+
+		// Parse annotation value based on format
+		if ( isStruct( arguments.annotation ) ) {
+			// Struct annotation: @mcpResource( { uri: "...", name: "...", description: "...", mimeType: "..." } )
+			uri = arguments.annotation.uri ?: uri;
+			name = arguments.annotation.name ?: name;
+			description = arguments.annotation.description ?: description;
+			mimeType = arguments.annotation.mimeType ?: mimeType;
+		} else if ( isSimpleValue( arguments.annotation ) && len( trim( arguments.annotation ) ) > 0 && arguments.annotation != true ) {
+			// String annotation: @mcpResource( "Description" )
+			description = arguments.annotation;
+		}
+		// else: @mcpResource with no arguments - uses defaults (uri and name from method, description from hint)
 
 		// Capture instance reference for closure
 		var targetInstance = arguments.instance;
@@ -479,19 +498,20 @@ class {
 	) {
 		var methodName = arguments.funcMetadata.name;
 		var promptName = methodName;
-		var promptDescription = "";
+		var promptDescription = arguments.funcMetadata.hint ?: "";
 		var promptArguments = [];
 
-		// Parse annotation value
-		if ( isSimpleValue( arguments.annotation ) ) {
-			// String annotation: @mcpPrompt "Description"
-			promptDescription = arguments.annotation;
-		} else if ( isStruct( arguments.annotation ) ) {
-			// Struct annotation: @mcpPrompt { name: "...", description: "...", arguments: [...] }
+		// Parse annotation value based on format
+		if ( isStruct( arguments.annotation ) ) {
+			// Struct annotation: @mcpPrompt( { name: "...", description: "...", arguments: [...] } )
 			promptName = arguments.annotation.name ?: methodName;
-			promptDescription = arguments.annotation.description ?: "";
+			promptDescription = arguments.annotation.description ?: promptDescription;
 			promptArguments = arguments.annotation.arguments ?: [];
+		} else if ( isSimpleValue( arguments.annotation ) && len( trim( arguments.annotation ) ) > 0 && arguments.annotation != true ) {
+			// String annotation: @mcpPrompt( "Description" )
+			promptDescription = arguments.annotation;
 		}
+		// else: @mcpPrompt with no arguments - uses defaults (name from method, description from hint)
 
 		// If no arguments specified, build from function parameters
 		if ( promptArguments.isEmpty() ) {
