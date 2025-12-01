@@ -521,4 +521,46 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "memoryType" ) ) ).isEqualTo( "HybridMemory" );
 	}
 
+	@Test
+	@DisplayName( "Test HybridMemory propagates userId and conversationId to sub-memories" )
+	public void testPropagatesToSubMemories() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "hybrid",
+		        userId: "david",
+		        conversationId: "research-001",
+		        config: {
+		            vectorProvider: "BoxVectorMemory"
+		        }
+		    )
+
+		    memory.add( "Research topic" )
+
+		    // Get summary which includes sub-memory summaries
+		    summary = memory.getSummary()
+
+		    userId = memory.getUserId()
+		    conversationId = memory.getConversationId()
+
+		    // Check if sub-memories have the identifiers
+		    recentSummary = summary.recentMemorySummary
+		    vectorSummary = summary.vectorMemorySummary
+
+		    recentUserId = recentSummary.userId
+		    recentConvId = recentSummary.conversationId
+		    vectorUserId = vectorSummary.userId
+		    vectorConvId = vectorSummary.conversationId
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsString( Key.of( "userId" ) ) ).isEqualTo( "david" );
+		assertThat( variables.getAsString( Key.of( "conversationId" ) ) ).isEqualTo( "research-001" );
+		assertThat( variables.getAsString( Key.of( "recentUserId" ) ) ).isEqualTo( "david" );
+		assertThat( variables.getAsString( Key.of( "recentConvId" ) ) ).isEqualTo( "research-001" );
+		assertThat( variables.getAsString( Key.of( "vectorUserId" ) ) ).isEqualTo( "david" );
+		assertThat( variables.getAsString( Key.of( "vectorConvId" ) ) ).isEqualTo( "research-001" );
+	}
+
 }

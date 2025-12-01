@@ -37,7 +37,10 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testCustomMaxViaConstructor() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.WindowMemory( "test-key", 5 )
+		    memory = new bxModules.bxai.models.memory.WindowMemory(
+		        key: "test-key",
+		        maxMessages: 5
+		    )
 		    maxMessages = memory.getMaxMessages()
 		    """,
 		    context
@@ -52,7 +55,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testCustomMaxViaConfig() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", "test-key", { maxMessages: 3 } )
+		    memory = aiMemory( memory: "buffered", key: "test-key", config: { maxMessages: 3 } )
 		    maxMessages = memory.getMaxMessages()
 		    """,
 		    context
@@ -67,7 +70,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testAutoTrim() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", "test-key", { maxMessages: 3 } )
+		    memory = aiMemory( memory: "buffered", key: "test-key", config: { maxMessages: 3 } )
 
 		    // Add 5 messages
 		    memory.add( "Message 1" )
@@ -100,7 +103,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testSystemMessagePreservation() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", "test-key", { maxMessages: 2 } )
+		    memory = aiMemory( memory: "buffered", key: "test-key", config: { maxMessages: 2 } )
 		        .setSystemMessage( "You are helpful" )
 		        .add( "User 1" )
 		        .add( "Assistant 1" )
@@ -129,7 +132,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testSetMaxMessagesTriggersTrim() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", "test-key", { maxMessages: 10 } )
+		    memory = aiMemory( memory: "buffered", key: "test-key", config: { maxMessages: 10 } )
 
 		    // Add 5 messages
 		    for( i = 1; i <= 5; i++ ) {
@@ -161,7 +164,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testGetSummary() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", "buffered-test", { maxMessages: 5 } )
+		    memory = aiMemory( memory: "buffered", key: "buffered-test", config: { maxMessages: 5 } )
 		        .add( "Test" )
 
 		    summary = memory.getSummary()
@@ -180,7 +183,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testExport() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", "export-test", { maxMessages: 7 } )
+		    memory = aiMemory( memory: "buffered", key: "export-test", config: { maxMessages: 7 } )
 		        .add( "Message" )
 
 		    exported = memory.export()
@@ -237,7 +240,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testSystemMessageNotCountedInLimit() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", "test-key", { maxMessages: 2 } )
+		    memory = aiMemory( memory: "buffered", key: "test-key", config: { maxMessages: 2 } )
 		        .setSystemMessage( "System" )
 
 		    // Add 3 non-system messages
@@ -267,7 +270,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testManualTrim() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", "test-key", { maxMessages: 5 } )
+		    memory = aiMemory( memory: "buffered", key: "test-key", config: { maxMessages: 5 } )
 
 		    // Add 3 messages (under limit)
 		    memory.add( "Message 1" )
@@ -295,7 +298,7 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 	public void testAddArrayTriggersTrim() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "buffered", "test-key", { maxMessages: 3 } )
+		    memory = aiMemory( memory: "buffered", key: "test-key", config: { maxMessages: 3 } )
 
 		    // Add array of 5 messages at once
 		    memory.add( [
@@ -317,6 +320,87 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		var		messages	= variables.getAsArray( Key.of( "messages" ) );
 		IStruct	firstMsg	= ( IStruct ) messages.get( 0 );
 		assertThat( firstMsg.getAsString( Key.of( "content" ) ) ).isEqualTo( "Msg 3" );
+	}
+
+	@Test
+	@DisplayName( "Test WindowMemory with userId and conversationId" )
+	public void testUserIdAndConversationId() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "buffered",
+		        key: "test-key",
+		        userId: "user123",
+		        conversationId: "chat-001",
+		        config: { maxMessages: 10 }
+		    )
+
+		    userId = memory.getUserId()
+		    conversationId = memory.getConversationId()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsString( Key.of( "userId" ) ) ).isEqualTo( "user123" );
+		assertThat( variables.getAsString( Key.of( "conversationId" ) ) ).isEqualTo( "chat-001" );
+	}
+
+	@Test
+	@DisplayName( "Test WindowMemory export/import preserves userId and conversationId" )
+	public void testExportImportPreservesIdentifiers() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "buffered",
+		        userId: "alice",
+		        conversationId: "session-42"
+		    )
+		    memory.add( "Hello" )
+		    memory.add( "World" )
+
+		    exported = memory.export()
+
+		    // Create new memory and import
+		    memory2 = aiMemory( memory: "buffered" )
+		    memory2.import( exported )
+
+		    userId = memory2.getUserId()
+		    conversationId = memory2.getConversationId()
+		    count = memory2.count()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsString( Key.of( "userId" ) ) ).isEqualTo( "alice" );
+		assertThat( variables.getAsString( Key.of( "conversationId" ) ) ).isEqualTo( "session-42" );
+		assertThat( variables.getAsInteger( Key.of( "count" ) ) ).isEqualTo( 2 );
+	}
+
+	@Test
+	@DisplayName( "Test WindowMemory getSummary includes userId and conversationId" )
+	public void testSummaryIncludesIdentifiers() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "buffered",
+		        userId: "bob",
+		        conversationId: "ticket-123"
+		    )
+		    memory.add( "Test message" )
+
+		    summary = memory.getSummary()
+		    hasUserId = summary.keyExists( "userId" )
+		    hasConversationId = summary.keyExists( "conversationId" )
+		    summaryUserId = summary.userId
+		    summaryConvId = summary.conversationId
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsBoolean( Key.of( "hasUserId" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasConversationId" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "summaryUserId" ) ) ).isEqualTo( "bob" );
+		assertThat( variables.getAsString( Key.of( "summaryConvId" ) ) ).isEqualTo( "ticket-123" );
 	}
 
 }

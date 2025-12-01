@@ -422,4 +422,89 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( count ).isEqualTo( 5 );
 		assertThat( persistedCount ).isEqualTo( 5 ); // Persisted trimmed state
 	}
+
+	@Test
+	@DisplayName( "Test JdbcMemory persists userId and conversationId to database" )
+	public void testPersistUserIdAndConversationId() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "jdbc",
+		        key: "user-conv-test",
+		        userId: "user456",
+		        conversationId: "support-789",
+		        config: { datasource: "bxai_test" }
+		    )
+		    memory.add( "Support inquiry" )
+
+		    // Create new instance with same key - should load identifiers from database
+		    memory2 = aiMemory( memory: "jdbc", key: "user-conv-test", config: { datasource: "bxai_test" } )
+
+		    userId = memory2.getUserId()
+		    conversationId = memory2.getConversationId()
+		    count = memory2.count()
+
+		    // Cleanup
+		    memory2.clear()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsString( Key.of( "userId" ) ) ).isEqualTo( "user456" );
+		assertThat( variables.getAsString( Key.of( "conversationId" ) ) ).isEqualTo( "support-789" );
+		assertThat( variables.getAsInteger( Key.of( "count" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Test JdbcMemory allows empty userId and conversationId" )
+	public void testEmptyIdentifiers() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "jdbc", key: "empty-ids-test", config: { datasource: "bxai_test" } )
+		    memory.add( "Message without identifiers" )
+
+		    userId = memory.getUserId()
+		    conversationId = memory.getConversationId()
+
+		    // Create new instance - should handle empty identifiers
+		    memory2 = aiMemory( memory: "jdbc", key: "empty-ids-test", config: { datasource: "bxai_test" } )
+		    count = memory2.count()
+
+		    // Cleanup
+		    memory2.clear()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsString( Key.of( "userId" ) ) ).isEmpty();
+		assertThat( variables.getAsString( Key.of( "conversationId" ) ) ).isEmpty();
+		assertThat( variables.getAsInteger( Key.of( "count" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Test JdbcMemory getSummary includes userId and conversationId" )
+	public void testJdbcSummaryIncludesIdentifiers() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "jdbc",
+		        userId: "charlie",
+		        conversationId: "order-555",
+		        config: { datasource: "bxai_test" }
+		    )
+		    memory.add( "Order placed" )
+
+		    summary = memory.getSummary()
+		    summaryUserId = summary.userId
+		    summaryConvId = summary.conversationId
+
+		    // Cleanup
+		    memory.clear()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsString( Key.of( "summaryUserId" ) ) ).isEqualTo( "charlie" );
+		assertThat( variables.getAsString( Key.of( "summaryConvId" ) ) ).isEqualTo( "order-555" );
+	}
 }
