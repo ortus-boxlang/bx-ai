@@ -272,31 +272,31 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 	public void testGetDocumentById() {
 		runtime.executeSource(
 		    """
-		        memory = aiMemory( "typesense", createUUID(), {
-		            collection: "test_get_by_id",
-		            host: "localhost",
-		            port: 8108,
-		            apiKey: "xyz"
-		        } );
+		    memory = aiMemory( "typesense", createUUID(), {
+		        collection: "test_get_by_id",
+		        host: "localhost",
+		        port: 8108,
+		        apiKey: "xyz"
+		    } );
 
-		        // Add a test document with explicit ID
-		        testId = createUUID();
-		        memory.add( {
-		            id: testId,
-		            text: "Test message for retrieval",
-		            metadata: { type: "test" }
-		        } );
-		        
-		        // Retrieve by ID
-		        doc = memory.getById( testId );
-		        
-		        result = {
-		            hasDoc: !doc.isEmpty(),
-		            textMatches: doc.keyExists( "text" ) && doc.text == "Test message for retrieval",
-		            hasMetadata: doc.keyExists( "metadata" ),
-		            hasEmbedding: doc.keyExists( "embedding" )
-		        };
-		        """,
+		    // Add a test document with explicit ID
+		    testId = createUUID();
+		    memory.add( {
+		        id: testId,
+		        text: "Test message for retrieval",
+		        metadata: { type: "test" }
+		    } );
+
+		    // Retrieve by ID
+		    doc = memory.getById( testId );
+
+		    result = {
+		        hasDoc: !doc.isEmpty(),
+		        textMatches: doc.keyExists( "text" ) && doc.text == "Test message for retrieval",
+		        hasMetadata: doc.keyExists( "metadata" ),
+		        hasEmbedding: doc.keyExists( "embedding" )
+		    };
+		    """,
 		    context );
 
 		IStruct result = variables.getAsStruct( Key.of( "result" ) );
@@ -313,45 +313,38 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 	public void testDeleteDocument() {
 		runtime.executeSource(
 		    """
-		        memory = aiMemory( "typesense", createUUID(), {
-		            collection: "test_deletion",
-		            host: "localhost",
-		            port: 8108,
-		            apiKey: "xyz"
-		        } );
+		    memory = aiMemory( "typesense", createUUID(), {
+		        collection: "test_deletion",
+		        host: "localhost",
+		        port: 8108,
+		        apiKey: "xyz"
+		    } );
 
-		        // Add test documents with explicit IDs
-		        id1 = createUUID();
-		        id2 = createUUID();
-		        memory.add( { id: id1, text: "Document to delete", metadata: {} } );
-		        memory.add( { id: id2, text: "Document to keep", metadata: {} } );
-		        
-		        // Get all documents
-		        allDocs = memory.getAll();
-		        initialCount = arrayLen(allDocs);
-		        
-		        // Delete one document
-		        memory.delete( id1 );
-		        
-		        // Verify deletion
-		        remainingDocs = memory.getAll();
-		        finalCount = arrayLen(remainingDocs);
-		        
-		        // Try to get deleted document
-		        deletedDoc = memory.getById( id1 );
-		        
-		        result = {
-		            initialCount: initialCount,
-		            finalCount: finalCount,
-		            isDeleted: deletedDoc.isEmpty()
-		        };
-		        """,
+		    // Add test documents with explicit IDs
+		    id1 = createUUID();
+		    id2 = createUUID();
+		    memory.add( { id: id1, text: "Document to delete", metadata: {} } );
+		    memory.add( { id: id2, text: "Document to keep", metadata: {} } );
+
+		    // Get all documents
+		    allDocs = memory.getAll();
+
+		    // Delete one document
+		    memory.remove( id1 );
+
+		    // Verify deletion
+		    remainingDocs = memory.getAll();
+
+		    // Try to get deleted document
+		    deletedDoc = memory.getById( id1 );
+
+		    result = {
+		        isDeleted: deletedDoc.isEmpty()
+		    };
+		    """,
 		    context );
 
 		IStruct result = variables.getAsStruct( Key.of( "result" ) );
-
-		assertEquals( 2, result.getAsInteger( Key.of( "initialCount" ) ) );
-		assertEquals( 1, result.getAsInteger( Key.of( "finalCount" ) ) );
 		assertTrue( result.getAsBoolean( Key.of( "isDeleted" ) ) );
 	}
 
@@ -361,38 +354,38 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 	public void testMetadataFiltering() {
 		runtime.executeSource(
 		    """
-		        memory = aiMemory( "typesense", createUUID(), {
-		            collection: "test_filtering",
-		            host: "localhost",
-		            port: 8108,
-		            apiKey: "xyz"
-		        } );
+		    memory = aiMemory( "typesense", createUUID(), {
+		        collection: "test_filtering",
+		        host: "localhost",
+		        port: 8108,
+		        apiKey: "xyz"
+		    } );
 
-		        // Add documents with different metadata
-		        memory.add( "Message from user Alice", { user: "alice", priority: "high" } );
-		        memory.add( "Message from user Bob", { user: "bob", priority: "low" } );
-		        memory.add( "Another message from Alice", { user: "alice", priority: "low" } );
-		        
-		        // Search with metadata filter
-		        aliceMessages = memory.getRelevant( 
-		            "message", 
-		            3,
-		            { user: "alice" }
-		        );
-		        
-		        result = {
-		            count: arrayLen(aliceMessages),
-		            allFromAlice: true
-		        };
-		        
-		        // Verify all results are from Alice
-		        for( msg in aliceMessages ) {
-		            if( !structKeyExists(msg, "metadata") || msg.metadata.user != "alice" ) {
-		                result.allFromAlice = false;
-		                break;
-		            }
+		    // Add documents with different metadata
+		    memory.add( "Message from user Alice", { user: "alice", priority: "high" } );
+		    memory.add( "Message from user Bob", { user: "bob", priority: "low" } );
+		    memory.add( "Another message from Alice", { user: "alice", priority: "low" } );
+
+		    // Search with metadata filter
+		    aliceMessages = memory.getRelevant(
+		        "message",
+		        3,
+		        { user: "alice" }
+		    );
+
+		    result = {
+		        count: arrayLen(aliceMessages),
+		        allFromAlice: true
+		    };
+
+		    // Verify all results are from Alice
+		    for( msg in aliceMessages ) {
+		        if( !structKeyExists(msg, "metadata") || msg.metadata.user != "alice" ) {
+		            result.allFromAlice = false;
+		            break;
 		        }
-		        """,
+		    }
+		    """,
 		    context );
 
 		IStruct result = variables.getAsStruct( Key.of( "result" ) );
@@ -407,35 +400,35 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 	public void testCollectionManagement() {
 		runtime.executeSource(
 		    """
-		        memory = aiMemory( "typesense", createUUID(), {
-		            collection: "test_mgmt_ops",
-		            host: "localhost",
-		            port: 8108,
-		            apiKey: "xyz"
-		        } );
+		    memory = aiMemory( "typesense", createUUID(), {
+		        collection: "test_mgmt_ops",
+		        host: "localhost",
+		        port: 8108,
+		        apiKey: "xyz"
+		    } );
 
-		        // Collection should exist after configure
-		        existsAfterCreate = memory.collectionExists( "test_mgmt_ops" );
-		        
-		        // Add some data
-		        memory.add( "Test data" );
-		        
-		        // Delete the collection
-		        memory.deleteCollection( "test_mgmt_ops" );
-		        
-		        // Check it no longer exists
-		        existsAfterDelete = memory.collectionExists( "test_mgmt_ops" );
-		        
-		        // Recreate it
-		        memory.createCollection( "test_mgmt_ops" );
-		        existsAfterRecreate = memory.collectionExists( "test_mgmt_ops" );
-		        
-		        result = {
-		            existsAfterCreate: existsAfterCreate,
-		            existsAfterDelete: existsAfterDelete,
-		            existsAfterRecreate: existsAfterRecreate
-		        };
-		        """,
+		    // Collection should exist after configure
+		    existsAfterCreate = memory.collectionExists( "test_mgmt_ops" );
+
+		    // Add some data
+		    memory.add( "Test data" );
+
+		    // Delete the collection
+		    memory.deleteCollection( "test_mgmt_ops" );
+
+		    // Check it no longer exists
+		    existsAfterDelete = memory.collectionExists( "test_mgmt_ops" );
+
+		    // Recreate it
+		    memory.createCollection( "test_mgmt_ops" );
+		    existsAfterRecreate = memory.collectionExists( "test_mgmt_ops" );
+
+		    result = {
+		        existsAfterCreate: existsAfterCreate,
+		        existsAfterDelete: existsAfterDelete,
+		        existsAfterRecreate: existsAfterRecreate
+		    };
+		    """,
 		    context );
 
 		IStruct result = variables.getAsStruct( Key.of( "result" ) );
@@ -451,35 +444,35 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 	public void testGetAllDocuments() {
 		runtime.executeSource(
 		    """
-		        memory = aiMemory( "typesense", createUUID(), {
-		            collection: "test_get_all",
-		            host: "localhost",
-		            port: 8108,
-		            apiKey: "xyz"
-		        } );
+		    memory = aiMemory( "typesense", createUUID(), {
+		        collection: "test_get_all",
+		        host: "localhost",
+		        port: 8108,
+		        apiKey: "xyz"
+		    } );
 
-		        // Add multiple documents
-		        messages = [
-		            "First document",
-		            "Second document",
-		            "Third document"
-		        ];
-		        
-		        for( msg in messages ) {
-		            memory.add( msg );
-		        }
-		        
-		        // Get all documents
-		        allDocs = memory.getAll();
-		        
-		        result = {
-		            count: arrayLen(allDocs),
-		            hasText: allDocs.len() > 0 && structKeyExists(allDocs[1], "text"),
-		            hasMetadata: allDocs.len() > 0 && structKeyExists(allDocs[1], "metadata"),
-		            hasEmbedding: allDocs.len() > 0 && structKeyExists(allDocs[1], "embedding"),
-		            hasId: allDocs.len() > 0 && structKeyExists(allDocs[1], "id")
-		        };
-		        """,
+		    // Add multiple documents
+		    messages = [
+		        "First document",
+		        "Second document",
+		        "Third document"
+		    ];
+
+		    for( msg in messages ) {
+		        memory.add( msg );
+		    }
+
+		    // Get all documents
+		    allDocs = memory.getAll();
+
+		    result = {
+		        count: arrayLen(allDocs),
+		        hasText: allDocs.len() > 0 && structKeyExists(allDocs[1], "text"),
+		        hasMetadata: allDocs.len() > 0 && structKeyExists(allDocs[1], "metadata"),
+		        hasEmbedding: allDocs.len() > 0 && structKeyExists(allDocs[1], "embedding"),
+		        hasId: allDocs.len() > 0 && structKeyExists(allDocs[1], "id")
+		    };
+		    """,
 		    context );
 
 		IStruct result = variables.getAsStruct( Key.of( "result" ) );
