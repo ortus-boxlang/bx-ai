@@ -55,13 +55,9 @@ jobs:
         with:
           compose-file: "./docker-compose.yml"
 
-      - name: Wait for Ollama to be ready
-        run: |
-          # Wait for Ollama to be ready
-          timeout 300 bash -c 'until curl -f http://localhost:11434/api/tags; do echo "Waiting for Ollama..."; sleep 5; done'
-
       - name: Test Module
         run: |
+          # Download BoxLang and other dependencies
           ./gradlew downloadBoxLang
           # this is done in order to build the module structure before testing
           ./gradlew shadowJar test --stacktrace --console=plain
