@@ -301,6 +301,9 @@ abstract class
 		// Generate embedding
 		var embedding = generateEmbedding( arguments.text );
 
+		param arguments.metadata.userId = variables.userId;
+		param arguments.metadata.conversationId = variables.conversationId;
+
 		// Store in vector database (provider-specific)
 		storeDocument(
 			id : arguments.id,
@@ -660,12 +663,8 @@ abstract class
 		}
 
 		// Always add userId and conversationId for multi-tenant isolation
-		if ( len( variables.userId ) ) {
-			meta.userId = variables.userId;
-		}
-		if ( len( variables.conversationId ) ) {
-			meta.conversationId = variables.conversationId;
-		}
+		meta.userId = variables.userId;
+		meta.conversationId = variables.conversationId;
 
 		return meta;
 	}
