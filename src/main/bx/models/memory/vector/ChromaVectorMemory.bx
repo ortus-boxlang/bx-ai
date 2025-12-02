@@ -154,8 +154,22 @@ class extends="BaseVectorMemory" {
 		};
 
 		// Add metadata filter if provided
+		// ChromaDB requires $and operator for multiple conditions
 		if ( !arguments.filter.isEmpty() ) {
-			payload.where = arguments.filter;
+			var filterKeys = arguments.filter.keyArray();
+			if ( filterKeys.len() == 1 ) {
+				// Single filter - direct format
+				payload.where = arguments.filter;
+			} else {
+				// Multiple filters - need $and operator
+				var conditions = [];
+				for ( var key in arguments.filter ) {
+					var condition = {};
+					condition[ key ] = arguments.filter[ key ];
+					conditions.append( condition );
+				}
+				payload.where = { "$and": conditions };
+			}
 		}
 
 		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/query" )
