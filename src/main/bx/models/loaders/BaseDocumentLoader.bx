@@ -18,6 +18,8 @@
  * Abstract base class for document loaders.
  * Provides common functionality for all loader implementations.
  */
+import bxModules.bxai.models.memory.IAiMemory;
+
 abstract class implements="IDocumentLoader" {
 
 	/**
@@ -84,16 +86,7 @@ abstract class implements="IDocumentLoader" {
 	}
 
 	/**
-	 * Get the source identifier
-	 *
-	 * @return The source identifier
-	 */
-	string function getSource() {
-		return variables.source;
-	}
-
-	/**
-	 * Set the source
+	 * Set the source and reset lazy loading state
 	 *
 	 * @source The source to load from
 	 *
@@ -118,15 +111,6 @@ abstract class implements="IDocumentLoader" {
 	IDocumentLoader function configure( required struct config ) {
 		variables.config.append( arguments.config, true );
 		return this;
-	}
-
-	/**
-	 * Get the current configuration
-	 *
-	 * @return Configuration struct
-	 */
-	struct function getConfig() {
-		return variables.config;
 	}
 
 	/**
@@ -258,7 +242,7 @@ abstract class implements="IDocumentLoader" {
 	 *
 	 * @return Array of Document objects that were stored
 	 */
-	array function loadTo( required any memory, struct chunkOptions = {} ) {
+	array function loadTo( required IAiMemory memory, struct chunkOptions = {} ) {
 		var docs = load();
 
 		// If chunk options provided, chunk the documents
@@ -266,23 +250,8 @@ abstract class implements="IDocumentLoader" {
 			docs = chunkDocuments( docs, arguments.chunkOptions );
 		}
 
-		// Store each document in memory
-		for ( var doc in docs ) {
-			// If memory has a store method (vector memory), use it
-			if ( structKeyExists( arguments.memory, "store" ) ) {
-				arguments.memory.store(
-					id       : createUUID(),
-					text     : doc.getContent(),
-					metadata : doc.getMetadata()
-				);
-			} else {
-				// Otherwise add as a message
-				arguments.memory.add( {
-					role    : "user",
-					content : doc.getContent()
-				} );
-			}
-		}
+		// Use the memory's seed method to store documents
+		arguments.memory.seed( docs );
 
 		return docs;
 	}

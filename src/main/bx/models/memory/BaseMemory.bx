@@ -108,6 +108,7 @@ abstract class implements="IAiMemory" {
 	 * - A struct: The struct must contain at least 'role' and 'content' keys
 	 * - An array: Each element will be processed as above
 	 * - An AiMessage instance: Its messages will be added
+	 * - A Document instance: Its content will be added as a user message
 	 *
 	 * @message The message to add
 	 *
@@ -118,6 +119,17 @@ abstract class implements="IAiMemory" {
 		// AiMessage instance - get its messages and process them
  		if ( arguments.message instanceof "AiMessage" ) {
 			return 	this.add( arguments.message.getMessages() )
+		}
+
+		// Document instance - add content as user message
+		if ( arguments.message instanceof "bxModules.bxai.models.loaders.Document" ) {
+			variables.messages.append( {
+				role: "user",
+				content: arguments.message.getContent(),
+				metadata: arguments.message.getMetadata(),
+				timestamp: now()
+			} );
+			return this;
 		}
 
 		// Struct - must have role and content
@@ -147,11 +159,44 @@ abstract class implements="IAiMemory" {
 		else {
 			throw(
 				type: "InvalidMessage",
-				message: "Message must be a string, struct, array, or AiMessage instance"
+				message: "Message must be a string, struct, array, AiMessage, or Document instance"
 			);
 		}
 
 		return this;
+	}
+
+	/**
+	 * Seed memory with multiple messages/documents
+	 * Optimized for batch insertion
+	 *
+	 * @documents Array of messages/documents to add
+	 *
+	 * @return Struct with results (added, failed, errors)
+	 */
+	public struct function seed( required array documents ) {
+		var results = {
+			added: 0,
+			failed: 0,
+			errors: []
+		};
+
+		var index = 0;
+		for ( var doc in arguments.documents ) {
+			index++;
+			try {
+				this.add( doc );
+				results.added++;
+			} catch ( any e ) {
+				results.failed++;
+				results.errors.append( {
+					index: index,
+					error: e.message
+				} );
+			}
+		}
+
+		return results;
 	}
 
 	/**
