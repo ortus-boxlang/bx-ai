@@ -42,6 +42,7 @@ class {
 	 * @description The server description for MCP capabilities response
 	 * @version The server version
 	 * @cors CORS allowed origin (empty string means no CORS header - secure by default)
+	 * @force Force rebuild of the server instance even if it exists
 	 *
 	 * @return An MCPServer instance with fluent API
 	 */
@@ -49,13 +50,15 @@ class {
 		string name = "default",
 		string description = "BoxLang AI MCP Server",
 		string version = "1.0.0",
-		string cors = ""
+		string cors = "",
+		boolean force = false
 	) {
-		return bxModules.bxai.models.mcp.MCPServer::getInstance(
+		return bxModules.bxai.models.mcp.MCPServer::getOrBuild(
 			name: arguments.name,
 			description: arguments.description,
 			version: arguments.version,
-			cors: arguments.cors
+			cors: arguments.cors,
+			force: arguments.force
 		);
 	}
 

@@ -95,6 +95,11 @@ class {
 		 * Default server name
 		 */
 		DEFAULT_SERVER_NAME = "default";
+
+		/**
+		 * Logger for MCP operations
+		 */
+		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" );
 	}
 
 	/**
@@ -138,16 +143,18 @@ class {
 	 * @description The server description (only used when creating a new instance)
 	 * @version The server version (only used when creating a new instance)
 	 * @cors CORS allowed origin (only used when creating a new instance)
+	 * @force Force rebuild even if instance exists
 	 *
 	 * @return The MCPServer instance
 	 */
-	static function getInstance(
+	static function getOrBuild(
 		string name = static.DEFAULT_SERVER_NAME,
 		string description = "BoxLang AI MCP Server",
 		string version = "1.0.0",
-		string cors = ""
+		string cors = "",
+		boolean force = false
 	) {
-		if ( !static.servers.keyExists( arguments.name ) ) {
+		if ( arguments.force || !static.servers.keyExists( arguments.name ) ) {
 			static.servers[ arguments.name ] = new MCPServer(
 				name: arguments.name,
 				description: arguments.description,
@@ -354,7 +361,12 @@ class {
 		// If it's a directory, scan all .bx files
 		if ( directoryExists( targetPath ) ) {
 			var files = directoryList( targetPath, true, "path", "*.bx" );
-			files.each( file => scanClass( file ) );
+			// Use async mode for better performance when scanning many files
+			if ( files.len() > 10 ) {
+				files.each( file => scanClass( file ), true );
+			} else {
+				files.each( file => scanClass( file ) );
+			}
 		} else {
 			// Single file
 			scanClass( targetPath );
@@ -370,9 +382,8 @@ class {
 	 */
 	private void function scanClass( required string classPath ) {
 		try {
-			// Create an instance of the class to get its metadata
-			var instance = createObject( arguments.classPath );
-			var metadata = instance.$bx.meta;
+			// Get class metadata without instantiation
+			var metadata = getClassMetadata( arguments.classPath );
 
 			if ( isNull( metadata ) || !isStruct( metadata ) ) {
 				return;
@@ -382,45 +393,45 @@ class {
 			var functions = metadata.functions ?: [];
 
 			// Scan each function for annotations
-			functions.each( func => {
-				var annotations = func.annotations ?: {};
+			functions.each( thisFunction => {
+				var annotations = thisFunction.annotations ?: {};
 
 				// Check for @mcpTool annotation
 				if ( annotations.keyExists( "mcpTool" ) ) {
-					registerAnnotatedTool( instance, func, annotations.mcpTool );
+					registerAnnotatedTool( arguments.classPath, thisFunction, annotations.mcpTool );
 				}
 
 				// Check for @mcpResource annotation
 				if ( annotations.keyExists( "mcpResource" ) ) {
-					registerAnnotatedResource( instance, func, annotations.mcpResource );
+					registerAnnotatedResource( arguments.classPath, thisFunction, annotations.mcpResource );
 				}
 
 				// Check for @mcpPrompt annotation
 				if ( annotations.keyExists( "mcpPrompt" ) ) {
-					registerAnnotatedPrompt( instance, func, annotations.mcpPrompt );
+					registerAnnotatedPrompt( arguments.classPath, thisFunction, annotations.mcpPrompt );
 				}
 			} );
 		} catch ( any e ) {
 			// Log error but continue scanning other classes
-			systemOutput( "MCP scan error for #arguments.classPath#: #e.message#", true );
+			static.mcpLogger.error( "MCP scan error for #arguments.classPath#: #e.message#" );
 		}
 	}
 
 	/**
 	 * Register a tool from an annotated method
 	 *
-	 * @instance The class instance containing the method
-	 * @funcMetadata The function metadata
+	 * @classPath The class path for lazy instantiation
+	 * @functionMetadata The function metadata
 	 * @annotation The @mcpTool annotation value
 	 */
 	private void function registerAnnotatedTool(
-		required any instance,
-		required struct funcMetadata,
+		required string classPath,
+		required struct functionMetadata,
 		required any annotation
 	) {
-		var methodName = arguments.funcMetadata.name;
+		var methodName = arguments.functionMetadata.name;
 		var toolName = methodName;
-		var toolDescription = arguments.funcMetadata.hint ?: "";
+		var toolDescription = arguments.functionMetadata.hint ?: "";
 		var toolVersion = "1.0.0";
 
 		// Parse annotation value based on format
@@ -437,16 +448,17 @@ class {
 
 		// Build argument descriptions from function parameters
 		var argDescriptions = {};
-		var parameters = arguments.funcMetadata.parameters ?: [];
+		var parameters = arguments.functionMetadata.parameters ?: [];
 		parameters.each( param => {
 			argDescriptions[ param.name ] = param.hint ?: param.name;
 		} );
 
-		// Capture instance reference for closure
-		var targetInstance = arguments.instance;
+		// Capture classPath reference for lazy instantiation
+		var targetClassPath = arguments.classPath;
 
-		// Create the tool callable
+		// Create the tool callable with lazy instantiation
 		var callable = ( args ) => {
+			var targetInstance = createObject( targetClassPath );
 			return invoke( targetInstance, methodName, args );
 		};
 
@@ -464,19 +476,19 @@ class {
 	/**
 	 * Register a resource from an annotated method
 	 *
-	 * @instance The class instance containing the method
-	 * @funcMetadata The function metadata
+	 * @classPath The class path for lazy instantiation
+	 * @functionMetadata The function metadata
 	 * @annotation The @mcpResource annotation value
 	 */
 	private void function registerAnnotatedResource(
-		required any instance,
-		required struct funcMetadata,
+		required string classPath,
+		required struct functionMetadata,
 		required any annotation
 	) {
-		var methodName = arguments.funcMetadata.name;
+		var methodName = arguments.functionMetadata.name;
 		var uri = "resource://" & methodName;
 		var name = methodName;
-		var description = arguments.funcMetadata.hint ?: "";
+		var description = arguments.functionMetadata.hint ?: "";
 		var mimeType = "text/plain";
 
 		// Parse annotation value based on format
@@ -492,11 +504,12 @@ class {
 		}
 		// else: @mcpResource with no arguments - uses defaults (uri and name from method, description from hint)
 
-		// Capture instance reference for closure
-		var targetInstance = arguments.instance;
+		// Capture classPath reference for lazy instantiation
+		var targetClassPath = arguments.classPath;
 
-		// Create the handler
+		// Create the handler with lazy instantiation
 		var handler = () => {
+			var targetInstance = createObject( targetClassPath );
 			return invoke( targetInstance, methodName );
 		};
 
@@ -512,18 +525,18 @@ class {
 	/**
 	 * Register a prompt from an annotated method
 	 *
-	 * @instance The class instance containing the method
-	 * @funcMetadata The function metadata
+	 * @classPath The class path for lazy instantiation
+	 * @functionMetadata The function metadata
 	 * @annotation The @mcpPrompt annotation value
 	 */
 	private void function registerAnnotatedPrompt(
-		required any instance,
-		required struct funcMetadata,
+		required string classPath,
+		required struct functionMetadata,
 		required any annotation
 	) {
-		var methodName = arguments.funcMetadata.name;
+		var methodName = arguments.functionMetadata.name;
 		var promptName = methodName;
-		var promptDescription = arguments.funcMetadata.hint ?: "";
+		var promptDescription = arguments.functionMetadata.hint ?: "";
 		var promptArguments = [];
 
 		// Parse annotation value based on format
@@ -540,7 +553,7 @@ class {
 
 		// If no arguments specified, build from function parameters
 		if ( promptArguments.isEmpty() ) {
-			var parameters = arguments.funcMetadata.parameters ?: [];
+			var parameters = arguments.functionMetadata.parameters ?: [];
 			parameters.each( param => {
 				promptArguments.append( {
 					"name": param.name,
@@ -550,11 +563,12 @@ class {
 			} );
 		}
 
-		// Capture instance reference for closure
-		var targetInstance = arguments.instance;
+		// Capture classPath reference for lazy instantiation
+		var targetClassPath = arguments.classPath;
 
-		// Create the handler
+		// Create the handler with lazy instantiation
 		var handler = ( args ) => {
+			var targetInstance = createObject( targetClassPath );
 			return invoke( targetInstance, methodName, args );
 		};
 
@@ -795,60 +809,6 @@ class {
 	 */
 	MCPServer function clearPrompts() {
 		variables.prompts = {};
-		return this;
-	}
-
-	/**
-	 * ---------------------------------------------------------------------------------------------------------
-	 * Server Configuration Methods
-	 * ---------------------------------------------------------------------------------------------------------
-	 */
-
-	/**
-	 * Set the server name
-	 *
-	 * @name The server name
-	 *
-	 * @return This server for chaining
-	 */
-	MCPServer function setName( required string name ) {
-		variables.serverName = arguments.name;
-		return this;
-	}
-
-	/**
-	 * Set the server description
-	 *
-	 * @description The server description
-	 *
-	 * @return This server for chaining
-	 */
-	MCPServer function setDescription( required string description ) {
-		variables.description = arguments.description;
-		return this;
-	}
-
-	/**
-	 * Set the server version
-	 *
-	 * @version The server version
-	 *
-	 * @return This server for chaining
-	 */
-	MCPServer function setVersion( required string version ) {
-		variables.version = arguments.version;
-		return this;
-	}
-
-	/**
-	 * Set the CORS allowed origin
-	 *
-	 * @cors The allowed origin (empty string means no CORS header - secure by default)
-	 *
-	 * @return This server for chaining
-	 */
-	MCPServer function setCors( required string cors ) {
-		variables.cors = arguments.cors;
 		return this;
 	}
 

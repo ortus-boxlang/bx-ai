@@ -24,6 +24,13 @@
 class {
 
 	/**
+	 * Static logger for MCP operations
+	 */
+	static {
+		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" );
+	}
+
+	/**
 	 * Process an incoming MCP HTTP request
 	 *
 	 * @serverName The name of the MCP server to use
@@ -72,7 +79,7 @@ class {
 
 		// Execute onRequest callback if defined (for authentication/inspection)
 		var onRequestCallback = server.getOnRequest();
-		if ( !isSimpleValue( onRequestCallback ) || len( onRequestCallback ) > 0 ) {
+		if ( isClosure( onRequestCallback ) ) {
 			try {
 				requestData = onRequestCallback( requestData );
 			} catch ( any e ) {
@@ -106,12 +113,12 @@ class {
 
 		// Execute onResponse callback if defined (for transformation/logging)
 		var onResponseCallback = server.getOnResponse();
-		if ( !isSimpleValue( onResponseCallback ) || len( onResponseCallback ) > 0 ) {
+		if ( isClosure( onResponseCallback ) ) {
 			try {
 				response = onResponseCallback( response, requestData );
 			} catch ( any e ) {
 				// Log error but don't fail the response
-				systemOutput( "MCP onResponse callback error: #e.message#", true );
+				static.mcpLogger.error( "MCP onResponse callback error: #e.message#" );
 			}
 		}
 
