@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
+import ortus.boxlang.runtime.types.IStruct;
 
 /**
  * Integration tests for MysqlVectorMemory
@@ -82,7 +83,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			"""
 			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
 
-			memory = new MysqlVectorMemory( createUUID(), "test_store" );
+			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_store" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors_store_%s",
@@ -118,7 +119,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			"""
 			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
 
-			memory = new MysqlVectorMemory( createUUID(), "test_search" );
+			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_search" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors_search",
@@ -162,7 +163,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			"""
 			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
 
-			memory = new MysqlVectorMemory( createUUID(), "test_byid" );
+			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_byid" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors_byid",
@@ -208,7 +209,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			"""
 			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
 
-			memory = new MysqlVectorMemory( createUUID(), "test_remove" );
+			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_remove" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors_remove",
@@ -254,7 +255,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			"""
 			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
 
-			memory = new MysqlVectorMemory( createUUID(), "test_filter" );
+			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_filter" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors_filter",
@@ -313,7 +314,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			"""
 			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
 
-			memory = new MysqlVectorMemory( createUUID(), "test_seed" );
+			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_seed" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors_seed_batch",
@@ -461,18 +462,17 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			result = {
 				userId: memory.getUserId(),
 				conversationId: memory.getConversationId()
-			};
+			}
 			"""
 			.formatted( DATASOURCE_NAME, System.currentTimeMillis() ),
 			context
 		);
 		// @formatter:on
 
-		var	userId			= variables.getAsString( Key.of( "userId" ) );
-		var	conversationId	= variables.getAsString( Key.of( "conversationId" ) );
+		IStruct results = variables.getAsStruct( result );
 
-		assertThat( userId ).isEqualTo( "john" );
-		assertThat( conversationId ).isEqualTo( "mysql-test" );
+		assertThat( results.getAsString( Key.of( "userId" ) ) ).isEqualTo( "john" );
+		assertThat( results.getAsString( Key.of( "conversationId" ) ) ).isEqualTo( "mysql-test" );
 	}
 
 	@DisplayName( "Test MysqlVectorMemory export includes userId and conversationId" )

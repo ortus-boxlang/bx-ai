@@ -47,14 +47,6 @@ class {
 		var memoryConfig = arguments.config ?: moduleRecord.settings.memory.config;
 		var memoryClass = "";
 
-		// Add userId and conversationId to config if provided
-		if ( len( arguments.userId ) ) {
-			memoryConfig.userId = arguments.userId;
-		}
-		if ( len( arguments.conversationId ) ) {
-			memoryConfig.conversationId = arguments.conversationId;
-		}
-
 		// Map memory types to their class paths
 		switch( memoryType.lcase() ) {
 			case "buffered":
