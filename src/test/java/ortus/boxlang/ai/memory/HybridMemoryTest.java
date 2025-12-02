@@ -39,7 +39,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testInstantiationDefault() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "test-key", {
+		    memory = aiMemory( memory: "hybrid", key: "test-key", config: {
 		        vectorProvider: "BoxVectorMemory"
 		    } )
 
@@ -64,7 +64,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testCustomConfig() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "test-key", {
+		    memory = aiMemory( memory: "hybrid", key: "test-key", config: {
 		        recentLimit: 8,
 		        semanticLimit: 7,
 		        totalLimit: 15,
@@ -91,7 +91,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testAddToBothMemories() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "test-key", {
+		    memory = aiMemory( memory: "hybrid", key: "test-key", config: {
 		        vectorProvider: "BoxVectorMemory",
 		        vectorConfig: {}
 		    } )
@@ -120,7 +120,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testGetAllCombines() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "test-key", {
+		    memory = aiMemory( memory: "hybrid", key: "test-key", config: {
 		        recentLimit: 3,
 		        semanticLimit: 2,
 		        totalLimit: 5,
@@ -154,7 +154,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testGetRelevantSemanticSearch() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "test-key", {
+		    memory = aiMemory( memory: "hybrid", key: "test-key", config: {
 		        recentLimit: 2,
 		        semanticLimit: 3,
 		        recentWeight: 0.5,
@@ -189,7 +189,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testMessageDeduplication() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "test-key", {
+		    memory = aiMemory( memory: "hybrid", key: "test-key", config: {
 		        recentLimit: 5,
 		        semanticLimit: 5,
 		        totalLimit: 10,
@@ -233,7 +233,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testClearBothMemories() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "test-key", {
+		    memory = aiMemory( memory: "hybrid", key: "test-key", config: {
 		        vectorProvider: "BoxVectorMemory",
 
 		    } )
@@ -266,7 +266,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testExport() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "export-test", {
+		    memory = aiMemory( memory: "hybrid", key: "export-test", config: {
 		        recentLimit: 6,
 		        semanticLimit: 4,
 		        totalLimit: 10,
@@ -332,7 +332,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 		        }
 		    }
 
-		    memory = aiMemory( "hybrid", "test", {
+		    memory = aiMemory( memory: "hybrid", key: "test", config: {
 		        vectorProvider: "BoxVectorMemory",
 
 		    } )
@@ -365,7 +365,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testTotalLimit() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "test-key", {
+		    memory = aiMemory( memory: "hybrid", key: "test-key", config: {
 		        recentLimit: 10,
 		        semanticLimit: 10,
 		        totalLimit: 5,
@@ -398,14 +398,14 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // High recent weight (70%)
-		    memoryHighRecent = aiMemory( "hybrid", "high-recent", {
+		    memoryHighRecent = aiMemory( memory: "hybrid", key: "high-recent", config: {
 		        recentWeight: 0.7,
 		        vectorProvider: "BoxVectorMemory",
 
 		    } )
 
 		    // Low recent weight (30%)
-		    memoryLowRecent = aiMemory( "hybrid", "low-recent", {
+		    memoryLowRecent = aiMemory( memory: "hybrid", key: "low-recent", config: {
 		        recentWeight: 0.3,
 		        vectorProvider: "BoxVectorMemory",
 
@@ -426,7 +426,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testWithSystemMessage() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "test-key", {
+		    memory = aiMemory( memory: "hybrid", key: "test-key", config: {
 		        vectorProvider: "BoxVectorMemory",
 
 		    } )
@@ -452,7 +452,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testMessageIdGeneration() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "test-key", {
+		    memory = aiMemory( memory: "hybrid", key: "test-key", config: {
 		        vectorProvider: "BoxVectorMemory",
 
 		    } )
@@ -481,7 +481,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testEmptyQuery() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "test-key", {
+		    memory = aiMemory( memory: "hybrid", key: "test-key", config: {
 		        vectorProvider: "BoxVectorMemory",
 
 		    } )
@@ -507,7 +507,7 @@ public class HybridMemoryTest extends BaseIntegrationTest {
 	public void testMemoryType() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "hybrid", "test-key", {
+		    memory = aiMemory( memory: "hybrid", key: "test-key", config: {
 		        vectorProvider: "BoxVectorMemory",
 
 		    } )

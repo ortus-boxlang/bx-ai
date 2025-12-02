@@ -85,7 +85,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		String expectedFile = tempDir.toString() + "/memory-test-key.json";
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( \"test-key\", \"%s\" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( key: \"test-key\", directoryPath: \"%s\" )
 		                       .add( \"Hello World\" )
 
 		                   fileExists = fileExists( \"%s\" )
@@ -102,12 +102,12 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    String.format( """
 		                   // Create first memory and add messages
-		                   memory1 = new bxModules.bxai.models.memory.FileMemory( "persist-key", "%s" )
+		                   memory1 = new bxModules.bxai.models.memory.FileMemory( key: "persist-key", directoryPath: "%s" )
 		                       .add( "Message 1" )
 		                       .add( "Message 2" )
 
 		                   // Create new memory instance with same key to load from the same file
-		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "persist-key", "%s" )
+		                   memory2 = new bxModules.bxai.models.memory.FileMemory( key: "persist-key", directoryPath: "%s" )
 		                       .configure( {} )
 
 		                   count = memory2.count()
@@ -131,7 +131,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testClearRemovesContent() {
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "clear-key", "%s" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( key: "clear-key", directoryPath: "%s" )
 		                       .add( "Message 1" )
 		                       .add( "Message 2" )
 		                       .clear()
@@ -139,7 +139,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		                   count = memory.count()
 
 		                   // Load from file again to verify it's deleted
-		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "clear-key", "%s" )
+		                   memory2 = new bxModules.bxai.models.memory.FileMemory( key: "clear-key", directoryPath: "%s" )
 		                       .configure( {} )
 
 		                   count2 = memory2.count()
@@ -156,7 +156,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testGetSummary() {
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "test-key", "%s" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( key: "test-key", directoryPath: "%s" )
 		                       .setSystemMessage( "Test system" )
 		                       .add( "User message" )
 
@@ -180,7 +180,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testExport() {
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "export-key", "%s" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( key: "export-key", directoryPath: "%s" )
 		                       .metadata( { userId: 789 } )
 		                       .configure( { maxSize: 100 } )
 		                       .add( { role: "user", content: "Test" } )
@@ -244,7 +244,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testExportImportRoundtrip() {
 		runtime.executeSource(
 		    String.format( """
-		                   original = new bxModules.bxai.models.memory.FileMemory( "roundtrip", "%s" )
+		                   original = new bxModules.bxai.models.memory.FileMemory( key: "roundtrip", directoryPath: "%s" )
 		                       .metadata( { version: 1 } )
 		                       .setSystemMessage( "System prompt" )
 		                       .add( "User: Hello" )
@@ -279,12 +279,12 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testMetadataPersistence() {
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "metadata-key", "%s" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( key: "metadata-key", directoryPath: "%s" )
 		                       .metadata( { userId: "123", sessionId: "abc" } )
 		                       .add( "Test message" )
 
 		                   // Load from file with same key
-		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "metadata-key", "%s" )
+		                   memory2 = new bxModules.bxai.models.memory.FileMemory( key: "metadata-key", directoryPath: "%s" )
 		                       .configure( {} )
 
 		                   metadata = memory2.metadata()
@@ -304,7 +304,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "test-key", "%s" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( key: "test-key", directoryPath: "%s" )
 		                       .configure( {} )
 
 		                   count = memory.count()
@@ -325,7 +325,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "nested-key", \"%s\" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( key: "nested-key", directoryPath: \"%s\" )
 		                       .add( "Test message" )
 
 		                   fileExists = fileExists( \"%s\" )
@@ -341,7 +341,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	public void testWithAiMemoryBIF() {
 		runtime.executeSource(
 		    String.format( """
-		                   memory = aiMemory( "file", "bif-test", { directoryPath: "%s" } )
+		                   memory = aiMemory( memory: "file", key: "bif-test", config: { directoryPath: "%s" } )
 		                       .add( "BIF message" )
 
 		                   count = memory.count()
@@ -386,7 +386,7 @@ public class FileMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "empty-key", "%s" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( key: "empty-key", directoryPath: "%s" )
 		                       .configure( {} )
 
 		                   count = memory.count()
@@ -408,11 +408,11 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		                       .system( "Be helpful" )
 		                       .user( "Hello" )
 
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "aimessage-key", "%s" )
+		                   memory = new bxModules.bxai.models.memory.FileMemory( key: "aimessage-key", directoryPath: "%s" )
 		                       .add( msg )
 
 		                   // Load from file with same key
-		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "aimessage-key", "%s" )
+		                   memory2 = new bxModules.bxai.models.memory.FileMemory( key: "aimessage-key", directoryPath: "%s" )
 		                       .configure( {} )
 
 		                   count = memory2.count()

@@ -48,7 +48,7 @@ public class SessionMemoryTest extends BaseIntegrationTest {
 	public void testInstantiationCustom() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SessionMemory( "my-session-key", 10 )
+		    memory = new bxModules.bxai.models.memory.SessionMemory( key: "my-session-key", maxMessages: 10 )
 		    key = memory.key()
 		    maxMessages = memory.getMaxMessages()
 		    """,
@@ -113,7 +113,7 @@ public class SessionMemoryTest extends BaseIntegrationTest {
 	public void testAutoTrim() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SessionMemory( "trim-test", 3 )
+		    memory = new bxModules.bxai.models.memory.SessionMemory( key: "trim-test", maxMessages: 3 )
 
 		    // Add 5 messages
 		    memory.add( "Message 1" )
@@ -146,7 +146,7 @@ public class SessionMemoryTest extends BaseIntegrationTest {
 	public void testSystemMessagePreservation() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SessionMemory( "system-test", 2 )
+		    memory = new bxModules.bxai.models.memory.SessionMemory( key: "system-test", maxMessages: 2 )
 		        .setSystemMessage( "You are helpful" )
 		        .add( "User 1" )
 		        .add( "Assistant 1" )
@@ -226,7 +226,7 @@ public class SessionMemoryTest extends BaseIntegrationTest {
 	public void testExport() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SessionMemory( "export-test", 5 )
+		    memory = new bxModules.bxai.models.memory.SessionMemory( key: "export-test", maxMessages: 5 )
 		        .metadata( { exported: true } )
 		        .add( "Test message" )
 
@@ -328,7 +328,7 @@ public class SessionMemoryTest extends BaseIntegrationTest {
 	public void testSetMaxMessagesTriggersTrim() {
 		runtime.executeSource(
 		    """
-		    memory = new bxModules.bxai.models.memory.SessionMemory( "max-test", 10 )
+		    memory = new bxModules.bxai.models.memory.SessionMemory( key: "max-test", maxMessages: 10 )
 
 		    // Add 5 messages
 		    for( i = 1; i <= 5; i++ ) {
@@ -364,7 +364,7 @@ public class SessionMemoryTest extends BaseIntegrationTest {
 	public void testGetSummary() {
 		runtime.executeSource(
 		    """
-		       memory = new bxModules.bxai.models.memory.SessionMemory( "summary-test", 5 )
+		       memory = new bxModules.bxai.models.memory.SessionMemory( key: "summary-test", maxMessages: 5 )
 		           .setSystemMessage( "Test system" )
 		           .add( "Test message" )
 
