@@ -255,23 +255,32 @@ class extends="BaseVectorMemory" {
 	 */
 	array function getAllDocuments() {
 		// Build WHERE clause with userId/conversationId filtering
-		var params = {
-			collection: variables.collection,
-			userId: variables.userId,
-			conversationId: variables.conversationId
+		var whereClause = "WHERE collection = :collection";
+		var params = { collection: variables.collection };
+
+		// Only filter by userId if it's set (non-empty)
+		if ( len( variables.userId ) ) {
+			whereClause &= " AND userId = :userId";
+			params.userId = variables.userId;
 		}
 
-		var result = queryExecute(
-			"SELECT
+		// Only filter by conversationId if it's set (non-empty)
+		if ( len( variables.conversationId ) ) {
+			whereClause &= " AND conversationId = :conversationId";
+			params.conversationId = variables.conversationId;
+		}
+
+		var sql = "SELECT
 				id,
 				text,
 				metadata as metadata_json,
-				VECTOR_TO_STRING(embedding) as embedding_str
+				VECTOR_TO_STRING( embedding ) as embedding_str
 			FROM #variables.table#
-			WHERE collection = :collection
-			  AND userId = :userId
-			  AND conversationId = :conversationId
-			ORDER BY created_at DESC",
+			#whereClause#
+			ORDER BY created_at DESC";
+
+		var result = queryExecute(
+			sql,
 			params,
 			{ datasource: variables.datasource, returntype: "array" }
 		)

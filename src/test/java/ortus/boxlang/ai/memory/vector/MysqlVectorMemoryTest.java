@@ -496,28 +496,16 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			memory.add( { text: "Export test document" } );
 
 			exported = memory.export();
-
-			result = {
-				hasUserId: exported.keyExists( "userId" ),
-				hasConversationId: exported.keyExists( "conversationId" ),
-				userId: exported.keyExists( "userId" ) ? exported.userId : "",
-				conversationId: exported.keyExists( "conversationId" ) ? exported.conversationId : ""
-			};
 			"""
 			.formatted( DATASOURCE_NAME, System.currentTimeMillis() ),
 			context
 		);
 		// @formatter:on
 
-		var	hasUserId			= variables.getAsBoolean( Key.of( "hasUserId" ) );
-		var	hasConversationId	= variables.getAsBoolean( Key.of( "hasConversationId" ) );
-		var	userId				= variables.getAsString( Key.of( "userId" ) );
-		var	conversationId		= variables.getAsString( Key.of( "conversationId" ) );
+		IStruct exported = variables.getAsStruct( Key.of( "exported" ) );
 
-		assertThat( hasUserId ).isTrue();
-		assertThat( hasConversationId ).isTrue();
-		assertThat( userId ).isEqualTo( "jane" );
-		assertThat( conversationId ).isEqualTo( "export-test" );
+		assertThat( exported.getAsString( Key.of( "userId" ) ) ).isEqualTo( "jane" );
+		assertThat( exported.getAsString( Key.of( "conversationId" ) ) ).isEqualTo( "export-test" );
 	}
 
 	@DisplayName( "Test multi-tenant isolation with userId and conversationId filtering" )
