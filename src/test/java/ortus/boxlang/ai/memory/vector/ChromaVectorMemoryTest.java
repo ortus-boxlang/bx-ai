@@ -344,6 +344,8 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    """
+		    uniqueCollection = "test_multi_tenant_" & createUUID();
+
 		    // Create memory for user alice, conversation chat1
 		    memoryAliceChat1 = aiMemory(
 		        memory: "chroma",
@@ -352,7 +354,7 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		        config: {
 		            host: "localhost",
 		            port: 8000,
-		            collection: "test_multi_tenant",
+		            collection: uniqueCollection,
 		            embeddingProvider: "openai",
 		            embeddingModel: "text-embedding-3-small"
 		        }
@@ -366,7 +368,7 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		        config: {
 		            host: "localhost",
 		            port: 8000,
-		            collection: "test_multi_tenant",
+		            collection: uniqueCollection,
 		            embeddingProvider: "openai",
 		            embeddingModel: "text-embedding-3-small"
 		        }
@@ -380,7 +382,7 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		        config: {
 		            host: "localhost",
 		            port: 8000,
-		            collection: "test_multi_tenant",
+		            collection: uniqueCollection,
 		            embeddingProvider: "openai",
 		            embeddingModel: "text-embedding-3-small"
 		        }
@@ -458,7 +460,7 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		    memory = aiMemory( memory: "chroma", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8000,
-		        collection: "test_count",
+		        collection: "test_count_" & createUUID(),
 		        embeddingProvider: "openai",
 		        embeddingModel: "text-embedding-3-small"
 		    } );
@@ -494,7 +496,7 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		    memory = aiMemory( memory: "chroma", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8000,
-		        collection: "test_clear",
+		        collection: "test_clear_" & createUUID(),
 		        embeddingProvider: "openai",
 		        embeddingModel: "text-embedding-3-small"
 		    } );
