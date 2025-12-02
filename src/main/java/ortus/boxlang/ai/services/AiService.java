@@ -40,9 +40,9 @@ public class AiService extends BaseService {
 	private final ConcurrentMap<Key, IClassRunnable>	mcpServers			= new ConcurrentHashMap<>();
 
 	/**
-	 * The main AI logger
+	 * The main AI logger (volatile for thread-safe lazy initialization)
 	 */
-	BoxLangLogger										logger;
+	private volatile BoxLangLogger						logger;
 
 	/**
 	 * Interception points for the service.
