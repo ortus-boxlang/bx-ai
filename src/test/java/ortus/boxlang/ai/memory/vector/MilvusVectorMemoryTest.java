@@ -46,6 +46,9 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 
 	@BeforeEach
 	public void setupMilvusMemory() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "openai" );
+
 		// Create and configure Milvus memory instance
 		runtime.executeSource(
 		    """
@@ -352,7 +355,7 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		        config: {
 		            host: "localhost",
 		            port: 19530,
-		            collection: "test_user_conversation_" & createUUID(),
+		            collection: "test_user_conversation_" & replace( createUUID(), "-", "_", "all" ),
 		            dimension: 1536,
 		            embeddingProvider: "openai",
 		            embeddingModel: "text-embedding-3-small"
@@ -387,7 +390,7 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		        config: {
 		            host: "localhost",
 		            port: 19530,
-		            collection: "test_export_identifiers_" & createUUID(),
+		            collection: "test_export_identifiers_" & replace( createUUID(), "-", "_", "all" ),
 		            dimension: 1536,
 		            embeddingProvider: "openai",
 		            embeddingModel: "text-embedding-3-small"
@@ -421,7 +424,7 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    """
-		    uniqueCollection = "test_multi_tenant_" & createUUID();
+		    uniqueCollection = "test_multi_tenant_" & replace( createUUID(), "-", "_", "all" );
 
 		    // Create memory for user alice, conversation chat1
 		    memoryAliceChat1 = aiMemory(
@@ -536,10 +539,10 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( memory: "milvus", key: createUUID(), config: {
+		    memory = aiMemory( memory: "milvus", key: replace( createUUID(), "-", "_", "all" ), config: {
 		        host: "localhost",
 		        port: 19530,
-		        collection: "test_export_type_" & createUUID(),
+		        collection: "test_export_type_" & replace( createUUID(), "-", "_", "all" ),
 		        dimension: 1536,
 		        embeddingProvider: "openai",
 		        embeddingModel: "text-embedding-3-small"
