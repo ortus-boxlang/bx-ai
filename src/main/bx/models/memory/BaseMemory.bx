@@ -362,10 +362,10 @@ abstract class implements="IAiMemory" {
 		if ( arguments.config.keyExists( "maxMessages" ) ) {
 			variables.maxMessages = arguments.config.maxMessages
 		}
-		if ( arguments.config.keyExists( "userId" ) ) {
+		if ( arguments.config.keyExists( "userId" ) && len( arguments.config.userId ) ) {
 			variables.userId = arguments.config.userId
 		}
-		if ( arguments.config.keyExists( "conversationId" ) ) {
+		if ( arguments.config.keyExists( "conversationId" ) && len( arguments.config.conversationId ) ) {
 			variables.conversationId = arguments.config.conversationId
 		}
 
