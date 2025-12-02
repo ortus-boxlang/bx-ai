@@ -314,10 +314,10 @@ public class PostgresVectorMemoryTest extends BaseIntegrationTest {
 			"""
 			import bxModules.bxai.models.memory.vector.PostgresVectorMemory;
 
-			memory = new PostgresVectorMemory( createUUID(), "test_seed" );
+			memory = new PostgresVectorMemory( key: createUUID(), collection: "test_seed" );
 			memory.configure({
 				datasource: "%s",
-				table: "test_vectors_seed",
+				table: "test_vectors_seed_%s",
 				embeddingProvider: "openai",
 				embeddingModel: "text-embedding-3-small"
 			});
@@ -339,7 +339,7 @@ public class PostgresVectorMemoryTest extends BaseIntegrationTest {
 			// Clean up
 			memory.clear();
 			"""
-			.formatted( DATASOURCE_NAME ),
+			.formatted( DATASOURCE_NAME, System.currentTimeMillis() ),
 			context
 		);
 		// @formatter:on
@@ -409,6 +409,204 @@ public class PostgresVectorMemoryTest extends BaseIntegrationTest {
 
 		assertThat( resultCount ).isGreaterThan( 0 );
 		assertThat( hasName ).isTrue();
+	}
+
+	@DisplayName( "Test PostgresVectorMemory with userId and conversationId" )
+	@Test
+	public void testUserIdAndConversationId() throws Exception {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			memory = aiMemory(
+				memory: "postgres",
+				userId: "john",
+				conversationId: "postgres-test",
+				config: {
+					datasource: "%s",
+					table: "test_user_conv_%s",
+					embeddingProvider: "openai",
+					embeddingModel: "text-embedding-3-small"
+				}
+			);
+
+			memory.add( { text: "PostgreSQL vector database" } );
+
+			result = {
+				userId: memory.getUserId(),
+				conversationId: memory.getConversationId()
+			};
+			"""
+			.formatted( DATASOURCE_NAME, System.currentTimeMillis() ),
+			context
+		);
+		// @formatter:on
+
+		var result = variables.getAsStruct( Key.of( "result" ) );
+		assertThat( result.getAsString( Key.of( "userId" ) ) ).isEqualTo( "john" );
+		assertThat( result.getAsString( Key.of( "conversationId" ) ) ).isEqualTo( "postgres-test" );
+	}
+
+	@DisplayName( "Test PostgresVectorMemory export includes userId and conversationId" )
+	@Test
+	public void testExportIncludesIdentifiers() throws Exception {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			memory = aiMemory(
+				memory: "postgres",
+				userId: "jane",
+				conversationId: "export-test",
+				config: {
+					datasource: "%s",
+					table: "test_export_%s",
+					embeddingProvider: "openai",
+					embeddingModel: "text-embedding-3-small"
+				}
+			);
+
+			memory.add( { text: "Export test document" } );
+
+			exported = memory.export();
+			"""
+			.formatted( DATASOURCE_NAME, System.currentTimeMillis() ),
+			context
+		);
+		// @formatter:on
+
+		var exported = variables.getAsStruct( Key.of( "exported" ) );
+		assertThat( exported.containsKey( Key.of( "userId" ) ) ).isTrue();
+		assertThat( exported.containsKey( Key.of( "conversationId" ) ) ).isTrue();
+		assertThat( exported.getAsString( Key.of( "userId" ) ) ).isEqualTo( "jane" );
+		assertThat( exported.getAsString( Key.of( "conversationId" ) ) ).isEqualTo( "export-test" );
+	}
+
+	@DisplayName( "Test multi-tenant isolation with userId and conversationId filtering" )
+	@Test
+	public void testMultiTenantIsolation() throws Exception {
+		var uniqueTable = "test_multi_tenant_" + System.currentTimeMillis();
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			uniqueTable = "%s";
+
+			// Create memory for user alice, conversation chat1
+			memoryAliceChat1 = aiMemory(
+				memory: "postgres",
+				userId: "alice",
+				conversationId: "chat1",
+				config: {
+					datasource: "%s",
+					table: uniqueTable,
+					embeddingProvider: "openai",
+					embeddingModel: "text-embedding-3-small"
+				}
+			);
+
+			// Create memory for user alice, conversation chat2
+			memoryAliceChat2 = aiMemory(
+				memory: "postgres",
+				userId: "alice",
+				conversationId: "chat2",
+				config: {
+					datasource: "%s",
+					table: uniqueTable,
+					embeddingProvider: "openai",
+					embeddingModel: "text-embedding-3-small"
+				}
+			);
+
+			// Create memory for user bob, conversation chat1
+			memoryBobChat1 = aiMemory(
+				memory: "postgres",
+				userId: "bob",
+				conversationId: "chat1",
+				config: {
+					datasource: "%s",
+					table: uniqueTable,
+					embeddingProvider: "openai",
+					embeddingModel: "text-embedding-3-small"
+				}
+			);
+
+			// Add documents to each memory
+			memoryAliceChat1.add( { text: "Alice chat1: PostgreSQL is powerful" } );
+			memoryAliceChat2.add( { text: "Alice chat2: Vector search is fast" } );
+			memoryBobChat1.add( { text: "Bob chat1: Database indexing" } );
+
+			// Search in Alice's chat1 - should only return Alice's chat1 documents
+			resultsAliceChat1 = memoryAliceChat1.getRelevant( query: "PostgreSQL", limit: 10 );
+
+			// Search in Alice's chat2 - should only return Alice's chat2 documents
+			resultsAliceChat2 = memoryAliceChat2.getRelevant( query: "Vector", limit: 10 );
+
+			// Search in Bob's chat1 - should only return Bob's chat1 documents
+			resultsBobChat1 = memoryBobChat1.getRelevant( query: "database", limit: 10 );
+
+			// Get all documents for each memory
+			allAliceChat1 = memoryAliceChat1.getAll();
+			allAliceChat2 = memoryAliceChat2.getAll();
+			allBobChat1 = memoryBobChat1.getAll();
+
+			// Verify metadata includes userId and conversationId
+			firstAliceChat1 = allAliceChat1.len() > 0 ? allAliceChat1[1] : {};
+			firstAliceChat2 = allAliceChat2.len() > 0 ? allAliceChat2[1] : {};
+			firstBobChat1 = allBobChat1.len() > 0 ? allBobChat1[1] : {};
+
+			result = {
+				countAliceChat1: resultsAliceChat1.len(),
+				countAliceChat2: resultsAliceChat2.len(),
+				countBobChat1: resultsBobChat1.len(),
+				allCountAliceChat1: allAliceChat1.len(),
+				allCountAliceChat2: allAliceChat2.len(),
+				allCountBobChat1: allBobChat1.len(),
+				aliceChat1UserId: firstAliceChat1.keyExists("metadata") && firstAliceChat1.metadata.keyExists("userId") ? firstAliceChat1.metadata.userId : "",
+				aliceChat1ConvId: firstAliceChat1.keyExists("metadata") && firstAliceChat1.metadata.keyExists("conversationId") ? firstAliceChat1.metadata.conversationId : "",
+				aliceChat2UserId: firstAliceChat2.keyExists("metadata") && firstAliceChat2.metadata.keyExists("userId") ? firstAliceChat2.metadata.userId : "",
+				aliceChat2ConvId: firstAliceChat2.keyExists("metadata") && firstAliceChat2.metadata.keyExists("conversationId") ? firstAliceChat2.metadata.conversationId : "",
+				bobChat1UserId: firstBobChat1.keyExists("metadata") && firstBobChat1.metadata.keyExists("userId") ? firstBobChat1.metadata.userId : "",
+				bobChat1ConvId: firstBobChat1.keyExists("metadata") && firstBobChat1.metadata.keyExists("conversationId") ? firstBobChat1.metadata.conversationId : ""
+			};
+
+			// Clean up
+			memoryAliceChat1.clear();
+			"""
+			.formatted( uniqueTable, DATASOURCE_NAME, DATASOURCE_NAME, DATASOURCE_NAME ),
+			context
+		);
+		// @formatter:on
+
+		var	result				= variables.getAsStruct( Key.of( "result" ) );
+		var	countAliceChat1		= result.getAsInteger( Key.of( "countAliceChat1" ) );
+		var	countAliceChat2		= result.getAsInteger( Key.of( "countAliceChat2" ) );
+		var	countBobChat1		= result.getAsInteger( Key.of( "countBobChat1" ) );
+		var	allCountAliceChat1	= result.getAsInteger( Key.of( "allCountAliceChat1" ) );
+		var	allCountAliceChat2	= result.getAsInteger( Key.of( "allCountAliceChat2" ) );
+		var	allCountBobChat1	= result.getAsInteger( Key.of( "allCountBobChat1" ) );
+		var	aliceChat1UserId	= result.getAsString( Key.of( "aliceChat1UserId" ) );
+		var	aliceChat1ConvId	= result.getAsString( Key.of( "aliceChat1ConvId" ) );
+		var	aliceChat2UserId	= result.getAsString( Key.of( "aliceChat2UserId" ) );
+		var	aliceChat2ConvId	= result.getAsString( Key.of( "aliceChat2ConvId" ) );
+		var	bobChat1UserId		= result.getAsString( Key.of( "bobChat1UserId" ) );
+		var	bobChat1ConvId		= result.getAsString( Key.of( "bobChat1ConvId" ) );
+
+		// Each memory should only see its own documents
+		assertThat( countAliceChat1 ).isEqualTo( 1 );
+		assertThat( countAliceChat2 ).isEqualTo( 1 );
+		assertThat( countBobChat1 ).isEqualTo( 1 );
+
+		// getAll should also only return isolated documents
+		assertThat( allCountAliceChat1 ).isEqualTo( 1 );
+		assertThat( allCountAliceChat2 ).isEqualTo( 1 );
+		assertThat( allCountBobChat1 ).isEqualTo( 1 );
+
+		// Verify metadata contains correct userId and conversationId
+		assertThat( aliceChat1UserId ).isEqualTo( "alice" );
+		assertThat( aliceChat1ConvId ).isEqualTo( "chat1" );
+		assertThat( aliceChat2UserId ).isEqualTo( "alice" );
+		assertThat( aliceChat2ConvId ).isEqualTo( "chat2" );
+		assertThat( bobChat1UserId ).isEqualTo( "bob" );
+		assertThat( bobChat1ConvId ).isEqualTo( "chat1" );
 	}
 
 }
