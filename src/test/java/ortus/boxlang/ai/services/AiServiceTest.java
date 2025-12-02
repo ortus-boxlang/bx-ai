@@ -23,7 +23,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import ortus.boxlang.ai.AiKeys;
+import ortus.boxlang.ai.util.KeyDictionary;
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
 
@@ -32,7 +32,7 @@ public class AiServiceTest extends BaseIntegrationTest {
 	@AfterEach
 	public void clearServers() {
 		// Clear all server instances after each test
-		AiService aiService = ( AiService ) runtime.getGlobalService( AiKeys.AiService );
+		AiService aiService = ( AiService ) runtime.getGlobalService( KeyDictionary.AiService );
 		if ( aiService != null ) {
 			aiService.clearAllServers();
 		}
@@ -41,7 +41,7 @@ public class AiServiceTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "AiService is registered as a global service" )
 	public void testAiServiceIsRegistered() {
-		AiService aiService = ( AiService ) runtime.getGlobalService( AiKeys.AiService );
+		AiService aiService = ( AiService ) runtime.getGlobalService( KeyDictionary.AiService );
 		assertThat( aiService ).isNotNull();
 	}
 
@@ -58,7 +58,7 @@ public class AiServiceTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		AiService aiService = ( AiService ) runtime.getGlobalService( AiKeys.AiService );
+		AiService aiService = ( AiService ) runtime.getGlobalService( KeyDictionary.AiService );
 		assertThat( aiService.getServerCount() ).isEqualTo( 1 );
 		assertThat( aiService.hasServer( Key.of( "testApp" ) ) ).isTrue();
 		assertThat( variables.get( Key.of( "serverName" ) ) ).isEqualTo( "testApp" );
@@ -80,7 +80,7 @@ public class AiServiceTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( Key.of( "areSame" ) ) ).isEqualTo( true );
 
-		AiService aiService = ( AiService ) runtime.getGlobalService( AiKeys.AiService );
+		AiService aiService = ( AiService ) runtime.getGlobalService( KeyDictionary.AiService );
 		assertThat( aiService.getServerCount() ).isEqualTo( 1 );
 	}
 
@@ -100,7 +100,7 @@ public class AiServiceTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( Key.of( "areDifferent" ) ) ).isEqualTo( true );
 
-		AiService aiService = ( AiService ) runtime.getGlobalService( AiKeys.AiService );
+		AiService aiService = ( AiService ) runtime.getGlobalService( KeyDictionary.AiService );
 		assertThat( aiService.getServerCount() ).isEqualTo( 2 );
 	}
 
@@ -126,7 +126,7 @@ public class AiServiceTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "desc1" ) ) ).isEqualTo( "Original" );
 		assertThat( variables.get( Key.of( "desc2" ) ) ).isEqualTo( "Rebuilt" );
 
-		AiService aiService = ( AiService ) runtime.getGlobalService( AiKeys.AiService );
+		AiService aiService = ( AiService ) runtime.getGlobalService( KeyDictionary.AiService );
 		assertThat( aiService.getServerCount() ).isEqualTo( 1 );
 	}
 
@@ -178,10 +178,10 @@ public class AiServiceTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "AiService can be accessed directly via getGlobalService" )
 	public void testDirectServiceAccess() {
-		AiService aiService = ( AiService ) runtime.getGlobalService( AiKeys.AiService );
+		AiService aiService = ( AiService ) runtime.getGlobalService( KeyDictionary.AiService );
 
 		assertThat( aiService ).isNotNull();
-		assertThat( aiService.getName() ).isEqualTo( AiKeys.AiService );
+		assertThat( aiService.getName() ).isEqualTo( KeyDictionary.AiService );
 		assertThat( aiService.getServerCount() ).isEqualTo( 0 );
 
 		// Now use BoxLang to create a server
@@ -202,7 +202,7 @@ public class AiServiceTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "AiService logger works correctly" )
 	public void testLoggerWorks() {
-		AiService aiService = ( AiService ) runtime.getGlobalService( AiKeys.AiService );
+		AiService aiService = ( AiService ) runtime.getGlobalService( KeyDictionary.AiService );
 		assertThat( aiService.getLogger() ).isNotNull();
 	}
 

@@ -17,12 +17,11 @@
  */
 package ortus.boxlang.ai.services;
 
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-import ortus.boxlang.ai.AiKeys;
+import ortus.boxlang.ai.util.KeyDictionary;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.logging.BoxLangLogger;
 import ortus.boxlang.runtime.runnables.IClassRunnable;
@@ -37,22 +36,12 @@ public class AiService extends BaseService {
 	/**
 	 * Concurrent map that stores all MCP servers by name
 	 */
-	private final ConcurrentMap<Key, IClassRunnable>	mcpServers			= new ConcurrentHashMap<>();
+	private final ConcurrentMap<Key, IClassRunnable>	mcpServers	= new ConcurrentHashMap<>();
 
 	/**
 	 * The main AI logger (volatile for thread-safe lazy initialization)
 	 */
 	private volatile BoxLangLogger						logger;
-
-	/**
-	 * Interception points for the service.
-	 */
-	private static final Key[]							INTERCEPTION_POINTS	= List.of(
-	    AiKeys.onMCPServerCreate,
-	    AiKeys.onMCPServerRemove,
-	    AiKeys.onMCPRequest,
-	    AiKeys.onMCPResponse
-	).toArray( new Key[ 0 ] );
 
 	/**
 	 * --------------------------------------------------------------------------
@@ -73,9 +62,8 @@ public class AiService extends BaseService {
 	 * @param runtime The BoxRuntime
 	 */
 	public AiService( BoxRuntime runtime ) {
-		super( runtime, AiKeys.AiService );
+		super( runtime, KeyDictionary.AiService );
 		getLogger().trace( "+ AI Service built" );
-		runtime.getInterceptorService().registerInterceptionPoint( INTERCEPTION_POINTS );
 	}
 
 	/**

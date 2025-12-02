@@ -50,7 +50,6 @@
 )>
 
 <!--- Set response headers --->
-<bx:header name="Content-Type" value="#result.contentType#">
 <bx:loop collection="#result.headers#" item="headerValue" index="headerName">
 	<bx:header name="#headerName#" value="#headerValue#">
 </bx:loop>
@@ -60,6 +59,6 @@
 	<bx:header statusCode="#result.statusCode#" statusText="#result.statusText#">
 </bx:if>
 
-<!--- Output response content --->
-#result.content#
+<!--- Output response content using bx:content to reset buffers and set content type --->
+<bx:content type="#result.contentType#" variable="#result.content#" reset="true">
 </bx:output>

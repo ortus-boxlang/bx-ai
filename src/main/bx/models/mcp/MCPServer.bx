@@ -97,9 +97,9 @@ class {
 		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" );
 
 		/**
-		 * Service key for retrieving the AI service
+		 * Service key name for retrieving the AI service
 		 */
-		AI_SERVICE_KEY = createObject( "java", "ortus.boxlang.ai.AiKeys" ).AiService;
+		AI_SERVICE_NAME = "aiService";
 	}
 
 	/**
@@ -108,7 +108,7 @@ class {
 	 * @return The AI service instance
 	 */
 	private static function getAiService() {
-		return getBoxRuntime().getGlobalService( static.AI_SERVICE_KEY );
+		return getBoxRuntime().getGlobalService( static.AI_SERVICE_NAME );
 	}
 
 	/**
@@ -163,20 +163,19 @@ class {
 		string cors = "",
 		boolean force = false
 	) {
-		var aiService = static.getAiService();
-		var serverKey = createObject( "java", "ortus.boxlang.runtime.scopes.Key" ).of( arguments.name );
+		var aiService = getAiService();
 
-		if ( arguments.force || !aiService.hasServer( serverKey ) ) {
+		if ( arguments.force || !aiService.hasServer( arguments.name ) ) {
 			var newServer = new MCPServer(
 				name: arguments.name,
 				description: arguments.description,
 				version: arguments.version,
 				cors: arguments.cors
 			);
-			aiService.putServer( serverKey, newServer );
+			aiService.putServer( arguments.name, newServer );
 			return newServer;
 		}
-		return aiService.getServer( serverKey );
+		return aiService.getServer( arguments.name );
 	}
 
 	/**
@@ -187,9 +186,8 @@ class {
 	 * @return Boolean indicating if the server exists
 	 */
 	static boolean function hasInstance( required string name ) {
-		var aiService = static.getAiService();
-		var serverKey = createObject( "java", "ortus.boxlang.runtime.scopes.Key" ).of( arguments.name );
-		return aiService.hasServer( serverKey );
+		var aiService = getAiService();
+		return aiService.hasServer( arguments.name );
 	}
 
 	/**
@@ -200,9 +198,8 @@ class {
 	 * @return Boolean indicating if a server was removed
 	 */
 	static boolean function removeInstance( required string name ) {
-		var aiService = static.getAiService();
-		var serverKey = createObject( "java", "ortus.boxlang.runtime.scopes.Key" ).of( arguments.name );
-		return aiService.removeServer( serverKey );
+		var aiService = getAiService();
+		return aiService.removeServer( arguments.name );
 	}
 
 	/**
@@ -211,7 +208,7 @@ class {
 	 * @return Array of server names
 	 */
 	static array function getInstanceNames() {
-		var aiService = static.getAiService();
+		var aiService = getAiService();
 		var keySet = aiService.getServerNames();
 		var result = [];
 		keySet.each( key => result.append( key.getName() ) );
@@ -222,7 +219,7 @@ class {
 	 * Clear all server instances
 	 */
 	static function clearAllInstances() {
-		var aiService = static.getAiService();
+		var aiService = getAiService();
 		aiService.clearAllServers();
 	}
 

@@ -146,7 +146,12 @@ class {
 			"onAIResponse",
 			"onAITransformCreate",
             "afterAIModelInvoke",
-            "beforeAIModelInvoke"
+            "beforeAIModelInvoke",
+			// MCP Server Events
+			"onMCPServerCreate",
+			"onMCPServerRemove",
+			"onMCPRequest",
+			"onMCPResponse"
 		 ];
 	}
 

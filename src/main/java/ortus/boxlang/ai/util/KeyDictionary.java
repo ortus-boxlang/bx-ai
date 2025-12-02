@@ -15,14 +15,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package ortus.boxlang.ai;
+package ortus.boxlang.ai.util;
 
 import ortus.boxlang.runtime.scopes.Key;
 
 /**
- * Keys for the AI module.
+ * Key dictionary for the AI module.
  */
-public class AiKeys {
+public class KeyDictionary {
 
 	public static final Key	AiService			= Key.of( "aiService" );
 	public static final Key	bxai				= Key.of( "bxai" );
