@@ -189,7 +189,7 @@ class extends="BaseVectorMemory" {
 			include: [ "documents", "metadatas", "embeddings" ]
 		};
 
-		var response = http( variables.baseUrl & "/collections/" & variables.collectionId & "/get" )
+		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/get" )
 			.post()
 			.params( [
 				{ type : "header", name: "Content-Type", value: "application/json" },
