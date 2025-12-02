@@ -51,6 +51,8 @@ class extends="BaseMemory" {
 		// Call parent constructor with 0 max messages to be unbounded
 		super.init( argumentCollection: arguments )
 		variables.cacheName = arguments.cacheName
+		// Build composite cache key from key, userId, and conversationId
+		variables.cacheKey = buildCacheKey();
 		return this
 	}
 
@@ -139,9 +141,7 @@ class extends="BaseMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function clear() {
-		if ( !isNull( variables.cache ) && len( variables.key ) ) {
-			variables.cache.clear( variables.key )
-		}
+		variables.cache.clear( variables.cacheKey )
 		return this
 	}
 
@@ -345,9 +345,15 @@ class extends="BaseMemory" {
 			variables.cache = cache( variables.cacheName )
 		}
 
-		// Import key, metadata, config
+		// Import key, userId, conversationId, metadata, config
 		if ( arguments.data.keyExists( "key" ) ) {
 			variables.key = arguments.data.key
+		}
+		if ( arguments.data.keyExists( "userId" ) ) {
+			variables.userId = arguments.data.userId
+		}
+		if ( arguments.data.keyExists( "conversationId" ) ) {
+			variables.conversationId = arguments.data.conversationId
 		}
 		if ( arguments.data.keyExists( "metadata" ) ) {
 			variables.metadata = arguments.data.metadata
@@ -355,6 +361,9 @@ class extends="BaseMemory" {
 		if ( arguments.data.keyExists( "config" ) ) {
 			variables.config = arguments.data.config
 		}
+
+		// Rebuild cache key after importing identifiers
+		variables.cacheKey = buildCacheKey();
 
 		// Import messages directly to cache (don't use variables.messages)
 		var messages = arguments.data.messages ?: []
@@ -473,7 +482,7 @@ class extends="BaseMemory" {
 	 */
 	private struct function getCacheData() {
 		return variables.cache.getOrSet(
-			variables.key,
+			variables.cacheKey,
 			() => {
 				return {
 					"messages"  : [],
@@ -493,15 +502,37 @@ class extends="BaseMemory" {
 		required array messages,
 		struct metadata = {}
 	) {
-		if ( !isNull( variables.cache ) && len( variables.key ) ) {
+		if ( !isNull( variables.cache ) && len( variables.cacheKey ) ) {
 			variables.cache.set(
-				variables.key,
+				variables.cacheKey,
 				{
 					messages  : arguments.messages,
 					metadata  : arguments.metadata
 				}
 			)
 		}
+	}
+
+	/**
+	 * Build composite cache key from key, userId, and conversationId
+	 * Format: key:userId:conversationId or key:userId or just key
+	 *
+	 * @return String composite cache key
+	 */
+	private string function buildCacheKey() {
+		var parts = [ variables.key ];
+
+		// Add userId if present
+		if ( len( variables.userId ) ) {
+			parts.append( variables.userId );
+		}
+
+		// Add conversationId if present
+		if ( len( variables.conversationId ) ) {
+			parts.append( variables.conversationId );
+		}
+
+		return parts.toList( ":" );
 	}
 
 }

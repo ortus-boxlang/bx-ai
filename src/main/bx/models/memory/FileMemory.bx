@@ -226,15 +226,26 @@ class extends="BaseMemory" {
 	 */
 
 	/**
-	 * Get the full file path based on directoryPath and key
-	 * Generates filename from memory key
+	 * Get the full file path based on directoryPath, key, userId, and conversationId
+	 * Generates filename from memory key with userId and conversationId
 	 *
 	 * @return String full path to the memory file
 	 */
 	private string function getFilePath() {
-		// Generate filename from key: memory-{key}.json
-		// Slugify the key portion only, not the extension
-		var filename = "memory-#variables.key.slugify()#.json";
+		// Build filename parts: memory-{key}[-userId][-conversationId].json
+		var parts = [ "memory", variables.key.slugify() ];
+
+		// Add userId if present
+		if ( len( variables.userId ) ) {
+			parts.append( variables.userId.slugify() );
+		}
+
+		// Add conversationId if present
+		if ( len( variables.conversationId ) ) {
+			parts.append( variables.conversationId.slugify() );
+		}
+
+		var filename = parts.toList( "-" ) & ".json";
 		// Combine directory and filename
 		return variables.directoryPath & "/" & filename;
 	}

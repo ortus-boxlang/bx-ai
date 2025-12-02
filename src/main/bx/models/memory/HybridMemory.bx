@@ -222,6 +222,113 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	}
 
 	/**
+	 * Get all non-system messages
+	 * Filters out system messages from both recent and vector results
+	 *
+	 * @return Array of non-system messages
+	 */
+	public array function getNonSystemMessages() {
+		// Get all messages from recent memory only (not from vectors to avoid duplicates)
+		return variables.recentMemory.getNonSystemMessages();
+	}
+
+	/**
+	 * Get messages by role
+	 * Uses recent memory only to avoid vector result format issues
+	 *
+	 * @role The role to filter by
+	 *
+	 * @return Array of messages with the specified role
+	 */
+	public array function getByRole( required string role ) {
+		return variables.recentMemory.getByRole( arguments.role );
+	}
+
+	/**
+	 * Check if memory has a system message
+	 * Uses recent memory only
+	 *
+	 * @return Boolean true if system message exists
+	 */
+	public boolean function hasSystemMessage() {
+		return variables.recentMemory.hasSystemMessage();
+	}
+
+	/**
+	 * Get memory summary including hybrid-specific configuration
+	 * Uses recent memory for role distribution and timestamps to avoid vector result format issues
+	 *
+	 * @return Struct containing memory statistics
+	 */
+	public struct function getSummary() {
+		// Get messages from recent memory only for summary stats (timestamps, roles, etc.)
+		var recentMessages = variables.recentMemory.getAll()
+		var summary = {
+			"type": this.name(),
+			"key": this.key(),
+			"userId": this.getUserId(),
+			"conversationId": this.getConversationId(),
+			"messageCount": count(),
+			"maxMessages": variables.maxMessages,
+			"nonSystemCount": getNonSystemMessages().len(),
+			"hasSystemMessage": hasSystemMessage(),
+			"metadata": this.metadata(),
+			"config": getConfig(),
+			"firstMessageAt": recentMessages.isEmpty() ? "" : recentMessages.first().timestamp,
+        	"lastMessageAt": recentMessages.isEmpty() ? "" : recentMessages.last().timestamp
+		}
+
+		// Add role distribution stats from recent memory
+		summary.roleDistribution = {
+			"user": getByRole( "user" ).len(),
+			"assistant": getByRole( "assistant" ).len(),
+			"system": getByRole( "system" ).len(),
+			"tool": getByRole( "tool" ).len()
+		}
+
+		// Add conversation age and rate from recent messages
+		if ( !recentMessages.isEmpty() && recentMessages.len() > 1 ) {
+			var firstTime = recentMessages.first().timestamp
+			var lastTime = recentMessages.last().timestamp
+			var durationMinutes = dateDiff( "n", firstTime, lastTime )
+			summary.conversationAgeMinutes = durationMinutes
+			if ( durationMinutes > 0 ) {
+				summary.messagesPerHour = ( recentMessages.len() / durationMinutes ) * 60
+			}
+		}
+
+		// Add estimated token count from recent messages (rough approximation: ~4 chars per token)
+		var totalChars = recentMessages.reduce( ( sum, msg ) => sum + len( msg.content ), 0 )
+		summary.estimatedTokens = ceiling( totalChars / 4 )
+
+		// Add hybrid-specific configuration
+		summary.recentLimit = variables.recentLimit;
+		summary.semanticLimit = variables.semanticLimit;
+		summary.totalLimit = variables.totalLimit;
+		summary.recentWeight = variables.recentWeight;
+		summary.semanticWeight = 1 - variables.recentWeight;
+		summary.vectorProvider = variables.vectorProvider;
+		summary.recentMemoryCount = variables.recentMemory.count();
+		summary.vectorMemoryCount = variables.vectorMemory.count();
+
+		// Add sub-memory info (just key fields to avoid vector format issues)
+		summary.recentMemorySummary = {
+			userId: variables.recentMemory.getUserId(),
+			conversationId: variables.recentMemory.getConversationId(),
+			key: variables.recentMemory.key(),
+			type: variables.recentMemory.name()
+		};
+		summary.vectorMemorySummary = {
+			userId: variables.vectorMemory.getUserId(),
+			conversationId: variables.vectorMemory.getConversationId(),
+			key: variables.vectorMemory.key(),
+			type: variables.vectorMemory.name()
+		};
+
+		return summary
+	}
+
+	/**
 	 * Clear both memories
 	 *
 	 * @return HybridMemory for chaining
@@ -359,26 +466,6 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 			return arguments.message.content ?: arguments.message.text ?: "";
 		}
 		return "";
-	}
-
-	/**
-	 * Get summary including hybrid-specific configuration
-	 *
-	 * @return Struct with memory information
-	 */
-	public struct function getSummary() {
-		var summary = super.getSummary();
-		summary.recentLimit = variables.recentLimit;
-		summary.semanticLimit = variables.semanticLimit;
-		summary.totalLimit = variables.totalLimit;
-		summary.recentWeight = variables.recentWeight;
-		summary.semanticWeight = 1 - variables.recentWeight;
-		summary.vectorProvider = variables.vectorProvider;
-		summary.recentMemoryCount = variables.recentMemory.count();
-		summary.vectorMemoryCount = variables.vectorMemory.count();
-		summary.recentMemorySummary = variables.recentMemory.getSummary();
-		summary.vectorMemorySummary = variables.vectorMemory.getSummary();
-		return summary;
 	}
 
 }
