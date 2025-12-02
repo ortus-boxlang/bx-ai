@@ -21,7 +21,6 @@ The document loading system provides:
 | `aiDocumentLoader()` | Create loader instance for advanced config | IDocumentLoader |
 | `aiDocumentLoaders()` | Get all registered loaders with metadata | Struct |
 | `aiMemoryIngest()` | Ingest documents into memory with reporting | Ingestion Report |
-| `aiLoad()` | Alias for aiDocuments (backward compatible) | Array of Documents |
 
 ## Quick Start
 

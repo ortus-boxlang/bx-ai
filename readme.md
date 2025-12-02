@@ -393,7 +393,6 @@ The AI module supports different return formats for the responses. You can speci
 | `aiDocumentLoader()` | Create document loader instance | `source`, `type=""`, `config={}` | IDocumentLoader Object | N/A |
 | `aiDocumentLoaders()` | Get all registered loaders | none | Struct of Loader Metadata | N/A |
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
-| `aiLoad()` | Load documents (alias for aiDocuments) | `source`, `type=""`, `config={}` | Array of Documents | N/A |
 | `aiMemory()` | Create memory instance | `type`, `config={}` | IAiMemory Object | N/A |
 | `aiMemoryIngest()` | Ingest documents into memory | `memory`, `source`, `type=""`, `loaderConfig={}`, `ingestOptions={}` | Ingestion Report | ✅ |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |

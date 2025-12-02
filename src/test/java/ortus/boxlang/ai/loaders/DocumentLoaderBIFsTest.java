@@ -341,25 +341,4 @@ public class DocumentLoaderBIFsTest extends BaseIntegrationTest {
 		assertThat( summaries.size() ).isEqualTo( 2 );
 	}
 
-	// ===========================================
-	// Backward Compatibility Tests
-	// ===========================================
-
-	@DisplayName( "aiLoad() still works (backward compatibility)" )
-	@Test
-	public void testAiLoadBackwardCompatibility() {
-		// @formatter:off
-		runtime.executeSource(
-		    """
-				result = aiLoad( "%s/sample.txt" );
-		    """.formatted( TEST_RESOURCES ),
-		    context
-		);
-		// @formatter:on
-
-		Array docs = ( Array ) variables.get( "result" );
-		assertThat( docs ).isNotNull();
-		assertThat( docs.size() ).isEqualTo( 1 );
-	}
-
 }

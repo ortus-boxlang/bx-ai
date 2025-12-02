@@ -359,16 +359,16 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 	}
 
 	// ===========================================
-	// aiLoad BIF Tests
+	// aiDocuments BIF Tests
 	// ===========================================
 
-	@DisplayName( "aiLoad BIF can load a text file" )
+	@DisplayName( "aiDocuments BIF can load a text file" )
 	@Test
-	public void testAiLoadText() {
+	public void testAiDocumentsText() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				result = aiLoad( "%s/sample.txt" );
+				result = aiDocuments( "%s/sample.txt" );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -379,13 +379,13 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		assertThat( docs.size() ).isEqualTo( 1 );
 	}
 
-	@DisplayName( "aiLoad BIF auto-detects loader type from extension" )
+	@DisplayName( "aiDocuments BIF auto-detects loader type from extension" )
 	@Test
-	public void testAiLoadAutoDetect() {
+	public void testAiDocumentsAutoDetect() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				result = aiLoad( "%s/sample.md" );
+				result = aiDocuments( "%s/sample.md" );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -400,13 +400,13 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		assertThat( content ).contains( "Sample Markdown Document" );
 	}
 
-	@DisplayName( "aiLoad BIF can specify loader type explicitly" )
+	@DisplayName( "aiDocuments BIF can specify loader type explicitly" )
 	@Test
-	public void testAiLoadExplicitType() {
+	public void testAiDocumentsExplicitType() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				result = aiLoad( source: "%s/sample.txt", type: "text" );
+				result = aiDocuments( source: "%s/sample.txt", type: "text" );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -417,13 +417,13 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		assertThat( docs.size() ).isEqualTo( 1 );
 	}
 
-	@DisplayName( "aiLoad BIF can load a directory" )
+	@DisplayName( "aiDocuments BIF can load a directory" )
 	@Test
-	public void testAiLoadDirectory() {
+	public void testAiDocumentsDirectory() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				result = aiLoad( "%s" );
+				result = aiDocuments( "%s" );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);

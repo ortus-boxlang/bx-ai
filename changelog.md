@@ -22,7 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         - Token counting with `aiTokens()` integration
         - Cost estimation for embedding operations
         - Detailed ingestion report (documentsIn, chunksOut, stored, skipped, deduped, tokenCount, embeddingCalls, estimatedCost, errors, memorySummary, duration)
-    - `aiLoad()` BIF (backward compatible alias for `aiDocuments()`)
     - New `Document` class for standardized document representation with content and metadata
     - New `IDocumentLoader` interface and `BaseDocumentLoader` abstract class for custom loaders
     - **Built-in Loaders**:
