@@ -604,18 +604,20 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var	countAliceChat1		= variables.getAsInteger( Key.of( "countAliceChat1" ) );
-		var	countAliceChat2		= variables.getAsInteger( Key.of( "countAliceChat2" ) );
-		var	countBobChat1		= variables.getAsInteger( Key.of( "countBobChat1" ) );
-		var	allCountAliceChat1	= variables.getAsInteger( Key.of( "allCountAliceChat1" ) );
-		var	allCountAliceChat2	= variables.getAsInteger( Key.of( "allCountAliceChat2" ) );
-		var	allCountBobChat1	= variables.getAsInteger( Key.of( "allCountBobChat1" ) );
-		var	aliceChat1UserId	= variables.getAsString( Key.of( "aliceChat1UserId" ) );
-		var	aliceChat1ConvId	= variables.getAsString( Key.of( "aliceChat1ConvId" ) );
-		var	aliceChat2UserId	= variables.getAsString( Key.of( "aliceChat2UserId" ) );
-		var	aliceChat2ConvId	= variables.getAsString( Key.of( "aliceChat2ConvId" ) );
-		var	bobChat1UserId		= variables.getAsString( Key.of( "bobChat1UserId" ) );
-		var	bobChat1ConvId		= variables.getAsString( Key.of( "bobChat1ConvId" ) );
+		IStruct	result				= variables.getAsStruct( Key.of( "result" ) );
+
+		var		countAliceChat1		= result.getAsInteger( Key.of( "countAliceChat1" ) );
+		var		countAliceChat2		= result.getAsInteger( Key.of( "countAliceChat2" ) );
+		var		countBobChat1		= result.getAsInteger( Key.of( "countBobChat1" ) );
+		var		allCountAliceChat1	= result.getAsInteger( Key.of( "allCountAliceChat1" ) );
+		var		allCountAliceChat2	= result.getAsInteger( Key.of( "allCountAliceChat2" ) );
+		var		allCountBobChat1	= result.getAsInteger( Key.of( "allCountBobChat1" ) );
+		var		aliceChat1UserId	= result.getAsString( Key.of( "aliceChat1UserId" ) );
+		var		aliceChat1ConvId	= result.getAsString( Key.of( "aliceChat1ConvId" ) );
+		var		aliceChat2UserId	= result.getAsString( Key.of( "aliceChat2UserId" ) );
+		var		aliceChat2ConvId	= result.getAsString( Key.of( "aliceChat2ConvId" ) );
+		var		bobChat1UserId		= result.getAsString( Key.of( "bobChat1UserId" ) );
+		var		bobChat1ConvId		= result.getAsString( Key.of( "bobChat1ConvId" ) );
 
 		// Each memory should only see its own documents
 		assertThat( countAliceChat1 ).isEqualTo( 1 );
