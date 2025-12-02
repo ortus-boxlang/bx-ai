@@ -139,24 +139,32 @@ class extends="BaseVectorMemory" {
 		// Serialize metadata to JSON
 		var metadataJson = jsonSerialize( arguments.metadata )
 
+		// Extract userId and conversationId from metadata for indexing
+		var userId = arguments.metadata.keyExists( "userId" ) ? arguments.metadata.userId : ""
+		var conversationId = arguments.metadata.keyExists( "conversationId" ) ? arguments.metadata.conversationId : ""
+
 		// Check if document exists - MySQL uses INSERT ... ON DUPLICATE KEY UPDATE
 		queryExecute(
 			"INSERT INTO #variables.table# (
-				id, text, embedding, metadata, collection, created_at, updated_at
+				id, text, embedding, metadata, collection, userId, conversationId, created_at, updated_at
 			) VALUES (
-				:id, :text, STRING_TO_VECTOR(:embedding), :metadata, :collection, NOW(), NOW()
+				:id, :text, STRING_TO_VECTOR(:embedding), :metadata, :collection, :userId, :conversationId, NOW(), NOW()
 			)
 			ON DUPLICATE KEY UPDATE
 				text = VALUES(text),
 				embedding = VALUES(embedding),
 				metadata = VALUES(metadata),
+				userId = VALUES(userId),
+				conversationId = VALUES(conversationId),
 				updated_at = NOW()",
 			{
 				id: arguments.id,
 				text: arguments.text,
 				embedding: vectorStr,
 				metadata: metadataJson,
-				collection: variables.collection
+				collection: variables.collection,
+				userId: userId,
+				conversationId: conversationId
 			},
 			{ datasource: variables.datasource }
 		)
@@ -186,11 +194,18 @@ class extends="BaseVectorMemory" {
 			collection: variables.collection
 		}
 
-		// Add JSON metadata filters if provided
+		// Add filters for userId and conversationId if provided
 		if ( !arguments.filter.isEmpty() ) {
 			arguments.filter.each( ( key, value ) => {
-				whereClause &= " AND JSON_UNQUOTE( JSON_EXTRACT( metadata, '$." & key & "' ) ) = :" & key;
-				params[ key ] = value;
+				// Use dedicated columns for userId and conversationId for better indexing
+				if ( key == "userId" || key == "conversationId" ) {
+					whereClause &= " AND " & key & " = :" & key;
+					params[ key ] = value;
+				} else {
+					// Use JSON extraction for other metadata fields
+					whereClause &= " AND JSON_UNQUOTE( JSON_EXTRACT( metadata, '$." & key & "' ) ) = :" & key;
+					params[ key ] = value;
+				}
 			} )
 		}
 
@@ -239,6 +254,13 @@ class extends="BaseVectorMemory" {
 	 * @return Array of documents
 	 */
 	array function getAllDocuments() {
+		// Build WHERE clause with userId/conversationId filtering
+		var params = {
+			collection: variables.collection,
+			userId: variables.userId,
+			conversationId: variables.conversationId
+		}
+
 		var result = queryExecute(
 			"SELECT
 				id,
@@ -247,8 +269,10 @@ class extends="BaseVectorMemory" {
 				VECTOR_TO_STRING(embedding) as embedding_str
 			FROM #variables.table#
 			WHERE collection = :collection
+			  AND userId = :userId
+			  AND conversationId = :conversationId
 			ORDER BY created_at DESC",
-			{ collection: variables.collection },
+			params,
 			{ datasource: variables.datasource, returntype: "array" }
 		)
 
@@ -437,6 +461,8 @@ class extends="BaseVectorMemory" {
 				text TEXT NOT NULL,
 				embedding VECTOR(#dims#) NOT NULL,
 				metadata JSON DEFAULT (JSON_OBJECT()),
+				userId VARCHAR(255) DEFAULT '',
+				conversationId VARCHAR(255) DEFAULT '',
 				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (id, collection)
