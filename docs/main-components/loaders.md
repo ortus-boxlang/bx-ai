@@ -11,28 +11,120 @@ The document loading system provides:
 - **Fluent API**: Chain methods for easy configuration
 - **Memory Integration**: Load directly into AI memory systems for RAG workflows
 - **Chunking Support**: Automatic text chunking for large documents
+- **Multi-Memory Fan-out**: Ingest to multiple memory systems simultaneously
+
+## BIF Reference
+
+| BIF | Purpose | Returns |
+|-----|---------|---------|
+| `aiDocuments()` | Load documents from any source | Array of Documents |
+| `aiDocumentLoader()` | Create loader instance for advanced config | IDocumentLoader |
+| `aiDocumentLoaders()` | Get all registered loaders with metadata | Struct |
+| `aiMemoryIngest()` | Ingest documents into memory with reporting | Ingestion Report |
+| `aiLoad()` | Alias for aiDocuments (backward compatible) | Array of Documents |
 
 ## Quick Start
 
-### Using the `aiLoad()` BIF
+### Using `aiDocuments()`
 
-The easiest way to load documents is with the `aiLoad()` function:
+The easiest way to load documents:
 
 ```java
 // Load a text file
-docs = aiLoad( "/path/to/document.txt" )
+docs = aiDocuments( "/path/to/document.txt" )
 
 // Load a directory of files
-docs = aiLoad( "/path/to/folder" )
+docs = aiDocuments( "/path/to/folder" )
 
 // Load with explicit type
-docs = aiLoad( source: "/path/to/file.txt", type: "markdown" )
+docs = aiDocuments( source: "/path/to/file.txt", type: "markdown" )
 
 // Load with configuration
-docs = aiLoad(
+docs = aiDocuments(
     source: "/path/to/file.csv",
     config: { delimiter: ";", rowsAsDocuments: true }
 )
+```
+
+### Using `aiDocumentLoader()`
+
+For advanced configuration and method chaining:
+
+```java
+// Create and configure a markdown loader
+loader = aiDocumentLoader( "/docs", "markdown" )
+    .splitByHeaders( 2 )
+    .removeCodeBlocks()
+docs = loader.load()
+
+// Create a directory loader with filters
+loader = aiDocumentLoader( "/knowledge-base", "directory" )
+    .recursive()
+    .extensions( ["md", "txt"] )
+docs = loader.load()
+```
+
+### Using `aiMemoryIngest()`
+
+Ingest documents into memory with comprehensive reporting:
+
+```java
+// Single memory ingestion
+result = aiMemoryIngest(
+    memory = myVectorMemory,
+    source = "/docs",
+    type   = "markdown"
+)
+
+// With chunking and options
+result = aiMemoryIngest(
+    memory        = myVectorMemory,
+    source        = "/knowledge-base",
+    type          = "directory",
+    loaderConfig  = { recursive: true, extensions: ["md", "txt"] },
+    ingestOptions = { chunkSize: 500, overlap: 50 }
+)
+
+// Multi-memory fan-out (async supported)
+result = aiMemoryIngest(
+    memory = [ chromaMemory, pgVectorMemory ],
+    source = "/docs",
+    type   = "markdown",
+    ingestOptions = { async: true }
+)
+```
+
+**Ingestion Report Structure:**
+
+```java
+{
+    documentsIn       : 12,      // Documents loaded from source
+    chunksOut         : 57,      // Chunks after splitting
+    stored            : 57,      // Successfully stored
+    skipped           : 3,       // Skipped (errors)
+    deduped           : 2,       // Deduplicated
+    tokenCount        : 12345,   // Total tokens
+    embeddingCalls    : 57,      // Embedding API calls
+    estimatedCost     : 0.0042,  // Estimated cost (USD)
+    errors            : [...],   // Error details
+    memorySummary     : {...},   // Memory summary (or array for multi-memory)
+    duration          : 5        // Duration in seconds
+}
+```
+
+### Using `aiDocumentLoaders()`
+
+Get information about all registered loaders:
+
+```java
+loaders = aiDocumentLoaders()
+
+// Inspect available loaders
+loaders.each( ( type, info ) => {
+    println( "Type: #type#" )
+    println( "  Extensions: #info.extensions.toList()#" )
+    println( "  Capabilities: #info.capabilities.keyArray().toList()#" )
+} )
 ```
 
 ### Document Structure
@@ -231,6 +323,8 @@ docs = loader.load()
 
 ## Loading to Memory
 
+### Using `loadTo()` Method
+
 Loaders can store documents directly into AI memory systems:
 
 ```java
@@ -251,6 +345,47 @@ docs = loader.loadTo(
     { chunkSize: 500, overlap: 50 }
 )
 ```
+
+### Using `aiMemoryIngest()` BIF (Recommended)
+
+For comprehensive ingestion with reporting:
+
+```java
+// Single memory with full reporting
+result = aiMemoryIngest(
+    memory        = vectorMemory,
+    source        = "/knowledge-base",
+    type          = "directory",
+    loaderConfig  = { recursive: true, extensions: ["md", "txt"] },
+    ingestOptions = {
+        chunkSize       : 500,
+        overlap         : 50,
+        trackTokens     : true,
+        trackCost       : true,
+        continueOnError : true
+    }
+)
+
+// Check results
+println( "Loaded #result.documentsIn# documents as #result.chunksOut# chunks" )
+println( "Stored: #result.stored#, Errors: #result.errors.len()#" )
+println( "Estimated cost: $#result.estimatedCost#" )
+```
+
+**Ingestion Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `chunkSize` | numeric | 0 | Chunk size (0 = no chunking) |
+| `overlap` | numeric | 0 | Overlap between chunks |
+| `strategy` | string | "recursive" | Chunking strategy |
+| `dedupe` | boolean | false | Enable deduplication |
+| `dedupeThreshold` | numeric | 0.95 | Similarity threshold |
+| `trackTokens` | boolean | true | Track token counts |
+| `trackCost` | boolean | true | Estimate costs |
+| `async` | boolean | false | Use async for multi-memory |
+| `batchSize` | numeric | 100 | Batch size for processing |
+| `continueOnError` | boolean | true | Continue on document errors |
 
 ## The Document Class
 
@@ -325,42 +460,40 @@ class PDFLoader extends="bxModules.bxai.models.loaders.BaseDocumentLoader" {
 Here's a complete example of building a RAG pipeline with document loaders:
 
 ```java
-// Step 1: Load documents from a directory
-loader = new DirectoryLoader( source: "/knowledge-base" )
-    .recursive()
-    .extensions( ["md", "txt", "html"] )
-
-// Step 2: Create vector memory
+// Step 1: Create vector memory
 vectorMemory = aiMemory( "chroma", {
     collection: "docs",
     embeddingProvider: "openai",
     embeddingModel: "text-embedding-3-small"
 } )
 
-// Step 3: Load with chunking into vector memory
-docs = loader.loadTo( vectorMemory, {
-    chunkSize: 1000,
-    overlap: 200,
-    strategy: "recursive"
-} )
+// Step 2: Ingest documents with aiMemoryIngest
+result = aiMemoryIngest(
+    memory        = vectorMemory,
+    source        = "/knowledge-base",
+    type          = "directory",
+    loaderConfig  = { recursive: true, extensions: ["md", "txt", "html"] },
+    ingestOptions = { chunkSize: 1000, overlap: 200 }
+)
 
-println( "Loaded #docs.len()# document chunks into vector memory" )
+println( "Loaded #result.documentsIn# docs as #result.chunksOut# chunks" )
+println( "Estimated cost: $#result.estimatedCost#" )
 
-// Step 4: Create an agent with memory
+// Step 3: Create an agent with memory
 agent = aiAgent(
     name: "KnowledgeAssistant",
     description: "An assistant with access to the knowledge base",
     memory: vectorMemory
 )
 
-// Step 5: Query the agent
+// Step 4: Query the agent
 response = agent.run( "What is BoxLang?" )
 println( response )
 ```
 
 ## Best Practices
 
-1. **Choose the Right Loader**: Use specialized loaders (Markdown, HTML, CSV, JSON) when possible for better metadata extraction.
+1. **Use `aiMemoryIngest()` for Production**: It provides comprehensive reporting, error handling, and multi-memory support.
 
 2. **Configure Chunking**: For vector memory, use appropriate chunk sizes (500-1000 chars) with overlap (100-200 chars).
 
@@ -368,7 +501,9 @@ println( response )
 
 4. **Handle Large Directories**: Use `recursive()` sparingly and filter by `extensions()` to avoid loading unnecessary files.
 
-5. **Error Handling**: DirectoryLoader continues on errors and includes error metadata - check for `loadError` in document metadata.
+5. **Monitor Costs**: Use `trackCost: true` in ingestion options to estimate embedding costs before large ingestions.
+
+6. **Multi-Memory for Redundancy**: Use array of memories for fan-out ingestion to multiple vector stores.
 
 ## See Also
 

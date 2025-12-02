@@ -16,18 +16,48 @@
  * limitations under the License.
  * ----------------------------------------------------------------------------------
  * Load documents from various sources (files, directories, URLs).
- * This is an alias for aiDocuments() for backward compatibility.
+ * Returns an array of Document objects from any source with optional configuration.
  *
- * @deprecated Use aiDocuments() instead
- * @param source The source to load (file path, directory, URL)
- * @param config Configuration options for the loader
+ * @example
+ * ```
+ * // Load from a text file
+ * docs = aiDocuments( "/path/to/file.txt" )
+ *
+ * // Load from a directory with markdown files
+ * docs = aiDocuments( "/docs", "markdown", { splitByHeaders: true } )
+ *
+ * // Load CSV with row-as-document mode
+ * docs = aiDocuments( "/data.csv", "csv", { rowsAsDocuments: true } )
+ * ```
  */
+import bxModules.bxai.models.loaders.TextLoader;
+import bxModules.bxai.models.loaders.MarkdownLoader;
+import bxModules.bxai.models.loaders.HTMLLoader;
+import bxModules.bxai.models.loaders.CSVLoader;
+import bxModules.bxai.models.loaders.JSONLoader;
+import bxModules.bxai.models.loaders.DirectoryLoader;
+
 @BoxBIF
 class {
 
 	/**
+	 * Static loader type mappings
+	 */
+	static {
+		EXTENSION_MAP = {
+			"txt"      : "text",
+			"text"     : "text",
+			"md"       : "markdown",
+			"markdown" : "markdown",
+			"html"     : "html",
+			"htm"      : "html",
+			"csv"      : "csv",
+			"json"     : "json"
+		};
+	}
+
+	/**
 	 * Load documents from a source
-	 * Delegates to aiDocuments() for backward compatibility
 	 *
 	 * @source The source to load from (file path, directory, or URL)
 	 * @type   Optional explicit loader type (text, markdown, html, csv, json, directory)
@@ -36,7 +66,8 @@ class {
 	 * @return Array of Document objects
 	 */
 	function invoke( required string source, string type = "", struct config = {} ) {
-		return aiDocuments( argumentCollection: arguments );
+		var loader = aiDocumentLoader( argumentCollection: arguments );
+		return loader.load();
 	}
 
 }

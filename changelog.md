@@ -12,7 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Document Loaders**: New document loading system for importing content from various sources
-    - New `aiLoad()` BIF for loading documents with automatic type detection
+    - New `aiDocuments()` BIF for loading documents with automatic type detection
+    - New `aiDocumentLoader()` BIF for creating loader instances with advanced configuration
+    - New `aiDocumentLoaders()` BIF for retrieving all registered loaders with metadata
+    - New `aiMemoryIngest()` BIF for ingesting documents into memory with comprehensive reporting:
+        - Single memory or multi-memory fan-out support
+        - Async processing for parallel ingestion
+        - Automatic chunking with `aiChunk()` integration
+        - Token counting with `aiTokens()` integration
+        - Cost estimation for embedding operations
+        - Detailed ingestion report (documentsIn, chunksOut, stored, skipped, deduped, tokenCount, embeddingCalls, estimatedCost, errors, memorySummary, duration)
+    - `aiLoad()` BIF (backward compatible alias for `aiDocuments()`)
     - New `Document` class for standardized document representation with content and metadata
     - New `IDocumentLoader` interface and `BaseDocumentLoader` abstract class for custom loaders
     - **Built-in Loaders**:
@@ -23,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         - `JSONLoader`: JSON files with field extraction, array-as-documents mode
         - `DirectoryLoader`: Batch loading from directories with recursive scanning
     - Fluent API for loader configuration
-    - Integration with memory systems via `loadTo()` method
+    - Integration with memory systems via `loadTo()` method and `aiMemoryIngest()` BIF
     - Automatic document chunking support for vector memory
     - Comprehensive documentation in `docs/main-components/loaders.md`
 - **Embeddings Support**: Complete embeddings functionality for semantic search, clustering, and recommendations
