@@ -37,14 +37,6 @@ class extends="BaseVectorMemory" {
 	property name="metricType" type="string" default="COSINE";
 
 	/**
-	 * Initialize MilvusVectorMemory
-	 */
-	function init() {
-		super.init();
-		return this;
-	}
-
-	/**
 	 * ------------------------------------------------------------------------------
 	 * CONFIGURATION
 	 * ------------------------------------------------------------------------------
