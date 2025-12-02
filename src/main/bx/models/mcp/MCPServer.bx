@@ -78,14 +78,9 @@ class {
 	property name="prompts" type="struct" default={};
 
 	/**
-	 * Static storage for application-scoped MCP servers
+	 * Static configuration and service reference
 	 */
 	static {
-		/**
-		 * Global registry of MCP server instances by name
-		 */
-		servers = {};
-
 		/**
 		 * Protocol version supported
 		 */
@@ -100,6 +95,20 @@ class {
 		 * Logger for MCP operations
 		 */
 		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" );
+
+		/**
+		 * Service key for retrieving the AI service
+		 */
+		AI_SERVICE_KEY = createObject( "java", "ortus.boxlang.ai.AiKeys" ).AiService;
+	}
+
+	/**
+	 * Get the AI service from the runtime
+	 *
+	 * @return The AI service instance
+	 */
+	private static function getAiService() {
+		return getBoxRuntime().getGlobalService( static.AI_SERVICE_KEY );
 	}
 
 	/**
@@ -154,15 +163,20 @@ class {
 		string cors = "",
 		boolean force = false
 	) {
-		if ( arguments.force || !static.servers.keyExists( arguments.name ) ) {
-			static.servers[ arguments.name ] = new MCPServer(
+		var aiService = static.getAiService();
+		var serverKey = createObject( "java", "ortus.boxlang.runtime.scopes.Key" ).of( arguments.name );
+
+		if ( arguments.force || !aiService.hasServer( serverKey ) ) {
+			var newServer = new MCPServer(
 				name: arguments.name,
 				description: arguments.description,
 				version: arguments.version,
 				cors: arguments.cors
 			);
+			aiService.putServer( serverKey, newServer );
+			return newServer;
 		}
-		return static.servers[ arguments.name ];
+		return aiService.getServer( serverKey );
 	}
 
 	/**
@@ -173,7 +187,9 @@ class {
 	 * @return Boolean indicating if the server exists
 	 */
 	static boolean function hasInstance( required string name ) {
-		return static.servers.keyExists( arguments.name );
+		var aiService = static.getAiService();
+		var serverKey = createObject( "java", "ortus.boxlang.runtime.scopes.Key" ).of( arguments.name );
+		return aiService.hasServer( serverKey );
 	}
 
 	/**
@@ -184,11 +200,9 @@ class {
 	 * @return Boolean indicating if a server was removed
 	 */
 	static boolean function removeInstance( required string name ) {
-		if ( static.servers.keyExists( arguments.name ) ) {
-			static.servers.delete( arguments.name );
-			return true;
-		}
-		return false;
+		var aiService = static.getAiService();
+		var serverKey = createObject( "java", "ortus.boxlang.runtime.scopes.Key" ).of( arguments.name );
+		return aiService.removeServer( serverKey );
 	}
 
 	/**
@@ -197,14 +211,19 @@ class {
 	 * @return Array of server names
 	 */
 	static array function getInstanceNames() {
-		return static.servers.keyArray();
+		var aiService = static.getAiService();
+		var keySet = aiService.getServerNames();
+		var result = [];
+		keySet.each( key => result.append( key.getName() ) );
+		return result;
 	}
 
 	/**
 	 * Clear all server instances
 	 */
 	static function clearAllInstances() {
-		static.servers = {};
+		var aiService = static.getAiService();
+		aiService.clearAllServers();
 	}
 
 	/**
