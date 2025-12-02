@@ -323,6 +323,9 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		    		metadata = { "title": "Not Similar" }
 		    	);
 
+		    	// Wait for Milvus to index documents (eventual consistency)
+		    	sleep(500);
+
 		    	// Note: BaseVectorMemory searchByVector doesn't support threshold parameter
 		    	// We'll just search and filter results manually if needed
 		    	results = memory.searchByVector(
