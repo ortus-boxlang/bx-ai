@@ -107,7 +107,7 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create TypesenseVectorMemory instance
-		    memory = aiMemory( "typesense", createUUID(), {
+		    memory = aiMemory( memory: "typesense", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8108,
 		        protocol: "http",
@@ -141,7 +141,7 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory and add test messages
-		    memory = aiMemory( "typesense", createUUID(), {
+		    memory = aiMemory( memory: "typesense", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8108,
 		        protocol: "http",
@@ -192,7 +192,7 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		     // Create memory for seeding test
-		     memory = aiMemory( "typesense", createUUID(), {
+		     memory = aiMemory( memory: "typesense", key: createUUID(), config: {
 		         host: "localhost",
 		         port: 8108,
 		         protocol: "http",
@@ -236,7 +236,7 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory for typo-tolerant test
-		    memory = aiMemory( "typesense", createUUID(), {
+		    memory = aiMemory( memory: "typesense", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8108,
 		        protocol: "http",
@@ -275,7 +275,7 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		     // Create hybrid memory
-		     hybridMemory = aiMemory( "hybrid", createUUID(), {
+		     hybridMemory = aiMemory( memory: "hybrid", key: createUUID(), config: {
 		         recentLimit: 2,
 		         semanticLimit: 2,
 		         totalLimit: 4,
@@ -321,7 +321,7 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 	public void testGetDocumentById() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "typesense", createUUID(), {
+		    memory = aiMemory( memory: "typesense", key: createUUID(), config: {
 		        collection: "test_get_by_id",
 		        host: "localhost",
 		        port: 8108,
@@ -362,7 +362,7 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 	public void testDeleteDocument() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "typesense", createUUID(), {
+		    memory = aiMemory( memory: "typesense", key: createUUID(), config: {
 		        collection: "test_deletion",
 		        host: "localhost",
 		        port: 8108,
@@ -404,7 +404,7 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				memory = aiMemory( "typesense", createUUID(), {
+				memory = aiMemory( memory: "typesense", key: createUUID(), config: {
 					collection: "test_filtering",
 					host: "localhost",
 					port: 8108,
@@ -450,7 +450,7 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 	public void testCollectionManagement() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "typesense", createUUID(), {
+		    memory = aiMemory( memory: "typesense", key: createUUID(), config: {
 		        collection: "test_mgmt_ops",
 		        host: "localhost",
 		        port: 8108,
@@ -494,7 +494,7 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 	public void testGetAllDocuments() {
 		runtime.executeSource(
 		    """
-		       memory = aiMemory( "typesense", createUUID(), {
+		       memory = aiMemory( memory: "typesense", key: createUUID(), config: {
 		           collection: "test_get_all",
 		           host: "localhost",
 		           port: 8108,
@@ -534,6 +534,146 @@ public class TypesenseVectorMemoryTest extends BaseIntegrationTest {
 		assertTrue( result.getAsBoolean( Key.of( "hasMetadata" ) ) );
 		assertTrue( result.getAsBoolean( Key.of( "hasEmbedding" ) ) );
 		assertTrue( result.getAsBoolean( Key.of( "hasId" ) ) );
+	}
+
+	@Test
+	@Order( 11 )
+	@DisplayName( "Test userId and conversationId getters" )
+	public void testUserIdAndConversationId() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "typesense", key: createUUID(), userId: "user123", conversationId: "conv456", config: {
+		        collection: "test_tenant_getters",
+		        host: "localhost",
+		        port: 8108,
+		        apiKey: "xyz"
+		    } );
+
+		    result = {
+		        userId: memory.getUserId(),
+		        conversationId: memory.getConversationId()
+		    };
+		    """,
+		    context );
+
+		IStruct result = variables.getAsStruct( Key.of( "result" ) );
+
+		assertEquals( "user123", result.getAsString( Key.of( "userId" ) ) );
+		assertEquals( "conv456", result.getAsString( Key.of( "conversationId" ) ) );
+	}
+
+	@Test
+	@Order( 12 )
+	@DisplayName( "Test export includes userId and conversationId" )
+	public void testExportIncludesIdentifiers() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "typesense", key: createUUID(), userId: "testUser", conversationId: "testConv", config: {
+		        collection: "test_export_identifiers",
+		        host: "localhost",
+		        port: 8108,
+		        apiKey: "xyz"
+		    } );
+
+		    memory.add( "Test message" );
+		    exported = memory.export();
+
+		    result = {
+		        hasUserId: exported.keyExists( "userId" ),
+		        hasConversationId: exported.keyExists( "conversationId" ),
+		        userIdMatches: exported.userId == "testUser",
+		        conversationIdMatches: exported.conversationId == "testConv"
+		    };
+		    """,
+		    context );
+
+		IStruct result = variables.getAsStruct( Key.of( "result" ) );
+
+		assertTrue( result.getAsBoolean( Key.of( "hasUserId" ) ) );
+		assertTrue( result.getAsBoolean( Key.of( "hasConversationId" ) ) );
+		assertTrue( result.getAsBoolean( Key.of( "userIdMatches" ) ) );
+		assertTrue( result.getAsBoolean( Key.of( "conversationIdMatches" ) ) );
+	}
+
+	@Test
+	@Order( 13 )
+	@DisplayName( "Test multi-tenant isolation with userId and conversationId" )
+	public void testMultiTenantIsolation() {
+		runtime.executeSource(
+		    """
+		    // Create unique collection name with timestamp to avoid conflicts
+		    collectionName = "test_isolation_" & now().getTime();
+
+		    // Create memories for different users and conversations
+		    aliceChat1 = aiMemory( memory: "typesense", key: createUUID(), userId: "alice", conversationId: "chat1", config: {
+		        collection: collectionName,
+		        host: "localhost",
+		        port: 8108,
+		        apiKey: "xyz"
+		    } );
+
+		    aliceChat2 = aiMemory( memory: "typesense", key: createUUID(), userId: "alice", conversationId: "chat2", config: {
+		        collection: collectionName,
+		        host: "localhost",
+		        port: 8108,
+		        apiKey: "xyz"
+		    } );
+
+		    bobChat1 = aiMemory( memory: "typesense", key: createUUID(), userId: "bob", conversationId: "chat1", config: {
+		        collection: collectionName,
+		        host: "localhost",
+		        port: 8108,
+		        apiKey: "xyz"
+		    } );
+
+		    // Add distinct messages to each memory
+		    aliceChat1.add( "Alice chat1 message about TypeSense vector database" );
+		    aliceChat2.add( "Alice chat2 message about document storage" );
+		    bobChat1.add( "Bob chat1 message about search functionality" );
+
+		    // Verify isolation - each memory should only see its own messages
+		    aliceChat1Results = aliceChat1.getRelevant( "message", 10 );
+		    aliceChat2Results = aliceChat2.getRelevant( "message", 10 );
+		    bobChat1Results = bobChat1.getRelevant( "message", 10 );
+
+		    // Also test getAll() for isolation
+		    aliceChat1All = aliceChat1.getAll();
+		    aliceChat2All = aliceChat2.getAll();
+		    bobChat1All = bobChat1.getAll();
+
+		    result = {
+		        aliceChat1Count: aliceChat1Results.len(),
+		        aliceChat2Count: aliceChat2Results.len(),
+		        bobChat1Count: bobChat1Results.len(),
+		        aliceChat1AllCount: aliceChat1All.len(),
+		        aliceChat2AllCount: aliceChat2All.len(),
+		        bobChat1AllCount: bobChat1All.len(),
+		        aliceChat1HasCorrectText: aliceChat1Results.len() > 0 && aliceChat1Results[1].text.findNoCase("Alice chat1") > 0,
+		        aliceChat2HasCorrectText: aliceChat2Results.len() > 0 && aliceChat2Results[1].text.findNoCase("Alice chat2") > 0,
+		        bobChat1HasCorrectText: bobChat1Results.len() > 0 && bobChat1Results[1].text.findNoCase("Bob chat1") > 0
+		    };
+
+		    // Cleanup
+		    aliceChat1.deleteCollection( collectionName );
+		    """,
+		    context );
+
+		IStruct result = variables.getAsStruct( Key.of( "result" ) );
+
+		// Each memory should only have 1 document
+		assertEquals( 1, result.getAsInteger( Key.of( "aliceChat1Count" ) ) );
+		assertEquals( 1, result.getAsInteger( Key.of( "aliceChat2Count" ) ) );
+		assertEquals( 1, result.getAsInteger( Key.of( "bobChat1Count" ) ) );
+
+		// getAll() should also respect isolation
+		assertEquals( 1, result.getAsInteger( Key.of( "aliceChat1AllCount" ) ) );
+		assertEquals( 1, result.getAsInteger( Key.of( "aliceChat2AllCount" ) ) );
+		assertEquals( 1, result.getAsInteger( Key.of( "bobChat1AllCount" ) ) );
+
+		// Verify correct text in results
+		assertTrue( result.getAsBoolean( Key.of( "aliceChat1HasCorrectText" ) ) );
+		assertTrue( result.getAsBoolean( Key.of( "aliceChat2HasCorrectText" ) ) );
+		assertTrue( result.getAsBoolean( Key.of( "bobChat1HasCorrectText" ) ) );
 	}
 
 	/**

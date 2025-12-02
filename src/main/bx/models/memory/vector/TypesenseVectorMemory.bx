@@ -122,6 +122,14 @@ class extends="BaseVectorMemory" {
 			metadata: arguments.metadata
 		}
 
+		// Add userId and conversationId at root level for multi-tenant isolation
+		if ( len( variables.userId ) ) {
+			document.userId = variables.userId
+		}
+		if ( len( variables.conversationId ) ) {
+			document.conversationId = variables.conversationId
+		}
+
 		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents?action=upsert" )
 			.post()
 			.throwOnError( false )
@@ -167,9 +175,22 @@ class extends="BaseVectorMemory" {
 			"exclude_fields": "embedding"
 		}
 
-		// Add metadata filter if provided
+		// Build combined filter with userId, conversationId, and custom metadata filter
+		var combinedFilter = {}
+		if ( len( variables.userId ) ) {
+			combinedFilter.userId = variables.userId
+		}
+		if ( len( variables.conversationId ) ) {
+			combinedFilter.conversationId = variables.conversationId
+		}
+		// Merge with custom filter
 		if ( !arguments.filter.isEmpty() ) {
-			var filterStr = buildFilterString( arguments.filter )
+			combinedFilter.append( arguments.filter )
+		}
+
+		// Add filter if any conditions exist
+		if ( !combinedFilter.isEmpty() ) {
+			var filterStr = buildFilterString( combinedFilter )
 			if ( len( filterStr ) ) {
 				searchRequest[ "filter_by" ] = filterStr
 			}
@@ -219,7 +240,22 @@ class extends="BaseVectorMemory" {
 	 * @return Array of documents
 	 */
 	array function getAllDocuments() {
-		var response = http( variables.baseUrl & "/collections/" & variables.collection & "/documents/export" )
+		// Build filter for userId and conversationId if present
+		var filterParts = []
+		if ( len( variables.userId ) ) {
+			filterParts.append( "userId:='" & variables.userId & "'" )
+		}
+		if ( len( variables.conversationId ) ) {
+			filterParts.append( "conversationId:='" & variables.conversationId & "'" )
+		}
+
+		// Build URL with optional filter
+		var exportUrl = variables.baseUrl & "/collections/" & variables.collection & "/documents/export"
+		if ( filterParts.len() > 0 ) {
+			exportUrl &= "?filter_by=" & urlEncodedFormat( filterParts.toList( " && " ) )
+		}
+
+		var response = http( exportUrl )
 			.throwOnError( false )
 			.charset( "UTF-8" )
 			.timeout( variables.timeout )
@@ -374,6 +410,8 @@ class extends="BaseVectorMemory" {
 					type: "float[]",
 					num_dim: variables.dimensions
 				},
+				{ name: "userId", type: "string", optional: true },
+				{ name: "conversationId", type: "string", optional: true },
 				//{ name: "metadata_.*", type: "auto", optional: true }
 				{ name: "metadata", type: "object", optional: true }
 			]
@@ -502,10 +540,16 @@ class extends="BaseVectorMemory" {
 
 		arguments.filter.each( ( key, value ) => {
 			if ( isSimpleValue( value ) ) {
-				// Use nested field syntax for object fields
 				// String values must be quoted
 				var filterValue = isNumeric( value ) ? value : "'" & value & "'"
-				filters.append( "metadata." & key & ":=" & filterValue )
+
+				// userId and conversationId are root-level fields, others are in metadata
+				if ( key == "userId" || key == "conversationId" ) {
+					filters.append( key & ":=" & filterValue )
+				} else {
+					// Use nested field syntax for metadata fields
+					filters.append( "metadata." & key & ":=" & filterValue )
+				}
 			}
 		} )
 
