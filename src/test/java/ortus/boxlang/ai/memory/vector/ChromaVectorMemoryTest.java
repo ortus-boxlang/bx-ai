@@ -58,7 +58,7 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create ChromaVectorMemory instance
-		    memory = aiMemory( "chroma", createUUID(), {
+		    memory = aiMemory( memory: "chroma", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8000,
 		        collection: "test_collection",
@@ -90,7 +90,7 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory and add test messages
-		    memory = aiMemory( "chroma", createUUID(), {
+		    memory = aiMemory( memory: "chroma", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8000,
 		        collection: "test_messages",
@@ -136,7 +136,7 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		     // Create memory for seeding test
-		     memory = aiMemory( "chroma", createUUID(), {
+		     memory = aiMemory( memory: "chroma", key: createUUID(), config: {
 		         host: "localhost",
 		         port: 8000,
 		         collection: "test_seeding",
@@ -178,7 +178,7 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		        // Create memory for seeding test
-		        memory = aiMemory( "chroma", createUUID(), {
+		        memory = aiMemory( memory: "chroma", key: createUUID(), config: {
 		            host: "localhost",
 		            port: 8000,
 		            collection: "test_seeding",
@@ -223,7 +223,7 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		     // Create hybrid memory
-		     hybridMemory = aiMemory( "hybrid", createUUID(), {
+		     hybridMemory = aiMemory( memory: "hybrid", key: createUUID(), config: {
 		         recentLimit: 2,
 		         semanticLimit: 2,
 		         totalLimit: 4,
@@ -259,6 +259,298 @@ public class ChromaVectorMemoryTest extends BaseIntegrationTest {
 		assertEquals( "HybridMemory", result.getAsString( Key.of( "type" ) ) );
 		assertTrue( result.getAsInteger( Key.of( "messageCount" ) ) > 0 );
 		assertTrue( result.getAsBoolean( Key.of( "hasRecentAndSemantic" ) ) );
+	}
+
+	@Test
+	@Order( 5 )
+	@DisplayName( "Test ChromaVectorMemory with userId and conversationId" )
+	void testUserIdAndConversationId() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "chroma",
+		        userId: "charlie",
+		        conversationId: "chroma-test",
+		        config: {
+		            host: "localhost",
+		            port: 8000,
+		            collection: "test_user_conversation",
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    memory.add( { text: "ChromaDB vector storage" } );
+
+		    result = {
+		        userId: memory.getUserId(),
+		        conversationId: memory.getConversationId()
+		    };
+		     """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		assertEquals( "charlie", testResult.getAsString( Key.of( "userId" ) ) );
+		assertEquals( "chroma-test", testResult.getAsString( Key.of( "conversationId" ) ) );
+	}
+
+	@Test
+	@Order( 6 )
+	@DisplayName( "Test ChromaVectorMemory export includes userId and conversationId" )
+	void testExportIncludesIdentifiers() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "chroma",
+		        userId: "diana",
+		        conversationId: "export-test",
+		        config: {
+		            host: "localhost",
+		            port: 8000,
+		            collection: "test_export_identifiers",
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    memory.add( { text: "Export test document" } );
+
+		    exported = memory.export();
+
+		    result = {
+		        hasUserId: exported.keyExists( "userId" ),
+		        hasConversationId: exported.keyExists( "conversationId" ),
+		        userId: exported.keyExists( "userId" ) ? exported.userId : "",
+		        conversationId: exported.keyExists( "conversationId" ) ? exported.conversationId : ""
+		    };
+		    """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		assertTrue( testResult.getAsBoolean( Key.of( "hasUserId" ) ) );
+		assertTrue( testResult.getAsBoolean( Key.of( "hasConversationId" ) ) );
+		assertEquals( "diana", testResult.getAsString( Key.of( "userId" ) ) );
+		assertEquals( "export-test", testResult.getAsString( Key.of( "conversationId" ) ) );
+	}
+
+	@Test
+	@Order( 7 )
+	@DisplayName( "Test multi-tenant isolation with userId and conversationId filtering" )
+	void testMultiTenantIsolation() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    // Create memory for user alice, conversation chat1
+		    memoryAliceChat1 = aiMemory(
+		        memory: "chroma",
+		        userId: "alice",
+		        conversationId: "chat1",
+		        config: {
+		            host: "localhost",
+		            port: 8000,
+		            collection: "test_multi_tenant",
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Create memory for user alice, conversation chat2
+		    memoryAliceChat2 = aiMemory(
+		        memory: "chroma",
+		        userId: "alice",
+		        conversationId: "chat2",
+		        config: {
+		            host: "localhost",
+		            port: 8000,
+		            collection: "test_multi_tenant",
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Create memory for user bob, conversation chat1
+		    memoryBobChat1 = aiMemory(
+		        memory: "chroma",
+		        userId: "bob",
+		        conversationId: "chat1",
+		        config: {
+		            host: "localhost",
+		            port: 8000,
+		            collection: "test_multi_tenant",
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Add documents to each memory
+		    memoryAliceChat1.add( { text: "Alice chat1: ChromaDB is powerful" } );
+		    memoryAliceChat2.add( { text: "Alice chat2: Vector search works great" } );
+		    memoryBobChat1.add( { text: "Bob chat1: Semantic search is amazing" } );
+
+		    // Search in Alice's chat1 - should only return Alice's chat1 documents
+		    resultsAliceChat1 = memoryAliceChat1.getRelevant( query: "ChromaDB", limit: 10 );
+
+		    // Search in Alice's chat2 - should only return Alice's chat2 documents
+		    resultsAliceChat2 = memoryAliceChat2.getRelevant( query: "Vector", limit: 10 );
+
+		    // Search in Bob's chat1 - should only return Bob's chat1 documents
+		    resultsBobChat1 = memoryBobChat1.getRelevant( query: "Semantic", limit: 10 );
+
+		    // Get all documents for each memory
+		    allAliceChat1 = memoryAliceChat1.getAll();
+		    allAliceChat2 = memoryAliceChat2.getAll();
+		    allBobChat1 = memoryBobChat1.getAll();
+
+		    // Verify metadata includes userId and conversationId
+		    firstAliceChat1 = allAliceChat1.len() > 0 ? allAliceChat1[1] : {};
+		    firstAliceChat2 = allAliceChat2.len() > 0 ? allAliceChat2[1] : {};
+		    firstBobChat1 = allBobChat1.len() > 0 ? allBobChat1[1] : {};
+
+		    result = {
+		        countAliceChat1: resultsAliceChat1.len(),
+		        countAliceChat2: resultsAliceChat2.len(),
+		        countBobChat1: resultsBobChat1.len(),
+		        allCountAliceChat1: allAliceChat1.len(),
+		        allCountAliceChat2: allAliceChat2.len(),
+		        allCountBobChat1: allBobChat1.len(),
+		        aliceChat1UserId: firstAliceChat1.keyExists("metadata") && firstAliceChat1.metadata.keyExists("userId") ? firstAliceChat1.metadata.userId : "",
+		        aliceChat1ConvId: firstAliceChat1.keyExists("metadata") && firstAliceChat1.metadata.keyExists("conversationId") ? firstAliceChat1.metadata.conversationId : "",
+		        aliceChat2UserId: firstAliceChat2.keyExists("metadata") && firstAliceChat2.metadata.keyExists("userId") ? firstAliceChat2.metadata.userId : "",
+		        aliceChat2ConvId: firstAliceChat2.keyExists("metadata") && firstAliceChat2.metadata.keyExists("conversationId") ? firstAliceChat2.metadata.conversationId : "",
+		        bobChat1UserId: firstBobChat1.keyExists("metadata") && firstBobChat1.metadata.keyExists("userId") ? firstBobChat1.metadata.userId : "",
+		        bobChat1ConvId: firstBobChat1.keyExists("metadata") && firstBobChat1.metadata.keyExists("conversationId") ? firstBobChat1.metadata.conversationId : ""
+		    };
+		    """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		// Each memory should only see its own documents
+		assertEquals( 1, testResult.getAsInteger( Key.of( "countAliceChat1" ) ) );
+		assertEquals( 1, testResult.getAsInteger( Key.of( "countAliceChat2" ) ) );
+		assertEquals( 1, testResult.getAsInteger( Key.of( "countBobChat1" ) ) );
+
+		// getAll should also only return isolated documents
+		assertEquals( 1, testResult.getAsInteger( Key.of( "allCountAliceChat1" ) ) );
+		assertEquals( 1, testResult.getAsInteger( Key.of( "allCountAliceChat2" ) ) );
+		assertEquals( 1, testResult.getAsInteger( Key.of( "allCountBobChat1" ) ) );
+
+		// Verify metadata contains correct userId and conversationId
+		assertEquals( "alice", testResult.getAsString( Key.of( "aliceChat1UserId" ) ) );
+		assertEquals( "chat1", testResult.getAsString( Key.of( "aliceChat1ConvId" ) ) );
+		assertEquals( "alice", testResult.getAsString( Key.of( "aliceChat2UserId" ) ) );
+		assertEquals( "chat2", testResult.getAsString( Key.of( "aliceChat2ConvId" ) ) );
+		assertEquals( "bob", testResult.getAsString( Key.of( "bobChat1UserId" ) ) );
+		assertEquals( "chat1", testResult.getAsString( Key.of( "bobChat1ConvId" ) ) );
+	}
+
+	@Test
+	@Order( 8 )
+	@DisplayName( "Test document count with ChromaVectorMemory" )
+	void testDocumentCount() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "chroma", key: createUUID(), config: {
+		        host: "localhost",
+		        port: 8000,
+		        collection: "test_count",
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
+
+		    initialCount = memory.count();
+
+		    memory.add( { id: "doc1", text: "First document" } );
+		    memory.add( { id: "doc2", text: "Second document" } );
+		    memory.add( { id: "doc3", text: "Third document" } );
+
+		    afterAddCount = memory.count();
+
+		    result = {
+		        initialCount: initialCount,
+		        afterAddCount: afterAddCount
+		    };
+		    """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		assertEquals( 0, testResult.getAsInteger( Key.of( "initialCount" ) ) );
+		assertEquals( 3, testResult.getAsInteger( Key.of( "afterAddCount" ) ) );
+	}
+
+	@Test
+	@Order( 9 )
+	@DisplayName( "Test clearing ChromaVectorMemory collection" )
+	void testClearCollection() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "chroma", key: createUUID(), config: {
+		        host: "localhost",
+		        port: 8000,
+		        collection: "test_clear",
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
+
+		    memory.add( { id: "doc1", text: "Document to clear" } );
+		    memory.add( { id: "doc2", text: "Another document" } );
+
+		    beforeClearCount = memory.count();
+
+		    memory.clear();
+
+		    afterClearCount = memory.count();
+
+		    result = {
+		        beforeClearCount: beforeClearCount,
+		        afterClearCount: afterClearCount
+		    };
+		    """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		assertEquals( 2, testResult.getAsInteger( Key.of( "beforeClearCount" ) ) );
+		assertEquals( 0, testResult.getAsInteger( Key.of( "afterClearCount" ) ) );
+	}
+
+	@Test
+	@Order( 10 )
+	@DisplayName( "Test export includes memory type" )
+	void testExportType() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "chroma", key: createUUID(), config: {
+		        host: "localhost",
+		        port: 8000,
+		        collection: "test_export_type",
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
+
+		    memory.add( { id: "doc1", text: "Test document" } );
+
+		    exported = memory.export();
+
+		    result = {
+		        hasType: exported.keyExists( "type" ),
+		        type: exported.keyExists( "type" ) ? exported.type : ""
+		    };
+		    """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		assertTrue( testResult.getAsBoolean( Key.of( "hasType" ) ) );
+		assertEquals( "ChromaVectorMemory", testResult.getAsString( Key.of( "type" ) ) );
 	}
 
 	/**

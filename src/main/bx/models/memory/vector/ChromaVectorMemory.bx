@@ -314,13 +314,58 @@ class extends="BaseVectorMemory" {
 	}
 
 	/**
-	 * Clear entire collection by deleting and recreating it
+	 * Clear entire collection by deleting all documents
+	 * ChromaDB requires either specific IDs or a where filter - we get all IDs first then delete
 	 */
 	IVectorMemory function clearCollection() {
-		// Delete collection
-		deleteCollection( variables.collection );
-		// Recreate it
-		createCollection( variables.collection );
+		// First, get all document IDs
+		var getAllPayload = {
+			include: [ "documents" ]  // Minimal data needed
+		};
+
+		var getResponse = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/get" )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( getAllPayload ) }
+			])
+			.timeout( variables.timeout )
+			.send();
+
+		if ( getResponse.statusCode != 200 ) {
+			// Collection might not exist or be empty - that's ok
+			return this;
+		}
+
+		var allData = jsonDeserialize( getResponse.fileContent );
+
+		// If no documents, nothing to delete
+		if ( !allData.keyExists( "ids" ) || allData.ids.len() == 0 ) {
+			return this;
+		}
+
+		// Delete all documents by ID
+		var deletePayload = {
+			ids: allData.ids
+		};
+
+		var deleteResponse = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/delete" )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( deletePayload ) }
+			])
+			.timeout( variables.timeout )
+			.send();
+
+		if ( deleteResponse.statusCode != 200 ) {
+			throw(
+				type = "ChromaVectorMemory.ClearCollectionError",
+				message = "Failed to clear collection in ChromaDB: " & deleteResponse.statusText,
+				detail = deleteResponse.fileContent
+			);
+		}
+
 		return this;
 	}
 
