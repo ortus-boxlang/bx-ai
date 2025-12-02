@@ -28,7 +28,6 @@ class extends="BaseVectorMemory" {
 		variables.vectors    = []; // array of embeddings
 		variables.metadata   = []; // array of structs
 		variables.ids        = []; // array of ids
-		variables.nextId     = 1;
 		variables.configured = false;
 
 		// 0 = not set yet, first insert defines it
@@ -160,7 +159,6 @@ class extends="BaseVectorMemory" {
 		variables.vectors   = [];
 		variables.metadata  = [];
 		variables.ids       = [];
-		variables.nextId    = 1;
 		variables.dimension = 0;
 		return this;
 	}
