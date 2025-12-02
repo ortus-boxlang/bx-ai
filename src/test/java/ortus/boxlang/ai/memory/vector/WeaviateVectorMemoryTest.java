@@ -117,7 +117,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create WeaviateVectorMemory instance
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    memory = aiMemory( memory: "weaviate", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8080,
 		        scheme: "http",
@@ -151,7 +151,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    """
 		    // Create memory with unique collection
 		    testCollection = "TestStore" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    memory = aiMemory( memory: "weaviate", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8080,
 		        scheme: "http",
@@ -214,7 +214,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    """
 		    // Create memory
 		    testCollection = "TestSearch" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    memory = aiMemory( memory: "weaviate", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8080,
 		        scheme: "http",
@@ -269,7 +269,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    """
 		    // Create memory
 		    testCollection = "TestGetById" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    memory = aiMemory( memory: "weaviate", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8080,
 		        scheme: "http",
@@ -326,7 +326,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    """
 		    // Create memory
 		    testCollection = "TestDelete" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    memory = aiMemory( memory: "weaviate", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8080,
 		        scheme: "http",
@@ -384,7 +384,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    """
 		    // Create memory
 		    testCollection = "TestFilter" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    memory = aiMemory( memory: "weaviate", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8080,
 		        scheme: "http",
@@ -437,7 +437,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    """
 		    // Create memory
 		    testCollection = "TestBatch" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    memory = aiMemory( memory: "weaviate", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8080,
 		        scheme: "http",
@@ -489,7 +489,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    """
 		    // Create memory
 		    testCollection = "TestAsyncBatch" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    memory = aiMemory( memory: "weaviate", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8080,
 		        scheme: "http",
@@ -542,7 +542,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    """
 		    // Create hybrid memory with Weaviate backend
 		    testCollection = "TestHybrid" & left( createUUID(), 8 );
-		    hybridMemory = aiMemory( "hybrid", createUUID(), {
+		    hybridMemory = aiMemory( memory: "hybrid", key: createUUID(), config: {
 		        recentLimit: 2,
 		        semanticLimit: 2,
 		        totalLimit: 4,
@@ -603,7 +603,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory instance
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    memory = aiMemory( memory: "weaviate", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8080,
 		        scheme: "http",
@@ -648,7 +648,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    """
 		    // Create memory
 		    testCollection = "TestGetAll" & left( createUUID(), 8 );
-		    memory = aiMemory( "weaviate", createUUID(), {
+		    memory = aiMemory( memory: "weaviate", key: createUUID(), config: {
 		        host: "localhost",
 		        port: 8080,
 		        scheme: "http",
@@ -686,5 +686,240 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 
 		assertTrue( result.getAsInteger( Key.of( "totalDocs" ) ) >= 3 );
 		assertTrue( result.getAsBoolean( Key.of( "hasDocuments" ) ) );
+	}
+
+	@DisplayName( "Test WeaviateVectorMemory with userId and conversationId" )
+	@Test
+	@Order( 12 )
+	public void testUserIdAndConversationId() throws Exception {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		    testCollection = "TestUserConv" & left( createUUID(), 8 );
+		    memory = aiMemory(
+		        memory: "weaviate",
+		        userId: "john",
+		        conversationId: "weaviate-test",
+		        config: {
+		            host: "localhost",
+		            port: 8080,
+		            scheme: "http",
+		            collection: testCollection,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    memory.add( { text: "Weaviate vector database" } );
+
+		    // Wait for indexing
+		    sleep( 1000 );
+
+		    result = {
+		        userId: memory.getUserId(),
+		        conversationId: memory.getConversationId()
+		    };
+
+		    // Cleanup
+		    try {
+		        memory.clearAll();
+		    } catch( any e ) {
+		        // Ignore
+		    }
+		    """,
+		    context );
+		// @formatter:on
+
+		IStruct result = variables.getAsStruct( Key.of( "result" ) );
+		assertEquals( "john", result.getAsString( Key.of( "userId" ) ) );
+		assertEquals( "weaviate-test", result.getAsString( Key.of( "conversationId" ) ) );
+	}
+
+	@DisplayName( "Test WeaviateVectorMemory export includes userId and conversationId" )
+	@Test
+	@Order( 13 )
+	public void testExportIncludesIdentifiers() throws Exception {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		    testCollection = "TestExport" & left( createUUID(), 8 );
+		    memory = aiMemory(
+		        memory: "weaviate",
+		        userId: "jane",
+		        conversationId: "export-test",
+		        config: {
+		            host: "localhost",
+		            port: 8080,
+		            scheme: "http",
+		            collection: testCollection,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    memory.add( { text: "Export test document" } );
+
+		    // Wait for indexing
+		    sleep( 1000 );
+
+		    exported = memory.export();
+
+		    // Cleanup
+		    try {
+		        memory.clearAll();
+		    } catch( any e ) {
+		        // Ignore
+		    }
+		    """,
+		    context );
+		// @formatter:on
+
+		IStruct exported = variables.getAsStruct( Key.of( "exported" ) );
+		assertTrue( exported.containsKey( Key.of( "userId" ) ) );
+		assertTrue( exported.containsKey( Key.of( "conversationId" ) ) );
+		assertEquals( "jane", exported.getAsString( Key.of( "userId" ) ) );
+		assertEquals( "export-test", exported.getAsString( Key.of( "conversationId" ) ) );
+	}
+
+	@DisplayName( "Test multi-tenant isolation with userId and conversationId filtering" )
+	@Test
+	@Order( 14 )
+	public void testMultiTenantIsolation() throws Exception {
+		var uniqueCollection = "TestMultiTenant" + System.currentTimeMillis();
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		    uniqueCollection = "%s";
+
+		    // Create memory for user alice, conversation chat1
+		    memoryAliceChat1 = aiMemory(
+		        memory: "weaviate",
+		        userId: "alice",
+		        conversationId: "chat1",
+		        config: {
+		            host: "localhost",
+		            port: 8080,
+		            scheme: "http",
+		            collection: uniqueCollection,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Create memory for user alice, conversation chat2
+		    memoryAliceChat2 = aiMemory(
+		        memory: "weaviate",
+		        userId: "alice",
+		        conversationId: "chat2",
+		        config: {
+		            host: "localhost",
+		            port: 8080,
+		            scheme: "http",
+		            collection: uniqueCollection,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Create memory for user bob, conversation chat1
+		    memoryBobChat1 = aiMemory(
+		        memory: "weaviate",
+		        userId: "bob",
+		        conversationId: "chat1",
+		        config: {
+		            host: "localhost",
+		            port: 8080,
+		            scheme: "http",
+		            collection: uniqueCollection,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Add documents to each memory
+		    memoryAliceChat1.add( { text: "Alice chat1: Weaviate is powerful" } );
+		    memoryAliceChat2.add( { text: "Alice chat2: Vector search is fast" } );
+		    memoryBobChat1.add( { text: "Bob chat1: Database indexing" } );
+
+		    // Wait for indexing
+		    sleep( 2000 );
+
+		    // Search in Alice's chat1 - should only return Alice's chat1 documents
+		    resultsAliceChat1 = memoryAliceChat1.getRelevant( query: "Weaviate", limit: 10 );
+
+		    // Search in Alice's chat2 - should only return Alice's chat2 documents
+		    resultsAliceChat2 = memoryAliceChat2.getRelevant( query: "Vector", limit: 10 );
+
+		    // Search in Bob's chat1 - should only return Bob's chat1 documents
+		    resultsBobChat1 = memoryBobChat1.getRelevant( query: "database", limit: 10 );
+
+		    // Get all documents for each memory
+		    allAliceChat1 = memoryAliceChat1.getAll();
+		    allAliceChat2 = memoryAliceChat2.getAll();
+		    allBobChat1 = memoryBobChat1.getAll();
+
+		    // Verify metadata includes userId and conversationId
+		    firstAliceChat1 = allAliceChat1.len() > 0 ? allAliceChat1[1] : {};
+		    firstAliceChat2 = allAliceChat2.len() > 0 ? allAliceChat2[1] : {};
+		    firstBobChat1 = allBobChat1.len() > 0 ? allBobChat1[1] : {};
+
+		    result = {
+		        countAliceChat1: resultsAliceChat1.len(),
+		        countAliceChat2: resultsAliceChat2.len(),
+		        countBobChat1: resultsBobChat1.len(),
+		        allCountAliceChat1: allAliceChat1.len(),
+		        allCountAliceChat2: allAliceChat2.len(),
+		        allCountBobChat1: allBobChat1.len(),
+		        aliceChat1UserId: firstAliceChat1.keyExists("metadata") && firstAliceChat1.metadata.keyExists("userId") ? firstAliceChat1.metadata.userId : "",
+		        aliceChat1ConvId: firstAliceChat1.keyExists("metadata") && firstAliceChat1.metadata.keyExists("conversationId") ? firstAliceChat1.metadata.conversationId : "",
+		        aliceChat2UserId: firstAliceChat2.keyExists("metadata") && firstAliceChat2.metadata.keyExists("userId") ? firstAliceChat2.metadata.userId : "",
+		        aliceChat2ConvId: firstAliceChat2.keyExists("metadata") && firstAliceChat2.metadata.keyExists("conversationId") ? firstAliceChat2.metadata.conversationId : "",
+		        bobChat1UserId: firstBobChat1.keyExists("metadata") && firstBobChat1.metadata.keyExists("userId") ? firstBobChat1.metadata.userId : "",
+		        bobChat1ConvId: firstBobChat1.keyExists("metadata") && firstBobChat1.metadata.keyExists("conversationId") ? firstBobChat1.metadata.conversationId : ""
+		    };
+
+		    // Cleanup
+		    try {
+		        memoryAliceChat1.clearAll();
+		    } catch( any e ) {
+		        // Ignore
+		    }
+		    """
+		    .formatted( uniqueCollection ),
+		    context );
+		// @formatter:on
+
+		IStruct	result				= variables.getAsStruct( Key.of( "result" ) );
+		int		countAliceChat1		= result.getAsInteger( Key.of( "countAliceChat1" ) );
+		int		countAliceChat2		= result.getAsInteger( Key.of( "countAliceChat2" ) );
+		int		countBobChat1		= result.getAsInteger( Key.of( "countBobChat1" ) );
+		int		allCountAliceChat1	= result.getAsInteger( Key.of( "allCountAliceChat1" ) );
+		int		allCountAliceChat2	= result.getAsInteger( Key.of( "allCountAliceChat2" ) );
+		int		allCountBobChat1	= result.getAsInteger( Key.of( "allCountBobChat1" ) );
+		String	aliceChat1UserId	= result.getAsString( Key.of( "aliceChat1UserId" ) );
+		String	aliceChat1ConvId	= result.getAsString( Key.of( "aliceChat1ConvId" ) );
+		String	aliceChat2UserId	= result.getAsString( Key.of( "aliceChat2UserId" ) );
+		String	aliceChat2ConvId	= result.getAsString( Key.of( "aliceChat2ConvId" ) );
+		String	bobChat1UserId		= result.getAsString( Key.of( "bobChat1UserId" ) );
+		String	bobChat1ConvId		= result.getAsString( Key.of( "bobChat1ConvId" ) );
+
+		// Each memory should only see its own documents
+		assertEquals( 1, countAliceChat1 );
+		assertEquals( 1, countAliceChat2 );
+		assertEquals( 1, countBobChat1 );
+
+		// getAll should also only return isolated documents
+		assertEquals( 1, allCountAliceChat1 );
+		assertEquals( 1, allCountAliceChat2 );
+		assertEquals( 1, allCountBobChat1 );
+
+		// Verify metadata contains correct userId and conversationId
+		assertEquals( "alice", aliceChat1UserId );
+		assertEquals( "chat1", aliceChat1ConvId );
+		assertEquals( "alice", aliceChat2UserId );
+		assertEquals( "chat2", aliceChat2ConvId );
+		assertEquals( "bob", bobChat1UserId );
+		assertEquals( "chat1", bobChat1ConvId );
 	}
 }
