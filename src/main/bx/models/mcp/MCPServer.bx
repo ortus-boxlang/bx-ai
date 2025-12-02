@@ -853,7 +853,7 @@ class {
 	}
 
 	/**
-	 * Set the onRequest callback for authentication and request inspection
+	 * Register the onRequest callback for authentication and request inspection
 	 * The callback receives the request data struct and should return it (possibly modified)
 	 * or throw an exception to halt processing (e.g., for authentication failure)
 	 *
@@ -861,20 +861,20 @@ class {
 	 *
 	 * @return This server for chaining
 	 */
-	MCPServer function setOnRequest( required any callback ) {
+	MCPServer function onRequest( required any callback ) {
 		variables.onRequest = arguments.callback;
 		return this;
 	}
 
 	/**
-	 * Set the onResponse callback for response transformation and logging
+	 * Register the onResponse callback for response transformation and logging
 	 * The callback receives the response struct and request data, and should return the response
 	 *
 	 * @callback The callback function: ( response, requestData ) => response
 	 *
 	 * @return This server for chaining
 	 */
-	MCPServer function setOnResponse( required any callback ) {
+	MCPServer function onResponse( required any callback ) {
 		variables.onResponse = arguments.callback;
 		return this;
 	}
