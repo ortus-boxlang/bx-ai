@@ -10,6 +10,7 @@ BoxLang AI is a comprehensive module that brings artificial intelligence capabil
 
 - **Multi-Provider Support**: Work with OpenAI, Claude, Gemini, Grok, Groq, DeepSeek, Ollama, and more
 - **Unified API**: One consistent interface across all providers
+- **Multi-Tenant Memory**: Enterprise-grade isolation with userId and conversationId across all 20 memory types
 - **Multimodal Content**: Process images, audio, video, and documents alongside text
 - **Local AI Support**: Run models locally with Ollama for privacy and offline use
 - **AI Pipelines**: Chain operations together for complex multi-step workflows

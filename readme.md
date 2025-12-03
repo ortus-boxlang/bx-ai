@@ -30,6 +30,7 @@ BoxLang AI eliminates the complexity of working with multiple AI providers by of
 - 💬 **Fluent Interface** - Chainable, expressive syntax that makes AI integration intuitive
 - 📝 **Flexible Messaging** - Send simple strings, structured messages, or complex conversation arrays
 - ⚡ **Async Support** - Built-in asynchronous capabilities with futures for non-blocking operations
+- 🔒 **Multi-Tenant Memory** - Enterprise-grade user and conversation isolation across all memory types
 - ⚙️ **Configurable** - Global defaults, per-request overrides, and comprehensive logging options
 - 🎯 **Event-Driven** - Intercept and extend AI processing with lifecycle events
 - 🏭 **Production-Ready** - Timeout controls, error handling, and debugging tools
@@ -62,6 +63,7 @@ println( answer )
 The following are the AI providers supported by this module. **Please note that in order to interact with these providers you will need to have an account with them and an API key.** 🔑
 
 - 🧠 [Claude Anthropic](https://www.anthropic.com/claude)
+- 🧬 [Cohere](https://cohere.com/) - High-quality embeddings and chat
 - 🔍 [DeepSeek](https://www.deepseek.com/)
 - 💎 [Gemini](https://gemini.google.com/)
 - ⚡ [Grok](https://grok.com/)
@@ -73,7 +75,6 @@ The following are the AI providers supported by this module. **Please note that 
 - 🔀 [OpenRouter](https://openrouter.ai/)
 - 🔮 [Perplexity](https://docs.perplexity.ai/)
 - 🚢 [Voyage AI](https://www.voyageai.com/) - Specialized embeddings provider
-- 🧬 [Cohere](https://cohere.com/) - High-quality embeddings and chat
 
 ## 🎯 Features
 
@@ -82,6 +83,7 @@ Here are some of the features of this module:
 - 🔌 Integration with multiple AI providers
 - 📦 **Structured Output** - Type-safe AI responses using BoxLang classes, structs, or JSON schemas
 - 🤖 **AI Agents** - Autonomous agents with memory, tools, and sub-agent orchestration
+- 🔒 **Multi-Tenant Memory** - Built-in user and conversation isolation for enterprise applications
 - 📝 Compose raw chat requests
 - 💬 Build message objects
 - 🛠️ Create AI service objects
@@ -99,6 +101,7 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | Provider   | Real-time Tools | Embeddings | Structured Output |
 |------------|-----------------|------------|-------------------|
 | Claude    	| ✅ | ❌ | ✅ |
+| Cohere       | ✅ | ✅ | ✅ |
 | DeepSeek  | ✅ | ✅ | ✅ |
 | Gemini    	| [Coming Soon]   | ✅ | ✅ |
 | Grok      	 | ✅ | ✅ | ✅ |
@@ -110,7 +113,6 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | OpenRouter   | ✅ | ✅ | ✅ |
 | Perplexity   | ✅ | ❌ | ✅ |
 | Voyage       | ❌ | ✅ (Specialized) | ❌ |
-| Cohere       | ✅ | ✅ | ✅ |
 
 **Note:**
 - OpenAI provides native structured output support with strict schema validation. Other providers use JSON mode with schema constraints, which provides excellent results but may occasionally require prompt refinement.
