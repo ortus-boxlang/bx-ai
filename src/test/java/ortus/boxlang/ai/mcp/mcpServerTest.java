@@ -144,7 +144,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 					aiTool( "calculate", "Do math", ( expr ) => "calc: " & expr )
 				]
 
-				mymyServer = mcpServer( "multiToolTest" )
+				myServer = mcpServer( "multiToolTest" )
 					.registerTools( tools )
 
 				hasSearch = myServer.hasTool( "search" )
@@ -166,11 +166,12 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				mymyServer = mcpServer( "unregTest" )
+				myServer = mcpServer( "unregTest" )
 					.registerTool( aiTool( "myTool", "A tool", ( x ) => x ) )
 
 				beforeCount = myServer.getToolCount()
 				beforeHas = myServer.hasTool( "myTool" )
+
 				myServer.unregisterTool( "myTool" )
 
 				afterCount = myServer.getToolCount()
@@ -522,7 +523,6 @@ public class mcpServerTest extends BaseIntegrationTest {
 				requestJSON = '{"jsonrpc":"2.0","method":"tools/list","id":"1"}'
 
 				response = myServer.handleRequest( requestJSON )
-				println( response 	)
 				hasResult = structKeyExists( response, "result" )
 			""",
 			context
