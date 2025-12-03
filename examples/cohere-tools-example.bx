@@ -1,0 +1,322 @@
+/**
+ * Cohere Tools (Function Calling) Examples
+ * 
+ * Demonstrates Cohere's tool calling capabilities for real-time data access.
+ * Cohere automatically determines when to call tools and executes them.
+ * 
+ * API Key: Set COHERE_API_KEY environment variable
+ * Get your key from: https://dashboard.cohere.com/api-keys
+ * 
+ * @see https://docs.cohere.com/docs/tool-use
+ * @see https://docs.cohere.com/reference/chat
+ */
+
+// ============================================================
+// Example 1: Simple Weather Tool
+// ============================================================
+println( "=== Example 1: Simple Weather Tool ===" )
+
+// Create a weather tool
+weatherTool = aiTool(
+	name: "get_weather",
+	description: "Gets current weather for a location",
+	callback: ( args ) => {
+		// Simulate weather API call
+		return {
+			location: args.location,
+			temperature: 22,
+			condition: "sunny",
+			humidity: 65
+		}
+	}
+).describeLocation( "The city name to get weather for" )
+
+// Ask about weather - Cohere will automatically call the tool
+response = aiChat(
+	"What's the weather like in Paris?",
+	{ tools: [ weatherTool ] },
+	{ provider: "cohere" }
+)
+
+println( "Question: What's the weather like in Paris?" )
+println( "Answer: #response#" )
+println()
+
+// ============================================================
+// Example 2: Multiple Tools
+// ============================================================
+println( "=== Example 2: Multiple Tools ===" )
+
+// Create multiple tools
+searchTool = aiTool(
+	name: "web_search",
+	description: "Search the web for information",
+	callback: ( args ) => {
+		// Simulate search API
+		return "BoxLang is a modern dynamic JVM language with full Java interop, developed by Ortus Solutions."
+	}
+).describeQuery( "The search query" )
+
+calculatorTool = aiTool(
+	name: "calculate",
+	description: "Perform mathematical calculations",
+	callback: ( args ) => {
+		// Simple eval simulation
+		if( args.operation == "add" ){
+			return args.a + args.b
+		} else if( args.operation == "multiply" ){
+			return args.a * args.b
+		}
+		return "Unknown operation"
+	}
+).describeOperation( "The math operation: add, multiply" )
+.describeA( "First number" )
+.describeB( "Second number" )
+
+// Cohere chooses the right tool based on the query
+response1 = aiChat(
+	"Search for information about BoxLang",
+	{ tools: [ searchTool, calculatorTool ] },
+	{ provider: "cohere" }
+)
+
+println( "Question: Search for information about BoxLang" )
+println( "Answer: #response1#" )
+println()
+
+response2 = aiChat(
+	"What is 25 times 4?",
+	{ tools: [ searchTool, calculatorTool ] },
+	{ provider: "cohere" }
+)
+
+println( "Question: What is 25 times 4?" )
+println( "Answer: #response2#" )
+println()
+
+// ============================================================
+// Example 3: Database Query Tool
+// ============================================================
+println( "=== Example 3: Database Query Tool ===" )
+
+// Create a database query tool
+dbQueryTool = aiTool(
+	name: "query_database",
+	description: "Query the user database for information",
+	callback: ( args ) => {
+		// Simulate database query
+		var mockUsers = {
+			"john": { name: "John Doe", age: 30, role: "Developer" },
+			"jane": { name: "Jane Smith", age: 28, role: "Designer" },
+			"bob": { name: "Bob Wilson", age: 35, role: "Manager" }
+		}
+		
+		var userId = args.userId.lCase()
+		if( mockUsers.keyExists( userId ) ){
+			return mockUsers[ userId ]
+		}
+		
+		return "User not found"
+	}
+).describeUserId( "The user ID to query (e.g., john, jane, bob)" )
+
+response = aiChat(
+	"What's Jane's role in the company?",
+	{ tools: [ dbQueryTool ] },
+	{ provider: "cohere" }
+)
+
+println( "Question: What's Jane's role in the company?" )
+println( "Answer: #response#" )
+println()
+
+// ============================================================
+// Example 4: API Integration Tool
+// ============================================================
+println( "=== Example 4: API Integration Tool ===" )
+
+// Create a stock price tool
+stockTool = aiTool(
+	name: "get_stock_price",
+	description: "Get current stock price and info",
+	callback: ( args ) => {
+		// Simulate stock API
+		var stocks = {
+			"AAPL": { symbol: "AAPL", price: 178.50, change: 2.3 },
+			"GOOGL": { symbol: "GOOGL", price: 142.80, change: -1.2 },
+			"MSFT": { symbol: "MSFT", price: 420.15, change: 5.7 }
+		}
+		
+		var symbol = args.symbol.uCase()
+		if( stocks.keyExists( symbol ) ){
+			return stocks[ symbol ]
+		}
+		
+		return "Stock symbol not found"
+	}
+).describeSymbol( "Stock ticker symbol (e.g., AAPL, GOOGL, MSFT)" )
+
+response = aiChat(
+	"How is Apple stock doing today?",
+	{ tools: [ stockTool ] },
+	{ provider: "cohere" }
+)
+
+println( "Question: How is Apple stock doing today?" )
+println( "Answer: #response#" )
+println()
+
+// ============================================================
+// Example 5: Multi-Step Tool Usage
+// ============================================================
+println( "=== Example 5: Multi-Step Tool Usage ===" )
+
+// Create tools that work together
+userProfileTool = aiTool(
+	name: "get_user_profile",
+	description: "Get user profile information",
+	callback: ( args ) => {
+		var profiles = {
+			"user123": { name: "Alice Johnson", location: "Boston", preferences: "outdoor activities" }
+		}
+		return profiles[ args.userId ] ?: "User not found"
+	}
+).describeUserId( "The user ID" )
+
+recommendationTool = aiTool(
+	name: "get_recommendations",
+	description: "Get activity recommendations for a location",
+	callback: ( args ) => {
+		var recommendations = {
+			"Boston": [ "Visit Freedom Trail", "Fenway Park tour", "Harbor cruise" ],
+			"default": [ "Check local attractions", "Visit museums", "Try local restaurants" ]
+		}
+		return recommendations[ args.location ] ?: recommendations.default
+	}
+).describeLocation( "City name" )
+
+// Cohere may call multiple tools to answer this question
+response = aiChat(
+	"What activities would you recommend for user user123 based on their location?",
+	{ tools: [ userProfileTool, recommendationTool ] },
+	{ provider: "cohere" }
+)
+
+println( "Question: What activities would you recommend for user user123?" )
+println( "Answer: #response#" )
+println()
+
+// ============================================================
+// Example 6: Complex Tool with Validation
+// ============================================================
+println( "=== Example 6: Tool with Business Logic ===" )
+
+orderTool = aiTool(
+	name: "create_order",
+	description: "Create a new order for a product",
+	callback: ( args ) => {
+		// Validate and process order
+		if( !args.keyExists( "product" ) || !args.keyExists( "quantity" ) ){
+			return { success: false, error: "Missing required fields" }
+		}
+		
+		if( args.quantity castAs "numeric" < 1 ){
+			return { success: false, error: "Quantity must be at least 1" }
+		}
+		
+		// Simulate order creation
+		var orderId = "ORD-" & createUUID()
+		return {
+			success: true,
+			orderId: orderId,
+			product: args.product,
+			quantity: args.quantity,
+			total: args.quantity * 29.99,
+			estimatedDelivery: dateAdd( "d", 3, now() )
+		}
+	}
+).describeProduct( "Product name or ID" )
+.describeQuantity( "Number of items to order" )
+
+response = aiChat(
+	"I'd like to order 3 BoxLang t-shirts",
+	{ tools: [ orderTool ] },
+	{ provider: "cohere" }
+)
+
+println( "Question: I'd like to order 3 BoxLang t-shirts" )
+println( "Answer: #response#" )
+println()
+
+// ============================================================
+// Example 7: Real-Time Data Tool
+// ============================================================
+println( "=== Example 7: Real-Time Data Tool ===" )
+
+timeTool = aiTool(
+	name: "get_current_time",
+	description: "Get the current date and time",
+	callback: ( args ) => {
+		return {
+			datetime: now(),
+			formatted: dateFormat( now(), "full" ) & " " & timeFormat( now(), "full" ),
+			timezone: "UTC"
+		}
+	}
+)
+
+response = aiChat(
+	"What time is it right now?",
+	{ tools: [ timeTool ] },
+	{ provider: "cohere" }
+)
+
+println( "Question: What time is it right now?" )
+println( "Answer: #response#" )
+println()
+
+// ============================================================
+// Example 8: Conversational Tool Usage
+// ============================================================
+println( "=== Example 8: Conversational Context with Tools ===" )
+
+// Create a customer support tool
+ticketTool = aiTool(
+	name: "create_support_ticket",
+	description: "Create a customer support ticket",
+	callback: ( args ) => {
+		var ticketId = "TKT-" & randRange( 1000, 9999 )
+		return {
+			ticketId: ticketId,
+			issue: args.issue,
+			priority: args.priority ?: "medium",
+			status: "open",
+			created: now()
+		}
+	}
+).describeIssue( "Description of the issue" )
+.describePriority( "Priority level: low, medium, high" )
+
+// Use with conversation history
+request = aiChatRequest()
+	.system( "You are a helpful customer support assistant." )
+	.user( "I'm having trouble logging into my account." )
+	.addTools( [ ticketTool ] )
+	.setProvider( "cohere" )
+
+response = request.invoke()
+
+println( "User: I'm having trouble logging into my account." )
+println( "Assistant: #response.content#" )
+println()
+
+// ============================================================
+// Summary
+// ============================================================
+println( "=== Summary ===" )
+println( "✅ Cohere automatically determines when to call tools" )
+println( "✅ Tools are called in real-time during conversation" )
+println( "✅ Multiple tools can be used in a single query" )
+println( "✅ Tool results are automatically integrated into the response" )
+println( "✅ Supports complex multi-step tool usage" )
+println( "✅ Use tools for: APIs, databases, real-time data, business logic" )

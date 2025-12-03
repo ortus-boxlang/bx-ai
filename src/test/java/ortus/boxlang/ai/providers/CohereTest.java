@@ -186,4 +186,50 @@ public class CohereTest extends BaseIntegrationTest {
 		assertThat( result.toLowerCase() ).contains( "4" );
 	}
 
+	@DisplayName( "Can chat with tools" )
+	@Test
+	public void testCohereChatWithTools() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			// Define a simple calculator tool
+			calculatorTool = aiTool(
+				name: "calculator",
+				description: "Performs basic arithmetic operations",
+				callable: ( operation="add", a, b ) =>{
+					switch( arguments.operation ) {
+						case "add":
+							return arguments.a + arguments.b;
+						case "subtract":
+							return arguments.a - arguments.b;
+						case "multiply":
+							return arguments.a * arguments.b;
+						case "divide":
+							return arguments.a / arguments.b;
+						default:
+							return "Unknown operation";
+					}
+				} )
+				.describeOperation( "The arithmetic operation to perform: add, subtract, multiply, divide" )
+				.describeA( "The first number" )
+				.describeB( "The second number" )
+
+			result = aiChat(
+				"What is 15 multiplied by 7?",
+				{
+					tools: [ calculatorTool ]
+				},
+				{ provider: "cohere" }
+			)
+
+			println( "Cohere chat with tools result: " & result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var result = variables.getAsString( Key.of( "result" ) );
+		assertThat( result.toString() ).contains( "105" );
+	}
+
 }

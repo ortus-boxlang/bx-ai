@@ -110,12 +110,12 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | OpenRouter   | ✅ | ✅ | ✅ |
 | Perplexity   | ✅ | ❌ | ✅ |
 | Voyage       | ❌ | ✅ (Specialized) | ❌ |
-| Cohere       | ⏳ | ✅ | ⏳ |
+| Cohere       | ✅ | ✅ | ✅ |
 
 **Note:**
 - OpenAI provides native structured output support with strict schema validation. Other providers use JSON mode with schema constraints, which provides excellent results but may occasionally require prompt refinement.
 - Voyage AI is a specialized embeddings-only provider with state-of-the-art models optimized for semantic search, RAG applications, and clustering. It does not support chat completions or structured output.
-- Cohere provides high-quality embeddings with excellent multilingual support (100+ languages) and chat capabilities. Tool support and structured output coming soon.
+- Cohere provides high-quality embeddings with excellent multilingual support (100+ languages), chat capabilities, and real-time tool calling. Structured output coming soon.
 
 ## 📦 Structured Output
 

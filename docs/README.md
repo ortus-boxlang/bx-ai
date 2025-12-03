@@ -33,7 +33,7 @@ BoxLang AI is a comprehensive module that brings artificial intelligence capabil
 | **OpenRouter** | Gateway | Access multiple models through one API |
 | **Perplexity** | Cloud | Research, citations, factual answers |
 | **Voyage** | Cloud | State-of-the-art embeddings, specialized for RAG |
-| **Cohere** | Cloud | High-quality embeddings, multilingual, chat |
+| **Cohere** | Cloud | Embeddings, multilingual, chat, tool calling |
 
 ### Use Cases
 

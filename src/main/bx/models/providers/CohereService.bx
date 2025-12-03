@@ -224,12 +224,34 @@ class extends="BaseService"{
 			dataPacket.preamble = systemMessages.first().content
 		}
 
-		// Add other parameters
-		dataPacket.append( arguments.aiRequest.getParams() )
+		// Add other parameters (but not tools yet, we'll transform them)
+		var tempParams = arguments.aiRequest.getParams().duplicate();
+		var tools = tempParams.delete( "tools" );
+		dataPacket.append( tempParams )
 
-		// Tooling support - Cohere has different tool format
-		if( dataPacket.keyExists( "tools" ) ){
-			dataPacket.tools = dataPacket.tools.map( tool => tool.getSchema() )
+		// Tooling support - Convert OpenAI format to Cohere format
+		// OpenAI: { type: "function", function: { name, description, parameters: { properties, required } } }
+		// Cohere: { name, description, parameter_definitions: { param_name: { type, description, required } } }
+		if( !isNull( tools ) && tools.len() > 0 ){
+			dataPacket.tools = tools.map( tool => {
+				var schema = tool.getSchema();
+				var cohereToolDef = {
+					"name": schema.function.name,
+					"description": schema.function.description,
+					"parameter_definitions": {}
+				};
+
+				// Convert properties to parameter_definitions
+				schema.function.parameters.properties.each( (paramName, paramDef) => {
+					cohereToolDef.parameter_definitions[ paramName ] = {
+						"type": paramDef.type,
+						"description": paramDef.description,
+						"required": schema.function.parameters.required.findNoCase( paramName ) > 0
+					};
+				} );
+
+				return cohereToolDef;
+			} );
 		}
 
 		// Send it
@@ -241,6 +263,52 @@ class extends="BaseService"{
 				type   : "ProviderError",
 				message: result.message.toString()
 			);
+		}
+
+		// Handle tool calls if present
+		if( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ){
+			// Execute each tool call
+			var toolResults = result.tool_calls.map( toolCall => {
+				// Find the tool in our original tools list
+				var tool = tools.filter( t => t.getSchema().function.name == toolCall.name ).first();
+
+				// Invoke the tool with the parameters
+				var toolOutput = tool.invoke( toolCall.parameters );
+
+				return {
+					"call": toolCall,
+					"outputs": [ { "result": toolOutput } ]
+				};
+			} );
+
+			// Make a follow-up request with tool results
+			// Keep the same message but add tool_results
+			var followUpPacket = {
+				"message": lastMessage.content,
+				"model": aiRequest.getModel(),
+				"tool_results": toolResults
+			};
+
+			// Re-add tools for potential multi-step tool use
+			if( dataPacket.keyExists( "tools" ) ){
+				followUpPacket.tools = dataPacket.tools;
+			}
+
+			// Re-add chat history
+			if( dataPacket.keyExists( "chat_history" ) ){
+				followUpPacket.chat_history = dataPacket.chat_history;
+			}
+
+			// Re-add preamble
+			if( dataPacket.keyExists( "preamble" ) ){
+				followUpPacket.preamble = dataPacket.preamble;
+			}
+
+			// Add any remaining parameters
+			followUpPacket.append( tempParams );
+
+			// Send follow-up request with tool results
+			result = sendRequest( aiRequest, followUpPacket );
 		}
 
 		// Determine return formats
