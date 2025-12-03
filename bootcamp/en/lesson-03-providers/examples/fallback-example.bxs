@@ -1,0 +1,40 @@
+// fallback-example.bxs
+// Try multiple providers until one succeeds
+// Run with: boxlang fallback-example.bxs
+
+function chatWithFallback( message ) {
+    // Try providers in order of preference
+    providers = [ "openai", "claude", "ollama" ]
+    
+    for( provider in providers ) {
+        try {
+            println( "  Trying #provider#..." )
+            
+            options = { provider: provider }
+            if( provider == "ollama" ) {
+                params = { model: "llama3.2" }
+            } else {
+                params = {}
+            }
+            
+            return aiChat( message, params, options )
+        } catch( any e ) {
+            println( "    ❌ #provider# failed: #e.message#" )
+            continue
+        }
+    }
+    
+    throw( message = "All providers failed!" )
+}
+
+// Use it
+println( "🔄 Trying providers with fallback..." )
+println()
+
+try {
+    answer = chatWithFallback( "What is 2 + 2?" )
+    println()
+    println( "✅ Answer: " & answer )
+} catch( any e ) {
+    println( "❌ " & e.message )
+}

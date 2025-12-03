@@ -1,0 +1,20 @@
+// plantilla-struct.bxs
+// Usando plantillas de struct para salida estructurada
+// Ejecutar con: boxlang plantilla-struct.bxs
+
+// Define la estructura que quieres
+template = {
+    "name": "",
+    "age": 0,
+    "email": ""
+}
+
+// Pide a la IA que extraiga en esta estructura
+result = aiChat(
+    "Extract person info: John Doe is 30 years old, email john@example.com"
+).structuredOutput( template )
+
+// ¡Usa el resultado como un struct normal!
+println( "Nombre: " & result.name )
+println( "Edad: " & result.age )
+println( "Email: " & result.email )

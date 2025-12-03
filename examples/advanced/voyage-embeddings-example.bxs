@@ -1,0 +1,148 @@
+/**
+ * BoxLang AI - Voyage AI Embeddings Example
+ *
+ * This example demonstrates using Voyage AI for state-of-the-art text embeddings.
+ * Voyage AI specializes in embeddings with models optimized for semantic search,
+ * RAG applications, and text clustering.
+ *
+ * Prerequisites:
+ * - Voyage AI account and API key
+ * - Set VOYAGE_API_KEY environment variable
+ *
+ * @see https://docs.voyageai.com/docs/embeddings
+ */
+
+// Example 1: Basic single text embedding
+println( "=== Example 1: Single Text Embedding ===" )
+embedding = aiEmbed(
+    input: "BoxLang is a modern dynamic JVM language",
+    options: { provider: "voyage" }
+)
+println( "Model: " & embedding.model )
+println( "Dimensions: " & embedding.data.first().embedding.len() )
+println( "Token usage: " & embedding.usage.total_tokens )
+println( "" )
+
+// Example 2: Get just the vector with returnFormat
+println( "=== Example 2: Direct Vector Format ===" )
+vector = aiEmbed(
+    input: "Semantic search with embeddings",
+    options: {
+        provider: "voyage",
+        returnFormat: "first"
+    }
+)
+println( "Vector length: " & vector.len() )
+println( "First 5 values: " & vector.slice(1, 5).toList() )
+println( "" )
+
+// Example 3: Batch embeddings
+println( "=== Example 3: Batch Embeddings ===" )
+texts = [
+    "BoxLang is awesome",
+    "AI embeddings for semantic search",
+    "Vector databases and RAG",
+    "Modern JVM languages"
+]
+embeddings = aiEmbed(
+    input: texts,
+    options: {
+        provider: "voyage",
+        returnFormat: "embeddings"
+    }
+)
+println( "Generated " & embeddings.len() & " embeddings" )
+println( "Each embedding has " & embeddings.first().len() & " dimensions" )
+println( "" )
+
+// Example 4: Using voyage-3-lite for faster processing
+println( "=== Example 4: Voyage-3-Lite Model ===" )
+liteEmbedding = aiEmbed(
+    input: "Faster embeddings with lite model",
+    params: { model: "voyage-3-lite" },
+    options: { provider: "voyage" }
+)
+println( "Model: " & liteEmbedding.model )
+println( "Dimensions: " & liteEmbedding.data.first().embedding.len() )  // 512 dimensions
+println( "" )
+
+// Example 5: Optimized for queries vs documents
+println( "=== Example 5: Query vs Document Optimization ===" )
+
+// For search queries
+queryEmbedding = aiEmbed(
+    input: "What is BoxLang?",
+    params: {
+        model: "voyage-3",
+        input_type: "query"  // Optimized for search queries
+    },
+    options: { provider: "voyage", returnFormat: "first" }
+)
+println( "Query embedding dimensions: " & queryEmbedding.len() )
+
+// For documents being searched
+docEmbedding = aiEmbed(
+    input: "BoxLang is a modern dynamic JVM language with CFML compatibility...",
+    params: {
+        model: "voyage-3",
+        input_type: "document"  // Optimized for documents
+    },
+    options: { provider: "voyage", returnFormat: "first" }
+)
+println( "Document embedding dimensions: " & docEmbedding.len() )
+println( "" )
+
+// Example 6: Semantic similarity calculation
+println( "=== Example 6: Semantic Similarity ===" )
+
+function cosineSimilarity( v1, v2 ) {
+    var dot = 0, mag1 = 0, mag2 = 0
+    for( var i = 1; i <= v1.len(); i++ ) {
+        dot += v1[i] * v2[i]
+        mag1 += v1[i] * v1[i]
+        mag2 += v2[i] * v2[i]
+    }
+    return dot / ( sqr(mag1) * sqr(mag2) )
+}
+
+// Compare similar texts
+text1 = "BoxLang is a modern JVM language"
+text2 = "BoxLang runs on the Java Virtual Machine"
+text3 = "Python is a popular programming language"
+
+emb1 = aiEmbed( text1, {}, { provider: "voyage", returnFormat: "first" } )
+emb2 = aiEmbed( text2, {}, { provider: "voyage", returnFormat: "first" } )
+emb3 = aiEmbed( text3, {}, { provider: "voyage", returnFormat: "first" } )
+
+println( "Similarity between '" & text1 & "' and '" & text2 & "': " &
+    numberFormat( cosineSimilarity( emb1, emb2 ), "0.0000" ) )
+println( "Similarity between '" & text1 & "' and '" & text3 & "': " &
+    numberFormat( cosineSimilarity( emb1, emb3 ), "0.0000" ) )
+println( "" )
+
+// Example 7: Using service for more control
+println( "=== Example 7: Using Service Object ===" )
+voyageService = aiService( "voyage" )
+    .defaults({
+        model: "voyage-3",
+        input_type: "query"
+    })
+
+// Create an embedding request
+request = aiEmbeddingRequest(
+    input: "Semantic search query",
+    params: { model: "voyage-3-lite" }  // Override default
+)
+
+result = voyageService.embeddings( request )
+println( "Service result model: " & result.model )
+println( "Embedding dimensions: " & result.data.first().embedding.len() )
+println( "" )
+
+println( "=== All Examples Complete ===" )
+println( "Voyage AI provides state-of-the-art embeddings for:" )
+println( "  - Semantic search" )
+println( "  - RAG (Retrieval Augmented Generation)" )
+println( "  - Text clustering and classification" )
+println( "  - Recommendation systems" )
+println( "  - Duplicate detection" )

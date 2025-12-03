@@ -1,4 +1,7 @@
 services:
+  ################################################################
+  # Ollama LLM Server and Web UI
+  ###############################################################
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
@@ -32,6 +35,10 @@ services:
       - WEBUI_ADMIN_PASS=rocks
     restart: unless-stopped
 
+  ###############################################################
+  # Vector Databases
+  ###############################################################
+
   chromadb:
     image: chromadb/chroma:latest
     container_name: chromadb
@@ -56,6 +63,23 @@ services:
       - POSTGRES_PASSWORD=boxlang
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # MySQL 9 with native vector support
+  # MySQL 9.0+ includes native VECTOR type for semantic search
+  # Docs: https://dev.mysql.com/doc/refman/9.0/en/vector-functions.html
+  mysql:
+    image: mysql:9.0
+    container_name: mysql-vector
+    ports:
+      - "3307:3306"
+    environment:
+      - MYSQL_DATABASE=vectordb
+      - MYSQL_USER=boxlang
+      - MYSQL_PASSWORD=boxlang
+      - MYSQL_ROOT_PASSWORD=boxlang
+    volumes:
+      - mysql_data:/var/lib/mysql
     restart: unless-stopped
 
   # Pinecone Local Development Server
@@ -161,6 +185,22 @@ services:
       QDRANT__SERVICE__GRPC_PORT: 6334
       QDRANT__LOG_LEVEL: INFO
 
+  # TypeSense - Fast typo-tolerant search engine with vector support
+  # Docs: https://typesense.org/docs/
+  typesense:
+    image: typesense/typesense:29.0
+    container_name: typesense
+    ports:
+      - "8108:8108"
+    volumes:
+      - typesense_data:/data
+    environment:
+      - TYPESENSE_DATA_DIR=/data
+      - TYPESENSE_API_KEY=xyz
+      - TYPESENSE_ENABLE_CORS=true
+    command: "--data-dir /data --api-key=xyz --enable-cors"
+    restart: unless-stopped
+
 volumes:
   ollama_data:
     name: ollama_data
@@ -168,6 +208,8 @@ volumes:
     name: chromadb_data
   postgres_data:
     name: postgres_data
+  mysql_data:
+    name: mysql_data
   milvus_etcd_data:
     name: milvus_etcd_data
   milvus_minio_data:
@@ -178,3 +220,5 @@ volumes:
     name: weaviate_data
   qdrant_data:
     name: qdrant_data
+  typesense_data:
+    name: typesense_data

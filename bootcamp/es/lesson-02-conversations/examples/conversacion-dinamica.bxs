@@ -1,0 +1,18 @@
+// conversacion-dinamica.bxs
+// Construyendo conversación sobre la marcha
+// Ejecutar con: boxlang conversacion-dinamica.bxs
+
+conversation = aiMessage()
+    .system( "You are a helpful assistant. Keep responses brief." )
+
+// Primer intercambio
+conversation.user( "Hi, my name is Jordan" )
+response1 = aiChat( conversation )
+println( "IA: " & response1 )
+conversation.assistant( response1 )
+
+// Segundo intercambio
+conversation.user( "What's my name?" )
+response2 = aiChat( conversation )
+println( "IA: " & response2 )
+// Salida: "¡Tu nombre es Jordan!"

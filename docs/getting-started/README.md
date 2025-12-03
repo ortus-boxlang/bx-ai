@@ -11,7 +11,7 @@ Welcome to the BoxLang AI Module! This section will help you get up and running 
 
 BoxLang AI (`bx-ai`) is a comprehensive AI integration module for BoxLang that provides:
 
-- **🤖 Multi-Provider Support** - OpenAI, Claude, Gemini, Ollama, Grok, DeepSeek, Perplexity, and more
+- **🤖 Multi-Provider Support** - OpenAI, Claude, Gemini, Ollama, Grok, Groq, DeepSeek, Perplexity, and more
 - **💬 Simple Chat Interface** - Start with one-line AI conversations
 - **🔄 Composable Pipelines** - Build complex AI workflows by chaining operations
 - **🧠 Intelligent Agents** - Create autonomous agents with memory and tools

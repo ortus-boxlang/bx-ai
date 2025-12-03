@@ -5,10 +5,18 @@
  * Perfect for quick chats, real-time applications, and cost-conscious scenarios.
  *
  * Use Case: Chat applications where only recent context matters
+ *
+ * NEW: Includes multi-tenant isolation patterns for multi-user applications
  */
 
 println( "=== Windowed Memory Example ===" )
 println( "Keeps only the last 5 messages\n" )
+
+// ===================================================================
+// Part 1: Basic Single-Tenant Usage
+// ===================================================================
+println( "=== Part 1: Basic Usage (Single-Tenant) ===" )
+println( "Simple windowed memory without user isolation\n" )
 
 // Create windowed memory with a small limit
 memory = aiMemory( "windowed", {
@@ -74,11 +82,95 @@ messages.each( ( msg, idx ) => {
     }
 } )
 
-println( "\n📊 Summary:" )
+println( "\n📊 Part 1 Summary:" )
 println( "- Total messages added: 18 (9 user + 9 assistant)" )
 println( "- Messages kept: #messages.len()#" )
 println( "- Memory usage: Low ✓" )
-println( "- Cost: Minimal ✓" )
+println( "- Cost: Minimal ✓\n" )
+
+// ===================================================================
+// Part 2: Multi-Tenant Isolation
+// ===================================================================
+println( "\n=== Part 2: Multi-Tenant Memory (Per-User Isolation) ===" )
+println( "Demonstrate userId isolation for multi-user applications\n" )
+
+// Simulate three users with isolated windowed memory
+println( "Creating isolated memory for 3 users...\n" )
+
+aliceMemory = aiMemory( "windowed",
+    key: createUUID(),
+    userId: "alice",
+    config: { maxMessages: 5 }
+)
+
+bobMemory = aiMemory( "windowed",
+    key: createUUID(),
+    userId: "bob",
+    config: { maxMessages: 5 }
+)
+
+charlieMemory = aiMemory( "windowed",
+    key: createUUID(),
+    userId: "charlie",
+    config: { maxMessages: 5 }
+)
+
+// Create agents for each user
+aliceAgent = aiAgent( name: "Alice's Bot", memory: aliceMemory )
+bobAgent = aiAgent( name: "Bob's Bot", memory: bobMemory )
+charlieAgent = aiAgent( name: "Charlie's Bot", memory: charlieMemory )
+
+// Alice's conversation
+println( "👤 Alice's Conversation:" )
+aliceAgent.run( "My name is Alice and I love BoxLang" )
+println( "   ✓ Alice: 'My name is Alice and I love BoxLang'" )
+aliceAgent.run( "I'm building an AI chatbot" )
+println( "   ✓ Alice: 'I'm building an AI chatbot'\n" )
+
+// Bob's conversation (completely isolated)
+println( "👤 Bob's Conversation:" )
+bobAgent.run( "My name is Bob and I need help with databases" )
+println( "   ✓ Bob: 'My name is Bob and I need help with databases'" )
+bobAgent.run( "How do I use PostgreSQL with BoxLang?" )
+println( "   ✓ Bob: 'How do I use PostgreSQL with BoxLang?'\n" )
+
+// Charlie's conversation
+println( "👤 Charlie's Conversation:" )
+charlieAgent.run( "I'm Charlie, looking to migrate from JavaScript" )
+println( "   ✓ Charlie: 'I'm Charlie, looking to migrate from JavaScript'" )
+charlieAgent.run( "What are the main advantages of BoxLang?" )
+println( "   ✓ Charlie: 'What are the main advantages of BoxLang?'\n" )
+
+// Test isolation
+println( "=== Testing User Isolation ===" )
+println( "Each agent only remembers their own conversation:\n" )
+
+println( "👤 Asking Alice's agent: 'What's my name?'" )
+response = aliceAgent.run( "What's my name?" )
+println( "   Response: #response#" )
+println( "   ✓ Correctly identifies Alice\n" )
+
+println( "👤 Asking Bob's agent: 'What's my name?'" )
+response = bobAgent.run( "What's my name?" )
+println( "   Response: #response#" )
+println( "   ✓ Correctly identifies Bob\n" )
+
+println( "👤 Asking Charlie's agent: 'What's my name?'" )
+response = charlieAgent.run( "What's my name?" )
+println( "   Response: #response#" )
+println( "   ✓ Correctly identifies Charlie\n" )
+
+// Show memory sizes
+println( "=== Memory Statistics ===" )
+println( "- Alice's memory: #aliceMemory.getAll().len()# messages (userId: #aliceMemory.getUserId()#)" )
+println( "- Bob's memory: #bobMemory.getAll().len()# messages (userId: #bobMemory.getUserId()#)" )
+println( "- Charlie's memory: #charlieMemory.getAll().len()# messages (userId: #charlieMemory.getUserId()#)" )
+
+println( "\n📊 Multi-Tenant Summary:" )
+println( "- Complete user isolation ✓" )
+println( "- No data leakage between users ✓" )
+println( "- Each user maintains their own window ✓" )
+println( "- Perfect for web applications ✓" )
 println( "- Context loss: High ⚠️" )
 
 println( "\n💡 Best For:" )

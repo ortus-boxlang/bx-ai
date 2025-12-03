@@ -1,0 +1,70 @@
+// asistente-chat.bxs
+// Laboratorio: Construye un asistente de chat interactivo
+// Ejecutar con: boxlang asistente-chat.bxs
+
+println( "🤖 ¡Bienvenido al Asistente de Chat con IA!" )
+println()
+println( "Elige una personalidad:" )
+println( "1. Útil - Amigable y solidario" )
+println( "2. Gracioso - Ingenioso con chistes" )
+println( "3. Serio - Profesional y formal" )
+println()
+
+print( "Ingresa 1, 2 o 3: " )
+choice = readLine()
+
+// Establecer personalidad según la elección
+switch( choice ) {
+    case "1":
+        personality = "You are a helpful, friendly assistant. Be warm and supportive."
+        println( "✅ ¡Modo Útil activado!" )
+        break
+    case "2":
+        personality = "You are a funny assistant who loves jokes and puns. Make people laugh!"
+        println( "😄 ¡Modo Gracioso activado!" )
+        break
+    case "3":
+        personality = "You are a serious, professional assistant. Be formal and precise."
+        println( "📋 ¡Modo Serio activado!" )
+        break
+    default:
+        personality = "You are a helpful assistant."
+        println( "✅ ¡Modo predeterminado activado!" )
+}
+
+println()
+println( "¡Chat iniciado! Escribe 'salir' para terminar." )
+println( "─".repeat( 40 ) )
+
+// Inicializar conversación con personalidad
+conversation = aiMessage()
+    .system( personality )
+
+// Bucle de chat
+messageCount = 0
+running = true
+
+while( running ) {
+    print( "Tú: " )
+    userInput = readLine()
+
+    if( userInput.trim() == "salir" ) {
+        running = false
+        println()
+        println( "📊 Estadísticas: #messageCount# mensajes intercambiados" )
+        println( "👋 ¡Adiós!" )
+    } else {
+        conversation.user( userInput )
+
+        try {
+            response = aiChat( conversation )
+            println( "IA: " & response )
+            conversation.assistant( response )
+            messageCount++
+        } catch( any e ) {
+            println( "❌ Error: " & e.message )
+        }
+
+        println()
+    }
+}

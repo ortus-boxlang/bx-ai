@@ -1,0 +1,17 @@
+// class-extraction.bxs
+// Extract structured data into a BoxLang class
+// Run with: boxlang class-extraction.bxs
+
+// Person class is defined in Person.bx in this folder
+
+// Extract into Person class
+result = aiChat( 
+    "Extract person info: Sarah Connor, 35 years old, sarah@resistance.org" 
+).structuredOutput( new Person() )
+
+// Use getters!
+println( "Extracted Person (using class):" )
+println( "─".repeat( 30 ) )
+println( "Name: " & result.getName() )
+println( "Age: " & result.getAge() )
+println( "Email: " & result.getEmail() )

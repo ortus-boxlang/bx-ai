@@ -1,0 +1,19 @@
+// agente-basico.bxs
+// Ejemplo de agente básico
+// Ejecutar con: boxlang agente-basico.bxs
+
+agent = aiAgent(
+    name: "Helper",
+    description: "A helpful AI assistant",
+    instructions: "Be concise and friendly. Help users with their questions."
+)
+
+// Primera interacción
+response1 = agent.run( "Hi, my name is Alex" )
+println( "Respuesta 1: " & response1 )
+// Salida: "¡Hola Alex! Gusto en conocerte. ¿En qué puedo ayudarte hoy?"
+
+// ¡El agente recuerda (tiene memoria!)
+response2 = agent.run( "What's my name?" )
+println( "Respuesta 2: " & response2 )
+// Salida: "¡Tu nombre es Alex!"

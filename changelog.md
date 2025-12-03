@@ -11,6 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Mistral AI Provider Support**: Full integration with Mistral AI services
+    - New `MistralService` provider class with OpenAI-compatible API
+    - Chat completions with streaming support
+    - Embeddings support with `mistral-embed` model
+    - Tool/function calling support
+    - Default model: `mistral-small-latest`
+    - API key detection via `MISTRAL_API_KEY` environment variable
+    - Comprehensive integration tests
+- **HuggingFace Provider Support**: Full integration with HuggingFace Inference API
+    - New `HuggingFaceService` provider class extending BaseService
+    - OpenAI-compatible API endpoint at `router.huggingface.co/v1`
+    - Default model: `Qwen/Qwen2.5-72B-Instruct`
+    - Support for chat completions and embeddings
+    - Integration tests for HuggingFace provider
+    - API key pattern: `HUGGINGFACE_API_KEY`
+- **Groq Provider Support**: Full integration with Groq AI services for fast inference
+    - Uses OpenAI-compatible API at `api.groq.com`
+    - Default model: `llama-3.3-70b-versatile`
+    - Support for chat completions, streaming, and embeddings
+    - Environment variable: `GROQ_API_KEY`
 - **Embeddings Support**: Complete embeddings functionality for semantic search, clustering, and recommendations
     - New `aiEmbedding()` BIF for generating text embeddings
     - New `AiEmbeddingRequest` class to model embedding requests

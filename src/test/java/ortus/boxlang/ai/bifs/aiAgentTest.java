@@ -17,6 +17,7 @@ package ortus.boxlang.ai.bifs;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -24,6 +25,12 @@ import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
 
 public class aiAgentTest extends BaseIntegrationTest {
+
+	@BeforeEach
+	public void beforeEach() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "openai" );
+	}
 
 	@Test
 	@DisplayName( "It can create a basic agent" )
@@ -269,7 +276,7 @@ public class aiAgentTest extends BaseIntegrationTest {
 		        instructions: "Provide concise answers"
 		    )
 
-		    response = agent.run( "What is BoxLang?" )
+		    response = agent.run( "What is BoxLang?", {},  {} )
 
 		    println( response )
 		    """,

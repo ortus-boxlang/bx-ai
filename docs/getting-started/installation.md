@@ -247,6 +247,32 @@ ollama run llama3.2 "Hello!"
 }
 ```
 
+**HuggingFace**:
+
+```json
+{
+  "provider": "huggingface",
+  "apiKey": "hf_..."
+}
+```
+
+**Get your API key**: [https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+
+**Popular models**:
+
+- `Qwen/Qwen2.5-72B-Instruct` - Default, powerful general-purpose model for complex reasoning
+- `meta-llama/Llama-3.1-8B-Instruct` - Meta's Llama model, balanced performance and speed
+- `mistralai/Mistral-7B-Instruct-v0.3` - Fast and efficient for quick responses
+
+**Groq**:
+
+```json
+{
+  "provider": "groq",
+  "apiKey": "gsk_..."
+}
+```
+
 **DeepSeek**:
 
 ```json
@@ -255,6 +281,23 @@ ollama run llama3.2 "Hello!"
   "apiKey": "sk-..."
 }
 ```
+
+**Mistral**:
+
+```json
+{
+  "provider": "mistral",
+  "apiKey": "..."
+}
+```
+
+**Get your API key**: [https://console.mistral.ai/](https://console.mistral.ai/)
+
+**Popular models**:
+
+- `mistral-small-latest` - Cost-effective, fast (default)
+- `mistral-medium-latest` - Balanced performance
+- `mistral-large-latest` - Most capable
 
 **OpenRouter** (Multi-model gateway):
 

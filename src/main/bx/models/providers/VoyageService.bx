@@ -1,0 +1,76 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Voyage AI Service - Specialized embeddings provider
+ * Voyage AI focuses exclusively on embeddings with state-of-the-art models
+ * @see https://docs.voyageai.com/docs/embeddings
+ */
+class extends="BaseService"{
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_EMBED_PARAMS = {
+			// voyage-3 is the latest and most capable model
+			"model" : "voyage-3"
+		};
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.embeddingsURL = "https://api.voyageai.com/v1/embeddings"
+		variables.name = "Voyage"
+		// Voyage only does embeddings, no chat support
+		variables.chatURL = ""
+		defaults( static.DEFAULT_EMBED_PARAMS )
+	}
+
+	/**
+	 * Override chat to throw error since Voyage doesn't support chat
+	 */
+	@override
+	private function chat( required AiRequest aiRequest ){
+		throw(
+			type: "UnsupportedOperation",
+			message: "Voyage AI only supports embeddings, not chat completions. Use aiEmbed() or aiEmbedding() instead."
+		);
+	}
+
+	/**
+	 * Override chatStream to throw error since Voyage doesn't support chat
+	 */
+	@override
+	private function chatStream( required AiRequest aiRequest, required function callback ){
+		throw(
+			type: "UnsupportedOperation",
+			message: "Voyage AI only supports embeddings, not chat completions. Use aiEmbed() or aiEmbedding() instead."
+		);
+	}
+
+	/**
+	 * Override to set default embedding model if not specified
+	 */
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		// Set default embedding model if not specified
+		if( embeddingRequest.getModel().isEmpty() ){
+			embeddingRequest.setModelIfEmpty( static.DEFAULT_EMBED_PARAMS.model )
+		}
+		return super.embeddings( embeddingRequest )
+	}
+
+}

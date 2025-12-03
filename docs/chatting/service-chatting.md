@@ -22,6 +22,7 @@ service = aiService( "openai", "sk-your-key-here" )
 openai = aiService( "openai" )
 claude = aiService( "claude" )
 gemini = aiService( "gemini" )
+mistral = aiService( "mistral" )
 ollama = aiService( "ollama" )
 ```
 

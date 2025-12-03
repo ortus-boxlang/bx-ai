@@ -51,11 +51,17 @@ class extends="BaseVectorMemory" {
 		DEFAULT_INDEX_TYPE = "HNSW"
 		DEFAULT_HNSW_M = 16
 		DEFAULT_HNSW_EF_CONSTRUCTION = 64
-		// Distance operators for pgvector
+		// Distance operators for pgvector (used in queries)
 		DISTANCE_OPERATORS = {
 			"L2": "<->",           // Euclidean distance
 			"COSINE": "<=>",       // Cosine distance
 			"INNER_PRODUCT": "<##>" // Inner product (negative)
+		}
+		// Operator classes for pgvector indexes (used in CREATE INDEX)
+		INDEX_OPS = {
+			"L2": "vector_l2_ops",
+			"COSINE": "vector_cosine_ops",
+			"INNER_PRODUCT": "vector_ip_ops"
 		}
 		// Index methods
 		INDEX_TYPES = {
@@ -153,22 +159,26 @@ class extends="BaseVectorMemory" {
 		// Upsert (INSERT ... ON CONFLICT UPDATE)
 		queryExecute(
 			"INSERT INTO #variables.table# (
-				id, text, embedding, metadata, collection, created_at, updated_at
+				id, text, embedding, metadata, collection, userId, conversationId, created_at, updated_at
 			) VALUES (
-				:id, :text, CAST(:embedding AS vector), CAST(:metadata AS jsonb), :collection, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+				:id, :text, CAST(:embedding AS vector), CAST(:metadata AS jsonb), :collection, :userId, :conversationId, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 			)
 			ON CONFLICT (id, collection)
 			DO UPDATE SET
 				text = EXCLUDED.text,
 				embedding = EXCLUDED.embedding,
 				metadata = EXCLUDED.metadata,
+				userId = EXCLUDED.userId,
+				conversationId = EXCLUDED.conversationId,
 				updated_at = CURRENT_TIMESTAMP",
 			{
 				id: arguments.id,
 				text: arguments.text,
 				embedding: vectorStr,
 				metadata: metadataJson,
-				collection: variables.collection
+				collection: variables.collection,
+				userId: variables.userId,
+				conversationId: variables.conversationId
 			},
 			{ datasource: variables.datasource }
 		)
@@ -193,12 +203,24 @@ class extends="BaseVectorMemory" {
 		var vectorStr = "[" & arguments.embedding.toList() & "]"
 		var distanceOp = static.DISTANCE_OPERATORS[ variables.distanceFunction ]
 
-		// Build WHERE clause with optional metadata filter
+		// Build WHERE clause with collection, userId, conversationId
 		var whereClause = "collection = :collection"
 		var params = {
 			embedding: vectorStr,
 			collection: variables.collection,
 			limit: { value: arguments.limit, type: "integer" }
+		}
+
+		// Add userId filter if set
+		if ( len( variables.userId ) ) {
+			whereClause &= " AND userId = :userId";
+			params.userId = variables.userId;
+		}
+
+		// Add conversationId filter if set
+		if ( len( variables.conversationId ) ) {
+			whereClause &= " AND conversationId = :conversationId";
+			params.conversationId = variables.conversationId;
 		}
 
 		// Add JSONB metadata filters if provided
@@ -243,16 +265,32 @@ class extends="BaseVectorMemory" {
 	 * @return Array of documents
 	 */
 	array function getAllDocuments() {
+		// Build WHERE clause with userId/conversationId filtering
+		var whereClause = "collection = :collection";
+		var params = { collection: variables.collection };
+
+		// Only filter by userId if it's set (non-empty)
+		if ( len( variables.userId ) ) {
+			whereClause &= " AND userId = :userId";
+			params.userId = variables.userId;
+		}
+
+		// Only filter by conversationId if it's set (non-empty)
+		if ( len( variables.conversationId ) ) {
+			whereClause &= " AND conversationId = :conversationId";
+			params.conversationId = variables.conversationId;
+		}
+
 		var result = queryExecute(
 			"SELECT
 				id,
 				text,
-				CAST(metadata AS text) as metadata_json,
-				CAST(embedding AS text) as embedding_str
+				CAST(metadata AS text) AS metadata_json,
+				CAST(embedding AS text) AS embedding_str
 			FROM #variables.table#
-			WHERE collection = :collection
+			WHERE #whereClause#
 			ORDER BY created_at DESC",
-			{ collection: variables.collection },
+			params,
 			{ datasource: variables.datasource, returntype: "array" }
 		)
 
@@ -456,6 +494,8 @@ class extends="BaseVectorMemory" {
 			"CREATE TABLE IF NOT EXISTS #variables.table# (
 				id VARCHAR(255) NOT NULL,
 				collection VARCHAR(255) NOT NULL DEFAULT 'default',
+				userId VARCHAR(255) DEFAULT '',
+				conversationId VARCHAR(255) DEFAULT '',
 				text TEXT NOT NULL,
 				embedding vector(#dims#) NOT NULL,
 				metadata JSONB DEFAULT '{}'::jsonb,
@@ -471,6 +511,30 @@ class extends="BaseVectorMemory" {
 		queryExecute(
 			"CREATE INDEX IF NOT EXISTS idx_#variables.table#_collection
 			 ON #variables.table# (collection)",
+			{},
+			{ datasource: variables.datasource }
+		)
+
+		// Create index for userId lookups
+		queryExecute(
+			"CREATE INDEX IF NOT EXISTS idx_#variables.table#_userId
+			 ON #variables.table# (userId)",
+			{},
+			{ datasource: variables.datasource }
+		)
+
+		// Create index for conversationId lookups
+		queryExecute(
+			"CREATE INDEX IF NOT EXISTS idx_#variables.table#_conversationId
+			 ON #variables.table# (conversationId)",
+			{},
+			{ datasource: variables.datasource }
+		)
+
+		// Create composite index for multi-tenant queries
+		queryExecute(
+			"CREATE INDEX IF NOT EXISTS idx_#variables.table#_tenant
+			 ON #variables.table# (collection, userId, conversationId)",
 			{},
 			{ datasource: variables.datasource }
 		)
@@ -491,14 +555,14 @@ class extends="BaseVectorMemory" {
 	 * Create vector similarity index
 	 */
 	private void function createVectorIndex() {
-		var distanceOp = static.DISTANCE_OPERATORS[ variables.distanceFunction ]
+		var indexOps = static.INDEX_OPS[ variables.distanceFunction ]
 		var indexMethod = static.INDEX_TYPES[ variables.indexType ]
 
 		if ( variables.indexType == "HNSW" ) {
 			// HNSW index with configurable parameters
 			queryExecute(
 				"CREATE INDEX IF NOT EXISTS idx_#variables.table#_embedding_hnsw
-				 ON #variables.table# USING hnsw (embedding #distanceOp#)
+				 ON #variables.table# USING hnsw (embedding #indexOps#)
 				 WITH (m = #variables.hnswM#, ef_construction = #variables.hnswEfConstruction#)",
 				{},
 				{ datasource: variables.datasource }
@@ -507,7 +571,7 @@ class extends="BaseVectorMemory" {
 			// IVFFlat index (faster build, less accurate)
 			queryExecute(
 				"CREATE INDEX IF NOT EXISTS idx_#variables.table#_embedding_ivfflat
-				 ON #variables.table# USING ivfflat (embedding #distanceOp#)
+				 ON #variables.table# USING ivfflat (embedding #indexOps#)
 				 WITH (lists = 100)",
 				{},
 				{ datasource: variables.datasource }

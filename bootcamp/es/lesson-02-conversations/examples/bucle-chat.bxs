@@ -1,0 +1,27 @@
+// bucle-chat.bxs
+// Patrón de bucle de chat
+// Ejecutar con: boxlang bucle-chat.bxs
+
+conversation = aiMessage()
+    .system( "You are a helpful assistant. Be concise." )
+
+println( "=== Chat con IA ===" )
+println( "Escribe 'salir' para terminar" )
+println()
+
+running = true
+while( running ) {
+    print( "Tú: " )
+    userInput = readLine()
+
+    if( userInput == "salir" ) {
+        running = false
+        println( "¡Adiós!" )
+    } else {
+        conversation.user( userInput )
+        response = aiChat( conversation )
+        println( "IA: " & response )
+        conversation.assistant( response )
+        println()
+    }
+}

@@ -132,7 +132,7 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 		    println( "Using Pinecone API Key: " & apiKey )
 
 		      // Create PineconeVectorMemory instance
-		      memory = aiMemory( "pinecone", createUUID(), {
+		      memory = aiMemory( memory: "pinecone", key: createUUID(), config: {
 		          apiKey: apiKey,
 		          indexName: indexName,
 		          host: host,
@@ -171,7 +171,7 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 
 		    // Create memory with unique namespace
 		    testNamespace = "test_store_" & left( createUUID(), 8 );
-		    memory = aiMemory( "pinecone", testNamespace, {
+		    memory = aiMemory( memory: "pinecone", key: testNamespace, config: {
 		        apiKey: apiKey,
 		        indexName: indexName,
 		        host: host,
@@ -229,7 +229,7 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 
 		    // Create memory
 		    testNamespace = "test_search_" & left( createUUID(), 8 );
-		    memory = aiMemory( "pinecone", testNamespace, {
+		    memory = aiMemory( memory: "pinecone", key: testNamespace, config: {
 		        apiKey: apiKey,
 		        indexName: indexName,
 		        host: host,
@@ -290,7 +290,7 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 
 		    // Create memory
 		    testNamespace = "test_getbyid_" & left( createUUID(), 8 );
-		    memory = aiMemory( "pinecone", testNamespace, {
+		    memory = aiMemory( memory: "pinecone", key: testNamespace, config: {
 		        apiKey: apiKey,
 		        indexName: indexName,
 		        host: host,
@@ -357,7 +357,7 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 
 		    // Create memory
 		    testNamespace = "test_delete_" & left( createUUID(), 8 );
-		    memory = aiMemory( "pinecone", testNamespace, {
+		    memory = aiMemory( memory: "pinecone", key: testNamespace, config: {
 		        apiKey: apiKey,
 		        indexName: indexName,
 		        host: host,
@@ -418,7 +418,7 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 
 		    // Create memory
 		    testNamespace = "test_filter_" & left( createUUID(), 8 );
-		    memory = aiMemory( "pinecone", testNamespace, {
+		    memory = aiMemory( memory: "pinecone", key: testNamespace, config: {
 		        apiKey: apiKey,
 		        indexName: indexName,
 		        host: host,
@@ -491,7 +491,7 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 
 		    // Create memory
 		    testNamespace = "test_batch_" & left( createUUID(), 8 );
-		    memory = aiMemory( "pinecone", testNamespace, {
+		    memory = aiMemory( memory: "pinecone", key: testNamespace, config: {
 		        apiKey: apiKey,
 		        indexName: indexName,
 		        host: host,
@@ -548,7 +548,7 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 
 		    // Create hybrid memory with Pinecone
 		    testNamespace = "test_hybrid_" & left( createUUID(), 8 );
-		    hybridMemory = aiMemory( "hybrid", createUUID(), {
+		    hybridMemory = aiMemory( memory: "hybrid", key: createUUID(), config: {
 		        recentLimit: 2,
 		        semanticLimit: 2,
 		        totalLimit: 4,
@@ -584,6 +584,204 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 		assertTrue( result.getAsBoolean( Key.of( "created" ) ) );
 		assertTrue( result.getAsBoolean( Key.of( "hasVectorMemory" ) ) );
 		assertEquals( "PineconeVectorMemory", result.getAsString( Key.of( "vectorType" ) ) );
+	}
+
+	@Test
+	@Order( 9 )
+	@DisplayName( "Test PineconeVectorMemory with userId and conversationId" )
+	void testUserIdAndConversationId() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    	import java.lang.System;
+
+		    	// Get Pinecone config
+		    	apiKey = getSystemSetting( "PINECONE_API_KEY" );
+		    	indexName = getSystemSetting( "PINECONE_INDEX" );
+		    	host = getSystemSetting( "PINECONE_HOST" );
+
+		    testNamespace = "test_userid_" & left( createUUID(), 8 );
+
+		    memory = aiMemory(
+		        memory: "pinecone",
+		        userId: "john",
+		        conversationId: "pinecone-test",
+		        config: {
+		            apiKey: apiKey,
+		            indexName: indexName,
+		            host: host,
+		            namespace: testNamespace,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    memory.add( { text: "Pinecone vector database" } );
+
+		    result = {
+		        userId: memory.getUserId(),
+		        conversationId: memory.getConversationId()
+		    };
+		    """,
+		    context );
+
+		IStruct result = variables.getAsStruct( Key.of( "result" ) );
+
+		assertEquals( "john", result.getAsString( Key.of( "userId" ) ) );
+		assertEquals( "pinecone-test", result.getAsString( Key.of( "conversationId" ) ) );
+	}
+
+	@Test
+	@Order( 10 )
+	@DisplayName( "Test PineconeVectorMemory export includes userId and conversationId" )
+	void testExportIncludesIdentifiers() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    	import java.lang.System;
+
+		    	// Get Pinecone config
+		    	apiKey = getSystemSetting( "PINECONE_API_KEY" );
+		    	indexName = getSystemSetting( "PINECONE_INDEX" );
+		    	host = getSystemSetting( "PINECONE_HOST" );
+
+		    testNamespace = "test_export_" & left( createUUID(), 8 );
+
+		    memory = aiMemory(
+		        memory: "pinecone",
+		        userId: "jane",
+		        conversationId: "export-test",
+		        config: {
+		            apiKey: apiKey,
+		            indexName: indexName,
+		            host: host,
+		            namespace: testNamespace,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    memory.add( { text: "Export test document" } );
+
+		    exported = memory.export();
+		    """,
+		    context );
+
+		IStruct exported = variables.getAsStruct( Key.of( "exported" ) );
+
+		assertEquals( "jane", exported.getAsString( Key.of( "userId" ) ) );
+		assertEquals( "export-test", exported.getAsString( Key.of( "conversationId" ) ) );
+	}
+
+	@Test
+	@Order( 11 )
+	@DisplayName( "Test multi-tenant isolation with userId and conversationId filtering" )
+	void testMultiTenantIsolation() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    	import java.lang.System;
+
+		    	// Get Pinecone config
+		    	apiKey = getSystemSetting( "PINECONE_API_KEY" );
+		    	indexName = getSystemSetting( "PINECONE_INDEX" );
+		    	host = getSystemSetting( "PINECONE_HOST" );
+
+		    // Use shared namespace for multi-tenant test
+		    sharedNamespace = "test_multitenant_" & left( createUUID(), 8 );
+
+		    // Create memory for user alice, conversation chat1
+		    memoryAliceChat1 = aiMemory(
+		        memory: "pinecone",
+		        userId: "alice",
+		        conversationId: "chat1",
+		        config: {
+		            apiKey: apiKey,
+		            indexName: indexName,
+		            host: host,
+		            namespace: sharedNamespace,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Create memory for user alice, conversation chat2
+		    memoryAliceChat2 = aiMemory(
+		        memory: "pinecone",
+		        userId: "alice",
+		        conversationId: "chat2",
+		        config: {
+		            apiKey: apiKey,
+		            indexName: indexName,
+		            host: host,
+		            namespace: sharedNamespace,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Create memory for user bob, conversation chat1
+		    memoryBobChat1 = aiMemory(
+		        memory: "pinecone",
+		        userId: "bob",
+		        conversationId: "chat1",
+		        config: {
+		            apiKey: apiKey,
+		            indexName: indexName,
+		            host: host,
+		            namespace: sharedNamespace,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Add documents to each memory
+		    memoryAliceChat1.add( { text: "Alice chat1: Pinecone is scalable" } );
+		    memoryAliceChat2.add( { text: "Alice chat2: Vector search is fast" } );
+		    memoryBobChat1.add( { text: "Bob chat1: Database indexing" } );
+
+		    // Search in Alice's chat1 - should only return Alice's chat1 documents
+		    resultsAliceChat1 = memoryAliceChat1.getRelevant( query: "Pinecone", limit: 10 );
+
+		    // Search in Alice's chat2 - should only return Alice's chat2 documents
+		    resultsAliceChat2 = memoryAliceChat2.getRelevant( query: "Vector", limit: 10 );
+
+		    // Search in Bob's chat1 - should only return Bob's chat1 documents
+		    resultsBobChat1 = memoryBobChat1.getRelevant( query: "database", limit: 10 );
+
+		    // Verify metadata includes userId and conversationId
+		    firstAliceChat1 = resultsAliceChat1.len() > 0 ? resultsAliceChat1[1] : {};
+		    firstAliceChat2 = resultsAliceChat2.len() > 0 ? resultsAliceChat2[1] : {};
+		    firstBobChat1 = resultsBobChat1.len() > 0 ? resultsBobChat1[1] : {};
+
+		    result = {
+		        countAliceChat1: resultsAliceChat1.len(),
+		        countAliceChat2: resultsAliceChat2.len(),
+		        countBobChat1: resultsBobChat1.len(),
+		        aliceChat1UserId: firstAliceChat1.keyExists("metadata") && firstAliceChat1.metadata.keyExists("userId") ? firstAliceChat1.metadata.userId : "",
+		        aliceChat1ConvId: firstAliceChat1.keyExists("metadata") && firstAliceChat1.metadata.keyExists("conversationId") ? firstAliceChat1.metadata.conversationId : "",
+		        aliceChat2UserId: firstAliceChat2.keyExists("metadata") && firstAliceChat2.metadata.keyExists("userId") ? firstAliceChat2.metadata.userId : "",
+		        aliceChat2ConvId: firstAliceChat2.keyExists("metadata") && firstAliceChat2.metadata.keyExists("conversationId") ? firstAliceChat2.metadata.conversationId : "",
+		        bobChat1UserId: firstBobChat1.keyExists("metadata") && firstBobChat1.metadata.keyExists("userId") ? firstBobChat1.metadata.userId : "",
+		        bobChat1ConvId: firstBobChat1.keyExists("metadata") && firstBobChat1.metadata.keyExists("conversationId") ? firstBobChat1.metadata.conversationId : ""
+		    };
+		    """,
+		    context );
+
+		IStruct result = variables.getAsStruct( Key.of( "result" ) );
+
+		// Each memory should only see its own documents
+		assertEquals( 1, result.getAsInteger( Key.of( "countAliceChat1" ) ) );
+		assertEquals( 1, result.getAsInteger( Key.of( "countAliceChat2" ) ) );
+		assertEquals( 1, result.getAsInteger( Key.of( "countBobChat1" ) ) );
+
+		// Verify metadata contains correct userId and conversationId
+		assertEquals( "alice", result.getAsString( Key.of( "aliceChat1UserId" ) ) );
+		assertEquals( "chat1", result.getAsString( Key.of( "aliceChat1ConvId" ) ) );
+		assertEquals( "alice", result.getAsString( Key.of( "aliceChat2UserId" ) ) );
+		assertEquals( "chat2", result.getAsString( Key.of( "aliceChat2ConvId" ) ) );
+		assertEquals( "bob", result.getAsString( Key.of( "bobChat1UserId" ) ) );
+		assertEquals( "chat1", result.getAsString( Key.of( "bobChat1ConvId" ) ) );
 	}
 
 }

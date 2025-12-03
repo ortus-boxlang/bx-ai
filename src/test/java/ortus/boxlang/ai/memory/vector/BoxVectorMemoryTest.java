@@ -46,7 +46,7 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create BoxVectorMemory instance
-		    memory = aiMemory( "boxvector", createUUID(), {
+		    memory = aiMemory( memory: "boxvector", key: createUUID(), config: {
 		        embeddingProvider: "openai",
 		        embeddingModel: "text-embedding-3-small"
 		    } );
@@ -72,7 +72,7 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create BoxVectorMemory instance with embeddings
-		    memory = aiMemory( "boxvector", createUUID(), {
+		    memory = aiMemory( memory: "boxvector", key: createUUID(), config: {
 		        embeddingProvider: "openai",
 		        embeddingModel: "text-embedding-3-small"
 		    } );
@@ -126,7 +126,7 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create BoxVectorMemory instance
-		    memory = aiMemory( "boxvector", createUUID(), {
+		    memory = aiMemory( memory: "boxvector", key: createUUID(), config: {
 		        embeddingProvider: "openai",
 		        embeddingModel: "text-embedding-3-small"
 		    } );
@@ -161,7 +161,7 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create and populate memory
-		    memory = aiMemory( "boxvector", createUUID(), {
+		    memory = aiMemory( memory: "boxvector", key: createUUID(), config: {
 		        embeddingProvider: "openai",
 		        embeddingModel: "text-embedding-3-small"
 		    } );
@@ -198,7 +198,7 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory with multiple documents
-		    memory = aiMemory( "boxvector", createUUID(), {
+		    memory = aiMemory( memory: "boxvector", key: createUUID(), config: {
 		        embeddingProvider: "openai",
 		        embeddingModel: "text-embedding-3-small"
 		    } );
@@ -233,7 +233,7 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create empty memory
-		    memory = aiMemory( "boxvector", createUUID(), {
+		    memory = aiMemory( memory: "boxvector", key: createUUID(), config: {
 		        embeddingProvider: "openai",
 		        embeddingModel: "text-embedding-3-small"
 		    } );
@@ -260,7 +260,7 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create memory
-		    memory = aiMemory( "boxvector", createUUID(), {
+		    memory = aiMemory( memory: "boxvector", key: createUUID(), config: {
 		        embeddingProvider: "openai",
 		        embeddingModel: "text-embedding-3-small"
 		    } );
@@ -284,7 +284,7 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    // Create and populate memory with many documents
-		    memory = aiMemory( "boxvector", createUUID(), {
+		    memory = aiMemory( memory: "boxvector", key: createUUID(), config: {
 		        embeddingProvider: "openai",
 		        embeddingModel: "text-embedding-3-small"
 		    } );
@@ -340,7 +340,7 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "boxvector", createUUID(), {
+		    memory = aiMemory( memory: "boxvector", key: createUUID(), config: {
 		        embeddingProvider: "openai",
 		        embeddingModel: "text-embedding-3-small"
 		    } );
@@ -362,6 +362,178 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 
 		assertTrue( testResult.getAsBoolean( Key.of( "hasType" ) ) );
 		assertEquals( "BoxVectorMemory", testResult.getAsString( Key.of( "type" ) ) );
+	}
+
+	@Test
+	@Order( 11 )
+	@DisplayName( "Test BoxVectorMemory with userId and conversationId" )
+	void testUserIdAndConversationId() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "boxvector",
+		        userId: "emma",
+		        conversationId: "docs-search",
+		        config: {
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    memory.add( { text: "Documentation about APIs" } );
+
+		    result = {
+		        userId: memory.getUserId(),
+		        conversationId: memory.getConversationId()
+		    };
+		     """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		assertEquals( "emma", testResult.getAsString( Key.of( "userId" ) ) );
+		assertEquals( "docs-search", testResult.getAsString( Key.of( "conversationId" ) ) );
+	}
+
+	@Test
+	@Order( 12 )
+	@DisplayName( "Test BoxVectorMemory export includes userId and conversationId" )
+	void testExportIncludesIdentifiers() throws Exception {
+
+		runtime.executeSource(
+		    """
+		       memory = aiMemory(
+		           memory: "boxvector",
+		           userId: "frank",
+		           conversationId: "vector-test",
+		           config: {
+		               embeddingProvider: "openai",
+		               embeddingModel: "text-embedding-3-small"
+		           }
+		       );
+
+		    memory.add( { text: "Vector search test" } );
+
+		        exported = memory.export();
+
+		        result = {
+		            hasUserId: exported.keyExists( "userId" ),
+		            hasConversationId: exported.keyExists( "conversationId" ),
+		            userId: exported.keyExists( "userId" ) ? exported.userId : "",
+		            conversationId: exported.keyExists( "conversationId" ) ? exported.conversationId : ""
+		        };
+		        """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		assertTrue( testResult.getAsBoolean( Key.of( "hasUserId" ) ) );
+		assertTrue( testResult.getAsBoolean( Key.of( "hasConversationId" ) ) );
+		assertEquals( "frank", testResult.getAsString( Key.of( "userId" ) ) );
+		assertEquals( "vector-test", testResult.getAsString( Key.of( "conversationId" ) ) );
+	}
+
+	@Test
+	@Order( 13 )
+	@DisplayName( "Test multi-tenant isolation with userId and conversationId filtering" )
+	void testMultiTenantIsolation() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    // Create memory for user alice, conversation chat1
+		    memoryAliceChat1 = aiMemory(
+		        memory: "boxvector",
+		        userId: "alice",
+		        conversationId: "chat1",
+		        config: {
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Create memory for user alice, conversation chat2
+		    memoryAliceChat2 = aiMemory(
+		        memory: "boxvector",
+		        userId: "alice",
+		        conversationId: "chat2",
+		        config: {
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Create memory for user bob, conversation chat1
+		    memoryBobChat1 = aiMemory(
+		        memory: "boxvector",
+		        userId: "bob",
+		        conversationId: "chat1",
+		        config: {
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Add documents to each memory
+		    memoryAliceChat1.add( { text: "Alice chat1: BoxLang is awesome" } );
+		    memoryAliceChat2.add( { text: "Alice chat2: Java integration rocks" } );
+		    memoryBobChat1.add( { text: "Bob chat1: Vector databases are cool" } );
+
+		    // Search in Alice's chat1 - should only return Alice's chat1 documents
+		    resultsAliceChat1 = memoryAliceChat1.getRelevant( query: "BoxLang", limit: 10 );
+
+		    // Search in Alice's chat2 - should only return Alice's chat2 documents
+		    resultsAliceChat2 = memoryAliceChat2.getRelevant( query: "Java", limit: 10 );
+
+		    // Search in Bob's chat1 - should only return Bob's chat1 documents
+		    resultsBobChat1 = memoryBobChat1.getRelevant( query: "Vector", limit: 10 );
+
+		    // Get all documents for each memory
+		    allAliceChat1 = memoryAliceChat1.getAll();
+		    allAliceChat2 = memoryAliceChat2.getAll();
+		    allBobChat1 = memoryBobChat1.getAll();
+
+		    // Verify metadata includes userId and conversationId
+		    firstAliceChat1 = allAliceChat1.len() > 0 ? allAliceChat1[1] : {};
+		    firstAliceChat2 = allAliceChat2.len() > 0 ? allAliceChat2[1] : {};
+		    firstBobChat1 = allBobChat1.len() > 0 ? allBobChat1[1] : {};
+
+		    result = {
+		        countAliceChat1: resultsAliceChat1.len(),
+		        countAliceChat2: resultsAliceChat2.len(),
+		        countBobChat1: resultsBobChat1.len(),
+		        allCountAliceChat1: allAliceChat1.len(),
+		        allCountAliceChat2: allAliceChat2.len(),
+		        allCountBobChat1: allBobChat1.len(),
+		        aliceChat1UserId: firstAliceChat1.keyExists("metadata") && firstAliceChat1.metadata.keyExists("userId") ? firstAliceChat1.metadata.userId : "",
+		        aliceChat1ConvId: firstAliceChat1.keyExists("metadata") && firstAliceChat1.metadata.keyExists("conversationId") ? firstAliceChat1.metadata.conversationId : "",
+		        aliceChat2UserId: firstAliceChat2.keyExists("metadata") && firstAliceChat2.metadata.keyExists("userId") ? firstAliceChat2.metadata.userId : "",
+		        aliceChat2ConvId: firstAliceChat2.keyExists("metadata") && firstAliceChat2.metadata.keyExists("conversationId") ? firstAliceChat2.metadata.conversationId : "",
+		        bobChat1UserId: firstBobChat1.keyExists("metadata") && firstBobChat1.metadata.keyExists("userId") ? firstBobChat1.metadata.userId : "",
+		        bobChat1ConvId: firstBobChat1.keyExists("metadata") && firstBobChat1.metadata.keyExists("conversationId") ? firstBobChat1.metadata.conversationId : ""
+		    };
+		        """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		// Each memory should only see its own documents
+		assertEquals( 1, testResult.getAsInteger( Key.of( "countAliceChat1" ) ) );
+		assertEquals( 1, testResult.getAsInteger( Key.of( "countAliceChat2" ) ) );
+		assertEquals( 1, testResult.getAsInteger( Key.of( "countBobChat1" ) ) );
+
+		// getAll should also only return isolated documents
+		assertEquals( 1, testResult.getAsInteger( Key.of( "allCountAliceChat1" ) ) );
+		assertEquals( 1, testResult.getAsInteger( Key.of( "allCountAliceChat2" ) ) );
+		assertEquals( 1, testResult.getAsInteger( Key.of( "allCountBobChat1" ) ) );
+
+		// Verify metadata contains correct userId and conversationId
+		assertEquals( "alice", testResult.getAsString( Key.of( "aliceChat1UserId" ) ) );
+		assertEquals( "chat1", testResult.getAsString( Key.of( "aliceChat1ConvId" ) ) );
+		assertEquals( "alice", testResult.getAsString( Key.of( "aliceChat2UserId" ) ) );
+		assertEquals( "chat2", testResult.getAsString( Key.of( "aliceChat2ConvId" ) ) );
+		assertEquals( "bob", testResult.getAsString( Key.of( "bobChat1UserId" ) ) );
+		assertEquals( "chat1", testResult.getAsString( Key.of( "bobChat1ConvId" ) ) );
 	}
 
 }

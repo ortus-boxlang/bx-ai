@@ -1,0 +1,30 @@
+// agente-memoria.bxs
+// Agente con memoria persistente
+// Ejecutar con: boxlang agente-memoria.bxs
+
+agent = aiAgent(
+    name: "PersonalAssistant",
+    description: "A personal assistant that remembers your preferences",
+    instructions: "Remember user preferences and past conversations.",
+    memory: aiMemory( "windowed", { maxMessages: 20 } )
+)
+
+// Dile cosas al agente
+println( "Diciéndole al agente sobre preferencias..." )
+agent.run( "My favorite color is blue" )
+agent.run( "I live in Boston" )
+agent.run( "I work as a software developer" )
+
+// Pregunta sobre info recordada
+println()
+println( "Pregunta: ¿Cuál es mi color favorito?" )
+println( agent.run( "What's my favorite color?" ) )
+// Salida: "¡Tu color favorito es azul!"
+
+println()
+println( "Pregunta: ¿Dónde vivo y qué hago?" )
+println( agent.run( "Where do I live and what do I do?" ) )
+// Salida: "¡Vives en Boston y trabajas como desarrollador de software!"
+
+// Limpia la memoria cuando sea necesario
+// agent.clearMemory()

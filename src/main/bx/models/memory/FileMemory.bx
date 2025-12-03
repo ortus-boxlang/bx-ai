@@ -31,10 +31,21 @@ class extends="BaseMemory" {
 	 * Constructor
 	 *
 	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
 	 * @directoryPath Path to the directory for storing memory files (optional)
 	 */
-	function init( required string key, string directoryPath = static.DEFAULT_DIRECTORY_PATH ) {
-		super.init( arguments.key );
+	function init(
+		required string key,
+		string userId = "",
+		string conversationId = "",
+		string directoryPath = static.DEFAULT_DIRECTORY_PATH
+	) {
+		super.init(
+			key: arguments.key,
+			userId: arguments.userId,
+			conversationId: arguments.conversationId
+		);
 		variables.directoryPath = arguments.directoryPath;
 		return this;
 	}
@@ -44,8 +55,6 @@ class extends="BaseMemory" {
 	 * Supports directoryPath in config and loads data from file if it exists
 	 */
 	public IAiMemory function configure( required struct config ) {
-		super.configure( arguments.config );
-
 		if ( arguments.config.keyExists( "directoryPath" ) ) {
 			variables.directoryPath = arguments.config.directoryPath;
 		}
@@ -59,6 +68,8 @@ class extends="BaseMemory" {
 		if ( fileExists( getFilePath() ) ) {
 			loadFromFile();
 		}
+
+		super.configure( arguments.config );
 
 		return this;
 	}
@@ -114,19 +125,6 @@ class extends="BaseMemory" {
 			fileDelete( filePath );
 		}
 
-		return this;
-	}
-
-	/**
-	 * Set or replace the system message and persist to file
-	 *
-	 * @message The system message content (string)
-	 *
-	 * @return IAiMemory for chaining
-	 */
-	public IAiMemory function setSystemMessage( required string message ) {
-		super.setSystemMessage( arguments.message );
-		saveToFile();
 		return this;
 	}
 
@@ -208,21 +206,46 @@ class extends="BaseMemory" {
 	}
 
 	/**
+	 * Trim messages to keep only the last N (excluding system message)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function trim() {
+		super.trim();
+
+		// Persist to file
+		saveToFile();
+
+		return this;
+	}
+
+	/**
 	 * --------------------------------------------------------------------------
 	 * Private Helpers
 	 * --------------------------------------------------------------------------
 	 */
 
 	/**
-	 * Get the full file path based on directoryPath and key
-	 * Generates filename from memory key
+	 * Get the full file path based on directoryPath, key, userId, and conversationId
+	 * Generates filename from memory key with userId and conversationId
 	 *
 	 * @return String full path to the memory file
 	 */
 	private string function getFilePath() {
-		// Generate filename from key: memory-{key}.json
-		// Slugify the key portion only, not the extension
-		var filename = "memory-#variables.key.slugify()#.json";
+		// Build filename parts: memory-{key}[-userId][-conversationId].json
+		var parts = [ "memory", variables.key.slugify() ];
+
+		// Add userId if present
+		if ( len( variables.userId ) ) {
+			parts.append( variables.userId.slugify() );
+		}
+
+		// Add conversationId if present
+		if ( len( variables.conversationId ) ) {
+			parts.append( variables.conversationId.slugify() );
+		}
+
+		var filename = parts.toList( "-" ) & ".json";
 		// Combine directory and filename
 		return variables.directoryPath & "/" & filename;
 	}
@@ -301,10 +324,8 @@ class extends="BaseMemory" {
 				messages: this.getAll()
 			};
 
-			var jsonContent = jsonSerialize( data );
-
 			// Write to file
-			fileWrite( filePath, jsonContent );
+			fileWrite( filePath, jsonSerialize( data ) );
 		} catch( any e ) {
 			throw(
 				type: "FileMemoryError",

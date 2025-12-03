@@ -13,6 +13,7 @@ Vector memory enables **semantic search and retrieval** using embeddings to find
 
 ## Table of Contents
 
+- [Multi-Tenant Isolation](#multi-tenant-isolation)
 - [Overview](#overview)
 - [How Vector Memory Works](#how-vector-memory-works)
 - [Choosing a Vector Provider](#choosing-a-vector-provider)
@@ -21,6 +22,103 @@ Vector memory enables **semantic search and retrieval** using embeddings to find
 - [Configuration Examples](#configuration-examples)
 - [Best Practices](#best-practices)
 - [Advanced Usage](#advanced-usage)
+
+---
+
+## Multi-Tenant Isolation
+
+**All vector memory providers support multi-tenant isolation** through `userId` and `conversationId` parameters. This enables secure, isolated vector storage for:
+
+- **Per-user isolation**: Separate vector collections per user
+- **Per-conversation isolation**: Multiple conversations for same user
+- **Combined isolation**: Complete conversation isolation in shared collections
+
+### How Multi-Tenant Works
+
+Vector memories automatically filter searches and retrievals by userId/conversationId:
+
+```java
+// Single-tenant (shared collection)
+memory = aiMemory( "chroma", {
+    collection: "shared_vectors",
+    embeddingProvider: "openai"
+})
+
+// Multi-tenant (isolated by userId)
+alice = aiMemory( "chroma",
+    key: createUUID(),
+    userId: "alice",
+    config: {
+        collection: "shared_vectors",
+        embeddingProvider: "openai"
+    }
+)
+
+bob = aiMemory( "chroma",
+    key: createUUID(),
+    userId: "bob",
+    config: {
+        collection: "shared_vectors",
+        embeddingProvider: "openai"
+    }
+)
+
+// Alice and Bob share collection but see only their own vectors
+alice.add( "Alice's message" )
+bob.add( "Bob's message" )
+
+// Automatic isolation - Alice only retrieves her vectors
+aliceResults = alice.getRelevant( "message", 10 )  // Only Alice's vectors
+bobResults = bob.getRelevant( "message", 10 )      // Only Bob's vectors
+```
+
+### Multi-Conversation Support
+
+Isolate multiple conversations for the same user:
+
+```java
+// User Alice has multiple conversations
+supportChat = aiMemory( "pinecone",
+    key: createUUID(),
+    userId: "alice",
+    conversationId: "support-ticket-123",
+    config: { collection: "customer_interactions" }
+)
+
+salesChat = aiMemory( "pinecone",
+    key: createUUID(),
+    userId: "alice",
+    conversationId: "sales-inquiry-456",
+    config: { collection: "customer_interactions" }
+)
+
+// Each conversation is completely isolated
+supportChat.add( "Help with billing issue" )
+salesChat.add( "Interested in premium plan" )
+
+// Searches only within conversation scope
+supportResults = supportChat.getRelevant( "issue", 5 )  // Only support messages
+salesResults = salesChat.getRelevant( "plan", 5 )       // Only sales messages
+```
+
+### Storage Strategy by Provider
+
+| Provider | Storage Method | Filter Type |
+|----------|----------------|-------------|
+| BoxVector | Metadata | In-memory filter |
+| Chroma | Metadata | $and operator |
+| Milvus | Metadata | filter expressions |
+| MySQL | Dedicated columns | SQL WHERE |
+| Postgres | Dedicated columns | SQL WHERE |
+| Pinecone | Metadata | $eq operators |
+| Qdrant | Payload root | match filters |
+| TypeSense | Root fields | := filters |
+| Weaviate | Properties root | GraphQL Equal |
+| Hybrid | Delegates to vector provider | Provider-specific |
+
+All providers support `getAllDocuments()`, `getRelevant()`, and `findSimilar()` with automatic tenant filtering.
+
+For enterprise patterns, security considerations, and advanced multi-tenancy, see the [Multi-Tenant Memory Guide](../advanced/multi-tenant-memory.md).
 
 ---
 
@@ -93,33 +191,41 @@ agent.run( "What was my last invoice amount?" )
 
 ### Quick Decision Matrix
 
-| Provider | Best For | Setup | Cost | Performance |
-|----------|---------|-------|------|-------------|
-| **BoxVector** | Development, testing, small datasets | ✅ Instant | Free | Good |
-| **Hybrid** | Balanced recent + semantic | ✅ Easy | Low | Excellent |
-| **ChromaDB** | Python integration, local dev | ⚙️ Moderate | Free | Good |
-| **PostgreSQL** | Existing Postgres infrastructure | ⚙️ Moderate | Low | Good |
-| **Pinecone** | Production, cloud-first | ⚙️ Easy | Paid | Excellent |
-| **Qdrant** | Self-hosted, high performance | ⚙️ Complex | Free/Paid | Excellent |
-| **Weaviate** | GraphQL, knowledge graphs | ⚙️ Complex | Free/Paid | Excellent |
-| **Milvus** | Enterprise, massive scale | ⚙️ Complex | Free/Paid | Outstanding |
+| Provider | Best For | Setup | Cost | Performance | Multi-Tenant |
+|----------|---------|-------|------|-------------|-------------|
+| **BoxVector** | Development, testing, small datasets | ✅ Instant | Free | Good | ✅ |
+| **Hybrid** | Balanced recent + semantic | ✅ Easy | Low | Excellent | ✅ |
+| **ChromaDB** | Python integration, local dev | ⚙️ Moderate | Free | Good | ✅ |
+| **PostgreSQL** | Existing Postgres infrastructure | ⚙️ Moderate | Low | Good | ✅ |
+| **MySQL** | Existing MySQL 9+ infrastructure | ⚙️ Moderate | Low | Good | ✅ |
+| **TypeSense** | Fast typo-tolerant search, autocomplete | ⚙️ Easy | Free/Paid | Excellent | ✅ |
+| **Pinecone** | Production, cloud-first | ⚙️ Easy | Paid | Excellent | ✅ |
+| **Qdrant** | Self-hosted, high performance | ⚙️ Complex | Free/Paid | Excellent | ✅ |
+| **Weaviate** | GraphQL, knowledge graphs | ⚙️ Complex | Free/Paid | Excellent | ✅ |
+| **Milvus** | Enterprise, massive scale | ⚙️ Complex | Free/Paid | Outstanding | ✅ |
 
 ### Detailed Recommendations
 
 **Start Development:**
+
 - Use **BoxVector** for immediate prototyping
 - Use **Hybrid** when you need both recent and semantic context
 
 **Production (Cloud):**
+
 - **Pinecone**: Best for cloud-native, managed service
 - **Qdrant Cloud**: Excellent performance, generous free tier
 
 **Production (Self-Hosted):**
+
 - **PostgreSQL**: If you already use Postgres
+- **MySQL**: If you already use MySQL 9+
+- **TypeSense**: Fast typo-tolerant search with low latency
 - **Qdrant**: Best performance for self-hosted
 - **Milvus**: Enterprise-grade, handles billions of vectors
 
 **Special Use Cases:**
+
 - **ChromaDB**: Python ML infrastructure
 - **Weaviate**: Complex queries, GraphQL API
 - **Hybrid**: Best of both worlds (recent + semantic)
@@ -148,6 +254,41 @@ memory = aiMemory( "boxvector", {
     cache: true,               // Cache embeddings
     cacheName: "default"
 } )
+```
+
+**Multi-Tenant Configuration:**
+
+```java
+// Per-user isolation
+memory = aiMemory( "boxvector",
+    key: createUUID(),
+    userId: "user123",
+    config: {
+        collection: "shared_collection",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small"
+    }
+)
+
+// Per-conversation isolation
+memory = aiMemory( "boxvector",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "chat456",
+    config: {
+        collection: "all_conversations",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small"
+    }
+)
+
+// Access identifiers
+userId = memory.getUserId()
+conversationId = memory.getConversationId()
+
+// Export includes identifiers
+exported = memory.export()
+// { userId: "user123", conversationId: "chat456", ... }
 ```
 
 **Best For:**
@@ -200,6 +341,45 @@ memory = aiMemory( "chroma", {
 } )
 ```
 
+**Multi-Tenant Configuration:**
+
+```java
+// Per-user isolation
+memory = aiMemory( "chroma",
+    key: createUUID(),
+    userId: "user123",
+    config: {
+        collection: "shared_collection",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        host: "localhost",
+        port: 8000
+    }
+)
+
+// Per-conversation isolation
+memory = aiMemory( "chroma",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "chat456",
+    config: {
+        collection: "all_conversations",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        host: "localhost",
+        port: 8000
+    }
+)
+
+// Access identifiers
+userId = memory.getUserId()
+conversationId = memory.getConversationId()
+
+// Export includes identifiers
+exported = memory.export()
+// { userId: "user123", conversationId: "chat456", ... }
+```
+
 **Best For:**
 - Python-based infrastructure
 - Local development with persistence
@@ -239,11 +419,398 @@ memory = aiMemory( "postgres", {
 } )
 ```
 
+**Multi-Tenant Configuration:**
+
+```java
+// Per-user isolation
+memory = aiMemory( "postgres",
+    key: createUUID(),
+    userId: "user123",
+    config: {
+        collection: "shared_collection",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        datasource: "myPostgresDS",
+        tableName: "vector_memory"
+    }
+)
+
+// Per-conversation isolation
+memory = aiMemory( "postgres",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "chat456",
+    config: {
+        collection: "all_conversations",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        datasource: "myPostgresDS"
+    }
+)
+
+// Access identifiers
+userId = memory.getUserId()
+conversationId = memory.getConversationId()
+
+// Export includes identifiers
+exported = memory.export()
+// { userId: "user123", conversationId: "chat456", ... }
+```
+
 **Best For:**
 - Existing PostgreSQL deployments
 - Applications requiring SQL access
 - Strong consistency requirements
 - Medium-large datasets
+
+---
+
+### MysqlVectorMemory
+
+MySQL 9+ with native [VECTOR](https://dev.mysql.com/doc/refman/9.0/en/vector-functions.html) data type support.
+
+**Features:**
+
+- Native vector storage (MySQL 9+)
+- Use existing MySQL infrastructure
+- ACID compliance
+- Familiar SQL ecosystem
+- Application-layer distance calculations (MySQL Community Edition compatible)
+
+**Requirements:**
+
+- MySQL 9.0 or later (Community or Enterprise Edition)
+- Configured BoxLang datasource
+- VECTOR data type support
+
+**Setup:**
+
+MySQL 9 Community Edition includes native VECTOR data type support. No extensions needed - tables are auto-created:
+
+```sql
+-- Tables are created automatically, but here's the structure:
+CREATE TABLE bx_ai_vectors (
+    id VARCHAR(255) PRIMARY KEY,
+    text LONGTEXT NOT NULL,
+    embedding VECTOR(1536) NOT NULL,  -- Native VECTOR type
+    metadata JSON,
+    collection VARCHAR(255) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_collection (collection)
+);
+```
+
+**Configuration:**
+
+```java
+memory = aiMemory( "mysql", {
+    collection: "ai_memory",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    datasource: "myMysqlDS",         // JDBC datasource name
+    table: "bx_ai_vectors",          // Optional: default is "bx_ai_vectors"
+    dimensions: 1536,                // Embedding dimensions
+    distanceFunction: "COSINE",      // L2, COSINE, or DOT
+    autoCreate: true                 // Auto-create table (default: true)
+} )
+```
+
+**BoxLang Datasource Setup:**
+
+```json
+// boxlang.json
+{
+    "runtime": {
+        "datasources": {
+            "myMysqlDS": {
+                "driver": "mysql",
+                "connectionString": "jdbc:mysql://localhost:3306/mydb",
+                "username": "user",
+                "password": "pass"
+            }
+        }
+    }
+}
+```
+
+**Distance Functions:**
+
+- **COSINE**: Cosine distance (1 - cosine similarity), best for semantic search
+- **L2**: Euclidean distance (L2 norm), good for spatial data
+- **DOT**: Dot product similarity, efficient for normalized vectors
+
+**Usage Example:**
+
+```java
+// Create MySQL vector memory
+memory = aiMemory( "mysql", {
+    collection: "customer_support",
+    datasource: "myMysqlDS",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    distanceFunction: "COSINE"
+} )
+
+// Use with agent
+agent = aiAgent(
+    name: "Support Bot",
+    memory: memory
+)
+
+// Conversations are stored with vector embeddings
+agent.run( "I need help with billing" )
+agent.run( "What are the payment options?" )
+
+// Semantically similar past conversations are automatically retrieved
+agent.run( "Tell me about invoices" )  // Finds billing-related history
+```
+
+**Multi-Tenant Configuration:**
+
+```java
+// Per-user isolation
+memory = aiMemory( "mysql",
+    key: createUUID(),
+    userId: "user123",
+    config: {
+        collection: "shared_collection",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        datasource: "myMysqlDS",
+        distanceFunction: "COSINE"
+    }
+)
+
+// Per-conversation isolation
+memory = aiMemory( "mysql",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "chat456",
+    config: {
+        collection: "all_conversations",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        datasource: "myMysqlDS"
+    }
+)
+
+// Access identifiers
+userId = memory.getUserId()
+conversationId = memory.getConversationId()
+
+// Export includes identifiers
+exported = memory.export()
+// { userId: "user123", conversationId: "chat456", ... }
+```
+
+**Best For:**
+
+- Existing MySQL 9+ deployments
+- Organizations standardized on MySQL
+- Applications requiring SQL access
+- ACID compliance requirements
+- Medium-large datasets (millions of vectors)
+
+**Performance Notes:**
+
+- Distance calculations performed in application layer (MySQL Community Edition compatible)
+- MySQL HeatWave (Oracle Cloud) provides native DISTANCE() function for optimal performance
+- Suitable for production use with proper indexing
+- Table is automatically created with collection-based indexing
+
+**MySQL Community vs HeatWave:**
+
+- **Community Edition** (Free): VECTOR data type, app-layer distance calculations
+- **HeatWave** (Oracle Cloud): Native DISTANCE() function, VECTOR INDEX, GPU acceleration
+
+---
+
+### TypesenseVectorMemory
+
+[TypeSense](https://typesense.org/) is a fast, typo-tolerant search engine optimized for instant search experiences and vector similarity search.
+
+**Features:**
+
+- Lightning-fast search with typo tolerance
+- Native vector search support
+- Easy Docker deployment
+- RESTful API
+- Built-in relevance tuning
+- Excellent for autocomplete and instant search
+
+**Requirements:**
+
+- TypeSense Server 0.23.0+ (vector search support)
+- HTTP/HTTPS access to TypeSense instance
+- API key for authentication
+
+**Setup:**
+
+```bash
+# Docker (quickest way)
+export TYPESENSE_API_KEY=xyz
+docker run -p 8108:8108 \
+  -v $(pwd)/typesense-data:/data \
+  typesense/typesense:29.0 \
+  --data-dir /data \
+  --api-key=$TYPESENSE_API_KEY \
+  --enable-cors
+
+# Docker Compose
+services:
+  typesense:
+    image: typesense/typesense:29.0
+    restart: on-failure
+    ports:
+      - "8108:8108"
+    volumes:
+      - ./typesense-data:/data
+    command: '--data-dir /data --api-key=xyz --enable-cors'
+
+# Or use TypeSense Cloud (managed service)
+# Sign up at https://cloud.typesense.org/
+```
+
+**Configuration:**
+
+```java
+memory = aiMemory( "typesense", {
+    collection: "ai_conversations",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    host: "localhost",               // TypeSense host
+    port: 8108,                      // Default TypeSense port
+    protocol: "http",                // Use "https" for TypeSense Cloud
+    apiKey: "xyz",                   // Or use TYPESENSE_API_KEY env var
+    dimensions: 1536,                // Must match embedding model
+    timeout: 30                      // Connection timeout in seconds
+} )
+```
+
+**TypeSense Cloud Configuration:**
+
+```java
+// For TypeSense Cloud (managed service)
+memory = aiMemory( "typesense", {
+    collection: "production_memory",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    host: "xxx.a1.typesense.net",    // From TypeSense Cloud dashboard
+    port: 443,
+    protocol: "https",
+    apiKey: "your-cloud-api-key",    // From TypeSense Cloud dashboard
+    dimensions: 1536
+} )
+```
+
+**Usage Example:**
+
+```java
+// Create TypeSense vector memory
+memory = aiMemory( "typesense", {
+    collection: "customer_support",
+    host: "localhost",
+    port: 8108,
+    protocol: "http",
+    apiKey: "xyz",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small"
+} )
+
+// Use with agent
+agent = aiAgent(
+    name: "Support Bot",
+    memory: memory
+)
+
+// Fast, typo-tolerant semantic search
+agent.run( "How do I reset my pasword?" )  // Finds "password" results despite typo
+agent.run( "What are the paiment options?" )  // Finds "payment" results
+```
+
+**Multi-Tenant Configuration:**
+
+```java
+// Per-user isolation
+memory = aiMemory( "typesense",
+    key: createUUID(),
+    userId: "user123",
+    config: {
+        collection: "shared_collection",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        host: "localhost",
+        port: 8108,
+        protocol: "http",
+        apiKey: "xyz"
+    }
+)
+
+// Per-conversation isolation
+memory = aiMemory( "typesense",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "chat456",
+    config: {
+        collection: "all_conversations",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        host: "localhost",
+        port: 8108,
+        protocol: "http",
+        apiKey: "xyz"
+    }
+)
+
+// Access identifiers
+userId = memory.getUserId()
+conversationId = memory.getConversationId()
+
+// Export includes identifiers
+exported = memory.export()
+// { userId: "user123", conversationId: "chat456", ... }
+```
+
+**Best For:**
+
+- Applications requiring fast, low-latency search
+- Autocomplete and instant search features
+- Typo-tolerant semantic search
+- E-commerce product search
+- Documentation search
+- Customer support systems
+- Small to medium datasets (< 10M vectors)
+
+**TypeSense Advantages:**
+
+- **Speed**: Sub-50ms search latency
+- **Typo Tolerance**: Built-in fuzzy search
+- **Simple Setup**: Single binary, easy Docker deployment
+- **RESTful API**: Simple HTTP API, easy integration
+- **Relevance Tuning**: Fine-grained control over ranking
+
+**Pricing:**
+
+- **Self-Hosted**: Free (open source)
+- **TypeSense Cloud**:
+  - Free tier: Development clusters
+  - Paid: Production clusters from $0.03/hour
+
+**When to Choose TypeSense:**
+
+- Need instant search with typo tolerance
+- Want simple deployment and management
+- Require low-latency semantic search
+- Building search-heavy applications
+- Need both keyword and vector search
+
+**Performance Notes:**
+
+- Optimized for low-latency queries (< 50ms)
+- In-memory index for fast access
+- Horizontal scaling support
+- Efficient resource usage
 
 ---
 
@@ -276,6 +843,45 @@ memory = aiMemory( "pinecone", {
     dimensions: 1536,
     metric: "cosine"
 } )
+```
+
+**Multi-Tenant Configuration:**
+
+```java
+// Per-user isolation
+memory = aiMemory( "pinecone",
+    key: createUUID(),
+    userId: "user123",
+    config: {
+        collection: "shared_collection",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        apiKey: "your-pinecone-api-key",
+        environment: "us-west1-gcp"
+    }
+)
+
+// Per-conversation isolation
+memory = aiMemory( "pinecone",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "chat456",
+    config: {
+        collection: "all_conversations",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        apiKey: "your-pinecone-api-key",
+        environment: "us-west1-gcp"
+    }
+)
+
+// Access identifiers
+userId = memory.getUserId()
+conversationId = memory.getConversationId()
+
+// Export includes identifiers
+exported = memory.export()
+// { userId: "user123", conversationId: "chat456", ... }
 ```
 
 **Best For:**
@@ -325,6 +931,45 @@ memory = aiMemory( "qdrant", {
 } )
 ```
 
+**Multi-Tenant Configuration:**
+
+```java
+// Per-user isolation
+memory = aiMemory( "qdrant",
+    key: createUUID(),
+    userId: "user123",
+    config: {
+        collection: "shared_collection",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        host: "localhost",
+        port: 6333
+    }
+)
+
+// Per-conversation isolation
+memory = aiMemory( "qdrant",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "chat456",
+    config: {
+        collection: "all_conversations",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        host: "localhost",
+        port: 6333
+    }
+)
+
+// Access identifiers
+userId = memory.getUserId()
+conversationId = memory.getConversationId()
+
+// Export includes identifiers
+exported = memory.export()
+// { userId: "user123", conversationId: "chat456", ... }
+```
+
 **Best For:**
 - High-performance requirements
 - Self-hosted production
@@ -369,6 +1014,47 @@ memory = aiMemory( "weaviate", {
     apiKey: "",                     // For Weaviate Cloud
     dimensions: 1536
 } )
+```
+
+**Multi-Tenant Configuration:**
+
+```java
+// Per-user isolation
+memory = aiMemory( "weaviate",
+    key: createUUID(),
+    userId: "user123",
+    config: {
+        collection: "SharedCollection",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        host: "localhost",
+        port: 8080,
+        scheme: "http"
+    }
+)
+
+// Per-conversation isolation
+memory = aiMemory( "weaviate",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "chat456",
+    config: {
+        collection: "AllConversations",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        host: "localhost",
+        port: 8080,
+        scheme: "http"
+    }
+)
+
+// Access identifiers
+userId = memory.getUserId()
+conversationId = memory.getConversationId()
+
+// Export includes identifiers
+exported = memory.export()
+// { userId: "user123", conversationId: "chat456", ... }
 ```
 
 **Best For:**
@@ -416,6 +1102,47 @@ memory = aiMemory( "milvus", {
 } )
 ```
 
+**Multi-Tenant Configuration:**
+
+```java
+// Per-user isolation
+memory = aiMemory( "milvus",
+    key: createUUID(),
+    userId: "user123",
+    config: {
+        collection: "shared_collection",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        host: "localhost",
+        port: 19530,
+        metric: "IP"
+    }
+)
+
+// Per-conversation isolation
+memory = aiMemory( "milvus",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "chat456",
+    config: {
+        collection: "all_conversations",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        host: "localhost",
+        port: 19530,
+        metric: "IP"
+    }
+)
+
+// Access identifiers
+userId = memory.getUserId()
+conversationId = memory.getConversationId()
+
+// Export includes identifiers
+exported = memory.export()
+// { userId: "user123", conversationId: "chat456", ... }
+```
+
 **Best For:**
 - Enterprise deployments
 - Massive datasets (> 10M vectors)
@@ -450,6 +1177,26 @@ memory = aiMemory( "hybrid", {
         embeddingModel: "text-embedding-3-small"
     }
 } )
+```
+
+**Multi-Tenant Configuration:**
+
+```java
+// Per-user/conversation isolation in hybrid memory
+memory = aiMemory( "hybrid",
+    key: createUUID(),
+    userId: "alice",
+    conversationId: "support-chat",
+    config: {
+        recentLimit: 5,
+        semanticLimit: 5,
+        vectorProvider: "chroma",
+        vectorConfig: {
+            collection: "hybrid_chat",
+            embeddingProvider: "openai"
+        }
+    }
+)
 ```
 
 ### Benefits
@@ -494,6 +1241,18 @@ memory = aiMemory( "boxvector", {
     embeddingModel: "text-embedding-3-small"
 } )
 
+// Multi-tenant development testing
+memory = aiMemory( "boxvector",
+    key: createUUID(),
+    userId: "dev-user-123",
+    conversationId: "test-chat",
+    config: {
+        collection: "dev_shared",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small"
+    }
+)
+
 // Or use Hybrid for realistic testing
 memory = aiMemory( "hybrid", {
     recentLimit: 3,
@@ -505,49 +1264,69 @@ memory = aiMemory( "hybrid", {
 ### Production (Cloud)
 
 ```java
-// Pinecone (managed)
-memory = aiMemory( "pinecone", {
-    collection: "prod_chat",
-    embeddingProvider: "openai",
-    embeddingModel: "text-embedding-3-small",
-    apiKey: getSystemSetting( "PINECONE_API_KEY" ),
-    environment: "us-west1-gcp",
-    dimensions: 1536
-} )
+// Pinecone (managed) with multi-tenant isolation
+memory = aiMemory( "pinecone",
+    key: createUUID(),
+    userId: session.userId,
+    conversationId: request.chatId,
+    config: {
+        collection: "prod_chat",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        apiKey: getSystemSetting( "PINECONE_API_KEY" ),
+        environment: "us-west1-gcp",
+        dimensions: 1536
+    }
+)
 
-// Qdrant Cloud
-memory = aiMemory( "qdrant", {
-    collection: "prod_conversations",
-    embeddingProvider: "openai",
-    embeddingModel: "text-embedding-3-small",
-    host: "xyz.qdrant.io",
-    port: 6333,
-    apiKey: getSystemSetting( "QDRANT_API_KEY" ),
-    https: true
-} )
+// Qdrant Cloud with multi-tenant isolation
+memory = aiMemory( "qdrant",
+    key: createUUID(),
+    userId: session.userId,
+    conversationId: request.chatId,
+    config: {
+        collection: "prod_conversations",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        host: "xyz.qdrant.io",
+        port: 6333,
+        apiKey: getSystemSetting( "QDRANT_API_KEY" ),
+        https: true
+    }
+)
 ```
 
 ### Production (Self-Hosted)
 
 ```java
-// PostgreSQL with pgvector
-memory = aiMemory( "postgres", {
-    collection: "ai_vectors",
-    embeddingProvider: "openai",
-    embeddingModel: "text-embedding-3-small",
-    datasource: "mainDB",
-    dimensions: 1536,
-    autoCreate: true
-} )
+// PostgreSQL with pgvector and multi-tenant isolation
+memory = aiMemory( "postgres",
+    key: createUUID(),
+    userId: session.userId,
+    conversationId: request.chatId,
+    config: {
+        collection: "ai_vectors",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        datasource: "mainDB",
+        dimensions: 1536,
+        autoCreate: true
+    }
+)
 
-// Qdrant (Docker)
-memory = aiMemory( "qdrant", {
-    collection: "self_hosted_chat",
-    embeddingProvider: "openai",
-    embeddingModel: "text-embedding-3-small",
-    host: "qdrant.internal.network",
-    port: 6333
-} )
+// Qdrant (Docker) with multi-tenant isolation
+memory = aiMemory( "qdrant",
+    key: createUUID(),
+    userId: session.userId,
+    conversationId: request.chatId,
+    config: {
+        collection: "self_hosted_chat",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        host: "qdrant.internal.network",
+        port: 6333
+    }
+)
 ```
 
 ### Embedding Provider Options
@@ -676,6 +1455,34 @@ memory = aiMemory( "pinecone", {
 } )
 ```
 
+### 7. Use Multi-Tenant Isolation
+
+Securely isolate user and conversation data in shared collections:
+
+```java
+// Enterprise multi-user application
+function getUserMemory( userId, conversationId = "" ) {
+    return aiMemory( "postgres",
+        key: createUUID(),
+        userId: arguments.userId,
+        conversationId: arguments.conversationId,
+        config: {
+            collection: "enterprise_vectors",
+            datasource: "mainDB",
+            embeddingProvider: "openai"
+        }
+    )
+}
+
+// Automatic isolation - no manual filtering needed
+aliceMemory = getUserMemory( "alice", "support-123" )
+bobMemory = getUserMemory( "bob", "sales-456" )
+
+// Each user only sees their own vectors
+aliceResults = aliceMemory.getRelevant( "billing", 5 )  // Only Alice's data
+bobResults = bobMemory.getRelevant( "billing", 5 )      // Only Bob's data
+```
+
 ---
 
 ## Advanced Usage
@@ -712,19 +1519,26 @@ memory = userType == "support" ? supportMemory : salesMemory
 ### Cross-Session Continuity
 
 ```java
-// Per-user persistent memory
+// Per-user persistent memory with multi-tenant isolation
 function getUserMemory( userId ) {
-    return aiMemory( "postgres", {
-        collection: "user_#userId#_history",
-        embeddingProvider: "openai",
-        embeddingModel: "text-embedding-3-small",
-        datasource: "mainDB"
-    } )
+    return aiMemory( "postgres",
+        key: createUUID(),
+        userId: arguments.userId,
+        config: {
+            collection: "user_history",
+            embeddingProvider: "openai",
+            embeddingModel: "text-embedding-3-small",
+            datasource: "mainDB"
+        }
+    )
 }
 
-// Each user has their own vector collection
+// Each user's data is automatically isolated
 userMemory = getUserMemory( session.userId )
 agent = aiAgent( name: "Assistant", memory: userMemory )
+
+// Conversations persist across sessions
+agent.run( "What did we discuss last week?" )  // Retrieves user's history only
 ```
 
 ### Batch Operations

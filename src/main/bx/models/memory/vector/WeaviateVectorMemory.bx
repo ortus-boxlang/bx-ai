@@ -72,10 +72,22 @@ class extends="BaseVectorMemory" {
 	 * Constructor
 	 *
 	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
 	 * @collection The collection/class name (will be converted to PascalCase)
 	 */
-	function init( string key = createUUID(), string collection = static.DEFAULT_COLLECTION ) {
-		super.init( arguments.key, pascalCase(  arguments.collection ) );
+	function init(
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = "",
+		string collection = static.DEFAULT_COLLECTION
+	) {
+		super.init(
+			key: arguments.key,
+			userId: arguments.userId,
+			conversationId: arguments.conversationId,
+			collection: pascalCase( arguments.collection )
+		);
 		return this;
 	}
 
@@ -177,7 +189,9 @@ class extends="BaseVectorMemory" {
 			"properties": {
 				"text": arguments.text,
 				"metadata": jsonSerialize( arguments.metadata ),
-				"timestamp": now().getTime()
+				"timestamp": now().getTime(),
+				"userId": variables.userId,
+				"conversationId": variables.conversationId
 			},
 			"vector": arguments.embedding
 		};
@@ -215,12 +229,21 @@ class extends="BaseVectorMemory" {
 		required numeric limit,
 		required struct filter
 	) {
+		// Build combined filter with userId/conversationId
+		var combinedFilter = arguments.filter.copy();
+		if ( len( variables.userId ) ) {
+			combinedFilter.userId = variables.userId;
+		}
+		if ( len( variables.conversationId ) ) {
+			combinedFilter.conversationId = variables.conversationId;
+		}
+
 		// Build GraphQL query
 		var graphqlQuery = {
 			"query": buildSearchQuery(
 				embedding = arguments.embedding,
 				limit = arguments.limit,
-				filter = arguments.filter
+				filter = combinedFilter
 			)
 		};
 
@@ -250,9 +273,28 @@ class extends="BaseVectorMemory" {
 	 * @return Array of documents
 	 */
 	array function getAllDocuments() {
+		// Build where clause for userId/conversationId filtering
+		var whereClause = "";
+		var conditions = [];
+
+		if ( len( variables.userId ) ) {
+			conditions.append( '{ path: ["userId"], operator: Equal, valueText: "#variables.userId#" }' );
+		}
+		if ( len( variables.conversationId ) ) {
+			conditions.append( '{ path: ["conversationId"], operator: Equal, valueText: "#variables.conversationId#" }' );
+		}
+
+		if ( conditions.len() > 0 ) {
+			if ( conditions.len() == 1 ) {
+				whereClause = ", where: #conditions[1]#";
+			} else {
+				whereClause = ", where: { operator: And, operands: [#conditions.toList()#] }";
+			}
+		}
+
 		// Build GraphQL query to get all objects
 		var graphqlQuery = {
-			"query": "{ Get { #variables.collection# { _additional { id vector } text metadata timestamp } } }"
+			"query": "{ Get { #variables.collection#(limit: 100#whereClause#) { _additional { id vector } text metadata timestamp userId conversationId } } }"
 		};
 
 		// Execute query
@@ -414,6 +456,16 @@ class extends="BaseVectorMemory" {
 					"name": "timestamp",
 					"dataType": [ "number" ],
 					"description": "Document creation timestamp"
+				},
+				{
+					"name": "userId",
+					"dataType": [ "text" ],
+					"description": "User identifier for multi-tenant isolation"
+				},
+				{
+					"name": "conversationId",
+					"dataType": [ "text" ],
+					"description": "Conversation identifier for multi-conversation support"
 				}
 			]
 		};
@@ -659,11 +711,16 @@ class extends="BaseVectorMemory" {
 		var conditions = [];
 
 		arguments.filter.each( ( key, value ) => {
-			// GraphQL syntax - escape quotes with backslash for GraphQL string literals
-			// The pattern searches for the key:value pair within the metadata JSON string
-			// Use \" to escape quotes in GraphQL strings
-			var pattern = '*\"#key#\":\"#value#\"*';
-			conditions.append( '{ path: ["metadata"], operator: Like, valueText: "' & pattern & '" }' );
+			// userId and conversationId are stored at root level, others in metadata JSON
+			if ( key == "userId" || key == "conversationId" ) {
+				conditions.append( '{ path: ["#key#"], operator: Equal, valueText: "#value#" }' );
+			} else {
+				// GraphQL syntax - escape quotes with backslash for GraphQL string literals
+				// The pattern searches for the key:value pair within the metadata JSON string
+				// Use \" to escape quotes in GraphQL strings
+				var pattern = '*\"#key#\":\"#value#\"*';
+				conditions.append( '{ path: ["metadata"], operator: Like, valueText: "' & pattern & '" }' );
+			}
 		} );
 
 		// Return single condition or AND operator

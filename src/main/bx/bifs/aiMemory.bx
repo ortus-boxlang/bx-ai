@@ -28,11 +28,19 @@ class {
 	 *
 	 * @memory The memory type to create. Defaults to "window".
 	 * @key The key to identify the memory instance. Defaults to a new UUID.
+	 * @userId The user identifier for multi-tenant isolation.
+	 * @conversationId The conversation identifier for multiple conversations per user.
 	 * @config Configuration struct for the memory instance
 	 *
 	 * @return IAiMemory instance
 	 */
-	function invoke( string memory, string key = createUUID(), struct config = {} ) {
+	function invoke(
+		string memory,
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = "",
+		struct config = {}
+	) {
 
 		// Default the memory type from the module settings if not provided
 		var memoryType = arguments.memory ?: moduleRecord.settings.memory.provider;
@@ -72,9 +80,29 @@ class {
 			// --------------------------------------------------------------------------------
 			// Vector Memory Types
 			// --------------------------------------------------------------------------------
+			case "BoxVectorMemory":
+			case "boxvector":
+				memoryClass = "bxModules.bxai.models.memory.vector.BoxVectorMemory";
+				break;
 			case "chroma":
 			case "ChromaVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.ChromaVectorMemory";
+				break;
+			case "milvus":
+			case "MilvusVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.MilvusVectorMemory";
+				break;
+			case "mysql":
+			case "MysqlVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.MysqlVectorMemory";
+				break;
+			case "typesense":
+			case "TypesenseVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.TypesenseVectorMemory";
+				break;
+			case "hybrid":
+			case "HybridMemory":
+				memoryClass = "bxModules.bxai.models.memory.HybridMemory";
 				break;
 			case "postgres":
 			case "PostgresVectorMemory":
@@ -84,14 +112,6 @@ class {
 			case "pinecone":
 				memoryClass = "bxModules.bxai.models.memory.vector.PineconeVectorMemory";
 				break;
-			case "BoxVectorMemory":
-			case "boxvector":
-				memoryClass = "bxModules.bxai.models.memory.vector.BoxVectorMemory";
-				break;
-			case "milvus":
-			case "MilvusVectorMemory":
-				memoryClass = "bxModules.bxai.models.memory.vector.MilvusVectorMemory";
-				break;
 			case "qdrant":
 			case "QdrantVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.QdrantVectorMemory";
@@ -100,10 +120,6 @@ class {
 			case "WeaviateVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.WeaviateVectorMemory";
 				break;
-			case "hybrid":
-			case "HybridMemory":
-				memoryClass = "bxModules.bxai.models.memory.HybridMemory";
-				break;
 			default:
 				// Check if it's a full class path
 				if ( memoryType.findNoCase( "." ) ) {
@@ -111,7 +127,7 @@ class {
 				} else {
 					throw(
 						type: "InvalidMemoryType",
-						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, JVectorMemory, MilvusVectorMemory, HybridMemory"
+						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, MilvusVectorMemory, MysqlVectorMemory, TypesenseVectorMemory, HybridMemory"
 					);
 				}
 		}
@@ -123,7 +139,11 @@ class {
 		} );
 
 		// Create and configure the memory instance
-		return new "#memoryClass#"( arguments.key ).configure( memoryConfig );
+		return new "#memoryClass#"(
+			key: arguments.key,
+			userId: arguments.userId,
+			conversationId: arguments.conversationId
+		).configure( memoryConfig );
 	}
 
 }

@@ -1,0 +1,30 @@
+// array-extraction.bxs
+// Extract arrays of structured data
+// Run with: boxlang array-extraction.bxs
+
+// Template for ONE task
+taskTemplate = {
+    "title": "",
+    "priority": "",
+    "done": false
+}
+
+// Wrap in array to extract MULTIPLE tasks
+tasks = aiChat( "
+    Extract these tasks:
+    1. Buy groceries (high priority, not done)
+    2. Call mom (medium priority, done)
+    3. Exercise (low priority, not done)
+" ).structuredOutput( [ taskTemplate ] )
+
+// Display results
+println( "📋 Extracted Tasks:" )
+println( "─".repeat( 40 ) )
+
+for( task in tasks ) {
+    status = task.done ? "✅" : "⬜"
+    println( "#status# #task.title# [#task.priority#]" )
+}
+
+println()
+println( "Total tasks: #tasks.len()#" )

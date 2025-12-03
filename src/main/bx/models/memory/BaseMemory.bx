@@ -3,7 +3,7 @@
  *
  * Copyright [2023] [Ortus Solutions, Corp]
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * Licensed under the Apache License, Version 2.0 (the "License") you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
  *
  * http://www.apache.org/licenses/LICENSE-2.0
@@ -21,6 +21,16 @@ abstract class implements="IAiMemory" {
 	 * Unique key for this memory instance
 	 */
 	property name="key" type="string" default="";
+
+	/**
+	 * User identifier for multi-tenant memory isolation
+	 */
+	property name="userId" type="string" default="";
+
+	/**
+	 * Conversation identifier for multiple conversations per user
+	 */
+	property name="conversationId" type="string" default="";
 
 	/**
 	 * Metadata for this memory instance
@@ -45,25 +55,37 @@ abstract class implements="IAiMemory" {
 	/**
 	 * Maximum number of messages to store (0 = unlimited)
 	 */
-	property name="maxMessages" type="numeric" default=100;
+	property name="maxMessages" type="numeric";
 
 	/**
 	 * Constants
 	 */
 	static {
 		final settings = getModuleInfo( "bxai" ).settings
+		final DEFAULT_MAX_MESSAGES = 100
 	}
 
 	/**
 	 * Constructor - sets default name from class metadata
 	 *
 	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
+	 * @maxMessages Maximum number of messages to store
 	 */
-	function init( string key = createUUID() ) {
-		variables.key = arguments.key;
-		var fullName = getMetadata( this ).name ?: "BaseMemory";
-		variables.name = fullName.listLast( "." );
-		return this;
+	function init(
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = "",
+		numeric maxMessages = static.DEFAULT_MAX_MESSAGES
+	) {
+		variables.key = arguments.key
+		variables.userId = arguments.userId
+		variables.conversationId = arguments.conversationId
+		var fullName = getMetadata( this ).name ?: "BaseMemory"
+		variables.name = fullName.listLast( "." )
+		variables.maxMessages = arguments.maxMessages
+		return this
 	}
 
 	/**
@@ -81,10 +103,10 @@ abstract class implements="IAiMemory" {
 	 */
 	public any function key( string key ) {
 		if ( !isNull( arguments.key ) ) {
-			variables.key = arguments.key;
-			return this;
+			variables.key = arguments.key
+			return this
 		}
-		return variables.key;
+		return variables.key
 	}
 
 	/**
@@ -96,10 +118,10 @@ abstract class implements="IAiMemory" {
 	 */
 	public any function metadata( struct metadata ) {
 		if ( !isNull( arguments.metadata ) ) {
-			variables.metadata = arguments.metadata;
-			return this;
+			variables.metadata = arguments.metadata
+			return this
 		}
-		return variables.metadata;
+		return variables.metadata
 	}
 
 	/**
@@ -114,44 +136,15 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function add( required any message ) {
+		processMessage( arguments.message )
+			.each( msg => {
+				variables.messages.append( msg )
+			} )
 
-		// AiMessage instance - get its messages and process them
- 		if ( arguments.message instanceof "AiMessage" ) {
-			return 	this.add( arguments.message.getMessages() )
-		}
+		// Trim to max size (excluding system message)
+		this.trim()
 
-		// Struct - must have role and content
-		if ( isStruct( arguments.message ) ) {
-			if ( !arguments.message.keyExists( "role" ) || !arguments.message.keyExists( "content" ) ) {
-				throw(
-					type: "InvalidMessage",
-					message: "Message struct must contain 'role' and 'content' keys"
-				);
-			}
-			param arguments.message.timestamp = now();
-			variables.messages.append( arguments.message );
-		}
-		// Array - process each element
-		else if ( isArray( arguments.message ) ) {
-			arguments.message.each( ( m ) => this.add( m ) );
-		}
-		// String - add as user message
-		else if ( isSimpleValue( arguments.message ) ) {
-			variables.messages.append( {
-				role: "user",
-				content: arguments.message,
-				timestamp: now()
-			} );
-		}
-		// Invalid type
-		else {
-			throw(
-				type: "InvalidMessage",
-				message: "Message must be a string, struct, array, or AiMessage instance"
-			);
-		}
-
-		return this;
+		return this
 	}
 
 	/**
@@ -171,16 +164,16 @@ abstract class implements="IAiMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getRecent( numeric limit = 10 ) {
-		var allMessages = getAll();
-		var total = allMessages.len();
+		var allMessages = getAll()
+		var total = allMessages.len()
 
 		// If total messages less than or equal to limit, return all
 		if ( total <= arguments.limit ) {
-			return allMessages;
+			return allMessages
 		}
 
-		var start = total - arguments.limit + 1;
-		return allMessages.slice( start, total );
+		var start = total - arguments.limit + 1
+		return allMessages.slice( start, total )
 	}
 
 	/**
@@ -191,7 +184,7 @@ abstract class implements="IAiMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getByRole( required string role ) {
-		return this.getAll().filter( ( m ) => m.role == role );
+		return this.getAll().filter( ( m ) => m.role == role )
 	}
 
 	/**
@@ -200,31 +193,8 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function clear() {
-		variables.messages = [];
-		return this;
-	}
-
-	/**
-	 * Get the maximum number of messages this memory can store
-	 * 0 means unlimited
-	 *
-	 * @return Numeric max messages
-	 */
-	public numeric function getMaxMessages() {
-		return variables.maxMessages;
-	}
-
-	/**
-	 * Set the maximum number of messages this memory can store
-	 * 0 means unlimited
-	 *
-	 * @maxMessages Maximum number of messages (0 = unlimited)
-	 *
-	 * @return IAiMemory for chaining
-	 */
-	public IAiMemory function setMaxMessages( required numeric maxMessages ) {
-		variables.maxMessages = arguments.maxMessages;
-		return this;
+		variables.messages = []
+		return this
 	}
 
 	/**
@@ -233,7 +203,7 @@ abstract class implements="IAiMemory" {
 	 * @return Numeric count
 	 */
 	public numeric function count() {
-		return getAll().len();
+		return getAll().len()
 	}
 
 	/**
@@ -242,7 +212,7 @@ abstract class implements="IAiMemory" {
 	 * @return True if empty, false otherwise
 	 */
 	public boolean function isEmpty() {
-		return getAll().isEmpty();
+		return getAll().isEmpty()
 	}
 
 	/**
@@ -251,11 +221,11 @@ abstract class implements="IAiMemory" {
 	 * @return The system message content or an empty string
 	 */
 	public string function getSystemMessage() {
-		var systemMessages = getByRole( "system" );
+		var systemMessages = getByRole( "system" )
 		if ( systemMessages.isEmpty() ) {
-			return "";
+			return ""
 		}
-		return systemMessages.first().content;
+		return systemMessages.first().content
 	}
 
 	/**
@@ -264,7 +234,7 @@ abstract class implements="IAiMemory" {
 	 * @return True if a system message exists, false otherwise
 	 */
 	public boolean function hasSystemMessage() {
-		return !getByRole( "system" ).isEmpty();
+		return !getByRole( "system" ).isEmpty()
 	}
 
 	/**
@@ -276,16 +246,19 @@ abstract class implements="IAiMemory" {
 	 */
 	public IAiMemory function setSystemMessage( required string message ) {
 		// Remove existing system message if any
-		removeSystemMessage();
+		removeSystemMessage()
 
 		// Add new system message at the beginning
 		getAll().prepend( {
 			role: "system",
 			content: arguments.message,
 			timestamp: now()
-		} );
+		} )
 
-		return this;
+		// Trim to max size, just in case
+		this.trim()
+
+		return this
 	}
 
 	/**
@@ -294,8 +267,8 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function removeSystemMessage() {
-		variables.messages = getAll().filter( ( m ) => m.role != "system" );
-		return this;
+		variables.messages = getAll().filter( ( m ) => m.role != "system" )
+		return this
 	}
 
 	/**
@@ -304,7 +277,7 @@ abstract class implements="IAiMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getNonSystemMessages() {
-		return getAll().filter( ( m ) => m.role != "system" );
+		return getAll().filter( ( m ) => m.role != "system" )
 	}
 
 	/**
@@ -316,15 +289,17 @@ abstract class implements="IAiMemory" {
 	 * @return Array of matching message structs
 	 */
 	public array function search( required string searchTerm, boolean caseSensitive = false ) {
-		var term = arguments.searchTerm;
-		var isCaseSensitive = arguments.caseSensitive;
+		var term = arguments.searchTerm
+		var isCaseSensitive = arguments.caseSensitive
 
 		return getAll().filter( ( message ) => {
 			return isCaseSensitive
 				? message.content.find( term ) > 0
-				: message.content.findNoCase( term ) > 0;
-		} );
-	}	/**
+				: message.content.findNoCase( term ) > 0
+		} )
+	}
+
+	/**
 	 * Get messages in a specific range
 	 *
 	 * @startIndex Starting index (1-based)
@@ -333,30 +308,30 @@ abstract class implements="IAiMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getRange( required numeric startIndex, numeric endIndex ) {
-		var messages = getAll();
-		var total = messages.len();
+		var messages = getAll()
+		var total = messages.len()
 
 		// Validate startIndex - must be within bounds
 		if ( arguments.startIndex < 1 || arguments.startIndex > total ) {
-			return [];
+			return []
 		}
 
 		// Default endIndex to last message if not provided
-		var finalEndIndex = isNull( arguments.endIndex ) ? total : arguments.endIndex;
+		var finalEndIndex = isNull( arguments.endIndex ) ? total : arguments.endIndex
 
 		// Clamp endIndex to valid range
 		if ( finalEndIndex > total ) {
-			finalEndIndex = total;
+			finalEndIndex = total
 		}
 
 		// If endIndex is before startIndex, return empty
 		if ( finalEndIndex < arguments.startIndex ) {
-			return [];
+			return []
 		}
 
 		// Calculate length for slice (slice takes start and length, not start and end)
-		var length = finalEndIndex - arguments.startIndex + 1;
-		return messages.slice( arguments.startIndex, length );
+		var length = finalEndIndex - arguments.startIndex + 1
+		return messages.slice( arguments.startIndex, length )
 	}
 
 	/**
@@ -368,10 +343,10 @@ abstract class implements="IAiMemory" {
 	 */
 	public any function name( string name ) {
 		if ( !isNull( arguments.name ) ) {
-			variables.name = arguments.name;
-			return this;
+			variables.name = arguments.name
+			return this
 		}
-		return variables.name;
+		return variables.name
 	}
 
 	/**
@@ -382,8 +357,19 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function configure( required struct config ) {
-		variables.config.append( arguments.config, true );
-		return this;
+		variables.config.append( arguments.config, true )
+
+		if ( arguments.config.keyExists( "maxMessages" ) ) {
+			variables.maxMessages = arguments.config.maxMessages
+		}
+		if ( arguments.config.keyExists( "userId" ) && len( arguments.config.userId ) ) {
+			variables.userId = arguments.config.userId
+		}
+		if ( arguments.config.keyExists( "conversationId" ) && len( arguments.config.conversationId ) ) {
+			variables.conversationId = arguments.config.conversationId
+		}
+
+		return this
 	}
 
 	/**
@@ -393,18 +379,46 @@ abstract class implements="IAiMemory" {
 	 * @return Struct with memory information
 	 */
 	public struct function getSummary() {
-		var allMessages = getAll();
-		return {
+		var allMessages = getAll()
+		var summary = {
 			"type": this.name(),
 			"key": this.key(),
+			"userId": this.getUserId(),
+			"conversationId": this.getConversationId(),
 			"messageCount": count(),
+			"maxMessages": variables.maxMessages,
 			"nonSystemCount": getNonSystemMessages().len(),
 			"hasSystemMessage": hasSystemMessage(),
 			"metadata": this.metadata(),
 			"config": getConfig(),
 			"firstMessageAt": allMessages.isEmpty() ? "" : allMessages.first().timestamp,
         	"lastMessageAt": allMessages.isEmpty() ? "" : allMessages.last().timestamp
-		};
+		}
+
+		// Add role distribution stats
+		summary.roleDistribution = {
+			"user": getByRole( "user" ).len(),
+			"assistant": getByRole( "assistant" ).len(),
+			"system": getByRole( "system" ).len(),
+			"tool": getByRole( "tool" ).len()
+		}
+
+		// Add conversation age and rate
+		if ( !allMessages.isEmpty() && allMessages.len() > 1 ) {
+			var firstTime = allMessages.first().timestamp
+			var lastTime = allMessages.last().timestamp
+			var durationMinutes = dateDiff( "n", firstTime, lastTime )
+			summary.conversationAgeMinutes = durationMinutes
+			if ( durationMinutes > 0 ) {
+				summary.messagesPerHour = ( allMessages.len() / durationMinutes ) * 60
+			}
+		}
+
+		// Add estimated token count (rough approximation: ~4 chars per token)
+		var totalChars = allMessages.reduce( ( sum, msg ) => sum + len( msg.content ), 0 )
+		summary.estimatedTokens = ceiling( totalChars / 4 )
+
+		return summary
 	}
 
 	/**
@@ -417,10 +431,13 @@ abstract class implements="IAiMemory" {
 		return {
 			"type":this. name(),
 			"key": this.key(),
+			"userId": this.getUserId(),
+			"conversationId": this.getConversationId(),
 			"metadata": this.metadata(),
 			"config": getConfig(),
-			"messages": getAll()
-		};
+			"messages": getAll(),
+			"maxMessages": variables.maxMessages
+		}
 	}
 
 	/**
@@ -433,18 +450,30 @@ abstract class implements="IAiMemory" {
 	 */
 	public IAiMemory function import( required struct data ) {
 		if ( arguments.data.keyExists( "key" ) ) {
-			variables.key = arguments.data.key;
+			variables.key = arguments.data.key
+		}
+		if ( arguments.data.keyExists( "userId" ) ) {
+			variables.userId = arguments.data.userId
+		}
+		if ( arguments.data.keyExists( "conversationId" ) ) {
+			variables.conversationId = arguments.data.conversationId
 		}
 		if ( arguments.data.keyExists( "metadata" ) ) {
-			variables.metadata = arguments.data.metadata;
+			variables.metadata = arguments.data.metadata
 		}
 		if ( arguments.data.keyExists( "config" ) ) {
-			variables.config = arguments.data.config;
+			variables.config = arguments.data.config
+		}
+		if ( arguments.data.keyExists( "maxMessages" ) ) {
+			variables.maxMessages = arguments.data.maxMessages
 		}
 		if ( arguments.data.keyExists( "messages" ) && isArray( arguments.data.messages ) ) {
-			variables.messages = arguments.data.messages;
+			variables.messages = arguments.data.messages
 		}
-		return this;
+
+		// Ensure we respect maxMessages after import
+		this.trim()
+		return this
 	}
 
 	/**
@@ -454,15 +483,15 @@ abstract class implements="IAiMemory" {
 	 */
 	public IAiMemory function clone() {
 		// Export current state and deep copy it
-		var exported = duplicate( this.export() );
+		var exported = duplicate( this.export() )
 
 		// Create new instance of same type with the same key
-		var cloned = createObject( "component", getMetadata( this ).name ).init( exported.key );
+		var cloned = createObject( "component", getMetadata( this ).name ).init( exported.key )
 
 		// Import data into new instance
-		cloned.import( exported );
+		cloned.import( exported )
 
-		return cloned;
+		return cloned
 	}
 
 	/**
@@ -474,23 +503,133 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function merge( required IAiMemory otherMemory, boolean skipDuplicates = false ) {
-		var otherMessages = arguments.otherMemory.getAll();
+		var otherMessages = arguments.otherMemory.getAll()
 
 		if ( arguments.skipDuplicates ) {
-			var existingMessages = this.getAll();
+			var existingMessages = this.getAll()
 
 			// Filter out duplicates by comparing role and content
 			otherMessages = otherMessages.filter( ( newMsg ) => {
 				return !existingMessages.some( ( existingMsg ) =>
 					existingMsg.role == newMsg.role && existingMsg.content == newMsg.content
-				);
-			} );
+				)
+			} )
 		}
 
 		// Add all messages (duplicates already filtered if requested)
-		otherMessages.each( ( msg ) => this.add( msg ) );
+		otherMessages.each( ( msg ) => this.add( msg ) )
 
-		return this;
+		return this
+	}
+
+	/**
+	 * Trim messages to keep only the last N (excluding system message)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function trim() {
+		// If maxMessages is 0, do not trim
+		if ( variables.maxMessages == 0 ) {
+			return this
+		}
+
+		var hasSystem = hasSystemMessage()
+    	var systemMsg = hasSystem ? getSystemMessage() : ""
+		var nonSystemMessages = getNonSystemMessages()
+
+		// If we're over the limit, keep only the last N
+		if ( nonSystemMessages.len() > variables.maxMessages ) {
+			var start = nonSystemMessages.len() - variables.maxMessages + 1
+        	var keep = nonSystemMessages.slice( start, nonSystemMessages.len() )
+
+			// Clear all messages
+        	this.clear()
+
+			// Add back system message if it existed
+			// Avoid calling add to prevent trimming again
+			if ( hasSystem ) {
+				keep.prepend( {
+					role: "system",
+					content: systemMsg,
+					timestamp: now()
+				} )
+			}
+
+			// Add back the kept messages
+			variables.messages = keep
+		}
+
+		return this
+	}
+
+	/**
+	 * Set the maximum messages limit
+	 * Triggers trim if current count exceeds new limit
+	 *
+	 * @maxMessages The new maximum
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function setMaxMessages( required numeric maxMessages ) {
+		variables.maxMessages = arguments.maxMessages
+		this.trim()
+		return this
+	}
+
+	/**
+	 * Take a raw message input and convert it to a standard message struct
+	 *
+	 * Supports:
+	 * - A string: The message will be added with the default role (user)
+	 * - A struct: The struct must contain at least 'role' and 'content' keys
+	 * - An array: Each element will be processed as above
+	 * - An AiMessage instance: Its messages will be added
+	 *
+	 * @message The message to process
+	 *
+	 * @return The processed message as an array of message structs
+	 */
+	private array function processMessage( required any message){
+		// AiMessage instance - return it's state, it is supposed to be clean
+ 		if ( arguments.message instanceof "AiMessage" ) {
+			return 	arguments.message.getMessages()
+		}
+
+		// Struct - must have role and content
+		if ( isStruct( arguments.message ) ) {
+			param arguments.message.role = "user"
+			param arguments.message.timestamp = now()
+			if ( !arguments.message.keyExists( "content" ) ) {
+				throw(
+					type: "InvalidMessage",
+					message: "Message struct must contain a 'content' key"
+				)
+			}
+			return [ arguments.message ]
+		}
+
+		// Array - process each element and return the array of processed messages
+		 if ( isArray( arguments.message ) ) {
+			var result = []
+			arguments.message.each( ( m ) => {
+				result.append( processMessage( m ), true ) // true = appendAll / deep append
+			} )
+			return result
+		}
+
+		// String - Create user message struct
+		if ( isSimpleValue( arguments.message ) ) {
+			return [ {
+				role: "user",
+				content: arguments.message,
+				timestamp: now()
+			} ]
+		}
+
+		throw(
+			type: "InvalidMessage",
+			message: "Message must be a string, struct, array, or AiMessage instance"
+		)
 	}
 
 }
