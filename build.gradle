@@ -225,7 +225,6 @@ test {
 }
 
 /**
- * TEMPORARY until we publish to maven
  * Task to download the latest jar from https://ortus-temp.s3.amazonaws.com/jericho/libs/boxlang-1.0.0.jar
  */
 task downloadBoxLang( type: Download ) {
@@ -247,10 +246,13 @@ task downloadBoxLang( type: Download ) {
 task downloadBoxLangModules( type: Download ) {
 	// Create the destination directory
 	doFirst {
-		// Delete the directory recursively first
-		file( "src/test/resources/modules" ).deleteDir()
+		def modulesDir = file( "src/test/resources/modules" )
+		// Delete the directory recursively first if it exists
+		if ( modulesDir.exists() ) {
+			modulesDir.deleteDir()
+		}
 		// Recreate it
-		file( "src/test/resources/modules" ).mkdirs()
+		modulesDir.mkdirs()
 	}
     // Download the test dependencies
     src( [
