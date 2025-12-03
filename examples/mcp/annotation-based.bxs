@@ -118,7 +118,7 @@ myServer.listResources().each( ( resource ) => {
 } )
 
 // Test a tool call
-request = {
+rpcRequest = {
     "jsonrpc": "2.0",
     "method": "tools/call",
     "id": "1",
@@ -128,6 +128,6 @@ request = {
     }
 }
 
-response = myServer.handleRequest( request )
+response = myServer.handleRequest( rpcRequest )
 println( char(10) & "Tool call result:" )
 println( jsonSerialize( response ) )

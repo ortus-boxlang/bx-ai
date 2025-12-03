@@ -60,13 +60,13 @@ myServer.registerPrompt(
 )
 
 // Test the server with a JSON-RPC request
-request = {
+rpcRequest = {
     "jsonrpc": "2.0",
     "method": "tools/list",
     "id": "1"
 }
 
-response = myServer.handleRequest( request )
+response = myServer.handleRequest( rpcRequest )
 println( "Server capabilities:" )
 println( jsonSerialize( response ) )
 
