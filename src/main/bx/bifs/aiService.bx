@@ -26,6 +26,7 @@ class {
 	 */
 	static final CORE_PROVIDERS = [
 		"claude",
+        "cohere",
 		"deepseek",
 		"gemini",
 		"grok",
@@ -69,6 +70,9 @@ class {
 			case "claude":
 				oTargetService = new bxModules.bxai.models.providers.ClaudeService().configure( arguments.apiKey )
 				break
+            case "cohere":
+                oTargetService = new bxModules.bxai.models.providers.CohereService().configure( arguments.apiKey )
+                break
 			case "deepseek":
 				oTargetService = new bxModules.bxai.models.providers.DeepSeekService().configure( arguments.apiKey )
 				break

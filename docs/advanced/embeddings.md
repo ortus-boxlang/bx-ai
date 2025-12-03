@@ -745,6 +745,108 @@ financeEmb = aiEmbed(
 
 **Note:** Voyage specializes in embeddings only. For chat completions, use OpenAI, Claude, or another provider.
 
+### Cohere
+
+**Models:**
+- `embed-english-v3.0` (1024 dimensions) - Latest English model, best quality
+- `embed-multilingual-v3.0` (1024 dimensions) - Supports 100+ languages
+- `embed-english-light-v3.0` (384 dimensions) - Faster, lighter version
+- `embed-english-v2.0` (4096 dimensions) - Legacy, larger model
+
+**Pros:**
+- Excellent multilingual support (100+ languages)
+- `input_type` parameter optimizes for different use cases
+- Multiple model sizes for speed/quality tradeoffs
+- Also offers chat capabilities
+- Good documentation and examples
+- Competitive pricing
+
+**Cons:**
+- Requires API key
+- Data sent to Cohere servers
+- Rate limits on free tier
+
+**Setup:**
+```bash
+# Get API key from https://dashboard.cohere.com/api-keys
+export COHERE_API_KEY="your-key-here"
+```
+
+**Usage:**
+```java
+// Basic usage
+embedding = aiEmbed(
+    "Text to embed",
+    { model: "embed-english-v3.0" },
+    { provider: "cohere" }
+)
+
+// Optimize for search - query vs document
+queryEmb = aiEmbed(
+    "What is BoxLang?",
+    {
+        model: "embed-english-v3.0",
+        input_type: "search_query"  // For queries
+    },
+    { provider: "cohere" }
+)
+
+docEmb = aiEmbed(
+    "BoxLang is a modern JVM language...",
+    {
+        model: "embed-english-v3.0",
+        input_type: "search_document"  // For documents
+    },
+    { provider: "cohere" }
+)
+
+// Multilingual support
+frenchEmb = aiEmbed(
+    "Bonjour le monde",
+    { model: "embed-multilingual-v3.0" },
+    { provider: "cohere" }
+)
+
+// Other input types
+clusterEmb = aiEmbed(
+    "Article text",
+    {
+        model: "embed-english-v3.0",
+        input_type: "clustering"  // For clustering
+    },
+    { provider: "cohere" }
+)
+
+classifyEmb = aiEmbed(
+    "Product review text",
+    {
+        model: "embed-english-v3.0",
+        input_type: "classification"  // For classification
+    },
+    { provider: "cohere" }
+)
+
+// Lightweight model for speed
+lightEmb = aiEmbed(
+    "Quick embedding",
+    { model: "embed-english-light-v3.0" },
+    { provider: "cohere" }
+)
+```
+
+**Input Types:**
+- `search_query` - Optimize for search queries
+- `search_document` - Optimize for documents being searched
+- `clustering` - Optimize for clustering tasks
+- `classification` - Optimize for classification tasks
+
+**When to Use Cohere:**
+- Need multilingual embeddings (100+ languages)
+- Want to optimize separately for queries vs documents
+- Building search, clustering, or classification systems
+- Need both embeddings and chat in one provider
+- Want multiple model size options
+
 ## Best Practices
 
 ### 1. Choose the Right Model
@@ -768,6 +870,20 @@ embedding = aiEmbed( text, { model: "nomic-embed-text" }, { provider: "ollama" }
 
 // Domain-specific - Voyage specialized models
 embedding = aiEmbed( code, { model: "voyage-code-3" }, { provider: "voyage" } )
+
+// Multilingual - Cohere
+embedding = aiEmbed(
+    text,
+    { model: "embed-multilingual-v3.0" },
+    { provider: "cohere" }
+)
+
+// Fast/lightweight - Cohere light
+embedding = aiEmbed(
+    text,
+    { model: "embed-english-light-v3.0" },
+    { provider: "cohere" }
+)
 ```
 
 ### 2. Batch When Possible

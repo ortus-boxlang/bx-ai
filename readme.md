@@ -73,6 +73,7 @@ The following are the AI providers supported by this module. **Please note that 
 - 🔀 [OpenRouter](https://openrouter.ai/)
 - 🔮 [Perplexity](https://docs.perplexity.ai/)
 - 🚢 [Voyage AI](https://www.voyageai.com/) - Specialized embeddings provider
+- 🧬 [Cohere](https://cohere.com/) - High-quality embeddings and chat
 
 ## 🎯 Features
 
@@ -109,10 +110,12 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | OpenRouter   | ✅ | ✅ | ✅ |
 | Perplexity   | ✅ | ❌ | ✅ |
 | Voyage       | ❌ | ✅ (Specialized) | ❌ |
+| Cohere       | ⏳ | ✅ | ⏳ |
 
 **Note:**
 - OpenAI provides native structured output support with strict schema validation. Other providers use JSON mode with schema constraints, which provides excellent results but may occasionally require prompt refinement.
 - Voyage AI is a specialized embeddings-only provider with state-of-the-art models optimized for semantic search, RAG applications, and clustering. It does not support chat completions or structured output.
+- Cohere provides high-quality embeddings with excellent multilingual support (100+ languages) and chat capabilities. Tool support and structured output coming soon.
 
 ## 📦 Structured Output
 
@@ -2167,6 +2170,69 @@ embeddings = aiEmbed(
     input: ["Text 1", "Text 2", "Text 3"],
     params: { model: "voyage-3" },
     options: { provider: "voyage", returnFormat: "embeddings" }
+)
+```
+
+#### Cohere - High-Quality Multilingual Embeddings
+
+```js
+// Cohere offers excellent embeddings with multilingual support
+// Requires COHERE_API_KEY environment variable
+
+// Default embed-english-v3.0 model (1024 dimensions)
+embedding = aiEmbed(
+    input: "BoxLang is awesome",
+    options: { provider: "cohere" }
+)
+
+// Multilingual support (100+ languages)
+multilingualEmbedding = aiEmbed(
+    input: "Bonjour le monde",
+    params: { model: "embed-multilingual-v3.0" },
+    options: { provider: "cohere" }
+)
+
+// Lightweight model for speed (384 dimensions)
+fastEmbedding = aiEmbed(
+    input: "Quick embedding",
+    params: { model: "embed-english-light-v3.0" },
+    options: { provider: "cohere" }
+)
+
+// Optimize for different use cases with input_type
+queryEmbedding = aiEmbed(
+    input: "What is machine learning?",
+    params: {
+        model: "embed-english-v3.0",
+        input_type: "search_query"  // For search queries
+    },
+    options: { provider: "cohere" }
+)
+
+docEmbedding = aiEmbed(
+    input: "Machine learning is a subset of AI...",
+    params: {
+        model: "embed-english-v3.0",
+        input_type: "search_document"  // For documents
+    },
+    options: { provider: "cohere" }
+)
+
+// Other input types: clustering, classification
+clusterEmbedding = aiEmbed(
+    input: "Article text",
+    params: {
+        model: "embed-english-v3.0",
+        input_type: "clustering"
+    },
+    options: { provider: "cohere" }
+)
+
+// Batch processing
+embeddings = aiEmbed(
+    input: ["Text 1", "Text 2", "Text 3"],
+    params: { model: "embed-english-v3.0" },
+    options: { provider: "cohere", returnFormat: "embeddings" }
 )
 ```
 

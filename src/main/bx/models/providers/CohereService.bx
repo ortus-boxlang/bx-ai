@@ -1,0 +1,270 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Cohere Service - Specialized embeddings and chat provider
+ * Cohere offers high-quality embeddings with excellent multilingual support
+ * @see https://docs.cohere.com/reference/embed
+ * @see https://docs.cohere.com/reference/chat
+ */
+class extends="BaseService"{
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// https://docs.cohere.com/docs/models
+			"model" : "command-a-03-2025"
+		};
+		DEFAULT_EMBED_PARAMS = {
+			// https://docs.cohere.com/docs/cohere-embed
+			"model" : "embed-v4.0",
+			"input_type" : "search_document"
+		};
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.chatURL = "https://api.cohere.com/v1/chat"
+		variables.embeddingsURL = "https://api.cohere.com/v1/embed"
+		variables.name = "Cohere"
+		defaults( static.DEFAULT_CHAT_PARAMS )
+	}
+
+	/**
+	 * Override embeddings to handle Cohere's specific API format
+	 * Cohere uses different request/response structure than OpenAI standard
+	 * @see https://docs.cohere.com/reference/embed
+	 */
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		// Set default embedding model if not specified
+		if( embeddingRequest.getModel().isEmpty() ){
+			embeddingRequest.setModelIfEmpty( static.DEFAULT_EMBED_PARAMS.model )
+		}
+
+		// Model Selection
+		embeddingRequest
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers )
+
+		// Build Cohere-specific data packet
+		var input = arguments.embeddingRequest.getInput();
+		var dataPacket = {
+			"texts": isArray( input ) ? input : [ input ],
+			"model": embeddingRequest.getModel(),
+			"input_type": embeddingRequest.getParams().input_type ?: static.DEFAULT_EMBED_PARAMS.input_type
+		}
+
+		// Add optional embedding_types parameter if specified
+		if( embeddingRequest.getParams().keyExists( "embedding_types" ) ){
+			dataPacket.embedding_types = embeddingRequest.getParams().embedding_types
+		}
+
+		// Add optional truncate parameter if specified
+		if( embeddingRequest.getParams().keyExists( "truncate" ) ){
+			dataPacket.truncate = embeddingRequest.getParams().truncate
+		}
+
+		// Log the request
+		if( arguments.embeddingRequest.getLogRequest() ){
+			writeLog(
+				text: "Embedding Request to Cohere: #dataPacket.toString()#",
+				type: "info",
+				log : "ai"
+			)
+		}
+
+		// Log the request to the console if enabled
+		if( arguments.embeddingRequest.getLogRequestToConsole() ){
+			println( "Cohere Embedding Request" )
+			println( dataPacket )
+		}
+
+		bx: http
+			url     = getEmbeddingsURL()
+			method  = "post"
+			result  = "embeddingResult"
+			charset = "utf-8"
+			timeout = arguments.embeddingRequest.getTimeout()
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+			bx:httpParam type="header" name="Authorization" value="Bearer #embeddingRequest.getApiKey()#";
+
+			// Custom Headers
+			for( var thisHeader in arguments.embeddingRequest.getHeaders() ){
+				bx:httpParam
+					type="header"
+					name="#thisHeader#"
+					value="#arguments.embeddingRequest.getHeaders()[ thisHeader ]#";
+			}
+
+			// Body Packet
+			bx:httpParam type="body" value=jsonSerialize( dataPacket );
+		}
+
+		// Final logging if enabled
+		if( arguments.embeddingRequest.getLogResponse() ){
+			writeLog(
+				text: "Embedding Response from Cohere: #embeddingResult.toString()#",
+				type: "info",
+				log : "ai"
+			)
+		}
+
+		// Log the response to the console if enabled
+		if( arguments.embeddingRequest.getLogResponseToConsole() ){
+			println( "Cohere Embedding Response" )
+			println( embeddingResult )
+			println( "Cohere Embedding Deserialized Response" )
+			println( jsonDeserialize( embeddingResult.filecontent ) )
+		}
+
+		var result = jsonDeserialize( embeddingResult.filecontent )
+
+		var iData = {
+			"embeddingRequest" = arguments.embeddingRequest,
+			"response" = result,
+			"rawResponse"	: embeddingResult,
+			"provider" = this
+		}
+
+		BoxAnnounce( "onAIEmbedResponse", iData );
+
+		// If an error is returned, throw it
+		if( result.keyExists( "message" ) && embeddingResult.statusCode != "200" ){
+			writeLog(
+				text: result.message.toString(),
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "ProviderError",
+				message: result.message.toString()
+			);
+		}
+
+		// Convert Cohere response format to standard OpenAI format
+		// Cohere returns: { id, texts, embeddings, meta }
+		var standardResponse = {
+			"data": result.embeddings.map( (embedding, index) => {
+				return {
+					"embedding": embedding,
+					"index": index - 1,
+					"object": "embedding"
+				}
+			} ),
+			"model": embeddingRequest.getModel(),
+			"object": "list",
+			"usage": result.keyExists( "meta" ) && result.meta.keyExists( "billed_units" ) ? {
+				"prompt_tokens": result.meta.billed_units.input_tokens ?: 0,
+				"total_tokens": result.meta.billed_units.input_tokens ?: 0
+			} : {}
+		}
+
+		// Determine return formats
+		switch( embeddingRequest.getReturnFormat() ){
+			case "embeddings":
+				return standardResponse.data.map( item => item.embedding );
+			case "raw":
+				return standardResponse;
+			case "first": default:
+				return standardResponse.data.first().embedding;
+		}
+	}
+
+	/**
+	 * Cohere chat request
+	 * @see https://docs.cohere.com/reference/chat
+	 */
+	@override
+	public function chat( required AiRequest aiRequest ){
+		// Cohere has a different message format
+		// Extract the last message as the main message
+		var messages = arguments.aiRequest.getMessages();
+		var lastMessage = messages.last();
+
+		// Build chat history (all messages except the last one)
+		var chatHistory = messages.len() > 1 ?
+			messages.slice( 1, messages.len() - 1 ).map( msg => {
+				return {
+					"role": msg.role == "assistant" ? "CHATBOT" : "USER",
+					"message": msg.content
+				}
+			} ) : [];
+
+		// Build the data packet
+		var dataPacket = {
+			"message": lastMessage.content,
+			"model": aiRequest.getModel()
+		}
+
+		// Add chat history if exists
+		if( chatHistory.len() > 0 ){
+			dataPacket.chat_history = chatHistory
+		}
+
+		// Add system message if exists (preamble in Cohere)
+		var systemMessages = messages.filter( msg => msg.role == "system" );
+		if( systemMessages.len() > 0 ){
+			dataPacket.preamble = systemMessages.first().content
+		}
+
+		// Add other parameters
+		dataPacket.append( arguments.aiRequest.getParams() )
+
+		// Tooling support - Cohere has different tool format
+		if( dataPacket.keyExists( "tools" ) ){
+			dataPacket.tools = dataPacket.tools.map( tool => tool.getSchema() )
+		}
+
+		// Send it
+		var result = sendRequest( aiRequest, dataPacket )
+
+		// If an error is returned, throw it
+		if( result.keyExists( "message" ) && !result.keyExists( "text" ) ){
+			throw(
+				type   : "ProviderError",
+				message: result.message.toString()
+			);
+		}
+
+		// Determine return formats
+		switch( aiRequest.getReturnFormat() ){
+			case "all":
+				return result;
+			case "raw":
+				return result;
+			case "single": default:
+				return result.text ?: result.message ?: ""
+		}
+	}
+
+	/**
+	 * Cohere streaming is not yet implemented
+	 * Cohere uses Server-Sent Events (SSE) format
+	 * @see https://docs.cohere.com/reference/chat#stream
+	 */
+	@override
+	public function chatStream( required AiRequest aiRequest, required function callback ){
+		throw(
+			type: "NotYetImplemented",
+			message: "Cohere streaming support is not yet implemented. Use chat() for non-streaming requests."
+		);
+	}
+
+}
