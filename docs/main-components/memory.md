@@ -41,21 +41,21 @@ Multi-tenant support is built into ALL memory types including:
 
 ```java
 // Per-user isolation
-memory = aiMemory( "windowed", 
+memory = aiMemory( "windowed",
     key: createUUID(),
     userId: "user123",
     config: { maxMessages: 10 }
 )
 
 // Per-conversation isolation (same user, different chats)
-chat1 = aiMemory( "windowed", 
+chat1 = aiMemory( "windowed",
     key: createUUID(),
     userId: "user123",
     conversationId: "support-ticket-456",
     config: { maxMessages: 10 }
 )
 
-chat2 = aiMemory( "windowed", 
+chat2 = aiMemory( "windowed",
     key: createUUID(),
     userId: "user123",
     conversationId: "sales-inquiry-789",
@@ -66,7 +66,7 @@ chat2 = aiMemory( "windowed",
 ### Accessing Tenant Identifiers
 
 ```java
-memory = aiMemory( "session", 
+memory = aiMemory( "session",
     userId: "alice",
     conversationId: "chat1",
     config: { key: "support" }
@@ -132,7 +132,7 @@ memory = aiMemory( "windowed", {
 } )
 
 // Multi-tenant usage
-memory = aiMemory( "windowed", 
+memory = aiMemory( "windowed",
     key: createUUID(),
     userId: "user123",
     conversationId: "chat456",
@@ -165,7 +165,7 @@ memory = aiMemory( "summary", {
 } )
 
 // Multi-tenant usage
-memory = aiMemory( "summary", 
+memory = aiMemory( "summary",
     key: createUUID(),
     userId: "user123",
     conversationId: "support-chat",
@@ -215,7 +215,7 @@ memory = aiMemory( "session", {
 } )
 
 // Multi-tenant usage - automatic isolation
-memory = aiMemory( "session", 
+memory = aiMemory( "session",
     userId: "user123",
     conversationId: "support",
     config: {
@@ -271,7 +271,7 @@ memory = aiMemory( "cache", {
 } )
 
 // Multi-tenant usage - automatic cache key isolation
-memory = aiMemory( "cache", 
+memory = aiMemory( "cache",
     userId: "user123",
     conversationId: "support",
     config: {
@@ -284,11 +284,11 @@ memory = aiMemory( "cache",
 // Internally uses cache key: "chat_user123_support"
 
 // Each user+conversation gets its own cache entry
-aliceSupport = aiMemory( "cache", userId: "alice", conversationId: "support", 
+aliceSupport = aiMemory( "cache", userId: "alice", conversationId: "support",
     config: { cacheKey: "chat" } )
 // Cache key: "chat_alice_support"
 
-aliceSales = aiMemory( "cache", userId: "alice", conversationId: "sales", 
+aliceSales = aiMemory( "cache", userId: "alice", conversationId: "sales",
     config: { cacheKey: "chat" } )
 // Cache key: "chat_alice_sales"
 ```
@@ -321,7 +321,7 @@ memory = aiMemory( "jdbc", {
 } )
 
 // Multi-tenant usage - automatic database isolation
-memory = aiMemory( "jdbc", 
+memory = aiMemory( "jdbc",
     userId: "user123",
     conversationId: "support-ticket-456",
     config: {
@@ -367,17 +367,17 @@ CREATE TABLE ai_conversations (
 **Query Examples:**
 ```sql
 -- Get all conversations for a user
-SELECT DISTINCT conversation_id FROM ai_conversations 
+SELECT DISTINCT conversation_id FROM ai_conversations
 WHERE user_id = 'user123'
 
 -- Get messages for specific user conversation
-SELECT * FROM ai_conversations 
+SELECT * FROM ai_conversations
 WHERE user_id = 'user123' AND conversation_id = 'support-ticket-456'
 ORDER BY created_at
 
 -- Count messages per user
-SELECT user_id, COUNT(*) as message_count 
-FROM ai_conversations 
+SELECT user_id, COUNT(*) as message_count
+FROM ai_conversations
 GROUP BY user_id
 ```
 
@@ -392,7 +392,7 @@ GROUP BY user_id
 memory = aiMemory( "windowed", { maxMessages: 10 } )
 
 // Create multi-tenant memory
-memory = aiMemory( "windowed", 
+memory = aiMemory( "windowed",
     key: createUUID(),
     userId: "user123",
     conversationId: "chat456",
@@ -466,11 +466,11 @@ function chatMultiTenant( userId, conversationId, userInput ) {
         conversationId: arguments.conversationId,
         config: { key: "chat", maxMessages: 10 }
     )
-    
+
     memory.add( aiMessage().user( arguments.userInput ) )
     response = aiChat( memory.getAll() )
     memory.add( aiMessage().assistant( response ) )
-    
+
     return response
 }
 
@@ -501,7 +501,7 @@ function createUserPipeline( userId, conversationId ) {
         conversationId: arguments.conversationId,
         config: { key: "pipeline", maxMessages: 10 }
     )
-    
+
     return aiModel( "openai" )
         .withMemory( memory )
         .withSystemPrompt( "You are a helpful assistant" )
@@ -736,7 +736,7 @@ Track additional context with metadata:
 
 ```java
 // Create multi-tenant memory
-memory = aiMemory( "windowed", 
+memory = aiMemory( "windowed",
     userId: "user123",
     conversationId: "support-456",
     config: { maxMessages: 10 }
@@ -808,7 +808,7 @@ println( "Conversation summary:\n#summary#" )
 memory = aiMemory( "windowed", { maxMessages: 5 } )
 
 // Short chats with multi-tenant isolation
-memory = aiMemory( "windowed", 
+memory = aiMemory( "windowed",
     userId: "user123",
     conversationId: "chat456",
     config: { maxMessages: 5 }
@@ -818,14 +818,14 @@ memory = aiMemory( "windowed",
 memory = aiMemory( "summary", { maxMessages: 30 } )
 
 // Web applications with multi-user support
-memory = aiMemory( "session", 
+memory = aiMemory( "session",
     userId: "user123",
     conversationId: "support",
     config: { key: "chat", maxMessages: 20 }
 )
 
 // Audit trails / compliance with user tracking
-memory = aiMemory( "file", 
+memory = aiMemory( "file",
     userId: "user123",
     conversationId: "ticket-789",
     config: { filePath: "chats/memory.json" }
@@ -867,7 +867,7 @@ function newConversation() {
 function saveConversation( memory ) {
     export = memory.export()
     // Export contains: { userId, conversationId, messages, metadata }
-    
+
     // Build filename with tenant identifiers
     filename = "conversation_#now()#"
     if ( !isNull( memory.getUserId() ) ) {
@@ -877,7 +877,7 @@ function saveConversation( memory ) {
         filename &= "_#memory.getConversationId()#"
     }
     filename &= ".json"
-    
+
     fileWrite( filename, serializeJSON( export, true ) )
 }
 ```
@@ -923,7 +923,7 @@ function saveMemoryState( memory, filename ) {
 // Restore memory state (including tenant identifiers)
 function loadMemoryState( filename, userId = "", conversationId = "" ) {
     if ( !fileExists( filename ) ) {
-        return aiMemory( "windowed", 
+        return aiMemory( "windowed",
             userId: arguments.userId,
             conversationId: arguments.conversationId,
             config: { maxMessages: 10 }
@@ -931,9 +931,9 @@ function loadMemoryState( filename, userId = "", conversationId = "" ) {
     }
 
     state = deserializeJSON( fileRead( filename ) )
-    
+
     // Restore memory with tenant identifiers from saved state
-    memory = aiMemory( "windowed", 
+    memory = aiMemory( "windowed",
         userId: state.userId ?: arguments.userId,
         conversationId: state.conversationId ?: arguments.conversationId,
         config: { maxMessages: 10 }
@@ -984,7 +984,7 @@ function createUserMemory( userId, conversationId ) {
     if ( session.user.id != arguments.userId ) {
         throw( type="SecurityException", message="User ID mismatch" )
     }
-    
+
     return aiMemory( "session",
         userId: arguments.userId,
         conversationId: arguments.conversationId,
@@ -998,7 +998,7 @@ function loadUserConversation( userId, conversationId ) {
     if ( !hasAccessToConversation( session.user.id, arguments.conversationId ) ) {
         throw( type="SecurityException", message="Access denied" )
     }
-    
+
     return aiMemory( "jdbc",
         userId: arguments.userId,
         conversationId: arguments.conversationId,
@@ -1011,13 +1011,13 @@ function getUserConversations( userId ) {
     if ( session.user.id != arguments.userId ) {
         throw( type="SecurityException", message="Access denied" )
     }
-    
+
     query = queryExecute(
         "SELECT DISTINCT conversation_id FROM ai_conversations WHERE user_id = ?",
         [ arguments.userId ],
         { datasource: "myDS" }
     )
-    
+
     return query
 }
 ```
@@ -1039,7 +1039,7 @@ function chatWithKnowledge( userId, conversationId, userQuery ) {
         conversationId: arguments.conversationId,
         config: { key: "rag", maxMessages: 10 }
     )
-    
+
     // Retrieve relevant documents
     relevantDocs = searchDocuments( userQuery )
 

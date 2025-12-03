@@ -2002,7 +2002,7 @@ function getUserAgent( userId, conversationId ) {
             summaryThreshold: 15
         }
     )
-    
+
     return aiAgent(
         name: "Support",
         memory: memory
@@ -2018,7 +2018,7 @@ bobSales.run( "I need a quote" )
 // Completely isolated conversations
 ```
 
-**See:** 
+**See:**
 - [Memory Documentation](docs/main-components/memory.md) for standard memory guide
 - [Vector Memory Documentation](docs/main-components/vector-memory.md) for semantic search
 - [Multi-Tenant Guide](docs/advanced/multi-tenant-memory.md) for enterprise patterns

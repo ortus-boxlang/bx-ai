@@ -87,7 +87,7 @@ supportChat = aiMemory( "pinecone",
 
 salesChat = aiMemory( "pinecone",
     key: createUUID(),
-    userId: "alice", 
+    userId: "alice",
     conversationId: "sales-inquiry-456",
     config: { collection: "customer_interactions" }
 )

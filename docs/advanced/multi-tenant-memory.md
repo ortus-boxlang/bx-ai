@@ -195,21 +195,21 @@ component {
             arguments.userId,
             arguments.conversationId
         );
-        
+
         var agent = aiAgent(
             name: "Support Bot",
             memory: memory
         );
-        
+
         return agent.run( arguments.message );
     }
 
     function listConversations( required string userId ) {
         // Query database for user's conversations
         return queryExecute(
-            "SELECT conversation_id, created_at, last_message 
-             FROM conversations 
-             WHERE user_id = :userId 
+            "SELECT conversation_id, created_at, last_message
+             FROM conversations
+             WHERE user_id = :userId
              ORDER BY last_message DESC",
             { userId: arguments.userId }
         );
@@ -230,7 +230,7 @@ component {
     ) {
         // Use organization ID as prefix for complete isolation
         var compositeUserId = "#arguments.organizationId#:#arguments.userId#";
-        
+
         return aiMemory( "jdbc",
             key: createUUID(),
             userId: compositeUserId,
@@ -612,7 +612,7 @@ function getUserMemory( required string requestedUserId ) {
     if ( session.user.id != arguments.requestedUserId ) {
         throw( type="SecurityViolation", message="Unauthorized access" );
     }
-    
+
     return aiMemory( "windowed",
         userId: session.user.id,  // Use authenticated session
         config: { maxMessages: 10 }
@@ -630,7 +630,7 @@ function getAuthenticatedMemory( required string conversationId ) {
     if ( !session.keyExists( "user" ) || !session.user.isAuthenticated ) {
         throw( type="Unauthorized", message="Login required" );
     }
-    
+
     return aiMemory( "session",
         key: "chat",
         userId: session.user.id,  // From authenticated session
@@ -653,21 +653,21 @@ function getConversationMemory(
     if ( session.user.id != arguments.userId ) {
         throw( type="Unauthorized", message="Access denied" );
     }
-    
+
     // Verify user owns this conversation
     var conversation = queryExecute(
-        "SELECT user_id FROM conversations 
+        "SELECT user_id FROM conversations
          WHERE id = :conversationId AND user_id = :userId",
         {
             conversationId: arguments.conversationId,
             userId: arguments.userId
         }
     );
-    
+
     if ( conversation.recordCount == 0 ) {
         throw( type="NotFound", message="Conversation not found" );
     }
-    
+
     return aiMemory( "jdbc",
         key: createUUID(),
         userId: arguments.userId,
@@ -718,7 +718,7 @@ function getAuditedMemory(
         file: "memory-access",
         text: "User #arguments.userId# accessed conversation #arguments.conversationId# from IP #cgi.remote_addr#"
     );
-    
+
     return aiMemory( "jdbc",
         key: createUUID(),
         userId: arguments.userId,
@@ -747,22 +747,22 @@ component {
                 resetAt: dateAdd( "h", 1, now() )
             };
         }
-        
+
         var userAccess = variables.accessCounts[ arguments.userId ];
-        
+
         // Reset if expired
         if ( now() > userAccess.resetAt ) {
             userAccess.count = 0;
             userAccess.resetAt = dateAdd( "h", 1, now() );
         }
-        
+
         // Check limit
         if ( userAccess.count >= 100 ) {
             throw( type="RateLimitExceeded", message="Too many requests" );
         }
-        
+
         userAccess.count++;
-        
+
         return aiMemory( "session",
             userId: arguments.userId,
             config: { maxMessages: 20 }
@@ -832,7 +832,7 @@ component {
 
     function getOptimizedMemory( required string userId, required string conversationId ) {
         var cacheKey = "#arguments.userId#:#arguments.conversationId#";
-        
+
         if ( !variables.memoryCache.keyExists( cacheKey ) ) {
             variables.memoryCache[ cacheKey ] = aiMemory( "jdbc",
                 key: createUUID(),
@@ -845,7 +845,7 @@ component {
                 }
             );
         }
-        
+
         return variables.memoryCache[ cacheKey ];
     }
 }
@@ -858,16 +858,16 @@ Periodically remove old conversations:
 ```java
 function cleanupInactiveConversations( numeric daysInactive = 30 ) {
     var cutoffDate = dateAdd( "d", -arguments.daysInactive, now() );
-    
+
     queryExecute(
-        "DELETE FROM ai_conversations 
+        "DELETE FROM ai_conversations
          WHERE created_at < :cutoffDate",
         { cutoffDate: cutoffDate }
     );
-    
+
     // Also cleanup vector memory if using database-backed provider
     queryExecute(
-        "DELETE FROM ai_vectors 
+        "DELETE FROM ai_vectors
          WHERE created_at < :cutoffDate",
         { cutoffDate: cutoffDate }
     );
@@ -915,10 +915,10 @@ component {
         if ( !userBelongsToOrganization( arguments.userId, arguments.organizationId ) ) {
             throw( type="Unauthorized", message="User not in organization" );
         }
-        
+
         // Use composite userId for complete isolation
         var isolatedUserId = "#arguments.organizationId#:#arguments.userId#";
-        
+
         return aiMemory( "postgres",
             key: createUUID(),
             userId: isolatedUserId,
@@ -936,7 +936,7 @@ component {
         required string organizationId
     ) {
         var result = queryExecute(
-            "SELECT 1 FROM organization_users 
+            "SELECT 1 FROM organization_users
              WHERE user_id = :userId AND organization_id = :organizationId",
             {
                 userId: arguments.userId,
@@ -957,13 +957,13 @@ component {
     function getTicketMemory( required string ticketId ) {
         // Get ticket details
         var ticket = getTicketById( arguments.ticketId );
-        
+
         // Verify access
-        if ( session.user.id != ticket.customerId && 
+        if ( session.user.id != ticket.customerId &&
              !session.user.hasRole( "support" ) ) {
             throw( type="Unauthorized", message="Access denied" );
         }
-        
+
         return aiMemory( "hybrid",
             key: createUUID(),
             userId: ticket.customerId,
@@ -982,7 +982,7 @@ component {
 
     function createTicket( required string customerId, required string subject ) {
         var ticketId = createUUID();
-        
+
         queryExecute(
             "INSERT INTO support_tickets (id, customer_id, subject, created_at)
              VALUES (:id, :customerId, :subject, :createdAt)",
@@ -993,7 +993,7 @@ component {
                 createdAt: now()
             }
         );
-        
+
         return getTicketMemory( ticketId );
     }
 }
@@ -1012,7 +1012,7 @@ function getDepartmentMemory(
     if ( !userInDepartment( arguments.userId, arguments.department ) ) {
         throw( type="Unauthorized", message="Not authorized for this department" );
     }
-    
+
     return aiMemory( "chroma",
         key: createUUID(),
         userId: "#arguments.department#:#arguments.userId#",
@@ -1063,9 +1063,9 @@ ALTER TABLE ai_conversations ADD COLUMN user_id VARCHAR(100);
 ALTER TABLE ai_conversations ADD COLUMN conversation_id VARCHAR(100);
 
 -- Migrate existing data (example: assign to default user)
-UPDATE ai_conversations 
-SET user_id = 'legacy-user', 
-    conversation_id = 'default' 
+UPDATE ai_conversations
+SET user_id = 'legacy-user',
+    conversation_id = 'default'
 WHERE user_id IS NULL;
 
 -- Add indexes
@@ -1184,7 +1184,7 @@ return application.memoryPool[ userId ];
 function getUserMemory( userId ) {
     // ❌ WRONG: Reusing same instance
     // return variables.sharedMemory;
-    
+
     // ✅ CORRECT: New instance per user
     return aiMemory( "session",
         key: createUUID(),  // Unique key per instance
