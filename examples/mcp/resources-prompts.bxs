@@ -1,6 +1,6 @@
 /**
  * MCP Server - Resources and Prompts Example
- * 
+ *
  * This example demonstrates:
  * - Registering resources (documents, data)
  * - Reading resources dynamically

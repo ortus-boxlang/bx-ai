@@ -1,6 +1,6 @@
 /**
  * Basic MCP Server Example - Tool Registration
- * 
+ *
  * This example demonstrates:
  * - Creating an MCP server instance
  * - Registering tools

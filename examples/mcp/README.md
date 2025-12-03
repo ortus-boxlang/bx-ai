@@ -82,7 +82,7 @@ boxlang run examples/mcp/annotation-based.bxs
 
 **Run it:**
 ```bash
-boxlang run examples/mcp/multi-server.bx
+boxlang run examples/mcp/multi-server.bxs
 ```
 
 **Key concepts:**
