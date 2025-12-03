@@ -1,0 +1,249 @@
+/**
+ * Advanced MCP Server Example
+ *
+ * This example demonstrates advanced features including:
+ * - Request/response interceptors
+ * - Custom authentication
+ * - Error handling
+ * - CORS configuration
+ * - Complex tool implementations
+ */
+
+// Create server with CORS enabled
+myServer = mcpServer( "advanced-api" )
+    .setDescription( "Advanced MCP API" )
+    .setVersion( "2.0.0" )
+
+// Add request interceptor for authentication
+myServer.onRequest( ( requestData ) => {
+    // In production, check auth headers
+    var authHeader = requestData.headers?.authorization ?: ""
+
+    // Simulate auth check
+    if ( !authHeader.startsWith( "Bearer " ) && requestData.method != "initialize" ) {
+        throw(
+            type: "Unauthorized",
+            message: "Authentication required",
+            errorCode: 401
+        )
+    }
+
+    // Add user context to request
+    requestData.user = {
+        id: "user123",
+        role: "admin"
+    }
+
+    println( "✓ Request authenticated: #requestData.method#" )
+    return requestData
+} )
+
+// Add response interceptor for logging
+myServer.onResponse( ( response, requestData ) => {
+    // Log the response
+    println( "✓ Response prepared for: #requestData.method#" )
+
+    // Could add timing, metrics, etc.
+    response.metadata = {
+        timestamp: now(),
+        processingTime: "12ms"
+    }
+
+    return response
+} )
+
+// Register advanced tools
+
+// 1. Database query tool with validation
+myServer.registerTool(
+    aiTool( "queryDatabase", "Execute a database query", ( sql, params = [] ) => {
+        // Validate SQL (basic example)
+        if ( !reFindNoCase( "^(SELECT|INSERT|UPDATE|DELETE)", trim( sql ) ) ) {
+            throw( message: "Invalid SQL query format" )
+        }
+
+        // Simulate query execution
+        return {
+            success: true,
+            rowCount: 42,
+            executionTime: "15ms",
+            data: [
+                { id: 1, name: "Record 1" },
+                { id: 2, name: "Record 2" }
+            ]
+        }
+    } )
+        .describeArg( "sql", "SQL query to execute" )
+        .describeArg( "params", "Query parameters (array)" )
+)
+
+// 2. File processing tool
+myServer.registerTool(
+    aiTool( "processFile", "Process and analyze a file", ( filePath, operation ) => {
+        // Simulate file processing
+        var operations = {
+            "analyze": "File analyzed: 1,234 lines, 50KB",
+            "validate": "File validation passed",
+            "transform": "File transformed successfully"
+        }
+
+        return operations[ operation ] ?: "Unknown operation"
+    } )
+        .describeArg( "filePath", "Path to the file" )
+        .describeArg( "operation", "Operation to perform (analyze, validate, transform)" )
+)
+
+// 3. Async task tool
+myServer.registerTool(
+    aiTool( "scheduleTask", "Schedule a background task", ( taskName, schedule, params = {} ) => {
+        // Simulate task scheduling
+        var taskId = createUUID()
+
+        return {
+            taskId: taskId,
+            taskName: taskName,
+            schedule: schedule,
+            status: "scheduled",
+            nextRun: dateAdd( "h", 1, now() )
+        }
+    } )
+        .describeArg( "taskName", "Name of the task to schedule" )
+        .describeArg( "schedule", "Cron expression or interval" )
+        .describeArg( "params", "Task parameters (struct)" )
+)
+
+// Register dynamic resources
+
+// 1. Server metrics resource
+myServer.registerResource(
+    uri: "metrics://server",
+    name: "Server Metrics",
+    description: "Real-time server metrics",
+    mimeType: "application/json",
+    handler: () => {
+        return {
+            cpu: "45%",
+            memory: "2.1GB / 4GB",
+            disk: "120GB / 500GB",
+            activeConnections: 42,
+            requestsPerSecond: 1234,
+            uptime: dateDiff( "s", now(), now() )
+        }
+    }
+)
+
+// 2. Recent logs resource
+myServer.registerResource(
+    uri: "logs://recent",
+    name: "Recent Logs",
+    description: "Last 100 log entries",
+    mimeType: "text/plain",
+    handler: () => {
+        var logs = []
+        for ( var i = 1; i <= 10; i++ ) {
+            logs.append( "[#now()#] INFO - Log entry #i#" )
+        }
+        return logs.toList( char(10) )
+    }
+)
+
+// Register complex prompts
+
+// 1. Code review prompt
+myServer.registerPrompt(
+    name: "codeReview",
+    description: "Generate a code review checklist",
+    arguments: [
+        { name: "language", description: "Programming language", required: true },
+        { name: "complexity", description: "Code complexity level", required: false }
+    ],
+    handler: ( args ) => [
+        {
+            role: "system",
+            content: "You are an expert code reviewer."
+        },
+        {
+            role: "user",
+            content: "Create a code review checklist for #args.language# code at #args.complexity ?: 'medium'# complexity level."
+        }
+    ]
+)
+
+// Test the server
+
+println( "=== Advanced MCP Server Test ===" )
+println( char(10) )
+
+// 1. Initialize
+println( "1. Initializing server..." )
+initRequest = {
+    "jsonrpc": "2.0",
+    "method": "initialize",
+    "id": "1"
+}
+initResponse = myServer.handleRequest( initRequest )
+println( "   Protocol version: #initResponse.result.protocolVersion#" )
+println( "   Capabilities: #initResponse.result.capabilities.keyList()#" )
+
+// 2. List tools
+println( char(10) & "2. Listing tools..." )
+toolsRequest = {
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "id": "2",
+    "headers": { "authorization": "Bearer token123" }
+}
+toolsResponse = myServer.handleRequest( toolsRequest )
+println( "   Found #toolsResponse.result.tools.len()# tools" )
+
+// 3. Call a tool
+println( char(10) & "3. Calling queryDatabase tool..." )
+callRequest = {
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "id": "3",
+    "headers": { "authorization": "Bearer token123" },
+    "params": {
+        "name": "queryDatabase",
+        "arguments": {
+            "sql": "SELECT * FROM users WHERE active = 1",
+            "params": []
+        }
+    }
+}
+callResponse = myServer.handleRequest( callRequest )
+println( "   Result: #jsonSerialize( callResponse.result )#" )
+
+// 4. Read resource
+println( char(10) & "4. Reading server metrics resource..." )
+resourceRequest = {
+    "jsonrpc": "2.0",
+    "method": "resources/read",
+    "id": "4",
+    "headers": { "authorization": "Bearer token123" },
+    "params": {
+        "uri": "metrics://server"
+    }
+}
+resourceResponse = myServer.handleRequest( resourceRequest )
+println( "   Metrics: #jsonSerialize( resourceResponse.result )#" )
+
+// 5. Get prompt
+println( char(10) & "5. Getting code review prompt..." )
+promptRequest = {
+    "jsonrpc": "2.0",
+    "method": "prompts/get",
+    "id": "5",
+    "headers": { "authorization": "Bearer token123" },
+    "params": {
+        "name": "codeReview",
+        "arguments": {
+            "language": "BoxLang",
+            "complexity": "high"
+        }
+    }
+}
+promptResponse = myServer.handleRequest( promptRequest )
+println( "   Prompt messages: #promptResponse.result.messages.len()#" )
+
+println( char(10) & "=== Test Complete ===" )

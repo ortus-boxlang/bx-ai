@@ -1,0 +1,129 @@
+/**
+ * Multi-Server MCP Example
+ *
+ * This example shows how to manage multiple MCP servers in the same
+ * application, useful for multi-tenant apps or different API versions.
+ */
+
+// Create different servers for different purposes
+publicServer = mcpServer( "public-api" )
+    .setDescription( "Public API Server" )
+    .setVersion( "1.0.0" )
+
+adminServer = mcpServer( "admin-api" )
+    .setDescription( "Admin API Server" )
+    .setVersion( "1.0.0" )
+
+// Register public tools (available to all users)
+publicServer
+    .registerTool(
+        aiTool( "search", "Search public content", ( query ) => {
+            return "Public search results for: #query#"
+        } )
+    )
+    .registerTool(
+        aiTool( "getInfo", "Get public information", ( topic ) => {
+            return "Public information about: #topic#"
+        } )
+    )
+    .registerResource(
+        uri: "docs://public",
+        name: "Public Documentation",
+        description: "Public API documentation",
+        handler: () => "# Public API\n\nPublic endpoints..."
+    )
+
+// Register admin tools (privileged access)
+adminServer
+    .registerTool(
+        aiTool( "manageUsers", "Manage user accounts", ( action, userId ) => {
+            return "Admin action '#action#' performed on user #userId#"
+        } )
+            .describeArg( "action", "Action to perform (create, update, delete)" )
+            .describeArg( "userId", "Target user ID" )
+    )
+    .registerTool(
+        aiTool( "viewLogs", "View system logs", ( level = "info", limit = 100 ) => {
+            return "Retrieved #limit# log entries at level: #level#"
+        } )
+            .describeArg( "level", "Log level filter" )
+            .describeArg( "limit", "Maximum entries to return" )
+    )
+    .registerResource(
+        uri: "system://config",
+        name: "System Configuration",
+        description: "System configuration (admin only)",
+        mimeType: "application/json",
+        handler: () => {
+            return {
+                databaseHost: "db.example.com",
+                cacheSize: "1GB",
+                secretKeys: "***REDACTED***"
+            }
+        }
+    )
+
+// Simulate handling requests to different servers
+println( "=== Public Server Capabilities ===" )
+publicRequest = {
+    "jsonrpc": "2.0",
+    "method": "initialize",
+    "id": "1"
+}
+publicResponse = publicServer.handleRequest( publicRequest )
+println( jsonSerialize( publicResponse ) )
+
+println( char(10) & "=== Admin Server Capabilities ===" )
+adminRequest = {
+    "jsonrpc": "2.0",
+    "method": "initialize",
+    "id": "2"
+}
+adminResponse = adminServer.handleRequest( adminRequest )
+println( jsonSerialize( adminResponse ) )
+
+// Static server management
+println( char(10) & "=== All Active MCP Servers ===" )
+activeServers = bxModules.bxai.models.mcp.MCPServer::getInstanceNames()
+println( "Active servers: #activeServers.toList()#" )
+
+// Check if specific server exists
+hasPublic = bxModules.bxai.models.mcp.MCPServer::hasInstance( "public-api" )
+hasAdmin = bxModules.bxai.models.mcp.MCPServer::hasInstance( "admin-api" )
+println( "Public server exists: #hasPublic#" )
+println( "Admin server exists: #hasAdmin#" )
+
+// Call a tool on specific server
+publicToolCall = {
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "id": "3",
+    "params": {
+        "name": "search",
+        "arguments": { "query": "BoxLang MCP" }
+    }
+}
+
+adminToolCall = {
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "id": "4",
+    "params": {
+        "name": "viewLogs",
+        "arguments": { "level": "error", "limit": 50 }
+    }
+}
+
+println( char(10) & "=== Public Tool Call ===" )
+println( jsonSerialize( publicServer.handleRequest( publicToolCall ) ) )
+
+println( char(10) & "=== Admin Tool Call ===" )
+println( jsonSerialize( adminServer.handleRequest( adminToolCall ) ) )
+
+// Clean up - remove admin server
+wasRemoved = bxModules.bxai.models.mcp.MCPServer::removeInstance( "admin-api" )
+println( char(10) & "Admin server removed: #wasRemoved#" )
+
+// List remaining servers
+remainingServers = bxModules.bxai.models.mcp.MCPServer::getInstanceNames()
+println( "Remaining servers: #remainingServers.toList()#" )

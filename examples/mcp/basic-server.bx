@@ -37,7 +37,7 @@ myServer.registerResource(
     name: "README",
     description: "Application documentation",
     mimeType: "text/markdown",
-    handler: () => "## My Application" & char(10) & char(10) & "This is the documentation."
+    handler: () => "# My Application\n\nThis is the documentation."
 )
 
 // Register a prompt template
@@ -48,15 +48,12 @@ myServer.registerPrompt(
         { name: "name", description: "Person's name", required: true },
         { name: "language", description: "Language for greeting", required: false }
     ],
-    handler: ( args ) => {
-        var lang = args.language ?: 'English'
-        return [
-            {
-                role: "user",
-                content: "Generate a greeting for #args.name# in #lang#"
-            }
-        ]
-    }
+    handler: ( args ) => [
+        {
+            role: "user",
+            content: "Generate a greeting for #args.name# in #args.language ?: 'English'#"
+        }
+    ]
 )
 
 // Test the server with a JSON-RPC request
