@@ -375,6 +375,19 @@ abstract class implements="IAiService" {
 			);
 		}
 
+        // Verify that data key exists, else throw an exception with the raw response
+        if( !result.keyExists( "data" ) ){
+            writeLog(
+                text: "Invalid embedding response: #result.toString()#",
+                type: "error",
+                log : "ai"
+            )
+            throw(
+                type   : "ProviderError",
+                message: "Invalid embedding response from provider. Response: #result.toString()#"
+            );
+        }
+
 		// Determine return formats
 		switch( embeddingRequest.getReturnFormat() ){
 			case "embeddings":

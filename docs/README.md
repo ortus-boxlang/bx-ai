@@ -32,6 +32,7 @@ BoxLang AI is a comprehensive module that brings artificial intelligence capabil
 | **Ollama** | Local | Privacy, offline use, no API costs |
 | **OpenRouter** | Gateway | Access multiple models through one API |
 | **Perplexity** | Cloud | Research, citations, factual answers |
+| **Voyage** | Cloud | State-of-the-art embeddings, specialized for RAG |
 
 ### Use Cases
 

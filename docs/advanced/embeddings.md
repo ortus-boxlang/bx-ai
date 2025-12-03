@@ -674,12 +674,90 @@ embedding = aiEmbed(
 )
 ```
 
+### Voyage AI
+
+**Models:**
+- `voyage-3` (1024 dimensions) - Latest, highest quality
+- `voyage-3-lite` (512 dimensions) - Faster, more efficient
+- `voyage-code-3` (1024 dimensions) - Optimized for code
+- `voyage-finance-2` (1024 dimensions) - Financial documents
+- `voyage-law-2` (1024 dimensions) - Legal documents
+
+**Pros:**
+- State-of-the-art quality for RAG and semantic search
+- Specialized models for specific domains
+- `input_type` parameter optimizes for queries vs documents
+- Excellent performance on retrieval benchmarks
+
+**Cons:**
+- Embeddings only (no chat support)
+- Requires API key
+- Free tier has 3 RPM rate limit
+- Data sent to Voyage servers
+
+**Setup:**
+```bash
+# Get API key from https://dashboard.voyageai.com/
+export VOYAGE_API_KEY="your-key-here"
+```
+
+**Usage:**
+```java
+// Basic usage
+embedding = aiEmbed(
+    "Text to embed",
+    { model: "voyage-3" },
+    { provider: "voyage" }
+)
+
+// Optimize for query vs document
+queryEmb = aiEmbed(
+    "What is BoxLang?",
+    { model: "voyage-3", input_type: "query" },
+    { provider: "voyage" }
+)
+
+docEmb = aiEmbed(
+    "BoxLang is a modern JVM language...",
+    { model: "voyage-3", input_type: "document" },
+    { provider: "voyage" }
+)
+
+// Domain-specific models
+codeEmb = aiEmbed(
+    "function calculate() { return 42; }",
+    { model: "voyage-code-3" },
+    { provider: "voyage" }
+)
+
+financeEmb = aiEmbed(
+    "Q4 revenue increased 15% year-over-year...",
+    { model: "voyage-finance-2" },
+    { provider: "voyage" }
+)
+```
+
+**When to Use Voyage:**
+- Building RAG (Retrieval Augmented Generation) systems
+- Semantic search requiring highest accuracy
+- Domain-specific applications (code, finance, legal)
+- When you can optimize queries vs documents separately
+
+**Note:** Voyage specializes in embeddings only. For chat completions, use OpenAI, Claude, or another provider.
+
 ## Best Practices
 
 ### 1. Choose the Right Model
 
 ```java
-// High-stakes semantic search - use best quality
+// State-of-the-art for RAG - Voyage
+embedding = aiEmbed(
+    text,
+    { model: "voyage-3", input_type: "document" },
+    { provider: "voyage" }
+)
+
+// High-stakes semantic search - OpenAI large
 embedding = aiEmbed( text, { model: "text-embedding-3-large" } )
 
 // General purpose - balanced
@@ -687,6 +765,9 @@ embedding = aiEmbed( text, { model: "text-embedding-3-small" } )
 
 // Privacy-first or cost-free - local Ollama
 embedding = aiEmbed( text, { model: "nomic-embed-text" }, { provider: "ollama" } )
+
+// Domain-specific - Voyage specialized models
+embedding = aiEmbed( code, { model: "voyage-code-3" }, { provider: "voyage" } )
 ```
 
 ### 2. Batch When Possible

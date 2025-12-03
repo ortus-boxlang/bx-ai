@@ -35,7 +35,8 @@ class {
 		"ollama",
 		"openai",
 		"openrouter",
-		"perplexity"
+		"perplexity",
+        "voyage"
 	];
 
     /**
@@ -98,6 +99,9 @@ class {
 			case "perplexity":
 				oTargetService = new bxModules.bxai.models.providers.PerplexityService().configure( arguments.apiKey )
 				break
+            case "voyage":
+                oTargetService = new bxModules.bxai.models.providers.VoyageService().configure( arguments.apiKey )
+                break
 			default:
 				// Announce the provider request so contributors can listen and provide a service
 				// This is for our aiplus module

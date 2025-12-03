@@ -72,6 +72,7 @@ The following are the AI providers supported by this module. **Please note that 
 - 🟢 [OpenAI](https://www.openai.com/)
 - 🔀 [OpenRouter](https://openrouter.ai/)
 - 🔮 [Perplexity](https://docs.perplexity.ai/)
+- 🚢 [Voyage AI](https://www.voyageai.com/) - Specialized embeddings provider
 
 ## 🎯 Features
 
@@ -107,8 +108,11 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | OpenAI       | ✅ | ✅ | ✅ (Native) |
 | OpenRouter   | ✅ | ✅ | ✅ |
 | Perplexity   | ✅ | ❌ | ✅ |
+| Voyage       | ❌ | ✅ (Specialized) | ❌ |
 
-**Note:** OpenAI provides native structured output support with strict schema validation. Other providers use JSON mode with schema constraints, which provides excellent results but may occasionally require prompt refinement.
+**Note:**
+- OpenAI provides native structured output support with strict schema validation. Other providers use JSON mode with schema constraints, which provides excellent results but may occasionally require prompt refinement.
+- Voyage AI is a specialized embeddings-only provider with state-of-the-art models optimized for semantic search, RAG applications, and clustering. It does not support chat completions or structured output.
 
 ## 📦 Structured Output
 
@@ -2120,6 +2124,52 @@ localEmbedding = aiEmbed(
 )
 ```
 
+#### Voyage AI - State-of-the-Art Embeddings
+
+```js
+// Voyage AI specializes in embeddings with cutting-edge models
+// Requires VOYAGE_API_KEY environment variable
+
+// Default voyage-3 model (1024 dimensions)
+embedding = aiEmbed(
+    input: "BoxLang is a modern JVM language",
+    options: { provider: "voyage" }
+)
+
+// Use voyage-3-lite for faster processing (512 dimensions)
+embedding = aiEmbed(
+    input: "Faster embeddings",
+    params: { model: "voyage-3-lite" },
+    options: { provider: "voyage" }
+)
+
+// Optimize for specific use cases with input_type
+queryEmbedding = aiEmbed(
+    input: "What is BoxLang?",
+    params: {
+        model: "voyage-3",
+        input_type: "query"  // For search queries
+    },
+    options: { provider: "voyage" }
+)
+
+docEmbedding = aiEmbed(
+    input: "BoxLang is a modern dynamic JVM language...",
+    params: {
+        model: "voyage-3",
+        input_type: "document"  // For documents being searched
+    },
+    options: { provider: "voyage" }
+)
+
+// Batch processing with Voyage
+embeddings = aiEmbed(
+    input: ["Text 1", "Text 2", "Text 3"],
+    params: { model: "voyage-3" },
+    options: { provider: "voyage", returnFormat: "embeddings" }
+)
+```
+
 #### Semantic Search Example
 
 ```js
@@ -2159,6 +2209,7 @@ println( "Most relevant: " & scores.first().doc )
 | Provider | Support | Default Model | Dimensions |
 |----------|---------|---------------|------------|
 | OpenAI | ✅ | text-embedding-3-small | 1536 |
+| Voyage | ✅ | voyage-3 | 1024 |
 | Ollama | ✅ | nomic-embed-text | Varies |
 | DeepSeek | ✅ | (inherits from chat model) | Varies |
 | Grok | ✅ | (inherits from chat model) | Varies |
@@ -2168,6 +2219,15 @@ println( "Most relevant: " & scores.first().doc )
 | Gemini | ✅ | text-embedding-004 | 768 |
 | Claude | ❌ | N/A | N/A |
 | Perplexity | ❌ | N/A | N/A |
+
+**Voyage AI Models:**
+- `voyage-3` (default): 1024 dimensions, latest and most capable
+- `voyage-3-lite`: 512 dimensions, faster processing
+- `voyage-code-3`: 1024 dimensions, optimized for code
+- `voyage-finance-2`: 1024 dimensions, specialized for finance
+- `voyage-law-2`: 1024 dimensions, specialized for legal text
+
+**Note:** Voyage AI is a specialized embeddings provider with state-of-the-art models for semantic search, RAG applications, and clustering. It does not support chat completions.
 
 ### Best Practices
 
