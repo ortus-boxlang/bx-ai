@@ -394,6 +394,7 @@ SupportBot: Thanks for contacting us! Have a great day! 👋
 ### The Challenge
 
 Build a **Research Agent** that can:
+
 1. Search for information (simulated)
 2. Summarize findings
 3. Remember the conversation
@@ -557,6 +558,7 @@ response = agent.run( "User request" )
 ### Why Multi-Tenant?
 
 Without isolation:
+
 ```java
 // ❌ BAD: All users share the same memory!
 agent = aiAgent(
@@ -566,6 +568,7 @@ agent = aiAgent(
 ```
 
 With isolation:
+
 ```java
 // ✅ GOOD: Each user has their own memory
 function getUserAgent( userId, conversationId ) {
@@ -635,6 +638,7 @@ You've completed the BoxLang AI Bootcamp! You now know:
 ### Deep Dive: Full Course
 
 Take the [12-lesson course](../../course/) for:
+
 - Streaming responses
 - Pipeline workflows
 - Advanced memory systems
@@ -646,9 +650,10 @@ Take the [12-lesson course](../../course/) for:
 
 Check out the [examples folder](../../examples/) for more code.
 
-### Build Something!
+### Build Something
 
 The best way to learn is by doing. Try building:
+
 - A customer service bot
 - A code review assistant
 - A data analysis agent

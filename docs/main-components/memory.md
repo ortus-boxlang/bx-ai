@@ -33,6 +33,7 @@ All memory types support multi-tenant isolation through `userId` and `conversati
 - **Combined**: Use both for complete conversation isolation
 
 Multi-tenant support is built into ALL memory types including:
+
 - Standard memories: Window, Summary, Session, File, Cache, JDBC
 - Vector memories: All 11 vector providers (see Vector Memory Guide)
 - Hybrid memory: Combines recent + semantic with isolation
@@ -141,12 +142,14 @@ memory = aiMemory( "windowed",
 ```
 
 **Best for:**
+
 - Short conversations
 - Real-time chat applications
 - Cost-conscious applications
 - Simple context requirements
 
 **Limitations:**
+
 - Loses all context from discarded messages
 - No awareness of earlier conversation history
 - Can lose important facts mentioned earlier
@@ -233,6 +236,7 @@ bobSupport = aiMemory( "session", userId: "bob", conversationId: "support", conf
 ```
 
 **Best for:**
+
 - Web applications
 - Multi-page conversations
 - User-specific context
@@ -251,6 +255,7 @@ memory = aiMemory( "file", {
 ```
 
 **Best for:**
+
 - Long-term storage
 - Audit trails
 - Offline analysis
@@ -294,6 +299,7 @@ aliceSales = aiMemory( "cache", userId: "alice", conversationId: "sales",
 ```
 
 **Best for:**
+
 - Distributed applications
 - Load-balanced environments
 - Applications with existing CacheBox
@@ -301,6 +307,7 @@ aliceSales = aiMemory( "cache", userId: "alice", conversationId: "sales",
 - Multi-user distributed systems
 
 **Features:**
+
 - Integrates with any CacheBox provider (Redis, Memcached, Couchbase, etc.)
 - Automatic expiration policies
 - Distributed cache support
@@ -335,6 +342,7 @@ memory = aiMemory( "jdbc",
 ```
 
 **Best for:**
+
 - Enterprise applications
 - Multi-user systems
 - Compliance requirements
@@ -343,6 +351,7 @@ memory = aiMemory( "jdbc",
 - Advanced querying and reporting
 
 **Features:**
+
 - Works with any JDBC-compatible database
 - Automatic table creation with multi-tenant columns
 - Query conversation history by user/conversation

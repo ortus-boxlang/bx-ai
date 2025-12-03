@@ -3,34 +3,34 @@
 Hola amigo! I'm really excited that you are interested in contributing to our BoxLang Module.
 Before submitting your contribution, please make sure to take a moment and read through the following guidelines:
 
--   [Code Of Conduct](#code-of-conduct)
--   [Bug Reporting](#bug-reporting)
--   [Support Questions](#support-questions)
--   [Pull Request Guidelines](#pull-request-guidelines)
--   [Security Vulnerabilities](#security-vulnerabilities)
--   [Development Setup](#development-setup)
--   [Language Compatiblity](#language-compatiblity)
--   [Coding Styles \& Formatting](#coding-styles--formatting)
--   [Financial Contributions](#financial-contributions)
--   [Contributors](#contributors)
+- [Code Of Conduct](#code-of-conduct)
+- [Bug Reporting](#bug-reporting)
+- [Support Questions](#support-questions)
+- [Pull Request Guidelines](#pull-request-guidelines)
+- [Security Vulnerabilities](#security-vulnerabilities)
+- [Development Setup](#development-setup)
+- [Language Compatiblity](#language-compatiblity)
+- [Coding Styles \& Formatting](#coding-styles--formatting)
+- [Financial Contributions](#financial-contributions)
+- [Contributors](#contributors)
 
 ## Code Of Conduct
 
 This project is open source, and as such, the maintainers give their free time to build and maintain the source code held within. They make the code freely available in the hope that it will be of use to other developers and/or businesses. Please be considerate towards maintainers when raising issues or presenting pull requests. **We all follow the Golden Rule: Do to others as you want them to do to you.**
 
--   As contributors and maintainers of this project, we pledge to respect all people who contribute through reporting issues, posting feature requests, updating documentation, submitting pull requests or patches, and other activities.
--   Participants will be tolerant of opposing views.
--   Examples of unacceptable behavior by participants include the use of sexual language or imagery, derogatory comments or personal attacks, trolling, public or private harassment, insults, or other unprofessional conduct.
--   Project maintainers have the right and responsibility to remove, edit, or reject comments, commits, code, wiki edits, issues, and other contributions that are not aligned with this Code of Conduct. Project maintainers who do not follow the Code of Conduct may be removed from the project team.
--   When interpreting the words and actions of others, participants should always assume good intentions. Emotions cannot be derived from textual representations.
--   Instances of abusive, harassing, or otherwise unacceptable behavior may be reported by opening an issue or contacting one or more of the project maintainers.
+- As contributors and maintainers of this project, we pledge to respect all people who contribute through reporting issues, posting feature requests, updating documentation, submitting pull requests or patches, and other activities.
+- Participants will be tolerant of opposing views.
+- Examples of unacceptable behavior by participants include the use of sexual language or imagery, derogatory comments or personal attacks, trolling, public or private harassment, insults, or other unprofessional conduct.
+- Project maintainers have the right and responsibility to remove, edit, or reject comments, commits, code, wiki edits, issues, and other contributions that are not aligned with this Code of Conduct. Project maintainers who do not follow the Code of Conduct may be removed from the project team.
+- When interpreting the words and actions of others, participants should always assume good intentions. Emotions cannot be derived from textual representations.
+- Instances of abusive, harassing, or otherwise unacceptable behavior may be reported by opening an issue or contacting one or more of the project maintainers.
 
 ## Bug Reporting
 
 BoxLang tracks its issues in Jira and each module track it's own issues in its repo.
 
--   BoxLang JIra : https://ortussolutions.atlassian.net/browse/BL/issues
--   Module Issues: https://github.com/ortus-boxlang/bx-ai/issues
+- BoxLang JIra : https://ortussolutions.atlassian.net/browse/BL/issues
+- Module Issues: https://github.com/ortus-boxlang/bx-ai/issues
 
 If you file a bug report, your issue should contain a title, a clear description of the issue, a way to replicate the issue, and any support files that we might need to replicate your issue. The goal of a bug report is to make it easy for yourself - and others - to replicate the bug and develop a fix for it. All issues that do not contain a way to replicate will not be addressed.
 
@@ -38,18 +38,18 @@ If you file a bug report, your issue should contain a title, a clear description
 
 If you have any questions on usage, professional support or just ideas to bounce off the maintainers, please do not create an issue. Leverage our support channels first.
 
--   Ortus Community Discourse: https://community.ortussolutions.com
--   Box Slack Team: http://boxteam.ortussolutions.com/
--   Professional Support: https://www.ortussolutions.com/services/support
+- Ortus Community Discourse: https://community.ortussolutions.com
+- Box Slack Team: http://boxteam.ortussolutions.com/
+- Professional Support: https://www.ortussolutions.com/services/support
 
 ## Pull Request Guidelines
 
--   The `master` branch is just a snapshot of the latest stable release. All development should be done in dedicated branches. Do not submit PRs against the master branch. They will be closed.
--   All pull requests should be sent against the `development` branch.
--   It's OK to have multiple small commits as you work on the PR - GitHub will automatically squash it before merging.
--   Make sure all local tests pass before submitting the merge.
--   Please make sure all your pull requests have companion tests.
--   Please link the Jira issue in your PR title when sending the final PR
+- The `master` branch is just a snapshot of the latest stable release. All development should be done in dedicated branches. Do not submit PRs against the master branch. They will be closed.
+- All pull requests should be sent against the `development` branch.
+- It's OK to have multiple small commits as you work on the PR - GitHub will automatically squash it before merging.
+- Make sure all local tests pass before submitting the merge.
+- Please make sure all your pull requests have companion tests.
+- Please link the Jira issue in your PR title when sending the final PR
 
 ## Security Vulnerabilities
 
@@ -67,8 +67,8 @@ Please make sure you use JDK21+.
 
 We are big on coding styles and have included two codings styles for you to follow:
 
--   [cfformat](../.cfformat.json) - For BoxLang/CFML code
--   [Java](../ortus-java-style.xml) - For Java code
+- [cfformat](../.cfformat.json) - For BoxLang/CFML code
+- [Java](../ortus-java-style.xml) - For Java code
 
 ```bash
 # Format everything
@@ -86,15 +86,15 @@ You can also see the Ortus Coding Standards you must follow here: https://github
 
 You can support ColdBox and all of our Open Source initiatives at Ortus Solutions by becoming a patreon. You can also get lots of goodies and services depending on the level of contributions.
 
--   [Become a backer or sponsor on Patreon](https://www.patreon.com/ortussolutions)
--   [One-time donations via PayPal](https://www.paypal.com/paypalme/ortussolutions)
+- [Become a backer or sponsor on Patreon](https://www.patreon.com/ortussolutions)
+- [One-time donations via PayPal](https://www.paypal.com/paypalme/ortussolutions)
 
 ## Contributors
 
 Thank you to all the people who have already contributed to BoxLang! We: heart: : heart: : heart: love you!
 
 <a href = "https://github.com/ortus-boxlang/bx-ai/graphs/contributors">
-  <img src = "https://contrib.rocks/image?repo=ortus-boxlang/bx-ai"/>
+  <img src = "https://contrib.rocks/image?repo=ortus-boxlang/bx-ai" alt="bxai"/>
 </a>
 
 Made with [contributors-img](https://contrib.rocks)

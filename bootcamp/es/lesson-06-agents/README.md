@@ -394,6 +394,7 @@ SupportBot: ¡Gracias por contactarnos! ¡Que tengas un excelente día! 👋
 ### El Desafío
 
 Construye un **Agente de Investigación** que pueda:
+
 1. Buscar información (simulada)
 2. Resumir hallazgos
 3. Recordar la conversación
@@ -557,6 +558,7 @@ respuesta = agente.run( "Solicitud del usuario" )
 ### ¿Por Qué Multi-Tenant?
 
 Sin aislamiento:
+
 ```java
 // ❌ MALO: ¡Todos los usuarios comparten la misma memoria!
 agente = aiAgent(
@@ -566,6 +568,7 @@ agente = aiAgent(
 ```
 
 Con aislamiento:
+
 ```java
 // ✅ BUENO: Cada usuario tiene su propia memoria
 function getUserAgent( userId, conversationId ) {
@@ -635,6 +638,7 @@ function chat( event, rc, prc ) {
 ### Profundiza: Curso Completo
 
 Toma el [curso de 12 lecciones](../../course/) para:
+
 - Respuestas en streaming
 - Flujos de trabajo de pipelines
 - Sistemas de memoria avanzados
@@ -646,9 +650,10 @@ Toma el [curso de 12 lecciones](../../course/) para:
 
 Revisa la [carpeta de ejemplos](../../examples/) para más código.
 
-### ¡Construye Algo!
+### Construye Algo
 
 La mejor manera de aprender es haciendo. Intenta construir:
+
 - Un bot de servicio al cliente
 - Un asistente de revisión de código
 - Un agente de análisis de datos

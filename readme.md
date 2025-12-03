@@ -115,6 +115,7 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | Voyage       | ❌ | ✅ (Specialized) | ❌ |
 
 **Note:**
+
 - OpenAI provides native structured output support with strict schema validation. Other providers use JSON mode with schema constraints, which provides excellent results but may occasionally require prompt refinement.
 - Voyage AI is a specialized embeddings-only provider with state-of-the-art models optimized for semantic search, RAG applications, and clustering. It does not support chat completions or structured output.
 - Cohere provides high-quality embeddings with excellent multilingual support (100+ languages), chat capabilities, real-time tool calling, and structured output via JSON schema validation.
@@ -1251,12 +1252,14 @@ aiModel( string provider = "", string apiKey = "" )
 Returns an `AiModel` object that implements `IAiRunnable` with the following methods:
 
 **Configuration Methods:**
+
 - `configure( provider, apiKey )` : Configure the provider and API key
 - `bindTools( tools )` : Bind tools to the model (replaces existing)
 - `addTools( tools )` : Add tools to the model (appends)
 - `getName()` : Get the model's display name
 
 **Execution Methods (IAiRunnable):**
+
 - `run( input, params, options )` : Execute with messages
 - `stream( onChunk, input, params, options )` : Stream responses
 - `to( next )` : Chain to another runnable
@@ -1361,12 +1364,14 @@ result = model.run(
 ### Tool Binding vs Runtime Tools
 
 **Bound Tools (via bindTools/addTools):**
+
 - Attached to the model permanently
 - Useful for tools that are always needed
 - Used in agents automatically
 - Efficient for reusable models
 
 **Runtime Tools (via params.tools):**
+
 - Passed per execution
 - Useful for context-specific tools
 - Merged with bound tools
@@ -1535,10 +1540,12 @@ aiAgent(
 Returns an `AiAgent` object with the following methods:
 
 **Execution Methods:**
+
 - `run( input, params={}, options={} )` : Execute the agent with a task/prompt
 - `stream( onChunk, input, params={}, options={} )` : Stream agent responses
 
 **Configuration Methods (Fluent API):**
+
 - `setName( name )` : Set the agent's name
 - `setModel( model )` : Set the AI model
 - `setTools( tools )` : Replace all tools
@@ -1555,6 +1562,7 @@ Returns an `AiAgent` object with the following methods:
 - `setParam( key, value )` : Set a model parameter
 
 **Query Methods:**
+
 - `getConfig()` : Get agent configuration (returns model config object, memories array, params, options)
 - `getMemoryMessages()` : Get all messages from memory
 
@@ -2021,6 +2029,7 @@ bobSales.run( "I need a quote" )
 ```
 
 **See:**
+
 - [Memory Documentation](docs/main-components/memory.md) for standard memory guide
 - [Vector Memory Documentation](docs/main-components/vector-memory.md) for semantic search
 - [Multi-Tenant Guide](docs/advanced/multi-tenant-memory.md) for enterprise patterns
@@ -2030,6 +2039,7 @@ bobSales.run( "I need a quote" )
 The `MCP()` function creates a fluent client for consuming Model Context Protocol (MCP) servers. MCP is a standardized protocol for connecting AI models to external tools and data sources.
 
 **Signature:**
+
 ```java
 MCP( required string baseURL )
 ```
@@ -2242,6 +2252,7 @@ aiEmbed( input, struct params={}, struct options={} )
 The return value depends on the `returnFormat` option:
 
 - **"raw"** (default): Full response from the provider
+
   ```js
   {
       "data": [
@@ -2253,6 +2264,7 @@ The return value depends on the `returnFormat` option:
   ```
 
 - **"embeddings"**: Array of embedding vectors
+
   ```js
   [
       [0.123, -0.456, 0.789, ...],  // First text embedding
@@ -2261,6 +2273,7 @@ The return value depends on the `returnFormat` option:
   ```
 
 - **"first"**: Single embedding vector
+
   ```js
   [0.123, -0.456, 0.789, ...]
   ```
@@ -2487,6 +2500,7 @@ println( "Most relevant: " & scores.first().doc )
 | Perplexity | ❌ | N/A | N/A |
 
 **Voyage AI Models:**
+
 - `voyage-3` (default): 1024 dimensions, latest and most capable
 - `voyage-3-lite`: 512 dimensions, faster processing
 - `voyage-code-3`: 1024 dimensions, optimized for code
@@ -2508,6 +2522,7 @@ println( "Most relevant: " & scores.first().doc )
 ### Common Use Cases
 
 **Semantic Search**
+
 ```js
 // Search documents by meaning, not just keywords
 userQuery = "programming language"
@@ -2515,6 +2530,7 @@ results = findSimilarDocs( userQuery, docEmbeddings )
 ```
 
 **Text Clustering**
+
 ```js
 // Group similar articles together
 embeddings = aiEmbed( articles )
@@ -2522,6 +2538,7 @@ clusters = clusterByEmbedding( embeddings )
 ```
 
 **Recommendations**
+
 ```js
 // Find similar products/content
 itemEmbedding = aiEmbed( currentItem )
@@ -2529,6 +2546,7 @@ similar = findSimilarItems( itemEmbedding, allItemEmbeddings )
 ```
 
 **Duplicate Detection**
+
 ```js
 // Find near-duplicate content
 similarity = cosineSimilarity( embedding1, embedding2 )
@@ -2588,6 +2606,7 @@ function onAIRequest( required struct data ) {
 Fired after receiving a response from the AI provider. This allows you to process, modify, or cache responses.
 
 **Data Structure:**
+
 ```java
 {
     "chatRequest": ChatRequest, // The original AiRequestobject
