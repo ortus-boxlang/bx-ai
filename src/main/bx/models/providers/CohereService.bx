@@ -192,9 +192,15 @@ class extends="BaseService"{
 	/**
 	 * Cohere chat request
 	 * @see https://docs.cohere.com/reference/chat
+	 *
+	 * @aiRequest The AIRequest object to send to the provider
+	 * @interactionCount Current tool call interaction count (used internally)
+	 *
+	 * @throws ProviderError if the provider returns an error from the request
+	 * @throws MaxInteractionsExceeded if tool calls exceed the maximum allowed interactions
 	 */
 	@override
-	public function chat( required AiRequest aiRequest ){
+	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ){
 		// Cohere has a different message format
 		// Extract the last message as the main message
 		var messages = arguments.aiRequest.getMessages();
@@ -282,6 +288,24 @@ class extends="BaseService"{
 
 		// Handle tool calls if present
 		if( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ){
+			/**
+			 * ---------------------------------------------------------------------------------------------------------
+			 * Max Interactions Check
+			 * ---------------------------------------------------------------------------------------------------------
+			 */
+			var maxAllowed = aiRequest.getMaxInteractions() > 0 ? aiRequest.getMaxInteractions() : variables.maxInteractions;
+			if( arguments.interactionCount >= maxAllowed ){
+				writeLog(
+					text: "Max tool call interactions (#maxAllowed#) exceeded",
+					type: "error",
+					log : "ai"
+				)
+				throw(
+					type   : "MaxInteractionsExceeded",
+					message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
+				);
+			}
+
 			// Execute each tool call
 			var toolResults = result.tool_calls.map( toolCall => {
 				// Find the tool in our original tools list
@@ -297,9 +321,8 @@ class extends="BaseService"{
 			} );
 
 			// Make a follow-up request with tool results
-			// Keep the same message but add tool_results
+			// NOTE: Cohere requires EITHER message OR tool_results, not both (unless force_single_step=true)
 			var followUpPacket = {
-				"message": lastMessage.content,
 				"model": aiRequest.getModel(),
 				"tool_results": toolResults
 			};
@@ -323,7 +346,14 @@ class extends="BaseService"{
 			followUpPacket.append( tempParams );
 
 			// Send follow-up request with tool results
+			// Cohere typically needs only one follow-up; additional tool calls would require another interaction
 			result = sendRequest( aiRequest, followUpPacket );
+
+			// Check if Cohere is requesting MORE tool calls (multi-step reasoning)
+			if( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ){
+				// Increment interaction count and recurse
+				return chat( aiRequest, arguments.interactionCount + 1 );
+			}
 		}
 
 		// Determine return formats
