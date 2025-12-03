@@ -17,7 +17,6 @@
  */
 package ortus.boxlang.ai.services;
 
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -27,6 +26,7 @@ import ortus.boxlang.runtime.logging.BoxLangLogger;
 import ortus.boxlang.runtime.runnables.IClassRunnable;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.services.BaseService;
+import ortus.boxlang.runtime.types.Array;
 
 /**
  * This service is in charge of managing all MCP (Model Context Protocol) servers and their lifecycles.
@@ -166,8 +166,8 @@ public class AiService extends BaseService {
 	 *
 	 * @return Set of server names
 	 */
-	public Set<Key> getServerNames() {
-		return this.mcpServers.keySet();
+	public Array getServerNames() {
+		return Array.fromSet( this.mcpServers.keySet().stream().map( Key::getName ).collect( java.util.stream.Collectors.toSet() ) );
 	}
 
 	/**

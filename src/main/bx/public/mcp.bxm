@@ -1,4 +1,4 @@
-<bx:output><!---
+<bx:script>
 /**
  * [BoxLang]
  *
@@ -32,33 +32,30 @@
  *        "id": "1"
  *    }
  */
---->
-<!--- Get request parameters --->
-<bx:set serverName = url.server ?: "default">
-<bx:set requestMethod = cgi.REQUEST_METHOD>
-<bx:set requestBody = requestMethod eq "POST" ? getHTTPRequestData().content : "">
-<bx:set acceptHeader = cgi.HTTP_ACCEPT ?: "application/json">
+// Get request parameters
+mcpServerName = url.server ?: "default"
+requestMethod = cgi.REQUEST_METHOD
+requestBody = requestMethod eq "POST" ? getHTTPRequestData().content : ""
+acceptHeader = cgi.HTTP_ACCEPT ?: "application/json"
 
-<!--- Delegate to the request processor --->
-<bx:set processor = new bxModules.bxai.models.mcp.MCPRequestProcessor()>
-<bx:set result = processor.process(
-	serverName: serverName,
-	requestMethod: requestMethod,
-	requestBody: requestBody,
-	acceptHeader: acceptHeader,
-	urlParams: url
-)>
+// Delegate to the request processor
+result = new bxModules.bxai.models.mcp.MCPRequestProcessor()
+    process(
+        serverName: mcpServerName,
+        requestMethod: requestMethod,
+        requestBody: requestBody,
+        acceptHeader: acceptHeader,
+        urlParams: url
+    )
 
-<!--- Set response headers --->
-<bx:loop collection="#result.headers#" item="headerValue" index="headerName">
-	<bx:header name="#headerName#" value="#headerValue#">
-</bx:loop>
+// Set response headers
+for ( headerName in result.headers ) {
+	bx:header name=headerName value=result.headers[ headerName ];
+}
 
-<!--- Set status code if not 200 --->
-<bx:if result.statusCode neq 200>
-	<bx:header statusCode="#result.statusCode#">
-</bx:if>
-
-<!--- Output response content using bx:content to reset buffers and set content type --->
-<bx:content type="#result.contentType#" variable="#result.content#" reset="true">
-</bx:output>
+// Set status code if not 200
+if ( result.statusCode neq 200 ) {
+	bx:header statusCode=result.statusCode;
+}
+</bx:script>
+<bx:content type=#result.contentType# variable=#result.content# reset=true>

@@ -54,8 +54,8 @@ public class mcpServerTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var server = variables.get( Key.of( "result" ) );
-		assertThat( server ).isNotNull();
+		var myServer = variables.get( Key.of( "result" ) );
+		assertThat( myServer ).isNotNull();
 		assertThat( variables.get( Key.of( "serverName" ) ) ).isEqualTo( "default" );
 	}
 
@@ -72,8 +72,8 @@ public class mcpServerTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var server = variables.get( Key.of( "result" ) );
-		assertThat( server ).isNotNull();
+		var myServer = variables.get( Key.of( "result" ) );
+		assertThat( myServer ).isNotNull();
 		assertThat( variables.get( Key.of( "serverName" ) ) ).isEqualTo( "myApp" );
 	}
 
@@ -83,9 +83,9 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server1 = mcpServer( "testApp" )
-				server2 = mcpServer( "testApp" )
-				areSame = server1 == server2
+				mcpSrv1 = mcpServer( "testApp" )
+				mcpSrv2 = mcpServer( "testApp" )
+				areSame = mcpSrv1 == mcpSrv2
 			""",
 			context
 		);
@@ -100,9 +100,9 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server1 = mcpServer( "app1" )
-				server2 = mcpServer( "app2" )
-				areDifferent = server1 != server2
+				mcpSrv1 = mcpServer( "app1" )
+				mcpSrv2 = mcpServer( "app2" )
+				areDifferent = mcpSrv1 != mcpSrv2
 			""",
 			context
 		);
@@ -117,13 +117,13 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "toolTest" )
+				mcpSrv = mcpServer( "toolTest" )
 					.registerTool(
 						aiTool( "search", "Search for documents", ( query ) => "Found: " & query )
 					)
 
-				hasTool = server.hasTool( "search" )
-				toolCount = server.getToolCount()
+				hasTool = mcpSrv.hasTool( "search" )
+				toolCount = mcpSrv.getToolCount()
 			""",
 			context
 		);
@@ -144,12 +144,12 @@ public class mcpServerTest extends BaseIntegrationTest {
 					aiTool( "calculate", "Do math", ( expr ) => "calc: " & expr )
 				]
 
-				server = mcpServer( "multiToolTest" )
+				mymyServer = mcpServer( "multiToolTest" )
 					.registerTools( tools )
 
-				hasSearch = server.hasTool( "search" )
-				hasCalc = server.hasTool( "calculate" )
-				toolCount = server.getToolCount()
+				hasSearch = myServer.hasTool( "search" )
+				hasCalc = myServer.hasTool( "calculate" )
+				toolCount = myServer.getToolCount()
 			""",
 			context
 		);
@@ -166,16 +166,15 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "unregTest" )
+				mymyServer = mcpServer( "unregTest" )
 					.registerTool( aiTool( "myTool", "A tool", ( x ) => x ) )
 
-				beforeCount = server.getToolCount()
-				beforeHas = server.hasTool( "myTool" )
+				beforeCount = myServer.getToolCount()
+				beforeHas = myServer.hasTool( "myTool" )
+				myServer.unregisterTool( "myTool" )
 
-				server.unregisterTool( "myTool" )
-
-				afterCount = server.getToolCount()
-				afterHas = server.hasTool( "myTool" )
+				afterCount = myServer.getToolCount()
+				afterHas = myServer.hasTool( "myTool" )
 			""",
 			context
 		);
@@ -193,13 +192,13 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "listToolsTest" )
+				myServer = mcpServer( "listToolsTest" )
 					.registerTool(
 						aiTool( "search", "Search for documents", ( query ) => "result" )
 							.describeArg( "query", "The search query" )
 					)
 
-				tools = server.listTools()
+				tools = myServer.listTools()
 				firstTool = tools[ 1 ]
 			""",
 			context
@@ -220,13 +219,13 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "clearToolsTest" )
+				myServer = mcpServer( "clearToolsTest" )
 					.registerTool( aiTool( "tool1", "Tool 1", ( x ) => x ) )
 					.registerTool( aiTool( "tool2", "Tool 2", ( x ) => x ) )
 
-				beforeCount = server.getToolCount()
-				server.clearTools()
-				afterCount = server.getToolCount()
+				beforeCount = myServer.getToolCount()
+				myServer.clearTools()
+				afterCount = myServer.getToolCount()
 			""",
 			context
 		);
@@ -242,17 +241,17 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "resourceTest" )
+				myServer = mcpServer( "resourceTest" )
 					.registerResource(
 						uri: "docs://readme",
 						name: "README",
 						description: "Project readme file",
 						mimeType: "text/markdown",
-						handler: () => "# Hello World"
+						handler: () => "## Hello World"
 					)
 
-				hasResource = server.hasResource( "docs://readme" )
-				resources = server.listResources()
+				hasResource = myServer.hasResource( "docs://readme" )
+				resources = myServer.listResources()
 			""",
 			context
 		);
@@ -270,7 +269,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "readResourceTest" )
+				myServer = mcpServer( "readResourceTest" )
 					.registerResource(
 						uri: "config://settings",
 						name: "Settings",
@@ -278,7 +277,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 						handler: () => { setting1: "value1", setting2: "value2" }
 					)
 
-				result = server.readResource( "config://settings" )
+				result = myServer.readResource( "config://settings" )
 				contents = result.contents[ 1 ]
 			""",
 			context
@@ -298,7 +297,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "promptTest" )
+				myServer = mcpServer( "promptTest" )
 					.registerPrompt(
 						name: "greeting",
 						description: "Generate a greeting",
@@ -308,8 +307,8 @@ public class mcpServerTest extends BaseIntegrationTest {
 						]
 					)
 
-				hasPrompt = server.hasPrompt( "greeting" )
-				prompts = server.listPrompts()
+				hasPrompt = myServer.hasPrompt( "greeting" )
+				prompts = myServer.listPrompts()
 			""",
 			context
 		);
@@ -327,7 +326,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "getPromptTest" )
+				myServer = mcpServer( "getPromptTest" )
 					.registerPrompt(
 						name: "summarize",
 						description: "Summarize text",
@@ -336,7 +335,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 						]
 					)
 
-				result = server.getPrompt( "summarize", { text: "Hello World" } )
+				result = myServer.getPrompt( "summarize", { text: "Hello World" } )
 				messages = result.messages
 			""",
 			context
@@ -356,12 +355,12 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "configTest" )
+				myServer = mcpServer( "configTest" )
 					.setDescription( "My Custom MCP Server" )
 					.setVersion( "2.0.0" )
 
-				info = server.getServerInfo()
-				description = server.getDescription()
+				info = myServer.getServerInfo()
+				description = myServer.getDescription()
 			""",
 			context
 		);
@@ -379,7 +378,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "capTest" )
+				myServer = mcpServer( "capTest" )
 					.registerTool( aiTool( "tool1", "A tool", ( x ) => x ) )
 					.registerResource(
 						uri: "test://resource",
@@ -387,7 +386,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 						handler: () => "content"
 					)
 
-				caps = server.getCapabilities()
+				caps = myServer.getCapabilities()
 				hasTools = structKeyExists( caps, "tools" )
 				hasResources = structKeyExists( caps, "resources" )
 			""",
@@ -405,7 +404,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "initTest" )
+				myServer = mcpServer( "initTest" )
 					.registerTool( aiTool( "testTool", "Test", ( x ) => x ) )
 
 				request = {
@@ -415,7 +414,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 					"params": {}
 				}
 
-				response = server.handleRequest( request )
+				response = myServer.handleRequest( request )
 				hasResult = structKeyExists( response, "result" )
 				hasProtocolVersion = structKeyExists( response.result, "protocolVersion" )
 			""",
@@ -433,7 +432,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "toolsListTest" )
+				myServer = mcpServer( "toolsListTest" )
 					.registerTool( aiTool( "search", "Search docs", ( q ) => "result" ) )
 
 				request = {
@@ -442,7 +441,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 					"id": "tools-1"
 				}
 
-				response = server.handleRequest( request )
+				response = myServer.handleRequest( request )
 				tools = response.result.tools
 				toolCount = arrayLen( tools )
 			""",
@@ -459,7 +458,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "toolsCallTest" )
+				myServer = mcpServer( "toolsCallTest" )
 					.registerTool(
 						aiTool( "echo", "Echo input", ( message ) => "Echo: " & message )
 					)
@@ -474,7 +473,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 					}
 				}
 
-				response = server.handleRequest( request )
+				response = myServer.handleRequest( request )
 				content = response.result.content[ 1 ]
 				text = content.text
 			""",
@@ -491,7 +490,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "unknownMethodTest" )
+				myServer = mcpServer( "unknownMethodTest" )
 
 				request = {
 					"jsonrpc": "2.0",
@@ -499,7 +498,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 					"id": "unknown-1"
 				}
 
-				response = server.handleRequest( request )
+				response = myServer.handleRequest( request )
 				hasError = structKeyExists( response, "error" )
 				errorCode = response.error.code
 			""",
@@ -517,12 +516,13 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "jsonStringTest" )
+				myServer = mcpServer( "jsonStringTest" )
 					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
 
 				requestJSON = '{"jsonrpc":"2.0","method":"tools/list","id":"1"}'
 
-				response = server.handleRequest( requestJSON )
+				response = myServer.handleRequest( requestJSON )
+				println( response 	)
 				hasResult = structKeyExists( response, "result" )
 			""",
 			context
@@ -542,7 +542,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 				beforeHas = bxModules.bxai.models.mcp.MCPServer::hasInstance( "staticTest" )
 
 				// Create instance
-				server = mcpServer( "staticTest" )
+				myServer = mcpServer( "staticTest" )
 
 				// After creating
 				afterHas = bxModules.bxai.models.mcp.MCPServer::hasInstance( "staticTest" )
@@ -561,7 +561,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "removeTest" )
+				myServer = mcpServer( "removeTest" )
 				beforeRemove = bxModules.bxai.models.mcp.MCPServer::hasInstance( "removeTest" )
 
 				wasRemoved = bxModules.bxai.models.mcp.MCPServer::removeInstance( "removeTest" )
@@ -603,7 +603,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				server = mcpServer( "fluentTest" )
+				myServer = mcpServer( "fluentTest" )
 					.setDescription( "Fluent Test Server" )
 					.setVersion( "3.0.0" )
 					.registerTool( aiTool( "tool1", "Tool 1", ( x ) => x ) )
@@ -619,9 +619,9 @@ public class mcpServerTest extends BaseIntegrationTest {
 						handler: ( args ) => [{ role: "user", content: "test" }]
 					)
 
-				toolCount = server.getToolCount()
-				description = server.getDescription()
-				version = server.getVersion()
+				toolCount = myServer.getToolCount()
+				description = myServer.getDescription()
+				version = myServer.getVersion()
 			""",
 			context
 		);

@@ -27,7 +27,8 @@ class {
 	 * Static logger for MCP operations
 	 */
 	static {
-		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" );
+		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" )
+        DEFAULT_SERVER_NAME = "default"
 	}
 
 	/**
@@ -42,7 +43,7 @@ class {
 	 * @return Struct containing response data: { content, contentType, headers, statusCode, statusText }
 	 */
 	struct function process(
-		string serverName = "default",
+		string serverName = static.DEFAULT_SERVER_NAME,
 		required string requestMethod,
 		string requestBody = "",
 		string acceptHeader = "application/json",
