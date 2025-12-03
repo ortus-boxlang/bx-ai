@@ -28,7 +28,8 @@ import ortus.boxlang.runtime.types.Array;
  * Integration tests for Cohere embeddings provider
  * These tests require a valid COHERE_API_KEY environment variable
  *
- * Cohere is known for high-quality embeddings with excellent multilingual support
+ * Cohere is known for high-quality embeddings with excellent multilingual
+ * support
  * and specialized input types for search optimization.
  *
  * @see https://docs.cohere.com/reference/embed
@@ -230,6 +231,35 @@ public class CohereTest extends BaseIntegrationTest {
 
 		var result = variables.getAsString( Key.of( "result" ) );
 		assertThat( result.toString() ).contains( "105" );
+	}
+
+	@DisplayName( "Test chat with structured output" )
+	@Test
+	public void testCohereChatStructuredOutput() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			// Use existing Person class from test/bx
+			result = aiChat(
+				"Tell me about a software engineer named Alice who is 32 years old.",
+				{},
+				{ provider: "cohere", returnFormat: new src.test.bx.Person() }
+			)
+
+			// Parse the JSON response
+			firstName = result.getFirstName();
+			lastName = result.getLastName();
+			age = result.getAge();
+			isPersonInstance = isInstanceOf( result, "Person" );
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "firstName" ) ).toString() ).isEqualTo( "Alice" );
+		assertThat( variables.get( Key.of( "lastName" ) ).toString() ).isEqualTo( "Smith" );
+		assertThat( variables.get( Key.of( "age" ) ) ).isEqualTo( 32 );
+		assertThat( variables.getAsBoolean( Key.of( "isPersonInstance" ) ) ).isTrue();
 	}
 
 }

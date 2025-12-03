@@ -1,12 +1,12 @@
 /**
  * Cohere Tools (Function Calling) Examples
- * 
+ *
  * Demonstrates Cohere's tool calling capabilities for real-time data access.
  * Cohere automatically determines when to call tools and executes them.
- * 
+ *
  * API Key: Set COHERE_API_KEY environment variable
  * Get your key from: https://dashboard.cohere.com/api-keys
- * 
+ *
  * @see https://docs.cohere.com/docs/tool-use
  * @see https://docs.cohere.com/reference/chat
  */
@@ -110,12 +110,12 @@ dbQueryTool = aiTool(
 			"jane": { name: "Jane Smith", age: 28, role: "Designer" },
 			"bob": { name: "Bob Wilson", age: 35, role: "Manager" }
 		}
-		
+
 		var userId = args.userId.lCase()
 		if( mockUsers.keyExists( userId ) ){
 			return mockUsers[ userId ]
 		}
-		
+
 		return "User not found"
 	}
 ).describeUserId( "The user ID to query (e.g., john, jane, bob)" )
@@ -146,12 +146,12 @@ stockTool = aiTool(
 			"GOOGL": { symbol: "GOOGL", price: 142.80, change: -1.2 },
 			"MSFT": { symbol: "MSFT", price: 420.15, change: 5.7 }
 		}
-		
+
 		var symbol = args.symbol.uCase()
 		if( stocks.keyExists( symbol ) ){
 			return stocks[ symbol ]
 		}
-		
+
 		return "Stock symbol not found"
 	}
 ).describeSymbol( "Stock ticker symbol (e.g., AAPL, GOOGL, MSFT)" )
@@ -219,11 +219,11 @@ orderTool = aiTool(
 		if( !args.keyExists( "product" ) || !args.keyExists( "quantity" ) ){
 			return { success: false, error: "Missing required fields" }
 		}
-		
+
 		if( args.quantity castAs "numeric" < 1 ){
 			return { success: false, error: "Quantity must be at least 1" }
 		}
-		
+
 		// Simulate order creation
 		var orderId = "ORD-" & createUUID()
 		return {

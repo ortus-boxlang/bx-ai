@@ -17,6 +17,8 @@
  * @see https://docs.cohere.com/reference/embed
  * @see https://docs.cohere.com/reference/chat
  */
+import bxModules.bxai.models.util.SchemaBuilder
+
 class extends="BaseService"{
 
 	/**
@@ -224,10 +226,23 @@ class extends="BaseService"{
 			dataPacket.preamble = systemMessages.first().content
 		}
 
-		// Add other parameters (but not tools yet, we'll transform them)
-		var tempParams = arguments.aiRequest.getParams().duplicate();
-		var tools = tempParams.delete( "tools" );
+		// Add other parameters (but not tools and response_format yet, we'll transform them)
+		var tempParams = arguments.aiRequest.getParams().duplicate()
+		var tools = tempParams?.tools ?: []
+		var responseFormat = tempParams?.response_format ?: ""
+        tempParams.delete( "response_format" )
+        tempParams.delete( "tools" )
 		dataPacket.append( tempParams )
+
+		// Structured output support (Cohere format)
+		if( arguments.aiRequest.isStructuredOutput() ){
+			// Clean internal metadata before sending to provider
+			var cleanSchema = SchemaBuilder::cleanSchema( arguments.aiRequest.getStructuredOutput() );
+			dataPacket.response_format = {
+				"type": "json_object",
+				"schema": cleanSchema
+			};
+		}
 
 		// Tooling support - Convert OpenAI format to Cohere format
 		// OpenAI: { type: "function", function: { name, description, parameters: { properties, required } } }
@@ -317,6 +332,12 @@ class extends="BaseService"{
 				return result;
 			case "raw":
 				return result;
+			case "json":
+				return jsonDeserialize( extractFromCodeBlock( result.text, "json" ) );
+			case "xml":
+				return xmlParse( extractFromCodeBlock( result.text, "xml" ) );
+             case "structuredOutput":
+                return populateStructuredOutput( result.text, aiRequest );
 			case "single": default:
 				return result.text ?: result.message ?: ""
 		}
