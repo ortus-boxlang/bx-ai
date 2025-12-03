@@ -28,7 +28,7 @@ import ortus.boxlang.runtime.scopes.Key;
 /**
  * Tests for aiPopulate() BIF
  */
-public class AiPopulateTest2 extends BaseIntegrationTest {
+public class aiPopulateTest extends BaseIntegrationTest {
 
 	@Test
 	@DisplayName( "Can populate a class instance from JSON string" )
