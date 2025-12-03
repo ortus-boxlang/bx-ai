@@ -56,7 +56,7 @@
 
 <!--- Set status code if not 200 --->
 <bx:if result.statusCode neq 200>
-	<bx:header statusCode="#result.statusCode#" statusText="#result.statusText#">
+	<bx:header statusCode="#result.statusCode#">
 </bx:if>
 
 <!--- Output response content using bx:content to reset buffers and set content type --->
