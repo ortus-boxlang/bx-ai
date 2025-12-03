@@ -56,6 +56,10 @@ messages.map( m => m.content ).filter( c => !isNull(c) )
 - **Implicit returns**: Last expression in function is returned
 - **String interpolation**: `"Hello, ${name}!"` or `"#name#"`
 - **OnMissingMethod**: Dynamic method handling (see `AiMessage` for roled messages)
+- **Implicit getters/setters**: Properties declared with `property` automatically get getter/setter methods
+  - `property name="serverName"` → `getServerName()` and `setServerName(value)` are auto-generated
+  - Do NOT manually create getter/setter methods for properties
+  - Access via `obj.getPropertyName()` or `obj.setPropertyName(value)`
 - **Rich string functions**: Comprehensive string manipulation BIFs + full Java String API access
   - Reference: https://boxlang.ortusbooks.com/boxlang-language/reference/built-in-functions/string
   - Examples: `char(10)` (newline), `left()`, `right()`, `reReplace()`, `trim()`, etc.
@@ -63,6 +67,9 @@ messages.map( m => m.content ).filter( c => !isNull(c) )
 ### Code Quality Standards
 - **No cryptic variable names**: Use descriptive, self-documenting names (e.g., `maxConnections` not `M`)
 - **Avoid acronyms**: Only use acronyms that are universally known (HTTP, URL, API). Prefer full words.
+- **Avoid reserved scope names**: BoxLang has built-in scopes that cannot be used as variable names:
+  - `server`, `request`, `session`, `application`, `cgi`, `url`, `form`, `cookie`, `variables`
+  - Use alternative names like `mcpSrv`, `rpcRequest`, `httpReq`, etc.
 - **Type casting**: Use `castAs` operator instead of `javaCast()` function
   ```java
   // Good
