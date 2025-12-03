@@ -190,12 +190,12 @@ response = myServer.handleRequest( request )
 ### Using curl
 ```bash
 # List tools
-curl -X POST http://localhost:8080/mcp-endpoint.bx \
+curl -X POST http://localhost:8080/mcp-endpoint.bxs \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":"1"}'
 
 # Call a tool
-curl -X POST http://localhost:8080/mcp-endpoint.bx \
+curl -X POST http://localhost:8080/mcp-endpoint.bxs \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -211,7 +211,7 @@ curl -X POST http://localhost:8080/mcp-endpoint.bx \
 ### Using BoxLang
 ```javascript
 // Create HTTP request
-response = httpRequest( "http://localhost:8080/mcp-endpoint.bx" )
+response = httpRequest( "http://localhost:8080/mcp-endpoint.bxs" )
     .setMethod( "POST" )
     .addHeader( "Content-Type", "application/json" )
     .setBody( jsonSerialize( {
