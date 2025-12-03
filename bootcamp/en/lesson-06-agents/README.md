@@ -226,7 +226,7 @@ agent.clearMemory()
 
   Turn 1                Turn 2                Turn 3
   ──────                ──────                ──────
-  
+
   User: "I'm Alex"      User: "My name?"      User: "Summarize"
         │                     │                     │
         ▼                     ▼                     ▼
@@ -316,14 +316,14 @@ supportAgent = aiAgent(
     description: "A customer support agent for order and product inquiries",
     instructions: "
         You are a helpful customer support agent.
-        
+
         Guidelines:
         - Be friendly and professional
         - Look up orders when customers ask about their orders
         - Check product info when asked about prices or availability
         - Create a support ticket for complex issues
         - If you don't know something, offer to create a ticket
-        
+
         Always ask if there's anything else you can help with.
     ",
     tools: [ orderTool, productTool, ticketTool ],
@@ -339,7 +339,7 @@ running = true
 while( running ) {
     print( "You: " )
     userInput = readLine()
-    
+
     if( userInput.trim() == "quit" || userInput.trim() == "bye" ) {
         running = false
         println( "SupportBot: Thanks for contacting us! Have a great day! 👋" )
@@ -366,21 +366,21 @@ Hi! I'm your support assistant. How can I help?
 ──────────────────────────────────────────────────
 
 You: Hi, I ordered something last week
-SupportBot: I'd be happy to help you check on your order! 
+SupportBot: I'd be happy to help you check on your order!
            Could you provide your order ID? It starts with ORD-.
 
 You: It's ORD-001
-SupportBot: I found your order! Order ORD-001 for Widget Pro is currently 
+SupportBot: I found your order! Order ORD-001 for Widget Pro is currently
            Shipped. It should arrive soon! Is there anything else I can help with?
 
 You: How much does the Gadget X cost?
-SupportBot: The Gadget X is $149.99, but unfortunately it's currently 
-           Out of Stock. Would you like me to create a ticket to notify 
+SupportBot: The Gadget X is $149.99, but unfortunately it's currently
+           Out of Stock. Would you like me to create a ticket to notify
            you when it's back in stock?
 
 You: Yes please
-SupportBot: Created ticket TKT-4721: Customer wants notification when 
-           Gadget X is back in stock. A human agent will follow up. 
+SupportBot: Created ticket TKT-4721: Customer wants notification when
+           Gadget X is back in stock. A human agent will follow up.
            Is there anything else I can help with?
 
 You: bye
@@ -473,7 +473,7 @@ running = true
 while( running ) {
     print( "You: " )
     userInput = readLine()
-    
+
     if( userInput.trim() == "quit" ) {
         running = false
         println( "Goodbye! 📚" )
@@ -585,10 +585,10 @@ function getUserAgent( userId, conversationId ) {
 function chat( event, rc, prc ) {
     userId = auth().user().getId()  // From authenticated session
     conversationId = rc.chatId ?: createUUID()
-    
+
     agent = getUserAgent( userId, conversationId )
     response = agent.run( rc.message )
-    
+
     return { response: response, conversationId: conversationId }
 }
 ```
@@ -614,7 +614,7 @@ You've completed the BoxLang AI Bootcamp! You now know:
 └─────────────────────────────────────────────────────────────────┘
 
   ✅ Lesson 1: Setup & First AI Call
-  ✅ Lesson 2: Conversations & Messages  
+  ✅ Lesson 2: Conversations & Messages
   ✅ Lesson 3: Switching Providers
   ✅ Lesson 4: Structured Output
   ✅ Lesson 5: AI Tools

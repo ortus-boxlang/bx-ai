@@ -585,10 +585,10 @@ function getUserAgent( userId, conversationId ) {
 function chat( event, rc, prc ) {
     userId = auth().user().getId()  // De la sesión autenticada
     conversationId = rc.chatId ?: createUUID()
-    
+
     agente = getUserAgent( userId, conversationId )
     respuesta = agente.run( rc.message )
-    
+
     return { response: respuesta, conversationId: conversationId }
 }
 ```
