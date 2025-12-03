@@ -171,11 +171,29 @@ La memoria permite a los agentes recordar la conversación:
 | `windowed` | Mantiene los últimos N mensajes | La mayoría de casos |
 | `summary` | Resume mensajes antiguos | Conversaciones largas |
 | `session` | Persiste en sesión web | Aplicaciones web |
+| `cache` | Almacenamiento en caché distribuido | Apps multi-servidor |
+| `file` | Persistencia en archivo JSON | Almacenamiento local |
+| `jdbc` | Almacenamiento en base de datos | Apps empresariales |
+| `vector` | Búsqueda semántica (11 proveedores) | Aplicaciones RAG |
+
+> 💡 **Memoria Multi-Tenant**: Todos los tipos de memoria soportan parámetros `userId` y `conversationId` para aplicaciones multi-usuario. Esto asegura que las conversaciones de cada usuario estén completamente aisladas:
+>
+> ```java
+> memoria = aiMemory( "windowed",
+>     key: createUUID(),
+>     userId: session.userId,           // Aísla por usuario
+>     conversationId: "chat-soporte",  // Múltiples chats por usuario
+>     config: { maxMessages: 20 }
+> )
+> ```
+>
+> ¡Esto es esencial para aplicaciones web donde múltiples usuarios interactúan con tu agente!
 
 ### Ejemplo: Agente con Memoria
 
 ```java
 // agente-memoria.bxs
+// Memoria simple de un solo usuario (bueno para scripts/CLI)
 agente = aiAgent(
     name: "PersonalAssistant",
     description: "A personal assistant that remembers your preferences",
@@ -529,6 +547,60 @@ agente = aiAgent(
 // Usar agente
 respuesta = agente.run( "Solicitud del usuario" )
 ```
+
+---
+
+## 🌐 Extra: Agentes Multi-Tenant para Apps Web
+
+**Para aplicaciones web con múltiples usuarios**, querrás aislar la conversación de cada usuario:
+
+### ¿Por Qué Multi-Tenant?
+
+Sin aislamiento:
+```java
+// ❌ MALO: ¡Todos los usuarios comparten la misma memoria!
+agente = aiAgent(
+    memory: aiMemory( "windowed" )
+)
+// ¡Los datos de Alice se filtran a Bob!
+```
+
+Con aislamiento:
+```java
+// ✅ BUENO: Cada usuario tiene su propia memoria
+function getUserAgent( userId, conversationId ) {
+    return aiAgent(
+        name: "WebAssistant",
+        instructions: "Sé útil y profesional",
+        memory: aiMemory( "session",
+            key: "chat",
+            userId: userId,              // Aísla por usuario
+            conversationId: conversationId,  // Múltiples chats por usuario
+            config: { maxMessages: 50 }
+        )
+    )
+}
+
+// En tu handler web:
+function chat( event, rc, prc ) {
+    userId = auth().user().getId()  // De la sesión autenticada
+    conversationId = rc.chatId ?: createUUID()
+    
+    agente = getUserAgent( userId, conversationId )
+    respuesta = agente.run( rc.message )
+    
+    return { response: respuesta, conversationId: conversationId }
+}
+```
+
+### Puntos Clave
+
+- 🔒 **Seguridad**: Los datos de cada usuario están aislados
+- 💬 **Múltiples Chats**: Los usuarios pueden tener múltiples conversaciones
+- 📊 **Escalabilidad**: Funciona en servidores distribuidos (con memoria cache/jdbc)
+- 🎯 **Listo para Empresa**: Multi-tenancy de grado de producción
+
+> **Aprende Más**: ¡Consulta la [Guía de Memoria Multi-Tenant](../../../docs/advanced/multi-tenant-memory.md) para patrones empresariales!
 
 ---
 

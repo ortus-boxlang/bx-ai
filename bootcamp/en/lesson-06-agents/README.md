@@ -171,11 +171,29 @@ Memory lets agents remember the conversation:
 | `windowed` | Keeps last N messages | Most use cases |
 | `summary` | Summarizes old messages | Long conversations |
 | `session` | Persists in web session | Web applications |
+| `cache` | Distributed cache storage | Multi-server apps |
+| `file` | JSON file persistence | Local storage |
+| `jdbc` | Database storage | Enterprise apps |
+| `vector` | Semantic search (11 providers) | RAG applications |
+
+> 💡 **Multi-Tenant Memory**: All memory types support `userId` and `conversationId` parameters for multi-user applications. This ensures each user's conversations are completely isolated:
+>
+> ```java
+> memory = aiMemory( "windowed",
+>     key: createUUID(),
+>     userId: session.userId,           // Isolate per user
+>     conversationId: "support-chat",  // Multiple chats per user
+>     config: { maxMessages: 20 }
+> )
+> ```
+>
+> This is essential for web applications where multiple users interact with your agent!
 
 ### Example: Agent with Memory
 
 ```java
 // memory-agent.bxs
+// Simple single-user memory (good for scripts/CLI)
 agent = aiAgent(
     name: "PersonalAssistant",
     description: "A personal assistant that remembers your preferences",
@@ -529,6 +547,60 @@ agent = aiAgent(
 // Use agent
 response = agent.run( "User request" )
 ```
+
+---
+
+## 🌐 Bonus: Multi-Tenant Agents for Web Apps
+
+**For web applications with multiple users**, you'll want to isolate each user's conversation:
+
+### Why Multi-Tenant?
+
+Without isolation:
+```java
+// ❌ BAD: All users share the same memory!
+agent = aiAgent(
+    memory: aiMemory( "windowed" )
+)
+// User Alice's data leaks to User Bob!
+```
+
+With isolation:
+```java
+// ✅ GOOD: Each user has their own memory
+function getUserAgent( userId, conversationId ) {
+    return aiAgent(
+        name: "WebAssistant",
+        instructions: "Be helpful and professional",
+        memory: aiMemory( "session",
+            key: "chat",
+            userId: userId,              // Isolate per user
+            conversationId: conversationId,  // Multiple chats per user
+            config: { maxMessages: 50 }
+        )
+    )
+}
+
+// In your web handler:
+function chat( event, rc, prc ) {
+    userId = auth().user().getId()  // From authenticated session
+    conversationId = rc.chatId ?: createUUID()
+    
+    agent = getUserAgent( userId, conversationId )
+    response = agent.run( rc.message )
+    
+    return { response: response, conversationId: conversationId }
+}
+```
+
+### Key Points
+
+- 🔒 **Security**: Each user's data is isolated
+- 💬 **Multiple Chats**: Users can have multiple conversations
+- 📊 **Scalability**: Works across distributed servers (with cache/jdbc memory)
+- 🎯 **Enterprise Ready**: Production-grade multi-tenancy
+
+> **Learn More**: See the [Multi-Tenant Memory Guide](../../../docs/advanced/multi-tenant-memory.md) for enterprise patterns!
 
 ---
 
