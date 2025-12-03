@@ -270,10 +270,15 @@ Build **stateful, context-aware AI applications** 🎯 with flexible memory syst
 
 ### 💡 Quick Examples
 
-**Windowed Memory:**
+**Windowed Memory (Multi-Tenant):**
 
 ```java
-memory = aiMemory( "windowed", { maxMessages: 10 } )
+// Automatic per-user isolation
+memory = aiMemory( "windowed",
+    key: createUUID(),
+    userId: "user123",
+    config: { maxMessages: 10 }
+)
 agent = aiAgent( name: "Assistant", memory: memory )
 
 agent.run( "My name is John" )
@@ -292,15 +297,21 @@ agent = aiAgent( name: "Support", memory: memory )
 // Long conversation - older messages summarized automatically
 ```
 
-**Vector Memory (Semantic Search):**
+**Vector Memory (Semantic Search + Multi-Tenant):**
 
 ```java
-memory = aiMemory( "chroma", {
-    collection: "customer_support",
-    embeddingProvider: "openai",
-    embeddingModel: "text-embedding-3-small"
-} )
+memory = aiMemory( "chroma",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "support",
+    config: {
+        collection: "customer_support",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small"
+    }
+)
 // Retrieves semantically relevant past conversations
+// Automatically filtered by userId/conversationId
 ```
 
 **Hybrid Memory (Recent + Semantic):**
@@ -1753,10 +1764,42 @@ The `aiMemory()` function creates memory instances that enable AI agents and pip
 
 ```java
 aiMemory(
-    string memory = "simple",
-    string key = createUUID(),
-    struct config = {}
+    string memory = "windowed",      // Memory type
+    string key = createUUID(),        // Unique identifier
+    string userId = "",               // User ID for multi-tenant isolation
+    string conversationId = "",       // Conversation ID for multi-conversation support
+    struct config = {}                // Provider-specific configuration
 )
+```
+
+### Multi-Tenant Isolation
+
+**All memory types support multi-tenant isolation:**
+
+```java
+// Per-user isolation
+memory = aiMemory( "windowed",
+    key: createUUID(),
+    userId: "user123",
+    config: { maxMessages: 10 }
+)
+
+// Per-conversation isolation (same user, different chats)
+supportChat = aiMemory( "windowed",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "support-ticket-456",
+    config: { maxMessages: 10 }
+)
+
+salesChat = aiMemory( "windowed",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "sales-inquiry-789",
+    config: { maxMessages: 10 }
+)
+
+// Each conversation is automatically isolated
 ```
 
 ### Memory Types
@@ -1766,49 +1809,171 @@ aiMemory(
 Keeps last N messages, discards older ones:
 
 ```java
+// Single-tenant
 memory = aiMemory( "windowed", config = { maxMessages: 10 } )
+
+// Multi-tenant
+memory = aiMemory( "windowed",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "chat456",
+    config: { maxMessages: 10 }
+)
 ```
 
-**Best for:** Short conversations, cost-conscious apps
+**Best for:** Short conversations, cost-conscious apps, multi-user systems
 
 #### Summary Memory ⭐ - Intelligent Compression
 
 Compresses old messages while preserving context:
 
 ```java
+// Single-tenant
 memory = aiMemory( "summary", config = {
     maxMessages: 20,
     summaryThreshold: 10,
     summaryModel: "gpt-4o-mini"
 } )
+
+// Multi-tenant with per-user isolation
+memory = aiMemory( "summary",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "support-chat",
+    config: {
+        maxMessages: 20,
+        summaryThreshold: 10,
+        summaryModel: "gpt-4o-mini"
+    }
+)
 ```
 
-**Best for:** Long conversations, customer support, research
+**Best for:** Long conversations, customer support, research, enterprise multi-user apps
 
 #### Session Memory - Web Persistent
 
-Survives page refreshes via session scope:
+Survives page refreshes via session scope (uses composite key: key + userId + conversationId):
 
 ```java
+// Single-tenant
 memory = aiMemory( "session", config = { key: "chatbot" } )
+
+// Multi-tenant - automatically isolated by userId/conversationId
+memory = aiMemory( "session",
+    key: "chatbot",
+    userId: "user123",
+    conversationId: "support",
+    config: { maxMessages: 20 }
+)
 ```
 
-**Best for:** Web chatbots, multi-page apps
+**Best for:** Web chatbots, multi-page apps, per-user web sessions
 
-#### File/Cache/JDBC Memory
+#### File Memory - JSON Persistence
 
-For long-term persistence and enterprise needs.
+Stores conversation in JSON files:
+
+```java
+memory = aiMemory( "file",
+    key: createUUID(),
+    userId: "user123",
+    config: {
+        directoryPath: "/path/to/memories",
+        maxMessages: 50
+    }
+)
+// Automatically creates: /path/to/memories/[key]_user123.json
+```
+
+**Best for:** Audit trails, offline analysis, simple persistence
+
+#### Cache Memory - CacheBox Integration
+
+Stores conversation in CacheBox (supports Redis, Memcached, etc.):
+
+```java
+memory = aiMemory( "cache",
+    key: "chat",
+    userId: "user123",
+    conversationId: "support",
+    config: {
+        cacheName: "default",
+        cacheTimeout: 3600,
+        maxMessages: 30
+    }
+)
+// Uses composite cache key: chat_user123_support
+```
+
+**Best for:** Distributed apps, load-balanced environments, scalable sessions
+
+#### JDBC Memory - Database Persistence
+
+Stores conversation in database tables:
+
+```java
+memory = aiMemory( "jdbc",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "chat456",
+    config: {
+        datasource: "myDS",
+        table: "ai_conversations",
+        maxMessages: 100,
+        autoCreate: true
+    }
+)
+// Stores with userId/conversationId columns for filtering
+```
+
+**Best for:** Enterprise apps, compliance, centralized storage, multi-user systems
+
+#### Vector Memory - Semantic Search
+
+All 11 vector memory providers support multi-tenant isolation:
+
+- **BoxVector**: In-memory vectors (dev/testing)
+- **Hybrid**: Recent + semantic (best of both worlds)
+- **Chroma**: ChromaDB integration
+- **Postgres**: PostgreSQL pgvector extension
+- **MySQL**: MySQL 9+ native vectors
+- **TypeSense**: Fast typo-tolerant search
+- **Pinecone**: Cloud vector database
+- **Qdrant**: High-performance vectors
+- **Weaviate**: GraphQL vector database
+- **Milvus**: Enterprise vector DB
+
+```java
+memory = aiMemory( "chroma",
+    key: createUUID(),
+    userId: "user123",
+    conversationId: "support",
+    config: {
+        collection: "customer_support",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small"
+    }
+)
+// Automatically filters vectors by userId/conversationId
+```
+
+**See:** [Vector Memory Guide](docs/main-components/vector-memory.md) for complete documentation
 
 ### Quick Comparison
 
-| Type | Token Cost | Context Loss | Best Use Case |
-|------|------------|--------------|---------------|
-| Windowed | Low | High | Quick chats |
-| Summary | Moderate | Low | Long conversations |
-| Session | Low | Medium | Web apps |
-| File | High | None | Audit trails |
+| Type | Token Cost | Context Loss | Multi-Tenant | Best Use Case |
+|------|------------|--------------|--------------|---------------|
+| Windowed | Low | High | ✅ | Quick chats, multi-user systems |
+| Summary | Moderate | Low | ✅ | Long conversations, enterprise |
+| Session | Low | Medium | ✅ | Web apps, per-user sessions |
+| File | High | None | ✅ | Audit trails, compliance |
+| Cache | Low | Medium | ✅ | Distributed apps, scalability |
+| JDBC | Medium | None | ✅ | Enterprise, centralized storage |
+| Vector | Variable | None | ✅ | Semantic search, relevance |
 
-### Usage Example
+### Usage Examples
+
+**Single-Tenant:**
 
 ```java
 memory = aiMemory( "summary", config = { maxMessages: 20 } )
@@ -1823,7 +1988,40 @@ agent.run( "My order is #12345" )
 agent.run( "What was my order number?" )  // Still remembers!
 ```
 
-**See:** [Memory Documentation](docs/main-components/memory.md) for complete guide
+**Multi-Tenant:**
+
+```java
+// Each user gets isolated memory
+function getUserAgent( userId, conversationId ) {
+    memory = aiMemory( "summary",
+        key: createUUID(),
+        userId: arguments.userId,
+        conversationId: arguments.conversationId,
+        config: {
+            maxMessages: 30,
+            summaryThreshold: 15
+        }
+    )
+    
+    return aiAgent(
+        name: "Support",
+        memory: memory
+    )
+}
+
+// Automatic isolation per user/conversation
+aliceSupport = getUserAgent( "alice", "support-123" )
+bobSales = getUserAgent( "bob", "sales-456" )
+
+aliceSupport.run( "My order is pending" )
+bobSales.run( "I need a quote" )
+// Completely isolated conversations
+```
+
+**See:** 
+- [Memory Documentation](docs/main-components/memory.md) for standard memory guide
+- [Vector Memory Documentation](docs/main-components/vector-memory.md) for semantic search
+- [Multi-Tenant Guide](docs/advanced/multi-tenant-memory.md) for enterprise patterns
 
 ## MCP() - Model Context Protocol Client
 
