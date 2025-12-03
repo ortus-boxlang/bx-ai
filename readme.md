@@ -2561,177 +2561,33 @@ The BoxLang AI module emits several events throughout the AI processing lifecycl
 
 | Event | When Fired | Data Emitted | Use Cases |
 |-------|------------|--------------|-----------|
-| `onAIRequest` | Before sending request to AI provider | `dataPacket`, `chatRequest`, `provider` | Request logging, modification, authentication |
-| `onAIResponse` | After receiving response from AI provider | `chatRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
-| `onAIEmbedRequest` | Before sending embedding request to AI provider | `dataPacket`, `embeddingRequest`, `provider` | Request logging, modification, authentication |
-| `onAIEmbedResponse` | After receiving embedding response from AI provider | `embeddingRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
-| `beforeAIEmbed` | Before generating embeddings | `embeddingRequest`, `service` | Request validation, preprocessing |
+| `afterAIAgentRun` | After agent completes execution | `agent`, `response` | Agent monitoring, result tracking |
 | `afterAIEmbed` | After generating embeddings | `embeddingRequest`, `service`, `result` | Result processing, caching |
-| `onAIProviderRequest` | When unsupported provider is requested | `provider`, `apiKey`, `service` | Custom provider registration |
-| `onAIProviderCreate` | After AI service provider is created | `provider` | Provider initialization, configuration |
-| `onAIRequestCreate` | After AiRequestobject is created | `chatRequest` | Request validation, modification |
-| `onAIChatMessageCreate` | After ChatMessage object is created | `chatMessage` | Message validation, formatting |
+| `afterAIModelInvoke` | After model invocation completes | `model`, `aiRequest`, `results` | Performance tracking, validation |
+| `afterAIPipelineRun` | After pipeline execution completes | `sequence`, `result`, `executionTime` | Pipeline monitoring, metrics |
+| `afterAIToolExecute` | After tool execution completes | `tool`, `results`, `executionTime` | Tool performance tracking |
+| `beforeAIAgentRun` | Before agent starts execution | `agent`, `input`, `messages`, `params` | Agent validation, preprocessing |
+| `beforeAIEmbed` | Before generating embeddings | `embeddingRequest`, `service` | Request validation, preprocessing |
+| `beforeAIModelInvoke` | Before model invocation starts | `model`, `aiRequest` | Request validation, cost estimation |
+| `beforeAIPipelineRun` | Before pipeline execution starts | `sequence`, `stepCount`, `steps`, `input` | Pipeline validation, tracking |
+| `beforeAIToolExecute` | Before tool execution starts | `tool`, `name`, `arguments` | Permission checks, validation |
+| `onAIAgentCreate` | When agent is created | `agent` | Agent registration, configuration |
+| `onAIEmbedRequest` | Before sending embedding request | `dataPacket`, `embeddingRequest`, `provider` | Request logging, modification |
+| `onAIEmbedResponse` | After receiving embedding response | `embeddingRequest`, `response`, `provider` | Response processing, caching |
+| `onAIError` | When AI operation error occurs | `error`, `errorMessage`, `provider`, `operation`, `canRetry` | Error handling, retry logic, alerts |
+| `onAiMemoryCreate` | When memory instance is created | `memory`, `type`, `config` | Memory configuration, tracking |
+| `onAIMessageCreate` | When message is created | `message` | Message validation, formatting |
+| `onAIModelCreate` | When model wrapper is created | `model`, `service` | Model configuration, tracking |
+| `onAIProviderCreate` | After provider is created | `provider` | Provider initialization, configuration |
+| `onAIProviderRequest` | When provider is requested | `provider`, `apiKey`, `service` | Custom provider registration |
+| `onAIRateLimitHit` | When rate limit (429) is encountered | `provider`, `statusCode`, `retryAfter` | Rate limit handling, provider switching |
+| `onAIRequest` | Before sending HTTP request | `dataPacket`, `aiRequest`, `provider` | Request logging, modification, authentication |
+| `onAIRequestCreate` | When request object is created | `aiRequest` | Request validation, modification |
+| `onAIResponse` | After receiving HTTP response | `aiRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
+| `onAITokenCount` | When token usage data is available | `provider`, `model`, `promptTokens`, `completionTokens`, `totalTokens` | Cost tracking, budget enforcement |
+| `onAIToolCreate` | When tool is created | `tool`, `name`, `description` | Tool registration, validation |
+| `onAITransformerCreate` | When transformer is created | `transform` | Transform configuration, tracking |
 
-### Event Details
-
-#### onAIRequest
-
-Fired before sending a request to the AI provider. This allows you to inspect or modify the request before it's sent.
-
-**Data Structure:**
-
-```java
-{
-    "dataPacket": {}, // The request payload being sent to the provider
-    "chatRequest": ChatRequest, // The AiRequestobject
-    "provider": BaseService // The provider service instance
-}
-```
-
-**Example Usage:**
-
-```java
-// In your module/app event handler
-function onAIRequest( required struct data ) {
-    // Log all requests
-    writeLog( text: "AI Request: #serializeJSON(data.dataPacket)#", type: "information" );
-
-    // Add custom headers or modify request
-    data.dataPacket.custom_header = "my-value";
-}
-```
-
-#### onAIResponse
-
-Fired after receiving a response from the AI provider. This allows you to process, modify, or cache responses.
-
-**Data Structure:**
-
-```java
-{
-    "chatRequest": ChatRequest, // The original AiRequestobject
-    "response": {}, // The deserialized JSON response from the provider
-    "rawResponse": {}, // The raw HTTP response object
-    "provider": BaseService // The provider service instance
-}
-```
-
-**Example Usage:**
-
-```java
-function onAIResponse( required struct data ) {
-    // Cache responses
-    cacheService.put( "ai_response_#hash(data.chatRequest.toString())#", data.response );
-
-    // Modify response before returning
-    if( structKeyExists(data.response, "choices") ) {
-        data.response.custom_processed = true;
-    }
-}
-```
-
-#### onAIProviderRequest
-
-Fired when an unsupported provider is requested, allowing custom provider registration.
-
-**Data Structure:**
-
-```java
-{
-    "provider": "string", // The provider name requested
-    "apiKey": "string", // The API key provided
-    "service": null // Initially null, set this to your custom service
-}
-```
-
-**Example Usage:**
-
-```java
-function onAIProviderRequest( required struct data ) {
-    if( data.provider == "mycustomprovider" ) {
-        data.service = new MyCustomAIService().configure( data.apiKey );
-    }
-}
-```
-
-#### onAIProviderCreate
-
-Fired after an AI service provider is successfully created.
-
-**Data Structure:**
-
-```java
-{
-    "provider": BaseService // The created provider service instance
-}
-```
-
-**Example Usage:**
-
-```java
-function onAIProviderCreate( required struct data ) {
-    // Log provider creation
-    writeLog( text: "AI Provider Created: #data.provider.getName()#", type: "information" );
-
-    // Apply global configuration
-    data.provider.defaults({ timeout: 60 });
-}
-```
-
-#### onAIRequestCreate
-
-Fired after a AiRequestobject is created.
-
-**Data Structure:**
-
-```java
-{
-    "chatRequest": AiRequest// The created AiRequestobject
-}
-```
-
-**Example Usage:**
-
-```java
-function onAIRequestCreate( required struct data ) {
-    // Add default model if not specified
-    if( !data.chatRequest.hasModel() ) {
-        data.chatRequest.setModelIfEmpty( "gpt-4" );
-    }
-
-    // Add audit trail
-    data.chatRequest.addHeader( "X-Request-ID", createUUID() );
-}
-```
-
-#### onAIChatMessageCreate
-
-Fired after a ChatMessage object is created.
-
-**Data Structure:**
-
-```java
-{
-    "chatMessage": ChatMessage // The created ChatMessage object
-}
-```
-
-**Example Usage:**
-
-```java
-function onAIChatMessageCreate( required struct data ) {
-    // Validate messages
-    if( data.chatMessage.count() == 0 ) {
-        throw( message: "Empty chat message not allowed" );
-    }
-
-    // Add timestamp to system messages
-    if( data.chatMessage.hasSystemMessage() ) {
-        var systemMsg = data.chatMessage.getSystemMessage();
-        data.chatMessage.replaceSystemMessage( systemMsg & " [Generated at #now()#]" );
-    }
-}
-```
 
 ### Event Registration
 

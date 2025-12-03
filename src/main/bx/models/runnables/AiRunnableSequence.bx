@@ -84,6 +84,18 @@ class extends="AiBaseRunnable" {
 	 * @return The final output after all steps
 	 */
 	public any function run( any input = {}, struct params = {}, struct options = {} ) {
+		// Announce before pipeline execution
+		BoxAnnounce( "beforeAIPipelineRun", {
+			sequence: this,
+			name: getName(),
+			stepCount: variables.steps.len(),
+			steps: getSteps(),
+			input: arguments.input,
+			params: arguments.params,
+			options: arguments.options
+		} );
+
+		var startTime = getTickCount();
 		var current = arguments.input;
 		var effectiveOptions = getMergedOptions( arguments.options );
 
@@ -91,6 +103,20 @@ class extends="AiBaseRunnable" {
 		for ( var step in variables.steps ) {
 			current = step.run( current, arguments.params, effectiveOptions );
 		}
+
+		var executionTime = getTickCount() - startTime;
+
+		// Announce after pipeline execution
+		BoxAnnounce( "afterAIPipelineRun", {
+			sequence: this,
+			name: getName(),
+			stepCount: variables.steps.len(),
+			steps: getSteps(),
+			input: arguments.input,
+			result: current,
+			executionTime: executionTime
+		} );
+
 		return current;
 	}
 

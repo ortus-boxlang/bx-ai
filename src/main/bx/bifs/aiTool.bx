@@ -61,10 +61,19 @@ class {
 		string description,
 		any callable
 	) {
-		return new bxmodules.bxai.models.Tool()
+		var tool = new bxmodules.bxai.models.Tool()
 			.setName( arguments.name )
 			.describeFunction( arguments.description )
 			.call( arguments.callable );
+
+		// Announce tool creation
+		BoxAnnounce( "onAIToolCreate", {
+			tool: tool,
+			name: arguments.name,
+			description: arguments.description ?: ""
+		} );
+
+		return tool;
 	}
 
 }

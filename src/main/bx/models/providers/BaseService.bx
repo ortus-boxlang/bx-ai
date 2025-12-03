@@ -214,10 +214,35 @@ abstract class implements="IAiService" {
 				type: "error",
 				log : "ai"
 			)
+
+			// Announce the error
+			BoxAnnounce( "onAIError", {
+				error: result.error,
+				errorMessage: result.error.toString(),
+				provider: this,
+				operation: "chat",
+				aiRequest: arguments.aiRequest,
+				canRetry: true
+			} );
+
 			throw(
 				type   : "ProviderError",
 				message: result.error.toString()
 			);
+		}
+
+		// Announce token usage if available
+		if( result.keyExists( "usage" ) ){
+			BoxAnnounce( "onAITokenCount", {
+				provider: this,
+				operation: "chat",
+				model: aiRequest.getModel(),
+				promptTokens: result.usage.keyExists( "prompt_tokens" ) ? result.usage.prompt_tokens : 0,
+				completionTokens: result.usage.keyExists( "completion_tokens" ) ? result.usage.completion_tokens : 0,
+				totalTokens: result.usage.keyExists( "total_tokens" ) ? result.usage.total_tokens : 0,
+				aiRequest: arguments.aiRequest,
+				usage: result.usage
+			} );
 		}
 
 		// Result returns, only if we are not using tool calls
@@ -369,6 +394,17 @@ abstract class implements="IAiService" {
 				type: "error",
 				log : "ai"
 			)
+
+			// Announce the error
+			BoxAnnounce( "onAIError", {
+				error: result.error,
+				errorMessage: result.error.toString(),
+				provider: this,
+				operation: "embeddings",
+				embeddingRequest: arguments.embeddingRequest,
+				canRetry: true
+			} );
+
 			throw(
 				type   : "ProviderError",
 				message: result.error.toString()
@@ -382,6 +418,17 @@ abstract class implements="IAiService" {
                 type: "error",
                 log : "ai"
             )
+
+            // Announce the error
+            BoxAnnounce( "onAIError", {
+                error: "Invalid embedding response",
+                errorMessage: "Invalid embedding response from provider. Response: #result.toString()#",
+                provider: this,
+                operation: "embeddings",
+                embeddingRequest: arguments.embeddingRequest,
+                canRetry: false
+            } );
+
             throw(
                 type   : "ProviderError",
                 message: "Invalid embedding response from provider. Response: #result.toString()#"
@@ -465,6 +512,26 @@ abstract class implements="IAiService" {
 
 			// Body Packet
 			bx:httpParam type="body" value=jsonSerialize( arguments.dataPacket );
+		}
+
+		// Check for rate limiting (429 status code)
+		if( chatResult.statusCode == "429" || chatResult.statusCode == 429 ){
+			var errorData = {};
+			try {
+				errorData = jsonDeserialize( chatResult.filecontent );
+			} catch( any e ){
+				errorData = { message: chatResult.filecontent };
+			}
+
+			// Announce rate limit hit
+			BoxAnnounce( "onAIRateLimitHit", {
+				provider: this,
+				operation: "chat",
+				statusCode: chatResult.statusCode,
+				errorData: errorData,
+				aiRequest: arguments.aiRequest,
+				retryAfter: chatResult.responseheader.keyExists( "retry-after" ) ? chatResult.responseheader[ "retry-after" ] : ""
+			} );
 		}
 
 		// Final logging if the provider supports it
@@ -581,6 +648,16 @@ abstract class implements="IAiService" {
 				type: "error",
 				log : "ai"
 			)
+
+			// Announce the error
+			BoxAnnounce( "onAIError", {
+				error: chatResult.keyExists( "error" ) ? chatResult.error : "Stream error",
+				errorMessage: errorMessage,
+				provider: this,
+				operation: "stream",
+				aiRequest: arguments.aiRequest,
+				canRetry: true
+			} );
 
 			throw(
 				type   : "ProviderError",
