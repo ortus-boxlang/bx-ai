@@ -2358,6 +2358,95 @@ server.unregisterTool( "oldTool" )
 server.clearTools()
 ```
 
+### Security Configuration
+
+#### CORS (Cross-Origin Resource Sharing)
+
+```java
+server = mcpServer( "myApp" )
+
+// Configure CORS origins
+server.withCors( "https://example.com" )  // Single origin
+server.withCors( [ "https://example.com", "*.example.com" ] )  // Multiple with wildcards
+server.withCors( "*" )  // Allow all (use with caution)
+
+// Add origin dynamically
+server.addCorsOrigin( "https://app.example.com" )
+
+// Get configured origins
+origins = server.getCorsAllowedOrigins()  // Returns array
+
+// Check if origin is allowed
+allowed = server.isCorsAllowed( "https://example.com" )  // Returns boolean
+```
+
+#### Request Body Size Limits
+
+```java
+server = mcpServer( "myApp" )
+
+// Set body size limit (in bytes)
+server.withBodyLimit( 1048576 )  // 1MB
+server.withBodyLimit( 500 * 1024 )  // 500KB
+server.withBodyLimit( 0 )  // Unlimited (default)
+
+// Get current limit
+maxSize = server.getMaxRequestBodySize()  // Returns numeric
+```
+
+#### HTTP Basic Authentication
+
+```java
+server = mcpServer( "myApp" )
+
+// Configure basic auth
+server.withBasicAuth( "admin", "secretPassword" )
+
+// Check if auth is enabled
+hasAuth = server.hasBasicAuth()  // Returns boolean
+```
+
+#### Custom API Key Validation
+
+```java
+server = mcpServer( "myApp" )
+
+// Set API key provider callback
+server.withApiKeyProvider( ( apiKey, requestData ) => {
+    // Simple validation
+    return apiKey == "my-secret-key"
+
+    // Or database lookup
+    var user = userService.findByApiKey( apiKey )
+    return !isNull( user ) && user.isActive
+
+    // Or throw custom error
+    if ( rateLimiter.isExceeded( apiKey ) ) {
+        throw( "Rate limit exceeded" )
+    }
+    return true
+} )
+
+// Check if provider is configured
+hasProvider = server.hasApiKeyProvider()  // Returns boolean
+
+// Manual validation (if needed)
+valid = server.verifyApiKey( "some-key", { method: "tools/list" } )  // Returns boolean
+```
+
+#### Combined Security Example
+
+```java
+// Enterprise security configuration
+mcpServer( "enterprise" )
+    .setDescription( "Secured Enterprise API" )
+    .withCors( [ "https://app.example.com", "*.example.com" ] )
+    .withBodyLimit( 1048576 )  // 1MB
+    .withBasicAuth( "admin", getEnv( "ADMIN_PASSWORD" ) )
+    .withApiKeyProvider( validateApiKey )
+    .registerTool( aiTool( "getData", "Get data", getData ) )
+```
+
 ### Static Server Management
 
 ```java

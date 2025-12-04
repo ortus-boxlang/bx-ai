@@ -2,6 +2,25 @@
 
 The BoxLang AI Module provides a complete MCP (Model Context Protocol) server implementation that allows you to expose tools, resources, and prompts to AI clients.
 
+## Table of Contents
+
+- [What is an MCP Server?](#what-is-an-mcp-server)
+- [Quick Start](#quick-start)
+- [Server Configuration](#server-configuration)
+- [Tool Registration](#tool-registration)
+- [Annotation-Based Discovery](#annotation-based-discovery)
+- [Resource Registration](#resource-registration)
+- [Prompt Registration](#prompt-registration)
+- [Handling MCP Requests](#handling-mcp-requests)
+- [HTTP Endpoint (mcp.bxm)](#http-endpoint-mcpbxm)
+- [Static Server Management](#static-server-management)
+- [Complete Example](#complete-example)
+- [Events & Interception 🎯](#events--interception-)
+- [Statistics & Monitoring 📊](#statistics--monitoring-)
+- [Best Practices](#best-practices)
+- [Related Documentation](#related-documentation)
+- [External Resources](#external-resources)
+
 ## What is an MCP Server?
 
 An MCP Server is a service that exposes capabilities to AI clients using the standardized Model Context Protocol. It enables:
@@ -237,6 +256,369 @@ function onApplicationStart() {
     }
 }
 ```
+
+### CORS Configuration 🌐
+
+Configure Cross-Origin Resource Sharing (CORS) to control which origins can access your MCP server:
+
+```javascript
+// Allow a single origin
+server = mcpServer( "myApp" )
+    .withCors( "https://example.com" )
+
+// Allow multiple origins
+server = mcpServer( "myApp" )
+    .withCors( [ "https://example.com", "https://app.example.com" ] )
+
+// Allow all origins (use with caution!)
+server = mcpServer( "myApp" )
+    .withCors( "*" )
+
+// Wildcard subdomain matching
+server = mcpServer( "myApp" )
+    .withCors( [ "*.example.com", "https://trusted.org" ] )
+```
+
+**Wildcard Pattern Matching:**
+
+The CORS implementation supports wildcard patterns for flexible domain matching:
+
+- `*.example.com` - Matches any subdomain: `app.example.com`, `api.example.com`, `admin.example.com`
+- `*` - Matches all origins (returns the requesting origin in `Access-Control-Allow-Origin`)
+- Exact matches: `https://example.com` - Only matches exactly this origin
+
+**Dynamic CORS Management:**
+
+```javascript
+// Add origins incrementally
+server = mcpServer( "myApp" )
+    .addCorsOrigin( "https://example.com" )
+    .addCorsOrigin( "https://app.example.com" )
+
+// Get configured origins
+origins = server.getCorsAllowedOrigins()
+// Returns: [ "https://example.com", "https://app.example.com" ]
+
+// Check if an origin is allowed
+if ( server.isCorsAllowed( "https://example.com" ) ) {
+    writeOutput( "Origin is allowed" )
+}
+```
+
+**How CORS Works:**
+
+When a browser makes a cross-origin request:
+
+1. Browser sends `Origin` header with the request
+2. Server checks if origin matches allowed patterns
+3. If allowed, server responds with `Access-Control-Allow-Origin` header
+4. Server also includes CORS headers in OPTIONS preflight responses
+
+**CORS Headers Set by Server:**
+
+- `Access-Control-Allow-Origin` - Allowed origin (dynamic or `*`)
+- `Access-Control-Allow-Methods` - `GET, POST, OPTIONS`
+- `Access-Control-Allow-Headers` - `Content-Type, Authorization, X-API-Key`
+- `Access-Control-Max-Age` - `86400` (24 hours)
+
+**Security Best Practices:**
+
+- ✅ **Avoid `*` in production** - Specify exact origins or wildcard patterns
+- ✅ **Use HTTPS origins** - Always prefer secure origins
+- ✅ **Combine with authentication** - CORS doesn't replace authentication
+- ✅ **Review periodically** - Remove unused origins
+- ✅ **Test preflight requests** - Verify OPTIONS requests work correctly
+
+**Example - Multi-Environment Setup:**
+
+```javascript
+// Application.bx
+function onApplicationStart() {
+    var allowedOrigins = []
+
+    // Add origins based on environment
+    if ( getEnv( "ENVIRONMENT" ) == "production" ) {
+        allowedOrigins = [
+            "https://app.example.com",
+            "https://admin.example.com"
+        ]
+    } else {
+        // Development - allow local testing
+        allowedOrigins = [
+            "http://localhost:3000",
+            "http://localhost:8080",
+            "*.ngrok.io"  // For tunneling/testing
+        ]
+    }
+
+    mcpServer( "api" )
+        .withCors( allowedOrigins )
+        .registerTool( myTool )
+}
+```
+
+### Request Body Size Limits 📏
+
+Protect your server from large payloads by setting request body size limits:
+
+```javascript
+// Limit to 1MB (in bytes)
+server = mcpServer( "myApp" )
+    .withBodyLimit( 1048576 )
+
+// Limit to 500KB
+server = mcpServer( "myApp" )
+    .withBodyLimit( 500 * 1024 )
+
+// Unlimited (default: 0)
+server = mcpServer( "myApp" )
+    .withBodyLimit( 0 )
+```
+
+**How it works:**
+
+- Server checks `len(requestBody)` before processing
+- If body exceeds limit, returns `413 Payload Too Large` error
+- Default is `0` (unlimited)
+- Limit applies to entire JSON-RPC request body
+
+**Error Response (413):**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32000,
+    "message": "Request body too large (max: 1048576 bytes)"
+  },
+  "id": null
+}
+```
+
+**Get current limit:**
+
+```javascript
+maxSize = server.getMaxRequestBodySize()
+// Returns: 1048576 (or 0 for unlimited)
+```
+
+**Use Cases:**
+
+- **Public APIs** - Prevent abuse from extremely large payloads
+- **Resource constraints** - Match server memory/processing limits
+- **Tool-specific limits** - Different servers can have different limits
+- **DoS prevention** - Basic protection against payload attacks
+
+**Example - Tiered Limits:**
+
+```javascript
+// Public API - strict limits
+mcpServer( "public" )
+    .withBodyLimit( 100 * 1024 )  // 100KB
+    .registerTool( publicTool )
+
+// Internal API - generous limits
+mcpServer( "internal" )
+    .withBodyLimit( 10 * 1024 * 1024 )  // 10MB
+    .withBasicAuth( "admin", "secret" )
+    .registerTool( adminTool )
+
+// Data import - unlimited
+mcpServer( "import" )
+    .withBodyLimit( 0 )  // No limit
+    .withBasicAuth( "importer", "secret" )
+    .registerTool( importTool )
+```
+
+### Custom API Key Validation 🔑
+
+Implement custom API key authentication logic with provider callbacks:
+
+```javascript
+// Simple API key validation
+server = mcpServer( "myApp" )
+    .withApiKeyProvider( ( apiKey, requestData ) => {
+        return apiKey == "my-secret-key-12345"
+    } )
+
+// Database lookup
+server = mcpServer( "myApp" )
+    .withApiKeyProvider( ( apiKey, requestData ) => {
+        var user = userService.findByApiKey( apiKey )
+        return !isNull( user ) && user.isActive
+    } )
+
+// Complex validation with rate limiting
+server = mcpServer( "myApp" )
+    .withApiKeyProvider( ( apiKey, requestData ) => {
+        var key = apiKeyService.validate( apiKey )
+        if ( isNull( key ) ) return false
+
+        // Check rate limits
+        if ( rateLimiter.isExceeded( key.userId ) ) {
+            throw( "Rate limit exceeded", "RateLimitError" )
+        }
+
+        // Log usage
+        auditLog.record( key.userId, requestData.method )
+
+        return true
+    } )
+```
+
+**Provider Function Signature:**
+
+```javascript
+function apiKeyProvider(
+    required string apiKey,      // The API key from request
+    required struct requestData  // Request context
+) {
+    // Return true to allow, false to deny
+    // Throw exception for custom error messages
+    return true
+}
+```
+
+**Request Data Struct:**
+
+The `requestData` argument contains:
+- `method` - MCP method being called (e.g., `"tools/list"`)
+- `serverName` - Name of the MCP server
+- `body` - Full request body as string
+- Any other request metadata
+
+**API Key Extraction:**
+
+The server automatically extracts API keys from:
+1. `X-API-Key` header
+2. `Authorization: Bearer <token>` header
+
+**How it works:**
+
+1. Server checks for API key in headers
+2. If found, calls your provider function with key and request data
+3. If provider returns `false` or throws, returns `401 Unauthorized`
+4. If provider returns `true`, request proceeds normally
+
+**Error Response (401):**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32000,
+    "message": "Invalid API key"
+  },
+  "id": null
+}
+```
+
+**Check if provider is configured:**
+
+```javascript
+if ( server.hasApiKeyProvider() ) {
+    writeOutput( "API key validation is enabled" )
+}
+```
+
+**Making authenticated requests:**
+
+```bash
+# Using X-API-Key header
+curl -X POST http://localhost/~bxai/mcp.bxm?server=myApp \
+  -H "X-API-Key: my-secret-key-12345" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":"1"}'
+
+# Using Bearer token
+curl -X POST http://localhost/~bxai/mcp.bxm?server=myApp \
+  -H "Authorization: Bearer my-secret-key-12345" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":"1"}'
+```
+
+**Advanced Example - Multi-Tenant with Usage Tracking:**
+
+```javascript
+// Application.bx
+function onApplicationStart() {
+    mcpServer( "api" )
+        .withApiKeyProvider( ( apiKey, requestData ) => {
+            // Validate and get tenant
+            var tenant = tenantService.validateApiKey( apiKey )
+            if ( isNull( tenant ) ) return false
+
+            // Check feature access
+            if ( !tenant.hasFeature( requestData.method ) ) {
+                throw( "Feature not available in your plan", "AccessDenied" )
+            }
+
+            // Store tenant context for later use
+            request.tenantId = tenant.id
+            request.tenantName = tenant.name
+
+            // Track usage
+            usageTracker.record(
+                tenantId: tenant.id,
+                method: requestData.method,
+                timestamp: now()
+            )
+
+            return true
+        } )
+        .registerTool( myTool )
+}
+```
+
+**Combining Security Features:**
+
+You can use multiple security features together:
+
+```javascript
+server = mcpServer( "enterprise" )
+    // CORS - restrict origins
+    .withCors( [ "https://app.example.com", "*.example.com" ] )
+    // Body limits - prevent abuse
+    .withBodyLimit( 1048576 )  // 1MB
+    // API keys - identify clients
+    .withApiKeyProvider( validateApiKey )
+    // Basic auth - admin access
+    .withBasicAuth( "admin", "secret" )
+    // Tools
+    .registerTool( toolOne )
+    .registerTool( toolTwo )
+```
+
+**Security Priority:**
+
+1. **Body size check** - Happens first (reject oversized payloads immediately)
+2. **CORS validation** - Checks Origin header against allowed patterns
+3. **Basic authentication** - HTTP Basic Auth credentials check
+4. **API key validation** - Custom provider callback execution
+5. **Request processing** - Only if all checks pass
+
+### Security Headers 🛡️
+
+The MCP server automatically includes industry-standard security headers in all responses:
+
+**Headers Included:**
+
+- `X-Content-Type-Options: nosniff` - Prevents MIME type sniffing
+- `X-Frame-Options: DENY` - Prevents clickjacking attacks
+- `X-XSS-Protection: 1; mode=block` - Enables XSS filtering
+- `Referrer-Policy: strict-origin-when-cross-origin` - Controls referrer information
+- `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` - Restricts resource loading
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains` - Forces HTTPS (when applicable)
+- `Permissions-Policy: geolocation=(), microphone=(), camera=()` - Disables sensitive browser features
+
+**Automatic Application:**
+
+Security headers are added to:
+- ✅ Successful responses (200 OK)
+- ✅ Error responses (400, 401, 404, 413, 500)
+- ✅ CORS preflight responses (OPTIONS)
+
+No configuration needed - these headers are applied automatically to enhance security posture.
 
 ## Tool Registration
 

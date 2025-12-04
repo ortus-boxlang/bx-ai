@@ -1163,7 +1163,13 @@ public class mcpServerTest extends BaseIntegrationTest {
 				myServer = mcpServer( "securityHeaderTest" )
 					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
 
-				// Process a request
+				// Process a request using mock context
+				startMockRequest(
+					method: "GET",
+					path: "/mcp/securityHeaderTest",
+					headers: {}
+				)
+
 				response = MCPRequestProcessor::process(
 					serverName: "securityHeaderTest",
 					requestMethod: "GET",
@@ -1239,7 +1245,15 @@ public class mcpServerTest extends BaseIntegrationTest {
 					.withCors( ["*"] )
 					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
 
-				// Process OPTIONS request (CORS preflight)
+				// Process OPTIONS request (CORS preflight) with mock context
+				startMockRequest(
+					method: "OPTIONS",
+					path: "/mcp/corsTest",
+					headers: {
+						"Origin": "https://example.com"
+					}
+				)
+
 				response = MCPRequestProcessor::process(
 					serverName: "corsTest",
 					requestMethod: "OPTIONS",
@@ -1338,7 +1352,14 @@ public class mcpServerTest extends BaseIntegrationTest {
 				// Create request body > 100 bytes
 				largeBody = jsonSerialize( { "method": "tools/list", "id": "test123", "data": "x".repeat( 150 ) } )
 
-				// Process request with body exceeding limit
+				// Process request with body exceeding limit using mock context
+				startMockRequest(
+					method: "POST",
+					path: "/mcp/bodySizeTest",
+					body: largeBody,
+					headers: {}
+				)
+
 				response = MCPRequestProcessor::process(
 					serverName: "bodySizeTest",
 					requestMethod: "POST",
@@ -1380,7 +1401,14 @@ public class mcpServerTest extends BaseIntegrationTest {
 				// Create large request body
 				largeBody = jsonSerialize( { "method": "tools/list", "id": "test123", "data": "x".repeat( 5000 ) } )
 
-				// Process request - should succeed
+				// Process request - should succeed with mock context
+				startMockRequest(
+					method: "POST",
+					path: "/mcp/unlimitedBodyTest",
+					body: largeBody,
+					headers: {}
+				)
+
 				response = MCPRequestProcessor::process(
 					serverName: "unlimitedBodyTest",
 					requestMethod: "POST",

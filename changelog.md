@@ -11,6 +11,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MCP Server Enterprise Security Features**: Comprehensive security enhancements for MCP servers
+    - **CORS Configuration**:
+        - `withCors(origins)` - Configure allowed origins (string or array)
+        - `addCorsOrigin(origin)` - Add origin dynamically
+        - `getCorsAllowedOrigins()` - Get configured origins array
+        - `isCorsAllowed(origin)` - Check if origin is allowed with wildcard matching
+        - Support for wildcard patterns (`*.example.com`)
+        - Support for allowing all origins (`*`)
+        - Dynamic `Access-Control-Allow-Origin` header in responses
+        - CORS headers included in OPTIONS preflight responses
+    - **Request Body Size Limits**:
+        - `withBodyLimit(maxBytes)` - Set maximum request body size in bytes
+        - `getMaxRequestBodySize()` - Get current limit (0 = unlimited)
+        - Returns 413 Payload Too Large error when exceeded
+        - Protects against DoS attacks with oversized payloads
+    - **Custom API Key Validation**:
+        - `withApiKeyProvider(provider)` - Set custom API key validation callback
+        - `hasApiKeyProvider()` - Check if provider is configured
+        - `verifyApiKey(apiKey, requestData)` - Manual key validation
+        - Supports `X-API-Key` header and `Authorization: Bearer` token
+        - Provider receives API key and request context for flexible validation
+        - Returns 401 Unauthorized for invalid keys
+    - **Security Headers**: Automatic inclusion of industry-standard security headers in all responses
+        - `X-Content-Type-Options: nosniff`
+        - `X-Frame-Options: DENY`
+        - `X-XSS-Protection: 1; mode=block`
+        - `Referrer-Policy: strict-origin-when-cross-origin`
+        - `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`
+        - `Strict-Transport-Security: max-age=31536000; includeSubDomains`
+        - `Permissions-Policy: geolocation=(), microphone=(), camera=()`
+    - **Security Processing Order**: Body size → CORS → Basic Auth → API Key → Request processing
+    - Comprehensive documentation in `docs/advanced/mcp-server.md` with examples
+    - Security configuration examples in main README.md
+    - 9 new integration tests covering all security features
 - **Mistral AI Provider Support**: Full integration with Mistral AI services
     - New `MistralService` provider class with OpenAI-compatible API
     - Chat completions with streaming support

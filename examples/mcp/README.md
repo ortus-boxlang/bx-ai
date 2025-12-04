@@ -93,8 +93,46 @@ boxlang run examples/mcp/multi-server.bxs
 
 ---
 
-### 5. `advanced-features.bx` - Production Patterns
+### 5. `mcp-security-example.bxs` - Enterprise Security Features ✨
+
 **What it demonstrates:**
+
+- CORS configuration with wildcard patterns
+- Request body size limits
+- Custom API key validation
+- HTTP Basic Authentication
+- Combined security configurations
+- Environment-based security setup
+
+**Run it:**
+
+```bash
+boxlang run examples/mcp/mcp-security-example.bxs
+```
+
+**Key concepts:**
+
+- `withCors()` - Configure allowed origins with wildcard support
+- `withBodyLimit()` - Protect against oversized payloads
+- `withApiKeyProvider()` - Custom API key validation logic
+- `withBasicAuth()` - HTTP Basic Authentication
+- Security processing order: Body size → CORS → Basic Auth → API Key
+- Automatic security headers in all responses
+
+**Security features covered:**
+
+- ✅ CORS: Wildcard patterns (`*.example.com`), multiple origins, dynamic addition
+- ✅ Body limits: Per-server size limits, 413 error responses
+- ✅ API keys: Custom validation callbacks, multi-tier access control
+- ✅ Basic auth: Simple username/password protection
+- ✅ Security headers: Automatic X-Content-Type-Options, X-Frame-Options, CSP, HSTS, etc.
+
+---
+
+### 6. `advanced-features.bx` - Production Patterns
+
+**What it demonstrates:**
+
 - Request/response interceptors
 - Authentication/authorization
 - Error handling
@@ -103,11 +141,13 @@ boxlang run examples/mcp/multi-server.bxs
 - Metadata and logging
 
 **Run it:**
+
 ```bash
 boxlang run examples/mcp/advanced-features.bx
 ```
 
 **Key concepts:**
+
 - `onRequest()` / `onResponse()` callbacks
 - Security patterns
 - Tool validation
@@ -119,6 +159,7 @@ boxlang run examples/mcp/advanced-features.bx
 ## Quick Reference
 
 ### Creating a Server
+
 ```javascript
 myServer = mcpServer( "myApp" )
     .setDescription( "My MCP Server" )
@@ -126,7 +167,9 @@ myServer = mcpServer( "myApp" )
 ```
 
 ### Registering a Tool
+
 ```javascript
+
 myServer.registerTool(
     aiTool( "toolName", "Description", ( arg1, arg2 ) => {
         return "result"
@@ -137,6 +180,7 @@ myServer.registerTool(
 ```
 
 ### Registering a Resource
+
 ```javascript
 myServer.registerResource(
     uri: "docs://readme",
@@ -148,6 +192,7 @@ myServer.registerResource(
 ```
 
 ### Registering a Prompt
+
 ```javascript
 myServer.registerPrompt(
     name: "greeting",
@@ -162,6 +207,7 @@ myServer.registerPrompt(
 ```
 
 ### Handling Requests
+
 ```javascript
 request = {
     "jsonrpc": "2.0",
@@ -188,6 +234,7 @@ response = myServer.handleRequest( request )
 ## Testing with CLI
 
 ### Using curl
+
 ```bash
 # List tools
 curl -X POST http://localhost:8080/mcp-endpoint.bxs \
@@ -209,6 +256,7 @@ curl -X POST http://localhost:8080/mcp-endpoint.bxs \
 ```
 
 ### Using BoxLang
+
 ```javascript
 // Create HTTP request
 response = httpRequest( "http://localhost:8080/mcp-endpoint.bxs" )
