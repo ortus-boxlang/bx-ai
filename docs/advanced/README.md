@@ -73,6 +73,7 @@ Expose your BoxLang tools, resources, and prompts via the Model Context Protocol
 - Creating and configuring MCP servers
 - Registering tools, resources, and prompts
 - HTTP endpoint for MCP requests
+- **Statistics and monitoring** - Track performance and usage metrics
 - Multi-server patterns for different use cases
 - Application lifecycle integration
 

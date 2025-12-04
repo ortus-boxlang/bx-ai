@@ -641,6 +641,280 @@ if ( result.getSuccess() ) {
 }
 ```
 
+## Statistics & Monitoring 📊
+
+The MCP server automatically tracks performance and usage metrics for real-time monitoring and analytics.
+
+### Enabling Statistics
+
+Statistics are **enabled by default** when creating an MCP server:
+
+```java
+// Stats enabled by default
+server = mcpServer( "myApp" )
+
+// Explicitly control stats tracking
+server = mcpServer(
+    name: "myApp",
+    statsEnabled: true  // or false to disable
+)
+```
+
+### Retrieving Statistics
+
+#### Get Summary Statistics
+
+Quick overview of key metrics (lightweight):
+
+```java
+summary = server.getStatsSummary()
+
+writeOutput( "Total Requests: #summary.totalRequests#" )
+writeOutput( "Success Rate: #summary.successRate#%" )
+writeOutput( "Avg Response Time: #summary.avgResponseTime#ms" )
+writeOutput( "Tool Calls: #summary.totalToolInvocations#" )
+writeOutput( "Resource Reads: #summary.totalResourceReads#" )
+writeOutput( "Prompts Generated: #summary.totalPromptGenerations#" )
+writeOutput( "Errors: #summary.totalErrors#" )
+writeOutput( "Uptime: #summary.uptime / 1000#s" )
+```
+
+Summary includes:
+- `uptime` - Server uptime in milliseconds
+- `totalRequests` - Total requests processed
+- `successRate` - Success rate as percentage
+- `avgResponseTime` - Average response time in milliseconds
+- `totalToolInvocations` - Total tool calls
+- `totalResourceReads` - Total resource reads
+- `totalPromptGenerations` - Total prompt generations
+- `totalErrors` - Total errors encountered
+- `lastRequestAt` - Timestamp of last request (empty if no requests)
+
+#### Get Detailed Statistics
+
+Complete stats with breakdowns:
+
+```java
+stats = server.getStats()
+
+// Request breakdown
+writeOutput( "Successful: #stats.requests.successful#" )
+writeOutput( "Failed: #stats.requests.failed#" )
+writeOutput( "By Method: #serializeJSON( stats.requests.byMethod )#" )
+writeOutput( "Min/Max Response Time: #stats.requests.minResponseTime# / #stats.requests.maxResponseTime#ms" )
+
+// Tool breakdown
+writeOutput( "Tools by name: #serializeJSON( stats.tools.byTool )#" )
+writeOutput( "Avg Execution Time: #stats.tools.avgExecutionTime#ms" )
+
+// Resource breakdown
+writeOutput( "Reads by URI: #serializeJSON( stats.resources.byUri )#" )
+
+// Prompt breakdown
+writeOutput( "Generations by name: #serializeJSON( stats.prompts.byName )#" )
+
+// Error breakdown
+writeOutput( "Errors by code: #serializeJSON( stats.errors.byCode )#" )
+if ( !stats.errors.lastError.isEmpty() ) {
+    writeOutput( "Last Error: #stats.errors.lastError.message# at #stats.errors.lastError.timestamp#" )
+}
+```
+
+Detailed stats include:
+- **Requests**: total, successful, failed, byMethod (map), response times (array), avg/min/max times, lastRequestAt
+- **Tools**: totalInvocations, byTool (map with count/totalTime/avgTime per tool), execution times (array), avg/min/max times
+- **Resources**: totalReads, byUri (map of read counts)
+- **Prompts**: totalGenerations, byName (map of generation counts)
+- **Errors**: total, byCode (map of error counts), lastError (code/message/timestamp)
+
+### Managing Statistics
+
+#### Check if Stats are Enabled
+
+```java
+if ( server.isStatsEnabled() ) {
+    writeOutput( "Stats tracking is active" )
+}
+```
+
+#### Enable/Disable Tracking
+
+```java
+// Disable stats tracking (stops recording new data)
+server.disableStats()
+
+// Re-enable stats tracking
+server.enableStats()
+
+// Fluent chaining works
+server.enableStats()
+    .registerTool( myTool )
+    .registerResource( myResource )
+```
+
+#### Reset Statistics
+
+Clear all statistics back to zero:
+
+```java
+// Reset all counters and data
+server.resetStats()
+
+writeOutput( "Statistics have been reset" )
+
+// Fluent chaining
+server.resetStats()
+    .enableStats()
+```
+
+### Dashboard Example
+
+Create a real-time monitoring dashboard:
+
+```java
+// Get server stats
+server = mcpServer( "myApp" )
+stats = server.getStatsSummary()
+
+writeOutput( "
+    <div class='stats-dashboard'>
+        <h2>MCP Server: myApp</h2>
+        
+        <div class='stat-box'>
+            <label>Uptime</label>
+            <value>#numberFormat( stats.uptime / 1000, '0' )#s</value>
+        </div>
+        
+        <div class='stat-box'>
+            <label>Total Requests</label>
+            <value>#stats.totalRequests#</value>
+        </div>
+        
+        <div class='stat-box'>
+            <label>Success Rate</label>
+            <value>#numberFormat( stats.successRate, '0.00' )#%</value>
+        </div>
+        
+        <div class='stat-box'>
+            <label>Avg Response</label>
+            <value>#numberFormat( stats.avgResponseTime, '0' )#ms</value>
+        </div>
+        
+        <div class='stat-box'>
+            <label>Tool Calls</label>
+            <value>#stats.totalToolInvocations#</value>
+        </div>
+        
+        <div class='stat-box error'>
+            <label>Errors</label>
+            <value>#stats.totalErrors#</value>
+        </div>
+    </div>
+" )
+```
+
+### Using Stats with Events
+
+Combine statistics with event interception for custom monitoring:
+
+```java
+// Application.bx
+class {
+
+    function onApplicationStart() {
+        mcpServer( "myApp" )
+            .registerTool( myTool )
+        
+        // Register interceptor for custom metrics
+        BoxRegisterInterceptor( this, "onMCPRequest,onMCPResponse" )
+    }
+
+    function onMCPRequest( event, interceptData ) {
+        // Log incoming requests
+        writeLog( 
+            type: "information",
+            file: "mcp-requests",
+            text: "Request: #interceptData.requestData.method#"
+        )
+    }
+
+    function onMCPResponse( event, interceptData ) {
+        // Get current stats after each request
+        var server = interceptData.server
+        var summary = server.getStatsSummary()
+        
+        // Alert on high error rate
+        if ( summary.successRate < 90 && summary.totalRequests > 10 ) {
+            writeLog( 
+                type: "error",
+                file: "mcp-errors",
+                text: "High error rate: #summary.successRate#%"
+            )
+        }
+        
+        // Alert on slow responses
+        if ( summary.avgResponseTime > 1000 ) {
+            writeLog( 
+                type: "warning",
+                file: "mcp-performance",
+                text: "Slow avg response: #summary.avgResponseTime#ms"
+            )
+        }
+    }
+
+}
+```
+
+### Performance Notes
+
+- **Zero Overhead When Disabled**: When `statsEnabled: false`, no performance impact
+- **Memory Efficient**: Only last 1000 timing samples retained per metric
+- **Thread Safe**: Uses atomic operations for concurrent request handling
+- **Real-Time**: Stats updated immediately on each operation
+- **Lightweight Summary**: `getStatsSummary()` is optimized for frequent polling
+
+### API Integration Example
+
+Expose stats via REST API:
+
+```java
+// In your API handler
+component {
+
+    function getServerStats( required string serverName ) {
+        var server = mcpServer( arguments.serverName )
+        
+        if ( isNull( server ) ) {
+            return {
+                success: false,
+                error: "Server not found"
+            }
+        }
+        
+        return {
+            success: true,
+            data: server.getStatsSummary()
+        }
+    }
+
+    function resetServerStats( required string serverName ) {
+        var server = mcpServer( arguments.serverName )
+        
+        if ( isNull( server ) ) {
+            return { success: false }
+        }
+        
+        server.resetStats()
+        
+        return {
+            success: true,
+            message: "Statistics reset successfully"
+        }
+    }
+
+}
+```
+
 ## Best Practices
 
 ### 1. Use Descriptive Names
@@ -688,6 +962,31 @@ aiTool( "calculateShipping", "Calculate shipping cost based on weight and destin
     .describeArg( "weight", "Package weight in pounds" )
     .describeArg( "destination", "Destination zip code" )
     .describeArg( "expedited", "Whether to use expedited shipping (true/false)" )
+```
+
+### 6. Monitor Performance with Statistics
+
+```java
+// Enable stats for production monitoring
+server = mcpServer( 
+    name: "production",
+    statsEnabled: true 
+)
+
+// Periodically check performance
+scheduled task: "checkMCPPerformance", interval: "5m" {
+    var stats = server.getStatsSummary()
+    
+    if ( stats.avgResponseTime > 500 ) {
+        // Alert: slow responses
+        notificationService.alert( "MCP server responding slowly" )
+    }
+    
+    if ( stats.successRate < 95 ) {
+        // Alert: high error rate
+        notificationService.alert( "MCP server error rate elevated" )
+    }
+}
 ```
 
 ## Related Documentation
