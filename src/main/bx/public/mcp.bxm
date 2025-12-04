@@ -24,7 +24,7 @@
  *
  * 2. Access this endpoint:
  *    POST http://localhost/~bxai/mcp.bxm
- *    
+ *
  *    Specify a server via query parameter or URL segment:
  *    POST http://localhost/~bxai/mcp.bxm?server=myApp
  *    POST http://localhost/~bxai/mcp.bxm/myApp
