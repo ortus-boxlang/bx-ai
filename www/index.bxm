@@ -192,7 +192,9 @@
 			"prompts": thisServer.getPrompts(),
 			"toolCount": thisServer.getTools().count(),
 			"resourceCount": thisServer.getResources().count(),
-			"promptCount": thisServer.getPrompts().count()
+			"promptCount": thisServer.getPrompts().count(),
+			"stats": thisServer.getStatsSummary(),
+			"statsEnabled": thisServer.isStatsEnabled()
 		})
 	}
 </bx:script>
@@ -482,9 +484,48 @@
 			display: inline-block;
 		}
 
+		.stats-grid-detailed {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+			gap: 15px;
+			margin-top: 15px;
+		}
+
+		.stat-box {
+			background: white;
+			padding: 15px;
+			border-radius: 8px;
+			text-align: center;
+			border: 1px solid #e0e0e0;
+			transition: transform 0.2s ease, box-shadow 0.2s ease;
+		}
+
+		.stat-box:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+		}
+
+		.stat-label {
+			font-size: 0.75em;
+			color: #666;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+			margin-bottom: 8px;
+		}
+
+		.stat-value {
+			font-size: 1.8em;
+			font-weight: bold;
+			color: #667eea;
+		}
+
 		@media (max-width: 768px) {
 			.stats-grid {
 				grid-template-columns: 1fr;
+			}
+
+			.stats-grid-detailed {
+				grid-template-columns: repeat(2, 1fr);
 			}
 
 			.header h1 {
@@ -680,6 +721,57 @@
 									</div>
 								</bx:if>
 							</div>
+
+							<!-- Statistics Section -->
+							<bx:if srv.statsEnabled>
+								<div class="section">
+									<div class="section-title">
+										<span class="icon">📊</span>
+										<span>Performance Stats</span>
+									</div>
+
+									<div class="stats-grid-detailed">
+										<div class="stat-box">
+											<div class="stat-label">Uptime</div>
+											<div class="stat-value">#numberFormat( srv.stats.uptime / 1000, "0" )#s</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Total Requests</div>
+											<div class="stat-value">#srv.stats.totalRequests#</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Success Rate</div>
+											<div class="stat-value">#numberFormat( srv.stats.successRate, "0.00" )#%</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Avg Response</div>
+											<div class="stat-value">#numberFormat( srv.stats.avgResponseTime, "0" )#ms</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Tool Calls</div>
+											<div class="stat-value">#srv.stats.totalToolInvocations#</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Resource Reads</div>
+											<div class="stat-value">#srv.stats.totalResourceReads#</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Prompts Generated</div>
+											<div class="stat-value">#srv.stats.totalPromptGenerations#</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Errors</div>
+											<div class="stat-value" style="color: ##dc3545;">#srv.stats.totalErrors#</div>
+										</div>
+									</div>
+
+									<bx:if len( srv.stats.lastRequestAt )>
+										<div style="margin-top: 15px; padding: 10px; background: ##f8f9fa; border-radius: 6px; font-size: 0.85em; color: ##666;">
+											<strong>Last Request:</strong> #dateTimeFormat( srv.stats.lastRequestAt, "medium" )#
+										</div>
+									</bx:if>
+								</div>
+							</bx:if>
 
 							<!-- Endpoint Information -->
 							<div class="endpoint-info">

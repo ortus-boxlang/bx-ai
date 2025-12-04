@@ -28,6 +28,8 @@
  * response = server.handleRequest( requestBody )
  * ```
  */
+import bxModules.bxai.models.mcp.MCPServerStats
+
 class {
 
 	/**
@@ -77,6 +79,11 @@ class {
 	 */
 	property name="prompts" type="struct" default={};
 
+	/**
+	 * Statistics tracker for monitoring and analytics
+	 */
+	property name="stats" type="MCPServerStats";
+
 	// JSON-RPC 2.0 Error Codes
 	this.RPC_ERROR_CODES = {
 		CONTENT_TYPE_ERROR: -32050,
@@ -112,12 +119,14 @@ class {
 	 * @description Server description
 	 * @version Server version
 	 * @cors CORS allowed origin (empty string means no CORS header - secure by default)
+	 * @statsEnabled Whether to enable statistics tracking (default: true)
 	 */
 	function init(
 		string name = static.DEFAULT_SERVER_NAME,
 		string description = static.DEFAULT_SERVER_DESCRIPTION,
 		string version = static.DEFAULT_SERVER_VERSION,
-		string cors = ""
+		string cors = "",
+		boolean statsEnabled = true
 	) {
 		variables.serverName = arguments.name
 		variables.description = arguments.description
@@ -128,6 +137,7 @@ class {
 		variables.tools = {}
 		variables.resources = {}
 		variables.prompts = {}
+		variables.stats = new MCPServerStats( arguments.statsEnabled )
 
 		return this
 	}
@@ -148,6 +158,7 @@ class {
 	 * @description The server description (only used when creating a new instance)
 	 * @version The server version (only used when creating a new instance)
 	 * @cors CORS allowed origin (only used when creating a new instance)
+	 * @statsEnabled Whether to enable statistics tracking (only used when creating a new instance)
 	 * @force Force rebuild even if instance exists
 	 *
 	 * @return The MCPServer instance
@@ -157,6 +168,7 @@ class {
 		string description = static.DEFAULT_SERVER_DESCRIPTION,
 		string version = static.DEFAULT_SERVER_VERSION,
 		string cors = "",
+		boolean statsEnabled = true,
 		boolean force = false
 	) {
 		var aiService = getBoxAiService()
@@ -166,7 +178,8 @@ class {
 				name: arguments.name,
 				description: arguments.description,
 				version: arguments.version,
-				cors: arguments.cors
+				cors: arguments.cors,
+				statsEnabled: arguments.statsEnabled
 			)
 			aiService.putServer( arguments.name, newServer )
 			static.mcpLogger.debug( "Created new MCP server instance: #arguments.name#" )
@@ -724,6 +737,9 @@ class {
 		var resource = variables.resources[ arguments.uri ]
 		var content = resource.handler()
 
+		// Record resource read stats
+		variables.stats.recordResourceRead( arguments.uri )
+
 		return {
 			"contents": [
 				{
@@ -860,6 +876,9 @@ class {
 
 		var prompt = variables.prompts[ arguments.name ]
 		var messages = prompt.handler( argumentCollection: arguments.args )
+
+		// Record prompt generation stats
+		variables.stats.recordPromptGeneration( arguments.name )
 
 		// Ensure messages is an array
 		if ( isSimpleValue( messages ) ) {
@@ -1004,6 +1023,7 @@ class {
 	 * @return Struct containing the JSON-RPC response
 	 */
 	struct function handleRequest( required any requestBody ) {
+		var startTime = getTickCount()
 		var thisRequest = isStruct( arguments.requestBody )
 			? arguments.requestBody
 			: jsonDeserialize( arguments.requestBody )
@@ -1040,11 +1060,37 @@ class {
 					result = {}
 					break;
 				default:
+					// Record failed request for method not found
+					var responseTime = getTickCount() - startTime
+					variables.stats.recordRequest(
+						method: method,
+						responseTime: responseTime,
+						success: false,
+						errorCode: this.RPC_ERROR_CODES.METHOD_NOT_FOUND,
+						errorMessage: "Method not found: #method#"
+					)
 					return buildErrorResponse( requestId, this.RPC_ERROR_CODES.METHOD_NOT_FOUND, "Method not found: #method#" )
 			}
 
+			// Record successful request stats
+			var responseTime = getTickCount() - startTime
+			variables.stats.recordRequest(
+				method: method,
+				responseTime: responseTime,
+				success: true
+			)
+
 			return buildSuccessResponse( requestId, result )
 		} catch ( any e ) {
+			// Record failed request stats
+			var responseTime = getTickCount() - startTime
+			variables.stats.recordRequest(
+				method: method,
+				responseTime: responseTime,
+				success: false,
+				errorCode: this.RPC_ERROR_CODES.SERVER_ERROR,
+				errorMessage: e.message
+			)
 			return buildErrorResponse( requestId, this.RPC_ERROR_CODES.SERVER_ERROR, e.message )
 		}
 	}
@@ -1079,8 +1125,16 @@ class {
 			throw( type: "MCPServer.ToolNotFound", message: "Tool not found: #toolName#" )
 		}
 
+		var startTime = getTickCount()
 		var result = getTool( toolName )
 			.invoke( toolArgs )
+		var executionTime = getTickCount() - startTime
+
+		// Record tool invocation stats
+		variables.stats.recordToolInvocation(
+			toolName: toolName,
+			executionTime: executionTime
+		)
 
 		return {
 			"content": [
@@ -1136,6 +1190,69 @@ class {
 		}
 
 		return response
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Statistics Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get server statistics
+	 *
+	 * @return Complete stats struct
+	 */
+	function getStats() {
+		return variables.stats.getStats()
+	}
+
+	/**
+	 * Get summary statistics (lighter weight)
+	 *
+	 * @return Summary stats struct
+	 */
+	function getStatsSummary() {
+		return variables.stats.getSummary()
+	}
+
+	/**
+	 * Reset all statistics
+	 *
+	 * @return This instance for chaining
+	 */
+	function resetStats() {
+		variables.stats.reset()
+		return this
+	}
+
+	/**
+	 * Enable statistics tracking
+	 *
+	 * @return This instance for chaining
+	 */
+	function enableStats() {
+		variables.stats.enable()
+		return this
+	}
+
+	/**
+	 * Disable statistics tracking
+	 *
+	 * @return This instance for chaining
+	 */
+	function disableStats() {
+		variables.stats.disable()
+		return this
+	}
+
+	/**
+	 * Check if stats tracking is enabled
+	 *
+	 * @return Boolean indicating if stats are enabled
+	 */
+	boolean function isStatsEnabled() {
+		return variables.stats.getEnabled()
 	}
 
     /**

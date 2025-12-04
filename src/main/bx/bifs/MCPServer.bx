@@ -42,6 +42,7 @@ class {
 	 * @description The server description for MCP capabilities response
 	 * @version The server version
 	 * @cors CORS allowed origin (empty string means no CORS header - secure by default)
+	 * @statsEnabled Whether to enable statistics tracking (default: true)
 	 * @force Force rebuild of the server instance even if it exists
 	 *
 	 * @return An MCPServer instance with fluent API
@@ -51,6 +52,7 @@ class {
 		string description = "BoxLang AI MCP Server",
 		string version = "1.0.0",
 		string cors = "",
+		boolean statsEnabled = true,
 		boolean force = false
 	) {
 		return bxModules.bxai.models.mcp.MCPServer::getOrBuild(
@@ -58,6 +60,7 @@ class {
 			description: arguments.description,
 			version: arguments.version,
 			cors: arguments.cors,
+			statsEnabled: arguments.statsEnabled,
 			force: arguments.force
 		);
 	}

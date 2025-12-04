@@ -634,4 +634,392 @@ public class mcpServerTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "version" ) ) ).isEqualTo( "3.0.0" );
 	}
 
+	// ============================================================================
+	// Statistics Tests
+	// ============================================================================
+
+	@Test
+	@DisplayName( "Stats are enabled by default" )
+	public void testStatsEnabledByDefault() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "statsDefaultTest" )
+				isEnabled = myServer.isStatsEnabled()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "isEnabled" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "Can create server with stats disabled" )
+	public void testStatsDisabled() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( name: "statsDisabledTest", statsEnabled: false )
+				isEnabled = myServer.isStatsEnabled()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "isEnabled" ) ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "Can get stats summary" )
+	public void testGetStatsSummary() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "statsSummaryTest" )
+				summary = myServer.getStatsSummary()
+
+				hasUptime = structKeyExists( summary, "uptime" )
+				hasTotalRequests = structKeyExists( summary, "totalRequests" )
+				hasSuccessRate = structKeyExists( summary, "successRate" )
+				hasAvgResponseTime = structKeyExists( summary, "avgResponseTime" )
+				hasTotalToolInvocations = structKeyExists( summary, "totalToolInvocations" )
+				hasTotalResourceReads = structKeyExists( summary, "totalResourceReads" )
+				hasTotalPromptGenerations = structKeyExists( summary, "totalPromptGenerations" )
+				hasTotalErrors = structKeyExists( summary, "totalErrors" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasUptime" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasTotalRequests" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasSuccessRate" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasAvgResponseTime" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasTotalToolInvocations" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasTotalResourceReads" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasTotalPromptGenerations" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasTotalErrors" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "Can get full stats" )
+	public void testGetFullStats() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "fullStatsTest" )
+				stats = myServer.getStats()
+
+				hasRequests = structKeyExists( stats, "requests" )
+				hasTools = structKeyExists( stats, "tools" )
+				hasResources = structKeyExists( stats, "resources" )
+				hasPrompts = structKeyExists( stats, "prompts" )
+				hasErrors = structKeyExists( stats, "errors" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasRequests" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasTools" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasResources" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasPrompts" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasErrors" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "Stats track request count" )
+	public void testStatsTrackRequests() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "trackRequestsTest" )
+					.registerTool( aiTool( "test", "Test", ( x ) => "ok" ) )
+
+				// Make some requests
+				myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "initialize",
+					"id": "1"
+				} )
+
+				myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "tools/list",
+					"id": "2"
+				} )
+
+				summary = myServer.getStatsSummary()
+				totalRequests = summary.totalRequests
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( int ) variables.get( Key.of( "totalRequests" ) ) ).isEqualTo( 2 );
+	}
+
+	@Test
+	@DisplayName( "Stats track tool invocations" )
+	public void testStatsTrackToolInvocations() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "trackToolsTest" )
+					.registerTool(
+						aiTool( "echo", "Echo", ( msg ) => "Echo: " & msg )
+							.describeArg( "msg", "Message" )
+					)
+
+				// Call tool
+				myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "tools/call",
+					"id": "1",
+					"params": {
+						"name": "echo",
+						"arguments": { "msg": "test" }
+					}
+				} )
+
+				summary = myServer.getStatsSummary()
+				toolInvocations = summary.totalToolInvocations
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( int ) variables.get( Key.of( "toolInvocations" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Stats track resource reads" )
+	public void testStatsTrackResourceReads() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "trackResourcesTest" )
+					.registerResource(
+						uri: "test://doc",
+						name: "Document",
+						handler: () => "content"
+					)
+
+				// Read resource
+				myServer.readResource( "test://doc" )
+
+				summary = myServer.getStatsSummary()
+				resourceReads = summary.totalResourceReads
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( int ) variables.get( Key.of( "resourceReads" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Stats track prompt generations" )
+	public void testStatsTrackPromptGenerations() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "trackPromptsTest" )
+					.registerPrompt(
+						name: "greet",
+						description: "Greeting",
+						handler: ( args ) => [{ role: "user", content: "Hello" }]
+					)
+
+				// Generate prompt
+				myServer.getPrompt( "greet", {} )
+
+				summary = myServer.getStatsSummary()
+				promptGenerations = summary.totalPromptGenerations
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( int ) variables.get( Key.of( "promptGenerations" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Stats track errors" )
+	public void testStatsTrackErrors() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "trackErrorsTest" )
+
+				// Trigger error with invalid method
+				myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "invalid/method",
+					"id": "1"
+				} )
+
+				summary = myServer.getStatsSummary()
+				totalErrors = summary.totalErrors
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( int ) variables.get( Key.of( "totalErrors" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Can reset stats" )
+	public void testResetStats() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "resetStatsTest" )
+					.registerTool( aiTool( "test", "Test", ( x ) => "ok" ) )
+
+				// Generate some stats
+				myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "tools/list",
+					"id": "1"
+				} )
+
+				beforeReset = myServer.getStatsSummary()
+				beforeRequests = beforeReset.totalRequests
+
+				// Reset stats
+				myServer.resetStats()
+
+				afterReset = myServer.getStatsSummary()
+				afterRequests = afterReset.totalRequests
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( int ) variables.get( Key.of( "beforeRequests" ) ) ).isEqualTo( 1 );
+		assertThat( ( int ) variables.get( Key.of( "afterRequests" ) ) ).isEqualTo( 0 );
+	}
+
+	@Test
+	@DisplayName( "Can enable and disable stats" )
+	public void testEnableDisableStats() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "enableDisableTest" )
+
+				initialState = myServer.isStatsEnabled()
+
+				// Disable stats
+				myServer.disableStats()
+				afterDisable = myServer.isStatsEnabled()
+
+				// Enable stats
+				myServer.enableStats()
+				afterEnable = myServer.isStatsEnabled()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "initialState" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "afterDisable" ) ) ).isEqualTo( false );
+		assertThat( variables.get( Key.of( "afterEnable" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "Stats methods return server for chaining" )
+	public void testStatsMethodsChaining() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "statsChainingTest" )
+					.resetStats()
+					.disableStats()
+					.enableStats()
+					.registerTool( aiTool( "test", "Test", ( x ) => "ok" ) )
+
+				isServer = isObject( myServer )
+				toolCount = myServer.getToolCount()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "isServer" ) ) ).isEqualTo( true );
+		assertThat( ( int ) variables.get( Key.of( "toolCount" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Stats calculate success rate correctly" )
+	public void testStatsSuccessRate() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "successRateTest" )
+					.registerTool( aiTool( "test", "Test", ( x ) => "ok" ) )
+
+				// Successful request
+				myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "tools/list",
+					"id": "1"
+				} )
+
+				// Failed request
+				myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "invalid/method",
+					"id": "2"
+				} )
+
+				summary = myServer.getStatsSummary()
+				successRate = summary.successRate
+				totalRequests = summary.totalRequests
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( int ) variables.get( Key.of( "totalRequests" ) ) ).isEqualTo( 2 );
+		// Success rate should be 50% (1 success out of 2 requests)
+		var successRate = ( ( Number ) variables.get( Key.of( "successRate" ) ) ).doubleValue();
+		assertThat( successRate ).isWithin( 1.0 ).of( 50.0 );
+	}
+
+	@Test
+	@DisplayName( "Stats track last request timestamp" )
+	public void testStatsLastRequestTimestamp() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "lastRequestTest" )
+
+				beforeSummary = myServer.getStatsSummary()
+				beforeLastRequest = beforeSummary.lastRequestAt
+
+				// Make a request
+				myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "initialize",
+					"id": "1"
+				} )
+
+				afterSummary = myServer.getStatsSummary()
+				afterLastRequest = afterSummary.lastRequestAt
+			""",
+			context
+		);
+		// @formatter:on
+
+		var	beforeLastRequest	= variables.get( Key.of( "beforeLastRequest" ) ).toString();
+		var	afterLastRequest	= variables.get( Key.of( "afterLastRequest" ) ).toString();
+
+		assertThat( beforeLastRequest ).isEmpty();
+		assertThat( afterLastRequest ).isNotEmpty();
+	}
+
 }
