@@ -30,6 +30,55 @@ class {
 	static {
 		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" )
         DEFAULT_SERVER_NAME = "default"
+		DEFAULT_MCP_PROTOCOL_VERSION = "2024-11-05"
+	}
+
+	/**
+	 * Render the result of an MCP request.
+	 * Internally we processed an incoming HTTP request and produce the response.
+	 * <strong>This method is only for web runtimes</strong>
+	 *
+	 * @return The rendered response content
+	 */
+	static string function render(){
+		// Get request parameters
+		var mcpServerName = url.server ?: "default"
+		var requestMethod = cgi.REQUEST_METHOD
+		var requestBody = requestMethod eq "POST" ? getHTTPRequestData().content : ""
+		var acceptHeader = cgi.HTTP_ACCEPT ?: "application/json"
+
+		// Check if we have a path_info segment for server name
+		if ( len( cgi.PATH_INFO ) > 0 ) {
+			var pathSegments = listToArray( cgi.PATH_INFO, "/" ).filter( segment => len( segment ) > 0 )
+			if ( pathSegments.len() ) {
+				mcpServerName = pathSegments.first()
+			}
+		}
+
+		// Delegate to the request processor
+		var result = process(
+				serverName: mcpServerName,
+				requestMethod: requestMethod,
+				requestBody: requestBody,
+				acceptHeader: acceptHeader,
+				urlParams: url
+			)
+
+		// Set response headers
+		for ( var headerName in result.headers ) {
+			bx:header name=headerName value=result.headers[ headerName ];
+		}
+
+		// Set status code if not 200
+		if ( result.statusCode neq 200 ) {
+			bx:header statusCode=result.statusCode;
+		}
+
+		// render the content out
+		bx:content
+			type=result.contentType
+			reset=true
+			variable=result.content{}
 	}
 
 	/**
@@ -50,7 +99,28 @@ class {
 		string acceptHeader = "application/json",
 		struct urlParams = {}
 	) {
-		var targetServer = mcpServer( arguments.serverName );
+		// Verify server exists
+		var targetServer = MCPServer::getInstance( arguments.serverName )
+		if( isNull( targetServer ) ) {
+			// Log it
+			static.mcpLogger.error( "MCP Request for unknown server: #arguments.serverName#" );
+			// Return error response
+			return {
+				"content": jsonSerialize( {
+					"jsonrpc": "2.0",
+					"error": {
+						"code": MCPServer::errorCode( "INVALID_REQUEST" ),
+						"message": "Unknown MCP server: " & arguments.serverName
+					},
+					"id": ""
+				} ),
+				"contentType": "application/json",
+				"headers": {},
+				"statusCode": 400
+			};
+		}
+
+		// We have a server now, process it
 		var corsOrigin = targetServer.getCors();
 		var response = {
 			"content": "",
@@ -98,7 +168,7 @@ class {
 				response.content = jsonSerialize( {
 					"jsonrpc": "2.0",
 					"error": {
-						"code": MCPServer.RPC_ERROR_CODES.INVALID_REQUEST,
+						"code": MCPServer::errorCode( "INVALID_REQUEST" ),
 						"message": e.message ?: "Request rejected by onRequest callback"
 					},
 					"id": ""
@@ -167,17 +237,16 @@ class {
 	 * @return The populated response struct
 	 */
 	private static  struct function handleDiscovery( required any server, required struct response, struct urlParams = {} ) {
-		var discoveryResponse = {
+		arguments.response.content = {
 			"jsonrpc": "2.0",
 			"result": {
-				"protocolVersion": "2024-11-05",
+				"protocolVersion": static.DEFAULT_MCP_PROTOCOL_VERSION,
 				"capabilities": arguments.server.getCapabilities(),
 				"serverInfo": arguments.server.getServerInfo()
 			},
 			"id": arguments.urlParams.id ?: javacast( "null", "" )
-		};
+		}.toJson()
 
-		arguments.response.content = jsonSerialize( discoveryResponse );
 		return arguments.response;
 	}
 
@@ -220,7 +289,7 @@ class {
 			var errorResponse = {
 				"jsonrpc": "2.0",
 				"error": {
-					"code": MCPServer.RPC_ERROR_CODES.PARSE_ERROR,
+					"code": MCPServer::errorCode( "PARSE_ERROR" ),
 					"message": "Parse error: " & e.message
 				},
 				"id": ""
@@ -244,7 +313,7 @@ class {
 		var errorResponse = {
 			"jsonrpc": "2.0",
 			"error": {
-				"code": MCPServer.RPC_ERROR_CODES.INVALID_REQUEST,
+				"code": MCPServer::errorCode( "INVALID_REQUEST" ),
 				"message": "Method not allowed. Use POST for JSON-RPC requests or GET for discovery."
 			},
 			"id": ""

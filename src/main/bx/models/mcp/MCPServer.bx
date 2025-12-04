@@ -84,23 +84,6 @@ class {
 	 */
 	property name="stats" type="MCPServerStats";
 
-	// JSON-RPC 2.0 Error Codes
-	this.RPC_ERROR_CODES = {
-		CONTENT_TYPE_ERROR: -32050,
-		INVALID_REQUEST: -32600,
-		METHOD_NOT_FOUND: -32601,
-		METHOD_NOT_READY: -32004,
-		INVALID_PARAMS: -32602,
-		INTERNAL_ERROR: -32603,
-		PARSE_ERROR: -32700,
-		RATE_LIMIT_EXCEEDED: -32002,
-		SERVER_ERROR: -32000,
-		SERVER_OVERLOAD: -32001,
-		SESSION_EXPIRED: -32003,
-		TIMEOUT_ERROR: -32070,
-		TRANSPORT_ERROR: -32060
-	}
-
 	/**
 	 * Static configuration and service reference
 	 */
@@ -110,6 +93,22 @@ class {
         DEFAULT_SERVER_DESCRIPTION = "BoxLang AI MCP Server"
         DEFAULT_SERVER_VERSION = "1.0.0"
 		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" )
+		// JSON-RPC 2.0 Error Codes
+		RPC_ERROR_CODES = {
+			CONTENT_TYPE_ERROR: -32050,
+			INVALID_REQUEST: -32600,
+			METHOD_NOT_FOUND: -32601,
+			METHOD_NOT_READY: -32004,
+			INVALID_PARAMS: -32602,
+			INTERNAL_ERROR: -32603,
+			PARSE_ERROR: -32700,
+			RATE_LIMIT_EXCEEDED: -32002,
+			SERVER_ERROR: -32000,
+			SERVER_OVERLOAD: -32001,
+			SESSION_EXPIRED: -32003,
+			TIMEOUT_ERROR: -32070,
+			TRANSPORT_ERROR: -32060
+		}
 	}
 
 	/**
@@ -150,6 +149,17 @@ class {
 	 * You can go directly to the AIService to manage servers if preferred.
 	 */
 
+	 /**
+	  * Get the numeric error code for a given error name
+	  *
+	  * @codeName The name of the error code (e.g., "INVALID_REQUEST")
+	  *
+	  * @return The numeric error code
+	  */
+	 static numeric function errorCode( required codeName ){
+		return static.RPC_ERROR_CODES[ arguments.codeName ]
+	 }
+
 	/**
 	 * Get or create an MCP server instance by name.
 	 * Servers are stored globally and can be accessed from anywhere.
@@ -163,7 +173,7 @@ class {
 	 *
 	 * @return The MCPServer instance
 	 */
-	static function getOrBuild(
+	static MCPServer function getOrBuild(
 		string name = static.DEFAULT_SERVER_NAME,
 		string description = static.DEFAULT_SERVER_DESCRIPTION,
 		string version = static.DEFAULT_SERVER_VERSION,
@@ -204,7 +214,7 @@ class {
 	 *
 	 * @return The MCPServer instance or null if not found
 	 */
-	static function getInstance( required string name ) {
+	static MCPServer function getInstance( required string name ) {
 		return getBoxAiService().getServer( arguments.name )
 	}
 
@@ -249,7 +259,7 @@ class {
 	/**
 	 * Clear all server instances
 	 */
-	static function clearAllInstances() {
+	static void function clearAllInstances() {
 		static.mcpLogger.debug( "Clearing all MCP server instances" )
 		getBoxAiService().clearAllServers()
 	}
@@ -1076,10 +1086,10 @@ class {
 						method: method,
 						responseTime: responseTime,
 						success: false,
-						errorCode: this.RPC_ERROR_CODES.METHOD_NOT_FOUND,
+						errorCode: static.METHOD_NOT_FOUND,
 						errorMessage: "Method not found: #method#"
 					)
-					return buildErrorResponse( requestId, this.RPC_ERROR_CODES.METHOD_NOT_FOUND, "Method not found: #method#" )
+					return buildErrorResponse( requestId, static.METHOD_NOT_FOUND, "Method not found: #method#" )
 			}
 
 			// Record successful request stats
@@ -1098,7 +1108,7 @@ class {
 				method: method,
 				responseTime: responseTime,
 				success: false,
-				errorCode: this.RPC_ERROR_CODES.SERVER_ERROR,
+				errorCode: static.SERVER_ERROR,
 				errorMessage: e.message
 			)
 			// Announce error event
@@ -1111,11 +1121,11 @@ class {
 					requestId: requestId,
 					params: params,
 					responseTime: responseTime,
-					errorCode: this.RPC_ERROR_CODES.SERVER_ERROR,
+					errorCode: static.SERVER_ERROR,
 					exception: e
 				}
 			)
-			return buildErrorResponse( requestId, this.RPC_ERROR_CODES.SERVER_ERROR, e.message )
+			return buildErrorResponse( requestId, static.SERVER_ERROR, e.message )
 		}
 	}
 
