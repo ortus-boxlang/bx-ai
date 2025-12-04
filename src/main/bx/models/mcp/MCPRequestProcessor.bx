@@ -104,7 +104,7 @@ class {
 		if( isNull( targetServer ) ) {
 			// Log it
 			static.mcpLogger.error( "MCP Request for unknown server: #arguments.serverName#" )
-			// Return error response
+			// Return error response with security headers
 			return {
 				"content": jsonSerialize( {
 					"jsonrpc": "2.0",
@@ -115,7 +115,11 @@ class {
 					"id": ""
 				} ),
 				"contentType": "application/json",
-				"headers": {},
+				"headers": {
+					"X-Content-Type-Options": "nosniff",
+					"X-Frame-Options": "DENY",
+					"X-XSS-Protection": "1; mode=block"
+				},
 				"statusCode": 400
 			}
 		}
@@ -128,6 +132,15 @@ class {
 			"headers": {},
 			"statusCode": 200
 		}
+
+		// Add standard security headers
+		response.headers[ "X-Content-Type-Options" ] = "nosniff"
+		response.headers[ "X-Frame-Options" ] = "DENY"
+		response.headers[ "X-XSS-Protection" ] = "1; mode=block"
+		response.headers[ "Referrer-Policy" ] = "strict-origin-when-cross-origin"
+		response.headers[ "Content-Security-Policy" ] = "default-src 'none'; frame-ancestors 'none'"
+		response.headers[ "Strict-Transport-Security" ] = "max-age=31536000; includeSubDomains"
+		response.headers[ "Permissions-Policy" ] = "geolocation=(), microphone=(), camera=()"
 
 		// Build request data for callbacks
 		var requestData = {
@@ -245,6 +258,12 @@ class {
 		arguments.response.headers[ "Access-Control-Allow-Methods" ] = "POST, GET, OPTIONS";
 		arguments.response.headers[ "Access-Control-Allow-Headers" ] = "Content-Type, Authorization";
 		arguments.response.headers[ "Access-Control-Max-Age" ] = "86400";
+
+		// Add security headers to preflight response
+		arguments.response.headers[ "X-Content-Type-Options" ] = "nosniff";
+		arguments.response.headers[ "X-Frame-Options" ] = "DENY";
+		arguments.response.headers[ "Referrer-Policy" ] = "strict-origin-when-cross-origin";
+
 		arguments.response.content = "";
 		return arguments.response;
 	}
