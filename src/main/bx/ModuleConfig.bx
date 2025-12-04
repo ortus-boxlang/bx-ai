@@ -172,7 +172,8 @@ class {
 			"onMCPServerCreate",
 			"onMCPServerRemove",
 			"onMCPRequest",
-			"onMCPResponse"
+			"onMCPResponse",
+			"onMCPError"
 		 ];
 	}
 

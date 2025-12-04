@@ -641,6 +641,217 @@ if ( result.getSuccess() ) {
 }
 ```
 
+## Events & Interception 🎯
+
+The MCP Server fires custom events during its lifecycle, allowing you to add custom logging, monitoring, alerting, and integration with other systems.
+
+### Available Events
+
+#### `onMCPServerCreate`
+Fired when a new MCP server instance is created.
+
+```javascript
+function onMCPServerCreate( event, interceptData ) {
+    // interceptData contains:
+    // - server: The newly created MCPServer instance
+    // - name: The server name
+    writeLog( "MCP server created: #interceptData.name#" )
+}
+```
+
+#### `onMCPServerRemove`
+Fired when an MCP server instance is removed from the registry.
+
+```javascript
+function onMCPServerRemove( event, interceptData ) {
+    // interceptData contains:
+    // - name: The server name that was removed
+    writeLog( "MCP server removed: #interceptData.name#" )
+}
+```
+
+#### `onMCPRequest`
+Fired before processing an incoming MCP request.
+
+```javascript
+function onMCPRequest( event, interceptData ) {
+    // interceptData contains:
+    // - server: The MCPServer instance
+    // - requestData: The parsed request { id, method, params }
+    
+    writeLog(
+        type: "information",
+        file: "mcp-requests",
+        text: "Request: #interceptData.requestData.method# (ID: #interceptData.requestData.id#)"
+    )
+}
+```
+
+#### `onMCPResponse`
+Fired after processing an MCP request and before returning the response.
+
+```javascript
+function onMCPResponse( event, interceptData ) {
+    // interceptData contains:
+    // - server: The MCPServer instance
+    // - requestData: The original request
+    // - responseData: The response being returned
+    // - success: Whether the request was successful
+    // - responseTime: Time taken in milliseconds
+    
+    if ( !interceptData.success ) {
+        writeLog(
+            type: "warning",
+            file: "mcp-failures",
+            text: "Failed request: #interceptData.requestData.method#"
+        )
+    }
+}
+```
+
+#### `onMCPError` ⚠️
+Fired when an exception occurs during MCP server operations.
+
+```javascript
+function onMCPError( event, interceptData ) {
+    // interceptData contains:
+    // - server: The MCPServer instance
+    // - context: Where the error occurred ("handleRequest", "scanClass", etc.)
+    // - exception: The exception object with message, detail, stacktrace
+    // - Additional context-specific fields
+    
+    var exception = interceptData.exception
+    var context = interceptData.context
+    
+    // Log detailed error
+    writeLog(
+        type: "error",
+        file: "mcp-errors",
+        text: "MCP Error in #context#: #exception.message#"
+    )
+    
+    // Context-specific handling
+    if ( context == "handleRequest" ) {
+        // Additional fields available: method, requestId, params, responseTime, errorCode
+        writeLog(
+            type: "error",
+            file: "mcp-errors",
+            text: "Request failed - Method: #interceptData.method#, Error: #exception.message#"
+        )
+        
+        // Send alert
+        emailService.sendAlert(
+            subject: "MCP Server Error",
+            body: "Method: #interceptData.method#\nError: #exception.message#\nStacktrace: #exception.stackTrace#"
+        )
+    }
+}
+```
+
+### Registering Event Listeners
+
+#### For BoxLang Module Registration
+
+In your module's `ModuleConfig.bx`:
+
+```javascript
+function configure() {
+    interceptors = [
+        {
+            class: "MyMCPInterceptor",
+            properties: {}
+        }
+    ];
+}
+```
+
+#### For Application/Script Registration
+
+Use `BoxRegisterInterceptor()` to register listeners:
+
+```javascript
+// Application.bx
+class {
+
+    function onApplicationStart() {
+        // Register self as interceptor for MCP events
+        BoxRegisterInterceptor( this, "onMCPRequest,onMCPResponse,onMCPError" )
+        
+        // Create server
+        mcpServer( "myApp" )
+            .registerTool( myTool )
+    }
+    
+    function onMCPRequest( event, interceptData ) {
+        // Track incoming requests
+        metrics.increment( "mcp.requests" )
+    }
+    
+    function onMCPResponse( event, interceptData ) {
+        // Track response times
+        metrics.gauge( "mcp.responseTime", interceptData.responseTime )
+    }
+    
+    function onMCPError( event, interceptData ) {
+        // Handle errors
+        errorTracker.captureException( interceptData.exception )
+    }
+
+}
+```
+
+### Event Use Cases
+
+#### Custom Logging
+```javascript
+function onMCPRequest( event, interceptData ) {
+    writeLog(
+        type: "information",
+        file: "mcp-audit",
+        text: "User: #session.user.id#, Method: #interceptData.requestData.method#"
+    )
+}
+```
+
+#### Metrics & Monitoring
+```javascript
+function onMCPResponse( event, interceptData ) {
+    // Send to monitoring service
+    metrics.gauge( "mcp.responseTime", interceptData.responseTime )
+    metrics.increment( "mcp.requests", { method: interceptData.requestData.method } )
+}
+
+function onMCPError( event, interceptData ) {
+    metrics.increment( "mcp.errors", { context: interceptData.context } )
+}
+```
+
+#### Rate Limiting
+```javascript
+function onMCPRequest( event, interceptData ) {
+    var clientId = request.getHeader( "X-Client-ID" )
+    
+    if ( !rateLimiter.allow( clientId ) ) {
+        // Reject request
+        interceptData.reject = true
+        interceptData.errorMessage = "Rate limit exceeded"
+    }
+}
+```
+
+#### Error Alerting
+```javascript
+function onMCPError( event, interceptData ) {
+    // Critical error alerting
+    if ( interceptData.context == "handleRequest" ) {
+        slackService.sendMessage(
+            channel: "##alerts",
+            text: "MCP Error: #interceptData.exception.message#"
+        )
+    }
+}
+```
+
 ## Statistics & Monitoring 📊
 
 The MCP server automatically tracks performance and usage metrics for real-time monitoring and analytics.
@@ -858,6 +1069,28 @@ class {
                 type: "warning",
                 file: "mcp-performance",
                 text: "Slow avg response: #summary.avgResponseTime#ms"
+            )
+        }
+    }
+
+    function onMCPError( event, interceptData ) {
+        // Handle MCP server errors
+        var exception = interceptData.exception
+        var context = interceptData.context
+
+        // Log detailed error information
+        writeLog(
+            type: "error",
+            file: "mcp-errors",
+            text: "MCP Error in #context#: #exception.message# - #exception.detail#"
+        )
+
+        // Send alert for critical errors
+        if ( context == "handleRequest" ) {
+            // Alert operations team
+            emailService.sendAlert(
+                subject: "MCP Server Error",
+                body: "Method: #interceptData.method#, Error: #exception.message#"
             )
         }
     }

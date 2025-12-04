@@ -472,6 +472,16 @@ class {
 		} catch ( any e ) {
 			// Log error but continue scanning other classes
 			static.mcpLogger.error( "MCP scan error for #arguments.classPath#: #e.message#" )
+			// Announce error event
+			BoxAnnounce(
+				"onMCPError",
+				{
+					server: this,
+					context: "scanClass",
+					classPath: arguments.classPath,
+					exception: e
+				}
+			)
 		}
 	}
 
@@ -1090,6 +1100,20 @@ class {
 				success: false,
 				errorCode: this.RPC_ERROR_CODES.SERVER_ERROR,
 				errorMessage: e.message
+			)
+			// Announce error event
+			BoxAnnounce(
+				"onMCPError",
+				{
+					server: this,
+					context: "handleRequest",
+					method: method,
+					requestId: requestId,
+					params: params,
+					responseTime: responseTime,
+					errorCode: this.RPC_ERROR_CODES.SERVER_ERROR,
+					exception: e
+				}
 			)
 			return buildErrorResponse( requestId, this.RPC_ERROR_CODES.SERVER_ERROR, e.message )
 		}
