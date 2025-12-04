@@ -684,7 +684,7 @@
 							<!-- Endpoint Information -->
 							<div class="endpoint-info">
 								<strong>📡 MCP Endpoint:</strong><br>
-								<code>/bxai/mcp.bxm?server=#srv.name#</code><br>
+								<code>/~bxai/mcp.bxm?server=#srv.name#</code><br>
 								<small style="color: ##856404;">Send JSON-RPC 2.0 requests to this endpoint to interact with the server</small>
 							</div>
 						</div>

@@ -2325,15 +2325,16 @@ The module provides `public/mcp.bxm` for HTTP access:
 
 ```bash
 # Discovery
-curl http://localhost/bxai/public/mcp.bxm
+curl http://localhost/~bxai/mcp.bxm
 
 # List tools
-curl -X POST http://localhost/bxai/public/mcp.bxm \
+curl -X POST http://localhost/~bxai/mcp.bxm \
     -H "Content-Type: application/json" \
     -d '{"jsonrpc":"2.0","method":"tools/list","id":"1"}'
 
-# Access specific server
-curl http://localhost/bxai/public/mcp.bxm?server=myApp
+# Access specific server (query parameter or URL segment)
+curl http://localhost/~bxai/mcp.bxm?server=myApp
+curl http://localhost/~bxai/mcp.bxm/myApp
 ```
 
 ### Tool Management Methods

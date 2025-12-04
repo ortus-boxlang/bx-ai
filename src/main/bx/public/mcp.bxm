@@ -23,7 +23,11 @@
  *    mcpServer( "default" ).registerTool( aiTool( "myTool", "Description", handler ) );
  *
  * 2. Access this endpoint:
- *    POST http://localhost/bxai/mcp.bxm
+ *    POST http://localhost/~bxai/mcp.bxm
+ *    
+ *    Specify a server via query parameter or URL segment:
+ *    POST http://localhost/~bxai/mcp.bxm?server=myApp
+ *    POST http://localhost/~bxai/mcp.bxm/myApp
  *
  * 3. Send JSON-RPC requests:
  *    {
@@ -33,7 +37,6 @@
  *    }
  */
 import bxModules.bxai.models.mcp.MCPRequestProcessor
-
 // Get request parameters
 mcpServerName = url.server ?: "default"
 requestMethod = cgi.REQUEST_METHOD

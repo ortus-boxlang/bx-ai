@@ -46,13 +46,17 @@ class {
 The module provides a built-in endpoint at `public/mcp.bxm`:
 
 ```
-POST http://localhost/bxai/public/mcp.bxm
+POST http://localhost/~bxai/mcp.bxm
 ```
 
-Or with a specific server:
+Specify a server using either a query parameter or URL segment:
 
 ```
-POST http://localhost/bxai/public/mcp.bxm?server=myApp
+# Using query parameter
+POST http://localhost/~bxai/mcp.bxm?server=myApp
+
+# Using URL segment
+POST http://localhost/~bxai/mcp.bxm/myApp
 ```
 
 ## Server Configuration
@@ -459,7 +463,7 @@ The module includes a pre-built HTTP endpoint at `public/mcp.bxm`:
 ### Discovery (GET)
 
 ```bash
-curl http://localhost/bxai/public/mcp.bxm
+curl http://localhost/~bxai/mcp.bxm
 ```
 
 Returns server capabilities:
@@ -485,21 +489,23 @@ Returns server capabilities:
 ### JSON-RPC Requests (POST)
 
 ```bash
-curl -X POST http://localhost/bxai/public/mcp.bxm \
+curl -X POST http://localhost/~bxai/mcp.bxm \
     -H "Content-Type: application/json" \
     -d '{"jsonrpc":"2.0","method":"tools/list","id":"1"}'
 ```
 
 ### Multiple Servers
 
-Use the `server` query parameter:
+Specify the server using either a query parameter or URL segment:
 
 ```bash
-# Access the "api" server
-curl http://localhost/bxai/public/mcp.bxm?server=api
+# Using query parameter
+curl http://localhost/~bxai/mcp.bxm?server=api
+curl http://localhost/~bxai/mcp.bxm?server=admin
 
-# Access the "admin" server
-curl http://localhost/bxai/public/mcp.bxm?server=admin
+# Using URL segment
+curl http://localhost/~bxai/mcp.bxm/api
+curl http://localhost/~bxai/mcp.bxm/admin
 ```
 
 ### CORS Support
@@ -618,7 +624,7 @@ class {
 
 ```java
 // Use the MCP client to connect to the server
-client = MCP( "http://localhost/bxai/public/mcp.bxm?server=myApp" )
+client = MCP( "http://localhost/~bxai/mcp.bxm?server=myApp" )
 
 // List available tools
 tools = client.listTools()
