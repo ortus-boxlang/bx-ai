@@ -40,7 +40,7 @@ class {
 	 * @acceptHeader The Accept header value
 	 * @urlParams URL parameters struct
 	 *
-	 * @return Struct containing response data: { content, contentType, headers, statusCode, statusText }
+	 * @return Struct containing response data: { content, contentType, headers, statusCode }
 	 */
 	struct function process(
 		string serverName = static.DEFAULT_SERVER_NAME,
@@ -49,14 +49,13 @@ class {
 		string acceptHeader = "application/json",
 		struct urlParams = {}
 	) {
-		var server = mcpServer( arguments.serverName );
-		var corsOrigin = server.getCors();
+		var targetServer = mcpServer( arguments.serverName );
+		var corsOrigin = targetServer.getCors();
 		var response = {
 			"content": "",
 			"contentType": "application/json",
 			"headers": {},
-			"statusCode": 200,
-			"statusText": "OK"
+			"statusCode": 200
 		};
 
 		// Build request data for callbacks
@@ -86,7 +85,6 @@ class {
 			} catch ( any e ) {
 				// Authentication or validation failure - return error response
 				response.statusCode = 401;
-				response.statusText = "Unauthorized";
 				response.content = jsonSerialize( {
 					"jsonrpc": "2.0",
 					"error": {
@@ -222,7 +220,6 @@ class {
 	 */
 	private struct function handleMethodNotAllowed( required struct response ) {
 		arguments.response.statusCode = 405;
-		arguments.response.statusText = "Method Not Allowed";
 
 		var errorResponse = {
 			"jsonrpc": "2.0",
