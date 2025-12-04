@@ -2298,7 +2298,7 @@ mcpServer( "myApp" )
     .registerPrompt(
         name: "codeReview",
         description: "Code review prompt",
-        arguments: [
+        args: [
             { name: "language", description: "Programming language", required: true }
         ],
         handler: ( args ) => [
