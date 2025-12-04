@@ -924,6 +924,25 @@ class {
 	 */
 
 	/**
+	* Get a summary of the MCP Server. This is used mostly for building internal dashboards, debugging, and logging.
+	*
+	* @return Struct summary of the server
+	*/
+	struct function getSummary() {
+		return {
+			"description": variables.description,
+			"promptCount": variables.prompts.count(),
+			"prompts": listPrompts(),
+			"resourceCount": variables.resources.count(),
+			"resources": listResources(),
+			"serverName": variables.serverName,
+			"toolCount": getToolCount(),
+			"tools": listTools(),
+			"version": variables.version
+		}
+	}
+
+	/**
 	 * Get server capabilities in MCP format
 	 *
 	 * @return Struct of server capabilities
