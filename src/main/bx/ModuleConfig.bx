@@ -63,6 +63,17 @@ class {
 	this.mapping = "bxai";
 
 	/**
+	 * The public mapping for your module.  This is the public facing mapping
+	 * that users will use to access your module features.
+	 * For us it will be /~bxai -> public mapping
+	 */
+	this.publicMapping = {
+		name : "~bxai",
+		usePrefix: false,
+		path: "public"
+	};
+
+	/**
 	 * Who built the module
 	 */
 	this.author = "Luis Majano";

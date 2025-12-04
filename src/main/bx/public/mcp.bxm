@@ -32,6 +32,8 @@
  *        "id": "1"
  *    }
  */
+import bxModules.bxai.models.mcp.MCPRequestProcessor
+
 // Get request parameters
 mcpServerName = url.server ?: "default"
 requestMethod = cgi.REQUEST_METHOD
@@ -39,8 +41,7 @@ requestBody = requestMethod eq "POST" ? getHTTPRequestData().content : ""
 acceptHeader = cgi.HTTP_ACCEPT ?: "application/json"
 
 // Delegate to the request processor
-result = new bxModules.bxai.models.mcp.MCPRequestProcessor()
-    process(
+result = MCPRequestProcessor::process(
         serverName: mcpServerName,
         requestMethod: requestMethod,
         requestBody: requestBody,

@@ -43,7 +43,7 @@ class {
 	 *
 	 * @return Struct containing response data: { content, contentType, headers, statusCode }
 	 */
-	struct function process(
+	static struct function process(
 		string serverName = static.DEFAULT_SERVER_NAME,
 		required string requestMethod,
 		string requestBody = "",
@@ -79,7 +79,7 @@ class {
 		}
 
 		// Execute onRequest callback if defined (for authentication/inspection)
-		var onRequestCallback = server.getOnRequest();
+		var onRequestCallback = targetServer.getOnRequest();
 		if ( isClosure( onRequestCallback ) ) {
 			try {
 				requestData = onRequestCallback( requestData );
@@ -102,11 +102,11 @@ class {
 
 		// Handle GET requests for discovery
 		if ( arguments.requestMethod == "GET" ) {
-			response = handleDiscovery( server, response, arguments.urlParams );
+			response = handleDiscovery( targetServer, response, arguments.urlParams );
 		}
 		// Handle POST requests for JSON-RPC
 		else if ( arguments.requestMethod == "POST" ) {
-			response = handleJSONRPC( server, response, arguments.requestBody, arguments.acceptHeader );
+			response = handleJSONRPC( targetServer, response, arguments.requestBody, arguments.acceptHeader );
 		}
 		// Method not allowed
 		else {
@@ -114,7 +114,7 @@ class {
 		}
 
 		// Execute onResponse callback if defined (for transformation/logging)
-		var onResponseCallback = server.getOnResponse();
+		var onResponseCallback = targetServer.getOnResponse();
 		if ( isClosure( onResponseCallback ) ) {
 			try {
 				response = onResponseCallback( response, requestData );
@@ -134,7 +134,7 @@ class {
 	 *
 	 * @return The populated response struct
 	 */
-	private struct function handleCORSPreflight( required struct response ) {
+	private static  struct function handleCORSPreflight( required struct response ) {
 		arguments.response.headers[ "Access-Control-Allow-Methods" ] = "POST, GET, OPTIONS";
 		arguments.response.headers[ "Access-Control-Allow-Headers" ] = "Content-Type, Authorization";
 		arguments.response.headers[ "Access-Control-Max-Age" ] = "86400";
@@ -151,7 +151,7 @@ class {
 	 *
 	 * @return The populated response struct
 	 */
-	private struct function handleDiscovery( required any server, required struct response, struct urlParams = {} ) {
+	private static  struct function handleDiscovery( required any server, required struct response, struct urlParams = {} ) {
 		var discoveryResponse = {
 			"jsonrpc": "2.0",
 			"result": {
@@ -176,7 +176,7 @@ class {
 	 *
 	 * @return The populated response struct
 	 */
-	private struct function handleJSONRPC(
+	private static  struct function handleJSONRPC(
 		required any server,
 		required struct response,
 		required string requestBody,
@@ -223,7 +223,7 @@ class {
 	 *
 	 * @return The populated response struct
 	 */
-	private struct function handleMethodNotAllowed( required struct response ) {
+	private static struct function handleMethodNotAllowed( required struct response ) {
 		arguments.response.statusCode = 405;
 
 		var errorResponse = {

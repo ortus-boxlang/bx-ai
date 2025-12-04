@@ -1,2 +1,5 @@
 // The name of the module
 rootProject.name = 'bx-ai'
+
+// Prevent Gradle from treating subdirectories as subprojects
+// The www directory contains runtime BoxLang web content and should not be built by Gradle

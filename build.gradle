@@ -258,10 +258,10 @@ task downloadBoxLangModules( type: Download ) {
 	}
     // Download the test dependencies
     src( [
-		"https://s3.amazonaws.com/downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-derby/${derbyModuleVersion}/bx-derby-${derbyModuleVersion}.zip",
-		"https://s3.amazonaws.com/downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-postgresql/${postgresqlModuleVersion}/bx-postgresql-${postgresqlModuleVersion}.zip",
-		"https://s3.amazonaws.com/downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-sqlite/${sqliteModuleVersion}/bx-sqlite-${sqliteModuleVersion}.zip",
-		"https://s3.amazonaws.com/downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-mysql/${mysqlModuleVersion}/bx-mysql-${mysqlModuleVersion}.zip"
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-derby/${derbyModuleVersion}/bx-derby-${derbyModuleVersion}.zip",
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-postgresql/${postgresqlModuleVersion}/bx-postgresql-${postgresqlModuleVersion}.zip",
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-sqlite/${sqliteModuleVersion}/bx-sqlite-${sqliteModuleVersion}.zip",
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-mysql/${mysqlModuleVersion}/bx-mysql-${mysqlModuleVersion}.zip"
 	] )
     // Specify the destination for the downloaded file
     dest "src/test/resources/modules/"
