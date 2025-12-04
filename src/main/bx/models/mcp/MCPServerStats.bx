@@ -79,7 +79,7 @@ class {
 	/**
 	 * Reset all statistics to initial state
 	 */
-	function reset() {
+	MCPServerStats function reset() {
 		variables.requests = {
 			"total": new AtomicInteger( 0 ),
 			"successful": new AtomicInteger( 0 ),
@@ -129,7 +129,7 @@ class {
 	 * @errorCode Error code if request failed
 	 * @errorMessage Error message if request failed
 	 */
-	function recordRequest(
+	MCPServerStats function recordRequest(
 		required string method,
 		required numeric responseTime,
 		boolean success = true,
@@ -167,7 +167,7 @@ class {
 	 * @toolName The name of the tool
 	 * @executionTime Execution time in milliseconds
 	 */
-	function recordToolInvocation(
+	MCPServerStats	function recordToolInvocation(
 		required string toolName,
 		required numeric executionTime
 	) {
@@ -201,7 +201,7 @@ class {
 	 *
 	 * @uri The resource URI
 	 */
-	function recordResourceRead( required string uri ) {
+	MCPServerStats function recordResourceRead( required string uri ) {
 		if ( !variables.enabled ) return this
 
 		variables.resources.totalReads.incrementAndGet()
@@ -220,7 +220,7 @@ class {
 	 *
 	 * @name The prompt name
 	 */
-	function recordPromptGeneration( required string name ) {
+	MCPServerStats function recordPromptGeneration( required string name ) {
 		if ( !variables.enabled ) return this
 
 		variables.prompts.totalGenerations.incrementAndGet()
@@ -240,7 +240,7 @@ class {
 	 * @code Error code
 	 * @message Error message
 	 */
-	function recordError(
+	MCPServerStats function recordError(
 		required numeric code,
 		string message = ""
 	) {
@@ -270,7 +270,7 @@ class {
 	 *
 	 * @return Complete stats struct
 	 */
-	function getStats() {
+	struct function getStats() {
 		// Extract atomic values for serialization
 		var requestsCopy = variables.requests.copy()
 		requestsCopy.total = requestsCopy.total.get()
@@ -307,7 +307,7 @@ class {
 	 *
 	 * @return Summary stats struct
 	 */
-	function getSummary() {
+	struct function getSummary() {
 		var total = variables.requests.total.get()
 		var successful = variables.requests.successful.get()
 
@@ -329,7 +329,7 @@ class {
 	/**
 	 * Enable stats tracking
 	 */
-	function enable() {
+	MCPServerStats function enable() {
 		variables.enabled = true
 		return this
 	}
@@ -337,7 +337,7 @@ class {
 	/**
 	 * Disable stats tracking
 	 */
-	function disable() {
+	MCPServerStats function disable() {
 		variables.enabled = false
 		return this
 	}
