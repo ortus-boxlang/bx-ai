@@ -44,7 +44,7 @@ myServer.registerResource(
 myServer.registerPrompt(
     name: "greeting",
     description: "Generate a personalized greeting",
-    arguments: [
+    args: [
         { name: "name", description: "Person's name", required: true },
         { name: "language", description: "Language for greeting", required: false }
     ],

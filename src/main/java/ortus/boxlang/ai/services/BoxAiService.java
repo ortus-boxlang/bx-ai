@@ -31,7 +31,7 @@ import ortus.boxlang.runtime.types.Array;
 /**
  * This service is in charge of managing all MCP (Model Context Protocol) servers and their lifecycles.
  */
-public class AiService extends BaseService {
+public class BoxAiService extends BaseService {
 
 	/**
 	 * Concurrent map that stores all MCP servers by name
@@ -52,7 +52,7 @@ public class AiService extends BaseService {
 	/**
 	 * public no-arg constructor for the ServiceProvider
 	 */
-	public AiService() {
+	public BoxAiService() {
 		this( BoxRuntime.getInstance() );
 	}
 
@@ -61,7 +61,7 @@ public class AiService extends BaseService {
 	 *
 	 * @param runtime The BoxRuntime
 	 */
-	public AiService( BoxRuntime runtime ) {
+	public BoxAiService( BoxRuntime runtime ) {
 		super( runtime, KeyDictionary.AiService );
 		getLogger().trace( "+ AI Service built" );
 	}
@@ -93,6 +93,15 @@ public class AiService extends BaseService {
 	 * MCP Server Methods
 	 * ------------------------------------------------------------------------------
 	 */
+
+	/**
+	 * Get all servers
+	 *
+	 * @return Map of server name to server instance
+	 */
+	public ConcurrentMap<Key, IClassRunnable> getAllServers() {
+		return this.mcpServers;
+	}
 
 	/**
 	 * How many MCP servers do we store
@@ -189,7 +198,7 @@ public class AiService extends BaseService {
 	 */
 	public BoxLangLogger getLogger() {
 		if ( this.logger == null ) {
-			synchronized ( AiService.class ) {
+			synchronized ( BoxAiService.class ) {
 				if ( this.logger == null ) {
 					this.logger = runtime.getLoggingService().getLogger( "ai" );
 				}

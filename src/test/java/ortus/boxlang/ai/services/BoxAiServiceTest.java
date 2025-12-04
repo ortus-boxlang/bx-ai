@@ -28,7 +28,7 @@ import ortus.boxlang.ai.util.KeyDictionary;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.services.IService;
 
-public class AiServiceTest extends BaseIntegrationTest {
+public class BoxAiServiceTest extends BaseIntegrationTest {
 
 	@AfterEach
 	public void clearServers() {

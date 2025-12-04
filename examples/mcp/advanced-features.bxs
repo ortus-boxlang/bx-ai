@@ -1,6 +1,6 @@
 /**
  * Advanced MCP Server Example
- * 
+ *
  * This example demonstrates advanced features including:
  * - Request/response interceptors
  * - Custom authentication
@@ -18,22 +18,22 @@ myServer = mcpServer( "advanced-api" )
 myServer.onRequest( ( requestData ) => {
     // In production, check auth headers
     var authHeader = requestData.headers?.authorization ?: ""
-    
+
     // Simulate auth check
     if ( !authHeader.startsWith( "Bearer " ) && requestData.method != "initialize" ) {
-        throw( 
+        throw(
             type: "Unauthorized",
             message: "Authentication required",
             errorCode: 401
         )
     }
-    
+
     // Add user context to request
     requestData.user = {
         id: "user123",
         role: "admin"
     }
-    
+
     println( "✓ Request authenticated: #requestData.method#" )
     return requestData
 } )
@@ -42,13 +42,13 @@ myServer.onRequest( ( requestData ) => {
 myServer.onResponse( ( response, requestData ) => {
     // Log the response
     println( "✓ Response prepared for: #requestData.method#" )
-    
+
     // Could add timing, metrics, etc.
     response.metadata = {
         timestamp: now(),
         processingTime: "12ms"
     }
-    
+
     return response
 } )
 
@@ -61,7 +61,7 @@ myServer.registerTool(
         if ( !reFindNoCase( "^(SELECT|INSERT|UPDATE|DELETE)", trim( sql ) ) ) {
             throw( message: "Invalid SQL query format" )
         }
-        
+
         // Simulate query execution
         return {
             success: true,
@@ -86,7 +86,7 @@ myServer.registerTool(
             "validate": "File validation passed",
             "transform": "File transformed successfully"
         }
-        
+
         return operations[ operation ] ?: "Unknown operation"
     } )
         .describeArg( "filePath", "Path to the file" )
@@ -98,7 +98,7 @@ myServer.registerTool(
     aiTool( "scheduleTask", "Schedule a background task", ( taskName, schedule, params = {} ) => {
         // Simulate task scheduling
         var taskId = createUUID()
-        
+
         return {
             taskId: taskId,
             taskName: taskName,
@@ -153,18 +153,18 @@ myServer.registerResource(
 myServer.registerPrompt(
     name: "codeReview",
     description: "Generate a code review checklist",
-    arguments: [
+    args: [
         { name: "language", description: "Programming language", required: true },
         { name: "complexity", description: "Code complexity level", required: false }
     ],
     handler: ( args ) => [
-        { 
-            role: "system", 
-            content: "You are an expert code reviewer." 
+        {
+            role: "system",
+            content: "You are an expert code reviewer."
         },
-        { 
-            role: "user", 
-            content: "Create a code review checklist for #args.language# code at #args.complexity ?: 'medium'# complexity level." 
+        {
+            role: "user",
+            content: "Create a code review checklist for #args.language# code at #args.complexity ?: 'medium'# complexity level."
         }
     ]
 )

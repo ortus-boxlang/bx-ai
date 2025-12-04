@@ -302,7 +302,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 					.registerPrompt(
 						name: "greeting",
 						description: "Generate a greeting",
-						arguments: [ { name: "name", description: "Person name", required: true } ],
+						args: [ { name: "name", description: "Person name", required: true } ],
 						handler: ( args ) => [
 							{ role: "user", content: "Say hello to " & args.name }
 						]

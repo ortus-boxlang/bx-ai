@@ -369,7 +369,7 @@ server = mcpServer( "myApp" )
     .registerPrompt(
         name: "codeReview",
         description: "Code review prompt template",
-        arguments: [
+        args: [
             { name: "language", description: "Programming language", required: true },
             { name: "code", description: "Code to review", required: true }
         ],
@@ -588,7 +588,7 @@ class {
         server.registerPrompt(
             name: "productRecommendation",
             description: "Get product recommendations",
-            arguments: [
+            args: [
                 { name: "preferences", description: "User preferences", required: true }
             ],
             handler: ( args ) => [

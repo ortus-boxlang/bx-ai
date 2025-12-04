@@ -129,6 +129,8 @@ class {
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Static Factory Methods
 	 * ---------------------------------------------------------------------------------------------------------
+	 * These are convenience methods for managing MCP server instances globally.
+	 * You can go directly to the AIService to manage servers if preferred.
 	 */
 
 	/**
@@ -150,7 +152,7 @@ class {
 		string cors = "",
 		boolean force = false
 	) {
-		var aiService = getAiService()
+		var aiService = getBoxAiService()
 
 		if ( arguments.force || !aiService.hasServer( arguments.name ) ) {
 			var newServer = new MCPServer(
@@ -160,9 +162,21 @@ class {
 				cors: arguments.cors
 			)
 			aiService.putServer( arguments.name, newServer )
+			static.mcpLogger.debug( "Created new MCP server instance: #arguments.name#" )
 			return newServer
 		}
 		return aiService.getServer( arguments.name )
+	}
+
+	/**
+	 * Get a single server instance by name
+	 *
+	 * @name The server name to retrieve
+	 *
+	 * @return The MCPServer instance or null if not found
+	 */
+	static function getInstance( required string name ) {
+		return getBoxAiService().getServer( arguments.name )
 	}
 
 	/**
@@ -173,7 +187,7 @@ class {
 	 * @return Boolean indicating if the server exists
 	 */
 	static boolean function hasInstance( required string name ) {
-		return getAiService().hasServer( arguments.name )
+		return getBoxAiService().hasServer( arguments.name )
 	}
 
 	/**
@@ -184,7 +198,8 @@ class {
 	 * @return Boolean indicating if a server was removed
 	 */
 	static boolean function removeInstance( required string name ) {
-		return getAiService().removeServer( arguments.name )
+		static.mcpLogger.debug( "Removing MCP server instance: #arguments.name#" )
+		return getBoxAiService().removeServer( arguments.name )
 	}
 
 	/**
@@ -193,14 +208,15 @@ class {
 	 * @return Array of server names
 	 */
 	static array function getInstanceNames() {
-		return getAiService().getServerNames()
+		return getBoxAiService().getServerNames()
 	}
 
 	/**
 	 * Clear all server instances
 	 */
 	static function clearAllInstances() {
-		getAiService().clearAllServers()
+		static.mcpLogger.debug( "Clearing all MCP server instances" )
+		getBoxAiService().clearAllServers()
 	}
 
 	/**
@@ -212,11 +228,25 @@ class {
 	/**
 	 * Register a single tool with the MCP server
 	 *
+	 * <h2>Example Registration</h2>
+	 * <pre>
+	 * mcpServer( "test" )
+	 *  .registerTool(
+	 *   aiTool( "echo", "Echoes the input message", ( struct message ) => {
+	 *   	return {
+	 * 		"echoedMessage": message
+	 *  	}
+	 *  } )
+	 * 	.describeMessage( "The message to echo back" )
+	 * )
+	 * </pre>
+	 *
 	 * @tool The ITool instance to register
 	 *
 	 * @return This server for chaining
 	 */
 	MCPServer function registerTool( required ITool tool ) {
+		static.mcpLogger.debug( "Registering tool: #arguments.tool.getName()#" )
 		variables.tools[ arguments.tool.getName() ] = arguments.tool
 		return this
 	}
@@ -241,6 +271,7 @@ class {
 	 * @return This server for chaining
 	 */
 	MCPServer function unregisterTool( required string name ) {
+		static.mcpLogger.debug( "Unregistering tool: #arguments.name#" )static.mcpLogger
 		variables.tools.delete( arguments.name )
 		return this
 	}
@@ -313,6 +344,7 @@ class {
 	 * @return This server for chaining
 	 */
 	MCPServer function clearTools() {
+		static.mcpLogger.debug( "Clearing all registered tools" )
 		variables.tools = {}
 		return this
 	}
@@ -343,10 +375,13 @@ class {
 	 * - @mcpPrompt( { name: "greeting", description: "...", arguments: [...] } )
 	 *
 	 * @path The path to a BoxLang class file or directory to scan
+	 * @recurse Whether to scan directories recursively (default: true)
+	 *
+	 * @throws MCPServer.PathNotFound if the specified path does not exist
 	 *
 	 * @return This server for chaining
 	 */
-	MCPServer function scan( required string path ) {
+	MCPServer function scan( required string path, boolean recurse = true ) {
 		var targetPath = expandPath( arguments.path )
 
 		// Check if path exists
@@ -356,7 +391,7 @@ class {
 
 		// If it's a directory, scan all .bx files
 		if ( directoryExists( targetPath ) ) {
-			var files = directoryList( targetPath, true, "path", "*.bx" )
+			var files = directoryList( targetPath, arguments.recurse, "path", "*.bx" )
 			// Use async mode for better performance when scanning many files
 			if ( files.len() > 10 ) {
 				files.each( file => scanClass( file ), true )
@@ -381,6 +416,7 @@ class {
 			// Get class metadata without instantiation
 			var metadata = getClassMetadata( arguments.classPath )
 
+			// Skip if no metadata
 			if ( isNull( metadata ) || !isStruct( metadata ) ) {
 				return
 			}
@@ -427,7 +463,7 @@ class {
 	) {
 		var methodName = arguments.functionMetadata.name
 		var toolName = methodName
-		var toolDescription = arguments.functionMetadata.hint ?: ""
+		var toolDescription = arguments.functionMetadata?.documentation?.hint ?: ""
 		var toolVersion = "1.0.0"
 
 		// Parse annotation value based on format
@@ -484,7 +520,7 @@ class {
 		var methodName = arguments.functionMetadata.name
 		var uri = "resource://" & methodName
 		var name = methodName
-		var description = arguments.functionMetadata.hint ?: ""
+		var description = arguments.functionMetadata?.documentation?.hint ?: ""
 		var mimeType = "text/plain"
 
 		// Parse annotation value based on format
@@ -532,7 +568,7 @@ class {
 	) {
 		var methodName = arguments.functionMetadata.name
 		var promptName = methodName
-		var promptDescription = arguments.functionMetadata.hint ?: ""
+		var promptDescription = arguments.functionMetadata?.documentation?.hint ?: ""
 		var promptArguments = []
 
 		// Parse annotation value based on format
@@ -571,7 +607,7 @@ class {
 		registerPrompt(
 			name: promptName,
 			description: promptDescription,
-			arguments: promptArguments,
+			args: promptArguments,
 			handler: handler
 		)
 	}
@@ -585,20 +621,31 @@ class {
 	/**
 	 * Register a resource with the MCP server
 	 *
+	 * <h2>Example Registration</h2>
+	 * <pre>
+	 * mcpServer( "test" )
+	 *   .registerResource(
+	 *   	uri: "docs://readme",
+	 *   	name: "README",
+	 *  	description: "Application documentation",
+	 *  	mimeType: "text/markdown",
+	 *  	handler: () => "## My Application" & char(10) & char(10) & "This is the documentation."
+	 * </pre>
+	 *
 	 * @uri The unique URI for the resource
 	 * @name Display name for the resource
+	 * @handler Function that returns the resource content when read
 	 * @description Description of the resource
 	 * @mimeType Optional MIME type (defaults to text/plain)
-	 * @handler Function that returns the resource content when read
 	 *
 	 * @return This server for chaining
 	 */
 	MCPServer function registerResource(
 		required string uri,
 		required string name,
+		required function handler,
 		string description = "",
-		string mimeType = "text/plain",
-		required function handler
+		string mimeType = "text/plain"
 	) {
 		variables.resources[ arguments.uri ] = {
 			"uri": arguments.uri,
@@ -687,30 +734,59 @@ class {
 
 	/**
 	 * ---------------------------------------------------------------------------------------------------------
-	 * Prompt Registration Methods
+	 * Prompt Methods
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
 
 	/**
 	 * Register a prompt with the MCP server
 	 *
-	 * @name The unique name for the prompt
-	 * @description Description of the prompt
-	 * @arguments Array of argument definitions with name, description, and required flag
+	 * <h2>Argument Definition</h2>
+	 * Each argument definition in the args array should be a struct like this:
+	 *
+	 * <pre>
+	 * {
+	 *    "name": "topic",
+	 *    "description": "The topic to discuss",
+	 *    "required": true
+	 * }
+	 * </pre>
+	 *
+	 * To register a prompt that takes no arguments, provide an empty array for args or don't specify it.
+	 *
+	 * <h2>Example Registrtion</h2>
+	 * <pre>
+	 * mcpServer( "test" )
+	 *    .registerPrompt(
+	 * 	  	name: "greeting",
+	 * 	  	description: "Generates a greeting message",
+	 * 	  	args: [
+	 * 	    	{ name: "name", description: "The name of the person", required: true }
+	 *   	],
+	 * 	   handler: ( struct args ) => {
+	 * 	   		return "Hello, " & args.name & "!"
+	 *   	}
+	 * 	)
+	 * </pre>
+	 *
+	 *
+	 * @name The unique name for the prompt, required
 	 * @handler Function that returns the prompt messages when called
+	 * @description Description of the prompt, optional
+	 * @args Array of argument definitions with name, description, and required flag
 	 *
 	 * @return This server for chaining
 	 */
 	MCPServer function registerPrompt(
 		required string name,
+		required function handler,
 		string description = "",
-		array arguments = [],
-		required function handler
+		array args = []
 	) {
 		variables.prompts[ arguments.name ] = {
 			"name": arguments.name,
 			"description": arguments.description,
-			"arguments": arguments.arguments,
+			"args": arguments.args,
 			"handler": arguments.handler
 		}
 		return this
@@ -749,7 +825,7 @@ class {
 			return {
 				"name": prompt.name,
 				"description": prompt.description,
-				"arguments": prompt.arguments
+				"args": prompt.args
 			}
 		} ).valueArray()
 	}
@@ -758,20 +834,22 @@ class {
 	 * Get a prompt by calling its handler
 	 *
 	 * @name The name of the prompt
-	 * @arguments The arguments to pass to the prompt handler
+	 * @args The arguments to pass to the prompt handler
+	 *
+	 * @throws MCPServer.PromptNotFound if the prompt does not exist
 	 *
 	 * @return The prompt messages
 	 */
-	struct function getPrompt( required string name, struct arguments = {} ) {
+	struct function getPrompt( required string name, struct args = {} ) {
 		if ( !hasPrompt( arguments.name ) ) {
 			throw( type: "MCPServer.PromptNotFound", message: "Prompt not found: #arguments.name#" )
 		}
 
 		var prompt = variables.prompts[ arguments.name ]
-		var messages = prompt.handler( arguments.arguments )
+		var messages = prompt.handler( argumentCollection: arguments.args )
 
 		// Ensure messages is an array
-		if ( !isArray( messages ) ) {
+		if ( isSimpleValue( messages ) ) {
 			messages = [ messages ]
 		}
 
@@ -809,6 +887,12 @@ class {
 	}
 
 	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Callbacks Registration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
 	 * Register the onRequest callback for authentication and request inspection
 	 * The callback receives the request data struct and should return it (possibly modified)
 	 * or throw an exception to halt processing (e.g., for authentication failure)
@@ -834,6 +918,12 @@ class {
 		variables.onResponse = arguments.callback
 		return this
 	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * MCP Capability Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
 
 	/**
 	 * Get server capabilities in MCP format
@@ -1017,11 +1107,11 @@ class {
 	}
 
     /**
-	 * Get the AI service from the runtime
+	 * Get the Box AI service from the runtime
 	 *
 	 * @return The AI service instance
 	 */
-	private static function getAiService() {
+	private static function getBoxAiService() {
 		return getBoxRuntime().getGlobalService( "aiService" )
 	}
 

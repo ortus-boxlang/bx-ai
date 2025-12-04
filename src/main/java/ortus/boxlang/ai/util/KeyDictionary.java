@@ -24,19 +24,13 @@ import ortus.boxlang.runtime.scopes.Key;
  */
 public class KeyDictionary {
 
-	public static final Key	AiService			= Key.of( "aiService" );
-	public static final Key	bxai				= Key.of( "bxai" );
-	public static final Key	serverName			= Key.of( "serverName" );
-	public static final Key	description			= Key.of( "description" );
-	public static final Key	version				= Key.of( "version" );
-	public static final Key	cors				= Key.of( "cors" );
-	public static final Key	onRequest			= Key.of( "onRequest" );
-	public static final Key	onResponse			= Key.of( "onResponse" );
-
-	// MCP Events
-	public static final Key	onMCPServerCreate	= Key.of( "onMCPServerCreate" );
-	public static final Key	onMCPServerRemove	= Key.of( "onMCPServerRemove" );
-	public static final Key	onMCPRequest		= Key.of( "onMCPRequest" );
-	public static final Key	onMCPResponse		= Key.of( "onMCPResponse" );
+	public static final Key	AiService	= Key.of( "aiService" );
+	public static final Key	bxai		= Key.of( "bxai" );
+	public static final Key	serverName	= Key.of( "serverName" );
+	public static final Key	description	= Key.of( "description" );
+	public static final Key	version		= Key.of( "version" );
+	public static final Key	cors		= Key.of( "cors" );
+	public static final Key	onRequest	= Key.of( "onRequest" );
+	public static final Key	onResponse	= Key.of( "onResponse" );
 
 }

@@ -152,7 +152,7 @@ myServer.registerResource(
 myServer.registerPrompt(
     name: "greeting",
     description: "Generate greeting",
-    arguments: [
+    args: [
         { name: "name", description: "Person name", required: true }
     ],
     handler: ( args ) => [

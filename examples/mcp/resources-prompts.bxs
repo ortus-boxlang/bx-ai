@@ -103,7 +103,7 @@ println( "💬 Registering Prompts..." )
 mcpSrv.registerPrompt(
     name: "greeting",
     description: "Generate a personalized greeting",
-    arguments: [
+    args: [
         { name: "name", description: "Person's name", required: true },
         { name: "language", description: "Language for greeting", required: false }
     ],
@@ -126,7 +126,7 @@ mcpSrv.registerPrompt(
 server.registerPrompt(
     name: "codeReview",
     description: "Code review prompt template",
-    arguments: [
+    args: [
         { name: "language", description: "Programming language", required: true },
         { name: "code", description: "Code to review", required: true },
         { name: "focus", description: "Review focus area", required: false }
@@ -150,7 +150,7 @@ server.registerPrompt(
 server.registerPrompt(
     name: "summarize",
     description: "Summarize text in a specific style",
-    arguments: [
+    args: [
         { name: "text", description: "Text to summarize", required: true },
         { name: "style", description: "Summary style (brief, detailed, bullet)", required: false },
         { name: "maxWords", description: "Maximum word count", required: false }
