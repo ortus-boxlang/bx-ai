@@ -79,13 +79,13 @@ public class BoxAiService extends BaseService {
 
 	@Override
 	public void onShutdown( Boolean force ) {
-		getLogger().info( "+ AI Service shutdown requested" );
+		getLogger().debug( "+ AI Service shutdown requested" );
 		clearAllServers();
 	}
 
 	@Override
 	public void onStartup() {
-		getLogger().info( "+ AI Service started" );
+		getLogger().debug( "+ AI Service started" );
 	}
 
 	/**
