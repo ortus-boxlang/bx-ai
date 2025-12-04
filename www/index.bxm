@@ -1,0 +1,28 @@
+<bx:script>
+	import bxModules.bxai.models.mcp.MCPServer
+
+	// Create a test MCP Server and register a simple tool
+	mcpServer( "test" )
+		.registerTool(
+			aiTool( "echo", "Echoes the input message", ( struct message ) => {
+				return {
+					"echoedMessage": message
+				}
+			} )
+			.describeMessage( "The message to echo back" )
+		)
+
+		aRegisteredServers = MCPServer::getInstanceNames()
+</bx:script>
+<bx:output>
+	<h1>MCP Tester</h1>
+	<p>This is a test endpoint for the Model Context Protocol (MCP) server.</p>
+	<p>Use a tool like Postman or curl to send JSON-RPC requests to the MCP endpoint: <code>/bxai/mcp.bxm?server=test</code></p>
+
+	<h2>Registered Servers</h2>
+	<ul>
+		<bx:loop array="#aRegisteredServers#" index="serverName">
+			<li><strong>#serverName#</strong></li>
+		</bx:loop>
+	</ul>
+</bx:output>
