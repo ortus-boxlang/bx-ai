@@ -17,6 +17,9 @@
  * Tracks performance and usage metrics for MCP server instances.
  * All stats are in-memory aggregates for real-time monitoring.
  */
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
 class {
 
 	/**
@@ -55,6 +58,12 @@ class {
 	property name="errors" type="struct";
 
 	/**
+	 * Stats Id
+	 * Used for logging and identification
+	 */
+	property name="statsId" type="string";
+
+	/**
 	 * Constructor
 	 *
 	 * @enabled Whether stats tracking is enabled
@@ -62,6 +71,7 @@ class {
 	function init( boolean enabled = true ) {
 		variables.enabled = arguments.enabled
 		variables.createdAt = now()
+		variables.statsId = createUUID()
 		reset()
 		return this
 	}
@@ -71,19 +81,19 @@ class {
 	 */
 	function reset() {
 		variables.requests = {
-			"total": 0,
-			"successful": 0,
-			"failed": 0,
+			"total": new AtomicInteger( 0 ),
+			"successful": new AtomicInteger( 0 ),
+			"failed": new AtomicInteger( 0 ),
 			"byMethod": {},
 			"responseTimes": [],
 			"avgResponseTime": 0,
 			"minResponseTime": 0,
 			"maxResponseTime": 0,
-			"lastRequestAt": ""
+			"lastRequestAt": new AtomicReference( "" )
 		}
 
 		variables.tools = {
-			"totalInvocations": 0,
+			"totalInvocations": new AtomicInteger( 0 ),
 			"byTool": {},
 			"executionTimes": [],
 			"avgExecutionTime": 0,
@@ -92,17 +102,17 @@ class {
 		}
 
 		variables.resources = {
-			"totalReads": 0,
+			"totalReads": new AtomicInteger( 0 ),
 			"byUri": {}
 		}
 
 		variables.prompts = {
-			"totalGenerations": 0,
+			"totalGenerations": new AtomicInteger( 0 ),
 			"byName": {}
 		}
 
 		variables.errors = {
-			"total": 0,
+			"total": new AtomicInteger( 0 ),
 			"byCode": {},
 			"lastError": {}
 		}
@@ -128,13 +138,13 @@ class {
 	) {
 		if ( !variables.enabled ) return this
 
-		variables.requests.total++
-		variables.requests.lastRequestAt = now()
+		variables.requests.total.incrementAndGet()
+		variables.requests.lastRequestAt.set( now() )
 
 		if ( arguments.success ) {
-			variables.requests.successful++
+			variables.requests.successful.incrementAndGet()
 		} else {
-			variables.requests.failed++
+			variables.requests.failed.incrementAndGet()
 			recordError( arguments.errorCode, arguments.errorMessage )
 		}
 
@@ -163,7 +173,7 @@ class {
 	) {
 		if ( !variables.enabled ) return this
 
-		variables.tools.totalInvocations++
+		variables.tools.totalInvocations.incrementAndGet()
 
 		// Track by tool
 		if ( !variables.tools.byTool.keyExists( arguments.toolName ) ) {
@@ -194,7 +204,7 @@ class {
 	function recordResourceRead( required string uri ) {
 		if ( !variables.enabled ) return this
 
-		variables.resources.totalReads++
+		variables.resources.totalReads.incrementAndGet()
 
 		// Track by URI
 		if ( !variables.resources.byUri.keyExists( arguments.uri ) ) {
@@ -213,7 +223,7 @@ class {
 	function recordPromptGeneration( required string name ) {
 		if ( !variables.enabled ) return this
 
-		variables.prompts.totalGenerations++
+		variables.prompts.totalGenerations.incrementAndGet()
 
 		// Track by name
 		if ( !variables.prompts.byName.keyExists( arguments.name ) ) {
@@ -236,7 +246,7 @@ class {
 	) {
 		if ( !variables.enabled ) return this
 
-		variables.errors.total++
+		variables.errors.total.incrementAndGet()
 
 		// Track by code
 		var codeKey = toString( arguments.code )
@@ -261,15 +271,34 @@ class {
 	 * @return Complete stats struct
 	 */
 	function getStats() {
+		// Extract atomic values for serialization
+		var requestsCopy = variables.requests.copy()
+		requestsCopy.total = requestsCopy.total.get()
+		requestsCopy.successful = requestsCopy.successful.get()
+		requestsCopy.failed = requestsCopy.failed.get()
+		requestsCopy.lastRequestAt = requestsCopy.lastRequestAt.get()
+
+		var toolsCopy = variables.tools.copy()
+		toolsCopy.totalInvocations = toolsCopy.totalInvocations.get()
+
+		var resourcesCopy = variables.resources.copy()
+		resourcesCopy.totalReads = resourcesCopy.totalReads.get()
+
+		var promptsCopy = variables.prompts.copy()
+		promptsCopy.totalGenerations = promptsCopy.totalGenerations.get()
+
+		var errorsCopy = variables.errors.copy()
+		errorsCopy.total = errorsCopy.total.get()
+
 		return {
 			"enabled": variables.enabled,
 			"createdAt": variables.createdAt,
 			"uptime": dateDiff( "s", variables.createdAt, now() ) * 1000, // milliseconds
-			"requests": variables.requests.copy(),
-			"tools": variables.tools.copy(),
-			"resources": variables.resources.copy(),
-			"prompts": variables.prompts.copy(),
-			"errors": variables.errors.copy()
+			"requests": requestsCopy,
+			"tools": toolsCopy,
+			"resources": resourcesCopy,
+			"prompts": promptsCopy,
+			"errors": errorsCopy
 		}
 	}
 
@@ -279,18 +308,21 @@ class {
 	 * @return Summary stats struct
 	 */
 	function getSummary() {
+		var total = variables.requests.total.get()
+		var successful = variables.requests.successful.get()
+
 		return {
 			"uptime": dateDiff( "s", variables.createdAt, now() ) * 1000,
-			"totalRequests": variables.requests.total,
-			"successRate": variables.requests.total > 0
-				? ( variables.requests.successful / variables.requests.total * 100 )
+			"totalRequests": total,
+			"successRate": total > 0
+				? ( successful / total * 100 )
 				: 0,
 			"avgResponseTime": variables.requests.avgResponseTime,
-			"totalToolInvocations": variables.tools.totalInvocations,
-			"totalResourceReads": variables.resources.totalReads,
-			"totalPromptGenerations": variables.prompts.totalGenerations,
-			"totalErrors": variables.errors.total,
-			"lastRequestAt": variables.requests.lastRequestAt
+			"totalToolInvocations": variables.tools.totalInvocations.get(),
+			"totalResourceReads": variables.resources.totalReads.get(),
+			"totalPromptGenerations": variables.prompts.totalGenerations.get(),
+			"totalErrors": variables.errors.total.get(),
+			"lastRequestAt": variables.requests.lastRequestAt.get()
 		}
 	}
 
@@ -323,21 +355,27 @@ class {
 		var times = variables.requests.responseTimes
 		var timeCount = times.len()
 
-		// Calculate average
-		var total = times.reduce( ( sum, time ) => sum + time, 0 )
-		variables.requests.avgResponseTime = timeCount > 0 ? total / timeCount : 0
+		lock
+			name="mcpserver-response-stats-#variables.statsId#"
+			type="exclusive"
+			timeout="5" {
 
-		// Update min/max
-		if ( variables.requests.minResponseTime == 0 || arguments.responseTime < variables.requests.minResponseTime ) {
-			variables.requests.minResponseTime = arguments.responseTime
-		}
-		if ( arguments.responseTime > variables.requests.maxResponseTime ) {
-			variables.requests.maxResponseTime = arguments.responseTime
-		}
+			// Calculate average
+			var total = times.reduce( ( sum, time ) => sum + time, 0 )
+			variables.requests.avgResponseTime = timeCount > 0 ? total / timeCount : 0
 
-		// Keep only last 1000 response times to prevent memory bloat
-		if ( timeCount > 1000 ) {
-			variables.requests.responseTimes = times.slice( -1000 )
+			// Update min/max
+			if ( variables.requests.minResponseTime == 0 || arguments.responseTime < variables.requests.minResponseTime ) {
+				variables.requests.minResponseTime = arguments.responseTime
+			}
+			if ( arguments.responseTime > variables.requests.maxResponseTime ) {
+				variables.requests.maxResponseTime = arguments.responseTime
+			}
+
+			// Keep only last 1000 response times to prevent memory bloat
+			if ( timeCount > 1000 ) {
+				variables.requests.responseTimes = times.slice( -1000 )
+			}
 		}
 	}
 
@@ -350,21 +388,27 @@ class {
 		var times = variables.tools.executionTimes
 		var timeCount = times.len()
 
-		// Calculate average
-		var total = times.reduce( ( sum, time ) => sum + time, 0 )
-		variables.tools.avgExecutionTime = timeCount > 0 ? total / timeCount : 0
+		lock
+			name="mcpserver-execution-stats-#variables.statsId#"
+			type="exclusive"
+			timeout="5" {
 
-		// Update min/max
-		if ( variables.tools.minExecutionTime == 0 || arguments.executionTime < variables.tools.minExecutionTime ) {
-			variables.tools.minExecutionTime = arguments.executionTime
-		}
-		if ( arguments.executionTime > variables.tools.maxExecutionTime ) {
-			variables.tools.maxExecutionTime = arguments.executionTime
-		}
+			// Calculate average
+			var total = times.reduce( ( sum, time ) => sum + time, 0 )
+			variables.tools.avgExecutionTime = timeCount > 0 ? total / timeCount : 0
 
-		// Keep only last 1000 execution times to prevent memory bloat
-		if ( timeCount > 1000 ) {
-			variables.tools.executionTimes = times.slice( -1000 )
+			// Update min/max
+			if ( variables.tools.minExecutionTime == 0 || arguments.executionTime < variables.tools.minExecutionTime ) {
+				variables.tools.minExecutionTime = arguments.executionTime
+			}
+			if ( arguments.executionTime > variables.tools.maxExecutionTime ) {
+				variables.tools.maxExecutionTime = arguments.executionTime
+			}
+
+			// Keep only last 1000 execution times to prevent memory bloat
+			if ( timeCount > 1000 ) {
+				variables.tools.executionTimes = times.slice( -1000 )
+			}
 		}
 	}
 }
