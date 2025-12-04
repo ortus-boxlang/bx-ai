@@ -779,32 +779,32 @@ stats = server.getStatsSummary()
 writeOutput( "
     <div class='stats-dashboard'>
         <h2>MCP Server: myApp</h2>
-        
+
         <div class='stat-box'>
             <label>Uptime</label>
             <value>#numberFormat( stats.uptime / 1000, '0' )#s</value>
         </div>
-        
+
         <div class='stat-box'>
             <label>Total Requests</label>
             <value>#stats.totalRequests#</value>
         </div>
-        
+
         <div class='stat-box'>
             <label>Success Rate</label>
             <value>#numberFormat( stats.successRate, '0.00' )#%</value>
         </div>
-        
+
         <div class='stat-box'>
             <label>Avg Response</label>
             <value>#numberFormat( stats.avgResponseTime, '0' )#ms</value>
         </div>
-        
+
         <div class='stat-box'>
             <label>Tool Calls</label>
             <value>#stats.totalToolInvocations#</value>
         </div>
-        
+
         <div class='stat-box error'>
             <label>Errors</label>
             <value>#stats.totalErrors#</value>
@@ -824,14 +824,14 @@ class {
     function onApplicationStart() {
         mcpServer( "myApp" )
             .registerTool( myTool )
-        
+
         // Register interceptor for custom metrics
         BoxRegisterInterceptor( this, "onMCPRequest,onMCPResponse" )
     }
 
     function onMCPRequest( event, interceptData ) {
         // Log incoming requests
-        writeLog( 
+        writeLog(
             type: "information",
             file: "mcp-requests",
             text: "Request: #interceptData.requestData.method#"
@@ -842,19 +842,19 @@ class {
         // Get current stats after each request
         var server = interceptData.server
         var summary = server.getStatsSummary()
-        
+
         // Alert on high error rate
         if ( summary.successRate < 90 && summary.totalRequests > 10 ) {
-            writeLog( 
+            writeLog(
                 type: "error",
                 file: "mcp-errors",
                 text: "High error rate: #summary.successRate#%"
             )
         }
-        
+
         // Alert on slow responses
         if ( summary.avgResponseTime > 1000 ) {
-            writeLog( 
+            writeLog(
                 type: "warning",
                 file: "mcp-performance",
                 text: "Slow avg response: #summary.avgResponseTime#ms"
@@ -883,14 +883,14 @@ component {
 
     function getServerStats( required string serverName ) {
         var server = mcpServer( arguments.serverName )
-        
+
         if ( isNull( server ) ) {
             return {
                 success: false,
                 error: "Server not found"
             }
         }
-        
+
         return {
             success: true,
             data: server.getStatsSummary()
@@ -899,13 +899,13 @@ component {
 
     function resetServerStats( required string serverName ) {
         var server = mcpServer( arguments.serverName )
-        
+
         if ( isNull( server ) ) {
             return { success: false }
         }
-        
+
         server.resetStats()
-        
+
         return {
             success: true,
             message: "Statistics reset successfully"
@@ -968,20 +968,20 @@ aiTool( "calculateShipping", "Calculate shipping cost based on weight and destin
 
 ```java
 // Enable stats for production monitoring
-server = mcpServer( 
+server = mcpServer(
     name: "production",
-    statsEnabled: true 
+    statsEnabled: true
 )
 
 // Periodically check performance
 scheduled task: "checkMCPPerformance", interval: "5m" {
     var stats = server.getStatsSummary()
-    
+
     if ( stats.avgResponseTime > 500 ) {
         // Alert: slow responses
         notificationService.alert( "MCP server responding slowly" )
     }
-    
+
     if ( stats.successRate < 95 ) {
         // Alert: high error rate
         notificationService.alert( "MCP server error rate elevated" )
