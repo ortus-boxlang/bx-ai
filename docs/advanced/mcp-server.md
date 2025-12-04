@@ -59,6 +59,77 @@ POST http://localhost/~bxai/mcp.bxm?server=myApp
 POST http://localhost/~bxai/mcp.bxm/myApp
 ```
 
+### Custom URL Entry Points
+
+You can create your own MCP server endpoints at any URL by importing and rendering the `MCPRequestProcessor`:
+
+```javascript
+// api/mcp-endpoint.bxm
+<bx:script>
+import bxModules.bxai.models.mcp.MCPRequestProcessor
+MCPRequestProcessor::render()
+</bx:script>
+```
+
+This creates a fully functional MCP endpoint at your custom location:
+
+```
+POST http://localhost/api/mcp-endpoint.bxm?server=myApp
+```
+
+**Use Cases:**
+
+- **Custom routing**: Place MCP endpoints under your API structure (`/api/v1/mcp`, `/admin/mcp`, etc.)
+- **Security**: Put endpoints behind authentication middleware or custom security rules
+- **Multiple entry points**: Create different endpoints for different purposes (public API, admin tools, etc.)
+- **Framework integration**: Integrate MCP servers into existing URL routing schemes
+
+**Example - Secured Admin Endpoint:**
+
+```javascript
+// admin/mcp-admin.bxm
+<bx:script>
+// Check admin authentication
+if ( !session.isAdmin ) {
+    writeOutput( serializeJSON({
+        jsonrpc: "2.0",
+        error: {
+            code: -32000,
+            message: "Unauthorized"
+        },
+        id: null
+    }) )
+    abort;
+}
+
+// Render MCP processor
+import bxModules.bxai.models.mcp.MCPRequestProcessor
+MCPRequestProcessor::render()
+</bx:script>
+```
+
+**Example - API Versioned Endpoint:**
+
+```javascript
+// api/v2/ai/mcp.bxm
+<bx:script>
+// Set API version header
+request.setHeader( "X-API-Version", "2.0" )
+
+// Render MCP processor
+import bxModules.bxai.models.mcp.MCPRequestProcessor
+MCPRequestProcessor::render()
+</bx:script>
+```
+
+The processor automatically:
+
+- ✅ Extracts server name from query parameter (`?server=name`) or URL segment
+- ✅ Handles JSON-RPC 2.0 request parsing
+- ✅ Routes to the correct MCP server instance
+- ✅ Returns properly formatted JSON-RPC responses
+- ✅ Fires all MCP events (`onMCPRequest`, `onMCPResponse`, `onMCPError`)
+
 ## Server Configuration
 
 ### Creating a Server
