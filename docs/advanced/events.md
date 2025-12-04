@@ -39,6 +39,10 @@ The event system allows you to **monitor**, **modify**, **validate**, **audit**,
 | 16 | [beforeAIPipelineRun](#16-beforeaipipelinerun) | Before pipeline starts | `sequence`, `stepCount`, `input` |
 | 17 | [afterAIPipelineRun](#17-afteraipipelinerun) | After pipeline completes | `sequence`, `result`, `executionTime` |
 | 18 | [onAITokenCount](#18-onaitokencount) | Token usage available | `provider`, `model`, `totalTokens` |
+| 19 | [onMCPServerCreate](#19-onmcpservercreate) | MCP server instance created | `server`, `name`, `description` |
+| 20 | [onMCPServerRemove](#20-onmcpserverremove) | MCP server instance removed | `name` |
+| 21 | [onMCPRequest](#21-onmcprequest) | Before processing MCP request | `server`, `requestData`, `serverName` |
+| 22 | [onMCPResponse](#22-onmcpresponse) | After processing MCP response | `server`, `response`, `requestData` |
 
 ### Event Lifecycle
 
@@ -54,6 +58,10 @@ Tool Execution:
 
 Pipeline:
   beforeAIPipelineRun → [Steps Execute] → afterAIPipelineRun
+
+MCP Server:
+  onMCPServerCreate → onMCPRequest → [Process Request] → onMCPResponse
+  onMCPServerRemove (when server is removed)
 
 Error/Rate Limit:
   onAIError, onAIRateLimitHit (when applicable)
@@ -1178,6 +1186,182 @@ Events fire in this order during a typical AI chat with tools:
 13. `onAIError` - If any error occurred
 14. `afterAIModelInvoke` - Model invocation complete
 15. `afterAIPipelineRun` - Pipeline execution complete
+
+---
+
+### 19. onMCPServerCreate
+
+Fired when a new MCP (Model Context Protocol) server instance is created.
+
+**When**: MCP server instantiation via `mcpServer()`
+**Frequency**: Once per unique server creation
+
+#### Event Arguments
+
+| Argument | Type | Description |
+|----------|------|-------------|
+| `server` | `MCPServer` | The created server instance |
+| `name` | `String` | Server name/identifier |
+| `description` | `String` | Server description |
+| `version` | `String` | Server version |
+```
+
+#### Example
+
+```java
+function onMCPServerCreate( event, interceptData ) {
+    var server = interceptData.server;
+    var name = interceptData.name;
+
+    // Log server creation
+    writeLog(
+        text: "MCP Server created: #name# (v#interceptData.version#)",
+        type: "info"
+    );
+
+    // Apply default configuration
+    server.setCors( "*" );
+
+    // Track server registry
+    trackMCPServer( name, {
+        createdAt: now(),
+        description: interceptData.description
+    });
+}
+```
+
+---
+
+### 20. onMCPServerRemove
+
+Fired when an MCP server instance is being removed from the registry.
+
+**When**: Before server removal via `MCPServer::removeInstance()`
+**Frequency**: Once per server removal
+
+#### Event Arguments
+
+| Argument | Type | Description |
+|----------|------|-------------|
+| `name` | `String` | Name of the server being removed |
+```
+
+#### Example
+
+```java
+function onMCPServerRemove( event, interceptData ) {
+    var serverName = interceptData.name;
+
+    // Clean up server resources
+    cleanupServerResources( serverName );
+
+    // Log removal
+    writeLog(
+        text: "MCP Server removed: #serverName#",
+        type: "info"
+    );
+
+    // Notify connected clients
+    notifyClientsOfServerShutdown( serverName );
+}
+```
+
+---
+
+### 21. onMCPRequest
+
+Fired before processing an incoming MCP request (JSON-RPC 2.0).
+
+**When**: After CORS handling, before request processing
+**Frequency**: Every MCP request
+
+#### Event Arguments
+
+| Argument | Type | Description |
+|----------|------|-------------|
+| `server` | `MCPServer` | The target server instance |
+| `requestData` | `Struct` | Request metadata (method, body, urlParams) |
+| `serverName` | `String` | Server identifier |
+```
+
+#### Example
+
+```java
+function onMCPRequest( event, interceptData ) {
+    var server = interceptData.server;
+    var requestData = interceptData.requestData;
+    var serverName = interceptData.serverName;
+
+    // Authentication for MCP requests
+    if ( !isAuthorized( requestData ) ) {
+        throw(
+            type: "MCPAuthError",
+            message: "Unauthorized MCP request"
+        );
+    }
+
+    // Rate limiting
+    if ( exceedsRateLimit( serverName ) ) {
+        throw(
+            type: "RateLimitExceeded",
+            message: "Too many MCP requests"
+        );
+    }
+
+    // Log request
+    logMCPRequest({
+        server: serverName,
+        method: requestData.method,
+        timestamp: now()
+    });
+}
+```
+
+---
+
+### 22. onMCPResponse
+
+Fired after processing an MCP response, before returning to client.
+
+**When**: After request handling, before HTTP response
+**Frequency**: Every MCP response
+
+#### Event Arguments
+
+| Argument | Type | Description |
+|----------|------|-------------|
+| `server` | `MCPServer` | The server instance |
+| `response` | `Struct` | Response data (content, contentType, headers, statusCode) |
+| `requestData` | `Struct` | Original request metadata |
+| `serverName` | `String` | Server identifier |
+```
+
+#### Example
+
+```java
+function onMCPResponse( event, interceptData ) {
+    var response = interceptData.response;
+    var requestData = interceptData.requestData;
+    var serverName = interceptData.serverName;
+
+    // Add custom headers
+    response.headers[ "X-MCP-Server" ] = serverName;
+    response.headers[ "X-Response-Time" ] = getTickCount() - requestData.startTime;
+
+    // Log response
+    logMCPResponse({
+        server: serverName,
+        statusCode: response.statusCode,
+        contentType: response.contentType,
+        timestamp: now()
+    });
+
+    // Track metrics
+    if ( response.statusCode >= 400 ) {
+        incrementMetric( "mcp.errors.#serverName#" );
+    }
+}
+```
 
 ---
 

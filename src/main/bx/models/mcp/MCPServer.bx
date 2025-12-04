@@ -170,6 +170,15 @@ class {
 			)
 			aiService.putServer( arguments.name, newServer )
 			static.mcpLogger.debug( "Created new MCP server instance: #arguments.name#" )
+			
+			// Announce server creation
+			BoxAnnounce( "onMCPServerCreate", {
+				server: newServer,
+				name: arguments.name,
+				description: arguments.description,
+				version: arguments.version
+			} )
+			
 			return newServer
 		}
 		return aiService.getServer( arguments.name )
@@ -206,6 +215,12 @@ class {
 	 */
 	static boolean function removeInstance( required string name ) {
 		static.mcpLogger.debug( "Removing MCP server instance: #arguments.name#" )
+		
+		// Announce before removal
+		BoxAnnounce( "onMCPServerRemove", {
+			name: arguments.name
+		} )
+		
 		return getBoxAiService().removeServer( arguments.name )
 	}
 
