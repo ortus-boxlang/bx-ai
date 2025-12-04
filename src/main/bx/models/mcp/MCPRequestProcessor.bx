@@ -84,7 +84,7 @@ class {
 			requestData: requestData,
 			serverName: arguments.serverName
 		} )
-		
+
 		// Execute onRequest callback if defined (for authentication/inspection)
 		var onRequestCallback = targetServer.getOnRequest();
 		if ( isClosure( onRequestCallback ) ) {
@@ -130,7 +130,7 @@ class {
 				static.mcpLogger.error( "MCP onResponse callback error: #e.message#" );
 			}
 		}
-		
+
 		// Announce MCP response
 		BoxAnnounce( "onMCPResponse", {
 			server: targetServer,
