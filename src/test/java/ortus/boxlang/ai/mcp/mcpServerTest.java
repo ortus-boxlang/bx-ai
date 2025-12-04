@@ -493,7 +493,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				myServer = mcpServer( "unknownMethodTest" )
+				myServer = mcpServer( "default" )
 
 				request = {
 					"jsonrpc": "2.0",
@@ -1020,6 +1020,135 @@ public class mcpServerTest extends BaseIntegrationTest {
 
 		assertThat( beforeLastRequest ).isEmpty();
 		assertThat( afterLastRequest ).isNotEmpty();
+	}
+
+	@Test
+	@DisplayName( "Can configure basic auth with withBasicAuth()" )
+	public void testConfigureBasicAuth() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "authTest" )
+					.withBasicAuth( "admin", "secret123" )
+
+				hasAuth = myServer.hasBasicAuth()
+				username = myServer.getBasicAuthUsername()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasAuth" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "username" ) ) ).isEqualTo( "admin" );
+	}
+
+	@Test
+	@DisplayName( "Server without auth has hasBasicAuth() = false" )
+	public void testNoBasicAuth() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "noAuthTest" )
+				hasAuth = myServer.hasBasicAuth()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasAuth" ) ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "verifyBasicAuth() accepts valid credentials" )
+	public void testVerifyBasicAuthValid() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "authVerifyTest" )
+					.withBasicAuth( "testuser", "testpass" )
+
+				// Create base64 encoded credentials: "testuser:testpass"
+				credentials = "testuser:testpass"
+				encoded = toBase64( credentials )
+				authHeader = "Basic " & encoded
+
+				isValid = myServer.verifyBasicAuth( authHeader )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "isValid" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "verifyBasicAuth() rejects invalid credentials" )
+	public void testVerifyBasicAuthInvalid() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "authVerifyInvalidTest" )
+					.withBasicAuth( "admin", "secret" )
+
+				// Create base64 encoded wrong credentials
+				credentials = "admin:wrongpassword"
+				encoded = toBase64( credentials )
+				authHeader = "Basic " & encoded
+
+				isValid = myServer.verifyBasicAuth( authHeader )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "isValid" ) ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "verifyBasicAuth() rejects malformed auth header" )
+	public void testVerifyBasicAuthMalformed() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "authMalformedTest" )
+					.withBasicAuth( "admin", "secret" )
+
+				// Malformed header (missing "Basic " prefix)
+				isValid1 = myServer.verifyBasicAuth( "notBasicAuth" )
+
+				// Empty header
+				isValid2 = myServer.verifyBasicAuth( "" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "isValid1" ) ) ).isEqualTo( false );
+		assertThat( variables.get( Key.of( "isValid2" ) ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "Basic auth fluent chaining works" )
+	public void testBasicAuthFluentChaining() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "authChainTest" )
+					.withBasicAuth( "user", "pass" )
+					.setDescription( "Secured Server" )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				hasAuth = myServer.hasBasicAuth()
+				description = myServer.getDescription()
+				toolCount = myServer.getToolCount()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasAuth" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "description" ) ) ).isEqualTo( "Secured Server" );
+		assertThat( ( int ) variables.get( Key.of( "toolCount" ) ) ).isEqualTo( 1 );
 	}
 
 }

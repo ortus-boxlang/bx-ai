@@ -85,6 +85,16 @@ class {
 	property name="stats" type="MCPServerStats";
 
 	/**
+	 * Basic authentication username (empty means no authentication)
+	 */
+	property name="basicAuthUsername" type="string" default="";
+
+	/**
+	 * Basic authentication password (empty means no authentication)
+	 */
+	property name="basicAuthPassword" type="string" default="";
+
+	/**
 	 * Static configuration and service reference
 	 */
 	static {
@@ -137,6 +147,8 @@ class {
 		variables.resources = {}
 		variables.prompts = {}
 		variables.stats = new MCPServerStats( arguments.statsEnabled )
+		variables.basicAuthUsername = ""
+		variables.basicAuthPassword = ""
 
 		return this
 	}
@@ -1030,6 +1042,65 @@ class {
 	}
 
 	/**
+	 * Configure basic authentication for this MCP server
+	 *
+	 * @username The username for basic authentication
+	 * @password The password for basic authentication
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function withBasicAuth( required string username, required string password ) {
+		variables.basicAuthUsername = arguments.username
+		variables.basicAuthPassword = arguments.password
+		return this
+	}
+
+	/**
+	 * Check if basic authentication is enabled
+	 *
+	 * @return Boolean indicating if basic auth is configured
+	 */
+	boolean function hasBasicAuth() {
+		return len( variables.basicAuthUsername ) > 0 && len( variables.basicAuthPassword ) > 0
+	}
+
+	/**
+	 * Verify basic authentication credentials
+	 *
+	 * @authHeader The Authorization header value
+	 *
+	 * @return Boolean indicating if credentials are valid
+	 */
+	boolean function verifyBasicAuth( required string authHeader ) {
+		if ( !hasBasicAuth() ) {
+			return true // No auth configured, allow
+		}
+
+		// Parse Authorization header: "Basic base64(username:password)"
+		if ( !arguments.authHeader.findNoCase( "Basic " ) ) {
+			return false
+		}
+
+		try {
+			var encoded = arguments.authHeader.replaceNoCase( "Basic ", "" ).trim()
+			var decoded = toString( toBinary( encoded ) )
+			var parts = decoded.listToArray( ":" )
+
+			if ( parts.len() < 2 ) {
+				return false
+			}
+
+			var providedUsername = parts[ 1 ]
+			var providedPassword = parts.len() > 2 ? parts.slice( 2 ).toList( ":" ) : parts[ 2 ]
+
+			return providedUsername == variables.basicAuthUsername && providedPassword == variables.basicAuthPassword
+		} catch ( any e ) {
+			static.mcpLogger.error( "Basic auth verification error: #e.message#" )
+			return false
+		}
+	}
+
+	/**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * MCP Request Handling
 	 * ---------------------------------------------------------------------------------------------------------
@@ -1086,10 +1157,10 @@ class {
 						method: method,
 						responseTime: responseTime,
 						success: false,
-						errorCode: static.METHOD_NOT_FOUND,
+						errorCode: static.RPC_ERROR_CODES.METHOD_NOT_FOUND,
 						errorMessage: "Method not found: #method#"
 					)
-					return buildErrorResponse( requestId, static.METHOD_NOT_FOUND, "Method not found: #method#" )
+					return buildErrorResponse( requestId, static.RPC_ERROR_CODES.METHOD_NOT_FOUND, "Method not found: #method#" )
 			}
 
 			// Record successful request stats
@@ -1108,7 +1179,7 @@ class {
 				method: method,
 				responseTime: responseTime,
 				success: false,
-				errorCode: static.SERVER_ERROR,
+				errorCode: static.RPC_ERROR_CODES.SERVER_ERROR,
 				errorMessage: e.message
 			)
 			// Announce error event
@@ -1121,12 +1192,88 @@ class {
 					requestId: requestId,
 					params: params,
 					responseTime: responseTime,
-					errorCode: static.SERVER_ERROR,
+					errorCode: static.RPC_ERROR_CODES.SERVER_ERROR,
 					exception: e
 				}
 			)
-			return buildErrorResponse( requestId, static.SERVER_ERROR, e.message )
+			return buildErrorResponse( requestId, static.RPC_ERROR_CODES.SERVER_ERROR, e.message )
 		}
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Statistics Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get server statistics
+	 *
+	 * @return Complete stats struct
+	 */
+	struct function getStats() {
+		return variables.stats.getStats()
+	}
+
+	/**
+	 * Get summary statistics (lighter weight)
+	 *
+	 * @return Summary stats struct
+	 */
+	struct function getStatsSummary() {
+		return variables.stats.getSummary()
+	}
+
+	/**
+	 * Reset all statistics
+	 *
+	 * @return This instance for chaining
+	 */
+	MCPServer function resetStats() {
+		variables.stats.reset()
+		return this
+	}
+
+	/**
+	 * Enable statistics tracking
+	 *
+	 * @return This instance for chaining
+	 */
+	MCPServer function enableStats() {
+		variables.stats.enable()
+		return this
+	}
+
+	/**
+	 * Disable statistics tracking
+	 *
+	 * @return This instance for chaining
+	 */
+	MCPServer function disableStats() {
+		variables.stats.disable()
+		return this
+	}
+
+	/**
+	 * Check if stats tracking is enabled
+	 *
+	 * @return Boolean indicating if stats are enabled
+	 */
+	boolean function isStatsEnabled() {
+		return variables.stats.getEnabled()
+	}
+
+	// ---------------------------------------------------------------------------------------------------------
+	// Private Helper Methods
+	// ---------------------------------------------------------------------------------------------------------
+
+    /**
+	 * Get the Box AI service from the runtime
+	 *
+	 * @return The AI service instance
+	 */
+	private static function getBoxAiService() {
+		return getBoxRuntime().getGlobalService( "aiService" )
 	}
 
 	/**
@@ -1224,78 +1371,6 @@ class {
 		}
 
 		return response
-	}
-
-	/**
-	 * ---------------------------------------------------------------------------------------------------------
-	 * Statistics Methods
-	 * ---------------------------------------------------------------------------------------------------------
-	 */
-
-	/**
-	 * Get server statistics
-	 *
-	 * @return Complete stats struct
-	 */
-	function getStats() {
-		return variables.stats.getStats()
-	}
-
-	/**
-	 * Get summary statistics (lighter weight)
-	 *
-	 * @return Summary stats struct
-	 */
-	function getStatsSummary() {
-		return variables.stats.getSummary()
-	}
-
-	/**
-	 * Reset all statistics
-	 *
-	 * @return This instance for chaining
-	 */
-	function resetStats() {
-		variables.stats.reset()
-		return this
-	}
-
-	/**
-	 * Enable statistics tracking
-	 *
-	 * @return This instance for chaining
-	 */
-	function enableStats() {
-		variables.stats.enable()
-		return this
-	}
-
-	/**
-	 * Disable statistics tracking
-	 *
-	 * @return This instance for chaining
-	 */
-	function disableStats() {
-		variables.stats.disable()
-		return this
-	}
-
-	/**
-	 * Check if stats tracking is enabled
-	 *
-	 * @return Boolean indicating if stats are enabled
-	 */
-	boolean function isStatsEnabled() {
-		return variables.stats.getEnabled()
-	}
-
-    /**
-	 * Get the Box AI service from the runtime
-	 *
-	 * @return The AI service instance
-	 */
-	private static function getBoxAiService() {
-		return getBoxRuntime().getGlobalService( "aiService" )
 	}
 
 }

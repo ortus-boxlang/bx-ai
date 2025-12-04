@@ -103,7 +103,7 @@ class {
 		var targetServer = MCPServer::getInstance( arguments.serverName )
 		if( isNull( targetServer ) ) {
 			// Log it
-			static.mcpLogger.error( "MCP Request for unknown server: #arguments.serverName#" );
+			static.mcpLogger.error( "MCP Request for unknown server: #arguments.serverName#" )
 			// Return error response
 			return {
 				"content": jsonSerialize( {
@@ -117,17 +117,17 @@ class {
 				"contentType": "application/json",
 				"headers": {},
 				"statusCode": 400
-			};
+			}
 		}
 
 		// We have a server now, process it
-		var corsOrigin = targetServer.getCors();
+		var corsOrigin = targetServer.getCors()
 		var response = {
 			"content": "",
 			"contentType": "application/json",
 			"headers": {},
 			"statusCode": 200
-		};
+		}
 
 		// Build request data for callbacks
 		var requestData = {
@@ -136,16 +136,38 @@ class {
 			"body": arguments.requestBody,
 			"acceptHeader": arguments.acceptHeader,
 			"urlParams": arguments.urlParams
-		};
+		}
 
 		// Only add CORS header if cors is configured (secure by default)
 		if ( len( corsOrigin ) > 0 ) {
-			response.headers[ "Access-Control-Allow-Origin" ] = corsOrigin;
+			response.headers[ "Access-Control-Allow-Origin" ] = corsOrigin
 		}
 
 		// Handle CORS preflight (bypass callbacks for preflight)
 		if ( arguments.requestMethod == "OPTIONS" ) {
-			return handleCORSPreflight( response );
+			return handleCORSPreflight( response )
+		}
+
+		// Verify basic authentication if configured
+		if ( targetServer.hasBasicAuth() ) {
+			var headers = getHTTPRequestData( false ).headers
+			var authHeader = headers[ "Authorization" ] ?: ""
+			if ( !targetServer.verifyBasicAuth( authHeader ) ) {
+				// Log failed authentication attempt
+				static.mcpLogger.warn( "MCP basic auth failed for server: #arguments.serverName#" )
+				// Return 401 Unauthorized
+				response.statusCode = 401
+				response.headers[ "WWW-Authenticate" ] = 'Basic realm="MCP Server"'
+				response.content = jsonSerialize( {
+					"jsonrpc": "2.0",
+					"error": {
+						"code": MCPServer::errorCode( "INVALID_REQUEST" ),
+						"message": "Unauthorized: Invalid credentials"
+					},
+					"id": ""
+				} )
+				return response
+			}
 		}
 
 		// Announce MCP request

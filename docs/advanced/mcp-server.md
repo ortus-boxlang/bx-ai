@@ -153,9 +153,89 @@ server = mcpServer( "myApp" )
 
 ### Get Server Info
 
-```java
+```javascript
 info = server.getServerInfo()
 // { name: "myApp", version: "2.0.0" }
+```
+
+### Basic Authentication 🔒
+
+Protect your MCP server with HTTP Basic Authentication:
+
+```javascript
+// Configure basic auth credentials
+server = mcpServer( "myApp" )
+    .withBasicAuth( "admin", "secretPassword123" )
+    .registerTool( myTool )
+```
+
+**How it works:**
+- Credentials are verified **before** any request processing
+- Returns `401 Unauthorized` with `WWW-Authenticate` header if credentials are invalid
+- Uses standard HTTP Basic Authentication (base64-encoded `username:password`)
+- Zero performance overhead when not configured
+- Fluent API for easy configuration
+
+**Example - Secured Admin Server:**
+
+```javascript
+// Application.bx
+function onApplicationStart() {
+    mcpServer( "admin" )
+        .withBasicAuth( "admin", application.adminPassword )
+        .setDescription( "Admin MCP Server - Requires Authentication" )
+        .registerTool( adminTool )
+        .registerTool( systemTool )
+}
+```
+
+**Making authenticated requests:**
+
+```bash
+# Using curl with basic auth
+curl -X POST http://localhost/~bxai/mcp.bxm?server=admin \
+  -u admin:secretPassword123 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":"1"}'
+
+# Or with Authorization header
+curl -X POST http://localhost/~bxai/mcp.bxm?server=admin \
+  -H "Authorization: Basic YWRtaW46c2VjcmV0UGFzc3dvcmQxMjM=" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":"1"}'
+```
+
+**Check if authentication is enabled:**
+
+```javascript
+if ( server.hasBasicAuth() ) {
+    writeOutput( "This server requires authentication" )
+}
+```
+
+**Security Best Practices:**
+
+- ✅ **Always use HTTPS** in production to prevent credential interception
+- ✅ Store passwords in environment variables or encrypted configuration
+- ✅ Use strong, unique passwords for each server
+- ✅ Combine with CORS settings for additional security
+- ✅ Consider rotating credentials periodically
+- ✅ Log authentication failures for security monitoring
+
+**Example with environment variables:**
+
+```javascript
+// Application.bx
+function onApplicationStart() {
+    var adminUser = getEnv( "MCP_ADMIN_USER" )
+    var adminPass = getEnv( "MCP_ADMIN_PASS" )
+
+    if ( len( adminUser ) && len( adminPass ) ) {
+        mcpServer( "admin" )
+            .withBasicAuth( adminUser, adminPass )
+            .registerTool( adminTool )
+    }
+}
 ```
 
 ## Tool Registration
@@ -1247,7 +1327,7 @@ bxModules.bxai.models.mcp.MCPServer::removeInstance( "myApp" )
 
 ### 4. Use Separate Servers for Different Purposes
 
-```java
+```javascript
 // API server for external clients
 mcpServer( "api" )
     .registerTool( publicTool1 )
@@ -1255,20 +1335,44 @@ mcpServer( "api" )
 
 // Admin server for internal tools
 mcpServer( "admin" )
+    .withBasicAuth( "admin", getEnv( "ADMIN_PASSWORD" ) )
     .registerTool( adminTool1 )
     .registerTool( adminTool2 )
 ```
 
-### 5. Document Your Tools
+### 5. Secure Sensitive Servers
 
-```java
+```javascript
+// Protect production servers with authentication
+mcpServer( "production" )
+    .withBasicAuth( getEnv( "MCP_USER" ), getEnv( "MCP_PASS" ) )
+    .setCors( "https://trusted-domain.com" )
+    .registerTool( sensitiveDataTool )
+
+// Public servers can remain open
+mcpServer( "public" )
+    .setCors( "*" )
+    .registerTool( publicSearchTool )
+```
+
+**Security Checklist:**
+- ✅ Use `.withBasicAuth()` for sensitive operations
+- ✅ Configure CORS with `.setCors()` to restrict origins
+- ✅ Store credentials in environment variables
+- ✅ Use HTTPS in production
+- ✅ Monitor authentication failures via `onMCPError` events
+- ✅ Implement rate limiting if needed
+
+### 6. Document Your Tools
+
+```javascript
 aiTool( "calculateShipping", "Calculate shipping cost based on weight and destination", handler )
     .describeArg( "weight", "Package weight in pounds" )
     .describeArg( "destination", "Destination zip code" )
     .describeArg( "expedited", "Whether to use expedited shipping (true/false)" )
 ```
 
-### 6. Monitor Performance with Statistics
+### 7. Monitor Performance with Statistics
 
 ```java
 // Enable stats for production monitoring
