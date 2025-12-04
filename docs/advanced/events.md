@@ -43,6 +43,7 @@ The event system allows you to **monitor**, **modify**, **validate**, **audit**,
 | 20 | [onMCPServerRemove](#20-onmcpserverremove) | MCP server instance removed | `name` |
 | 21 | [onMCPRequest](#21-onmcprequest) | Before processing MCP request | `server`, `requestData`, `serverName` |
 | 22 | [onMCPResponse](#22-onmcpresponse) | After processing MCP response | `server`, `response`, `requestData` |
+| 23 | [onMCPError](#23-onmcperror) | Exception during MCP operations | `server`, `context`, `exception`, request details |
 
 ### Event Lifecycle
 
@@ -62,6 +63,7 @@ Pipeline:
 MCP Server:
   onMCPServerCreate → onMCPRequest → [Process Request] → onMCPResponse
   onMCPServerRemove (when server is removed)
+  onMCPError (when exceptions occur)
 
 Error/Rate Limit:
   onAIError, onAIRateLimitHit (when applicable)
@@ -1360,6 +1362,83 @@ function onMCPResponse( event, interceptData ) {
     if ( response.statusCode >= 400 ) {
         incrementMetric( "mcp.errors.#serverName#" );
     }
+}
+```
+
+---
+
+### 23. onMCPError
+
+Fired when an exception occurs during MCP server operations.
+
+**When**: Exception in request handling, class scanning, or other MCP operations
+**Frequency**: When errors occur
+
+#### Event Arguments
+
+| Argument | Type | Description |
+|----------|------|-------------|
+| `server` | `MCPServer` | The server instance |
+| `context` | `String` | Where error occurred (`handleRequest`, `scanClass`, etc.) |
+| `exception` | `Struct` | Exception object (message, detail, stackTrace, type) |
+| `method` | `String` | Request method (context: `handleRequest`) |
+| `requestId` | `Any` | Request ID (context: `handleRequest`) |
+| `params` | `Struct` | Request parameters (context: `handleRequest`) |
+| `responseTime` | `Numeric` | Time elapsed in ms (context: `handleRequest`) |
+| `errorCode` | `Numeric` | RPC error code (context: `handleRequest`) |
+| `classPath` | `String` | Class being scanned (context: `scanClass`) |
+
+#### Example
+
+```javascript
+function onMCPError( event, interceptData ) {
+    var exception = interceptData.exception;
+    var context = interceptData.context;
+    var server = interceptData.server;
+
+    // Log detailed error
+    writeLog(
+        type: "error",
+        file: "mcp-errors",
+        text: "MCP Error in #context#: #exception.message#\nDetail: #exception.detail#"
+    );
+
+    // Context-specific handling
+    if ( context == "handleRequest" ) {
+        // Request-level error
+        var method = interceptData.method;
+        var errorCode = interceptData.errorCode;
+
+        // Send alert for critical errors
+        if ( errorCode == -32603 ) { // SERVER_ERROR
+            emailService.sendAlert(
+                to: "ops@example.com",
+                subject: "MCP Server Error: #server.getName()#",
+                body: "Method: #method#\nError: #exception.message#\nStackTrace: #exception.stackTrace#"
+            );
+        }
+
+        // Track error metrics
+        metrics.increment( "mcp.errors.#method#" );
+        metrics.increment( "mcp.errors.code.#errorCode#" );
+    } else if ( context == "scanClass" ) {
+        // Class scanning error
+        writeLog(
+            type: "warning",
+            file: "mcp-scan-errors",
+            text: "Failed to scan class: #interceptData.classPath#"
+        );
+    }
+
+    // Send to error tracking service
+    errorTracker.captureException(
+        exception: exception,
+        context: {
+            mcpServer: server.getName(),
+            operation: context,
+            serverInfo: server.getServerInfo()
+        }
+    );
 }
 ```
 

@@ -678,7 +678,7 @@ function onMCPRequest( event, interceptData ) {
     // interceptData contains:
     // - server: The MCPServer instance
     // - requestData: The parsed request { id, method, params }
-    
+
     writeLog(
         type: "information",
         file: "mcp-requests",
@@ -698,7 +698,7 @@ function onMCPResponse( event, interceptData ) {
     // - responseData: The response being returned
     // - success: Whether the request was successful
     // - responseTime: Time taken in milliseconds
-    
+
     if ( !interceptData.success ) {
         writeLog(
             type: "warning",
@@ -719,17 +719,17 @@ function onMCPError( event, interceptData ) {
     // - context: Where the error occurred ("handleRequest", "scanClass", etc.)
     // - exception: The exception object with message, detail, stacktrace
     // - Additional context-specific fields
-    
+
     var exception = interceptData.exception
     var context = interceptData.context
-    
+
     // Log detailed error
     writeLog(
         type: "error",
         file: "mcp-errors",
         text: "MCP Error in #context#: #exception.message#"
     )
-    
+
     // Context-specific handling
     if ( context == "handleRequest" ) {
         // Additional fields available: method, requestId, params, responseTime, errorCode
@@ -738,7 +738,7 @@ function onMCPError( event, interceptData ) {
             file: "mcp-errors",
             text: "Request failed - Method: #interceptData.method#, Error: #exception.message#"
         )
-        
+
         // Send alert
         emailService.sendAlert(
             subject: "MCP Server Error",
@@ -776,22 +776,22 @@ class {
     function onApplicationStart() {
         // Register self as interceptor for MCP events
         BoxRegisterInterceptor( this, "onMCPRequest,onMCPResponse,onMCPError" )
-        
+
         // Create server
         mcpServer( "myApp" )
             .registerTool( myTool )
     }
-    
+
     function onMCPRequest( event, interceptData ) {
         // Track incoming requests
         metrics.increment( "mcp.requests" )
     }
-    
+
     function onMCPResponse( event, interceptData ) {
         // Track response times
         metrics.gauge( "mcp.responseTime", interceptData.responseTime )
     }
-    
+
     function onMCPError( event, interceptData ) {
         // Handle errors
         errorTracker.captureException( interceptData.exception )
@@ -830,7 +830,7 @@ function onMCPError( event, interceptData ) {
 ```javascript
 function onMCPRequest( event, interceptData ) {
     var clientId = request.getHeader( "X-Client-ID" )
-    
+
     if ( !rateLimiter.allow( clientId ) ) {
         // Reject request
         interceptData.reject = true
