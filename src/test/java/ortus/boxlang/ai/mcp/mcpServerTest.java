@@ -462,9 +462,10 @@ public class mcpServerTest extends BaseIntegrationTest {
 				myServer = mcpServer( "toolsCallTest" )
 					.registerTool(
 						aiTool( "echo", "Echo input", ( message ) => "Echo: " & message )
+						.describeMessage( "The message to echo" )
 					)
 
-				request = {
+				serverRequest = {
 					"jsonrpc": "2.0",
 					"method": "tools/call",
 					"id": "call-1",
@@ -474,7 +475,8 @@ public class mcpServerTest extends BaseIntegrationTest {
 					}
 				}
 
-				response = myServer.handleRequest( request )
+				response = myServer.handleRequest( serverRequest )
+				println( response)
 				content = response.result.content[ 1 ]
 				text = content.text
 			""",

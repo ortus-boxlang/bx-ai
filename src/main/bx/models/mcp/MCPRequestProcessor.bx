@@ -21,6 +21,7 @@
  * - Response formatting (JSON and SSE)
  * - Error handling
  */
+import bxModules.bxai.models.mcp.MCPServer
 class {
 
 	/**
@@ -83,15 +84,17 @@ class {
 			try {
 				requestData = onRequestCallback( requestData );
 			} catch ( any e ) {
+				// Log it
+				static.mcpLogger.error( "MCP onRequest callback error: #e.message#" );
 				// Authentication or validation failure - return error response
 				response.statusCode = 401;
 				response.content = jsonSerialize( {
 					"jsonrpc": "2.0",
 					"error": {
-						"code": -32001,
+						"code": MCPServer.RPC_ERROR_CODES.INVALID_REQUEST,
 						"message": e.message ?: "Request rejected by onRequest callback"
 					},
-					"id": javacast( "null", "" )
+					"id": ""
 				} );
 				return response;
 			}
@@ -196,14 +199,16 @@ class {
 				arguments.response.content = jsonSerialize( mcpResponse );
 			}
 		} catch ( any e ) {
+			// Log it
+			static.mcpLogger.error( "MCP JSON-RPC processing error: #e.message#" );
 			// Return JSON-RPC error response
 			var errorResponse = {
 				"jsonrpc": "2.0",
 				"error": {
-					"code": -32700,
+					"code": MCPServer.RPC_ERROR_CODES.PARSE_ERROR,
 					"message": "Parse error: " & e.message
 				},
-				"id": javacast( "null", "" )
+				"id": ""
 			};
 			arguments.response.content = jsonSerialize( errorResponse );
 		}
@@ -224,10 +229,10 @@ class {
 		var errorResponse = {
 			"jsonrpc": "2.0",
 			"error": {
-				"code": -32600,
+				"code": MCPServer.RPC_ERROR_CODES.INVALID_REQUEST,
 				"message": "Method not allowed. Use POST for JSON-RPC requests or GET for discovery."
 			},
-			"id": javacast( "null", "" )
+			"id": ""
 		};
 
 		arguments.response.content = jsonSerialize( errorResponse );
