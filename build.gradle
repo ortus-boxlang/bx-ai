@@ -261,7 +261,8 @@ task downloadBoxLangModules( type: Download ) {
 		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-derby/${derbyModuleVersion}/bx-derby-${derbyModuleVersion}.zip",
 		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-postgresql/${postgresqlModuleVersion}/bx-postgresql-${postgresqlModuleVersion}.zip",
 		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-sqlite/${sqliteModuleVersion}/bx-sqlite-${sqliteModuleVersion}.zip",
-		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-mysql/${mysqlModuleVersion}/bx-mysql-${mysqlModuleVersion}.zip"
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-mysql/${mysqlModuleVersion}/bx-mysql-${mysqlModuleVersion}.zip",
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-web-support/${webSupportVersion}/bx-web-support-${webSupportVersion}.zip"
 	] )
     // Specify the destination for the downloaded file
     dest "src/test/resources/modules/"
@@ -282,6 +283,9 @@ task extractBoxLangModules( type: Copy ) {
 	}
 	from( zipTree( "src/test/resources/modules/bx-mysql-${mysqlModuleVersion}.zip" ) ) {
 		into "bx-mysql"
+	}
+	from( zipTree( "src/test/resources/modules/bx-web-support-${webSupportVersion}.zip" ) ) {
+		into "bx-web-support"
 	}
 	destinationDir = file( "src/test/resources/modules" )
 }

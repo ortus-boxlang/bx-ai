@@ -125,7 +125,6 @@ class {
 		}
 
 		// We have a server now, process it
-		var corsOrigin = targetServer.getCors()
 		var response = {
 			"content": "",
 			"contentType": "application/json",
@@ -151,19 +150,42 @@ class {
 			"urlParams": arguments.urlParams
 		}
 
-		// Only add CORS header if cors is configured (secure by default)
-		if ( len( corsOrigin ) > 0 ) {
-			response.headers[ "Access-Control-Allow-Origin" ] = corsOrigin
+		// Check request body size limit
+		var maxBodySize = targetServer.getMaxRequestBodySize()
+		if ( maxBodySize > 0 && len( arguments.requestBody ) > maxBodySize ) {
+			static.mcpLogger.warn( "MCP request body size exceeded limit: #len( arguments.requestBody )# > #maxBodySize#" )
+			response.statusCode = 413
+			response.content = jsonSerialize( {
+				"jsonrpc": "2.0",
+				"error": {
+					"code": MCPServer::errorCode( "INVALID_REQUEST" ),
+					"message": "Request body too large. Maximum allowed: #maxBodySize# bytes"
+				},
+				"id": ""
+			} )
+			return response
+		}
+
+		// Enhanced CORS handling with wildcard support
+		var headers = getHTTPRequestData( false ).headers
+		var requestOrigin = headers[ "Origin" ] ?: ""
+
+		// Check if origin is allowed
+		if ( len( requestOrigin ) && targetServer.isCorsAllowed( requestOrigin ) ) {
+			response.headers[ "Access-Control-Allow-Origin" ] = requestOrigin
+			response.headers[ "Vary" ] = "Origin"
+		} else if ( targetServer.getCorsAllowedOrigins().contains( "*" ) ) {
+			// Wildcard "*" allows all origins
+			response.headers[ "Access-Control-Allow-Origin" ] = "*"
 		}
 
 		// Handle CORS preflight (bypass callbacks for preflight)
 		if ( arguments.requestMethod == "OPTIONS" ) {
-			return handleCORSPreflight( response )
+			return handleCORSPreflight( response, targetServer )
 		}
 
 		// Verify basic authentication if configured
 		if ( targetServer.hasBasicAuth() ) {
-			var headers = getHTTPRequestData( false ).headers
 			var authHeader = headers[ "Authorization" ] ?: ""
 			if ( !targetServer.verifyBasicAuth( authHeader ) ) {
 				// Log failed authentication attempt
@@ -176,6 +198,35 @@ class {
 					"error": {
 						"code": MCPServer::errorCode( "INVALID_REQUEST" ),
 						"message": "Unauthorized: Invalid credentials"
+					},
+					"id": ""
+				} )
+				return response
+			}
+		}
+
+		// Verify API key if provider configured
+		if ( targetServer.hasApiKeyProvider() ) {
+			var apiKey = ""
+			var authHeader = headers[ "Authorization" ] ?: ""
+
+			// Extract API key from X-API-Key header or Bearer token
+			if ( headers.keyExists( "X-API-Key" ) ) {
+				apiKey = headers[ "X-API-Key" ]
+			} else if ( authHeader.findNoCase( "Bearer " ) ) {
+				apiKey = authHeader.replaceNoCase( "Bearer ", "" ).trim()
+			}
+
+			if ( !len( apiKey ) || !targetServer.verifyApiKey( apiKey, requestData ) ) {
+				// Log failed API key attempt
+				static.mcpLogger.warn( "MCP API key validation failed for server: #arguments.serverName#" )
+				// Return 401 Unauthorized
+				response.statusCode = 401
+				response.content = jsonSerialize( {
+					"jsonrpc": "2.0",
+					"error": {
+						"code": MCPServer::errorCode( "INVALID_REQUEST" ),
+						"message": "Unauthorized: Invalid API key"
 					},
 					"id": ""
 				} )
@@ -251,12 +302,13 @@ class {
 	 * Handle CORS preflight requests
 	 *
 	 * @response The response struct to populate
+	 * @mcpServer The MCP server instance for CORS configuration
 	 *
 	 * @return The populated response struct
 	 */
-	private static  struct function handleCORSPreflight( required struct response ) {
+	private static  struct function handleCORSPreflight( required struct response, required any mcpServer ) {
 		arguments.response.headers[ "Access-Control-Allow-Methods" ] = "POST, GET, OPTIONS";
-		arguments.response.headers[ "Access-Control-Allow-Headers" ] = "Content-Type, Authorization";
+		arguments.response.headers[ "Access-Control-Allow-Headers" ] = "Content-Type, Authorization, X-API-Key";
 		arguments.response.headers[ "Access-Control-Max-Age" ] = "86400";
 
 		// Add security headers to preflight response
@@ -266,9 +318,7 @@ class {
 
 		arguments.response.content = "";
 		return arguments.response;
-	}
-
-	/**
+	}	/**
 	 * Handle GET requests for server discovery
 	 *
 	 * @server The MCP server instance

@@ -48,9 +48,10 @@ class {
 	property name="version" type="string";
 
 	/**
-	 * CORS allowed origin (empty string means no CORS header - secure by default)
+	 * CORS allowed origins (array of strings, supports wildcards like *.domain.com)
+	 * Empty array means no CORS header - secure by default
 	 */
-	property name="cors" type="string" default="";
+	property name="corsAllowedOrigins" type="array" default=[];
 
 	/**
 	 * Callback invoked before processing each request (for authentication/inspection)
@@ -95,6 +96,17 @@ class {
 	property name="basicAuthPassword" type="string" default="";
 
 	/**
+	 * Maximum request body size in bytes (0 = unlimited)
+	 */
+	property name="maxRequestBodySize" type="numeric" default="0";
+
+	/**
+	 * API key provider callback for custom key validation
+	 * Signature: function( apiKey, requestData ) => boolean (true = allowed, false = denied)
+	 */
+	property name="apiKeyProvider" type="any" default="";
+
+	/**
 	 * Static configuration and service reference
 	 */
 	static {
@@ -134,13 +146,18 @@ class {
 		string name = static.DEFAULT_SERVER_NAME,
 		string description = static.DEFAULT_SERVER_DESCRIPTION,
 		string version = static.DEFAULT_SERVER_VERSION,
-		string cors = "",
+		any cors = [],
 		boolean statsEnabled = true
 	) {
 		variables.serverName = arguments.name
 		variables.description = arguments.description
 		variables.version = arguments.version
-		variables.cors = arguments.cors
+		// Handle single cors string, convert to array
+		if ( isSimpleValue( arguments.cors ) ) {
+			arguments.cors = [ arguments.cors ]
+		}
+
+		variables.corsAllowedOrigins = arguments.cors
 		variables.onRequest = ""
 		variables.onResponse = ""
 		variables.tools = {}
@@ -149,6 +166,8 @@ class {
 		variables.stats = new MCPServerStats( arguments.statsEnabled )
 		variables.basicAuthUsername = ""
 		variables.basicAuthPassword = ""
+		variables.maxRequestBodySize = 0
+		variables.apiKeyProvider = ""
 
 		return this
 	}
@@ -189,7 +208,7 @@ class {
 		string name = static.DEFAULT_SERVER_NAME,
 		string description = static.DEFAULT_SERVER_DESCRIPTION,
 		string version = static.DEFAULT_SERVER_VERSION,
-		string cors = "",
+		any cors = [],
 		boolean statsEnabled = true,
 		boolean force = false
 	) {
@@ -1098,6 +1117,152 @@ class {
 			static.mcpLogger.error( "Basic auth verification error: #e.message#" )
 			return false
 		}
+	}
+
+	/**
+	 * Configure maximum request body size limit
+	 *
+	 * @maxBytes Maximum size in bytes (0 = unlimited, default)
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function withBodyLimit( required numeric maxBytes ) {
+		variables.maxRequestBodySize = arguments.maxBytes
+		return this
+	}
+
+	/**
+	 * Get maximum request body size
+	 *
+	 * @return Maximum size in bytes (0 = unlimited)
+	 */
+	numeric function getMaxRequestBodySize() {
+		return variables.maxRequestBodySize
+	}
+
+	/**
+	 * Configure API key provider callback for custom validation
+	 *
+	 * @provider Function that validates API keys. Signature: function( apiKey, requestData ) => boolean
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function withApiKeyProvider( required any provider ) {
+		if ( !isClosure( arguments.provider ) && !isCustomFunction( arguments.provider ) ) {
+			throw(
+				type="InvalidArgument",
+				message="API key provider must be a function with signature: ( apiKey, requestData ) => boolean"
+			)
+		}
+		variables.apiKeyProvider = arguments.provider
+		return this
+	}
+
+	/**
+	 * Check if API key provider is configured
+	 *
+	 * @return Boolean indicating if API key provider exists
+	 */
+	boolean function hasApiKeyProvider() {
+		return isClosure( variables.apiKeyProvider ) || isCustomFunction( variables.apiKeyProvider )
+	}
+
+	/**
+	 * Verify API key using configured provider
+	 *
+	 * @apiKey The API key to validate
+	 * @requestData Request data passed to provider for context
+	 *
+	 * @return Boolean indicating if API key is valid
+	 */
+	boolean function verifyApiKey( required string apiKey, struct requestData = {} ) {
+		if ( !hasApiKeyProvider() ) {
+			return true // No provider configured, allow
+		}
+
+		try {
+			return variables.apiKeyProvider( arguments.apiKey, arguments.requestData )
+		} catch ( any e ) {
+			static.mcpLogger.error( "API key provider error: #e.message#" )
+			return false
+		}
+	}
+
+	/**
+	 * Configure CORS allowed origins (replaces any existing origins)
+	 * Supports multiple origins and wildcard domains (*.example.com)
+	 *
+	 * @origins String (single origin) or Array (multiple origins). Use "*" for all origins.
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function withCors( required any origins ) {
+		if ( isSimpleValue( arguments.origins ) ) {
+			// Single origin string
+			variables.corsAllowedOrigins = len( arguments.origins ) ? [ arguments.origins ] : []
+		} else if ( isArray( arguments.origins ) ) {
+			// Array of origins
+			variables.corsAllowedOrigins = arguments.origins
+		} else {
+			throw(
+				type="InvalidArgument",
+				message="origins must be a string or array of strings"
+			)
+		}
+		return this
+	}
+
+	/**
+	 * Add a CORS allowed origin (appends to existing origins)
+	 *
+	 * @origin The origin to allow (supports wildcards like *.example.com)
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function addCorsOrigin( required string origin ) {
+		if ( !variables.corsAllowedOrigins.contains( arguments.origin ) ) {
+			arrayAppend( variables.corsAllowedOrigins, arguments.origin )
+		}
+		return this
+	}
+
+	/**
+	 * Check if a specific origin is allowed by CORS configuration
+	 * Supports wildcard matching (*.example.com)
+	 *
+	 * @origin The origin to check
+	 *
+	 * @return Boolean indicating if origin is allowed
+	 */
+	boolean function isCorsAllowed( required string origin ) {
+		// No origins configured = no CORS
+		if ( variables.corsAllowedOrigins.len() == 0 ) {
+			return false
+		}
+
+		// Check for exact matches or wildcards
+		for ( var allowedOrigin in variables.corsAllowedOrigins ) {
+			// Wildcard "*" allows all origins
+			if ( allowedOrigin == "*" ) {
+				return true
+			}
+
+			// Exact match
+			if ( allowedOrigin == arguments.origin ) {
+				return true
+			}
+
+			// Wildcard subdomain matching (*.example.com)
+			if ( allowedOrigin.left( 2 ) == "*." ) {
+				var domain = allowedOrigin.substring( 3 )  // Remove "*." (substring is 1-indexed)
+				// Check if origin ends with the domain
+				if ( arguments.origin.endsWith( domain ) || arguments.origin.endsWith( "." & domain ) ) {
+					return true
+				}
+			}
+		}
+
+		return false
 	}
 
 	/**

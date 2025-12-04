@@ -1151,4 +1151,365 @@ public class mcpServerTest extends BaseIntegrationTest {
 		assertThat( ( int ) variables.get( Key.of( "toolCount" ) ) ).isEqualTo( 1 );
 	}
 
+	@Test
+	@DisplayName( "Security headers are present in responses" )
+	public void testSecurityHeaders() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.mcp.MCPRequestProcessor;
+
+				// Create a test server
+				myServer = mcpServer( "securityHeaderTest" )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// Process a request
+				response = MCPRequestProcessor::process(
+					serverName: "securityHeaderTest",
+					requestMethod: "GET",
+					requestBody: "",
+					acceptHeader: "application/json",
+					urlParams: {}
+				)
+
+				headers = response.headers
+			""",
+			context
+		);
+		// @formatter:on
+
+		var headers = variables.getAsStruct( Key.of( "headers" ) );
+
+		// Verify security headers are present
+		assertThat( headers.get( Key.of( "X-Content-Type-Options" ) ) ).isEqualTo( "nosniff" );
+		assertThat( headers.get( Key.of( "X-Frame-Options" ) ) ).isEqualTo( "DENY" );
+		assertThat( headers.get( Key.of( "X-XSS-Protection" ) ) ).isEqualTo( "1; mode=block" );
+		assertThat( headers.get( Key.of( "Referrer-Policy" ) ) ).isEqualTo( "strict-origin-when-cross-origin" );
+		assertThat( headers.get( Key.of( "Content-Security-Policy" ) ) ).isEqualTo( "default-src 'none'; frame-ancestors 'none'" );
+		assertThat( headers.get( Key.of( "Strict-Transport-Security" ) ) ).isEqualTo( "max-age=31536000; includeSubDomains" );
+		assertThat( headers.get( Key.of( "Permissions-Policy" ) ) ).isEqualTo( "geolocation=(), microphone=(), camera=()" );
+	}
+
+	@Test
+	@DisplayName( "Security headers present in error responses" )
+	public void testSecurityHeadersInErrorResponse() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.mcp.MCPRequestProcessor;
+
+				// Request non-existent server
+				response = MCPRequestProcessor::process(
+					serverName: "nonExistentServer",
+					requestMethod: "GET",
+					requestBody: "",
+					acceptHeader: "application/json",
+					urlParams: {}
+				)
+
+				headers = response.headers
+				statusCode = response.statusCode
+			""",
+			context
+		);
+		// @formatter:on
+
+		var	headers		= variables.getAsStruct( Key.of( "headers" ) );
+		var	statusCode	= ( int ) variables.get( Key.of( "statusCode" ) );
+
+		// Verify error status
+		assertThat( statusCode ).isEqualTo( 400 );
+
+		// Verify security headers are present even in error responses
+		assertThat( headers.get( Key.of( "X-Content-Type-Options" ) ) ).isEqualTo( "nosniff" );
+		assertThat( headers.get( Key.of( "X-Frame-Options" ) ) ).isEqualTo( "DENY" );
+		assertThat( headers.get( Key.of( "X-XSS-Protection" ) ) ).isEqualTo( "1; mode=block" );
+	}
+
+	@Test
+	@DisplayName( "Security headers present in CORS preflight responses" )
+	public void testSecurityHeadersInCORSPreflight() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.mcp.MCPRequestProcessor;
+
+				// Create server with CORS
+				myServer = mcpServer( "corsTest" )
+					.withCors( ["*"] )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// Process OPTIONS request (CORS preflight)
+				response = MCPRequestProcessor::process(
+					serverName: "corsTest",
+					requestMethod: "OPTIONS",
+					requestBody: "",
+					acceptHeader: "application/json",
+					urlParams: {}
+				)
+
+				headers = response.headers
+			""",
+			context
+		);
+		// @formatter:on
+
+		var headers = variables.getAsStruct( Key.of( "headers" ) );
+
+		// Verify CORS headers
+		assertThat( headers.get( Key.of( "Access-Control-Allow-Methods" ) ) ).isEqualTo( "POST, GET, OPTIONS" );
+		assertThat( headers.get( Key.of( "Access-Control-Allow-Origin" ) ) ).isEqualTo( "*" );
+
+		// Verify security headers are also present
+		assertThat( headers.get( Key.of( "X-Content-Type-Options" ) ) ).isEqualTo( "nosniff" );
+		assertThat( headers.get( Key.of( "X-Frame-Options" ) ) ).isEqualTo( "DENY" );
+		assertThat( headers.get( Key.of( "Referrer-Policy" ) ) ).isEqualTo( "strict-origin-when-cross-origin" );
+	}
+
+	@Test
+	@DisplayName( "CORS with multiple specific origins - exact match" )
+	public void testCorsMultipleOriginsExactMatch() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				// Create server with multiple allowed origins
+				myServer = mcpServer( "corsMultiTest" )
+					.withCors( ["https://app.example.com", "https://admin.example.com"] )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// Test exact match
+				allowed = myServer.isCorsAllowed( "https://app.example.com" )
+				allowedAdmin = myServer.isCorsAllowed( "https://admin.example.com" )
+				notAllowed = myServer.isCorsAllowed( "https://evil.com" )
+				origins = myServer.getCorsAllowedOrigins()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "allowed" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "allowedAdmin" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "notAllowed" ) ) ).isEqualTo( false );
+
+		var origins = variables.getAsArray( Key.of( "origins" ) );
+		assertThat( origins.size() ).isEqualTo( 2 );
+	}
+
+	@Test
+	@DisplayName( "CORS with wildcard domain matching" )
+	public void testCorsWildcardDomains() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				// Create server with wildcard domain
+				myServer = mcpServer( "corsWildcardTest" )
+					.withCors( ["*.example.com", "https://specific.test.com"] )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// Test wildcard matches
+				subdomainMatch = myServer.isCorsAllowed( "https://app.example.com" )
+				multiLevelMatch = myServer.isCorsAllowed( "https://api.v2.example.com" )
+				specificMatch = myServer.isCorsAllowed( "https://specific.test.com" )
+				noMatch = myServer.isCorsAllowed( "https://evil.com" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "subdomainMatch" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "multiLevelMatch" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "specificMatch" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "noMatch" ) ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "Request body size limit enforcement - 413 error" )
+	public void testBodySizeLimitEnforcement() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.mcp.MCPRequestProcessor;
+
+				// Create server with 100 byte body limit
+				myServer = mcpServer( "bodySizeTest" )
+					.withBodyLimit( 100 )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// Create request body > 100 bytes
+				largeBody = jsonSerialize( { "method": "tools/list", "id": "test123", "data": "x".repeat( 150 ) } )
+
+				// Process request with body exceeding limit
+				response = MCPRequestProcessor::process(
+					serverName: "bodySizeTest",
+					requestMethod: "POST",
+					requestBody: largeBody,
+					acceptHeader: "application/json",
+					urlParams: {}
+				)
+
+				statusCode = response.statusCode
+				content = jsonDeserialize( response.content )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var	statusCode	= ( int ) variables.get( Key.of( "statusCode" ) );
+		var	content		= variables.getAsStruct( Key.of( "content" ) );
+
+		assertThat( statusCode ).isEqualTo( 413 );
+		assertThat( content.get( Key.of( "error" ) ) ).isNotNull();
+
+		var error = ( ortus.boxlang.runtime.types.IStruct ) content.get( Key.of( "error" ) );
+		assertThat( error.getAsString( Key.of( "message" ) ) ).contains( "too large" );
+	}
+
+	@Test
+	@DisplayName( "Request body size limit - unlimited when set to 0" )
+	public void testBodySizeLimitUnlimited() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.mcp.MCPRequestProcessor;
+
+				// Create server with unlimited body size (0)
+				myServer = mcpServer( "unlimitedBodyTest" )
+					.withBodyLimit( 0 )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// Create large request body
+				largeBody = jsonSerialize( { "method": "tools/list", "id": "test123", "data": "x".repeat( 5000 ) } )
+
+				// Process request - should succeed
+				response = MCPRequestProcessor::process(
+					serverName: "unlimitedBodyTest",
+					requestMethod: "POST",
+					requestBody: largeBody,
+					acceptHeader: "application/json",
+					urlParams: {}
+				)
+
+				statusCode = response.statusCode
+			""",
+			context
+		);
+		// @formatter:on
+
+		var statusCode = ( int ) variables.get( Key.of( "statusCode" ) );
+
+		// Should succeed (200) not 413
+		assertThat( statusCode ).isEqualTo( 200 );
+	}
+
+	@Test
+	@DisplayName( "API key provider - valid key" )
+	public void testApiKeyProviderValid() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.mcp.MCPRequestProcessor;
+
+				// Create server with API key provider
+				myServer = mcpServer( "apiKeyTest" )
+					.withApiKeyProvider( ( apiKey, requestData ) => {
+						return apiKey == "valid-key-12345"
+					} )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// Mock request with valid API key in X-API-Key header
+				// Note: In real scenario, headers would come from HTTP request
+				// For testing, we'll call verifyApiKey directly
+				validKey = myServer.verifyApiKey( "valid-key-12345", {} )
+				invalidKey = myServer.verifyApiKey( "wrong-key", {} )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "validKey" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "invalidKey" ) ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "API key provider - custom validation logic" )
+	public void testApiKeyProviderCustomLogic() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				// Create server with complex API key validation
+				myServer = mcpServer( "customApiKeyTest" )
+					.withApiKeyProvider( ( apiKey, requestData ) => {
+						// Example: Check key format and method
+						if ( !apiKey.startsWith( "sk_" ) ) return false
+						if ( requestData.method == "POST" && len( apiKey ) < 20 ) return false
+						return true
+					} )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// Test various scenarios
+				validKey = myServer.verifyApiKey( "sk_1234567890123456789", { "method": "POST" } )
+				invalidFormat = myServer.verifyApiKey( "invalid-format", { "method": "POST" } )
+				tooShort = myServer.verifyApiKey( "sk_short", { "method": "POST" } )
+				getOk = myServer.verifyApiKey( "sk_short", { "method": "GET" } )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "validKey" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "invalidFormat" ) ) ).isEqualTo( false );
+		assertThat( variables.get( Key.of( "tooShort" ) ) ).isEqualTo( false );
+		assertThat( variables.get( Key.of( "getOk" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "API key provider - hasApiKeyProvider check" )
+	public void testHasApiKeyProvider() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				// Server without provider
+				srv1 = mcpServer( "noProviderTest" )
+				hasProvider1 = srv1.hasApiKeyProvider()
+
+				// Server with provider
+				srv2 = mcpServer( "withProviderTest" )
+					.withApiKeyProvider( ( k, r ) => true )
+				hasProvider2 = srv2.hasApiKeyProvider()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasProvider1" ) ) ).isEqualTo( false );
+		assertThat( variables.get( Key.of( "hasProvider2" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "CORS and API key provider work together" )
+	public void testCorsAndApiKeyTogether() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				// Create server with both CORS and API key validation
+				myServer = mcpServer( "combinedSecurityTest" )
+					.withCors( ["https://app.example.com", "*.trusted.com"] )
+					.withApiKeyProvider( ( apiKey, requestData ) => apiKey == "secret123" )
+					.withBodyLimit( 1000 )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// Verify all security features configured
+				corsAllowed = myServer.isCorsAllowed( "https://app.example.com" )
+				apiKeyValid = myServer.verifyApiKey( "secret123", {} )
+				bodyLimit = myServer.getMaxRequestBodySize()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "corsAllowed" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "apiKeyValid" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "bodyLimit" ) ) ).isEqualTo( 1000 );
+	}
+
 }
