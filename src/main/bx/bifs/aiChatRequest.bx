@@ -36,7 +36,7 @@ class {
 	 *
 	 * @message If passed, the initial message to add to the chat.
 	 * @params A struct of request params to pass to the provider for the model request: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
-	 * @options A struct of request options to pass to the provider for the model request. Available options are: { provider:string, apiKey:string, returnFormat:string (single|all|raw|json|xml), timeout:numeric, logResponse:boolean, logRequest:boolean, context:struct }
+	 * @options A struct of request options to pass to the provider for the model request. Available options are: { provider:string, apiKey:string, returnFormat:string (single|all|raw|json|xml), timeout:numeric, logResponse:boolean, logRequest:boolean }
 	 *
 	 * @return The AI Chat Request Object
      */

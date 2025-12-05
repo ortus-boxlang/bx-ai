@@ -25,9 +25,9 @@ import ortus.boxlang.runtime.types.IStruct;
 
 public class aiRequestContextTest extends BaseIntegrationTest {
 
-	@DisplayName( "Can create an AiRequest with context via options" )
+	@DisplayName( "Can create an AiMessage with context" )
 	@Test
-	public void testAiRequestWithContext() {
+	public void testAiMessageWithContext() {
 
 		// @formatter:off
 		runtime.executeSource(
@@ -39,19 +39,17 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 					ragDocuments: ["doc1", "doc2"]
 				}
 
-				request = aiChatRequest(
-					messages: "Hello",
-					options: { context: contextData }
-				)
+				message = aiMessage( "Hello" )
+					.setContext( contextData )
 
-				result = request.getContext()
-				hasContext = request.hasContext()
+				result = message.getContext()
+				hasContext = message.hasContext()
 		    """,
 		    context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( "request" ) ).isNotNull();
+		assertThat( variables.get( "message" ) ).isNotNull();
 		IStruct resultContext = ( IStruct ) variables.get( "result" );
 		assertThat( resultContext.size() ).isEqualTo( 4 );
 		assertThat( resultContext.getAsString( Key.of( "userId" ) ) ).isEqualTo( "user-123" );
@@ -59,49 +57,47 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "hasContext" ) ) ).isTrue();
 	}
 
-	@DisplayName( "Can create an AiRequest without context" )
+	@DisplayName( "Can create an AiMessage without context" )
 	@Test
-	public void testAiRequestWithoutContext() {
+	public void testAiMessageWithoutContext() {
 
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				request = aiChatRequest(
-					messages: "Hello"
-				)
+				message = aiMessage( "Hello" )
 
-				result = request.getContext()
-				hasContext = request.hasContext()
+				result = message.getContext()
+				hasContext = message.hasContext()
 		    """,
 		    context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( "request" ) ).isNotNull();
+		assertThat( variables.get( "message" ) ).isNotNull();
 		IStruct resultContext = ( IStruct ) variables.get( "result" );
 		assertThat( resultContext.size() ).isEqualTo( 0 );
 		assertThat( variables.getAsBoolean( Key.of( "hasContext" ) ) ).isFalse();
 	}
 
-	@DisplayName( "Can add context to an existing AiRequest" )
+	@DisplayName( "Can add context to an existing AiMessage" )
 	@Test
 	public void testAddContext() {
 
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				request = aiChatRequest( messages: "Hello" )
+				message = aiMessage( "Hello" )
 					.addContext( "userId", "user-123" )
 					.addContext( "role", "admin" )
 
-				result = request.getContext()
-				hasContext = request.hasContext()
+				result = message.getContext()
+				hasContext = message.hasContext()
 		    """,
 		    context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( "request" ) ).isNotNull();
+		assertThat( variables.get( "message" ) ).isNotNull();
 		IStruct resultContext = ( IStruct ) variables.get( "result" );
 		assertThat( resultContext.size() ).isEqualTo( 2 );
 		assertThat( resultContext.getAsString( Key.of( "userId" ) ) ).isEqualTo( "user-123" );
@@ -109,26 +105,24 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "hasContext" ) ) ).isTrue();
 	}
 
-	@DisplayName( "Can merge context into an existing AiRequest" )
+	@DisplayName( "Can merge context into an existing AiMessage" )
 	@Test
 	public void testMergeContext() {
 
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				request = aiChatRequest(
-					messages: "Hello",
-					options: { context: { userId: "user-123" } }
-				)
-				.mergeContext( { tenantId: "tenant-456", role: "admin" } )
+				message = aiMessage( "Hello" )
+					.addContext( "userId", "user-123" )
+					.mergeContext( { tenantId: "tenant-456", role: "admin" } )
 
-				result = request.getContext()
+				result = message.getContext()
 		    """,
 		    context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( "request" ) ).isNotNull();
+		assertThat( variables.get( "message" ) ).isNotNull();
 		IStruct resultContext = ( IStruct ) variables.get( "result" );
 		assertThat( resultContext.size() ).isEqualTo( 3 );
 		assertThat( resultContext.getAsString( Key.of( "userId" ) ) ).isEqualTo( "user-123" );
@@ -143,19 +137,18 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				request = aiChatRequest(
-					messages: "Hello",
-					options: { context: { userId: "old-user", role: "viewer" } }
-				)
-				.mergeContext( { userId: "new-user" } )
+				message = aiMessage( "Hello" )
+					.addContext( "userId", "old-user" )
+					.addContext( "role", "viewer" )
+					.mergeContext( { userId: "new-user" } )
 
-				result = request.getContext()
+				result = message.getContext()
 		    """,
 		    context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( "request" ) ).isNotNull();
+		assertThat( variables.get( "message" ) ).isNotNull();
 		IStruct resultContext = ( IStruct ) variables.get( "result" );
 		assertThat( resultContext.getAsString( Key.of( "userId" ) ) ).isEqualTo( "new-user" );
 		assertThat( resultContext.getAsString( Key.of( "role" ) ) ).isEqualTo( "viewer" );
@@ -168,15 +161,14 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				request = aiChatRequest(
-					messages: "Hello",
-					options: { context: { userId: "user-123", role: "admin" } }
-				)
+				message = aiMessage( "Hello" )
+					.addContext( "userId", "user-123" )
+					.addContext( "role", "admin" )
 
-				userId = request.getContextValue( "userId" )
-				role = request.getContextValue( "role" )
-				missing = request.getContextValue( "missing" )
-				missingWithDefault = request.getContextValue( "missing", "default-value" )
+				userId = message.getContextValue( "userId" )
+				role = message.getContextValue( "role" )
+				missing = message.getContextValue( "missing" )
+				missingWithDefault = message.getContextValue( "missing", "default-value" )
 		    """,
 		    context
 		);
@@ -195,90 +187,24 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				request = aiChatRequest( messages: "Hello" )
-				request.setContext( { userId: "user-123", permissions: ["read", "write"] } )
+				message = aiMessage( "Hello" )
+					.setContext( { userId: "user-123", permissions: ["read", "write"] } )
 
-				result = request.getContext()
-				hasContext = request.hasContext()
+				result = message.getContext()
+				hasContext = message.hasContext()
 		    """,
 		    context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( "request" ) ).isNotNull();
+		assertThat( variables.get( "message" ) ).isNotNull();
 		IStruct resultContext = ( IStruct ) variables.get( "result" );
 		assertThat( resultContext.size() ).isEqualTo( 2 );
 		assertThat( resultContext.getAsString( Key.of( "userId" ) ) ).isEqualTo( "user-123" );
 		assertThat( variables.getAsBoolean( Key.of( "hasContext" ) ) ).isTrue();
 	}
 
-	@DisplayName( "Context is available in interceptors" )
-	@Test
-	public void testContextInInterceptors() {
-
-		// @formatter:off
-		runtime.executeSource(
-		    """
-				// Create a request with context
-				contextData = {
-					securityLevel: "high",
-					ragContext: "Retrieved documents about BoxLang"
-				}
-
-				request = aiChatRequest(
-					messages: "Hello",
-					options: { context: contextData }
-				)
-
-				// Verify context is accessible
-				result = request.getContext()
-				secLevel = request.getContextValue( "securityLevel" )
-		    """,
-		    context
-		);
-		// @formatter:on
-
-		assertThat( variables.get( "request" ) ).isNotNull();
-		IStruct resultContext = ( IStruct ) variables.get( "result" );
-		assertThat( resultContext.getAsString( Key.of( "securityLevel" ) ) ).isEqualTo( "high" );
-		assertThat( resultContext.getAsString( Key.of( "ragContext" ) ) ).isEqualTo( "Retrieved documents about BoxLang" );
-	}
-
-	@DisplayName( "Embedding request can have context" )
-	@Test
-	public void testEmbeddingRequestWithContext() {
-
-		// @formatter:off
-		runtime.executeSource(
-		    """
-				import bxModules.bxai.models.requests.AiEmbeddingRequest;
-
-				contextData = {
-					source: "document-1",
-					tenantId: "tenant-123"
-				}
-
-				request = new AiEmbeddingRequest(
-					input: "Hello World",
-					options: { context: contextData }
-				)
-
-				result = request.getContext()
-				hasContext = request.hasContext()
-		    """,
-		    context
-		);
-		// @formatter:on
-
-		assertThat( variables.get( "request" ) ).isNotNull();
-		IStruct resultContext = ( IStruct ) variables.get( "result" );
-		assertThat( resultContext.size() ).isEqualTo( 2 );
-		assertThat( resultContext.getAsString( Key.of( "source" ) ) ).isEqualTo( "document-1" );
-		assertThat( resultContext.getAsString( Key.of( "tenantId" ) ) ).isEqualTo( "tenant-123" );
-		assertThat( variables.getAsBoolean( Key.of( "hasContext" ) ) ).isTrue();
-	}
-
-	@DisplayName( "Context is automatically bound to messages with ${context} placeholder" )
+	@DisplayName( "Context is automatically bound to messages with ${context} placeholder via render()" )
 	@Test
 	public void testContextBindingInMessages() {
 
@@ -290,12 +216,11 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 					documents: ["doc1", "doc2"]
 				}
 
-				request = aiChatRequest(
-					messages: "Here is the context: ${context}. Now answer my question.",
-					options: { context: contextData }
-				)
+				message = aiMessage( "Here is the context: ${context}. Now answer my question." )
+					.setContext( contextData )
 
-				messages = request.getMessages()
+				// Render applies bindings including context
+				messages = message.render()
 				messageContent = messages[1].content
 		    """,
 		    context
@@ -309,7 +234,7 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		assertThat( messageContent ).doesNotContain( "${context}" );
 	}
 
-	@DisplayName( "Messages without ${context} placeholder are unchanged" )
+	@DisplayName( "Messages without ${context} placeholder are unchanged via render()" )
 	@Test
 	public void testNoContextPlaceholder() {
 
@@ -320,12 +245,10 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 					userId: "user-123"
 				}
 
-				request = aiChatRequest(
-					messages: "Hello, how are you?",
-					options: { context: contextData }
-				)
+				message = aiMessage( "Hello, how are you?" )
+					.setContext( contextData )
 
-				messages = request.getMessages()
+				messages = message.render()
 				messageContent = messages[1].content
 		    """,
 		    context
@@ -336,7 +259,7 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		assertThat( messageContent ).isEqualTo( "Hello, how are you?" );
 	}
 
-	@DisplayName( "Context binding works with system messages" )
+	@DisplayName( "Context binding works with system messages via render()" )
 	@Test
 	public void testContextBindingInSystemMessage() {
 
@@ -351,13 +274,9 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 				message = aiMessage()
 					.system( "You are an AI assistant. User context: ${context}" )
 					.user( "What can I do?" )
+					.setContext( contextData )
 
-				request = aiChatRequest(
-					messages: message,
-					options: { context: contextData }
-				)
-
-				messages = request.getMessages()
+				messages = message.render()
 				systemContent = messages[1].content
 		    """,
 		    context
@@ -369,6 +288,31 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		assertThat( systemContent ).contains( "read" );
 		assertThat( systemContent ).contains( "write" );
 		assertThat( systemContent ).doesNotContain( "${context}" );
+	}
+
+	@DisplayName( "Context can be combined with other bindings via render()" )
+	@Test
+	public void testContextWithOtherBindings() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage( "Hello ${name}, your context is: ${context}" )
+					.bind( { name: "John" } )
+					.setContext( { role: "admin" } )
+
+				messages = message.render()
+				messageContent = messages[1].content
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		String messageContent = variables.getAsString( Key.of( "messageContent" ) );
+		assertThat( messageContent ).contains( "Hello John" );
+		assertThat( messageContent ).contains( "admin" );
+		assertThat( messageContent ).doesNotContain( "${name}" );
+		assertThat( messageContent ).doesNotContain( "${context}" );
 	}
 
 }

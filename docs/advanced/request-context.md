@@ -1,14 +1,12 @@
-# 🔐 Request Context
+# 🔐 Message Context
 
-The BoxLang AI module provides a powerful context system for AI requests that allows you to inject security information, RAG (Retrieval Augmented Generation) data, and other contextual information into your AI operations.
+The BoxLang AI module provides a powerful context system for AI messages that allows you to inject security information, RAG (Retrieval Augmented Generation) data, and other contextual information into your AI operations.
 
 ## 📋 Table of Contents
 
 - [Overview](#overview)
-- [Convention-Based Injection](#convention-based-injection)
 - [Adding Context](#adding-context)
-- [Accessing Context](#accessing-context)
-- [Using Context with Interceptors](#using-context-with-interceptors)
+- [Convention-Based Injection](#convention-based-injection)
 - [Common Use Cases](#common-use-cases)
 - [Best Practices](#best-practices)
 
@@ -16,168 +14,41 @@ The BoxLang AI module provides a powerful context system for AI requests that al
 
 ## 🔍 Overview
 
-The context system provides a dedicated struct property on AI requests where you can store:
+The context system provides a dedicated struct property on `AiMessage` where you can store:
 
 - **Security context**: User roles, permissions, tenant IDs, authentication tokens
 - **RAG context**: Retrieved documents, embeddings, search results
 - **Application context**: Request metadata, session info, environment data
 
-Context can be injected into messages in two ways:
-
-1. **Convention-based**: Use `${context}` placeholder in messages for automatic injection
-2. **Interceptor-based**: Access context in interceptors for custom injection logic
+Context is injected into messages using the existing binding system via the `render()` method. The `${context}` placeholder is automatically replaced with JSON-serialized context data.
 
 ```
 Context Flow:
 ┌─────────────────────────────────────────────────────────────────────┐
 │                                                                     │
-│   aiChat/aiChatRequest                                              │
+│   aiMessage()                                                       │
+│        │                                                            │
+│        ├── .addContext() / .setContext() / .mergeContext()         │
 │        │                                                            │
 │        ▼                                                            │
 │   ┌─────────────┐      ┌─────────────┐      ┌─────────────┐        │
-│   │  AiRequest  │ ──▶  │ ${context}  │ ──▶  │  AI Provider│        │
-│   │  + context  │      │  binding    │      │  (messages) │        │
+│   │  AiMessage  │ ──▶  │  render()   │ ──▶  │  Messages   │        │
+│   │  + context  │      │  ${context} │      │  (bound)    │        │
 │   └─────────────┘      └─────────────┘      └─────────────┘        │
-│                              │                                      │
-│                              ▼                                      │
-│                        Interceptors                                 │
-│                        (optional)                                   │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🎯 Convention-Based Injection
-
-The simplest way to inject context into your messages is using the `${context}` placeholder. When messages are rendered, this placeholder is automatically replaced with the JSON-serialized context data.
-
-### Basic Usage
-
-```javascript
-// Context is automatically injected where ${context} appears
-response = aiChat(
-    "You are a helpful assistant. User context: ${context}. Please help the user.",
-    {},
-    {
-        context: {
-            userId: "user-123",
-            role: "premium",
-            preferences: { language: "en", tone: "friendly" }
-        }
-    }
-);
-```
-
-The message sent to the AI will contain:
-```
-You are a helpful assistant. User context: {"userId":"user-123","role":"premium","preferences":{"language":"en","tone":"friendly"}}. Please help the user.
-```
-
-### With System Messages
-
-```javascript
-message = aiMessage()
-    .system( "You are a customer service AI. Customer data: ${context}" )
-    .user( "What's my order status?" )
-
-response = aiChat(
-    message,
-    {},
-    {
-        context: {
-            customerId: "C-12345",
-            name: "John Doe",
-            recentOrders: [
-                { id: "ORD-001", status: "shipped" },
-                { id: "ORD-002", status: "processing" }
-            ]
-        }
-    }
-);
-```
-
-### RAG Pattern
-
-```javascript
-// Retrieve relevant documents
-relevantDocs = vectorStore.search( query: userQuestion, limit: 3 );
-
-response = aiChat(
-    """
-    Use the following context to answer the question:
-    ${context}
-
-    Question: #userQuestion#
-    """,
-    {},
-    {
-        context: {
-            documents: relevantDocs.map( doc => doc.content ),
-            sources: relevantDocs.map( doc => doc.metadata.source )
-        }
-    }
-);
-```
-
-### No Placeholder = No Injection
-
-If your message doesn't contain `${context}`, the context is still available on the request but won't be injected into the message content:
-
-```javascript
-// Context is available but not injected (no ${context} in message)
-response = aiChat(
-    "Hello, how are you?",
-    {},
-    {
-        context: { userId: "user-123" }  // Available for interceptors
-    }
-);
-```
-
----
-
 ## 📥 Adding Context
 
-### Via Options (Recommended)
-
-Pass context directly when making AI calls:
-
-```javascript
-// Simple chat with context
-response = aiChat(
-    "What products can I order?",
-    {},
-    {
-        context: {
-            userId: "user-123",
-            tenantId: "acme-corp",
-            roles: ["customer", "premium"],
-            ragDocuments: [
-                "Available products: Widget A, Widget B, Widget C"
-            ]
-        }
-    }
-);
-
-// Creating a request object with context
-request = aiChatRequest(
-    messages: "Summarize my orders",
-    options: {
-        context: {
-            userId: session.userId,
-            orderHistory: orderService.getRecentOrders( session.userId )
-        }
-    }
-);
-```
-
-### Fluent API
+### Fluent API (Recommended)
 
 Build context incrementally using chaining:
 
 ```javascript
-request = aiChatRequest( messages: "Help me with my account" )
+message = aiMessage( "Help me with my account" )
     .addContext( "userId", session.userId )
     .addContext( "tenantId", session.tenantId )
     .addContext( "permissions", userService.getPermissions( session.userId ) )
@@ -196,7 +67,7 @@ request = aiChatRequest( messages: "Help me with my account" )
 Replace the entire context at once:
 
 ```javascript
-request = aiChatRequest( messages: "Query" )
+message = aiMessage( "Query" )
     .setContext({
         userId: "user-123",
         environment: "production",
@@ -204,207 +75,115 @@ request = aiChatRequest( messages: "Query" )
     });
 ```
 
----
-
-## 📤 Accessing Context
-
-### Check for Context
+### Access Context
 
 ```javascript
-request = aiChatRequest( messages: "Hello", options: { context: { userId: "123" } } );
-
-if ( request.hasContext() ) {
+// Check for context
+if ( message.hasContext() ) {
     println( "Context is available" );
 }
-```
 
-### Get Entire Context
+// Get entire context
+context = message.getContext();
 
-```javascript
-context = request.getContext();
-// Returns: { userId: "123", tenantId: "acme", ... }
-```
-
-### Get Specific Values
-
-```javascript
-// Get with default value
-userId = request.getContextValue( "userId", "anonymous" );
-tenantId = request.getContextValue( "tenantId", "default" );
-
-// Check and use
-permissions = request.getContextValue( "permissions", [] );
-if ( permissions.contains( "admin" ) ) {
-    // Admin-specific logic
-}
+// Get specific values with defaults
+userId = message.getContextValue( "userId", "anonymous" );
+tenantId = message.getContextValue( "tenantId", "default" );
 ```
 
 ---
 
-## 🔌 Using Context with Interceptors
+## 🎯 Convention-Based Injection
 
-The real power of context comes from interceptors. Context is accessible throughout the request lifecycle, allowing you to inject content, validate permissions, and customize behavior.
+The simplest way to inject context into your messages is using the `${context}` placeholder. When `render()` is called, this placeholder is automatically replaced with the JSON-serialized context data.
 
-### Injecting RAG Content
-
-The most common use case is injecting retrieved documents into the AI conversation:
+### Basic Usage
 
 ```javascript
-// interceptors/RAGInterceptor.bx
-class {
+// Context is automatically injected where ${context} appears
+message = aiMessage( "You are a helpful assistant. User context: ${context}. Please help the user." )
+    .setContext({
+        userId: "user-123",
+        role: "premium",
+        preferences: { language: "en", tone: "friendly" }
+    });
 
-    function onAIRequest( event, interceptData ) {
-        var aiRequest = interceptData.aiRequest;
-        var context = aiRequest.getContext();
-
-        // Check if we have RAG documents to inject
-        if ( context.keyExists( "ragDocuments" ) && !context.ragDocuments.isEmpty() ) {
-            var messages = aiRequest.getMessages();
-
-            // Build RAG context message
-            var ragContent = "Use the following context to answer the user's question:" & chr(10) & chr(10);
-            for ( var doc in context.ragDocuments ) {
-                ragContent &= "---" & chr(10) & doc & chr(10);
-            }
-            ragContent &= "---" & chr(10) & chr(10) & "Answer based only on the context above.";
-
-            // Prepend as system message or inject into existing system message
-            if ( messages.len() > 0 && messages[1].role == "system" ) {
-                messages[1].content = ragContent & chr(10) & chr(10) & messages[1].content;
-            } else {
-                arrayPrepend( messages, { role: "system", content: ragContent } );
-            }
-
-            aiRequest.setMessages( messages );
-        }
-    }
-}
+// Render applies the bindings
+renderedMessages = message.render();
 ```
 
-### Security Validation
-
-Validate user permissions before allowing AI operations:
-
-```javascript
-// interceptors/SecurityInterceptor.bx
-class {
-
-    function onAIRequest( event, interceptData ) {
-        var aiRequest = interceptData.aiRequest;
-        var context = aiRequest.getContext();
-
-        // Require authentication
-        if ( !context.keyExists( "userId" ) || context.userId.isEmpty() ) {
-            throw( type: "SecurityViolation", message: "Authentication required for AI operations" );
-        }
-
-        // Check permissions
-        var permissions = context.keyExists( "permissions" ) ? context.permissions : [];
-        if ( !permissions.contains( "ai.chat" ) ) {
-            throw( type: "SecurityViolation", message: "User lacks permission for AI chat" );
-        }
-
-        // Rate limiting per user
-        var userId = context.userId;
-        if ( isRateLimited( userId ) ) {
-            throw( type: "RateLimitExceeded", message: "Too many AI requests. Please wait." );
-        }
-
-        incrementRequestCount( userId );
-    }
-}
+The rendered message will contain:
+```
+You are a helpful assistant. User context: {"userId":"user-123","role":"premium","preferences":{"language":"en","tone":"friendly"}}. Please help the user.
 ```
 
-### Multi-Tenant Isolation
-
-Use context for tenant-specific behavior:
+### With System Messages
 
 ```javascript
-// interceptors/TenantInterceptor.bx
-class {
+message = aiMessage()
+    .system( "You are a customer service AI. Customer data: ${context}" )
+    .user( "What's my order status?" )
+    .setContext({
+        customerId: "C-12345",
+        name: "John Doe",
+        recentOrders: [
+            { id: "ORD-001", status: "shipped" },
+            { id: "ORD-002", status: "processing" }
+        ]
+    });
 
-    function onAIRequest( event, interceptData ) {
-        var aiRequest = interceptData.aiRequest;
-        var context = aiRequest.getContext();
-        var tenantId = context.keyExists( "tenantId" ) ? context.tenantId : "default";
-
-        // Load tenant-specific configuration
-        var tenantConfig = getTenantConfig( tenantId );
-
-        // Override model based on tenant subscription
-        if ( tenantConfig.plan == "enterprise" ) {
-            aiRequest.getParams().model = "gpt-4";
-        } else {
-            aiRequest.getParams().model = "gpt-3.5-turbo";
-        }
-
-        // Add tenant-specific system instructions
-        var messages = aiRequest.getMessages();
-        if ( tenantConfig.keyExists( "systemPrompt" ) ) {
-            arrayPrepend( messages, {
-                role: "system",
-                content: tenantConfig.systemPrompt
-            });
-            aiRequest.setMessages( messages );
-        }
-
-        // Track usage per tenant
-        trackTenantUsage( tenantId, "chat_request" );
-    }
-
-    function onAIResponse( event, interceptData ) {
-        var context = interceptData.aiRequest.getContext();
-        var tenantId = context.keyExists( "tenantId" ) ? context.tenantId : "default";
-
-        // Track token usage per tenant
-        if ( interceptData.response.keyExists( "usage" ) ) {
-            trackTenantTokens( tenantId, interceptData.response.usage.total_tokens );
-        }
-    }
-}
+renderedMessages = message.render();
 ```
 
-### Personalization
+### Combining with Other Bindings
 
-Customize AI behavior based on user preferences:
+Context works seamlessly with other bindings:
 
 ```javascript
-// interceptors/PersonalizationInterceptor.bx
-class {
+message = aiMessage( "Hello ${name}, your context is: ${context}" )
+    .bind( { name: "John" } )
+    .setContext( { role: "admin", permissions: ["read", "write"] } );
 
-    function beforeAIModelInvoke( event, interceptData ) {
-        var aiRequest = interceptData.aiRequest;
-        var context = aiRequest.getContext();
+renderedMessages = message.render();
+// Result: "Hello John, your context is: {"role":"admin","permissions":["read","write"]}"
+```
 
-        // Get user preferences
-        var preferences = context.keyExists( "userPreferences" ) ? context.userPreferences : {};
+### RAG Pattern
 
-        // Adjust temperature based on preference
-        if ( preferences.keyExists( "creativity" ) ) {
-            var params = aiRequest.getParams();
-            params.temperature = preferences.creativity == "high" ? 0.9 : 0.3;
-        }
+```javascript
+// Retrieve relevant documents
+relevantDocs = vectorStore.search( query: userQuestion, limit: 3 );
 
-        // Add personalized system context
-        var messages = aiRequest.getMessages();
-        var personalContext = "";
+message = aiMessage()
+    .system("""
+        Use the following context to answer the question:
+        ${context}
+        
+        Answer based only on the provided context.
+    """)
+    .user( userQuestion )
+    .setContext({
+        documents: relevantDocs.map( doc => doc.content ),
+        sources: relevantDocs.map( doc => doc.metadata.source )
+    });
 
-        if ( preferences.keyExists( "language" ) ) {
-            personalContext &= "Respond in #preferences.language#. ";
-        }
-        if ( preferences.keyExists( "expertise" ) ) {
-            personalContext &= "Assume #preferences.expertise# level expertise. ";
-        }
-        if ( preferences.keyExists( "tone" ) ) {
-            personalContext &= "Use a #preferences.tone# tone. ";
-        }
+renderedMessages = message.render();
+```
 
-        if ( personalContext.len() > 0 ) {
-            arrayPrepend( messages, { role: "system", content: personalContext.trim() } );
-            aiRequest.setMessages( messages );
-        }
-    }
-}
+### No Placeholder = No Injection
+
+If your message doesn't contain `${context}`, the context is still available on the message object but won't be injected into the message content:
+
+```javascript
+// Context is available but not injected (no ${context} in message)
+message = aiMessage( "Hello, how are you?" )
+    .setContext({ userId: "user-123" });
+
+// Context is still accessible
+userId = message.getContextValue( "userId" );  // "user-123"
+
+// But render won't change the message
+renderedMessages = message.render();  // "Hello, how are you?"
 ```
 
 ---
@@ -421,17 +200,15 @@ relevantDocs = vectorStore.search(
     threshold: 0.7
 );
 
-// Pass to AI with context
-response = aiChat(
-    userQuestion,
-    {},
-    {
-        context: {
-            ragDocuments: relevantDocs.map( doc => doc.content ),
-            ragMetadata: relevantDocs.map( doc => { source: doc.source, score: doc.score } )
-        }
-    }
-);
+message = aiMessage()
+    .system( "Use this context to answer: ${context}" )
+    .user( userQuestion )
+    .setContext({
+        ragDocuments: relevantDocs.map( doc => doc.content ),
+        ragMetadata: relevantDocs.map( doc => { source: doc.source, score: doc.score } )
+    });
+
+response = aiChat( message.render() );
 ```
 
 ### 2. Secure Multi-User Application
@@ -441,19 +218,18 @@ response = aiChat(
 function askAI( required string question ) {
     var user = getAuthenticatedUser();
 
-    return aiChat(
-        arguments.question,
-        {},
-        {
-            context: {
-                userId: user.id,
-                tenantId: user.tenantId,
-                permissions: user.permissions,
-                department: user.department,
-                subscriptionTier: user.subscription.tier
-            }
-        }
-    );
+    var message = aiMessage()
+        .system( "You are an assistant. User context: ${context}" )
+        .user( arguments.question )
+        .setContext({
+            userId: user.id,
+            tenantId: user.tenantId,
+            permissions: user.permissions,
+            department: user.department,
+            subscriptionTier: user.subscription.tier
+        });
+
+    return aiChat( message.render() );
 }
 ```
 
@@ -465,46 +241,18 @@ customer = customerService.get( customerId );
 recentTickets = supportService.getRecentTickets( customerId );
 orderHistory = orderService.getHistory( customerId );
 
-response = aiChat(
-    customerQuestion,
-    {},
-    {
-        context: {
-            customerId: customer.id,
-            customerName: customer.name,
-            accountType: customer.type,
-            ragDocuments: [
-                "Customer Details: Name=#customer.name#, Account Type=#customer.type#, Since=#customer.createdAt#",
-                "Recent Support Tickets: " & serializeJSON( recentTickets ),
-                "Recent Orders: " & serializeJSON( orderHistory )
-            ],
-            instructions: "You are a helpful customer support agent. Use the customer context to provide personalized assistance."
-        }
-    }
-);
-```
+message = aiMessage()
+    .system( "You are a customer support AI. Customer data: ${context}" )
+    .user( customerQuestion )
+    .setContext({
+        customerId: customer.id,
+        customerName: customer.name,
+        accountType: customer.type,
+        recentTickets: recentTickets,
+        orderHistory: orderHistory
+    });
 
-### 4. Code Assistant with Project Context
-
-```javascript
-// Get project context
-projectFiles = fileService.listFiles( projectPath );
-dependencies = packageManager.getDependencies( projectPath );
-recentChanges = gitService.getRecentCommits( projectPath, 5 );
-
-response = aiChat(
-    developerQuestion,
-    {},
-    {
-        context: {
-            projectType: "boxlang-module",
-            projectFiles: projectFiles,
-            dependencies: dependencies,
-            recentChanges: recentChanges,
-            codingStandards: getTeamCodingStandards()
-        }
-    }
-);
+response = aiChat( message.render() );
 ```
 
 ---
@@ -513,63 +261,43 @@ response = aiChat(
 
 ### 1. Don't Send Sensitive Data to AI
 
-Context is for **your application's use**. Be careful what gets injected into messages:
+Context is sent to the AI provider. Be careful what gets injected:
 
 ```javascript
 // ❌ Bad: Injecting sensitive data directly
-context: {
+.setContext({
     userPassword: user.password,  // Never!
     apiKey: config.apiKey,        // Never!
     ssn: user.ssn                 // Never!
-}
+})
 
 // ✅ Good: Use IDs and references
-context: {
+.setContext({
     userId: user.id,
     hasVerifiedEmail: user.emailVerified,
     subscriptionTier: user.subscription.tier
-}
+})
 ```
 
-### 2. Validate Context in Interceptors
-
-Always validate context data before using it:
-
-```javascript
-function onAIRequest( event, interceptData ) {
-    var context = interceptData.aiRequest.getContext();
-
-    // Validate required fields
-    if ( !context.keyExists( "tenantId" ) ) {
-        throw( "tenantId is required in context" );
-    }
-
-    // Sanitize data
-    if ( context.keyExists( "ragDocuments" ) ) {
-        context.ragDocuments = context.ragDocuments.map( doc => sanitizeContent( doc ) );
-    }
-}
-```
-
-### 3. Keep Context Lightweight
+### 2. Keep Context Lightweight
 
 Don't overload context with large data:
 
 ```javascript
 // ❌ Bad: Large data in context
-context: {
+.setContext({
     allDocuments: fileRead( "/path/to/huge/file.txt" ),  // Could be MB of data!
     entireDatabase: queryExecute( "SELECT * FROM everything" )
-}
+})
 
 // ✅ Good: References and summaries
-context: {
+.setContext({
     documentIds: ["doc1", "doc2", "doc3"],
     relevantExcerpts: getRelevantExcerpts( userQuery, 500 )  // Limited size
-}
+})
 ```
 
-### 4. Use Typed Context Keys
+### 3. Use Typed Context Keys
 
 Establish conventions for context keys:
 
@@ -580,47 +308,20 @@ static {
     CONTEXT_TENANT_ID = "tenantId";
     CONTEXT_PERMISSIONS = "permissions";
     CONTEXT_RAG_DOCS = "ragDocuments";
-    CONTEXT_RAG_METADATA = "ragMetadata";
 }
 
 // Use consistently
-request.addContext( CONTEXT_USER_ID, user.id )
+message.addContext( CONTEXT_USER_ID, user.id )
        .addContext( CONTEXT_TENANT_ID, tenant.id );
-```
-
-### 5. Document Your Context Schema
-
-Create documentation for your application's context structure:
-
-```javascript
-/**
- * AI Request Context Schema
- *
- * Security Context:
- * - userId (string): Authenticated user ID
- * - tenantId (string): Multi-tenant organization ID
- * - permissions (array): User permission strings
- * - roles (array): User role names
- *
- * RAG Context:
- * - ragDocuments (array): Retrieved document contents
- * - ragMetadata (array): Source and score info for each document
- * - searchQuery (string): Original search query used
- *
- * Application Context:
- * - requestId (string): Unique request identifier
- * - environment (string): dev/staging/production
- * - featureFlags (array): Enabled feature flags
- */
 ```
 
 ---
 
 ## 🔗 Related Documentation
 
-- **[Event System](events.md)** - Full interceptor documentation
+- **[AiMessage Documentation](../main-components/messages.md)** - Full message builder documentation
+- **[Event System](events.md)** - Interceptor documentation
 - **[Embeddings](embeddings.md)** - Generate embeddings for RAG
-- **[Multi-Tenant Memory](multi-tenant-memory.md)** - Tenant isolation patterns
 
 ---
 

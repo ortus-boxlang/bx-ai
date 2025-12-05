@@ -35,14 +35,13 @@ Convert text into vector representations for semantic search and similarity matc
 
 ---
 
-### 🔐 [Request Context](request-context.md)
+### 🔐 [Message Context](request-context.md)
 
-Inject security, RAG, and application context into AI requests.
+Inject security, RAG, and application context into AI messages.
 
 **What you'll learn:**
-- Adding context to AI requests (security, RAG, metadata)
-- Accessing context data throughout the request lifecycle
-- Using interceptors to inject context into messages
+- Adding context to AI messages (security, RAG, metadata)
+- Using `${context}` placeholder for automatic injection via `render()`
 - Multi-tenant isolation patterns
 - RAG implementation with context
 
