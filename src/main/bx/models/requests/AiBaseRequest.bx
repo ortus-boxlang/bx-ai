@@ -86,6 +86,15 @@ abstract class{
 	property name="maxInteractions" type="numeric" default=0;
 
 	/**
+	 * A context struct for injecting additional data into the request.
+	 * This can be used for:
+	 * - Security context (user roles, permissions, tenant info)
+	 * - RAG context (retrieved documents, embeddings, metadata)
+	 * - Any additional contextual information needed by agents or chat handlers
+	 */
+	property name="context" type="struct" default={};
+
+	/**
 	 * Add a header to the request
 	 *
 	 * @name The name of the header
@@ -140,6 +149,53 @@ abstract class{
 	function mergeServiceHeaders( required struct serviceHeaders ){
 		variables.headers.append( arguments.serviceHeaders, false );
 		return this;
+	}
+
+	/**
+	 * Check if the request has any context data
+	 *
+	 * @return True if context is not empty
+	 */
+	boolean function hasContext(){
+		return !variables.context.isEmpty();
+	}
+
+	/**
+	 * Add or update a single context value
+	 *
+	 * @key The context key
+	 * @value The context value
+	 *
+	 * @return The request for chaining
+	 */
+	function addContext( required string key, required any value ){
+		variables.context[ arguments.key ] = arguments.value;
+		return this;
+	}
+
+	/**
+	 * Merge additional context data into the existing context
+	 * Existing keys will be overwritten if present in the new context
+	 *
+	 * @contextData The context data to merge
+	 *
+	 * @return The request for chaining
+	 */
+	function mergeContext( required struct contextData ){
+		variables.context.append( arguments.contextData, true );
+		return this;
+	}
+
+	/**
+	 * Get a specific context value by key
+	 *
+	 * @key The context key to retrieve
+	 * @defaultValue The default value if key doesn't exist
+	 *
+	 * @return The context value or default
+	 */
+	any function getContextValue( required string key, any defaultValue = "" ){
+		return variables.context.keyExists( arguments.key ) ? variables.context[ arguments.key ] : arguments.defaultValue;
 	}
 
 }

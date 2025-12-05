@@ -48,7 +48,7 @@ class {
 	 *
 	 * @input The input text or array of texts to generate embeddings for
 	 * @params A set of request params to pass to the provider (e.g., model, encoding_format)
-	 * @options A set of request options (e.g., provider, apiKey, returnFormat, timeout)
+	 * @options A set of request options (e.g., provider, apiKey, returnFormat, timeout, context)
 	 *
 	 * @return The embeddings response from the provider. Format depends on returnFormat option:
 	 *         - "raw" (default): Full API response with metadata

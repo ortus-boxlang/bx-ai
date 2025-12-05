@@ -44,6 +44,7 @@ class extends="AiBaseRequest"{
 		variables.returnFormat = options.returnFormat ?: "first";
 		variables.model = options.params?.model ?: "";
 		variables.timeout = options.timeout ?: 30;
+		variables.context = options.context ?: {};
 		return this;
 	}
 

@@ -68,6 +68,7 @@ class extends="AiBaseRequest"{
 		variables.timeout = options.timeout ?: 30;
 		variables.stream = options.stream ?: false;
 		variables.maxInteractions = options.maxInteractions ?: 0;
+		variables.context = options.context ?: {};
 
 		// Check for explicit schema first (from schema() method)
 		if( options.keyExists( "schema" ) ) {
