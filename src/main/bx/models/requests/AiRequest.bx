@@ -161,4 +161,44 @@ class extends="AiBaseRequest"{
 		return this;
 	}
 
+	/**
+	 * Get the messages with context binding applied.
+	 * If messages contain ${context} placeholder, it will be replaced with
+	 * the serialized context data. This allows for convention-based injection.
+	 *
+	 * @return The array of messages with context bound
+	 */
+	array function getMessages(){
+		// If no context, return messages as-is
+		if( !hasContext() ){
+			return variables.messages;
+		}
+
+		// Serialize context for binding
+		var contextString = jsonSerialize( variables.context );
+
+		// Apply context binding to message content
+		return variables.messages.map( message => {
+			var boundMessage = duplicate( message );
+
+			// Handle simple string content
+			if( isSimpleValue( boundMessage.content ) ){
+				boundMessage.content = stringBind( boundMessage.content, { context: contextString } );
+			}
+			// Handle array content (multipart messages with text parts)
+			else if( isArray( boundMessage.content ) ){
+				boundMessage.content = boundMessage.content.map( part => {
+					if( isStruct( part ) && part.keyExists( "type" ) && part.type == "text" && part.keyExists( "text" ) ){
+						var boundPart = duplicate( part );
+						boundPart.text = stringBind( boundPart.text, { context: contextString } );
+						return boundPart;
+					}
+					return part;
+				});
+			}
+
+			return boundMessage;
+		});
+	}
+
 }

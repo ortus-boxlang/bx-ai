@@ -5,6 +5,7 @@ The BoxLang AI module provides a powerful context system for AI requests that al
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [Convention-Based Injection](#convention-based-injection)
 - [Adding Context](#adding-context)
 - [Accessing Context](#accessing-context)
 - [Using Context with Interceptors](#using-context-with-interceptors)
@@ -21,7 +22,10 @@ The context system provides a dedicated struct property on AI requests where you
 - **RAG context**: Retrieved documents, embeddings, search results
 - **Application context**: Request metadata, session info, environment data
 
-Context is **not automatically injected** into messages sent to the AI provider. Instead, it flows through the request lifecycle and is accessible via interceptors, giving you complete control over how context is used:
+Context can be injected into messages in two ways:
+
+1. **Convention-based**: Use `${context}` placeholder in messages for automatic injection
+2. **Interceptor-based**: Access context in interceptors for custom injection logic
 
 ```
 Context Flow:
@@ -31,12 +35,104 @@ Context Flow:
 │        │                                                            │
 │        ▼                                                            │
 │   ┌─────────────┐      ┌─────────────┐      ┌─────────────┐        │
-│   │  AiRequest  │ ──▶  │ Interceptors │ ──▶  │  AI Provider│        │
-│   │  + context  │      │ (access &   │      │  (messages) │        │
-│   └─────────────┘      │  modify)    │      └─────────────┘        │
-│                        └─────────────┘                              │
+│   │  AiRequest  │ ──▶  │ ${context}  │ ──▶  │  AI Provider│        │
+│   │  + context  │      │  binding    │      │  (messages) │        │
+│   └─────────────┘      └─────────────┘      └─────────────┘        │
+│                              │                                      │
+│                              ▼                                      │
+│                        Interceptors                                 │
+│                        (optional)                                   │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🎯 Convention-Based Injection
+
+The simplest way to inject context into your messages is using the `${context}` placeholder. When messages are rendered, this placeholder is automatically replaced with the JSON-serialized context data.
+
+### Basic Usage
+
+```javascript
+// Context is automatically injected where ${context} appears
+response = aiChat(
+    "You are a helpful assistant. User context: ${context}. Please help the user.",
+    {},
+    {
+        context: {
+            userId: "user-123",
+            role: "premium",
+            preferences: { language: "en", tone: "friendly" }
+        }
+    }
+);
+```
+
+The message sent to the AI will contain:
+```
+You are a helpful assistant. User context: {"userId":"user-123","role":"premium","preferences":{"language":"en","tone":"friendly"}}. Please help the user.
+```
+
+### With System Messages
+
+```javascript
+message = aiMessage()
+    .system( "You are a customer service AI. Customer data: ${context}" )
+    .user( "What's my order status?" )
+
+response = aiChat(
+    message,
+    {},
+    {
+        context: {
+            customerId: "C-12345",
+            name: "John Doe",
+            recentOrders: [
+                { id: "ORD-001", status: "shipped" },
+                { id: "ORD-002", status: "processing" }
+            ]
+        }
+    }
+);
+```
+
+### RAG Pattern
+
+```javascript
+// Retrieve relevant documents
+relevantDocs = vectorStore.search( query: userQuestion, limit: 3 );
+
+response = aiChat(
+    """
+    Use the following context to answer the question:
+    ${context}
+
+    Question: #userQuestion#
+    """,
+    {},
+    {
+        context: {
+            documents: relevantDocs.map( doc => doc.content ),
+            sources: relevantDocs.map( doc => doc.metadata.source )
+        }
+    }
+);
+```
+
+### No Placeholder = No Injection
+
+If your message doesn't contain `${context}`, the context is still available on the request but won't be injected into the message content:
+
+```javascript
+// Context is available but not injected (no ${context} in message)
+response = aiChat(
+    "Hello, how are you?",
+    {},
+    {
+        context: { userId: "user-123" }  // Available for interceptors
+    }
+);
 ```
 
 ---

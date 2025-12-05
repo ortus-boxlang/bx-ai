@@ -278,4 +278,97 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "hasContext" ) ) ).isTrue();
 	}
 
+	@DisplayName( "Context is automatically bound to messages with ${context} placeholder" )
+	@Test
+	public void testContextBindingInMessages() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				contextData = {
+					userId: "user-123",
+					documents: ["doc1", "doc2"]
+				}
+
+				request = aiChatRequest(
+					messages: "Here is the context: ${context}. Now answer my question.",
+					options: { context: contextData }
+				)
+
+				messages = request.getMessages()
+				messageContent = messages[1].content
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		String messageContent = variables.getAsString( Key.of( "messageContent" ) );
+		assertThat( messageContent ).contains( "user-123" );
+		assertThat( messageContent ).contains( "doc1" );
+		assertThat( messageContent ).contains( "doc2" );
+		assertThat( messageContent ).doesNotContain( "${context}" );
+	}
+
+	@DisplayName( "Messages without ${context} placeholder are unchanged" )
+	@Test
+	public void testNoContextPlaceholder() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				contextData = {
+					userId: "user-123"
+				}
+
+				request = aiChatRequest(
+					messages: "Hello, how are you?",
+					options: { context: contextData }
+				)
+
+				messages = request.getMessages()
+				messageContent = messages[1].content
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		String messageContent = variables.getAsString( Key.of( "messageContent" ) );
+		assertThat( messageContent ).isEqualTo( "Hello, how are you?" );
+	}
+
+	@DisplayName( "Context binding works with system messages" )
+	@Test
+	public void testContextBindingInSystemMessage() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				contextData = {
+					role: "admin",
+					permissions: ["read", "write"]
+				}
+
+				message = aiMessage()
+					.system( "You are an AI assistant. User context: ${context}" )
+					.user( "What can I do?" )
+
+				request = aiChatRequest(
+					messages: message,
+					options: { context: contextData }
+				)
+
+				messages = request.getMessages()
+				systemContent = messages[1].content
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		String systemContent = variables.getAsString( Key.of( "systemContent" ) );
+		assertThat( systemContent ).contains( "admin" );
+		assertThat( systemContent ).contains( "read" );
+		assertThat( systemContent ).contains( "write" );
+		assertThat( systemContent ).doesNotContain( "${context}" );
+	}
+
 }
