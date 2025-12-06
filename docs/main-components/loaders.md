@@ -6,12 +6,13 @@ Document loaders are a powerful feature for importing content from various sourc
 
 The document loading system provides:
 
-- **Multiple Loader Types**: Text, Markdown, HTML, CSV, JSON, and Directory loaders
-- **Consistent Document Format**: All loaders produce `Document` objects with content and metadata
+- **Multiple Loader Types**: Text, Markdown, CSV, JSON, HTTP, Tika, and Directory loaders
+- **Consistent Document Format**: All loaders produce `Document` objects with content, metadata, id, and embedding properties
 - **Fluent API**: Chain methods for easy configuration
 - **Memory Integration**: Load directly into AI memory systems for RAG workflows
 - **Chunking Support**: Automatic text chunking for large documents
 - **Multi-Memory Fan-out**: Ingest to multiple memory systems simultaneously
+- **Async Support**: Load documents asynchronously with `loadAsync()`
 
 ## BIF Reference
 
@@ -34,6 +35,9 @@ docs = aiDocuments( "/path/to/document.txt" )
 
 // Load a directory of files
 docs = aiDocuments( "/path/to/folder" )
+
+// Load from URL
+docs = aiDocuments( "https://example.com/page.html" )
 
 // Load with explicit type
 docs = aiDocuments( source: "/path/to/file.txt", type: "markdown" )
@@ -61,6 +65,17 @@ loader = aiDocumentLoader( "/knowledge-base", "directory" )
     .recursive()
     .extensions( ["md", "txt"] )
 docs = loader.load()
+
+// Create an HTTP loader for web content
+loader = aiDocumentLoader( "https://api.example.com/data", "http" )
+    .contentType( "json" )
+    .timeout( 60 )
+    .header( "Authorization", "Bearer token" )
+docs = loader.load()
+
+// Load async
+future = loader.loadAsync()
+docs = future.get()
 ```
 
 ### Using `aiMemoryIngest()`
@@ -132,7 +147,9 @@ Each `Document` object has:
 
 ```java
 {
+    "id": "auto-generated-uuid",
     "content": "The extracted text content",
+    "embedding": [],  // Empty array until embeddings are generated
     "metadata": {
         "source": "/path/to/file",
         "loader": "TextLoader",
@@ -191,29 +208,33 @@ docs = loader.load()
 | `removeImages` | boolean | false | Remove image references |
 | `removeLinks` | boolean | false | Remove links (keeps text) |
 
-### HTMLLoader
+### HTTPLoader
 
-Loads HTML files or URLs, extracting text content.
+Loads content from HTTP/HTTPS URLs with automatic content type detection. This is the primary loader for all web-based content including HTML pages, JSON APIs, and XML feeds.
 
 ```java
-import bxModules.bxai.models.loaders.HTMLLoader;
+import bxModules.bxai.models.loaders.HTTPLoader;
 
-// Load from file
-loader = new HTMLLoader( source: "/path/to/page.html" )
+// Basic URL loading
+loader = new HTTPLoader( source: "https://example.com/page.html" )
 docs = loader.load()
 
-// Load from URL
-loader = new HTMLLoader( source: "https://example.com/page.html" )
+// JSON API endpoint
+loader = new HTTPLoader( source: "https://api.example.com/data" )
+    .contentType( "json" )
+    .header( "Authorization", "Bearer token" )
 docs = loader.load()
 
-// Extract specific tags
-loader = new HTMLLoader( source: "/path/to/page.html" )
-    .extractTags( ["article", "main"] )
+// POST request with body
+loader = new HTTPLoader( source: "https://api.example.com/submit" )
+    .post()
+    .body( { query: "search term" } )
+    .timeout( 60 )
 docs = loader.load()
 
-// Preserve links in output
-loader = new HTMLLoader( source: "/path/to/page.html" )
-    .preserveLinks()
+// With proxy
+loader = new HTTPLoader( source: "https://example.com" )
+    .proxy( "proxy.example.com", 8080, "user", "password" )
 docs = loader.load()
 ```
 
@@ -221,11 +242,31 @@ docs = loader.load()
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `extractTags` | array | [] | Extract content from specific tags |
-| `removeScripts` | boolean | true | Remove script tags |
-| `removeStyles` | boolean | true | Remove style tags |
-| `removeComments` | boolean | true | Remove HTML comments |
-| `preserveLinks` | boolean | false | Keep links as "text (url)" format |
+| `contentType` | string | "auto" | Content type (auto, text, html, json, xml) |
+| `method` | string | "GET" | HTTP method |
+| `headers` | struct | {} | Request headers |
+| `body` | string | "" | Request body |
+| `timeout` | numeric | 30 | Request timeout in seconds |
+| `connectionTimeout` | numeric | 30 | Connection timeout in seconds |
+| `redirect` | boolean | true | Follow redirects |
+| `extractText` | boolean | true | Extract text from HTML |
+| `removeScripts` | boolean | true | Remove script tags from HTML |
+| `removeStyles` | boolean | true | Remove style tags from HTML |
+
+**Fluent HTTP Methods:**
+
+- `.get()` - Set GET method
+- `.post()` - Set POST method
+- `.put()` - Set PUT method
+- `.delete()` - Set DELETE method
+- `.method( "PATCH" )` - Set custom method
+- `.header( name, value )` - Add single header
+- `.headers( { name: value } )` - Add multiple headers
+- `.body( content )` - Set request body
+- `.timeout( seconds )` - Set request timeout
+- `.connectionTimeout( seconds )` - Set connection timeout
+- `.redirect( true/false )` - Enable/disable redirects
+- `.proxy( server, port, user?, password? )` - Configure proxy
 
 ### CSVLoader
 
@@ -292,6 +333,52 @@ docs = loader.load()
 | `metadataFields` | array | [] | Fields to extract as metadata |
 | `arrayAsDocuments` | boolean | false | Create document per array item |
 
+### TikaLoader
+
+Loads PDF, Word, Excel, PowerPoint, and other document formats using Apache Tika.
+
+```java
+import bxModules.bxai.models.loaders.TikaLoader;
+
+// Load a PDF
+loader = new TikaLoader( source: "/path/to/document.pdf" )
+docs = loader.load()
+
+// Load with options
+loader = new TikaLoader( source: "/path/to/report.docx" )
+    .maxLength( 100000 )
+    .enableOCR( true )
+docs = loader.load()
+
+// Password-protected document
+loader = new TikaLoader( source: "/path/to/encrypted.pdf" )
+    .password( "secret" )
+docs = loader.load()
+
+// Check if file type is supported
+if ( TikaLoader::isSupported( "/path/to/file.pdf" ) ) {
+    // Load the file
+}
+```
+
+**Supported Extensions:**
+- PDF: `.pdf`
+- Word: `.doc`, `.docx`
+- Excel: `.xls`, `.xlsx`
+- PowerPoint: `.ppt`, `.pptx`
+- OpenDocument: `.odt`, `.ods`, `.odp`
+- Other: `.rtf`, `.epub`
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxLength` | numeric | -1 | Max characters to extract (-1 = unlimited) |
+| `extractImages` | boolean | false | Extract embedded images |
+| `extractTables` | boolean | true | Preserve table structure |
+| `ocrEnabled` | boolean | false | Enable OCR for scanned docs |
+| `passwordProtected` | string | "" | Password for encrypted documents |
+
 ### DirectoryLoader
 
 Loads all files from a directory using appropriate loaders.
@@ -319,6 +406,34 @@ docs = loader.load()
 | `extensions` | array | [] | File extensions to include |
 | `excludePatterns` | array | [] | Regex patterns to exclude |
 | `includeHidden` | boolean | false | Include hidden files |
+
+## Loading Methods
+
+All loaders support these loading methods:
+
+| Method | Description |
+|--------|-------------|
+| `load()` | Load all documents synchronously |
+| `loadAsync()` | Load all documents asynchronously (returns BoxFuture) |
+| `loadAsStream()` | Load as Java Stream for lazy processing |
+| `loadBatch( batchSize )` | Load documents in batches |
+
+```java
+// Synchronous loading
+docs = loader.load()
+
+// Asynchronous loading
+future = loader.loadAsync()
+docs = future.get()
+
+// Stream processing
+stream = loader.loadAsStream()
+count = stream.filter( doc => doc.getContentLength() > 100 ).count()
+
+// Batch loading
+batch1 = loader.loadBatch( 50 )  // First 50 docs
+batch2 = loader.loadBatch( 50 )  // Next 50 docs
+```
 
 ## Loading to Memory
 
@@ -395,14 +510,22 @@ import bxModules.bxai.models.loaders.Document;
 
 // Create a document
 doc = new Document(
+    id: "custom-id",          // Optional - auto-generates UUID if not provided
     content: "Hello world",
-    metadata: { source: "test", author: "John" }
+    metadata: { source: "test", author: "John" },
+    embedding: []             // Optional - empty array by default
 )
 
 // Access content
 println( doc.getContent() )           // "Hello world"
 println( doc.hasContent() )           // true
 println( doc.getContentLength() )     // 11
+
+// Access id and embedding
+println( doc.getId() )                // "custom-id" or auto-generated UUID
+println( doc.hasEmbedding() )         // false (empty array)
+doc.setEmbedding( [0.1, 0.2, 0.3] )   // Set embedding
+println( doc.hasEmbedding() )         // true
 
 // Access metadata
 println( doc.getMeta( "author" ) )    // "John"
@@ -413,7 +536,7 @@ doc.setContent( "Updated content" )
 doc.setMeta( "updated", true )
 doc.addMetadata( { version: 2 } )
 
-// Serialize/deserialize
+// Serialize/deserialize (includes id and embedding)
 json = doc.toJson()
 restored = Document::fromJson( json )
 
@@ -421,12 +544,31 @@ restored = Document::fromJson( json )
 copy = doc.clone()
 ```
 
+## Error Handling
+
+Loaders track errors encountered during loading:
+
+```java
+loader = new DirectoryLoader( source: "/docs" )
+    .configure( { continueOnError: true } )
+
+docs = loader.load()
+
+// Check for errors
+errors = loader.getErrors()
+if ( errors.len() > 0 ) {
+    errors.each( error => {
+        println( "Error loading #error.source#: #error.message#" )
+    } )
+}
+```
+
 ## Custom Loaders
 
 You can create custom loaders by extending `BaseDocumentLoader`:
 
 ```java
-class PDFLoader extends="bxModules.bxai.models.loaders.BaseDocumentLoader" {
+class CustomLoader extends="bxModules.bxai.models.loaders.BaseDocumentLoader" {
 
     function init( string source = "", struct config = {} ) {
         super.init( argumentCollection: arguments )
@@ -434,19 +576,18 @@ class PDFLoader extends="bxModules.bxai.models.loaders.BaseDocumentLoader" {
     }
 
     string function getName() {
-        return "PDFLoader"
+        return "CustomLoader"
     }
 
     array function load() {
-        // Your PDF loading logic here
-        var content = extractPDFText( variables.source )
+        // Your loading logic here
+        var content = loadMyContent( variables.source )
 
         return [
             createDocument(
                 content: content,
                 additionalMetadata: {
-                    fileType: "pdf",
-                    // ... additional metadata
+                    customField: "value"
                 }
             )
         ]
@@ -471,7 +612,7 @@ result = aiMemoryIngest(
     memory        = vectorMemory,
     source        = "/knowledge-base",
     type          = "directory",
-    loaderConfig  = { recursive: true, extensions: ["md", "txt", "html"] },
+    loaderConfig  = { recursive: true, extensions: ["md", "txt", "pdf"] },
     ingestOptions = { chunkSize: 1000, overlap: 200 }
 )
 
@@ -503,6 +644,10 @@ println( response )
 5. **Monitor Costs**: Use `trackCost: true` in ingestion options to estimate embedding costs before large ingestions.
 
 6. **Multi-Memory for Redundancy**: Use array of memories for fan-out ingestion to multiple vector stores.
+
+7. **Use Async for Large Loads**: Use `loadAsync()` or `ingestOptions.async` for non-blocking operations.
+
+8. **Use HTTPLoader for Web Content**: The HTTPLoader handles all URL-based content including HTML pages, JSON APIs, and XML feeds.
 
 ## See Also
 

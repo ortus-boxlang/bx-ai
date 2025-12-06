@@ -30,7 +30,7 @@
  *     .recursive()
  *     .extensions( ["md", "txt"] )
  *
- * // Create an HTTP loader
+ * // Create an HTTP loader for URLs
  * loader = aiDocumentLoader( "https://example.com/page.html", "http" )
  *     .contentType( "html" )
  *     .extractText()
@@ -44,7 +44,6 @@
  */
 import bxModules.bxai.models.loaders.TextLoader;
 import bxModules.bxai.models.loaders.MarkdownLoader;
-import bxModules.bxai.models.loaders.HTMLLoader;
 import bxModules.bxai.models.loaders.CSVLoader;
 import bxModules.bxai.models.loaders.JSONLoader;
 import bxModules.bxai.models.loaders.DirectoryLoader;
@@ -63,8 +62,6 @@ class {
 			"text"     : "text",
 			"md"       : "markdown",
 			"markdown" : "markdown",
-			"html"     : "html",
-			"htm"      : "html",
 			"csv"      : "csv",
 			"json"     : "json",
 			// Tika-supported formats
@@ -87,7 +84,7 @@ class {
 	 * Create a document loader instance
 	 *
 	 * @source The source to load from (file path, directory, or URL)
-	 * @type   Optional explicit loader type (text, markdown, html, csv, json, directory, http, tika)
+	 * @type   Optional explicit loader type (text, markdown, csv, json, directory, http, tika)
 	 * @config Configuration options for the loader
 	 *
 	 * @return IDocumentLoader instance
@@ -110,10 +107,6 @@ class {
 			case "md":
 				return new MarkdownLoader( source: arguments.source, config: arguments.config );
 
-			case "html":
-			case "htm":
-				return new HTMLLoader( source: arguments.source, config: arguments.config );
-
 			case "csv":
 				return new CSVLoader( source: arguments.source, config: arguments.config );
 
@@ -126,6 +119,8 @@ class {
 
 			case "http":
 			case "url":
+			case "html":
+			case "htm":
 				return new HTTPLoader( source: arguments.source, config: arguments.config );
 
 			case "tika":
@@ -137,7 +132,7 @@ class {
 			default:
 				throw(
 					type    : "aiDocumentLoader.UnknownLoaderType",
-					message : "Unknown loader type: #loaderType#. Supported types: text, markdown, html, csv, json, directory, http, tika"
+					message : "Unknown loader type: #loaderType#. Supported types: text, markdown, csv, json, directory, http, tika"
 				);
 		}
 	}

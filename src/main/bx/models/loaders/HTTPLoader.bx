@@ -17,6 +17,7 @@
  * ----------------------------------------------------------------------------------
  * HTTP Document Loader
  * Loads content from HTTP/HTTPS URLs with configurable content type handling.
+ * Uses the http() BIF with fluent builder pattern for making requests.
  */
 class extends="BaseDocumentLoader" {
 
@@ -25,21 +26,29 @@ class extends="BaseDocumentLoader" {
 	 */
 	static {
 		DEFAULT_CONFIG = {
-			encoding        : "UTF-8",
-			includeMetadata : true,
-			splitMode       : "none",
-			continueOnError : true,
+			encoding          : "UTF-8",
+			includeMetadata   : true,
+			splitMode         : "none",
+			continueOnError   : true,
 			// HTTP-specific defaults
-			contentType     : "auto",       // auto, text, html, json, xml
-			method          : "GET",
-			headers         : {},
-			timeout         : 30,
-			followRedirects : true,
-			userAgent       : "BoxLang-AI-HTTPLoader/1.0",
+			contentType       : "auto",       // auto, text, html, json, xml
+			method            : "GET",
+			headers           : {},
+			body              : "",
+			connectionTimeout : 30,
+			timeout           : 30,
+			redirect          : true,
+			httpVersion       : "HTTP/2",
+			userAgent         : "BoxLang-AI-HTTPLoader/1.0",
+			// Proxy settings
+			proxyServer       : "",
+			proxyPort         : 0,
+			proxyUser         : "",
+			proxyPassword     : "",
 			// Processing options
-			extractText     : true,         // Extract text from HTML
-			removeScripts   : true,         // Remove script tags from HTML
-			removeStyles    : true          // Remove style tags from HTML
+			extractText       : true,         // Extract text from HTML
+			removeScripts     : true,         // Remove script tags from HTML
+			removeStyles      : true          // Remove style tags from HTML
 		};
 	}
 
@@ -77,6 +86,46 @@ class extends="BaseDocumentLoader" {
 	}
 
 	/**
+	 * Shortcut for GET request
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function get() {
+		variables.config.method = "GET";
+		return this;
+	}
+
+	/**
+	 * Shortcut for POST request
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function post() {
+		variables.config.method = "POST";
+		return this;
+	}
+
+	/**
+	 * Shortcut for PUT request
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function put() {
+		variables.config.method = "PUT";
+		return this;
+	}
+
+	/**
+	 * Shortcut for DELETE request
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function delete() {
+		variables.config.method = "DELETE";
+		return this;
+	}
+
+	/**
 	 * Set request headers
 	 *
 	 * @headers Struct of headers to add
@@ -89,15 +138,29 @@ class extends="BaseDocumentLoader" {
 	}
 
 	/**
-	 * Add a single header
+	 * Add a single header (fluent method matching http() BIF)
 	 *
 	 * @name Header name
 	 * @value Header value
 	 *
 	 * @return HTTPLoader for chaining
 	 */
-	HTTPLoader function addHeader( required string name, required string value ) {
+	HTTPLoader function header( required string name, required string value ) {
 		variables.config.headers[ arguments.name ] = arguments.value;
+		return this;
+	}
+
+	/**
+	 * Set the request body
+	 *
+	 * @bodyContent The body content
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function body( required any bodyContent ) {
+		variables.config.body = isSimpleValue( arguments.bodyContent )
+			? arguments.bodyContent
+			: jsonSerialize( arguments.bodyContent );
 		return this;
 	}
 
@@ -114,7 +177,7 @@ class extends="BaseDocumentLoader" {
 	}
 
 	/**
-	 * Set request timeout
+	 * Set request timeout (fluent method matching http() BIF)
 	 *
 	 * @seconds Timeout in seconds
 	 *
@@ -122,6 +185,48 @@ class extends="BaseDocumentLoader" {
 	 */
 	HTTPLoader function timeout( required numeric seconds ) {
 		variables.config.timeout = arguments.seconds;
+		return this;
+	}
+
+	/**
+	 * Set connection timeout
+	 *
+	 * @seconds Timeout in seconds
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function connectionTimeout( required numeric seconds ) {
+		variables.config.connectionTimeout = arguments.seconds;
+		return this;
+	}
+
+	/**
+	 * Set whether to follow redirects
+	 *
+	 * @follow Whether to follow redirects
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function redirect( boolean follow = true ) {
+		variables.config.redirect = arguments.follow;
+		return this;
+	}
+
+	/**
+	 * Set proxy configuration
+	 *
+	 * @server Proxy server hostname
+	 * @port Proxy port
+	 * @user Optional proxy username
+	 * @password Optional proxy password
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function proxy( required string server, required numeric port, string user = "", string password = "" ) {
+		variables.config.proxyServer   = arguments.server;
+		variables.config.proxyPort     = arguments.port;
+		variables.config.proxyUser     = arguments.user;
+		variables.config.proxyPassword = arguments.password;
 		return this;
 	}
 
@@ -148,20 +253,60 @@ class extends="BaseDocumentLoader" {
 		}
 
 		try {
-			// Build and execute HTTP request using the http() BIF
-			var httpRequest = http(
-				url     : variables.source,
-				method  : variables.config.method,
-				timeout : variables.config.timeout
-			);
+			// Build HTTP request using the http() BIF fluent builder
+			var httpArgs = {
+				url               : variables.source,
+				connectionTimeout : variables.config.connectionTimeout,
+				redirect          : variables.config.redirect,
+				httpVersion       : variables.config.httpVersion
+			};
 
-			// Add custom headers
-			for ( var headerName in variables.config.headers ) {
-				httpRequest.addHeader( headerName, variables.config.headers[ headerName ] );
+			// Add proxy settings if configured
+			if ( len( variables.config.proxyServer ) ) {
+				httpArgs.proxyServer = variables.config.proxyServer;
+				httpArgs.proxyPort   = variables.config.proxyPort;
+				if ( len( variables.config.proxyUser ) ) {
+					httpArgs.proxyUser     = variables.config.proxyUser;
+					httpArgs.proxyPassword = variables.config.proxyPassword;
+				}
 			}
 
-			// Add user agent
-			httpRequest.addHeader( "User-Agent", variables.config.userAgent );
+			// Create HTTP request using http() BIF with arguments
+			var httpRequest = http( argumentCollection: httpArgs );
+
+			// Set timeout using fluent method
+			httpRequest.timeout( variables.config.timeout );
+
+			// Set HTTP method using fluent builder
+			switch ( variables.config.method ) {
+				case "GET":
+					httpRequest.get();
+					break;
+				case "POST":
+					httpRequest.post();
+					break;
+				case "PUT":
+					httpRequest.put();
+					break;
+				case "DELETE":
+					httpRequest.delete();
+					break;
+				default:
+					httpRequest.method( variables.config.method );
+			}
+
+			// Add custom headers using fluent builder
+			for ( var headerName in variables.config.headers ) {
+				httpRequest.header( headerName, variables.config.headers[ headerName ] );
+			}
+
+			// Add user agent header
+			httpRequest.header( "User-Agent", variables.config.userAgent );
+
+			// Add body if present
+			if ( len( variables.config.body ) ) {
+				httpRequest.body( variables.config.body );
+			}
 
 			// Execute request
 			var response = httpRequest.send().getPrefix();
@@ -330,12 +475,13 @@ class extends="BaseDocumentLoader" {
 	 */
 	struct function getSourceMetadata() {
 		return {
-			"source"      : variables.source,
-			"loader"      : getName(),
-			"isURL"       : true,
-			"method"      : variables.config.method,
-			"contentType" : variables.config.contentType,
-			"timeout"     : variables.config.timeout
+			"source"            : variables.source,
+			"loader"            : getName(),
+			"isURL"             : true,
+			"method"            : variables.config.method,
+			"contentType"       : variables.config.contentType,
+			"timeout"           : variables.config.timeout,
+			"connectionTimeout" : variables.config.connectionTimeout
 		};
 	}
 

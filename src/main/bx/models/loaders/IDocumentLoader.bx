@@ -64,29 +64,6 @@ interface {
 	any function loadAsStream();
 
 	/**
-	 * Load documents lazily using an iterator pattern
-	 * This is more memory-efficient for large document sets.
-	 * Each call returns the next document or null when exhausted.
-	 *
-	 * @return The next Document or null if no more documents
-	 */
-	any function loadNext();
-
-	/**
-	 * Reset the lazy loader to start from the beginning
-	 *
-	 * @return IDocumentLoader for chaining
-	 */
-	IDocumentLoader function reset();
-
-	/**
-	 * Check if there are more documents to load (for lazy loading)
-	 *
-	 * @return True if more documents are available
-	 */
-	boolean function hasNext();
-
-	/**
 	 * Get the source identifier (file path, URL, etc.)
 	 *
 	 * @return The source identifier
@@ -124,5 +101,12 @@ interface {
 	 * @return Configuration struct
 	 */
 	struct function getConfig();
+
+	/**
+	 * Get errors encountered during loading
+	 *
+	 * @return Array of error structs
+	 */
+	array function getErrors();
 
 }

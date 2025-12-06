@@ -78,28 +78,6 @@ class {
 					"removeLinks"      : "Remove links, keep text (default: false)"
 				}
 			},
-			"html": {
-				"name"        : "HTMLLoader",
-				"description" : "Loads HTML files or URLs with content extraction",
-				"extensions"  : [ "html", "htm" ],
-				"class"       : "bxModules.bxai.models.loaders.HTMLLoader",
-				"capabilities": {
-					"streaming"     : false,
-					"chunking"      : true,
-					"metadata"      : true,
-					"urlSupport"    : true,
-					"directoryMode" : false,
-					"tagExtraction" : true,
-					"scriptRemoval" : true
-				},
-				"configOptions": {
-					"extractTags"    : "Array of tags to extract content from",
-					"removeScripts"  : "Remove script tags (default: true)",
-					"removeStyles"   : "Remove style tags (default: true)",
-					"removeComments" : "Remove HTML comments (default: true)",
-					"preserveLinks"  : "Keep links as 'text (url)' format (default: false)"
-				}
-			},
 			"csv": {
 				"name"        : "CSVLoader",
 				"description" : "Loads CSV files with header support and row-as-document mode",
@@ -165,8 +143,8 @@ class {
 			},
 			"http": {
 				"name"        : "HTTPLoader",
-				"description" : "Loads content from HTTP/HTTPS URLs",
-				"extensions"  : [],
+				"description" : "Loads content from HTTP/HTTPS URLs with automatic HTML/JSON/XML parsing",
+				"extensions"  : [ "html", "htm" ],
 				"class"       : "bxModules.bxai.models.loaders.HTTPLoader",
 				"capabilities": {
 					"streaming"     : false,
@@ -179,13 +157,15 @@ class {
 					"contentTypes"  : [ "text", "html", "json", "xml" ]
 				},
 				"configOptions": {
-					"contentType"     : "Content type (auto, text, html, json, xml)",
-					"method"          : "HTTP method (default: GET)",
-					"headers"         : "Request headers struct",
-					"timeout"         : "Request timeout in seconds (default: 30)",
-					"extractText"     : "Extract text from HTML (default: true)",
-					"removeScripts"   : "Remove script tags from HTML (default: true)",
-					"removeStyles"    : "Remove style tags from HTML (default: true)"
+					"contentType"       : "Content type (auto, text, html, json, xml)",
+					"method"            : "HTTP method (default: GET)",
+					"headers"           : "Request headers struct",
+					"timeout"           : "Request timeout in seconds (default: 30)",
+					"connectionTimeout" : "Connection timeout in seconds (default: 30)",
+					"redirect"          : "Follow redirects (default: true)",
+					"extractText"       : "Extract text from HTML (default: true)",
+					"removeScripts"     : "Remove script tags from HTML (default: true)",
+					"removeStyles"      : "Remove style tags from HTML (default: true)"
 				}
 			},
 			"tika": {

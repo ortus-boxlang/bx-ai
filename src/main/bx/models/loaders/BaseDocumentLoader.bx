@@ -33,17 +33,17 @@ abstract class implements="IDocumentLoader" {
 	property name="config" type="struct";
 
 	/**
-	 * Documents loaded for lazy iteration
+	 * Documents loaded for batch processing
 	 */
 	property name="documents" type="array";
 
 	/**
-	 * Current index for lazy iteration
+	 * Current index for batch iteration
 	 */
 	property name="currentIndex" type="numeric" default="0";
 
 	/**
-	 * Whether documents have been loaded for lazy iteration
+	 * Whether documents have been loaded
 	 */
 	property name="documentsLoaded" type="boolean" default="false";
 
@@ -93,7 +93,7 @@ abstract class implements="IDocumentLoader" {
 	}
 
 	/**
-	 * Set the source and reset lazy loading state
+	 * Set the source and reset state
 	 *
 	 * @source The source to load from
 	 *
@@ -101,7 +101,7 @@ abstract class implements="IDocumentLoader" {
 	 */
 	function setSource( required string source ) {
 		variables.source = arguments.source;
-		// Reset lazy loading state when source changes
+		// Reset state when source changes
 		variables.documentsLoaded = false;
 		variables.currentIndex    = 0;
 		variables.documents       = [];
@@ -157,7 +157,7 @@ abstract class implements="IDocumentLoader" {
 		if ( variables.documentsLoaded ) {
 			return variables.documents.len();
 		}
-		// Default to -1 (unknown) for lazy/streaming loaders
+		// Default to -1 (unknown) for unloaded sources
 		return -1;
 	}
 
@@ -213,58 +213,6 @@ abstract class implements="IDocumentLoader" {
 	 * @return Array of Document objects
 	 */
 	abstract array function load();
-
-	/**
-	 * Load the next document lazily
-	 * Default implementation loads all documents first, then iterates.
-	 *
-	 * @return The next Document or null if no more documents
-	 */
-	any function loadNext() {
-		// Load all documents if not yet loaded
-		if ( !variables.documentsLoaded ) {
-			variables.documents       = load();
-			variables.documentsLoaded = true;
-			variables.currentIndex    = 0;
-		}
-
-		// Return next document or null
-		if ( variables.currentIndex < variables.documents.len() ) {
-			variables.currentIndex++;
-			return variables.documents[ variables.currentIndex ];
-		}
-
-		return javacast( "null", "" );
-	}
-
-	/**
-	 * Check if there are more documents to load
-	 *
-	 * @return True if more documents are available
-	 */
-	boolean function hasNext() {
-		// Load documents if not yet loaded
-		if ( !variables.documentsLoaded ) {
-			variables.documents       = load();
-			variables.documentsLoaded = true;
-			variables.currentIndex    = 0;
-		}
-
-		return variables.currentIndex < variables.documents.len();
-	}
-
-	/**
-	 * Reset the lazy loader to start from the beginning
-	 *
-	 * @return IDocumentLoader for chaining
-	 */
-	IDocumentLoader function reset() {
-		variables.currentIndex    = 0;
-		variables.documentsLoaded = false;
-		variables.documents       = [];
-		variables.errors          = [];
-		return this;
-	}
 
 	/**
 	 * Get errors encountered during loading
