@@ -648,6 +648,7 @@ conversation = researchAgent.getMemoryMessages()
 ## Next Steps
 
 - Explore [Memory Systems](./memory.md) for conversation history and context management
+- See [Message Context](../advanced/message-context.md) for injecting security and RAG data into agents
 - See [Custom Memory](../advanced/custom-memory.md) for building custom memory implementations
 - Learn about [Tools](./tools.md) for function calling patterns
 - See [Events](../advanced/events.md) for agent event handling

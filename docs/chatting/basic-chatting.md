@@ -658,3 +658,4 @@ println( "Cost estimate: $" & (raw.usage.total_tokens * 0.00002) )
 - **[Advanced Chatting](advanced-chatting.md)** - Multi-turn conversations, tools, async, streaming
 - **[Service-Level Chatting](service-chatting.md)** - Direct service control
 - **[Message Templates](../main-components/messages.md)** - Reusable prompt templates
+- **[Message Context](../advanced/message-context.md)** - Inject security and RAG data

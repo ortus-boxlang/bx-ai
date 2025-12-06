@@ -110,6 +110,9 @@ Real-time streaming through pipelines for responsive applications.
 
 ### Advanced Topics
 
+🔐 **[Message Context](advanced/message-context.md)**
+Inject security, RAG, and application context into AI messages. Learn multi-tenant patterns, RAG implementation, and contextual AI interactions.
+
 🎪 **[Event System](advanced/events.md)**
 Intercept and customize AI operations with comprehensive event hooks for monitoring, security, and extensibility.
 

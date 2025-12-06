@@ -140,6 +140,87 @@ message.run( { task: "Explain AI", style: "concise" } )
 // task: "Explain AI" (from runtime)
 ```
 
+## Message Context
+
+Beyond simple placeholder bindings, you can inject rich contextual data like security information, RAG documents, or application metadata using the **message context system**.
+
+### The `${context}` Placeholder
+
+Use the special `${context}` placeholder to inject contextual data that gets JSON-serialized:
+
+```java
+message = aiMessage()
+    .system( "You are an assistant. User info: ${context}" )
+    .user( "Help me with my account" )
+    .setContext({
+        userId: "user-123",
+        role: "premium",
+        permissions: ["read", "write"]
+    })
+
+messages = message.render()
+// Context is automatically JSON-serialized into the system message
+```
+
+### Context Methods
+
+```java
+// Set entire context
+message.setContext({ key: "value" })
+
+// Add individual values
+message.addContext( "userId", "user-123" )
+message.addContext( "tenantId", "tenant-456" )
+
+// Merge context
+message.mergeContext({ newKey: "newValue" })
+
+// Check for context
+if ( message.hasContext() ) {
+    context = message.getContext()
+    userId = message.getContextValue( "userId", "default" )
+}
+```
+
+### RAG with Context
+
+Perfect for Retrieval Augmented Generation:
+
+```java
+// Retrieve relevant documents
+docs = vectorStore.search( query: userQuestion, limit: 5 )
+
+message = aiMessage()
+    .system( "Use this context to answer: ${context}" )
+    .user( userQuestion )
+    .setContext({
+        documents: docs.map( d => d.content ),
+        sources: docs.map( d => d.metadata.source )
+    })
+
+response = aiChat( message.render() )
+```
+
+### Security Context
+
+Inject user and tenant information securely:
+
+```java
+message = aiMessage()
+    .system( "You are a support assistant. User context: ${context}" )
+    .user( "What can I do?" )
+    .setContext({
+        userId: user.id,
+        tenantId: user.tenantId,
+        permissions: user.permissions,
+        subscriptionTier: user.subscription.tier
+    })
+```
+
+📖 **[Full Message Context Documentation](../advanced/message-context.md)** - Learn about multi-tenant patterns, RAG implementation, context with agents, and best practices.
+
+---
+
 ## Messages in Pipelines
 
 ### Basic Pipeline
@@ -868,5 +949,6 @@ result = pipeline.run( { topic: "AI", detail: "simple" } )
 ## Next Steps
 
 - **[Working with Models](models.md)** - Connect templates to AI
+- **[Message Context](../advanced/message-context.md)** - Inject security and RAG data into messages
 - **[Transformers](transformers.md)** - Process responses
 - **[Pipeline Streaming](streaming.md)** - Real-time template execution

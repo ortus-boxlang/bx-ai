@@ -1158,3 +1158,4 @@ function codeAssistant( required string task ) {
 - **[Service-Level Chatting](service-chatting.md)** - Direct service control
 - **[Pipeline Overview](../main-components/overview.md)** - Learn about AI pipelines
 - **[Message Templates](../main-components/messages.md)** - Advanced templating
+- **[Message Context](../advanced/message-context.md)** - Inject security and RAG data

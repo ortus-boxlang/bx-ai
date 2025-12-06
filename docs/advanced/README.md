@@ -12,6 +12,7 @@ Take your BoxLang AI skills to the next level with advanced features, integratio
 This section covers specialized topics for building production-grade AI applications, extending functionality, and integrating with external systems.
 
 **Perfect for:**
+
 - Production deployments requiring customization
 - Complex AI workflows with external tools
 - Performance optimization and monitoring
@@ -26,6 +27,7 @@ This section covers specialized topics for building production-grade AI applicat
 Convert text into vector representations for semantic search and similarity matching.
 
 **What you'll learn:**
+
 - Generating embeddings from text
 - Choosing embedding models
 - Vector similarity calculations
@@ -35,11 +37,12 @@ Convert text into vector representations for semantic search and similarity matc
 
 ---
 
-### 🔐 [Message Context](request-context.md)
+### 🔐 [Message Context](message-context.md)
 
 Inject security, RAG, and application context into AI messages.
 
 **What you'll learn:**
+
 - Adding context to AI messages (security, RAG, metadata)
 - Using `${context}` placeholder for automatic injection via `render()`
 - Multi-tenant isolation patterns
@@ -54,6 +57,7 @@ Inject security, RAG, and application context into AI messages.
 Intercept and customize AI operations with the powerful event system.
 
 **What you'll learn:**
+
 - Available interception points (`onAIRequest`, `onAIResponse`, etc.)
 - Logging AI interactions
 - Modifying requests and responses
@@ -69,6 +73,7 @@ Intercept and customize AI operations with the powerful event system.
 Integrate with the Model Context Protocol to access external tools and resources.
 
 **What you'll learn:**
+
 - What is MCP (Model Context Protocol)
 - Connecting to MCP servers
 - Using MCP tools with agents
@@ -84,6 +89,7 @@ Integrate with the Model Context Protocol to access external tools and resources
 Expose your BoxLang tools, resources, and prompts via the Model Context Protocol.
 
 **What you'll learn:**
+
 - Creating and configuring MCP servers
 - Registering tools, resources, and prompts
 - HTTP endpoint for MCP requests
@@ -100,6 +106,7 @@ Expose your BoxLang tools, resources, and prompts via the Model Context Protocol
 Helper functions for text processing, token counting, and data manipulation.
 
 **What you'll learn:**
+
 - **Text chunking** - Split documents intelligently for AI processing
 - **Token counting** - Calculate token usage before API calls
 - **Mock data generation** - Create test data with AI
@@ -112,6 +119,7 @@ Helper functions for text processing, token counting, and data manipulation.
 ## Quick Examples
 
 ### Generate Embeddings
+
 ```java
 embedding = aiEmbedding(
     provider: "openai",
@@ -121,6 +129,7 @@ embedding = aiEmbedding(
 ```
 
 ### Intercept AI Requests
+
 ```java
 // In your interceptor
 function onAIRequest( event, interceptData ) {
@@ -130,6 +139,7 @@ function onAIRequest( event, interceptData ) {
 ```
 
 ### Use MCP Tools
+
 ```java
 agent = aiAgent()
     .withInstructions( "You are a helpful assistant" )
@@ -140,6 +150,7 @@ response = agent.run( "List files in /tmp" );
 ```
 
 ### Expose Tools via MCP Server
+
 ```java
 // Register tools at application startup
 mcpServer( "myApp" )
@@ -154,6 +165,7 @@ mcpServer( "myApp" )
 ```
 
 ### Chunk Large Documents
+
 ```java
 chunks = aiTextChunk(
     text: largeDocument,
@@ -172,28 +184,34 @@ chunks.each( function( chunk ) {
 ## Integration Patterns
 
 ### Semantic Search Pipeline
+
 **Components:** Embeddings + Vector storage + Similarity search
 **Guide:** [Embeddings Documentation](embeddings.md)
 
 ### Observable AI System
+
 **Components:** Event system + Logging + Monitoring
 **Guide:** [Event System Documentation](events.md)
 
 ### Tool-Enhanced Agents
+
 **Components:** MCP Client + Agents + External APIs
 **Guide:** [MCP Client Documentation](mcp-client.md)
 
 ### AI-Accessible APIs
+
 **Components:** MCP Server + Tools + Resources
 **Guide:** [MCP Server Documentation](mcp-server.md)
 
 ### Document Processing
+
 **Components:** Text chunking + Token counting + Batch processing
 **Guide:** [Utilities Documentation](utilities.md)
 
 ### Secure Multi-User AI
+
 **Components:** Request Context + Interceptors + Tenant Isolation
-**Guide:** [Request Context Documentation](request-context.md)
+**Guide:** [Message Context Documentation](message-context.md)
 
 ---
 
@@ -206,7 +224,7 @@ chunks.each( function( chunk ) {
 → [Event System](events.md)
 
 **"I need to inject security context or RAG data"**
-→ [Request Context](request-context.md)
+→ [Message Context](message-context.md)
 
 **"I need agents to access external systems"**
 → [MCP Client](mcp-client.md)
@@ -222,6 +240,7 @@ chunks.each( function( chunk ) {
 ## Prerequisites
 
 These topics assume familiarity with:
+
 - Basic AI chatting - See [Chatting Guide](../chatting/README.md)
 - AI agents - See [Agents Documentation](../main-components/agents.md)
 - BoxLang interceptors (for event system)

@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
+import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
 
 public class aiRequestContextTest extends BaseIntegrationTest {
@@ -322,8 +323,6 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.requests.AiRequest;
-
 				contextData = {
 					userId: "user-123",
 					role: "admin"
@@ -331,12 +330,12 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 
 				message = aiMessage( "Context: ${context}. Help me." )
 
-				request = new AiRequest(
-					aiMessage: message,
+				aiRequest = aiChatRequest(
+					messages: message,
 					options: { context: contextData }
 				)
 
-				messages = request.getMessages()
+				messages = aiRequest.getMessages()
 				messageContent = messages[1].content
 		    """,
 		    context
@@ -356,14 +355,12 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.requests.AiRequest;
-
 				message = aiMessage( "Hello ${name}" )
 					.bind( { name: "World" } )
 
-				request = new AiRequest( aiMessage: message )
+				aiRequest = aiChatRequest( message )
 
-				messages = request.getMessages()
+				messages = aiRequest.getMessages()
 				messageContent = messages[1].content
 		    """,
 		    context
@@ -381,17 +378,15 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.requests.AiRequest;
-
 				message = aiMessage( "Context: ${context}" )
 					.setContext( { existingKey: "existing-value" } )
 
-				request = new AiRequest(
-					aiMessage: message,
+				aiRequest = aiChatRequest(
+					messages: message,
 					options: { context: { newKey: "new-value" } }
 				)
 
-				messages = request.getMessages()
+				messages = aiRequest.getMessages()
 				messageContent = messages[1].content
 		    """,
 		    context
@@ -403,6 +398,114 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		assertThat( messageContent ).contains( "existing-value" );
 		assertThat( messageContent ).contains( "newKey" );
 		assertThat( messageContent ).contains( "new-value" );
+	}
+
+	@DisplayName( "Can simulate RAG document injection into message context" )
+	@Test
+	public void testRAGDocumentSimulation() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Simulate RAG document retrieval from a vector database
+				// In real scenario, these would come from embeddings search
+				ragDocuments = [
+					{
+						id: "doc-001",
+						title: "BoxLang Installation Guide",
+						content: "BoxLang is a modern dynamic JVM language. To install, use the following command: box install boxlang",
+						score: 0.95,
+						metadata: {
+							source: "docs/getting-started.md",
+							section: "installation"
+						}
+					},
+					{
+						id: "doc-002",
+						title: "BoxLang BIF Creation",
+						content: "Built-in Functions (BIFs) are created using the @BoxBIF annotation. All BIF functions must be standalone without instance state.",
+						score: 0.89,
+						metadata: {
+							source: "docs/advanced/bifs.md",
+							section: "creation"
+						}
+					},
+					{
+						id: "doc-003",
+						title: "BoxLang Module Structure",
+						content: "BoxLang modules are structured with src/main/bx/ for source code and ModuleConfig.bx as the module descriptor.",
+						score: 0.82,
+						metadata: {
+							source: "docs/modules.md",
+							section: "structure"
+						}
+					}
+				]
+
+				// Simulate building context from RAG documents
+				ragContext = {
+					query: "How do I install BoxLang?",
+					retrievedDocuments: ragDocuments,
+					documentCount: ragDocuments.len(),
+					averageScore: 0.88,
+					retrievalTimestamp: now(),
+					vectorDatabase: "local-embeddings"
+				}
+
+				// Create message with RAG context using ${context} placeholder
+				message = aiMessage(
+					"Based on the following documentation: ${context}" & char(10) & char(10) &
+					"Please answer: How do I install BoxLang and create a BIF?"
+				)
+				.setContext( ragContext )
+
+				// Render message to apply context bindings
+				messages = message.render()
+				messageContent = messages[1].content
+
+				// Also test retrieving specific context values
+				hasContext = message.hasContext()
+				retrievedDocs = message.getContextValue( "retrievedDocuments" )
+				docCount = message.getContextValue( "documentCount" )
+				query = message.getContextValue( "query" )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		// Verify context was properly set and bound
+		assertThat( variables.getAsBoolean( Key.of( "hasContext" ) ) ).isTrue();
+
+		// Verify rendered message contains RAG document content
+		String messageContent = variables.getAsString( Key.of( "messageContent" ) );
+		assertThat( messageContent ).contains( "BoxLang Installation Guide" );
+		assertThat( messageContent ).contains( "box install boxlang" );
+		assertThat( messageContent ).contains( "@BoxBIF annotation" );
+		assertThat( messageContent ).contains( "doc-001" );
+		assertThat( messageContent ).contains( "doc-002" );
+		assertThat( messageContent ).contains( "doc-003" );
+		assertThat( messageContent ).doesNotContain( "${context}" );
+
+		// Verify context values can be retrieved
+		assertThat( variables.get( "retrievedDocs" ) ).isNotNull();
+		assertThat( variables.getAsInteger( Key.of( "docCount" ) ) ).isEqualTo( 3 );
+		assertThat( variables.getAsString( Key.of( "query" ) ) ).isEqualTo( "How do I install BoxLang?" );
+
+		// Verify RAG documents array structure
+		Array ragDocs = ( Array ) variables.get( "retrievedDocs" );
+		assertThat( ragDocs.size() ).isEqualTo( 3 );
+
+		// Verify first document structure
+		IStruct firstDoc = ( IStruct ) ragDocs.get( 0 );
+		assertThat( firstDoc.getAsString( Key.of( "id" ) ) ).isEqualTo( "doc-001" );
+		assertThat( firstDoc.getAsString( Key.of( "title" ) ) ).isEqualTo( "BoxLang Installation Guide" );
+		assertThat( firstDoc.getAsString( Key.of( "content" ) ) ).contains( "box install boxlang" );
+		assertThat( firstDoc.get( Key.of( "score" ) ).toString() ).isEqualTo( "0.95" );
+
+		// Verify metadata structure
+		IStruct metadata = ( IStruct ) firstDoc.get( Key.of( "metadata" ) );
+		assertThat( metadata.getAsString( Key.of( "source" ) ) ).isEqualTo( "docs/getting-started.md" );
+		assertThat( metadata.getAsString( Key.of( "section" ) ) ).isEqualTo( "installation" );
 	}
 
 }
