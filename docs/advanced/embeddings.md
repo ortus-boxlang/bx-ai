@@ -7,6 +7,7 @@ Generate numerical vector representations of text that capture semantic meaning.
 Embeddings convert text into high-dimensional vectors (arrays of numbers) where semantically similar texts have similar vector representations.
 
 **Example:**
+
 ```
 "cat" → [0.2, -0.5, 0.8, 0.1, ...]      (1536 dimensions)
 "kitten" → [0.3, -0.4, 0.7, 0.2, ...]   (similar vector)
@@ -14,6 +15,7 @@ Embeddings convert text into high-dimensional vectors (arrays of numbers) where 
 ```
 
 **Key Properties:**
+
 - Similar meanings = Close vectors
 - Different meanings = Distant vectors
 - Math operations preserve semantic relationships
@@ -590,21 +592,25 @@ matches.each( match => {
 ### OpenAI
 
 **Models:**
+
 - `text-embedding-3-small` (1536 dimensions) - Default, balanced
 - `text-embedding-3-large` (3072 dimensions) - Highest quality
 - `text-embedding-ada-002` (1536 dimensions) - Legacy
 
 **Pros:**
+
 - High quality embeddings
 - Good for English text
 - Supports dimension reduction
 
 **Cons:**
+
 - Requires API key
 - Costs money
 - Data sent to OpenAI servers
 
 **Usage:**
+
 ```java
 embedding = aiEmbed(
     "Text",
@@ -616,22 +622,26 @@ embedding = aiEmbed(
 ### Ollama
 
 **Models:**
+
 - `nomic-embed-text` (768 dimensions) - Recommended
 - `mxbai-embed-large` (1024 dimensions) - High quality
 - Many others available
 
 **Pros:**
+
 - Completely free
 - Runs locally
 - Private - data stays on your machine
 - No API key needed
 
 **Cons:**
+
 - Requires Ollama installation
 - Slightly lower quality than OpenAI
 - Slower than API calls
 
 **Setup:**
+
 ```bash
 # Install Ollama
 brew install ollama  # macOS
@@ -642,6 +652,7 @@ ollama pull nomic-embed-text
 ```
 
 **Usage:**
+
 ```java
 embedding = aiEmbed(
     "Text",
@@ -653,19 +664,23 @@ embedding = aiEmbed(
 ### Gemini
 
 **Models:**
+
 - `text-embedding-004` (768 dimensions)
 - `embedding-001` (768 dimensions) - Legacy
 
 **Pros:**
+
 - Good quality
 - Google infrastructure
 - Competitive pricing
 
 **Cons:**
+
 - Requires API key
 - Data sent to Google
 
 **Usage:**
+
 ```java
 embedding = aiEmbed(
     "Text",
@@ -677,6 +692,7 @@ embedding = aiEmbed(
 ### Voyage AI
 
 **Models:**
+
 - `voyage-3` (1024 dimensions) - Latest, highest quality
 - `voyage-3-lite` (512 dimensions) - Faster, more efficient
 - `voyage-code-3` (1024 dimensions) - Optimized for code
@@ -684,24 +700,28 @@ embedding = aiEmbed(
 - `voyage-law-2` (1024 dimensions) - Legal documents
 
 **Pros:**
+
 - State-of-the-art quality for RAG and semantic search
 - Specialized models for specific domains
 - `input_type` parameter optimizes for queries vs documents
 - Excellent performance on retrieval benchmarks
 
 **Cons:**
+
 - Embeddings only (no chat support)
 - Requires API key
 - Free tier has 3 RPM rate limit
 - Data sent to Voyage servers
 
 **Setup:**
+
 ```bash
 # Get API key from https://dashboard.voyageai.com/
 export VOYAGE_API_KEY="your-key-here"
 ```
 
 **Usage:**
+
 ```java
 // Basic usage
 embedding = aiEmbed(
@@ -738,6 +758,7 @@ financeEmb = aiEmbed(
 ```
 
 **When to Use Voyage:**
+
 - Building RAG (Retrieval Augmented Generation) systems
 - Semantic search requiring highest accuracy
 - Domain-specific applications (code, finance, legal)
@@ -748,12 +769,14 @@ financeEmb = aiEmbed(
 ### Cohere
 
 **Models:**
+
 - `embed-english-v3.0` (1024 dimensions) - Latest English model, best quality
 - `embed-multilingual-v3.0` (1024 dimensions) - Supports 100+ languages
 - `embed-english-light-v3.0` (384 dimensions) - Faster, lighter version
 - `embed-english-v2.0` (4096 dimensions) - Legacy, larger model
 
 **Pros:**
+
 - Excellent multilingual support (100+ languages)
 - `input_type` parameter optimizes for different use cases
 - Multiple model sizes for speed/quality tradeoffs
@@ -762,17 +785,20 @@ financeEmb = aiEmbed(
 - Competitive pricing
 
 **Cons:**
+
 - Requires API key
 - Data sent to Cohere servers
 - Rate limits on free tier
 
 **Setup:**
+
 ```bash
 # Get API key from https://dashboard.cohere.com/api-keys
 export COHERE_API_KEY="your-key-here"
 ```
 
 **Usage:**
+
 ```java
 // Basic usage
 embedding = aiEmbed(
@@ -835,12 +861,14 @@ lightEmb = aiEmbed(
 ```
 
 **Input Types:**
+
 - `search_query` - Optimize for search queries
 - `search_document` - Optimize for documents being searched
 - `clustering` - Optimize for clustering tasks
 - `classification` - Optimize for classification tasks
 
 **When to Use Cohere:**
+
 - Need multilingual embeddings (100+ languages)
 - Want to optimize separately for queries vs documents
 - Building search, clustering, or classification systems

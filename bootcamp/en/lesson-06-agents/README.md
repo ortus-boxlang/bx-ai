@@ -176,18 +176,549 @@ Memory lets agents remember the conversation:
 | `jdbc` | Database storage | Enterprise apps |
 | `vector` | Semantic search (11 providers) | RAG applications |
 
-> 💡 **Multi-Tenant Memory**: All memory types support `userId` and `conversationId` parameters for multi-user applications. This ensures each user's conversations are completely isolated:
->
-> ```java
-> memory = aiMemory( "windowed",
->     key: createUUID(),
->     userId: session.userId,           // Isolate per user
->     conversationId: "support-chat",  // Multiple chats per user
->     config: { maxMessages: 20 }
-> )
-> ```
->
-> This is essential for web applications where multiple users interact with your agent!
+### 👥 Multi-Tenant Memory (Critical for Production!)
+
+**All memory types support `userId` and `conversationId` for complete isolation between users and conversations.**
+
+#### Why Multi-Tenant Memory Matters
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              WITHOUT MULTI-TENANT MEMORY (BAD!)                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  User A: "My API key is abc123"  ┐                             │
+│  User B: "What's User A's key?"  ├─▶  SHARED MEMORY (❌)       │
+│  AI: "It's abc123"               ┘     Data leaks!             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│               WITH MULTI-TENANT MEMORY (GOOD!)                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  User A Memory (userId: "a") ────▶ [User A's data only]        │
+│  User B Memory (userId: "b") ────▶ [User B's data only]        │
+│                                                                 │
+│  User B cannot access User A's conversations! ✅                │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Basic Multi-Tenant Setup
+
+```java
+// multi-tenant-agent.bxs
+function createUserAgent( userId, conversationId = "default" ) {
+    return aiAgent(
+        name: "PersonalAssistant",
+        description: "A personal AI assistant",
+        instructions: "Be helpful and remember user preferences",
+        memory: aiMemory(
+            "windowed",
+            key: createUUID(),
+            userId: userId,                // Isolates by user
+            conversationId: conversationId, // Multiple chats per user
+            config: { maxMessages: 20 }
+        )
+    )
+}
+
+// Each user gets isolated memory
+aliceAgent = createUserAgent( "user-alice", "support-chat" )
+bobAgent = createUserAgent( "user-bob", "support-chat" )
+
+// Alice's conversation
+aliceAgent.run( "My favorite color is blue" )
+println( "Alice asks: " & aliceAgent.run( "What's my favorite color?" ) )
+// Output: "Your favorite color is blue!"
+
+// Bob's conversation (completely separate!)
+bobAgent.run( "My favorite color is red" )
+println( "Bob asks: " & bobAgent.run( "What's my favorite color?" ) )
+// Output: "Your favorite color is red!"
+
+// Bob cannot access Alice's data
+println( "Bob asks about Alice: " & bobAgent.run( "What's Alice's favorite color?" ) )
+// Output: "I don't have that information"
+```
+
+#### Multiple Conversations Per User
+
+```java
+// multi-conversation.bxs
+userId = "user-123"
+
+// User has multiple conversation threads
+supportAgent = createUserAgent( userId, "support-chat" )
+salesAgent = createUserAgent( userId, "sales-inquiry" )
+technicalAgent = createUserAgent( userId, "tech-help" )
+
+// Each conversation is isolated
+supportAgent.run( "I have a billing question" )
+salesAgent.run( "Tell me about enterprise pricing" )
+technicalAgent.run( "How do I configure the API?" )
+
+// Conversations don't mix
+println( supportAgent.run( "What were we discussing?" ) )
+// Output: "We were discussing your billing question"
+
+println( salesAgent.run( "What were we discussing?" ) )
+// Output: "We were discussing enterprise pricing"
+```
+
+#### Web Application Pattern
+
+```java
+// web-app-pattern.bxs (pseudo-code for ColdBox/web framework)
+component {
+    
+    function chat( event, rc, prc ) {
+        // Get authenticated user from session
+        userId = session.getUserId()
+        conversationId = rc.conversationId ?: "default"
+        userMessage = rc.message
+        
+        // Create/retrieve agent with user-specific memory
+        agent = getCachedAgent( userId, conversationId )
+        
+        // Process message with isolated memory
+        response = agent.run( userMessage )
+        
+        // Return to UI
+        return {
+            response: response,
+            userId: userId,
+            conversationId: conversationId
+        }
+    }
+    
+    private function getCachedAgent( userId, conversationId ) {
+        cacheKey = "agent_#userId#_#conversationId#"
+        
+        // Check cache
+        if( !cache.has( cacheKey ) ) {
+            // Create new agent with multi-tenant memory
+            agent = aiAgent(
+                name: "WebAssistant",
+                description: "Web app assistant",
+                instructions: "Help users with app features",
+                memory: aiMemory(
+                    "cache",  // Use distributed cache for multi-server
+                    key: cacheKey,
+                    userId: userId,
+                    conversationId: conversationId,
+                    config: { maxMessages: 50 }
+                ),
+                tools: getAppTools()
+            )
+            
+            cache.set( cacheKey, agent, 3600 )  // Cache for 1 hour
+        }
+        
+        return cache.get( cacheKey )
+    }
+}
+```
+
+#### Database-Backed Multi-Tenant Memory
+
+```java
+// jdbc-multi-tenant.bxs
+function createEnterpriseAgent( userId, conversationId ) {
+    return aiAgent(
+        name: "EnterpriseAssistant",
+        description: "Enterprise AI assistant",
+        instructions: "Professional enterprise support",
+        memory: aiMemory(
+            "jdbc",
+            key: createUUID(),
+            userId: userId,
+            conversationId: conversationId,
+            config: {
+                dsn: "myDatabase",
+                table: "ai_conversations",
+                maxMessages: 100
+            }
+        )
+    )
+}
+
+// Database table structure:
+// CREATE TABLE ai_conversations (
+//     id VARCHAR(36) PRIMARY KEY,
+//     user_id VARCHAR(100) NOT NULL,
+//     conversation_id VARCHAR(100) NOT NULL,
+//     role VARCHAR(20) NOT NULL,
+//     content TEXT NOT NULL,
+//     metadata JSON,
+//     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+//     INDEX idx_user_conv (user_id, conversation_id)
+// )
+```
+
+#### Security Best Practices
+
+```java
+// secure-agent-factory.bxs
+component {
+    
+    function createSecureAgent(
+        required string userId,
+        required string tenantId,
+        required string conversationId,
+        required struct permissions
+    ) {
+        // Validate permissions
+        if( !hasRequiredPermissions( permissions ) ) {
+            throw( "Insufficient permissions for AI agent" )
+        }
+        
+        // Create agent with security context
+        return aiAgent(
+            name: "SecureAssistant",
+            description: "Security-aware assistant",
+            instructions: "
+                You are a secure assistant for enterprise users.
+                User context: ${context}
+                
+                RULES:
+                - Only access data for this user's tenant
+                - Respect user permissions
+                - Never expose sensitive information
+            ",
+            memory: aiMemory(
+                "jdbc",
+                key: createUUID(),
+                userId: userId,
+                conversationId: conversationId,
+                config: {
+                    dsn: "secureDb",
+                    table: "ai_memory_#tenantId#",  // Tenant-specific table
+                    maxMessages: 50
+                }
+            ),
+            tools: getAuthorizedTools( permissions )
+        ).setContext({
+            userId: userId,
+            tenantId: tenantId,
+            permissions: permissions,
+            accessLevel: getUserAccessLevel( userId )
+        })
+    }
+}
+```
+
+#### Memory Isolation Visualization
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  MEMORY ISOLATION LAYERS                        │
+└─────────────────────────────────────────────────────────────────┘
+
+Level 1: Tenant Isolation
+  ├─ Tenant A (company-abc)
+  │   ├─ User 1 ──▶ [User 1's memories]
+  │   ├─ User 2 ──▶ [User 2's memories]
+  │   └─ User 3 ──▶ [User 3's memories]
+  │
+  └─ Tenant B (company-xyz)
+      ├─ User 4 ──▶ [User 4's memories]
+      └─ User 5 ──▶ [User 5's memories]
+
+Level 2: Conversation Isolation (per user)
+  User 1
+    ├─ conversation: "support" ──▶ [Support chat history]
+    ├─ conversation: "sales"   ──▶ [Sales chat history]
+    └─ conversation: "general" ──▶ [General chat history]
+```
+
+#### Practical Example: Customer Support System
+
+```java
+// customer-support-system.bxs
+component {
+    
+    function handleSupportRequest(
+        required string customerId,
+        required string ticketId,
+        required string message
+    ) {
+        // Create agent for this customer + ticket
+        agent = aiAgent(
+            name: "SupportAgent",
+            description: "Customer support specialist",
+            instructions: "
+                Provide friendly, professional support.
+                Customer context: ${context}
+            ",
+            memory: aiMemory(
+                "jdbc",
+                key: createUUID(),
+                userId: customerId,              // Customer ID
+                conversationId: ticketId,        // Support ticket
+                config: {
+                    dsn: "supportDb",
+                    table: "support_conversations",
+                    maxMessages: 100
+                }
+            ),
+            tools: [
+                lookupOrderTool,
+                checkAccountTool,
+                createTicketTool
+            ]
+        ).setContext({
+            customerId: customerId,
+            customerName: getCustomerName( customerId ),
+            accountStatus: getAccountStatus( customerId ),
+            ticketId: ticketId,
+            ticketPriority: getTicketPriority( ticketId )
+        })
+        
+        // Process with full context
+        return agent.run( message )
+    }
+    
+    // Get conversation history for ticket
+    function getTicketHistory( customerId, ticketId ) {
+        agent = createSupportAgent( customerId, ticketId )
+        return agent.getMemoryMessages()
+    }
+}
+```
+
+### Key Takeaways: Multi-Tenant Memory
+
+1. **Always use `userId`** in production web apps
+2. **Use `conversationId`** for multiple conversation threads per user
+3. **Choose memory type** based on infrastructure:
+   - `session` - Single-server web apps
+   - `cache` - Multi-server web apps
+   - `jdbc` - Long-term persistence
+4. **Add security context** via `setContext()` for permissions/roles
+5. **Tenant isolation** via table partitioning or separate DBs
+
+---
+
+## 📡 Part 4: Streaming Agent Responses (15 mins)
+
+For real-time agent responses in chat UIs:
+
+### Basic Agent Streaming
+
+```java
+// streaming-agent.bxs
+agent = aiAgent(
+    name: "StreamingAssistant",
+    description: "A helpful assistant with streaming",
+    instructions: "Be concise and helpful"
+)
+
+println( "AI: " )
+
+// Stream the response
+agent.stream(
+    onChunk: ( chunk ) => print( chunk.content ),
+    input: "Write a short poem about coding"
+)
+
+println()  // New line after stream
+```
+
+**Output appears in real-time:**
+```
+AI: Code flows through my mind,
+Logic patterns intertwined,
+Bugs I seek to find,
+Solutions I will find.
+```
+
+### Streaming with Tools
+
+Agents can use tools while streaming:
+
+```java
+// streaming-with-tools.bxs
+weatherTool = aiTool(
+    "get_weather",
+    "Get current weather",
+    ( args ) => {
+        // Simulate API call
+        return "Miami: 78°F, Sunny"
+    }
+).describeLocation( "City name" )
+
+agent = aiAgent(
+    name: "WeatherBot",
+    description: "Weather assistant",
+    instructions: "Help users check weather",
+    tools: [ weatherTool ]
+)
+
+println( "Streaming response with tool calls:" )
+println()
+
+agent.stream(
+    onChunk: ( chunk ) => {
+        if( chunk.keyExists( "toolCalls" ) ) {
+            println( "[Tool: #chunk.toolCalls[1].name#]" )
+        } else {
+            print( chunk.content )
+        }
+    },
+    input: "What's the weather in Miami?"
+)
+
+println()
+```
+
+**Output:**
+```
+Streaming response with tool calls:
+
+[Tool: get_weather]
+The weather in Miami is currently 78°F and sunny!
+```
+
+### Streaming with Memory
+
+```java
+// streaming-memory.bxs
+agent = aiAgent(
+    name: "MemoryBot",
+    description: "Remembers conversation",
+    instructions: "Be friendly and remember context",
+    memory: aiMemory( "windowed", { maxMessages: 20 } )
+)
+
+// First message
+println( "You: My name is Alex" )
+print( "AI: " )
+agent.stream(
+    onChunk: ( chunk ) => print( chunk.content ),
+    input: "My name is Alex"
+)
+println()
+println()
+
+// Second message (remembers first)
+println( "You: What's my name?" )
+print( "AI: " )
+agent.stream(
+    onChunk: ( chunk ) => print( chunk.content ),
+    input: "What's my name?"
+)
+println()
+```
+
+### Web Application Streaming Pattern
+
+```java
+// web-streaming.bxs (pseudo-code for web framework)
+component {
+    
+    function streamChat( event, rc, prc ) {
+        userId = session.getUserId()
+        message = rc.message
+        
+        // Create agent with user memory
+        agent = aiAgent(
+            name: "WebAssistant",
+            description: "Web chat assistant",
+            instructions: "Be helpful and conversational",
+            memory: aiMemory(
+                "session",
+                userId: userId,
+                conversationId: "web-chat",
+                config: { maxMessages: 50 }
+            )
+        )
+        
+        // Set response headers for SSE (Server-Sent Events)
+        response.setHeader( "Content-Type", "text/event-stream" )
+        response.setHeader( "Cache-Control", "no-cache" )
+        response.setHeader( "Connection", "keep-alive" )
+        
+        // Stream to browser
+        agent.stream(
+            onChunk: ( chunk ) => {
+                // Send as SSE
+                writeOutput( "data: #serializeJSON( chunk )#" & char(10) & char(10) )
+                flush()
+            },
+            input: message
+        )
+        
+        abort()  // Prevent further processing
+    }
+}
+```
+
+### Async Agents for Background Tasks
+
+For long-running agent tasks, use async:
+
+```java
+// async-agent.bxs
+agent = aiAgent(
+    name: "ResearchAgent",
+    description: "Research assistant",
+    instructions: "Conduct thorough research",
+    tools: [ searchTool, analyzeTool ]
+)
+
+println( "Starting research in background..." )
+
+// Start async task
+future = agent.runAsync( "Research the latest AI trends and write a report" )
+
+println( "Agent is working..." )
+println( "You can do other things now!" )
+
+// Simulate other work
+for( i = 1; i <= 5; i++ ) {
+    sleep( 1000 )
+    println( "Working on other tasks... (#i#)" )
+}
+
+// Get result when ready
+println()
+println( "Getting agent results..." )
+result = future.get()
+
+println()
+println( "Research Complete:" )
+println( result )
+```
+
+### Streaming vs Async vs Regular
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                AGENT EXECUTION PATTERNS                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  📄 agent.run()           ⚡ agent.stream()      🔄 runAsync()  │
+│  ─────────────           ───────────────        ──────────────  │
+│  • Blocking              • Real-time chunks     • Non-blocking │
+│  • Simple scripts        • Chat UIs             • Background   │
+│  • Complete response     • Progressive display  • Long tasks   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Choose based on your context:**
+
+| Use Case | Method | Why |
+|----------|--------|-----|
+| CLI script | `run()` | Simple, complete response |
+| Web chat UI | `stream()` | Real-time user experience |
+| Long research | `runAsync()` | Don't block other work |
+| Batch processing | `run()` | Sequential processing |
+| Live customer support | `stream()` | Immediate feedback |
+
+---
 
 ### Example: Agent with Memory
 

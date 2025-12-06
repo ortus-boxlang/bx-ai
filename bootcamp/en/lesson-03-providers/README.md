@@ -42,13 +42,31 @@ A provider is a company (or software) that runs AI models:
 
 ### Provider Comparison
 
+#### Chat Providers
+
 | Provider | Strengths | Best For | Cost |
 |----------|-----------|----------|------|
 | **OpenAI** | Most capable, best tools | Production apps | $$ |
 | **Claude** | Long context, reasoning | Complex analysis | $$ |
 | **Gemini** | Multimodal (images/video) | Visual tasks | $ |
+| **Mistral** | Fast, efficient, multilingual | European data residency | $ |
+| **HuggingFace** | Open-source models | Community-driven, customizable | $ |
+| **Groq** | Ultra-fast inference | Speed-critical apps | $ |
 | **Ollama** | Private, no internet | Development, privacy | Free |
 | **Grok** | Real-time data | Current events | $$ |
+| **DeepSeek** | Code generation | Programming tasks | $ |
+| **OpenRouter** | Access multiple models | Model comparison | $ |
+| **Perplexity** | Research with citations | Fact-checking | $$ |
+
+#### Embedding Providers
+
+| Provider | Models | Dimensions | Best For |
+|----------|--------|------------|----------|
+| **OpenAI** | text-embedding-3-small/large | 1536/3072 | General embeddings |
+| **Voyage** | voyage-2, voyage-code-2 | 1024/1536 | RAG, semantic search |
+| **Cohere** | embed-english-v3.0 | 1024 | Multilingual |
+| **Ollama** | nomic-embed-text, mxbai-embed | 768 | Local/private |
+| **Gemini** | text-embedding-004 | 768 | Google ecosystem |
 
 ### Why Switch Providers?
 
@@ -115,6 +133,8 @@ claudeAnswer = claudeService.invoke(
 
 ### Provider Quick Reference
 
+**Chat Providers:**
+
 ```java
 // OpenAI
 aiChat( "message", {}, { provider: "openai" } )
@@ -125,6 +145,15 @@ aiChat( "message", {}, { provider: "claude" } )
 // Gemini
 aiChat( "message", {}, { provider: "gemini" } )
 
+// Mistral
+aiChat( "message", {}, { provider: "mistral" } )
+
+// HuggingFace
+aiChat( "message", {}, { provider: "huggingface" } )
+
+// Groq (fast!)
+aiChat( "message", {}, { provider: "groq" } )
+
 // Ollama (local)
 aiChat( "message", { model: "llama3.2" }, { provider: "ollama" } )
 
@@ -133,6 +162,40 @@ aiChat( "message", {}, { provider: "openrouter" } )
 
 // Grok
 aiChat( "message", {}, { provider: "grok" } )
+
+// DeepSeek
+aiChat( "message", {}, { provider: "deepseek" } )
+
+// Perplexity
+aiChat( "message", {}, { provider: "perplexity" } )
+```
+
+**Embedding Providers:**
+
+```java
+// OpenAI embeddings
+embedding = aiEmbedding(
+    input: "BoxLang is a modern JVM language",
+    options: { provider: "openai" }
+)
+
+// Voyage embeddings (best for RAG)
+embedding = aiEmbedding(
+    input: "Document text for semantic search",
+    options: { provider: "voyage", model: "voyage-2" }
+)
+
+// Cohere embeddings (multilingual)
+embedding = aiEmbedding(
+    input: "Text in any language",
+    options: { provider: "cohere" }
+)
+
+// Ollama embeddings (local/private)
+embedding = aiEmbedding(
+    input: "Private document",
+    options: { provider: "ollama", model: "nomic-embed-text" }
+)
 ```
 
 ---
