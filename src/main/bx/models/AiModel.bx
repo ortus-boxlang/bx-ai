@@ -134,16 +134,14 @@ class extends="AiBaseRunnable" {
 	 *
 	 * @input Messages array, AiMessage, or struct with messages
 	 * @params Runtime parameters (model, temperature, tools, etc.)
-	 * @options Runtime options (returnFormat, timeout, logging, context, etc.)
+	 * @options Runtime options (returnFormat, timeout, logging, etc.)
 	 *
 	 * @return The LLM response
 	 */
 	public any function run( any input = {}, struct params = {}, struct options = {} ) {
+		var messages = extractMessages( arguments.input )
 		var effectiveParams = getMergedParams( arguments.params )
 		var effectiveOptions = getMergedOptions( arguments.options )
-
-		// Extract messages - handle context from options
-		var messages = extractMessages( arguments.input, effectiveOptions )
 
 		// If we have tools in the options, merge them with the model's tools
 		if( effectiveParams.keyExists( "tools" ) ){
@@ -184,7 +182,7 @@ class extends="AiBaseRunnable" {
 	 * @onChunk The callback to invoke for each chunk
 	 * @input Messages array, AiMessage, or struct with messages
 	 * @params Runtime parameters
-	 * @options Runtime options (timeout, logging, context, etc.)
+	 * @options Runtime options (timeout, logging, etc.)
 	 */
 	public void function stream(
 		required function onChunk,
@@ -192,12 +190,10 @@ class extends="AiBaseRunnable" {
 		struct params = {},
 		struct options = {}
 	) {
+		var messages = extractMessages( arguments.input );
 		var effectiveParams = getMergedParams( arguments.params );
 		var effectiveOptions = getMergedOptions( arguments.options );
 		effectiveOptions.stream = true;
-
-		// Extract messages - handle context from options
-		var messages = extractMessages( arguments.input, effectiveOptions );
 
 		var request = new bxModules.bxai.models.requests.AiRequest(
 			aiMessage( messages ),
@@ -218,56 +214,29 @@ class extends="AiBaseRunnable" {
 	 * Extract messages from various input formats
 	 *
 	 * @input The input to extract messages from
-	 * @options The options containing potential context data
 	 *
 	 * @return An array of messages
 	 */
-	private array function extractMessages( required any input, struct options = {} ) {
+	private array function extractMessages( required any input ) {
 		// AiMessage or other runnable that returns messages
         if( arguments.input instanceof "AiMessage" ){
-			// If context is provided in options, merge it before rendering
-			if( arguments.options.keyExists( "context" ) && isStruct( arguments.options.context ) ){
-				arguments.input.mergeContext( arguments.options.context );
-			}
 			return arguments.input.render();
 		}
 
 		// Array of messages
 		// Process each message
 		if( isArray( arguments.input ) ) {
-			// If context exists, apply binding to string content
-			if( arguments.options.keyExists( "context" ) && isStruct( arguments.options.context ) ){
-				var contextJson = jsonSerialize( arguments.options.context );
-				return arguments.input.map( m => {
-					if( isStruct( m ) && m.keyExists( "content" ) && isSimpleValue( m.content ) ){
-						var boundMessage = duplicate( m );
-						boundMessage.content = stringBind( boundMessage.content, { context: contextJson } );
-						return boundMessage;
-					}
-					return m;
-				});
-			}
-			return arguments.input.map( m => extractMessages( m, arguments.options ) );
+			return arguments.input.map( m => extractMessages( m ) );
 		}
 
 		// Struct message, this can be different per LLM, just pass it through
 		if( isStruct( arguments.input ) ) {
-			// If context exists, apply binding to string content
-			if( arguments.options.keyExists( "context" ) && isStruct( arguments.options.context ) && arguments.input.keyExists( "content" ) && isSimpleValue( arguments.input.content ) ){
-				var boundMessage = duplicate( arguments.input );
-				boundMessage.content = stringBind( boundMessage.content, { context: jsonSerialize( arguments.options.context ) } );
-				return [ boundMessage ];
-			}
 			return [ arguments.input ];
 		}
 
-		// Simple string - convert to user message and apply context binding if available
+		// Simple string - convert to user message
 		if( isSimpleValue( arguments.input ) ) {
-			var content = arguments.input;
-			if( arguments.options.keyExists( "context" ) && isStruct( arguments.options.context ) ){
-				content = stringBind( content, { context: jsonSerialize( arguments.options.context ) } );
-			}
-			return [ { "role": "user", "content": content } ];
+			return [ { "role": "user", "content": arguments.input } ];
 		}
 
 		throw(

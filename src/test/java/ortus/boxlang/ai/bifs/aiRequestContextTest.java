@@ -315,4 +315,94 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		assertThat( messageContent ).doesNotContain( "${context}" );
 	}
 
+	@DisplayName( "AiRequest constructor merges context from options and renders messages" )
+	@Test
+	public void testAiRequestContextFromOptions() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.requests.AiRequest;
+
+				contextData = {
+					userId: "user-123",
+					role: "admin"
+				}
+
+				message = aiMessage( "Context: ${context}. Help me." )
+
+				request = new AiRequest(
+					aiMessage: message,
+					options: { context: contextData }
+				)
+
+				messages = request.getMessages()
+				messageContent = messages[1].content
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		String messageContent = variables.getAsString( Key.of( "messageContent" ) );
+		assertThat( messageContent ).contains( "user-123" );
+		assertThat( messageContent ).contains( "admin" );
+		assertThat( messageContent ).doesNotContain( "${context}" );
+	}
+
+	@DisplayName( "AiRequest renders messages even without context" )
+	@Test
+	public void testAiRequestRendersWithoutContext() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.requests.AiRequest;
+
+				message = aiMessage( "Hello ${name}" )
+					.bind( { name: "World" } )
+
+				request = new AiRequest( aiMessage: message )
+
+				messages = request.getMessages()
+				messageContent = messages[1].content
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		String messageContent = variables.getAsString( Key.of( "messageContent" ) );
+		assertThat( messageContent ).isEqualTo( "Hello World" );
+	}
+
+	@DisplayName( "AiRequest context merges with existing message context" )
+	@Test
+	public void testAiRequestContextMergesWithMessageContext() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.requests.AiRequest;
+
+				message = aiMessage( "Context: ${context}" )
+					.setContext( { existingKey: "existing-value" } )
+
+				request = new AiRequest(
+					aiMessage: message,
+					options: { context: { newKey: "new-value" } }
+				)
+
+				messages = request.getMessages()
+				messageContent = messages[1].content
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		String messageContent = variables.getAsString( Key.of( "messageContent" ) );
+		assertThat( messageContent ).contains( "existingKey" );
+		assertThat( messageContent ).contains( "existing-value" );
+		assertThat( messageContent ).contains( "newKey" );
+		assertThat( messageContent ).contains( "new-value" );
+	}
+
 }
