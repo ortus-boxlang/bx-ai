@@ -74,7 +74,7 @@ abstract class implements="IDocumentLoader" {
 	 */
 	function init( string source = "", struct config = {} ) {
 		variables.source          = arguments.source;
-		variables.config          = static.DEFAULT_CONFIG.append( arguments.config, true );
+		variables.config          = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
 		variables.documents       = [];
 		variables.currentIndex    = 0;
 		variables.documentsLoaded = false;

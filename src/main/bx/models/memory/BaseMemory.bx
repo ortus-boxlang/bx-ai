@@ -15,6 +15,8 @@
  * Base abstract class for AI Memory implementations
  * Provides common functionality for conversation history storage
  */
+import bxModules.bxai.models.loaders.Document;
+
 abstract class implements="IAiMemory" {
 
 	/**
@@ -144,48 +146,6 @@ abstract class implements="IAiMemory" {
 
 		// Trim to max size (excluding system message)
 		this.trim()
-
-		// Document instance - add content as user message
-		if ( arguments.message instanceof "bxModules.bxai.models.loaders.Document" ) {
-			variables.messages.append( {
-				role: "user",
-				content: arguments.message.getContent(),
-				metadata: arguments.message.getMetadata(),
-				timestamp: now()
-			} );
-			return this;
-		}
-
-		// Struct - must have role and content
-		if ( isStruct( arguments.message ) ) {
-			if ( !arguments.message.keyExists( "role" ) || !arguments.message.keyExists( "content" ) ) {
-				throw(
-					type: "InvalidMessage",
-					message: "Message struct must contain 'role' and 'content' keys"
-				);
-			}
-			param arguments.message.timestamp = now();
-			variables.messages.append( arguments.message );
-		}
-		// Array - process each element
-		else if ( isArray( arguments.message ) ) {
-			arguments.message.each( ( m ) => this.add( m ) );
-		}
-		// String - add as user message
-		else if ( isSimpleValue( arguments.message ) ) {
-			variables.messages.append( {
-				role: "user",
-				content: arguments.message,
-				timestamp: now()
-			} );
-		}
-		// Invalid type
-		else {
-			throw(
-				type: "InvalidMessage",
-				message: "Message must be a string, struct, array, AiMessage, or Document instance"
-			);
-		}
     
 		return this
 	}
@@ -671,6 +631,16 @@ abstract class implements="IAiMemory" {
 			return 	arguments.message.getMessages()
 		}
 
+		// Document instance - convert to user message
+		if ( arguments.message instanceof "bxModules.bxai.models.loaders.Document" ) {
+			return [ {
+				role     : "user",
+				content  : arguments.message.getContent(),
+				metadata : arguments.message.getMetadata(),
+				timestamp: now()
+			} ]
+		}
+
 		// Struct - must have role and content
 		if ( isStruct( arguments.message ) ) {
 			param arguments.message.role = "user"
@@ -704,7 +674,7 @@ abstract class implements="IAiMemory" {
 
 		throw(
 			type: "InvalidMessage",
-			message: "Message must be a string, struct, array, or AiMessage instance"
+			message: "Message must be a string, struct, array, AiMessage, or Document instance"
 		)
 	}
 

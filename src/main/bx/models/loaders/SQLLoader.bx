@@ -62,7 +62,7 @@ class extends="BaseDocumentLoader" {
 	 */
 	function init( string source = "", struct config = {} ) {
 		super.init( source: arguments.source, config: {} );
-		variables.config = static.DEFAULT_CONFIG.append( arguments.config, true );
+		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
 		variables.sqlQuery = arguments.source;
 		return this;
 	}

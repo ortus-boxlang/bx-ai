@@ -56,7 +56,7 @@ For advanced configuration and method chaining:
 ```java
 // Create and configure a markdown loader
 loader = aiDocumentLoader( "/docs", "markdown" )
-    .splitByHeaders( 2 )
+    .headerSplit( 2 )
     .removeCodeBlocks()
 docs = loader.load()
 
@@ -188,7 +188,7 @@ docs = loader.load()
 
 // Split by headers
 loader = new MarkdownLoader( source: "/path/to/readme.md" )
-    .splitByHeaders( 2 )  // Split at h2 headers
+    .headerSplit( 2 )  // Split at h2 headers
 docs = loader.load()
 
 // Remove code blocks and images

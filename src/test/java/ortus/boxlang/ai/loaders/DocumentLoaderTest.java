@@ -29,7 +29,9 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		    """
 				import bxModules.bxai.models.loaders.TextLoader;
 				loader = new TextLoader( source: "%s/sample.txt" );
-				result = loader.load();
+				rawDocs = loader.load();
+
+				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -51,8 +53,8 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		    """
 				import bxModules.bxai.models.loaders.TextLoader;
 				loader = new TextLoader( source: "%s/sample.txt" );
-				docs = loader.load();
-				result = docs[1].getMetadata();
+				rawDocs = loader.load();
+				result = rawDocs[1].getMetadata();
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -77,7 +79,9 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		    """
 				import bxModules.bxai.models.loaders.MarkdownLoader;
 				loader = new MarkdownLoader( source: "%s/sample.md" );
-				result = loader.load();
+				rawDocs = loader.load();
+
+				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -100,8 +104,10 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		    """
 				import bxModules.bxai.models.loaders.MarkdownLoader;
 				loader = new MarkdownLoader( source: "%s/sample.md" );
-				loader.splitByHeaders( 2 );
-				result = loader.load();
+				loader.headerSplit( 2 );
+				rawDocs = loader.load();
+
+				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -122,8 +128,8 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 				import bxModules.bxai.models.loaders.MarkdownLoader;
 				loader = new MarkdownLoader( source: "%s/sample.md" );
 				loader.removeCodeBlocks();
-				docs = loader.load();
-				result = docs[1].getContent();
+				rawDocs = loader.load();
+				result = rawDocs[1].getContent();
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -145,7 +151,9 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		    """
 				import bxModules.bxai.models.loaders.CSVLoader;
 				loader = new CSVLoader( source: "%s/sample.csv" );
-				result = loader.load();
+				rawDocs = loader.load();
+
+				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -169,7 +177,9 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 				import bxModules.bxai.models.loaders.CSVLoader;
 				loader = new CSVLoader( source: "%s/sample.csv" );
 				loader.rowsAsDocuments();
-				result = loader.load();
+				rawDocs = loader.load();
+
+				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -193,7 +203,9 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		    """
 				import bxModules.bxai.models.loaders.JSONLoader;
 				loader = new JSONLoader( source: "%s/sample.json" );
-				result = loader.load();
+				rawDocs = loader.load();
+
+				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -217,8 +229,8 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 				import bxModules.bxai.models.loaders.JSONLoader;
 				loader = new JSONLoader( source: "%s/sample.json" );
 				loader.contentField( "content" );
-				docs = loader.load();
-				result = docs[1].getContent();
+				rawDocs = loader.load();
+				result = rawDocs[1].getContent();
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -237,7 +249,9 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 				import bxModules.bxai.models.loaders.JSONLoader;
 				loader = new JSONLoader( source: "%s/array.json" );
 				loader.arrayAsDocuments();
-				result = loader.load();
+				rawDocs = loader.load();
+
+				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -260,7 +274,9 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		    """
 				import bxModules.bxai.models.loaders.DirectoryLoader;
 				loader = new DirectoryLoader( source: "%s" );
-				result = loader.load();
+				rawDocs = loader.load();
+
+				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -281,7 +297,9 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 				import bxModules.bxai.models.loaders.DirectoryLoader;
 				loader = new DirectoryLoader( source: "%s" );
 				loader.extensions( ["txt"] );
-				result = loader.load();
+				rawDocs = loader.load();
+
+				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -319,7 +337,8 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				result = aiDocuments( "%s/sample.md" );
+				rawDocs = aiDocuments( "%s/sample.md" );
+				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -340,7 +359,8 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				result = aiDocuments( source: "%s/sample.txt", type: "text" );
+				rawDocs = aiDocuments( source: "%s/sample.txt", type: "text" );
+				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -435,7 +455,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		    """
 				import bxModules.bxai.models.loaders.TextLoader;
 				loader = new TextLoader( source: "%s/sample.txt" );
-				memory = aiMemory( "windowed" );
+				memory = aiMemory( "WindowMemory" );
 				result = loader.loadTo( memory );
 				messageCount = memory.count();
 		    """.formatted( TEST_RESOURCES ),
@@ -459,7 +479,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		    """
 				import bxModules.bxai.models.loaders.TextLoader;
 				loader = new TextLoader( source: "%s/sample.txt" );
-				memory = aiMemory( "windowed" );
+				memory = aiMemory( "WindowMemory" );
 				result = loader.loadTo(
 					memory,
 					{ chunkSize: 50, overlap: 10 }
@@ -512,7 +532,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 					.contentType( "html" )
 					.timeout( 60 )
 					.method( "GET" )
-					.addHeader( "Accept", "text/html" );
+					.header( "Accept", "text/html" );
 				result = loader.getConfig();
 		    """,
 		    context
@@ -856,7 +876,8 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 				import bxModules.bxai.models.loaders.TextLoader;
 				loader = new TextLoader( source: "%s/sample.txt" );
 				beforeLoad = loader.getDocumentCount();
-				docs = loader.load();
+				// Use loadBatch which caches documents
+				batch = loader.loadBatch( 100 );
 				afterLoad = loader.getDocumentCount();
 				result = { before: beforeLoad, after: afterLoad };
 		    """.formatted( TEST_RESOURCES ),
@@ -867,7 +888,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		IStruct result = ( IStruct ) variables.get( "result" );
 		// Before load, count is -1 (unknown)
 		assertThat( result.getAsInteger( Key.of( "before" ) ) ).isEqualTo( -1 );
-		// After load, count is actual number
+		// After load via loadBatch, count is actual number
 		assertThat( result.getAsInteger( Key.of( "after" ) ) ).isEqualTo( 1 );
 	}
 

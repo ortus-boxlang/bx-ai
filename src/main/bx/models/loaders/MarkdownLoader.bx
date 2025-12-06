@@ -46,7 +46,7 @@ class extends="BaseDocumentLoader" {
 	 */
 	function init( string source = "", struct config = {} ) {
 		super.init( source: arguments.source, config: {} );
-		variables.config = static.DEFAULT_CONFIG.append( arguments.config, true );
+		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
 		return this;
 	}
 
@@ -241,7 +241,7 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @return MarkdownLoader for chaining
 	 */
-	MarkdownLoader function splitByHeaders( numeric level = 2 ) {
+	MarkdownLoader function headerSplit( numeric level = 2 ) {
 		variables.config.splitByHeaders = true;
 		variables.config.headerLevel    = arguments.level;
 		return this;
