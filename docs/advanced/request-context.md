@@ -159,7 +159,7 @@ response = model.run(
 ```javascript
 // Build a pipeline
 pipeline = aiModel( "openai" )
-    .to( aiTransformer( response => response.toUpperCase() ) );
+    .to( aiTransform( response => response.toUpperCase() ) );
 
 // Run with context
 response = pipeline.run(
