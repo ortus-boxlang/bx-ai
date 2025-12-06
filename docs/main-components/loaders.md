@@ -1,12 +1,12 @@
 # Document Loaders
 
-Document loaders are a powerful feature for importing content from various sources (files, directories, URLs) into a standardized `Document` format that can be processed by AI workflows, stored in vector databases, or used for retrieval-augmented generation (RAG).
+Document loaders are a powerful feature for importing content from various sources (files, directories, URLs, databases) into a standardized `Document` format that can be processed by AI workflows, stored in vector databases, or used for retrieval-augmented generation (RAG).
 
 ## Overview
 
 The document loading system provides:
 
-- **Multiple Loader Types**: Text, Markdown, CSV, JSON, HTTP, Tika, and Directory loaders
+- **Multiple Loader Types**: Text, Markdown, CSV, JSON, XML, HTTP, Tika, Feed, SQL, Directory, and WebCrawler loaders
 - **Consistent Document Format**: All loaders produce `Document` objects with content, metadata, id, and embedding properties
 - **Fluent API**: Chain methods for easy configuration
 - **Memory Integration**: Load directly into AI memory systems for RAG workflows
@@ -406,6 +406,172 @@ docs = loader.load()
 | `extensions` | array | [] | File extensions to include |
 | `excludePatterns` | array | [] | Regex patterns to exclude |
 | `includeHidden` | boolean | false | Include hidden files |
+
+### XMLLoader
+
+Loads and parses XML documents with XPath support. Useful for config files, RSS feeds, and legacy data.
+
+```java
+import bxModules.bxai.models.loaders.XMLLoader;
+
+// Basic XML loading
+loader = new XMLLoader( source: "/path/to/data.xml" )
+docs = loader.load()
+
+// Extract specific elements as documents
+loader = new XMLLoader( source: "/path/to/catalog.xml" )
+    .elementPath( "//product" )
+    .elementsAsDocuments()
+    .contentElements( ["description", "details"] )
+    .metadataElements( ["name", "sku", "price"] )
+docs = loader.load()
+
+// With namespace support
+loader = new XMLLoader( source: "/path/to/soap-response.xml" )
+    .namespaceAware()
+    .namespaces( { "soap": "http://schemas.xmlsoap.org/soap/envelope/" } )
+docs = loader.load()
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `elementPath` | string | "" | XPath to extract elements from |
+| `elementsAsDocuments` | boolean | false | Create document per matching element |
+| `contentElements` | array | [] | XPath expressions for content |
+| `metadataElements` | array | [] | XPath expressions for metadata |
+| `preserveWhitespace` | boolean | false | Preserve whitespace in text |
+| `includeAttributes` | boolean | true | Include attribute values |
+| `namespaceAware` | boolean | true | Handle XML namespaces |
+| `namespaces` | struct | {} | Namespace prefix mappings |
+
+### FeedLoader
+
+Loads RSS and Atom feeds, creating a document per feed item. Perfect for blog aggregation, news feeds, and content syndication.
+
+```java
+import bxModules.bxai.models.loaders.FeedLoader;
+
+// Load RSS feed
+loader = new FeedLoader( source: "https://example.com/feed.rss" )
+docs = loader.load()
+
+// Load with filtering
+loader = new FeedLoader( source: "https://news.example.com/rss" )
+    .maxItems( 10 )
+    .sinceDate( dateAdd( "d", -7, now() ) )  // Last 7 days
+    .categories( ["technology", "ai"] )
+    .stripHtml()
+docs = loader.load()
+
+// Local feed file
+loader = new FeedLoader( source: "/path/to/feed.xml" )
+docs = loader.load()
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `includeDescription` | boolean | true | Include item description |
+| `includeContent` | boolean | true | Include full content |
+| `stripHtml` | boolean | true | Strip HTML tags from content |
+| `maxItems` | numeric | 0 | Maximum items to load (0 = all) |
+| `sinceDate` | date | "" | Only load items since date |
+| `categories` | array | [] | Filter by categories |
+| `timeout` | numeric | 30 | HTTP timeout for URL feeds |
+
+### SQLLoader
+
+Loads documents from database queries. Converts query results to Document objects for RAG over structured data.
+
+```java
+import bxModules.bxai.models.loaders.SQLLoader;
+
+// Basic query loading
+loader = new SQLLoader( source: "SELECT * FROM articles" )
+    .datasource( "mydb" )
+    .contentColumn( "body" )
+docs = loader.load()
+
+// Multiple columns as content with template
+loader = new SQLLoader( source: "SELECT * FROM products" )
+    .datasource( "ecommerce" )
+    .contentTemplate( "${name}: ${description}. Price: ${price}" )
+    .metadataColumns( ["sku", "category", "created_at"] )
+    .idColumn( "sku" )
+docs = loader.load()
+
+// Parameterized query
+loader = new SQLLoader( source: "SELECT * FROM docs WHERE status = ?" )
+    .datasource( "mydb" )
+    .params( { 1: "published" } )
+    .contentColumn( "content" )
+docs = loader.load()
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `datasource` | string | "" | Datasource name to use |
+| `contentColumn` | string | "" | Column to use as document content |
+| `contentColumns` | array | [] | Array of columns to combine as content |
+| `contentTemplate` | string | "" | Template with `${column}` placeholders |
+| `metadataColumns` | array | [] | Columns to extract as metadata |
+| `idColumn` | string | "" | Column to use as document ID |
+| `params` | struct | {} | Query parameters |
+| `maxRows` | numeric | 0 | Maximum rows to return (0 = all) |
+| `rowsAsDocuments` | boolean | true | Create document per row |
+
+### WebCrawlerLoader
+
+Crawls multiple web pages by following links. Respects robots.txt and supports depth-limited crawling. Uses JSoup for HTML parsing.
+
+```java
+import bxModules.bxai.models.loaders.WebCrawlerLoader;
+
+// Basic crawling
+loader = new WebCrawlerLoader( source: "https://example.com" )
+docs = loader.load()
+
+// Advanced crawling configuration
+loader = new WebCrawlerLoader( source: "https://docs.example.com" )
+    .maxPages( 50 )
+    .maxDepth( 3 )
+    .allowedPaths( ["/docs/", "/guides/"] )
+    .excludedPaths( ["/api/", "/admin/"] )
+    .contentSelector( "article.content" )
+    .excludeSelectors( ["nav", "footer", ".sidebar"] )
+    .delay( 2000 )  // 2 seconds between requests
+docs = loader.load()
+
+// Cross-domain crawling
+loader = new WebCrawlerLoader( source: "https://main.example.com" )
+    .followExternalLinks()
+    .allowedDomains( ["docs.example.com", "blog.example.com"] )
+docs = loader.load()
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxPages` | numeric | 10 | Maximum pages to crawl |
+| `maxDepth` | numeric | 2 | Maximum link depth |
+| `followExternalLinks` | boolean | false | Follow links to other domains |
+| `allowedDomains` | array | [] | Domains allowed for external links |
+| `allowedPaths` | array | [] | Path prefixes to allow |
+| `excludedPaths` | array | [] | Path prefixes to exclude |
+| `urlPatterns` | array | [] | URL regex patterns to match |
+| `excludeUrlPatterns` | array | [] | URL regex patterns to exclude |
+| `respectRobotsTxt` | boolean | true | Respect robots.txt rules |
+| `contentSelector` | string | "" | CSS selector for content extraction |
+| `excludeSelectors` | array | [] | CSS selectors to exclude from content |
+| `delay` | numeric | 1000 | Delay between requests in ms |
+| `userAgent` | string | "BoxLang-WebCrawler/1.0" | User agent string |
+| `deduplicateContent` | boolean | true | Skip pages with duplicate content |
 
 ## Loading Methods
 
