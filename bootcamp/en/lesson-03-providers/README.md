@@ -26,7 +26,7 @@ A provider is a company (or software) that runs AI models:
 
   ☁️ CLOUD PROVIDERS (Paid)              🏠 LOCAL (Free)
   ───────────────────────                 ───────────────
-  
+
   ┌──────────┐  ┌──────────┐             ┌──────────┐
   │  OpenAI  │  │  Claude  │             │  Ollama  │
   │  (GPT-4) │  │(Anthropic│             │ (Local)  │
@@ -86,7 +86,7 @@ Pass the provider in the options struct:
 
 ```java
 // openai-call.bxs
-answer = aiChat( 
+answer = aiChat(
     "What is 2 + 2?",
     {},                        // params
     { provider: "openai" }     // options
@@ -100,10 +100,10 @@ Some providers need specific API keys:
 
 ```java
 // claude-call.bxs
-answer = aiChat( 
+answer = aiChat(
     "What is 2 + 2?",
-    {},                        
-    { 
+    {},
+    {
         provider: "claude",
         apiKey: getSystemSetting( "CLAUDE_API_KEY" )
     }
@@ -123,10 +123,10 @@ claudeService = aiService( "claude" )
 // Same question, different providers
 question = aiMessage().user( "What is BoxLang?" )
 
-openaiAnswer = openaiService.invoke( 
+openaiAnswer = openaiService.invoke(
     aiChatRequest( question )
 )
-claudeAnswer = claudeService.invoke( 
+claudeAnswer = claudeService.invoke(
     aiChatRequest( question )
 )
 ```
@@ -219,7 +219,7 @@ Ollama lets you run AI completely locally - **free, private, no internet require
 
 ```java
 // ollama-example.bxs
-answer = aiChat( 
+answer = aiChat(
     "Write a haiku about programming",
     { model: "llama3.2" },
     { provider: "ollama" }
@@ -266,25 +266,25 @@ If one provider fails, try another:
 function chatWithFallback( message ) {
     // Try providers in order
     providers = [ "openai", "claude", "ollama" ]
-    
+
     for( provider in providers ) {
         try {
             println( "Trying #provider#..." )
-            
+
             options = { provider: provider }
             if( provider == "ollama" ) {
                 params = { model: "llama3.2" }
             } else {
                 params = {}
             }
-            
+
             return aiChat( message, params, options )
         } catch( any e ) {
             println( "  ❌ #provider# failed: #e.message#" )
             continue
         }
     }
-    
+
     throw( message = "All providers failed!" )
 }
 
@@ -306,15 +306,15 @@ function routeByTask( task, message ) {
         case "code":
             // Use OpenAI for coding (best tools)
             return aiChat( message, { model: "gpt-4o" }, { provider: "openai" } )
-        
+
         case "analysis":
             // Use Claude for long analysis
             return aiChat( message, {}, { provider: "claude" } )
-        
+
         case "quick":
             // Use local Ollama for quick tasks
             return aiChat( message, { model: "llama3.2" }, { provider: "ollama" } )
-        
+
         default:
             return aiChat( message )
     }
@@ -364,7 +364,7 @@ function callProvider( name, options, params = {} ) {
         startTime = getTickCount()
         answer = aiChat( question, params, options )
         duration = getTickCount() - startTime
-        
+
         println( "✅ #name# (#duration#ms):" )
         println( answer )
         println()
@@ -380,26 +380,26 @@ switch( choice ) {
     case "1":
         callProvider( "OpenAI", { provider: "openai" } )
         break
-    
+
     case "2":
         callProvider( "Claude", { provider: "claude" } )
         break
-    
+
     case "3":
         callProvider( "Ollama", { provider: "ollama" }, { model: "llama3.2" } )
         break
-    
+
     case "4":
         println( "🔄 Comparing all providers..." )
         println()
-        
+
         callProvider( "OpenAI", { provider: "openai" } )
         callProvider( "Claude", { provider: "claude" } )
         callProvider( "Ollama", { provider: "ollama" }, { model: "llama3.2" } )
-        
+
         println( "✨ Comparison complete!" )
         break
-    
+
     default:
         println( "Invalid choice!" )
 }
@@ -430,11 +430,11 @@ Enter your question: What is BoxLang?
 🔄 Comparing all providers...
 
 ✅ OpenAI (842ms):
-BoxLang is a modern dynamic JVM language that combines the best 
+BoxLang is a modern dynamic JVM language that combines the best
 features of Java with dynamic language productivity.
 
 ✅ Claude (1203ms):
-BoxLang is a contemporary programming language that runs on the 
+BoxLang is a contemporary programming language that runs on the
 Java Virtual Machine, offering both dynamic and static typing...
 
 ✅ Ollama (234ms):

@@ -68,7 +68,7 @@ WITHOUT HISTORY                 WITH HISTORY
 ───────────────                ─────────────
 You: My name is Alex           You: My name is Alex
 AI: Nice to meet you!          AI: Nice to meet you, Alex!
-                               
+
 You: What's my name?           You: What's my name?
 AI: I don't know...            AI: Your name is Alex!
      (no memory!)                   (remembers!)
@@ -150,7 +150,7 @@ println( "🏴‍☠️ Pirate says:" )
 println( aiChat( pirateChat ) )
 println()
 
-// Professor personality  
+// Professor personality
 professorChat = aiMessage()
     .system( "You are a distinguished professor. Explain things academically with proper terminology." )
     .user( "How do I make coffee?" )
@@ -211,7 +211,7 @@ running = true
 while( running ) {
     print( "You: " )
     userInput = readLine()
-    
+
     if( userInput == "quit" ) {
         running = false
         println( "Goodbye!" )
@@ -262,7 +262,7 @@ Context is **structured data** that gets automatically injected into your messag
 
   Context Data               ${context}              AI Message
   ────────────              ──────────              ───────────
-  
+
   { userId: \"123\"    ─────▶  Placeholder   ────▶  \"User 123,
     role: \"admin\"              in message          role: admin
     prefs: {...} }                                  prefs: ...\"
@@ -413,7 +413,7 @@ message = aiMessage()
     .system( \"
         Answer using ONLY the provided context.
         If the answer isn't in the context, say you don't know.
-        
+
         Context: ${context}
     \" )
     .user( userQuestion )
@@ -685,7 +685,7 @@ println( "🤖 Welcome to AI Chat Assistant!" )
 println()
 println( "Choose a personality:" )
 println( "1. Helpful - Friendly and supportive" )
-println( "2. Funny - Witty with jokes" )  
+println( "2. Funny - Witty with jokes" )
 println( "3. Serious - Professional and formal" )
 println()
 
@@ -726,7 +726,7 @@ running = true
 while( running ) {
     print( "You: " )
     userInput = readLine()
-    
+
     if( userInput.trim() == "quit" ) {
         running = false
         println()
@@ -734,7 +734,7 @@ while( running ) {
         println( "👋 Goodbye!" )
     } else {
         conversation.user( userInput )
-        
+
         try {
             response = aiChat( conversation )
             println( "AI: " & response )
@@ -743,7 +743,7 @@ while( running ) {
         } catch( any e ) {
             println( "❌ Error: " & e.message )
         }
-        
+
         println()
     }
 }
@@ -771,8 +771,8 @@ Enter 1, 2, or 3: 2
 Chat started! Type 'quit' to exit.
 ────────────────────────────────────────
 You: Tell me about BoxLang
-AI: BoxLang? Oh, it's like Java went to a party, had too much fun, 
-    and came back as the cool kid on the JVM block! It's dynamic, 
+AI: BoxLang? Oh, it's like Java went to a party, had too much fun,
+    and came back as the cool kid on the JVM block! It's dynamic,
     it's modern, and it doesn't judge you for your bracket placement! 😄
 
 You: quit

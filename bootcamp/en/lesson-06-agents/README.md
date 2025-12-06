@@ -272,19 +272,19 @@ println( salesAgent.run( "What were we discussing?" ) )
 ```java
 // web-app-pattern.bxs (pseudo-code for ColdBox/web framework)
 component {
-    
+
     function chat( event, rc, prc ) {
         // Get authenticated user from session
         userId = session.getUserId()
         conversationId = rc.conversationId ?: "default"
         userMessage = rc.message
-        
+
         // Create/retrieve agent with user-specific memory
         agent = getCachedAgent( userId, conversationId )
-        
+
         // Process message with isolated memory
         response = agent.run( userMessage )
-        
+
         // Return to UI
         return {
             response: response,
@@ -292,10 +292,10 @@ component {
             conversationId: conversationId
         }
     }
-    
+
     private function getCachedAgent( userId, conversationId ) {
         cacheKey = "agent_#userId#_#conversationId#"
-        
+
         // Check cache
         if( !cache.has( cacheKey ) ) {
             // Create new agent with multi-tenant memory
@@ -312,10 +312,10 @@ component {
                 ),
                 tools: getAppTools()
             )
-            
+
             cache.set( cacheKey, agent, 3600 )  // Cache for 1 hour
         }
-        
+
         return cache.get( cacheKey )
     }
 }
@@ -362,7 +362,7 @@ function createEnterpriseAgent( userId, conversationId ) {
 ```java
 // secure-agent-factory.bxs
 component {
-    
+
     function createSecureAgent(
         required string userId,
         required string tenantId,
@@ -373,7 +373,7 @@ component {
         if( !hasRequiredPermissions( permissions ) ) {
             throw( "Insufficient permissions for AI agent" )
         }
-        
+
         // Create agent with security context
         return aiAgent(
             name: "SecureAssistant",
@@ -381,7 +381,7 @@ component {
             instructions: "
                 You are a secure assistant for enterprise users.
                 User context: ${context}
-                
+
                 RULES:
                 - Only access data for this user's tenant
                 - Respect user permissions
@@ -438,7 +438,7 @@ Level 2: Conversation Isolation (per user)
 ```java
 // customer-support-system.bxs
 component {
-    
+
     function handleSupportRequest(
         required string customerId,
         required string ticketId,
@@ -475,11 +475,11 @@ component {
             ticketId: ticketId,
             ticketPriority: getTicketPriority( ticketId )
         })
-        
+
         // Process with full context
         return agent.run( message )
     }
-    
+
     // Get conversation history for ticket
     function getTicketHistory( customerId, ticketId ) {
         agent = createSupportAgent( customerId, ticketId )
@@ -617,11 +617,11 @@ println()
 ```java
 // web-streaming.bxs (pseudo-code for web framework)
 component {
-    
+
     function streamChat( event, rc, prc ) {
         userId = session.getUserId()
         message = rc.message
-        
+
         // Create agent with user memory
         agent = aiAgent(
             name: "WebAssistant",
@@ -634,12 +634,12 @@ component {
                 config: { maxMessages: 50 }
             )
         )
-        
+
         // Set response headers for SSE (Server-Sent Events)
         response.setHeader( "Content-Type", "text/event-stream" )
         response.setHeader( "Cache-Control", "no-cache" )
         response.setHeader( "Connection", "keep-alive" )
-        
+
         // Stream to browser
         agent.stream(
             onChunk: ( chunk ) => {
@@ -649,7 +649,7 @@ component {
             },
             input: message
         )
-        
+
         abort()  // Prevent further processing
     }
 }
