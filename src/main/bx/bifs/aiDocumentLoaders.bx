@@ -71,7 +71,7 @@ class {
 					"codeRemoval"   : true
 				},
 				"configOptions": {
-					"splitByHeaders"   : "Split document by headers (default: false)",
+					"headerSplit"      : "Split document by headers using fluent method: loader.headerSplit(2)",
 					"headerLevel"      : "Header level to split at (default: 2)",
 					"removeCodeBlocks" : "Remove code blocks (default: false)",
 					"removeImages"     : "Remove image references (default: false)",

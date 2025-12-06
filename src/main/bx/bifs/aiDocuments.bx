@@ -23,8 +23,8 @@
  * // Load from a text file
  * docs = aiDocuments( "/path/to/file.txt" )
  *
- * // Load from a directory with markdown files
- * docs = aiDocuments( "/docs", "markdown", { splitByHeaders: true } )
+ * // Load from a directory with markdown files using aiDocumentLoader for fluent config
+ * docs = aiDocumentLoader( "/docs", "markdown" ).headerSplit( 2 ).load()
  *
  * // Load CSV with row-as-document mode
  * docs = aiDocuments( "/data.csv", "csv", { rowsAsDocuments: true } )

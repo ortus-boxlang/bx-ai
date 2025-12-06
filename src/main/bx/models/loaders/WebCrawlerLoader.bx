@@ -410,9 +410,10 @@ class extends="BaseDocumentLoader" {
 	 */
 	private string function normalizeUrl( required string url ) {
 		var normalized = arguments.url;
+		var hashChar   = char( 35 );
 
 		// Remove fragment
-		var fragmentPos = normalized.find( "##" );
+		var fragmentPos = normalized.find( hashChar );
 		if ( fragmentPos > 0 ) {
 			normalized = left( normalized, fragmentPos - 1 );
 		}
@@ -547,15 +548,16 @@ class extends="BaseDocumentLoader" {
 	 * @return Struct with disallowed and allowed paths
 	 */
 	private struct function parseRobotsTxt( required string content ) {
-		var rules = { disallowed: [], allowed: [] };
-		var lines = arguments.content.listToArray( char( 10 ) );
+		var rules    = { disallowed: [], allowed: [] };
+		var lines    = arguments.content.listToArray( char( 10 ) );
+		var hashChar = char( 35 );
 		var isRelevantAgent = false;
 
 		for ( var line in lines ) {
 			line = line.trim();
 
 			// Skip comments and empty lines
-			if ( !len( line ) || left( line, 1 ) == "##" ) {
+			if ( !len( line ) || left( line, 1 ) == hashChar ) {
 				continue;
 			}
 
