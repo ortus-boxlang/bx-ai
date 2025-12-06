@@ -42,13 +42,31 @@ Un proveedor es una empresa (o software) que ejecuta modelos de IA:
 
 ### Comparación de Proveedores
 
+**Proveedores de Chat:**
+
 | Proveedor | Fortalezas | Mejor Para | Costo |
 |-----------|-----------|-----------|-------|
 | **OpenAI** | Más capaz, mejores herramientas | Apps de producción | $$ |
 | **Claude** | Contexto largo, razonamiento | Análisis complejo | $$ |
 | **Gemini** | Multimodal (imágenes/video) | Tareas visuales | $ |
+| **Mistral** | Rápido, eficiente, multilingüe | Apps europeas, bajo costo | $ |
+| **HuggingFace** | Modelos de código abierto | Personalización, investigación | Gratis/$ |
+| **Groq** | Ultra-rápido (inferencia de hardware) | Chat en tiempo real | $ |
+| **DeepSeek** | Especializado en código | Generación/análisis de código | $ |
+| **Perplexity** | Búsqueda + IA | Investigación, información actual | $$ |
+| **OpenRouter** | Acceso a múltiples modelos | Experimentación, fallbacks | $ |
 | **Ollama** | Privado, sin internet | Desarrollo, privacidad | Gratis |
 | **Grok** | Datos en tiempo real | Eventos actuales | $$ |
+
+**Proveedores de Embeddings:**
+
+| Proveedor | Modelos | Mejor Para | Costo |
+|-----------|---------|-----------|-------|
+| **OpenAI** | text-embedding-3-small/large | Propósito general | $ |
+| **Voyage** | voyage-3, voyage-code-3 | RAG, búsqueda de código | $$ |
+| **Cohere** | embed-english-v3.0, multilingual | Apps multilingües | $ |
+| **Ollama** | nomic-embed-text, mxbai-embed | Local, privado | Gratis |
+| **Gemini** | text-embedding-004 | Integración con Google | $ |
 
 ### ¿Por Qué Cambiar de Proveedor?
 
@@ -115,6 +133,8 @@ respuestaClaude = servicioClaude.invoke(
 
 ### Referencia Rápida de Proveedores
 
+**Proveedores de Chat:**
+
 ```java
 // OpenAI
 aiChat( "mensaje", {}, { provider: "openai" } )
@@ -125,6 +145,21 @@ aiChat( "mensaje", {}, { provider: "claude" } )
 // Gemini
 aiChat( "mensaje", {}, { provider: "gemini" } )
 
+// Mistral
+aiChat( "mensaje", { model: "mistral-large-latest" }, { provider: "mistral" } )
+
+// HuggingFace
+aiChat( "mensaje", { model: "meta-llama/Llama-3-8b" }, { provider: "huggingface" } )
+
+// Groq
+aiChat( "mensaje", { model: "llama-3.3-70b-versatile" }, { provider: "groq" } )
+
+// DeepSeek
+aiChat( "mensaje", { model: "deepseek-chat" }, { provider: "deepseek" } )
+
+// Perplexity
+aiChat( "mensaje", { model: "llama-3.1-sonar-small-128k-online" }, { provider: "perplexity" } )
+
 // Ollama (local)
 aiChat( "mensaje", { model: "llama3.2" }, { provider: "ollama" } )
 
@@ -133,6 +168,45 @@ aiChat( "mensaje", {}, { provider: "openrouter" } )
 
 // Grok
 aiChat( "mensaje", {}, { provider: "grok" } )
+```
+
+**Proveedores de Embeddings:**
+
+```java
+// OpenAI
+aiEmbeddings(
+    text: "texto a codificar",
+    provider: "openai",
+    model: "text-embedding-3-small"  // o text-embedding-3-large
+)
+
+// Voyage (mejor para RAG)
+aiEmbeddings(
+    text: "texto a codificar",
+    provider: "voyage",
+    model: "voyage-3"  // o voyage-code-3 para código
+)
+
+// Cohere
+aiEmbeddings(
+    text: "texto a codificar",
+    provider: "cohere",
+    model: "embed-english-v3.0"
+)
+
+// Ollama (local)
+aiEmbeddings(
+    text: "texto a codificar",
+    provider: "ollama",
+    model: "nomic-embed-text"  // o mxbai-embed-large
+)
+
+// Gemini
+aiEmbeddings(
+    text: "texto a codificar",
+    provider: "gemini",
+    model: "text-embedding-004"
+)
 ```
 
 ---

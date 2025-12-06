@@ -160,92 +160,507 @@ println( agente.run( "What's 20% of 150?" ) )
 
 ---
 
-## 🧠 Parte 3: Memoria del Agente (15 mins)
+## 🧠 Parte 3: Memoria Multi-Tenant del Agente (25 mins)
 
-La memoria permite a los agentes recordar la conversación:
+La memoria permite a los agentes recordar la conversación. Para **aplicaciones de producción con múltiples usuarios**, la memoria multi-tenant es esencial.
 
-### Tipos de Memoria
+### ¿Por Qué Importa la Memoria Multi-Tenant?
 
-| Tipo | Descripción | Mejor Para |
-|------|-------------|-----------|
-| `windowed` | Mantiene los últimos N mensajes | La mayoría de casos |
-| `summary` | Resume mensajes antiguos | Conversaciones largas |
-| `session` | Persiste en sesión web | Aplicaciones web |
-| `cache` | Almacenamiento en caché distribuido | Apps multi-servidor |
-| `file` | Persistencia en archivo JSON | Almacenamiento local |
-| `jdbc` | Almacenamiento en base de datos | Apps empresariales |
-| `vector` | Búsqueda semántica (11 proveedores) | Aplicaciones RAG |
+**SIN aislamiento multi-tenant** - ¡Los datos de todos se mezclan!
 
-> 💡 **Memoria Multi-Tenant**: Todos los tipos de memoria soportan parámetros `userId` y `conversationId` para aplicaciones multi-usuario. Esto asegura que las conversaciones de cada usuario estén completamente aisladas:
->
-> ```java
-> memoria = aiMemory( "windowed",
->     key: createUUID(),
->     userId: session.userId,           // Aísla por usuario
->     conversationId: "chat-soporte",  // Múltiples chats por usuario
->     config: { maxMessages: 20 }
-> )
-> ```
->
-> ¡Esto es esencial para aplicaciones web donde múltiples usuarios interactúan con tu agente!
-
-### Ejemplo: Agente con Memoria
-
-```java
-// agente-memoria.bxs
-// Memoria simple de un solo usuario (bueno para scripts/CLI)
-agente = aiAgent(
-    name: "PersonalAssistant",
-    description: "A personal assistant that remembers your preferences",
-    instructions: "Remember user preferences and past conversations.",
-    memory: aiMemory( "windowed", { maxMessages: 20 } )
-)
-
-// Dile cosas al agente
-agente.run( "My favorite color is blue" )
-agente.run( "I live in Boston" )
-agente.run( "I work as a software developer" )
-
-// Pregunta sobre info recordada
-println( agente.run( "What's my favorite color?" ) )
-// Salida: "¡Tu color favorito es azul!"
-
-println( agente.run( "Where do I live and what do I do?" ) )
-// Salida: "¡Vives en Boston y trabajas como desarrollador de software!"
-
-// Limpia la memoria cuando sea necesario
-agente.clearMemory()
+```
+Usuario A → Agente → Memoria Compartida ← Usuario B
+   ❌ "Soy Alex"  │  [Alex, Jordan, Sam]  │  ❌ "Soy Jordan"
+   ❌ Ve los datos de Jordan/Sam          │  ❌ Ve los datos de Alex/Sam
 ```
 
-### Flujo de Memoria
+**CON aislamiento multi-tenant** - Cada usuario obtiene memoria privada:
+
+```
+Usuario A → Agente → Memoria A  [Solo Alex]
+Usuario B → Agente → Memoria B  [Solo Jordan]
+Usuario C → Agente → Memoria C  [Solo Sam]
+   ✅ Completamente aislado       ✅ Seguro       ✅ Privado
+```
+
+### Configuración Básica Multi-Tenant
+
+```java
+// Función helper para crear agente específico del usuario
+function createUserAgent( userId, conversationId ) {
+    return aiAgent(
+        name: "UserAssistant",
+        description: "Asistente personal que recuerda preferencias",
+        instructions: "Recuerda preferencias y conversaciones pasadas del usuario.",
+        memory: aiMemory( "windowed",
+            key: "chat",
+            userId: userId,                    // 🔑 Aísla por usuario
+            conversationId: conversationId,    // 🔑 Múltiples chats por usuario
+            config: { maxMessages: 20 }
+        )
+    )
+}
+
+// En tu aplicación web:
+function handleChatRequest( event, rc, prc ) {
+    // Obtener usuario autenticado de la sesión
+    currentUserId = auth().user().getId()  // ej: "user-123"
+    chatId = rc.chatId ?: "default"        // ej: "support-chat"
+
+    // Crear agente con memoria aislada
+    agente = createUserAgent( currentUserId, chatId )
+
+    // Procesar mensaje
+    respuesta = agente.run( rc.message )
+
+    return { response: respuesta, userId: currentUserId, chatId: chatId }
+}
+```
+
+### Múltiples Conversaciones por Usuario
+
+Un usuario puede tener múltiples chats simultáneos:
+
+```java
+// Usuario tiene 3 chats diferentes:
+// 1. Chat de soporte
+agentesoporte = createUserAgent( "user-123", "support-chat" )
+agentesoporte.run( "Necesito ayuda con mi orden" )
+
+// 2. Chat de ventas
+agenteVentas = createUserAgent( "user-123", "sales-chat" )
+agenteVentas.run( "Dime sobre planes empresariales" )
+
+// 3. Chat técnico
+agenteTecnico = createUserAgent( "user-123", "technical-chat" )
+agenteTecnico.run( "¿Cómo integro la API?" )
+
+// Cada chat tiene memoria completamente separada!
+```
+
+### Patrón de Aplicación Web
+
+```java
+// handler-chat.cfc
+
+component {
+    property name="cacheService" inject="cachebox:default";
+
+    function chat( event, rc, prc ) {
+        // 1. Obtener usuario autenticado
+        userId = auth().user().getId()
+        tenantId = auth().user().getTenantId()  // Para apps multi-tenant
+
+        // 2. Obtener o crear ID de conversación
+        conversationId = rc.chatId ?: createUUID()
+
+        // 3. Cachear agente por usuario + conversación (opcional, para rendimiento)
+        cacheKey = "agent-#userId#-#conversationId#"
+        agente = cacheService.getOrSet( cacheKey, () => {
+            return createUserAgent( userId, tenantId, conversationId )
+        }, 60 )  // Cachea por 60 minutos
+
+        // 4. Procesar mensaje
+        respuesta = agente.run( rc.message )
+
+        // 5. Retornar respuesta
+        return {
+            response: respuesta,
+            conversationId: conversationId,
+            timestamp: now()
+        }
+    }
+
+    private function createUserAgent( userId, tenantId, conversationId ) {
+        return aiAgent(
+            name: "CustomerAssistant",
+            instructions: "Ayuda al cliente con sus preguntas.",
+            memory: aiMemory( "cache",  // Usar cache para apps multi-servidor
+                key: "chat",
+                userId: userId,
+                conversationId: conversationId,
+                config: {
+                    maxMessages: 50,
+                    tenant: tenantId  // Aislamiento adicional por tenant
+                }
+            )
+        )
+    }
+}
+```
+
+### Memoria Respaldada por Base de Datos Multi-Tenant
+
+Para **persistencia empresarial de grado de producción**:
+
+```java
+// Schema de base de datos
+/*
+CREATE TABLE ai_conversations (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL,
+    tenant_id VARCHAR(36) NOT NULL,
+    conversation_id VARCHAR(100) NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_conv (user_id, conversation_id),
+    INDEX idx_tenant (tenant_id)
+)
+*/
+
+function createDatabaseAgent( userId, tenantId, conversationId ) {
+    return aiAgent(
+        name: "EnterpriseAssistant",
+        instructions: "Asistente empresarial profesional.",
+        memory: aiMemory( "jdbc",
+            key: "chat",
+            userId: userId,
+            conversationId: conversationId,
+            config: {
+                datasource: "myDB",
+                tableName: "ai_conversations",
+                maxMessages: 100,
+                // Columnas personalizadas para aislamiento de tenant
+                additionalColumns: {
+                    tenant_id: tenantId
+                }
+            }
+        )
+    )
+}
+```
+
+### Mejores Prácticas de Seguridad
+
+```java
+// ✅ BUENO: Validar siempre userId de sesión autenticada
+function secureChat( event, rc, prc ) {
+    // NO confíes en userId del cliente
+    userId = auth().user().getId()  // ✅ Del servidor, seguro
+
+    // Validar que el usuario tiene acceso a esta conversación
+    if ( rc.keyExists( "chatId" ) ) {
+        validateUserOwnsConversation( userId, rc.chatId )
+    }
+
+    agente = createUserAgent( userId, rc.chatId ?: "default" )
+    return agente.run( rc.message )
+}
+
+// ❌ MALO: Nunca confíes en userId del cliente
+function insecureChat( event, rc, prc ) {
+    userId = rc.userId  // ❌ ¡Puede ser falsificado!
+    agente = createUserAgent( userId, rc.chatId )
+    return agente.run( rc.message )
+}
+```
+
+### Componente de Tabla de Usuario Específico de Tenant
+
+Para **máximo aislamiento**, usa tablas específicas de tenant:
+
+```java
+function createIsolatedAgent( userId, tenantId, conversationId ) {
+    return aiAgent(
+        name: "IsolatedAssistant",
+        instructions: "Asistente completamente aislado.",
+        memory: aiMemory( "jdbc",
+            key: "chat",
+            userId: userId,
+            conversationId: conversationId,
+            config: {
+                datasource: "myDB",
+                // Tabla dinámica por tenant
+                tableName: "ai_conv_#tenantId#",  // ej: ai_conv_acme, ai_conv_widgets
+                maxMessages: 100
+            }
+        )
+    )
+}
+```
+
+### Visualización: Aislamiento de Memoria
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    FLUJO DE MEMORIA                             │
+│                  AISLAMIENTO DE MEMORIA                         │
 └─────────────────────────────────────────────────────────────────┘
 
-  Turno 1               Turno 2               Turno 3
-  ──────                ──────                ──────
+NIVEL 1: Tenant
+───────────────
+  Tenant A                    Tenant B
+  ┌──────────┐               ┌──────────┐
+  │ Usuario 1│               │ Usuario 3│
+  │ Usuario 2│               │ Usuario 4│
+  └──────────┘               └──────────┘
+       │                          │
+       ▼                          ▼
+  [Datos A]                  [Datos B]
+  Completamente separado
 
-  Usuario: "Soy Alex"   Usuario: "¿Mi nombre?"  Usuario: "Resume"
-        │                     │                     │
-        ▼                     ▼                     ▼
-  ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-  │   MEMORIA   │      │   MEMORIA   │      │   MEMORIA   │
-  │ [msg Alex]  │      │ [msg Alex]  │      │ [msg Alex]  │
-  │             │      │ [resp nomb] │      │ [resp nomb] │
-  │             │      │ [msg nomb?] │      │ [msg nomb?] │
-  │             │      │             │      │ [msg resum] │
-  └─────────────┘      └─────────────┘      └─────────────┘
-        │                     │                     │
-        ▼                     ▼                     ▼
-  IA: "¡Hola Alex!"    IA: "¡Alex!"          IA: "Eres Alex,
-                                                  preguntaste..."
+NIVEL 2: Usuario + Conversación
+────────────────────────────────
+  Usuario 1
+  ├─ Chat Soporte    → Memoria A
+  ├─ Chat Ventas     → Memoria B
+  └─ Chat Técnico    → Memoria C
+     Cada chat está aislado
 ```
+
+### Ejemplo: Sistema de Soporte al Cliente
+
+```java
+// Sistema de soporte completo con multi-tenancy
+component {
+    function initSupport( userId, tenantId ) {
+        // Crear agente de soporte específico del usuario
+        this.agent = aiAgent(
+            name: "SupportAgent",
+            instructions: "
+                Eres un agente de soporte profesional.
+                - Sé cortés y útil
+                - Recuerda el historial de conversación del usuario
+                - Escala problemas complejos
+            ",
+            tools: [
+                lookupOrderTool,
+                checkInventoryTool,
+                createTicketTool
+            ],
+            memory: aiMemory( "cache",
+                key: "support",
+                userId: userId,
+                conversationId: "support-main",
+                config: {
+                    maxMessages: 50,
+                    tenant: tenantId,
+                    // Limpiar conversación después de 24 horas
+                    ttl: 86400
+                }
+            )
+        )
+
+        return this
+    }
+
+    function chat( message ) {
+        return this.agent.run( message )
+    }
+
+    function getHistory() {
+        return this.agent.getMemory().getMessages()
+    }
+
+    function clearHistory() {
+        this.agent.clearMemory()
+    }
+}
+
+// Uso:
+support = new SupportChat().initSupport(
+    userId: "user-123",
+    tenantId: "acme-corp"
+)
+
+support.chat( "¿Cuál es el estado de mi orden?" )
+support.chat( "¿Puedo cambiar la dirección de envío?" )
+```
+
+### Puntos Clave 🎯
+
+| Concepto | Descripción |
+|----------|-------------|
+| **userId** | Aísla memoria por usuario - **SIEMPRE requerido en producción** |
+| **conversationId** | Permite múltiples chats por usuario |
+| **tenantId** | Aislamiento de nivel empresarial en `config.additionalColumns` |
+| **Tipos de Memoria** | `cache`/`jdbc` mejores para multi-tenant; `windowed` solo desarrollo |
+| **Seguridad** | Siempre obtener userId del servidor, nunca confiar en el cliente |
+
+> 💡 **Nota de Producción**: Para aplicaciones web de producción, usa siempre `cache` o `jdbc` memoria con parámetros `userId` y `conversationId`. ¡Nunca uses memoria simple `windowed` sin estos parámetros en entornos multi-usuario!
 
 ---
 
-## 🛠️ Parte 4: Ejemplo Completo de Agente (20 mins)
+## 🌊 Parte 4: Respuestas de Agente en Streaming (15 mins)
+
+Los agentes soportan **streaming** igual que el chat - perfecto para UIs interactivas.
+
+### Streaming Básico de Agente
+
+```java
+// agent-streaming-basic.bxs
+
+agente = aiAgent(
+    name: "Poet",
+    description: "Un poeta que escribe versos hermosos",
+    instructions: "Escribe poesía concisa y hermosa."
+)
+
+// Streaming palabra por palabra
+agente.stream(
+    "Escribe un poema corto sobre BoxLang",
+    ( chunk ) => {
+        print( chunk )  // Salida en tiempo real
+    }
+)
+
+// Salida (aparece progresivamente):
+// BoxLang
+// brings
+// joy
+// to
+// coding...
+```
+
+### Streaming con Herramientas
+
+Los agentes llaman herramientas durante el streaming - puedes detectar estas llamadas:
+
+```java
+// agent-streaming-tools.bxs
+
+weatherTool = aiTool(
+    "get_weather",
+    "Obtener clima actual para una ciudad",
+    ( args ) => {
+        // Simular llamada API de clima
+        return "Soleado, 72°F en #args.city#"
+    }
+).describeCity( "Ciudad para verificar clima" )
+
+agente = aiAgent(
+    name: "WeatherBot",
+    instructions: "Ayuda a los usuarios con información del clima.",
+    tools: [ weatherTool ]
+)
+
+agente.stream(
+    "¿Cómo está el clima en Boston?",
+    ( chunk ) => {
+        // Detectar llamadas a herramientas vs texto
+        if ( chunk.contains( "get_weather" ) ) {
+            println( "\n[🔧 Llamando herramienta de clima...]" )
+        } else {
+            print( chunk )
+        }
+    }
+)
+```
+
+### Streaming con Memoria
+
+La memoria funciona perfectamente con streaming:
+
+```java
+// agent-streaming-memory.bxs
+
+agente = aiAgent(
+    name: "Assistant",
+    instructions: "Asistente útil que recuerda conversaciones.",
+    memory: aiMemory( "windowed", { maxMessages: 10 } )
+)
+
+// Primera interacción
+agente.stream( "Mi color favorito es azul", ( chunk ) => print( chunk ) )
+println( "\n" )
+
+// Segunda interacción - recuerda del contexto
+agente.stream( "¿Cuál es mi color favorito?", ( chunk ) => print( chunk ) )
+// Salida: "Tu color favorito es azul!"
+```
+
+### Patrón de Aplicación Web con Streaming
+
+Para UIs de chat en tiempo real:
+
+```java
+// handler-streaming-chat.cfc
+
+function streamChat( event, rc, prc ) {
+    // 1. Configurar headers SSE (Server-Sent Events)
+    event.setHTTPHeader( name="Content-Type", value="text/event-stream" )
+    event.setHTTPHeader( name="Cache-Control", value="no-cache" )
+    event.setHTTPHeader( name="Connection", value="keep-alive" )
+    event.setHTTPHeader( name="X-Accel-Buffering", value="no" )  // Nginx
+
+    // 2. Obtener usuario y crear agente
+    userId = auth().user().getId()
+    conversationId = rc.chatId ?: "default"
+
+    agente = createUserAgent( userId, conversationId )
+
+    // 3. Transmitir respuesta
+    agente.stream(
+        rc.message,
+        ( chunk ) => {
+            // Enviar cada fragmento como evento SSE
+            writeOutput( "data: #encodeForJSON( chunk )#\n\n" )
+            flush  // Forzar envío inmediato al navegador
+        }
+    )
+
+    // 4. Enviar evento de finalización
+    writeOutput( "data: [DONE]\n\n" )
+    flush
+}
+```
+
+### Procesamiento Asíncrono con runAsync()
+
+Para tareas de agente en segundo plano:
+
+```java
+// agent-async.bxs
+
+agente = aiAgent(
+    name: "DataAnalyzer",
+    instructions: "Analiza conjuntos de datos grandes y proporciona insights.",
+    tools: [ loadDataTool, analyzeTool, generateReportTool ]
+)
+
+// Iniciar análisis en segundo plano
+println( "Iniciando análisis de datos..." )
+future = agente.runAsync(
+    "Analiza el dataset de ventas del Q4 y genera un reporte completo"
+)
+
+println( "Análisis ejecutándose en segundo plano, haciendo otro trabajo..." )
+
+// Hacer otro trabajo aquí...
+performOtherTasks()
+
+// Esperar resultado cuando esté listo
+println( "Esperando resultados del análisis..." )
+reporte = future.get()  // Bloquea hasta completar
+
+println( "Reporte: " & reporte )
+```
+
+### Comparación: Patrones de Ejecución
+
+| Característica | `agent.run()` | `agent.stream()` | `agent.runAsync()` |
+|----------------|---------------|------------------|--------------------|
+| **Bloqueo** | ✅ Sí (espera) | ✅ Sí (pero streaming) | ❌ No (non-blocking) |
+| **Feedback** | ⏳ Al final | ⚡ Progresivo | 🎯 Sin feedback hasta get() |
+| **Caso de uso** | Scripts simples | UIs de chat | Tareas en segundo plano |
+| **Experiencia UX** | Spinner de carga | Escritura en tiempo real | Sin bloqueo |
+| **Complejidad** | 🟢 Simple | 🟡 Requiere callback | 🟠 Requiere futures |
+
+### Tabla de Decisión: ¿Cuándo Usar Cada Patrón?
+
+| Escenario | Patrón Recomendado | Razón |
+|-----------|-------------------|-------|
+| **Script CLI** | `run()` | Simple, directo |
+| **Chat UI Web** | `stream()` | Feedback en tiempo real |
+| **Tarea en segundo plano** | `runAsync()` | Sin bloqueo |
+| **Análisis de datos largo** | `runAsync()` | Libera hilo principal |
+| **Bot de chat simple** | `run()` | Suficientemente rápido |
+| **Asistente IA empresarial** | `stream()` | Experiencia profesional |
+| **Procesamiento batch** | `runAsync()` | Procesamiento paralelo |
+
+---
+
+## 🛠️ Parte 5: Ejemplo Completo de Agente (20 mins)
 
 Construyamos un **Agente de Soporte al Cliente**:
 
@@ -389,7 +804,7 @@ SupportBot: ¡Gracias por contactarnos! ¡Que tengas un excelente día! 👋
 
 ---
 
-## 🧪 Parte 5: Laboratorio - Construye Tu Propio Agente (20 mins)
+## 🧪 Parte 6: Laboratorio - Construye Tu Propio Agente (20 mins)
 
 ### El Desafío
 
@@ -530,8 +945,11 @@ Aprendiste:
 | **Agente** | IA autónoma que planifica y ejecuta |
 | **aiAgent()** | Crea un agente |
 | **Memoria** | Almacena historial de conversación |
+| **Memoria Multi-Tenant** | Aísla memoria por userId y conversationId |
 | **Instrucciones** | Guía el comportamiento del agente |
 | **Herramientas** | Acciones que el agente puede tomar |
+| **agent.stream()** | Transmite respuestas en tiempo real |
+| **agent.runAsync()** | Ejecuta agentes en segundo plano |
 
 ### Patrón de Código Clave
 
@@ -547,63 +965,25 @@ agente = aiAgent(
 
 // Usar agente
 respuesta = agente.run( "Solicitud del usuario" )
-```
 
----
-
-## 🌐 Extra: Agentes Multi-Tenant para Apps Web
-
-**Para aplicaciones web con múltiples usuarios**, querrás aislar la conversación de cada usuario:
-
-### ¿Por Qué Multi-Tenant?
-
-Sin aislamiento:
-
-```java
-// ❌ MALO: ¡Todos los usuarios comparten la misma memoria!
-agente = aiAgent(
-    memory: aiMemory( "windowed" )
-)
-// ¡Los datos de Alice se filtran a Bob!
-```
-
-Con aislamiento:
-
-```java
-// ✅ BUENO: Cada usuario tiene su propia memoria
-function getUserAgent( userId, conversationId ) {
+// Agente multi-tenant
+function createUserAgent( userId, conversationId ) {
     return aiAgent(
-        name: "WebAssistant",
-        instructions: "Sé útil y profesional",
-        memory: aiMemory( "session",
-            key: "chat",
-            userId: userId,              // Aísla por usuario
-            conversationId: conversationId,  // Múltiples chats por usuario
-            config: { maxMessages: 50 }
+        name: "Assistant",
+        memory: aiMemory( "cache",
+            userId: userId,
+            conversationId: conversationId
         )
     )
 }
 
-// En tu handler web:
-function chat( event, rc, prc ) {
-    userId = auth().user().getId()  // De la sesión autenticada
-    conversationId = rc.chatId ?: createUUID()
+// Streaming
+agente.stream( "pregunta", ( chunk ) => print( chunk ) )
 
-    agente = getUserAgent( userId, conversationId )
-    respuesta = agente.run( rc.message )
-
-    return { response: respuesta, conversationId: conversationId }
-}
+// Async
+future = agente.runAsync( "tarea larga" )
+resultado = future.get()
 ```
-
-### Puntos Clave
-
-- 🔒 **Seguridad**: Los datos de cada usuario están aislados
-- 💬 **Múltiples Chats**: Los usuarios pueden tener múltiples conversaciones
-- 📊 **Escalabilidad**: Funciona en servidores distribuidos (con memoria cache/jdbc)
-- 🎯 **Listo para Empresa**: Multi-tenancy de grado de producción
-
-> **Aprende Más**: ¡Consulta la [Guía de Memoria Multi-Tenant](../../../docs/advanced/multi-tenant-memory.md) para patrones empresariales!
 
 ---
 
