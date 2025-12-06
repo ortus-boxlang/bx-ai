@@ -15,6 +15,8 @@
 package ortus.boxlang.ai.memory.vector;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
@@ -25,6 +27,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
+import ortus.boxlang.runtime.scopes.Key;
+import ortus.boxlang.runtime.types.IStruct;
 
 /**
  * Integration tests for MilvusVectorMemory
@@ -42,6 +46,9 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 
 	@BeforeEach
 	public void setupMilvusMemory() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "openai" );
+
 		// Create and configure Milvus memory instance
 		runtime.executeSource(
 		    """
@@ -316,6 +323,9 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		    		metadata = { "title": "Not Similar" }
 		    	);
 
+		    	// Wait for Milvus to index documents (eventual consistency)
+		    	sleep(500);
+
 		    	// Note: BaseVectorMemory searchByVector doesn't support threshold parameter
 		    	// We'll just search and filter results manually if needed
 		    	results = memory.searchByVector(
@@ -333,5 +343,228 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		assertThat( results.size() ).isGreaterThan( 0 );
 		// Most similar document should be first
 		assertThat( results.get( 0 ).get( "id" ) ).isEqualTo( "doc1" );
+	}
+
+	@Test
+	@DisplayName( "Test MilvusVectorMemory with userId and conversationId" )
+	void testUserIdAndConversationId() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "milvus",
+		        userId: "henry",
+		        conversationId: "milvus-test",
+		        config: {
+		            host: "localhost",
+		            port: 19530,
+		            collection: "test_user_conversation_" & replace( createUUID(), "-", "_", "all" ),
+		            dimension: 1536,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    memory.add( { text: "Milvus vector database" } );
+
+		    result = {
+		        userId: memory.getUserId(),
+		        conversationId: memory.getConversationId()
+		    };
+		     """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		assertEquals( "henry", testResult.getAsString( Key.of( "userId" ) ) );
+		assertEquals( "milvus-test", testResult.getAsString( Key.of( "conversationId" ) ) );
+	}
+
+	@Test
+	@DisplayName( "Test MilvusVectorMemory export includes userId and conversationId" )
+	void testExportIncludesIdentifiers() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    memory = aiMemory(
+		        memory: "milvus",
+		        userId: "irene",
+		        conversationId: "export-test",
+		        config: {
+		            host: "localhost",
+		            port: 19530,
+		            collection: "test_export_identifiers_" & replace( createUUID(), "-", "_", "all" ),
+		            dimension: 1536,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    memory.add( { text: "Export test document" } );
+
+		    exported = memory.export();
+
+		    result = {
+		        hasUserId: exported.keyExists( "userId" ),
+		        hasConversationId: exported.keyExists( "conversationId" ),
+		        userId: exported.keyExists( "userId" ) ? exported.userId : "",
+		        conversationId: exported.keyExists( "conversationId" ) ? exported.conversationId : ""
+		    };
+		    """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		assertTrue( testResult.getAsBoolean( Key.of( "hasUserId" ) ) );
+		assertTrue( testResult.getAsBoolean( Key.of( "hasConversationId" ) ) );
+		assertEquals( "irene", testResult.getAsString( Key.of( "userId" ) ) );
+		assertEquals( "export-test", testResult.getAsString( Key.of( "conversationId" ) ) );
+	}
+
+	@Test
+	@DisplayName( "Test multi-tenant isolation with userId and conversationId filtering" )
+	void testMultiTenantIsolation() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    uniqueCollection = "test_multi_tenant_" & replace( createUUID(), "-", "_", "all" );
+
+		    // Create memory for user alice, conversation chat1
+		    memoryAliceChat1 = aiMemory(
+		        memory: "milvus",
+		        userId: "alice",
+		        conversationId: "chat1",
+		        config: {
+		            host: "localhost",
+		            port: 19530,
+		            collection: uniqueCollection,
+		            dimension: 1536,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Create memory for user alice, conversation chat2
+		    memoryAliceChat2 = aiMemory(
+		        memory: "milvus",
+		        userId: "alice",
+		        conversationId: "chat2",
+		        config: {
+		            host: "localhost",
+		            port: 19530,
+		            collection: uniqueCollection,
+		            dimension: 1536,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Create memory for user bob, conversation chat1
+		    memoryBobChat1 = aiMemory(
+		        memory: "milvus",
+		        userId: "bob",
+		        conversationId: "chat1",
+		        config: {
+		            host: "localhost",
+		            port: 19530,
+		            collection: uniqueCollection,
+		            dimension: 1536,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+
+		    // Add documents to each memory
+		    memoryAliceChat1.add( { text: "Alice chat1: Milvus is scalable" } );
+		    memoryAliceChat2.add( { text: "Alice chat2: Vector search is fast" } );
+		    memoryBobChat1.add( { text: "Bob chat1: Distributed computing" } );
+
+		    // Search in Alice's chat1 - should only return Alice's chat1 documents
+		    resultsAliceChat1 = memoryAliceChat1.getRelevant( query: "Milvus", limit: 10 );
+
+		    // Search in Alice's chat2 - should only return Alice's chat2 documents
+		    resultsAliceChat2 = memoryAliceChat2.getRelevant( query: "Vector", limit: 10 );
+
+		    // Search in Bob's chat1 - should only return Bob's chat1 documents
+		    resultsBobChat1 = memoryBobChat1.getRelevant( query: "computing", limit: 10 );
+
+		    // Get all documents for each memory
+		    allAliceChat1 = memoryAliceChat1.getAll();
+		    allAliceChat2 = memoryAliceChat2.getAll();
+		    allBobChat1 = memoryBobChat1.getAll();
+
+		    // Verify metadata includes userId and conversationId
+		    firstAliceChat1 = allAliceChat1.len() > 0 ? allAliceChat1[1] : {};
+		    firstAliceChat2 = allAliceChat2.len() > 0 ? allAliceChat2[1] : {};
+		    firstBobChat1 = allBobChat1.len() > 0 ? allBobChat1[1] : {};
+
+		    result = {
+		        countAliceChat1: resultsAliceChat1.len(),
+		        countAliceChat2: resultsAliceChat2.len(),
+		        countBobChat1: resultsBobChat1.len(),
+		        allCountAliceChat1: allAliceChat1.len(),
+		        allCountAliceChat2: allAliceChat2.len(),
+		        allCountBobChat1: allBobChat1.len(),
+		        aliceChat1UserId: firstAliceChat1.keyExists("metadata") && firstAliceChat1.metadata.keyExists("userId") ? firstAliceChat1.metadata.userId : "",
+		        aliceChat1ConvId: firstAliceChat1.keyExists("metadata") && firstAliceChat1.metadata.keyExists("conversationId") ? firstAliceChat1.metadata.conversationId : "",
+		        aliceChat2UserId: firstAliceChat2.keyExists("metadata") && firstAliceChat2.metadata.keyExists("userId") ? firstAliceChat2.metadata.userId : "",
+		        aliceChat2ConvId: firstAliceChat2.keyExists("metadata") && firstAliceChat2.metadata.keyExists("conversationId") ? firstAliceChat2.metadata.conversationId : "",
+		        bobChat1UserId: firstBobChat1.keyExists("metadata") && firstBobChat1.metadata.keyExists("userId") ? firstBobChat1.metadata.userId : "",
+		        bobChat1ConvId: firstBobChat1.keyExists("metadata") && firstBobChat1.metadata.keyExists("conversationId") ? firstBobChat1.metadata.conversationId : ""
+		    };
+		    """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		// Each memory should only see its own documents
+		assertEquals( 1, testResult.getAsInteger( Key.of( "countAliceChat1" ) ) );
+		assertEquals( 1, testResult.getAsInteger( Key.of( "countAliceChat2" ) ) );
+		assertEquals( 1, testResult.getAsInteger( Key.of( "countBobChat1" ) ) );
+
+		// getAll should also only return isolated documents
+		assertEquals( 1, testResult.getAsInteger( Key.of( "allCountAliceChat1" ) ) );
+		assertEquals( 1, testResult.getAsInteger( Key.of( "allCountAliceChat2" ) ) );
+		assertEquals( 1, testResult.getAsInteger( Key.of( "allCountBobChat1" ) ) );
+
+		// Verify metadata contains correct userId and conversationId
+		assertEquals( "alice", testResult.getAsString( Key.of( "aliceChat1UserId" ) ) );
+		assertEquals( "chat1", testResult.getAsString( Key.of( "aliceChat1ConvId" ) ) );
+		assertEquals( "alice", testResult.getAsString( Key.of( "aliceChat2UserId" ) ) );
+		assertEquals( "chat2", testResult.getAsString( Key.of( "aliceChat2ConvId" ) ) );
+		assertEquals( "bob", testResult.getAsString( Key.of( "bobChat1UserId" ) ) );
+		assertEquals( "chat1", testResult.getAsString( Key.of( "bobChat1ConvId" ) ) );
+	}
+
+	@Test
+	@DisplayName( "Test export includes memory type" )
+	void testExportType() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "milvus", key: replace( createUUID(), "-", "_", "all" ), config: {
+		        host: "localhost",
+		        port: 19530,
+		        collection: "test_export_type_" & replace( createUUID(), "-", "_", "all" ),
+		        dimension: 1536,
+		        embeddingProvider: "openai",
+		        embeddingModel: "text-embedding-3-small"
+		    } );
+
+		    memory.add( { id: "doc1", text: "Test document" } );
+
+		    exported = memory.export();
+
+		    result = {
+		        hasType: exported.keyExists( "type" ),
+		        type: exported.keyExists( "type" ) ? exported.type : ""
+		    };
+		    """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		assertTrue( testResult.getAsBoolean( Key.of( "hasType" ) ) );
+		assertEquals( "MilvusVectorMemory", testResult.getAsString( Key.of( "type" ) ) );
 	}
 }

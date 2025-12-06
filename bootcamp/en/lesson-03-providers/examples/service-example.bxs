@@ -1,0 +1,18 @@
+// service-example.bxs
+// Using aiService() to create reusable provider connections
+// Run with: boxlang service-example.bxs
+
+// Create services for different providers
+openaiService = aiService( "openai" )
+
+// Prepare a question
+question = aiMessage().user( "What is BoxLang in one sentence?" )
+
+// Create request
+request = aiChatRequest( question )
+
+// Invoke the service
+response = openaiService.invoke( request )
+
+println( "OpenAI says:" )
+println( response )

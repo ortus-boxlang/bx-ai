@@ -69,10 +69,17 @@ class extends="BaseVectorMemory" {
 	 * Constructor
 	 *
 	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
 	 * @collection The collection name
 	 */
-	function init( string key = createUUID(), string collection = static.DEFAULT_COLLECTION ) {
-		super.init( arguments.key, arguments.collection );
+	function init(
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = "",
+		string collection = static.DEFAULT_COLLECTION
+	) {
+		super.init( argumentCollection: arguments );
 		return this;
 	}
 
@@ -166,7 +173,9 @@ class extends="BaseVectorMemory" {
 			"payload": {
 				"text": arguments.text,
 				"metadata": arguments.metadata,
-				"timestamp": now().getTime()
+				"timestamp": now().getTime(),
+				"userId": variables.userId,
+				"conversationId": variables.conversationId
 			}
 		};
 
@@ -219,9 +228,18 @@ class extends="BaseVectorMemory" {
 			"with_vector": false  // Don't return vectors to save bandwidth
 		};
 
-		// Add filter if provided
-		if ( !arguments.filter.isEmpty() ) {
-			payload.filter = buildQdrantFilter( arguments.filter );
+		// Build combined filter with userId/conversationId + custom filters
+		var combinedFilter = arguments.filter.copy();
+		if ( len( variables.userId ) ) {
+			combinedFilter.userId = variables.userId;
+		}
+		if ( len( variables.conversationId ) ) {
+			combinedFilter.conversationId = variables.conversationId;
+		}
+
+		// Add filter if we have any conditions
+		if ( !combinedFilter.isEmpty() ) {
+			payload.filter = buildQdrantFilter( combinedFilter );
 		}
 
 		// Add search params if configured
@@ -266,6 +284,18 @@ class extends="BaseVectorMemory" {
 			"with_payload": true,
 			"with_vector": true
 		};
+
+		// Add userId/conversationId filter if set
+		var filter = {};
+		if ( len( variables.userId ) ) {
+			filter.userId = variables.userId;
+		}
+		if ( len( variables.conversationId ) ) {
+			filter.conversationId = variables.conversationId;
+		}
+		if ( !filter.isEmpty() ) {
+			payload.filter = buildQdrantFilter( filter );
+		}
 
 		var response = makeRequest(
 			method = "POST",
@@ -593,8 +623,11 @@ class extends="BaseVectorMemory" {
 		// Build "must" conditions for exact matches
 		// Qdrant filter keys are relative to payload (no "payload." prefix needed)
 		arguments.filter.each( ( key, value ) => {
+			// userId and conversationId are stored at root of payload
+			// Other metadata is under metadata.*
+			var filterKey = ( key == "userId" || key == "conversationId" ) ? key : "metadata.#key#";
 			conditions.append({
-				"key": "metadata.#key#",
+				"key": filterKey,
 				"match": {
 					"value": value
 				}

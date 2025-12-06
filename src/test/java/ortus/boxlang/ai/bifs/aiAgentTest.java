@@ -17,6 +17,7 @@ package ortus.boxlang.ai.bifs;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -24,6 +25,12 @@ import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
 
 public class aiAgentTest extends BaseIntegrationTest {
+
+	@BeforeEach
+	public void beforeEach() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "openai" );
+	}
 
 	@Test
 	@DisplayName( "It can create a basic agent" )
@@ -269,7 +276,7 @@ public class aiAgentTest extends BaseIntegrationTest {
 		        instructions: "Provide concise answers"
 		    )
 
-		    response = agent.run( "What is BoxLang?" )
+		    response = agent.run( "What is BoxLang?", {},  {} )
 
 		    println( response )
 		    """,
@@ -280,6 +287,206 @@ public class aiAgentTest extends BaseIntegrationTest {
 		var response = variables.getAsString( Key.of( "response" ) );
 		assertTrue( response != null && !response.isEmpty() );
 
+	}
+
+	// ==================== SUB-AGENT TESTS ====================
+
+	@Test
+	@DisplayName( "It can create an agent with sub-agents" )
+	public void testAgentWithSubAgents() {
+		runtime.executeSource(
+		    """
+		    // Create sub-agents
+		    mathAgent = aiAgent(
+		        name: "MathAgent",
+		        description: "A math specialist agent",
+		        instructions: "You help with mathematical calculations"
+		    )
+
+		    codeAgent = aiAgent(
+		        name: "CodeAgent",
+		        description: "A coding specialist agent",
+		        instructions: "You help with code review and writing"
+		    )
+
+		    // Create parent agent with sub-agents
+		    mainAgent = aiAgent(
+		        name: "MainAgent",
+		        description: "A main orchestrator agent",
+		        instructions: "Delegate to sub-agents when appropriate",
+		        subAgents: [ mathAgent, codeAgent ]
+		    )
+
+		    config = mainAgent.getConfig()
+		    """,
+		    context
+		);
+
+		var config = variables.getAsStruct( Key.of( "config" ) );
+		assertEquals( "MainAgent", config.get( "name" ) );
+		assertEquals( 2L, ( long ) ( ( Number ) config.get( "subAgentCount" ) ).intValue() );
+	}
+
+	@Test
+	@DisplayName( "It can add sub-agents using fluent API" )
+	public void testFluentSubAgentAPI() {
+		runtime.executeSource(
+		    """
+		    subAgent1 = aiAgent(
+		        name: "SubAgent1",
+		        description: "First sub-agent"
+		    )
+
+		    subAgent2 = aiAgent(
+		        name: "SubAgent2",
+		        description: "Second sub-agent"
+		    )
+
+		    mainAgent = aiAgent( name: "MainAgent" )
+		        .addSubAgent( subAgent1 )
+		        .addSubAgent( subAgent2 )
+
+		    config = mainAgent.getConfig()
+		    """,
+		    context
+		);
+
+		var config = variables.getAsStruct( Key.of( "config" ) );
+		assertEquals( 2L, ( long ) ( ( Number ) config.get( "subAgentCount" ) ).intValue() );
+	}
+
+	@Test
+	@DisplayName( "It can get sub-agents" )
+	public void testGetSubAgents() {
+		runtime.executeSource(
+		    """
+		    subAgent = aiAgent(
+		        name: "SubAgent",
+		        description: "A sub-agent"
+		    )
+
+		    mainAgent = aiAgent(
+		        name: "MainAgent",
+		        subAgents: [ subAgent ]
+		    )
+
+		    subAgents = mainAgent.getSubAgents()
+		    subAgentCount = subAgents.len()
+		    """,
+		    context
+		);
+
+		assertEquals( 1L, ( long ) variables.getAsInteger( Key.of( "subAgentCount" ) ) );
+	}
+
+	@Test
+	@DisplayName( "It can get a sub-agent by name" )
+	public void testGetSubAgentByName() {
+		runtime.executeSource(
+		    """
+		    mathAgent = aiAgent(
+		        name: "MathAgent",
+		        description: "Math specialist"
+		    )
+
+		    codeAgent = aiAgent(
+		        name: "CodeAgent",
+		        description: "Code specialist"
+		    )
+
+		    mainAgent = aiAgent(
+		        name: "MainAgent",
+		        subAgents: [ mathAgent, codeAgent ]
+		    )
+
+		    foundAgent = mainAgent.getSubAgent( "MathAgent" )
+		    foundAgentName = foundAgent.getConfig().name
+		    """,
+		    context
+		);
+
+		assertEquals( "MathAgent", variables.getAsString( Key.of( "foundAgentName" ) ) );
+	}
+
+	@Test
+	@DisplayName( "It can check if a sub-agent exists" )
+	public void testHasSubAgent() {
+		runtime.executeSource(
+		    """
+		    subAgent = aiAgent(
+		        name: "SubAgent",
+		        description: "A sub-agent"
+		    )
+
+		    mainAgent = aiAgent(
+		        name: "MainAgent",
+		        subAgents: [ subAgent ]
+		    )
+
+		    hasExisting = mainAgent.hasSubAgent( "SubAgent" )
+		    hasNonExisting = mainAgent.hasSubAgent( "NonExistent" )
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "hasExisting" ) ) );
+		assertTrue( !variables.getAsBoolean( Key.of( "hasNonExisting" ) ) );
+	}
+
+	@Test
+	@DisplayName( "It can set sub-agents using setSubAgents" )
+	public void testSetSubAgents() {
+		runtime.executeSource(
+		    """
+		    subAgent1 = aiAgent( name: "SubAgent1", description: "First" )
+		    subAgent2 = aiAgent( name: "SubAgent2", description: "Second" )
+		    subAgent3 = aiAgent( name: "SubAgent3", description: "Third" )
+
+		    mainAgent = aiAgent(
+		        name: "MainAgent",
+		        subAgents: [ subAgent1 ]
+		    )
+
+		    // Check initial count
+		    initialCount = mainAgent.getConfig().subAgentCount
+
+		    // Replace with new sub-agents
+		    mainAgent.setSubAgents( [ subAgent2, subAgent3 ] )
+
+		    // Check updated count
+		    updatedCount = mainAgent.getConfig().subAgentCount
+		    """,
+		    context
+		);
+
+		assertEquals( 1L, ( long ) variables.getAsInteger( Key.of( "initialCount" ) ) );
+		assertEquals( 2L, ( long ) variables.getAsInteger( Key.of( "updatedCount" ) ) );
+	}
+
+	@Test
+	@DisplayName( "Sub-agents are exposed in getConfig" )
+	public void testSubAgentsInConfig() {
+		runtime.executeSource(
+		    """
+		    subAgent = aiAgent(
+		        name: "TestSubAgent",
+		        description: "A test sub-agent description"
+		    )
+
+		    mainAgent = aiAgent(
+		        name: "MainAgent",
+		        subAgents: [ subAgent ]
+		    )
+
+		    config = mainAgent.getConfig()
+		    subAgentInfo = config.subAgents[ 1 ]
+		    """,
+		    context
+		);
+
+		var subAgentInfo = variables.getAsStruct( Key.of( "subAgentInfo" ) );
+		assertEquals( "TestSubAgent", subAgentInfo.get( "name" ) );
+		assertEquals( "A test sub-agent description", subAgentInfo.get( "description" ) );
 	}
 
 }

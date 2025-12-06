@@ -1,0 +1,36 @@
+// calculator-tool.bxs
+// Create a calculator tool that AI can use
+// Run with: boxlang calculator-tool.bxs
+
+println( "🧮 Calculator Tool Demo" )
+println( "─".repeat( 40 ) )
+println()
+
+calculatorTool = aiTool(
+    "calculator",
+    "Performs mathematical calculations. Use for any math operations.",
+    ( args ) => {
+        // Parse the expression and calculate
+        expression = args.expression
+        try {
+            result = evaluate( expression )
+            return "Result: " & result
+        } catch( any e ) {
+            return "Error calculating: " & e.message
+        }
+    }
+).describeExpression( "The math expression to calculate, e.g. '2 + 2' or '100 * 0.15'" )
+
+// Test questions that require calculation
+questions = [
+    "What is 15% of 200?",
+    "Calculate 45 + 73",
+    "What's 1000 divided by 8?"
+]
+
+for( question in questions ) {
+    println( "Q: " & question )
+    answer = aiChat( question, { tools: [ calculatorTool ] } )
+    println( "A: " & answer )
+    println()
+}

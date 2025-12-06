@@ -1,0 +1,439 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MCP Request Processor
+ *
+ * Transport-agnostic MCP request processor.
+ * This class encapsulates all core request processing logic, including:
+ * - Server lookup and validation
+ * - Security checks (body size, API keys, basic auth)
+ * - Request/response callbacks
+ * - Discovery and JSON-RPC delegation
+ * - Error handling
+ *
+ * Transport-specific concerns (HTTP headers, CORS, STDIO) are handled by transport implementations.
+ */
+import bxModules.bxai.models.mcp.MCPServer;
+class {
+
+	/**
+	 * Static logger and transport singletons
+	 */
+	static {
+		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" )
+        DEFAULT_SERVER_NAME = "default"
+		DEFAULT_MCP_PROTOCOL_VERSION = "2024-11-05"
+		// Register Transports
+		httpTransport = new transports.HTTPTransport()
+		stdioTransport = new transports.StdioTransport()
+	}
+
+	/**
+	 * Start HTTP transport and process a single request from the web context
+	 * This is the entry point for web-based MCP servers based on HTTP
+	 *
+	 * This transport flushes to the response automatically, it returns the content for logging purposes only
+	 *
+	 * @return The rendered response content
+	 */
+	static string function processHttp() {
+		// Read request from HTTP context
+		var requestData = static.httpTransport.readRequest();
+
+		// Process request
+		var response = processWithTransport( static.httpTransport, requestData );
+
+		// Write response to HTTP context
+		static.httpTransport.writeResponse( response );
+
+		// Return content
+		return response.content;
+	}
+
+	/**
+	 * Start STDIO transport and process requests in a loop
+	 * This is the entry point for command-line MCP servers
+	 * Blocks until shutdown signal or error
+	 *
+	 * @serverName The MCP server name to use (default: "default")
+	 */
+	static void function processStdio( string serverName = static.DEFAULT_SERVER_NAME ) {
+		// Set default server name for this session
+		static.stdioTransport.defaultServerName = arguments.serverName;
+
+		// Verify server exists
+		if ( isNull( MCPServer::getInstance( arguments.serverName ) ) ) {
+			throw(
+				type: "MCPServerNotFound",
+				message: "MCP server '#arguments.serverName#' not found"
+			);
+		}
+
+		static.mcpLogger.info( "Starting STDIO transport for server: #arguments.serverName#" );
+
+		try {
+			// Main loop - read, process, write
+			var running = true;
+
+			while ( running ) {
+				// Read request from STDIN
+				var requestData = static.stdioTransport.readRequest();
+
+				// Check for an exception
+				if( requestData.metadata?.error?.len() ?: 0 ) {
+					// Write error response
+					static.stdioTransport.writeResponse(
+						static.stdioTransport.createErrorResponse(
+							statusCode: 400,
+							errorCode: -32600,
+							message: "Invalid request: #requestData.metadata.error#"
+						)
+					);
+					continue;
+				}
+
+				// Check for shutdown signal
+				if ( requestData.metadata.method == "shutdown" ) {
+					static.mcpLogger.info( "Received shutdown signal" );
+					running = false;
+					break;
+				}
+
+				// Process request
+				var response = processWithTransport( static.stdioTransport, requestData );
+
+				// Write response to STDOUT
+				static.stdioTransport.writeResponse( response );
+			}
+
+			static.mcpLogger.info( "STDIO transport stopped" );
+
+		} catch ( any e ) {
+			static.mcpLogger.error( "STDIO transport error: #e.message#" );
+
+			// Write error response
+			static.stdioTransport.writeResponse(
+				static.stdioTransport.createErrorResponse(
+					statusCode: 500,
+					errorCode: -32603,
+					message: "Internal error: #e.message#"
+				)
+			);
+
+			// Re-throw for caller to handle
+			throw( e );
+		}
+	}
+
+	/**
+	 * Process an MCP request using a transport layer
+	 * This is the main entry point for transport-agnostic request processing
+	 *
+	 * @transport The transport implementation to use
+	 * @requestData The normalized request data from the transport
+	 *
+	 * @return Struct containing response data: { content, contentType, headers, statusCode }
+	 */
+	static struct function processWithTransport(
+		required any transport,
+		required struct requestData
+	) {
+		// Extract common fields from normalized request data
+		var mcpServerName = arguments.requestData.serverName ?: static.DEFAULT_SERVER_NAME;
+		var requestMethod = arguments.requestData.method;
+		var requestBody = arguments.requestData.body;
+		var acceptHeader = arguments.requestData.acceptHeader;
+		var urlParams = arguments.requestData.params ?: {};
+		var requestOrigin = arguments.requestData.origin ?: "";
+		var requestHeaders = arguments.requestData.headers ?: {};
+
+		// Initialize response with security headers from transport
+		var response = {
+			"content": "",
+			"contentType": "application/json",
+			"headers": arguments.transport.getSecurityHeaders(),
+			"statusCode": 200
+		};
+
+		// Verify server exists
+		var targetServer = MCPServer::getInstance( mcpServerName );
+		if( isNull( targetServer ) ) {
+			// Log it
+			static.mcpLogger.error( "MCP Request for unknown server: #mcpServerName#" );
+			// Return error response
+			return arguments.transport.createErrorResponse(
+				statusCode: 400,
+				errorCode: MCPServer::errorCode( "INVALID_REQUEST" ),
+				message: "Unknown MCP server: " & mcpServerName
+			);
+		}
+
+		// Check request body size limit
+		var maxBodySize = targetServer.getMaxRequestBodySize();
+		if ( maxBodySize > 0 && len( requestBody ) > maxBodySize ) {
+			static.mcpLogger.warn( "MCP request body size exceeded limit: #len( requestBody )# > #maxBodySize#" );
+			return arguments.transport.createErrorResponse(
+				statusCode: 413,
+				errorCode: MCPServer::errorCode( "INVALID_REQUEST" ),
+				message: "Request body too large. Maximum allowed: #maxBodySize# bytes"
+			);
+		}
+
+		// Handle CORS if transport supports it
+		if ( arguments.transport.supports( "cors" ) && len( requestOrigin ) ) {
+			if ( targetServer.isCorsAllowed( requestOrigin ) ) {
+				response.headers[ "Access-Control-Allow-Origin" ] = requestOrigin;
+				response.headers[ "Vary" ] = "Origin";
+			} else if ( targetServer.getCorsAllowedOrigins().contains( "*" ) ) {
+				// Wildcard "*" allows all origins
+				response.headers[ "Access-Control-Allow-Origin" ] = "*";
+			}
+		}
+
+		// Handle CORS preflight (bypass callbacks for preflight)
+		if ( arguments.transport.supports( "preflight" ) && requestMethod == "OPTIONS" ) {
+			return handleCORSPreflight( response, targetServer );
+		}
+
+		// Verify basic authentication if configured
+		if ( targetServer.hasBasicAuth() ) {
+			var authHeader = requestHeaders[ "Authorization" ] ?: "";
+			if ( !targetServer.verifyBasicAuth( authHeader ) ) {
+				// Log failed authentication attempt
+				static.mcpLogger.warn( "MCP basic auth failed for server: #mcpServerName#" );
+				// Return 401 Unauthorized
+				response.statusCode = 401;
+				response.headers[ "WWW-Authenticate" ] = 'Basic realm="MCP Server"';
+				response.content = jsonSerialize( {
+					"jsonrpc": "2.0",
+					"error": {
+						"code": MCPServer::errorCode( "INVALID_REQUEST" ),
+						"message": "Unauthorized: Invalid credentials"
+					},
+					"id": ""
+				} );
+				return response;
+			}
+		}
+
+		// Verify API key if provider configured
+		if ( targetServer.hasApiKeyProvider() ) {
+			var apiKey = "";
+			var authHeader = requestHeaders[ "Authorization" ] ?: "";
+
+			// Extract API key from X-API-Key header or Bearer token
+			if ( requestHeaders.keyExists( "X-API-Key" ) ) {
+				apiKey = requestHeaders[ "X-API-Key" ];
+			} else if ( authHeader.findNoCase( "Bearer " ) ) {
+				apiKey = authHeader.replaceNoCase( "Bearer ", "" ).trim();
+			}
+
+			if ( !len( apiKey ) || !targetServer.verifyApiKey( apiKey, arguments.requestData ) ) {
+				// Log failed API key attempt
+				static.mcpLogger.warn( "MCP API key validation failed for server: #mcpServerName#" );
+				// Return 401 Unauthorized
+				response.statusCode = 401;
+				response.content = jsonSerialize( {
+					"jsonrpc": "2.0",
+					"error": {
+						"code": MCPServer::errorCode( "INVALID_REQUEST" ),
+						"message": "Unauthorized: Invalid API key"
+					},
+					"id": ""
+				} );
+				return response;
+			}
+		}
+
+		// Announce MCP request
+		BoxAnnounce( "onMCPRequest", {
+			server: targetServer,
+			requestData: arguments.requestData,
+			serverName: mcpServerName
+		} );
+
+		// Execute onRequest callback if defined (for authentication/inspection)
+		var onRequestCallback = targetServer.getOnRequest();
+		if ( isClosure( onRequestCallback ) ) {
+			try {
+				requestData = onRequestCallback( arguments.requestData );
+			} catch ( any e ) {
+				// Log it
+				static.mcpLogger.error( "MCP onRequest callback error: #e.message#" );
+				// Authentication or validation failure - return error response
+				response.statusCode = 401;
+				response.content = jsonSerialize( {
+					"jsonrpc": "2.0",
+					"error": {
+						"code": MCPServer::errorCode( "INVALID_REQUEST" ),
+						"message": e.message ?: "Request rejected by onRequest callback"
+					},
+					"id": ""
+				} );
+				return response;
+			}
+		}
+
+		// Handle GET requests for discovery
+		if ( requestMethod == "GET" ) {
+			response = handleDiscovery( targetServer, response, urlParams );
+		}
+		// Handle POST requests for JSON-RPC
+		else if ( requestMethod == "POST" ) {
+			response = handleJSONRPC( targetServer, response, requestBody, acceptHeader );
+		}
+		// Method not allowed
+		else {
+			response = handleMethodNotAllowed( response );
+		}
+
+		// Execute onResponse callback if defined (for transformation/logging)
+		var onResponseCallback = targetServer.getOnResponse();
+		if ( isClosure( onResponseCallback ) ) {
+			try {
+				response = onResponseCallback( response, arguments.requestData );
+			} catch ( any e ) {
+				// Log error but don't fail the response
+				static.mcpLogger.error( "MCP onResponse callback error: #e.message#" );
+			}
+		}
+
+		// Announce MCP response
+		BoxAnnounce( "onMCPResponse", {
+			server: targetServer,
+			response: response,
+			requestData: arguments.requestData,
+			serverName: mcpServerName
+		} );
+
+		return response;
+	}
+
+	/**
+	 * Handle CORS preflight requests
+	 *
+	 * @response The response struct to populate
+	 * @mcpServer The MCP server instance for CORS configuration
+	 *
+	 * @return The populated response struct
+	 */
+	private static  struct function handleCORSPreflight( required struct response, required any mcpServer ) {
+		arguments.response.headers[ "Access-Control-Allow-Methods" ] = "POST, GET, OPTIONS";
+		arguments.response.headers[ "Access-Control-Allow-Headers" ] = "Content-Type, Authorization, X-API-Key";
+		arguments.response.headers[ "Access-Control-Max-Age" ] = "86400";
+
+		// Add security headers to preflight response
+		arguments.response.headers[ "X-Content-Type-Options" ] = "nosniff";
+		arguments.response.headers[ "X-Frame-Options" ] = "DENY";
+		arguments.response.headers[ "Referrer-Policy" ] = "strict-origin-when-cross-origin";
+
+		arguments.response.content = "";
+		return arguments.response;
+	}	/**
+	 * Handle GET requests for server discovery
+	 *
+	 * @server The MCP server instance
+	 * @response The response struct to populate
+	 * @urlParams URL parameters
+	 *
+	 * @return The populated response struct
+	 */
+	private static  struct function handleDiscovery( required any server, required struct response, struct urlParams = {} ) {
+		arguments.response.content = {
+			"jsonrpc": "2.0",
+			"result": {
+				"protocolVersion": static.DEFAULT_MCP_PROTOCOL_VERSION,
+				"capabilities": arguments.server.getCapabilities(),
+				"serverInfo": arguments.server.getServerInfo()
+			},
+			"id": arguments.urlParams.id ?: javacast( "null", "" )
+		}.toJson()
+
+		return arguments.response;
+	}
+
+	/**
+	 * Handle POST requests for JSON-RPC
+	 *
+	 * @server The MCP server instance
+	 * @response The response struct to populate
+	 * @requestBody The request body
+	 * @acceptHeader The Accept header value
+	 *
+	 * @return The populated response struct
+	 */
+	private static  struct function handleJSONRPC(
+		required any server,
+		required struct response,
+		required string requestBody,
+		string acceptHeader = "application/json"
+	) {
+		try {
+			// Determine if SSE format is requested
+			var useSSE = arguments.acceptHeader contains "text/event-stream";
+
+			// Process the MCP request
+			var mcpResponse = arguments.server.handleRequest( arguments.requestBody );
+
+			// Format response
+			if ( useSSE ) {
+				arguments.response.contentType = "text/event-stream";
+				arguments.response.headers[ "Cache-Control" ] = "no-cache";
+				arguments.response.headers[ "Connection" ] = "keep-alive";
+				arguments.response.content = "event: message" & chr( 10 ) & "data: " & jsonSerialize( mcpResponse ) & chr( 10 ) & chr( 10 );
+			} else {
+				arguments.response.content = jsonSerialize( mcpResponse );
+			}
+		} catch ( any e ) {
+			// Log it
+			static.mcpLogger.error( "MCP JSON-RPC processing error: #e.message#" );
+			// Return JSON-RPC error response
+			var errorResponse = {
+				"jsonrpc": "2.0",
+				"error": {
+					"code": MCPServer::errorCode( "PARSE_ERROR" ),
+					"message": "Parse error: " & e.message
+				},
+				"id": ""
+			};
+			arguments.response.content = jsonSerialize( errorResponse );
+		}
+
+		return arguments.response;
+	}
+
+	/**
+	 * Handle unsupported HTTP methods
+	 *
+	 * @response The response struct to populate
+	 *
+	 * @return The populated response struct
+	 */
+	private static struct function handleMethodNotAllowed( required struct response ) {
+		arguments.response.statusCode = 405;
+
+		var errorResponse = {
+			"jsonrpc": "2.0",
+			"error": {
+				"code": MCPServer::errorCode( "INVALID_REQUEST" ),
+				"message": "Method not allowed. Use POST for JSON-RPC requests or GET for discovery."
+			},
+			"id": ""
+		};
+
+		arguments.response.content = jsonSerialize( errorResponse );
+		return arguments.response;
+	}
+
+}

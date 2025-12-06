@@ -64,6 +64,17 @@ class extends="AiBaseRunnable" {
 	property name="options" type="struct" default={};
 
 	/**
+	 * Sub-agents registered to this agent.
+	 * Each sub-agent is automatically wrapped as an internal tool for delegation.
+	 */
+	property name="subAgents" type="array" default=[];
+
+	/**
+	 * Tools created for sub-agents (tracked separately for cleanup)
+	 */
+	property name="subAgentTools" type="array" default=[];
+
+	/**
 	 * Default agent name constant
 	 */
 	static {
@@ -81,6 +92,7 @@ class extends="AiBaseRunnable" {
 	 * @model The AI model to use, defaults to the default BoxLang AI model
 	 * @memory The memory instance or array of memories, defaults to a simple in-memory store
 	 * @tools Array of tools for the agent
+	 * @subAgents Array of sub-agents to register as internal tools
 	 * @params Default model parameters
 	 * @options Default agent options
 	 */
@@ -91,6 +103,7 @@ class extends="AiBaseRunnable" {
 		AiModel model = aiModel(),
 		any memory = aiMemory(),
 		array tools = [],
+		array subAgents = [],
 		struct params = {},
 		struct options = {}
 	) {
@@ -99,6 +112,8 @@ class extends="AiBaseRunnable" {
 		variables.instructions = arguments.instructions;
 		variables.aiModel = arguments.model.addTools( arguments.tools );
 		variables.tools = arguments.tools;
+		variables.subAgents = [];
+		variables.subAgentTools = [];
 		variables.params = arguments.params;
 		variables.options = arguments.options;
 
@@ -128,6 +143,9 @@ class extends="AiBaseRunnable" {
 		} else {
 			variables.memories = [ arguments.memory ];
 		}
+
+		// Handle sub-agents - register each as an internal tool
+		arguments.subAgents.each( subAgent => addSubAgent( subAgent ) );
 
 		return this;
 	}
@@ -376,6 +394,97 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Sub-Agent Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Add a sub-agent to this agent.
+	 * The sub-agent will be wrapped as an internal tool that can be invoked by the parent agent.
+	 *
+	 * @subAgent The sub-agent to add
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function addSubAgent( required AiAgent subAgent ) {
+		// Store the sub-agent
+		variables.subAgents.append( arguments.subAgent );
+
+		// Create an internal tool for the sub-agent
+		var subAgentTool = createSubAgentTool( arguments.subAgent );
+
+		// Track the sub-agent tool for potential cleanup
+		variables.subAgentTools.append( subAgentTool );
+
+		// Add the tool to this agent's model
+		variables.aiModel.addTools( [ subAgentTool ] );
+
+		return this;
+	}
+
+	/**
+	 * Set the sub-agents for the agent (replaces existing sub-agents)
+	 *
+	 * This method removes old sub-agent delegation tools and registers new ones.
+	 *
+	 * @subAgents Array of sub-agents to register
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function setSubAgents( required array subAgents ) {
+		// Remove old sub-agent tools from the model
+		if ( !variables.subAgentTools.isEmpty() ) {
+			variables.aiModel.removeTools( variables.subAgentTools );
+		}
+
+		// Clear existing sub-agents and their tools
+		variables.subAgents = [];
+		variables.subAgentTools = [];
+
+		// Add each sub-agent
+		arguments.subAgents.each( subAgent => addSubAgent( subAgent ) );
+
+		return this;
+	}
+
+	/**
+	 * Get a sub-agent by name
+	 *
+	 * @name The name of the sub-agent to find
+	 *
+	 * @return The sub-agent if found, or null
+	 */
+	AiAgent function getSubAgent( required string name ) {
+		for ( var subAgent in variables.subAgents ) {
+			if ( subAgent.getAgentName() == arguments.name ) {
+				return subAgent;
+			}
+		}
+		return null
+	}
+
+	/**
+	 * Check if a sub-agent exists by name
+	 *
+	 * @name The name of the sub-agent to check
+	 *
+	 * @return Boolean indicating if the sub-agent exists
+	 */
+	boolean function hasSubAgent( required string name ) {
+		return !isNull( getSubAgent( arguments.name ) );
+	}
+
+	/**
+	 * Get the names of all registered sub-agents
+	 *
+	 * @return Array of sub-agent names
+	 */
+	Array function getSubAgentNames() {
+		return variables.subAgents.map( agent => agent.getAgentName() );
+	}
+
+	/**
 	 * Get agent configuration as a struct
 	 *
 	 * @return Struct of agent configuration
@@ -389,6 +498,13 @@ class extends="AiBaseRunnable" {
 			"toolCount": variables.tools.len(),
 			"memoryCount": variables.memories.len(),
 			"memories": variables.memories.map( mem => mem.getSummary() ),
+			"subAgentCount": variables.subAgents.len(),
+			"subAgents": variables.subAgents.map( agent => {
+				return {
+					"name": agent.getConfig().name,
+					"description": agent.getConfig().description
+				};
+			} ),
 			"params": variables.params,
 			"options": variables.options
 		};
@@ -463,6 +579,41 @@ class extends="AiBaseRunnable" {
 				content: assistantContent
 			}) );
 		}
+	}
+
+	/**
+	 * Create an internal tool wrapper for a sub-agent.
+	 * The tool delegates to the sub-agent's run method.
+	 *
+	 * @subAgent The sub-agent to wrap
+	 *
+	 * @return A Tool instance that delegates to the sub-agent
+	 */
+	private ITool function createSubAgentTool( required AiAgent subAgent ) {
+		var agentConfig = arguments.subAgent.getConfig();
+		var agentName = agentConfig.name;
+		var agentDescription = agentConfig.description;
+
+		// Build tool name: delegate_to_{agent_name}
+		// Regex only needs to match non-alphanumeric and non-underscore since we already lowercase
+		var toolName = "delegate_to_" & agentName.lCase().reReplace( "[^a-z0-9_]", "_", "all" );
+
+		// Build description for the tool
+		var toolDescription = "Delegate a task to the '#agentName#' sub-agent. "
+			& "Use this tool when the task matches the sub-agent's specialty: #agentDescription#";
+
+		// Capture the sub-agent reference for the closure
+		var targetSubAgent = arguments.subAgent;
+
+		// Create a tool that wraps the sub-agent
+		return aiTool(
+			name: toolName,
+			description: toolDescription,
+			callable: ( task ) => {
+				// Invoke the sub-agent with the task
+				return targetSubAgent.run( task );
+			}
+		).describeArg( "task", "The task or question to delegate to the sub-agent" );
 	}
 
 }

@@ -1,0 +1,24 @@
+// extraccion-array.bxs
+// Extrayendo arrays de datos estructurados
+// Ejecutar con: boxlang extraccion-array.bxs
+
+// Plantilla para UNA tarea
+taskTemplate = {
+    "title": "",
+    "priority": "",
+    "done": false
+}
+
+// Envuelve en array para extraer MÚLTIPLES tareas
+tasks = aiChat( "
+    Extract tasks:
+    1. Buy groceries (high priority, not done)
+    2. Call mom (medium, done)
+    3. Exercise (low, not done)
+" ).structuredOutput( [ taskTemplate ] )
+
+// Recorre los resultados
+for( task in tasks ) {
+    status = task.done ? "✅" : "⬜"
+    println( "#status# #task.title# [#task.priority#]" )
+}

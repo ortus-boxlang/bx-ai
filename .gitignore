@@ -1,6 +1,7 @@
 .gradle
 build/**
 !gradle/wrapper/gradle-wrapper.jar
+boxlang_modules/**
 
 ### IntelliJ IDEA ###
 .idea/
@@ -17,3 +18,6 @@ src/test/resources/modules/**
 testbox/**
 tests/results
 derby.log
+
+### Runtime Web Content ###
+www/boxlang_modules/

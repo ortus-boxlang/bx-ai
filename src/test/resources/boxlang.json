@@ -14,6 +14,12 @@
 			"username": "boxlang",
 			"password": "boxlang"
 		},
+		"mysql_vector_test": {
+			"driver": "mysql",
+			"connectionString": "jdbc:mysql://localhost:3307/vectordb",
+			"username": "boxlang",
+			"password": "boxlang"
+		},
 		"sqlite_test": {
 			"driver": "sqlite",
 			"connectionString": "jdbc:sqlite::memory:"

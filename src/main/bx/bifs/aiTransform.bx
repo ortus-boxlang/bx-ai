@@ -50,7 +50,7 @@ class {
     function invoke( required function transformer ) {
 		var oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable( arguments.transformer );
 
-		BoxAnnounce( "onAITransformCreate", { transform: oTransform } );
+		BoxAnnounce( "onAITransformerCreate", { transform: oTransform } );
 
 		return oTransform;
     }

@@ -56,6 +56,10 @@ messages.map( m => m.content ).filter( c => !isNull(c) )
 - **Implicit returns**: Last expression in function is returned
 - **String interpolation**: `"Hello, ${name}!"` or `"#name#"`
 - **OnMissingMethod**: Dynamic method handling (see `AiMessage` for roled messages)
+- **Implicit getters/setters**: Properties declared with `property` automatically get getter/setter methods
+  - `property name="serverName"` → `getServerName()` and `setServerName(value)` are auto-generated
+  - Do NOT manually create getter/setter methods for properties
+  - Access via `obj.getPropertyName()` or `obj.setPropertyName(value)`
 - **Rich string functions**: Comprehensive string manipulation BIFs + full Java String API access
   - Reference: https://boxlang.ortusbooks.com/boxlang-language/reference/built-in-functions/string
   - Examples: `char(10)` (newline), `left()`, `right()`, `reReplace()`, `trim()`, etc.
@@ -63,6 +67,9 @@ messages.map( m => m.content ).filter( c => !isNull(c) )
 ### Code Quality Standards
 - **No cryptic variable names**: Use descriptive, self-documenting names (e.g., `maxConnections` not `M`)
 - **Avoid acronyms**: Only use acronyms that are universally known (HTTP, URL, API). Prefer full words.
+- **Avoid reserved scope names**: BoxLang has built-in scopes that cannot be used as variable names:
+  - `server`, `request`, `session`, `application`, `cgi`, `url`, `form`, `cookie`, `variables`
+  - Use alternative names like `mcpSrv`, `rpcRequest`, `httpReq`, etc.
 - **Type casting**: Use `castAs` operator instead of `javaCast()` function
   ```java
   // Good
@@ -105,6 +112,7 @@ curl http://localhost:11434/api/tags  # Verify model availability
 - Test class pattern: `extends BaseIntegrationTest` → access `runtime`, `context`, `variables` properties
 - Provider tests are `@Disabled` by default (require API keys in env vars like `OPENAI_API_KEY`)
 - Ollama tests require `docker compose up ollama` (auto-pulls `qwen2.5:0.5b-instruct`)
+- **Debugging AI Provider HTTP responses**: Add `logResponseToConsole: true` to AI service provider config (OpenAI, Claude, etc.) to see raw API responses in console output - useful for debugging provider integration issues
 
 **BaseIntegrationTest provides:**
 ```java
@@ -213,6 +221,33 @@ BoxAnnounce( "onAIRequest", { dataPacket: payload, chatRequest: request, provide
 - Uses `hoverkraft-tech/compose-action@v2.0.2` to start Ollama service
 - Waits for service readiness with timeout: `curl -f http://localhost:11434/api/tags`
 - API keys injected via GitHub Secrets (`OPENAI_API_KEY`, `CLAUDE_API_KEY`, etc.)
+
+## Documentation Standards
+
+### Code Block Syntax
+
+- Use javascript for BoxLang code examples (not java)
+- Only use java for actual Java code
+- This provides better syntax highlighting for BoxLang's CFML-like syntax, until BoxLang is natively supported
+
+### Writing Style
+
+- **Use emojis when appropriate** - They improve readability and visual scanning
+  - Don't overboard - typically 1-2 per section/heading where helpful
+  - Examples: ✅ Good, ❌ Bad, 🚨 Warning, 📖 Documentation, 💡 Tip
+- **Keep code samples simple** - Focus on the concept being demonstrated
+  - Avoid complex, multi-layered examples unless necessary
+  - Use clear variable names
+  - Comment only when the code isn't self-explanatory
+
+### Interceptor Registration
+
+- **Module registration**: Use `ModuleConfig.bx` approach with `interceptors` array
+  - This is ONLY for BoxLang modules
+  - Document as "For BoxLang Module registration"
+- **Non-module registration**: Use `BoxRegisterInterceptor()` BIF
+  - Reference: https://boxlang.ortusbooks.com/boxlang-language/reference/built-in-functions/system/boxregisterinterceptor
+  - Document as "For application/script registration"
 
 ## Documentation Locations
 

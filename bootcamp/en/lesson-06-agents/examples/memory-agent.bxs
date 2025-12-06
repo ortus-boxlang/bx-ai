@@ -1,0 +1,65 @@
+// memory-agent.bxs
+// Agent with configured memory system
+// Run with: boxlang memory-agent.bxs
+
+println( "🧠 Memory Agent Demo" )
+println( "═".repeat( 40 ) )
+println()
+
+// Create agent with windowed memory
+agent = aiAgent(
+    name: "PersonalAssistant",
+    description: "A personal assistant that remembers your preferences",
+    instructions: "Remember user preferences and past conversations. Be helpful and recall info when relevant.",
+    memory: aiMemory( "windowed", { maxMessages: 20 } )
+)
+
+// Share some information
+info = [
+    "My favorite color is blue",
+    "I live in Boston",
+    "I work as a software developer",
+    "My dog's name is Max"
+]
+
+println( "📝 Sharing information with the agent..." )
+println()
+
+for( item in info ) {
+    println( "User: " & item )
+    response = agent.run( item )
+    println( "Agent: " & response )
+    println()
+}
+
+println( "─".repeat( 40 ) )
+println( "Now testing memory recall..." )
+println( "─".repeat( 40 ) )
+println()
+
+// Ask about remembered info
+questions = [
+    "What's my favorite color?",
+    "Where do I live?",
+    "What do you know about me?",
+    "What's my pet's name?"
+]
+
+for( question in questions ) {
+    println( "User: " & question )
+    response = agent.run( question )
+    println( "Agent: " & response )
+    println()
+}
+
+// Clear memory and show difference
+println( "─".repeat( 40 ) )
+println( "🗑️ Clearing memory..." )
+agent.clearMemory()
+println()
+
+println( "User: What's my name?" )
+response = agent.run( "What's my name?" )
+println( "Agent: " & response )
+println()
+println( "(Memory was cleared, so it doesn't remember!)" )

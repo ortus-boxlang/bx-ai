@@ -23,10 +23,19 @@ class extends="WindowMemory" {
 	 * Initializes the session storage structure
 	 *
 	 * @key The unique key for this memory instance, defaults to the current session ID
-	 * @maxMessages Maximum number of messages to keep (default: 20)
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
+	 * @maxMessages Maximum number of messages to keep (default: 100)
 	 */
-	function init( string key = "bxai", numeric maxMessages ) {
+	function init(
+		string key = "bxai",
+		string userId = "",
+		string conversationId = "",
+		numeric maxMessages
+	) {
 		super.init( argumentCollection: arguments );
+		// Build composite session key from key, userId, and conversationId
+		variables.sessionKey = buildSessionKey();
 		return this;
 	}
 
@@ -37,7 +46,7 @@ class extends="WindowMemory" {
 	 */
 	public array function getAll() {
 		ensureSessionStorage();
-		return session[ variables.key ].messages;
+		return session[ variables.sessionKey ].messages;
 	}
 
 	/**
@@ -60,7 +69,7 @@ class extends="WindowMemory" {
 	 */
 	public IAiMemory function add( required any message ) {
 		ensureSessionStorage();
-		var container = session[ variables.key ];
+		var container = session[ variables.sessionKey ];
 
 		// AiMessage instance - get its messages and process them
  		if ( arguments.message instanceof "AiMessage" ) {
@@ -128,7 +137,7 @@ class extends="WindowMemory" {
 	 */
 	public IAiMemory function removeSystemMessage() {
 		ensureSessionStorage();
-		session[ variables.key ].messages = getAll().filter( ( m ) => m.role != "system" );
+		session[ variables.sessionKey ].messages = getAll().filter( ( m ) => m.role != "system" );
 		return this;
 	}
 
@@ -140,10 +149,30 @@ class extends="WindowMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function configure( required struct config ) {
-		variables.config.append( arguments.config, true );
+		// Handle key, userId, conversationId from config
+		var rebuildKey = false;
+		if ( arguments.config.keyExists( "key" ) && arguments.config.key != variables.key ) {
+			variables.key = arguments.config.key;
+			rebuildKey = true;
+		}
+		if ( arguments.config.keyExists( "userId" ) && arguments.config.userId != variables.userId ) {
+			variables.userId = arguments.config.userId;
+			rebuildKey = true;
+		}
+		if ( arguments.config.keyExists( "conversationId" ) && arguments.config.conversationId != variables.conversationId ) {
+			variables.conversationId = arguments.config.conversationId;
+			rebuildKey = true;
+		}
+
+		// Rebuild session key if identifiers changed
+		if ( rebuildKey ) {
+			variables.sessionKey = buildSessionKey();
+		}
 
 		// Initialize session memory storage if not exists
 		ensureSessionStorage();
+
+		super.configure( arguments.config );
 
 		return this;
 	}
@@ -166,25 +195,34 @@ class extends="WindowMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function import( required struct data ) {
-		ensureSessionStorage();
-
-		// Import key and maxMessages
+		// Import key, userId, conversationId first
 		if ( arguments.data.keyExists( "key" ) ) {
 			variables.key = arguments.data.key;
+		}
+		if ( arguments.data.keyExists( "userId" ) ) {
+			variables.userId = arguments.data.userId;
+		}
+		if ( arguments.data.keyExists( "conversationId" ) ) {
+			variables.conversationId = arguments.data.conversationId;
 		}
 		if ( arguments.data.keyExists( "maxMessages" ) ) {
 			variables.maxMessages = arguments.data.maxMessages;
 		}
 
+		// Rebuild session key after importing identifiers
+		variables.sessionKey = buildSessionKey();
+
+		ensureSessionStorage();
+
 		// Import into session storage
 		if ( arguments.data.keyExists( "messages" ) ) {
-			session[ variables.key ].messages = arguments.data.messages;
+			session[ variables.sessionKey ].messages = arguments.data.messages;
 		}
 		if ( arguments.data.keyExists( "metadata" ) ) {
-			session[ variables.key ].metadata = arguments.data.metadata;
+			session[ variables.sessionKey ].metadata = arguments.data.metadata;
 		}
 		if ( arguments.data.keyExists( "config" ) ) {
-			session[ variables.key ].config = arguments.data.config;
+			session[ variables.sessionKey ].config = arguments.data.config;
 		}
 
 		this.trim();
@@ -199,7 +237,7 @@ class extends="WindowMemory" {
 	 */
 	public numeric function count() {
 		ensureSessionStorage();
-		return session[ variables.key ].messages.len();
+		return session[ variables.sessionKey ].messages.len();
 	}
 
 	/**
@@ -209,7 +247,56 @@ class extends="WindowMemory" {
 	 */
 	public boolean function isEmpty() {
 		ensureSessionStorage();
-		return session[ variables.key ].messages.isEmpty();
+		return session[ variables.sessionKey ].messages.isEmpty();
+	}
+
+	/**
+	 * Trim session-stored messages based on maxMessages
+	 * (0 = unbounded, otherwise keep last N, preserve system message)
+	 */
+	public IAiMemory function trim() {
+		// Do nothing if unbounded
+		if ( variables.maxMessages == 0 ) {
+			return this
+		}
+		ensureSessionStorage()
+		var messages = session[ variables.sessionKey ].messages
+
+		// Extract system message if exists
+		var systemMsg = ""
+		var hasSystem = false
+
+		var systemMessages = messages.filter( m => m.role == "system" )
+		if ( !systemMessages.isEmpty() ) {
+			systemMsg = systemMessages.first().content
+			hasSystem = true
+		}
+
+		// Filter non-system messages
+		var nonSystem = messages.filter( m => m.role != "system" )
+
+		// If no trimming needed, exit early
+		if ( nonSystem.len() <= variables.maxMessages ) {
+			return this
+		}
+
+		// Determine which messages to keep
+		var start = nonSystem.len() - variables.maxMessages + 1
+		var keep  = nonSystem.slice( start, variables.maxMessages ) // slice(start, length)
+
+		// Preserve system message at top
+		if ( hasSystem ) {
+			keep.prepend( {
+				role: "system",
+				content: systemMsg,
+				timestamp: now()
+			} )
+		}
+
+		// Save back to session
+		session[ variables.sessionKey ].messages = keep
+
+		return this
 	}
 
 	/**
@@ -219,13 +306,35 @@ class extends="WindowMemory" {
 	 * @return void
 	 */
 	private void function ensureSessionStorage( boolean force = false ) {
-		if ( !structKeyExists( session, variables.key ) || arguments.force ) {
-			session[ variables.key ] = {
+		if ( !structKeyExists( session, variables.sessionKey ) || arguments.force ) {
+			session[ variables.sessionKey ] = {
 				messages: [],
 				metadata: {},
 				config: {}
 			};
 		}
+	}
+
+	/**
+	 * Build composite session key from key, userId, and conversationId
+	 * Format: key:userId:conversationId or key:userId or just key
+	 *
+	 * @return String composite session key
+	 */
+	private string function buildSessionKey() {
+		var parts = [ variables.key ];
+
+		// Add userId if present
+		if ( len( variables.userId ) ) {
+			parts.append( variables.userId );
+		}
+
+		// Add conversationId if present
+		if ( len( variables.conversationId ) ) {
+			parts.append( variables.conversationId );
+		}
+
+		return parts.toList( ":" );
 	}
 
 }

@@ -1,0 +1,133 @@
+/**
+ * Annotation-Based MCP Tools Example
+ *
+ * This example demonstrates how to use annotations to automatically
+ * register MCP tools, resources, and prompts from class methods.
+ */
+
+// Define a class with annotated methods
+class name="MyTools" {
+
+    /**
+     * Search the knowledge base
+     * @mcpTool( { name: "searchKnowledge", description: "Search our knowledge base", version: "1.0.0" } )
+     */
+    function search( required string query, numeric limit = 10 ) {
+        // Simulate knowledge base search
+        return "Found #limit# articles matching: #query#"
+    }
+
+    /**
+     * Convert currency amounts
+     * @mcpTool
+     */
+    function convertCurrency( required numeric amount, required string from, required string to ) {
+        // Simulate currency conversion
+        var rate = 1.2  // Simplified exchange rate
+        return "#amount# #from# = #(amount * rate)# #to#"
+    }
+
+    /**
+     * Get system status
+     * @mcpResource( { uri: "system://status", name: "System Status", mimeType: "application/json" } )
+     */
+    function getSystemStatus() {
+        return {
+            status: "operational",
+            uptime: "99.9%",
+            lastCheck: now()
+        }
+    }
+
+    /**
+     * Generate code snippet
+     * @mcpPrompt( { name: "codeSnippet", description: "Generate a code snippet" } )
+     */
+    function generateCode( required string language, required string description ) {
+        return [
+            {
+                role: "user",
+                content: "Generate a #language# code snippet that does: #description#"
+            }
+        ]
+    }
+}
+
+// Create MCP server
+myServer = mcpServer( "annotatedApp" )
+    .setDescription( "Annotation-based MCP Server" )
+
+// Save the class to a file (in real app, this would already exist)
+classCode = "
+class {
+    function search( required string query, numeric limit = 10 ) hint='Search the knowledge base' {
+        return 'Found ' & limit & ' articles matching: ' & query
+    }
+
+    function convertCurrency( required numeric amount, required string from, required string to ) hint='Convert currency' {
+        var rate = 1.2
+        return amount & ' ' & from & ' = ' & (amount * rate) & ' ' & to
+    }
+}
+"
+
+// For this example, we'll manually register instead of scanning
+// In production, you would use: myServer.scan( "/path/to/classes/" )
+
+myServer
+    .registerTool(
+        aiTool( "searchKnowledge", "Search our knowledge base", ( query, limit = 10 ) => {
+            return "Found #limit# articles matching: #query#"
+        } )
+            .describeArg( "query", "Search query" )
+            .describeArg( "limit", "Maximum results to return" )
+    )
+    .registerTool(
+        aiTool( "convertCurrency", "Convert currency amounts", ( amount, from, to ) => {
+            var rate = 1.2
+            return "#amount# #from# = #(amount * rate)# #to#"
+        } )
+            .describeArg( "amount", "Amount to convert" )
+            .describeArg( "from", "Source currency" )
+            .describeArg( "to", "Target currency" )
+    )
+    .registerResource(
+        uri: "system://status",
+        name: "System Status",
+        description: "Current system status",
+        mimeType: "application/json",
+        handler: () => {
+            return {
+                status: "operational",
+                uptime: "99.9%",
+                lastCheck: now()
+            }
+        }
+    )
+
+// List all registered tools
+println( "Registered tools:" )
+myServer.listTools().each( ( tool ) => {
+    println( "  - #tool.name#: #tool.description#" )
+} )
+
+// List resources
+println( char(10) & "Registered resources:" )
+myServer.listResources().each( ( resource ) => {
+    println( "  - #resource.name# (#resource.uri#)" )
+} )
+
+// Test a tool call
+rpcRequest = {
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "id": "1",
+    "params": {
+        "name": "searchKnowledge",
+        "arguments": { "query": "MCP protocol", "limit": 5 }
+    }
+}
+
+response = myServer.handleRequest( rpcRequest )
+println( char(10) & "Tool call result:" )
+println( jsonSerialize( response ) )

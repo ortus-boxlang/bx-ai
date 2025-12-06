@@ -1,0 +1,120 @@
+/**
+ * Basic MCP Server Example - Tool Registration
+ *
+ * This example demonstrates:
+ * - Creating an MCP server instance
+ * - Registering tools
+ * - Listing available tools
+ * - Handling JSON-RPC requests manually
+ */
+
+println( "🚀 BoxLang AI - MCP Server Basic Tools Example" )
+println( "=" repeat 50 )
+
+// Create or get an MCP server instance
+// Servers are singletons by name - multiple calls with same name return same instance
+var mcpSrv = mcpServer( "myApp" )
+    .setDescription( "My Application MCP Server" )
+    .setVersion( "1.0.0" )
+
+println( "✅ Created MCP server: #mcpSrv.getServerName()#" )
+println( "" )
+
+// Register a search tool
+mcpSrv.registerTool(
+    aiTool( "search", "Search for documents in the knowledge base", ( query ) => {
+        // In a real app, this would query a database or search engine
+        return "Found 42 documents matching '#arguments.query#'"
+    } )
+    .describeArg( "query", "The search query string" )
+)
+
+// Register a calculator tool
+mcpSrv.registerTool(
+    aiTool( "calculate", "Perform mathematical calculations", ( expression ) => {
+        // In a real app, you'd use a proper expression evaluator
+        // For demo purposes, we'll just echo
+        return "Result of '#arguments.expression#' = 42"
+    } )
+    .describeArg( "expression", "Mathematical expression to evaluate" )
+)
+
+println( "📝 Registered #mcpSrv.getToolCount()# tools" )
+println( "" )
+
+// List available tools
+println( "📋 Available tools:" )
+var tools = mcpSrv.listTools()
+tools.each( ( tool ) => {
+    println( "  - #tool.name#: #tool.description#" )
+} )
+println( "" )
+
+// Check if specific tools exist
+println( "🔍 Tool checks:" )
+println( "  - Has 'search' tool: #mcpSrv.hasTool( 'search' )#" )
+println( "  - Has 'delete' tool: #mcpSrv.hasTool( 'delete' )#" )
+println( "" )
+
+// Handle a JSON-RPC tools/list request
+println( "📡 Handling JSON-RPC request (tools/list):" )
+var listRequest = {
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "id": "1"
+}
+var listResponse = mcpSrv.handleRequest( listRequest )
+println( "  Response: #jsonSerialize( listResponse )#" )
+println( "" )
+
+// Handle a JSON-RPC tools/call request
+println( "📡 Handling JSON-RPC request (tools/call):" )
+var callRequest = {
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "id": "2",
+    "params": {
+        "name": "search",
+        "arguments": {
+            "query": "BoxLang"
+        }
+    }
+}
+var callResponse = mcpSrv.handleRequest( callRequest )
+println( "  Response: #jsonSerialize( callResponse )#" )
+println( "" )
+
+// Get server info and capabilities
+println( "📊 Server Information:" )
+var info = mcpSrv.getServerInfo()
+println( "  Name: #info.name#" )
+println( "  Version: #info.version#" )
+println( "  Description: #mcpSrv.getDescription()#" )
+println( "" )
+
+var capabilities = mcpSrv.getCapabilities()
+println( "🎯 Server Capabilities:" )
+capabilities.each( ( key, value ) => {
+    println( "  - #key#: enabled" )
+} )
+println( "" )
+
+// Test unknown method (should return error)
+println( "❌ Testing error handling (unknown method):" )
+var errorRequest = {
+    "jsonrpc": "2.0",
+    "method": "unknown/method",
+    "id": "3"
+}
+var errorResponse = mcpSrv.handleRequest( errorRequest )
+if ( errorResponse.keyExists( "error" ) ) {
+    println( "  ✅ Correctly returned error: #errorResponse.error.message# (code: #errorResponse.error.code#)" )
+}
+println( "" )
+
+println( "✨ Example complete!" )
+println( "" )
+println( "💡 Next steps:" )
+println( "  1. Try the http-endpoint.bx example to see HTTP access" )
+println( "  2. Check resources-prompts.bx for resources and prompts" )
+println( "  3. Explore annotation-discovery.bx for auto-discovery" )

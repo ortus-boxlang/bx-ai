@@ -1,0 +1,20 @@
+// personalidades.bxs
+// Ejemplo de diferentes personalidades de IA
+// Ejecutar con: boxlang personalidades.bxs
+
+// Personalidad de pirata
+pirateChat = aiMessage()
+    .system( "You are a friendly pirate. Speak like a pirate in all responses. Use 'arr' and 'matey' often." )
+    .user( "How do I make coffee?" )
+
+println( "🏴‍☠️ El Pirata dice:" )
+println( aiChat( pirateChat ) )
+println()
+
+// Personalidad de profesor
+professorChat = aiMessage()
+    .system( "You are a distinguished professor. Explain things academically with proper terminology." )
+    .user( "How do I make coffee?" )
+
+println( "🎓 El Profesor dice:" )
+println( aiChat( professorChat ) )

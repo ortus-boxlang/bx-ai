@@ -16,6 +16,7 @@ An agent is more than a simple chat interface - it's an intelligent entity that:
 - **Reasons and Plans**: Determines when and how to use tools to accomplish tasks
 - **Manages State**: Automatically handles message history and context
 - **Integrates with Pipelines**: Works seamlessly in BoxLang AI pipelines
+- **Delegates to Sub-Agents**: Can orchestrate specialized sub-agents for complex tasks
 
 ## Creating Agents
 
@@ -354,6 +355,114 @@ function processRequest( userInput, requiresTools ) {
 }
 ```
 
+## Sub-Agents
+
+Sub-agents allow you to create specialized agents that can be delegated to by a parent agent. When you register a sub-agent, it is automatically wrapped as an internal tool that the parent agent can invoke.
+
+### Creating Agents with Sub-Agents
+
+```java
+// Create specialized sub-agents
+mathAgent = aiAgent(
+    name: "MathAgent",
+    description: "A mathematics expert",
+    instructions: "You help with mathematical calculations and concepts"
+)
+
+codeAgent = aiAgent(
+    name: "CodeAgent",
+    description: "A programming expert",
+    instructions: "You help with code review and writing"
+)
+
+// Create parent agent with sub-agents
+mainAgent = aiAgent(
+    name: "OrchestratorAgent",
+    description: "Main coordinator that delegates to specialists",
+    instructions: """
+        Analyze each request and delegate to appropriate sub-agents:
+        - MathAgent: For mathematical tasks
+        - CodeAgent: For programming tasks
+        Answer directly for simple queries.
+    """,
+    subAgents: [ mathAgent, codeAgent ]
+)
+
+// The parent agent automatically has delegation tools available
+response = mainAgent.run( "Write a function to calculate factorial" )
+```
+
+### Fluent Sub-Agent API
+
+You can also add sub-agents using the fluent API:
+
+```java
+// Create sub-agents
+helperAgent = aiAgent( name: "HelperAgent", description: "General helper" )
+specialistAgent = aiAgent( name: "SpecialistAgent", description: "Specialist" )
+
+// Add sub-agents fluently
+mainAgent = aiAgent( name: "MainAgent" )
+    .addSubAgent( helperAgent )
+    .addSubAgent( specialistAgent )
+
+// Or replace all sub-agents
+mainAgent.setSubAgents( [ newAgent1, newAgent2 ] )
+```
+
+### Sub-Agent Management
+
+```java
+// Check if a sub-agent exists
+if ( mainAgent.hasSubAgent( "MathAgent" ) ) {
+    println( "Math agent is available" )
+}
+
+// Get a specific sub-agent
+mathAgent = mainAgent.getSubAgent( "MathAgent" )
+if ( !isNull( mathAgent ) ) {
+    // Use the sub-agent directly
+    result = mathAgent.run( "What is 2 + 2?" )
+}
+
+// Get all sub-agents
+allSubAgents = mainAgent.getSubAgents()
+println( "Total sub-agents: #allSubAgents.len()#" )
+```
+
+### Sub-Agents in Configuration
+
+Sub-agent information is included in `getConfig()`:
+
+```java
+config = mainAgent.getConfig()
+
+println( config.subAgentCount )  // Number of sub-agents
+
+// Sub-agent details
+config.subAgents.each( agent => {
+    println( "Name: #agent.name#" )
+    println( "Description: #agent.description#" )
+} )
+```
+
+### How Sub-Agents Work
+
+When you add a sub-agent, it is automatically converted to a tool:
+
+1. **Tool Name**: `delegate_to_{agent_name}` (lowercase, special characters replaced with underscores)
+2. **Tool Description**: Includes the sub-agent's name and description
+3. **Tool Parameter**: A `task` parameter for the query to delegate
+
+The parent agent's AI model decides when to use the delegation tool based on the task context.
+
+```java
+// Behind the scenes, adding a sub-agent creates a tool like:
+// Tool name: "delegate_to_mathagent"
+// Tool description: "Delegate a task to the 'MathAgent' sub-agent..."
+// The tool calls: subAgent.run( task )
+```
+
 ## Event Interception
 
 Agents fire events during execution:
@@ -538,7 +647,8 @@ conversation = researchAgent.getMemoryMessages()
 
 ## Next Steps
 
-- Explore [Memory Systems](../advanced/memory.md) for custom memory implementations
+- Explore [Memory Systems](./memory.md) for conversation history and context management
+- See [Custom Memory](../advanced/custom-memory.md) for building custom memory implementations
 - Learn about [Tools](./tools.md) for function calling patterns
 - See [Events](../advanced/events.md) for agent event handling
-- Check [Pipeline Patterns](./overview.md) for advanced agent workflows
+- Check [Pipeline Overview](./overview.md) for advanced agent workflows

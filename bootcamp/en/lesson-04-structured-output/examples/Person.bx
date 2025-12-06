@@ -1,0 +1,8 @@
+/**
+ * Person class for structured output extraction
+ */
+class {
+    property name="name" type="string";
+    property name="age" type="numeric";
+    property name="email" type="string";
+}

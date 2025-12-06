@@ -62,7 +62,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 	public void testCustomConfig() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "summary", "test-key", {
+		    memory = aiMemory( memory: "summary", key: "test-key", config: {
 		        maxMessages: 15,
 		        summaryThreshold: 8,
 		        summaryModel: "gpt-4o",
@@ -88,7 +88,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 	public void testBelowThreshold() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "summary", "test-key", {
+		    memory = aiMemory( memory: "summary", key: "test-key", config: {
 		        maxMessages: 10,
 		        summaryThreshold: 5
 		    } )
@@ -118,7 +118,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 	public void testSummarizationTriggered() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "summary", "test-key", {
+		    memory = aiMemory( memory: "summary", key: "test-key", config: {
 		        maxMessages: 8,
 		        summaryThreshold: 3
 		    } )
@@ -156,7 +156,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 	public void testSystemMessagePreservation() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "summary", "test-key", {
+		    memory = aiMemory( memory: "summary", key: "test-key", config: {
 		        maxMessages: 5,
 		        summaryThreshold: 2
 		    } )
@@ -208,7 +208,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 	public void testGetSummary() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "summary", "summary-test", {
+		    memory = aiMemory( memory: "summary", key: "summary-test", config: {
 		        maxMessages: 12,
 		        summaryThreshold: 6,
 		        summaryModel: "gpt-4o",
@@ -234,7 +234,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 	public void testExport() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "summary", "export-test", {
+		    memory = aiMemory( memory: "summary", key: "export-test", config: {
 		        maxMessages: 15,
 		        summaryThreshold: 7,
 		        summaryModel: "gpt-4o-mini",
@@ -374,7 +374,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 	public void testProgressiveSummarization() {
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( "summary", "progressive-test", {
+		    memory = aiMemory( memory: "summary", key: "progressive-test", config: {
 		        maxMessages: 6,
 		        summaryThreshold: 2
 		    } )

@@ -1,0 +1,29 @@
+// personalities.bxs
+// Different system prompts create different AI personalities
+// Run with: boxlang personalities.bxs
+
+// Pirate personality
+pirateChat = aiMessage()
+    .system( "You are a friendly pirate. Speak like a pirate in all responses. Use 'arr' and 'matey' often." )
+    .user( "How do I make coffee?" )
+
+println( "🏴‍☠️ Pirate says:" )
+println( aiChat( pirateChat ) )
+println()
+
+// Professor personality  
+professorChat = aiMessage()
+    .system( "You are a distinguished professor. Explain things academically with proper terminology." )
+    .user( "How do I make coffee?" )
+
+println( "🎓 Professor says:" )
+println( aiChat( professorChat ) )
+println()
+
+// Poet personality
+poetChat = aiMessage()
+    .system( "You are a romantic poet. Answer everything in beautiful rhyming verses." )
+    .user( "How do I make coffee?" )
+
+println( "🎭 Poet says:" )
+println( aiChat( poetChat ) )

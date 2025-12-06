@@ -1,0 +1,40 @@
+<bx:script>
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MCP Server Entry Point (Front Controller)
+ *
+ * This file serves as the HTTP front controller for the Model Context Protocol (MCP) server.
+ *
+ * Usage:
+ * 1. Register your tools in Application.bx or a startup script:
+ *    mcpServer( "default" ).registerTool( aiTool( "myTool", "Description", handler ) );
+ *
+ * 2. Access this endpoint:
+ *    POST http://localhost/~bxai/mcp.bxm
+ *
+ *    Specify a server via query parameter or URL segment:
+ *    POST http://localhost/~bxai/mcp.bxm?server=myApp
+ *    POST http://localhost/~bxai/mcp.bxm/myApp
+ *
+ * 3. Send JSON-RPC requests:
+ *    {
+ *        "jsonrpc": "2.0",
+ *        "method": "tools/list",
+ *        "id": "1"
+ *    }
+ */
+import bxModules.bxai.models.mcp.MCPRequestProcessor
+MCPRequestProcessor::processHttp()
+</bx:script>

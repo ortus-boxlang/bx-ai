@@ -21,7 +21,6 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import io.github.cdimascio.dotenv.Dotenv;
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
 
@@ -31,8 +30,6 @@ import ortus.boxlang.runtime.scopes.Key;
  */
 @Disabled( "Requires OPENAI_API_KEY environment variable" )
 public class OpenAIEmbeddingTest extends BaseIntegrationTest {
-
-	static Dotenv dotenv = Dotenv.load();
 
 	@BeforeEach
 	public void beforeEach() {

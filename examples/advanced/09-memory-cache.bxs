@@ -1,0 +1,326 @@
+/**
+ * Cache Memory Example
+ *
+ * Demonstrates distributed cache-based memory using CacheBox
+ * for multi-server web applications.
+ *
+ * Use Case: Distributed web apps needing shared conversation state
+ *
+ * NEW: Shows modern multi-tenant patterns with userId + conversationId
+ * Cache memory uses composite cache keys internally
+ *
+ * Prerequisites: CacheBox configured in your application
+ */
+
+println( "=== Cache Memory Example ===" )
+println( "Distributed conversation state via CacheBox with multi-tenant isolation\n" )
+
+// ===================================================================
+// Part 1: Legacy Pattern (Cache Key Only)
+// ===================================================================
+println( "=== Part 1: Legacy Pattern (Cache Key Only) ===" )
+println( "Simple cache key approach (less flexible)\n" )
+
+memory = aiMemory( "cache", {
+    cacheKey: "conversation_user123",
+    maxMessages: 30
+} )
+
+agent = aiAgent(
+    name: "CachedAssistant",
+    description: "An assistant with cached memory",
+    instructions: "Help users with their questions",
+    memory: memory
+)
+
+println( "User: What are the best practices for caching?" )
+response = agent.run( "What are the best practices for application caching?" )
+println( "Agent: #left(response, 80)#...\n" )
+
+println( "User: What about cache invalidation?" )
+response = agent.run( "How do I handle cache invalidation?" )
+println( "Agent: #left(response, 80)#...\n" )
+
+println( "✓ Conversation stored in CacheBox" )
+println( "✓ Accessible across application restarts\n" )
+
+// ===================================================================
+// Part 2: Modern Multi-Tenant Pattern (userId + conversationId)
+// ===================================================================
+println( "\n=== Part 2: Modern Multi-Tenant Pattern ===" )
+println( "Using userId + conversationId for enterprise isolation\n" )
+
+// Multi-tenant enterprise scenario
+println( "Enterprise SaaS Application - 3 Users, Multiple Conversations\n" )
+
+// User 1: Alice with support and sales conversations
+println( "👤 Alice (userId: alice)" )
+aliceSupportMemory = aiMemory( "cache",
+    key: "chat",
+    userId: "alice",
+    conversationId: "support-123",
+    config: {
+        cacheName: "default",
+        maxMessages: 30,
+        cacheTimeout: 3600  // 1 hour TTL
+    }
+)
+
+aliceSalesMemory = aiMemory( "cache",
+    key: "chat",
+    userId: "alice",
+    conversationId: "sales-456",
+    config: {
+        cacheName: "default",
+        maxMessages: 30,
+        cacheTimeout: 3600
+    }
+)
+
+aliceSupportAgent = aiAgent( name: "SupportBot", memory: aliceSupportMemory )
+aliceSalesAgent = aiAgent( name: "SalesBot", memory: aliceSalesMemory )
+
+println( "   📞 Support: 'My API isn't working'" )
+aliceSupportAgent.run( "My API integration isn't working properly" )
+
+println( "   💰 Sales: 'I want to upgrade my plan'" )
+aliceSalesAgent.run( "I want to upgrade to Enterprise plan" )
+println( "   ✓ Two isolated conversations for same user\n" )
+
+// User 2: Bob with single conversation
+println( "👤 Bob (userId: bob)" )
+bobSupportMemory = aiMemory( "cache",
+    key: "chat",
+    userId: "bob",
+    conversationId: "support-789",
+    config: {
+        cacheName: "default",
+        maxMessages: 30,
+        cacheTimeout: 3600
+    }
+)
+
+bobSupportAgent = aiAgent( name: "SupportBot", memory: bobSupportMemory )
+println( "   📞 Support: 'How do I reset my password?'" )
+bobSupportAgent.run( "How do I reset my account password?" )
+println( "   ✓ Completely isolated from Alice\n" )
+
+// User 3: Charlie with different department
+println( "👤 Charlie (userId: charlie, dept: engineering)" )
+charlieDeptMemory = aiMemory( "cache",
+    key: "chat",
+    userId: "engineering:charlie",  // Department prefix
+    conversationId: "team-discussion",
+    config: {
+        cacheName: "default",
+        maxMessages: 30,
+        cacheTimeout: 7200  // 2 hours for team chats
+    }
+)
+
+charlieDeptAgent = aiAgent( name: "TeamBot", memory: charlieDeptMemory )
+println( "   💼 Team Chat: 'Let's discuss the migration plan'" )
+charlieDeptAgent.run( "Let's discuss the database migration plan" )
+println( "   ✓ Department-isolated conversation\n" )
+
+// Test isolation across servers (distributed cache)
+println( "=== Testing Distributed Cache Isolation ===\n" )
+
+println( "Server 1: Alice asks in Support chat" )
+response = aliceSupportAgent.run( "What's my issue?" )
+println( "Response: #response#" )
+println( "✓ Remembers API integration problem\n" )
+
+println( "Server 2: Alice asks in Sales chat (different agent, same user)" )
+response = aliceSalesAgent.run( "What did I just ask about?" )
+println( "Response: #response#" )
+println( "✓ Remembers Enterprise upgrade (isolated from support chat)\n" )
+
+println( "Server 3: Bob asks in his Support chat" )
+response = bobSupportAgent.run( "What's my issue?" )
+println( "Response: #response#" )
+println( "✓ Remembers password reset (isolated from Alice)\n" )
+
+// Show composite cache key structure
+println( "=== Cache Composite Key Structure ===" )
+println( "Cache memory builds composite keys internally:\n" )
+println( "Alice Support:  'chat' + 'alice' + 'support-123' → unique cache entry" )
+println( "Alice Sales:    'chat' + 'alice' + 'sales-456' → unique cache entry" )
+println( "Bob Support:    'chat' + 'bob' + 'support-789' → unique cache entry" )
+println( "Charlie Team:   'chat' + 'engineering:charlie' + 'team-discussion' → unique\n" )
+println( "✓ Complete isolation through composite cache keys\n" )
+
+// Demonstrate cache key patterns
+println( "=== Multi-Tenant Cache Key Patterns ===\n" )
+
+// Pattern 1: Per-user, multiple conversations
+println( "1️⃣  Per-User Multi-Conversation Pattern:" )
+println( "   userId: 'user123'" )
+println( "   conversationId: 'support' / 'sales' / 'chat'" )
+println( "   Result: Same user, different isolated conversations\n" )
+
+// Pattern 2: Department-based isolation
+println( "2️⃣  Department Isolation Pattern:" )
+println( "   userId: 'engineering:alice' / 'sales:bob'" )
+println( "   conversationId: 'team-discussion'" )
+println( "   Result: Department-level conversation isolation\n" )
+
+// Pattern 3: Organization multi-tenancy
+println( "3️⃣  Organization Multi-Tenancy Pattern:" )
+println( "   userId: 'org123:user456'" )
+println( "   conversationId: 'support-ticket-789'" )
+println( "   Result: Complete organization → user → conversation isolation\n" )
+
+// Distributed multi-tenant scenario
+println( "=== Distributed Multi-Tenant Web Application ===\n" )
+
+println( "Server 1: Alice makes initial request" )
+server1Memory = aiMemory( "cache",
+    key: "support",
+    userId: "alice",
+    conversationId: "ticket-999",
+    config: {
+        cacheName: "redis",  // Distributed Redis cache
+        maxMessages: 30,
+        cacheTimeout: 3600
+    }
+)
+
+server1Agent = aiAgent(
+    name: "DistributedBot",
+    description: "Agent in distributed environment",
+    memory: server1Memory
+)
+
+println( "Alice: I need help with my subscription" )
+response = server1Agent.run( "I need help with my subscription plan" )
+println( "Agent: #left(response, 80)#..." )
+println( "✓ Stored in distributed Redis cache\n" )
+
+println( "Server 2: Load balancer routes Alice's next request here" )
+server2Memory = aiMemory( "cache",
+    key: "support",
+    userId: "alice",  // Same user
+    conversationId: "ticket-999",  // Same conversation
+    config: {
+        cacheName: "redis",
+        maxMessages: 30,
+        cacheTimeout: 3600
+    }
+)
+
+server2Agent = aiAgent(
+    name: "DistributedBot",
+    description: "Agent in distributed environment",
+    memory: server2Memory
+)
+
+println( "Alice: What plans do you offer?" )
+response = server2Agent.run( "What subscription plans do you offer?" )
+println( "Agent: #response#" )
+println( "✓ Context retrieved from Redis cache!" )
+println( "✓ Seamless experience across servers\n" )
+
+println( "Server 3: Bob's request to same application" )
+server3Memory = aiMemory( "cache",
+    key: "support",
+    userId: "bob",  // Different user
+    conversationId: "ticket-888",
+    config: {
+        cacheName: "redis",
+        maxMessages: 30,
+        cacheTimeout: 3600
+    }
+)
+
+server3Agent = aiAgent(
+    name: "DistributedBot",
+    memory: server3Memory
+)
+
+println( "Bob: I have a billing question" )
+response = server3Agent.run( "I have a question about my billing" )
+println( "Agent: #left(response, 80)#..." )
+println( "✓ Bob's conversation completely isolated from Alice\n" )
+
+// Cache configuration examples
+println( "=== CacheBox Configuration Examples ===\n" )
+
+println( "Application.cfc / ModuleConfig.bx:\n" )
+println( "```boxlang" )
+println( "cacheBox = {" )
+println( "    providers: {" )
+println( "        conversations: {" )
+println( "            provider: 'CacheBoxProvider'," )
+println( "            properties: {" )
+println( "                objectDefaultTimeout: 60,  // 60 minutes" )
+println( "                objectDefaultLastAccessTimeout: 30," )
+println( "                useLastAccessTimeouts: true," )
+println( "                reapFrequency: 5,  // Check every 5 mins" )
+println( "                evictionPolicy: 'LRU'," )
+println( "                evictCount: 100" )
+println( "            }" )
+println( "        }," )
+println( "        redis: {" )
+println( "            provider: 'RedisProvider'," )
+println( "            properties: {" )
+println( "                host: '127.0.0.1'," )
+println( "                port: 6379" )
+println( "            }" )
+println( "        }" )
+println( "    }" )
+println( "}" )
+println( "```\n" )
+
+// Best practices
+println( "=== Best Practices ===\n" )
+
+println( "1️⃣  Cache Key Strategy:" )
+println( "   - Use namespace prefixes (conversation_, chat_)" )
+println( "   - Include user/session identifiers" )
+println( "   - Keep keys consistent across servers\n" )
+
+println( "2️⃣  TTL Configuration:" )
+println( "   - Set appropriate timeout (30-60 minutes)" )
+println( "   - Use idle timeout for inactive conversations" )
+println( "   - Configure reap frequency for cleanup\n" )
+
+println( "3️⃣  Cache Provider Selection:" )
+println( "   - Default: Single server, simple setup" )
+println( "   - Redis: Distributed, persistent" )
+println( "   - Couchbase: High performance, scaled\n" )
+
+println( "4️⃣  Error Handling:" )
+println( "   - Handle cache unavailability gracefully" )
+println( "   - Implement fallback to session memory" )
+println( "   - Log cache errors for monitoring\n" )
+
+println( "📊 Summary:" )
+println( "- Storage: Distributed cache (Redis, Couchbase, etc.)" )
+println( "- Isolation: Multi-tenant (userId + conversationId) ✓" )
+println( "- Composite cache keys: Automatic isolation ✓" )
+println( "- Distribution: Multi-server ✓" )
+println( "- Persistence: Optional (Redis RDB/AOF)" )
+println( "- Scalability: Excellent ✓" )
+println( "- Auto-cleanup: TTL-based ✓" )
+println( "- Multiple conversations per user: Supported ✓" )
+
+println( "\n💡 Best For:" )
+println( "- Enterprise multi-tenant SaaS" )
+println( "- Multi-server web applications" )
+println( "- Load-balanced environments" )
+println( "- Distributed microservices" )
+println( "- High-traffic applications" )
+println( "- Customer support ticketing systems" )
+
+println( "\n⚙️  Setup Requirements:" )
+println( "- CacheBox module installed" )
+println( "- Cache provider configured (Redis, Couchbase, etc.)" )
+println( "- userId and conversationId in application logic" )
+println( "- Consistent tenant identifiers across servers" )
+
+println( "\n🔐 Security Benefits:" )
+println( "- Automatic user isolation via composite keys" )
+println( "- No manual cache key management needed" )
+println( "- Prevention of conversation data leakage" )
+println( "- Enterprise-grade multi-tenancy support" )

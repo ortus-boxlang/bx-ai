@@ -105,6 +105,16 @@ answer = aiChat(
 )
 ```
 
+**Mistral:**
+
+```java
+answer = aiChat(
+    "Explain machine learning",
+    { model: "mistral-small-latest" },
+    { provider: "mistral" }
+)
+```
+
 ### Local AI with Ollama
 
 **No API key needed, runs on your machine:**

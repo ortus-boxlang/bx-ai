@@ -1,0 +1,55 @@
+// asistente-inteligente.bxs
+// Asistente con múltiples herramientas
+// Ejecutar con: boxlang asistente-inteligente.bxs
+
+// Herramienta 1: Clima
+weatherTool = aiTool(
+    "get_weather",
+    "Get current weather for a city",
+    ( args ) => {
+        // Datos simulados
+        data = { "Boston": 72, "Miami": 85, "Denver": 65 }
+        city = args.city
+        temp = data[ city ] ?: 70
+        return "#temp#°F in #city#"
+    }
+).describeCity( "City name" )
+
+// Herramienta 2: Calculadora
+calcTool = aiTool(
+    "calculate",
+    "Perform math calculations",
+    ( args ) => {
+        return evaluate( args.expression )
+    }
+).describeExpression( "Math expression like '2+2' or '100*0.2'" )
+
+// Herramienta 3: Tiempo
+timeTool = aiTool(
+    "get_time",
+    "Get current date and time",
+    ( args ) => {
+        return now().format( "EEEE, MMMM d, yyyy h:mm a" )
+    }
+)
+
+// ¡La IA puede usar cualquiera de estas herramientas!
+println( "Pregunta 1: ¿Clima en Miami?" )
+println( aiChat(
+    "What's the weather in Miami?",
+    { tools: [ weatherTool, calcTool, timeTool ] }
+) )
+println()
+
+println( "Pregunta 2: ¿25% de 400?" )
+println( aiChat(
+    "What's 25% of 400?",
+    { tools: [ weatherTool, calcTool, timeTool ] }
+) )
+println()
+
+println( "Pregunta 3: ¿Qué día es?" )
+println( aiChat(
+    "What day is it?",
+    { tools: [ weatherTool, calcTool, timeTool ] }
+) )

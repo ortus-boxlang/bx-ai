@@ -35,6 +35,20 @@ Convert text into vector representations for semantic search and similarity matc
 
 ---
 
+### 🔐 [Message Context](request-context.md)
+
+Inject security, RAG, and application context into AI messages.
+
+**What you'll learn:**
+- Adding context to AI messages (security, RAG, metadata)
+- Using `${context}` placeholder for automatic injection via `render()`
+- Multi-tenant isolation patterns
+- RAG implementation with context
+
+**Use when:** Building secure multi-user applications, implementing RAG, or customizing AI behavior based on user/tenant context.
+
+---
+
 ### 📡 [Event System](events.md)
 
 Intercept and customize AI operations with the powerful event system.
@@ -62,6 +76,22 @@ Integrate with the Model Context Protocol to access external tools and resources
 - Creating custom MCP clients
 
 **Use when:** Building agents that need access to external systems, databases, or APIs beyond built-in tools.
+
+---
+
+### 🖥️ [MCP Server](mcp-server.md)
+
+Expose your BoxLang tools, resources, and prompts via the Model Context Protocol.
+
+**What you'll learn:**
+- Creating and configuring MCP servers
+- Registering tools, resources, and prompts
+- HTTP endpoint for MCP requests
+- **Statistics and monitoring** - Track performance and usage metrics
+- Multi-server patterns for different use cases
+- Application lifecycle integration
+
+**Use when:** Building APIs that AI clients can discover and use, or exposing BoxLang functionality to external AI systems.
 
 ---
 
@@ -109,6 +139,20 @@ agent = aiAgent()
 response = agent.run( "List files in /tmp" );
 ```
 
+### Expose Tools via MCP Server
+```java
+// Register tools at application startup
+mcpServer( "myApp" )
+    .registerTool(
+        aiTool( "search", "Search documents", ( query ) => searchService.search( query ) )
+    )
+    .registerResource(
+        uri: "docs://readme",
+        name: "README",
+        handler: () => fileRead( "/readme.md" )
+    )
+```
+
 ### Chunk Large Documents
 ```java
 chunks = aiTextChunk(
@@ -139,9 +183,17 @@ chunks.each( function( chunk ) {
 **Components:** MCP Client + Agents + External APIs
 **Guide:** [MCP Client Documentation](mcp-client.md)
 
+### AI-Accessible APIs
+**Components:** MCP Server + Tools + Resources
+**Guide:** [MCP Server Documentation](mcp-server.md)
+
 ### Document Processing
 **Components:** Text chunking + Token counting + Batch processing
 **Guide:** [Utilities Documentation](utilities.md)
+
+### Secure Multi-User AI
+**Components:** Request Context + Interceptors + Tenant Isolation
+**Guide:** [Request Context Documentation](request-context.md)
 
 ---
 
@@ -153,8 +205,14 @@ chunks.each( function( chunk ) {
 **"I want to log or customize AI behavior"**
 → [Event System](events.md)
 
+**"I need to inject security context or RAG data"**
+→ [Request Context](request-context.md)
+
 **"I need agents to access external systems"**
 → [MCP Client](mcp-client.md)
+
+**"I want to expose my tools to AI clients"**
+→ [MCP Server](mcp-server.md)
 
 **"I'm processing large documents or managing costs"**
 → [Utilities](utilities.md)
@@ -164,8 +222,8 @@ chunks.each( function( chunk ) {
 ## Prerequisites
 
 These topics assume familiarity with:
-- Basic AI chatting ([Chatting Guide](../chatting/README.md))
-- AI agents ([Agents Documentation](../main-components/agents.md))
+- Basic AI chatting - See [Chatting Guide](../chatting/README.md)
+- AI agents - See [Agents Documentation](../main-components/agents.md)
 - BoxLang interceptors (for event system)
 
 ---

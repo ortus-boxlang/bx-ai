@@ -1,0 +1,1541 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License") you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MCP Server - Model Context Protocol server implementation for exposing tools, resources, and prompts
+ *
+ * This class provides a fluent API for registering and managing MCP tools that can be exposed
+ * to AI clients via the Model Context Protocol (JSON-RPC 2.0).
+ *
+ * Usage:
+ * ```boxlang
+ * // Get or create an MCP server instance
+ * server = mcpServer( "myApp" )
+ *     .registerTool( aiTool( "search", "Search for documents", ( query ) => searchDocs( query ) ) )
+ *     .registerTool( aiTool( "calculate", "Perform calculations", ( expr ) => evaluate( expr ) ) )
+ *
+ * // Handle incoming MCP request
+ * response = server.handleRequest( requestBody )
+ * ```
+ */
+import bxModules.bxai.models.mcp.MCPServerStats
+
+class {
+
+	/**
+	 * The unique name/identifier for this MCP server instance
+	 */
+	property name="serverName" type="string";
+
+	/**
+	 * Server description for MCP capabilities response
+	 */
+	property name="description" type="string";
+
+	/**
+	 * Server version
+	 */
+	property name="version" type="string";
+
+	/**
+	 * CORS allowed origins (array of strings, supports wildcards like *.domain.com)
+	 * Empty array means no CORS header - secure by default
+	 */
+	property name="corsAllowedOrigins" type="array" default=[];
+
+	/**
+	 * Callback invoked before processing each request (for authentication/inspection)
+	 * Signature: function( requestData ) => requestData or throws exception to halt
+	 */
+	property name="onRequest" type="any" default="";
+
+	/**
+	 * Callback invoked after processing each request (for transformation/logging)
+	 * Signature: function( response, requestData ) => response
+	 */
+	property name="onResponse" type="any" default="";
+
+	/**
+	 * Registered tools (map of tool name to ITool instance)
+	 */
+	property name="tools" type="struct" default={};
+
+	/**
+	 * Registered resources (map of resource URI to resource definition)
+	 */
+	property name="resources" type="struct" default={};
+
+	/**
+	 * Registered prompts (map of prompt name to prompt definition)
+	 */
+	property name="prompts" type="struct" default={};
+
+	/**
+	 * Statistics tracker for monitoring and analytics
+	 */
+	property name="stats" type="MCPServerStats";
+
+	/**
+	 * Basic authentication username (empty means no authentication)
+	 */
+	property name="basicAuthUsername" type="string" default="";
+
+	/**
+	 * Basic authentication password (empty means no authentication)
+	 */
+	property name="basicAuthPassword" type="string" default="";
+
+	/**
+	 * Maximum request body size in bytes (0 = unlimited)
+	 */
+	property name="maxRequestBodySize" type="numeric" default="0";
+
+	/**
+	 * API key provider callback for custom key validation
+	 * Signature: function( apiKey, requestData ) => boolean (true = allowed, false = denied)
+	 */
+	property name="apiKeyProvider" type="any" default="";
+
+	/**
+	 * Static configuration and service reference
+	 */
+	static {
+		PROTOCOL_VERSION = "2024-11-05"
+		DEFAULT_SERVER_NAME = "default"
+        DEFAULT_SERVER_DESCRIPTION = "BoxLang AI MCP Server"
+        DEFAULT_SERVER_VERSION = "1.0.0"
+		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" )
+		// JSON-RPC 2.0 Error Codes
+		RPC_ERROR_CODES = {
+			CONTENT_TYPE_ERROR: -32050,
+			INVALID_REQUEST: -32600,
+			METHOD_NOT_FOUND: -32601,
+			METHOD_NOT_READY: -32004,
+			INVALID_PARAMS: -32602,
+			INTERNAL_ERROR: -32603,
+			PARSE_ERROR: -32700,
+			RATE_LIMIT_EXCEEDED: -32002,
+			SERVER_ERROR: -32000,
+			SERVER_OVERLOAD: -32001,
+			SESSION_EXPIRED: -32003,
+			TIMEOUT_ERROR: -32070,
+			TRANSPORT_ERROR: -32060
+		}
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @name The unique name/identifier for this server instance
+	 * @description Server description
+	 * @version Server version
+	 * @cors CORS allowed origin (empty string means no CORS header - secure by default)
+	 * @statsEnabled Whether to enable statistics tracking (default: true)
+	 */
+	function init(
+		string name = static.DEFAULT_SERVER_NAME,
+		string description = static.DEFAULT_SERVER_DESCRIPTION,
+		string version = static.DEFAULT_SERVER_VERSION,
+		any cors = [],
+		boolean statsEnabled = true
+	) {
+		variables.serverName = arguments.name
+		variables.description = arguments.description
+		variables.version = arguments.version
+		// Handle single cors string, convert to array
+		if ( isSimpleValue( arguments.cors ) ) {
+			arguments.cors = [ arguments.cors ]
+		}
+
+		variables.corsAllowedOrigins = arguments.cors
+		variables.onRequest = ""
+		variables.onResponse = ""
+		variables.tools = {}
+		variables.resources = {}
+		variables.prompts = {}
+		variables.stats = new MCPServerStats( arguments.statsEnabled )
+		variables.basicAuthUsername = ""
+		variables.basicAuthPassword = ""
+		variables.maxRequestBodySize = 0
+		variables.apiKeyProvider = ""
+
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Static Factory Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 * These are convenience methods for managing MCP server instances globally.
+	 * You can go directly to the AIService to manage servers if preferred.
+	 */
+
+	 /**
+	  * Get the numeric error code for a given error name
+	  *
+	  * @codeName The name of the error code (e.g., "INVALID_REQUEST")
+	  *
+	  * @return The numeric error code
+	  */
+	 static numeric function errorCode( required codeName ){
+		return static.RPC_ERROR_CODES[ arguments.codeName ]
+	 }
+
+	/**
+	 * Get or create an MCP server instance by name.
+	 * Servers are stored globally and can be accessed from anywhere.
+	 *
+	 * @name The server name/identifier
+	 * @description The server description (only used when creating a new instance)
+	 * @version The server version (only used when creating a new instance)
+	 * @cors CORS allowed origin (only used when creating a new instance)
+	 * @statsEnabled Whether to enable statistics tracking (only used when creating a new instance)
+	 * @force Force rebuild even if instance exists
+	 *
+	 * @return The MCPServer instance
+	 */
+	static MCPServer function getOrBuild(
+		string name = static.DEFAULT_SERVER_NAME,
+		string description = static.DEFAULT_SERVER_DESCRIPTION,
+		string version = static.DEFAULT_SERVER_VERSION,
+		any cors = [],
+		boolean statsEnabled = true,
+		boolean force = false
+	) {
+		var aiService = getBoxAiService()
+
+		if ( arguments.force || !aiService.hasServer( arguments.name ) ) {
+			var newServer = new MCPServer(
+				name: arguments.name,
+				description: arguments.description,
+				version: arguments.version,
+				cors: arguments.cors,
+				statsEnabled: arguments.statsEnabled
+			)
+			aiService.putServer( arguments.name, newServer )
+			static.mcpLogger.debug( "Created new MCP server instance: #arguments.name#" )
+
+			// Announce server creation
+			BoxAnnounce( "onMCPServerCreate", {
+				server: newServer,
+				name: arguments.name,
+				description: arguments.description,
+				version: arguments.version
+			} )
+
+			return newServer
+		}
+		return aiService.getServer( arguments.name )
+	}
+
+	/**
+	 * Get a single server instance by name
+	 *
+	 * @name The server name to retrieve
+	 *
+	 * @return The MCPServer instance or null if not found
+	 */
+	static MCPServer function getInstance( required string name ) {
+		return getBoxAiService().getServer( arguments.name )
+	}
+
+	/**
+	 * Check if a server instance exists
+	 *
+	 * @name The server name to check
+	 *
+	 * @return Boolean indicating if the server exists
+	 */
+	static boolean function hasInstance( required string name ) {
+		return getBoxAiService().hasServer( arguments.name )
+	}
+
+	/**
+	 * Remove a server instance from the registry
+	 *
+	 * @name The server name to remove
+	 *
+	 * @return Boolean indicating if a server was removed
+	 */
+	static boolean function removeInstance( required string name ) {
+		static.mcpLogger.debug( "Removing MCP server instance: #arguments.name#" )
+
+		// Announce before removal
+		BoxAnnounce( "onMCPServerRemove", {
+			name: arguments.name
+		} )
+
+		return getBoxAiService().removeServer( arguments.name )
+	}
+
+	/**
+	 * Get all registered server names
+	 *
+	 * @return Array of server names
+	 */
+	static array function getInstanceNames() {
+		return getBoxAiService().getServerNames()
+	}
+
+	/**
+	 * Clear all server instances
+	 */
+	static void function clearAllInstances() {
+		static.mcpLogger.debug( "Clearing all MCP server instances" )
+		getBoxAiService().clearAllServers()
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Tool Registration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Register a single tool with the MCP server
+	 *
+	 * <h2>Example Registration</h2>
+	 * <pre>
+	 * mcpServer( "test" )
+	 *  .registerTool(
+	 *   aiTool( "echo", "Echoes the input message", ( struct message ) => {
+	 *   	return {
+	 * 		"echoedMessage": message
+	 *  	}
+	 *  } )
+	 * 	.describeMessage( "The message to echo back" )
+	 * )
+	 * </pre>
+	 *
+	 * @tool The ITool instance to register
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function registerTool( required ITool tool ) {
+		static.mcpLogger.debug( "Registering tool: #arguments.tool.getName()#" )
+		variables.tools[ arguments.tool.getName() ] = arguments.tool
+		return this
+	}
+
+	/**
+	 * Register multiple tools at once
+	 *
+	 * @tools Array of ITool instances to register
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function registerTools( required array tools ) {
+		arguments.tools.each( tool => registerTool( tool ) )
+		return this
+	}
+
+	/**
+	 * Unregister a tool by name
+	 *
+	 * @name The name of the tool to unregister
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function unregisterTool( required string name ) {
+		static.mcpLogger.debug( "Unregistering tool: #arguments.name#" )static.mcpLogger
+		variables.tools.delete( arguments.name )
+		return this
+	}
+
+	/**
+	 * Check if a tool is registered
+	 *
+	 * @name The name of the tool to check
+	 *
+	 * @return Boolean indicating if the tool exists
+	 */
+	boolean function hasTool( required string name ) {
+		return variables.tools.keyExists( arguments.name )
+	}
+
+	/**
+	 * Get a registered tool by name
+	 *
+	 * @name The name of the tool to retrieve
+	 *
+	 * @return The ITool instance or null if not found
+	 */
+	any function getTool( required string name ) {
+		return variables.tools[ arguments.name ] ?: javacast( "null", "" )
+	}
+
+	/**
+	 * List all registered tools in MCP format
+	 *
+	 * @return Array of tool definitions for MCP protocol
+	 */
+	array function listTools() {
+		return variables.tools.map( ( name, tool ) => {
+			var schema = tool.getSchema()
+			// Extract function details from OpenAI-format schema
+			var functionDef = schema.function ?: {}
+			return {
+				"name": name,
+				"description": functionDef.description ?: "",
+				"inputSchema": {
+					"type": "object",
+					"properties": functionDef.parameters?.properties ?: {},
+					"required": functionDef.parameters?.required ?: []
+				}
+			}
+		} ).valueArray()
+	}
+
+	/**
+	 * Get the count of registered tools
+	 *
+	 * @return Number of registered tools
+	 */
+	numeric function getToolCount() {
+		return variables.tools.count()
+	}
+
+	/**
+	 * Clear all registered tools
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function clearTools() {
+		static.mcpLogger.debug( "Clearing all registered tools" )
+		variables.tools = {}
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Annotation-Based Discovery Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Scan a class or directory for methods annotated with @mcpTool, @mcpResource, or @mcpPrompt.
+	 * Annotated methods are automatically registered with the MCP server.
+	 *
+	 * Annotation formats for @mcpTool:
+	 * - @mcpTool - Uses method name as tool name, function hint as description, version defaults to 1.0.0
+	 * - @mcpTool( "Description" ) - Uses method name as tool name, version defaults to 1.0.0
+	 * - @mcpTool( { name: "toolName", description: "Description", version: "1.0.0" } )
+	 *
+	 * Annotation formats for @mcpResource:
+	 * - @mcpResource - Uses method name for uri and name, function hint as description
+	 * - @mcpResource( "Description" ) - Uses method name for uri and name
+	 * - @mcpResource( { uri: "docs://readme", name: "README", description: "...", mimeType: "text/plain" } )
+	 *
+	 * Annotation formats for @mcpPrompt:
+	 * - @mcpPrompt - Uses method name as prompt name, function hint as description
+	 * - @mcpPrompt( "Description" ) - Uses method name as prompt name
+	 * - @mcpPrompt( { name: "greeting", description: "...", arguments: [...] } )
+	 *
+	 * @path The path to a BoxLang class file or directory to scan
+	 * @recurse Whether to scan directories recursively (default: true)
+	 *
+	 * @throws MCPServer.PathNotFound if the specified path does not exist
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function scan( required string path, boolean recurse = true ) {
+		var targetPath = expandPath( arguments.path )
+
+		// Check if path exists
+		if ( !fileExists( targetPath ) && !directoryExists( targetPath ) ) {
+			throw( type: "MCPServer.PathNotFound", message: "Path not found: #arguments.path#" )
+		}
+
+		// If it's a directory, scan all .bx files
+		if ( directoryExists( targetPath ) ) {
+			var files = directoryList( targetPath, arguments.recurse, "path", "*.bx" )
+			// Use async mode for better performance when scanning many files
+			if ( files.len() > 10 ) {
+				files.each( file => scanClass( file ), true )
+			} else {
+				files.each( file => scanClass( file ) )
+			}
+		} else {
+			// Single file
+			scanClass( targetPath )
+		}
+
+		return this
+	}
+
+	/**
+	 * Scan a single class file for MCP annotations
+	 *
+	 * @classPath The path to the class file
+	 */
+	private void function scanClass( required string classPath ) {
+		try {
+			// Get class metadata without instantiation
+			var metadata = getClassMetadata( arguments.classPath )
+
+			// Skip if no metadata
+			if ( isNull( metadata ) || !isStruct( metadata ) ) {
+				return
+			}
+
+			// Get functions from metadata
+			var functions = metadata.functions ?: []
+
+			// Scan each function for annotations
+			functions.each( thisFunction => {
+				var annotations = thisFunction.annotations ?: {}
+
+				// Check for @mcpTool annotation
+				if ( annotations.keyExists( "mcpTool" ) ) {
+					registerAnnotatedTool( arguments.classPath, thisFunction, annotations.mcpTool )
+				}
+
+				// Check for @mcpResource annotation
+				if ( annotations.keyExists( "mcpResource" ) ) {
+					registerAnnotatedResource( arguments.classPath, thisFunction, annotations.mcpResource )
+				}
+
+				// Check for @mcpPrompt annotation
+				if ( annotations.keyExists( "mcpPrompt" ) ) {
+					registerAnnotatedPrompt( arguments.classPath, thisFunction, annotations.mcpPrompt )
+				}
+			} )
+		} catch ( any e ) {
+			// Log error but continue scanning other classes
+			static.mcpLogger.error( "MCP scan error for #arguments.classPath#: #e.message#" )
+			// Announce error event
+			BoxAnnounce(
+				"onMCPError",
+				{
+					server: this,
+					context: "scanClass",
+					classPath: arguments.classPath,
+					exception: e
+				}
+			)
+		}
+	}
+
+	/**
+	 * Register a tool from an annotated method
+	 *
+	 * @classPath The class path for lazy instantiation
+	 * @functionMetadata The function metadata
+	 * @annotation The @mcpTool annotation value
+	 */
+	private void function registerAnnotatedTool(
+		required string classPath,
+		required struct functionMetadata,
+		required any annotation
+	) {
+		var methodName = arguments.functionMetadata.name
+		var toolName = methodName
+		var toolDescription = arguments.functionMetadata?.documentation?.hint ?: ""
+		var toolVersion = "1.0.0"
+
+		// Parse annotation value based on format
+		if ( isStruct( arguments.annotation ) ) {
+			// Struct annotation: @mcpTool( { name: "...", description: "...", version: "..." } )
+			toolName = arguments.annotation.name ?: methodName
+			toolDescription = arguments.annotation.description ?: toolDescription
+			toolVersion = arguments.annotation.version ?: "1.0.0"
+		} else if ( isSimpleValue( arguments.annotation ) && len( trim( arguments.annotation ) ) > 0 && arguments.annotation != true ) {
+			// String annotation: @mcpTool( "Description" )
+			toolDescription = arguments.annotation
+		}
+		// else: @mcpTool with no arguments - uses defaults (name from method, description from hint)
+
+		// Build argument descriptions from function parameters
+		var argDescriptions = {}
+		var parameters = arguments.functionMetadata.parameters ?: []
+		parameters.each( param => {
+			argDescriptions[ param.name ] = param.hint ?: param.name
+		} )
+
+		// Capture classPath reference for lazy instantiation
+		var targetClassPath = arguments.classPath
+
+		// Create the tool callable with lazy instantiation
+		var callable = ( args ) => {
+			var targetInstance = createObject( targetClassPath )
+			return invoke( targetInstance, methodName, args )
+		}
+
+		// Create and register the tool
+		var tool = aiTool( toolName, toolDescription, callable )
+
+		// Add argument descriptions
+		argDescriptions.each( ( argName, argDesc ) => {
+			tool.describeArg( argName, argDesc )
+		} )
+
+		registerTool( tool )
+	}
+
+	/**
+	 * Register a resource from an annotated method
+	 *
+	 * @classPath The class path for lazy instantiation
+	 * @functionMetadata The function metadata
+	 * @annotation The @mcpResource annotation value
+	 */
+	private void function registerAnnotatedResource(
+		required string classPath,
+		required struct functionMetadata,
+		required any annotation
+	) {
+		var methodName = arguments.functionMetadata.name
+		var uri = "resource://" & methodName
+		var name = methodName
+		var description = arguments.functionMetadata?.documentation?.hint ?: ""
+		var mimeType = "text/plain"
+
+		// Parse annotation value based on format
+		if ( isStruct( arguments.annotation ) ) {
+			// Struct annotation: @mcpResource( { uri: "...", name: "...", description: "...", mimeType: "..." } )
+			uri = arguments.annotation.uri ?: uri
+			name = arguments.annotation.name ?: name
+			description = arguments.annotation.description ?: description
+			mimeType = arguments.annotation.mimeType ?: mimeType
+		} else if ( isSimpleValue( arguments.annotation ) && len( trim( arguments.annotation ) ) > 0 && arguments.annotation != true ) {
+			// String annotation: @mcpResource( "Description" )
+			description = arguments.annotation
+		}
+		// else: @mcpResource with no arguments - uses defaults (uri and name from method, description from hint)
+
+		// Capture classPath reference for lazy instantiation
+		var targetClassPath = arguments.classPath
+
+		// Create the handler with lazy instantiation
+		var handler = () => {
+			var targetInstance = createObject( targetClassPath )
+			return invoke( targetInstance, methodName )
+		}
+
+		registerResource(
+			uri: uri,
+			name: name,
+			description: description,
+			mimeType: mimeType,
+			handler: handler
+		)
+	}
+
+	/**
+	 * Register a prompt from an annotated method
+	 *
+	 * @classPath The class path for lazy instantiation
+	 * @functionMetadata The function metadata
+	 * @annotation The @mcpPrompt annotation value
+	 */
+	private void function registerAnnotatedPrompt(
+		required string classPath,
+		required struct functionMetadata,
+		required any annotation
+	) {
+		var methodName = arguments.functionMetadata.name
+		var promptName = methodName
+		var promptDescription = arguments.functionMetadata?.documentation?.hint ?: ""
+		var promptArguments = []
+
+		// Parse annotation value based on format
+		if ( isStruct( arguments.annotation ) ) {
+			// Struct annotation: @mcpPrompt( { name: "...", description: "...", arguments: [...] } )
+			promptName = arguments.annotation.name ?: methodName
+			promptDescription = arguments.annotation.description ?: promptDescription
+			promptArguments = arguments.annotation.arguments ?: []
+		} else if ( isSimpleValue( arguments.annotation ) && len( trim( arguments.annotation ) ) > 0 && arguments.annotation != true ) {
+			// String annotation: @mcpPrompt( "Description" )
+			promptDescription = arguments.annotation
+		}
+		// else: @mcpPrompt with no arguments - uses defaults (name from method, description from hint)
+
+		// If no arguments specified, build from function parameters
+		if ( promptArguments.isEmpty() ) {
+			var parameters = arguments.functionMetadata.parameters ?: []
+			parameters.each( param => {
+				promptArguments.append( {
+					"name": param.name,
+					"description": param.hint ?: param.name,
+					"required": !param.keyExists( "default" )
+				} )
+			} )
+		}
+
+		// Capture classPath reference for lazy instantiation
+		var targetClassPath = arguments.classPath
+
+		// Create the handler with lazy instantiation
+		var handler = ( args ) => {
+			var targetInstance = createObject( targetClassPath )
+			return invoke( targetInstance, methodName, args )
+		}
+
+		registerPrompt(
+			name: promptName,
+			description: promptDescription,
+			args: promptArguments,
+			handler: handler
+		)
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Resource Registration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Register a resource with the MCP server
+	 *
+	 * <h2>Example Registration</h2>
+	 * <pre>
+	 * mcpServer( "test" )
+	 *   .registerResource(
+	 *   	uri: "docs://readme",
+	 *   	name: "README",
+	 *  	description: "Application documentation",
+	 *  	mimeType: "text/markdown",
+	 *  	handler: () => "## My Application" & char(10) & char(10) & "This is the documentation."
+	 * </pre>
+	 *
+	 * @uri The unique URI for the resource
+	 * @name Display name for the resource
+	 * @handler Function that returns the resource content when read
+	 * @description Description of the resource
+	 * @mimeType Optional MIME type (defaults to text/plain)
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function registerResource(
+		required string uri,
+		required string name,
+		required function handler,
+		string description = "",
+		string mimeType = "text/plain"
+	) {
+		variables.resources[ arguments.uri ] = {
+			"uri": arguments.uri,
+			"name": arguments.name,
+			"description": arguments.description,
+			"mimeType": arguments.mimeType,
+			"handler": arguments.handler
+		}
+		return this
+	}
+
+	/**
+	 * Unregister a resource by URI
+	 *
+	 * @uri The URI of the resource to unregister
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function unregisterResource( required string uri ) {
+		variables.resources.delete( arguments.uri )
+		return this
+	}
+
+	/**
+	 * Check if a resource is registered
+	 *
+	 * @uri The URI of the resource to check
+	 *
+	 * @return Boolean indicating if the resource exists
+	 */
+	boolean function hasResource( required string uri ) {
+		return variables.resources.keyExists( arguments.uri )
+	}
+
+	/**
+	 * List all registered resources in MCP format
+	 *
+	 * @return Array of resource definitions for MCP protocol
+	 */
+	array function listResources() {
+		return variables.resources.map( ( uri, resource ) => {
+			return {
+				"uri": resource.uri,
+				"name": resource.name,
+				"description": resource.description,
+				"mimeType": resource.mimeType
+			}
+		} ).valueArray()
+	}
+
+	/**
+	 * Read a resource content
+	 *
+	 * @uri The URI of the resource to read
+	 *
+	 * @return The resource content
+	 */
+	any function readResource( required string uri ) {
+		if ( !hasResource( arguments.uri ) ) {
+			throw( type: "MCPServer.ResourceNotFound", message: "Resource not found: #arguments.uri#" )
+		}
+
+		var resource = variables.resources[ arguments.uri ]
+		var content = resource.handler()
+
+		// Record resource read stats
+		variables.stats.recordResourceRead( arguments.uri )
+
+		return {
+			"contents": [
+				{
+					"uri": resource.uri,
+					"mimeType": resource.mimeType,
+					"text": isSimpleValue( content ) ? content : jsonSerialize( content )
+				}
+			]
+		}
+	}
+
+	/**
+	 * Clear all registered resources
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function clearResources() {
+		variables.resources = {}
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Prompt Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Register a prompt with the MCP server
+	 *
+	 * <h2>Argument Definition</h2>
+	 * Each argument definition in the args array should be a struct like this:
+	 *
+	 * <pre>
+	 * {
+	 *    "name": "topic",
+	 *    "description": "The topic to discuss",
+	 *    "required": true
+	 * }
+	 * </pre>
+	 *
+	 * To register a prompt that takes no arguments, provide an empty array for args or don't specify it.
+	 *
+	 * <h2>Example Registrtion</h2>
+	 * <pre>
+	 * mcpServer( "test" )
+	 *    .registerPrompt(
+	 * 	  	name: "greeting",
+	 * 	  	description: "Generates a greeting message",
+	 * 	  	args: [
+	 * 	    	{ name: "name", description: "The name of the person", required: true }
+	 *   	],
+	 * 	   handler: ( struct args ) => {
+	 * 	   		return "Hello, " & args.name & "!"
+	 *   	}
+	 * 	)
+	 * </pre>
+	 *
+	 *
+	 * @name The unique name for the prompt, required
+	 * @handler Function that returns the prompt messages when called
+	 * @description Description of the prompt, optional
+	 * @args Array of argument definitions with name, description, and required flag
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function registerPrompt(
+		required string name,
+		required function handler,
+		string description = "",
+		array args = []
+	) {
+		variables.prompts[ arguments.name ] = {
+			"name": arguments.name,
+			"description": arguments.description,
+			"args": arguments.args,
+			"handler": arguments.handler
+		}
+		return this
+	}
+
+	/**
+	 * Unregister a prompt by name
+	 *
+	 * @name The name of the prompt to unregister
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function unregisterPrompt( required string name ) {
+		variables.prompts.delete( arguments.name )
+		return this
+	}
+
+	/**
+	 * Check if a prompt is registered
+	 *
+	 * @name The name of the prompt to check
+	 *
+	 * @return Boolean indicating if the prompt exists
+	 */
+	boolean function hasPrompt( required string name ) {
+		return variables.prompts.keyExists( arguments.name )
+	}
+
+	/**
+	 * List all registered prompts in MCP format
+	 *
+	 * @return Array of prompt definitions for MCP protocol
+	 */
+	array function listPrompts() {
+		return variables.prompts.map( ( name, prompt ) => {
+			return {
+				"name": prompt.name,
+				"description": prompt.description,
+				"args": prompt.args
+			}
+		} ).valueArray()
+	}
+
+	/**
+	 * Get a prompt by calling its handler
+	 *
+	 * @name The name of the prompt
+	 * @args The arguments to pass to the prompt handler
+	 *
+	 * @throws MCPServer.PromptNotFound if the prompt does not exist
+	 *
+	 * @return The prompt messages
+	 */
+	struct function getPrompt( required string name, struct args = {} ) {
+		if ( !hasPrompt( arguments.name ) ) {
+			throw( type: "MCPServer.PromptNotFound", message: "Prompt not found: #arguments.name#" )
+		}
+
+		var prompt = variables.prompts[ arguments.name ]
+		var messages = prompt.handler( argumentCollection: arguments.args )
+
+		// Record prompt generation stats
+		variables.stats.recordPromptGeneration( arguments.name )
+
+		// Ensure messages is an array
+		if ( isSimpleValue( messages ) ) {
+			messages = [ messages ]
+		}
+
+		return {
+			"description": prompt.description,
+			"messages": messages.map( msg => {
+				if ( isStruct( msg ) ) {
+					return {
+						"role": msg.role ?: "user",
+						"content": {
+							"type": "text",
+							"text": msg.content ?: ""
+						}
+					}
+				}
+				return {
+					"role": "user",
+					"content": {
+						"type": "text",
+						"text": toString( msg )
+					}
+				}
+			} )
+		}
+	}
+
+	/**
+	 * Clear all registered prompts
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function clearPrompts() {
+		variables.prompts = {}
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Callbacks Registration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Register the onRequest callback for authentication and request inspection
+	 * The callback receives the request data struct and should return it (possibly modified)
+	 * or throw an exception to halt processing (e.g., for authentication failure)
+	 *
+	 * @callback The callback function: ( requestData ) => requestData
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function onRequest( required any callback ) {
+		variables.onRequest = arguments.callback
+		return this
+	}
+
+	/**
+	 * Register the onResponse callback for response transformation and logging
+	 * The callback receives the response struct and request data, and should return the response
+	 *
+	 * @callback The callback function: ( response, requestData ) => response
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function onResponse( required any callback ) {
+		variables.onResponse = arguments.callback
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * MCP Capability Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	* Get a summary of the MCP Server. This is used mostly for building internal dashboards, debugging, and logging.
+	*
+	* @return Struct summary of the server
+	*/
+	struct function getSummary() {
+		return {
+			"description": variables.description,
+			"promptCount": variables.prompts.count(),
+			"prompts": listPrompts(),
+			"resourceCount": variables.resources.count(),
+			"resources": listResources(),
+			"serverName": variables.serverName,
+			"toolCount": getToolCount(),
+			"tools": listTools(),
+			"version": variables.version
+		}
+	}
+
+	/**
+	 * Get server capabilities in MCP format
+	 *
+	 * @return Struct of server capabilities
+	 */
+	struct function getCapabilities() {
+		var caps = {}
+
+		if ( variables.tools.count() > 0 ) {
+			caps[ "tools" ] = {}
+		}
+		if ( variables.resources.count() > 0 ) {
+			caps[ "resources" ] = {}
+		}
+		if ( variables.prompts.count() > 0 ) {
+			caps[ "prompts" ] = {}
+		}
+
+		return caps
+	}
+
+	/**
+	 * Get server info for MCP protocol
+	 *
+	 * @return Struct of server information
+	 */
+	struct function getServerInfo() {
+		return {
+			"name": variables.serverName,
+			"version": variables.version
+		}
+	}
+
+	/**
+	 * Configure basic authentication for this MCP server
+	 *
+	 * @username The username for basic authentication
+	 * @password The password for basic authentication
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function withBasicAuth( required string username, required string password ) {
+		variables.basicAuthUsername = arguments.username
+		variables.basicAuthPassword = arguments.password
+		return this
+	}
+
+	/**
+	 * Check if basic authentication is enabled
+	 *
+	 * @return Boolean indicating if basic auth is configured
+	 */
+	boolean function hasBasicAuth() {
+		return len( variables.basicAuthUsername ) > 0 && len( variables.basicAuthPassword ) > 0
+	}
+
+	/**
+	 * Verify basic authentication credentials
+	 *
+	 * @authHeader The Authorization header value
+	 *
+	 * @return Boolean indicating if credentials are valid
+	 */
+	boolean function verifyBasicAuth( required string authHeader ) {
+		if ( !hasBasicAuth() ) {
+			return true // No auth configured, allow
+		}
+
+		// Parse Authorization header: "Basic base64(username:password)"
+		if ( !arguments.authHeader.findNoCase( "Basic " ) ) {
+			return false
+		}
+
+		try {
+			var encoded = arguments.authHeader.replaceNoCase( "Basic ", "" ).trim()
+			var decoded = toString( toBinary( encoded ) )
+			var parts = decoded.listToArray( ":" )
+
+			if ( parts.len() < 2 ) {
+				return false
+			}
+
+			var providedUsername = parts[ 1 ]
+			var providedPassword = parts.len() > 2 ? parts.slice( 2 ).toList( ":" ) : parts[ 2 ]
+
+			return providedUsername == variables.basicAuthUsername && providedPassword == variables.basicAuthPassword
+		} catch ( any e ) {
+			static.mcpLogger.error( "Basic auth verification error: #e.message#" )
+			return false
+		}
+	}
+
+	/**
+	 * Configure maximum request body size limit
+	 *
+	 * @maxBytes Maximum size in bytes (0 = unlimited, default)
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function withBodyLimit( required numeric maxBytes ) {
+		variables.maxRequestBodySize = arguments.maxBytes
+		return this
+	}
+
+	/**
+	 * Get maximum request body size
+	 *
+	 * @return Maximum size in bytes (0 = unlimited)
+	 */
+	numeric function getMaxRequestBodySize() {
+		return variables.maxRequestBodySize
+	}
+
+	/**
+	 * Configure API key provider callback for custom validation
+	 *
+	 * @provider Function that validates API keys. Signature: function( apiKey, requestData ) => boolean
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function withApiKeyProvider( required any provider ) {
+		if ( !isClosure( arguments.provider ) && !isCustomFunction( arguments.provider ) ) {
+			throw(
+				type="InvalidArgument",
+				message="API key provider must be a function with signature: ( apiKey, requestData ) => boolean"
+			)
+		}
+		variables.apiKeyProvider = arguments.provider
+		return this
+	}
+
+	/**
+	 * Check if API key provider is configured
+	 *
+	 * @return Boolean indicating if API key provider exists
+	 */
+	boolean function hasApiKeyProvider() {
+		return isClosure( variables.apiKeyProvider ) || isCustomFunction( variables.apiKeyProvider )
+	}
+
+	/**
+	 * Verify API key using configured provider
+	 *
+	 * @apiKey The API key to validate
+	 * @requestData Request data passed to provider for context
+	 *
+	 * @return Boolean indicating if API key is valid
+	 */
+	boolean function verifyApiKey( required string apiKey, struct requestData = {} ) {
+		if ( !hasApiKeyProvider() ) {
+			return true // No provider configured, allow
+		}
+
+		try {
+			return variables.apiKeyProvider( arguments.apiKey, arguments.requestData )
+		} catch ( any e ) {
+			static.mcpLogger.error( "API key provider error: #e.message#" )
+			return false
+		}
+	}
+
+	/**
+	 * Configure CORS allowed origins (replaces any existing origins)
+	 * Supports multiple origins and wildcard domains (*.example.com)
+	 *
+	 * @origins String (single origin) or Array (multiple origins). Use "*" for all origins.
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function withCors( required any origins ) {
+		if ( isSimpleValue( arguments.origins ) ) {
+			// Single origin string
+			variables.corsAllowedOrigins = len( arguments.origins ) ? [ arguments.origins ] : []
+		} else if ( isArray( arguments.origins ) ) {
+			// Array of origins
+			variables.corsAllowedOrigins = arguments.origins
+		} else {
+			throw(
+				type="InvalidArgument",
+				message="origins must be a string or array of strings"
+			)
+		}
+		return this
+	}
+
+	/**
+	 * Add a CORS allowed origin (appends to existing origins)
+	 *
+	 * @origin The origin to allow (supports wildcards like *.example.com)
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function addCorsOrigin( required string origin ) {
+		if ( !variables.corsAllowedOrigins.contains( arguments.origin ) ) {
+			arrayAppend( variables.corsAllowedOrigins, arguments.origin )
+		}
+		return this
+	}
+
+	/**
+	 * Check if a specific origin is allowed by CORS configuration
+	 * Supports wildcard matching (*.example.com)
+	 *
+	 * @origin The origin to check
+	 *
+	 * @return Boolean indicating if origin is allowed
+	 */
+	boolean function isCorsAllowed( required string origin ) {
+		// No origins configured = no CORS
+		if ( variables.corsAllowedOrigins.len() == 0 ) {
+			return false
+		}
+
+		// Check for exact matches or wildcards
+		for ( var allowedOrigin in variables.corsAllowedOrigins ) {
+			// Wildcard "*" allows all origins
+			if ( allowedOrigin == "*" ) {
+				return true
+			}
+
+			// Exact match
+			if ( allowedOrigin == arguments.origin ) {
+				return true
+			}
+
+			// Wildcard subdomain matching (*.example.com)
+			if ( allowedOrigin.left( 2 ) == "*." ) {
+				var domain = allowedOrigin.substring( 3 )  // Remove "*." (substring is 1-indexed)
+				// Check if origin ends with the domain
+				if ( arguments.origin.endsWith( domain ) || arguments.origin.endsWith( "." & domain ) ) {
+					return true
+				}
+			}
+		}
+
+		return false
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * MCP Request Handling
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Handle an incoming MCP JSON-RPC request
+	 *
+	 * @requestBody The JSON string or struct of the MCP request
+	 *
+	 * @return Struct containing the JSON-RPC response
+	 */
+	struct function handleRequest( required any requestBody ) {
+		var startTime = getTickCount()
+		var thisRequest = isStruct( arguments.requestBody )
+			? arguments.requestBody
+			: jsonDeserialize( arguments.requestBody )
+		var requestId = thisRequest.id ?: javacast( "null", "" )
+		var method = thisRequest.method ?: ""
+		var params = thisRequest.params ?: {}
+
+		try {
+			var result = {}
+
+			switch ( method.trim() ) {
+				case "initialize":
+					result = handleInitialize( params )
+					break;
+				case "tools/list":
+					result = { "tools": listTools() }
+					break;
+				case "tools/call":
+					result = handleToolCall( params )
+					break;
+				case "resources/list":
+					result = { "resources": listResources() }
+					break;
+				case "resources/read":
+					result = readResource( params.uri ?: "" )
+					break;
+				case "prompts/list":
+					result = { "prompts": listPrompts() }
+					break;
+				case "prompts/get":
+					result = getPrompt( params.name ?: "", params.arguments ?: {} )
+					break;
+				case "ping":
+					result = {}
+					break;
+				default:
+					// Record failed request for method not found
+					var responseTime = getTickCount() - startTime
+					variables.stats.recordRequest(
+						method: method,
+						responseTime: responseTime,
+						success: false,
+						errorCode: static.RPC_ERROR_CODES.METHOD_NOT_FOUND,
+						errorMessage: "Method not found: #method#"
+					)
+					return buildErrorResponse( requestId, static.RPC_ERROR_CODES.METHOD_NOT_FOUND, "Method not found: #method#" )
+			}
+
+			// Record successful request stats
+			var responseTime = getTickCount() - startTime
+			variables.stats.recordRequest(
+				method: method,
+				responseTime: responseTime,
+				success: true
+			)
+
+			return buildSuccessResponse( requestId, result )
+		} catch ( any e ) {
+			// Record failed request stats
+			var responseTime = getTickCount() - startTime
+			variables.stats.recordRequest(
+				method: method,
+				responseTime: responseTime,
+				success: false,
+				errorCode: static.RPC_ERROR_CODES.SERVER_ERROR,
+				errorMessage: e.message
+			)
+			// Announce error event
+			BoxAnnounce(
+				"onMCPError",
+				{
+					server: this,
+					context: "handleRequest",
+					method: method,
+					requestId: requestId,
+					params: params,
+					responseTime: responseTime,
+					errorCode: static.RPC_ERROR_CODES.SERVER_ERROR,
+					exception: e
+				}
+			)
+			return buildErrorResponse( requestId, static.RPC_ERROR_CODES.SERVER_ERROR, e.message )
+		}
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Statistics Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get server statistics
+	 *
+	 * @return Complete stats struct
+	 */
+	struct function getStats() {
+		return variables.stats.getStats()
+	}
+
+	/**
+	 * Get summary statistics (lighter weight)
+	 *
+	 * @return Summary stats struct
+	 */
+	struct function getStatsSummary() {
+		return variables.stats.getSummary()
+	}
+
+	/**
+	 * Reset all statistics
+	 *
+	 * @return This instance for chaining
+	 */
+	MCPServer function resetStats() {
+		variables.stats.reset()
+		return this
+	}
+
+	/**
+	 * Enable statistics tracking
+	 *
+	 * @return This instance for chaining
+	 */
+	MCPServer function enableStats() {
+		variables.stats.enable()
+		return this
+	}
+
+	/**
+	 * Disable statistics tracking
+	 *
+	 * @return This instance for chaining
+	 */
+	MCPServer function disableStats() {
+		variables.stats.disable()
+		return this
+	}
+
+	/**
+	 * Check if stats tracking is enabled
+	 *
+	 * @return Boolean indicating if stats are enabled
+	 */
+	boolean function isStatsEnabled() {
+		return variables.stats.getEnabled()
+	}
+
+	// ---------------------------------------------------------------------------------------------------------
+	// Private Helper Methods
+	// ---------------------------------------------------------------------------------------------------------
+
+    /**
+	 * Get the Box AI service from the runtime
+	 *
+	 * @return The AI service instance
+	 */
+	private static function getBoxAiService() {
+		return getBoxRuntime().getGlobalService( "aiService" )
+	}
+
+	/**
+	 * Handle the initialize method
+	 *
+	 * @params The initialization parameters
+	 *
+	 * @return The initialization result
+	 */
+	private struct function handleInitialize( struct params = {} ) {
+		return {
+			"protocolVersion": static.PROTOCOL_VERSION,
+			"capabilities": getCapabilities(),
+			"serverInfo": getServerInfo()
+		}
+	}
+
+	/**
+	 * Handle a tools/call request
+	 *
+	 * @params The call parameters containing name and arguments
+	 *
+	 * @return The tool call result
+	 */
+	private struct function handleToolCall( required struct params ) {
+		var toolName = arguments.params.name ?: ""
+		var toolArgs = arguments.params?.args ?: arguments.params?.arguments ?:  {}
+
+		if ( !hasTool( toolName ) ) {
+			throw( type: "MCPServer.ToolNotFound", message: "Tool not found: #toolName#" )
+		}
+
+		var startTime = getTickCount()
+		var result = getTool( toolName )
+			.invoke( toolArgs )
+		var executionTime = getTickCount() - startTime
+
+		// Record tool invocation stats
+		variables.stats.recordToolInvocation(
+			toolName: toolName,
+			executionTime: executionTime
+		)
+
+		return {
+			"content": [
+				{
+					"type": "text",
+					"text": result
+				}
+			]
+		}
+	}
+
+	/**
+	 * Build a JSON-RPC success response
+	 *
+	 * @id The request ID
+	 * @result The result data
+	 *
+	 * @return The JSON-RPC response struct
+	 */
+	private struct function buildSuccessResponse( any id, struct result = {} ) {
+		var response = {
+			"jsonrpc": "2.0",
+			"result": arguments.result
+		}
+
+		if ( !isNull( arguments.id ) ) {
+			response[ "id" ] = arguments.id
+		}
+
+		return response
+	}
+
+	/**
+	 * Build a JSON-RPC error response
+	 *
+	 * @id The request ID, may be null
+	 * @code The error code
+	 * @message The error message
+	 *
+	 * @return The JSON-RPC error response struct
+	 */
+	private struct function buildErrorResponse( any id, required numeric code, required string message ) {
+		var response = {
+			"jsonrpc": "2.0",
+			"error": {
+				"code": arguments.code,
+				"message": arguments.message
+			}
+		}
+
+		if ( !isNull( arguments.id ) ) {
+			response[ "id" ] = arguments.id
+		}
+
+		return response
+	}
+
+}

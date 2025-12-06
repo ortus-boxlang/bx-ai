@@ -1,0 +1,46 @@
+// bola-magica-8.bxs
+// Laboratorio: Tu primera aplicación de IA - Bola Mágica 8
+// Ejecutar con: boxlang bola-magica-8.bxs
+
+println( "🎱 ¡Bienvenido a la Bola Mágica 8 con IA! 🎱" )
+println( "Hazme una pregunta de sí/no..." )
+println( "" )
+
+// Obtener la pregunta del usuario
+print( "Tu pregunta: " )
+question = readLine()
+
+// Crear el prompt mágico
+prompt = "
+You are a mystical Magic 8-Ball.
+Answer the following yes/no question with ONE of these classic responses:
+- It is certain
+- Without a doubt
+- Yes definitely
+- You may rely on it
+- Most likely
+- Outlook good
+- Signs point to yes
+- Reply hazy, try again
+- Ask again later
+- Cannot predict now
+- Don't count on it
+- My sources say no
+- Outlook not so good
+- Very doubtful
+
+Question: #question#
+
+Respond with ONLY the Magic 8-Ball phrase, nothing else.
+"
+
+// Obtener la respuesta mística
+// Usando temperatura alta (0.9) para respuestas más aleatorias/variadas - ¡perfecto para un adivino!
+try {
+    answer = aiChat( prompt, { temperature: 0.9 } )
+    println( "" )
+    println( "🔮 La Bola Mágica 8 dice..." )
+    println( "   " & answer )
+} catch( any e ) {
+    println( "❌ Los espíritus no están claros: " & e.message )
+}

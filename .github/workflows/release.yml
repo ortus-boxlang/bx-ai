@@ -41,7 +41,7 @@ jobs:
       issues: write
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Setup CommandBox
         uses: Ortus-Solutions/setup-commandbox@v2.0.1
@@ -128,16 +128,16 @@ jobs:
           SOURCE_DIR: "build/distributions"
           DEST_DIR: "ortussolutions/boxlang-modules/${{ env.MODULE_ID }}/${{ env.VERSION }}"
 
-      # - name: Upload API Docs to S3
-      #   uses: jakejarvis/s3-sync-action@master
-      #   with:
-      #     args: --acl public-read
-      #   env:
-      #     AWS_S3_BUCKET: "apidocs.ortussolutions.com"
-      #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
-      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_ACCESS_SECRET }}
-      #     SOURCE_DIR: "build/docs/javadoc"
-      #     DEST_DIR: "boxlang-modules/${{ env.MODULE_ID }}/${{ env.VERSION }}"
+      - name: Upload API Docs to S3
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read
+        env:
+          AWS_S3_BUCKET: "apidocs.ortussolutions.com"
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_ACCESS_SECRET }}
+          SOURCE_DIR: "build/docs/javadoc"
+          DEST_DIR: "boxlang-modules/${{ env.MODULE_ID }}/${{ env.VERSION }}"
 
       - name: Publish to ForgeBox
         run: |
@@ -183,7 +183,7 @@ jobs:
       issues: write
     steps:
       - name: Checkout Development Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: development
 

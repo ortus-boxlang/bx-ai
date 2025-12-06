@@ -26,13 +26,18 @@ class {
 	 */
 	static final CORE_PROVIDERS = [
 		"claude",
+        "cohere",
 		"deepseek",
 		"gemini",
 		"grok",
+		"groq",
+		"huggingface",
+		"mistral",
 		"ollama",
 		"openai",
 		"openrouter",
-		"perplexity"
+		"perplexity",
+        "voyage"
 	];
 
     /**
@@ -65,6 +70,9 @@ class {
 			case "claude":
 				oTargetService = new bxModules.bxai.models.providers.ClaudeService().configure( arguments.apiKey )
 				break
+            case "cohere":
+                oTargetService = new bxModules.bxai.models.providers.CohereService().configure( arguments.apiKey )
+                break
 			case "deepseek":
 				oTargetService = new bxModules.bxai.models.providers.DeepSeekService().configure( arguments.apiKey )
 				break
@@ -73,6 +81,15 @@ class {
 				break
 			case "grok":
 				oTargetService = new bxModules.bxai.models.providers.GrokService().configure( arguments.apiKey )
+				break
+			case "groq":
+				oTargetService = new bxModules.bxai.models.providers.GroqService().configure( arguments.apiKey )
+				break
+			case "huggingface":
+				oTargetService = new bxModules.bxai.models.providers.HuggingFaceService().configure( arguments.apiKey )
+				break
+			case "mistral":
+				oTargetService = new bxModules.bxai.models.providers.MistralService().configure( arguments.apiKey )
 				break
 			case "ollama":
 				oTargetService = new bxModules.bxai.models.providers.OllamaService().configure( arguments.apiKey )
@@ -86,6 +103,9 @@ class {
 			case "perplexity":
 				oTargetService = new bxModules.bxai.models.providers.PerplexityService().configure( arguments.apiKey )
 				break
+            case "voyage":
+                oTargetService = new bxModules.bxai.models.providers.VoyageService().configure( arguments.apiKey )
+                break
 			default:
 				// Announce the provider request so contributors can listen and provide a service
 				// This is for our aiplus module

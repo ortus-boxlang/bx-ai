@@ -1,0 +1,67 @@
+// multi-provider.bxs
+// Lab: Compare responses from different AI providers
+// Run with: boxlang multi-provider.bxs
+
+println( "🔀 Multi-Provider AI Demo" )
+println()
+println( "Available providers:" )
+println( "1. OpenAI" )
+println( "2. Claude" )
+println( "3. Ollama (local)" )
+println( "4. Compare all!" )
+println()
+
+print( "Choose option (1-4): " )
+choice = readLine()
+
+print( "Enter your question: " )
+question = readLine()
+
+println()
+println( "─".repeat( 50 ) )
+println()
+
+function callProvider( name, options, params = {} ) {
+    try {
+        startTime = getTickCount()
+        answer = aiChat( question, params, options )
+        duration = getTickCount() - startTime
+        
+        println( "✅ #name# (#duration#ms):" )
+        println( answer )
+        println()
+        return true
+    } catch( any e ) {
+        println( "❌ #name# failed: #e.message#" )
+        println()
+        return false
+    }
+}
+
+switch( choice ) {
+    case "1":
+        callProvider( "OpenAI", { provider: "openai" } )
+        break
+    
+    case "2":
+        callProvider( "Claude", { provider: "claude" } )
+        break
+    
+    case "3":
+        callProvider( "Ollama", { provider: "ollama" }, { model: "llama3.2" } )
+        break
+    
+    case "4":
+        println( "🔄 Comparing all providers..." )
+        println()
+        
+        callProvider( "OpenAI", { provider: "openai" } )
+        callProvider( "Claude", { provider: "claude" } )
+        callProvider( "Ollama", { provider: "ollama" }, { model: "llama3.2" } )
+        
+        println( "✨ Comparison complete!" )
+        break
+    
+    default:
+        println( "Invalid choice!" )
+}

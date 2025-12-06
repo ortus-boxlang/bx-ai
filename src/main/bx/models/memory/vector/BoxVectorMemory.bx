@@ -10,15 +10,24 @@ class extends="BaseVectorMemory" {
 
 	/**
 	 * Constructor
+	 *
+	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
+	 * @collection The collection name
 	 */
-	function init() {
-		super.init();
+	function init(
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = "",
+		string collection = "ai_memory"
+	) {
+		super.init( argumentCollection: arguments );
 
 		// In-memory storage for vectors and metadata
 		variables.vectors    = []; // array of embeddings
 		variables.metadata   = []; // array of structs
 		variables.ids        = []; // array of ids
-		variables.nextId     = 1;
 		variables.configured = false;
 
 		// 0 = not set yet, first insert defines it
@@ -150,7 +159,6 @@ class extends="BaseVectorMemory" {
 		variables.vectors   = [];
 		variables.metadata  = [];
 		variables.ids       = [];
-		variables.nextId    = 1;
 		variables.dimension = 0;
 		return this;
 	}
@@ -248,11 +256,11 @@ class extends="BaseVectorMemory" {
 	}
 
 	/**
-	 * Search by vector embedding
+	 * Search by vector embedding with metadata filtering
 	 *
 	 * @embedding Vector to search with
 	 * @limit Max results
-	 * @filter Metadata filter (not implemented for in-memory)
+	 * @filter Metadata filter for filtering results
 	 *
 	 * @return Array of results with { id, score, metadata, text }
 	 */
@@ -264,11 +272,11 @@ class extends="BaseVectorMemory" {
 		// Use search() method and transform results to match interface
 		var results = search(
 			vector = arguments.embedding,
-			limit  = arguments.limit
+			limit  = arguments.limit * 2  // Get more results since we'll filter them
 		);
 
-		// Transform to expected format
-		return results.map( ( result ) => {
+		// Transform to expected format and apply metadata filter
+		var transformedResults = results.map( ( result ) => {
 			return {
 				id       : result.id,
 				score    : result.score,
@@ -276,6 +284,30 @@ class extends="BaseVectorMemory" {
 				text     : result.metadata.text ?: ""
 			};
 		} );
+
+		// Capture filter and limit for closure scope
+		var filterCriteria = arguments.filter;
+		var resultLimit = arguments.limit;
+
+		// Apply metadata filter if provided
+		if ( !filterCriteria.isEmpty() ) {
+			transformedResults = transformedResults.filter( ( result ) => {
+				// Check if all filter criteria match
+				for ( var key in filterCriteria ) {
+					if ( !result.metadata.keyExists( key ) || result.metadata[ key ] != filterCriteria[ key ] ) {
+						return false;
+					}
+				}
+				return true;
+			} );
+		}
+
+		// Apply limit after filtering
+		if ( transformedResults.len() > resultLimit ) {
+			return transformedResults.slice( 1, resultLimit );
+		}
+
+		return transformedResults;
 	}
 
 	/**

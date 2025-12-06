@@ -143,7 +143,25 @@ class implements="ITool" {
 	 * @return The result of the function as a string. If the result is null, returns "null".
      */
     public string function invoke( required struct args ){
-        var results = variables.callable( argumentCollection = args )
+		// Announce before tool execution
+		BoxAnnounce( "beforeAIToolExecute", {
+			tool: this,
+			name: variables.name,
+			arguments: arguments.args
+		} );
+
+		var startTime = getTickCount();
+        var results = variables.callable( argumentCollection = args );
+		var executionTime = getTickCount() - startTime;
+
+		// Announce after tool execution
+		BoxAnnounce( "afterAIToolExecute", {
+			tool: this,
+			name: variables.name,
+			arguments: arguments.args,
+			results: results,
+			executionTime: executionTime
+		} );
 
 		// If null or empty, return empty string
 		if( results == null ){

@@ -1,0 +1,223 @@
+/**
+ * MCP Server Security Features Example
+ *
+ * This example demonstrates all the enterprise security features
+ * available for MCP servers including CORS, body limits, API keys,
+ * and basic authentication.
+ */
+
+// ==========================================
+// Example 1: Basic CORS Configuration
+// ==========================================
+println( "=== Example 1: CORS Configuration ===" )
+
+// Simple single origin
+server1 = mcpServer( "corsBasic" )
+	.withCors( "https://example.com" )
+	.registerTool( aiTool( "ping", "Ping", ( x ) => "pong" ) )
+
+println( "Allowed origins: " & server1.getCorsAllowedOrigins().toList() )
+println( "Is https://example.com allowed? " & server1.isCorsAllowed( "https://example.com" ) )
+println( "Is https://other.com allowed? " & server1.isCorsAllowed( "https://other.com" ) )
+
+// Multiple origins with wildcards
+server2 = mcpServer( "corsWildcard" )
+	.withCors( [ "https://app.example.com", "*.example.com", "https://trusted.org" ] )
+	.registerTool( aiTool( "ping", "Ping", ( x ) => "pong" ) )
+
+println( "" )
+println( "Wildcard patterns configured: " & server2.getCorsAllowedOrigins().toList() )
+println( "Is https://api.example.com allowed? " & server2.isCorsAllowed( "https://api.example.com" ) )
+println( "Is https://admin.example.com allowed? " & server2.isCorsAllowed( "https://admin.example.com" ) )
+println( "Is https://untrusted.com allowed? " & server2.isCorsAllowed( "https://untrusted.com" ) )
+
+// Dynamic addition
+server2.addCorsOrigin( "https://new.example.com" )
+println( "After adding new origin: " & server2.getCorsAllowedOrigins().toList() )
+
+// ==========================================
+// Example 2: Request Body Size Limits
+// ==========================================
+println( "" )
+println( "=== Example 2: Request Body Size Limits ===" )
+
+// Set a 1MB limit
+serverLimited = mcpServer( "limited" )
+	.withBodyLimit( 1048576 )  // 1MB
+	.registerTool( aiTool( "upload", "Upload data", ( data ) => "Uploaded" ) )
+
+println( "Max body size: " & serverLimited.getMaxRequestBodySize() & " bytes (1MB)" )
+
+// Set unlimited
+serverUnlimited = mcpServer( "unlimited" )
+	.withBodyLimit( 0 )  // No limit
+	.registerTool( aiTool( "bulk", "Bulk import", ( data ) => "Imported" ) )
+
+println( "Unlimited body size: " & serverUnlimited.getMaxRequestBodySize() & " (0 = unlimited)" )
+
+// ==========================================
+// Example 3: Custom API Key Validation
+// ==========================================
+println( "" )
+println( "=== Example 3: Custom API Key Validation ===" )
+
+// Simple validation
+serverSimple = mcpServer( "simpleApi" )
+	.withApiKeyProvider( ( apiKey, requestData ) => {
+		println( "  → Validating API key: " & apiKey )
+		println( "  → Method: " & requestData.method )
+		return apiKey == "secret-key-12345"
+	} )
+	.registerTool( aiTool( "getData", "Get data", ( x ) => "data" ) )
+
+println( "Has API key provider? " & serverSimple.hasApiKeyProvider() )
+println( "Testing valid key: " & serverSimple.verifyApiKey( "secret-key-12345", { method: "tools/list" } ) )
+println( "Testing invalid key: " & serverSimple.verifyApiKey( "wrong-key", { method: "tools/list" } ) )
+
+// Advanced validation with logging
+serverAdvanced = mcpServer( "advancedApi" )
+	.withApiKeyProvider( ( apiKey, requestData ) => {
+		// Simulate database lookup
+		validKeys = {
+			"user-123-key": { userId: 123, name: "Alice", tier: "premium" },
+			"user-456-key": { userId: 456, name: "Bob", tier: "free" }
+		}
+
+		if ( !validKeys.keyExists( apiKey ) ) {
+			println( "  ✗ Invalid API key: " & apiKey )
+			return false
+		}
+
+		var user = validKeys[ apiKey ]
+		println( "  ✓ Valid key for user: " & user.name & " (tier: " & user.tier & ")" )
+
+		// Check feature access based on tier
+		if ( user.tier == "free" && requestData.method == "premium/feature" ) {
+			throw( "Feature not available in free tier", "AccessDenied" )
+		}
+
+		return true
+	} )
+	.registerTool( aiTool( "getData", "Get data", ( x ) => "data" ) )
+
+println( "" )
+println( "Testing user keys:" )
+serverAdvanced.verifyApiKey( "user-123-key", { method: "tools/list" } )
+serverAdvanced.verifyApiKey( "user-456-key", { method: "tools/list" } )
+serverAdvanced.verifyApiKey( "invalid-key", { method: "tools/list" } )
+
+// ==========================================
+// Example 4: HTTP Basic Authentication
+// ==========================================
+println( "" )
+println( "=== Example 4: HTTP Basic Authentication ===" )
+
+serverAuth = mcpServer( "secured" )
+	.withBasicAuth( "admin", "secretPassword123" )
+	.setDescription( "Secured Admin Server" )
+	.registerTool( aiTool( "adminTool", "Admin tool", ( x ) => "admin action" ) )
+
+println( "Has basic auth? " & serverAuth.hasBasicAuth() )
+println( "Description: " & serverAuth.getDescription() )
+
+// ==========================================
+// Example 5: Combined Security (Enterprise)
+// ==========================================
+println( "" )
+println( "=== Example 5: Combined Security Configuration ===" )
+
+// Enterprise-grade security configuration
+serverEnterprise = mcpServer( "enterprise" )
+	.setDescription( "Enterprise API with Full Security" )
+	.setVersion( "2.0.0" )
+	// CORS - restrict to specific origins
+	.withCors( [ "https://app.example.com", "*.example.com" ] )
+	// Body limits - prevent abuse
+	.withBodyLimit( 1048576 )  // 1MB
+	// API key validation - identify clients
+	.withApiKeyProvider( ( apiKey, requestData ) => {
+		// In real scenario, this would query database
+		return apiKey.left( 6 ) == "valid-"
+	} )
+	// Basic auth - additional admin layer
+	.withBasicAuth( "admin", "enterprisePassword" )
+	// Register tools
+	.registerTool( aiTool( "getData", "Get enterprise data", ( query ) => {
+		return { data: "Enterprise result for: " & query }
+	} ) )
+
+println( "Enterprise Server Configuration:" )
+println( "  - Description: " & serverEnterprise.getDescription() )
+println( "  - Version: " & serverEnterprise.getVersion() )
+println( "  - CORS origins: " & serverEnterprise.getCorsAllowedOrigins().toList() )
+println( "  - Max body size: " & serverEnterprise.getMaxRequestBodySize() & " bytes" )
+println( "  - Has API key provider: " & serverEnterprise.hasApiKeyProvider() )
+println( "  - Has basic auth: " & serverEnterprise.hasBasicAuth() )
+println( "  - Tool count: " & serverEnterprise.getToolCount() )
+
+// ==========================================
+// Example 6: Environment-Based Configuration
+// ==========================================
+println( "" )
+println( "=== Example 6: Environment-Based Configuration ===" )
+
+// Configuration based on environment
+function configureSecureServer( serverName, environment ) {
+	var server = mcpServer( serverName )
+
+	if ( environment == "production" ) {
+		// Strict production settings
+		server
+			.withCors( [ "https://app.example.com", "https://api.example.com" ] )
+			.withBodyLimit( 512 * 1024 )  // 512KB
+			.withBasicAuth( getEnv( "MCP_ADMIN_USER" ) ?: "admin", getEnv( "MCP_ADMIN_PASS" ) ?: "change-me" )
+			.withApiKeyProvider( ( apiKey, requestData ) => {
+				// Production: validate against database
+				println( "  → Production key validation for: " & apiKey )
+				return len( apiKey ) > 20
+			} )
+	} else {
+		// Relaxed development settings
+		server
+			.withCors( [ "http://localhost:3000", "http://localhost:8080" ] )
+			.withBodyLimit( 0 )  // Unlimited
+			.withApiKeyProvider( ( apiKey, requestData ) => {
+				// Development: allow test keys
+				println( "  → Development key validation for: " & apiKey )
+				return apiKey.startsWith( "dev-" )
+			} )
+	}
+
+	return server
+}
+
+// Configure for development
+devServer = configureSecureServer( "devApi", "development" )
+	.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+println( "Development Server:" )
+println( "  - CORS origins: " & devServer.getCorsAllowedOrigins().toList() )
+println( "  - Body limit: " & ( devServer.getMaxRequestBodySize() == 0 ? "Unlimited" : devServer.getMaxRequestBodySize() ) )
+println( "  - Test dev key: " & devServer.verifyApiKey( "dev-test-key", { method: "tools/list" } ) )
+
+// Configure for production
+prodServer = configureSecureServer( "prodApi", "production" )
+	.registerTool( aiTool( "data", "Production data", ( x ) => "production data" ) )
+
+println( "" )
+println( "Production Server:" )
+println( "  - CORS origins: " & prodServer.getCorsAllowedOrigins().toList() )
+println( "  - Body limit: " & prodServer.getMaxRequestBodySize() & " bytes" )
+println( "  - Has basic auth: " & prodServer.hasBasicAuth() )
+println( "  - Test prod key: " & prodServer.verifyApiKey( "production-api-key-12345678901234567890", { method: "tools/list" } ) )
+
+println( "" )
+println( "=== Security Features Demonstrated ===" )
+println( "✓ CORS configuration with wildcards" )
+println( "✓ Request body size limits" )
+println( "✓ Custom API key validation" )
+println( "✓ HTTP Basic Authentication" )
+println( "✓ Combined security configurations" )
+println( "✓ Environment-based setup" )
+println( "" )
+println( "See docs/advanced/mcp-server.md for full documentation" )

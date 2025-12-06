@@ -63,6 +63,17 @@ class {
 	this.mapping = "bxai";
 
 	/**
+	 * The public mapping for your module.  This is the public facing mapping
+	 * that users will use to access your module features.
+	 * For us it will be /~bxai -> public mapping
+	 */
+	this.publicMapping = {
+		name : "~bxai",
+		usePrefix: false,
+		path: "public"
+	};
+
+	/**
 	 * Who built the module
 	 */
 	this.author = "Luis Majano";
@@ -131,22 +142,38 @@ class {
 		 * A list of custom interception points to register into the runtime
 		 */
 		customInterceptionPoints = [
+			"afterAIAgentRun",
 			"afterAIEmbed",
+			"afterAIModelInvoke",
+			"afterAIPipelineRun",
+			"afterAIToolExecute",
+			"beforeAIAgentRun",
 			"beforeAIEmbed",
+			"beforeAIModelInvoke",
+			"beforeAIPipelineRun",
+			"beforeAIToolExecute",
 			"onAIAgentCreate",
 			"onAIEmbedRequest",
 			"onAIEmbedResponse",
+			"onAIError",
 			"onAiMemoryCreate",
 			"onAIMessageCreate",
 			"onAIModelCreate",
 			"onAIProviderCreate",
 			"onAIProviderRequest",
+			"onAIRateLimitHit",
 			"onAIRequest",
 			"onAIRequestCreate",
 			"onAIResponse",
-			"onAITransformCreate",
-            "afterAIModelInvoke",
-            "beforeAIModelInvoke"
+			"onAITokenCount",
+			"onAIToolCreate",
+			"onAITransformerCreate",
+            // MCP Server Events
+			"onMCPServerCreate",
+			"onMCPServerRemove",
+			"onMCPRequest",
+			"onMCPResponse",
+			"onMCPError"
 		 ];
 	}
 
@@ -166,10 +193,11 @@ class {
 
 	/**
 	 * --------------------------------------------------------------------------
-	 * Module Events
+	 * AI CLI
 	 * --------------------------------------------------------------------------
-	 * You can listen to any runtime events by creating the methods
-	 * that match the approved runtime interception points
 	 */
+
+	function main( args = [] ){
+	}
 
 }

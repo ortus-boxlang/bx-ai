@@ -8,8 +8,9 @@ BoxLang AI is a comprehensive module that brings artificial intelligence capabil
 
 ### Key Features
 
-- **Multi-Provider Support**: Work with OpenAI, Claude, Gemini, Grok, DeepSeek, Ollama, and more
+- **Multi-Provider Support**: Work with OpenAI, Claude, Gemini, Grok, Groq, DeepSeek, Ollama, and more
 - **Unified API**: One consistent interface across all providers
+- **Multi-Tenant Memory**: Enterprise-grade isolation with userId and conversationId across all 20 memory types
 - **Multimodal Content**: Process images, audio, video, and documents alongside text
 - **Local AI Support**: Run models locally with Ollama for privacy and offline use
 - **AI Pipelines**: Chain operations together for complex multi-step workflows
@@ -26,10 +27,14 @@ BoxLang AI is a comprehensive module that brings artificial intelligence capabil
 | **Claude** | Cloud | Long context, detailed analysis |
 | **Gemini** | Cloud | Google integration, multimodal |
 | **Grok** | Cloud | Real-time data, Twitter integration |
+| **HuggingFace** | Cloud | Open-source models, community-driven |
+| **Groq** | Cloud | Ultra-fast inference, LPU architecture |
 | **DeepSeek** | Cloud | Code generation, reasoning |
 | **Ollama** | Local | Privacy, offline use, no API costs |
 | **OpenRouter** | Gateway | Access multiple models through one API |
 | **Perplexity** | Cloud | Research, citations, factual answers |
+| **Voyage** | Cloud | State-of-the-art embeddings, specialized for RAG |
+| **Cohere** | Cloud | Embeddings, multilingual, chat, tool calling |
 
 ### Use Cases
 
@@ -70,6 +75,9 @@ Multi-message conversations, AI tools, async requests, and streaming responses.
 ⚙️ **[Service-Level Chatting](chatting/service-chatting.md)**
 Direct service control, custom requests, headers, and managing multiple providers.
 
+📦 **[Structured Output](chatting/structured-output.md)**
+Extract type-safe, validated data from AI responses using classes, structs, or schemas.
+
 ---
 
 ### AI Pipelines
@@ -90,7 +98,7 @@ Building reusable prompts with dynamic placeholders and binding strategies.
 Maintain conversation context with standard memory types: Windowed, Summary, Session, File, Cache, and JDBC memory for different use cases.
 
 🧠 **[Vector Memory](main-components/vector-memory.md)**
-Semantic search and retrieval using vector embeddings. Integrate with ChromaDB, Pinecone, PostgreSQL, Qdrant, Weaviate, Milvus, or use in-memory vectors.
+Semantic search and retrieval using vector embeddings. Integrate with ChromaDB, Pinecone, PostgreSQL, MySQL, TypeSense, Qdrant, Weaviate, Milvus, or use in-memory vectors.
 
 🔧 **[Transformers](main-components/transformers.md)**
 Processing and transforming data between pipeline steps.

@@ -49,9 +49,15 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 * Constructor
 	 *
 	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
 	 */
-	function init( string key = createUUID() ) {
-		super.init( arguments.key );
+	function init(
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = ""
+	) {
+		super.init( argumentCollection: arguments );
 		return this;
 	}
 
@@ -63,9 +69,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 * @return HybridMemory for chaining
 	 */
 	public any function configure( required struct config ) {
-		super.configure( arguments.config );
-
-		// Extract hybrid configuration
+		// Extract hybrid configuration FIRST (before super.configure which may call getAll())
 		if ( arguments.config.keyExists( "recentLimit" ) ) {
 			variables.recentLimit = arguments.config.recentLimit;
 		}
@@ -87,12 +91,25 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 
 		// Initialize recent memory (WindowMemory)
 		var recentConfig = {
-			windowSize: variables.recentLimit * 2  // Keep more in window than we return
+			maxMessages: variables.recentLimit * 2  // Keep more in window than we return
 		};
-		variables.recentMemory = new WindowMemory( variables.key & ":recent" ).configure( recentConfig );
+		variables.recentMemory = new WindowMemory(
+			key: variables.key & ":recent",
+			userId: variables.userId,
+			conversationId: variables.conversationId
+		).configure( recentConfig );
 
 		// Initialize vector memory based on provider
-		variables.vectorMemory = aiMemory( memory: variables.vectorProvider, config: variables.vectorConfig )
+		variables.vectorMemory = aiMemory(
+			memory: variables.vectorProvider,
+			key: variables.key & ":vector",
+			userId: variables.userId,
+			conversationId: variables.conversationId,
+			config: variables.vectorConfig
+		);
+
+		// Now call super.configure which may call trim() -> getAll()
+		super.configure( arguments.config );
 
 		return this;
 	}
@@ -162,37 +179,153 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 		var recentCount = ceiling( arguments.limit * variables.recentWeight );
 		var semanticCount = arguments.limit - recentCount;
 
-		// Get recent messages
+		// Get recent messages (all of them for now)
 		var recentMessages = variables.recentMemory.getAll();
-		if ( recentMessages.len() > recentCount ) {
-			recentMessages = recentMessages.slice( -recentCount );  // Get last N messages
-		}
 
 		// Get semantic messages
-		var semanticMessages = variables.vectorMemory.getRelevant( arguments.query, semanticCount );
+		var semanticMessages = variables.vectorMemory.getRelevant(
+			arguments.query,
+			semanticCount
+		);
 
-		// Combine and deduplicate
+		// Combine and deduplicate FIRST
 		var combinedMessages = combineMessages( recentMessages, semanticMessages );
 
-		// Re-sort by relevance score (semantic) and recency
+		// Sort by: semantic score > recency
 		combinedMessages.sort( ( a, b ) => {
-			// Messages with scores (semantic) get priority
 			var aScore = a.score ?: 0;
 			var bScore = b.score ?: 0;
 
 			if ( aScore > 0 && bScore > 0 ) {
-				return bScore - aScore;  // Higher score first
+				// Both semantic - higher score first
+				return bScore - aScore;
 			} else if ( aScore > 0 ) {
-				return -1;  // a has score, b doesn't
+				// Only a is semantic - a wins
+				return -1;
 			} else if ( bScore > 0 ) {
-				return 1;   // b has score, a doesn't
+				// Only b is semantic - b wins
+				return 1;
 			} else {
-				// Both are recent - maintain original order (already recent-first)
-				return 0;
+				// Both recent - compare timestamps (newer first)
+				var aTime = a.timestamp ?: 0;
+				var bTime = b.timestamp ?: 0;
+				return bTime - aTime;
 			}
 		} );
 
+		// Now slice to the limit (after dedup and sort)
+		if ( combinedMessages.len() > arguments.limit ) {
+			combinedMessages = combinedMessages.slice( 1, arguments.limit );
+		}
+
 		return combinedMessages;
+	}
+
+	/**
+	 * Get all non-system messages
+	 * Filters out system messages from both recent and vector results
+	 *
+	 * @return Array of non-system messages
+	 */
+	public array function getNonSystemMessages() {
+		// Get all messages from recent memory only (not from vectors to avoid duplicates)
+		return variables.recentMemory.getNonSystemMessages();
+	}
+
+	/**
+	 * Get messages by role
+	 * Uses recent memory only to avoid vector result format issues
+	 *
+	 * @role The role to filter by
+	 *
+	 * @return Array of messages with the specified role
+	 */
+	public array function getByRole( required string role ) {
+		return variables.recentMemory.getByRole( arguments.role );
+	}
+
+	/**
+	 * Check if memory has a system message
+	 * Uses recent memory only
+	 *
+	 * @return Boolean true if system message exists
+	 */
+	public boolean function hasSystemMessage() {
+		return variables.recentMemory.hasSystemMessage();
+	}
+
+	/**
+	 * Get memory summary including hybrid-specific configuration
+	 * Uses recent memory for role distribution and timestamps to avoid vector result format issues
+	 *
+	 * @return Struct containing memory statistics
+	 */
+	public struct function getSummary() {
+		// Get messages from recent memory only for summary stats (timestamps, roles, etc.)
+		var recentMessages = variables.recentMemory.getAll()
+		var summary = {
+			"type": this.name(),
+			"key": this.key(),
+			"userId": this.getUserId(),
+			"conversationId": this.getConversationId(),
+			"messageCount": count(),
+			"maxMessages": variables.maxMessages,
+			"nonSystemCount": getNonSystemMessages().len(),
+			"hasSystemMessage": hasSystemMessage(),
+			"metadata": this.metadata(),
+			"config": getConfig(),
+			"firstMessageAt": recentMessages.isEmpty() ? "" : recentMessages.first().timestamp,
+        	"lastMessageAt": recentMessages.isEmpty() ? "" : recentMessages.last().timestamp
+		}
+
+		// Add role distribution stats from recent memory
+		summary.roleDistribution = {
+			"user": getByRole( "user" ).len(),
+			"assistant": getByRole( "assistant" ).len(),
+			"system": getByRole( "system" ).len(),
+			"tool": getByRole( "tool" ).len()
+		}
+
+		// Add conversation age and rate from recent messages
+		if ( !recentMessages.isEmpty() && recentMessages.len() > 1 ) {
+			var firstTime = recentMessages.first().timestamp
+			var lastTime = recentMessages.last().timestamp
+			var durationMinutes = dateDiff( "n", firstTime, lastTime )
+			summary.conversationAgeMinutes = durationMinutes
+			if ( durationMinutes > 0 ) {
+				summary.messagesPerHour = ( recentMessages.len() / durationMinutes ) * 60
+			}
+		}
+
+		// Add estimated token count from recent messages (rough approximation: ~4 chars per token)
+		var totalChars = recentMessages.reduce( ( sum, msg ) => sum + len( msg.content ), 0 )
+		summary.estimatedTokens = ceiling( totalChars / 4 )
+
+		// Add hybrid-specific configuration
+		summary.recentLimit = variables.recentLimit;
+		summary.semanticLimit = variables.semanticLimit;
+		summary.totalLimit = variables.totalLimit;
+		summary.recentWeight = variables.recentWeight;
+		summary.semanticWeight = 1 - variables.recentWeight;
+		summary.vectorProvider = variables.vectorProvider;
+		summary.recentMemoryCount = variables.recentMemory.count();
+		summary.vectorMemoryCount = variables.vectorMemory.count();
+
+		// Add sub-memory info (just key fields to avoid vector format issues)
+		summary.recentMemorySummary = {
+			userId: variables.recentMemory.getUserId(),
+			conversationId: variables.recentMemory.getConversationId(),
+			key: variables.recentMemory.key(),
+			type: variables.recentMemory.name()
+		};
+		summary.vectorMemorySummary = {
+			userId: variables.vectorMemory.getUserId(),
+			conversationId: variables.vectorMemory.getConversationId(),
+			key: variables.vectorMemory.key(),
+			type: variables.vectorMemory.name()
+		};
+
+		return summary
 	}
 
 	/**
@@ -246,6 +379,16 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	}
 
 	/**
+	 * Trim both memories to their limits
+	 *
+	 * @return HybridMemory for chaining
+	 */
+	public IAiMemory function trim() {
+		variables.recentMemory.trim();
+		return this;
+	}
+
+	/**
 	 * ------------------------------------------------------------------------------
 	 * HELPER METHODS
 	 * ------------------------------------------------------------------------------
@@ -263,28 +406,27 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 		required array recentMessages,
 		required array semanticMessages
 	) {
-		var combined = [];
-		var seenIds = {};
+		var messageMap = {};
 
-		// Add recent messages first (maintain recency)
-		arguments.recentMessages.each( ( message ) => {
-			var messageId = getMessageId( message );
-			if ( !seenIds.keyExists( messageId ) ) {
-				combined.append( message );
-				seenIds[ messageId ] = true;
-			}
-		} );
-
-		// Add semantic messages (skip duplicates)
+		// Add semantic messages first (they have scores we want to preserve)
 		arguments.semanticMessages.each( ( message ) => {
 			var messageId = getMessageId( message );
-			if ( !seenIds.keyExists( messageId ) ) {
-				combined.append( message );
-				seenIds[ messageId ] = true;
+			messageMap[ messageId ] = message;
+		} );
+
+		// Add recent messages (only if not already present from semantic)
+		arguments.recentMessages.each( ( message ) => {
+			var messageId = getMessageId( message );
+			if ( !messageMap.keyExists( messageId ) ) {
+				messageMap[ messageId ] = message;
 			}
 		} );
 
-		return combined;
+		// Convert map back to array
+		return messageMap.reduce( ( acc, id, message ) => {
+			acc.append( message );
+			return acc;
+		}, [] );
 	}
 
 	/**

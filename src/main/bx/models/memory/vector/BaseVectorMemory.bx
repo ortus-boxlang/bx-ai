@@ -65,10 +65,21 @@ abstract class
 	 * Constructor
 	 *
 	 * @key The unique key for this memory instance, typically a UUID, defaults to random UUID
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
 	 * @collection The collection/index name (default: "ai_memory")
 	 */
-	function init( string key = createUUID(), string collection = static.DEFAULT_COLLECTION ) {
-		super.init( arguments.key );
+	function init(
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = "",
+		string collection = static.DEFAULT_COLLECTION
+	) {
+		super.init(
+			key: arguments.key,
+			userId: arguments.userId,
+			conversationId: arguments.conversationId
+		);
 		variables.collection = arguments.collection;
 		return this;
 	}
@@ -157,12 +168,32 @@ abstract class
 	/**
 	 * Get all messages (delegates to provider implementation)
 	 * For vector stores, this typically returns recent messages or all with limit
+	 * Automatically filters by userId and conversationId for multi-tenant isolation
 	 *
 	 * @return Array of message structs
 	 */
 	array function getAll() {
-		// Provider-specific implementation
-		return getAllDocuments();
+		// Get all documents from provider
+		var allDocuments = getAllDocuments();
+
+		// Filter by userId and conversationId if set
+		if ( len( variables.userId ) || len( variables.conversationId ) ) {
+			return allDocuments.filter( function( doc ) {
+				// Check userId match if set
+				if ( len( variables.userId ) &&
+					( isNull( doc.metadata.userId ) || doc.metadata.userId != variables.userId ) ) {
+					return false;
+				}
+				// Check conversationId match if set
+				if ( len( variables.conversationId ) &&
+					( isNull( doc.metadata.conversationId ) || doc.metadata.conversationId != variables.conversationId ) ) {
+					return false;
+				}
+				return true;
+			} );
+		}
+
+		return allDocuments;
 	}
 
 	/**
@@ -203,9 +234,9 @@ abstract class
 
 		// Search with fresh results (new documents may have been added)
 		var results = findSimilar(
-			embedding = embedding,
-			limit = arguments.limit,
-			filter = arguments.filter
+			embedding : embedding,
+			limit : arguments.limit,
+			filter : arguments.filter
 		);
 
 		// Filter by minimum score
@@ -215,6 +246,7 @@ abstract class
 	/**
 	 * Find similar messages using a pre-computed embedding
 	 * Delegates to provider-specific implementation
+	 * Automatically filters by userId and conversationId for multi-tenant isolation
 	 *
 	 * @embedding The vector embedding to search with
 	 * @limit Maximum number of results to return
@@ -227,16 +259,29 @@ abstract class
 		numeric limit = 5,
 		struct filter = {}
 	) {
+		// Add userId and conversationId to filter for multi-tenant isolation
+		var enhancedFilter = arguments.filter.duplicate();
+		if ( len( variables.userId ) ) {
+			enhancedFilter.userId = variables.userId;
+		}
+		if ( len( variables.conversationId ) ) {
+			enhancedFilter.conversationId = variables.conversationId;
+		}
+
 		// Announce event for observability
 		BoxAnnounce( "onVectorSearch", {
 			collection: variables.collection,
 			limit: arguments.limit,
-			hasFilter: !arguments.filter.isEmpty(),
+			hasFilter: !enhancedFilter.isEmpty(),
 			timestamp: now()
 		} );
 
 		// Provider-specific implementation
-		return searchByVector( arguments.embedding, arguments.limit, arguments.filter );
+		return searchByVector(
+			embedding: arguments.embedding,
+			limit: arguments.limit,
+			filter: enhancedFilter
+		);
 	}
 
 	/**
@@ -256,12 +301,15 @@ abstract class
 		// Generate embedding
 		var embedding = generateEmbedding( arguments.text );
 
+		param arguments.metadata.userId = variables.userId;
+		param arguments.metadata.conversationId = variables.conversationId;
+
 		// Store in vector database (provider-specific)
 		storeDocument(
-			id = arguments.id,
-			text = arguments.text,
-			embedding = embedding,
-			metadata = arguments.metadata
+			id : arguments.id,
+			text : arguments.text,
+			embedding : embedding,
+			metadata : arguments.metadata
 		);
 
 		// Announce event
@@ -603,6 +651,7 @@ abstract class
 
 	/**
 	 * Extract metadata from message object
+	 * Automatically includes userId and conversationId for multi-tenant isolation
 	 *
 	 * @message Message in any format
 	 *
@@ -613,19 +662,27 @@ abstract class
 		if ( arguments.message instanceof "bxModules.bxai.models.loaders.Document" ) {
 			return arguments.message.getMetadata();
 		}
+    
+		var meta = {};
+
 		if ( isStruct( arguments.message ) ) {
 			// If message has explicit metadata field, use that
 			if ( arguments.message.keyExists( "metadata" ) ) {
-				return arguments.message.metadata;
+				meta = arguments.message.metadata;
+			} else {
+				// Otherwise, extract all fields except text/content/id
+				meta = arguments.message.duplicate();
+				meta.delete( "content" );
+				meta.delete( "text" );
+				meta.delete( "id" );
 			}
-			// Otherwise, extract all fields except text/content/id
-			var meta = arguments.message.duplicate();
-			meta.delete( "content" );
-			meta.delete( "text" );
-			meta.delete( "id" );
-			return meta;
 		}
-		return {};
+
+		// Always add userId and conversationId for multi-tenant isolation
+		meta.userId = variables.userId;
+		meta.conversationId = variables.conversationId;
+
+		return meta;
 	}
 
 	/**

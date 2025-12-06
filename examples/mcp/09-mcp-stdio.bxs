@@ -1,0 +1,62 @@
+/**
+ * MCP STDIO Entry Point
+ *
+ * Runs an MCP server using STDIN/STDOUT transport for command-line integration.
+ * This script starts an MCP server that communicates via JSON-RPC over standard streams.
+ *
+ * Usage:
+ *   boxlang mcp-stdio.bxs
+ *   boxlang mcp-stdio.bxs --server myserver
+ *
+ * Environment Variables:
+ *   MCP_SERVER_NAME - Name of the MCP server to start (default: "default")
+ *
+ * The server will:
+ * 1. Read JSON-RPC requests from STDIN (one per line)
+ * 2. Process each request through the MCP server
+ * 3. Write JSON-RPC responses to STDOUT (one per line)
+ * 4. Continue until STDIN closes or shutdown signal received
+ *
+ * Example JSON-RPC request:
+ * {"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}
+ *
+ * Example JSON-RPC response:
+ * {"jsonrpc":"2.0","result":{"tools":[...]},"id":1}
+ */
+
+import bxModules.bxai.models.mcp.MCPRequestProcessor
+
+/**
+ * REGISTER YOUR MCP SERVERS AND TOOLS IN Application.bx OR A STARTUP SCRIPT
+ * OR HERE.
+ * E.g.:
+ * mcpServer( "default" )
+ *     .registerTool( aiTool( "echo", "Echo tool", ( msg ) => msg ) );
+ */
+
+mcpServer( "default" )
+	.registerTool( aiTool( "echo", "Echo tool", ( msg ) => msg ) )
+
+ /**
+  * DETECT SERVER NAME AND START IT UP
+  */
+
+// Get server name from CLI args or environment
+serverName = getSystemSetting( "MCP_SERVER_NAME", "default" )
+// Struct of args: { positionals: array, options: struct }
+parsedArgs = cliGetArgs()
+
+// Check for --server option: Example: --server myserver
+if ( structKeyExists( parsedArgs.options, "server" ) ) {
+	serverName = parsedArgs.options.server;
+}
+
+// Check for positional argument as server name
+if ( arrayLen( parsedArgs.positionals ) ) {
+	serverName = parsedArgs.positionals[ 1 ];
+}
+
+println( "Starting BoxLang AI MCP STDIO Server [#serverName#]" )
+
+// Start STDIO transport (blocks until shutdown or error)
+MCPRequestProcessor::processStdio( serverName )
