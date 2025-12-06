@@ -33,6 +33,16 @@ class extends="AiBaseRunnable"{
     property name="bindings" type="struct" default={};
 
 	/**
+	 * A context struct for injecting additional data into the message.
+	 * This can be used for:
+	 * - Security context (user roles, permissions, tenant info)
+	 * - RAG context (retrieved documents, embeddings, metadata)
+	 * - Any additional contextual information needed by agents or chat handlers
+	 * The context is automatically available as ${context} in message bindings.
+	 */
+	property name="context" type="struct" default={};
+
+	/**
 	 * CONSTANTS
 	 */
 	static{
@@ -112,7 +122,64 @@ class extends="AiBaseRunnable"{
 	array function render( struct bindings = {} ) {
         // Merge provided bindings with stored bindings, in favor of provided
         var allBindings = arguments.bindings.append( variables.bindings, false )
+		// If we have context, add it to bindings as ${context}
+		if( hasContext() ){
+			allBindings[ "context" ] = jsonSerialize( variables.context );
+		}
 		return format( allBindings )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Context Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Check if the message has any context data
+	 *
+	 * @return True if context is not empty
+	 */
+	boolean function hasContext(){
+		return !variables.context.isEmpty();
+	}
+
+	/**
+	 * Add or update a single context value
+	 *
+	 * @key The context key
+	 * @value The context value
+	 *
+	 * @return The message for chaining
+	 */
+	AiMessage function addContext( required string key, required any value ){
+		variables.context[ arguments.key ] = arguments.value;
+		return this;
+	}
+
+	/**
+	 * Merge additional context data into the existing context
+	 * Existing keys will be overwritten if present in the new context
+	 *
+	 * @contextData The context data to merge
+	 *
+	 * @return The message for chaining
+	 */
+	AiMessage function mergeContext( required struct contextData ){
+		variables.context.append( arguments.contextData, true );
+		return this;
+	}
+
+	/**
+	 * Get a specific context value by key
+	 *
+	 * @key The context key to retrieve
+	 * @defaultValue The default value if key doesn't exist
+	 *
+	 * @return The context value or default
+	 */
+	any function getContextValue( required string key, any defaultValue = "" ){
+		return variables.context.keyExists( arguments.key ) ? variables.context[ arguments.key ] : arguments.defaultValue;
 	}
 
 	/**

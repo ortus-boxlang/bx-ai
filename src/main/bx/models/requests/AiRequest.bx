@@ -48,7 +48,7 @@ class extends="AiBaseRequest"{
 	 *
 	 * @aiMessage The messages to use for the chat request, or empty for none
 	 * @params A set of request params to pass to the provider, or empty for none
-	 * @options A set of request options to pass to the provider, or empty for none
+	 * @options A set of request options to pass to the provider, or empty for none. Supports `context` for security/RAG injection via ${context} placeholder.
 	 */
 	function init(
 		aiMessage aiMessage = new bxModules.bxai.models.AiMessage(),
@@ -56,7 +56,6 @@ class extends="AiBaseRequest"{
 		struct options = {}
 	){
 		variables.aiMessage = arguments.aiMessage;
-		variables.messages = arguments.aiMessage.getMessages();
 		variables.params = params;
 		variables.provider = options.provider ?: "";
 		variables.apiKey = options.apiKey ?: "";
@@ -68,6 +67,14 @@ class extends="AiBaseRequest"{
 		variables.timeout = options.timeout ?: 30;
 		variables.stream = options.stream ?: false;
 		variables.maxInteractions = options.maxInteractions ?: 0;
+
+		// If context is provided in options, merge it into the message object
+		if( options.keyExists( "context" ) && isStruct( options.context ) ){
+			variables.aiMessage.mergeContext( options.context );
+		}
+
+		// Render the messages with bindings applied (including ${context} if present)
+		variables.messages = variables.aiMessage.render();
 
 		// Check for explicit schema first (from schema() method)
 		if( options.keyExists( "schema" ) ) {

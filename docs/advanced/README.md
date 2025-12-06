@@ -35,6 +35,20 @@ Convert text into vector representations for semantic search and similarity matc
 
 ---
 
+### 🔐 [Message Context](request-context.md)
+
+Inject security, RAG, and application context into AI messages.
+
+**What you'll learn:**
+- Adding context to AI messages (security, RAG, metadata)
+- Using `${context}` placeholder for automatic injection via `render()`
+- Multi-tenant isolation patterns
+- RAG implementation with context
+
+**Use when:** Building secure multi-user applications, implementing RAG, or customizing AI behavior based on user/tenant context.
+
+---
+
 ### 📡 [Event System](events.md)
 
 Intercept and customize AI operations with the powerful event system.
@@ -177,6 +191,10 @@ chunks.each( function( chunk ) {
 **Components:** Text chunking + Token counting + Batch processing
 **Guide:** [Utilities Documentation](utilities.md)
 
+### Secure Multi-User AI
+**Components:** Request Context + Interceptors + Tenant Isolation
+**Guide:** [Request Context Documentation](request-context.md)
+
 ---
 
 ## Choosing Your Path
@@ -186,6 +204,9 @@ chunks.each( function( chunk ) {
 
 **"I want to log or customize AI behavior"**
 → [Event System](events.md)
+
+**"I need to inject security context or RAG data"**
+→ [Request Context](request-context.md)
 
 **"I need agents to access external systems"**
 → [MCP Client](mcp-client.md)
