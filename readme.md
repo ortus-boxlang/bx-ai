@@ -2319,9 +2319,13 @@ response = mcpServer( "myApp" ).handleRequest( {
 } )
 ```
 
-### Built-in HTTP Endpoint
+### Transport Types
 
-The module provides `public/mcp.bxm` for HTTP access:
+MCP servers support two transport mechanisms:
+
+#### 🌐 HTTP Transport (Web)
+
+**Built-in HTTP Endpoint** - The module provides `public/mcp.bxm` for HTTP access:
 
 ```bash
 # Discovery
@@ -2336,6 +2340,60 @@ curl -X POST http://localhost/~bxai/mcp.bxm \
 curl http://localhost/~bxai/mcp.bxm?server=myApp
 curl http://localhost/~bxai/mcp.bxm/myApp
 ```
+
+**Custom HTTP Endpoint** - Create your own MCP endpoint:
+
+```javascript
+// api/my-mcp.bxm
+<bx:script>
+import bxModules.bxai.models.mcp.MCPRequestProcessor
+MCPRequestProcessor::processHttp()
+</bx:script>
+```
+
+#### 🖥️ STDIO Transport (Command-Line)
+
+**For Desktop Apps & CLI Tools** - Create a script entry point for STDIO communication:
+
+```javascript
+// mcp-stdio.bxs
+import bxModules.bxai.models.mcp.MCPRequestProcessor
+
+// Register your server and tools
+mcpServer( "myApp" )
+    .registerTool( aiTool( "echo", "Echo tool", ( msg ) => msg ) )
+
+// Get server name from CLI arguments
+serverName = getSystemSetting( "MCP_SERVER_NAME", "default" )
+parsedArgs = cliGetArgs()
+if ( structKeyExists( parsedArgs.options, "server" ) ) {
+    serverName = parsedArgs.options.server
+}
+
+// Start STDIO transport (blocks until shutdown)
+MCPRequestProcessor::processStdio( serverName )
+```
+
+**Run:**
+
+```bash
+# Start with default server
+boxlang run mcp-stdio.bxs
+
+# Start with specific server
+boxlang run mcp-stdio.bxs --server myApp
+
+# Or via environment variable
+MCP_SERVER_NAME=myApp boxlang run mcp-stdio.bxs
+```
+
+**Use Cases:**
+- 🤖 Desktop AI assistants (Claude Desktop, etc.)
+- 💻 VS Code extensions / IDE integrations
+- 🔧 Command-line tools
+- 📦 Container-based MCP services
+
+See `examples/mcp/09-mcp-stdio.bxs` for a complete working example.
 
 ### Tool Management Methods
 
