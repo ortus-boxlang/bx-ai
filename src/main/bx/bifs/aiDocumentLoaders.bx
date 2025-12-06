@@ -120,6 +120,30 @@ class {
 					"arrayAsDocuments": "Create document per array item (default: false)"
 				}
 			},
+			"xml": {
+				"name"        : "XMLLoader",
+				"description" : "Loads and parses XML documents with XPath support",
+				"extensions"  : [ "xml" ],
+				"class"       : "bxModules.bxai.models.loaders.XMLLoader",
+				"capabilities": {
+					"streaming"         : false,
+					"chunking"          : true,
+					"metadata"          : true,
+					"urlSupport"        : false,
+					"directoryMode"     : false,
+					"xpathExtraction"   : true,
+					"elementsAsDocuments": true,
+					"namespaceSupport"  : true
+				},
+				"configOptions": {
+					"elementPath"        : "XPath to extract elements from",
+					"elementsAsDocuments": "Create document per matching element",
+					"contentElements"    : "Array of XPath expressions for content",
+					"metadataElements"   : "Array of XPath expressions for metadata",
+					"preserveWhitespace" : "Preserve whitespace in text (default: false)",
+					"includeAttributes"  : "Include attribute values (default: true)"
+				}
+			},
 			"directory": {
 				"name"        : "DirectoryLoader",
 				"description" : "Loads all supported files from a directory",
@@ -189,6 +213,94 @@ class {
 					"extractTables"     : "Preserve table structure (default: true)",
 					"ocrEnabled"        : "Enable OCR for scanned docs (default: false)",
 					"passwordProtected" : "Password for encrypted documents"
+				}
+			},
+			"feed": {
+				"name"        : "FeedLoader",
+				"description" : "Loads RSS and Atom feeds, creating a document per feed item",
+				"extensions"  : [ "rss", "atom" ],
+				"class"       : "bxModules.bxai.models.loaders.FeedLoader",
+				"capabilities": {
+					"streaming"        : false,
+					"chunking"         : true,
+					"metadata"         : true,
+					"urlSupport"       : true,
+					"directoryMode"    : false,
+					"rssSupport"       : true,
+					"atomSupport"      : true,
+					"dateFiltering"    : true,
+					"categoryFiltering": true
+				},
+				"configOptions": {
+					"includeDescription" : "Include item description (default: true)",
+					"includeContent"     : "Include full content (default: true)",
+					"stripHtml"          : "Strip HTML from content (default: true)",
+					"maxItems"           : "Maximum items to load (0 = no limit)",
+					"sinceDate"          : "Only load items since date",
+					"categories"         : "Filter by categories (array)",
+					"timeout"            : "HTTP timeout for URL feeds (default: 30)"
+				}
+			},
+			"sql": {
+				"name"        : "SQLLoader",
+				"description" : "Loads documents from database queries",
+				"extensions"  : [],
+				"class"       : "bxModules.bxai.models.loaders.SQLLoader",
+				"capabilities": {
+					"streaming"       : false,
+					"chunking"        : true,
+					"metadata"        : true,
+					"urlSupport"      : false,
+					"directoryMode"   : false,
+					"queryExecution"  : true,
+					"parameterized"   : true,
+					"rowAsDocument"   : true,
+					"templateContent" : true
+				},
+				"configOptions": {
+					"datasource"      : "Datasource name to use",
+					"contentColumn"   : "Column to use as document content",
+					"contentColumns"  : "Array of columns to combine as content",
+					"contentTemplate" : "Template with ${column} placeholders",
+					"metadataColumns" : "Columns to extract as metadata",
+					"idColumn"        : "Column to use as document ID",
+					"params"          : "Query parameters struct",
+					"maxRows"         : "Maximum rows to return (0 = no limit)",
+					"rowsAsDocuments" : "Create document per row (default: true)"
+				}
+			},
+			"crawler": {
+				"name"        : "WebCrawlerLoader",
+				"description" : "Crawls multiple web pages by following links with robots.txt support",
+				"extensions"  : [],
+				"class"       : "bxModules.bxai.models.loaders.WebCrawlerLoader",
+				"capabilities": {
+					"streaming"        : false,
+					"chunking"         : true,
+					"metadata"         : true,
+					"urlSupport"       : true,
+					"directoryMode"    : false,
+					"multiPage"        : true,
+					"linkFollowing"    : true,
+					"robotsTxtSupport" : true,
+					"deduplication"    : true,
+					"jsoupParsing"     : true
+				},
+				"configOptions": {
+					"maxPages"           : "Maximum pages to crawl (default: 10)",
+					"maxDepth"           : "Maximum link depth (default: 2)",
+					"followExternalLinks": "Follow links to other domains (default: false)",
+					"allowedDomains"     : "Array of domains to allow",
+					"allowedPaths"       : "Array of path prefixes to allow",
+					"excludedPaths"      : "Array of path prefixes to exclude",
+					"urlPatterns"        : "Array of URL regex patterns to match",
+					"excludeUrlPatterns" : "Array of URL regex patterns to exclude",
+					"respectRobotsTxt"   : "Respect robots.txt rules (default: true)",
+					"contentSelector"    : "CSS selector for content extraction",
+					"excludeSelectors"   : "CSS selectors to exclude from content",
+					"delay"              : "Delay between requests in ms (default: 1000)",
+					"userAgent"          : "User agent string",
+					"deduplicateContent" : "Skip pages with duplicate content (default: true)"
 				}
 			}
 		};

@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  * ----------------------------------------------------------------------------------
- * Load documents from various sources (files, directories, URLs).
+ * Load documents from various sources (files, directories, URLs, databases).
  * Returns an array of Document objects from any source with optional configuration.
  *
  * @example
@@ -28,39 +28,25 @@
  *
  * // Load CSV with row-as-document mode
  * docs = aiDocuments( "/data.csv", "csv", { rowsAsDocuments: true } )
+ *
+ * // Load from RSS feed
+ * docs = aiDocuments( "https://example.com/feed.xml", "feed" )
+ *
+ * // Load from database
+ * docs = aiDocuments( "SELECT * FROM articles", "sql", { datasource: "mydb" } )
+ *
+ * // Crawl website
+ * docs = aiDocuments( "https://example.com", "crawler", { maxPages: 10 } )
  * ```
  */
-import bxModules.bxai.models.loaders.TextLoader;
-import bxModules.bxai.models.loaders.MarkdownLoader;
-import bxModules.bxai.models.loaders.HTMLLoader;
-import bxModules.bxai.models.loaders.CSVLoader;
-import bxModules.bxai.models.loaders.JSONLoader;
-import bxModules.bxai.models.loaders.DirectoryLoader;
-
 @BoxBIF
 class {
 
 	/**
-	 * Static loader type mappings
-	 */
-	static {
-		EXTENSION_MAP = {
-			"txt"      : "text",
-			"text"     : "text",
-			"md"       : "markdown",
-			"markdown" : "markdown",
-			"html"     : "html",
-			"htm"      : "html",
-			"csv"      : "csv",
-			"json"     : "json"
-		};
-	}
-
-	/**
 	 * Load documents from a source
 	 *
-	 * @source The source to load from (file path, directory, or URL)
-	 * @type   Optional explicit loader type (text, markdown, html, csv, json, directory)
+	 * @source The source to load from (file path, directory, URL, or SQL query)
+	 * @type   Optional explicit loader type (text, markdown, csv, json, xml, directory, http, tika, feed, sql, crawler)
 	 * @config Configuration options for the loader
 	 *
 	 * @return Array of Document objects

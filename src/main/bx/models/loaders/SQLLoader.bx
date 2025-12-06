@@ -1,0 +1,488 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Loads documents from database queries.
+ * Converts SQL query results into Document objects for RAG workflows.
+ * Supports any JDBC datasource configured in BoxLang.
+ */
+class extends="BaseDocumentLoader" {
+
+	/**
+	 * The SQL query to execute
+	 */
+	property name="sqlQuery" type="string" default="";
+
+	/**
+	 * Static configuration
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			encoding         : "UTF-8",
+			includeMetadata  : true,
+			// Database options
+			datasource       : "",
+			// Content configuration
+			contentColumn    : "",
+			contentColumns   : [],
+			contentTemplate  : "",
+			// Metadata configuration
+			metadataColumns  : [],
+			idColumn         : "",
+			// Query options
+			params           : {},
+			maxRows          : 0,
+			// Document options
+			rowsAsDocuments  : true,
+			columnSeparator  : " | ",
+			rowSeparator     : char( 10 )
+		};
+	}
+
+	/**
+	 * Initialize the SQLLoader
+	 *
+	 * @source SQL query string or table name
+	 * @config Configuration options
+	 *
+	 * @return SQLLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		super.init( source: arguments.source, config: {} );
+		variables.config = static.DEFAULT_CONFIG.append( arguments.config, true );
+		variables.sqlQuery = arguments.source;
+		return this;
+	}
+
+	/**
+	 * Get the loader name
+	 *
+	 * @return The loader name
+	 */
+	string function getName() {
+		return "SQLLoader";
+	}
+
+	/**
+	 * Load documents from database query
+	 *
+	 * @return Array of Document objects
+	 */
+	array function load() {
+		if ( !len( variables.sqlQuery ) ) {
+			throw(
+				type    : "SQLLoader.NoQuery",
+				message : "No SQL query specified"
+			);
+		}
+
+		// Build query options
+		var queryOptions = {};
+
+		if ( len( variables.config.datasource ) ) {
+			queryOptions[ "datasource" ] = variables.config.datasource;
+		}
+
+		if ( variables.config.maxRows > 0 ) {
+			queryOptions[ "maxRows" ] = variables.config.maxRows;
+		}
+
+		// Execute query
+		var queryResult = queryExecute(
+			variables.sqlQuery,
+			variables.config.params,
+			queryOptions
+		);
+
+		// Convert to documents
+		if ( variables.config.rowsAsDocuments ) {
+			return convertRowsToDocuments( queryResult );
+		} else {
+			return [ convertQueryToDocument( queryResult ) ];
+		}
+	}
+
+	/**
+	 * Convert each row to a separate document
+	 *
+	 * @queryResult The query result
+	 *
+	 * @return Array of Document objects
+	 */
+	private array function convertRowsToDocuments( required query queryResult ) {
+		var documents = [];
+		var columns = arguments.queryResult.getColumnNames();
+
+		for ( var row in arguments.queryResult ) {
+			var content = buildRowContent( row, columns );
+			var metadata = buildRowMetadata( row, columns );
+			var docId = buildRowId( row );
+
+			documents.append(
+				createDocument(
+					content            : content,
+					additionalMetadata : metadata,
+					id                 : docId
+				)
+			);
+		}
+
+		return documents;
+	}
+
+	/**
+	 * Convert entire query result to single document
+	 *
+	 * @queryResult The query result
+	 *
+	 * @return Document instance
+	 */
+	private Document function convertQueryToDocument( required query queryResult ) {
+		var columns = arguments.queryResult.getColumnNames();
+		var contentParts = [];
+
+		// Add header row
+		contentParts.append( columns.toList( variables.config.columnSeparator ) );
+
+		// Add data rows
+		for ( var row in arguments.queryResult ) {
+			var rowValues = [];
+			for ( var col in columns ) {
+				rowValues.append( toString( row[ col ] ?: "" ) );
+			}
+			contentParts.append( rowValues.toList( variables.config.columnSeparator ) );
+		}
+
+		var content = contentParts.toList( variables.config.rowSeparator );
+
+		var metadata = {
+			"queryType"   : "table",
+			"rowCount"    : arguments.queryResult.recordCount,
+			"columns"     : columns
+		};
+
+		return createDocument(
+			content            : content,
+			additionalMetadata : metadata
+		);
+	}
+
+	/**
+	 * Build content string from a row
+	 *
+	 * @row The query row
+	 * @columns Array of column names
+	 *
+	 * @return Content string
+	 */
+	private string function buildRowContent( required struct row, required array columns ) {
+		// If content template is specified, use it
+		if ( len( variables.config.contentTemplate ) ) {
+			return processTemplate( variables.config.contentTemplate, arguments.row );
+		}
+
+		// If specific content column is specified
+		if ( len( variables.config.contentColumn ) ) {
+			return toString( arguments.row[ variables.config.contentColumn ] ?: "" );
+		}
+
+		// If multiple content columns are specified
+		if ( variables.config.contentColumns.len() > 0 ) {
+			var parts = [];
+			for ( var col in variables.config.contentColumns ) {
+				var value = arguments.row[ col ] ?: "";
+				if ( len( toString( value ) ) ) {
+					parts.append( toString( value ) );
+				}
+			}
+			return parts.toList( variables.config.columnSeparator );
+		}
+
+		// Default: concatenate all non-metadata columns
+		var parts = [];
+		var metaCols = variables.config.metadataColumns;
+
+		for ( var col in arguments.columns ) {
+			// Skip metadata columns and ID column
+			if ( metaCols.findNoCase( col ) || col == variables.config.idColumn ) {
+				continue;
+			}
+
+			var value = arguments.row[ col ] ?: "";
+			if ( len( toString( value ) ) ) {
+				parts.append( "#col#: #toString( value )#" );
+			}
+		}
+
+		return parts.toList( variables.config.columnSeparator );
+	}
+
+	/**
+	 * Build metadata from a row
+	 *
+	 * @row The query row
+	 * @columns Array of column names
+	 *
+	 * @return Metadata struct
+	 */
+	private struct function buildRowMetadata( required struct row, required array columns ) {
+		var metadata = {
+			"sourceType" : "database",
+			"query"      : variables.sqlQuery
+		};
+
+		// Add datasource if specified
+		if ( len( variables.config.datasource ) ) {
+			metadata[ "datasource" ] = variables.config.datasource;
+		}
+
+		// Add specified metadata columns
+		if ( variables.config.metadataColumns.len() > 0 ) {
+			for ( var col in variables.config.metadataColumns ) {
+				if ( arguments.row.keyExists( col ) ) {
+					metadata[ col ] = arguments.row[ col ];
+				}
+			}
+		}
+
+		return metadata;
+	}
+
+	/**
+	 * Build document ID from row
+	 *
+	 * @row The query row
+	 *
+	 * @return Document ID string
+	 */
+	private string function buildRowId( required struct row ) {
+		if ( len( variables.config.idColumn ) && arguments.row.keyExists( variables.config.idColumn ) ) {
+			return toString( arguments.row[ variables.config.idColumn ] );
+		}
+		return "";
+	}
+
+	/**
+	 * Process a template string with row values
+	 *
+	 * @template Template string with ${column} placeholders
+	 * @row The query row
+	 *
+	 * @return Processed string
+	 */
+	private string function processTemplate( required string templateStr, required struct row ) {
+		var result = arguments.templateStr;
+
+		for ( var key in arguments.row ) {
+			var value = toString( arguments.row[ key ] ?: "" );
+			result = result.replace( "${#key#}", value, "all" );
+			result = result.replace( "##key##", value, "all" );
+		}
+
+		return result;
+	}
+
+	// ==========================================
+	// Fluent Configuration Methods
+	// ==========================================
+
+	/**
+	 * Set the datasource to use
+	 *
+	 * @name Datasource name
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function datasource( required string name ) {
+		variables.config.datasource = arguments.name;
+		return this;
+	}
+
+	/**
+	 * Set the SQL query
+	 *
+	 * @sql SQL query string
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function query( required string sql ) {
+		variables.sqlQuery = arguments.sql;
+		variables.source = arguments.sql;
+		return this;
+	}
+
+	/**
+	 * Set query parameters
+	 *
+	 * @params Struct of parameter name/value pairs
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function params( required struct params ) {
+		variables.config.params = arguments.params;
+		return this;
+	}
+
+	/**
+	 * Add a query parameter
+	 *
+	 * @name Parameter name
+	 * @value Parameter value
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function param( required string name, required any value ) {
+		variables.config.params[ arguments.name ] = arguments.value;
+		return this;
+	}
+
+	/**
+	 * Set maximum rows to return
+	 *
+	 * @max Maximum rows (0 = no limit)
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function maxRows( required numeric max ) {
+		variables.config.maxRows = arguments.max;
+		return this;
+	}
+
+	/**
+	 * Set the column to use as document content
+	 *
+	 * @column Column name
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function contentColumn( required string column ) {
+		variables.config.contentColumn = arguments.column;
+		return this;
+	}
+
+	/**
+	 * Set multiple columns to combine as content
+	 *
+	 * @columns Array of column names
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function contentColumns( required array columns ) {
+		variables.config.contentColumns = arguments.columns;
+		return this;
+	}
+
+	/**
+	 * Set a content template with column placeholders
+	 *
+	 * @template Template string using ${column} placeholders
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function contentTemplate( required string templateStr ) {
+		variables.config.contentTemplate = arguments.templateStr;
+		return this;
+	}
+
+	/**
+	 * Set columns to extract as metadata
+	 *
+	 * @columns Array of column names
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function metadataColumns( required array columns ) {
+		variables.config.metadataColumns = arguments.columns;
+		return this;
+	}
+
+	/**
+	 * Set the column to use as document ID
+	 *
+	 * @column Column name
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function idColumn( required string column ) {
+		variables.config.idColumn = arguments.column;
+		return this;
+	}
+
+	/**
+	 * Create one document per row (default: true)
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function rowsAsDocuments() {
+		variables.config.rowsAsDocuments = true;
+		return this;
+	}
+
+	/**
+	 * Create single document from entire query result
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function queryAsDocument() {
+		variables.config.rowsAsDocuments = false;
+		return this;
+	}
+
+	/**
+	 * Set the separator between columns in content
+	 *
+	 * @separator Separator string
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function columnSeparator( required string separator ) {
+		variables.config.columnSeparator = arguments.separator;
+		return this;
+	}
+
+	/**
+	 * Set the separator between rows in content
+	 *
+	 * @separator Separator string
+	 *
+	 * @return SQLLoader for chaining
+	 */
+	SQLLoader function rowSeparator( required string separator ) {
+		variables.config.rowSeparator = arguments.separator;
+		return this;
+	}
+
+	// ==========================================
+	// Static Helper Methods
+	// ==========================================
+
+	/**
+	 * Create a loader from a table name
+	 *
+	 * @tableName Name of the table
+	 * @datasource Optional datasource name
+	 *
+	 * @return SQLLoader instance
+	 */
+	static SQLLoader function fromTable( required string tableName, string datasource = "" ) {
+		var loader = new SQLLoader( source: "SELECT * FROM #arguments.tableName#" );
+		if ( len( arguments.datasource ) ) {
+			loader.datasource( arguments.datasource );
+		}
+		return loader;
+	}
+
+}

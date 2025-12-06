@@ -207,12 +207,17 @@ abstract class implements="IDocumentLoader" {
 	}
 
 	/**
-	 * Abstract method: Load all documents from the source
-	 * Must be implemented by subclasses.
+	 * Load all documents from the source
+	 * Subclasses must override this method.
 	 *
 	 * @return Array of Document objects
 	 */
-	abstract array function load();
+	array function load() {
+		throw(
+			type    : "BaseDocumentLoader.NotImplemented",
+			message : "Subclasses must override the load() method"
+		);
+	}
 
 	/**
 	 * Get errors encountered during loading
@@ -305,7 +310,7 @@ abstract class implements="IDocumentLoader" {
 			"path"         : info.path,
 			"size"         : info.size,
 			"lastModified" : info.lastModified,
-			"isDirectory"  : info.isDirectory,
+			"type"         : info.type,
 			"canRead"      : info.canRead
 		};
 	}

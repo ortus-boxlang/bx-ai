@@ -1,0 +1,798 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Web crawler that loads multiple pages by following links.
+ * Built on top of HTTPLoader with support for robots.txt, link filtering,
+ * and depth-limited crawling. Uses JSoup for HTML parsing.
+ */
+class extends="BaseDocumentLoader" {
+
+	/**
+	 * Visited URLs
+	 */
+	property name="visitedUrls" type="struct";
+
+	/**
+	 * URLs to visit (queue)
+	 */
+	property name="urlQueue" type="array";
+
+	/**
+	 * robots.txt rules cache
+	 */
+	property name="robotsRules" type="struct";
+
+	/**
+	 * Content hashes for deduplication
+	 */
+	property name="contentHashes" type="struct";
+
+	/**
+	 * Static configuration
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			encoding           : "UTF-8",
+			includeMetadata    : true,
+			// Crawl limits
+			maxPages           : 10,
+			maxDepth           : 2,
+			// Link filtering
+			followExternalLinks : false,
+			allowedDomains     : [],
+			allowedPaths       : [],
+			excludedPaths      : [],
+			urlPatterns        : [],
+			excludeUrlPatterns : [],
+			// robots.txt
+			respectRobotsTxt   : true,
+			// Content extraction
+			extractText        : true,
+			removeScripts      : true,
+			removeStyles       : true,
+			contentSelector    : "",
+			excludeSelectors   : [],
+			// HTTP options
+			timeout            : 30,
+			delay              : 1000,
+			userAgent          : "BoxLang-WebCrawler/1.0 (+https://boxlang.io)",
+			headers            : {},
+			// Deduplication
+			deduplicateContent : true
+		};
+	}
+
+	/**
+	 * Initialize the WebCrawlerLoader
+	 *
+	 * @source Starting URL to crawl
+	 * @config Configuration options
+	 *
+	 * @return WebCrawlerLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		super.init( source: arguments.source, config: {} );
+		variables.config = static.DEFAULT_CONFIG.append( arguments.config, true );
+		variables.visitedUrls = {};
+		variables.urlQueue = [];
+		variables.robotsRules = {};
+		variables.contentHashes = {};
+		return this;
+	}
+
+	/**
+	 * Get the loader name
+	 *
+	 * @return The loader name
+	 */
+	string function getName() {
+		return "WebCrawlerLoader";
+	}
+
+	/**
+	 * Crawl and load documents from multiple pages
+	 *
+	 * @return Array of Document objects
+	 */
+	array function load() {
+		if ( !len( variables.source ) ) {
+			throw(
+				type    : "WebCrawlerLoader.NoSource",
+				message : "No starting URL specified"
+			);
+		}
+
+		// Validate URL
+		if ( !isValidUrl( variables.source ) ) {
+			throw(
+				type    : "WebCrawlerLoader.InvalidUrl",
+				message : "Invalid starting URL: #variables.source#"
+			);
+		}
+
+		var documents = [];
+
+		// Initialize queue with starting URL
+		variables.urlQueue = [ { url: normalizeUrl( variables.source ), depth: 0 } ];
+		variables.visitedUrls = {};
+		variables.contentHashes = {};
+
+		// Load robots.txt for the starting domain
+		if ( variables.config.respectRobotsTxt ) {
+			loadRobotsTxt( variables.source );
+		}
+
+		// Crawl loop
+		while ( variables.urlQueue.len() > 0 && documents.len() < variables.config.maxPages ) {
+			var item = variables.urlQueue[ 1 ];
+			variables.urlQueue.deleteAt( 1 );
+
+			var currentUrl = item.url;
+			var currentDepth = item.depth;
+
+			// Skip if already visited
+			if ( variables.visitedUrls.keyExists( currentUrl ) ) {
+				continue;
+			}
+
+			// Mark as visited
+			variables.visitedUrls[ currentUrl ] = true;
+
+			// Check robots.txt
+			if ( variables.config.respectRobotsTxt && !isAllowedByRobots( currentUrl ) ) {
+				continue;
+			}
+
+			// Check URL filters
+			if ( !shouldCrawlUrl( currentUrl ) ) {
+				continue;
+			}
+
+			// Add delay between requests
+			if ( documents.len() > 0 && variables.config.delay > 0 ) {
+				sleep( variables.config.delay );
+			}
+
+			// Load the page
+			try {
+				var pageData = loadPage( currentUrl );
+
+				if ( isNull( pageData ) ) {
+					continue;
+				}
+
+				// Check for duplicate content
+				if ( variables.config.deduplicateContent ) {
+					var contentHash = hash( pageData.content, "MD5" );
+					if ( variables.contentHashes.keyExists( contentHash ) ) {
+						continue;
+					}
+					variables.contentHashes[ contentHash ] = currentUrl;
+				}
+
+				// Create document
+				var doc = createDocument(
+					content            : pageData.content,
+					additionalMetadata : pageData.metadata,
+					id                 : currentUrl
+				);
+				documents.append( doc );
+
+				// Extract and queue links if not at max depth
+				if ( currentDepth < variables.config.maxDepth ) {
+					var links = extractLinks( pageData.html, currentUrl );
+					for ( var link in links ) {
+						if ( !variables.visitedUrls.keyExists( link ) ) {
+							variables.urlQueue.append( { url: link, depth: currentDepth + 1 } );
+						}
+					}
+				}
+
+			} catch ( any e ) {
+				// Log error but continue crawling
+				addError( {
+					url     : currentUrl,
+					message : e.message,
+					type    : e.type
+				} );
+			}
+		}
+
+		return documents;
+	}
+
+	/**
+	 * Load a single page
+	 *
+	 * @pageUrl The URL to load
+	 *
+	 * @return Struct with content, metadata, and html or null
+	 */
+	private any function loadPage( required string pageUrl ) {
+		var response = http( url: arguments.pageUrl, timeout: variables.config.timeout )
+			.addHeader( "User-Agent", variables.config.userAgent )
+			.addHeader( "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" )
+			.get()
+			.send();
+
+		// Check for success
+		if ( response.statusCode < 200 || response.statusCode >= 300 ) {
+			return javacast( "null", "" );
+		}
+
+		// Check content type is HTML
+		var contentType = response.headers[ "Content-Type" ] ?: "";
+		if ( !contentType.findNoCase( "text/html" ) && !contentType.findNoCase( "application/xhtml" ) ) {
+			return javacast( "null", "" );
+		}
+
+		var htmlContent = response.fileContent;
+
+		// Parse with JSoup
+		var jsoupDoc = parseHtmlWithJsoup( htmlContent, arguments.pageUrl );
+
+		// Extract content
+		var textContent = extractContent( jsoupDoc );
+
+		// Extract metadata
+		var metadata = {
+			"url"         : arguments.pageUrl,
+			"title"       : getPageTitle( jsoupDoc ),
+			"description" : getMetaDescription( jsoupDoc ),
+			"crawledAt"   : now(),
+			"statusCode"  : response.statusCode
+		};
+
+		return {
+			content  : textContent,
+			metadata : metadata,
+			html     : jsoupDoc
+		};
+	}
+
+	/**
+	 * Parse HTML with JSoup
+	 *
+	 * @html HTML content
+	 * @baseUrl Base URL for resolving relative links
+	 *
+	 * @return JSoup Document
+	 */
+	private any function parseHtmlWithJsoup( required string html, required string baseUrl ) {
+		var Jsoup = createObject( "java", "org.jsoup.Jsoup" );
+		return Jsoup.parse( arguments.html, arguments.baseUrl );
+	}
+
+	/**
+	 * Extract text content from parsed HTML
+	 *
+	 * @jsoupDoc JSoup Document
+	 *
+	 * @return Extracted text
+	 */
+	private string function extractContent( required any jsoupDoc ) {
+		var doc = arguments.jsoupDoc;
+
+		// Remove unwanted elements
+		if ( variables.config.removeScripts ) {
+			doc.select( "script" ).remove();
+		}
+		if ( variables.config.removeStyles ) {
+			doc.select( "style" ).remove();
+		}
+
+		// Remove excluded selectors
+		for ( var selector in variables.config.excludeSelectors ) {
+			doc.select( selector ).remove();
+		}
+
+		// Extract content from specific selector or body
+		var contentElement = len( variables.config.contentSelector )
+			? doc.select( variables.config.contentSelector ).first()
+			: doc.body();
+
+		if ( isNull( contentElement ) ) {
+			return "";
+		}
+
+		if ( variables.config.extractText ) {
+			return contentElement.text();
+		}
+
+		return contentElement.html();
+	}
+
+	/**
+	 * Extract links from parsed HTML
+	 *
+	 * @jsoupDoc JSoup Document
+	 * @baseUrl Current page URL
+	 *
+	 * @return Array of absolute URLs
+	 */
+	private array function extractLinks( required any jsoupDoc, required string baseUrl ) {
+		var links = [];
+		var baseDomain = getDomain( arguments.baseUrl );
+		var linkElements = arguments.jsoupDoc.select( "a[href]" );
+
+		var iterator = linkElements.iterator();
+		while ( iterator.hasNext() ) {
+			var element = iterator.next();
+			var href = element.absUrl( "href" );
+
+			if ( !len( href ) ) {
+				continue;
+			}
+
+			// Normalize URL
+			href = normalizeUrl( href );
+
+			// Skip non-HTTP URLs
+			if ( !isValidUrl( href ) ) {
+				continue;
+			}
+
+			// Check external links
+			var linkDomain = getDomain( href );
+			if ( linkDomain != baseDomain ) {
+				if ( !variables.config.followExternalLinks ) {
+					continue;
+				}
+				// Check allowed domains
+				if ( variables.config.allowedDomains.len() > 0 && !variables.config.allowedDomains.findNoCase( linkDomain ) ) {
+					continue;
+				}
+			}
+
+			// Check URL filters
+			if ( shouldCrawlUrl( href ) ) {
+				links.append( href );
+			}
+		}
+
+		return links;
+	}
+
+	/**
+	 * Get page title
+	 *
+	 * @jsoupDoc JSoup Document
+	 *
+	 * @return Page title
+	 */
+	private string function getPageTitle( required any jsoupDoc ) {
+		return arguments.jsoupDoc.title() ?: "";
+	}
+
+	/**
+	 * Get meta description
+	 *
+	 * @jsoupDoc JSoup Document
+	 *
+	 * @return Meta description
+	 */
+	private string function getMetaDescription( required any jsoupDoc ) {
+		var metaDesc = arguments.jsoupDoc.select( "meta[name=description]" ).first();
+		return !isNull( metaDesc ) ? metaDesc.attr( "content" ) : "";
+	}
+
+	/**
+	 * Check if URL is valid HTTP/HTTPS
+	 *
+	 * @url URL to check
+	 *
+	 * @return True if valid
+	 */
+	private boolean function isValidUrl( required string url ) {
+		return arguments.url.lCase().reFind( "^https?://" ) > 0;
+	}
+
+	/**
+	 * Normalize URL (remove fragments, trailing slashes)
+	 *
+	 * @url URL to normalize
+	 *
+	 * @return Normalized URL
+	 */
+	private string function normalizeUrl( required string url ) {
+		var normalized = arguments.url;
+
+		// Remove fragment
+		var fragmentPos = normalized.find( "##" );
+		if ( fragmentPos > 0 ) {
+			normalized = left( normalized, fragmentPos - 1 );
+		}
+
+		// Remove trailing slash (except for root)
+		if ( normalized.len() > 1 && right( normalized, 1 ) == "/" ) {
+			var path = listGetAt( normalized, 2, "://" );
+			if ( path.find( "/" ) > 0 ) {
+				normalized = left( normalized, normalized.len() - 1 );
+			}
+		}
+
+		return normalized;
+	}
+
+	/**
+	 * Get domain from URL
+	 *
+	 * @url URL to parse
+	 *
+	 * @return Domain name
+	 */
+	private string function getDomain( required string url ) {
+		var withoutProtocol = arguments.url.reReplace( "^https?://", "" );
+		return listFirst( withoutProtocol, "/" ).lCase();
+	}
+
+	/**
+	 * Check if URL should be crawled based on filters
+	 *
+	 * @url URL to check
+	 *
+	 * @return True if should crawl
+	 */
+	private boolean function shouldCrawlUrl( required string url ) {
+		var path = getUrlPath( arguments.url );
+
+		// Check allowed paths
+		if ( variables.config.allowedPaths.len() > 0 ) {
+			var allowed = false;
+			for ( var allowedPath in variables.config.allowedPaths ) {
+				if ( path.startsWith( allowedPath ) ) {
+					allowed = true;
+					break;
+				}
+			}
+			if ( !allowed ) return false;
+		}
+
+		// Check excluded paths
+		for ( var excludedPath in variables.config.excludedPaths ) {
+			if ( path.startsWith( excludedPath ) ) {
+				return false;
+			}
+		}
+
+		// Check URL patterns
+		if ( variables.config.urlPatterns.len() > 0 ) {
+			var matches = false;
+			for ( var pattern in variables.config.urlPatterns ) {
+				if ( reFindNoCase( pattern, arguments.url ) ) {
+					matches = true;
+					break;
+				}
+			}
+			if ( !matches ) return false;
+		}
+
+		// Check excluded URL patterns
+		for ( var pattern in variables.config.excludeUrlPatterns ) {
+			if ( reFindNoCase( pattern, arguments.url ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Get path from URL
+	 *
+	 * @url URL to parse
+	 *
+	 * @return URL path
+	 */
+	private string function getUrlPath( required string url ) {
+		var withoutProtocol = arguments.url.reReplace( "^https?://", "" );
+		var slashPos = withoutProtocol.find( "/" );
+		if ( slashPos > 0 ) {
+			return mid( withoutProtocol, slashPos, len( withoutProtocol ) );
+		}
+		return "/";
+	}
+
+	/**
+	 * Load and parse robots.txt for a domain
+	 *
+	 * @url URL to get robots.txt for
+	 */
+	private void function loadRobotsTxt( required string url ) {
+		var domain = getDomain( arguments.url );
+
+		if ( variables.robotsRules.keyExists( domain ) ) {
+			return;
+		}
+
+		var robotsUrl = "https://" & domain & "/robots.txt";
+
+		try {
+			var response = http( url: robotsUrl, timeout: 10 )
+				.addHeader( "User-Agent", variables.config.userAgent )
+				.get()
+				.send();
+
+			if ( response.statusCode == 200 ) {
+				variables.robotsRules[ domain ] = parseRobotsTxt( response.fileContent );
+			} else {
+				// No robots.txt or error - allow all
+				variables.robotsRules[ domain ] = { disallowed: [], allowed: [] };
+			}
+		} catch ( any e ) {
+			// Error loading robots.txt - allow all
+			variables.robotsRules[ domain ] = { disallowed: [], allowed: [] };
+		}
+	}
+
+	/**
+	 * Parse robots.txt content
+	 *
+	 * @content robots.txt content
+	 *
+	 * @return Struct with disallowed and allowed paths
+	 */
+	private struct function parseRobotsTxt( required string content ) {
+		var rules = { disallowed: [], allowed: [] };
+		var lines = arguments.content.listToArray( char( 10 ) );
+		var isRelevantAgent = false;
+
+		for ( var line in lines ) {
+			line = line.trim();
+
+			// Skip comments and empty lines
+			if ( !len( line ) || left( line, 1 ) == "##" ) {
+				continue;
+			}
+
+			var colonPos = line.find( ":" );
+			if ( colonPos == 0 ) continue;
+
+			var directive = left( line, colonPos - 1 ).trim().lCase();
+			var value = mid( line, colonPos + 1, len( line ) ).trim();
+
+			if ( directive == "user-agent" ) {
+				isRelevantAgent = ( value == "*" || value.findNoCase( "boxlang" ) );
+			} else if ( isRelevantAgent ) {
+				if ( directive == "disallow" && len( value ) ) {
+					rules.disallowed.append( value );
+				} else if ( directive == "allow" && len( value ) ) {
+					rules.allowed.append( value );
+				}
+			}
+		}
+
+		return rules;
+	}
+
+	/**
+	 * Check if URL is allowed by robots.txt
+	 *
+	 * @url URL to check
+	 *
+	 * @return True if allowed
+	 */
+	private boolean function isAllowedByRobots( required string url ) {
+		var domain = getDomain( arguments.url );
+
+		if ( !variables.robotsRules.keyExists( domain ) ) {
+			return true;
+		}
+
+		var rules = variables.robotsRules[ domain ];
+		var path = getUrlPath( arguments.url );
+
+		// Check allowed first (more specific)
+		for ( var allowedPath in rules.allowed ) {
+			if ( path.startsWith( allowedPath ) ) {
+				return true;
+			}
+		}
+
+		// Check disallowed
+		for ( var disallowedPath in rules.disallowed ) {
+			if ( path.startsWith( disallowedPath ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	// ==========================================
+	// Fluent Configuration Methods
+	// ==========================================
+
+	/**
+	 * Set maximum number of pages to crawl
+	 *
+	 * @max Maximum pages
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function maxPages( required numeric max ) {
+		variables.config.maxPages = arguments.max;
+		return this;
+	}
+
+	/**
+	 * Set maximum crawl depth
+	 *
+	 * @depth Maximum depth (0 = start page only)
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function maxDepth( required numeric depth ) {
+		variables.config.maxDepth = arguments.depth;
+		return this;
+	}
+
+	/**
+	 * Allow following links to external domains
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function followExternalLinks() {
+		variables.config.followExternalLinks = true;
+		return this;
+	}
+
+	/**
+	 * Set allowed domains for crawling
+	 *
+	 * @domains Array of domain names
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function allowedDomains( required array domains ) {
+		variables.config.allowedDomains = arguments.domains;
+		return this;
+	}
+
+	/**
+	 * Set allowed path prefixes
+	 *
+	 * @paths Array of path prefixes (e.g., ["/docs/", "/blog/"])
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function allowedPaths( required array paths ) {
+		variables.config.allowedPaths = arguments.paths;
+		return this;
+	}
+
+	/**
+	 * Set excluded path prefixes
+	 *
+	 * @paths Array of path prefixes to exclude
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function excludedPaths( required array paths ) {
+		variables.config.excludedPaths = arguments.paths;
+		return this;
+	}
+
+	/**
+	 * Set URL patterns to match (regex)
+	 *
+	 * @patterns Array of regex patterns
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function urlPatterns( required array patterns ) {
+		variables.config.urlPatterns = arguments.patterns;
+		return this;
+	}
+
+	/**
+	 * Set URL patterns to exclude (regex)
+	 *
+	 * @patterns Array of regex patterns
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function excludeUrlPatterns( required array patterns ) {
+		variables.config.excludeUrlPatterns = arguments.patterns;
+		return this;
+	}
+
+	/**
+	 * Respect robots.txt rules
+	 *
+	 * @respect Whether to respect robots.txt
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function respectRobotsTxt( boolean respect = true ) {
+		variables.config.respectRobotsTxt = arguments.respect;
+		return this;
+	}
+
+	/**
+	 * Set CSS selector for content extraction
+	 *
+	 * @selector CSS selector (e.g., "article", "main", ".content")
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function contentSelector( required string selector ) {
+		variables.config.contentSelector = arguments.selector;
+		return this;
+	}
+
+	/**
+	 * Set CSS selectors to exclude from content
+	 *
+	 * @selectors Array of CSS selectors
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function excludeSelectors( required array selectors ) {
+		variables.config.excludeSelectors = arguments.selectors;
+		return this;
+	}
+
+	/**
+	 * Set delay between requests (ms)
+	 *
+	 * @ms Delay in milliseconds
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function delay( required numeric ms ) {
+		variables.config.delay = arguments.ms;
+		return this;
+	}
+
+	/**
+	 * Set user agent string
+	 *
+	 * @agent User agent string
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function userAgent( required string agent ) {
+		variables.config.userAgent = arguments.agent;
+		return this;
+	}
+
+	/**
+	 * Set request timeout
+	 *
+	 * @seconds Timeout in seconds
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function timeout( required numeric seconds ) {
+		variables.config.timeout = arguments.seconds;
+		return this;
+	}
+
+	/**
+	 * Enable/disable content deduplication
+	 *
+	 * @dedupe Whether to deduplicate
+	 *
+	 * @return WebCrawlerLoader for chaining
+	 */
+	WebCrawlerLoader function deduplicateContent( boolean dedupe = true ) {
+		variables.config.deduplicateContent = arguments.dedupe;
+		return this;
+	}
+
+}

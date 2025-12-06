@@ -148,14 +148,12 @@ class extends="BaseDocumentLoader" {
 	private array function splitByHeaders( required string content, required struct fileInfo ) {
 		var documents    = [];
 		var headerLevel  = variables.config.headerLevel;
-		var headerPrefix = repeatString( "##", headerLevel - 1 ) & "#";
-
-		// Build regex pattern for headers at specified level and below
-		var pattern = "(^|\n)(#{1,#headerLevel#})\s+(.+?)(?=\n|$)";
+		var hashChar     = char( 35 );
+		var headerPrefix = repeatString( hashChar, headerLevel );
 
 		// Split by headers
 		var sections   = [];
-		var lines      = listToArray( arguments.content, chr( 10 ), true );
+		var lines      = listToArray( arguments.content, char( 10 ), true );
 		var currentSection = {
 			header  : "",
 			level   : 0,
@@ -163,8 +161,8 @@ class extends="BaseDocumentLoader" {
 		};
 
 		for ( var line in lines ) {
-			// Check if this is a header line
-			var headerMatch = reFind( "^(#{1,6})\s+(.+)$", line, 1, true );
+			// Check if this is a header line using char(35) for hash
+			var headerMatch = reFind( "^(" & hashChar & "{1,6})\s+(.+)$", line, 1, true );
 
 			if ( headerMatch.len[ 1 ] > 0 ) {
 				// Save previous section if it has content
@@ -192,11 +190,11 @@ class extends="BaseDocumentLoader" {
 		var sectionIndex = 0;
 		for ( var section in sections ) {
 			sectionIndex++;
-			var sectionContent = section.content.toList( chr( 10 ) );
+			var sectionContent = section.content.toList( char( 10 ) );
 
 			// Add header to content if present
 			if ( len( section.header ) ) {
-				sectionContent = section.header & chr( 10 ) & chr( 10 ) & sectionContent;
+				sectionContent = section.header & char( 10 ) & char( 10 ) & sectionContent;
 			}
 
 			if ( len( trim( sectionContent ) ) ) {

@@ -21,6 +21,11 @@
 class extends="BaseDocumentLoader" {
 
 	/**
+	 * Custom loader mappings
+	 */
+	property name="loaderMappings" type="struct";
+
+	/**
 	 * Static configuration and loader mappings
 	 */
 	static {
@@ -38,17 +43,10 @@ class extends="BaseDocumentLoader" {
 			"text" : "TextLoader",
 			"md"   : "MarkdownLoader",
 			"markdown" : "MarkdownLoader",
-			"html" : "HTMLLoader",
-			"htm"  : "HTMLLoader",
 			"csv"  : "CSVLoader",
 			"json" : "JSONLoader"
 		};
 	}
-
-	/**
-	 * Custom loader mappings
-	 */
-	property name="loaderMappings" type="struct";
 
 	/**
 	 * Initialize the DirectoryLoader
@@ -223,8 +221,6 @@ class extends="BaseDocumentLoader" {
 				return new TextLoader( source: arguments.filePath, config: variables.config );
 			case "MarkdownLoader":
 				return new MarkdownLoader( source: arguments.filePath, config: variables.config );
-			case "HTMLLoader":
-				return new HTMLLoader( source: arguments.filePath, config: variables.config );
 			case "CSVLoader":
 				return new CSVLoader( source: arguments.filePath, config: variables.config );
 			case "JSONLoader":

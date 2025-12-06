@@ -31,10 +31,16 @@ interface {
 	/**
 	 * Load all documents from the source
 	 * This method loads all documents into memory at once.
+	 * Subclasses must override this method to provide actual loading logic.
 	 *
 	 * @return Array of Document objects
 	 */
-	array function load();
+	default array function load() {
+		throw(
+			type    : "IDocumentLoader.NotImplemented",
+			message : "Subclasses must implement the load() method"
+		);
+	}
 
 	/**
 	 * Load documents asynchronously

@@ -144,7 +144,7 @@ class extends="BaseDocumentLoader" {
 			}
 		}
 
-		return lines.toList( chr( 10 ) );
+		return lines.toList( char( 10 ) );
 	}
 
 	/**

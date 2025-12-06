@@ -116,7 +116,7 @@ class extends="BaseDocumentLoader" {
 	 */
 	private array function parseCSV( required string content ) {
 		var rows      = [];
-		var lines     = listToArray( arguments.content, chr( 10 ), true );
+		var lines     = listToArray( arguments.content, char( 10 ), true );
 		var delimiter = variables.config.delimiter;
 		var headers   = [];
 		var startRow  = 1 + variables.config.skipRows;
@@ -229,7 +229,7 @@ class extends="BaseDocumentLoader" {
 			}
 		}
 
-		return lines.toList( chr( 10 ) );
+		return lines.toList( char( 10 ) );
 	}
 
 	/**
