@@ -166,6 +166,7 @@ class extends="AiBaseRunnable" {
 	 *            - single: Returns just the assistant's content string
 	 *            - all: Returns all messages (handled by service)
 	 *            - raw: Returns the full provider response structure
+	 *          - context: struct - Context data for security/RAG injection. Available as ${context} placeholder in messages.
 	 *
 	 * @return The agent's response (format depends on returnFormat option)
 	 */
@@ -174,6 +175,9 @@ class extends="AiBaseRunnable" {
 		var userMessage = isStruct( arguments.input ) && arguments.input.keyExists( "content" )
 			? arguments.input
 			: { role: "user", content: toString( arguments.input ) };
+
+		// Merge options (including returnFormat and context)
+		var effectiveOptions = variables.options.append( arguments.options );
 
 		// Build complete message set
 		var messages = [];
@@ -187,11 +191,21 @@ class extends="AiBaseRunnable" {
 		// Add user message
 		messages.append( userMessage );
 
+		// Apply context binding if provided
+		if ( effectiveOptions.keyExists( "context" ) && isStruct( effectiveOptions.context ) ) {
+			var contextJson = jsonSerialize( effectiveOptions.context );
+			messages = messages.map( msg => {
+				if ( isStruct( msg ) && msg.keyExists( "content" ) && isSimpleValue( msg.content ) ) {
+					var boundMsg = duplicate( msg );
+					boundMsg.content = stringBind( boundMsg.content, { context: contextJson } );
+					return boundMsg;
+				}
+				return msg;
+			} );
+		}
+
 		// Merge parameters
 		var effectiveParams = variables.params.append( arguments.params );
-
-		// Merge options (including returnFormat)
-		var effectiveOptions = variables.options.append( arguments.options );
 
 		// Announce before execution
 		BoxAnnounce( "beforeAIAgentRun", {
@@ -223,7 +237,7 @@ class extends="AiBaseRunnable" {
 	 * @onChunk Callback for each chunk
 	 * @input The task or question
 	 * @params Runtime parameters
-	 * @options Runtime options
+	 * @options Runtime options (including context for security/RAG injection)
 	 */
 	public void function stream(
 		required function onChunk,
@@ -242,6 +256,9 @@ class extends="AiBaseRunnable" {
 			? arguments.input
 			: { role: "user", content: toString( arguments.input ) };
 
+		// Merge options (including context)
+		var effectiveOptions = variables.options.append( arguments.options );
+
 		// Build messages
 		var messages = [];
 		if ( systemMessage.len() > 0 ) {
@@ -250,11 +267,21 @@ class extends="AiBaseRunnable" {
 		messages.append( memoryMessages, true );
 		messages.append( userMessage );
 
+		// Apply context binding if provided
+		if ( effectiveOptions.keyExists( "context" ) && isStruct( effectiveOptions.context ) ) {
+			var contextJson = jsonSerialize( effectiveOptions.context );
+			messages = messages.map( msg => {
+				if ( isStruct( msg ) && msg.keyExists( "content" ) && isSimpleValue( msg.content ) ) {
+					var boundMsg = duplicate( msg );
+					boundMsg.content = stringBind( boundMsg.content, { context: contextJson } );
+					return boundMsg;
+				}
+				return msg;
+			} );
+		}
+
 		// Merge parameters
 		var effectiveParams = variables.params.append( arguments.params );
-
-		// Merge options
-		var effectiveOptions = variables.options.append( arguments.options );
 
 		// Store accumulated response for memory
 		var accumulated = "";
