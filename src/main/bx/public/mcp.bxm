@@ -16,7 +16,6 @@
  * MCP Server Entry Point (Front Controller)
  *
  * This file serves as the HTTP front controller for the Model Context Protocol (MCP) server.
- * It receives and validates requests, then delegates processing to MCPRequestProcessor.
  *
  * Usage:
  * 1. Register your tools in Application.bx or a startup script:
@@ -37,5 +36,5 @@
  *    }
  */
 import bxModules.bxai.models.mcp.MCPRequestProcessor
-MCPRequestProcessor::render()
+MCPRequestProcessor::processHttp()
 </bx:script>

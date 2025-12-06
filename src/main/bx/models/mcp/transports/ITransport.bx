@@ -1,0 +1,86 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * ITransport Interface
+ *
+ * Defines the contract for MCP transport implementations.
+ * Transports are responsible for reading requests and writing responses
+ * in their specific protocol (HTTP, STDIO, WebSocket, etc.)
+ */
+interface {
+
+	/**
+	 * Read an incoming request from the transport.
+	 * Returns a normalized request structure that the processor can work with.
+	 *
+	 * @return struct {
+	 *   serverName: string - Name of the MCP server to use
+	 *   method: string - Request method (GET, POST, etc.)
+	 *   body: string - Request body content
+	 *   headers: struct - Request headers
+	 *   acceptHeader: string - Accept header value
+	 *   params: struct - URL/request parameters
+	 *   origin: string - Request origin (for CORS)
+	 *   metadata: struct - Transport-specific metadata
+	 * }
+	 */
+	struct function readRequest();
+
+	/**
+	 * Write a response to the transport.
+	 * Takes a normalized response structure and outputs it appropriately.
+	 *
+	 * @response struct {
+	 *   content: string - Response content
+	 *   contentType: string - Content type
+	 *   headers: struct - Response headers
+	 *   statusCode: numeric - HTTP status code (or equivalent)
+	 * }
+	 */
+	void function writeResponse( required struct response );
+
+	/**
+	 * Check if the transport supports a specific feature.
+	 * Allows conditional logic based on transport capabilities.
+	 *
+	 * @feature The feature to check (e.g., "headers", "cors", "streaming", "preflight")
+	 *
+	 * @return True if the feature is supported, false otherwise
+	 */
+	boolean function supports( required string feature );
+
+	/**
+	 * Get transport-specific metadata.
+	 * Useful for logging, debugging, and transport identification.
+	 *
+	 * @return struct {
+	 *   name: string - Transport name
+	 *   protocol: string - Protocol used (http, stdio, websocket, etc.)
+	 *   version: string - Transport version
+	 *   ... other transport-specific data
+	 * }
+	 */
+	struct function getMetadata();
+
+	/**
+	 * Get the name of this transport.
+	 *
+	 * @return Transport name (e.g., "http", "stdio")
+	 */
+	string function getName();
+
+}

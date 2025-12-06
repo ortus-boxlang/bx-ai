@@ -14,7 +14,7 @@ This directory contains comprehensive examples demonstrating how to use the BoxL
 
 **Run it:**
 ```bash
-boxlang run examples/mcp/basic-server.bxs
+boxlang examples/mcp/basic-server.bxs
 ```
 
 **Key concepts:**
@@ -62,7 +62,7 @@ curl -X POST http://localhost:8080/http-endpoint.bxs \
 
 **Run it:**
 ```bash
-boxlang run examples/mcp/annotation-based.bxs
+boxlang examples/mcp/annotation-based.bxs
 ```
 
 **Key concepts:**
@@ -82,7 +82,7 @@ boxlang run examples/mcp/annotation-based.bxs
 
 **Run it:**
 ```bash
-boxlang run examples/mcp/multi-server.bxs
+boxlang examples/mcp/multi-server.bxs
 ```
 
 **Key concepts:**
@@ -107,7 +107,7 @@ boxlang run examples/mcp/multi-server.bxs
 **Run it:**
 
 ```bash
-boxlang run examples/mcp/mcp-security-example.bxs
+boxlang examples/mcp/mcp-security-example.bxs
 ```
 
 **Key concepts:**
@@ -143,7 +143,7 @@ boxlang run examples/mcp/mcp-security-example.bxs
 **Run it:**
 
 ```bash
-boxlang run examples/mcp/advanced-features.bx
+boxlang examples/mcp/advanced-features.bx
 ```
 
 **Key concepts:**

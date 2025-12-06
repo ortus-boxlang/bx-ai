@@ -5,6 +5,7 @@ The BoxLang AI Module provides a complete MCP (Model Context Protocol) server im
 ## Table of Contents
 
 - [What is an MCP Server?](#what-is-an-mcp-server)
+- [Transport Types](#transport-types)
 - [Quick Start](#quick-start)
 - [Server Configuration](#server-configuration)
 - [Tool Registration](#tool-registration)
@@ -28,7 +29,122 @@ An MCP Server is a service that exposes capabilities to AI clients using the sta
 - 🔧 **Expose Tools**: Register functions that AI clients can invoke
 - 📚 **Serve Resources**: Provide documents and data to AI clients
 - 💬 **Offer Prompts**: Define reusable prompt templates
-- 🌐 **HTTP Endpoint**: Expose your MCP server via a web endpoint
+- 🌐 **HTTP & STDIO Transports**: Expose your MCP server via web or command-line
+
+## Transport Types
+
+BoxLang AI provides two transport mechanisms for MCP servers:
+
+### 🌐 HTTP Transport (Web)
+
+**Best for:** Web applications, REST APIs, browser-based clients
+
+**Entry Point:** Automatic via convention or manual endpoint creation
+
+**Automatic (Convention):**
+
+```javascript
+// Access the built-in endpoint
+POST http://localhost/~bxai/mcp.bxm
+POST http://localhost/~bxai/mcp.bxm?server=myApp
+POST http://localhost/~bxai/mcp.bxm/myApp
+```
+
+**Manual (Custom Endpoint):**
+
+```javascript
+// api/my-mcp.bxm
+<bx:script>
+import bxModules.bxai.models.mcp.MCPRequestProcessor
+MCPRequestProcessor::startHttp()
+</bx:script>
+```
+
+**Features:**
+
+- ✅ CORS support with wildcard patterns
+- ✅ Body size limits
+- ✅ API key authentication
+- ✅ HTTP Basic Auth
+- ✅ Security headers
+- ✅ Server-Sent Events (SSE) streaming
+- ✅ Discovery endpoint (GET)
+
+### 🖥️ STDIO Transport (Command-Line)
+
+**Best for:** Desktop applications, CLI tools, IDE integrations, local AI assistants
+
+**Entry Point:** Create a script entry point
+
+**Example Script** (`mcp-stdio.bxs`):
+
+```javascript
+import bxModules.bxai.models.mcp.MCPRequestProcessor
+
+// Register your server and tools
+mcpServer( "myApp" )
+    .registerTool( aiTool( "echo", "Echo tool", ( msg ) => msg ) )
+
+// Get server name from CLI args
+serverName = getSystemSetting( "MCP_SERVER_NAME", "default" )
+parsedArgs = cliGetArgs()
+
+if ( structKeyExists( parsedArgs.options, "server" ) ) {
+    serverName = parsedArgs.options.server
+}
+
+// Start STDIO transport (blocks until shutdown)
+MCPRequestProcessor::startStdio( serverName )
+```
+
+**Run:**
+
+```bash
+# Start with default server
+boxlang mcp-stdio.bxs
+
+# Start with specific server
+boxlang mcp-stdio.bxs --server myApp
+
+# Or via environment variable
+MCP_SERVER_NAME=myApp boxlang mcp-stdio.bxs
+```
+
+**Features:**
+
+- ✅ JSON-RPC over STDIN/STDOUT
+- ✅ Line-based protocol
+- ✅ Graceful shutdown signal
+- ✅ Process lifecycle management
+- ❌ No HTTP headers/CORS (not needed)
+- ❌ No status codes (JSON-RPC error codes used)
+
+**Communication:**
+
+```bash
+# Input (STDIN)
+{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}
+
+# Output (STDOUT)
+{"jsonrpc":"2.0","result":{"tools":[...]},"id":1}
+
+# Shutdown
+{"jsonrpc":"2.0","method":"shutdown","params":{},"id":99}
+```
+
+**📖 Complete Example:** See `examples/mcp/09-mcp-stdio.bxs` for a full working STDIO entry point with argument parsing.
+
+### 🎯 Choosing a Transport
+
+| Scenario | Recommended Transport |
+|----------|----------------------|
+| Web application with browser clients | HTTP |
+| REST API for external services | HTTP |
+| Desktop AI assistant (Claude Desktop, etc.) | STDIO |
+| VS Code extension / IDE integration | STDIO |
+| Command-line tool | STDIO |
+| Docker container as MCP service | Both (HTTP for API, STDIO for container tools) |
+| Testing/Development | HTTP (easier to test with curl) |
 
 ## Quick Start
 
@@ -86,7 +202,7 @@ You can create your own MCP server endpoints at any URL by importing and renderi
 // api/mcp-endpoint.bxm
 <bx:script>
 import bxModules.bxai.models.mcp.MCPRequestProcessor
-MCPRequestProcessor::render()
+MCPRequestProcessor::startHttp()
 </bx:script>
 ```
 
@@ -123,7 +239,7 @@ if ( !session.isAdmin ) {
 
 // Render MCP processor
 import bxModules.bxai.models.mcp.MCPRequestProcessor
-MCPRequestProcessor::render()
+MCPRequestProcessor::startHttp()
 </bx:script>
 ```
 
@@ -137,7 +253,7 @@ request.setHeader( "X-API-Version", "2.0" )
 
 // Render MCP processor
 import bxModules.bxai.models.mcp.MCPRequestProcessor
-MCPRequestProcessor::render()
+MCPRequestProcessor::startHttp()
 </bx:script>
 ```
 
@@ -1177,6 +1293,8 @@ if ( result.getSuccess() ) {
 ## Events & Interception 🎯
 
 The MCP Server fires custom events during its lifecycle, allowing you to add custom logging, monitoring, alerting, and integration with other systems.
+
+> **📡 Transport Agnostic**: All MCP events work identically for both HTTP and STDIO transports. The same event handlers will be called regardless of how clients connect to your MCP server.
 
 ### Available Events
 

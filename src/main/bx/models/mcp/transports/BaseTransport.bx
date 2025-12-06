@@ -1,0 +1,198 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * BaseTransport
+ *
+ * Abstract base class for MCP transport implementations.
+ * Provides common functionality and utilities shared across all transports.
+ */
+import bxModules.bxai.models.mcp.transports.ITransport;
+
+class implements="ITransport" {
+
+	/**
+	 * Logger for transport operations
+	 */
+	property name="logger";
+
+	/**
+	 * Transport name
+	 */
+	property name="name" type="string" default="";
+
+	/**
+	 * Supported features map
+	 */
+	property name="features" type="struct";
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		variables.logger = getBoxRuntime().getLoggingService().getLogger( "mcp" );
+		variables.features = {
+			"headers": false,
+			"cors": false,
+			"streaming": false,
+			"preflight": false,
+			"statusCodes": false
+		};
+		return this;
+	}
+
+	/**
+	 * Check if transport supports a feature
+	 */
+	boolean function supports( required string feature ) {
+		return variables.features[ arguments.feature ] ?: false;
+	}
+
+	/**
+	 * Get transport metadata
+	 */
+	struct function getMetadata() {
+		return {
+			"name": variables.name,
+			"protocol": variables.name,
+			"version": "1.0.0",
+			"features": variables.features
+		};
+	}
+
+	/**
+	 * Get transport name
+	 */
+	string function getName() {
+		return variables.name;
+	}
+
+	/**
+	 * Get standard security headers
+	 * Transports can override or extend this
+	 */
+	struct function getSecurityHeaders() {
+		return {
+			"X-Content-Type-Options": "nosniff",
+			"X-Frame-Options": "DENY",
+			"X-XSS-Protection": "1; mode=block",
+			"Referrer-Policy": "strict-origin-when-cross-origin",
+			"Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+			"Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+			"Permissions-Policy": "geolocation=(), microphone=(), camera=()"
+		};
+	}
+
+	/**
+	 * Apply security headers to response
+	 *
+	 * @response The response struct to modify
+	 *
+	 * @return Modified response struct
+	 */
+	struct function applySecurityHeaders( required struct response ) {
+		if ( this.supports( "headers" ) ) {
+			var securityHeaders = this.getSecurityHeaders();
+			for ( var headerName in securityHeaders ) {
+				arguments.response.headers[ headerName ] = securityHeaders[ headerName ];
+			}
+		}
+		return arguments.response;
+	}
+
+	/**
+	 * Create an error response struct
+	 *
+	 * @statusCode HTTP status code
+	 * @errorCode JSON-RPC error code
+	 * @message Error message
+	 * @id Request ID (optional)
+	 *
+	 * @return Error response struct
+	 */
+	struct function createErrorResponse(
+		required numeric statusCode,
+		required numeric errorCode,
+		required string message,
+		string id = ""
+	) {
+		var response = {
+			"content": jsonSerialize( {
+				"jsonrpc": "2.0",
+				"error": {
+					"code": arguments.errorCode,
+					"message": arguments.message
+				},
+				"id": arguments.id
+			} ),
+			"contentType": "application/json",
+			"headers": {},
+			"statusCode": arguments.statusCode
+		};
+
+		return this.applySecurityHeaders( response );
+	}
+
+	/**
+	 * Log transport activity
+	 *
+	 * @level Log level (info, warn, error, debug)
+	 * @message Log message
+	 * @data Additional data to log
+	 */
+	void function log(
+		required string level,
+		required string message,
+		struct data = {}
+	) {
+		var logMessage = "[#this.getName()#] #arguments.message#";
+
+		switch ( arguments.level ) {
+			case "error":
+				variables.logger.error( logMessage, arguments.data );
+				break;
+			case "warn":
+				variables.logger.warn( logMessage, arguments.data );
+				break;
+			case "debug":
+				variables.logger.debug( logMessage, arguments.data );
+				break;
+			default:
+				variables.logger.info( logMessage, arguments.data );
+		}
+	}
+
+	/**
+	 * Read request - must be implemented by subclass
+	 */
+	struct function readRequest() {
+		throw(
+			type: "AbstractMethodException",
+			message: "readRequest() must be implemented by transport subclass"
+		);
+	}
+
+	/**
+	 * Write response - must be implemented by subclass
+	 */
+	void function writeResponse( required struct response ) {
+		throw(
+			type: "AbstractMethodException",
+			message: "writeResponse() must be implemented by transport subclass"
+		);
+	}
+
+}

@@ -1,6 +1,7 @@
 .gradle
 build/**
 !gradle/wrapper/gradle-wrapper.jar
+boxlang_modules/**
 
 ### IntelliJ IDEA ###
 .idea/

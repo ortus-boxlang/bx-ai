@@ -1,0 +1,160 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * StdioTransport
+ *
+ * STDIO transport implementation for MCP servers.
+ * Handles communication via standard input/output streams using JSON-RPC.
+ * Ideal for CLI tools, desktop applications, and process-to-process communication.
+ */
+import bxModules.bxai.models.mcp.transports.BaseTransport;
+
+class extends="BaseTransport" {
+
+	/**
+	 * Default server name for STDIO transport
+	 */
+	property name="defaultServerName" type="string" default="default";
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		super.init();
+
+		variables.name = "stdio";
+		variables.defaultServerName = "default";
+
+		// STDIO doesn't support HTTP-specific features
+		variables.features = {
+			"headers": false,
+			"cors": false,
+			"streaming": true,  // Via JSON-RPC notifications
+			"preflight": false,
+			"statusCodes": false
+		};
+
+		return this;
+	}
+
+	/**
+	 * Read a JSON-RPC request from STDIN
+	 * Blocks until a complete line is received
+	 */
+	struct function readRequest() {
+		try {
+			// Read a line from STDIN
+			var line = cliRead();
+
+			// Parse JSON-RPC request
+			var parsed = jsonDeserialize( line );
+
+			// Extract server name from params or use default
+			var mcpServerName = parsed.params.serverName ?: variables.defaultServerName;
+
+			// Build normalized request
+			return {
+				"serverName": mcpServerName,
+				"method": "POST",  // Always POST for JSON-RPC
+				"body": line,
+				"headers": {},  // No headers in STDIO
+				"acceptHeader": "application/json",
+				"params": parsed.params ?: {},
+				"origin": "",  // No origin concept in STDIO
+				"metadata": {
+					"protocol": "stdio",
+					"jsonrpc": parsed.jsonrpc ?: "2.0",
+					"method": parsed.method ?: "",
+					"id": parsed.id ?: javacast( "null", "" ),
+					"requestTime": now()
+				}
+			};
+		} catch ( any e ) {
+			this.log( "error", "Failed to read STDIO request: #e.message#" );
+
+			// Return error request
+			return {
+				"serverName": variables.defaultServerName,
+				"method": "POST",
+				"body": "",
+				"headers": {},
+				"acceptHeader": "application/json",
+				"params": {},
+				"origin": "",
+				"metadata": {
+					"protocol": "stdio",
+					"error": e.message,
+					"requestTime": now()
+				}
+			};
+		}
+	}
+
+	/**
+	 * Write a JSON-RPC response to STDOUT
+	 */
+	void function writeResponse( required struct response ) {
+		try {
+			// For STDIO, we only write the content (JSON-RPC response)
+			// Headers and status codes are ignored
+			writeOutput( arguments.response.content );
+
+			// Add newline for line-based protocol
+			writeOutput( char( 10 ) );
+
+			// Flush output
+			bx:flush{}
+
+		} catch ( any e ) {
+			this.log( "error", "Failed to write STDIO response: #e.message#" );
+		}
+	}
+
+	/**
+	 * Send a notification (response without id)
+	 * Used for server-initiated messages
+	 *
+	 * @method The notification method
+	 * @params The notification parameters
+	 */
+	void function sendNotification(
+		required string method,
+		struct params = {}
+	) {
+		var notification = {
+			"jsonrpc": "2.0",
+			"method": arguments.method,
+			"params": arguments.params
+		};
+
+		this.writeResponse( {
+			"content": jsonSerialize( notification ),
+			"contentType": "application/json",
+			"headers": {},
+			"statusCode": 200
+		} );
+	}
+
+	/**
+	 * Override security headers for STDIO (not applicable)
+	 */
+	struct function getSecurityHeaders() {
+		// STDIO doesn't use HTTP headers
+		return {};
+	}
+
+}

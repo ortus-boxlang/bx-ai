@@ -14,185 +14,207 @@
  * ----------------------------------------------------------------------------------
  * MCP Request Processor
  *
- * Handles incoming HTTP requests for the MCP server endpoint.
- * This class encapsulates all request processing logic, including:
- * - CORS handling
- * - Request validation
- * - Response formatting (JSON and SSE)
+ * Transport-agnostic MCP request processor.
+ * This class encapsulates all core request processing logic, including:
+ * - Server lookup and validation
+ * - Security checks (body size, API keys, basic auth)
+ * - Request/response callbacks
+ * - Discovery and JSON-RPC delegation
  * - Error handling
+ *
+ * Transport-specific concerns (HTTP headers, CORS, STDIO) are handled by transport implementations.
  */
-import bxModules.bxai.models.mcp.MCPServer
+import bxModules.bxai.models.mcp.MCPServer;
 class {
 
 	/**
-	 * Static logger for MCP operations
+	 * Static logger and transport singletons
 	 */
 	static {
 		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" )
         DEFAULT_SERVER_NAME = "default"
 		DEFAULT_MCP_PROTOCOL_VERSION = "2024-11-05"
+		// Register Transports
+		httpTransport = new transports.HTTPTransport()
+		stdioTransport = new transports.StdioTransport()
 	}
 
 	/**
-	 * Render the result of an MCP request.
-	 * Internally we processed an incoming HTTP request and produce the response.
-	 * <strong>This method is only for web runtimes</strong>
+	 * Start HTTP transport and process a single request from the web context
+	 * This is the entry point for web-based MCP servers based on HTTP
+	 *
+	 * This transport flushes to the response automatically, it returns the content for logging purposes only
 	 *
 	 * @return The rendered response content
 	 */
-	static string function render(){
-		// Get request parameters
-		var mcpServerName = url.server ?: "default"
-		var requestMethod = cgi.REQUEST_METHOD
-		var requestBody = requestMethod eq "POST" ? getHTTPRequestData().content : ""
-		var acceptHeader = cgi.HTTP_ACCEPT ?: "application/json"
+	static string function processHttp() {
+		// Read request from HTTP context
+		var requestData = static.httpTransport.readRequest();
 
-		// Check if we have a path_info segment for server name
-		if ( len( cgi.PATH_INFO ) > 0 ) {
-			var pathSegments = listToArray( cgi.PATH_INFO, "/" ).filter( segment => len( segment ) > 0 )
-			if ( pathSegments.len() ) {
-				mcpServerName = pathSegments.first()
-			}
-		}
+		// Process request
+		var response = processWithTransport( static.httpTransport, requestData );
 
-		// Delegate to the request processor
-		var result = process(
-				serverName: mcpServerName,
-				requestMethod: requestMethod,
-				requestBody: requestBody,
-				acceptHeader: acceptHeader,
-				urlParams: url
-			)
+		// Write response to HTTP context
+		static.httpTransport.writeResponse( response );
 
-		// Set response headers
-		for ( var headerName in result.headers ) {
-			bx:header name=headerName value=result.headers[ headerName ];
-		}
-
-		// Set status code if not 200
-		if ( result.statusCode neq 200 ) {
-			bx:header statusCode=result.statusCode;
-		}
-
-		// render the content out
-		bx:content
-			type=result.contentType
-			reset=true
-			variable=result.content{}
+		// Return content
+		return response.content;
 	}
 
 	/**
-	 * Process an incoming MCP HTTP request
+	 * Start STDIO transport and process requests in a loop
+	 * This is the entry point for command-line MCP servers
+	 * Blocks until shutdown signal or error
 	 *
-	 * @serverName The name of the MCP server to use
-	 * @requestMethod The HTTP request method (GET, POST, OPTIONS)
-	 * @requestBody The request body content (for POST requests)
-	 * @acceptHeader The Accept header value
-	 * @urlParams URL parameters struct
+	 * @serverName The MCP server name to use (default: "default")
+	 */
+	static void function processStdio( string serverName = static.DEFAULT_SERVER_NAME ) {
+		// Set default server name for this session
+		static.stdioTransport.defaultServerName = arguments.serverName;
+
+		// Verify server exists
+		if ( isNull( MCPServer::getInstance( arguments.serverName ) ) ) {
+			throw(
+				type: "MCPServerNotFound",
+				message: "MCP server '#arguments.serverName#' not found"
+			);
+		}
+
+		static.mcpLogger.info( "Starting STDIO transport for server: #arguments.serverName#" );
+
+		try {
+			// Main loop - read, process, write
+			var running = true;
+
+			while ( running ) {
+				// Read request from STDIN
+				var requestData = static.stdioTransport.readRequest();
+
+				// Check for an exception
+				if( requestData.metadata?.error?.len() ?: 0 ) {
+					// Write error response
+					static.stdioTransport.writeResponse(
+						static.stdioTransport.createErrorResponse(
+							statusCode: 400,
+							errorCode: -32600,
+							message: "Invalid request: #requestData.metadata.error#"
+						)
+					);
+					continue;
+				}
+
+				// Check for shutdown signal
+				if ( requestData.metadata.method == "shutdown" ) {
+					static.mcpLogger.info( "Received shutdown signal" );
+					running = false;
+					break;
+				}
+
+				// Process request
+				var response = processWithTransport( static.stdioTransport, requestData );
+
+				// Write response to STDOUT
+				static.stdioTransport.writeResponse( response );
+			}
+
+			static.mcpLogger.info( "STDIO transport stopped" );
+
+		} catch ( any e ) {
+			static.mcpLogger.error( "STDIO transport error: #e.message#" );
+
+			// Write error response
+			static.stdioTransport.writeResponse(
+				static.stdioTransport.createErrorResponse(
+					statusCode: 500,
+					errorCode: -32603,
+					message: "Internal error: #e.message#"
+				)
+			);
+
+			// Re-throw for caller to handle
+			throw( e );
+		}
+	}
+
+	/**
+	 * Process an MCP request using a transport layer
+	 * This is the main entry point for transport-agnostic request processing
+	 *
+	 * @transport The transport implementation to use
+	 * @requestData The normalized request data from the transport
 	 *
 	 * @return Struct containing response data: { content, contentType, headers, statusCode }
 	 */
-	static struct function process(
-		string serverName = static.DEFAULT_SERVER_NAME,
-		required string requestMethod,
-		string requestBody = "",
-		string acceptHeader = "application/json",
-		struct urlParams = {}
+	static struct function processWithTransport(
+		required any transport,
+		required struct requestData
 	) {
-		// Verify server exists
-		var targetServer = MCPServer::getInstance( arguments.serverName )
-		if( isNull( targetServer ) ) {
-			// Log it
-			static.mcpLogger.error( "MCP Request for unknown server: #arguments.serverName#" )
-			// Return error response with security headers
-			return {
-				"content": jsonSerialize( {
-					"jsonrpc": "2.0",
-					"error": {
-						"code": MCPServer::errorCode( "INVALID_REQUEST" ),
-						"message": "Unknown MCP server: " & arguments.serverName
-					},
-					"id": ""
-				} ),
-				"contentType": "application/json",
-				"headers": {
-					"X-Content-Type-Options": "nosniff",
-					"X-Frame-Options": "DENY",
-					"X-XSS-Protection": "1; mode=block"
-				},
-				"statusCode": 400
-			}
-		}
+		// Extract common fields from normalized request data
+		var mcpServerName = arguments.requestData.serverName ?: static.DEFAULT_SERVER_NAME;
+		var requestMethod = arguments.requestData.method;
+		var requestBody = arguments.requestData.body;
+		var acceptHeader = arguments.requestData.acceptHeader;
+		var urlParams = arguments.requestData.params ?: {};
+		var requestOrigin = arguments.requestData.origin ?: "";
+		var requestHeaders = arguments.requestData.headers ?: {};
 
-		// We have a server now, process it
+		// Initialize response with security headers from transport
 		var response = {
 			"content": "",
 			"contentType": "application/json",
-			"headers": {},
+			"headers": arguments.transport.getSecurityHeaders(),
 			"statusCode": 200
-		}
+		};
 
-		// Add standard security headers
-		response.headers[ "X-Content-Type-Options" ] = "nosniff"
-		response.headers[ "X-Frame-Options" ] = "DENY"
-		response.headers[ "X-XSS-Protection" ] = "1; mode=block"
-		response.headers[ "Referrer-Policy" ] = "strict-origin-when-cross-origin"
-		response.headers[ "Content-Security-Policy" ] = "default-src 'none'; frame-ancestors 'none'"
-		response.headers[ "Strict-Transport-Security" ] = "max-age=31536000; includeSubDomains"
-		response.headers[ "Permissions-Policy" ] = "geolocation=(), microphone=(), camera=()"
-
-		// Build request data for callbacks
-		var requestData = {
-			"serverName": arguments.serverName,
-			"method": arguments.requestMethod,
-			"body": arguments.requestBody,
-			"acceptHeader": arguments.acceptHeader,
-			"urlParams": arguments.urlParams
+		// Verify server exists
+		var targetServer = MCPServer::getInstance( mcpServerName );
+		if( isNull( targetServer ) ) {
+			// Log it
+			static.mcpLogger.error( "MCP Request for unknown server: #mcpServerName#" );
+			// Return error response
+			return arguments.transport.createErrorResponse(
+				statusCode: 400,
+				errorCode: MCPServer::errorCode( "INVALID_REQUEST" ),
+				message: "Unknown MCP server: " & mcpServerName
+			);
 		}
 
 		// Check request body size limit
-		var maxBodySize = targetServer.getMaxRequestBodySize()
-		if ( maxBodySize > 0 && len( arguments.requestBody ) > maxBodySize ) {
-			static.mcpLogger.warn( "MCP request body size exceeded limit: #len( arguments.requestBody )# > #maxBodySize#" )
-			response.statusCode = 413
-			response.content = jsonSerialize( {
-				"jsonrpc": "2.0",
-				"error": {
-					"code": MCPServer::errorCode( "INVALID_REQUEST" ),
-					"message": "Request body too large. Maximum allowed: #maxBodySize# bytes"
-				},
-				"id": ""
-			} )
-			return response
+		var maxBodySize = targetServer.getMaxRequestBodySize();
+		if ( maxBodySize > 0 && len( requestBody ) > maxBodySize ) {
+			static.mcpLogger.warn( "MCP request body size exceeded limit: #len( requestBody )# > #maxBodySize#" );
+			return arguments.transport.createErrorResponse(
+				statusCode: 413,
+				errorCode: MCPServer::errorCode( "INVALID_REQUEST" ),
+				message: "Request body too large. Maximum allowed: #maxBodySize# bytes"
+			);
 		}
 
-		// Enhanced CORS handling with wildcard support
-		var headers = getHTTPRequestData( false ).headers
-		var requestOrigin = headers[ "Origin" ] ?: ""
-
-		// Check if origin is allowed
-		if ( len( requestOrigin ) && targetServer.isCorsAllowed( requestOrigin ) ) {
-			response.headers[ "Access-Control-Allow-Origin" ] = requestOrigin
-			response.headers[ "Vary" ] = "Origin"
-		} else if ( targetServer.getCorsAllowedOrigins().contains( "*" ) ) {
-			// Wildcard "*" allows all origins
-			response.headers[ "Access-Control-Allow-Origin" ] = "*"
+		// Handle CORS if transport supports it
+		if ( arguments.transport.supports( "cors" ) && len( requestOrigin ) ) {
+			if ( targetServer.isCorsAllowed( requestOrigin ) ) {
+				response.headers[ "Access-Control-Allow-Origin" ] = requestOrigin;
+				response.headers[ "Vary" ] = "Origin";
+			} else if ( targetServer.getCorsAllowedOrigins().contains( "*" ) ) {
+				// Wildcard "*" allows all origins
+				response.headers[ "Access-Control-Allow-Origin" ] = "*";
+			}
 		}
 
 		// Handle CORS preflight (bypass callbacks for preflight)
-		if ( arguments.requestMethod == "OPTIONS" ) {
-			return handleCORSPreflight( response, targetServer )
+		if ( arguments.transport.supports( "preflight" ) && requestMethod == "OPTIONS" ) {
+			return handleCORSPreflight( response, targetServer );
 		}
 
 		// Verify basic authentication if configured
 		if ( targetServer.hasBasicAuth() ) {
-			var authHeader = headers[ "Authorization" ] ?: ""
+			var authHeader = requestHeaders[ "Authorization" ] ?: "";
 			if ( !targetServer.verifyBasicAuth( authHeader ) ) {
 				// Log failed authentication attempt
-				static.mcpLogger.warn( "MCP basic auth failed for server: #arguments.serverName#" )
+				static.mcpLogger.warn( "MCP basic auth failed for server: #mcpServerName#" );
 				// Return 401 Unauthorized
-				response.statusCode = 401
-				response.headers[ "WWW-Authenticate" ] = 'Basic realm="MCP Server"'
+				response.statusCode = 401;
+				response.headers[ "WWW-Authenticate" ] = 'Basic realm="MCP Server"';
 				response.content = jsonSerialize( {
 					"jsonrpc": "2.0",
 					"error": {
@@ -200,28 +222,28 @@ class {
 						"message": "Unauthorized: Invalid credentials"
 					},
 					"id": ""
-				} )
-				return response
+				} );
+				return response;
 			}
 		}
 
 		// Verify API key if provider configured
 		if ( targetServer.hasApiKeyProvider() ) {
-			var apiKey = ""
-			var authHeader = headers[ "Authorization" ] ?: ""
+			var apiKey = "";
+			var authHeader = requestHeaders[ "Authorization" ] ?: "";
 
 			// Extract API key from X-API-Key header or Bearer token
-			if ( headers.keyExists( "X-API-Key" ) ) {
-				apiKey = headers[ "X-API-Key" ]
+			if ( requestHeaders.keyExists( "X-API-Key" ) ) {
+				apiKey = requestHeaders[ "X-API-Key" ];
 			} else if ( authHeader.findNoCase( "Bearer " ) ) {
-				apiKey = authHeader.replaceNoCase( "Bearer ", "" ).trim()
+				apiKey = authHeader.replaceNoCase( "Bearer ", "" ).trim();
 			}
 
-			if ( !len( apiKey ) || !targetServer.verifyApiKey( apiKey, requestData ) ) {
+			if ( !len( apiKey ) || !targetServer.verifyApiKey( apiKey, arguments.requestData ) ) {
 				// Log failed API key attempt
-				static.mcpLogger.warn( "MCP API key validation failed for server: #arguments.serverName#" )
+				static.mcpLogger.warn( "MCP API key validation failed for server: #mcpServerName#" );
 				// Return 401 Unauthorized
-				response.statusCode = 401
+				response.statusCode = 401;
 				response.content = jsonSerialize( {
 					"jsonrpc": "2.0",
 					"error": {
@@ -229,23 +251,23 @@ class {
 						"message": "Unauthorized: Invalid API key"
 					},
 					"id": ""
-				} )
-				return response
+				} );
+				return response;
 			}
 		}
 
 		// Announce MCP request
 		BoxAnnounce( "onMCPRequest", {
 			server: targetServer,
-			requestData: requestData,
-			serverName: arguments.serverName
-		} )
+			requestData: arguments.requestData,
+			serverName: mcpServerName
+		} );
 
 		// Execute onRequest callback if defined (for authentication/inspection)
 		var onRequestCallback = targetServer.getOnRequest();
 		if ( isClosure( onRequestCallback ) ) {
 			try {
-				requestData = onRequestCallback( requestData );
+				requestData = onRequestCallback( arguments.requestData );
 			} catch ( any e ) {
 				// Log it
 				static.mcpLogger.error( "MCP onRequest callback error: #e.message#" );
@@ -264,12 +286,12 @@ class {
 		}
 
 		// Handle GET requests for discovery
-		if ( arguments.requestMethod == "GET" ) {
-			response = handleDiscovery( targetServer, response, arguments.urlParams );
+		if ( requestMethod == "GET" ) {
+			response = handleDiscovery( targetServer, response, urlParams );
 		}
 		// Handle POST requests for JSON-RPC
-		else if ( arguments.requestMethod == "POST" ) {
-			response = handleJSONRPC( targetServer, response, arguments.requestBody, arguments.acceptHeader );
+		else if ( requestMethod == "POST" ) {
+			response = handleJSONRPC( targetServer, response, requestBody, acceptHeader );
 		}
 		// Method not allowed
 		else {
@@ -280,7 +302,7 @@ class {
 		var onResponseCallback = targetServer.getOnResponse();
 		if ( isClosure( onResponseCallback ) ) {
 			try {
-				response = onResponseCallback( response, requestData );
+				response = onResponseCallback( response, arguments.requestData );
 			} catch ( any e ) {
 				// Log error but don't fail the response
 				static.mcpLogger.error( "MCP onResponse callback error: #e.message#" );
@@ -291,9 +313,9 @@ class {
 		BoxAnnounce( "onMCPResponse", {
 			server: targetServer,
 			response: response,
-			requestData: requestData,
-			serverName: arguments.serverName
-		} )
+			requestData: arguments.requestData,
+			serverName: mcpServerName
+		} );
 
 		return response;
 	}
