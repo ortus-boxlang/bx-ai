@@ -162,6 +162,54 @@ class {
 					"excludePatterns" : "Array of regex patterns to exclude",
 					"includeHidden"   : "Include hidden files (default: false)"
 				}
+			},
+			"http": {
+				"name"        : "HTTPLoader",
+				"description" : "Loads content from HTTP/HTTPS URLs",
+				"extensions"  : [],
+				"class"       : "bxModules.bxai.models.loaders.HTTPLoader",
+				"capabilities": {
+					"streaming"     : false,
+					"chunking"      : true,
+					"metadata"      : true,
+					"urlSupport"    : true,
+					"directoryMode" : false,
+					"httpMethods"   : true,
+					"headers"       : true,
+					"contentTypes"  : [ "text", "html", "json", "xml" ]
+				},
+				"configOptions": {
+					"contentType"     : "Content type (auto, text, html, json, xml)",
+					"method"          : "HTTP method (default: GET)",
+					"headers"         : "Request headers struct",
+					"timeout"         : "Request timeout in seconds (default: 30)",
+					"extractText"     : "Extract text from HTML (default: true)",
+					"removeScripts"   : "Remove script tags from HTML (default: true)",
+					"removeStyles"    : "Remove style tags from HTML (default: true)"
+				}
+			},
+			"tika": {
+				"name"        : "TikaLoader",
+				"description" : "Loads PDF, Word, Excel, PowerPoint, and other document formats using Apache Tika",
+				"extensions"  : [ "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "epub" ],
+				"class"       : "bxModules.bxai.models.loaders.TikaLoader",
+				"capabilities": {
+					"streaming"        : false,
+					"chunking"         : true,
+					"metadata"         : true,
+					"urlSupport"       : false,
+					"directoryMode"    : false,
+					"richMetadata"     : true,
+					"pageExtraction"   : true,
+					"ocrSupport"       : true
+				},
+				"configOptions": {
+					"maxLength"         : "Max characters to extract (-1 = unlimited)",
+					"extractImages"     : "Extract embedded images (default: false)",
+					"extractTables"     : "Preserve table structure (default: true)",
+					"ocrEnabled"        : "Enable OCR for scanned docs (default: false)",
+					"passwordProtected" : "Password for encrypted documents"
+				}
 			}
 		};
 	}

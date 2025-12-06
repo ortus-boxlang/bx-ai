@@ -48,13 +48,19 @@ abstract class implements="IDocumentLoader" {
 	property name="documentsLoaded" type="boolean" default="false";
 
 	/**
+	 * Errors encountered during loading
+	 */
+	property name="errors" type="array";
+
+	/**
 	 * Static default configuration
 	 */
 	static {
 		DEFAULT_CONFIG = {
-			encoding        : "UTF-8",
-			includeMetadata : true,
-			splitMode       : "none"
+			encoding          : "UTF-8",
+			includeMetadata   : true,
+			splitMode         : "none",
+			continueOnError   : true
 		};
 	}
 
@@ -72,6 +78,7 @@ abstract class implements="IDocumentLoader" {
 		variables.documents       = [];
 		variables.currentIndex    = 0;
 		variables.documentsLoaded = false;
+		variables.errors          = [];
 		return this;
 	}
 
@@ -98,6 +105,7 @@ abstract class implements="IDocumentLoader" {
 		variables.documentsLoaded = false;
 		variables.currentIndex    = 0;
 		variables.documents       = [];
+		variables.errors          = [];
 		return this;
 	}
 
@@ -111,6 +119,91 @@ abstract class implements="IDocumentLoader" {
 	IDocumentLoader function configure( required struct config ) {
 		variables.config.append( arguments.config, true );
 		return this;
+	}
+
+	/**
+	 * Get metadata about the source without loading documents
+	 *
+	 * @return Struct with source metadata
+	 */
+	struct function getSourceMetadata() {
+		var metadata = {
+			"source"       : variables.source,
+			"loader"       : getName(),
+			"exists"       : sourceExists(),
+			"isDirectory"  : directoryExists( variables.source ),
+			"isFile"       : fileExists( variables.source ),
+			"isURL"        : variables.source.lCase().startsWith( "http://" ) || variables.source.lCase().startsWith( "https://" )
+		};
+
+		// Add file info if it exists
+		if ( metadata.isFile || metadata.isDirectory ) {
+			var info = getSourceInfo();
+			metadata.append( info, true );
+		}
+
+		return metadata;
+	}
+
+	/**
+	 * Get total document count if known
+	 * Default returns -1 (unknown) for streaming loaders
+	 * Subclasses can override for accurate counts
+	 *
+	 * @return Numeric count or -1 if unknown
+	 */
+	numeric function getDocumentCount() {
+		// If already loaded, return actual count
+		if ( variables.documentsLoaded ) {
+			return variables.documents.len();
+		}
+		// Default to -1 (unknown) for lazy/streaming loaders
+		return -1;
+	}
+
+	/**
+	 * Load documents in batches
+	 * Default implementation loads all and returns a slice
+	 *
+	 * @batchSize Number of documents per batch
+	 *
+	 * @return Array of Documents (up to batchSize)
+	 */
+	array function loadBatch( numeric batchSize = 100 ) {
+		// Ensure documents are loaded
+		if ( !variables.documentsLoaded ) {
+			variables.documents       = load();
+			variables.documentsLoaded = true;
+		}
+
+		// Return slice from current position
+		var startPos = variables.currentIndex + 1;
+		var endPos   = min( variables.currentIndex + arguments.batchSize, variables.documents.len() );
+
+		if ( startPos > variables.documents.len() ) {
+			return [];
+		}
+
+		var batch = variables.documents.slice( startPos, endPos - startPos + 1 );
+		variables.currentIndex = endPos;
+		return batch;
+	}
+
+	/**
+	 * Load documents as a Java Stream
+	 * Provides lazy evaluation for memory-efficient processing
+	 *
+	 * @return Java Stream of Document objects
+	 */
+	any function loadAsStream() {
+		// Load documents if not yet loaded
+		if ( !variables.documentsLoaded ) {
+			variables.documents       = load();
+			variables.documentsLoaded = true;
+		}
+
+		// Convert to Java Stream using the stream() method on arrays
+		return variables.documents.stream();
 	}
 
 	/**
@@ -169,6 +262,36 @@ abstract class implements="IDocumentLoader" {
 		variables.currentIndex    = 0;
 		variables.documentsLoaded = false;
 		variables.documents       = [];
+		variables.errors          = [];
+		return this;
+	}
+
+	/**
+	 * Get errors encountered during loading
+	 *
+	 * @return Array of error structs
+	 */
+	array function getErrors() {
+		return variables.errors;
+	}
+
+	/**
+	 * Add an error to the errors array
+	 *
+	 * @error The error struct or message
+	 *
+	 * @return BaseDocumentLoader for chaining
+	 */
+	function addError( required any error ) {
+		if ( isSimpleValue( arguments.error ) ) {
+			variables.errors.append( {
+				"message" : arguments.error,
+				"source"  : variables.source,
+				"time"    : now()
+			} );
+		} else {
+			variables.errors.append( arguments.error );
+		}
 		return this;
 	}
 
@@ -177,20 +300,25 @@ abstract class implements="IDocumentLoader" {
 	 *
 	 * @content The document content
 	 * @additionalMetadata Additional metadata to merge
+	 * @id Optional explicit document ID (auto-generated if not provided)
 	 *
 	 * @return Document instance
 	 */
-	Document function createDocument( required string content, struct additionalMetadata = {} ) {
+	Document function createDocument( required string content, struct additionalMetadata = {}, string id = "" ) {
 		var baseMetadata = {
-			"source"    : variables.source,
-			"loader"    : getName(),
-			"loadedAt"  : now()
+			"source"   : variables.source,
+			"loader"   : getName(),
+			"loadedAt" : now()
 		};
 
 		// Merge additional metadata
 		baseMetadata.append( arguments.additionalMetadata, true );
 
-		return new Document( content: arguments.content, metadata: baseMetadata );
+		return new Document(
+			id       : arguments.id,
+			content  : arguments.content,
+			metadata : baseMetadata
+		);
 	}
 
 	/**
@@ -272,12 +400,16 @@ abstract class implements="IDocumentLoader" {
 
 			for ( var i = 1; i <= chunks.len(); i++ ) {
 				var chunkMetadata = duplicate( doc.getMetadata() );
-				chunkMetadata[ "chunkIndex" ] = i;
+				chunkMetadata[ "chunkIndex" ]  = i;
 				chunkMetadata[ "totalChunks" ] = chunks.len();
-				chunkMetadata[ "isChunk" ] = true;
+				chunkMetadata[ "isChunk" ]     = true;
+				chunkMetadata[ "parentId" ]    = doc.getId();
 
 				chunkedDocs.append(
-					new Document( content: chunks[ i ], metadata: chunkMetadata )
+					new Document(
+						content  : chunks[ i ],
+						metadata : chunkMetadata
+					)
 				);
 			}
 		}

@@ -37,6 +37,33 @@ interface {
 	array function load();
 
 	/**
+	 * Load documents asynchronously
+	 * Returns a BoxFuture for non-blocking operation
+	 *
+	 * @return BoxFuture that resolves to array of Document objects
+	 */
+	default BoxFuture function loadAsync() {
+		return asyncRun( () => this.load(), "io-tasks" );
+	}
+
+	/**
+	 * Load documents in batches for memory efficiency
+	 *
+	 * @batchSize Number of documents per batch (default: 100)
+	 *
+	 * @return Array of Documents (up to batchSize)
+	 */
+	array function loadBatch( numeric batchSize = 100 );
+
+	/**
+	 * Load documents as a Java Stream for lazy processing
+	 * Useful for very large document sets where memory is a concern
+	 *
+	 * @return Java Stream of Document objects
+	 */
+	any function loadAsStream();
+
+	/**
 	 * Load documents lazily using an iterator pattern
 	 * This is more memory-efficient for large document sets.
 	 * Each call returns the next document or null when exhausted.
@@ -65,6 +92,22 @@ interface {
 	 * @return The source identifier
 	 */
 	string function getSource();
+
+	/**
+	 * Get metadata about the source without loading
+	 * (file size, document count estimate, content type, etc.)
+	 *
+	 * @return Struct with source metadata
+	 */
+	struct function getSourceMetadata();
+
+	/**
+	 * Get total document count (if known)
+	 * Returns -1 if unknown/streaming
+	 *
+	 * @return Numeric document count or -1 if unknown
+	 */
+	numeric function getDocumentCount();
 
 	/**
 	 * Configure the loader with options

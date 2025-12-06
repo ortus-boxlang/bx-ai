@@ -1,0 +1,356 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Tika Document Loader
+ * Uses Apache Tika to extract text from various document formats including:
+ * - PDF documents
+ * - Microsoft Office (Word, Excel, PowerPoint)
+ * - OpenDocument formats (ODT, ODS, ODP)
+ * - Rich Text Format (RTF)
+ * - EPUB ebooks
+ * - Email formats (EML, MSG)
+ * - And many more...
+ */
+class extends="BaseDocumentLoader" {
+
+	/**
+	 * Static loader configuration defaults
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			encoding        : "UTF-8",
+			includeMetadata : true,
+			splitMode       : "none",
+			continueOnError : true,
+			// Tika-specific defaults
+			maxLength       : -1,            // Max characters to extract (-1 = unlimited)
+			extractImages   : false,         // Whether to extract embedded images
+			extractTables   : true,          // Whether to preserve table structure
+			ocrEnabled      : false,         // Whether to enable OCR for scanned docs
+			passwordProtected : ""           // Password for encrypted documents
+		};
+
+		// Supported file extensions
+		SUPPORTED_EXTENSIONS = [
+			// PDF
+			"pdf",
+			// Microsoft Office
+			"doc", "docx", "xls", "xlsx", "ppt", "pptx",
+			// OpenDocument
+			"odt", "ods", "odp", "odg",
+			// Rich Text
+			"rtf",
+			// Ebook
+			"epub",
+			// Email
+			"eml", "msg",
+			// Other
+			"pages", "key", "numbers"
+		];
+	}
+
+	/**
+	 * Initialize the Tika loader
+	 *
+	 * @source The file path to load from
+	 * @config Configuration options
+	 *
+	 * @return TikaLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		super.init( argumentCollection: arguments );
+		variables.config = static.DEFAULT_CONFIG.append( variables.config, true );
+		return this;
+	}
+
+	/**
+	 * Get the loader name
+	 */
+	string function getName() {
+		return "TikaLoader";
+	}
+
+	/**
+	 * Set maximum content length to extract
+	 *
+	 * @maxLength Maximum characters (-1 for unlimited)
+	 *
+	 * @return TikaLoader for chaining
+	 */
+	TikaLoader function maxLength( required numeric maxLength ) {
+		variables.config.maxLength = arguments.maxLength;
+		return this;
+	}
+
+	/**
+	 * Enable or disable OCR for scanned documents
+	 *
+	 * @enabled Whether OCR is enabled
+	 *
+	 * @return TikaLoader for chaining
+	 */
+	TikaLoader function enableOCR( boolean enabled = true ) {
+		variables.config.ocrEnabled = arguments.enabled;
+		return this;
+	}
+
+	/**
+	 * Set password for encrypted documents
+	 *
+	 * @password The document password
+	 *
+	 * @return TikaLoader for chaining
+	 */
+	TikaLoader function password( required string password ) {
+		variables.config.passwordProtected = arguments.password;
+		return this;
+	}
+
+	/**
+	 * Load document using Apache Tika
+	 *
+	 * @return Array of Document objects
+	 */
+	array function load() {
+		if ( variables.source.isEmpty() ) {
+			throw( type: "TikaLoader.MissingSource", message: "No file source specified for TikaLoader" );
+		}
+
+		if ( !fileExists( variables.source ) ) {
+			throw( type: "TikaLoader.FileNotFound", message: "File not found: #variables.source#" );
+		}
+
+		try {
+			// Create Tika instances using Java interop
+			var tikaClass  = createObject( "java", "org.apache.tika.Tika" );
+			var tika       = tikaClass.init();
+			var fileObject = createObject( "java", "java.io.File" ).init( variables.source );
+
+			// Extract text content
+			var content = "";
+			if ( variables.config.maxLength > 0 ) {
+				content = tika.parseToString( fileObject, createObject( "java", "org.apache.tika.metadata.Metadata" ).init(), variables.config.maxLength );
+			} else {
+				content = tika.parseToString( fileObject );
+			}
+
+			// Extract metadata using Tika's metadata parser
+			var metadata = extractTikaMetadata( fileObject );
+
+			// Get file info
+			var fileInfo = getFileInfo( variables.source );
+
+			// Build document metadata
+			var docMetadata = {
+				"fileName"      : fileInfo.name,
+				"filePath"      : variables.source,
+				"fileSize"      : fileInfo.size,
+				"lastModified"  : fileInfo.lastModified,
+				"fileType"      : getFileExtension( variables.source ),
+				"mimeType"      : metadata.mimeType ?: "application/octet-stream",
+				"tikaMetadata"  : metadata
+			};
+
+			// Add specific metadata fields
+			if ( metadata.keyExists( "title" ) && metadata.title.len() ) {
+				docMetadata[ "title" ] = metadata.title;
+			}
+			if ( metadata.keyExists( "author" ) && metadata.author.len() ) {
+				docMetadata[ "author" ] = metadata.author;
+			}
+			if ( metadata.keyExists( "pageCount" ) ) {
+				docMetadata[ "pageCount" ] = metadata.pageCount;
+			}
+
+			return [ createDocument( content: trim( content ), additionalMetadata: docMetadata ) ];
+
+		} catch ( any e ) {
+			if ( variables.config.continueOnError ) {
+				addError( {
+					"message" : e.message,
+					"type"    : e.type,
+					"file"    : variables.source
+				} );
+				return [];
+			}
+			rethrow;
+		}
+	}
+
+	/**
+	 * Extract metadata using Tika
+	 *
+	 * @file The Java File object
+	 *
+	 * @return Struct with extracted metadata
+	 */
+	private struct function extractTikaMetadata( required any file ) {
+		var result = {};
+
+		try {
+			var tikaClass    = createObject( "java", "org.apache.tika.Tika" );
+			var tika         = tikaClass.init();
+			var metadataClass = createObject( "java", "org.apache.tika.metadata.Metadata" );
+			var metadata     = metadataClass.init();
+
+			// Detect content type
+			result[ "mimeType" ] = tika.detect( arguments.file );
+
+			// Parse with metadata extraction
+			var inputStream = createObject( "java", "java.io.FileInputStream" ).init( arguments.file );
+			try {
+				var parserClass = createObject( "java", "org.apache.tika.parser.AutoDetectParser" );
+				var parser      = parserClass.init();
+				var handlerClass = createObject( "java", "org.apache.tika.sax.BodyContentHandler" );
+				var handler     = handlerClass.init( variables.config.maxLength );
+				var contextClass = createObject( "java", "org.apache.tika.parser.ParseContext" );
+				var context     = contextClass.init();
+
+				parser.parse( inputStream, handler, metadata, context );
+
+				// Extract common metadata fields
+				var names = metadata.names();
+				for ( var i = 1; i <= arrayLen( names ); i++ ) {
+					var name  = names[ i ];
+					var value = metadata.get( name );
+					if ( !isNull( value ) && len( value ) ) {
+						// Normalize common field names
+						var normalizedName = normalizeMetadataName( name );
+						result[ normalizedName ] = value;
+					}
+				}
+			} finally {
+				inputStream.close();
+			}
+
+		} catch ( any e ) {
+			// Metadata extraction failed, return basic info
+			result[ "metadataError" ] = e.message;
+		}
+
+		return result;
+	}
+
+	/**
+	 * Normalize metadata field names to common format
+	 *
+	 * @name The original field name
+	 *
+	 * @return Normalized field name
+	 */
+	private string function normalizeMetadataName( required string name ) {
+		var normalized = arguments.name;
+
+		// Common Tika metadata field mappings
+		switch ( arguments.name.lCase() ) {
+			case "dc:title":
+			case "title":
+				return "title";
+			case "dc:creator":
+			case "meta:author":
+			case "author":
+				return "author";
+			case "dc:subject":
+			case "subject":
+				return "subject";
+			case "dc:description":
+			case "description":
+				return "description";
+			case "xmptpg:npages":
+			case "meta:page-count":
+				return "pageCount";
+			case "dcterms:created":
+			case "meta:creation-date":
+				return "createdDate";
+			case "dcterms:modified":
+			case "meta:save-date":
+				return "modifiedDate";
+			case "content-type":
+				return "contentType";
+			default:
+				// Remove namespace prefixes and normalize
+				if ( arguments.name.find( ":" ) > 0 ) {
+					normalized = listLast( arguments.name, ":" );
+				}
+				return lCase( normalized );
+		}
+	}
+
+	/**
+	 * Get file extension
+	 *
+	 * @filePath The file path
+	 *
+	 * @return File extension
+	 */
+	private string function getFileExtension( required string filePath ) {
+		var fileName = listLast( arguments.filePath, "/" );
+		if ( fileName.find( "." ) > 0 ) {
+			return lCase( listLast( fileName, "." ) );
+		}
+		return "";
+	}
+
+	/**
+	 * Check if file type is supported
+	 *
+	 * @filePath The file path to check
+	 *
+	 * @return True if supported
+	 */
+	static function isSupported( required string filePath ) {
+		var ext = listLast( arguments.filePath, "." ).lCase();
+		return static.SUPPORTED_EXTENSIONS.findNoCase( ext ) > 0;
+	}
+
+	/**
+	 * Get list of supported extensions
+	 *
+	 * @return Array of supported extensions
+	 */
+	static function getSupportedExtensions() {
+		return static.SUPPORTED_EXTENSIONS;
+	}
+
+	/**
+	 * Get source metadata for Tika
+	 *
+	 * @return Struct with metadata
+	 */
+	struct function getSourceMetadata() {
+		var metadata = super.getSourceMetadata();
+
+		// Add Tika-specific info
+		if ( fileExists( variables.source ) ) {
+			metadata[ "extension" ] = getFileExtension( variables.source );
+			metadata[ "supported" ] = TikaLoader::isSupported( variables.source );
+		}
+
+		return metadata;
+	}
+
+	/**
+	 * Get document count
+	 * Tika loader returns 1 document per file
+	 *
+	 * @return 1
+	 */
+	numeric function getDocumentCount() {
+		return 1;
+	}
+
+}

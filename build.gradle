@@ -43,6 +43,10 @@ dependencies {
 		testImplementation files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
 	}
 
+	// Apache Tika for document parsing (PDF, Word, etc.)
+	implementation 'org.apache.tika:tika-core:2.9.2'
+	implementation 'org.apache.tika:tika-parsers-standard-package:2.9.2'
+
 	// Testing Frameworks
 	testImplementation 'io.github.cdimascio:dotenv-java:3.2.0'
 	testImplementation "org.junit.jupiter:junit-jupiter:6.+"

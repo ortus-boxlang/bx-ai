@@ -80,6 +80,21 @@ interface {
 	 */
 	struct function seed( required array documents );
 
+	/**
+	 * Seed memory with multiple documents at once asynchronously
+	 * This returns a BoxFuture for non-blocking operation
+	 *
+	 * @documents Array of documents to add. Each document can be:
+	 *   - String: Simple text (auto-generates ID)
+	 *   - Struct: { text, metadata, id? } (id is optional)
+	 *
+	 * @return BoxFuture with results: { added: numeric, failed: numeric, errors: array }
+	 */
+	default BoxFuture function seedAsync( required array documents ){
+		// Async in the virtual threads pool
+		return asyncRun( () => this.seed( documents ), "io-tasks" );
+	}
+
     /**
      * Get all messages from memory
 	 *

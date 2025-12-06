@@ -30,6 +30,14 @@
  *     .recursive()
  *     .extensions( ["md", "txt"] )
  *
+ * // Create an HTTP loader
+ * loader = aiDocumentLoader( "https://example.com/page.html", "http" )
+ *     .contentType( "html" )
+ *     .extractText()
+ *
+ * // Create a Tika loader for PDFs and Office documents
+ * loader = aiDocumentLoader( "/docs/report.pdf", "tika" )
+ *
  * // Load documents using the configured loader
  * docs = loader.load()
  * ```
@@ -40,6 +48,8 @@ import bxModules.bxai.models.loaders.HTMLLoader;
 import bxModules.bxai.models.loaders.CSVLoader;
 import bxModules.bxai.models.loaders.JSONLoader;
 import bxModules.bxai.models.loaders.DirectoryLoader;
+import bxModules.bxai.models.loaders.HTTPLoader;
+import bxModules.bxai.models.loaders.TikaLoader;
 
 @BoxBIF
 class {
@@ -56,7 +66,20 @@ class {
 			"html"     : "html",
 			"htm"      : "html",
 			"csv"      : "csv",
-			"json"     : "json"
+			"json"     : "json",
+			// Tika-supported formats
+			"pdf"      : "tika",
+			"doc"      : "tika",
+			"docx"     : "tika",
+			"xls"      : "tika",
+			"xlsx"     : "tika",
+			"ppt"      : "tika",
+			"pptx"     : "tika",
+			"odt"      : "tika",
+			"ods"      : "tika",
+			"odp"      : "tika",
+			"rtf"      : "tika",
+			"epub"     : "tika"
 		};
 	}
 
@@ -64,7 +87,7 @@ class {
 	 * Create a document loader instance
 	 *
 	 * @source The source to load from (file path, directory, or URL)
-	 * @type   Optional explicit loader type (text, markdown, html, csv, json, directory)
+	 * @type   Optional explicit loader type (text, markdown, html, csv, json, directory, http, tika)
 	 * @config Configuration options for the loader
 	 *
 	 * @return IDocumentLoader instance
@@ -101,10 +124,20 @@ class {
 			case "dir":
 				return new DirectoryLoader( source: arguments.source, config: arguments.config );
 
+			case "http":
+			case "url":
+				return new HTTPLoader( source: arguments.source, config: arguments.config );
+
+			case "tika":
+			case "pdf":
+			case "doc":
+			case "docx":
+				return new TikaLoader( source: arguments.source, config: arguments.config );
+
 			default:
 				throw(
 					type    : "aiDocumentLoader.UnknownLoaderType",
-					message : "Unknown loader type: #loaderType#. Supported types: text, markdown, html, csv, json, directory"
+					message : "Unknown loader type: #loaderType#. Supported types: text, markdown, html, csv, json, directory, http, tika"
 				);
 		}
 	}
@@ -122,9 +155,9 @@ class {
 			return "directory";
 		}
 
-		// Check if it's a URL
+		// Check if it's a URL - use HTTP loader
 		if ( reFindNoCase( "^https?://", arguments.source ) ) {
-			return "html";
+			return "http";
 		}
 
 		// Check file extension

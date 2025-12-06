@@ -21,6 +21,11 @@
 class {
 
 	/**
+	 * Unique identifier for the document
+	 */
+	property name="id" type="string" default="";
+
+	/**
 	 * The text content of the document
 	 */
 	property name="content" type="string" default="";
@@ -31,58 +36,25 @@ class {
 	property name="metadata" type="struct";
 
 	/**
+	 * Vector embedding for the document content (empty array if not yet computed)
+	 */
+	property name="embedding" type="array";
+
+	/**
 	 * Initialize a new Document instance
 	 *
+	 * @id Optional unique identifier for the document
 	 * @content The text content of the document
 	 * @metadata Metadata about the document
+	 * @embedding Optional pre-computed embedding vector
 	 *
 	 * @return Document instance
 	 */
-	function init( string content = "", struct metadata = {} ) {
-		variables.content  = arguments.content;
-		variables.metadata = arguments.metadata;
-		return this;
-	}
-
-	/**
-	 * Get the document content
-	 *
-	 * @return The text content
-	 */
-	string function getContent() {
-		return variables.content;
-	}
-
-	/**
-	 * Set the document content
-	 *
-	 * @content The text content
-	 *
-	 * @return Document for chaining
-	 */
-	Document function setContent( required string content ) {
-		variables.content = arguments.content;
-		return this;
-	}
-
-	/**
-	 * Get all metadata
-	 *
-	 * @return Struct of metadata
-	 */
-	struct function getMetadata() {
-		return variables.metadata;
-	}
-
-	/**
-	 * Set all metadata (replaces existing)
-	 *
-	 * @metadata The metadata struct
-	 *
-	 * @return Document for chaining
-	 */
-	Document function setMetadata( required struct metadata ) {
-		variables.metadata = arguments.metadata;
+	function init( string id = "", string content = "", struct metadata = {}, array embedding = [] ) {
+		variables.id        = arguments.id.len() ? arguments.id : createUUID();
+		variables.content   = arguments.content;
+		variables.metadata  = arguments.metadata;
+		variables.embedding = arguments.embedding;
 		return this;
 	}
 
@@ -145,14 +117,25 @@ class {
 	}
 
 	/**
+	 * Check if the document has an embedding
+	 *
+	 * @return True if embedding array is not empty
+	 */
+	boolean function hasEmbedding() {
+		return variables.embedding.len() > 0;
+	}
+
+	/**
 	 * Convert document to a struct representation
 	 *
-	 * @return Struct with content and metadata
+	 * @return Struct with id, content, metadata, and embedding
 	 */
 	struct function toStruct() {
 		return {
-			"content"  : variables.content,
-			"metadata" : variables.metadata
+			"id"        : variables.id,
+			"content"   : variables.content,
+			"metadata"  : variables.metadata,
+			"embedding" : variables.embedding
 		};
 	}
 
@@ -174,8 +157,10 @@ class {
 	 */
 	static function fromStruct( required struct data ) {
 		return new Document(
-			content  : arguments.data.keyExists( "content" ) ? arguments.data.content : "",
-			metadata : arguments.data.keyExists( "metadata" ) ? arguments.data.metadata : {}
+			id        : arguments.data.keyExists( "id" ) ? arguments.data.id : "",
+			content   : arguments.data.keyExists( "content" ) ? arguments.data.content : "",
+			metadata  : arguments.data.keyExists( "metadata" ) ? arguments.data.metadata : {},
+			embedding : arguments.data.keyExists( "embedding" ) ? arguments.data.embedding : []
 		);
 	}
 
@@ -197,8 +182,10 @@ class {
 	 */
 	Document function clone() {
 		return new Document(
-			content  : variables.content,
-			metadata : duplicate( variables.metadata )
+			id        : variables.id,
+			content   : variables.content,
+			metadata  : duplicate( variables.metadata ),
+			embedding : duplicate( variables.embedding )
 		);
 	}
 
