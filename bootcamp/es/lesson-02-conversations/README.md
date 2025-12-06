@@ -652,7 +652,7 @@ En lugar de esperar la respuesta completa, obtén **salida en tiempo real palabr
 ```
 REGULAR                           STREAMING
 ───────                           ─────────
-Esperar...                        "La" 
+Esperar...                        "La"
 Esperar...                        "mejor"
 Esperar...                        "manera"
 "La mejor manera de..."           "de..."
