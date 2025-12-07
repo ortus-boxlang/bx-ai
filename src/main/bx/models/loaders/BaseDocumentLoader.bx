@@ -53,6 +53,21 @@ abstract class implements="IDocumentLoader" {
 	property name="errors" type="array";
 
 	/**
+	 * Filter predicate function
+	 */
+	property name="filterPredicate" type="any";
+
+	/**
+	 * Map transformer function
+	 */
+	property name="mapTransformer" type="any";
+
+	/**
+	 * Progress callback function
+	 */
+	property name="progressCallback" type="any";
+
+	/**
 	 * Static default configuration
 	 */
 	static {
@@ -60,6 +75,21 @@ abstract class implements="IDocumentLoader" {
 			encoding          : "UTF-8",
 			includeMetadata   : true,
 			splitMode         : "none",
+			continueOnError   : true,
+			chunkSize         : 0,
+			overlap           : 0
+		};
+
+		DEFAULT_INGEST_OPTIONS = {
+			chunkSize         : 0,
+			overlap           : 0,
+			strategy          : "recursive",
+			dedupe            : false,
+			dedupeThreshold   : 0.95,
+			trackTokens       : true,
+			trackCost         : true,
+			async             : false,
+			batchSize         : 100,
 			continueOnError   : true
 		};
 	}
@@ -73,12 +103,15 @@ abstract class implements="IDocumentLoader" {
 	 * @return BaseDocumentLoader instance
 	 */
 	function init( string source = "", struct config = {} ) {
-		variables.source          = arguments.source;
-		variables.config          = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
-		variables.documents       = [];
-		variables.currentIndex    = 0;
-		variables.documentsLoaded = false;
-		variables.errors          = [];
+		variables.source           = arguments.source;
+		variables.config           = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
+		variables.documents        = [];
+		variables.currentIndex     = 0;
+		variables.documentsLoaded  = false;
+		variables.errors           = [];
+		variables.filterPredicate  = "";
+		variables.mapTransformer   = "";
+		variables.progressCallback = "";
 		return this;
 	}
 
@@ -121,6 +154,144 @@ abstract class implements="IDocumentLoader" {
 		return this;
 	}
 
+	// ==================== Fluent Configuration Methods ====================
+
+	/**
+	 * Set the chunk size for document splitting
+	 *
+	 * @size Chunk size in characters
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function chunkSize( required numeric size ) {
+		variables.config.chunkSize = arguments.size;
+		return this;
+	}
+
+	/**
+	 * Set the overlap between chunks
+	 *
+	 * @overlap Overlap in characters
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function overlap( required numeric overlapValue ) {
+		variables.config.overlap = arguments.overlapValue;
+		return this;
+	}
+
+	/**
+	 * Set the file encoding
+	 *
+	 * @encoding Encoding name (e.g., UTF-8)
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function encoding( required string encodingValue ) {
+		variables.config.encoding = arguments.encodingValue;
+		return this;
+	}
+
+	/**
+	 * Enable recursive directory scanning
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function recursive() {
+		variables.config.recursive = true;
+		return this;
+	}
+
+	/**
+	 * Set file extensions to include
+	 *
+	 * @exts Array of extensions (e.g., ["md", "txt"])
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function extensions( required array exts ) {
+		variables.config.extensions = arguments.exts;
+		return this;
+	}
+
+	/**
+	 * Set the CSV/TSV delimiter
+	 *
+	 * @delim Delimiter character
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function delimiter( required string delim ) {
+		variables.config.delimiter = arguments.delim;
+		return this;
+	}
+
+	// ==================== Filter/Transform Methods ====================
+
+	/**
+	 * Filter documents during loading
+	 *
+	 * @predicate Function: ( doc ) => boolean
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function filter( required function predicate ) {
+		variables.filterPredicate = arguments.predicate;
+		return this;
+	}
+
+	/**
+	 * Transform documents during loading
+	 *
+	 * @transformer Function: ( doc ) => doc
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function map( required function transformer ) {
+		variables.mapTransformer = arguments.transformer;
+		return this;
+	}
+
+	/**
+	 * Set progress callback for loading
+	 *
+	 * @callback Function: ( completed, total, currentDoc ) => {}
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function onProgress( required function callback ) {
+		variables.progressCallback = arguments.callback;
+		return this;
+	}
+
+	/**
+	 * Process documents one-by-one with a callback.
+	 * Memory-efficient alternative to load() for large document sets.
+	 *
+	 * @callback Function to call for each document: ( doc ) => { }
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function each( required function callback ) {
+		var docs = load();
+		var total = docs.len();
+		var index = 0;
+
+		for ( var doc in docs ) {
+			index++;
+			arguments.callback( doc );
+
+			// Call progress callback if set
+			if ( isCustomFunction( variables.progressCallback ) || isClosure( variables.progressCallback ) ) {
+				variables.progressCallback( index, total, doc );
+			}
+		}
+
+		return this;
+	}
+
+	// ==================== Metadata Methods ====================
+
 	/**
 	 * Get metadata about the source without loading documents
 	 *
@@ -161,13 +332,16 @@ abstract class implements="IDocumentLoader" {
 		return -1;
 	}
 
+	// ==================== Loading Methods ====================
+
 	/**
-	 * Load documents in batches
-	 * Default implementation loads all and returns a slice
+	 * Load documents in batches.
+	 * Call repeatedly to get successive batches until an empty array is returned.
+	 * Default implementation loads all and returns a slice.
 	 *
 	 * @batchSize Number of documents per batch
 	 *
-	 * @return Array of Documents (up to batchSize)
+	 * @return Array of Documents (up to batchSize), empty when done
 	 */
 	array function loadBatch( numeric batchSize = 100 ) {
 		// Ensure documents are loaded
@@ -190,10 +364,11 @@ abstract class implements="IDocumentLoader" {
 	}
 
 	/**
-	 * Load documents as a Java Stream
-	 * Provides lazy evaluation for memory-efficient processing
+	 * Load documents as a Java Stream.
+	 * Provides lazy evaluation for memory-efficient processing.
+	 * Returns java.util.stream.Stream<Document>
 	 *
-	 * @return Java Stream of Document objects
+	 * @return java.util.stream.Stream of Document objects
 	 */
 	any function loadAsStream() {
 		// Load documents if not yet loaded
@@ -207,17 +382,244 @@ abstract class implements="IDocumentLoader" {
 	}
 
 	/**
-	 * Load all documents from the source
-	 * Subclasses must override this method.
+	 * Load all documents from the source.
+	 * This method applies any configured filters and transforms.
 	 *
 	 * @return Array of Document objects
 	 */
 	array function load() {
+		var docs = doLoad();
+		return applyFiltersAndTransforms( docs );
+	}
+
+	/**
+	 * Internal method that performs the actual loading.
+	 * Subclasses must override this method.
+	 *
+	 * @return Array of Document objects (before filters/transforms)
+	 */
+	array function doLoad() {
 		throw(
 			type    : "BaseDocumentLoader.NotImplemented",
-			message : "Subclasses must override the load() method"
+			message : "Subclasses must override the doLoad() method"
 		);
 	}
+
+	/**
+	 * Apply filters and transforms to loaded documents
+	 *
+	 * @docs Array of Document objects
+	 *
+	 * @return Array of filtered/transformed Document objects
+	 */
+	private array function applyFiltersAndTransforms( required array docs ) {
+		var total = arguments.docs.len();
+		var result = [];
+		var index = 0;
+
+		for ( var doc in arguments.docs ) {
+			index++;
+
+			// Apply filter if set
+			if ( isCustomFunction( variables.filterPredicate ) || isClosure( variables.filterPredicate ) ) {
+				if ( !variables.filterPredicate( doc ) ) {
+					continue;
+				}
+			}
+
+			// Apply transform if set
+			if ( isCustomFunction( variables.mapTransformer ) || isClosure( variables.mapTransformer ) ) {
+				doc = variables.mapTransformer( doc );
+			}
+
+			result.append( doc );
+
+			// Call progress callback if set
+			if ( isCustomFunction( variables.progressCallback ) || isClosure( variables.progressCallback ) ) {
+				variables.progressCallback( index, total, doc );
+			}
+		}
+
+		return result;
+	}
+
+	// ==================== Memory Integration ====================
+
+	/**
+	 * Load documents and seed them into memory.
+	 * Convenience method that calls load() then memory.seed().
+	 *
+	 * @memory Single IAiMemory or array for multi-memory fan-out
+	 * @options Ingestion options
+	 *
+	 * @return Ingestion report struct
+	 */
+	struct function toMemory( required any memory, struct options = {} ) {
+		// Merge with default options
+		var opts = duplicate( static.DEFAULT_INGEST_OPTIONS ).append( arguments.options, true );
+
+		// Normalize memory to array for uniform processing
+		var memories = isArray( arguments.memory ) ? arguments.memory : [ arguments.memory ];
+
+		// Initialize report
+		var report = {
+			documentsIn       : 0,
+			chunksOut         : 0,
+			stored            : 0,
+			skipped           : 0,
+			deduped           : 0,
+			tokenCount        : 0,
+			embeddingCalls    : 0,
+			estimatedCost     : 0.0,
+			errors            : [],
+			memorySummary     : [],
+			startTime         : now(),
+			endTime           : "",
+			duration          : 0
+		};
+
+		try {
+			// Load documents (applies filters and transforms)
+			var documents = load();
+			report.documentsIn = documents.len();
+
+			// Chunk documents if chunking is enabled
+			var processedDocs = documents;
+			if ( opts.chunkSize > 0 ) {
+				processedDocs = chunkDocuments( documents, opts );
+			}
+			report.chunksOut = processedDocs.len();
+
+			// Track tokens if enabled
+			if ( opts.trackTokens && processedDocs.len() > 0 ) {
+				report.tokenCount = calculateTokenCount( processedDocs );
+			}
+
+			// Estimate embedding cost if enabled
+			if ( opts.trackCost ) {
+				report.estimatedCost = estimateCost( report.tokenCount, processedDocs.len() );
+			}
+
+			// Process each memory (async or sync)
+			if ( opts.async && memories.len() > 1 ) {
+				// Async fan-out to multiple memories
+				var futures = memories.map( ( mem ) => {
+					return asyncRun( () => {
+						return ingestToMemory( mem, processedDocs, opts );
+					} );
+				} );
+
+				// Wait for all futures to complete and aggregate results
+				futures.each( ( future ) => {
+					var result = future.get();
+					report.stored += result.stored;
+					report.skipped += result.skipped;
+					report.deduped += result.deduped;
+					report.errors.append( result.errors, true );
+					report.embeddingCalls += result.embeddingCalls;
+				} );
+			} else {
+				// Sync processing
+				memories.each( ( mem ) => {
+					var result = ingestToMemory( mem, processedDocs, opts );
+					report.stored += result.stored;
+					report.skipped += result.skipped;
+					report.deduped += result.deduped;
+					report.errors.append( result.errors, true );
+					report.embeddingCalls += result.embeddingCalls;
+				} );
+			}
+
+			// Get memory summaries
+			report.memorySummary = memories.map( ( mem ) => mem.getSummary() );
+
+			// Single memory? Return single summary instead of array
+			if ( memories.len() == 1 ) {
+				report.memorySummary = report.memorySummary[ 1 ];
+			}
+
+		} catch ( any e ) {
+			report.errors.append( {
+				type    : "LoadError",
+				message : e.message,
+				detail  : e.detail ?: ""
+			} );
+		}
+
+		// Finalize timing
+		report.endTime = now();
+		report.duration = dateDiff( "s", report.startTime, report.endTime );
+
+		return report;
+	}
+
+	/**
+	 * Ingest documents to a single memory instance
+	 *
+	 * @memory The memory instance
+	 * @documents Array of Document objects
+	 * @options Ingestion options
+	 *
+	 * @return Struct with ingestion results
+	 */
+	private struct function ingestToMemory(
+		required any memory,
+		required array documents,
+		required struct options
+	) {
+		var result = {
+			stored         : 0,
+			skipped        : 0,
+			deduped        : 0,
+			embeddingCalls : 0,
+			errors         : []
+		};
+
+		// Use memory's seed method for batch insertion
+		var seedResult = arguments.memory.seed( arguments.documents );
+
+		result.stored = seedResult.added ?: 0;
+		result.skipped = seedResult.failed ?: 0;
+		result.errors = seedResult.errors ?: [];
+
+		// Embedding calls = number of documents stored
+		result.embeddingCalls = result.stored;
+
+		return result;
+	}
+
+	/**
+	 * Calculate total token count for documents
+	 *
+	 * @documents Array of Document objects
+	 *
+	 * @return Total token count
+	 */
+	private numeric function calculateTokenCount( required array documents ) {
+		var totalTokens = 0;
+
+		for ( var doc in arguments.documents ) {
+			totalTokens += aiTokens( doc.getContent() );
+		}
+
+		return totalTokens;
+	}
+
+	/**
+	 * Estimate embedding cost based on token count.
+	 * Uses OpenAI text-embedding-3-small pricing as baseline ($0.00002/1K tokens).
+	 *
+	 * @tokenCount Total tokens
+	 * @documentCount Number of documents
+	 *
+	 * @return Estimated cost in USD
+	 */
+	private numeric function estimateCost( required numeric tokenCount, required numeric documentCount ) {
+		var costPer1KTokens = 0.00002;
+		return ( arguments.tokenCount / 1000 ) * costPer1KTokens;
+	}
+
+	// ==================== Error Handling ====================
 
 	/**
 	 * Get errors encountered during loading
@@ -247,6 +649,8 @@ abstract class implements="IDocumentLoader" {
 		}
 		return this;
 	}
+
+	// ==================== Helper Methods ====================
 
 	/**
 	 * Create a new Document with standard metadata
@@ -316,7 +720,7 @@ abstract class implements="IDocumentLoader" {
 	}
 
 	/**
-	 * Load documents and store them to a memory instance
+	 * Load documents and store them to a memory instance (legacy method)
 	 *
 	 * @memory The memory instance to store documents in
 	 * @chunkOptions Options for chunking (if provided, documents will be chunked before storing)

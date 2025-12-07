@@ -77,7 +77,7 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @return Array of Document objects
 	 */
-	array function load() {
+	array function doLoad() {
 		// Validate source exists
 		if ( !len( variables.source ) ) {
 			throw(

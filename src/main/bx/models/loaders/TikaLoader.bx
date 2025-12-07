@@ -125,7 +125,7 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @return Array of Document objects
 	 */
-	array function load() {
+	array function doLoad() {
 		if ( variables.source.isEmpty() ) {
 			throw( type: "TikaLoader.MissingSource", message: "No file source specified for TikaLoader" );
 		}

@@ -314,13 +314,14 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 	// aiDocuments BIF Tests
 	// ===========================================
 
-	@DisplayName( "aiDocuments BIF can load a text file" )
+	@DisplayName( "aiDocuments BIF returns a loader for a text file" )
 	@Test
 	public void testAiDocumentsText() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				result = aiDocuments( "%s/sample.txt" );
+				loader = aiDocuments( "%s/sample.txt" );
+				result = loader.load();
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -337,7 +338,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				rawDocs = aiDocuments( "%s/sample.md" );
+				rawDocs = aiDocuments( "%s/sample.md" ).load();
 				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
@@ -353,13 +354,13 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		assertThat( content ).contains( "Sample Markdown Document" );
 	}
 
-	@DisplayName( "aiDocuments BIF can specify loader type explicitly" )
+	@DisplayName( "aiDocuments BIF can specify loader type via config" )
 	@Test
 	public void testAiDocumentsExplicitType() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				rawDocs = aiDocuments( source: "%s/sample.txt", type: "text" );
+				rawDocs = aiDocuments( "%s/sample.txt", { type: "text" } ).load();
 				result = rawDocs.map( d => d.toStruct() );
 		    """.formatted( TEST_RESOURCES ),
 		    context
@@ -377,7 +378,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				result = aiDocuments( "%s" );
+				result = aiDocuments( "%s" ).load();
 		    """.formatted( TEST_RESOURCES ),
 		    context
 		);
@@ -387,6 +388,70 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		assertThat( docs ).isNotNull();
 		// Should load multiple files
 		assertThat( docs.size() ).isGreaterThan( 1 );
+	}
+
+	@DisplayName( "aiDocuments BIF supports fluent chaining with toMemory" )
+	@Test
+	public void testAiDocumentsToMemory() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				memory = aiMemory( "WindowMemory" );
+				result = aiDocuments( "%s/sample.txt" ).toMemory( memory );
+				messageCount = memory.count();
+		    """.formatted( TEST_RESOURCES ),
+		    context
+		);
+		// @formatter:on
+
+		IStruct report = ( IStruct ) variables.get( "result" );
+		assertThat( report ).isNotNull();
+		assertThat( report.containsKey( Key.of( "documentsIn" ) ) ).isTrue();
+		assertThat( report.containsKey( Key.of( "stored" ) ) ).isTrue();
+
+		Integer count = ( Integer ) variables.get( "messageCount" );
+		assertThat( count ).isGreaterThan( 0 );
+	}
+
+	@DisplayName( "aiDocuments BIF supports filter method" )
+	@Test
+	public void testAiDocumentsFilter() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				docs = aiDocuments( "%s" )
+					.filter( ( doc ) => doc.hasContent() )
+					.load();
+				result = docs.len();
+		    """.formatted( TEST_RESOURCES ),
+		    context
+		);
+		// @formatter:on
+
+		Integer count = ( Integer ) variables.get( "result" );
+		assertThat( count ).isGreaterThan( 0 );
+	}
+
+	@DisplayName( "aiDocuments BIF supports map method" )
+	@Test
+	public void testAiDocumentsMap() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				docs = aiDocuments( "%s/sample.txt" )
+					.map( ( doc ) => {
+						doc.setMeta( "processed", true );
+						return doc;
+					} )
+					.load();
+				result = docs[1].getMeta( "processed", false );
+		    """.formatted( TEST_RESOURCES ),
+		    context
+		);
+		// @formatter:on
+
+		Object processed = variables.get( "result" );
+		assertThat( processed ).isEqualTo( true );
 	}
 
 	// ===========================================
@@ -642,16 +707,16 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 	}
 
 	// ===========================================
-	// aiDocumentLoader BIF Tests for New Loaders
+	// aiDocuments BIF Tests for Loader Type Detection
 	// ===========================================
 
-	@DisplayName( "aiDocumentLoader auto-detects HTTP type for URLs" )
+	@DisplayName( "aiDocuments auto-detects HTTP type for URLs" )
 	@Test
-	public void testAiDocumentLoaderHTTPDetection() {
+	public void testAiDocumentsHTTPDetection() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				loader = aiDocumentLoader( "https://example.com/page.html" );
+				loader = aiDocuments( "https://example.com/page.html" );
 				result = loader.getName();
 		    """,
 		    context
@@ -662,13 +727,13 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		assertThat( name ).isEqualTo( "HTTPLoader" );
 	}
 
-	@DisplayName( "aiDocumentLoader auto-detects Tika type for PDF" )
+	@DisplayName( "aiDocuments auto-detects Tika type for PDF" )
 	@Test
-	public void testAiDocumentLoaderTikaDetection() {
+	public void testAiDocumentsTikaDetection() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				loader = aiDocumentLoader( "/path/to/file.pdf" );
+				loader = aiDocuments( "/path/to/file.pdf" );
 				result = loader.getName();
 		    """,
 		    context
@@ -679,13 +744,13 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		assertThat( name ).isEqualTo( "TikaLoader" );
 	}
 
-	@DisplayName( "aiDocumentLoader can create explicit HTTP loader" )
+	@DisplayName( "aiDocuments can create explicit HTTP loader" )
 	@Test
-	public void testAiDocumentLoaderExplicitHTTP() {
+	public void testAiDocumentsExplicitHTTP() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				loader = aiDocumentLoader( source: "https://api.example.com/data", type: "http" );
+				loader = aiDocuments( "https://api.example.com/data", { type: "http" } );
 				result = loader.getName();
 		    """,
 		    context
@@ -696,13 +761,13 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		assertThat( name ).isEqualTo( "HTTPLoader" );
 	}
 
-	@DisplayName( "aiDocumentLoader can create explicit Tika loader" )
+	@DisplayName( "aiDocuments can create explicit Tika loader" )
 	@Test
-	public void testAiDocumentLoaderExplicitTika() {
+	public void testAiDocumentsExplicitTika() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				loader = aiDocumentLoader( source: "/path/to/file.doc", type: "tika" );
+				loader = aiDocuments( "/path/to/file.doc", { type: "tika" } );
 				result = loader.getName();
 		    """,
 		    context
@@ -711,40 +776,6 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 
 		String name = ( String ) variables.get( "result" );
 		assertThat( name ).isEqualTo( "TikaLoader" );
-	}
-
-	// ===========================================
-	// aiDocumentLoaders BIF Tests for New Loaders
-	// ===========================================
-
-	@DisplayName( "aiDocumentLoaders includes HTTP and Tika loaders" )
-	@Test
-	public void testAiDocumentLoadersIncludesNewLoaders() {
-		// @formatter:off
-		runtime.executeSource(
-		    """
-				loaders = aiDocumentLoaders();
-				result = {
-					hasHTTP: loaders.keyExists( "http" ),
-					hasTika: loaders.keyExists( "tika" ),
-					httpName: loaders.http.name,
-					tikaName: loaders.tika.name,
-					tikaExtensions: loaders.tika.extensions
-				};
-		    """,
-		    context
-		);
-		// @formatter:on
-
-		IStruct result = ( IStruct ) variables.get( "result" );
-		assertThat( result.getAsBoolean( Key.of( "hasHTTP" ) ) ).isTrue();
-		assertThat( result.getAsBoolean( Key.of( "hasTika" ) ) ).isTrue();
-		assertThat( result.getAsString( Key.of( "httpName" ) ) ).isEqualTo( "HTTPLoader" );
-		assertThat( result.getAsString( Key.of( "tikaName" ) ) ).isEqualTo( "TikaLoader" );
-
-		Array tikaExtensions = result.getAsArray( Key.of( "tikaExtensions" ) );
-		assertThat( tikaExtensions ).isNotNull();
-		assertThat( tikaExtensions.size() ).isGreaterThan( 5 );
 	}
 
 	// ===========================================
@@ -840,6 +871,196 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 
 		Array embedding = result.getAsArray( Key.of( "embedding" ) );
 		assertThat( embedding.size() ).isEqualTo( 2 );
+	}
+
+	@DisplayName( "Document supports getTokenCount() and exceedsTokenLimit()" )
+	@Test
+	public void testDocumentTokenMethods() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.Document;
+				doc = new Document( content: "Hello world this is a test document." );
+				result = {
+					tokenCount: doc.getTokenCount(),
+					exceedsLimit: doc.exceedsTokenLimit( 5 ),
+					doesNotExceedLimit: doc.exceedsTokenLimit( 100 )
+				};
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		IStruct result = ( IStruct ) variables.get( "result" );
+		assertThat( ( ( Number ) result.get( Key.of( "tokenCount" ) ) ).intValue() ).isGreaterThan( 0 );
+		assertThat( result.getAsBoolean( Key.of( "exceedsLimit" ) ) ).isTrue();
+		assertThat( result.getAsBoolean( Key.of( "doesNotExceedLimit" ) ) ).isFalse();
+	}
+
+	@DisplayName( "Document supports preview()" )
+	@Test
+	public void testDocumentPreview() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.Document;
+				doc = new Document( content: "This is a very long content that should be truncated for preview." );
+				result = {
+					shortPreview: doc.preview( 20 ),
+					fullPreview: doc.preview( 100 )
+				};
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		IStruct	result			= ( IStruct ) variables.get( "result" );
+		String	shortPreview	= result.getAsString( Key.of( "shortPreview" ) );
+		String	fullPreview		= result.getAsString( Key.of( "fullPreview" ) );
+		assertThat( shortPreview ).endsWith( "..." );
+		assertThat( shortPreview.length() ).isEqualTo( 23 ); // 20 chars + "..."
+		assertThat( fullPreview.endsWith( "..." ) ).isFalse();
+	}
+
+	@DisplayName( "Document supports validate()" )
+	@Test
+	public void testDocumentValidate() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.Document;
+				validDoc = new Document( content: "Valid content", metadata: { source: "test" } );
+				emptyDoc = new Document( content: "" );
+				shortDoc = new Document( content: "Hi" );
+				
+				result = {
+					valid: validDoc.validate( minLength: 5, requiredMetadata: [ "source" ] ),
+					empty: emptyDoc.validate(),
+					tooShort: shortDoc.validate( minLength: 10 )
+				};
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		IStruct	result	= ( IStruct ) variables.get( "result" );
+
+		IStruct	valid	= ( IStruct ) result.get( Key.of( "valid" ) );
+		assertThat( valid.getAsBoolean( Key.of( "valid" ) ) ).isTrue();
+
+		IStruct empty = ( IStruct ) result.get( Key.of( "empty" ) );
+		assertThat( empty.getAsBoolean( Key.of( "valid" ) ) ).isFalse();
+
+		IStruct tooShort = ( IStruct ) result.get( Key.of( "tooShort" ) );
+		assertThat( tooShort.getAsBoolean( Key.of( "valid" ) ) ).isFalse();
+	}
+
+	@DisplayName( "Document supports hash() and fingerprint()" )
+	@Test
+	public void testDocumentHashAndFingerprint() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.Document;
+				doc1 = new Document( content: "Test content", metadata: { source: "test" } );
+				doc2 = new Document( content: "Test content", metadata: { source: "test" } );
+				doc3 = new Document( content: "Different content" );
+				
+				result = {
+					hash1: doc1.hash(),
+					hash2: doc2.hash(),
+					hash3: doc3.hash(),
+					fingerprint1: doc1.fingerprint(),
+					sameContentSameHash: doc1.hash() == doc2.hash(),
+					diffContentDiffHash: doc1.hash() != doc3.hash()
+				};
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		IStruct result = ( IStruct ) variables.get( "result" );
+		assertThat( result.getAsString( Key.of( "hash1" ) ) ).isNotEmpty();
+		assertThat( result.getAsString( Key.of( "fingerprint1" ) ) ).isNotEmpty();
+		assertThat( result.getAsBoolean( Key.of( "sameContentSameHash" ) ) ).isTrue();
+		assertThat( result.getAsBoolean( Key.of( "diffContentDiffHash" ) ) ).isTrue();
+	}
+
+	@DisplayName( "Document supports equals()" )
+	@Test
+	public void testDocumentEquals() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.Document;
+				doc1 = new Document( content: "Same content" );
+				doc2 = new Document( content: "Same content" );
+				doc3 = new Document( content: "Different content" );
+				
+				result = {
+					doc1EqualsDoc2: doc1.equals( doc2 ),
+					doc1EqualsDoc3: doc1.equals( doc3 )
+				};
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		IStruct result = ( IStruct ) variables.get( "result" );
+		assertThat( result.getAsBoolean( Key.of( "doc1EqualsDoc2" ) ) ).isTrue();
+		assertThat( result.getAsBoolean( Key.of( "doc1EqualsDoc3" ) ) ).isFalse();
+	}
+
+	@DisplayName( "Document supports toString()" )
+	@Test
+	public void testDocumentToString() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.Document;
+				doc = new Document( id: "test-123", content: "Test content", metadata: { source: "test.txt" } );
+				result = doc.toString();
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		String str = ( String ) variables.get( "result" );
+		assertThat( str ).contains( "Document" );
+		assertThat( str ).contains( "test-123" );
+	}
+
+	@DisplayName( "Document supports chunk()" )
+	@Test
+	public void testDocumentChunk() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.Document;
+				longContent = "This is a very long document that should be split into multiple chunks for processing. It contains several sentences that will be divided based on the chunk size parameter.";
+				doc = new Document( 
+					id: "parent-doc",
+					content: longContent,
+					metadata: { source: "test.txt" }
+				);
+				chunks = doc.chunk( 50, 10 );
+				result = {
+					chunkCount: chunks.len(),
+					firstChunkMeta: chunks[1].getMetadata()
+				};
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		IStruct	result		= ( IStruct ) variables.get( "result" );
+		Integer	chunkCount	= result.getAsInteger( Key.of( "chunkCount" ) );
+		assertThat( chunkCount ).isGreaterThan( 1 );
+
+		IStruct firstChunkMeta = ( IStruct ) result.get( Key.of( "firstChunkMeta" ) );
+		assertThat( firstChunkMeta.containsKey( Key.of( "isChunk" ) ) ).isTrue();
+		assertThat( firstChunkMeta.containsKey( Key.of( "parentId" ) ) ).isTrue();
+		assertThat( firstChunkMeta.getAsString( Key.of( "parentId" ) ) ).isEqualTo( "parent-doc" );
 	}
 
 	// ===========================================

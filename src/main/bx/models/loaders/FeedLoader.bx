@@ -70,7 +70,7 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @return Array of Document objects (one per feed item)
 	 */
-	array function load() {
+	array function doLoad() {
 		if ( !len( variables.source ) ) {
 			throw(
 				type    : "FeedLoader.NoSource",

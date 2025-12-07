@@ -15,45 +15,214 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  * ----------------------------------------------------------------------------------
- * Load documents from various sources (files, directories, URLs, databases).
- * Returns an array of Document objects from any source with optional configuration.
+ * Main entry point for document loading in AI workflows.
+ * Returns a fluent document loader that can be configured and then executed.
  *
  * @example
  * ```
- * // Load from a text file
- * docs = aiDocuments( "/path/to/file.txt" )
+ * // Load documents from a source
+ * docs = aiDocuments( "/docs", { type: "markdown", chunkSize: 500 } ).load()
  *
- * // Load from a directory with markdown files using aiDocumentLoader for fluent config
- * docs = aiDocumentLoader( "/docs", "markdown" ).headerSplit( 2 ).load()
+ * // Advanced fluent configuration
+ * docs = aiDocuments( "/docs", { type: "markdown" } )
+ *     .recursive()
+ *     .chunkSize( 500 )
+ *     .filter( ( doc ) => doc.metadata.language == "en" )
+ *     .load()
  *
- * // Load CSV with row-as-document mode
- * docs = aiDocuments( "/data.csv", "csv", { rowsAsDocuments: true } )
+ * // One-shot to memory
+ * result = aiDocuments( "/docs", { type: "markdown", chunkSize: 500 } )
+ *     .toMemory( myMemory )
+ *
+ * // Process documents with progress tracking
+ * docs = aiDocuments( "/large-dataset" )
+ *     .onProgress( ( completed, total, doc ) => {
+ *         println( "Loading: ${completed}/${total}" )
+ *     } )
+ *     .load()
+ *
+ * // Stream processing for large datasets
+ * aiDocuments( "/huge-dataset" )
+ *     .each( ( doc ) => {
+ *         processDocument( doc )
+ *         myMemory.seed( [ doc ] )
+ *     } )
  *
  * // Load from RSS feed
- * docs = aiDocuments( "https://example.com/feed.xml", "feed" )
+ * docs = aiDocuments( "https://example.com/feed.xml", { type: "feed" } ).load()
  *
  * // Load from database
- * docs = aiDocuments( "SELECT * FROM articles", "sql", { datasource: "mydb" } )
+ * docs = aiDocuments( "SELECT * FROM articles", { type: "sql", datasource: "mydb" } ).load()
  *
  * // Crawl website
- * docs = aiDocuments( "https://example.com", "crawler", { maxPages: 10 } )
+ * docs = aiDocuments( "https://example.com", { type: "crawler", maxPages: 10 } ).load()
  * ```
  */
+import bxModules.bxai.models.loaders.TextLoader;
+import bxModules.bxai.models.loaders.MarkdownLoader;
+import bxModules.bxai.models.loaders.CSVLoader;
+import bxModules.bxai.models.loaders.JSONLoader;
+import bxModules.bxai.models.loaders.XMLLoader;
+import bxModules.bxai.models.loaders.DirectoryLoader;
+import bxModules.bxai.models.loaders.HTTPLoader;
+import bxModules.bxai.models.loaders.TikaLoader;
+import bxModules.bxai.models.loaders.FeedLoader;
+import bxModules.bxai.models.loaders.SQLLoader;
+import bxModules.bxai.models.loaders.WebCrawlerLoader;
+
 @BoxBIF
 class {
 
 	/**
-	 * Load documents from a source
+	 * Static loader type mappings
+	 */
+	static {
+		EXTENSION_MAP = {
+			"txt"      : "text",
+			"text"     : "text",
+			"md"       : "markdown",
+			"markdown" : "markdown",
+			"csv"      : "csv",
+			"json"     : "json",
+			"xml"      : "xml",
+			"rss"      : "feed",
+			"atom"     : "feed",
+			// Tika-supported formats
+			"pdf"      : "tika",
+			"doc"      : "tika",
+			"docx"     : "tika",
+			"xls"      : "tika",
+			"xlsx"     : "tika",
+			"ppt"      : "tika",
+			"pptx"     : "tika",
+			"odt"      : "tika",
+			"ods"      : "tika",
+			"odp"      : "tika",
+			"rtf"      : "tika",
+			"epub"     : "tika"
+		};
+	}
+
+	/**
+	 * Create a fluent document loader for the given source
 	 *
 	 * @source The source to load from (file path, directory, URL, or SQL query)
-	 * @type   Optional explicit loader type (text, markdown, csv, json, xml, directory, http, tika, feed, sql, crawler)
-	 * @config Configuration options for the loader
+	 * @config Configuration options:
+	 *         - type: Explicit loader type (text, markdown, csv, json, xml, directory, http, tika, feed, sql, crawler)
+	 *         - recursive: Recurse into subdirectories (directory loader)
+	 *         - extensions: File extensions to include (directory loader)
+	 *         - chunkSize: Chunk size for splitting
+	 *         - overlap: Overlap between chunks
+	 *         - delimiter: CSV delimiter
+	 *         - encoding: File encoding
+	 *         - (loader-specific options...)
 	 *
-	 * @return Array of Document objects
+	 * @return IDocumentLoader instance for fluent chaining
 	 */
-	function invoke( required string source, string type = "", struct config = {} ) {
-		var loader = aiDocumentLoader( argumentCollection: arguments );
-		return loader.load();
+	function invoke( required string source, struct config = {} ) {
+		var loaderType = arguments.config.keyExists( "type" ) ? arguments.config.type : "";
+
+		// Auto-detect loader type if not specified
+		if ( !len( loaderType ) ) {
+			loaderType = detectLoaderType( arguments.source );
+		}
+
+		// Create the appropriate loader
+		switch ( loaderType.lCase() ) {
+			case "text":
+			case "txt":
+				return new TextLoader( source: arguments.source, config: arguments.config );
+
+			case "markdown":
+			case "md":
+				return new MarkdownLoader( source: arguments.source, config: arguments.config );
+
+			case "csv":
+				return new CSVLoader( source: arguments.source, config: arguments.config );
+
+			case "json":
+				return new JSONLoader( source: arguments.source, config: arguments.config );
+
+			case "xml":
+				return new XMLLoader( source: arguments.source, config: arguments.config );
+
+			case "directory":
+			case "dir":
+				return new DirectoryLoader( source: arguments.source, config: arguments.config );
+
+			case "http":
+			case "url":
+			case "html":
+			case "htm":
+				return new HTTPLoader( source: arguments.source, config: arguments.config );
+
+			case "tika":
+			case "pdf":
+			case "doc":
+			case "docx":
+				return new TikaLoader( source: arguments.source, config: arguments.config );
+
+			case "feed":
+			case "rss":
+			case "atom":
+				return new FeedLoader( source: arguments.source, config: arguments.config );
+
+			case "sql":
+			case "database":
+			case "db":
+				return new SQLLoader( source: arguments.source, config: arguments.config );
+
+			case "crawler":
+			case "webcrawler":
+			case "scraper":
+				return new WebCrawlerLoader( source: arguments.source, config: arguments.config );
+
+			default:
+				throw(
+					type    : "aiDocuments.UnknownLoaderType",
+					message : "Unknown loader type: ${loaderType}. Supported types: text, markdown, csv, json, xml, directory, http, tika, feed, sql, crawler"
+				);
+		}
+	}
+
+	/**
+	 * Detect the loader type from the source
+	 *
+	 * @source The source path or URL
+	 *
+	 * @return The detected loader type
+	 */
+	private string function detectLoaderType( required string source ) {
+		// Check if it's a directory
+		if ( directoryExists( arguments.source ) ) {
+			return "directory";
+		}
+
+		// Check if it's a URL - use HTTP loader
+		if ( reFindNoCase( "^https?://", arguments.source ) ) {
+			// Check if it's a feed URL
+			if ( reFindNoCase( "\.(rss|atom|feed)(\.xml)?$", arguments.source ) ||
+				 reFindNoCase( "/feed/?$", arguments.source ) ||
+				 reFindNoCase( "/rss/?$", arguments.source ) ) {
+				return "feed";
+			}
+			return "http";
+		}
+
+		// Check if it looks like a SQL query
+		if ( reFindNoCase( "^\s*(SELECT|INSERT|UPDATE|DELETE|WITH)\s+", arguments.source ) ) {
+			return "sql";
+		}
+
+		// Check file extension
+		var extension = listLast( arguments.source, "." ).lCase();
+
+		if ( static.EXTENSION_MAP.keyExists( extension ) ) {
+			return static.EXTENSION_MAP[ extension ];
+		}
+
+		// Default to text
+		return "text";
 	}
 
 }

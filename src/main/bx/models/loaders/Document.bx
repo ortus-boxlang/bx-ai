@@ -18,6 +18,8 @@
  * Represents a loaded document with content and metadata.
  * This is the standard output format for all document loaders.
  */
+import bxModules.bxai.models.util.TextChunker;
+
 class {
 
 	/**
@@ -57,6 +59,191 @@ class {
 		variables.embedding = arguments.embedding;
 		return this;
 	}
+
+	// ==================== Content Methods ====================
+
+	/**
+	 * Check if the document has content
+	 *
+	 * @return True if content is not empty
+	 */
+	boolean function hasContent() {
+		return len( trim( variables.content ) ) > 0;
+	}
+
+	/**
+	 * Get the content length in characters
+	 *
+	 * @return Numeric length
+	 */
+	numeric function getContentLength() {
+		return len( variables.content );
+	}
+
+	/**
+	 * Get a preview of the document content
+	 *
+	 * @length Maximum preview length (default: 100)
+	 *
+	 * @return Truncated content with ellipsis if needed
+	 */
+	string function preview( numeric length = 100 ) {
+		var trimmedContent = trim( variables.content );
+		if ( len( trimmedContent ) <= arguments.length ) {
+			return trimmedContent;
+		}
+		return left( trimmedContent, arguments.length ) & "...";
+	}
+
+	// ==================== Token/Cost Methods ====================
+
+	/**
+	 * Get estimated token count using simple heuristic.
+	 * More accurate counting can use aiTokens() BIF with a specific model.
+	 * Default heuristic: ~4 characters per token on average.
+	 *
+	 * @return Estimated token count
+	 */
+	numeric function getTokenCount() {
+		return ceiling( getContentLength() / 4 );
+	}
+
+	/**
+	 * Check if document exceeds token limit
+	 *
+	 * @maxTokens Maximum token count
+	 *
+	 * @return Boolean true if exceeds limit
+	 */
+	boolean function exceedsTokenLimit( required numeric maxTokens ) {
+		return getTokenCount() > arguments.maxTokens;
+	}
+
+	// ==================== Chunking Methods ====================
+
+	/**
+	 * Split this document into chunks using the TextChunker.
+	 * Returns an array of new Document objects, each representing a chunk.
+	 *
+	 * @chunkSize Maximum characters per chunk (default: 1000)
+	 * @overlap Characters to overlap between chunks (default: 200)
+	 * @strategy Chunking strategy: recursive, characters, words, sentences (default: recursive)
+	 *
+	 * @return Array of Document objects (chunks)
+	 */
+	array function chunk( numeric chunkSize = 1000, numeric overlap = 200, string strategy = "recursive" ) {
+		var chunks = TextChunker::chunk(
+			variables.content,
+			{
+				chunkSize : arguments.chunkSize,
+				overlap   : arguments.overlap,
+				strategy  : arguments.strategy
+			}
+		);
+
+		var result = [];
+		var totalChunks = chunks.len();
+
+		for ( var i = 1; i <= totalChunks; i++ ) {
+			var chunkMetadata = duplicate( variables.metadata );
+			chunkMetadata[ "chunkIndex" ]  = i;
+			chunkMetadata[ "totalChunks" ] = totalChunks;
+			chunkMetadata[ "isChunk" ]     = true;
+			chunkMetadata[ "parentId" ]    = variables.id;
+
+			result.append(
+				new Document(
+					content  : chunks[ i ],
+					metadata : chunkMetadata
+				)
+			);
+		}
+
+		return result;
+	}
+
+	// ==================== Validation Methods ====================
+
+	/**
+	 * Validate the document meets requirements
+	 *
+	 * @minLength Minimum content length (0 = no minimum)
+	 * @maxLength Maximum content length (0 = no maximum)
+	 * @requiredMetadata Array of required metadata keys
+	 *
+	 * @return Struct with { valid: boolean, errors: array }
+	 */
+	struct function validate(
+		numeric minLength = 0,
+		numeric maxLength = 0,
+		array requiredMetadata = []
+	) {
+		var validationErrors = [];
+
+		if ( !hasContent() ) {
+			validationErrors.append( "Document has no content" );
+		}
+
+		if ( arguments.minLength > 0 && getContentLength() < arguments.minLength ) {
+			validationErrors.append( "Content too short (min: ${arguments.minLength})" );
+		}
+
+		if ( arguments.maxLength > 0 && getContentLength() > arguments.maxLength ) {
+			validationErrors.append( "Content too long (max: ${arguments.maxLength})" );
+		}
+
+		for ( var key in arguments.requiredMetadata ) {
+			if ( !variables.metadata.keyExists( key ) ) {
+				validationErrors.append( "Missing required metadata: ${key}" );
+			}
+		}
+
+		return {
+			valid  : validationErrors.len() == 0,
+			errors : validationErrors
+		};
+	}
+
+	// ==================== Hash/Fingerprint Methods ====================
+
+	/**
+	 * Get a hash of the document content for deduplication.
+	 * Uses MD5 by default for speed.
+	 *
+	 * @algorithm Hash algorithm (default: MD5)
+	 *
+	 * @return Hash string
+	 */
+	string function hash( string algorithm = "MD5" ) {
+		return hash( variables.content, arguments.algorithm );
+	}
+
+	/**
+	 * Get a content fingerprint (simhash-style) for fuzzy deduplication.
+	 * Combines content hash with metadata hash.
+	 *
+	 * @return Fingerprint string
+	 */
+	string function fingerprint() {
+		var contentHash = hash( variables.content, "SHA-256" );
+		var metaString = jsonSerialize( variables.metadata );
+		var metaHash = hash( metaString, "MD5" );
+		return contentHash & "-" & metaHash;
+	}
+
+	/**
+	 * Compare this document with another for equality.
+	 * Two documents are equal if they have the same content hash.
+	 *
+	 * @target The document to compare with
+	 *
+	 * @return Boolean true if documents have identical content
+	 */
+	boolean function equals( required Document target ) {
+		return this.hash() == arguments.target.hash();
+	}
+
+	// ==================== Metadata Methods ====================
 
 	/**
 	 * Get a specific metadata value
@@ -98,23 +285,7 @@ class {
 		return this;
 	}
 
-	/**
-	 * Check if the document has content
-	 *
-	 * @return True if content is not empty
-	 */
-	boolean function hasContent() {
-		return len( trim( variables.content ) ) > 0;
-	}
-
-	/**
-	 * Get the content length in characters
-	 *
-	 * @return Numeric length
-	 */
-	numeric function getContentLength() {
-		return len( variables.content );
-	}
+	// ==================== Embedding Methods ====================
 
 	/**
 	 * Check if the document has an embedding
@@ -125,17 +296,21 @@ class {
 		return variables.embedding.len() > 0;
 	}
 
+	// ==================== Serialization Methods ====================
+
 	/**
 	 * Convert document to a struct representation
 	 *
-	 * @return Struct with id, content, metadata, and embedding
+	 * @return Struct with id, content, metadata, embedding, and hash
 	 */
 	struct function toStruct() {
 		return {
-			"id"        : variables.id,
-			"content"   : variables.content,
-			"metadata"  : variables.metadata,
-			"embedding" : variables.embedding
+			"id"          : variables.id,
+			"content"     : variables.content,
+			"metadata"    : variables.metadata,
+			"embedding"   : variables.embedding,
+			"hash"        : this.hash(),
+			"fingerprint" : this.fingerprint()
 		};
 	}
 
@@ -147,6 +322,18 @@ class {
 	string function toJson() {
 		return jsonSerialize( toStruct() );
 	}
+
+	/**
+	 * Get a string representation of the document
+	 *
+	 * @return Human-readable string representation
+	 */
+	string function toString() {
+		var docSource = getMeta( "source", "unknown" );
+		return "Document[id=#variables.id#, source=#docSource#, length=#getContentLength()#, hasEmbedding=#hasEmbedding()#]";
+	}
+
+	// ==================== Factory Methods ====================
 
 	/**
 	 * Create a Document from a struct

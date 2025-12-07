@@ -108,7 +108,7 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @return Array of Document objects
 	 */
-	array function load() {
+	array function doLoad() {
 		if ( !len( variables.source ) ) {
 			throw(
 				type    : "WebCrawlerLoader.NoSource",
