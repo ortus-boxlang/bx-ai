@@ -8,109 +8,98 @@ The document loading system provides:
 
 - **Multiple Loader Types**: Text, Markdown, CSV, JSON, XML, HTTP, Tika, Feed, SQL, Directory, and WebCrawler loaders
 - **Consistent Document Format**: All loaders produce `Document` objects with content, metadata, id, and embedding properties
-- **Fluent API**: Chain methods for easy configuration
-- **Memory Integration**: Load directly into AI memory systems for RAG workflows
+- **Fluent API**: Chain methods for easy configuration and transformation
+- **Memory Integration**: Load directly into AI memory systems for RAG workflows via `toMemory()`
 - **Chunking Support**: Automatic text chunking for large documents
 - **Multi-Memory Fan-out**: Ingest to multiple memory systems simultaneously
 - **Async Support**: Load documents asynchronously with `loadAsync()`
+- **Filter/Transform**: Apply filters and transforms during loading
 
 ## BIF Reference
 
 | BIF | Purpose | Returns |
 |-----|---------|---------|
-| `aiDocuments()` | Load documents from any source | Array of Documents |
-| `aiDocumentLoader()` | Create loader instance for advanced config | IDocumentLoader |
-| `aiDocumentLoaders()` | Get all registered loaders with metadata | Struct |
-| `aiMemoryIngest()` | Ingest documents into memory with reporting | Ingestion Report |
+| `aiDocuments()` | Create fluent document loader | IDocumentLoader |
 
 ## Quick Start
 
 ### Using `aiDocuments()`
 
-The easiest way to load documents:
+The main entry point for document loading - returns a fluent loader:
 
-```java
+```javascriptscript
 // Load a text file
-docs = aiDocuments( "/path/to/document.txt" )
+docs = aiDocuments( "/path/to/document.txt" ).load()
 
 // Load a directory of files
-docs = aiDocuments( "/path/to/folder" )
+docs = aiDocuments( "/path/to/folder" ).load()
 
 // Load from URL
-docs = aiDocuments( "https://example.com/page.html" )
+docs = aiDocuments( "https://example.com/page.html" ).load()
 
-// Load with explicit type
-docs = aiDocuments( source: "/path/to/file.txt", type: "markdown" )
+// Load with explicit type via config
+docs = aiDocuments( "/path/to/file.txt", { type: "markdown" } ).load()
 
-// Load with configuration
-docs = aiDocuments(
-    source: "/path/to/file.csv",
-    config: { delimiter: ";", rowsAsDocuments: true }
-)
+// Load with chunking configuration
+docs = aiDocuments( "/path/to/file.md" )
+    .chunkSize( 500 )
+    .overlap( 50 )
+    .load()
 ```
 
-### Using `aiDocumentLoader()`
+### Fluent Configuration
 
-For advanced configuration and method chaining:
+The `aiDocuments()` BIF returns a loader that can be fluently configured:
 
-```java
+```javascriptscript
 // Create and configure a markdown loader
-loader = aiDocumentLoader( "/docs", "markdown" )
-    .headerSplit( 2 )
-    .removeCodeBlocks()
-docs = loader.load()
+docs = aiDocuments( "/docs", { type: "markdown" } )
+    .recursive()
+    .chunkSize( 500 )
+    .load()
 
 // Create a directory loader with filters
-loader = aiDocumentLoader( "/knowledge-base", "directory" )
+docs = aiDocuments( "/knowledge-base" )
     .recursive()
-    .extensions( ["md", "txt"] )
-docs = loader.load()
+    .extensions( [ "md", "txt" ] )
+    .load()
 
 // Create an HTTP loader for web content
-loader = aiDocumentLoader( "https://api.example.com/data", "http" )
-    .contentType( "json" )
+docs = aiDocuments( "https://api.example.com/data", { type: "http" } )
     .timeout( 60 )
     .header( "Authorization", "Bearer token" )
-docs = loader.load()
+    .load()
 
 // Load async
-future = loader.loadAsync()
+future = aiDocuments( "/large-dataset" ).loadAsync()
 docs = future.get()
 ```
 
 ### Using `aiMemoryIngest()`
 
+### Memory Integration with `toMemory()`
+
 Ingest documents into memory with comprehensive reporting:
 
-```java
+```javascriptscript
 // Single memory ingestion
-result = aiMemoryIngest(
-    memory = myVectorMemory,
-    source = "/docs",
-    type   = "markdown"
-)
+result = aiDocuments( "/docs", { type: "markdown" } )
+    .toMemory( myVectorMemory )
 
-// With chunking and options
-result = aiMemoryIngest(
-    memory        = myVectorMemory,
-    source        = "/knowledge-base",
-    type          = "directory",
-    loaderConfig  = { recursive: true, extensions: ["md", "txt"] },
-    ingestOptions = { chunkSize: 500, overlap: 50 }
-)
+// With chunking options
+result = aiDocuments( "/knowledge-base" )
+    .recursive()
+    .extensions( [ "md", "txt" ] )
+    .toMemory( myVectorMemory, { chunkSize: 500, overlap: 50 } )
 
 // Multi-memory fan-out (async supported)
-result = aiMemoryIngest(
-    memory = [ chromaMemory, pgVectorMemory ],
-    source = "/docs",
-    type   = "markdown",
-    ingestOptions = { async: true }
-)
+result = aiDocuments( "/docs", { type: "markdown" } )
+    .toMemory( [ chromaMemory, pgVectorMemory ], { async: true } )
 ```
 
 **Ingestion Report Structure:**
 
-```java
+```javascriptscript
 {
     documentsIn       : 12,      // Documents loaded from source
     chunksOut         : 57,      // Chunks after splitting
@@ -126,26 +115,41 @@ result = aiMemoryIngest(
 }
 ```
 
-### Using `aiDocumentLoaders()`
+### Filter and Transform
 
-Get information about all registered loaders:
+Apply filters and transforms during loading:
 
-```java
-loaders = aiDocumentLoaders()
+```javascriptscript
+// Filter documents
+docs = aiDocuments( "/docs" )
+    .filter( ( doc ) => doc.hasContent() && doc.getContentLength() > 100 )
+    .load()
 
-// Inspect available loaders
-loaders.each( ( type, info ) => {
-    println( "Type: #type#" )
-    println( "  Extensions: #info.extensions.toList()#" )
-    println( "  Capabilities: #info.capabilities.keyArray().toList()#" )
-} )
+// Transform documents
+docs = aiDocuments( "/docs" )
+    .map( ( doc ) => {
+        doc.setMeta( "processed", true )
+        return doc
+    } )
+    .load()
+
+// Combined with progress tracking
+aiDocuments( "/large-dataset" )
+    .filter( ( doc ) => doc.hasContent() )
+    .map( ( doc ) => doc.setMeta( "indexed", true ) )
+    .onProgress( ( completed, total, doc ) => {
+        println( "Loading: #completed#/#total# - #doc.getMeta( 'source' )#" )
+    } )
+    .each( ( doc ) => {
+        myMemory.seed( [ doc ] )
+    } )
 ```
 
 ### Document Structure
 
 Each `Document` object has:
 
-```java
+```javascriptscript
 {
     "id": "auto-generated-uuid",
     "content": "The extracted text content",
@@ -162,13 +166,45 @@ Each `Document` object has:
 }
 ```
 
+### Document Methods
+
+The `Document` class provides utility methods:
+
+```javascriptscript
+import bxModules.bxai.models.loaders.Document;
+
+doc = new Document( content: "Sample text", metadata: { source: "test" } )
+
+// Content methods
+doc.getContent()                    // Get text content
+doc.getContentLength()              // Get content length
+doc.hasContent()                    // Check if has content
+doc.preview( 100 )                  // Get truncated preview
+
+// Token estimation
+doc.getTokenCount()                 // Estimate token count (~4 chars/token)
+doc.exceedsTokenLimit( 4000 )       // Check if exceeds limit
+
+// Validation
+result = doc.validate( minLength: 10, requiredMetadata: [ "source" ] )
+// Returns { valid: boolean, errors: array }
+
+// Deduplication
+doc.hash()                          // MD5 hash of content
+doc.fingerprint()                   // Combined content+metadata hash
+doc.equals( otherDoc )              // Compare by hash
+
+// Chunking
+chunks = doc.chunk( 500, 50 )       // Returns array of Document chunks
+```
+
 ## Available Loaders
 
 ### TextLoader
 
 Loads plain text files (`.txt`, `.text`).
 
-```java
+```javascriptscript
 import bxModules.bxai.models.loaders.TextLoader;
 
 loader = new TextLoader( source: "/path/to/file.txt" )
@@ -179,7 +215,7 @@ docs = loader.load()
 
 Loads Markdown files with optional header-based splitting.
 
-```java
+```javascript
 import bxModules.bxai.models.loaders.MarkdownLoader;
 
 // Basic loading
@@ -212,7 +248,7 @@ docs = loader.load()
 
 Loads content from HTTP/HTTPS URLs with automatic content type detection. This is the primary loader for all web-based content including HTML pages, JSON APIs, and XML feeds.
 
-```java
+```javascript
 import bxModules.bxai.models.loaders.HTTPLoader;
 
 // Basic URL loading
@@ -272,7 +308,7 @@ docs = loader.load()
 
 Loads CSV files with header support and row-as-document options.
 
-```java
+```javascript
 import bxModules.bxai.models.loaders.CSVLoader;
 
 // Basic loading
@@ -305,7 +341,7 @@ docs = loader.load()
 
 Loads JSON files with field extraction options.
 
-```java
+```javascript
 import bxModules.bxai.models.loaders.JSONLoader;
 
 // Basic loading
@@ -337,7 +373,7 @@ docs = loader.load()
 
 Loads PDF, Word, Excel, PowerPoint, and other document formats using Apache Tika.
 
-```java
+```javascript
 import bxModules.bxai.models.loaders.TikaLoader;
 
 // Load a PDF
@@ -383,7 +419,7 @@ if ( TikaLoader::isSupported( "/path/to/file.pdf" ) ) {
 
 Loads all files from a directory using appropriate loaders.
 
-```java
+```javascript
 import bxModules.bxai.models.loaders.DirectoryLoader;
 
 // Load all supported files
@@ -411,7 +447,7 @@ docs = loader.load()
 
 Loads and parses XML documents with XPath support. Useful for config files, RSS feeds, and legacy data.
 
-```java
+```javascript
 import bxModules.bxai.models.loaders.XMLLoader;
 
 // Basic XML loading
@@ -450,7 +486,7 @@ docs = loader.load()
 
 Loads RSS and Atom feeds, creating a document per feed item. Perfect for blog aggregation, news feeds, and content syndication.
 
-```java
+```javascript
 import bxModules.bxai.models.loaders.FeedLoader;
 
 // Load RSS feed
@@ -486,7 +522,7 @@ docs = loader.load()
 
 Loads documents from database queries. Converts query results to Document objects for RAG over structured data.
 
-```java
+```javascript
 import bxModules.bxai.models.loaders.SQLLoader;
 
 // Basic query loading
@@ -529,7 +565,7 @@ docs = loader.load()
 
 Crawls multiple web pages by following links. Respects robots.txt and supports depth-limited crawling. Uses JSoup for HTML parsing.
 
-```java
+```javascript
 import bxModules.bxai.models.loaders.WebCrawlerLoader;
 
 // Basic crawling
@@ -584,7 +620,7 @@ All loaders support these loading methods:
 | `loadAsStream()` | Load as Java Stream for lazy processing |
 | `loadBatch( batchSize )` | Load documents in batches |
 
-```java
+```javascript
 // Synchronous loading
 docs = loader.load()
 
@@ -607,7 +643,7 @@ batch2 = loader.loadBatch( 50 )  // Next 50 docs
 
 Loaders can store documents directly into AI memory systems:
 
-```java
+```javascript
 import bxModules.bxai.models.loaders.DirectoryLoader;
 
 // Load documents into windowed memory
@@ -630,7 +666,7 @@ docs = loader.loadTo(
 
 For comprehensive ingestion with reporting:
 
-```java
+```javascript
 // Single memory with full reporting
 result = aiMemoryIngest(
     memory        = vectorMemory,
@@ -671,7 +707,7 @@ println( "Estimated cost: $#result.estimatedCost#" )
 
 The `Document` class provides a consistent interface for working with loaded content:
 
-```java
+```javascript
 import bxModules.bxai.models.loaders.Document;
 
 // Create a document
@@ -714,7 +750,7 @@ copy = doc.clone()
 
 Loaders track errors encountered during loading:
 
-```java
+```javascript
 loader = new DirectoryLoader( source: "/docs" )
     .configure( { continueOnError: true } )
 
@@ -733,7 +769,7 @@ if ( errors.len() > 0 ) {
 
 You can create custom loaders by extending `BaseDocumentLoader`:
 
-```java
+```javascript
 class CustomLoader extends="bxModules.bxai.models.loaders.BaseDocumentLoader" {
 
     function init( string source = "", struct config = {} ) {
@@ -765,7 +801,7 @@ class CustomLoader extends="bxModules.bxai.models.loaders.BaseDocumentLoader" {
 
 Here's a complete example of building a RAG pipeline with document loaders:
 
-```java
+```javascript
 // Step 1: Create vector memory
 vectorMemory = aiMemory( "chroma", {
     collection: "docs",
