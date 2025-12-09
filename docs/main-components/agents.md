@@ -3,11 +3,11 @@ description: "The complete guide to AI Agents in BoxLang, covering creation, mem
 icon: robot
 ---
 
-# AI Agents
+# 🤖 AI Agents
 
 AI Agents are autonomous entities that can reason, use tools, and maintain conversation memory. Inspired by LangChain agents but "Boxified" for simplicity and productivity, agents handle complex AI workflows by automatically managing state, context, and tool execution.
 
-## What are AI Agents?
+## 🎯 What are AI Agents?
 
 An agent is more than a simple chat interface - it's an intelligent entity that:
 
@@ -18,7 +18,81 @@ An agent is more than a simple chat interface - it's an intelligent entity that:
 - **Integrates with Pipelines**: Works seamlessly in BoxLang AI pipelines
 - **Delegates to Sub-Agents**: Can orchestrate specialized sub-agents for complex tasks
 
-## Creating Agents
+### 🏗️ Agent Architecture
+
+```mermaid
+graph TB
+    subgraph "Agent Components"
+        A[🤖 Agent Core]
+        M[🧠 AI Model]
+        MEM[💭 Memory System]
+        T[🛠️ Tool Registry]
+        I[📋 Instructions]
+    end
+    
+    subgraph "Memory Types"
+        W[Window Memory]
+        S[Summary Memory]
+        SE[Session Memory]
+        F[File Memory]
+    end
+    
+    subgraph "External Systems"
+        API[External APIs]
+        DB[Databases]
+        FS[File System]
+    end
+    
+    A --> M
+    A --> MEM
+    A --> T
+    A --> I
+    
+    MEM --> W
+    MEM --> S
+    MEM --> SE
+    MEM --> F
+    
+    T --> API
+    T --> DB
+    T --> FS
+    
+    style A fill:#BD10E0
+    style M fill:#4A90E2
+    style MEM fill:#50E3C2
+    style T fill:#B8E986
+```
+
+### 🔄 Agent Decision Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant M as Memory
+    participant AI as AI Model
+    participant T as Tools
+    
+    U->>A: User message
+    A->>M: Retrieve context
+    M->>A: Historical messages
+    A->>AI: Send message + context + available tools
+    
+    alt AI needs tool
+        AI->>A: Tool call request
+        A->>T: Execute tool
+        T->>A: Tool result
+        A->>AI: Send tool result
+        AI->>A: Final response
+    else AI has answer
+        AI->>A: Direct response
+    end
+    
+    A->>M: Store new messages
+    A->>U: Return response
+```
+
+## 🚀 Creating Agents
 
 ### Basic Agent
 
@@ -80,9 +154,26 @@ agent = aiAgent(
 response = agent.run( "What's the weather in Boston and what's 15% of 250?" )
 ```
 
-## Memory Management
+## 💭 Memory Management
 
 Agents automatically maintain conversation history:
+
+### 🔄 Memory Flow
+
+```mermaid
+graph LR
+    U[User Input] --> A[Agent]
+    A --> R[Retrieve from Memory]
+    R --> C[Combine with Input]
+    C --> AI[AI Model]
+    AI --> S[Store Response]
+    S --> M[Memory System]
+    M --> O[Output to User]
+    
+    style A fill:#BD10E0
+    style M fill:#50E3C2
+    style AI fill:#4A90E2
+```
 
 ### Window Memory (Default)
 
@@ -127,7 +218,7 @@ agent = aiAgent(
 agent.run( "Remember this fact: BoxLang is awesome" )
 ```
 
-## Configuration
+## ⚙️ Configuration
 
 ### Constructor-Based Configuration
 
@@ -164,9 +255,28 @@ agent = aiAgent(
 response = agent.run( "Help me with this task" )
 ```
 
-## Return Formats
+## 📤 Return Formats
 
 Agents support five return formats: `single`, `all`, `json`, `xml`, and `raw`.
+
+### Return Format Flow
+
+```mermaid
+graph TD
+    A[Agent Response] --> D{Return Format?}
+    D -->|single| S[Content String Only]
+    D -->|all| AL[All Messages Array]
+    D -->|json| J[Parsed JSON Object]
+    D -->|xml| X[Parsed XML Object]
+    D -->|raw| R[Complete API Response]
+    
+    style A fill:#BD10E0
+    style S fill:#7ED321
+    style AL fill:#4A90E2
+    style J fill:#F5A623
+    style X fill:#D0021B
+    style R fill:#9013FE
+```
 
 ### Single (Default)
 

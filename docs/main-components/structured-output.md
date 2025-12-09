@@ -3,11 +3,25 @@ description: "Use structured output with AI pipelines for type-safe, composable 
 icon: box
 ---
 
-# Structured Output in Pipelines
+# 📦 Structured Output in Pipelines
 
 Use structured output with AI pipelines for type-safe, composable workflows. Combine the power of runnables with guaranteed data structures for robust AI applications.
 
-## Quick Start
+## 🚀 Quick Start
+
+### 🏗️ Structured Output Flow
+
+```mermaid
+graph LR
+    A[AI Response<br/>Free Text] --> S[Schema Definition]
+    S --> V[Validation]
+    V --> O[Typed Object]
+    
+    style A fill:#4A90E2
+    style S fill:#F5A623
+    style V fill:#BD10E0
+    style O fill:#7ED321
+```
 
 ### Basic Pipeline with Structured Output
 
@@ -28,7 +42,7 @@ person = pipeline.run( "Extract: John Doe, age 30" )
 println( person.getFirstName() )  // "John"
 ```
 
-## Pipeline Methods
+## 🔧 Pipeline Methods
 
 ### `.structuredOutput( schema )`
 

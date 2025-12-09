@@ -3,11 +3,11 @@ description: "Create AI tools that enable function calling, letting AI models ac
 icon: wrench
 ---
 
-# AI Tools (Function Calling)
+# 🛠️ AI Tools (Function Calling)
 
 AI Tools enable AI models to call functions in your code, providing access to real-time data, external APIs, databases, and any other system integration.
 
-## What are AI Tools?
+## 🎯 What are AI Tools?
 
 Tools are functions that you define and make available to AI models. When the AI needs information or wants to perform an action, it can call these tools:
 
@@ -21,7 +21,72 @@ Your Tool: Fetches actual weather from API → Returns "72°F, Sunny"
 AI: "The weather in Boston is 72°F and sunny."
 ```
 
-## Creating Tools
+### 🔄 Tool Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant AI as AI Model
+    participant A as Agent/Pipeline
+    participant T as Tool Function
+    participant E as External System
+    
+    U->>AI: "What's the weather in Boston?"
+    AI->>AI: Analyze query + available tools
+    AI->>A: Request tool call: get_weather("Boston")
+    A->>T: Execute tool function
+    T->>E: API call to weather service
+    E->>T: Weather data
+    T->>A: Return: {temp: 72, condition: "Sunny"}
+    A->>AI: Tool result
+    AI->>U: "The weather in Boston is 72°F and sunny."
+    
+    Note over AI,T: AI automatically decides<br/>when to use tools
+```
+
+### 🏗️ Tool Architecture
+
+```mermaid
+graph TB
+    subgraph "AI Layer"
+        AI[AI Model]
+        D[Decision Engine]
+    end
+    
+    subgraph "Tool Registry"
+        T1[Weather Tool]
+        T2[Database Tool]
+        T3[Calculator Tool]
+        T4[API Tool]
+    end
+    
+    subgraph "External Systems"
+        W[Weather API]
+        DB[Database]
+        CALC[Math Engine]
+        EXT[External API]
+    end
+    
+    AI --> D
+    D -->|Decides which tool| T1
+    D -->|to execute| T2
+    D -->|based on context| T3
+    D -->|and need| T4
+    
+    T1 --> W
+    T2 --> DB
+    T3 --> CALC
+    T4 --> EXT
+    
+    style AI fill:#4A90E2
+    style D fill:#BD10E0
+    style T1 fill:#B8E986
+    style T2 fill:#B8E986
+    style T3 fill:#B8E986
+    style T4 fill:#B8E986
+```
+
+## 🔧 Creating Tools
 
 ### Basic Tool
 
@@ -46,7 +111,7 @@ result = aiChat(
 // AI calls your tool automatically and uses the result
 ```
 
-## Tool Definition
+## 📝 Tool Definition
 
 ### The `aiTool()` Function
 
@@ -99,7 +164,7 @@ searchTool = aiTool(
     .describeLimit( "Maximum results to return (default: 10)" )
 ```
 
-## Tool Properties
+## ⚙️ Tool Properties
 
 Access tool properties:
 
@@ -115,7 +180,7 @@ println( tool.getSchema() )         // Full JSON schema
 tool.setDescription( "New description" )
 ```
 
-## Common Tool Patterns
+## 💡 Common Tool Patterns
 
 ### Database Query Tool
 
@@ -186,9 +251,37 @@ fileTool = aiTool(
 ).describePath( "Path to the file" )
 ```
 
-## Multiple Tools
+## 🔗 Multiple Tools
 
 Provide multiple tools for complex tasks:
+
+### Multi-Tool Orchestration
+
+```mermaid
+graph LR
+    U[User Query] --> AI[AI Model]
+    AI --> D{Analyze Need}
+    
+    D -->|Weather| T1[Weather Tool]
+    D -->|Math| T2[Calculator Tool]
+    D -->|Data| T3[Database Tool]
+    D -->|Search| T4[Search Tool]
+    
+    T1 --> R[Results]
+    T2 --> R
+    T3 --> R
+    T4 --> R
+    
+    R --> AI
+    AI --> F[Final Response]
+    
+    style AI fill:#4A90E2
+    style D fill:#BD10E0
+    style T1 fill:#B8E986
+    style T2 fill:#B8E986
+    style T3 fill:#B8E986
+    style T4 fill:#B8E986
+```
 
 ```java
 // Define tools

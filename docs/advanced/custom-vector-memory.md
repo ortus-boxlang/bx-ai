@@ -1,8 +1,64 @@
-# Custom Vector Memory
+# 🧬 Custom Vector Memory
 
 This guide shows you how to create custom vector memory implementations by extending `BaseVectorMemory` and implementing the `IVectorMemory` interface. Custom vector memories allow you to integrate with any vector database or implement specialized semantic search behaviors.
 
-## When to Build Custom Vector Memory
+## 🏗️ Custom Vector Memory Architecture
+
+```mermaid
+graph TB
+    subgraph "Your Custom Vector Memory"
+        CVM[Custom Vector Memory]
+        BVM[extends BaseVectorMemory]
+        IVM[implements IVectorMemory]
+    end
+    
+    subgraph "Required Methods"
+        ADD[add - Store vectors]
+        REL[getRelevant - Search]
+        ALL[getAll - Retrieve all]
+        CLR[clear - Remove all]
+        CNT[count - Count messages]
+    end
+    
+    subgraph "Vector Database"
+        DB[(Custom Vector DB)]
+        IDX[Index/Collection]
+        EMB[Embeddings]
+    end
+    
+    subgraph "Embedding Provider"
+        EP[OpenAI/Claude/etc]
+        MOD[Embedding Model]
+    end
+    
+    CVM --> BVM
+    CVM --> IVM
+    
+    CVM --> ADD
+    CVM --> REL
+    CVM --> ALL
+    CVM --> CLR
+    CVM --> CNT
+    
+    ADD --> DB
+    REL --> DB
+    ALL --> DB
+    CLR --> DB
+    CNT --> DB
+    
+    DB --> IDX
+    DB --> EMB
+    
+    ADD -.Generate.-> EP
+    EP --> MOD
+    
+    style CVM fill:#BD10E0
+    style BVM fill:#4A90E2
+    style IVM fill:#7ED321
+    style DB fill:#F5A623
+```
+
+## 🎯 When to Build Custom Vector Memory
 
 Consider building a custom vector memory when:
 
@@ -13,7 +69,7 @@ Consider building a custom vector memory when:
 - **Multi-Collection Management**: You need to search across multiple collections with custom merging logic
 - **Access Control**: You require row-level security or tenant isolation in vector search
 
-## Understanding BaseVectorMemory
+## 📚 Understanding BaseVectorMemory
 
 The `BaseVectorMemory` class provides most of the functionality you need:
 
@@ -71,7 +127,7 @@ variables.metric               // Distance metric (cosine, euclidean, dot)
 variables.key                  // Conversation/session identifier
 ```
 
-## IVectorMemory Interface
+## 🔌 IVectorMemory Interface
 
 The complete interface you must implement:
 

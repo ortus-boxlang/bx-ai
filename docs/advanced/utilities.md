@@ -1,8 +1,45 @@
-# Utility Functions
+# 🛠️ Utility Functions
 
 The bx-ai module provides powerful utility functions for text processing, token management, and working with AI models. These utilities help you prepare data, estimate costs, and optimize your AI interactions.
 
-## Table of Contents
+## 🎯 Utility Architecture
+
+```mermaid
+graph TB
+    subgraph "Text Processing"
+        CHUNK[aiChunk]
+        TOKEN[aiTokenCount]
+        POP[aiPopulate]
+    end
+    
+    subgraph "Chunking Strategies"
+        REC[Recursive - Smart]
+        WORD[Words - Boundary]
+        CHAR[Characters - Fixed]
+    end
+    
+    subgraph "Use Cases"
+        DOC[Document Processing]
+        COST[Cost Estimation]
+        OBJ[Object Population]
+        EMBED[Embedding Prep]
+    end
+    
+    CHUNK --> REC
+    CHUNK --> WORD
+    CHUNK --> CHAR
+    
+    CHUNK --> DOC
+    TOKEN --> COST
+    POP --> OBJ
+    CHUNK --> EMBED
+    
+    style CHUNK fill:#4A90E2
+    style TOKEN fill:#7ED321
+    style POP fill:#BD10E0
+```
+
+## 📋 Table of Contents
 
 - [Text Chunking](#text-chunking)
 - [Token Counting](#token-counting)
@@ -10,9 +47,37 @@ The bx-ai module provides powerful utility functions for text processing, token 
 - [Tips and Tricks](#tips-and-tricks)
 - [Object Population](#object-population)
 
-## Text Chunking
+## 📄 Text Chunking
 
 Break large texts into manageable segments that fit within AI token limits. Essential for processing long documents, articles, or books.
+
+### 🔄 Chunking Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant AC as aiChunk()
+    participant S as Strategy
+    participant R as Result
+    
+    U->>AC: text + options
+    AC->>S: Apply chunking strategy
+    
+    alt Recursive Strategy
+        S->>S: Try paragraphs
+        S->>S: Try sentences
+        S->>S: Try words
+        S->>S: Fallback to chars
+    else Words Strategy
+        S->>S: Split on whitespace
+    else Characters Strategy
+        S->>S: Split at fixed size
+    end
+    
+    S->>AC: Chunks array
+    AC->>R: Add overlap
+    R->>U: Chunked text array
+```
 
 ### `aiChunk()` Function
 
@@ -248,7 +313,7 @@ if ( estimatedTokens > 8000 ) {
 }
 ```
 
-## Token Counting
+## 🔢 Token Counting
 
 Estimate token usage before making API calls. Essential for cost management and staying within model limits.
 

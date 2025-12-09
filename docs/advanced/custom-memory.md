@@ -3,13 +3,60 @@ description: "Learn how to build custom memory implementations by extending Base
 icon: puzzle-piece
 ---
 
-# Building Custom Memory
+# 🔧 Building Custom Memory
 
 This guide shows you how to create custom memory implementations for specialized requirements not covered by the built-in memory types. You'll learn to extend `BaseMemory` and implement the `IAiMemory` interface.
 
+## 🏗️ Custom Memory Architecture
+
+```mermaid
+graph TB
+    subgraph "Your Custom Memory"
+        CM[Custom Memory Class]
+        BM[extends BaseMemory]
+        IM[implements IAiMemory]
+    end
+    
+    subgraph "Required Methods"
+        CONF[configure]
+        ADD[add]
+        GET[getAll]
+        CLR[clear]
+    end
+    
+    subgraph "Storage Backend"
+        DB[(Custom Database)]
+        API[External API]
+        CACHE[Custom Cache]
+        FILE[File System]
+    end
+    
+    CM --> BM
+    CM --> IM
+    
+    CM --> CONF
+    CM --> ADD
+    CM --> GET
+    CM --> CLR
+    
+    ADD --> DB
+    ADD --> API
+    ADD --> CACHE
+    ADD --> FILE
+    
+    GET --> DB
+    GET --> API
+    GET --> CACHE
+    GET --> FILE
+    
+    style CM fill:#BD10E0
+    style BM fill:#4A90E2
+    style IM fill:#7ED321
+```
+
 ---
 
-## Table of Contents
+## 📋 Table of Contents
 
 - [When to Build Custom Memory](#when-to-build-custom-memory)
 - [Understanding BaseMemory](#understanding-basememory)
@@ -21,7 +68,7 @@ This guide shows you how to create custom memory implementations for specialized
 
 ---
 
-## When to Build Custom Memory
+## 🎯 When to Build Custom Memory
 
 Consider building custom memory when you need:
 
@@ -38,7 +85,7 @@ Consider building custom memory when you need:
 
 ---
 
-## Understanding BaseMemory
+## 📚 Understanding BaseMemory
 
 `BaseMemory` provides the foundation for all memory implementations:
 
@@ -71,7 +118,7 @@ property name="config" type="struct";        // Configuration
 
 ---
 
-## IAiMemory Interface
+## 🔌 IAiMemory Interface
 
 The `IAiMemory` interface defines the contract all memory implementations must follow:
 

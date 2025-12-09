@@ -3,11 +3,11 @@ description: Main components for building AI agents and pipelines in BoxLang
 icon: puzzle-piece
 ---
 
-# Main Components
+# 🧩 Main Components
 
 Welcome to the core building blocks of BoxLang AI. This section covers the essential components you need to build sophisticated AI agents and composable pipelines.
 
-## Overview
+## 📖 Overview
 
 BoxLang AI is built on a **runnable pipeline architecture** that allows you to:
 
@@ -18,9 +18,65 @@ BoxLang AI is built on a **runnable pipeline architecture** that allows you to:
 
 Think of these components as LEGO blocks - each piece has a specific purpose, but the real power comes from how you combine them.
 
+### 🏗️ Architecture Overview
+
+```mermaid
+graph TB
+    subgraph "Core Components"
+        M[🧠 AI Models]
+        MSG[✉️ Messages]
+        T[🔧 Transformers]
+        AG[🤖 Agents]
+        MEM[💭 Memory]
+        TOOL[🛠️ Tools]
+    end
+    
+    subgraph "Pipeline Flow"
+        INPUT[Input Data] --> MSG
+        MSG --> M
+        M --> T
+        T --> OUTPUT[Output]
+    end
+    
+    subgraph "Agent Architecture"
+        AG --> M
+        AG --> MEM
+        AG --> TOOL
+        TOOL --> API[External APIs]
+    end
+    
+    style M fill:#4A90E2
+    style MSG fill:#7ED321
+    style T fill:#F5A623
+    style AG fill:#BD10E0
+    style MEM fill:#50E3C2
+    style TOOL fill:#B8E986
+```
+
+### 🔄 Pipeline Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant P as Pipeline
+    participant M as Message Template
+    participant AI as AI Model
+    participant T as Transformer
+    
+    U->>P: run(input)
+    P->>M: Bind placeholders
+    M->>AI: Execute with messages
+    AI->>AI: Call AI Provider API
+    AI->>T: Transform response
+    T->>P: Return result
+    P->>U: Final output
+```
+
 ---
 
-## Core Components
+## 🎯 Core Components
+
+Below is a detailed overview of each component. Each has a specific role in the ecosystem, and they work together seamlessly.
 
 ### 🧠 [AI Models](models.md)
 
@@ -197,6 +253,74 @@ result = aiChat(
 ### 📊 [Structured Output](structured-output.md)
 
 Extract structured data from AI responses into classes, structs, or arrays.
+
+---
+
+## 🔄 Component Relationships
+
+```mermaid
+classDiagram
+    class IAiRunnable {
+        <<interface>>
+        +run(input, params, options)
+        +stream(onChunk, input, params, options)
+        +to(next)
+    }
+    
+    class AiModel {
+        -service
+        -params
+        +withParams()
+        +withOptions()
+    }
+    
+    class AiMessage {
+        -messages[]
+        -bindings
+        +system()
+        +user()
+        +assistant()
+    }
+    
+    class AiAgent {
+        -model
+        -memory[]
+        -tools[]
+        +run()
+        +clearMemory()
+    }
+    
+    class AiTransform {
+        -callback
+        +run()
+    }
+    
+    IAiRunnable <|.. AiModel
+    IAiRunnable <|.. AiMessage
+    IAiRunnable <|.. AiAgent
+    IAiRunnable <|.. AiTransform
+    
+    AiAgent --> AiModel: uses
+    AiAgent --> Memory: manages
+    AiAgent --> Tool: executes
+```
+
+---
+
+## 💡 When to Use Each Component
+
+| Scenario | Recommended Component | Why |
+|----------|----------------------|-----|
+| Simple Q&A | `aiChat()` function | Fastest for one-off queries |
+| Reusable prompts | `aiMessage()` | Dynamic placeholders, template reuse |
+| Direct model control | `aiModel()` | Swap providers, configure parameters |
+| Complex workflows | Pipeline with transforms | Chain multiple steps |
+| Context-aware chat | `aiAgent()` with memory | Maintains conversation history |
+| Real-time data access | `aiAgent()` with tools | AI can call your functions |
+| Long conversations | Agent with summary memory | Compresses old context |
+| Structured data | Structured output + JSON format | Extract typed data |
+
+---
 
 **What it does:**
 - Define schemas for AI output

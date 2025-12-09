@@ -3,13 +3,13 @@ description: "Enterprise guide to implementing multi-tenant memory isolation in 
 icon: users-gear
 ---
 
-# Multi-Tenant Memory Guide
+# 👥 Multi-Tenant Memory Guide
 
 This guide covers implementing **secure, isolated memory** for multi-user and multi-conversation applications using BoxLang AI's built-in multi-tenant support.
 
 ---
 
-## Table of Contents
+## 📋 Table of Contents
 
 - [Overview](#overview)
 - [Core Concepts](#core-concepts)
@@ -24,9 +24,58 @@ This guide covers implementing **secure, isolated memory** for multi-user and mu
 
 ---
 
-## Overview
+## 📖 Overview
 
 Multi-tenant memory isolation enables:
+
+### 🏗️ Multi-Tenant Isolation Architecture
+
+```mermaid
+graph TB
+    subgraph "Application Layer"
+        APP[Application]
+    end
+    
+    subgraph "User A"
+        UA[userId: alice]
+        CA1[conversationId: support]
+        CA2[conversationId: sales]
+    end
+    
+    subgraph "User B"
+        UB[userId: bob]
+        CB1[conversationId: support]
+        CB2[conversationId: billing]
+    end
+    
+    subgraph "Memory Storage"
+        MA1[(Memory: alice-support)]
+        MA2[(Memory: alice-sales)]
+        MB1[(Memory: bob-support)]
+        MB2[(Memory: bob-billing)]
+    end
+    
+    APP --> UA
+    APP --> UB
+    
+    UA --> CA1
+    UA --> CA2
+    UB --> CB1
+    UB --> CB2
+    
+    CA1 --> MA1
+    CA2 --> MA2
+    CB1 --> MB1
+    CB2 --> MB2
+    
+    style APP fill:#BD10E0
+    style UA fill:#4A90E2
+    style UB fill:#4A90E2
+    style MA1 fill:#50E3C2
+    style MA2 fill:#50E3C2
+    style MB1 fill:#50E3C2
+    style MB2 fill:#50E3C2
+```
 
 - **👥 Per-User Isolation**: Separate conversations for each user
 - **💬 Per-Conversation Isolation**: Multiple conversations per user
@@ -69,9 +118,28 @@ bobMemory = aiMemory( "windowed",
 
 ---
 
-## Core Concepts
+## 🎯 Core Concepts
 
-### UserId - User-Level Isolation
+### 👤 UserId - User-Level Isolation
+
+```mermaid
+graph LR
+    A[Application] --> U1[User: alice]
+    A --> U2[User: bob]
+    A --> U3[User: charlie]
+    
+    U1 --> M1[(Memory)]
+    U2 --> M2[(Memory)]
+    U3 --> M3[(Memory)]
+    
+    style A fill:#BD10E0
+    style U1 fill:#4A90E2
+    style U2 fill:#4A90E2
+    style U3 fill:#4A90E2
+    style M1 fill:#50E3C2
+    style M2 fill:#50E3C2
+    style M3 fill:#50E3C2
+```
 
 The `userId` parameter isolates conversations at the **user level**:
 
@@ -89,9 +157,28 @@ memory = aiMemory( "windowed",
 - Customer support with user history
 - Personal AI assistants
 
-### ConversationId - Conversation-Level Isolation
+### 💬 ConversationId - Conversation-Level Isolation
 
 The `conversationId` parameter enables **multiple conversations per user**:
+
+```mermaid
+graph TB
+    U[User: alice] --> C1[Conversation: support]
+    U --> C2[Conversation: sales]
+    U --> C3[Conversation: billing]
+    
+    C1 --> M1[(Memory 1)]
+    C2 --> M2[(Memory 2)]
+    C3 --> M3[(Memory 3)]
+    
+    style U fill:#4A90E2
+    style C1 fill:#F5A623
+    style C2 fill:#F5A623
+    style C3 fill:#F5A623
+    style M1 fill:#50E3C2
+    style M2 fill:#50E3C2
+    style M3 fill:#50E3C2
+```
 
 ```java
 supportChat = aiMemory( "windowed",
@@ -135,7 +222,7 @@ This provides:
 
 ---
 
-## Implementation Patterns
+## 🔧 Implementation Patterns
 
 ### Pattern 1: Single Conversation Per User
 

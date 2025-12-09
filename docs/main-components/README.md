@@ -3,11 +3,11 @@ description: Main components for building AI agents and pipelines in BoxLang
 icon: puzzle-piece
 ---
 
-# Main Components
+# 🧩 Main Components
 
 Welcome to the core building blocks of BoxLang AI. This section covers the essential components you need to build sophisticated AI agents and composable pipelines.
 
-## Overview
+## 📖 Overview
 
 BoxLang AI is built on a **runnable pipeline architecture** that allows you to:
 
@@ -20,7 +20,7 @@ Think of these components as LEGO blocks - each piece has a specific purpose, bu
 
 ---
 
-## Core Components
+## 🎯 Core Components
 
 ### 🧠 [AI Models](models.md)
 

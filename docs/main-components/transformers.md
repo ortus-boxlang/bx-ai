@@ -3,17 +3,72 @@ description: "The guide to data transformation between AI pipeline steps using b
 icon: arrow-right-arrow-left
 ---
 
-# Transformers & Return Formats
+# 🔄 Transformers & Return Formats
 
 Transform and process data between pipeline steps. Learn about built-in transformers (return formats) and custom data transformations.
 
-## Built-In Transformers: Return Formats
+## 🎯 Built-In Transformers: Return Formats
 
 The most common "transformers" in bx-ai are **return formats** - built-in ways to automatically transform AI responses.
 
-### Available Return Formats
+### 🏗️ Transformation Pipeline
+
+```mermaid
+graph LR
+    A[AI Response] --> D{Return Format?}
+    D -->|single| S[Extract Content]
+    D -->|all| AL[All Messages]
+    D -->|raw| R[Full Response]
+    D -->|json| J[Parse JSON]
+    D -->|xml| X[Parse XML]
+    
+    S --> O[Output]
+    AL --> O
+    R --> O
+    J --> O
+    X --> O
+    
+    style A fill:#4A90E2
+    style D fill:#BD10E0
+    style S fill:#7ED321
+    style J fill:#F5A623
+    style O fill:#50E3C2
+```
+
+### 📊 Available Return Formats
 
 All AI functions accept a `returnFormat` option that controls response transformation:
+
+```mermaid
+graph TB
+    subgraph "Return Formats"
+        S[Single - Content Only]
+        A[All - Full Messages]
+        R[Raw - Complete API Response]
+        J[JSON - Parsed JSON]
+        X[XML - Parsed XML]
+    end
+    
+    subgraph "Use Cases"
+        U1[Simple Text]
+        U2[Conversation History]
+        U3[Debugging/Metadata]
+        U4[Structured Data]
+        U5[Document Generation]
+    end
+    
+    S -.->|Best for| U1
+    A -.->|Best for| U2
+    R -.->|Best for| U3
+    J -.->|Best for| U4
+    X -.->|Best for| U5
+    
+    style S fill:#7ED321
+    style A fill:#4A90E2
+    style R fill:#9013FE
+    style J fill:#F5A623
+    style X fill:#D0021B
+```
 
 | Format | Description | Returns | Use Case |
 |--------|-------------|---------|----------|
@@ -289,9 +344,25 @@ println( xml.xmlRoot.language.name.xmlText )
 // "BoxLang"
 ```
 
-## Custom Transformers
+## 🔧 Custom Transformers
 
 Transformers process data between pipeline steps. They implement the `IAiRunnable` interface but ignore the `options` parameter since they don't interact with AI providers.
+
+### 🔄 Custom Transform Flow
+
+```mermaid
+graph LR
+    A[AI Response] --> T1[Transform 1<br/>Extract Content]
+    T1 --> T2[Transform 2<br/>Parse Data]
+    T2 --> T3[Transform 3<br/>Format Output]
+    T3 --> O[Final Result]
+    
+    style A fill:#4A90E2
+    style T1 fill:#7ED321
+    style T2 fill:#F5A623
+    style T3 fill:#BD10E0
+    style O fill:#50E3C2
+```
 
 ### Inline Transform
 
@@ -525,7 +596,43 @@ pipeline = aiMessage()
     .to( codeExtractor )
 ```
 
-## Chaining Transforms
+## ⛓️ Chaining Transforms
+
+### 🔗 Transform Chain Architecture
+
+```mermaid
+graph TB
+    subgraph "AI Response"
+        R[Raw Response Object]
+    end
+    
+    subgraph "Transform Chain"
+        T1[Extract Content]
+        T2[Parse/Convert]
+        T3[Validate]
+        T4[Format]
+        T5[Enrich]
+    end
+    
+    subgraph "Output"
+        O[Processed Data]
+    end
+    
+    R --> T1
+    T1 --> T2
+    T2 --> T3
+    T3 --> T4
+    T4 --> T5
+    T5 --> O
+    
+    style R fill:#4A90E2
+    style T1 fill:#7ED321
+    style T2 fill:#F5A623
+    style T3 fill:#BD10E0
+    style T4 fill:#50E3C2
+    style T5 fill:#B8E986
+    style O fill:#9013FE
+```
 
 ### Sequential Processing
 

@@ -45,28 +45,96 @@ The event system allows you to **monitor**, **modify**, **validate**, **audit**,
 | 22 | [onMCPResponse](#22-onmcpresponse) | After processing MCP response | `server`, `response`, `requestData` |
 | 23 | [onMCPError](#23-onmcperror) | Exception during MCP operations | `server`, `context`, `exception`, request details |
 
-### Event Lifecycle
+### 🔄 Event Lifecycle Diagram
 
+```mermaid
+sequenceDiagram
+    participant U as User Code
+    participant M as Message/Model
+    participant P as Pipeline
+    participant AI as AI Provider
+    participant T as Tool
+    
+    Note over U,T: Object Creation Phase
+    U->>M: Create message/model
+    M-->>U: onAIMessageCreate
+    M-->>U: onAIModelCreate
+    
+    Note over U,T: Pipeline Execution Phase
+    U->>P: pipeline.run()
+    P-->>U: beforeAIPipelineRun
+    
+    Note over U,T: Request/Response Phase
+    P->>AI: Execute
+    AI-->>U: beforeAIModelInvoke
+    AI-->>U: onAIRequest
+    AI->>AI: Call Provider API
+    AI-->>U: onAIResponse
+    AI-->>U: afterAIModelInvoke
+    
+    Note over U,T: Tool Execution (if needed)
+    AI->>T: Call tool
+    T-->>U: beforeAIToolExecute
+    T->>T: Execute function
+    T-->>U: afterAIToolExecute
+    
+    Note over U,T: Pipeline Complete
+    P-->>U: afterAIPipelineRun
+    P->>U: Return result
+    
+    Note over U,T: Error Handling
+    alt Error occurs
+        AI-->>U: onAIError
+    else Rate limit
+        AI-->>U: onAIRateLimitHit
+    end
 ```
-Object Creation:
-  onAIMessageCreate → onAIRequestCreate → onAIServiceCreate → onAIModelCreate → onAITransformCreate
 
-Request/Response:
-  beforeAIModelInvoke → onAIRequest → [AI Provider] → onAIResponse → afterAIModelInvoke
+### 📊 Event Categories
 
-Tool Execution:
-  onAIToolCreate → beforeAIToolExecute → [Tool Runs] → afterAIToolExecute
-
-Pipeline:
-  beforeAIPipelineRun → [Steps Execute] → afterAIPipelineRun
-
-MCP Server:
-  onMCPServerCreate → onMCPRequest → [Process Request] → onMCPResponse
-  onMCPServerRemove (when server is removed)
-  onMCPError (when exceptions occur)
-
-Error/Rate Limit:
-  onAIError, onAIRateLimitHit (when applicable)
+```mermaid
+graph TB
+    subgraph "Object Creation Events"
+        E1[onAIMessageCreate]
+        E2[onAIRequestCreate]
+        E3[onAIProviderRequest]
+        E4[onAIProviderCreate]
+        E5[onAIModelCreate]
+        E6[onAITransformCreate]
+        E7[onAIToolCreate]
+    end
+    
+    subgraph "Execution Events"
+        E8[beforeAIModelInvoke]
+        E9[onAIRequest]
+        E10[onAIResponse]
+        E11[afterAIModelInvoke]
+        E12[beforeAIToolExecute]
+        E13[afterAIToolExecute]
+    end
+    
+    subgraph "Pipeline Events"
+        E14[beforeAIPipelineRun]
+        E15[afterAIPipelineRun]
+    end
+    
+    subgraph "Error Events"
+        E16[onAIError]
+        E17[onAIRateLimitHit]
+    end
+    
+    subgraph "MCP Events"
+        E18[onMCPServerCreate]
+        E19[onMCPRequest]
+        E20[onMCPResponse]
+        E21[onMCPError]
+    end
+    
+    style E1 fill:#4A90E2
+    style E8 fill:#7ED321
+    style E14 fill:#F5A623
+    style E16 fill:#D0021B
+    style E18 fill:#BD10E0
 ```
 
 ---
@@ -74,6 +142,45 @@ Error/Rate Limit:
 ## 🔌 Event Interception
 
 To listen to events, create an interceptor and register it in your module or application.
+
+### 🏗️ Interceptor Architecture
+
+```mermaid
+graph LR
+    subgraph "Your Application"
+        A[Application Code]
+    end
+    
+    subgraph "Interceptor Layer"
+        I1[Logging Interceptor]
+        I2[Security Interceptor]
+        I3[Analytics Interceptor]
+    end
+    
+    subgraph "BoxLang AI Events"
+        E[Event System]
+    end
+    
+    subgraph "AI Operations"
+        O[Model/Agent/Tool]
+    end
+    
+    A --> O
+    O --> E
+    E --> I1
+    E --> I2
+    E --> I3
+    
+    I1 -.->|logs| L[Log Files]
+    I2 -.->|validates| S[Security Rules]
+    I3 -.->|tracks| M[Metrics DB]
+    
+    style E fill:#BD10E0
+    style O fill:#4A90E2
+    style I1 fill:#7ED321
+    style I2 fill:#F5A623
+    style I3 fill:#50E3C2
+```
 
 ### Creating an Interceptor
 

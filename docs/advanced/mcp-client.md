@@ -1,8 +1,39 @@
-# MCP Client - Model Context Protocol
+# 🔌 MCP Client - Model Context Protocol
 
 The BoxLang AI Module includes built-in support for the Model Context Protocol (MCP), a standardized way for AI applications to connect to external data sources and tools.
 
-## What is MCP?
+## 🎯 What is MCP?
+
+Model Context Protocol is an open protocol that enables AI models to:
+
+## 🏗️ MCP Client Architecture
+
+```mermaid
+graph LR
+    subgraph "Your BoxLang App"
+        APP[Application Code]
+        CLIENT[MCP Client]
+    end
+    
+    subgraph "MCP Server"
+        SVR[MCP Server]
+        TOOLS[Tools]
+        RES[Resources]
+        PROMPT[Prompts]
+    end
+    
+    APP --> CLIENT
+    CLIENT -->|HTTP/STDIO| SVR
+    SVR --> TOOLS
+    SVR --> RES
+    SVR --> PROMPT
+    
+    style CLIENT fill:#4A90E2
+    style SVR fill:#BD10E0
+    style TOOLS fill:#B8E986
+    style RES fill:#F5A623
+    style PROMPT fill:#50E3C2
+```
 
 Model Context Protocol is an open protocol that enables AI models to:
 
@@ -11,7 +42,7 @@ Model Context Protocol is an open protocol that enables AI models to:
 - 💬 **Use Prompts**: Leverage server-defined prompt templates
 - 🔍 **Discover Capabilities**: Dynamically learn what a server offers
 
-## Basic Usage
+## 🚀 Basic Usage
 
 ```java
 // Create an MCP client
@@ -31,9 +62,9 @@ if ( result.getSuccess() ) {
 }
 ```
 
-## Client Configuration
+## ⚙️ Client Configuration
 
-### Timeout Configuration
+### ⏱️ Timeout Configuration
 
 Set request timeout in milliseconds:
 

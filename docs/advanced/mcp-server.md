@@ -1,8 +1,8 @@
-# MCP Server - Model Context Protocol Server
+# 🌐 MCP Server - Model Context Protocol Server
 
 The BoxLang AI Module provides a complete MCP (Model Context Protocol) server implementation that allows you to expose tools, resources, and prompts to AI clients.
 
-## Table of Contents
+## 📋 Table of Contents
 
 - [What is an MCP Server?](#what-is-an-mcp-server)
 - [Transport Types](#transport-types)
@@ -22,7 +22,7 @@ The BoxLang AI Module provides a complete MCP (Model Context Protocol) server im
 - [Related Documentation](#related-documentation)
 - [External Resources](#external-resources)
 
-## What is an MCP Server?
+## 🎯 What is an MCP Server?
 
 An MCP Server is a service that exposes capabilities to AI clients using the standardized Model Context Protocol. It enables:
 
@@ -31,9 +31,89 @@ An MCP Server is a service that exposes capabilities to AI clients using the sta
 - 💬 **Offer Prompts**: Define reusable prompt templates
 - 🌐 **HTTP & STDIO Transports**: Expose your MCP server via web or command-line
 
-## Transport Types
+### 🏗️ MCP Architecture
+
+```mermaid
+graph TB
+    subgraph "AI Clients"
+        C1[Claude Desktop]
+        C2[VS Code]
+        C3[Web App]
+        C4[Custom Client]
+    end
+    
+    subgraph "Transport Layer"
+        H[HTTP Transport]
+        S[STDIO Transport]
+    end
+    
+    subgraph "MCP Server"
+        MS[MCP Server Core]
+        TR[Tool Registry]
+        RR[Resource Registry]
+        PR[Prompt Registry]
+    end
+    
+    subgraph "Your Application"
+        T[Tools/Functions]
+        D[Data Sources]
+        P[Prompt Templates]
+    end
+    
+    C1 --> S
+    C2 --> S
+    C3 --> H
+    C4 --> H
+    
+    H --> MS
+    S --> MS
+    
+    MS --> TR
+    MS --> RR
+    MS --> PR
+    
+    TR --> T
+    RR --> D
+    PR --> P
+    
+    style MS fill:#BD10E0
+    style H fill:#4A90E2
+    style S fill:#7ED321
+    style TR fill:#B8E986
+```
+
+## 🚀 Transport Types
 
 BoxLang AI provides two transport mechanisms for MCP servers:
+
+### 🔄 Transport Flow Comparison
+
+```mermaid
+sequenceDiagram
+    participant C as AI Client
+    participant H as HTTP Transport
+    participant S as STDIO Transport
+    participant M as MCP Server
+    participant T as Tool
+    
+    Note over C,T: HTTP Transport Flow
+    C->>H: POST /mcp.bxm
+    H->>M: Parse JSON-RPC
+    M->>T: Execute tool
+    T->>M: Return result
+    M->>H: JSON response
+    H->>C: HTTP 200 + JSON
+    
+    Note over C,T: STDIO Transport Flow
+    C->>S: JSON-RPC via STDIN
+    S->>M: Parse line
+    M->>T: Execute tool
+    T->>M: Return result
+    M->>S: JSON response
+    S->>C: Write to STDOUT
+    
+    Note over C,T: Both use same protocol,<br/>different transport layers
+```
 
 ### 🌐 HTTP Transport (Web)
 

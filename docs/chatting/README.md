@@ -3,11 +3,11 @@ description: "Learn how to use the productive BoxLang AI chatting features for b
 icon: messages
 ---
 
-# Chatting
+# 💬 Chatting
 
 Simple, powerful AI interactions using Built-in Functions (BIFs). This section covers everything from basic chat to advanced features like streaming, tools, and structured output.
 
-## Overview
+## 📖 Overview
 
 The `aiChat()` BIF provides the fastest way to interact with AI providers. Whether you need a quick answer or a sophisticated multi-turn conversation, these patterns cover your use cases without the overhead of pipelines or agents.
 
@@ -20,7 +20,7 @@ The `aiChat()` BIF provides the fastest way to interact with AI providers. Wheth
 
 ---
 
-## Guides
+## 📚 Guides
 
 ### 💬 [Basic Chatting](basic-chatting.md)
 

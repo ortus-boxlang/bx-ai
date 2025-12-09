@@ -3,11 +3,35 @@ description: "Stream data through AI pipelines in real-time for responsive appli
 icon: signal-stream
 ---
 
-# Pipeline Streaming
+# 📡 Pipeline Streaming
 
 Stream data through pipelines in real-time for responsive applications. Streaming provides immediate feedback as AI generates responses.
 
-## Basic Streaming
+## 🚀 Basic Streaming
+
+### 🔄 Streaming Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant P as Pipeline
+    participant AI as AI Provider
+    participant C as Callback
+    
+    U->>P: pipeline.stream(callback)
+    P->>AI: Start streaming request
+    
+    loop For each chunk
+        AI->>P: Stream chunk
+        P->>C: Call callback(chunk)
+        C->>U: Display/Process chunk
+    end
+    
+    AI->>P: Stream complete
+    P->>U: Return
+    
+    Note over U,C: Real-time response<br/>as it's generated
+```
 
 ### Stream Through Pipeline
 

@@ -3,15 +3,15 @@ description: "Comprehensive guide to vector memory systems for semantic search a
 icon: brain-circuit
 ---
 
-# Vector Memory Systems
+# 🧠 Vector Memory Systems
 
 Vector memory enables **semantic search and retrieval** using embeddings to find contextually relevant information based on meaning rather than just recency. This guide covers all vector memory implementations and how to choose the right one for your needs.
 
-> **Looking for Standard Memory?** For conversation history management, see the [Memory Systems Guide](memory.md).
+> **📖 Looking for Standard Memory?** For conversation history management, see the [Memory Systems Guide](memory.md).
 
 ---
 
-## Table of Contents
+## 📋 Table of Contents
 
 - [Multi-Tenant Isolation](#multi-tenant-isolation)
 - [Overview](#overview)
@@ -25,7 +25,7 @@ Vector memory enables **semantic search and retrieval** using embeddings to find
 
 ---
 
-## Multi-Tenant Isolation
+## 🔒 Multi-Tenant Isolation
 
 **All vector memory providers support multi-tenant isolation** through `userId` and `conversationId` parameters. This enables secure, isolated vector storage for:
 
@@ -122,9 +122,47 @@ For enterprise patterns, security considerations, and advanced multi-tenancy, se
 
 ---
 
-## Overview
+## 📖 Overview
 
 Vector memory systems store conversation messages as embeddings (numerical vector representations) and enable **semantic similarity search**. Unlike standard memory that retrieves messages chronologically, vector memory finds the most relevant messages based on meaning.
+
+### 🏗️ Vector Memory Architecture
+
+```mermaid
+graph TB
+    subgraph "Input Processing"
+        MSG[New Message]
+        EMB[Generate Embedding]
+        VEC[Vector Representation]
+    end
+    
+    subgraph "Vector Database"
+        STORE[(Vector Store)]
+        IDX[Vector Index]
+    end
+    
+    subgraph "Search & Retrieval"
+        Q[Query]
+        QEMB[Query Embedding]
+        SIM[Similarity Search]
+        RES[Relevant Results]
+    end
+    
+    MSG --> EMB
+    EMB --> VEC
+    VEC --> STORE
+    VEC --> IDX
+    
+    Q --> QEMB
+    QEMB --> SIM
+    IDX --> SIM
+    STORE --> SIM
+    SIM --> RES
+    
+    style STORE fill:#BD10E0
+    style SIM fill:#4A90E2
+    style RES fill:#7ED321
+```
 
 ### Key Benefits
 
@@ -144,7 +182,31 @@ Vector memory systems store conversation messages as embeddings (numerical vecto
 
 ---
 
-## How Vector Memory Works
+## 🔄 How Vector Memory Works
+
+### 🔄 Vector Search Process
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant M as Vector Memory
+    participant E as Embedding Model
+    participant DB as Vector Database
+    
+    Note over U,DB: Storing Messages
+    U->>M: Add message
+    M->>E: Generate embedding
+    E->>M: Return vector
+    M->>DB: Store vector + metadata
+    
+    Note over U,DB: Searching
+    U->>M: Search query
+    M->>E: Generate query embedding
+    E->>M: Return query vector
+    M->>DB: Similarity search
+    DB->>M: Ranked results
+    M->>U: Return relevant messages
+```
 
 ### 1. Embedding Generation
 

@@ -3,15 +3,32 @@ description: "The quick start guide to building AI Agents in BoxLang with memory
 icon: robot
 ---
 
-# AI Agents Quick Start
+# 🤖 AI Agents Quick Start
 
 Get up and running with AI Agents in BoxLang - autonomous AI assistants with memory, tools, and reasoning capabilities.
 
-> **New to BoxLang AI?** Start with the [Quick Start Guide](quickstart.md) to learn the basics first.
+> **💡 New to BoxLang AI?** Start with the [Quick Start Guide](quickstart.md) to learn the basics first.
 
-## What are AI Agents?
+## 🎯 What are AI Agents?
 
 AI Agents are autonomous assistants that:
+
+### 🏗️ Agent Setup Flow
+
+```mermaid
+graph TB
+    START[Create Agent] --> INST[Add Instructions]
+    INST --> MEM[Add Memory]
+    MEM --> TOOLS[Add Tools]
+    TOOLS --> RUN[Run Agent]
+    RUN --> RESP[Get Response]
+    
+    style START fill:#BD10E0
+    style MEM fill:#50E3C2
+    style TOOLS fill:#B8E986
+    style RUN fill:#4A90E2
+    style RESP fill:#7ED321
+```
 
 - **Remember context** across conversations using memory systems
 - **Use tools** to perform actions and access real-time data
@@ -25,7 +42,7 @@ Think of agents as AI assistants that can:
 - Execute functions to perform actions
 - Make decisions based on accumulated knowledge
 
-## Your First Agent
+## 🚀 Your First Agent
 
 The simplest agent is just a conversation interface with memory:
 
@@ -50,9 +67,31 @@ println( response2 )
 
 **Key Difference**: Without memory, the AI would forget your name between calls!
 
-## Agents with Tools
+## 🛠️ Agents with Tools
 
 Give your agent the ability to perform actions:
+
+### 🔄 Agent Tool Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant T as Weather Tool
+    participant API as Weather API
+    
+    U->>A: "What's the weather in Boston?"
+    A->>A: Analyze question
+    Note over A: Realizes it needs<br/>weather data
+    A->>T: Call get_weather("Boston")
+    T->>API: HTTP Request
+    API->>T: {temp: 15, condition: "cloudy"}
+    T->>A: Return weather data
+    A->>A: Format response
+    A->>U: "The weather in Boston is 15°C and cloudy"
+    
+    Note over U,API: Agent automatically decides<br/>when to use tools
+```
 
 ```java
 // Define a tool for weather lookup
@@ -65,9 +104,9 @@ weatherTool = aiTool(
     }
 ).describeLocation( "City name and country" )
 
-// Create agent with the tool
-agent = aiAgent(
-    name: "WeatherBot",
+## ⚙️ Fluent Agent Configuration
+
+Build agents step-by-step with the fluent API:
     instructions: "You help users check weather. Use the weather tool when needed.",
     tools: [ weatherTool ]
 )
@@ -124,7 +163,7 @@ response = agent.run(
 )
 ```
 
-## Different Memory Types
+## 💭 Different Memory Types
 
 ### Window Memory (Default)
 

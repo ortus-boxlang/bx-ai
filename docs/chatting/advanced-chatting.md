@@ -3,13 +3,36 @@ description: "Master advanced AI interaction techniques including multi-turn con
 icon: user-ninja
 ---
 
-# Advanced Chatting
+# 🥷 Advanced Chatting
 
 Master advanced AI interaction techniques including multi-turn conversations, AI tools, async operations, and streaming responses.
 
-## Multi-Message Conversations
+## 💬 Multi-Message Conversations
 
 Create rich, contextual conversations with system prompts and conversation history.
+
+### 🔄 Conversation Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as Conversation Array
+    participant AI as AI Model
+    
+    U->>C: Add system message
+    U->>C: Add user message 1
+    U->>AI: Send to AI
+    AI->>C: Return assistant response
+    
+    Note over C: Message history builds
+    
+    U->>C: Add user message 2
+    U->>AI: Send full history
+    AI->>AI: Process with context
+    AI->>C: Return contextual response
+    
+    Note over AI: AI has full context<br/>of conversation
+```
 
 ### Conversation Arrays
 
@@ -98,7 +121,7 @@ answer1 = chat.ask( "What is a function?" )
 answer2 = chat.ask( "Show me an example" )  // Has context from answer1
 ```
 
-## AI Tools
+## 🛠️ AI Tools
 
 Enable AI to call functions and access real-time data.
 

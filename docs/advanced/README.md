@@ -3,11 +3,56 @@ description: "Explore advanced features and techniques in BoxLang AI for buildin
 icon: user-ninja
 ---
 
-# Advanced Topics
+# 🥷 Advanced Topics
 
 Take your BoxLang AI skills to the next level with advanced features, integrations, and customization options.
 
-## Overview
+## 🎯 Advanced Topics Architecture
+
+```mermaid
+graph TB
+    subgraph "Core Features"
+        EMB[🧬 Embeddings]
+        EVT[🎯 Events]
+        MCP[🌐 MCP]
+    end
+    
+    subgraph "Memory Systems"
+        CM[🔧 Custom Memory]
+        VM[🧠 Vector Memory]
+        MT[👥 Multi-Tenant]
+    end
+    
+    subgraph "Utilities"
+        UTIL[🛠️ Text Utils]
+        TOK[🔢 Tokens]
+        CTX[🔐 Context]
+    end
+    
+    subgraph "Integration"
+        MCPS[MCP Server]
+        MCPC[MCP Client]
+        API[External APIs]
+    end
+    
+    EMB --> VM
+    EVT --> CM
+    MCP --> MCPS
+    MCP --> MCPC
+    
+    CM --> MT
+    VM --> MT
+    
+    UTIL --> TOK
+    CTX --> MT
+    
+    style EMB fill:#4A90E2
+    style EVT fill:#BD10E0
+    style MCP fill:#7ED321
+    style CM fill:#F5A623
+```
+
+## 📖 Overview
 
 This section covers specialized topics for building production-grade AI applications, extending functionality, and integrating with external systems.
 
@@ -20,9 +65,9 @@ This section covers specialized topics for building production-grade AI applicat
 
 ---
 
-## Guides
+## 📚 Guides
 
-### 🎯 [Embeddings](embeddings.md)
+### 🧬 [Embeddings](embeddings.md)
 
 Convert text into vector representations for semantic search and similarity matching.
 

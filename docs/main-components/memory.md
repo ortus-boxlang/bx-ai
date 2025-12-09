@@ -3,15 +3,15 @@ description: "Comprehensive guide on using standard memory systems in BoxLang AI
 icon: memory
 ---
 
-# Memory Systems
+# 💭 Memory Systems
 
 Memory systems enable AI to maintain context across multiple interactions, making conversations more coherent and contextually aware. This guide covers **standard conversation memory** types that store and manage message history.
 
-> **Looking for Vector Memory?** For semantic search and retrieval using embeddings, see the [Vector Memory Guide](vector-memory.md).
+> **📖 Looking for Vector Memory?** For semantic search and retrieval using embeddings, see the [Vector Memory Guide](vector-memory.md).
 
 ---
 
-## Table of Contents
+## 📋 Table of Contents
 
 - [Multi-Tenant Isolation](#multi-tenant-isolation)
 - [Overview](#overview)
@@ -24,9 +24,56 @@ Memory systems enable AI to maintain context across multiple interactions, makin
 
 ---
 
-## Multi-Tenant Isolation
+## 🔒 Multi-Tenant Isolation
 
 All memory types support multi-tenant isolation through `userId` and `conversationId` parameters:
+
+### 🏗️ Multi-Tenant Architecture
+
+```mermaid
+graph TB
+    subgraph "Application Layer"
+        A[Application]
+    end
+    
+    subgraph "User Isolation"
+        U1[User: alice]
+        U2[User: bob]
+        U3[User: charlie]
+    end
+    
+    subgraph "Conversation Isolation"
+        C1[Chat: support]
+        C2[Chat: sales]
+        C3[Chat: billing]
+    end
+    
+    subgraph "Memory Storage"
+        M1[(Memory Store)]
+        M2[(Memory Store)]
+        M3[(Memory Store)]
+    end
+    
+    A --> U1
+    A --> U2
+    A --> U3
+    
+    U1 --> C1
+    U1 --> C2
+    U2 --> C3
+    
+    C1 --> M1
+    C2 --> M2
+    C3 --> M3
+    
+    style A fill:#BD10E0
+    style U1 fill:#4A90E2
+    style U2 fill:#4A90E2
+    style U3 fill:#4A90E2
+    style M1 fill:#50E3C2
+    style M2 fill:#50E3C2
+    style M3 fill:#50E3C2
+```
 
 - **userId**: Isolate conversations per user in multi-user applications
 - **conversationId**: Separate multiple conversations for the same user
@@ -86,7 +133,7 @@ For advanced patterns including security considerations, filtering strategies, a
 
 ---
 
-## Overview
+## 📖 Overview
 
 Memory in AI systems allows for:
 
@@ -99,9 +146,39 @@ Without memory, each AI call is independent with no knowledge of previous intera
 
 ---
 
-## Memory Types
+## 🗂️ Memory Types
 
 BoxLang AI provides several standard memory implementations for conversation history management:
+
+### 🔄 Memory Type Decision Flow
+
+```mermaid
+graph TD
+    START[Choose Memory Type] --> Q1{Need persistence?}
+    
+    Q1 -->|No| Q2{Context limit concerns?}
+    Q1 -->|Yes| Q3{Need audit trail?}
+    
+    Q2 -->|Yes| W[Windowed Memory]
+    Q2 -->|No| V[Vector Memory]
+    
+    Q3 -->|Yes| F[File Memory]
+    Q3 -->|No| Q4{Distributed app?}
+    
+    Q4 -->|Yes| C[Cache Memory]
+    Q4 -->|No| Q5{Long conversations?}
+    
+    Q5 -->|Yes| S[Summary Memory]
+    Q5 -->|No| SE[Session Memory]
+    
+    style START fill:#BD10E0
+    style W fill:#4A90E2
+    style S fill:#7ED321
+    style SE fill:#F5A623
+    style F fill:#D0021B
+    style C fill:#50E3C2
+    style V fill:#9013FE
+```
 
 ### Memory Type Comparison
 

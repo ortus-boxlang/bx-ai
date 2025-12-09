@@ -3,13 +3,50 @@ description: "Build reusable, dynamic prompts with placeholders that get filled 
 icon: message
 ---
 
-# Message Templates
+# ✉️ Message Templates
 
 Build reusable, dynamic prompts with placeholders that get filled in at runtime. Message templates are the foundation of flexible AI pipelines.
 
-## Creating Messages
+## 🚀 Creating Messages
 
 Use `aiMessage()` to build structured messages:
+
+### 🏗️ Message Template Architecture
+
+```mermaid
+graph TB
+    subgraph "Template Definition"
+        T[aiMessage Template]
+        S[System Message]
+        U[User Messages]
+        A[Assistant Messages]
+        P[Placeholders]
+    end
+    
+    subgraph "Runtime Binding"
+        B[Bindings Data]
+        M[Merge Process]
+    end
+    
+    subgraph "Output"
+        MSG[Rendered Messages]
+    end
+    
+    T --> S
+    T --> U
+    T --> A
+    T --> P
+    
+    B --> M
+    P --> M
+    
+    M --> MSG
+    
+    style T fill:#BD10E0
+    style B fill:#4A90E2
+    style M fill:#F5A623
+    style MSG fill:#7ED321
+```
 
 ### Basic Message
 
@@ -39,9 +76,29 @@ messages = message.run()
 - **user**: Your messages/questions
 - **assistant**: AI responses (for conversation history)
 
-## Template Placeholders
+## 🔤 Template Placeholders
 
 Use `${key}` syntax for dynamic values:
+
+### 🔄 Placeholder Binding Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User Code
+    participant T as Message Template
+    participant B as Bindings
+    participant R as Rendered Messages
+    
+    U->>T: Create template with ${placeholders}
+    U->>B: Provide binding values
+    U->>T: call run(bindings)
+    
+    T->>T: Find all ${placeholders}
+    T->>B: Lookup values
+    B->>T: Return values
+    T->>R: Replace placeholders
+    R->>U: Return final messages
+```
 
 ### Simple Placeholder
 
@@ -81,7 +138,7 @@ messages = codeReviewer.run( {
 } )
 ```
 
-## Binding Strategies
+## 🎯 Binding Strategies
 
 ### Runtime Bindings
 
@@ -140,9 +197,44 @@ message.run( { task: "Explain AI", style: "concise" } )
 // task: "Explain AI" (from runtime)
 ```
 
-## Message Context
+## 📦 Message Context
 
 Beyond simple placeholder bindings, you can inject rich contextual data like security information, RAG documents, or application metadata using the **message context system**.
+
+### 🔄 Context Injection Flow
+
+```mermaid
+graph TB
+    subgraph "Data Sources"
+        U[User Info]
+        P[Permissions]
+        D[Documents/RAG]
+        M[Metadata]
+    end
+    
+    subgraph "Context System"
+        C[Message Context]
+        S[JSON Serialization]
+    end
+    
+    subgraph "Template"
+        T[${context} Placeholder]
+        R[Rendered Message]
+    end
+    
+    U --> C
+    P --> C
+    D --> C
+    M --> C
+    
+    C --> S
+    S --> T
+    T --> R
+    
+    style C fill:#BD10E0
+    style S fill:#F5A623
+    style R fill:#7ED321
+```
 
 ### The `${context}` Placeholder
 

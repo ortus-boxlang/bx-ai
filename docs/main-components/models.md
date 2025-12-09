@@ -3,13 +3,64 @@ description: "The comprehensive guide to working with AI models in BoxLang, cove
 icon: brain
 ---
 
-# Working with Models
+# 🧠 Working with Models
 
 Learn how to use AI models as pipeline-compatible runnables. Models wrap AI service providers for seamless integration into pipelines.
 
-## Creating Models
+## 🚀 Creating Models
 
 The `aiModel()` BIF creates pipeline-compatible AI models.
+
+### 🏗️ Model Architecture
+
+```mermaid
+graph TB
+    subgraph "User Interface"
+        BIF[aiModel BIF]
+    end
+    
+    subgraph "Model Layer"
+        M[AiModel Runnable]
+        C[Configuration]
+        P[Parameters]
+    end
+    
+    subgraph "Provider Services"
+        O[OpenAI Service]
+        CL[Claude Service]
+        G[Gemini Service]
+        OL[Ollama Service]
+        MI[Mistral Service]
+    end
+    
+    subgraph "External APIs"
+        API1[OpenAI API]
+        API2[Claude API]
+        API3[Gemini API]
+        API4[Local Ollama]
+        API5[Mistral API]
+    end
+    
+    BIF --> M
+    M --> C
+    M --> P
+    
+    M --> O
+    M --> CL
+    M --> G
+    M --> OL
+    M --> MI
+    
+    O --> API1
+    CL --> API2
+    G --> API3
+    OL --> API4
+    MI --> API5
+    
+    style M fill:#4A90E2
+    style BIF fill:#BD10E0
+    style O fill:#7ED321
+```
 
 ### Basic Creation
 
@@ -41,7 +92,31 @@ model = aiModel( "openai" )
     .withName( "my-gpt4-model" )
 ```
 
-## Models in Pipelines
+## 🔗 Models in Pipelines
+
+### 🔄 Pipeline Integration Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant M as aiMessage
+    participant MO as aiModel
+    participant T as Transform
+    participant P as Provider API
+    
+    U->>M: Create message template
+    U->>MO: Configure model
+    U->>T: Add transformers
+    
+    Note over U,P: Pipeline Execution
+    U->>M: run(bindings)
+    M->>M: Bind placeholders
+    M->>MO: Pass messages
+    MO->>P: HTTP Request
+    P->>MO: AI Response
+    MO->>T: Transform data
+    T->>U: Final result
+```
 
 ### Basic Pipeline
 
@@ -78,7 +153,7 @@ pipeline = aiMessage()
 result = pipeline.run( { task: "sort an array" } )
 ```
 
-## Model Parameters
+## ⚙️ Model Parameters
 
 ### Common Parameters
 
@@ -140,7 +215,7 @@ result = model.run(
 )
 ```
 
-## Model Options
+## 🎛️ Model Options
 
 Models support the `options` parameter for controlling runtime behavior.
 

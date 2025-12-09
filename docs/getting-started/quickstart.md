@@ -3,19 +3,35 @@ description: "This guide helps you get started quickly with BoxLang AI, covering
 icon: circle-play
 ---
 
-# Quick Start Guide
+# 🚀 Quick Start Guide
 
 Get up and running with BoxLang AI in minutes. This guide walks you through your first AI interactions.
 
-## Prerequisites
+## 📋 Prerequisites
 
 - BoxLang installed and configured
 - bx-ai module installed ([Installation Guide](installation.md))
 - API key for your chosen provider OR Ollama installed locally
 
-## Your First AI Chat
+## 💬 Your First AI Chat
 
 The simplest way to use AI is with the `aiChat()` function:
+
+### 🔄 Getting Started Flow
+
+```mermaid
+graph LR
+    A[Install bx-ai] --> B[Set API Key]
+    B --> C[Write Code]
+    C --> D[Run Script]
+    D --> E[Get AI Response]
+    
+    style A fill:#BD10E0
+    style B fill:#F5A623
+    style C fill:#4A90E2
+    style D fill:#7ED321
+    style E fill:#50E3C2
+```
 
 ```java
 // hello.bxs
@@ -33,7 +49,7 @@ boxlang hello.bxs
 BoxLang is a modern, dynamic programming language for the JVM that combines the best features of CFML with modern language design...
 ```
 
-## Understanding the Basics
+## 📖 Understanding the Basics
 
 ### The `aiChat()` Function
 
@@ -71,7 +87,47 @@ answer = aiChat(
 )
 ```
 
-## Working with Different Providers
+## 🌐 Working with Different Providers
+
+### ☁️ Cloud Providers
+
+```mermaid
+graph TB
+    subgraph "Your Code"
+        C[aiChat Function]
+    end
+    
+    subgraph "Provider Options"
+        O[OpenAI]
+        CL[Claude]
+        G[Gemini]
+        M[Mistral]
+        OL[Ollama - Local]
+    end
+    
+    subgraph "AI Models"
+        GPT[GPT-4]
+        CLAUDE[Claude 3]
+        GEM[Gemini Pro]
+        MIST[Mistral]
+        LLAMA[Llama 3]
+    end
+    
+    C --> O
+    C --> CL
+    C --> G
+    C --> M
+    C --> OL
+    
+    O --> GPT
+    CL --> CLAUDE
+    G --> GEM
+    M --> MIST
+    OL --> LLAMA
+    
+    style C fill:#BD10E0
+    style OL fill:#7ED321
+```
 
 ### Cloud Providers
 
@@ -136,7 +192,7 @@ answer = aiChat(
 - 🚀 **Speed**: No network latency
 - 🔌 **Offline**: Works without internet
 
-## Building Conversations
+## 💭 Building Conversations
 
 ### Multi-Turn Dialogue
 
