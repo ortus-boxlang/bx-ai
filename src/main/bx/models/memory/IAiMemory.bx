@@ -61,13 +61,39 @@ interface {
 	 * - A string: The message will be added with the default role (user)
 	 * - A struct: The struct must contain at least 'role' and 'content' keys
 	 * - An array: Each element will be processed as above
-	 *  - An AiMessage instance: Its messages will be added
+	 * - An AiMessage instance: Its messages will be added
+	 * - A Document instance: Its content will be added as a user message
 	 *
      * @message
 	 *
      * @return IAiMemory for chaining
      */
     IAiMemory function add( required any message );
+
+	/**
+	 * Seed memory with multiple messages/documents
+	 * Optimized for batch insertion
+	 *
+	 * @documents Array of messages/documents to add
+	 *
+	 * @return Struct with results (added, failed, errors)
+	 */
+	struct function seed( required array documents );
+
+	/**
+	 * Seed memory with multiple documents at once asynchronously
+	 * This returns a BoxFuture for non-blocking operation
+	 *
+	 * @documents Array of documents to add. Each document can be:
+	 *   - String: Simple text (auto-generates ID)
+	 *   - Struct: { text, metadata, id? } (id is optional)
+	 *
+	 * @return BoxFuture with results: { added: numeric, failed: numeric, errors: array }
+	 */
+	default BoxFuture function seedAsync( required array documents ){
+		// Async in the virtual threads pool
+		return asyncRun( () => this.seed( documents ), "io-tasks" );
+	}
 
     /**
      * Get all messages from memory

@@ -429,8 +429,12 @@ The AI module supports different return formats for the responses. You can speci
 | `aiChatRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | AiRequestObject | N/A |
 | `aiChatStream()` | Stream chat responses from AI provider | `messages`, `callback`, `params={}`, `options={}` | void | N/A |
 | `aiChunk()` | Split text into chunks | `text`, `options={}` | Array of Strings | N/A |
+| `aiDocuments()` | Load documents from source | `source`, `type=""`, `config={}` | Array of Documents | N/A |
+| `aiDocumentLoader()` | Create document loader instance | `source`, `type=""`, `config={}` | IDocumentLoader Object | N/A |
+| `aiDocumentLoaders()` | Get all registered loaders | none | Struct of Loader Metadata | N/A |
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
 | `aiMemory()` | Create memory instance | `type`, `config={}` | IAiMemory Object | N/A |
+| `aiMemoryIngest()` | Ingest documents into memory | `memory`, `source`, `type=""`, `loaderConfig={}`, `ingestOptions={}` | Ingestion Report | ✅ |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
 | `aiModel()` | Create AI model wrapper | `provider`, `apiKey` | AiModel Object | N/A |
 | `aiPopulate()` | Populate class/struct from JSON | `target`, `data` | Populated Object | N/A |
@@ -479,6 +483,33 @@ service = aiService( "openai", "my-key" ).defaults( { temperature: 0.7 } )
 
 // Tool for function calling
 tool = aiTool( "weather", "Get weather data", location => getWeather(location) )
+
+// Load documents from files or directories
+docs = aiDocuments( "/path/to/document.txt" )
+docs = aiDocuments( "/path/to/folder", "directory", { recursive: true } )
+
+// Create a loader for advanced configuration
+loader = aiDocumentLoader( "/docs", "markdown" )
+    .splitByHeaders( 2 )
+    .removeCodeBlocks()
+docs = loader.load()
+
+// Ingest documents into memory with detailed reporting
+result = aiMemoryIngest(
+    memory = myVectorMemory,
+    source = "/knowledge-base",
+    type   = "directory",
+    loaderConfig  = { recursive: true, extensions: ["md", "txt"] },
+    ingestOptions = { chunkSize: 500, overlap: 50 }
+)
+println( "Ingested #result.documentsIn# docs as #result.chunksOut# chunks" )
+
+// Multi-memory fan-out
+result = aiMemoryIngest(
+    memory = [ chromaMemory, pgVectorMemory ],
+    source = "/docs",
+    type   = "markdown"
+)
 
 // MCP client for Model Context Protocol servers
 client = MCP( "http://localhost:3000" )

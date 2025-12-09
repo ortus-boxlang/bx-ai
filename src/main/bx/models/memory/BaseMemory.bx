@@ -15,6 +15,8 @@
  * Base abstract class for AI Memory implementations
  * Provides common functionality for conversation history storage
  */
+import bxModules.bxai.models.loaders.Document;
+
 abstract class implements="IAiMemory" {
 
 	/**
@@ -130,6 +132,7 @@ abstract class implements="IAiMemory" {
 	 * - A struct: The struct must contain at least 'role' and 'content' keys
 	 * - An array: Each element will be processed as above
 	 * - An AiMessage instance: Its messages will be added
+	 * - A Document instance: Its content will be added as a user message
 	 *
 	 * @message The message to add
 	 *
@@ -143,8 +146,41 @@ abstract class implements="IAiMemory" {
 
 		// Trim to max size (excluding system message)
 		this.trim()
-
+    
 		return this
+	}
+
+	/**
+	 * Seed memory with multiple messages/documents
+	 * Optimized for batch insertion
+	 *
+	 * @documents Array of messages/documents to add
+	 *
+	 * @return Struct with results (added, failed, errors)
+	 */
+	public struct function seed( required array documents ) {
+		var results = {
+			added: 0,
+			failed: 0,
+			errors: []
+		};
+
+		var index = 0;
+		for ( var doc in arguments.documents ) {
+			index++;
+			try {
+				this.add( doc );
+				results.added++;
+			} catch ( any e ) {
+				results.failed++;
+				results.errors.append( {
+					index: index,
+					error: e.message
+				} );
+			}
+		}
+
+		return results;
 	}
 
 	/**
@@ -595,6 +631,16 @@ abstract class implements="IAiMemory" {
 			return 	arguments.message.getMessages()
 		}
 
+		// Document instance - convert to user message
+		if ( arguments.message instanceof "bxModules.bxai.models.loaders.Document" ) {
+			return [ {
+				role     : "user",
+				content  : arguments.message.getContent(),
+				metadata : arguments.message.getMetadata(),
+				timestamp: now()
+			} ]
+		}
+
 		// Struct - must have role and content
 		if ( isStruct( arguments.message ) ) {
 			param arguments.message.role = "user"
@@ -628,7 +674,7 @@ abstract class implements="IAiMemory" {
 
 		throw(
 			type: "InvalidMessage",
-			message: "Message must be a string, struct, array, or AiMessage instance"
+			message: "Message must be a string, struct, array, AiMessage, or Document instance"
 		)
 	}
 

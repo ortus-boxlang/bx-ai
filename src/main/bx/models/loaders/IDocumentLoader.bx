@@ -1,0 +1,241 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Interface for document loaders.
+ * Document loaders are responsible for loading text from various sources
+ * (files, URLs, databases) and converting them into Document objects.
+ */
+interface {
+
+	/**
+	 * Get the name of this loader
+	 *
+	 * @return The loader name
+	 */
+	string function getName();
+
+	/**
+	 * Load all documents from the source
+	 * This method loads all documents into memory at once.
+	 * Subclasses must override this method to provide actual loading logic.
+	 *
+	 * @return Array of Document objects
+	 */
+	default array function load() {
+		throw(
+			type    : "IDocumentLoader.NotImplemented",
+			message : "Subclasses must implement the load() method"
+		);
+	}
+
+	/**
+	 * Load documents asynchronously
+	 * Returns a BoxFuture for non-blocking operation
+	 *
+	 * @return BoxFuture that resolves to array of Document objects
+	 */
+	default BoxFuture function loadAsync() {
+		return asyncRun( () => this.load(), "io-tasks" );
+	}
+
+	/**
+	 * Load documents in batches for memory efficiency.
+	 * Call repeatedly to get successive batches until an empty array is returned.
+	 * Each call returns the next batch of documents and advances the internal position.
+	 *
+	 * @batchSize Number of documents per batch (default: 100)
+	 *
+	 * @return Array of Documents (up to batchSize), empty array when no more documents
+	 */
+	array function loadBatch( numeric batchSize = 100 );
+
+	/**
+	 * Load documents as a Java Stream for lazy processing.
+	 * Useful for very large document sets where memory is a concern.
+	 * Returns java.util.stream.Stream<Document>
+	 *
+	 * @return java.util.stream.Stream of Document objects
+	 */
+	default any function loadAsStream() {
+		return this.load().stream();
+	}
+
+	/**
+	 * Process documents one-by-one with a callback.
+	 * Memory-efficient alternative to load() for large document sets.
+	 * This is a terminating operation.
+	 *
+	 * @callback Function to call for each document: ( doc ) => { }
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function each( required function callback );
+
+	/**
+	 * Filter documents during loading
+	 *
+	 * @predicate Function: ( doc ) => boolean
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function filter( required function predicate );
+
+	/**
+	 * Transform documents during loading
+	 *
+	 * @transformer Function: ( doc ) => doc
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function map( required function transformer );
+
+	/**
+	 * Set progress callback for loading
+	 *
+	 * @callback Function: ( completed, total, currentDoc ) => {}
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function onProgress( required function callback );
+
+	/**
+	 * Load documents and seed them into memory.
+	 * Convenience method that calls load() then memory.seed().
+	 * This is a terminating operation.
+	 *
+	 * @memory Single IAiMemory or array for multi-memory fan-out
+	 * @options Ingestion options:
+	 *          - chunkSize: Size of chunks (0 = no chunking)
+	 *          - overlap: Overlap between chunks
+	 *          - strategy: Chunking strategy (recursive, characters, words, sentences)
+	 *          - dedupe: Enable deduplication (default: false)
+	 *          - async: Use async processing for multi-memory (default: false)
+	 *
+	 * @return Ingestion report struct with documentsIn, chunksOut, stored, errors, etc.
+	 */
+	struct function toMemory( required any memory, struct options = {} );
+
+	/**
+	 * Get the source identifier (file path, URL, etc.)
+	 *
+	 * @return The source identifier
+	 */
+	string function getSource();
+
+	/**
+	 * Get metadata about the source without loading
+	 * (file size, document count estimate, content type, etc.)
+	 *
+	 * @return Struct with source metadata
+	 */
+	struct function getSourceMetadata();
+
+	/**
+	 * Get total document count (if known)
+	 * Returns -1 if unknown/streaming
+	 *
+	 * @return Numeric document count or -1 if unknown
+	 */
+	numeric function getDocumentCount();
+
+	/**
+	 * Configure the loader with options
+	 *
+	 * @config Configuration struct
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function configure( required struct config );
+
+	/**
+	 * Get the current configuration
+	 *
+	 * @return Configuration struct
+	 */
+	struct function getConfig();
+
+	/**
+	 * Get errors encountered during loading
+	 *
+	 * @return Array of error structs
+	 */
+	array function getErrors();
+
+	// ==================== Fluent Configuration Methods ====================
+
+	/**
+	 * Set the chunk size for document splitting
+	 *
+	 * @size Chunk size in characters
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function chunkSize( required numeric size );
+
+	/**
+	 * Set the overlap between chunks
+	 *
+	 * @overlap Overlap in characters
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function overlap( required numeric overlapValue );
+
+	/**
+	 * Set the file encoding
+	 *
+	 * @encodingValue Encoding name (e.g., UTF-8)
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function encoding( required string encodingValue );
+
+	/**
+	 * Enable recursive directory scanning
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function recursive();
+
+	/**
+	 * Set file extensions to include
+	 *
+	 * @exts Array of extensions (e.g., ["md", "txt"])
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function extensions( required array exts );
+
+	/**
+	 * Set the CSV/TSV delimiter
+	 *
+	 * @delim Delimiter character
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function delimiter( required string delim );
+
+	/**
+	 * Reset the loader state to start from scratch.
+	 * Clears any internal state like batch position, errors, filters, etc.
+	 * Allows reusing the same loader instance for multiple load operations.
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function reset();
+
+}

@@ -1,0 +1,411 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Represents a loaded document with content and metadata.
+ * This is the standard output format for all document loaders.
+ */
+import bxModules.bxai.models.util.TextChunker;
+
+class {
+
+	/**
+	 * Unique identifier for the document
+	 */
+	property name="id" type="string" default="";
+
+	/**
+	 * The text content of the document
+	 */
+	property name="content" type="string" default="";
+
+	/**
+	 * Metadata about the document (source, file path, page number, etc.)
+	 */
+	property name="metadata" type="struct";
+
+	/**
+	 * Vector embedding for the document content (empty array if not yet computed)
+	 */
+	property name="embedding" type="array";
+
+	/**
+	 * Initialize a new Document instance
+	 *
+	 * @id Optional unique identifier for the document
+	 * @content The text content of the document
+	 * @metadata Metadata about the document
+	 * @embedding Optional pre-computed embedding vector
+	 *
+	 * @return Document instance
+	 */
+	function init( string id = "", string content = "", struct metadata = {}, array embedding = [] ) {
+		variables.id        = arguments.id.len() ? arguments.id : createUUID();
+		variables.content   = arguments.content;
+		variables.metadata  = arguments.metadata;
+		variables.embedding = arguments.embedding;
+		return this;
+	}
+
+	// ==================== Content Methods ====================
+
+	/**
+	 * Check if the document has content
+	 *
+	 * @return True if content is not empty
+	 */
+	boolean function hasContent() {
+		return len( trim( variables.content ) ) > 0;
+	}
+
+	/**
+	 * Get the content length in characters
+	 *
+	 * @return Numeric length
+	 */
+	numeric function getContentLength() {
+		return len( variables.content );
+	}
+
+	/**
+	 * Get a preview of the document content
+	 *
+	 * @length Maximum preview length (default: 100)
+	 *
+	 * @return Truncated content with ellipsis if needed
+	 */
+	string function preview( numeric length = 100 ) {
+		var trimmedContent = trim( variables.content );
+		if ( len( trimmedContent ) <= arguments.length ) {
+			return trimmedContent;
+		}
+		return left( trimmedContent, arguments.length ) & "...";
+	}
+
+	// ==================== Token/Cost Methods ====================
+
+	/**
+	 * Get estimated token count using simple heuristic.
+	 * More accurate counting can use aiTokens() BIF with a specific model.
+	 * Default heuristic: ~4 characters per token on average.
+	 *
+	 * @return Estimated token count
+	 */
+	numeric function getTokenCount() {
+		return ceiling( getContentLength() / 4 );
+	}
+
+	/**
+	 * Check if document exceeds token limit
+	 *
+	 * @maxTokens Maximum token count
+	 *
+	 * @return Boolean true if exceeds limit
+	 */
+	boolean function exceedsTokenLimit( required numeric maxTokens ) {
+		return getTokenCount() > arguments.maxTokens;
+	}
+
+	// ==================== Chunking Methods ====================
+
+	/**
+	 * Split this document into chunks using the TextChunker.
+	 * Returns an array of new Document objects, each representing a chunk.
+	 *
+	 * @chunkSize Maximum characters per chunk (default: 1000)
+	 * @overlap Characters to overlap between chunks (default: 200)
+	 * @strategy Chunking strategy: recursive, characters, words, sentences (default: recursive)
+	 *
+	 * @return Array of Document objects (chunks)
+	 */
+	array function chunk( numeric chunkSize = 1000, numeric overlap = 200, string strategy = "recursive" ) {
+		var chunks = TextChunker::chunk(
+			variables.content,
+			{
+				chunkSize : arguments.chunkSize,
+				overlap   : arguments.overlap,
+				strategy  : arguments.strategy
+			}
+		);
+
+		var result = [];
+		var totalChunks = chunks.len();
+
+		for ( var i = 1; i <= totalChunks; i++ ) {
+			var chunkMetadata = duplicate( variables.metadata );
+			chunkMetadata[ "chunkIndex" ]  = i;
+			chunkMetadata[ "totalChunks" ] = totalChunks;
+			chunkMetadata[ "isChunk" ]     = true;
+			chunkMetadata[ "parentId" ]    = variables.id;
+
+			result.append(
+				new Document(
+					content  : chunks[ i ],
+					metadata : chunkMetadata
+				)
+			);
+		}
+
+		return result;
+	}
+
+	// ==================== Validation Methods ====================
+
+	/**
+	 * Validate the document meets requirements
+	 *
+	 * @minLength Minimum content length (0 = no minimum)
+	 * @maxLength Maximum content length (0 = no maximum)
+	 * @requiredMetadata Array of required metadata keys
+	 *
+	 * @return Struct with { valid: boolean, errors: array }
+	 */
+	struct function validate(
+		numeric minLength = 0,
+		numeric maxLength = 0,
+		array requiredMetadata = []
+	) {
+		var validationErrors = [];
+
+		if ( !hasContent() ) {
+			validationErrors.append( "Document has no content" );
+		}
+
+		if ( arguments.minLength > 0 && getContentLength() < arguments.minLength ) {
+			validationErrors.append( "Content too short (min: ${arguments.minLength})" );
+		}
+
+		if ( arguments.maxLength > 0 && getContentLength() > arguments.maxLength ) {
+			validationErrors.append( "Content too long (max: ${arguments.maxLength})" );
+		}
+
+		for ( var key in arguments.requiredMetadata ) {
+			if ( !variables.metadata.keyExists( key ) ) {
+				validationErrors.append( "Missing required metadata: ${key}" );
+			}
+		}
+
+		return {
+			valid  : validationErrors.len() == 0,
+			errors : validationErrors
+		};
+	}
+
+	// ==================== Hash/Fingerprint Methods ====================
+
+	/**
+	 * Get a hash of the document content for deduplication.
+	 * Uses MD5 by default for speed.
+	 *
+	 * @algorithm Hash algorithm (default: MD5)
+	 *
+	 * @return Hash string
+	 */
+	string function hash( string algorithm = "MD5" ) {
+		return hash( variables.content, arguments.algorithm );
+	}
+
+	/**
+	 * Get a content fingerprint (simhash-style) for fuzzy deduplication.
+	 * Combines content hash with metadata hash.
+	 *
+	 * @return Fingerprint string
+	 */
+	string function fingerprint() {
+		var contentHash = hash( variables.content, "SHA-256" );
+		var metaString = jsonSerialize( variables.metadata );
+		var metaHash = hash( metaString, "MD5" );
+		return contentHash & "-" & metaHash;
+	}
+
+	/**
+	 * Compare this document with another for equality.
+	 * Two documents are equal if they have the same content hash.
+	 *
+	 * @target The document to compare with
+	 *
+	 * @return Boolean true if documents have identical content
+	 */
+	boolean function equals( required Document target ) {
+		return this.hash() == arguments.target.hash();
+	}
+
+	// ==================== Metadata Methods ====================
+
+	/**
+	 * Get a specific metadata value
+	 *
+	 * @key The metadata key
+	 * @defaultValue Default value if key doesn't exist
+	 *
+	 * @return The metadata value or default
+	 */
+	any function getMeta( required string key, any defaultValue = "" ) {
+		return variables.metadata.keyExists( arguments.key )
+			? variables.metadata[ arguments.key ]
+			: arguments.defaultValue;
+	}
+
+	/**
+	 * Set a specific metadata value
+	 *
+	 * @key The metadata key
+	 * @value The metadata value
+	 *
+	 * @return Document for chaining
+	 */
+	Document function setMeta( required string key, required any value ) {
+		variables.metadata[ arguments.key ] = arguments.value;
+		return this;
+	}
+
+	/**
+	 * Add multiple metadata values (merges with existing)
+	 *
+	 * @metadata The metadata to merge
+	 * @overwrite Whether to overwrite existing keys (default: true)
+	 *
+	 * @return Document for chaining
+	 */
+	Document function addMetadata( required struct metadata, boolean overwrite = true ) {
+		variables.metadata.append( arguments.metadata, arguments.overwrite );
+		return this;
+	}
+
+	// ==================== Embedding Methods ====================
+
+	/**
+	 * Check if the document has an embedding
+	 *
+	 * @return True if embedding array is not empty
+	 */
+	boolean function hasEmbedding() {
+		return variables.embedding.len() > 0;
+	}
+
+	// ==================== Serialization Methods ====================
+
+	/**
+	 * Convert document to a struct representation
+	 *
+	 * @return Struct with id, content, metadata, embedding, and hash
+	 */
+	struct function toStruct() {
+		return {
+			"id"          : variables.id,
+			"content"     : variables.content,
+			"metadata"    : variables.metadata,
+			"embedding"   : variables.embedding,
+			"hash"        : this.hash(),
+			"fingerprint" : this.fingerprint()
+		};
+	}
+
+	/**
+	 * Convert document to JSON
+	 *
+	 * @return JSON string
+	 */
+	string function toJson() {
+		return jsonSerialize( toStruct() );
+	}
+
+	/**
+	 * Get a string representation of the document
+	 *
+	 * @return Human-readable string representation
+	 */
+	string function toString() {
+		var docSource = getMeta( "source", "unknown" );
+		return "Document[id=#variables.id#, source=#docSource#, length=#getContentLength()#, hasEmbedding=#hasEmbedding()#]";
+	}
+
+	// ==================== Factory Methods ====================
+
+	/**
+	 * Create a Document from a struct
+	 *
+	 * @data The struct with content and metadata keys
+	 *
+	 * @return Document instance
+	 */
+	static function fromStruct( required struct data ) {
+		return new Document(
+			id        : arguments.data.keyExists( "id" ) ? arguments.data.id : "",
+			content   : arguments.data.keyExists( "content" ) ? arguments.data.content : "",
+			metadata  : arguments.data.keyExists( "metadata" ) ? arguments.data.metadata : {},
+			embedding : arguments.data.keyExists( "embedding" ) ? arguments.data.embedding : []
+		);
+	}
+
+	/**
+	 * Create a Document from JSON
+	 *
+	 * @json The JSON string
+	 *
+	 * @return Document instance
+	 */
+	static function fromJson( required string json ) {
+		return Document::fromStruct( jsonDeserialize( arguments.json ) );
+	}
+
+	/**
+	 * Clone this document
+	 *
+	 * @return A new Document with the same content and metadata
+	 */
+	Document function clone() {
+		return new Document(
+			id        : variables.id,
+			content   : variables.content,
+			metadata  : duplicate( variables.metadata ),
+			embedding : duplicate( variables.embedding )
+		);
+	}
+
+	/**
+	 * Merge one or more documents into this document.
+	 * Concatenates content with newlines and combines metadata.
+	 *
+	 * @documents Single Document or array of Documents to merge
+	 * @separator Content separator (default: double newline)
+	 * @overwriteMetadata Whether to overwrite existing metadata keys (default: false)
+	 *
+	 * @return This Document for chaining
+	 */
+	Document function merge( required any documents, string separator = char( 10 ) & char( 10 ), boolean overwriteMetadata = false ) {
+		var docsToMerge = isArray( arguments.documents ) ? arguments.documents : [ arguments.documents ];
+
+		for ( var doc in docsToMerge ) {
+			// Append content with separator
+			if ( len( variables.content ) && len( doc.getContent() ) ) {
+				variables.content &= arguments.separator;
+			}
+			variables.content &= doc.getContent();
+
+			// Merge metadata
+			variables.metadata.append( doc.getMetadata(), arguments.overwriteMetadata );
+
+			// If this document doesn't have an embedding but the merged doc does, use it
+			if ( !hasEmbedding() && doc.hasEmbedding() ) {
+				variables.embedding = duplicate( doc.getEmbedding() );
+			}
+		}
+
+		return this;
+	}
+
+}

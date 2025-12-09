@@ -62,6 +62,7 @@ interface extends="bxModules.bxai.models.memory.IAiMemory" {
 	 * VECTOR-SPECIFIC STORAGE METHODS
 	 * ------------------------------------------------------------------------------
 	 * All the other memory methods are also available from IAiMemory
+	 * Note: seed() and seedAsync() are inherited from IAiMemory
 	 */
 
 	/**
@@ -96,33 +97,6 @@ interface extends="bxModules.bxai.models.memory.IAiMemory" {
 		struct metadata = {}
 	){
 		return this.addWithId( arguments.id, arguments.text, arguments.metadata );
-	}
-
-	/**
-	 * Seed the vector store with multiple documents at once
-	 * Optimized for batch insertion with single embedding API call
-	 *
-	 * @documents Array of documents to add. Each document can be:
-	 *   - String: Simple text (auto-generates ID)
-	 *   - Struct: { text, metadata, id? } (id is optional)
-	 *
-	 * @return Struct with results: { added: numeric, failed: numeric, errors: array }
-	 */
-	struct function seed( required array documents );
-
-	/**
-	 * Seed the vector store with multiple documents at once asynchronously
-	 * This returns a BoxFuture for non-blocking operation
-	 *
-	 * @documents Array of documents to add. Each document can be:
-	 *   - String: Simple text (auto-generates ID)
-	 *   - Struct: { text, metadata, id? } (id is optional)
-	 *
-	 * @return Struct with results: { added: numeric, failed: numeric, errors: array }
-	 */
-	default BoxFuture function seedAsync( required array documents ){
-		// Async in the virtual threads	pool
-		return asyncRun( () => this.seed( documents ), "io-tasks" );
 	}
 
 	/**

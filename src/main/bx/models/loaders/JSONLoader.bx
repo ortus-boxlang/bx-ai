@@ -1,0 +1,301 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Loads JSON files into Document objects.
+ * Supports extracting text from specific JSON paths or converting the entire structure.
+ */
+class extends="BaseDocumentLoader" {
+
+	/**
+	 * Static configuration for JSON loader
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			encoding        : "UTF-8",
+			includeMetadata : true,
+			splitMode       : "none",
+			contentField    : "",
+			metadataFields  : [],
+			arrayAsDocuments: false,
+			flatten         : false
+		};
+	}
+
+	/**
+	 * Initialize the JSONLoader
+	 *
+	 * @source Path to the JSON file
+	 * @config Configuration options
+	 *
+	 * @return JSONLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		super.init( source: arguments.source, config: {} );
+		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
+		return this;
+	}
+
+	/**
+	 * Get the loader name
+	 *
+	 * @return The loader name
+	 */
+	string function getName() {
+		return "JSONLoader";
+	}
+
+	/**
+	 * Load the JSON file into Document objects
+	 *
+	 * @return Array of Document objects
+	 */
+	array function doLoad() {
+		// Validate source exists
+		if ( !len( variables.source ) ) {
+			throw(
+				type    : "JSONLoader.NoSource",
+				message : "No source file specified"
+			);
+		}
+
+		if ( !fileExists( variables.source ) ) {
+			throw(
+				type    : "JSONLoader.FileNotFound",
+				message : "File not found: #variables.source#"
+			);
+		}
+
+		// Read and parse JSON
+		var content  = readFile( variables.source );
+		var fileInfo = getSourceInfo();
+		var data     = jsonDeserialize( content );
+
+		// Handle array at root level
+		if ( isArray( data ) && variables.config.arrayAsDocuments ) {
+			return createDocumentsFromArray( data, fileInfo );
+		}
+
+		// Check if we should extract a specific field
+		if ( len( variables.config.contentField ) ) {
+			return createDocumentFromField( data, fileInfo );
+		}
+
+		// Convert entire JSON to text
+		var textContent = jsonToText( data );
+		var doc = createDocument(
+			content            : textContent,
+			additionalMetadata : {
+				"fileType"     : "json",
+				"fileName"     : fileInfo.name,
+				"fileSize"     : fileInfo.size,
+				"lastModified" : fileInfo.lastModified,
+				"jsonType"     : isArray( data ) ? "array" : "object"
+			}
+		);
+
+		return [ doc ];
+	}
+
+	/**
+	 * Convert JSON data to readable text
+	 *
+	 * @data The JSON data
+	 * @prefix Prefix for nested keys
+	 *
+	 * @return Text representation
+	 */
+	private string function jsonToText( required any data, string prefix = "" ) {
+		if ( isSimpleValue( arguments.data ) ) {
+			return arguments.data;
+		}
+
+		var lines = [];
+
+		if ( isArray( arguments.data ) ) {
+			for ( var i = 1; i <= arguments.data.len(); i++ ) {
+				var itemPrefix = len( arguments.prefix ) ? "#arguments.prefix#[#i#]" : "[#i#]";
+				var itemText = jsonToText( arguments.data[ i ], itemPrefix );
+				lines.append( itemText );
+			}
+		} else if ( isStruct( arguments.data ) ) {
+			for ( var key in arguments.data ) {
+				var fullKey = len( arguments.prefix ) ? "#arguments.prefix#.#key#" : key;
+				var value = arguments.data[ key ];
+
+				if ( isSimpleValue( value ) ) {
+					lines.append( "#fullKey#: #value#" );
+				} else {
+					lines.append( jsonToText( value, fullKey ) );
+				}
+			}
+		}
+
+		return lines.toList( char( 10 ) );
+	}
+
+	/**
+	 * Create documents from an array of items
+	 *
+	 * @data The array data
+	 * @fileInfo File information for metadata
+	 *
+	 * @return Array of Document objects
+	 */
+	private array function createDocumentsFromArray( required array data, required struct fileInfo ) {
+		var documents = [];
+
+		for ( var i = 1; i <= arguments.data.len(); i++ ) {
+			var item = arguments.data[ i ];
+			var content = "";
+			var metadata = {
+				"fileType"     : "json",
+				"fileName"     : arguments.fileInfo.name,
+				"arrayIndex"   : i,
+				"totalItems"   : arguments.data.len()
+			};
+
+			// Extract content from specific field if configured
+			if ( len( variables.config.contentField ) && isStruct( item ) ) {
+				content = getNestedValue( item, variables.config.contentField ) ?: "";
+
+				// Extract metadata fields
+				for ( var metaField in variables.config.metadataFields ) {
+					var metaValue = getNestedValue( item, metaField );
+					if ( !isNull( metaValue ) ) {
+						metadata[ listLast( metaField, "." ) ] = metaValue;
+					}
+				}
+			} else {
+				content = jsonToText( item );
+			}
+
+			if ( len( trim( content ) ) ) {
+				documents.append(
+					createDocument(
+						content            : content,
+						additionalMetadata : metadata
+					)
+				);
+			}
+		}
+
+		return documents;
+	}
+
+	/**
+	 * Create document from a specific field
+	 *
+	 * @data The JSON data
+	 * @fileInfo File information for metadata
+	 *
+	 * @return Array of Document objects
+	 */
+	private array function createDocumentFromField( required any data, required struct fileInfo ) {
+		var content = getNestedValue( arguments.data, variables.config.contentField );
+
+		if ( isNull( content ) ) {
+			content = "";
+		} else if ( !isSimpleValue( content ) ) {
+			content = jsonToText( content );
+		}
+
+		var metadata = {
+			"fileType"     : "json",
+			"fileName"     : arguments.fileInfo.name,
+			"fileSize"     : arguments.fileInfo.size,
+			"lastModified" : arguments.fileInfo.lastModified,
+			"contentField" : variables.config.contentField
+		};
+
+		// Extract metadata fields
+		if ( isStruct( arguments.data ) ) {
+			for ( var metaField in variables.config.metadataFields ) {
+				var metaValue = getNestedValue( arguments.data, metaField );
+				if ( !isNull( metaValue ) && isSimpleValue( metaValue ) ) {
+					metadata[ listLast( metaField, "." ) ] = metaValue;
+				}
+			}
+		}
+
+		return [
+			createDocument(
+				content            : content,
+				additionalMetadata : metadata
+			)
+		];
+	}
+
+	/**
+	 * Get a nested value from a struct using dot notation
+	 *
+	 * @data The struct
+	 * @path The dot-notation path (e.g., "user.profile.name")
+	 *
+	 * @return The value or null if not found
+	 */
+	private any function getNestedValue( required any data, required string path ) {
+		var parts   = listToArray( arguments.path, "." );
+		var current = arguments.data;
+
+		for ( var part in parts ) {
+			if ( isStruct( current ) && current.keyExists( part ) ) {
+				current = current[ part ];
+			} else if ( isArray( current ) && isNumeric( part ) && part <= current.len() ) {
+				current = current[ part ];
+			} else {
+				return javacast( "null", "" );
+			}
+		}
+
+		return current;
+	}
+
+	/**
+	 * Set the field to extract as content
+	 *
+	 * @field The field path (e.g., "content" or "data.text")
+	 *
+	 * @return JSONLoader for chaining
+	 */
+	JSONLoader function contentField( required string field ) {
+		variables.config.contentField = arguments.field;
+		return this;
+	}
+
+	/**
+	 * Set fields to extract as metadata
+	 *
+	 * @fields Array of field paths
+	 *
+	 * @return JSONLoader for chaining
+	 */
+	JSONLoader function metadataFields( required array fields ) {
+		variables.config.metadataFields = arguments.fields;
+		return this;
+	}
+
+	/**
+	 * Create a document per array item (if root is array)
+	 *
+	 * @return JSONLoader for chaining
+	 */
+	JSONLoader function arrayAsDocuments() {
+		variables.config.arrayAsDocuments = true;
+		return this;
+	}
+
+}

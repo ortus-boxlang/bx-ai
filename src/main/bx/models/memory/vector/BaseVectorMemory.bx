@@ -146,7 +146,7 @@ abstract class
 	 * Add a message to this memory
 	 * Automatically generates embedding and stores in vector database
 	 *
-	 * @message The message to add (string, struct with id/text/metadata, or AiMessage)
+	 * @message The message to add (string, struct with id/text/metadata, AiMessage, or Document)
 	 *
 	 * @return IVectorMemory for chaining
 	 */
@@ -327,7 +327,7 @@ abstract class
 	 * Seed the vector store with multiple documents
 	 * Optimized for batch insertion
 	 *
-	 * @documents Array of documents (strings or structs)
+	 * @documents Array of documents (strings, structs, or Document instances)
 	 *
 	 * @return Struct with results
 	 */
@@ -340,6 +340,15 @@ abstract class
 
 		// Normalize documents
 		var normalized = arguments.documents.map( ( doc ) => {
+			// Handle Document instances
+			if ( doc instanceof "bxModules.bxai.models.loaders.Document" ) {
+				return {
+					id: generateId( doc.getContent() ),
+					text: doc.getContent(),
+					metadata: doc.getMetadata()
+				};
+			}
+			// Handle simple strings
 			if ( isSimpleValue( doc ) ) {
 				return {
 					id: generateId( doc ),
@@ -347,9 +356,10 @@ abstract class
 					metadata: {}
 				};
 			}
+			// Handle structs
 			return {
-				id: doc.id ?: generateId( doc.text ),
-				text: doc.text,
+				id: doc.id ?: generateId( doc.text ?: doc.content ?: "" ),
+				text: doc.text ?: doc.content ?: "",
 				metadata: doc.metadata ?: {}
 			};
 		} );
@@ -629,11 +639,12 @@ abstract class
 		if ( isSimpleValue( arguments.message ) ) {
 			return arguments.message;
 		}
+		// Handle Document instances
+		if ( arguments.message instanceof "bxModules.bxai.models.loaders.Document" ) {
+			return arguments.message.getContent();
+		}
 		if ( isStruct( arguments.message ) ) {
 			return arguments.message.content ?: arguments.message.text ?: "";
-		}
-		if ( isObject( arguments.message ) && arguments.message.hasMethod( "getContent" ) ) {
-			return arguments.message.getContent();
 		}
 		return "";
 	}
@@ -647,6 +658,11 @@ abstract class
 	 * @return Struct metadata
 	 */
 	private struct function extractMetadata( required any message ) {
+		// Handle Document instances
+		if ( arguments.message instanceof "bxModules.bxai.models.loaders.Document" ) {
+			return arguments.message.getMetadata();
+		}
+    
 		var meta = {};
 
 		if ( isStruct( arguments.message ) ) {
