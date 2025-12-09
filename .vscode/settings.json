@@ -3,7 +3,6 @@
     "java.import.gradle.enabled": true,
     "java.import.gradle.wrapper.enabled": true,
     "java.configuration.updateBuildConfiguration": "automatic",
-    "java.test.defaultConfig": "gradle",
     // Java Settings
     "java.format.enabled": true,
     "java.format.settings.url": ".ortus-java-style.xml",
