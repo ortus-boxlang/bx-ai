@@ -44,8 +44,8 @@ dependencies {
 	}
 
 	// Apache Tika for document parsing (PDF, Word, etc.)
-	implementation 'org.apache.tika:tika-core:2.9.2'
-	implementation 'org.apache.tika:tika-parsers-standard-package:2.9.2'
+	implementation 'org.apache.tika:tika-core:3.2.2'
+	implementation 'org.apache.tika:tika-parsers-standard-package:3.2.2'
 
 	// JSoup for HTML parsing and web scraping
 	implementation 'org.jsoup:jsoup:1.18.1'
