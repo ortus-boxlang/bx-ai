@@ -18,13 +18,13 @@ graph TB
     subgraph "User Interface"
         BIF[aiModel BIF]
     end
-    
+
     subgraph "Model Layer"
         M[AiModel Runnable]
         C[Configuration]
         P[Parameters]
     end
-    
+
     subgraph "Provider Services"
         O[OpenAI Service]
         CL[Claude Service]
@@ -32,7 +32,7 @@ graph TB
         OL[Ollama Service]
         MI[Mistral Service]
     end
-    
+
     subgraph "External APIs"
         API1[OpenAI API]
         API2[Claude API]
@@ -40,23 +40,23 @@ graph TB
         API4[Local Ollama]
         API5[Mistral API]
     end
-    
+
     BIF --> M
     M --> C
     M --> P
-    
+
     M --> O
     M --> CL
     M --> G
     M --> OL
     M --> MI
-    
+
     O --> API1
     CL --> API2
     G --> API3
     OL --> API4
     MI --> API5
-    
+
     style M fill:#4A90E2
     style BIF fill:#BD10E0
     style O fill:#7ED321
@@ -103,11 +103,11 @@ sequenceDiagram
     participant MO as aiModel
     participant T as Transform
     participant P as Provider API
-    
+
     U->>M: Create message template
     U->>MO: Configure model
     U->>T: Add transformers
-    
+
     Note over U,P: Pipeline Execution
     U->>M: run(bindings)
     M->>M: Bind placeholders

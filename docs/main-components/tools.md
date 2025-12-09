@@ -30,7 +30,7 @@ sequenceDiagram
     participant A as Agent/Pipeline
     participant T as Tool Function
     participant E as External System
-    
+
     U->>AI: "What's the weather in Boston?"
     AI->>AI: Analyze query + available tools
     AI->>A: Request tool call: get_weather("Boston")
@@ -40,7 +40,7 @@ sequenceDiagram
     T->>A: Return: {temp: 72, condition: "Sunny"}
     A->>AI: Tool result
     AI->>U: "The weather in Boston is 72°F and sunny."
-    
+
     Note over AI,T: AI automatically decides<br/>when to use tools
 ```
 
@@ -52,32 +52,32 @@ graph TB
         AI[AI Model]
         D[Decision Engine]
     end
-    
+
     subgraph "Tool Registry"
         T1[Weather Tool]
         T2[Database Tool]
         T3[Calculator Tool]
         T4[API Tool]
     end
-    
+
     subgraph "External Systems"
         W[Weather API]
         DB[Database]
         CALC[Math Engine]
         EXT[External API]
     end
-    
+
     AI --> D
     D -->|Decides which tool| T1
     D -->|to execute| T2
     D -->|based on context| T3
     D -->|and need| T4
-    
+
     T1 --> W
     T2 --> DB
     T3 --> CALC
     T4 --> EXT
-    
+
     style AI fill:#4A90E2
     style D fill:#BD10E0
     style T1 fill:#B8E986
@@ -261,20 +261,20 @@ Provide multiple tools for complex tasks:
 graph LR
     U[User Query] --> AI[AI Model]
     AI --> D{Analyze Need}
-    
+
     D -->|Weather| T1[Weather Tool]
     D -->|Math| T2[Calculator Tool]
     D -->|Data| T3[Database Tool]
     D -->|Search| T4[Search Tool]
-    
+
     T1 --> R[Results]
     T2 --> R
     T3 --> R
     T4 --> R
-    
+
     R --> AI
     AI --> F[Final Response]
-    
+
     style AI fill:#4A90E2
     style D fill:#BD10E0
     style T1 fill:#B8E986

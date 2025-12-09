@@ -29,34 +29,34 @@ graph TB
         T[🛠️ Tool Registry]
         I[📋 Instructions]
     end
-    
+
     subgraph "Memory Types"
         W[Window Memory]
         S[Summary Memory]
         SE[Session Memory]
         F[File Memory]
     end
-    
+
     subgraph "External Systems"
         API[External APIs]
         DB[Databases]
         FS[File System]
     end
-    
+
     A --> M
     A --> MEM
     A --> T
     A --> I
-    
+
     MEM --> W
     MEM --> S
     MEM --> SE
     MEM --> F
-    
+
     T --> API
     T --> DB
     T --> FS
-    
+
     style A fill:#BD10E0
     style M fill:#4A90E2
     style MEM fill:#50E3C2
@@ -72,12 +72,12 @@ sequenceDiagram
     participant M as Memory
     participant AI as AI Model
     participant T as Tools
-    
+
     U->>A: User message
     A->>M: Retrieve context
     M->>A: Historical messages
     A->>AI: Send message + context + available tools
-    
+
     alt AI needs tool
         AI->>A: Tool call request
         A->>T: Execute tool
@@ -87,7 +87,7 @@ sequenceDiagram
     else AI has answer
         AI->>A: Direct response
     end
-    
+
     A->>M: Store new messages
     A->>U: Return response
 ```
@@ -169,7 +169,7 @@ graph LR
     AI --> S[Store Response]
     S --> M[Memory System]
     M --> O[Output to User]
-    
+
     style A fill:#BD10E0
     style M fill:#50E3C2
     style AI fill:#4A90E2
@@ -269,7 +269,7 @@ graph TD
     D -->|json| J[Parsed JSON Object]
     D -->|xml| X[Parsed XML Object]
     D -->|raw| R[Complete API Response]
-    
+
     style A fill:#BD10E0
     style S fill:#7ED321
     style AL fill:#4A90E2

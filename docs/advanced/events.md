@@ -54,16 +54,16 @@ sequenceDiagram
     participant P as Pipeline
     participant AI as AI Provider
     participant T as Tool
-    
+
     Note over U,T: Object Creation Phase
     U->>M: Create message/model
     M-->>U: onAIMessageCreate
     M-->>U: onAIModelCreate
-    
+
     Note over U,T: Pipeline Execution Phase
     U->>P: pipeline.run()
     P-->>U: beforeAIPipelineRun
-    
+
     Note over U,T: Request/Response Phase
     P->>AI: Execute
     AI-->>U: beforeAIModelInvoke
@@ -71,17 +71,17 @@ sequenceDiagram
     AI->>AI: Call Provider API
     AI-->>U: onAIResponse
     AI-->>U: afterAIModelInvoke
-    
+
     Note over U,T: Tool Execution (if needed)
     AI->>T: Call tool
     T-->>U: beforeAIToolExecute
     T->>T: Execute function
     T-->>U: afterAIToolExecute
-    
+
     Note over U,T: Pipeline Complete
     P-->>U: afterAIPipelineRun
     P->>U: Return result
-    
+
     Note over U,T: Error Handling
     alt Error occurs
         AI-->>U: onAIError
@@ -103,7 +103,7 @@ graph TB
         E6[onAITransformCreate]
         E7[onAIToolCreate]
     end
-    
+
     subgraph "Execution Events"
         E8[beforeAIModelInvoke]
         E9[onAIRequest]
@@ -112,24 +112,24 @@ graph TB
         E12[beforeAIToolExecute]
         E13[afterAIToolExecute]
     end
-    
+
     subgraph "Pipeline Events"
         E14[beforeAIPipelineRun]
         E15[afterAIPipelineRun]
     end
-    
+
     subgraph "Error Events"
         E16[onAIError]
         E17[onAIRateLimitHit]
     end
-    
+
     subgraph "MCP Events"
         E18[onMCPServerCreate]
         E19[onMCPRequest]
         E20[onMCPResponse]
         E21[onMCPError]
     end
-    
+
     style E1 fill:#4A90E2
     style E8 fill:#7ED321
     style E14 fill:#F5A623
@@ -150,31 +150,31 @@ graph LR
     subgraph "Your Application"
         A[Application Code]
     end
-    
+
     subgraph "Interceptor Layer"
         I1[Logging Interceptor]
         I2[Security Interceptor]
         I3[Analytics Interceptor]
     end
-    
+
     subgraph "BoxLang AI Events"
         E[Event System]
     end
-    
+
     subgraph "AI Operations"
         O[Model/Agent/Tool]
     end
-    
+
     A --> O
     O --> E
     E --> I1
     E --> I2
     E --> I3
-    
+
     I1 -.->|logs| L[Log Files]
     I2 -.->|validates| S[Security Rules]
     I3 -.->|tracks| M[Metrics DB]
-    
+
     style E fill:#BD10E0
     style O fill:#4A90E2
     style I1 fill:#7ED321

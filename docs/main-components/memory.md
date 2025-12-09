@@ -35,37 +35,37 @@ graph TB
     subgraph "Application Layer"
         A[Application]
     end
-    
+
     subgraph "User Isolation"
         U1[User: alice]
         U2[User: bob]
         U3[User: charlie]
     end
-    
+
     subgraph "Conversation Isolation"
         C1[Chat: support]
         C2[Chat: sales]
         C3[Chat: billing]
     end
-    
+
     subgraph "Memory Storage"
         M1[(Memory Store)]
         M2[(Memory Store)]
         M3[(Memory Store)]
     end
-    
+
     A --> U1
     A --> U2
     A --> U3
-    
+
     U1 --> C1
     U1 --> C2
     U2 --> C3
-    
+
     C1 --> M1
     C2 --> M2
     C3 --> M3
-    
+
     style A fill:#BD10E0
     style U1 fill:#4A90E2
     style U2 fill:#4A90E2
@@ -155,22 +155,22 @@ BoxLang AI provides several standard memory implementations for conversation his
 ```mermaid
 graph TD
     START[Choose Memory Type] --> Q1{Need persistence?}
-    
+
     Q1 -->|No| Q2{Context limit concerns?}
     Q1 -->|Yes| Q3{Need audit trail?}
-    
+
     Q2 -->|Yes| W[Windowed Memory]
     Q2 -->|No| V[Vector Memory]
-    
+
     Q3 -->|Yes| F[File Memory]
     Q3 -->|No| Q4{Distributed app?}
-    
+
     Q4 -->|Yes| C[Cache Memory]
     Q4 -->|No| Q5{Long conversations?}
-    
+
     Q5 -->|Yes| S[Summary Memory]
     Q5 -->|No| SE[Session Memory]
-    
+
     style START fill:#BD10E0
     style W fill:#4A90E2
     style S fill:#7ED321

@@ -30,21 +30,21 @@ graph TB
         MEM[💭 Memory]
         TOOL[🛠️ Tools]
     end
-    
+
     subgraph "Pipeline Flow"
         INPUT[Input Data] --> MSG
         MSG --> M
         M --> T
         T --> OUTPUT[Output]
     end
-    
+
     subgraph "Agent Architecture"
         AG --> M
         AG --> MEM
         AG --> TOOL
         TOOL --> API[External APIs]
     end
-    
+
     style M fill:#4A90E2
     style MSG fill:#7ED321
     style T fill:#F5A623
@@ -62,7 +62,7 @@ sequenceDiagram
     participant M as Message Template
     participant AI as AI Model
     participant T as Transformer
-    
+
     U->>P: run(input)
     P->>M: Bind placeholders
     M->>AI: Execute with messages
@@ -266,14 +266,14 @@ classDiagram
         +stream(onChunk, input, params, options)
         +to(next)
     }
-    
+
     class AiModel {
         -service
         -params
         +withParams()
         +withOptions()
     }
-    
+
     class AiMessage {
         -messages[]
         -bindings
@@ -281,7 +281,7 @@ classDiagram
         +user()
         +assistant()
     }
-    
+
     class AiAgent {
         -model
         -memory[]
@@ -289,17 +289,17 @@ classDiagram
         +run()
         +clearMemory()
     }
-    
+
     class AiTransform {
         -callback
         +run()
     }
-    
+
     IAiRunnable <|.. AiModel
     IAiRunnable <|.. AiMessage
     IAiRunnable <|.. AiAgent
     IAiRunnable <|.. AiTransform
-    
+
     AiAgent --> AiModel: uses
     AiAgent --> Memory: manages
     AiAgent --> Tool: executes

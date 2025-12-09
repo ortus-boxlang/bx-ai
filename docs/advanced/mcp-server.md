@@ -41,41 +41,41 @@ graph TB
         C3[Web App]
         C4[Custom Client]
     end
-    
+
     subgraph "Transport Layer"
         H[HTTP Transport]
         S[STDIO Transport]
     end
-    
+
     subgraph "MCP Server"
         MS[MCP Server Core]
         TR[Tool Registry]
         RR[Resource Registry]
         PR[Prompt Registry]
     end
-    
+
     subgraph "Your Application"
         T[Tools/Functions]
         D[Data Sources]
         P[Prompt Templates]
     end
-    
+
     C1 --> S
     C2 --> S
     C3 --> H
     C4 --> H
-    
+
     H --> MS
     S --> MS
-    
+
     MS --> TR
     MS --> RR
     MS --> PR
-    
+
     TR --> T
     RR --> D
     PR --> P
-    
+
     style MS fill:#BD10E0
     style H fill:#4A90E2
     style S fill:#7ED321
@@ -95,7 +95,7 @@ sequenceDiagram
     participant S as STDIO Transport
     participant M as MCP Server
     participant T as Tool
-    
+
     Note over C,T: HTTP Transport Flow
     C->>H: POST /mcp.bxm
     H->>M: Parse JSON-RPC
@@ -103,7 +103,7 @@ sequenceDiagram
     T->>M: Return result
     M->>H: JSON response
     H->>C: HTTP 200 + JSON
-    
+
     Note over C,T: STDIO Transport Flow
     C->>S: JSON-RPC via STDIN
     S->>M: Parse line
@@ -111,7 +111,7 @@ sequenceDiagram
     T->>M: Return result
     M->>S: JSON response
     S->>C: Write to STDOUT
-    
+
     Note over C,T: Both use same protocol,<br/>different transport layers
 ```
 
