@@ -18,7 +18,11 @@
  * HTTP Document Loader
  * Loads content from HTTP/HTTPS URLs with configurable content type handling.
  * Uses the http() BIF with fluent builder pattern for making requests.
+ * Uses JSoup for robust HTML parsing and text extraction.
  */
+import java:org.jsoup.Jsoup;
+import java:org.jsoup.safety.Safelist;
+
 class extends="BaseDocumentLoader" {
 
 	/**
@@ -434,13 +438,47 @@ class extends="BaseDocumentLoader" {
 	}
 
 	/**
-	 * Extract text content from HTML
+	 * Extract text content from HTML using JSoup.
+	 * JSoup provides robust HTML parsing and text extraction that handles malformed HTML,
+	 * properly decodes entities, and preserves document structure.
 	 *
 	 * @html The HTML content
 	 *
 	 * @return Extracted text
 	 */
 	private string function extractTextFromHTML( required string html ) {
+		try {
+			// Parse HTML with JSoup
+			var doc = Jsoup::parse( arguments.html );
+
+			// Remove script tags if configured
+			if ( variables.config.removeScripts ) {
+				doc.select( "script" ).remove();
+			}
+
+			// Remove style tags if configured
+			if ( variables.config.removeStyles ) {
+				doc.select( "style" ).remove();
+			}
+
+			// Extract text content (JSoup automatically handles entity decoding and whitespace normalization)
+			var text = doc.text();
+
+			return trim( text );
+		} catch ( any e ) {
+			// Fall back to regex-based extraction if JSoup fails
+			return extractTextFromHTMLFallback( arguments.html );
+		}
+	}
+
+	/**
+	 * Fallback HTML text extraction using regex (in case JSoup fails)
+	 *
+	 * @html The HTML content
+	 *
+	 * @return Extracted text
+	 */
+	private string function extractTextFromHTMLFallback( required string html ) {
 		var text = arguments.html;
 
 		// Remove script tags

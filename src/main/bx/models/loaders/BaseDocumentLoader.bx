@@ -774,4 +774,22 @@ abstract class implements="IDocumentLoader" {
 		return chunkedDocs;
 	}
 
+	/**
+	 * Reset the loader state to start from scratch.
+	 * Clears internal state like batch position, errors, filters, etc.
+	 * Allows reusing the same loader instance for multiple load operations.
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function reset() {
+		variables.documents = [];
+		variables.currentIndex = 0;
+		variables.documentsLoaded = false;
+		variables.errors = [];
+		variables.filterPredicate = null;
+		variables.mapTransformer = null;
+		variables.progressCallback = null;
+		return this;
+	}
+
 }

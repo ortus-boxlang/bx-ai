@@ -15,10 +15,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  * ----------------------------------------------------------------------------------
- * Loads and parses RSS and Atom feeds.
+ * Loads and parses RSS and Atom feeds using com.apptasticsoftware:rssreader library.
  * Each feed item/entry becomes a separate Document.
  * Supports blog aggregation, news feeds, and content syndication.
  */
+import java:com.apptasticsoftware.rssreader.RssReader;
+import java:com.apptasticsoftware.rssreader.Item;
+import java:org.jsoup.Jsoup;
+
 class extends="BaseDocumentLoader" {
 
 	/**
@@ -30,7 +34,6 @@ class extends="BaseDocumentLoader" {
 			includeMetadata    : true,
 			// Content options
 			includeDescription : true,
-			includeContent     : true,
 			stripHtml          : true,
 			// Filtering
 			maxItems           : 0,
@@ -66,7 +69,7 @@ class extends="BaseDocumentLoader" {
 	}
 
 	/**
-	 * Load and parse the feed
+	 * Load and parse the feed using RssReader library
 	 *
 	 * @return Array of Document objects (one per feed item)
 	 */
@@ -78,275 +81,109 @@ class extends="BaseDocumentLoader" {
 			);
 		}
 
-		var feedContent = "";
+		try {
+			// Create RSS reader
+			var reader = new RssReader();
 
-		// Load feed content from URL or file
-		if ( isURL( variables.source ) ) {
-			feedContent = loadFromURL( variables.source );
-		} else if ( fileExists( variables.source ) ) {
-			feedContent = readFile( variables.source );
-		} else {
-			throw(
-				type    : "FeedLoader.InvalidSource",
-				message : "Feed source not found: #variables.source#"
-			);
-		}
+			// Read the feed
+			var stream = reader.read( variables.source );
+			
+			// Convert Java Stream to array and process items
+			var documents = [];
+			var itemCount = 0;
+			
+			stream.forEach( ( item ) => {
+				// Check max items limit
+				if ( variables.config.maxItems > 0 && itemCount >= variables.config.maxItems ) {
+					return;
+				}
 
-		// Parse the feed XML
-		var feedXML = xmlParse( feedContent );
-		var feedType = detectFeedType( feedXML );
+				// Extract item data
+				var title = item.getTitle().orElse( "" );
+				var link = item.getLink().orElse( "" );
+				var description = item.getDescription().orElse( "" );
+				var pubDate = item.getPubDate().orElse( "" );
+				var author = item.getAuthor().orElse( "" );
+				var guid = item.getGuid().orElse( link );
+				var categories = item.getCategories();
 
-		// Parse based on feed type
-		switch ( feedType ) {
-			case "rss":
-				return parseRSS( feedXML );
-			case "atom":
-				return parseAtom( feedXML );
-			default:
-				throw(
-					type    : "FeedLoader.UnknownFeedType",
-					message : "Unable to detect feed type. Supported types: RSS 2.0, Atom"
+				// Filter by date if configured
+				if ( len( variables.config.sinceDate ) && len( pubDate ) ) {
+					try {
+						var itemDate = parseDateTime( pubDate );
+						var sinceDate = parseDateTime( variables.config.sinceDate );
+						if ( itemDate < sinceDate ) {
+							return;
+						}
+					} catch ( any e ) {
+						// Skip date filtering if parse fails
+					}
+				}
+
+				// Filter by categories if configured
+				if ( variables.config.categories.len() > 0 && categories.size() > 0 ) {
+					var hasCategory = false;
+					var javaIter = categories.iterator();
+					while ( javaIter.hasNext() ) {
+						var cat = javaIter.next();
+						if ( variables.config.categories.findNoCase( cat ) ) {
+							hasCategory = true;
+							break;
+						}
+					}
+					if ( !hasCategory ) {
+						return;
+					}
+				}
+
+				// Build content
+				var docContent = buildContent( title, description );
+
+				// Convert Java categories list to array
+				var catArray = [];
+				if ( categories.size() > 0 ) {
+					var catIter = categories.iterator();
+					while ( catIter.hasNext() ) {
+						catArray.append( catIter.next() );
+					}
+				}
+
+				// Build metadata
+				var metadata = {
+					"feedType"        : "rss",
+					"feedUrl"         : variables.source,
+					"itemTitle"       : title,
+					"itemLink"        : link,
+					"pubDate"         : pubDate,
+					"author"          : author,
+					"guid"            : guid,
+					"categories"      : catArray
+				};
+
+				documents.append(
+					createDocument(
+						content            : docContent,
+						additionalMetadata : metadata,
+						id                 : len( guid ) ? guid : link
+					)
 				);
+
+				itemCount++;
+			} );
+
+			return documents;
+
+		} catch ( any e ) {
+			if ( variables.config.continueOnError ) {
+				addError( {
+					"message" : "Failed to parse feed: ${e.message}",
+					"type"    : e.type,
+					"source"  : variables.source
+				} );
+				return [];
+			}
+			rethrow;
 		}
-	}
-
-	/**
-	 * Check if source is a URL
-	 *
-	 * @source The source string
-	 *
-	 * @return True if URL
-	 */
-	private boolean function isURL( required string source ) {
-		return arguments.source.lCase().reFind( "^https?://" ) > 0;
-	}
-
-	/**
-	 * Load feed content from URL
-	 *
-	 * @feedUrl The feed URL
-	 *
-	 * @return Feed XML content
-	 */
-	private string function loadFromURL( required string feedUrl ) {
-		var response = http( url: arguments.feedUrl, timeout: variables.config.timeout )
-			.addHeader( "User-Agent", variables.config.userAgent )
-			.addHeader( "Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml" )
-			.get()
-			.send();
-
-		if ( response.statusCode < 200 || response.statusCode >= 300 ) {
-			throw(
-				type    : "FeedLoader.HTTPError",
-				message : "Failed to fetch feed: HTTP #response.statusCode#",
-				detail  : response.fileContent ?: ""
-			);
-		}
-
-		return response.fileContent;
-	}
-
-	/**
-	 * Detect the feed type (RSS or Atom)
-	 *
-	 * @feedXML The parsed XML document
-	 *
-	 * @return Feed type string
-	 */
-	private string function detectFeedType( required any feedXML ) {
-		var rootName = arguments.feedXML.xmlRoot.xmlName.lCase();
-
-		if ( rootName == "rss" || rootName == "rdf:rdf" ) {
-			return "rss";
-		} else if ( rootName == "feed" ) {
-			return "atom";
-		}
-
-		return "unknown";
-	}
-
-	/**
-	 * Parse RSS 2.0 feed
-	 *
-	 * @feedXML The parsed XML document
-	 *
-	 * @return Array of Document objects
-	 */
-	private array function parseRSS( required any feedXML ) {
-		var documents = [];
-		var items = xmlSearch( arguments.feedXML, "//item" );
-
-		// Get channel info for metadata
-		var channelTitle = getXMLValue( arguments.feedXML, "//channel/title" );
-		var channelLink = getXMLValue( arguments.feedXML, "//channel/link" );
-		var channelDescription = getXMLValue( arguments.feedXML, "//channel/description" );
-
-		var itemCount = 0;
-		for ( var item in items ) {
-			// Check max items limit
-			if ( variables.config.maxItems > 0 && itemCount >= variables.config.maxItems ) {
-				break;
-			}
-
-			// Extract item data
-			var title = getElementText( item, "title" );
-			var link = getElementText( item, "link" );
-			var description = getElementText( item, "description" );
-			var content = getElementText( item, "content:encoded" );
-			var pubDate = getElementText( item, "pubDate" );
-			var author = getElementText( item, "author" );
-			var guid = getElementText( item, "guid" );
-			var categories = getElementTexts( item, "category" );
-
-			// Filter by date if configured
-			if ( len( variables.config.sinceDate ) && len( pubDate ) ) {
-				try {
-					var itemDate = parseDateTime( pubDate );
-					var sinceDate = parseDateTime( variables.config.sinceDate );
-					if ( itemDate < sinceDate ) {
-						continue;
-					}
-				} catch ( any e ) {
-					// Skip date filtering if parse fails
-				}
-			}
-
-			// Filter by categories if configured
-			if ( variables.config.categories.len() > 0 ) {
-				var hasCategory = false;
-				for ( var cat in categories ) {
-					if ( variables.config.categories.findNoCase( cat ) ) {
-						hasCategory = true;
-						break;
-					}
-				}
-				if ( !hasCategory ) {
-					continue;
-				}
-			}
-
-			// Build content
-			var docContent = buildContent( title, description, content );
-
-			// Build metadata
-			var metadata = {
-				"feedType"        : "rss",
-				"feedTitle"       : channelTitle,
-				"feedLink"        : channelLink,
-				"itemTitle"       : title,
-				"itemLink"        : link,
-				"pubDate"         : pubDate,
-				"author"          : author,
-				"guid"            : guid,
-				"categories"      : categories
-			};
-
-			documents.append(
-				createDocument(
-					content            : docContent,
-					additionalMetadata : metadata,
-					id                 : len( guid ) ? guid : link
-				)
-			);
-
-			itemCount++;
-		}
-
-		return documents;
-	}
-
-	/**
-	 * Parse Atom feed
-	 *
-	 * @feedXML The parsed XML document
-	 *
-	 * @return Array of Document objects
-	 */
-	private array function parseAtom( required any feedXML ) {
-		var documents = [];
-		var entries = xmlSearch( arguments.feedXML, "//*[local-name()='entry']" );
-
-		// Get feed info for metadata
-		var feedTitle = getXMLValue( arguments.feedXML, "//*[local-name()='feed']/*[local-name()='title']" );
-		var feedLink = getAtomLink( arguments.feedXML.xmlRoot );
-
-		var entryCount = 0;
-		for ( var entry in entries ) {
-			// Check max items limit
-			if ( variables.config.maxItems > 0 && entryCount >= variables.config.maxItems ) {
-				break;
-			}
-
-			// Extract entry data
-			var title = getElementText( entry, "*[local-name()='title']" );
-			var link = getAtomLink( entry );
-			var summary = getElementText( entry, "*[local-name()='summary']" );
-			var content = getElementText( entry, "*[local-name()='content']" );
-			var published = getElementText( entry, "*[local-name()='published']" );
-			var updated = getElementText( entry, "*[local-name()='updated']" );
-			var author = getElementText( entry, "*[local-name()='author']/*[local-name()='name']" );
-			var entryId = getElementText( entry, "*[local-name()='id']" );
-			var categories = getAtomCategories( entry );
-
-			// Use published or updated date
-			var pubDate = len( published ) ? published : updated;
-
-			// Filter by date if configured
-			if ( len( variables.config.sinceDate ) && len( pubDate ) ) {
-				try {
-					var entryDate = parseDateTime( pubDate );
-					var sinceDate = parseDateTime( variables.config.sinceDate );
-					if ( entryDate < sinceDate ) {
-						continue;
-					}
-				} catch ( any e ) {
-					// Skip date filtering if parse fails
-				}
-			}
-
-			// Filter by categories if configured
-			if ( variables.config.categories.len() > 0 ) {
-				var hasCategory = false;
-				for ( var cat in categories ) {
-					if ( variables.config.categories.findNoCase( cat ) ) {
-						hasCategory = true;
-						break;
-					}
-				}
-				if ( !hasCategory ) {
-					continue;
-				}
-			}
-
-			// Build content
-			var docContent = buildContent( title, summary, content );
-
-			// Build metadata
-			var metadata = {
-				"feedType"        : "atom",
-				"feedTitle"       : feedTitle,
-				"feedLink"        : feedLink,
-				"entryTitle"      : title,
-				"entryLink"       : link,
-				"published"       : published,
-				"updated"         : updated,
-				"author"          : author,
-				"entryId"         : entryId,
-				"categories"      : categories
-			};
-
-			documents.append(
-				createDocument(
-					content            : docContent,
-					additionalMetadata : metadata,
-					id                 : len( entryId ) ? entryId : link
-				)
-			);
-
-			entryCount++;
-		}
-
-		return documents;
 	}
 
 	/**
@@ -354,14 +191,12 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @title Item title
 	 * @description Item description/summary
-	 * @content Full content (if available)
 	 *
 	 * @return Combined content string
 	 */
 	private string function buildContent(
 		required string title,
-		required string description,
-		required string content
+		required string description
 	) {
 		var parts = [];
 
@@ -374,146 +209,32 @@ class extends="BaseDocumentLoader" {
 			parts.append( desc );
 		}
 
-		if ( variables.config.includeContent && len( arguments.content ) ) {
-			var cont = variables.config.stripHtml ? stripHTML( arguments.content ) : arguments.content;
-			parts.append( cont );
-		}
-
 		return parts.toList( char( 10 ) & char( 10 ) );
 	}
 
 	/**
-	 * Strip HTML tags from text
+	 * Strip HTML tags from text using JSoup
 	 *
 	 * @text HTML text
 	 *
 	 * @return Plain text
 	 */
 	private string function stripHTML( required string text ) {
-		// Remove HTML tags
-		var result = arguments.text.reReplace( "<[^>]*>", " ", "all" );
-		// Decode HTML entities
-		result = result.replace( "&nbsp;", " ", "all" )
-			.replace( "&amp;", "&", "all" )
-			.replace( "&lt;", "<", "all" )
-			.replace( "&gt;", ">", "all" )
-			.replace( "&quot;", """", "all" )
-			.replace( "&#39;", "'", "all" );
-		// Normalize whitespace
-		result = result.reReplace( "\s+", " ", "all" ).trim();
-		return result;
-	}
-
-	/**
-	 * Get text from XML element by name
-	 *
-	 * @parent Parent element
-	 * @childName Child element name
-	 *
-	 * @return Element text or empty string
-	 */
-	private string function getElementText( required any parent, required string childName ) {
 		try {
-			var elements = xmlSearch( arguments.parent, arguments.childName );
-			if ( elements.len() > 0 ) {
-				return elements[ 1 ].xmlText ?: "";
-			}
+			// Use JSoup to parse and extract text
+			return Jsoup::parse( arguments.text ).text();
 		} catch ( any e ) {
-			// Element not found
+			// Fallback to regex if JSoup fails
+			var result = arguments.text.reReplace( "<[^>]*>", " ", "all" );
+			result = result.replace( "&nbsp;", " ", "all" )
+				.replace( "&amp;", "&", "all" )
+				.replace( "&lt;", "<", "all" )
+				.replace( "&gt;", ">", "all" )
+				.replace( "&quot;", """", "all" )
+				.replace( "&#39;", "'", "all" );
+			result = result.reReplace( "\s+", " ", "all" ).trim();
+			return result;
 		}
-		return "";
-	}
-
-	/**
-	 * Get multiple text values from XML elements
-	 *
-	 * @parent Parent element
-	 * @childName Child element name
-	 *
-	 * @return Array of text values
-	 */
-	private array function getElementTexts( required any parent, required string childName ) {
-		var texts = [];
-		try {
-			var elements = xmlSearch( arguments.parent, arguments.childName );
-			for ( var element in elements ) {
-				if ( len( element.xmlText ?: "" ) ) {
-					texts.append( element.xmlText );
-				}
-			}
-		} catch ( any e ) {
-			// Elements not found
-		}
-		return texts;
-	}
-
-	/**
-	 * Get XML value using XPath
-	 *
-	 * @xmlDoc XML document
-	 * @xpath XPath expression
-	 *
-	 * @return Value or empty string
-	 */
-	private string function getXMLValue( required any xmlDoc, required string xpath ) {
-		try {
-			var elements = xmlSearch( arguments.xmlDoc, arguments.xpath );
-			if ( elements.len() > 0 ) {
-				return elements[ 1 ].xmlText ?: "";
-			}
-		} catch ( any e ) {
-			// Not found
-		}
-		return "";
-	}
-
-	/**
-	 * Get link from Atom entry (handles different link types)
-	 *
-	 * @element Atom entry element
-	 *
-	 * @return Link URL
-	 */
-	private string function getAtomLink( required any element ) {
-		try {
-			var links = xmlSearch( arguments.element, "*[local-name()='link']" );
-			for ( var link in links ) {
-				var rel = link.xmlAttributes[ "rel" ] ?: "alternate";
-				if ( rel == "alternate" || rel == "" ) {
-					return link.xmlAttributes[ "href" ] ?: "";
-				}
-			}
-			// Fall back to first link
-			if ( links.len() > 0 ) {
-				return links[ 1 ].xmlAttributes[ "href" ] ?: "";
-			}
-		} catch ( any e ) {
-			// No links found
-		}
-		return "";
-	}
-
-	/**
-	 * Get categories from Atom entry
-	 *
-	 * @element Atom entry element
-	 *
-	 * @return Array of category terms
-	 */
-	private array function getAtomCategories( required any element ) {
-		var categories = [];
-		try {
-			var catElements = xmlSearch( arguments.element, "*[local-name()='category']" );
-			for ( var cat in catElements ) {
-				var term = cat.xmlAttributes[ "term" ] ?: "";
-				if ( len( term ) ) {
-					categories.append( term );
-				}
-			}
-		} catch ( any e ) {
-			// No categories
-		}
-		return categories;
 	}
 
 	// ==========================================
@@ -529,18 +250,6 @@ class extends="BaseDocumentLoader" {
 	 */
 	FeedLoader function includeDescription( boolean include = true ) {
 		variables.config.includeDescription = arguments.include;
-		return this;
-	}
-
-	/**
-	 * Include full content in document
-	 *
-	 * @include Whether to include content
-	 *
-	 * @return FeedLoader for chaining
-	 */
-	FeedLoader function includeContent( boolean include = true ) {
-		variables.config.includeContent = arguments.include;
 		return this;
 	}
 
@@ -602,6 +311,30 @@ class extends="BaseDocumentLoader" {
 	FeedLoader function timeout( required numeric seconds ) {
 		variables.config.timeout = arguments.seconds;
 		return this;
+	}
+
+	/**
+	 * Get source metadata for feeds
+	 *
+	 * @return Struct with metadata
+	 */
+	struct function getSourceMetadata() {
+		return {
+			"source"            : variables.source,
+			"loader"            : getName(),
+			"isFeed"            : true,
+			"maxItems"          : variables.config.maxItems,
+			"stripHtml"         : variables.config.stripHtml
+		};
+	}
+
+	/**
+	 * Get document count (unknown for feeds until loaded)
+	 *
+	 * @return -1 (unknown)
+	 */
+	numeric function getDocumentCount() {
+		return -1;
 	}
 
 }

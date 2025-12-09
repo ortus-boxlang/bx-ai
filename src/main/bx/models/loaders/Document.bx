@@ -376,4 +376,36 @@ class {
 		);
 	}
 
+	/**
+	 * Merge one or more documents into this document.
+	 * Concatenates content with newlines and combines metadata.
+	 *
+	 * @documents Single Document or array of Documents to merge
+	 * @separator Content separator (default: double newline)
+	 * @overwriteMetadata Whether to overwrite existing metadata keys (default: false)
+	 *
+	 * @return This Document for chaining
+	 */
+	Document function merge( required any documents, string separator = char( 10 ) & char( 10 ), boolean overwriteMetadata = false ) {
+		var docsToMerge = isArray( arguments.documents ) ? arguments.documents : [ arguments.documents ];
+
+		for ( var doc in docsToMerge ) {
+			// Append content with separator
+			if ( len( variables.content ) && len( doc.getContent() ) ) {
+				variables.content &= arguments.separator;
+			}
+			variables.content &= doc.getContent();
+
+			// Merge metadata
+			variables.metadata.append( doc.getMetadata(), arguments.overwriteMetadata );
+
+			// If this document doesn't have an embedding but the merged doc does, use it
+			if ( !hasEmbedding() && doc.hasEmbedding() ) {
+				variables.embedding = duplicate( doc.getEmbedding() );
+			}
+		}
+
+		return this;
+	}
+
 }

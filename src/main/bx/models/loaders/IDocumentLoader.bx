@@ -229,4 +229,13 @@ interface {
 	 */
 	IDocumentLoader function delimiter( required string delim );
 
+	/**
+	 * Reset the loader state to start from scratch.
+	 * Clears any internal state like batch position, errors, filters, etc.
+	 * Allows reusing the same loader instance for multiple load operations.
+	 *
+	 * @return IDocumentLoader for chaining
+	 */
+	IDocumentLoader function reset();
+
 }

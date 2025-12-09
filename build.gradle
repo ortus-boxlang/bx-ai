@@ -50,6 +50,9 @@ dependencies {
 	// JSoup for HTML parsing and web scraping
 	implementation 'org.jsoup:jsoup:1.18.1'
 
+	// RSS Reader for feed parsing
+	implementation 'com.apptasticsoftware:rssreader:3.11.0'
+
 	// Testing Frameworks
 	testImplementation 'io.github.cdimascio:dotenv-java:3.2.0'
 	testImplementation "org.junit.jupiter:junit-jupiter:6.+"
