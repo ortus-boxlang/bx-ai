@@ -98,7 +98,7 @@ class extends="BaseService"{
 		// https://docs.anthropic.com/en/api/messages#body-messages
 		var dataPacket = {
 			"model"   : arguments.aiRequest.getModel(),
-			"messages": arguments.aiRequest.getAiMessage().getNonSystemMessages()
+			"messages": arguments.aiRequest.getMessages()
 		}.append( arguments.aiRequest.getParams() )
 
 		// Do we have a system message? Claude supports it at the root
@@ -182,14 +182,14 @@ class extends="BaseService"{
 				return result.content;
 			case "raw":
 				return result;
-			case "single": default:
-				return content;
 			case "json":
-				return parseJson( content );
+				return JSONDeserialize( extractFromCodeBlock( content, "json" ) );
 			case "xml" :
-				return xmlParse( content );
+				return xmlParse( extractFromCodeBlock( content, "xml" ) );
 			case  "structuredOutput":
 				return populateStructuredOutput( content, aiRequest );
+			case "single": default:
+				return content;
 		}
 	}
 

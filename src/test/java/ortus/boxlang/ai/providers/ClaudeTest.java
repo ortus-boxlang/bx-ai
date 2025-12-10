@@ -76,7 +76,9 @@ public class ClaudeTest extends BaseIntegrationTest {
 			result = aiChat(
 				messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.",
 				params = {
-					tools: [ tool ],
+					tools: [ tool ]
+				},
+				options = {
 					logResponseToConsole: true
 				} )
 			println( result )
@@ -86,6 +88,84 @@ public class ClaudeTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.get( result ) ).isEqualTo( "San Salvador" );
+	}
+
+	@DisplayName( "Test JSON response" )
+	@Test
+	public void testJsonResponse() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiChat(
+				messages = "Return a JSON object with name 'BoxLang' and version '1.0'. Return ONLY valid JSON, nothing else.",
+				options = {
+					returnFormat: "json"
+				}
+			)
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Verify we got a struct back
+		assertThat( variables.get( "result" ) ).isInstanceOf( ortus.boxlang.runtime.types.IStruct.class );
+		var result = ( ortus.boxlang.runtime.types.IStruct ) variables.get( "result" );
+		assertThat( result.containsKey( "name" ) || result.containsKey( "NAME" ) ).isTrue();
+	}
+
+	@DisplayName( "Test XML response" )
+	@Test
+	public void testXmlResponse() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiChat(
+				messages = "Return an XML document with a root element 'language' containing a child element 'name' with value 'BoxLang'. Return ONLY valid XML, nothing else.",
+				options = {
+					returnFormat: "xml"
+				}
+			)
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Verify we got an XML document back
+		assertThat( variables.get( "result" ) ).isInstanceOf( ortus.boxlang.runtime.types.XML.class );
+	}
+
+	@DisplayName( "Test structured output response" )
+	@Test
+	public void testStructuredOutput() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			// Define structured schema using a struct
+			languageSchema = {
+				"name": "string",
+				"version": "string",
+				"type": "string"
+			}
+
+			result = aiChat(
+				messages = "Tell me about BoxLang. It's a modern JVM language, version 1.0, and it's a dynamic language. Return ONLY valid JSON matching this schema: name, version, type.",
+				options = {
+					returnFormat: languageSchema
+				}
+			)
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Verify we got a struct back with expected properties
+		assertThat( variables.get( "result" ) ).isInstanceOf( ortus.boxlang.runtime.types.IStruct.class );
+		var result = ( ortus.boxlang.runtime.types.IStruct ) variables.get( "result" );
+		assertThat( result.containsKey( "name" ) || result.containsKey( "NAME" ) ).isTrue();
+		assertThat( result.containsKey( "version" ) || result.containsKey( "VERSION" ) ).isTrue();
 	}
 
 	@DisplayName( "Test streaming chat with Claude" )
