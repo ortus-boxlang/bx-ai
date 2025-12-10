@@ -1,4 +1,4 @@
-package ortus.boxlang.ai.loaders;
+package ortus.boxlang.ai.bifs;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -8,12 +8,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
+import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
-import ortus.boxlang.runtime.scopes.Key;
 
 @DisplayName( "Document Loader BIFs Tests" )
-public class DocumentLoaderBIFsTest extends BaseIntegrationTest {
+public class aiDocumentsTest extends BaseIntegrationTest {
 
 	private static final String TEST_RESOURCES = Paths.get( "src/test/resources/loaders" ).toAbsolutePath().toString();
 

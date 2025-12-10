@@ -3,7 +3,7 @@
  *
  * Copyright [2023] [Ortus Solutions, Corp]
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the Apache License, Version 2.0 (the "License")
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -29,17 +29,8 @@ class extends="BaseDocumentLoader" {
 	 * @return TextLoader instance
 	 */
 	function init( string source = "", struct config = {} ) {
-		super.init( argumentCollection: arguments );
-		return this;
-	}
-
-	/**
-	 * Get the loader name
-	 *
-	 * @return The loader name
-	 */
-	string function getName() {
-		return "TextLoader";
+		super.init( argumentCollection: arguments )
+		return this
 	}
 
 	/**
@@ -53,32 +44,24 @@ class extends="BaseDocumentLoader" {
 			throw(
 				type    : "TextLoader.NoSource",
 				message : "No source file specified"
-			);
+			)
 		}
 
 		if ( !fileExists( variables.source ) ) {
 			throw(
 				type    : "TextLoader.FileNotFound",
 				message : "File not found: #variables.source#"
-			);
+			)
 		}
 
-		// Read the file content
-		var content  = readFile( variables.source );
-		var fileInfo = getSourceInfo();
 
 		// Create document with metadata
 		var doc = createDocument(
-			content            : content,
-			additionalMetadata : {
-				"fileType"     : "text",
-				"fileName"     : fileInfo.name,
-				"fileSize"     : fileInfo.size,
-				"lastModified" : fileInfo.lastModified
-			}
-		);
+			content : readFile( variables.source ),
+			additionalMetadata : variables.config.includeMetadata ? getSourceInfo() : {}
+		)
 
-		return [ doc ];
+		return [ doc ]
 	}
 
 }

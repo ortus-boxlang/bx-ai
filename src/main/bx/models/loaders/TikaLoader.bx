@@ -31,13 +31,12 @@ class extends="BaseDocumentLoader" {
 	 * Static loader configuration defaults
 	 */
 	static {
-		DEFAULT_CONFIG = {
-			encoding        : "UTF-8",
-			includeMetadata : true,
-			splitMode       : "none",
-			continueOnError : true,
-			// Tika-specific defaults
-			maxLength       : -1,            // Max characters to extract (-1 = unlimited)
+	DEFAULT_CONFIG = {
+		encoding        : "UTF-8",
+		includeMetadata : true,
+		continueOnError : true,
+		// Tika-specific defaults
+		maxLength       : -1,            // Max characters to extract (-1 = unlimited)
 			extractImages   : false,         // Whether to extract embedded images
 			extractTables   : true,          // Whether to preserve table structure
 			ocrEnabled      : false,         // Whether to enable OCR for scanned docs

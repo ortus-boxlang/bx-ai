@@ -16,9 +16,6 @@
  * limitations under the License.
  * ----------------------------------------------------------------------------------
  * Chunk text into smaller segments for AI processing
- *
- * @param text The text to chunk
- * @param options Configuration options for chunking behavior
  */
 import bxModules.bxai.models.util.TextChunker;
 
@@ -28,14 +25,20 @@ class {
 	/**
 	 * Chunk text into manageable segments
 	 *
+	 * The available options are:
+	 * - chunkSize: The maximum size of each chunk (in characters). Default is 1000
+	 * - overlap: The number of overlapping characters between chunks. Default is 200
+	 * - strategy: The chunking strategy to use. Options are: "recursive", "characters", "words", "sentences", "paragraphs".  The default is recursive.
+	 *
+	 *
 	 * @text The text to chunk into segments
-	 * @options Configuration struct for chunking behavior
+	 * @options Configuration struct for chunking behavior.
 	 *
 	 * @return Array of text chunks
 	 */
 	function invoke( required string text, struct options = {} ) {
 		// Call static method using :: operator
-		return TextChunker::chunk( argumentCollection: arguments );
+		return TextChunker::chunk( argumentCollection: arguments )
 	}
 
 }

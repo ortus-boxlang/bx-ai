@@ -194,23 +194,23 @@ class {
 		}
 
 		if ( arguments.minLength > 0 && getContentLength() < arguments.minLength ) {
-			validationErrors.append( "Content too short (min: ${arguments.minLength})" );
+			validationErrors.append( "Content too short (min: #arguments.minLength#)" );
 		}
 
 		if ( arguments.maxLength > 0 && getContentLength() > arguments.maxLength ) {
-			validationErrors.append( "Content too long (max: ${arguments.maxLength})" );
+			validationErrors.append( "Content too long (max: #arguments.maxLength#)" );
 		}
 
 		for ( var key in arguments.requiredMetadata ) {
 			if ( !variables.metadata.keyExists( key ) ) {
-				validationErrors.append( "Missing required metadata: ${key}" );
+				validationErrors.append( "Missing required metadata: #key#" );
 			}
 		}
 
 		return {
 			valid  : validationErrors.len() == 0,
 			errors : validationErrors
-		};
+		}
 	}
 
 	// ==================== Hash/Fingerprint Methods ====================

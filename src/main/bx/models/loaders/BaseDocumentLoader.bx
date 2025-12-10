@@ -3,7 +3,7 @@
  *
  * Copyright [2023] [Ortus Solutions, Corp]
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the Apache License, Version 2.0 (the "License")
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -18,7 +18,7 @@
  * Abstract base class for document loaders.
  * Provides common functionality for all loader implementations.
  */
-import bxModules.bxai.models.memory.IAiMemory;
+import bxModules.bxai.models.memory.IAiMemory
 
 abstract class implements="IDocumentLoader" {
 
@@ -74,11 +74,10 @@ abstract class implements="IDocumentLoader" {
 		DEFAULT_CONFIG = {
 			encoding          : "UTF-8",
 			includeMetadata   : true,
-			splitMode         : "none",
 			continueOnError   : true,
 			chunkSize         : 0,
 			overlap           : 0
-		};
+		}
 
 		DEFAULT_INGEST_OPTIONS = {
 			chunkSize         : 0,
@@ -91,11 +90,11 @@ abstract class implements="IDocumentLoader" {
 			async             : false,
 			batchSize         : 100,
 			continueOnError   : true
-		};
+		}
 	}
 
 	/**
-	 * Initialize the loader
+	 * Initialize a loader
 	 *
 	 * @source The source to load from
 	 * @config Configuration options
@@ -103,26 +102,16 @@ abstract class implements="IDocumentLoader" {
 	 * @return BaseDocumentLoader instance
 	 */
 	function init( string source = "", struct config = {} ) {
-		variables.source           = arguments.source;
-		variables.config           = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
-		variables.documents        = [];
-		variables.currentIndex     = 0;
-		variables.documentsLoaded  = false;
-		variables.errors           = [];
-		variables.filterPredicate  = "";
-		variables.mapTransformer   = "";
-		variables.progressCallback = "";
-		return this;
-	}
-
-	/**
-	 * Get the name of this loader (uses class name by default)
-	 *
-	 * @return The loader name
-	 */
-	string function getName() {
-		var metadata = getMetadata( this );
-		return metadata.keyExists( "name" ) ? metadata.name : "DocumentLoader";
+		variables.source           = arguments.source
+		variables.config           = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true )
+		variables.documents        = []
+		variables.currentIndex     = 0
+		variables.documentsLoaded  = false
+		variables.errors           = []
+		variables.filterPredicate  = ""
+		variables.mapTransformer   = ""
+		variables.progressCallback = ""
+		return this
 	}
 
 	/**
@@ -133,13 +122,13 @@ abstract class implements="IDocumentLoader" {
 	 * @return BaseDocumentLoader for chaining
 	 */
 	function setSource( required string source ) {
-		variables.source = arguments.source;
+		variables.source = arguments.source
 		// Reset state when source changes
-		variables.documentsLoaded = false;
-		variables.currentIndex    = 0;
-		variables.documents       = [];
-		variables.errors          = [];
-		return this;
+		variables.documentsLoaded = false
+		variables.currentIndex    = 0
+		variables.documents       = []
+		variables.errors          = []
+		return this
 	}
 
 	/**
@@ -150,8 +139,8 @@ abstract class implements="IDocumentLoader" {
 	 * @return IDocumentLoader for chaining
 	 */
 	IDocumentLoader function configure( required struct config ) {
-		variables.config.append( arguments.config, true );
-		return this;
+		variables.config.append( arguments.config, true )
+		return this
 	}
 
 	// ==================== Fluent Configuration Methods ====================
@@ -164,8 +153,8 @@ abstract class implements="IDocumentLoader" {
 	 * @return IDocumentLoader for chaining
 	 */
 	IDocumentLoader function chunkSize( required numeric size ) {
-		variables.config.chunkSize = arguments.size;
-		return this;
+		variables.config.chunkSize = arguments.size
+		return this
 	}
 
 	/**
@@ -176,8 +165,8 @@ abstract class implements="IDocumentLoader" {
 	 * @return IDocumentLoader for chaining
 	 */
 	IDocumentLoader function overlap( required numeric overlapValue ) {
-		variables.config.overlap = arguments.overlapValue;
-		return this;
+		variables.config.overlap = arguments.overlapValue
+		return this
 	}
 
 	/**
@@ -188,8 +177,8 @@ abstract class implements="IDocumentLoader" {
 	 * @return IDocumentLoader for chaining
 	 */
 	IDocumentLoader function encoding( required string encodingValue ) {
-		variables.config.encoding = arguments.encodingValue;
-		return this;
+		variables.config.encoding = arguments.encodingValue
+		return this
 	}
 
 	/**
@@ -198,8 +187,8 @@ abstract class implements="IDocumentLoader" {
 	 * @return IDocumentLoader for chaining
 	 */
 	IDocumentLoader function recursive() {
-		variables.config.recursive = true;
-		return this;
+		variables.config.recursive = true
+		return this
 	}
 
 	/**
@@ -210,8 +199,8 @@ abstract class implements="IDocumentLoader" {
 	 * @return IDocumentLoader for chaining
 	 */
 	IDocumentLoader function extensions( required array exts ) {
-		variables.config.extensions = arguments.exts;
-		return this;
+		variables.config.extensions = arguments.exts
+		return this
 	}
 
 	/**
@@ -222,8 +211,8 @@ abstract class implements="IDocumentLoader" {
 	 * @return IDocumentLoader for chaining
 	 */
 	IDocumentLoader function delimiter( required string delim ) {
-		variables.config.delimiter = arguments.delim;
-		return this;
+		variables.config.delimiter = arguments.delim
+		return this
 	}
 
 	// ==================== Filter/Transform Methods ====================
@@ -236,8 +225,8 @@ abstract class implements="IDocumentLoader" {
 	 * @return IDocumentLoader for chaining
 	 */
 	IDocumentLoader function filter( required function predicate ) {
-		variables.filterPredicate = arguments.predicate;
-		return this;
+		variables.filterPredicate = arguments.predicate
+		return this
 	}
 
 	/**
@@ -248,8 +237,8 @@ abstract class implements="IDocumentLoader" {
 	 * @return IDocumentLoader for chaining
 	 */
 	IDocumentLoader function map( required function transformer ) {
-		variables.mapTransformer = arguments.transformer;
-		return this;
+		variables.mapTransformer = arguments.transformer
+		return this
 	}
 
 	/**
@@ -260,11 +249,12 @@ abstract class implements="IDocumentLoader" {
 	 * @return IDocumentLoader for chaining
 	 */
 	IDocumentLoader function onProgress( required function callback ) {
-		variables.progressCallback = arguments.callback;
-		return this;
+		variables.progressCallback = arguments.callback
+		return this
 	}
 
 	/**
+	 * This method calls the load() method and applies the callback to each document.
 	 * Process documents one-by-one with a callback.
 	 * Memory-efficient alternative to load() for large document sets.
 	 *
@@ -273,21 +263,20 @@ abstract class implements="IDocumentLoader" {
 	 * @return IDocumentLoader for chaining
 	 */
 	IDocumentLoader function each( required function callback ) {
-		var docs = load();
-		var total = docs.len();
-		var index = 0;
+		var docs = this.load()
+		var total = docs.len()
+		var index = 0
 
 		for ( var doc in docs ) {
-			index++;
-			arguments.callback( doc );
-
+			index++
+			arguments.callback( doc )
 			// Call progress callback if set
-			if ( isCustomFunction( variables.progressCallback ) || isClosure( variables.progressCallback ) ) {
-				variables.progressCallback( index, total, doc );
+			if ( isClosure( variables.progressCallback ) ) {
+				variables.progressCallback( index, total, doc )
 			}
 		}
 
-		return this;
+		return this
 	}
 
 	// ==================== Metadata Methods ====================
@@ -305,15 +294,15 @@ abstract class implements="IDocumentLoader" {
 			"isDirectory"  : directoryExists( variables.source ),
 			"isFile"       : fileExists( variables.source ),
 			"isURL"        : variables.source.lCase().startsWith( "http://" ) || variables.source.lCase().startsWith( "https://" )
-		};
+		}
 
 		// Add file info if it exists
 		if ( metadata.isFile || metadata.isDirectory ) {
-			var info = getSourceInfo();
-			metadata.append( info, true );
+			var info = getSourceInfo()
+			metadata.append( info, true )
 		}
 
-		return metadata;
+		return metadata
 	}
 
 	/**
@@ -326,10 +315,10 @@ abstract class implements="IDocumentLoader" {
 	numeric function getDocumentCount() {
 		// If already loaded, return actual count
 		if ( variables.documentsLoaded ) {
-			return variables.documents.len();
+			return variables.documents.len()
 		}
 		// Default to -1 (unknown) for unloaded sources
-		return -1;
+		return -1
 	}
 
 	// ==================== Loading Methods ====================
@@ -346,21 +335,21 @@ abstract class implements="IDocumentLoader" {
 	array function loadBatch( numeric batchSize = 100 ) {
 		// Ensure documents are loaded
 		if ( !variables.documentsLoaded ) {
-			variables.documents       = load();
-			variables.documentsLoaded = true;
+			variables.documents       = load()
+			variables.documentsLoaded = true
 		}
 
 		// Return slice from current position
-		var startPos = variables.currentIndex + 1;
-		var endPos   = min( variables.currentIndex + arguments.batchSize, variables.documents.len() );
+		var startPos = variables.currentIndex + 1
+		var endPos   = min( variables.currentIndex + arguments.batchSize, variables.documents.len() )
 
 		if ( startPos > variables.documents.len() ) {
-			return [];
+			return []
 		}
 
-		var batch = variables.documents.slice( startPos, endPos - startPos + 1 );
-		variables.currentIndex = endPos;
-		return batch;
+		var batch = variables.documents.slice( startPos, endPos - startPos + 1 )
+		variables.currentIndex = endPos
+		return batch
 	}
 
 	/**
@@ -373,12 +362,12 @@ abstract class implements="IDocumentLoader" {
 	any function loadAsStream() {
 		// Load documents if not yet loaded
 		if ( !variables.documentsLoaded ) {
-			variables.documents       = load();
-			variables.documentsLoaded = true;
+			variables.documents       = load()
+			variables.documentsLoaded = true
 		}
 
 		// Convert to Java Stream using the stream() method on arrays
-		return variables.documents.stream();
+		return variables.documents.stream()
 	}
 
 	/**
@@ -388,22 +377,30 @@ abstract class implements="IDocumentLoader" {
 	 * @return Array of Document objects
 	 */
 	array function load() {
-		var docs = doLoad();
-		return applyFiltersAndTransforms( docs );
+		return applyFiltersAndTransforms( doLoad() )
+	}
+
+	/**
+	 * This method loads and chunks documents based on configuration.
+	 * Subclasses can override to implement chunking logic.
+	 *
+	 * @chunkSize Chunk size in characters, defaults to 1000 if not specified
+	 * @overlap Overlap in characters, defaults to 200 if not specified
+	 * @strategy Chunking strategy: "recursive", "sliding", "simple", etc. Default is "recursive".
+	 *
+	 * @return Array of chunked Document objects
+	 */
+	array function loadAndChunk( struct options = {} ) {
+		return chunkDocuments( this.load(), arguments.options )
 	}
 
 	/**
 	 * Internal method that performs the actual loading.
-	 * Subclasses must override this method.
+	 * Subclasses must implement this method to provide their specific loading logic.
 	 *
 	 * @return Array of Document objects (before filters/transforms)
 	 */
-	array function doLoad() {
-		throw(
-			type    : "BaseDocumentLoader.NotImplemented",
-			message : "Subclasses must override the doLoad() method"
-		);
-	}
+	abstract array function doLoad();
 
 	/**
 	 * Apply filters and transforms to loaded documents
@@ -413,34 +410,34 @@ abstract class implements="IDocumentLoader" {
 	 * @return Array of filtered/transformed Document objects
 	 */
 	private array function applyFiltersAndTransforms( required array docs ) {
-		var total = arguments.docs.len();
-		var result = [];
-		var index = 0;
+		var total = arguments.docs.len()
+		var result = []
+		var index = 0
 
 		for ( var doc in arguments.docs ) {
-			index++;
+			index++
 
 			// Apply filter if set
 			if ( isCustomFunction( variables.filterPredicate ) || isClosure( variables.filterPredicate ) ) {
 				if ( !variables.filterPredicate( doc ) ) {
-					continue;
+					continue
 				}
 			}
 
 			// Apply transform if set
 			if ( isCustomFunction( variables.mapTransformer ) || isClosure( variables.mapTransformer ) ) {
-				doc = variables.mapTransformer( doc );
+				doc = variables.mapTransformer( doc )
 			}
 
-			result.append( doc );
+			result.append( doc )
 
 			// Call progress callback if set
 			if ( isCustomFunction( variables.progressCallback ) || isClosure( variables.progressCallback ) ) {
-				variables.progressCallback( index, total, doc );
+				variables.progressCallback( index, total, doc )
 			}
 		}
 
-		return result;
+		return result
 	}
 
 	// ==================== Memory Integration ====================
@@ -456,10 +453,10 @@ abstract class implements="IDocumentLoader" {
 	 */
 	struct function toMemory( required any memory, struct options = {} ) {
 		// Merge with default options
-		var opts = duplicate( static.DEFAULT_INGEST_OPTIONS ).append( arguments.options, true );
+		var opts = duplicate( static.DEFAULT_INGEST_OPTIONS ).append( arguments.options, true )
 
 		// Normalize memory to array for uniform processing
-		var memories = isArray( arguments.memory ) ? arguments.memory : [ arguments.memory ];
+		var memories = isArray( arguments.memory ) ? arguments.memory : [ arguments.memory ]
 
 		// Initialize report
 		var report = {
@@ -476,28 +473,28 @@ abstract class implements="IDocumentLoader" {
 			startTime         : now(),
 			endTime           : "",
 			duration          : 0
-		};
+		}
 
 		try {
 			// Load documents (applies filters and transforms)
-			var documents = load();
-			report.documentsIn = documents.len();
+			var documents = load()
+			report.documentsIn = documents.len()
 
 			// Chunk documents if chunking is enabled
-			var processedDocs = documents;
+			var processedDocs = documents
 			if ( opts.chunkSize > 0 ) {
-				processedDocs = chunkDocuments( documents, opts );
+				processedDocs = chunkDocuments( documents, opts )
 			}
-			report.chunksOut = processedDocs.len();
+			report.chunksOut = processedDocs.len()
 
 			// Track tokens if enabled
 			if ( opts.trackTokens && processedDocs.len() > 0 ) {
-				report.tokenCount = calculateTokenCount( processedDocs );
+				report.tokenCount = calculateTokenCount( processedDocs )
 			}
 
 			// Estimate embedding cost if enabled
 			if ( opts.trackCost ) {
-				report.estimatedCost = estimateCost( report.tokenCount, processedDocs.len() );
+				report.estimatedCost = estimateCost( report.tokenCount, processedDocs.len() )
 			}
 
 			// Process each memory (async or sync)
@@ -505,37 +502,37 @@ abstract class implements="IDocumentLoader" {
 				// Async fan-out to multiple memories
 				var futures = memories.map( ( mem ) => {
 					return asyncRun( () => {
-						return ingestToMemory( mem, processedDocs, opts );
-					} );
-				} );
+						return ingestToMemory( mem, processedDocs, opts )
+					} )
+				} )
 
 				// Wait for all futures to complete and aggregate results
 				futures.each( ( future ) => {
-					var result = future.get();
-					report.stored += result.stored;
-					report.skipped += result.skipped;
-					report.deduped += result.deduped;
-					report.errors.append( result.errors, true );
-					report.embeddingCalls += result.embeddingCalls;
-				} );
+					var result = future.get()
+					report.stored += result.stored
+					report.skipped += result.skipped
+					report.deduped += result.deduped
+					report.errors.append( result.errors, true )
+					report.embeddingCalls += result.embeddingCalls
+				} )
 			} else {
 				// Sync processing
 				memories.each( ( mem ) => {
-					var result = ingestToMemory( mem, processedDocs, opts );
-					report.stored += result.stored;
-					report.skipped += result.skipped;
-					report.deduped += result.deduped;
-					report.errors.append( result.errors, true );
-					report.embeddingCalls += result.embeddingCalls;
-				} );
+					var result = ingestToMemory( mem, processedDocs, opts )
+					report.stored += result.stored
+					report.skipped += result.skipped
+					report.deduped += result.deduped
+					report.errors.append( result.errors, true )
+					report.embeddingCalls += result.embeddingCalls
+				} )
 			}
 
 			// Get memory summaries
-			report.memorySummary = memories.map( ( mem ) => mem.getSummary() );
+			report.memorySummary = memories.map( ( mem ) => mem.getSummary() )
 
 			// Single memory? Return single summary instead of array
 			if ( memories.len() == 1 ) {
-				report.memorySummary = report.memorySummary[ 1 ];
+				report.memorySummary = report.memorySummary[ 1 ]
 			}
 
 		} catch ( any e ) {
@@ -543,14 +540,14 @@ abstract class implements="IDocumentLoader" {
 				type    : "LoadError",
 				message : e.message,
 				detail  : e.detail ?: ""
-			} );
+			} )
 		}
 
 		// Finalize timing
-		report.endTime = now();
-		report.duration = dateDiff( "s", report.startTime, report.endTime );
+		report.endTime = now()
+		report.duration = dateDiff( "s", report.startTime, report.endTime )
 
-		return report;
+		return report
 	}
 
 	/**
@@ -573,19 +570,19 @@ abstract class implements="IDocumentLoader" {
 			deduped        : 0,
 			embeddingCalls : 0,
 			errors         : []
-		};
+		}
 
 		// Use memory's seed method for batch insertion
-		var seedResult = arguments.memory.seed( arguments.documents );
+		var seedResult = arguments.memory.seed( arguments.documents )
 
-		result.stored = seedResult.added ?: 0;
-		result.skipped = seedResult.failed ?: 0;
-		result.errors = seedResult.errors ?: [];
+		result.stored = seedResult.added ?: 0
+		result.skipped = seedResult.failed ?: 0
+		result.errors = seedResult.errors ?: []
 
 		// Embedding calls = number of documents stored
-		result.embeddingCalls = result.stored;
+		result.embeddingCalls = result.stored
 
-		return result;
+		return result
 	}
 
 	/**
@@ -596,13 +593,13 @@ abstract class implements="IDocumentLoader" {
 	 * @return Total token count
 	 */
 	private numeric function calculateTokenCount( required array documents ) {
-		var totalTokens = 0;
+		var totalTokens = 0
 
 		for ( var doc in arguments.documents ) {
-			totalTokens += aiTokens( doc.getContent() );
+			totalTokens += aiTokens( doc.getContent() )
 		}
 
-		return totalTokens;
+		return totalTokens
 	}
 
 	/**
@@ -615,8 +612,8 @@ abstract class implements="IDocumentLoader" {
 	 * @return Estimated cost in USD
 	 */
 	private numeric function estimateCost( required numeric tokenCount, required numeric documentCount ) {
-		var costPer1KTokens = 0.00002;
-		return ( arguments.tokenCount / 1000 ) * costPer1KTokens;
+		var costPer1KTokens = 0.00002
+		return ( arguments.tokenCount / 1000 ) * costPer1KTokens
 	}
 
 	// ==================== Error Handling ====================
@@ -627,7 +624,7 @@ abstract class implements="IDocumentLoader" {
 	 * @return Array of error structs
 	 */
 	array function getErrors() {
-		return variables.errors;
+		return variables.errors
 	}
 
 	/**
@@ -643,11 +640,11 @@ abstract class implements="IDocumentLoader" {
 				"message" : arguments.error,
 				"source"  : variables.source,
 				"time"    : now()
-			} );
+			} )
 		} else {
-			variables.errors.append( arguments.error );
+			variables.errors.append( arguments.error )
 		}
-		return this;
+		return this
 	}
 
 	// ==================== Helper Methods ====================
@@ -666,16 +663,16 @@ abstract class implements="IDocumentLoader" {
 			"source"   : variables.source,
 			"loader"   : getName(),
 			"loadedAt" : now()
-		};
+		}
 
 		// Merge additional metadata
-		baseMetadata.append( arguments.additionalMetadata, true );
+		baseMetadata.append( arguments.additionalMetadata, true )
 
 		return new Document(
 			id       : arguments.id,
 			content  : arguments.content,
 			metadata : baseMetadata
-		);
+		)
 	}
 
 	/**
@@ -686,7 +683,7 @@ abstract class implements="IDocumentLoader" {
 	 * @return File content as string
 	 */
 	string function readFile( required string filePath ) {
-		return fileRead( arguments.filePath, variables.config.encoding );
+		return fileRead( arguments.filePath, variables.config.encoding )
 	}
 
 	/**
@@ -695,50 +692,19 @@ abstract class implements="IDocumentLoader" {
 	 * @return True if file exists
 	 */
 	boolean function sourceExists() {
-		return fileExists( variables.source ) || directoryExists( variables.source );
+		return fileExists( variables.source ) || directoryExists( variables.source )
 	}
 
 	/**
 	 * Get file info for the source
 	 *
-	 * @return Struct with file information
+	 * @return Struct with file information:
 	 */
 	struct function getSourceInfo() {
 		if ( !sourceExists() ) {
-			return {};
+			return {}
 		}
-
-		var info = getFileInfo( variables.source );
-		return {
-			"name"         : info.name,
-			"path"         : info.path,
-			"size"         : info.size,
-			"lastModified" : info.lastModified,
-			"type"         : info.type,
-			"canRead"      : info.canRead
-		};
-	}
-
-	/**
-	 * Load documents and store them to a memory instance (legacy method)
-	 *
-	 * @memory The memory instance to store documents in
-	 * @chunkOptions Options for chunking (if provided, documents will be chunked before storing)
-	 *
-	 * @return Array of Document objects that were stored
-	 */
-	array function loadTo( required IAiMemory memory, struct chunkOptions = {} ) {
-		var docs = load();
-
-		// If chunk options provided, chunk the documents
-		if ( !arguments.chunkOptions.isEmpty() ) {
-			docs = chunkDocuments( docs, arguments.chunkOptions );
-		}
-
-		// Use the memory's seed method to store documents
-		arguments.memory.seed( docs );
-
-		return docs;
+		return getFileInfo( variables.source )
 	}
 
 	/**
@@ -750,28 +716,28 @@ abstract class implements="IDocumentLoader" {
 	 * @return Array of chunked Document objects
 	 */
 	array function chunkDocuments( required array documents, struct options = {} ) {
-		var chunkedDocs = [];
+		var chunkedDocs = []
 
 		for ( var doc in arguments.documents ) {
-			var chunks = aiChunk( text: doc.getContent(), options: arguments.options );
+			var chunks = aiChunk( text: doc.getContent(), options: arguments.options )
 
 			for ( var i = 1; i <= chunks.len(); i++ ) {
-				var chunkMetadata = duplicate( doc.getMetadata() );
-				chunkMetadata[ "chunkIndex" ]  = i;
-				chunkMetadata[ "totalChunks" ] = chunks.len();
-				chunkMetadata[ "isChunk" ]     = true;
-				chunkMetadata[ "parentId" ]    = doc.getId();
+				var chunkMetadata = duplicate( doc.getMetadata() )
+				chunkMetadata[ "chunkIndex" ]  = i
+				chunkMetadata[ "totalChunks" ] = chunks.len()
+				chunkMetadata[ "isChunk" ]     = true
+				chunkMetadata[ "parentId" ]    = doc.getId()
 
 				chunkedDocs.append(
 					new Document(
 						content  : chunks[ i ],
 						metadata : chunkMetadata
 					)
-				);
+				)
 			}
 		}
 
-		return chunkedDocs;
+		return chunkedDocs
 	}
 
 	/**
@@ -782,14 +748,14 @@ abstract class implements="IDocumentLoader" {
 	 * @return IDocumentLoader for chaining
 	 */
 	IDocumentLoader function reset() {
-		variables.documents = [];
-		variables.currentIndex = 0;
-		variables.documentsLoaded = false;
-		variables.errors = [];
-		variables.filterPredicate = null;
-		variables.mapTransformer = null;
-		variables.progressCallback = null;
-		return this;
+		variables.documents = []
+		variables.currentIndex = 0
+		variables.documentsLoaded = false
+		variables.errors = []
+		variables.filterPredicate = null
+		variables.mapTransformer = null
+		variables.progressCallback = null
+		return this
 	}
 
 }

@@ -132,6 +132,7 @@ class {
 				}
 		}
 
+		// Announce loader creation
 		BoxAnnounce( "onAiMemoryCreate", {
 			memoryType: memoryType,
 			memoryClass: memoryClass,

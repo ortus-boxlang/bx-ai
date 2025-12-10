@@ -29,14 +29,13 @@ class extends="BaseDocumentLoader" {
 	 * Static loader configuration defaults
 	 */
 	static {
-		DEFAULT_CONFIG = {
-			encoding          : "UTF-8",
-			includeMetadata   : true,
-			splitMode         : "none",
-			continueOnError   : true,
-			// HTTP-specific defaults
-			contentType       : "auto",       // auto, text, html, json, xml
-			method            : "GET",
+	DEFAULT_CONFIG = {
+		encoding          : "UTF-8",
+		includeMetadata   : true,
+		continueOnError   : true,
+		// HTTP-specific defaults
+		contentType       : "auto",       // auto, text, html, json, xml
+		method            : "GET",
 			headers           : {},
 			body              : "",
 			connectionTimeout : 30,

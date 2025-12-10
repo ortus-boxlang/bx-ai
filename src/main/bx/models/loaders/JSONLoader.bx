@@ -27,7 +27,6 @@ class extends="BaseDocumentLoader" {
 		DEFAULT_CONFIG = {
 			encoding        : "UTF-8",
 			includeMetadata : true,
-			splitMode       : "none",
 			contentField    : "",
 			metadataFields  : [],
 			arrayAsDocuments: false,

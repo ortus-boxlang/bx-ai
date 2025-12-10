@@ -54,13 +54,13 @@ class {
 	 * Your module version. Try to use semantic versioning
 	 * @mandatory
 	 */
-	this.version = "@build.version@+@build.number@";
+	this.version = "@build.version@+@build.number@"
 
 	/**
 	 * The BoxLang mapping for your module.  All BoxLang modules are registered with an internal
 	 * mapping prefix of : bxModules.{this.mapping}, /bxmodules/{this.mapping}. Ex: bxModules.test, /bxmodules/test
 	 */
-	this.mapping = "bxai";
+	this.mapping = "bxai"
 
 	/**
 	 * The public mapping for your module.  This is the public facing mapping
@@ -71,27 +71,27 @@ class {
 		name : "~bxai",
 		usePrefix: false,
 		path: "public"
-	};
+	}
 
 	/**
 	 * Who built the module
 	 */
-	this.author = "Luis Majano";
+	this.author = "Luis Majano"
 
 	/**
 	 * The module description
 	 */
-	this.description = "This module does amazing things with AI";
+	this.description = "This module does amazing things with AI"
 
 	/**
 	 * The module web URL
 	 */
-	this.webURL = "https://www.ortussolutions.com";
+	this.webURL = "https://www.ortussolutions.com"
 
 	/**
 	 * This boolean flag tells the module service to skip the module registration/activation process.
 	 */
-	this.enabled = true;
+	this.enabled = true
 
 	/**
 	 * --------------------------------------------------------------------------
@@ -129,52 +129,69 @@ class {
 			logResponseToConsole = false,
 			// The default return format of the AI response: single, all, raw
 			returnFormat = "single"
-		};
+		}
 
 		/**
 		 * The module interceptors to register into the runtime
 		 */
 		interceptors = [
 			// { class="path.to.Interceptor", properties={} }
-		];
+		]
 
 		/**
 		 * A list of custom interception points to register into the runtime
 		 */
 		customInterceptionPoints = [
-			"afterAIAgentRun",
-			"afterAIEmbed",
-			"afterAIModelInvoke",
-			"afterAIPipelineRun",
-			"afterAIToolExecute",
+			// Agent Events
 			"beforeAIAgentRun",
-			"beforeAIEmbed",
-			"beforeAIModelInvoke",
-			"beforeAIPipelineRun",
-			"beforeAIToolExecute",
+			"afterAIAgentRun",
 			"onAIAgentCreate",
-			"onAIEmbedRequest",
-			"onAIEmbedResponse",
-			"onAIError",
-			"onAiMemoryCreate",
-			"onAIMessageCreate",
+
+			// Model & Provider Events
+			"beforeAIModelInvoke",
+			"afterAIModelInvoke",
 			"onAIModelCreate",
 			"onAIProviderCreate",
 			"onAIProviderRequest",
-			"onAIRateLimitHit",
+
+			// Request & Response Events
 			"onAIRequest",
 			"onAIRequestCreate",
 			"onAIResponse",
-			"onAITokenCount",
+			"onAIRateLimitHit",
+			"onAIError",
+
+			// Embedding Events
+			"beforeAIEmbed",
+			"afterAIEmbed",
+			"onAIEmbedRequest",
+			"onAIEmbedResponse",
+
+			// Pipeline Events
+			"beforeAIPipelineRun",
+			"afterAIPipelineRun",
+
+			// Tool Events
+			"beforeAIToolExecute",
+			"afterAIToolExecute",
 			"onAIToolCreate",
+
+			// Component Creation Events
+			"onAiLoaderCreate",
+			"onAiMemoryCreate",
+			"onAIMessageCreate",
 			"onAITransformerCreate",
-            // MCP Server Events
+
+			// Utility Events
+			"onAITokenCount",
+
+			// MCP Server Events
 			"onMCPServerCreate",
 			"onMCPServerRemove",
 			"onMCPRequest",
 			"onMCPResponse",
 			"onMCPError"
-		 ];
+		 ]
 	}
 
 	/**

@@ -26,7 +26,9 @@ interface {
 	 *
 	 * @return The loader name
 	 */
-	string function getName();
+	default string function getName(){
+		return getMetadata( this ).simplename
+	}
 
 	/**
 	 * Load all documents from the source
@@ -39,7 +41,7 @@ interface {
 		throw(
 			type    : "IDocumentLoader.NotImplemented",
 			message : "Subclasses must implement the load() method"
-		);
+		)
 	}
 
 	/**
