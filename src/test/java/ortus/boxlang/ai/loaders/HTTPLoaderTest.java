@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
+import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
 
 @DisplayName( "HTTPLoader Tests" )
@@ -75,6 +76,101 @@ public class HTTPLoaderTest extends BaseIntegrationTest {
 		IStruct metadata = ( IStruct ) variables.get( "result" );
 		assertThat( metadata.getAsBoolean( Key.of( "isURL" ) ) ).isTrue();
 		assertThat( metadata.getAsString( Key.of( "source" ) ) ).isEqualTo( "https://example.com/page.html" );
+	}
+
+	@DisplayName( "HTTPLoader can load HTML from a real webpage" )
+	@Test
+	public void testHTTPLoaderLiveHTML() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.HTTPLoader;
+				loader = new HTTPLoader( source: "https://github.com/ortus-boxlang/boxlang" )
+					.contentType( "html" )
+					.extractText( true );
+				rawDocs = loader.load();
+				result = rawDocs.map( d => d.toStruct() );
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array	docs	= ( Array ) variables.get( "result" );
+		IStruct	doc		= ( IStruct ) docs.get( 0 );
+		String	content	= doc.getAsString( Key.of( "content" ) );
+
+		assertThat( docs.size() ).isEqualTo( 1 );
+		assertThat( content ).isNotEmpty();
+		assertThat( content ).containsMatch( "(?i)boxlang" ); // Case-insensitive match
+		assertThat( content ).doesNotContain( "<html>" ); // Text extracted, no HTML tags
+		assertThat( content ).doesNotContain( "<div>" );
+
+		IStruct metadata = ( IStruct ) doc.get( Key.of( "metadata" ) );
+		assertThat( metadata.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://github.com/ortus-boxlang/boxlang" );
+		assertThat( metadata.getAsInteger( Key.of( "statusCode" ) ) ).isEqualTo( 200 );
+		assertThat( metadata.getAsString( Key.of( "contentType" ) ) ).isEqualTo( "html" );
+	}
+
+	@DisplayName( "HTTPLoader can load plain text from a webpage" )
+	@Test
+	public void testHTTPLoaderLiveText() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.HTTPLoader;
+				loader = new HTTPLoader( source: "https://www.ietf.org/rfc/rfc2616.txt" )
+					.contentType( "text" )
+					.timeout( 30 );
+				rawDocs = loader.load();
+				result = rawDocs.map( d => d.toStruct() );
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array	docs	= ( Array ) variables.get( "result" );
+		IStruct	doc		= ( IStruct ) docs.get( 0 );
+		String	content	= doc.getAsString( Key.of( "content" ) );
+
+		assertThat( docs.size() ).isEqualTo( 1 );
+		assertThat( content ).isNotEmpty();
+		assertThat( content ).contains( "Hypertext Transfer Protocol" );
+		assertThat( content ).contains( "HTTP/1.1" );
+
+		IStruct metadata = ( IStruct ) doc.get( Key.of( "metadata" ) );
+		assertThat( metadata.getAsInteger( Key.of( "statusCode" ) ) ).isEqualTo( 200 );
+		assertThat( metadata.getAsString( Key.of( "contentType" ) ) ).isEqualTo( "text" );
+	}
+
+	@DisplayName( "HTTPLoader can load JSON from an API" )
+	@Test
+	public void testHTTPLoaderLiveJSON() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.HTTPLoader;
+				loader = new HTTPLoader( source: "https://jsonplaceholder.typicode.com/posts/1" )
+					.contentType( "json" );
+				rawDocs = loader.load();
+				result = rawDocs.map( d => d.toStruct() );
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array	docs	= ( Array ) variables.get( "result" );
+		IStruct	doc		= ( IStruct ) docs.get( 0 );
+		String	content	= doc.getAsString( Key.of( "content" ) );
+
+		assertThat( docs.size() ).isEqualTo( 1 );
+		assertThat( content ).isNotEmpty();
+		assertThat( content ).contains( "userId" );
+		assertThat( content ).contains( "title" );
+		assertThat( content ).contains( "body" );
+
+		IStruct metadata = ( IStruct ) doc.get( Key.of( "metadata" ) );
+		assertThat( metadata.getAsInteger( Key.of( "statusCode" ) ) ).isEqualTo( 200 );
+		assertThat( metadata.getAsString( Key.of( "contentType" ) ) ).isEqualTo( "json" );
 	}
 
 }

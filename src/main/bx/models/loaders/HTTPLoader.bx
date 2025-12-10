@@ -70,13 +70,6 @@ class extends="BaseDocumentLoader" {
 	}
 
 	/**
-	 * Get the loader name
-	 */
-	string function getName() {
-		return "HTTPLoader";
-	}
-
-	/**
 	 * Set the HTTP method (GET, POST, etc.)
 	 *
 	 * @method The HTTP method
@@ -252,7 +245,7 @@ class extends="BaseDocumentLoader" {
 	 */
 	array function doLoad() {
 		if ( variables.source.isEmpty() ) {
-			throw( type: "HTTPLoader.MissingSource", message: "No URL source specified for HTTPLoader" );
+			throw( type: "HTTPLoader.MissingSource", message: "No URL source specified for HTTPLoader" )
 		}
 
 		try {
@@ -262,7 +255,7 @@ class extends="BaseDocumentLoader" {
 				connectionTimeout : variables.config.connectionTimeout,
 				redirect          : variables.config.redirect,
 				httpVersion       : variables.config.httpVersion
-			};
+			}
 
 			// Add proxy settings if configured
 			if ( len( variables.config.proxyServer ) ) {
@@ -275,36 +268,17 @@ class extends="BaseDocumentLoader" {
 			}
 
 			// Create HTTP request using http() BIF with arguments
-			var httpRequest = http( argumentCollection: httpArgs );
-
-			// Set timeout using fluent method
-			httpRequest.timeout( variables.config.timeout );
-
-			// Set HTTP method using fluent builder
-			switch ( variables.config.method ) {
-				case "GET":
-					httpRequest.get();
-					break;
-				case "POST":
-					httpRequest.post();
-					break;
-				case "PUT":
-					httpRequest.put();
-					break;
-				case "DELETE":
-					httpRequest.delete();
-					break;
-				default:
-					httpRequest.method( variables.config.method );
-			}
+			var httpRequest = http( argumentCollection: httpArgs )
+				// Set timeout using fluent method
+				.timeout( variables.config.timeout )
+				.method( variables.config.method )
+				// Add user agent header
+				.header( "User-Agent", variables.config.userAgent )
 
 			// Add custom headers using fluent builder
 			for ( var headerName in variables.config.headers ) {
-				httpRequest.header( headerName, variables.config.headers[ headerName ] );
+				httpRequest.header( headerName, variables.config.headers[ headerName ] )
 			}
-
-			// Add user agent header
-			httpRequest.header( "User-Agent", variables.config.userAgent );
 
 			// Add body if present
 			if ( len( variables.config.body ) ) {
@@ -312,7 +286,7 @@ class extends="BaseDocumentLoader" {
 			}
 
 			// Execute request
-			var response = httpRequest.send().getPrefix();
+			var response = httpRequest.send()
 
 			// Validate response
 			if ( response.statusCode >= 400 ) {
@@ -321,13 +295,13 @@ class extends="BaseDocumentLoader" {
 						"message"    : "HTTP request failed with status #response.statusCode#",
 						"statusCode" : response.statusCode,
 						"url"        : variables.source
-					} );
-					return [];
+					} )
+					return []
 				}
 				throw(
 					type    : "HTTPLoader.RequestFailed",
 					message : "HTTP request failed with status #response.statusCode#: #response.statusText#"
-				);
+				)
 			}
 
 			// Get content and process based on type
@@ -346,7 +320,12 @@ class extends="BaseDocumentLoader" {
 				"fileType"         : detectedType
 			};
 
-			return [ createDocument( content: processedContent, additionalMetadata: metadata ) ];
+			return [
+				createDocument(
+					content: processedContent,
+					additionalMetadata: variables.config.includeMetadata ? metadata : {}
+				)
+			];
 
 		} catch ( any e ) {
 			if ( variables.config.continueOnError ) {
@@ -355,9 +334,9 @@ class extends="BaseDocumentLoader" {
 					"type"    : e.type,
 					"url"     : variables.source
 				} );
-				return [];
+				return []
 			}
-			rethrow;
+			rethrow
 		}
 	}
 
@@ -413,17 +392,16 @@ class extends="BaseDocumentLoader" {
 		switch ( arguments.type ) {
 			case "html": {
 				if ( variables.config.extractText ) {
-					return extractTextFromHTML( arguments.content );
+					return extractTextFromHTML( arguments.content )
 				}
-				return arguments.content;
+				return arguments.content
 			}
 			case "json": {
 				// Pretty-format JSON for readability
 				try {
-					var parsed = jsonDeserialize( arguments.content );
-					return jsonSerialize( parsed );
+					return JSONPrettify( arguments.content )
 				} catch ( any e ) {
-					return arguments.content;
+					return arguments.content
 				}
 			}
 			case "xml": {
@@ -471,38 +449,45 @@ class extends="BaseDocumentLoader" {
 	}
 
 	/**
-	 * Fallback HTML text extraction using regex (in case JSoup fails)
+	 * Fallback HTML text extraction using JSoup's Safelist cleaner.
+	 * Uses JSoup's robust HTML cleaning with an empty safelist to strip all tags.
+	 * Falls back to regex only if JSoup cleaning also fails.
 	 *
 	 * @html The HTML content
 	 *
 	 * @return Extracted text
 	 */
 	private string function extractTextFromHTMLFallback( required string html ) {
-		var text = arguments.html;
+		try {
+			// Use JSoup's Safelist.none() to strip all HTML tags
+			// This is more robust than regex for handling malformed HTML
+			var cleaned = Jsoup::clean( arguments.html, Safelist::none() );
 
-		// Remove script tags
-		if ( variables.config.removeScripts ) {
-			text = reReplace( text, "<script[^>]*>[\s\S]*?</script>", "", "all" );
+			// Normalize whitespace
+			cleaned = reReplace( cleaned, "\s+", " ", "all" );
+
+			return trim( cleaned );
+		} catch ( any e ) {
+			// Last resort: basic regex stripping
+			var text = arguments.html;
+
+			// Remove script and style tags
+			text = reReplace( text, "<(script|style)[^>]*>[\s\S]*?</\1>", "", "all" );
+
+			// Remove HTML comments
+			text = reReplace( text, "<!--[\s\S]*?-->", "", "all" );
+
+			// Remove all HTML tags
+			text = reReplace( text, "<[^>]+>", " ", "all" );
+
+			// Decode HTML entities
+			text = htmlDecode( text );
+
+			// Normalize whitespace
+			text = reReplace( text, "\s+", " ", "all" );
+
+			return trim( text );
 		}
-
-		// Remove style tags
-		if ( variables.config.removeStyles ) {
-			text = reReplace( text, "<style[^>]*>[\s\S]*?</style>", "", "all" );
-		}
-
-		// Remove HTML comments
-		text = reReplace( text, "<!--[\s\S]*?-->", "", "all" );
-
-		// Remove all HTML tags
-		text = reReplace( text, "<[^>]+>", " ", "all" );
-
-		// Decode HTML entities
-		text = htmlDecode( text );
-
-		// Normalize whitespace
-		text = reReplace( text, "\s+", " ", "all" );
-
-		return trim( text );
 	}
 
 	/**
