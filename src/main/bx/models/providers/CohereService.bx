@@ -374,16 +374,190 @@ class extends="BaseService"{
 	}
 
 	/**
-	 * Cohere streaming is not yet implemented
+	 * Cohere streaming chat request
 	 * Cohere uses Server-Sent Events (SSE) format
 	 * @see https://docs.cohere.com/reference/chat#stream
+	 *
+	 * @aiRequest The AiRequest object to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream
 	 */
 	@override
 	public function chatStream( required AiRequest aiRequest, required function callback ){
-		throw(
-			type: "NotYetImplemented",
-			message: "Cohere streaming support is not yet implemented. Use chat() for non-streaming requests."
+		// Capture callback and aiRequest in local variables for closure scope
+		var userCallback = arguments.callback;
+		var thisAiRequest = arguments.aiRequest;
+
+		// Cohere has a different message format
+		// Extract the last message as the main message
+		var messages = arguments.aiRequest.getMessages();
+		var lastMessage = messages.last();
+
+		// Build chat history (all messages except the last one)
+		var chatHistory = messages.len() > 1 ?
+			messages.slice( 1, messages.len() - 1 ).map( msg => {
+				return {
+					"role": msg.role == "assistant" ? "CHATBOT" : "USER",
+					"message": msg.content
+				}
+			} ) : [];
+
+		// Build the data packet with streaming enabled
+		var dataPacket = {
+			"message": lastMessage.content,
+			"model": aiRequest.getModel(),
+			"stream": true
+		}
+
+		// Add chat history if exists
+		if( chatHistory.len() > 0 ){
+			dataPacket.chat_history = chatHistory
+		}
+
+		// Add system message if exists (preamble in Cohere)
+		var systemMessages = messages.filter( msg => msg.role == "system" );
+		if( systemMessages.len() > 0 ){
+			dataPacket.preamble = systemMessages.first().content
+		}
+
+		// Add other parameters (but not tools and response_format yet, we'll transform them)
+		var tempParams = arguments.aiRequest.getParams().duplicate()
+		var tools = tempParams?.tools ?: []
+		var responseFormat = tempParams?.response_format ?: ""
+		tempParams.delete( "response_format" )
+		tempParams.delete( "tools" )
+		dataPacket.append( tempParams )
+
+		// Structured output support (Cohere format)
+		if( arguments.aiRequest.isStructuredOutput() ){
+			// Clean internal metadata before sending to provider
+			var cleanSchema = SchemaBuilder::cleanSchema( arguments.aiRequest.getStructuredOutput() );
+			dataPacket.response_format = {
+				"type": "json_object",
+				"schema": cleanSchema
+			};
+		}
+
+		// Tooling support - Convert OpenAI format to Cohere format
+		if( !isNull( tools ) && tools.len() > 0 ){
+			dataPacket.tools = tools.map( tool => {
+				var schema = tool.getSchema();
+				var cohereToolDef = {
+					"name": schema.function.name,
+					"description": schema.function.description,
+					"parameter_definitions": {}
+				};
+
+				// Convert properties to parameter_definitions
+				schema.function.parameters.properties.each( (paramName, paramDef) => {
+					cohereToolDef.parameter_definitions[ paramName ] = {
+						"type": paramDef.type,
+						"description": paramDef.description,
+						"required": schema.function.parameters.required.findNoCase( paramName ) > 0
+					};
+				} );
+
+				return cohereToolDef;
+			} );
+		}
+
+		// Announce the request
+		BoxAnnounce(
+			"onAIRequest",
+			{
+				"dataPacket" : dataPacket,
+				"aiRequest": arguments.aiRequest,
+				"provider"   : this
+			}
 		);
+
+		// Log the request if enabled
+		if( arguments.aiRequest.getLogRequestToConsole() ){
+			println( "Cohere AI Request (Stream)" )
+			println( dataPacket )
+		}
+
+		// Build HTTP request with fluent API
+		var httpRequest = http( getChatURL() )
+			.method( "POST" )
+			.charset( "utf-8" )
+			.timeout( arguments.aiRequest.getTimeout() )
+			.header( "content-type", "application/json" )
+			.header( "Authorization", "Bearer #arguments.aiRequest.getApiKey()#" )
+			.sse( true ); // Enable SSE mode for Cohere streaming
+
+		// Add custom headers
+		for( var thisHeader in arguments.aiRequest.getHeaders() ){
+			httpRequest.header( thisHeader, arguments.aiRequest.getHeaders()[ thisHeader ] );
+		}
+
+		// Set request body and callbacks
+		httpRequest
+			.body( jsonSerialize( dataPacket ) )
+			.onChunk( ( chunk, lastEventId, httpResult, httpClient, response ) => {
+				// chunk is already parsed SSE data: { data, event, id, retry }
+				// For SSE streams, chunk.data contains the actual payload
+
+				// Check for stream end marker
+				if( chunk.data == "[DONE]" ){
+					return;
+				}
+
+				// Try to parse and send to callback
+				try {
+					var parsedChunk = jsonDeserialize( chunk.data );
+					userCallback( parsedChunk );
+				} catch( any e ){
+					writeLog(
+						text: "Error parsing Cohere stream chunk: #e.message# - Data: #chunk.data#",
+						type: "error",
+						log : "ai"
+					)
+				}
+			} )
+			.onError( ( error, httpResult ) => {
+				var errorMessage = "HTTP Error: #error.message#";
+
+				writeLog(
+					text: "Cohere Stream Request Error: #errorMessage#",
+					type: "error",
+					log : "ai"
+				)
+
+				// Announce the error
+				BoxAnnounce( "onAIError", {
+					error: error,
+					errorMessage: errorMessage,
+					provider: this,
+					operation: "stream",
+					aiRequest: thisAiRequest,
+					canRetry: true
+				} );
+
+				throw(
+					type   : "ProviderError",
+					message: errorMessage
+				);
+			} )
+			.onComplete( ( httpResult ) => {
+				// Log the response if enabled
+				if( thisAiRequest.getLogResponse() ){
+					writeLog(
+						text: "Cohere stream completed successfully",
+						type: "info",
+						log : "ai"
+					)
+				}
+
+				BoxAnnounce(
+					"onAIResponse",
+					{
+						"aiRequest" : thisAiRequest,
+						"provider"    : this,
+						"streamComplete" : true
+					}
+				);
+			} )
+			.send();
 	}
 
 }
