@@ -161,13 +161,20 @@ class extends="BaseService"{
 		// No Tool calls yet.
 
 		// Determine return formats
+		var content = result.candidates.first().content.parts.first().text;
 		switch( aiRequest.getReturnFormat() ){
 			case "all":
 				return result.candidates;
 			case "raw":
 				return result;
+			case "json":
+				return jsonDeserialize( extractFromCodeBlock( content, "json" ) );
+			case "xml":
+				return xmlParse( extractFromCodeBlock( content, "xml" ) );
+			case "structuredOutput":
+				return populateStructuredOutput( content, aiRequest );
 			case "single": default:
-				return result.candidates.first().content.parts.first().text
+				return content;
 		}
 	}
 
