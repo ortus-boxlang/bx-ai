@@ -58,15 +58,6 @@ class extends="BaseDocumentLoader" {
 	}
 
 	/**
-	 * Get the loader name
-	 *
-	 * @return The loader name
-	 */
-	string function getName() {
-		return "XMLLoader";
-	}
-
-	/**
 	 * Load and parse the XML document
 	 *
 	 * @return Array of Document objects
@@ -77,34 +68,34 @@ class extends="BaseDocumentLoader" {
 			throw(
 				type    : "XMLLoader.NoSource",
 				message : "No XML source specified"
-			);
+			)
 		}
 
-		var xmlContent = "";
+		var xmlContent = ""
 
 		// Determine if source is a file path or XML string
 		if ( fileExists( variables.source ) ) {
-			xmlContent = readFile( variables.source );
+			xmlContent = readFile( variables.source )
 		} else if ( variables.source.trim().startsWith( "<" ) ) {
 			// Assume it's raw XML content
-			xmlContent = variables.source;
+			xmlContent = variables.source
 		} else {
 			throw(
 				type    : "XMLLoader.InvalidSource",
 				message : "Source is neither a valid file path nor XML content: #variables.source#"
-			);
+			)
 		}
 
 		// Parse the XML
-		var xmlDoc = xmlParse( xmlContent );
+		var xmlDoc = xmlParse( xmlContent )
 
 		// If extracting specific elements as documents
 		if ( variables.config.elementsAsDocuments && len( variables.config.elementPath ) ) {
-			return extractElementsAsDocuments( xmlDoc );
+			return extractElementsAsDocuments( xmlDoc )
 		}
 
 		// Otherwise return single document with extracted content
-		return [ createDocumentFromXML( xmlDoc ) ];
+		return [ createDocumentFromXML( xmlDoc ) ]
 	}
 
 	/**
@@ -115,23 +106,23 @@ class extends="BaseDocumentLoader" {
 	 * @return Array of Document objects
 	 */
 	private array function extractElementsAsDocuments( required any xmlDoc ) {
-		var documents = [];
-		var elements = xmlSearch( arguments.xmlDoc, variables.config.elementPath );
+		var documents = []
+		var elements = xmlSearch( arguments.xmlDoc, variables.config.elementPath )
 
 		for ( var i = 1; i <= elements.len(); i++ ) {
-			var element = elements[ i ];
-			var content = extractElementContent( element );
-			var metadata = extractElementMetadata( element, i );
+			var element = elements[ i ]
+			var content = extractElementContent( element )
+			var metadata = extractElementMetadata( element, i )
 
 			documents.append(
 				createDocument(
 					content            : content,
-					additionalMetadata : metadata
+					additionalMetadata : variables.config.includeMetadata ? metadata : {}
 				)
-			);
+			)
 		}
 
-		return documents;
+		return documents
 	}
 
 	/**
@@ -142,53 +133,50 @@ class extends="BaseDocumentLoader" {
 	 * @return Document instance
 	 */
 	private Document function createDocumentFromXML( required any xmlDoc ) {
-		var content = "";
+		var content = ""
 		var metadata = {
 			"fileType"    : "xml",
 			"rootElement" : arguments.xmlDoc.xmlRoot.xmlName
-		};
+		}
 
 		// Extract content based on configuration
 		if ( variables.config.contentElements.len() > 0 ) {
 			// Extract specific elements
-			var contentParts = [];
+			var contentParts = []
 			for ( var elementPath in variables.config.contentElements ) {
-				var elements = xmlSearch( arguments.xmlDoc, elementPath );
+				var elements = xmlSearch( arguments.xmlDoc, elementPath )
 				for ( var element in elements ) {
-					contentParts.append( extractElementContent( element ) );
+					contentParts.append( extractElementContent( element ) )
 				}
 			}
-			content = contentParts.toList( char( 10 ) & char( 10 ) );
+			content = contentParts.toList( char( 10 ) & char( 10 ) )
 		} else if ( variables.config.extractText ) {
 			// Extract all text content
-			content = extractAllText( arguments.xmlDoc.xmlRoot );
+			content = extractAllText( arguments.xmlDoc.xmlRoot )
 		} else {
 			// Return raw XML
-			content = toString( arguments.xmlDoc );
+			content = toString( arguments.xmlDoc )
 		}
 
 		// Extract metadata from specified elements
 		if ( variables.config.metadataElements.len() > 0 ) {
 			for ( var elementPath in variables.config.metadataElements ) {
-				var elements = xmlSearch( arguments.xmlDoc, elementPath );
+				var elements = xmlSearch( arguments.xmlDoc, elementPath )
 				if ( elements.len() > 0 ) {
-					var key = listLast( elementPath, "/" ).replace( "@", "" );
-					metadata[ key ] = extractElementContent( elements[ 1 ] );
+					var key = listLast( elementPath, "/" ).replace( "@", "" )
+					metadata[ key ] = extractElementContent( elements[ 1 ] )
 				}
 			}
 		}
 
 		// Add file metadata if loading from file
 		if ( fileExists( variables.source ) ) {
-			var fileInfo = getFileInfo( variables.source );
-			metadata[ "fileName" ] = fileInfo.name;
-			metadata[ "fileSize" ] = fileInfo.size;
-			metadata[ "lastModified" ] = fileInfo.lastModified;
+			metadata.append(  getFileInfo( variables.source ) )
 		}
 
 		return createDocument(
 			content            : content,
-			additionalMetadata : metadata
+			additionalMetadata : variables.config.includeMetadata ? metadata : {}
 		);
 	}
 
