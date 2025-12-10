@@ -50,15 +50,6 @@ class extends="BaseDocumentLoader" {
 	}
 
 	/**
-	 * Get the loader name
-	 *
-	 * @return The loader name
-	 */
-	string function getName() {
-		return "CSVLoader";
-	}
-
-	/**
 	 * Load the CSV file into Document objects
 	 *
 	 * @return Array of Document objects
@@ -69,41 +60,38 @@ class extends="BaseDocumentLoader" {
 			throw(
 				type    : "CSVLoader.NoSource",
 				message : "No source file specified"
-			);
+			)
 		}
 
 		if ( !fileExists( variables.source ) ) {
 			throw(
 				type    : "CSVLoader.FileNotFound",
 				message : "File not found: #variables.source#"
-			);
+			)
 		}
 
 		// Read and parse CSV
-		var content  = readFile( variables.source );
-		var fileInfo = getSourceInfo();
-		var rows     = parseCSV( content );
+		var content  = readFile( variables.source )
+		var fileInfo = getSourceInfo()
+		var rows     = parseCSV( content )
 
 		// Check if we should create a document per row
 		if ( variables.config.rowsAsDocuments ) {
-			return createRowDocuments( rows, fileInfo );
+			return createRowDocuments( rows, fileInfo )
 		}
 
 		// Create single document with all content
-		var textContent = formatAsText( rows );
+		var textContent = formatAsText( rows )
+		var meta = {
+			"rowCount"     : rows.len(),
+			"delimiter"    : variables.config.delimiter
+		}.append( fileInfo, true )
 		var doc = createDocument(
 			content            : textContent,
-			additionalMetadata : {
-				"fileType"     : "csv",
-				"fileName"     : fileInfo.name,
-				"fileSize"     : fileInfo.size,
-				"lastModified" : fileInfo.lastModified,
-				"rowCount"     : rows.len(),
-				"delimiter"    : variables.config.delimiter
-			}
-		);
+			additionalMetadata : variables.config.includeMetadata ? meta : {}
+		)
 
-		return [ doc ];
+		return [ doc ]
 	}
 
 	/**
@@ -256,15 +244,15 @@ class extends="BaseDocumentLoader" {
 				content = row.values.toList( ", " );
 			}
 
+			var meta = {
+				"rowNumber"    : row.rowNum,
+				"totalRows"    : arguments.rows.len(),
+				"delimiter"    : variables.config.delimiter
+			}.append( arguments.fileInfo, true );
 			documents.append(
 				createDocument(
 					content            : content,
-					additionalMetadata : {
-						"fileType"     : "csv",
-						"fileName"     : arguments.fileInfo.name,
-						"rowNumber"    : row.rowNum,
-						"totalRows"    : arguments.rows.len()
-					}
+					additionalMetadata : variables.config.includeMetadata ? meta : {}
 				)
 			);
 		}
