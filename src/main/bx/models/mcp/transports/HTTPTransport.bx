@@ -46,8 +46,12 @@ class extends="BaseTransport" {
 
 	/**
 	 * Read HTTP request and normalize it
+	 *
+	 * @serverName (optional) The forced MCP server name to use (overrides URL/path parameter)
+	 *
+	 * @return Normalized request struct
 	 */
-	struct function readRequest() {
+	struct function readRequest( string serverName ) {
 		// Extract server name from query param or path
 		var mcpServerName = url.server ?: "default";
 		var requestMethod = cgi.REQUEST_METHOD;
@@ -61,6 +65,11 @@ class extends="BaseTransport" {
 			if ( pathSegments.len() ) {
 				mcpServerName = pathSegments.first();
 			}
+		}
+
+		// If the serverName argument is provided, override the extracted server name
+		if( !isNull( arguments.serverName ) && len( arguments.serverName ) ) {
+			mcpServerName = arguments.serverName;
 		}
 
 		// Extract origin for CORS
@@ -102,8 +111,8 @@ class extends="BaseTransport" {
 		// Write content
 		bx:content
 			type=arguments.response.contentType
-			variable=arguments.response.content{}
-			reset=true
+			variable=arguments.response.content
+			reset=true;
 	}
 
 	/**

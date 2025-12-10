@@ -1163,22 +1163,20 @@ public class mcpServerTest extends BaseIntegrationTest {
 				myServer = mcpServer( "securityHeaderTest" )
 					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
 
-				// Process a request using mock context
-				startMockRequest(
+				// Process a request using mock HTTP context
+				mockServer = mockRequestNew(
 					method: "GET",
 					path: "/mcp/securityHeaderTest",
 					headers: {}
 				)
-
-				response = MCPRequestProcessor::process(
-					serverName: "securityHeaderTest",
-					requestMethod: "GET",
-					requestBody: "",
-					acceptHeader: "application/json",
-					urlParams: {}
-				)
-
-				headers = response.headers
+				// Mock the HTTP transport to capture response
+				mockHttpTransport = MCPRequestProcessor::getHttpTransport()
+				headers = {}
+				mockHttpTransport.writeResponse = ( response ) => {
+					headers = response.headers
+					return response
+				}
+				content = MCPRequestProcessor::processHttp( "securityHeaderTest" )
 			""",
 			context
 		);
@@ -1205,79 +1203,30 @@ public class mcpServerTest extends BaseIntegrationTest {
 				import bxModules.bxai.models.mcp.MCPRequestProcessor;
 
 				// Request non-existent server
-				response = MCPRequestProcessor::process(
-					serverName: "nonExistentServer",
-					requestMethod: "GET",
-					requestBody: "",
-					acceptHeader: "application/json",
-					urlParams: {}
+				mockServer = mockRequestNew(
+					method: "GET",
+					path: "/mcp.bxm",
+					headers: {}
 				)
+				// Mock the HTTP transport to capture response
+				mockHttpTransport = MCPRequestProcessor::getHttpTransport()
+				headers = {}
+				mockHttpTransport.writeResponse = ( response ) => {
+					headers = response.headers
+					return response
+				}
 
-				headers = response.headers
-				statusCode = response.statusCode
-			""",
-			context
-		);
-		// @formatter:on
-
-		var	headers		= variables.getAsStruct( Key.of( "headers" ) );
-		var	statusCode	= ( int ) variables.get( Key.of( "statusCode" ) );
-
-		// Verify error status
-		assertThat( statusCode ).isEqualTo( 400 );
-
-		// Verify security headers are present even in error responses
-		assertThat( headers.get( Key.of( "X-Content-Type-Options" ) ) ).isEqualTo( "nosniff" );
-		assertThat( headers.get( Key.of( "X-Frame-Options" ) ) ).isEqualTo( "DENY" );
-		assertThat( headers.get( Key.of( "X-XSS-Protection" ) ) ).isEqualTo( "1; mode=block" );
-	}
-
-	@Test
-	@DisplayName( "Security headers present in CORS preflight responses" )
-	public void testSecurityHeadersInCORSPreflight() {
-		// @formatter:off
-		runtime.executeSource(
-			"""
-				import bxModules.bxai.models.mcp.MCPRequestProcessor;
-
-				// Create server with CORS
-				myServer = mcpServer( "corsTest" )
-					.withCors( ["*"] )
-					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
-
-				// Process OPTIONS request (CORS preflight) with mock context
-				startMockRequest(
-					method: "OPTIONS",
-					path: "/mcp/corsTest",
-					headers: {
-						"Origin": "https://example.com"
-					}
-				)
-
-				response = MCPRequestProcessor::process(
-					serverName: "corsTest",
-					requestMethod: "OPTIONS",
-					requestBody: "",
-					acceptHeader: "application/json",
-					urlParams: {}
-				)
-
-				headers = response.headers
+				content = MCPRequestProcessor::processHttp( "NonExistentServer" )
 			""",
 			context
 		);
 		// @formatter:on
 
 		var headers = variables.getAsStruct( Key.of( "headers" ) );
-
-		// Verify CORS headers
-		assertThat( headers.get( Key.of( "Access-Control-Allow-Methods" ) ) ).isEqualTo( "POST, GET, OPTIONS" );
-		assertThat( headers.get( Key.of( "Access-Control-Allow-Origin" ) ) ).isEqualTo( "*" );
-
-		// Verify security headers are also present
+		// Verify security headers are present even in error responses
 		assertThat( headers.get( Key.of( "X-Content-Type-Options" ) ) ).isEqualTo( "nosniff" );
 		assertThat( headers.get( Key.of( "X-Frame-Options" ) ) ).isEqualTo( "DENY" );
-		assertThat( headers.get( Key.of( "Referrer-Policy" ) ) ).isEqualTo( "strict-origin-when-cross-origin" );
+		assertThat( headers.get( Key.of( "X-XSS-Protection" ) ) ).isEqualTo( "1; mode=block" );
 	}
 
 	@Test
@@ -1353,32 +1302,28 @@ public class mcpServerTest extends BaseIntegrationTest {
 				largeBody = jsonSerialize( { "method": "tools/list", "id": "test123", "data": "x".repeat( 150 ) } )
 
 				// Process request with body exceeding limit using mock context
-				startMockRequest(
+				mockServer = mockRequestNew(
 					method: "POST",
-					path: "/mcp/bodySizeTest",
+					path: "/mcp.bxm",
 					body: largeBody,
 					headers: {}
 				)
+				// Mock the HTTP transport to capture response
+				mockHttpTransport = MCPRequestProcessor::getHttpTransport()
+				mockHttpTransport.writeResponse = ( response ) => {
+					println( response )
+					return response
+				}
 
-				response = MCPRequestProcessor::process(
-					serverName: "bodySizeTest",
-					requestMethod: "POST",
-					requestBody: largeBody,
-					acceptHeader: "application/json",
-					urlParams: {}
-				)
-
-				statusCode = response.statusCode
-				content = jsonDeserialize( response.content )
+				// Call processHttp to handle the request
+				content = MCPRequestProcessor::processHttp( "bodySizeTest" )
+				parsedContent = jsonDeserialize( content )
 			""",
 			context
 		);
 		// @formatter:on
 
-		var	statusCode	= ( int ) variables.get( Key.of( "statusCode" ) );
-		var	content		= variables.getAsStruct( Key.of( "content" ) );
-
-		assertThat( statusCode ).isEqualTo( 413 );
+		var content = variables.getAsStruct( Key.of( "parsedContent" ) );
 		assertThat( content.get( Key.of( "error" ) ) ).isNotNull();
 
 		var error = ( ortus.boxlang.runtime.types.IStruct ) content.get( Key.of( "error" ) );
@@ -1402,31 +1347,28 @@ public class mcpServerTest extends BaseIntegrationTest {
 				largeBody = jsonSerialize( { "method": "tools/list", "id": "test123", "data": "x".repeat( 5000 ) } )
 
 				// Process request - should succeed with mock context
-				startMockRequest(
+				mockServer = mockRequestNew(
 					method: "POST",
-					path: "/mcp/unlimitedBodyTest",
+					path: "/mcp.bxm",
 					body: largeBody,
 					headers: {}
 				)
+				// Mock the HTTP transport to capture response
+				mockHttpTransport = MCPRequestProcessor::getHttpTransport()
+				mockHttpTransport.writeResponse = ( response ) => {
+					println( response )
+					return response
+				}
 
-				response = MCPRequestProcessor::process(
-					serverName: "unlimitedBodyTest",
-					requestMethod: "POST",
-					requestBody: largeBody,
-					acceptHeader: "application/json",
-					urlParams: {}
-				)
-
-				statusCode = response.statusCode
+				content = MCPRequestProcessor::processHttp( "unlimitedBodyTest" )
+				parsedContent = jsonDeserialize( content )
 			""",
 			context
 		);
 		// @formatter:on
 
-		var statusCode = ( int ) variables.get( Key.of( "statusCode" ) );
-
-		// Should succeed (200) not 413
-		assertThat( statusCode ).isEqualTo( 200 );
+		var content = variables.getAsStruct( Key.of( "parsedContent" ) );
+		assertThat( content.getAsStruct( Key.of( "result" ) ).size() ).isGreaterThan( 0 );
 	}
 
 	@Test

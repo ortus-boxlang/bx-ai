@@ -40,16 +40,36 @@ class {
 	}
 
 	/**
+	 * Get the http transport singleton
+	 *
+	 * @return The HTTP transport instance
+	 */
+	static any function getHttpTransport() {
+		return static.httpTransport;
+	}
+
+	/**
+	 * Get the stdio transport singleton
+	 *
+	 * @return The STDIO transport instance
+	 */
+	static any function getStdioTransport() {
+		return static.stdioTransport;
+	}
+
+	/**
 	 * Start HTTP transport and process a single request from the web context
 	 * This is the entry point for web-based MCP servers based on HTTP
 	 *
 	 * This transport flushes to the response automatically, it returns the content for logging purposes only
 	 *
+	 * @serverName The forced MCP server name to use (overrides URL/path parameter)
+	 *
 	 * @return The rendered response content
 	 */
-	static string function processHttp() {
+	static string function processHttp( String serverName ) {
 		// Read request from HTTP context
-		var requestData = static.httpTransport.readRequest();
+		var requestData = static.httpTransport.readRequest( argumentCollection: arguments );
 
 		// Process request
 		var response = processWithTransport( static.httpTransport, requestData );
