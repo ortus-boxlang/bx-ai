@@ -15,7 +15,7 @@
  * Base abstract class for AI Memory implementations
  * Provides common functionality for conversation history storage
  */
-import bxModules.bxai.models.loaders.Document;
+import bxModules.bxai.models.Document;
 
 abstract class implements="IAiMemory" {
 
@@ -146,7 +146,7 @@ abstract class implements="IAiMemory" {
 
 		// Trim to max size (excluding system message)
 		this.trim()
-    
+
 		return this
 	}
 
@@ -632,7 +632,7 @@ abstract class implements="IAiMemory" {
 		}
 
 		// Document instance - convert to user message
-		if ( arguments.message instanceof "bxModules.bxai.models.loaders.Document" ) {
+		if ( arguments.message instanceof "bxModules.bxai.models.Document" ) {
 			return [ {
 				role     : "user",
 				content  : arguments.message.getContent(),

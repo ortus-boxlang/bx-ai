@@ -8,9 +8,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
+import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
-import ortus.boxlang.runtime.scopes.Key;
 
 @DisplayName( "Document Loaders Tests" )
 public class DocumentLoaderTest extends BaseIntegrationTest {
@@ -464,7 +464,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 				doc = new Document( content: "Test content", metadata: { source: "test" } );
 				result = {
 					content: doc.getContent(),
@@ -490,7 +490,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 				original = new Document( content: "Test", metadata: { key: "value" } );
 				json = original.toJson();
 				restored = Document::fromJson( json );
@@ -788,7 +788,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 				doc = new Document(
 					id: "doc-123",
 					content: "Test content",
@@ -821,7 +821,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 				doc1 = new Document( content: "Test 1" );
 				doc2 = new Document( content: "Test 2" );
 				result = {
@@ -846,7 +846,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 				original = new Document(
 					id: "test-id",
 					content: "Test",
@@ -879,7 +879,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 				doc = new Document( content: "Hello world this is a test document." );
 				result = {
 					tokenCount: doc.getTokenCount(),
@@ -903,7 +903,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 				doc = new Document( content: "This is a very long content that should be truncated for preview." );
 				result = {
 					shortPreview: doc.preview( 20 ),
@@ -928,11 +928,11 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 				validDoc = new Document( content: "Valid content", metadata: { source: "test" } );
 				emptyDoc = new Document( content: "" );
 				shortDoc = new Document( content: "Hi" );
-				
+
 				result = {
 					valid: validDoc.validate( minLength: 5, requiredMetadata: [ "source" ] ),
 					empty: emptyDoc.validate(),
@@ -961,11 +961,11 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 				doc1 = new Document( content: "Test content", metadata: { source: "test" } );
 				doc2 = new Document( content: "Test content", metadata: { source: "test" } );
 				doc3 = new Document( content: "Different content" );
-				
+
 				result = {
 					hash1: doc1.hash(),
 					hash2: doc2.hash(),
@@ -992,11 +992,11 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 				doc1 = new Document( content: "Same content" );
 				doc2 = new Document( content: "Same content" );
 				doc3 = new Document( content: "Different content" );
-				
+
 				result = {
 					doc1EqualsDoc2: doc1.equals( doc2 ),
 					doc1EqualsDoc3: doc1.equals( doc3 )
@@ -1017,7 +1017,7 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 				doc = new Document( id: "test-123", content: "Test content", metadata: { source: "test.txt" } );
 				result = doc.toString();
 		    """,
@@ -1036,9 +1036,9 @@ public class DocumentLoaderTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 				longContent = "This is a very long document that should be split into multiple chunks for processing. It contains several sentences that will be divided based on the chunk size parameter.";
-				doc = new Document( 
+				doc = new Document(
 					id: "parent-doc",
 					content: longContent,
 					metadata: { source: "test.txt" }

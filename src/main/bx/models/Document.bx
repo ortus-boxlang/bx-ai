@@ -18,7 +18,7 @@
  * Represents a loaded document with content and metadata.
  * This is the standard output format for all document loaders.
  */
-import bxModules.bxai.models.util.TextChunker;
+import bxModules.bxai.models.util.TextChunker
 
 class {
 
@@ -53,14 +53,24 @@ class {
 	 * @return Document instance
 	 */
 	function init( string id = "", string content = "", struct metadata = {}, array embedding = [] ) {
-		variables.id        = arguments.id.len() ? arguments.id : createUUID();
-		variables.content   = arguments.content;
-		variables.metadata  = arguments.metadata;
-		variables.embedding = arguments.embedding;
-		return this;
+		variables.id        = arguments.id.len() ? arguments.id : createUUID()
+		variables.content   = arguments.content.trim()
+		variables.metadata  = arguments.metadata
+		variables.embedding = arguments.embedding
+		return this
 	}
 
 	// ==================== Content Methods ====================
+
+	/**
+	 * Set the content and trim whitespace
+	 * @content The new content
+	 * @return Document for chaining
+	 */
+	Document function setContent( required string content ) {
+		variables.content = trim( arguments.content )
+		return this
+	}
 
 	/**
 	 * Check if the document has content
@@ -68,7 +78,7 @@ class {
 	 * @return True if content is not empty
 	 */
 	boolean function hasContent() {
-		return len( trim( variables.content ) ) > 0;
+		return getContentLength() > 0
 	}
 
 	/**
@@ -77,7 +87,7 @@ class {
 	 * @return Numeric length
 	 */
 	numeric function getContentLength() {
-		return len( variables.content );
+		return variables.content.len()
 	}
 
 	/**
@@ -88,11 +98,10 @@ class {
 	 * @return Truncated content with ellipsis if needed
 	 */
 	string function preview( numeric length = 100 ) {
-		var trimmedContent = trim( variables.content );
-		if ( len( trimmedContent ) <= arguments.length ) {
-			return trimmedContent;
+		if ( getContentLength() <= arguments.length ) {
+			return variables.content
 		}
-		return left( trimmedContent, arguments.length ) & "...";
+		return left( variables.content, arguments.length ) & "..."
 	}
 
 	// ==================== Token/Cost Methods ====================
@@ -105,7 +114,7 @@ class {
 	 * @return Estimated token count
 	 */
 	numeric function getTokenCount() {
-		return ceiling( getContentLength() / 4 );
+		return ceiling( getContentLength() / 4 )
 	}
 
 	/**
@@ -116,7 +125,7 @@ class {
 	 * @return Boolean true if exceeds limit
 	 */
 	boolean function exceedsTokenLimit( required numeric maxTokens ) {
-		return getTokenCount() > arguments.maxTokens;
+		return getTokenCount() > arguments.maxTokens
 	}
 
 	// ==================== Chunking Methods ====================
@@ -139,27 +148,27 @@ class {
 				overlap   : arguments.overlap,
 				strategy  : arguments.strategy
 			}
-		);
+		)
 
-		var result = [];
-		var totalChunks = chunks.len();
+		var result = []
+		var totalChunks = chunks.len()
 
 		for ( var i = 1; i <= totalChunks; i++ ) {
-			var chunkMetadata = duplicate( variables.metadata );
-			chunkMetadata[ "chunkIndex" ]  = i;
-			chunkMetadata[ "totalChunks" ] = totalChunks;
-			chunkMetadata[ "isChunk" ]     = true;
-			chunkMetadata[ "parentId" ]    = variables.id;
+			var chunkMetadata = duplicate( variables.metadata )
+			chunkMetadata[ "chunkIndex" ]  = i
+			chunkMetadata[ "totalChunks" ] = totalChunks
+			chunkMetadata[ "isChunk" ]     = true
+			chunkMetadata[ "parentId" ]    = variables.id
 
 			result.append(
 				new Document(
 					content  : chunks[ i ],
 					metadata : chunkMetadata
 				)
-			);
+			)
 		}
 
-		return result;
+		return result
 	}
 
 	// ==================== Validation Methods ====================
@@ -214,8 +223,8 @@ class {
 	 *
 	 * @return Hash string
 	 */
-	string function hash( string algorithm = "MD5" ) {
-		return hash( variables.content, arguments.algorithm );
+	string function getHash( string algorithm = "MD5" ) {
+		return hash( variables.content, arguments.algorithm )
 	}
 
 	/**
@@ -225,10 +234,9 @@ class {
 	 * @return Fingerprint string
 	 */
 	string function fingerprint() {
-		var contentHash = hash( variables.content, "SHA-256" );
-		var metaString = jsonSerialize( variables.metadata );
-		var metaHash = hash( metaString, "MD5" );
-		return contentHash & "-" & metaHash;
+		var metaHash = hash( new java.util.TreeMap( variables.metadata ).toString(), "MD5" )
+		var contentHash = hash( variables.content, "SHA-256" )
+		return contentHash & "-" & metaHash
 	}
 
 	/**
@@ -240,7 +248,7 @@ class {
 	 * @return Boolean true if documents have identical content
 	 */
 	boolean function equals( required Document target ) {
-		return this.hash() == arguments.target.hash();
+		return this.getHash() == arguments.target.getHash()
 	}
 
 	// ==================== Metadata Methods ====================
@@ -254,9 +262,7 @@ class {
 	 * @return The metadata value or default
 	 */
 	any function getMeta( required string key, any defaultValue = "" ) {
-		return variables.metadata.keyExists( arguments.key )
-			? variables.metadata[ arguments.key ]
-			: arguments.defaultValue;
+		return variables.metadata[ arguments.key ] ?: arguments.defaultValue
 	}
 
 	/**
@@ -268,8 +274,8 @@ class {
 	 * @return Document for chaining
 	 */
 	Document function setMeta( required string key, required any value ) {
-		variables.metadata[ arguments.key ] = arguments.value;
-		return this;
+		variables.metadata[ arguments.key ] = arguments.value
+		return this
 	}
 
 	/**
@@ -281,8 +287,8 @@ class {
 	 * @return Document for chaining
 	 */
 	Document function addMetadata( required struct metadata, boolean overwrite = true ) {
-		variables.metadata.append( arguments.metadata, arguments.overwrite );
-		return this;
+		variables.metadata.append( arguments.metadata, arguments.overwrite )
+		return this
 	}
 
 	// ==================== Embedding Methods ====================
@@ -293,7 +299,7 @@ class {
 	 * @return True if embedding array is not empty
 	 */
 	boolean function hasEmbedding() {
-		return variables.embedding.len() > 0;
+		return variables.embedding.len() > 0
 	}
 
 	// ==================== Serialization Methods ====================
@@ -309,9 +315,9 @@ class {
 			"content"     : variables.content,
 			"metadata"    : variables.metadata,
 			"embedding"   : variables.embedding,
-			"hash"        : this.hash(),
-			"fingerprint" : this.fingerprint()
-		};
+			"hash"        : getHash(),
+			"fingerprint" : fingerprint()
+		}
 	}
 
 	/**
@@ -344,10 +350,10 @@ class {
 	 */
 	static function fromStruct( required struct data ) {
 		return new Document(
-			id        : arguments.data.keyExists( "id" ) ? arguments.data.id : "",
-			content   : arguments.data.keyExists( "content" ) ? arguments.data.content : "",
-			metadata  : arguments.data.keyExists( "metadata" ) ? arguments.data.metadata : {},
-			embedding : arguments.data.keyExists( "embedding" ) ? arguments.data.embedding : []
+			id : arguments.data?.id ?: "",
+			content: arguments.data?.content ?: "",
+			metadata: arguments.data?.metadata ?: {},
+			embedding : arguments.data?.embedding ?: []
 		);
 	}
 
@@ -364,16 +370,16 @@ class {
 
 	/**
 	 * Clone this document
+	 * Note that a new ID is generated for the clone.
 	 *
 	 * @return A new Document with the same content and metadata
 	 */
 	Document function clone() {
 		return new Document(
-			id        : variables.id,
 			content   : variables.content,
 			metadata  : duplicate( variables.metadata ),
 			embedding : duplicate( variables.embedding )
-		);
+		)
 	}
 
 	/**
@@ -386,26 +392,30 @@ class {
 	 *
 	 * @return This Document for chaining
 	 */
-	Document function merge( required any documents, string separator = char( 10 ) & char( 10 ), boolean overwriteMetadata = false ) {
-		var docsToMerge = isArray( arguments.documents ) ? arguments.documents : [ arguments.documents ];
+	Document function merge(
+		required any documents,
+		string separator = char( 10 ) & char( 10 ),
+		 boolean overwriteMetadata = false
+		) {
+		var docsToMerge = isArray( arguments.documents ) ? arguments.documents : [ arguments.documents ]
 
 		for ( var doc in docsToMerge ) {
 			// Append content with separator
 			if ( len( variables.content ) && len( doc.getContent() ) ) {
-				variables.content &= arguments.separator;
+				variables.content &= arguments.separator
 			}
-			variables.content &= doc.getContent();
+			variables.content &= doc.getContent()
 
 			// Merge metadata
-			variables.metadata.append( doc.getMetadata(), arguments.overwriteMetadata );
+			variables.metadata.append( doc.getMetadata(), arguments.overwriteMetadata )
 
 			// If this document doesn't have an embedding but the merged doc does, use it
 			if ( !hasEmbedding() && doc.hasEmbedding() ) {
-				variables.embedding = duplicate( doc.getEmbedding() );
+				variables.embedding = duplicate( doc.getEmbedding() )
 			}
 		}
 
-		return this;
+		return this
 	}
 
 }

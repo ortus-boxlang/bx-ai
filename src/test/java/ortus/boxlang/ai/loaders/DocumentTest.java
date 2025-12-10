@@ -17,7 +17,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				doc = new Document( content="This is a test document" );
 				result = {
@@ -42,7 +42,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				doc = new Document(
 					id="doc-123",
@@ -72,7 +72,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				doc = new Document( content="This is a very long document that should be truncated when we create a preview of it." );
 				result = {
@@ -96,7 +96,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				doc = new Document( content="This is a test document with some content." );
 				result = {
@@ -121,7 +121,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				longText = "This is sentence one. This is sentence two. This is sentence three. This is sentence four. ";
 				longText &= "This is sentence five. This is sentence six. This is sentence seven. This is sentence eight.";
@@ -162,7 +162,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				validDoc = new Document(
 					content="This is valid content",
@@ -201,16 +201,16 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				doc1 = new Document( content="Same content", metadata={ source: "test1.txt" } );
 				doc2 = new Document( content="Same content", metadata={ source: "test2.txt" } );
 				doc3 = new Document( content="Different content", metadata={ source: "test1.txt" } );
 
 				result = {
-					hash1: doc1.hash(),
-					hash2: doc2.hash(),
-					hash3: doc3.hash(),
+					hash1: doc1.getHash(),
+					hash2: doc2.getHash(),
+					hash3: doc3.getHash(),
 					fingerprint1: doc1.fingerprint(),
 					fingerprint2: doc2.fingerprint(),
 					doc1EqualsDoc2: doc1.equals( doc2 ),
@@ -242,7 +242,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				doc = new Document( content="Test", metadata={ source: "original.txt" } );
 
@@ -280,7 +280,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				docWithoutEmbedding = new Document( content="Test" );
 				docWithEmbedding = new Document(
@@ -310,7 +310,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				doc = new Document(
 					id="test-123",
@@ -351,7 +351,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				// From struct
 				docStruct = {
@@ -392,7 +392,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				original = new Document(
 					id="original-id",
@@ -418,7 +418,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		IStruct result = ( IStruct ) variables.get( "result" );
-		assertThat( result.get( "originalId" ) ).isEqualTo( result.get( "clonedId" ) );
+		assertThat( result.get( "originalId" ) ).isNotEqualTo( result.get( "clonedId" ) );
 		assertThat( result.get( "sameContent" ) ).isEqualTo( true );
 		// Cloned metadata should be independent
 		assertThat( result.get( "originalHasModified" ) ).isEqualTo( false );
@@ -431,7 +431,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				doc1 = new Document( content="First document.", metadata={ source: "doc1.txt", type: "text" } );
 				doc2 = new Document( content="Second document.", metadata={ source: "doc2.txt", author: "Jane" } );
@@ -476,7 +476,7 @@ public class DocumentTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-				import bxModules.bxai.models.loaders.Document;
+				import bxModules.bxai.models.Document;
 
 				doc = new Document( content="Test" )
 					.setMeta( "author", "John" )

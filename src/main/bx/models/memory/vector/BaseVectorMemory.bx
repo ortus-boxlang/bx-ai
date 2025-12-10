@@ -341,7 +341,7 @@ abstract class
 		// Normalize documents
 		var normalized = arguments.documents.map( ( doc ) => {
 			// Handle Document instances
-			if ( doc instanceof "bxModules.bxai.models.loaders.Document" ) {
+			if ( doc instanceof "bxModules.bxai.models.Document" ) {
 				return {
 					id: generateId( doc.getContent() ),
 					text: doc.getContent(),
@@ -640,7 +640,7 @@ abstract class
 			return arguments.message;
 		}
 		// Handle Document instances
-		if ( arguments.message instanceof "bxModules.bxai.models.loaders.Document" ) {
+		if ( arguments.message instanceof "bxModules.bxai.models.Document" ) {
 			return arguments.message.getContent();
 		}
 		if ( isStruct( arguments.message ) ) {
@@ -659,10 +659,10 @@ abstract class
 	 */
 	private struct function extractMetadata( required any message ) {
 		// Handle Document instances
-		if ( arguments.message instanceof "bxModules.bxai.models.loaders.Document" ) {
+		if ( arguments.message instanceof "bxModules.bxai.models.Document" ) {
 			return arguments.message.getMetadata();
 		}
-    
+
 		var meta = {};
 
 		if ( isStruct( arguments.message ) ) {
