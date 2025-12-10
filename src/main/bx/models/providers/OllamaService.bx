@@ -188,91 +188,105 @@ class extends="BaseService"{
 			println( dataPacket )
 		}
 
-		bx: http
-			url     = getChatURL()
-			method  = "post"
-			result  = "chatResult"
-			charset = "utf-8"
-			timeout = arguments.aiRequest.getTimeout()
-		{
-			bx:httpParam type="header" name="content-type" value="application/json";
+		// Buffer for accumulating partial lines
+		var buffer = "";
+		
+		// Capture callback in local variable for closure
+		var userCallback = arguments.callback;
+		var thisAiRequest = arguments.aiRequest;
 
-			// Auth Header ONLY if the provider requires it
-			if( arguments.aiRequest.getSendAuthHeader() ){
-				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.aiRequest.getApiKey()#";
-			}
+		// Build HTTP request with fluent API
+		// Note: Ollama uses newline-delimited JSON, NOT SSE format
+		var httpRequest = http( getChatURL() )
+			.method( "POST" )
+			.charset( "utf-8" )
+			.timeout( thisAiRequest.getTimeout() )
+			.header( "content-type", "application/json" );
 
-			// Custom Headers
-			for( var thisHeader in arguments.aiRequest.getHeaders() ){
-				bx:httpParam
-					type="header"
-					name="#thisHeader#"
-					value="#arguments.aiRequest.getHeaders()[ thisHeader ]#";
-			}
-
-			// Body Packet
-			bx:httpParam type="body" value=jsonSerialize( dataPacket );
+		// Auth Header ONLY if the provider requires it
+		if( thisAiRequest.getSendAuthHeader() ){
+			httpRequest.header( "Authorization", "Bearer #thisAiRequest.getApiKey()#" );
 		}
 
-		// Check for HTTP errors
-		if( chatResult.statusCode >= 300 ){
-			var errorMessage = "HTTP Error #chatResult.statusCode#";
-			try {
-				var errorData = jsonDeserialize( chatResult.filecontent );
-				if( errorData.keyExists( "error" ) ){
-					errorMessage = errorData.error.toString();
+		// Add custom headers
+		for( var thisHeader in thisAiRequest.getHeaders() ){
+			httpRequest.header( thisHeader, thisAiRequest.getHeaders()[ thisHeader ] );
+		}
+
+		// Set request body and callbacks
+		httpRequest
+			.body( jsonSerialize( dataPacket ) )
+			.onChunk( ( chunkNumber, content, totalBytes, httpResult, httpClient, response ) => {
+				// For regular streaming (not SSE), onChunk receives:
+				// chunkNumber, content (string), totalBytes, httpResult, httpClient, response
+				// Ollama sends newline-delimited JSON: {"message":{...}}\n{"message":{...}}\n
+				
+				// Append chunk to buffer
+				buffer &= content;
+				
+				// Process complete lines
+				var lines = buffer.split( char(10) );
+				
+				// Keep the last potentially incomplete line in the buffer
+				buffer = lines[ lines.len() ];
+				
+				// Process complete lines (all but the last)
+				for( var i = 1; i <= lines.len() - 1; i++ ){
+					var line = lines[ i ].trim();
+					
+					// Skip empty lines
+					if( line.isEmpty() ){
+						continue;
+					}
+					
+					// Each line is a complete JSON object
+					try {
+						var parsedChunk = jsonDeserialize( line );
+						userCallback( parsedChunk );
+					} catch( any e ){
+						writeLog(
+							text: "Error parsing Ollama stream chunk: #e.message# - Data: #line#",
+							type: "error",
+							log : "ai"
+						)
+					}
 				}
-			} catch( any e ){
-				errorMessage &= ": #chatResult.filecontent#";
-			}
-
-			writeLog(
-				text: "Stream Request Error: #errorMessage#",
-				type: "error",
-				log : "ai"
-			)
-
-			throw(
-				type   : "ProviderError",
-				message: errorMessage
-			);
-		}
-
-		// Process the streaming response - Ollama uses newline-delimited JSON
-		var streamContent = chatResult.filecontent;
-
-		// Parse newline-delimited JSON (not SSE format)
-		var lines = streamContent.split( char(10) ); // Split by newline
-
-		for( var line in lines ){
-			line = line.trim();
-
-			// Skip empty lines
-			if( line.isEmpty() ){
-				continue;
-			}
-
-			// Each line is a complete JSON object
-			try {
-				var chunk = jsonDeserialize( line );
-				arguments.callback( chunk );
-			} catch( any e ){
+			} )
+			.onError( ( error, httpResult ) => {
+				var errorMessage = "HTTP Error: #error.message#";
+				
 				writeLog(
-					text: "Error parsing Ollama stream chunk: #e.message# - Data: #line#",
+					text: "Stream Request Error: #errorMessage#",
 					type: "error",
 					log : "ai"
 				)
-			}
-		}
 
-		BoxAnnounce(
-			"onAIResponse",
-			{
-				"aiRequest" : arguments.aiRequest,
-				"provider"    : this,
-				"streamComplete" : true
-			}
-		);
+				throw(
+					type   : "ProviderError",
+					message: errorMessage
+				);
+			} )
+			.onComplete( ( httpResult ) => {
+				// Process any remaining data in buffer
+				if( !buffer.isEmpty() ){
+					try {
+						var parsedChunk = jsonDeserialize( buffer.trim() );
+						userCallback( parsedChunk );
+					} catch( any e ){
+						// Ignore parsing errors for final buffer
+					}
+				}
+
+				BoxAnnounce(
+					"onAIResponse",
+					{
+						"aiRequest" : thisAiRequest,
+						"provider"    : this,
+						"streamComplete" : true
+					}
+				);
+			} )
+			.send();
 	}
 
 	/**
