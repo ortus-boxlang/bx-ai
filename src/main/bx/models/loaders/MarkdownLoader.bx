@@ -50,15 +50,6 @@ class extends="BaseDocumentLoader" {
 	}
 
 	/**
-	 * Get the loader name
-	 *
-	 * @return The loader name
-	 */
-	string function getName() {
-		return "MarkdownLoader";
-	}
-
-	/**
 	 * Load the Markdown file into Document objects
 	 *
 	 * @return Array of Document objects
@@ -69,14 +60,14 @@ class extends="BaseDocumentLoader" {
 			throw(
 				type    : "MarkdownLoader.NoSource",
 				message : "No source file specified"
-			);
+			)
 		}
 
 		if ( !fileExists( variables.source ) ) {
 			throw(
 				type    : "MarkdownLoader.FileNotFound",
 				message : "File not found: #variables.source#"
-			);
+			)
 		}
 
 		// Read the file content
@@ -94,15 +85,10 @@ class extends="BaseDocumentLoader" {
 		// Create single document with all content
 		var doc = createDocument(
 			content            : content,
-			additionalMetadata : {
-				"fileType"     : "markdown",
-				"fileName"     : fileInfo.name,
-				"fileSize"     : fileInfo.size,
-				"lastModified" : fileInfo.lastModified
-			}
-		);
+			additionalMetadata : variables.config.includeMetadata ? getSourceInfo() : {}
+		)
 
-		return [ doc ];
+		return [ doc ]
 	}
 
 	/**
@@ -113,27 +99,27 @@ class extends="BaseDocumentLoader" {
 	 * @return Processed content
 	 */
 	private string function processMarkdown( required string content ) {
-		var result = arguments.content;
+		var result = arguments.content
 
 		// Remove code blocks if configured
 		if ( variables.config.removeCodeBlocks ) {
 			// Remove fenced code blocks
-			result = reReplace( result, "```[\s\S]*?```", "", "all" );
+			result = reReplace( result, "```[\s\S]*?```", "", "all" )
 			// Remove inline code
-			result = reReplace( result, "`[^`]+`", "", "all" );
+			result = reReplace( result, "`[^`]+`", "", "all" )
 		}
 
 		// Remove images if configured
 		if ( variables.config.removeImages ) {
-			result = reReplace( result, "!\[[^\]]*\]\([^\)]+\)", "", "all" );
+			result = reReplace( result, "!\[[^\]]*\]\([^\)]+\)", "", "all" )
 		}
 
 		// Remove links but keep text if configured
 		if ( variables.config.removeLinks ) {
-			result = reReplace( result, "\[([^\]]+)\]\([^\)]+\)", "\1", "all" );
+			result = reReplace( result, "\[([^\]]+)\]\([^\)]+\)", "\1", "all" )
 		}
 
-		return result;
+		return result
 	}
 
 	/**
@@ -197,21 +183,18 @@ class extends="BaseDocumentLoader" {
 			}
 
 			if ( len( trim( sectionContent ) ) ) {
+				var additionalMeta = {
+					"sectionHeader" : section.header,
+					"sectionLevel"  : section.level,
+					"sectionIndex"  : sectionIndex,
+					"totalSections" : sections.len()
+				}.append( arguments.fileInfo, true )
 				documents.append(
 					createDocument(
 						content            : trim( sectionContent ),
-						additionalMetadata : {
-							"fileType"      : "markdown",
-							"fileName"      : arguments.fileInfo.name,
-							"fileSize"      : arguments.fileInfo.size,
-							"lastModified"  : arguments.fileInfo.lastModified,
-							"sectionHeader" : section.header,
-							"sectionLevel"  : section.level,
-							"sectionIndex"  : sectionIndex,
-							"totalSections" : sections.len()
-						}
+						additionalMetadata : variables.config.includeMetadata ? additionalMeta : {}
 					)
-				);
+				)
 			}
 		}
 
@@ -220,14 +203,9 @@ class extends="BaseDocumentLoader" {
 			documents.append(
 				createDocument(
 					content            : arguments.content,
-					additionalMetadata : {
-						"fileType"     : "markdown",
-						"fileName"     : arguments.fileInfo.name,
-						"fileSize"     : arguments.fileInfo.size,
-						"lastModified" : arguments.fileInfo.lastModified
-					}
+					additionalMetadata : variables.config.includeMetadata ? arguments.fileInfo : {}
 				)
-			);
+			)
 		}
 
 		return documents;
