@@ -47,9 +47,12 @@ class extends="BaseService"{
 	/**
 	 * Ollama chat request - customized for Ollama's API format
 	 * @see https://github.com/ollama/ollama/blob/main/docs/api.md
+	 *
+	 * @aiRequest The AiRequest object to send to the provider
+	 * @interactionCount The number of interactions (for tool calling recursion tracking)
 	 */
 	@override
-	public function chat( required AiRequest aiRequest ){
+	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ){
 		// Ollama typically doesn't use auth headers for local instances
 		// But may use basic auth for remote instances
 		if( !arguments.aiRequest.getApiKey().isEmpty() ){
@@ -66,7 +69,7 @@ class extends="BaseService"{
 		}.append( arguments.aiRequest.getParams() )
 
 		// Send it
-		var result = sendRequest( chatRequest, dataPacket )
+		var result = sendRequest( arguments.aiRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
@@ -82,13 +85,20 @@ class extends="BaseService"{
 		}
 
 		// Determine return formats
-		switch( chatRequest.getReturnFormat() ){
+		var content = result.response ?: result.message?.content ?: "";
+		switch( arguments.aiRequest.getReturnFormat() ){
 			case "all":
 				return result;
 			case "raw":
 				return result;
+			case "json":
+				return JSONDeserialize( extractFromCodeBlock( content, "json" ) );
+			case "xml" :
+				return xmlParse( extractFromCodeBlock( content, "xml" ) );
+			case  "structuredOutput":
+				return populateStructuredOutput( content, arguments.aiRequest );
 			case "single": default:
-				return result.response ?: result.message?.content ?: "";
+				return content;
 		}
 	}
 
@@ -115,7 +125,7 @@ class extends="BaseService"{
 		}.append( arguments.aiRequest.getParams() )
 
 		// Send it with streaming
-		sendStreamRequest( chatRequest, dataPacket, callback )
+		sendStreamRequest( arguments.aiRequest, dataPacket, arguments.callback )
 	}
 
 	/**

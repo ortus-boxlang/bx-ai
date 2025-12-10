@@ -21,19 +21,19 @@ services:
       wait"
     restart: unless-stopped
 
-  webui:
-    image: ghcr.io/ollama-webui/ollama-webui:main
-    container_name: ollama-webui
-    ports:
-      - "3000:8080"
-    depends_on:
-      - ollama
-    environment:
-      - OLLAMA_API_BASE_URL=http://ollama:11434/api
-      - WEBUI_AUTH=True
-      - WEBUI_ADMIN_USER=boxlang
-      - WEBUI_ADMIN_PASS=rocks
-    restart: unless-stopped
+  # webui:
+  #   image: ghcr.io/ollama-webui/ollama-webui:main
+  #   container_name: ollama-webui
+  #   ports:
+  #     - "3000:8080"
+  #   depends_on:
+  #     - ollama
+  #   environment:
+  #     - OLLAMA_API_BASE_URL=http://ollama:11434/api
+  #     - WEBUI_AUTH=True
+  #     - WEBUI_ADMIN_USER=boxlang
+  #     - WEBUI_ADMIN_PASS=rocks
+  #   restart: unless-stopped
 
   ###############################################################
   # Vector Databases

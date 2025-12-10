@@ -17,7 +17,6 @@ package ortus.boxlang.ai.providers;
 import static com.google.common.truth.Truth.assertThat;
 
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -29,7 +28,6 @@ import ortus.boxlang.ai.BaseIntegrationTest;
  * Note: These tests require the test Ollama instance from docker-compose
  * The docker-compose file should be started before running tests
  */
-@Disabled
 public class OllamaTest extends BaseIntegrationTest {
 
 	@BeforeEach
@@ -67,7 +65,7 @@ public class OllamaTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 		    result = aiChat(
-		        messages = "Respond with 'Hello from qwen'",
+		        messages = "What is 2 + 2? Answer with just the number.",
 		        options = {
 		            "model": "qwen2.5:0.5b-instruct"
 		        }
@@ -78,7 +76,7 @@ public class OllamaTest extends BaseIntegrationTest {
 
 		var result = variables.get( "result" );
 		assertThat( result ).isNotNull();
-		assertThat( result.toString() ).contains( "hello" );
+		assertThat( result.toString().toLowerCase() ).containsMatch( "[4four]" );
 		System.out.println( "Ollama custom model response: " + result );
 	}
 
@@ -88,18 +86,102 @@ public class OllamaTest extends BaseIntegrationTest {
 		// Test streaming functionality
 		runtime.executeSource(
 		    """
-		    result = aiChatStream(
-		        messages = "Count from 1 to 3, each number on a new line",
-		        options = {
-		            "model": "qwen2.5:0.5b-instruct"
+		    chunks = []
+		    fullResponse = ""
+		    aiChatStream(
+		        "Count from 1 to 3",
+		        ( chunk ) => {
+		            chunks.append( chunk )
+		            content = chunk.response ?: ""
+		            fullResponse &= content
 		        }
 		    )
+		    println( "Received " & chunks.len() & " chunks" )
+		    println( "Full response: " & fullResponse )
 		    """,
 		    context
 		);
 
-		var result = variables.get( "result" );
-		assertThat( result ).isNotNull();
-		System.out.println( "Ollama streaming response: " + result );
+		// Verify we received chunks
+		assertThat( variables.get( "chunks" ) ).isNotNull();
+		assertThat( variables.get( "fullResponse" ) ).isNotNull();
+	}
+
+	@DisplayName( "Test JSON response" )
+	@Test
+	public void testJsonResponse() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiChat(
+				messages = "Return a JSON object with name 'BoxLang' and version '1.0'. Return ONLY valid JSON, nothing else.",
+				options = {
+					returnFormat: "json"
+				}
+			)
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Verify we got a struct back
+		assertThat( variables.get( "result" ) ).isInstanceOf( ortus.boxlang.runtime.types.IStruct.class );
+		var result = ( ortus.boxlang.runtime.types.IStruct ) variables.get( "result" );
+		assertThat( result.containsKey( "name" ) || result.containsKey( "NAME" ) ).isTrue();
+	}
+
+	@DisplayName( "Test XML response" )
+	@Test
+	public void testXmlResponse() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiChat(
+				messages = "Return an XML document with a root element 'language' containing a child element 'name' with value 'BoxLang'. Return ONLY valid XML, nothing else.",
+				options = {
+					returnFormat: "xml"
+				}
+			)
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Verify we got an XML document back
+		assertThat( variables.get( "result" ) ).isInstanceOf( ortus.boxlang.runtime.types.XML.class );
+	}
+
+	@DisplayName( "Test structured output response" )
+	@Test
+	public void testStructuredOutput() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			// Define structured schema using a struct
+			languageSchema = {
+				"name": "string",
+				"version": "string",
+				"type": "string"
+			}
+
+			result = aiChat(
+				messages = "Tell me about BoxLang. It's a modern JVM language, version 1.0, and it's a dynamic language. Return ONLY valid JSON matching this schema: name, version, type.",
+				options = {
+					returnFormat: languageSchema
+				}
+			)
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Verify we got a struct back with expected properties
+		assertThat( variables.get( "result" ) ).isInstanceOf( ortus.boxlang.runtime.types.IStruct.class );
+		var result = ( ortus.boxlang.runtime.types.IStruct ) variables.get( "result" );
+		assertThat( result.containsKey( "name" ) || result.containsKey( "NAME" ) ).isTrue();
+		assertThat( result.containsKey( "version" ) || result.containsKey( "VERSION" ) ).isTrue();
 	}
 }
