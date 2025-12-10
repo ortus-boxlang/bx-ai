@@ -3,7 +3,7 @@
  *
  * Copyright [2023] [Ortus Solutions, Corp]
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the Apache License, Version 2.0 (the "License")
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -31,7 +31,7 @@ class extends="BaseDocumentLoader" {
 			metadataFields  : [],
 			arrayAsDocuments: false,
 			flatten         : false
-		};
+		}
 	}
 
 	/**
@@ -43,18 +43,9 @@ class extends="BaseDocumentLoader" {
 	 * @return JSONLoader instance
 	 */
 	function init( string source = "", struct config = {} ) {
-		super.init( source: arguments.source, config: {} );
-		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
-		return this;
-	}
-
-	/**
-	 * Get the loader name
-	 *
-	 * @return The loader name
-	 */
-	string function getName() {
-		return "JSONLoader";
+		super.init( source: arguments.source, config: {} )
+		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true )
+		return this
 	}
 
 	/**
@@ -68,45 +59,42 @@ class extends="BaseDocumentLoader" {
 			throw(
 				type    : "JSONLoader.NoSource",
 				message : "No source file specified"
-			);
+			)
 		}
 
 		if ( !fileExists( variables.source ) ) {
 			throw(
 				type    : "JSONLoader.FileNotFound",
 				message : "File not found: #variables.source#"
-			);
+			)
 		}
 
 		// Read and parse JSON
-		var content  = readFile( variables.source );
-		var fileInfo = getSourceInfo();
-		var data     = jsonDeserialize( content );
+		var content  = readFile( variables.source )
+		var fileInfo = getSourceInfo()
+		var data     = jsonDeserialize( content )
 
 		// Handle array at root level
 		if ( isArray( data ) && variables.config.arrayAsDocuments ) {
-			return createDocumentsFromArray( data, fileInfo );
+			return createDocumentsFromArray( data, fileInfo )
 		}
 
 		// Check if we should extract a specific field
 		if ( len( variables.config.contentField ) ) {
-			return createDocumentFromField( data, fileInfo );
+			return createDocumentFromField( data, fileInfo )
 		}
 
 		// Convert entire JSON to text
-		var textContent = jsonToText( data );
+		var textContent = jsonToText( data )
+		var additionalMeta = {
+			"jsonType"     : isArray( data ) ? "array" : "object"
+		}.append( fileInfo, true )
 		var doc = createDocument(
 			content            : textContent,
-			additionalMetadata : {
-				"fileType"     : "json",
-				"fileName"     : fileInfo.name,
-				"fileSize"     : fileInfo.size,
-				"lastModified" : fileInfo.lastModified,
-				"jsonType"     : isArray( data ) ? "array" : "object"
-			}
-		);
+			additionalMetadata : variables.config.includeMetadata ? additionalMeta : {}
+		)
 
-		return [ doc ];
+		return [ doc ]
 	}
 
 	/**
@@ -119,31 +107,31 @@ class extends="BaseDocumentLoader" {
 	 */
 	private string function jsonToText( required any data, string prefix = "" ) {
 		if ( isSimpleValue( arguments.data ) ) {
-			return arguments.data;
+			return arguments.data
 		}
 
-		var lines = [];
+		var lines = []
 
 		if ( isArray( arguments.data ) ) {
 			for ( var i = 1; i <= arguments.data.len(); i++ ) {
-				var itemPrefix = len( arguments.prefix ) ? "#arguments.prefix#[#i#]" : "[#i#]";
-				var itemText = jsonToText( arguments.data[ i ], itemPrefix );
-				lines.append( itemText );
+				var itemPrefix = len( arguments.prefix ) ? "#arguments.prefix#[#i#]" : "[#i#]"
+				var itemText = jsonToText( arguments.data[ i ], itemPrefix )
+				lines.append( itemText )
 			}
 		} else if ( isStruct( arguments.data ) ) {
 			for ( var key in arguments.data ) {
-				var fullKey = len( arguments.prefix ) ? "#arguments.prefix#.#key#" : key;
-				var value = arguments.data[ key ];
+				var fullKey = len( arguments.prefix ) ? "#arguments.prefix#.#key#" : key
+				var value = arguments.data[ key ]
 
 				if ( isSimpleValue( value ) ) {
-					lines.append( "#fullKey#: #value#" );
+					lines.append( "#fullKey#: #value#" )
 				} else {
-					lines.append( jsonToText( value, fullKey ) );
+					lines.append( jsonToText( value, fullKey ) )
 				}
 			}
 		}
 
-		return lines.toList( char( 10 ) );
+		return lines.toList( char( 10 ) )
 	}
 
 	/**
@@ -155,44 +143,42 @@ class extends="BaseDocumentLoader" {
 	 * @return Array of Document objects
 	 */
 	private array function createDocumentsFromArray( required array data, required struct fileInfo ) {
-		var documents = [];
+		var documents = []
 
 		for ( var i = 1; i <= arguments.data.len(); i++ ) {
-			var item = arguments.data[ i ];
-			var content = "";
+			var item = arguments.data[ i ]
+			var content = ""
 			var metadata = {
-				"fileType"     : "json",
-				"fileName"     : arguments.fileInfo.name,
 				"arrayIndex"   : i,
 				"totalItems"   : arguments.data.len()
-			};
+			}.append( arguments.fileInfo, true )
 
 			// Extract content from specific field if configured
 			if ( len( variables.config.contentField ) && isStruct( item ) ) {
-				content = getNestedValue( item, variables.config.contentField ) ?: "";
+				content = getNestedValue( item, variables.config.contentField ) ?: ""
 
 				// Extract metadata fields
 				for ( var metaField in variables.config.metadataFields ) {
-					var metaValue = getNestedValue( item, metaField );
+					var metaValue = getNestedValue( item, metaField )
 					if ( !isNull( metaValue ) ) {
-						metadata[ listLast( metaField, "." ) ] = metaValue;
+						metadata[ listLast( metaField, "." ) ] = metaValue
 					}
 				}
 			} else {
-				content = jsonToText( item );
+				content = jsonToText( item )
 			}
 
 			if ( len( trim( content ) ) ) {
 				documents.append(
 					createDocument(
 						content            : content,
-						additionalMetadata : metadata
+						additionalMetadata : variables.config.includeMetadata ? metadata : {}
 					)
-				);
+				)
 			}
 		}
 
-		return documents;
+		return documents
 	}
 
 	/**
@@ -204,28 +190,24 @@ class extends="BaseDocumentLoader" {
 	 * @return Array of Document objects
 	 */
 	private array function createDocumentFromField( required any data, required struct fileInfo ) {
-		var content = getNestedValue( arguments.data, variables.config.contentField );
+		var content = getNestedValue( arguments.data, variables.config.contentField )
 
 		if ( isNull( content ) ) {
-			content = "";
+			content = ""
 		} else if ( !isSimpleValue( content ) ) {
-			content = jsonToText( content );
+			content = jsonToText( content )
 		}
 
 		var metadata = {
-			"fileType"     : "json",
-			"fileName"     : arguments.fileInfo.name,
-			"fileSize"     : arguments.fileInfo.size,
-			"lastModified" : arguments.fileInfo.lastModified,
 			"contentField" : variables.config.contentField
-		};
+		}.append( arguments.fileInfo, true )
 
 		// Extract metadata fields
 		if ( isStruct( arguments.data ) ) {
 			for ( var metaField in variables.config.metadataFields ) {
-				var metaValue = getNestedValue( arguments.data, metaField );
+				var metaValue = getNestedValue( arguments.data, metaField )
 				if ( !isNull( metaValue ) && isSimpleValue( metaValue ) ) {
-					metadata[ listLast( metaField, "." ) ] = metaValue;
+					metadata[ listLast( metaField, "." ) ] = metaValue
 				}
 			}
 		}
@@ -233,9 +215,9 @@ class extends="BaseDocumentLoader" {
 		return [
 			createDocument(
 				content            : content,
-				additionalMetadata : metadata
+				additionalMetadata : variables.config.includeMetadata ? metadata : {}
 			)
-		];
+		]
 	}
 
 	/**
@@ -247,20 +229,20 @@ class extends="BaseDocumentLoader" {
 	 * @return The value or null if not found
 	 */
 	private any function getNestedValue( required any data, required string path ) {
-		var parts   = listToArray( arguments.path, "." );
-		var current = arguments.data;
+		var parts   = listToArray( arguments.path, "." )
+		var current = arguments.data
 
 		for ( var part in parts ) {
 			if ( isStruct( current ) && current.keyExists( part ) ) {
-				current = current[ part ];
+				current = current[ part ]
 			} else if ( isArray( current ) && isNumeric( part ) && part <= current.len() ) {
-				current = current[ part ];
+				current = current[ part ]
 			} else {
-				return javacast( "null", "" );
+				return javacast( "null", "" )
 			}
 		}
 
-		return current;
+		return current
 	}
 
 	/**
@@ -271,8 +253,8 @@ class extends="BaseDocumentLoader" {
 	 * @return JSONLoader for chaining
 	 */
 	JSONLoader function contentField( required string field ) {
-		variables.config.contentField = arguments.field;
-		return this;
+		variables.config.contentField = arguments.field
+		return this
 	}
 
 	/**
@@ -283,8 +265,8 @@ class extends="BaseDocumentLoader" {
 	 * @return JSONLoader for chaining
 	 */
 	JSONLoader function metadataFields( required array fields ) {
-		variables.config.metadataFields = arguments.fields;
-		return this;
+		variables.config.metadataFields = arguments.fields
+		return this
 	}
 
 	/**
@@ -293,8 +275,8 @@ class extends="BaseDocumentLoader" {
 	 * @return JSONLoader for chaining
 	 */
 	JSONLoader function arrayAsDocuments() {
-		variables.config.arrayAsDocuments = true;
-		return this;
+		variables.config.arrayAsDocuments = true
+		return this
 	}
 
 }
