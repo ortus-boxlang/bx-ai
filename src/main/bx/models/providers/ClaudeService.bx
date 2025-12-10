@@ -80,9 +80,15 @@ class extends="BaseService"{
 	 * Claude chat request
 	 * Customized for Claude
 	 * https://docs.anthropic.com/en/api/messages-examples
+	 *
+	 * @aiRequest The AiRequest object to send to the provider
+	 * @interactionCount Current tool call interaction count (used internally)
+	 *
+	 * @throws ProviderError if the provider returns an error from the request
+	 * @throws MaxInteractionsExceeded if tool calls exceed the maximum allowed interactions
 	 */
 	@override
-	public function chat( required AiRequest aiRequest ){
+	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ){
 		// No auth header, claude uses x-api-key
 		arguments.aiRequest
 			.setSendAuthHeader( false )
@@ -133,6 +139,24 @@ class extends="BaseService"{
 
 		// If Claude wants to use tools, we need to handle that
 		if( usingTools ){
+			/**
+			 * ---------------------------------------------------------------------------------------------------------
+			 * Max Interactions Check
+			 * ---------------------------------------------------------------------------------------------------------
+			 */
+			var maxAllowed = aiRequest.getMaxInteractions() > 0 ? aiRequest.getMaxInteractions() : variables.maxInteractions;
+			if( arguments.interactionCount >= maxAllowed ){
+				writeLog(
+					text: "Max tool call interactions (#maxAllowed#) exceeded",
+					type: "error",
+					log : "ai"
+				)
+				throw(
+					type   : "MaxInteractionsExceeded",
+					message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
+				);
+			}
+
 			var toolCalls = result.content.filter( contentBlock -> contentBlock?.type == "tool_use" );
 
 			// Add the role assistant message with tool calls
@@ -147,18 +171,25 @@ class extends="BaseService"{
 				executeClaudeTool( toolCall, aiRequest );
 			}
 
-			// Recursively call chat with the updated chat request
-			return chat( aiRequest );
+			// Recursively call chat with the updated chat request and incremented interaction count
+			return chat( aiRequest, arguments.interactionCount + 1 );
 		}
 
 		// Determine return formats
+		var content = result.content.first().text
 		switch( aiRequest.getReturnFormat() ){
 			case "all":
 				return result.content;
 			case "raw":
 				return result;
 			case "single": default:
-				return result.content.first().text;
+				return content;
+			case "json":
+				return parseJson( content );
+			case "xml" :
+				return xmlParse( content );
+			case  "structuredOutput":
+				return populateStructuredOutput( content, aiRequest );
 		}
 	}
 

@@ -76,7 +76,8 @@ public class ClaudeTest extends BaseIntegrationTest {
 			result = aiChat(
 				messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.",
 				params = {
-					tools: [ tool ]
+					tools: [ tool ],
+					logResponseToConsole: true
 				} )
 			println( result )
 			""",
