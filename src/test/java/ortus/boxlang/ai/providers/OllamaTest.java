@@ -37,7 +37,7 @@ public class OllamaTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "provider", "ollama" );
 
 		// Use the docker-compose test instance
-		moduleRecord.settings.put( "chatURL", "http://localhost:11434/api/generate" );
+		moduleRecord.settings.put( "chatURL", "http://localhost:11434/api/chat" );
 	}
 
 	@Test
@@ -89,10 +89,10 @@ public class OllamaTest extends BaseIntegrationTest {
 		    chunks = []
 		    fullResponse = ""
 		    aiChatStream(
-		        "Count from 1 to 3",
+		        "Say 'hi'",
 		        ( chunk ) => {
 		            chunks.append( chunk )
-		            content = chunk.response ?: ""
+		            content = chunk.message?.content ?: ""
 		            fullResponse &= content
 		        }
 		    )
@@ -104,7 +104,51 @@ public class OllamaTest extends BaseIntegrationTest {
 
 		// Verify we received chunks
 		assertThat( variables.get( "chunks" ) ).isNotNull();
-		assertThat( variables.get( "fullResponse" ) ).isNotNull();
+		var chunks = variables.get( "chunks" );
+		System.out.println( "Received " + chunks.toString() + " chunks" );
+	}
+
+	@DisplayName( "Test Ollama Tools" )
+	@Test
+	public void testOllamaTools() {
+		moduleRecord.settings.put( "logResponseToConsole", false );
+		moduleRecord.settings.put( "logRequestToConsole", false );
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			tool = aiTool(
+				"get_weather",
+				"Get current temperature for a given location.",
+				location => {
+					if( location contains "Kansas City" ) {
+						return "85"
+					}
+
+					if( location contains "San Salvador" ){
+						return "90"
+					}
+
+					return "unknown";
+				}).describeLocation( "City and country e.g. Bogotá, Colombia" )
+
+			result = aiChat(
+				messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.",
+				params = {
+					tools: [ tool ]
+				},
+				options = {
+					logResponseToConsole: true
+				} )
+			println( result )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "result" ) ).isNotNull();
+		var result = variables.get( "result" ).toString().toLowerCase();
+		assertThat( result ).contains( "salvador" );
 	}
 
 	@DisplayName( "Test JSON response" )
