@@ -190,7 +190,7 @@ class extends="BaseService"{
 
 		// Buffer for accumulating partial lines
 		var buffer = "";
-		
+
 		// Capture callback in local variable for closure
 		var userCallback = arguments.callback;
 		var thisAiRequest = arguments.aiRequest;
@@ -220,25 +220,25 @@ class extends="BaseService"{
 				// For regular streaming (not SSE), onChunk receives:
 				// chunkNumber, content (string), totalBytes, httpResult, httpClient, response
 				// Ollama sends newline-delimited JSON: {"message":{...}}\n{"message":{...}}\n
-				
+
 				// Append chunk to buffer
 				buffer &= content;
-				
+
 				// Process complete lines
 				var lines = buffer.split( char(10) );
-				
+
 				// Keep the last potentially incomplete line in the buffer
 				buffer = lines[ lines.len() ];
-				
+
 				// Process complete lines (all but the last)
 				for( var i = 1; i <= lines.len() - 1; i++ ){
 					var line = lines[ i ].trim();
-					
+
 					// Skip empty lines
 					if( line.isEmpty() ){
 						continue;
 					}
-					
+
 					// Each line is a complete JSON object
 					try {
 						var parsedChunk = jsonDeserialize( line );
@@ -254,7 +254,7 @@ class extends="BaseService"{
 			} )
 			.onError( ( error, httpResult ) => {
 				var errorMessage = "HTTP Error: #error.message#";
-				
+
 				writeLog(
 					text: "Stream Request Error: #errorMessage#",
 					type: "error",
