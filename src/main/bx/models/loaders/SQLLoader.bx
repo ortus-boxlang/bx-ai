@@ -68,15 +68,6 @@ class extends="BaseDocumentLoader" {
 	}
 
 	/**
-	 * Get the loader name
-	 *
-	 * @return The loader name
-	 */
-	string function getName() {
-		return "SQLLoader";
-	}
-
-	/**
 	 * Load documents from database query
 	 *
 	 * @return Array of Document objects
@@ -86,18 +77,18 @@ class extends="BaseDocumentLoader" {
 			throw(
 				type    : "SQLLoader.NoQuery",
 				message : "No SQL query specified"
-			);
+			)
 		}
 
 		// Build query options
-		var queryOptions = {};
+		var queryOptions = {}
 
 		if ( len( variables.config.datasource ) ) {
-			queryOptions[ "datasource" ] = variables.config.datasource;
+			queryOptions[ "datasource" ] = variables.config.datasource
 		}
 
 		if ( variables.config.maxRows > 0 ) {
-			queryOptions[ "maxRows" ] = variables.config.maxRows;
+			queryOptions[ "maxRows" ] = variables.config.maxRows
 		}
 
 		// Execute query
@@ -105,13 +96,13 @@ class extends="BaseDocumentLoader" {
 			variables.sqlQuery,
 			variables.config.params,
 			queryOptions
-		);
+		)
 
 		// Convert to documents
 		if ( variables.config.rowsAsDocuments ) {
-			return convertRowsToDocuments( queryResult );
+			return convertRowsToDocuments( queryResult )
 		} else {
-			return [ convertQueryToDocument( queryResult ) ];
+			return [ convertQueryToDocument( queryResult ) ]
 		}
 	}
 
