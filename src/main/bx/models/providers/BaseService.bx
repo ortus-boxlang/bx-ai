@@ -577,6 +577,10 @@ abstract class implements="IAiService" {
 		required struct dataPacket,
 		required function callback
 	 ){
+		// Capture callback and aiRequest in local variables for closure scope
+		var userCallback = arguments.callback;
+		var thisAiRequest = arguments.aiRequest;
+
 		// Announce the request
 		BoxAnnounce(
 			"onAIRequest",
@@ -602,125 +606,92 @@ abstract class implements="IAiService" {
 			println( arguments.dataPacket )
 		}
 
-		bx: http
-			url     = getChatURL()
-			method  = "post"
-			result  = "chatResult"
-			charset = "utf-8"
-			timeout = arguments.aiRequest.getTimeout()
-		{
-			bx:httpParam type="header" name="content-type" value="application/json";
+		// Build HTTP request with fluent API
+		var httpRequest = http( getChatURL() )
+			.method( "POST" )
+			.charset( "utf-8" )
+			.timeout( arguments.aiRequest.getTimeout() )
+			.header( "content-type", "application/json" )
+			.sse( true ); // Enable SSE mode for Server-Sent Events
 
-			// Auth Header ONLY if the provider requires it
-			// This is the default for OpenAI
-			// If the provider does not require it, set it to false
-			if( arguments.aiRequest.getSendAuthHeader() ){
-				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.aiRequest.getApiKey()#";
-			}
-
-			// Custom Headers
-			for( var thisHeader in arguments.aiRequest.getHeaders() ){
-				bx:httpParam
-					type="header"
-					name="#thisHeader#"
-					value="#arguments.aiRequest.getHeaders()[ thisHeader ]#";
-			}
-
-			// Body Packet
-			bx:httpParam type="body" value=jsonSerialize( arguments.dataPacket );
+		// Auth Header ONLY if the provider requires it
+		if( arguments.aiRequest.getSendAuthHeader() ){
+			httpRequest.header( "Authorization", "Bearer #arguments.aiRequest.getApiKey()#" );
 		}
 
-		// Check for HTTP errors
-		if( chatResult.statusCode >= 300 ){
-			var errorMessage = "HTTP Error #chatResult.statusCode#";
-			try {
-				var errorData = jsonDeserialize( chatResult.filecontent );
-				if( errorData.keyExists( "error" ) ){
-					errorMessage = errorData.error.toString();
-				}
-			} catch( any e ){
-				// If we can't parse the error, use the raw response
-				errorMessage &= ": #chatResult.filecontent#";
-			}
-
-			writeLog(
-				text: "Stream Request Error: #errorMessage#",
-				type: "error",
-				log : "ai"
-			)
-
-			// Announce the error
-			BoxAnnounce( "onAIError", {
-				error: chatResult.keyExists( "error" ) ? chatResult.error : "Stream error",
-				errorMessage: errorMessage,
-				provider: this,
-				operation: "stream",
-				aiRequest: arguments.aiRequest,
-				canRetry: true
-			} );
-
-			throw(
-				type   : "ProviderError",
-				message: errorMessage
-			);
+		// Add custom headers
+		for( var thisHeader in arguments.aiRequest.getHeaders() ){
+			httpRequest.header( thisHeader, arguments.aiRequest.getHeaders()[ thisHeader ] );
 		}
 
-		// Process the streaming response
-		var streamContent = chatResult.filecontent;
-
-		// Log the response if enabled
-		if( arguments.aiRequest.getLogResponse() ){
-			writeLog(
-				text: "Stream Response from AI Provider: #streamContent.toString()#",
-				type: "info",
-				log : "ai"
-			)
-		}
-
-		// Parse and process Server-Sent Events (SSE) format
-		// OpenAI and most providers use SSE format: "data: {json}\n\n"
-		var lines = streamContent.split( "\n" );
-		var buffer = "";
-
-		for( var line in lines ){
-			line = line.trim();
-
-			// Skip empty lines
-			if( line.isEmpty() ){
-				continue;
-			}
-
-			// Check if it's a data line
-			if( line.startsWith( "data: " ) ){
-				var jsonData = line.substring( 6 ).trim();
+		// Set request body and setup callbacks
+		httpRequest
+			.body( jsonSerialize( arguments.dataPacket ) )
+			.onChunk( ( chunk, lastEventId, httpResult, httpClient, response ) => {
+				// chunk is already parsed SSE data: { data, event, id, retry }
+				// For SSE streams, chunk.data contains the actual payload
 
 				// Check for stream end marker
-				if( jsonData == "[DONE]" ){
-					break;
+				if( chunk.data == "[DONE]" ){
+					return;
 				}
 
 				// Try to parse and send to callback
 				try {
-					var chunk = jsonDeserialize( jsonData );
-					arguments.callback( chunk );
+					var parsedChunk = jsonDeserialize( chunk.data );
+					userCallback( parsedChunk );
 				} catch( any e ){
 					writeLog(
-						text: "Error parsing stream chunk: #e.message# - Data: #jsonData#",
+						text: "Error parsing stream chunk: #e.message# - Data: #chunk.data#",
 						type: "error",
 						log : "ai"
 					)
 				}
-			}
-		}
+			} )
+			.onError( ( error, httpResult ) => {
+				var errorMessage = "HTTP Error: #error.message#";
 
-		BoxAnnounce(
-			"onAIResponse",
-			{
-				"aiRequest" : arguments.aiRequest,
-				"provider"    : this,
-				"streamComplete" : true
-			}
-		);
+				writeLog(
+					text: "Stream Request Error: #errorMessage#",
+					type: "error",
+					log : "ai"
+				)
+
+				// Announce the error
+				BoxAnnounce( "onAIError", {
+					error: error,
+					errorMessage: errorMessage,
+					provider: this,
+					operation: "stream",
+					aiRequest: thisAiRequest,
+					canRetry: true
+				} );
+
+				throw(
+					type   : "ProviderError",
+					message: errorMessage
+				);
+			} )
+			.onComplete( ( httpResult ) => {
+				// Log the response if enabled
+				if( thisAiRequest.getLogResponse() ){
+					writeLog(
+						text: "Stream completed successfully",
+						type: "info",
+						log : "ai"
+					)
+				}
+
+				BoxAnnounce(
+					"onAIResponse",
+					{
+						"aiRequest" : thisAiRequest,
+						"provider"    : this,
+						"streamComplete" : true
+					}
+				);
+			} )
+			.send();
 	}
 
 	/**
