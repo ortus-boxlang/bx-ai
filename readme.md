@@ -359,7 +359,7 @@ graph LR
     QUERY --> RETRIEVE[🔍 Retrieve Relevant Docs]
     RETRIEVE --> INJECT[💉 Inject into Context]
     INJECT --> AI[🤖 AI Response]
-    
+
     style LOAD fill:#4A90E2
     style EMBED fill:#BD10E0
     style STORE fill:#50E3C2

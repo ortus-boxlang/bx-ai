@@ -7,6 +7,18 @@ icon: brain-circuit
 
 Retrieval-Augmented Generation (RAG) combines the power of document retrieval with AI generation to create intelligent systems that answer questions using your own data. BoxLang AI provides a complete RAG workflow from document loading to context injection.
 
+## 📖 Table of Contents
+
+- [What is RAG?](#-what-is-rag)
+- [Complete RAG Workflow](#-complete-rag-workflow)
+- [Quick Start: Complete RAG System](#-quick-start-complete-rag-system)
+- [Step-by-Step Implementation](#-step-by-step-implementation)
+- [Advanced RAG Patterns](#-advanced-rag-patterns)
+- [Vector Database Options](#-vector-database-options)
+- [Performance Optimization](#-performance-optimization)
+- [Best Practices](#-best-practices)
+- [Monitoring & Metrics](#-monitoring--metrics)
+
 ## 🎯 What is RAG?
 
 RAG enhances AI responses by:
@@ -25,7 +37,7 @@ graph TB
         Q1[User Question] --> AI1[AI Model]
         AI1 --> A1[Answer from<br/>training data]
     end
-    
+
     subgraph "RAG System"
         Q2[User Question] --> EMB[Embed Query]
         EMB --> SEARCH[Vector Search]
@@ -34,7 +46,7 @@ graph TB
         INJECT --> AI2[AI Model]
         AI2 --> A2[Answer based on<br/>your documents]
     end
-    
+
     style AI1 fill:#FF6B6B
     style AI2 fill:#4A90E2
     style DOCS fill:#50E3C2
@@ -49,7 +61,7 @@ graph TB
     LOAD --> CHUNK[✂️ Chunk Text]
     CHUNK --> EMBED[🧬 Generate Embeddings]
     EMBED --> STORE[💾 Store in Vector DB]
-    
+
     QUERY[❓ User Query] --> QEMBED[🧬 Embed Query]
     QEMBED --> SEARCH[🔍 Vector Search]
     STORE --> SEARCH
@@ -57,7 +69,7 @@ graph TB
     RETRIEVE --> CONTEXT[💉 Inject into Context]
     CONTEXT --> AI[🤖 AI Generation]
     AI --> RESPONSE[✅ Grounded Response]
-    
+
     style LOAD fill:#4A90E2
     style EMBED fill:#BD10E0
     style STORE fill:#50E3C2
@@ -163,7 +175,7 @@ allChunks = [];
 for ( doc in docs ) {
     // Chunk the document
     chunks = chunker.chunk( doc.getContent() );
-    
+
     // Create Document objects for each chunk
     for ( var i = 1; i <= chunks.len(); i++ ) {
         var chunkDoc = new Document(
@@ -254,7 +266,7 @@ message = aiMessage()
     .system( """
         You are a helpful assistant. Answer questions using ONLY the provided context.
         If the answer is not in the context, say "I don't have that information."
-        
+
         Context:
         ${context}
     """ )
@@ -317,15 +329,15 @@ apiMemory = aiMemory( "chroma", {
 // Query all sources
 function multiSourceRAG( query ) {
     var allResults = [];
-    
+
     // Retrieve from each source
     allResults.append( docsMemory.getRelevant( query, 3 ), true );
     allResults.append( codeMemory.getRelevant( query, 2 ), true );
     allResults.append( apiMemory.getRelevant( query, 2 ), true );
-    
+
     // Sort by score
     allResults.sort( (a, b) => b.score - a.score );
-    
+
     // Take top 5 overall
     return allResults.slice( 1, 5 );
 }
@@ -341,13 +353,13 @@ Combine traditional keyword search with vector similarity:
 function hybridSearch( query, limit=5 ) {
     // Semantic search via vectors
     var semanticResults = vectorMemory.getRelevant( query, limit * 2 );
-    
+
     // Keyword search (simulate with simple text matching)
     var keywordResults = performKeywordSearch( query );
-    
+
     // Combine and re-rank
     var combined = {};
-    
+
     // Add semantic results (higher weight)
     for ( var doc in semanticResults ) {
         combined[ doc.id ] = {
@@ -355,7 +367,7 @@ function hybridSearch( query, limit=5 ) {
             score: doc.score * 0.7  // 70% weight to semantic
         };
     }
-    
+
     // Add keyword results
     for ( var doc in keywordResults ) {
         if ( structKeyExists( combined, doc.id ) ) {
@@ -367,14 +379,14 @@ function hybridSearch( query, limit=5 ) {
             };
         }
     }
-    
+
     // Sort by combined score
     var results = [];
     for ( var id in combined ) {
         results.append( combined[id] );
     }
     results.sort( (a, b) => b.score - a.score );
-    
+
     return results.slice( 1, min( limit, results.len() ) )
         .map( r => r.doc );
 }
@@ -392,31 +404,31 @@ vectorMemory = aiMemory( "chroma", { collection: "kb" } );
 function conversationalRAG( userMessage ) {
     // Get recent conversation context
     var history = conversationMemory.getAll();
-    
+
     // Retrieve relevant documents for this query
     var docs = vectorMemory.getRelevant( userMessage, 3 );
-    
+
     // Build context with conversation + documents
     var messages = [];
-    
+
     messages.append( aiMessage().system( """
         Answer using the provided documents and conversation history.
         Documents: ${docs}
     """ ).setContext( docs.map( d => d.text ).toList( "\n\n" ) ).render()[1] );
-    
+
     // Add conversation history
     messages.append( history, true );
-    
+
     // Add current message
     messages.append( aiMessage().user( userMessage ).render()[1] );
-    
+
     // Get response
     var response = aiChat( messages );
-    
+
     // Store in conversation memory
     conversationMemory.add( aiMessage().user( userMessage ) );
     conversationMemory.add( aiMessage().assistant( response ) );
-    
+
     return response;
 }
 
@@ -433,16 +445,16 @@ Improve relevance with re-ranking:
 ```javascript
 function rerankDocuments( query, documents, topK=3 ) {
     // First pass: Vector similarity (already done)
-    
+
     // Second pass: Re-rank with more sophisticated model
     var reranked = [];
-    
+
     for ( var doc in documents ) {
         // Calculate additional relevance signals
         var keywordScore = calculateKeywordMatch( query, doc.text );
         var freshnessScore = calculateFreshness( doc.metadata.created );
         var lengthScore = calculateLengthScore( doc.text );
-        
+
         // Combine scores
         var finalScore = (
             doc.score * 0.6 +          // Original similarity
@@ -450,16 +462,16 @@ function rerankDocuments( query, documents, topK=3 ) {
             freshnessScore * 0.1 +     // Recency
             lengthScore * 0.1          // Length appropriateness
         );
-        
+
         reranked.append( {
             doc: doc,
             score: finalScore
         } );
     }
-    
+
     // Sort by new score
     reranked.sort( (a, b) => b.score - a.score );
-    
+
     return reranked.slice( 1, topK ).map( r => r.doc );
 }
 ```
@@ -567,11 +579,11 @@ var embeddingCache = {};
 
 function getEmbeddingCached( text ) {
     var key = hash( text );
-    
+
     if ( !structKeyExists( embeddingCache, key ) ) {
         embeddingCache[ key ] = aiEmbed( text );
     }
-    
+
     return embeddingCache[ key ];
 }
 ```
@@ -585,14 +597,14 @@ var allDocs = loadAllDocuments();
 
 for ( var i = 1; i <= allDocs.len(); i += batchSize ) {
     var batch = allDocs.slice( i, min( i + batchSize - 1, allDocs.len() ) );
-    
+
     // Batch embed and store
     aiMemoryIngest(
         memory = vectorMemory,
         documents = batch,
         ingestOptions = { chunkSize: 1000 }
     );
-    
+
     println( "Processed batch #ceiling(i/batchSize)#" );
 }
 ```
@@ -623,24 +635,24 @@ for ( var i = 1; i <= allDocs.len(); i += batchSize ) {
 ```javascript
 function ragWithMetrics( query ) {
     var startTime = getTickCount();
-    
+
     // Track retrieval
     var retrievalStart = getTickCount();
     var docs = vectorMemory.getRelevant( query, 5 );
     var retrievalTime = getTickCount() - retrievalStart;
-    
+
     // Track generation
     var generationStart = getTickCount();
     var response = generateResponse( query, docs );
     var generationTime = getTickCount() - generationStart;
-    
+
     // Log metrics
     writeLog(
         text = "RAG Metrics - Query: #query#, Docs: #docs.len()#, Retrieval: #retrievalTime#ms, Generation: #generationTime#ms",
         type = "information",
         file = "rag-metrics"
     );
-    
+
     return {
         response: response,
         metrics: {

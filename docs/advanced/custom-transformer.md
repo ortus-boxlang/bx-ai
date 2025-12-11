@@ -25,18 +25,18 @@ graph LR
     T1 --> T2[Transformer 2]
     T2 --> T3[Transformer 3]
     T3 --> OUTPUT[Output Data]
-    
+
     subgraph "Custom Transformer"
         T2
         LOGIC[Custom Logic]
         VALIDATE[Validation]
         FORMAT[Format]
     end
-    
+
     T2 -.-> LOGIC
     T2 -.-> VALIDATE
     T2 -.-> FORMAT
-    
+
     style T2 fill:#4A90E2
     style OUTPUT fill:#50E3C2
 ```
@@ -53,7 +53,7 @@ interface {
      * @return Transformed data
      */
     public any function transform( required any input );
-    
+
     /**
      * Configure the transformer
      * @param config Configuration struct
@@ -75,11 +75,11 @@ import bxModules.bxai.models.transformers.BaseTransformer;
  * Cleans and normalizes text content
  */
 class extends="BaseTransformer" {
-    
+
     property name="trim" type="boolean" default="true";
     property name="removeExtraSpaces" type="boolean" default="true";
     property name="stripHTML" type="boolean" default="false";
-    
+
     /**
      * Initialize with configuration
      */
@@ -89,36 +89,36 @@ class extends="BaseTransformer" {
         variables.stripHTML = arguments.config.stripHTML ?: false;
         return this;
     }
-    
+
     /**
      * Transform text by cleaning it
      */
     function transform( required any input ) {
         var text = arguments.input;
-        
+
         // Handle non-string input
         if ( !isSimpleValue( text ) ) {
             text = text.toString();
         }
-        
+
         // Strip HTML if configured
         if ( variables.stripHTML ) {
             text = reReplace( text, "<[^>]*>", "", "all" );
         }
-        
+
         // Remove extra spaces
         if ( variables.removeExtraSpaces ) {
             text = reReplace( text, "\s+", " ", "all" );
         }
-        
+
         // Trim whitespace
         if ( variables.trim ) {
             text = trim( text );
         }
-        
+
         return text;
     }
-    
+
     /**
      * Configure transformer (fluent)
      */
@@ -170,7 +170,7 @@ Create reusable transformers:
 // Define transformer
 jsonParser = aiTransform( response => {
     var content = response.content ?: "";
-    
+
     try {
         return jsonDeserialize( content );
     } catch ( any e ) {
@@ -219,21 +219,21 @@ import bxModules.bxai.models.transformers.BaseTransformer;
  * Validates and transforms JSON responses using schemas
  */
 class extends="BaseTransformer" {
-    
+
     property name="schema" type="struct";
     property name="strict" type="boolean" default="true";
     property name="defaults" type="struct";
-    
+
     function init( required struct schema, struct config={} ) {
         variables.schema = arguments.schema;
         variables.strict = arguments.config.strict ?: true;
         variables.defaults = arguments.config.defaults ?: {};
         return this;
     }
-    
+
     function transform( required any input ) {
         var data = arguments.input;
-        
+
         // Parse if string
         if ( isSimpleValue( data ) ) {
             try {
@@ -248,28 +248,28 @@ class extends="BaseTransformer" {
                 return {};
             }
         }
-        
+
         // Validate against schema
         var validated = validateSchema( data, variables.schema );
-        
+
         // Apply defaults for missing fields
         for ( var field in variables.defaults ) {
             if ( !structKeyExists( validated, field ) ) {
                 validated[ field ] = variables.defaults[ field ];
             }
         }
-        
+
         return validated;
     }
-    
+
     private function validateSchema( required struct data, required struct schema ) {
         var result = {};
-        
+
         // Validate each field in schema
         for ( var field in arguments.schema ) {
             var fieldSchema = arguments.schema[ field ];
             var value = arguments.data[ field ] ?: nullValue();
-            
+
             // Check required fields
             if ( fieldSchema.required ?: false ) {
                 if ( isNull( value ) ) {
@@ -282,7 +282,7 @@ class extends="BaseTransformer" {
                     continue;
                 }
             }
-            
+
             // Type validation
             if ( !isNull( value ) && structKeyExists( fieldSchema, "type" ) ) {
                 if ( !validateType( value, fieldSchema.type ) ) {
@@ -295,16 +295,16 @@ class extends="BaseTransformer" {
                     continue;
                 }
             }
-            
+
             // Add to result if valid
             if ( !isNull( value ) ) {
                 result[ field ] = value;
             }
         }
-        
+
         return result;
     }
-    
+
     private function validateType( required any value, required string type ) {
         switch ( arguments.type ) {
             case "string":
@@ -366,7 +366,7 @@ The `BaseTransformer` provides common functionality:
 
 ```javascript
 class extends="BaseTransformer" {
-    
+
     /**
      * Transform single value or array
      */
@@ -375,10 +375,10 @@ class extends="BaseTransformer" {
         if ( isArray( arguments.input ) ) {
             return arguments.input.map( item => transformSingle( item ) );
         }
-        
+
         return transformSingle( arguments.input );
     }
-    
+
     /**
      * Transform single item (override this)
      */
@@ -395,21 +395,21 @@ Implement fluent methods:
 
 ```javascript
 class extends="BaseTransformer" {
-    
+
     property name="maxLength" type="numeric" default="0";
     property name="prefix" type="string" default="";
     property name="suffix" type="string" default="";
-    
+
     function withMaxLength( required numeric length ) {
         variables.maxLength = arguments.length;
         return this;
     }
-    
+
     function withPrefix( required string prefix ) {
         variables.prefix = arguments.prefix;
         return this;
     }
-    
+
     function withSuffix( required string suffix ) {
         variables.suffix = arguments.suffix;
         return this;
@@ -489,22 +489,22 @@ Extract code blocks from AI responses:
 
 ```javascript
 class extends="BaseTransformer" {
-    
+
     function transform( required any input ) {
-        var content = isStruct( arguments.input ) ? 
-            arguments.input.content ?: "" : 
+        var content = isStruct( arguments.input ) ?
+            arguments.input.content ?: "" :
             arguments.input;
-        
+
         // Extract from markdown code blocks
         var pattern = "```[a-zA-Z]*\n(.*?)```";
         var matches = reMatchNoCase( pattern, content );
-        
+
         if ( matches.len() > 0 ) {
             // Get first code block
             var code = reReplaceNoCase( matches[1], "```[a-zA-Z]*\n(.*?)```", "\1" );
             return trim( code );
         }
-        
+
         return content;
     }
 }
@@ -516,27 +516,27 @@ Extract and format prices:
 
 ```javascript
 class extends="BaseTransformer" {
-    
+
     property name="currency" type="string" default="USD";
-    
+
     function transform( required any input ) {
         var text = arguments.input.toString();
-        
+
         // Find price patterns
         var pricePattern = "\$?([\d,]+\.?\d*)";
         var match = reFind( pricePattern, text, 1, true );
-        
+
         if ( match.pos[1] > 0 ) {
             var price = mid( text, match.pos[2], match.len[2] );
             price = replace( price, ",", "", "all" );
-            
+
             return {
                 amount: val( price ),
                 currency: variables.currency,
                 formatted: dollarFormat( val( price ) )
             };
         }
-        
+
         return { amount: 0, currency: variables.currency };
     }
 }
@@ -548,14 +548,14 @@ Add sentiment analysis:
 
 ```javascript
 class extends="BaseTransformer" {
-    
+
     function transform( required any input ) {
         var text = arguments.input.toString();
-        
+
         // Simple sentiment analysis
         var positiveWords = ["good", "great", "excellent", "happy", "love"];
         var negativeWords = ["bad", "terrible", "hate", "awful", "poor"];
-        
+
         var score = 0;
         for ( var word in positiveWords ) {
             score += findNoCase( word, text ) > 0 ? 1 : 0;
@@ -563,7 +563,7 @@ class extends="BaseTransformer" {
         for ( var word in negativeWords ) {
             score -= findNoCase( word, text ) > 0 ? 1 : 0;
         }
-        
+
         return {
             text: text,
             sentiment: score > 0 ? "positive" : (score < 0 ? "negative" : "neutral"),
@@ -583,12 +583,12 @@ function transform( required any input ) {
     if ( isStruct( arguments.input ) ) {
         return transformStruct( arguments.input );
     }
-    
+
     // Handle arrays
     if ( isArray( arguments.input ) ) {
         return arguments.input.map( item => transform( item ) );
     }
-    
+
     // Handle simple values
     return transformString( arguments.input.toString() );
 }
@@ -602,10 +602,10 @@ function transform( required any input ) {
     if ( isNull( arguments.input ) || arguments.input == "" ) {
         return variables.defaultValue ?: "";
     }
-    
+
     // Sanitize
     var cleaned = trim( arguments.input.toString() );
-    
+
     // Process
     return processCleanedInput( cleaned );
 }

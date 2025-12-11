@@ -1,6 +1,29 @@
-# Document Loaders
+# 📚 Document Loaders
 
 Document loaders are a powerful feature for importing content from various sources (files, directories, URLs, databases) into a standardized `Document` format that can be processed by AI workflows, stored in vector databases, or used for retrieval-augmented generation (RAG).
+
+## 📖 Table of Contents
+
+- [Overview](#overview)
+- [BIF Reference](#bif-reference)
+- [Document Structure](#document-structure)
+- [Available Loaders](#available-loaders)
+  - [TextLoader](#textloader)
+  - [MarkdownLoader](#markdownloader)
+  - [CSVLoader](#csvloader)
+  - [JSONLoader](#jsonloader)
+  - [XMLLoader](#xmlloader)
+  - [PDFLoader](#pdfloader)
+  - [LogLoader](#logloader)
+  - [HTTPLoader](#httploader)
+  - [FeedLoader](#feedloader)
+  - [SQLLoader](#sqlloader)
+  - [DirectoryLoader](#directoryloader)
+  - [WebCrawlerLoader](#webcrawlerloader)
+- [Memory Integration](#memory-integration)
+- [Chunking](#chunking)
+- [Transformations](#transformations)
+- [Advanced Usage](#advanced-usage)
 
 ## Overview
 

@@ -7,6 +7,23 @@ icon: robot
 
 AI Agents are autonomous entities that can reason, use tools, and maintain conversation memory. Inspired by LangChain agents but "Boxified" for simplicity and productivity, agents handle complex AI workflows by automatically managing state, context, and tool execution.
 
+## 📖 Table of Contents
+
+- [What are AI Agents?](#-what-are-ai-agents)
+- [Creating Agents](#-creating-agents)
+- [Memory Management](#-memory-management)
+- [Configuration](#-configuration)
+- [Return Formats](#-return-formats)
+- [Streaming Responses](#streaming-responses)
+- [Pipeline Integration](#pipeline-integration)
+- [Agents with Document Loaders & RAG](#-agents-with-document-loaders--rag)
+- [Agents with Transformers](#-agents-with-transformers)
+- [Advanced Patterns](#advanced-patterns)
+  - [Sub-Agents (Delegation)](#sub-agents-delegation)
+  - [Event Interception](#event-interception)
+- [Best Practices](#best-practices)
+- [Real-World Examples](#real-world-examples)
+
 ## 🎯 What are AI Agents?
 
 An agent is more than a simple chat interface - it's an intelligent entity that:
@@ -595,6 +612,329 @@ BoxRegisterInterceptor( interceptor )
 agent.run( "Hello" )
 ```
 
+## 📚 Agents with Document Loaders & RAG
+
+Agents can leverage document loaders and vector memory to access knowledge bases and provide grounded, factual responses.
+
+### 🔄 Agent RAG Workflow
+
+```mermaid
+graph TB
+    Q[User Query] --> A[Agent]
+    A --> R[Retrieve from Vector Memory]
+    R --> D[Relevant Documents]
+    D --> C[Inject into Context]
+    C --> AI[AI Model]
+    AI --> RESP[Grounded Response]
+
+    style A fill:#BD10E0
+    style R fill:#4A90E2
+    style D fill:#50E3C2
+    style AI fill:#7ED321
+```
+
+### Basic RAG Agent
+
+Create an agent with access to a knowledge base:
+
+```javascript
+// Step 1: Create vector memory
+vectorMemory = aiMemory( "chroma", {
+    collection: "product_docs",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small"
+} );
+
+// Step 2: Ingest documents using loaders
+result = aiMemoryIngest(
+    memory        = vectorMemory,
+    source        = "/docs/products",
+    type          = "directory",
+    loaderConfig  = { 
+        recursive: true, 
+        extensions: ["md", "txt", "pdf"] 
+    },
+    ingestOptions = { 
+        chunkSize: 1000, 
+        overlap: 200 
+    }
+);
+
+println( "📚 Loaded #result.documentsIn# documents as #result.chunksOut# chunks" );
+
+// Step 3: Create agent with vector memory
+agent = aiAgent(
+    name: "Product Support",
+    description: "Product documentation specialist",
+    instructions: "Answer questions using the product documentation. Always cite sources.",
+    memory: vectorMemory
+);
+
+// Step 4: Query - agent automatically retrieves relevant docs
+response = agent.run( "How do I configure SSL certificates?" );
+// Agent retrieves relevant docs from vector memory and provides accurate answer
+```
+
+### Multi-Source RAG Agent
+
+Combine multiple knowledge bases:
+
+```javascript
+// Create separate vector memories for different sources
+productDocs = aiMemory( "chroma", { collection: "product_docs" } );
+apiDocs = aiMemory( "chroma", { collection: "api_docs" } );
+faqMemory = aiMemory( "chroma", { collection: "faq" } );
+
+// Ingest different sources
+aiMemoryIngest( productDocs, "/docs/products", "directory" );
+aiMemoryIngest( apiDocs, "/docs/api", "directory" );
+aiMemoryIngest( faqMemory, "/docs/faq.md", "markdown" );
+
+// Agent with access to all knowledge bases
+agent = aiAgent(
+    name: "Knowledge Assistant",
+    description: "Multi-source documentation assistant",
+    memories: [ productDocs, apiDocs, faqMemory ]
+);
+
+// Agent searches across all memory systems
+response = agent.run( "Explain the authentication API" );
+```
+
+### RAG Agent with Real-Time Data Tools
+
+Combine document retrieval with live data access:
+
+```javascript
+// Vector memory for static docs
+docMemory = aiMemory( "chroma", { collection: "documentation" } );
+aiMemoryIngest( docMemory, "/docs", "directory" );
+
+// Tool for real-time data
+statusTool = aiTool(
+    "check_system_status",
+    "Check current system status and metrics",
+    () => getCurrentSystemStatus()
+);
+
+// Agent with both RAG and real-time capabilities
+agent = aiAgent(
+    name: "System Assistant",
+    instructions: "Answer questions using docs. Use status tool for real-time data.",
+    memory: docMemory,
+    tools: [ statusTool ]
+);
+
+// Agent uses docs for general questions
+response = agent.run( "What are the system requirements?" );
+
+// Agent uses tool for real-time status
+status = agent.run( "Is the system currently running?" );
+```
+
+### Custom Context Injection
+
+Manually inject specific context into agent queries:
+
+```javascript
+// Load specific documents
+docs = aiDocuments( "/docs/security.pdf", "pdf" );
+
+// Create agent
+agent = aiAgent(
+    name: "Security Advisor",
+    instructions: "Provide security advice based on documentation"
+);
+
+// Inject documents as context
+message = aiMessage()
+    .system( agent.getInstructions() )
+    .setContext( docs.map( d => d.content ).toList( "\n\n" ) )
+    .user( "What are the password requirements?" );
+
+response = agent.run( message.getMessages() );
+```
+
+### Conditional Document Loading
+
+Load documents based on user query:
+
+```javascript
+agent = aiAgent(
+    name: "Smart Assistant",
+    description: "Intelligent document retrieval assistant"
+);
+
+function smartQuery( required string userQuery ) {
+    // Determine which documents to load based on query
+    var docs = [];
+
+    if ( userQuery.contains( "API" ) ) {
+        docs = aiDocuments( "/docs/api", "directory" );
+    } else if ( userQuery.contains( "tutorial" ) ) {
+        docs = aiDocuments( "/docs/tutorials", "directory" );
+    } else {
+        docs = aiDocuments( "/docs/general", "directory" );
+    }
+
+    // Inject relevant docs and query
+    var context = docs.map( d => d.content ).toList( "\n\n" );
+    var message = aiMessage()
+        .system( agent.getInstructions() )
+        .setContext( context )
+        .user( userQuery );
+
+    return agent.run( message.getMessages() );
+}
+
+// Usage
+answer = smartQuery( "How do I use the API for authentication?" );
+```
+
+## 🔄 Agents with Transformers
+
+Agents can use transformers to process their inputs and outputs for specialized workflows.
+
+### Output Transformation
+
+Transform agent responses automatically:
+
+```javascript
+import bxModules.bxai.models.transformers.TextCleanerTransformer;
+
+// Create agent
+agent = aiAgent(
+    name: "Content Generator",
+    instructions: "Generate content based on user requests"
+);
+
+// Transform output
+cleaner = new TextCleanerTransformer({ 
+    stripHTML: true, 
+    removeExtraSpaces: true 
+});
+
+// Use in pipeline
+pipeline = aiMessage()
+    .user( "${prompt}" )
+    .to( agent )
+    .transform( r => r.content )
+    .to( cleaner )
+    .transform( cleaned => {
+        return {
+            cleaned: cleaned,
+            wordCount: cleaned.listLen( " " ),
+            charCount: len( cleaned )
+        }
+    } );
+
+result = pipeline.run({ prompt: "Write about BoxLang AI" });
+println( "Word count: #result.wordCount#" );
+```
+
+### Input Processing
+
+Pre-process user input before sending to agent:
+
+```javascript
+// Input transformer
+inputCleaner = aiTransform( input => {
+    return input
+        .trim()
+        .reReplace( "[^\w\s]", "", "all" )  // Remove special chars
+        .reReplace( "\s+", " ", "all" );     // Normalize spaces
+} );
+
+agent = aiAgent(
+    name: "Clean Input Agent",
+    instructions: "Process cleaned user inputs"
+);
+
+// Pipeline with input transformation
+pipeline = inputCleaner
+    .transform( cleaned => aiMessage().user( cleaned ) )
+    .to( agent );
+
+response = pipeline.run( "   What  is  BoxLang???   " );
+// Input is cleaned before reaching agent
+```
+
+### Structured Output from Agents
+
+Use transformers to extract structured data from agent responses:
+
+```javascript
+agent = aiAgent(
+    name: "Data Extractor",
+    instructions: "Extract structured information from text"
+);
+
+// Transformer to parse JSON responses
+jsonParser = aiTransform( response => {
+    try {
+        return jsonDeserialize( response.content );
+    } catch( any e ) {
+        return { error: "Invalid JSON", raw: response.content };
+    }
+} );
+
+// Pipeline: agent → extract content → parse JSON
+pipeline = aiMessage()
+    .user( "Extract person data from: ${text}" )
+    .to( agent )
+    .transform( r => r.content )
+    .to( jsonParser );
+
+data = pipeline.run({ text: "John Doe, age 30, john@example.com" });
+println( "Name: #data.name#" );
+```
+
+### Multi-Stage Agent Processing
+
+Chain multiple agents with transformers between them:
+
+```javascript
+// Agent 1: Research
+researcher = aiAgent(
+    name: "Researcher",
+    instructions: "Research topics thoroughly"
+);
+
+// Agent 2: Summarizer
+summarizer = aiAgent(
+    name: "Summarizer",
+    instructions: "Create concise summaries"
+);
+
+// Agent 3: Editor
+editor = aiAgent(
+    name: "Editor",
+    instructions: "Polish and format content"
+);
+
+// Transformer between stages
+formatter = aiTransform( text => {
+    return {
+        text: text,
+        sections: text.split( "\n\n" ),
+        wordCount: text.listLen( " " )
+    }
+} );
+
+// Multi-stage pipeline
+pipeline = aiMessage()
+    .user( "Research ${topic}" )
+    .to( researcher )
+    .transform( r => "Summarize: " & r.content )
+    .to( summarizer )
+    .transform( r => r.content )
+    .to( formatter )
+    .transform( data => "Edit: " & data.text )
+    .to( editor );
+
+result = pipeline.run({ topic: "Quantum Computing" });
+```
+
 ## Best Practices
 
 ### 1. Provide Clear Instructions
@@ -758,6 +1098,10 @@ conversation = researchAgent.getMemoryMessages()
 ## Next Steps
 
 - Explore [Memory Systems](./memory.md) for conversation history and context management
+- See [Vector Memory](./vector-memory.md) for semantic search and RAG workflows
+- Learn about [RAG Pipelines](./rag.md) for complete document-to-answer workflows
+- See [Document Loaders](./document-loaders.md) for loading data from various sources
+- Learn about [Transformers](./transformers.md) for data processing in pipelines
 - See [Message Context](../advanced/message-context.md) for injecting security and RAG data into agents
 - See [Custom Memory](../advanced/custom-memory.md) for building custom memory implementations
 - Learn about [Tools](./tools.md) for function calling patterns

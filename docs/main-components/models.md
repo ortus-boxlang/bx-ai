@@ -7,6 +7,17 @@ icon: brain
 
 Learn how to use AI models as pipeline-compatible runnables. Models wrap AI service providers for seamless integration into pipelines.
 
+## 📖 Table of Contents
+
+- [Creating Models](#-creating-models)
+- [Models in Pipelines](#-models-in-pipelines)
+- [Model Parameters](#-model-parameters)
+- [Model Options](#-model-options)
+- [Models with Document Loaders & RAG](#-models-with-document-loaders--rag)
+- [Models with Transformers](#-models-with-transformers)
+- [Model Patterns](#model-patterns)
+- [Advanced Usage](#advanced-usage)
+
 ## 🚀 Creating Models
 
 The `aiModel()` BIF creates pipeline-compatible AI models.
@@ -817,8 +828,352 @@ pipeline = aiMessage()
 result = pipeline.run( { task: "sort array" } )
 ```
 
+## 📚 Models with Document Loaders & RAG
+
+Models can be integrated with document loaders and vector memory to create powerful RAG (Retrieval-Augmented Generation) systems.
+
+### 🔄 Model RAG Flow
+
+```mermaid
+graph TB
+    DOCS[Load Documents] --> CHUNK[Chunk Text]
+    CHUNK --> EMB[Generate Embeddings]
+    EMB --> STORE[Vector Memory]
+    
+    Q[User Query] --> QEMB[Embed Query]
+    QEMB --> SEARCH[Vector Search]
+    STORE --> SEARCH
+    SEARCH --> CONTEXT[Relevant Docs]
+    CONTEXT --> MSG[Inject into Message]
+    MSG --> MODEL[AI Model]
+    MODEL --> RESP[Grounded Response]
+
+    style MODEL fill:#4A90E2
+    style STORE fill:#50E3C2
+    style RESP fill:#7ED321
+```
+
+### Basic RAG with Model
+
+```javascript
+// Step 1: Create vector memory
+vectorMemory = aiMemory( "chroma", {
+    collection: "knowledge_base",
+    embeddingProvider: "openai"
+} );
+
+// Step 2: Load and ingest documents
+result = aiMemoryIngest(
+    memory        = vectorMemory,
+    source        = "/docs",
+    type          = "directory",
+    loaderConfig  = { recursive: true, extensions: ["md", "pdf"] },
+    ingestOptions = { chunkSize: 1000, overlap: 200 }
+);
+
+// Step 3: Query with context injection
+function ragQuery( required string question ) {
+    // Retrieve relevant documents
+    relevantDocs = vectorMemory.getRelevant( 
+        text  = arguments.question, 
+        limit = 3 
+    );
+    
+    // Build context from documents
+    context = relevantDocs.map( d => d.content ).toList( "\n\n" );
+    
+    // Create message with context
+    message = aiMessage()
+        .system( "Answer using only the provided context. If unsure, say so." )
+        .setContext( context )
+        .user( arguments.question );
+    
+    // Use model to generate answer
+    model = aiModel( "openai" )
+        .withParams({ temperature: 0.2 });  // Lower temp for factual answers
+    
+    return message.to( model ).run();
+}
+
+// Usage
+answer = ragQuery( "How do I configure SSL?" );
+```
+
+### Multi-Source RAG Pipeline
+
+```javascript
+// Load different document types
+pdfDocs = aiDocuments( "/docs/manuals", "directory", { 
+    extensions: ["pdf"],
+    recursive: true 
+} );
+
+markdownDocs = aiDocuments( "/docs/guides", "directory", {
+    extensions: ["md"],
+    recursive: true
+} );
+
+webDocs = aiDocuments( "https://example.com/api-docs", "http" );
+
+// Combine all documents
+allDocs = pdfDocs.append( markdownDocs ).append( webDocs );
+
+// Ingest into vector memory
+vectorMemory = aiMemory( "chroma", { collection: "multi_source" } );
+aiMemoryIngest( 
+    memory    = vectorMemory,
+    source    = allDocs,
+    type      = "documents"
+);
+
+// RAG pipeline with model
+ragPipeline = aiMessage()
+    .system( "You are a documentation assistant" )
+    .user( "${query}" )
+    .to( aiModel( "openai" ).withParams({ temperature: 0.3 }) )
+    .transform( r => r.content );
+
+// Query uses all sources
+answer = ragPipeline.run({ query: "Explain the authentication flow" });
+```
+
+### Conditional Document Loading
+
+```javascript
+function smartRAG( required string query ) {
+    var docs = [];
+    var model = aiModel( "openai" );
+    
+    // Load different docs based on query type
+    if ( query.contains( "API" ) || query.contains( "endpoint" ) ) {
+        docs = aiDocuments( "/docs/api", "directory" );
+        model.withParams({ temperature: 0.1 });  // Very factual
+    } else if ( query.contains( "tutorial" ) || query.contains( "example" ) ) {
+        docs = aiDocuments( "/docs/tutorials", "directory" );
+        model.withParams({ temperature: 0.5 });  // Moderate creativity
+    } else {
+        docs = aiDocuments( "/docs/general", "directory" );
+        model.withParams({ temperature: 0.3 });
+    }
+    
+    // Build context and query
+    context = docs.map( d => d.content ).toList( "\n\n" );
+    
+    return aiMessage()
+        .system( "Answer based on the documentation provided" )
+        .setContext( context )
+        .user( query )
+        .to( model )
+        .run();
+}
+
+// Usage
+apiAnswer = smartRAG( "How do I call the /users API endpoint?" );
+tutorialAnswer = smartRAG( "Show me a tutorial for authentication" );
+```
+
+### Hybrid Search RAG
+
+Combine keyword search with semantic search:
+
+```javascript
+function hybridRAG( required string query ) {
+    // Semantic search via vector memory
+    vectorMemory = aiMemory( "chroma", { collection: "docs" } );
+    semanticDocs = vectorMemory.getRelevant( query, limit = 3 );
+    
+    // Keyword search
+    keywordDocs = aiDocuments( "/docs", "directory" )
+        .filter( doc => doc.content.contains( query ) )
+        .slice( 1, 3 );
+    
+    // Combine and deduplicate
+    allDocs = semanticDocs.append( keywordDocs );
+    uniqueDocs = allDocs.reduce( ( acc, doc ) => {
+        if ( !acc.some( d => d.id == doc.id ) ) {
+            acc.append( doc );
+        }
+        return acc;
+    }, [] );
+    
+    // Build context
+    context = uniqueDocs.map( d => d.content ).toList( "\n\n" );
+    
+    // Query model
+    return aiMessage()
+        .system( "Answer using the provided documentation" )
+        .setContext( context )
+        .user( query )
+        .to( aiModel( "openai" ) )
+        .run();
+}
+```
+
+## 🔄 Models with Transformers
+
+Models work seamlessly with transformers for data processing pipelines.
+
+### Output Transformation
+
+```javascript
+import bxModules.bxai.models.transformers.TextCleanerTransformer;
+
+// Model with output cleaning
+cleaner = new TextCleanerTransformer({ 
+    stripHTML: true,
+    removeExtraSpaces: true 
+});
+
+pipeline = aiMessage()
+    .user( "Generate HTML content about ${topic}" )
+    .to( aiModel( "openai" ) )
+    .transform( r => r.content )
+    .to( cleaner )
+    .transform( cleaned => {
+        return {
+            content: cleaned,
+            wordCount: cleaned.listLen( " " ),
+            readingTime: ceiling( cleaned.listLen( " " ) / 200 )
+        }
+    } );
+
+result = pipeline.run({ topic: "BoxLang" });
+println( "Reading time: #result.readingTime# minutes" );
+```
+
+### Input Processing
+
+```javascript
+// Pre-process input before model
+inputProcessor = aiTransform( input => {
+    return input
+        .trim()
+        .reReplace( "\s+", " ", "all" )      // Normalize spaces
+        .reReplace( "[^a-zA-Z0-9\s]", "", "all" );  // Remove special chars
+} );
+
+model = aiModel( "openai" );
+
+pipeline = inputProcessor
+    .transform( cleaned => aiMessage().user( "Process: " & cleaned ) )
+    .to( model )
+    .transform( r => r.content );
+
+result = pipeline.run( "   What   is   BoxLang???   " );
+```
+
+### Multi-Stage Processing
+
+```javascript
+// Stage 1: Generate with creative model
+generator = aiModel( "openai" )
+    .withParams({ temperature: 0.9, model: "gpt-4" })
+    .withName( "generator" );
+
+// Stage 2: Review with analytical model
+reviewer = aiModel( "claude" )
+    .withParams({ temperature: 0.2 })
+    .withName( "reviewer" );
+
+// Stage 3: Format with local model
+formatter = aiModel( "ollama" )
+    .withParams({ model: "llama3.2" })
+    .withName( "formatter" );
+
+// Complete pipeline
+pipeline = aiMessage()
+    .user( "Write about ${topic}" )
+    .to( generator )
+    .transform( r => "Review this content:\n" & r.content )
+    .to( reviewer )
+    .transform( r => "Format this:\n" & r.content )
+    .to( formatter )
+    .transform( r => r.content );
+
+result = pipeline.run({ topic: "Future of AI" });
+```
+
+### Document Processing Pipeline
+
+```javascript
+import bxModules.bxai.models.util.TextChunker;
+
+// Load documents
+docs = aiDocuments( "/docs/report.pdf", "pdf" );
+
+// Chunk large document
+chunks = TextChunker::chunk( docs.first().content, {
+    chunkSize: 1000,
+    overlap: 200
+} );
+
+// Process each chunk through model
+summarizer = aiModel( "openai" )
+    .withParams({ temperature: 0.3, max_tokens: 150 });
+
+summaries = chunks.map( chunk => {
+    return aiMessage()
+        .system( "Summarize this section concisely" )
+        .user( chunk.text )
+        .to( summarizer )
+        .transform( r => r.content )
+        .run();
+} );
+
+// Combine summaries
+finalSummary = aiMessage()
+    .system( "Create a cohesive summary from these section summaries" )
+    .user( summaries.toList( "\n\n" ) )
+    .to( aiModel( "openai" ).withParams({ temperature: 0.4 }) )
+    .run();
+```
+
+### Structured Output with Transformers
+
+```javascript
+// Model generates, transformer validates and structures
+model = aiModel( "openai" );
+
+validator = aiTransform( response => {
+    try {
+        data = jsonDeserialize( response.content );
+        
+        // Validate structure
+        if ( !structKeyExists( data, "name" ) ) {
+            throw( "Missing name field" );
+        }
+        
+        return {
+            valid: true,
+            data: data,
+            timestamp: now()
+        };
+    } catch( any e ) {
+        return {
+            valid: false,
+            error: e.message,
+            raw: response.content
+        };
+    }
+} );
+
+pipeline = aiMessage()
+    .system( "Return valid JSON only" )
+    .user( "Extract person data: ${text}" )
+    .to( model )
+    .to( validator );
+
+result = pipeline.run({ text: "John Doe, age 30, developer" });
+if ( result.valid ) {
+    println( "Name: #result.data.name#" );
+}
+```
+
 ## Next Steps
 
 - **[Message Templates](messages.md)** - Build dynamic prompts
 - **[Transformers](transformers.md)** - Process model outputs
+- **[Document Loaders](document-loaders.md)** - Load data from various sources
+- **[RAG Guide](rag.md)** - Complete RAG workflow documentation
+- **[Vector Memory](vector-memory.md)** - Semantic search and embeddings
 - **[Pipeline Streaming](streaming.md)** - Real-time responses

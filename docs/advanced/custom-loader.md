@@ -28,14 +28,14 @@ graph TB
         META[Metadata Extraction]
         CONFIG[Configuration]
     end
-    
+
     subgraph "Document Pipeline"
         DOC[Document Objects]
         CHUNK[Chunking]
         EMBED[Embeddings]
         MEM[Memory Storage]
     end
-    
+
     BASE --> IMPL
     IMPL --> CONFIG
     IMPL --> LOAD
@@ -44,7 +44,7 @@ graph TB
     DOC --> CHUNK
     CHUNK --> EMBED
     EMBED --> MEM
-    
+
     style IMPL fill:#4A90E2
     style DOC fill:#50E3C2
     style MEM fill:#BD10E0
@@ -61,19 +61,19 @@ interface {
      * @return Array of Document objects
      */
     public array function load();
-    
+
     /**
      * Load documents asynchronously
      * @return BoxLang Future resolving to array of Documents
      */
     public any function loadAsync();
-    
+
     /**
      * Get the source being loaded
      * @return string
      */
     public string function getSource();
-    
+
     /**
      * Configure the loader
      * @param config Configuration struct
@@ -96,38 +96,38 @@ import bxModules.bxai.models.loaders.BaseDocumentLoader;
  * Custom loader for REST API endpoints
  */
 class extends="BaseDocumentLoader" {
-    
+
     property name="apiKey" type="string" default="";
     property name="endpoint" type="string" default="";
-    
+
     /**
      * Initialize the loader
      */
     function init( required string source, struct config={} ) {
         super.init( argumentCollection=arguments );
-        
+
         // Extract API configuration
         variables.endpoint = arguments.source;
         variables.apiKey = arguments.config.apiKey ?: "";
-        
+
         return this;
     }
-    
+
     /**
      * Load documents from API
      */
     function load() {
         var documents = [];
-        
+
         try {
             // Make HTTP request
             var response = httpRequest( variables.endpoint )
                 .setMethod( "GET" )
                 .addHeader( "Authorization", "Bearer #variables.apiKey#" )
                 .send();
-            
+
             var data = response.getDataAsJSON();
-            
+
             // Convert each item to a Document
             for ( var item in data.items ) {
                 var doc = new Document(
@@ -142,7 +142,7 @@ class extends="BaseDocumentLoader" {
                 );
                 documents.append( doc );
             }
-            
+
         } catch ( any e ) {
             throw(
                 type    = "APILoaderException",
@@ -150,7 +150,7 @@ class extends="BaseDocumentLoader" {
                 detail  = e.detail
             );
         }
-        
+
         return documents;
     }
 }
@@ -201,11 +201,11 @@ Implement fluent methods for your custom configuration:
 
 ```javascript
 class extends="BaseDocumentLoader" {
-    
+
     property name="apiKey" type="string" default="";
     property name="maxResults" type="numeric" default="100";
     property name="filterTag" type="string" default="";
-    
+
     /**
      * Set API key (fluent)
      */
@@ -213,7 +213,7 @@ class extends="BaseDocumentLoader" {
         variables.apiKey = arguments.apiKey;
         return this;
     }
-    
+
     /**
      * Set max results (fluent)
      */
@@ -221,7 +221,7 @@ class extends="BaseDocumentLoader" {
         variables.maxResults = arguments.count;
         return this;
     }
-    
+
     /**
      * Filter by tag (fluent)
      */
@@ -255,91 +255,91 @@ import bxModules.bxai.models.loaders.BaseDocumentLoader;
  * Custom loader for database queries
  */
 class extends="BaseDocumentLoader" {
-    
+
     property name="datasource" type="string" default="";
     property name="query" type="string" default="";
     property name="batchSize" type="numeric" default="100";
     property name="contentColumn" type="string" default="content";
     property name="metadataColumns" type="array";
-    
+
     function init( required string datasource, required string query, struct config={} ) {
         variables.datasource = arguments.datasource;
         variables.query = arguments.query;
         variables.batchSize = arguments.config.batchSize ?: 100;
         variables.contentColumn = arguments.config.contentColumn ?: "content";
         variables.metadataColumns = arguments.config.metadataColumns ?: [];
-        
+
         // Initialize parent
         super.init( source: datasource, config: arguments.config );
-        
+
         return this;
     }
-    
+
     function load() {
         var documents = [];
         var offset = 0;
         var hasMore = true;
-        
+
         while ( hasMore ) {
             // Query with pagination
             var paginatedQuery = "#variables.query# LIMIT #variables.batchSize# OFFSET #offset#";
-            
+
             var qry = queryExecute(
                 paginatedQuery,
                 {},
                 { datasource: variables.datasource }
             );
-            
+
             if ( qry.recordCount == 0 ) {
                 hasMore = false;
                 break;
             }
-            
+
             // Convert each row to a Document
             for ( var row in qry ) {
                 var metadata = {
                     source: variables.datasource,
                     query: variables.query
                 };
-                
+
                 // Extract metadata columns
                 for ( var col in variables.metadataColumns ) {
                     if ( structKeyExists( row, col ) ) {
                         metadata[ col ] = row[ col ];
                     }
                 }
-                
+
                 var doc = new Document(
                     id      = row.id ?: createUUID(),
                     content = row[ variables.contentColumn ],
                     metadata = metadata
                 );
-                
+
                 documents.append( doc );
             }
-            
+
             offset += variables.batchSize;
-            
+
             // Check if we've loaded all records
             if ( qry.recordCount < variables.batchSize ) {
                 hasMore = false;
             }
         }
-        
+
         return documents;
     }
-    
+
     // Fluent configuration methods
     function withBatchSize( required numeric size ) {
         variables.batchSize = arguments.size;
         return this;
     }
-    
+
     function contentFrom( required string column ) {
         variables.contentColumn = arguments.column;
         return this;
     }
-    
+
     function withMetadata( required array columns ) {
         variables.metadataColumns = arguments.columns;
         return this;
@@ -382,7 +382,7 @@ function configure() {
         "APILoader",
         "DatabaseLoader"
     ];
-    
+
     // Map file extensions to your loader
     interceptorSettings = {
         customPoints = {
@@ -423,7 +423,7 @@ Always wrap external calls with try/catch:
 ```javascript
 function load() {
     var documents = [];
-    
+
     try {
         // Your loading logic
     } catch ( any e ) {
@@ -433,14 +433,14 @@ function load() {
             type = "error",
             file = "document-loader"
         );
-        
+
         // Re-throw with context
         throw(
             type = "LoaderException",
             message = "Failed to load documents: #e.message#"
         );
     }
-    
+
     return documents;
 }
 ```
@@ -452,7 +452,7 @@ Clean up resources in finally blocks:
 ```javascript
 function load() {
     var connection = nullValue();
-    
+
     try {
         connection = openConnection();
         // Load documents
@@ -476,18 +476,18 @@ var doc = new Document(
         // Source information
         source: variables.endpoint,
         sourceType: "api",
-        
+
         // Content metadata
         title: item.title,
         author: item.author,
         category: item.category,
         tags: item.tags,
-        
+
         // Timestamps
         created: item.created,
         modified: item.modified,
         loaded: now(),
-        
+
         // Quality metrics
         wordCount: item.content.listLen( " " ),
         language: detectLanguage( item.content )
@@ -501,44 +501,44 @@ Implement batching and caching:
 
 ```javascript
 class extends="BaseDocumentLoader" {
-    
+
     property name="cache" type="struct";
     property name="batchSize" type="numeric" default="100";
-    
+
     function init() {
         super.init( argumentCollection=arguments );
         variables.cache = {};
         return this;
     }
-    
+
     function load() {
         // Check cache first
         var cacheKey = hash( variables.source );
         if ( structKeyExists( variables.cache, cacheKey ) ) {
             return variables.cache[ cacheKey ];
         }
-        
+
         // Load in batches
         var documents = loadInBatches();
-        
+
         // Cache results
         variables.cache[ cacheKey ] = documents;
-        
+
         return documents;
     }
-    
+
     private function loadInBatches() {
         var allDocs = [];
         var offset = 0;
-        
+
         while ( true ) {
             var batch = loadBatch( offset, variables.batchSize );
             if ( batch.isEmpty() ) break;
-            
+
             allDocs.append( batch, true );
             offset += variables.batchSize;
         }
-        
+
         return allDocs;
     }
 }

@@ -1,11 +1,32 @@
 ---
-description: "This guide helps you get started quickly with BoxLang AI, covering installation, basic usage, and key features."
+description: "Complete quick start guide for BoxLang AI - from basic chatting to advanced agents, RAG, and pipelines."
 icon: circle-play
 ---
 
 # 🚀 Quick Start Guide
 
-Get up and running with BoxLang AI in minutes. This guide walks you through your first AI interactions.
+Get up and running with BoxLang AI in minutes. This comprehensive guide walks you through everything from your first AI chat to building autonomous agents with memory, tools, and RAG capabilities.
+
+## 📖 Table of Contents
+
+- [Prerequisites](#-prerequisites)
+- [Your First AI Chat](#-your-first-ai-chat)
+- [Understanding the Basics](#-understanding-the-basics)
+- [Working with Different Providers](#-working-with-different-providers)
+- [Building Conversations](#-building-conversations)
+- [Controlling AI Behavior](#-controlling-ai-behavior)
+- [Practical Examples](#-practical-examples)
+- [Introduction to Pipelines](#-introduction-to-pipelines)
+- [Document Loading & RAG](#-document-loading--rag)
+- [AI Agents Quick Start](#-ai-agents-quick-start)
+  - [What are AI Agents?](#-what-are-ai-agents)
+  - [Your First Agent](#-your-first-agent)
+  - [Agents with Tools](#-agents-with-tools)
+  - [Different Memory Types](#-different-memory-types)
+  - [RAG Agents](#-rag-agents)
+- [Structured Output](#-structured-output)
+- [Async & Streaming](#-async--streaming)
+- [Next Steps](#-next-steps)
 
 ## 📋 Prerequisites
 
@@ -33,7 +54,7 @@ graph LR
     style E fill:#50E3C2
 ```
 
-```java
+```javascript
 // hello.bxs
 answer = aiChat( "What is BoxLang?" )
 println( answer )
@@ -53,7 +74,7 @@ BoxLang is a modern, dynamic programming language for the JVM that combines the 
 
 ### The `aiChat()` Function
 
-```java
+```javascript
 aiChat( message, params, options )
 ```
 
@@ -65,13 +86,13 @@ aiChat( message, params, options )
 
 **Ask a question:**
 
-```java
+```javascript
 answer = aiChat( "Explain recursion" )
 ```
 
 **Get creative:**
 
-```java
+```javascript
 poem = aiChat(
     "Write a haiku about coding",
     { temperature: 0.9 }
@@ -80,7 +101,7 @@ poem = aiChat(
 
 **Use a specific model:**
 
-```java
+```javascript
 answer = aiChat(
     "Explain quantum physics",
     { model: "gpt-4", temperature: 0.3 }
@@ -133,7 +154,7 @@ graph TB
 
 **OpenAI:**
 
-```java
+```javascript
 answer = aiChat(
     "Hello!",
     {},
@@ -143,7 +164,7 @@ answer = aiChat(
 
 **Claude:**
 
-```java
+```javascript
 answer = aiChat(
     "Analyze this code",
     { model: "claude-3-opus-20240229" },
@@ -153,7 +174,7 @@ answer = aiChat(
 
 **Gemini:**
 
-```java
+```javascript
 answer = aiChat(
     "What's new in AI?",
     {},
@@ -163,7 +184,7 @@ answer = aiChat(
 
 **Mistral:**
 
-```java
+```javascript
 answer = aiChat(
     "Explain machine learning",
     { model: "mistral-small-latest" },
@@ -175,7 +196,7 @@ answer = aiChat(
 
 **No API key needed, runs on your machine:**
 
-```java
+```javascript
 // First time: pull a model
 // ollama pull llama3.2
 
@@ -196,7 +217,7 @@ answer = aiChat(
 
 ### Multi-Turn Dialogue
 
-```java
+```javascript
 conversation = [
     { role: "system", content: "You are a helpful tutor" },
     { role: "user", content: "What is a variable?" },
@@ -209,7 +230,7 @@ answer = aiChat( conversation )
 
 ### Using Message Builder
 
-```java
+```javascript
 message = aiMessage()
     .system( "You are a code reviewer" )
     .user( "Review: function add(a,b) { return a+b }" )
@@ -217,11 +238,11 @@ message = aiMessage()
 answer = aiChat( message.getMessages() )
 ```
 
-## Controlling AI Behavior
+## 🎛️ Controlling AI Behavior
 
 ### Temperature (Creativity)
 
-```java
+```javascript
 // Focused/deterministic (0.0 - 0.3)
 technical = aiChat(
     "Explain TCP/IP",
@@ -243,7 +264,7 @@ creative = aiChat(
 
 ### Response Length
 
-```java
+```javascript
 // Short response
 summary = aiChat(
     "Summarize quantum physics",
@@ -257,11 +278,11 @@ detailed = aiChat(
 )
 ```
 
-## Practical Examples
+## 💡 Practical Examples
 
 ### Code Assistant
 
-```java
+```javascript
 // code-helper.bxs
 code = aiChat(
     "Write a BoxLang function to reverse a string",
@@ -277,7 +298,7 @@ println( code )
 
 ### Content Generator
 
-```java
+```javascript
 // blog-writer.bxs
 topic = "Benefits of local AI"
 
@@ -294,7 +315,7 @@ println( article )
 
 ### Translator
 
-```java
+```javascript
 // translator.bxs
 function translate( text, to = "Spanish" ) {
     return aiChat(
@@ -312,7 +333,7 @@ println( french )
 
 ### Smart Q&A
 
-```java
+```javascript
 // qa.bxs
 context = "
 BoxLang is a modern dynamic JVM language.
@@ -332,145 +353,13 @@ println( answer )
 // "BoxLang requires Java 21 or higher"
 ```
 
-## Async Operations
-
-For non-blocking AI calls:
-
-```java
-// Start request
-future = aiChatAsync( "Explain machine learning" )
-
-// Do other work
-println( "Processing..." )
-doOtherWork()
-
-// Get result when ready
-answer = future.get()
-println( answer )
-```
-
-## Streaming Responses
-
-Get responses in real-time:
-
-```java
-print( "AI: " )
-
-aiChatStream(
-    "Tell me a short story",
-    ( chunk ) => {
-        content = chunk.choices?.first()?.delta?.content ?: ""
-        print( content )
-    }
-)
-
-println( "\nDone!" )
-```
-
-## Return Formats
-
-### Single (Default)
-
-Returns just the content as a string:
-
-```java
-answer = aiChat( "Hello" )
-// "Hello! How can I help you?"
-```
-
-### All Messages
-
-Returns complete conversation array:
-
-```java
-messages = aiChat(
-    "Hello",
-    {},
-    { returnFormat: "all" }
-)
-// [{ role: "assistant", content: "Hello!..." }]
-```
-
-### Raw Response
-
-Returns complete API response:
-
-```java
-raw = aiChat(
-    "Hello",
-    {},
-    { returnFormat: "raw" }
-)
-// { id: "chatcmpl-...", choices: [...], usage: {...} }
-```
-
-## Error Handling
-
-```java
-try {
-    answer = aiChat( "Hello" )
-    println( answer )
-} catch( any e ) {
-    println( "Error: " & e.message )
-
-    // Fallback or retry logic
-    if( e.message contains "timeout" ) {
-        // Retry with longer timeout
-    }
-}
-```
-
-## Configuration Best Practices
-
-### Use Environment Variables
-
-```bash
-# .env
-OPENAI_API_KEY=sk-...
-CLAUDE_API_KEY=sk-ant-...
-```
-
-```json
-// boxlang.json
-{
-  "modules": {
-    "bxai": {
-      "settings": {
-        "provider": "openai",
-        "apiKey": "${OPENAI_API_KEY}"
-      }
-    }
-  }
-}
-```
-
-### Set Sensible Defaults
-
-```json
-{
-  "modules": {
-    "bxai": {
-      "settings": {
-        "provider": "openai",
-        "defaultParams": {
-          "model": "gpt-4",
-          "temperature": 0.7,
-          "max_tokens": 1000
-        },
-        "timeout": 60
-      }
-    }
-  }
-}
-```
-
-## Introduction to Pipelines
+## ⛓️ Introduction to Pipelines
 
 Pipelines let you chain AI operations together for more complex workflows. Here are some quick examples:
 
 ### Simple Pipeline
 
-```java
+```javascript
 // Create a reusable pipeline
 pipeline = aiMessage()
     .system( "You are a helpful coding assistant" )
@@ -488,7 +377,7 @@ println( result )
 
 ### FAQ Bot Pipeline
 
-```java
+```javascript
 // Build a reusable FAQ pipeline
 faqBot = aiMessage()
     .system( "You are a helpful FAQ assistant. Answer briefly and clearly." )
@@ -504,7 +393,7 @@ answer3 = faqBot.run({ question: "How do I reset my password?" })
 
 ### Multi-Step Pipeline
 
-```java
+```javascript
 // Create a pipeline with multiple transformations
 analyzer = aiMessage()
     .system( "You are a code analyzer" )
@@ -527,51 +416,11 @@ report = analyzer.run({
 println( report.analysis )
 ```
 
-### Extract and Parse Pipeline
-
-```java
-// Pipeline that extracts JSON data
-dataExtractor = aiMessage()
-    .system( "Extract data as JSON" )
-    .user( "From this text, extract name and email: ${text}" )
-    .toDefaultModel()
-    .transform( r => r.content )
-    .transform( json => deserializeJSON( json ) )
-
-// Extract structured data
-userData = dataExtractor.run({
-    text: "Contact John Doe at john@example.com"
-})
-
-println( userData.name )   // "John Doe"
-println( userData.email )  // "john@example.com"
-```
-
-### Pipeline with Multiple Models
-
-```java
-// Use different models in a workflow
-translator = aiMessage()
-    .user( "Translate to Spanish: ${text}" )
-    .to( aiModel( "openai", { model: "gpt-4" } ) )
-    .transform( r => r.content )
-
-reviewer = aiMessage()
-    .user( "Review this translation: ${translation}" )
-    .to( aiModel( "claude", { model: "claude-3-opus" } ) )
-    .transform( r => r.content )
-
-// Translate then review
-text = "Hello, how are you?"
-translation = translator.run({ text: text })
-review = reviewer.run({ translation: translation })
-```
-
 ### Why Use Pipelines?
 
 **Reusability**: Create once, run many times with different inputs
 
-```java
+```javascript
 // Define once
 greeter = aiMessage()
     .system( "You are a friendly greeter" )
@@ -585,44 +434,313 @@ greeter.run({ name: "Bob", style: "casual" })
 greeter.run({ name: "Charlie", style: "funny" })
 ```
 
-**Composability**: Chain operations together
-
-```java
-// Each step does one thing well
-pipeline = aiMessage()
-    .user( "${prompt}" )
-    .toDefaultModel()              // Get AI response
-    .transform( r => r.content )   // Extract text
-    .transform( text => uCase( text ) )  // Transform
-    .transform( text => len( text ) )    // Analyze
-```
-
-**Separation of Concerns**: Template, model, and transformation logic separated
-
-```java
-// Template (what to ask)
-template = aiMessage()
-    .system( "You are an expert" )
-    .user( "${question}" )
-
-// Model (how to ask)
-model = aiModel( "openai", { temperature: 0.7 } )
-
-// Pipeline (complete flow)
-pipeline = template
-    .to( model )
-    .transform( r => r.content )
-```
-
 Learn more about pipelines in the [Pipeline Overview](../main-components/overview.md) section.
 
-## Structured Output
+## 📚 Document Loading & RAG
+
+### Loading Documents
+
+Load documents from various sources:
+
+```javascript
+// Load PDF documents
+pdfDocs = aiDocuments( "/docs/manual.pdf", "pdf" )
+
+// Load entire directory
+docs = aiDocuments( "/docs", "directory", {
+    recursive: true,
+    extensions: ["md", "txt", "pdf"]
+} )
+
+// Load from web
+webDocs = aiDocuments( "https://example.com/docs", "http" )
+
+// Each document has: { id, content, metadata }
+docs.each( doc => {
+    println( "Loaded: #doc.metadata.filename#" )
+} )
+```
+
+### Quick RAG System
+
+```javascript
+// Step 1: Create vector memory
+vectorMemory = aiMemory( "chroma", {
+    collection: "knowledge",
+    embeddingProvider: "openai"
+} )
+
+// Step 2: Ingest documents
+result = aiMemoryIngest(
+    memory        = vectorMemory,
+    source        = "/docs",
+    type          = "directory",
+    ingestOptions = { chunkSize: 1000, overlap: 200 }
+)
+
+println( "✅ Ingested #result.chunksOut# chunks" )
+
+// Step 3: Query with context
+function ragQuery( question ) {
+    // Retrieve relevant docs
+    docs = vectorMemory.getRelevant( question, limit = 3 )
+    
+    // Build context
+    context = docs.map( d => d.content ).toList( "\n\n" )
+    
+    // Query with context
+    return aiMessage()
+        .system( "Answer using the provided context" )
+        .setContext( context )
+        .user( question )
+        .toDefaultModel()
+        .run()
+}
+
+// Usage
+answer = ragQuery( "How do I configure SSL?" )
+```
+
+Learn more in the [RAG Guide](../main-components/rag.md) and [Document Loaders](../main-components/document-loaders.md).
+
+## 🤖 AI Agents Quick Start
+
+### 🎯 What are AI Agents?
+
+AI Agents are autonomous assistants that:
+
+```mermaid
+graph TB
+    START[Create Agent] --> INST[Add Instructions]
+    INST --> MEM[Add Memory]
+    MEM --> TOOLS[Add Tools]
+    TOOLS --> RUN[Run Agent]
+    RUN --> RESP[Get Response]
+    
+    style START fill:#BD10E0
+    style MEM fill:#50E3C2
+    style TOOLS fill:#B8E986
+    style RUN fill:#4A90E2
+    style RESP fill:#7ED321
+```
+
+- **Remember context** across conversations using memory systems
+- **Use tools** to perform actions and access real-time data
+- **Reason** about tasks and break them into steps
+- **Maintain state** across multiple interactions
+
+Think of agents as AI assistants that can:
+
+- Answer questions while remembering previous context
+- Search databases or APIs when they need information
+- Execute functions to perform actions
+- Make decisions based on accumulated knowledge
+
+### 🚀 Your First Agent
+
+The simplest agent is just a conversation interface with memory:
+
+```javascript
+// agent-hello.bxs
+// Create an agent with memory
+agent = aiAgent(
+    name: "Assistant",
+    description: "A helpful AI assistant"
+)
+
+// First interaction
+response1 = agent.run( "My name is John" )
+println( response1 )
+// "Nice to meet you, John!"
+
+// Agent remembers context
+response2 = agent.run( "What's my name?" )
+println( response2 )
+// "Your name is John."
+```
+
+**Key Difference**: Without memory, the AI would forget your name between calls!
+
+### 🛠️ Agents with Tools
+
+Give your agent the ability to perform actions:
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant T as Weather Tool
+    participant API as Weather API
+    
+    U->>A: "What's the weather in Boston?"
+    A->>A: Analyze question
+    Note over A: Realizes it needs<br/>weather data
+    A->>T: Call get_weather("Boston")
+    T->>API: HTTP Request
+    API->>T: {temp: 15, condition: "cloudy"}
+    T->>A: Return weather data
+    A->>A: Format response
+    A->>U: "The weather in Boston is 15°C and cloudy"
+    
+    Note over U,API: Agent automatically decides<br/>when to use tools
+```
+
+```javascript
+// Define a tool for weather lookup
+weatherTool = aiTool(
+    name: "get_weather",
+    description: "Get current weather for a location",
+    action: ( location ) => {
+        // Your weather API call here
+        return getWeatherData( location )
+    }
+).describeLocation( "City name and country" )
+
+// Create agent with tool
+agent = aiAgent(
+    name: "WeatherBot",
+    description: "Weather information assistant",
+    instructions: "You help users check weather. Use the weather tool when needed.",
+    tools: [ weatherTool ]
+)
+
+// Ask about weather
+response = agent.run( "What's the weather in Boston?" )
+println( response )
+// Agent automatically calls weatherTool("Boston") and responds with the data
+// "The current weather in Boston is 15°C and cloudy."
+```
+
+**What happens:**
+
+1. Agent receives: "What's the weather in Boston?"
+2. Agent thinks: "I need to use the weather tool"
+3. Agent calls: `get_weather("Boston")`
+4. Tool returns: `{ temp: 15, conditions: "cloudy" }`
+5. Agent responds: "The current weather in Boston is 15°C and cloudy."
+
+### 💭 Different Memory Types
+
+#### Window Memory (Default)
+
+Keeps only recent messages in RAM - good for managing context limits:
+
+```javascript
+agent = aiAgent(
+    name: "Chatbot",
+    memories: aiMemory(
+        type: "buffered",
+        key: "session-1",
+        config: { maxMessages: 20 }  // Keep last 20 messages
+    )
+)
+```
+
+#### Session Memory
+
+Persists across requests in web applications:
+
+```javascript
+agent = aiAgent(
+    name: "WebAssistant",
+    memories: new bxModules.bxai.models.memory.SessionMemory( "bxai-chat" )
+)
+// Remembers conversation across page requests!
+```
+
+#### File Memory
+
+Saves to disk - persists across application restarts:
+
+```javascript
+agent = aiAgent(
+    name: "PersistentBot",
+    memories: aiMemory(
+        type: "file",
+        key: "user-123",
+        config: { filePath: expandPath( "./data/chat-history.json" ) }
+    )
+)
+```
+
+### 🧬 RAG Agents
+
+Agents can access knowledge bases automatically:
+
+```javascript
+// Step 1: Create and populate vector memory
+vectorMemory = aiMemory( "chroma", {
+    collection: "support_docs",
+    embeddingProvider: "openai"
+} )
+
+aiMemoryIngest(
+    memory = vectorMemory,
+    source = "/docs/support",
+    type   = "directory"
+)
+
+// Step 2: Create agent with vector memory
+agent = aiAgent(
+    name: "Support Agent",
+    description: "Customer support specialist",
+    instructions: "Answer questions using the support documentation. Always cite sources.",
+    memory: vectorMemory
+)
+
+// Step 3: Agent automatically retrieves relevant docs
+response = agent.run( "How do I reset my password?" )
+// Agent searches vector memory, finds relevant docs, provides accurate answer
+```
+
+### 🎯 Practical Agent Examples
+
+**Customer Support:**
+
+```javascript
+lookupOrder = aiTool(
+    name: "lookup_order",
+    description: "Find order details by order number",
+    action: ( orderNum ) => getOrderDetails( orderNum )
+).describeOrderNum( "Order number" )
+
+supportAgent = aiAgent(
+    name: "SupportBot",
+    instructions: "Help customers with orders politely and efficiently. Always confirm before canceling orders.",
+    tools: [ lookupOrder ],
+    memories: aiMemory( "simple", "support-${session.id}" )
+)
+
+response = supportAgent.run( "What's the status of order #12345?" )
+```
+
+**Code Review:**
+
+```javascript
+fetchCode = aiTool(
+    name: "fetch_code",
+    description: "Get code content from a file",
+    action: ( filePath ) => fileRead( filePath )
+).describeFilePath( "Path to code file" )
+
+reviewer = aiAgent(
+    name: "CodeReviewer",
+    instructions: "Review code for: bugs, security issues, best practices. Be constructive.",
+    tools: [ fetchCode ]
+)
+
+review = reviewer.run( "Review the authentication logic in /src/Auth.bx" )
+```
+
+Learn more in the [Agents Guide](../main-components/agents.md).
+
+## 📊 Structured Output
 
 Get type-safe responses by defining the expected structure using classes or struct templates.
 
 ### With a Class
 
-```java
+```javascript
 class Person {
     property name="name" type="string";
     property name="age" type="numeric";
@@ -640,7 +758,7 @@ println( person.getAge() )    // 30 (numeric)
 
 ### With a Struct Template
 
-```java
+```javascript
 template = {
     "title": "",
     "summary": "",
@@ -657,7 +775,7 @@ println( result.tags.len() ) // 3
 
 ### Extracting Arrays
 
-```java
+```javascript
 class Task {
     property name="title" type="string";
     property name="priority" type="string";
@@ -669,32 +787,100 @@ tasks = aiChat( "Extract: Finish report (high), Review code (medium)" )
 tasks.each( t => println( "#t.getTitle()# [#t.getPriority()#]" ) )
 ```
 
-**Learn more:** [Structured Output Guide](../chatting/structured-output.md)
+Learn more in the [Structured Output Guide](../chatting/structured-output.md).
 
-## Next Steps
+## ⚡ Async & Streaming
+
+### Async Operations
+
+For non-blocking AI calls:
+
+```javascript
+// Start request
+future = aiChatAsync( "Explain machine learning" )
+
+// Do other work
+println( "Processing..." )
+doOtherWork()
+
+// Get result when ready
+answer = future.get()
+println( answer )
+```
+
+### Streaming Responses
+
+Get responses in real-time:
+
+```javascript
+print( "AI: " )
+
+aiChatStream(
+    "Tell me a short story",
+    ( chunk ) => {
+        content = chunk.choices?.first()?.delta?.content ?: ""
+        print( content )
+    }
+)
+
+println( "\nDone!" )
+```
+
+### Streaming Agent Responses
+
+```javascript
+agent = aiAgent(
+    name: "Storyteller",
+    instructions: "You tell engaging stories"
+)
+
+print( "Agent: " )
+agent.stream(
+    onChunk: ( chunk ) => {
+        content = chunk.choices?.first()?.delta?.content ?: ""
+        print( content )
+    },
+    input: "Tell me a short story about a robot"
+)
+println( "\nDone!" )
+```
+
+## 🎓 Next Steps
 
 Now that you're comfortable with the basics, explore:
 
-### Quick Starts
-- **[AI Agents Quick Start](agent-quickstart.md)** - Build autonomous agents with memory and tools
-
-### Simple Interactions
+### 📚 Core Concepts
 - **[Basic Chatting](../chatting/basic-chatting.md)** - Master the fundamentals
 - **[Advanced Chatting](../chatting/advanced-chatting.md)** - Tools, async, streaming
 - **[Service-Level Control](../chatting/service-chatting.md)** - Direct service management
 
-### AI Pipelines
+### 🤖 AI Agents
+- **[Agents Guide](../main-components/agents.md)** - Complete agent documentation
+- **[Agent Examples](../../examples/agents/)** - Working code examples
+- **[Memory Systems](../main-components/memory.md)** - Conversation history
+- **[Tools](../main-components/tools.md)** - Function calling patterns
+
+### 🧬 RAG & Documents
+- **[RAG Guide](../main-components/rag.md)** - Complete RAG workflow
+- **[Document Loaders](../main-components/document-loaders.md)** - Load data from various sources
+- **[Vector Memory](../main-components/vector-memory.md)** - Semantic search
+
+### ⛓️ AI Pipelines
 - **[Pipeline Overview](../main-components/overview.md)** - Learn about composable workflows
 - **[Working with Models](../main-components/models.md)** - Pipeline-compatible AI models
 - **[Message Templates](../main-components/messages.md)** - Reusable prompts
+- **[Transformers](../main-components/transformers.md)** - Data processing
 
-### Advanced Topics
+### 🔧 Advanced Topics
 - **[Event System](../advanced/events.md)** - Intercept and customize AI operations
+- **[Custom Memory](../advanced/custom-memory.md)** - Build custom memory implementations
+- **[Custom Loaders](../advanced/custom-loader.md)** - Create custom document loaders
+- **[Custom Transformers](../advanced/custom-transformer.md)** - Build custom transformers
 
-### Examples
+### 💻 Examples
 Check the `/examples` folder in the repository for more complete applications.
 
-## Common Issues
+## ❓ Common Issues
 
 **"No API key provided"**
 - Set API key in `boxlang.json` or pass directly in options
@@ -709,3 +895,8 @@ Check the `/examples` folder in the repository for more complete applications.
 **Ollama not responding**
 - Start Ollama: `ollama serve`
 - Check status: `curl http://localhost:11434/api/tags`
+
+**"Agent not remembering context"**
+- Ensure memory is configured: `.setMemories( aiMemory(...) )`
+- Check memory isn't being cleared between calls
+- Verify session/key is consistent across calls

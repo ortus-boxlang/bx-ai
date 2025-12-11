@@ -7,6 +7,32 @@ icon: arrow-right-arrow-left
 
 Transform and process data between pipeline steps. Learn about built-in transformers (return formats) and custom data transformations.
 
+## 📖 Table of Contents
+
+- [Built-In Transformers: Return Formats](#-built-in-transformers-return-formats)
+  - [Transformation Pipeline](#-transformation-pipeline)
+  - [Available Return Formats](#-available-return-formats)
+  - [Single Format](#single-format-default-for-functions)
+  - [All Format](#all-format)
+  - [Raw Format](#raw-format-default-for-pipelines)
+  - [JSON Format](#json-format-new)
+  - [XML Format](#xml-format-new)
+  - [Using Return Formats in Pipelines](#using-return-formats-in-pipelines)
+- [Core Built-In Transformers](#-core-built-in-transformers)
+  - [TextChunker](#textchunker)
+  - [TextCleanerTransformer](#textcleanertransformer)
+  - [AiTransformRunnable](#aitransformrunnable)
+- [Custom Transformers](#-custom-transformers)
+  - [Custom Transform Flow](#-custom-transform-flow)
+  - [Inline Transform](#inline-transform)
+  - [Using aiTransform()](#using-aitransform)
+- [Advanced Patterns](#advanced-patterns)
+  - [Chaining Transforms](#-chaining-transforms)
+  - [Combining Return Formats with Custom Transforms](#combining-return-formats-with-custom-transforms)
+  - [Transform Library](#transform-library)
+- [Best Practices](#best-practices)
+- [Building Your Own Transformers](#-building-your-own-transformers)
+
 ## 🎯 Built-In Transformers: Return Formats
 
 The most common "transformers" in bx-ai are **return formats** - built-in ways to automatically transform AI responses.
@@ -342,6 +368,180 @@ xmlMessage = "Return XML: <language><name>BoxLang</name></language>"
 xml = aiChat( xmlMessage, {}, { returnFormat: "xml" } )
 println( xml.xmlRoot.language.name.xmlText )
 // "BoxLang"
+```
+
+## 🧰 Core Built-In Transformers
+
+BoxLang AI ships with several powerful built-in transformers ready to use in your pipelines:
+
+### TextChunker
+
+The `TextChunker` utility breaks large text into manageable chunks for processing. Essential for RAG workflows and memory ingestion.
+
+**Features:**
+- Multiple chunking strategies (recursive, character, word, sentence, paragraph)
+- Configurable chunk size and overlap
+- Maintains context between chunks
+- Optimized for embeddings and AI context windows
+
+**Usage:**
+
+```javascript
+// Import the TextChunker
+import bxModules.bxai.models.util.TextChunker;
+
+// Chunk text with default settings (recursive strategy)
+chunks = TextChunker::chunk( longText, {
+    chunkSize: 1000,
+    overlap: 200
+} );
+
+// Each chunk: { text: "...", startIndex: 0, endIndex: 1000 }
+chunks.each( chunk => println( "Chunk: #chunk.text#" ) );
+
+// Use different strategies
+paragraphChunks = TextChunker::chunk( text, {
+    strategy: "paragraph",
+    chunkSize: 500
+} );
+
+sentenceChunks = TextChunker::chunk( text, {
+    strategy: "sentence",
+    chunkSize: 300,
+    overlap: 50
+} );
+```
+
+**Chunking Strategies:**
+
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| `recursive` | Smart splitting with hierarchy | General purpose, mixed content |
+| `character` | Fixed character boundaries | Uniform processing |
+| `word` | Word boundary splitting | Natural language |
+| `sentence` | Full sentence chunks | Semantic coherence |
+| `paragraph` | Paragraph-based chunks | Document structure |
+
+**In Pipelines:**
+
+```javascript
+// Use with aiChunk() BIF
+chunks = aiChunk( longText, {
+    strategy: "recursive",
+    chunkSize: 1000,
+    overlap: 200
+} );
+
+// Automatically used by aiMemoryIngest()
+result = aiMemoryIngest(
+    memory        = vectorMemory,
+    source        = documents,
+    ingestOptions = { 
+        chunkSize: 1000,  // Uses TextChunker internally
+        overlap: 200 
+    }
+);
+```
+
+### TextCleanerTransformer
+
+Cleans and normalizes text content by removing unwanted characters, HTML tags, and formatting.
+
+**Features:**
+- HTML tag stripping
+- Extra whitespace normalization
+- Line break handling
+- Trimming and cleanup
+
+**Usage:**
+
+```javascript
+import bxModules.bxai.models.transformers.TextCleanerTransformer;
+
+// Create cleaner with options
+cleaner = new TextCleanerTransformer({
+    stripHTML: true,
+    removeExtraSpaces: true,
+    trim: true
+});
+
+// Clean text
+cleanText = cleaner.transform( dirtyText );
+
+// In a pipeline
+pipeline = aiMessage()
+    .user( "Process this: ${rawText}" )
+    .toDefaultModel()
+    .transform( r => r.content )
+    .to( cleaner )
+    .transform( cleaned => "Cleaned: #cleaned#" );
+
+result = pipeline.run({ rawText: "<p>Hello   World!</p>" });
+// "Cleaned: Hello World!"
+```
+
+**Configuration Options:**
+
+```javascript
+cleaner = new TextCleanerTransformer({
+    trim: true,                  // Trim start/end whitespace
+    removeExtraSpaces: true,     // Collapse multiple spaces
+    stripHTML: true,             // Remove HTML tags
+    normalizeLineBreaks: true,   // Standardize \n, \r\n, \r
+    removeEmptyLines: false      // Keep or remove empty lines
+});
+```
+
+### AiTransformRunnable
+
+A wrapper class that converts any lambda function into a pipeline-compatible transformer. This is what `aiTransform()` BIF creates internally.
+
+**Features:**
+- Converts functions to IAiRunnable interface
+- Fluent API support
+- Pipeline integration
+- Named transformers
+
+**Usage:**
+
+```javascript
+import bxModules.bxai.models.transformers.AiTransformRunnable;
+
+// Create transformer from function
+transformer = new AiTransformRunnable( 
+    transformFn: ( data ) => data.ucase(),
+    name: "uppercase-transformer"
+);
+
+// Use in pipeline
+result = aiMessage()
+    .user( "Say hello" )
+    .toDefaultModel()
+    .transform( r => r.content )
+    .to( transformer )
+    .run();
+
+// Or use the aiTransform() BIF (recommended)
+transformer = aiTransform( data => data.ucase() )
+    .withName( "uppercase" );
+```
+
+**Chaining Multiple Transformers:**
+
+```javascript
+// Build transformer chain
+extractContent = aiTransform( r => r.content );
+cleanText = new TextCleanerTransformer({ stripHTML: true });
+uppercase = aiTransform( s => s.ucase() );
+
+pipeline = aiMessage()
+    .user( "Generate text" )
+    .toDefaultModel()
+    .to( extractContent )
+    .to( cleanText )
+    .to( uppercase );
+
+result = pipeline.run();
 ```
 
 ## 🔧 Custom Transformers
@@ -992,8 +1192,28 @@ result = transformer.run( testInput )
 assert( result == "HELLO" )
 ```
 
+## 🏗️ Building Your Own Transformers
+
+Want to create custom transformers for your specific needs? BoxLang AI provides a complete framework for building reusable, pipeline-compatible transformers.
+
+**Learn More:**
+- **[Building Custom Transformers](../advanced/custom-transformer.md)** - Complete guide with examples:
+  - Implementing the ITransformer interface
+  - Extending BaseTransformer
+  - Real-world examples (JSONSchemaTransformer, code extractor, sentiment analyzer)
+  - Pipeline integration patterns
+  - Testing and best practices
+
+**Common Custom Transformer Use Cases:**
+- 🔍 **Data Validation** - Validate and sanitize AI responses
+- 🔄 **Format Conversion** - Convert between JSON, XML, and custom formats
+- 📊 **Content Extraction** - Parse specific data from responses (code, prices, entities)
+- 🧮 **Business Logic** - Apply domain-specific rules and calculations
+- 📝 **Logging & Monitoring** - Track and audit data flow through pipelines
+
 ## Next Steps
 
+- **[Building Custom Transformers](../advanced/custom-transformer.md)** - Create your own transformers
 - **[Pipeline Streaming](streaming.md)** - Stream through transforms
 - **[Working with Models](models.md)** - Model output transforms
 - **[Pipeline Overview](overview.md)** - Complete pipeline guide

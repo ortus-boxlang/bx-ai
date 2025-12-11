@@ -77,7 +77,7 @@ Explore streaming, tools, structured output, and multimodal content.
 #### 4. **AI Agents** (30 minutes)
 
 Build autonomous agents that reason, remember, and use tools.
-→ [Agent Quickstart](agent-quickstart.md)
+→ [Agent Quickstart](quickstart.md#-ai-agents-quick-start)
 → [Full Agent Documentation](../main-components/agents.md)
 
 #### 5. **Pipelines & Advanced Topics** (45 minutes)
@@ -153,7 +153,7 @@ response = agent.run( "Find the latest BoxLang release" );
 → Start with [Quickstart](quickstart.md), then [Basic Chatting](../chatting/basic-chatting.md)
 
 **"Build a chatbot that remembers conversations"**
-→ Go to [Agent Quickstart](agent-quickstart.md) and learn about [Memory Systems](../main-components/memory.md)
+→ Go to [Agent Quickstart](quickstart.md#-ai-agents-quick-start) and learn about [Memory Systems](../main-components/memory.md)
 
 **"Let AI call my functions and APIs"**
 → Check out [Tools documentation](../main-components/overview.md#tools) and [Agent Tools](../main-components/agents.md#tools)
@@ -230,7 +230,7 @@ cleaned = pipeline.run( "Convert this to JSON: Name: Alice, Age: 25, City: null"
 ### Customer Support Bot
 
 - **Components**: Agent + Memory + Tools
-- **Guide**: [Agent Quickstart](agent-quickstart.md)
+- **Guide**: [Agent Quickstart](quickstart.md#-ai-agents-quick-start)
 
 ### Data Extraction
 
