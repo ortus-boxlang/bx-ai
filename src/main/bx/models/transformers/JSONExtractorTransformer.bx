@@ -179,7 +179,7 @@ class implements="ITransformer" {
 				return mid( result, contentStart, endPos - contentStart ).trim()
 			}
 		}
-		
+
 		// Check for ``` ... ``` pattern (no language)
 		if ( result.startsWith( "```" ) ) {
 			var contentStart = 4 // Position after ```
