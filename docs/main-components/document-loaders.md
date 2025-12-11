@@ -6,7 +6,7 @@ Document loaders are a powerful feature for importing content from various sourc
 
 The document loading system provides:
 
-- **Multiple Loader Types**: Text, Markdown, CSV, JSON, XML, HTTP, Tika, Feed, SQL, Directory, and WebCrawler loaders
+- **Multiple Loader Types**: Text, Markdown, CSV, JSON, XML, PDF, Log, HTTP, Feed, SQL, Directory, and WebCrawler loaders
 - **Consistent Document Format**: All loaders produce `Document` objects with content, metadata, id, and embedding properties
 - **Fluent API**: Chain methods for easy configuration and transformation
 - **Memory Integration**: Load directly into AI memory systems for RAG workflows via `toMemory()`
@@ -369,51 +369,114 @@ docs = loader.load()
 | `metadataFields` | array | [] | Fields to extract as metadata |
 | `arrayAsDocuments` | boolean | false | Create document per array item |
 
-### TikaLoader
+### PDFLoader
 
-Loads PDF, Word, Excel, PowerPoint, and other document formats using Apache Tika.
+Loads PDF documents with text extraction and metadata support using Apache PDFBox.
 
 ```javascript
-import bxModules.bxai.models.loaders.TikaLoader;
+import bxModules.bxai.models.loaders.PDFLoader;
 
-// Load a PDF
-loader = new TikaLoader( source: "/path/to/document.pdf" )
+// Basic PDF loading
+loader = new PDFLoader( source: "/path/to/document.pdf" )
 docs = loader.load()
 
-// Load with options
-loader = new TikaLoader( source: "/path/to/report.docx" )
-    .maxLength( 100000 )
-    .enableOCR( true )
+// Extract specific page range
+loader = new PDFLoader( source: "/path/to/report.pdf" )
+    .pageRange( startPage: 5, endPage: 10 )
 docs = loader.load()
 
-// Password-protected document
-loader = new TikaLoader( source: "/path/to/encrypted.pdf" )
-    .password( "secret" )
+// Enhanced text extraction options
+loader = new PDFLoader( source: "/path/to/document.pdf" )
+    .sortByPosition( true )
+    .addMoreFormatting( true )
+    .suppressDuplicates( true )
 docs = loader.load()
 
-// Check if file type is supported
-if ( TikaLoader::isSupported( "/path/to/file.pdf" ) ) {
-    // Load the file
-}
+// Load with metadata extraction
+loader = new PDFLoader( source: "/path/to/document.pdf" )
+    .includeMetadata( true )
+docs = loader.load()
+
+// Access PDF metadata
+println( "Title: #docs[1].metadata.title#" )
+println( "Author: #docs[1].metadata.author#" )
+println( "Pages: #docs[1].metadata.pageCount#" )
 ```
-
-**Supported Extensions:**
-- PDF: `.pdf`
-- Word: `.doc`, `.docx`
-- Excel: `.xls`, `.xlsx`
-- PowerPoint: `.ppt`, `.pptx`
-- OpenDocument: `.odt`, `.ods`, `.odp`
-- Other: `.rtf`, `.epub`
 
 **Configuration Options:**
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `maxLength` | numeric | -1 | Max characters to extract (-1 = unlimited) |
-| `extractImages` | boolean | false | Extract embedded images |
-| `extractTables` | boolean | true | Preserve table structure |
-| `ocrEnabled` | boolean | false | Enable OCR for scanned docs |
-| `passwordProtected` | string | "" | Password for encrypted documents |
+| `sortByPosition` | boolean | false | Sort text by position on page |
+| `addMoreFormatting` | boolean | false | Add additional formatting |
+| `startPage` | numeric | 1 | First page to extract |
+| `endPage` | numeric | 0 | Last page to extract (0 = all) |
+| `suppressDuplicateOverlappingText` | boolean | true | Remove duplicate overlapping text |
+| `includeMetadata` | boolean | true | Extract PDF metadata |
+
+**Metadata Fields Extracted:**
+- `title` - Document title
+- `author` - Document author
+- `subject` - Document subject
+- `keywords` - Document keywords
+- `creator` - Application that created the PDF
+- `producer` - PDF producer software
+- `creationDate` - When the PDF was created
+- `pageCount` - Total number of pages
+- `pdfVersion` - PDF version (e.g., "1.7")
+- `isEncrypted` - Whether the PDF is encrypted
+
+### LogLoader
+
+Loads and parses application log files with pattern matching and filtering.
+
+```javascript
+import bxModules.bxai.models.loaders.LogLoader;
+
+// Basic log loading
+loader = new LogLoader( source: "/path/to/app.log" )
+docs = loader.load()
+
+// Load with log level filtering
+loader = new LogLoader( source: "/path/to/app.log" )
+    .filterByLevel( "ERROR" )
+docs = loader.load()
+
+// Load with date range
+loader = new LogLoader( source: "/path/to/app.log" )
+    .startDate( "2024-01-01" )
+    .endDate( "2024-12-31" )
+docs = loader.load()
+
+// Custom log pattern matching
+loader = new LogLoader( source: "/path/to/custom.log" )
+    .pattern( "^\[(?<timestamp>.*?)\] (?<level>\w+): (?<message>.*)" )
+docs = loader.load()
+
+// Combine multiple filters
+loader = new LogLoader( source: "/path/to/app.log" )
+    .filterByLevel( ["ERROR", "WARN"] )
+    .excludePattern( "HealthCheck" )
+    .maxLines( 10000 )
+docs = loader.load()
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `pattern` | string | Auto-detect | Regex pattern to parse log entries |
+| `filterByLevel` | string/array | "" | Log level(s) to include |
+| `excludePattern` | string | "" | Regex pattern to exclude entries |
+| `startDate` | string | "" | Include logs after this date |
+| `endDate` | string | "" | Include logs before this date |
+| `maxLines` | numeric | 0 | Max lines to load (0 = unlimited) |
+| `includeTimestamp` | boolean | true | Include timestamp in metadata |
+
+**Supported Log Formats:**
+- Standard format: `[2024-01-01 10:00:00] ERROR: Message`
+- Syslog format: `Jan 1 10:00:00 hostname app: Message`
+- Custom regex patterns via `pattern()` configuration
 
 ### DirectoryLoader
 

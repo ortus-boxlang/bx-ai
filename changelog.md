@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Fluent API for loader configuration
     - Integration with memory systems via `loadTo()` method and `aiMemoryIngest()` BIF
     - Automatic document chunking support for vector memory
-    - Comprehensive documentation in `docs/main-components/loaders.md`
+    - Comprehensive documentation in `docs/main-components/document-loaders.md`
 - **MCP Server Enterprise Security Features**: Comprehensive security enhancements for MCP servers
     - **CORS Configuration**:
         - `withCors(origins)` - Configure allowed origins (string or array)

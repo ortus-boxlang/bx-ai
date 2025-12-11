@@ -106,7 +106,7 @@ Processing and transforming data between pipeline steps.
 📡 **[Pipeline Streaming](main-components/streaming.md)**
 Real-time streaming through pipelines for responsive applications.
 
-📄 **[Document Loaders](main-components/loaders.md)**
+📄 **[Document Loaders](main-components/document-loaders.md)**
 Load documents from files, directories, and URLs. Supports text, Markdown, HTML, CSV, and JSON with automatic chunking and memory integration.
 
 ---

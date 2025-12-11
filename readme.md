@@ -31,6 +31,9 @@ BoxLang AI eliminates the complexity of working with multiple AI providers by of
 - 📝 **Flexible Messaging** - Send simple strings, structured messages, or complex conversation arrays
 - ⚡ **Async Support** - Built-in asynchronous capabilities with futures for non-blocking operations
 - 🔒 **Multi-Tenant Memory** - Enterprise-grade user and conversation isolation across all memory types
+- 📚 **Document Loaders** - 12+ built-in loaders for documents, files, web content, databases, and more
+- 🧬 **RAG Pipeline** - Complete Retrieval-Augmented Generation workflow from documents to context injection
+- 🎯 **Vector Memory** - Semantic search and retrieval using ChromaDB, PostgreSQL, MySQL, TypeSense, and Weaviate
 - ⚙️ **Configurable** - Global defaults, per-request overrides, and comprehensive logging options
 - 🎯 **Event-Driven** - Intercept and extend AI processing with lifecycle events
 - 🏭 **Production-Ready** - Timeout controls, error handling, and debugging tools
@@ -84,6 +87,9 @@ Here are some of the features of this module:
 - 📦 **Structured Output** - Type-safe AI responses using BoxLang classes, structs, or JSON schemas
 - 🤖 **AI Agents** - Autonomous agents with memory, tools, and sub-agent orchestration
 - 🔒 **Multi-Tenant Memory** - Built-in user and conversation isolation for enterprise applications
+- 📚 **Document Loaders** - Built-in loaders for Text, Markdown, CSV, JSON, XML, PDF, Log, HTTP, Feed, SQL, Directory, and WebCrawler
+- 🧬 **RAG (Retrieval-Augmented Generation)** - Complete workflow: load documents → chunk → embed → store → retrieve → inject into AI context
+- 🎯 **Vector Memory Systems** - Semantic search with ChromaDB, PostgreSQL pgvector, MySQL vector, TypeSense, and Weaviate
 - 📝 Compose raw chat requests
 - 💬 Build message objects
 - 🛠️ Create AI service objects
@@ -335,6 +341,132 @@ memory = aiMemory( "hybrid", {
 - 🔧 **Custom Memory**: [Building Custom Memory](docs/advanced/custom-memory.md)
 - 🎓 **Interactive Course**: [Lesson 7 - Memory Systems](course/lesson-07-memory/)
 - 💻 **Examples**: Check `examples/advanced/` and `examples/vector-memory/` for complete examples
+
+---
+
+## 📚 Document Loaders & RAG
+
+BoxLang AI provides **12+ built-in document loaders** for ingesting content from files, databases, web sources, and more. These loaders integrate seamlessly with vector memory systems to enable **Retrieval-Augmented Generation (RAG)** workflows.
+
+### 🔄 RAG Workflow
+
+```mermaid
+graph LR
+    LOAD[📄 Load Documents] --> CHUNK[✂️ Chunk Text]
+    CHUNK --> EMBED[🧬 Generate Embeddings]
+    EMBED --> STORE[💾 Store in Vector Memory]
+    STORE --> QUERY[❓ User Query]
+    QUERY --> RETRIEVE[🔍 Retrieve Relevant Docs]
+    RETRIEVE --> INJECT[💉 Inject into Context]
+    INJECT --> AI[🤖 AI Response]
+    
+    style LOAD fill:#4A90E2
+    style EMBED fill:#BD10E0
+    style STORE fill:#50E3C2
+    style RETRIEVE fill:#F5A623
+    style AI fill:#7ED321
+```
+
+### 📄 Available Loaders
+
+| Loader | Type | Use Case | Example |
+|--------|------|----------|---------|
+| 📝 **TextLoader** | `text` | Plain text files | `.txt`, `.log` |
+| 📘 **MarkdownLoader** | `markdown` | Markdown files | `.md` documents |
+| 📊 **CSVLoader** | `csv` | CSV files | Data files, exports |
+| 🗂️ **JSONLoader** | `json` | JSON files | Configuration, data |
+| 🏷️ **XMLLoader** | `xml` | XML files | Config, structured data |
+| 📄 **PDFLoader** | `pdf` | PDF documents | Reports, documentation |
+| 📋 **LogLoader** | `log` | Log files | Application logs |
+| 🌐 **HTTPLoader** | `http` | Web pages | Documentation, articles |
+| 📰 **FeedLoader** | `feed` | RSS/Atom feeds | News, blogs |
+| 💾 **SQLLoader** | `sql` | Database queries | Query results |
+| 📁 **DirectoryLoader** | `directory` | File directories | Batch processing |
+| 🕷️ **WebCrawlerLoader** | `webcrawler` | Website crawling | Multi-page docs |
+
+### ✨ Quick Examples
+
+**Load a Single Document:**
+
+```javascript
+// Load a PDF document
+docs = aiDocuments( "/path/to/document.pdf", "pdf" )
+println( "#docs.len()# documents loaded" )
+
+// Load with configuration
+docs = aiDocuments(
+    source = "/path/to/document.pdf",
+    type   = "pdf",
+    config = {
+        sortByPosition: true,
+        addMoreFormatting: true,
+        startPage: 1,
+        endPage: 10
+    }
+)
+```
+
+**Load Multiple Documents:**
+
+```javascript
+// Load all markdown files from a directory
+docs = aiDocuments(
+    source = "/knowledge-base",
+    type   = "directory",
+    config = {
+        recursive: true,
+        extensions: ["md", "txt"],
+        excludePatterns: ["node_modules", ".git"]
+    }
+)
+```
+
+**Ingest into Vector Memory:**
+
+```javascript
+// Create vector memory
+vectorMemory = aiMemory( "chroma", {
+    collection: "docs",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small"
+} )
+
+// Ingest documents with chunking and embedding
+result = aiMemoryIngest(
+    memory        = vectorMemory,
+    source        = "/knowledge-base",
+    type          = "directory",
+    loaderConfig  = { recursive: true, extensions: ["md", "txt", "pdf"] },
+    ingestOptions = { chunkSize: 1000, overlap: 200 }
+)
+
+println( "✅ Loaded #result.documentsIn# docs as #result.chunksOut# chunks" )
+println( "💰 Estimated cost: $#result.estimatedCost#" )
+```
+
+**RAG with Agent:**
+
+```javascript
+// Create agent with vector memory
+agent = aiAgent(
+    name: "KnowledgeAssistant",
+    description: "AI assistant with access to knowledge base",
+    memory: vectorMemory
+)
+
+// Query automatically retrieves relevant documents
+response = agent.run( "What is BoxLang?" )
+println( response )
+```
+
+### 📚 Learn More
+
+- 📖 **Full Guide**: [Document Loaders Guide](docs/main-components/document-loaders.md)
+- 🧬 **RAG Workflow**: [RAG Implementation Guide](docs/main-components/rag.md)
+- 🔧 **Custom Loaders**: [Building Custom Loaders](docs/advanced/custom-loader.md)
+- 💻 **Examples**: Check `examples/loaders/` and `examples/rag/` for complete examples
+
+---
 
 ## ⚙️ Settings
 
