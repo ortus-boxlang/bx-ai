@@ -43,16 +43,32 @@ class {
 	 *     .to( aiTransform( result => result.trim() ) )
 	 * ```
 	 *
-	 * @transformer The transformation function to apply. Receives input and returns transformed output.
+	 * @transformer The transformation function to apply or an internal transformer or a full classpath to a transformer. Receives input and returns transformed output.
 	 *
 	 * @return The AI Transform Runnable object
      */
-    function invoke( required function transformer ) {
-		var oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable( arguments.transformer );
+    function invoke( required any transformer ) {
+		var oTransform = null
 
-		BoxAnnounce( "onAITransformerCreate", { transform: oTransform } );
+		// If it's a function closure, wrap it
+		if( isClosure( arguments.transformer ) ){
+			oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable( arguments.transformer )
+		}
+		// If it's a string, assume it's a classpath or internal transformer
+		else){
+			// oTransform = new #arguments.transformer#()
+			// Check for internal shortcuts or if not, try to build it as a class path.
 
-		return oTransform;
+			throw BoxException( "Invalid transformer [#arguments.transformer#]. None found locally or in class path." )
+		}
+		else {
+			throw BoxException( "Invalid transformer argument. Must be a closure or string classpath." )
+		}
+
+		// Announce creation
+		BoxAnnounce( "onAITransformerCreate", { transform: oTransform } )
+
+		return oTransform
     }
 
 }
