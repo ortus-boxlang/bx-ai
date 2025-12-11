@@ -122,37 +122,47 @@ class {
 			case "text":
 			case "txt":
 				loaderClass = "bxmodules.bxai.models.loaders.TextLoader"
+				break
 			case "markdown":
 			case "md":
 				loaderClass = "bxmodules.bxai.models.loaders.MarkdownLoader"
+				break
 			case "csv":
 				loaderClass = "bxmodules.bxai.models.loaders.CSVLoader"
+				break
 			case "json":
 				loaderClass = "bxmodules.bxai.models.loaders.JSONLoader"
+				break
 			case "xml":
 				loaderClass = "bxmodules.bxai.models.loaders.XMLLoader"
+				break
 			case "directory":
 			case "dir":
 				loaderClass = "bxmodules.bxai.models.loaders.DirectoryLoader"
+				break
 			case "http":
 			case "html":
 				loaderClass = "bxmodules.bxai.models.loaders.HTTPLoader"
+				break
 			case "tika":
 			case "pdf":
 			case "doc":
 			case "docx":
 				loaderClass = "bxmodules.bxai.models.loaders.TikaLoader"
+				break
 			case "feed":
 			case "rss":
 			case "atom":
 				loaderClass = "bxmodules.bxai.models.loaders.FeedLoader"
+				break
 			case "db":
 				loaderClass = "bxmodules.bxai.models.loaders.SQLLoader"
+				break
 			case "crawler":
 			case "webcrawler":
 			case "scraper":
 				loaderClass = "bxmodules.bxai.models.loaders.WebCrawlerLoader"
-
+				break
 			default:
 				// Check if it's a full class path
 				if ( loaderType.findNoCase( "." ) ) {
