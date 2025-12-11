@@ -18,18 +18,19 @@
 class extends="src.main.bx.models.runnables.AiBaseRunnable" {
 
 	/**
-	 * The transformation function to apply
+	 * The transformation function or class to apply
+	 * This can be a function or an object with a transform() method
 	 */
-	property name="transformer" type="function";
+	property name="transformer" type="any";
 
 	/**
 	 * Initialize a new transform runnable
 	 *
-	 * @transformer The transformation function to apply
+	 * @transformer The transformation function or object with a transform() method to apply
 	 *
 	 * @return This runnable
 	 */
-	function init( required function transformer ) {
+	function init( required any transformer ) {
 		variables.transformer = arguments.transformer;
 		return this;
 	}
@@ -44,7 +45,12 @@ class extends="src.main.bx.models.runnables.AiBaseRunnable" {
 	 * @return The transformed output
 	 */
 	public any function run( any input = {}, struct params = {}, struct options = {} ) {
-		return variables.transformer( arguments.input );
+		// If it's a closure, call it directly
+		if( isClosure( variables.transformer ) ) {
+			return variables.transformer( arguments.input );
+		}
+
+		return variables.transformer.transform( arguments.input );
 	}
 
 	/**

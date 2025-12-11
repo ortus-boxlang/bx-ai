@@ -55,7 +55,7 @@ class {
 			oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable( arguments.transformer )
 		}
 		// If it's a string, assume it's a classpath or internal transformer
-		else){
+		else if ( isSimpleValue( arguments.transformer )){
 			// oTransform = new #arguments.transformer#()
 			// Check for internal shortcuts or if not, try to build it as a class path.
 
