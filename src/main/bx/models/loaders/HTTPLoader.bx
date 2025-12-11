@@ -64,7 +64,7 @@ class extends="BaseDocumentLoader" {
 	 * @return HTTPLoader instance
 	 */
 	function init( string source = "", struct config = {} ) {
-		super.init( argumentCollection: arguments );
+		super.init( argumentCollection: arguments )
 		variables.config = duplicate( static.DEFAULT_CONFIG ).append( variables.config, true );
 		return this;
 	}

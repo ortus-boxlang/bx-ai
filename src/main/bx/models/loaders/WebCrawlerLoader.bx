@@ -85,7 +85,7 @@ class extends="BaseDocumentLoader" {
 	 * @return WebCrawlerLoader instance
 	 */
 	function init( string source = "", struct config = {} ) {
-		super.init( source: arguments.source, config: {} );
+		super.init( argumentCollection: arguments )
 		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
 		variables.visitedUrls = {};
 		variables.urlQueue = [];

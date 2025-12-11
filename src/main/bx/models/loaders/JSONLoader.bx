@@ -43,7 +43,7 @@ class extends="BaseDocumentLoader" {
 	 * @return JSONLoader instance
 	 */
 	function init( string source = "", struct config = {} ) {
-		super.init( source: arguments.source, config: {} )
+		super.init( argumentCollection: arguments )
 		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true )
 		return this
 	}

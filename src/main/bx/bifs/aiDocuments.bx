@@ -74,20 +74,7 @@ class {
 			"json"     : "json",
 			"xml"      : "xml",
 			"rss"      : "feed",
-			"atom"     : "feed",
-			// Tika-supported formats
-			"pdf"      : "tika",
-			"doc"      : "tika",
-			"docx"     : "tika",
-			"xls"      : "tika",
-			"xlsx"     : "tika",
-			"ppt"      : "tika",
-			"pptx"     : "tika",
-			"odt"      : "tika",
-			"ods"      : "tika",
-			"odp"      : "tika",
-			"rtf"      : "tika",
-			"epub"     : "tika"
+			"atom"     : "feed"
 		};
 	}
 
@@ -96,7 +83,7 @@ class {
 	 *
 	 * @source The source to load from (file path, directory, URL, or SQL query)
 	 * @config Configuration options:
-	 *         - type: Explicit loader type (text, markdown, csv, json, xml, directory, http, tika, feed, sql, crawler)
+	 *         - type: Explicit loader type (text, markdown, csv, json, xml, directory, http, feed, sql, crawler)
 	 *         - recursive: Recurse into subdirectories (directory loader)
 	 *         - extensions: File extensions to include (directory loader)
 	 *         - chunkSize: Chunk size for splitting
@@ -144,12 +131,6 @@ class {
 			case "html":
 				loaderClass = "bxmodules.bxai.models.loaders.HTTPLoader"
 				break
-			case "tika":
-			case "pdf":
-			case "doc":
-			case "docx":
-				loaderClass = "bxmodules.bxai.models.loaders.TikaLoader"
-				break
 			case "feed":
 			case "rss":
 			case "atom":
@@ -170,7 +151,7 @@ class {
 				} else {
 					throw(
 						type    : "aiDocuments.UnknownLoaderType",
-						message : "Unknown loader type: #loaderType#. Supported types: text, markdown, csv, json, xml, directory, http, tika, feed, sql, crawler"
+						message : "Unknown loader type: #loaderType#. Supported types: text, markdown, csv, json, xml, directory, http, feed, sql, crawler"
 					)
 				}
 		}

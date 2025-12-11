@@ -174,23 +174,6 @@ public class AiDocumentsBIFTest extends BaseIntegrationTest {
 		assertThat( name ).isEqualTo( "HTTPLoader" );
 	}
 
-	@DisplayName( "aiDocuments auto-detects Tika type for PDF" )
-	@Test
-	public void testAiDocumentsTikaDetection() {
-		// @formatter:off
-		runtime.executeSource(
-		    """
-				loader = aiDocuments( "/path/to/file.pdf" );
-				result = loader.getName();
-		    """,
-		    context
-		);
-		// @formatter:on
-
-		String name = ( String ) variables.get( "result" );
-		assertThat( name ).isEqualTo( "TikaLoader" );
-	}
-
 	@DisplayName( "aiDocuments can create explicit HTTP loader" )
 	@Test
 	public void testAiDocumentsExplicitHTTP() {
@@ -206,23 +189,6 @@ public class AiDocumentsBIFTest extends BaseIntegrationTest {
 
 		String name = ( String ) variables.get( "result" );
 		assertThat( name ).isEqualTo( "HTTPLoader" );
-	}
-
-	@DisplayName( "aiDocuments can create explicit Tika loader" )
-	@Test
-	public void testAiDocumentsExplicitTika() {
-		// @formatter:off
-		runtime.executeSource(
-		    """
-				loader = aiDocuments( "/path/to/file.doc", { type: "tika" } );
-				result = loader.getName();
-		    """,
-		    context
-		);
-		// @formatter:on
-
-		String name = ( String ) variables.get( "result" );
-		assertThat( name ).isEqualTo( "TikaLoader" );
 	}
 
 }
