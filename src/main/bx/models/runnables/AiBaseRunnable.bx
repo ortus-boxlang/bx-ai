@@ -148,11 +148,11 @@ abstract class implements="IAiRunnable" {
      * In this example, the output of `runnable` is transformed to uppercase by the provided function before being returned as `finalResult`.
      * This allows for easy post-processing of results.
 	 *
-	 * @transformer The transformation function to apply
+	 * @transformer The transformation function or object with a transform() method to apply
 	 *
 	 * @return A new runnable sequence with the transform step
 	 */
-	public IAiRunnable function transform( required function transformer ) {
+	public IAiRunnable function transform( required any transformer ) {
 		return this.to( new AiTransformRunnable( arguments.transformer ) )
 	}
 
@@ -179,14 +179,14 @@ abstract class implements="IAiRunnable" {
      * Apply a transformation function and run in one step
      * Combines transform() and run() for convenience
      *
-     * @transformer The transformation function to apply
+     * @transformer The transformation function or object with a transform() method to apply
      * @input The input to process
      * @params Optional parameters to configure the operation
      *
      * @return The transformed result of the operation
      */
     public any function transformAndRun(
-        required function transformer,
+        required any transformer,
         any input = {},
         struct params = {}
     ) {

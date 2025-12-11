@@ -18,6 +18,17 @@
 interface{
 
 	/**
+	 * Configure the transformer with necessary settings.
+	 *
+	 * @config The configuration struct with settings.
+	 *
+	 * @return The configured transformer instance.
+	 */
+	default ITransformer function configure( struct config ){
+		return this;
+	}
+
+	/**
 	 * Apply the transformation to the input data.
 	 *
 	 * @input The input data to transform.
