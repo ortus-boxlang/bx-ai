@@ -19,7 +19,7 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer();
 				result = transformer.transform( "  Hello World  " );
 		    """,
@@ -37,7 +37,7 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer();
 				// Test CRLF and CR conversion to LF
 				text = "Line1" & char(13) & char(10) & "Line2" & char(13) & "Line3";
@@ -58,7 +58,7 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer();
 				result = transformer.transform( "Hello    World   Test" );
 		    """,
@@ -76,7 +76,7 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer( { stripHTML: true } );
 				html = "<p>Hello <strong>World</strong></p><script>alert('test')</script>";
 				result = transformer.transform( html );
@@ -95,7 +95,7 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer( { stripHTML: true } );
 				html = "Hello&nbsp;&lt;World&gt;&amp;&quot;Test&quot;";
 				result = transformer.transform( html );
@@ -114,7 +114,7 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer( { stripMarkdown: true } );
 				markdown = "## Header" & char(10) & "**bold** and *italic* text" & char(10) & "[link](http://example.com)";
 				result = transformer.transform( markdown );
@@ -140,7 +140,7 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer();
 				// Include control characters (keeping tab, newline)
 				text = "Hello" & char(7) & " World" & char(9) & "Test";
@@ -161,7 +161,7 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer( { collapseWhitespace: true } );
 				text = "Hello" & char(10) & "  World" & char(9) & char(9) & "Test";
 				result = transformer.transform( text );
@@ -180,7 +180,7 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer( { removeEmptyLines: true } );
 				text = "Line1" & char(10) & char(10) & "Line2" & char(10) & "   " & char(10) & "Line3";
 				result = transformer.transform( text );
@@ -200,7 +200,7 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer( { maxConsecutiveNewlines: 2 } );
 				text = "Line1" & char(10) & char(10) & char(10) & char(10) & "Line2";
 				result = transformer.transform( text );
@@ -221,7 +221,7 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer( { normalizeUnicode: true } );
 				// Unicode quotes and dashes
 				text = char(8220) & "Hello" & char(8221) & " " & char(8211) & " - World";
@@ -241,7 +241,7 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer();
 				texts = [ "  Hello  ", "  World  ", "  Test  " ];
 				result = transformer.transform( texts );
@@ -264,11 +264,11 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer();
 				// Initially should trim
 				result1 = transformer.transform( "  Hello  " );
-				
+
 				// Reconfigure to not trim and not remove extra spaces
 				transformer.configure( { trim: false, removeExtraSpaces: false } );
 				result2 = transformer.transform( "  Hello  " );
@@ -288,16 +288,16 @@ public class TextCleanerTransformerTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.transformers.TextCleanerTransformer;
-				
+
 				transformer = new TextCleanerTransformer( {
 					stripHTML: true,
 					removeExtraSpaces: true,
 					normalizeLineBreaks: true,
 					maxConsecutiveNewlines: 1
 				} );
-				
+
 				// Messy HTML with extra spaces and line breaks
-				html = "<div>  Hello    World  </div>" & char(13) & char(10) & char(13) & char(10) & 
+				html = "<div>  Hello    World  </div>" & char(13) & char(10) & char(13) & char(10) &
 				       "<p>This  is   a   <strong>test</strong></p>";
 				result = transformer.transform( html );
 		    """,

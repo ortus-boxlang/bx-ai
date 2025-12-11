@@ -210,7 +210,7 @@ class implements="ITransformer" {
 	private string function stripMarkdownSyntax( required string text ) {
 		var result = arguments.text
 		var hashChar = char(35);  // # character
-		
+
 		// Remove code blocks
 		result = reReplace( result, "```[^`]*```", "", "all" )
 		result = reReplace( result, "`[^`]+`", "", "all" )
