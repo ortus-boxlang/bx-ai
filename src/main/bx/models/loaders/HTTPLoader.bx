@@ -507,14 +507,4 @@ class extends="BaseDocumentLoader" {
 		};
 	}
 
-	/**
-	 * Get document count
-	 * HTTP loader always returns 1 document per URL
-	 *
-	 * @return 1
-	 */
-	numeric function getDocumentCount() {
-		return 1;
-	}
-
 }

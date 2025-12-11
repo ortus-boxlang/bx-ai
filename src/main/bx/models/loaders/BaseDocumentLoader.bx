@@ -374,11 +374,15 @@ abstract class implements="IDocumentLoader" {
 	/**
 	 * Load all documents from the source.
 	 * This method applies any configured filters and transforms.
+	 * Caches documents for batch operations.
 	 *
 	 * @return Array of Document objects
 	 */
 	array function load() {
-		return applyFiltersAndTransforms( doLoad() )
+		variables.documents       = applyFiltersAndTransforms( doLoad() )
+		variables.documentsLoaded = true
+		variables.currentIndex    = 0
+		return variables.documents
 	}
 
 	/**

@@ -32,6 +32,7 @@ class extends="BaseDocumentLoader" {
 		DEFAULT_CONFIG = {
 			encoding           : "UTF-8",
 			includeMetadata    : true,
+			continueOnError    : true,
 			// Content options
 			includeDescription : true,
 			stripHtml          : true,
@@ -42,7 +43,7 @@ class extends="BaseDocumentLoader" {
 			// HTTP options for URL sources
 			timeout            : 30,
 			userAgent          : "BoxLang-FeedLoader/1.0"
-		};
+		}
 	}
 
 	/**
@@ -54,18 +55,9 @@ class extends="BaseDocumentLoader" {
 	 * @return FeedLoader instance
 	 */
 	function init( string source = "", struct config = {} ) {
-		super.init( source: arguments.source, config: {} );
-		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
-		return this;
-	}
-
-	/**
-	 * Get the loader name
-	 *
-	 * @return The loader name
-	 */
-	string function getName() {
-		return "FeedLoader";
+		super.init( source: arguments.source, config: {} )
+		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true )
+		return this
 	}
 
 	/**
@@ -78,73 +70,77 @@ class extends="BaseDocumentLoader" {
 			throw(
 				type    : "FeedLoader.NoSource",
 				message : "No feed source specified"
-			);
+			)
 		}
 
 		try {
 			// Create RSS reader
-			var reader = new RssReader();
+			var reader = new RssReader()
 
 			// Read the feed
-			var stream = reader.read( variables.source );
-			
-			// Convert Java Stream to array and process items
-			var documents = [];
-			var itemCount = 0;
-			
-			stream.forEach( ( item ) => {
-				// Check max items limit
-				if ( variables.config.maxItems > 0 && itemCount >= variables.config.maxItems ) {
-					return;
-				}
+			var stream = reader.read( variables.source )
 
-				// Extract item data
-				var title = item.getTitle().orElse( "" );
-				var link = item.getLink().orElse( "" );
-				var description = item.getDescription().orElse( "" );
-				var pubDate = item.getPubDate().orElse( "" );
-				var author = item.getAuthor().orElse( "" );
-				var guid = item.getGuid().orElse( link );
-				var categories = item.getCategories();
+			// Apply filters using Java Stream API (more efficient than forEach)
+			var filteredStream = stream
 
-				// Filter by date if configured
-				if ( len( variables.config.sinceDate ) && len( pubDate ) ) {
+			// Filter by date if configured
+			if ( len( variables.config.sinceDate ) ) {
+				filteredStream = filteredStream.filter( ( feedItem ) => {
+					var pubDate = feedItem.getPubDate().orElse( "" )
+					if ( !len( pubDate ) ) return true
+
 					try {
-						var itemDate = parseDateTime( pubDate );
-						var sinceDate = parseDateTime( variables.config.sinceDate );
-						if ( itemDate < sinceDate ) {
-							return;
-						}
+						var itemDate = parseDateTime( pubDate )
+						var sinceDate = parseDateTime( variables.config.sinceDate )
+						return itemDate >= sinceDate
 					} catch ( any e ) {
-						// Skip date filtering if parse fails
+						return true // Include if date parsing fails
 					}
-				}
+				} )
+			}
 
-				// Filter by categories if configured
-				if ( variables.config.categories.len() > 0 && categories.size() > 0 ) {
-					var hasCategory = false;
-					var javaIter = categories.iterator();
+			// Filter by categories if configured
+			if ( variables.config.categories.len() > 0 ) {
+				filteredStream = filteredStream.filter( ( feedItem ) => {
+					var categories = feedItem.getCategories()
+					if ( categories.size() == 0 ) return false
+
+					var javaIter = categories.iterator()
 					while ( javaIter.hasNext() ) {
-						var cat = javaIter.next();
+						var cat = javaIter.next()
 						if ( variables.config.categories.findNoCase( cat ) ) {
-							hasCategory = true;
-							break;
+							return true
 						}
 					}
-					if ( !hasCategory ) {
-						return;
-					}
-				}
+					return false
+				} )
+			}			// Apply maxItems limit if configured
+			if ( variables.config.maxItems > 0 ) {
+				filteredStream = filteredStream.limit( variables.config.maxItems )
+			}
 
-				// Build content
-				var docContent = buildContent( title, description );
+			// Convert stream to list
+			var items = filteredStream.toList()
+
+			// Convert items to Document objects
+			var documents = []
+			for ( var feedEntry in items ) {
+				// Extract item data
+				var title = feedEntry.getTitle().orElse( "" )
+				var link = feedEntry.getLink().orElse( "" )
+				var description = feedEntry.getDescription().orElse( "" )
+				var pubDate = feedEntry.getPubDate().orElse( "" )
+				var author = feedEntry.getAuthor().orElse( "" )
+				var guid = feedEntry.getGuid().orElse( link )
+				var categories = feedEntry.getCategories()				// Build content
+				var docContent = buildContent( title, description )
 
 				// Convert Java categories list to array
-				var catArray = [];
+				var catArray = []
 				if ( categories.size() > 0 ) {
-					var catIter = categories.iterator();
+					var catIter = categories.iterator()
 					while ( catIter.hasNext() ) {
-						catArray.append( catIter.next() );
+						catArray.append( catIter.next() )
 					}
 				}
 
@@ -158,7 +154,7 @@ class extends="BaseDocumentLoader" {
 					"author"          : author,
 					"guid"            : guid,
 					"categories"      : catArray
-				};
+				}
 
 				documents.append(
 					createDocument(
@@ -166,12 +162,10 @@ class extends="BaseDocumentLoader" {
 						additionalMetadata : metadata,
 						id                 : len( guid ) ? guid : link
 					)
-				);
+				)
+			}
 
-				itemCount++;
-			} );
-
-			return documents;
+			return documents
 
 		} catch ( any e ) {
 			if ( variables.config.continueOnError ) {
@@ -179,10 +173,10 @@ class extends="BaseDocumentLoader" {
 					"message" : "Failed to parse feed: ${e.message}",
 					"type"    : e.type,
 					"source"  : variables.source
-				} );
-				return [];
+				} )
+				return []
 			}
-			rethrow;
+			rethrow
 		}
 	}
 
@@ -198,18 +192,16 @@ class extends="BaseDocumentLoader" {
 		required string title,
 		required string description
 	) {
-		var parts = [];
+		var parts = []
 
 		if ( len( arguments.title ) ) {
-			parts.append( arguments.title );
+			parts.append( arguments.title )
 		}
 
-		if ( variables.config.includeDescription && len( arguments.description ) ) {
-			var desc = variables.config.stripHtml ? stripHTML( arguments.description ) : arguments.description;
-			parts.append( desc );
-		}
-
-		return parts.toList( char( 10 ) & char( 10 ) );
+	if ( variables.config.includeDescription && len( arguments.description ) ) {
+		var desc = variables.config.stripHtml ? stripHtmlTags( arguments.description ) : arguments.description
+		parts.append( desc )
+	}		return parts.toList( char( 10 ) & char( 10 ) )
 	}
 
 	/**
@@ -219,21 +211,20 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @return Plain text
 	 */
-	private string function stripHTML( required string text ) {
+	private string function stripHtmlTags( required string text ) {
 		try {
 			// Use JSoup to parse and extract text
-			return Jsoup::parse( arguments.text ).text();
+			return Jsoup::parse( arguments.text ).text()
 		} catch ( any e ) {
 			// Fallback to regex if JSoup fails
-			var result = arguments.text.reReplace( "<[^>]*>", " ", "all" );
+			var result = arguments.text.reReplace( "<[^>]*>", " ", "all" )
 			result = result.replace( "&nbsp;", " ", "all" )
 				.replace( "&amp;", "&", "all" )
 				.replace( "&lt;", "<", "all" )
 				.replace( "&gt;", ">", "all" )
 				.replace( "&quot;", """", "all" )
-				.replace( "&#39;", "'", "all" );
-			result = result.reReplace( "\s+", " ", "all" ).trim();
-			return result;
+				.replace( "&##39;", "'", "all" )
+			return result.reReplace( "\s+", " ", "all" ).trim()
 		}
 	}
 
@@ -249,8 +240,8 @@ class extends="BaseDocumentLoader" {
 	 * @return FeedLoader for chaining
 	 */
 	FeedLoader function includeDescription( boolean include = true ) {
-		variables.config.includeDescription = arguments.include;
-		return this;
+		variables.config.includeDescription = arguments.include
+		return this
 	}
 
 	/**
@@ -261,8 +252,8 @@ class extends="BaseDocumentLoader" {
 	 * @return FeedLoader for chaining
 	 */
 	FeedLoader function stripHtml( boolean strip = true ) {
-		variables.config.stripHtml = arguments.strip;
-		return this;
+		variables.config.stripHtml = arguments.strip
+		return this
 	}
 
 	/**
@@ -273,8 +264,8 @@ class extends="BaseDocumentLoader" {
 	 * @return FeedLoader for chaining
 	 */
 	FeedLoader function maxItems( required numeric max ) {
-		variables.config.maxItems = arguments.max;
-		return this;
+		variables.config.maxItems = arguments.max
+		return this
 	}
 
 	/**
@@ -285,8 +276,8 @@ class extends="BaseDocumentLoader" {
 	 * @return FeedLoader for chaining
 	 */
 	FeedLoader function sinceDate( required any date ) {
-		variables.config.sinceDate = isDate( arguments.date ) ? dateFormat( arguments.date, "yyyy-mm-dd" ) : arguments.date;
-		return this;
+		variables.config.sinceDate = isDate( arguments.date ) ? dateFormat( arguments.date, "yyyy-MM-dd" ) : arguments.date
+		return this
 	}
 
 	/**
@@ -297,8 +288,8 @@ class extends="BaseDocumentLoader" {
 	 * @return FeedLoader for chaining
 	 */
 	FeedLoader function categories( required array categories ) {
-		variables.config.categories = arguments.categories;
-		return this;
+		variables.config.categories = arguments.categories
+		return this
 	}
 
 	/**
@@ -309,8 +300,8 @@ class extends="BaseDocumentLoader" {
 	 * @return FeedLoader for chaining
 	 */
 	FeedLoader function timeout( required numeric seconds ) {
-		variables.config.timeout = arguments.seconds;
-		return this;
+		variables.config.timeout = arguments.seconds
+		return this
 	}
 
 	/**
@@ -325,16 +316,7 @@ class extends="BaseDocumentLoader" {
 			"isFeed"            : true,
 			"maxItems"          : variables.config.maxItems,
 			"stripHtml"         : variables.config.stripHtml
-		};
-	}
-
-	/**
-	 * Get document count (unknown for feeds until loaded)
-	 *
-	 * @return -1 (unknown)
-	 */
-	numeric function getDocumentCount() {
-		return -1;
+		}
 	}
 
 }
