@@ -173,7 +173,7 @@ class implements="ITransformer" {
 				return mid( result, contentStart, endPos - contentStart ).trim()
 			}
 		}
-		
+
 		// Check for ``` ... ``` pattern (no language)
 		if ( result.startsWith( "```" ) ) {
 			var contentStart = 4 // Position after ```
@@ -276,9 +276,9 @@ class implements="ITransformer" {
 		while ( pos <= len ) {
 			var char = mid( arguments.text, pos, 1 )
 			// Check if valid tag name character
-			if ( 
-				( char >= "a" && char <= "z" ) || 
-				( char >= "A" && char <= "Z" ) || 
+			if (
+				( char >= "a" && char <= "z" ) ||
+				( char >= "A" && char <= "Z" ) ||
 				( char >= "0" && char <= "9" && len( tagName ) > 0 ) ||
 				char == ":" || char == "-" || char == "_"
 			) {
@@ -303,7 +303,7 @@ class implements="ITransformer" {
 	private any function extractXPath( required any xmlDoc, required string xPath ) {
 		try {
 			var results = xmlSearch( arguments.xmlDoc, arguments.xPath )
-			
+
 			// If no results, return empty array
 			if ( !isArray( results ) || arrayLen( results ) == 0 ) {
 				return []
