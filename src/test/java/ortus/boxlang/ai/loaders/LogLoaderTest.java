@@ -20,16 +20,16 @@ public class LogLoaderTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.loaders.LogLoader;
-				
+
 				// Create a test log file
 				logPath = getTempFile( getTempDirectory(), "test" ) & ".log";
 				fileWrite( logPath, "[2025-12-11 10:00:00] [INFO] [MyApp] Application started
 [2025-12-11 10:00:01] [DEBUG] [MyApp] Loading configuration
 [2025-12-11 10:00:02] [ERROR] [MyApp] Failed to connect" );
-				
+
 				loader = new LogLoader( source: logPath );
 				rawDocs = loader.load();
-				
+
 				result = {
 					count: rawDocs.len(),
 					docs: rawDocs.map( d => d.toStruct() )
@@ -41,14 +41,14 @@ public class LogLoaderTest extends BaseIntegrationTest {
 
 		IStruct	result	= ( IStruct ) variables.get( "result" );
 		int		count	= result.getAsInteger( Key.of( "count" ) );
-		
+
 		// Should have 3 documents (one per line)
 		assertThat( count ).isEqualTo( 3 );
-		
-		Array docs = result.getAsArray( Key.of( "docs" ) );
-		IStruct firstDoc = ( IStruct ) docs.get( 0 );
-		IStruct metadata = firstDoc.getAsStruct( Key.of( "metadata" ) );
-		
+
+		Array	docs		= result.getAsArray( Key.of( "docs" ) );
+		IStruct	firstDoc	= ( IStruct ) docs.get( 0 );
+		IStruct	metadata	= firstDoc.getAsStruct( Key.of( "metadata" ) );
+
 		// Verify metadata was parsed
 		assertThat( metadata.getAsString( Key.of( "level" ) ) ).isEqualTo( "INFO" );
 		assertThat( metadata.getAsString( Key.of( "logger" ) ) ).isEqualTo( "MyApp" );
@@ -62,17 +62,17 @@ public class LogLoaderTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.loaders.LogLoader;
-				
+
 				logPath = getTempFile( getTempDirectory(), "test" ) & ".log";
 				fileWrite( logPath, "[2025-12-11 10:00:00] [INFO] [MyApp] Info message
 [2025-12-11 10:00:01] [DEBUG] [MyApp] Debug message
 [2025-12-11 10:00:02] [ERROR] [MyApp] Error message
 [2025-12-11 10:00:03] [WARN] [MyApp] Warning message" );
-				
+
 				loader = new LogLoader( source: logPath )
 					.minLevel( "WARN" );
 				rawDocs = loader.load();
-				
+
 				result = {
 					count: rawDocs.len(),
 					levels: rawDocs.map( d => d.getMetadata().level )
@@ -84,10 +84,10 @@ public class LogLoaderTest extends BaseIntegrationTest {
 
 		IStruct	result	= ( IStruct ) variables.get( "result" );
 		int		count	= result.getAsInteger( Key.of( "count" ) );
-		
+
 		// Should only have WARN and ERROR (2 lines)
 		assertThat( count ).isEqualTo( 2 );
-		
+
 		Array levels = result.getAsArray( Key.of( "levels" ) );
 		assertThat( levels.get( 0 ) ).isEqualTo( "ERROR" );
 		assertThat( levels.get( 1 ) ).isEqualTo( "WARN" );
@@ -100,16 +100,16 @@ public class LogLoaderTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.loaders.LogLoader;
-				
+
 				logPath = getTempFile( getTempDirectory(), "test" ) & ".log";
 				fileWrite( logPath, "[2025-12-11 10:00:00] [INFO] [App1] Message from App1
 [2025-12-11 10:00:01] [INFO] [App2] Message from App2
 [2025-12-11 10:00:02] [INFO] [App1] Another from App1" );
-				
+
 				loader = new LogLoader( source: logPath )
 					.includeLoggers( ["App1"] );
 				rawDocs = loader.load();
-				
+
 				result = {
 					count: rawDocs.len(),
 					loggers: rawDocs.map( d => d.getMetadata().logger )
@@ -121,10 +121,10 @@ public class LogLoaderTest extends BaseIntegrationTest {
 
 		IStruct	result	= ( IStruct ) variables.get( "result" );
 		int		count	= result.getAsInteger( Key.of( "count" ) );
-		
+
 		// Should only have App1 messages (2 lines)
 		assertThat( count ).isEqualTo( 2 );
-		
+
 		Array loggers = result.getAsArray( Key.of( "loggers" ) );
 		assertThat( loggers.get( 0 ) ).isEqualTo( "App1" );
 		assertThat( loggers.get( 1 ) ).isEqualTo( "App1" );
@@ -137,16 +137,16 @@ public class LogLoaderTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.loaders.LogLoader;
-				
+
 				logPath = getTempFile( getTempDirectory(), "test" ) & ".log";
 				fileWrite( logPath, "[2025-12-11 10:00:00] [INFO] [App1] Message from App1
 [2025-12-11 10:00:01] [INFO] [App2] Message from App2
 [2025-12-11 10:00:02] [INFO] [App3] Message from App3" );
-				
+
 				loader = new LogLoader( source: logPath )
 					.excludeLoggers( ["App2"] );
 				rawDocs = loader.load();
-				
+
 				result = {
 					count: rawDocs.len(),
 					loggers: rawDocs.map( d => d.getMetadata().logger )
@@ -158,10 +158,10 @@ public class LogLoaderTest extends BaseIntegrationTest {
 
 		IStruct	result	= ( IStruct ) variables.get( "result" );
 		int		count	= result.getAsInteger( Key.of( "count" ) );
-		
+
 		// Should have App1 and App3, but not App2 (2 lines)
 		assertThat( count ).isEqualTo( 2 );
-		
+
 		Array loggers = result.getAsArray( Key.of( "loggers" ) );
 		assertThat( loggers.get( 0 ) ).isEqualTo( "App1" );
 		assertThat( loggers.get( 1 ) ).isEqualTo( "App3" );
@@ -174,15 +174,15 @@ public class LogLoaderTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.loaders.LogLoader;
-				
+
 				logPath = getTempFile( getTempDirectory(), "test" ) & ".log";
 				fileWrite( logPath, "[2025-12-11 10:00:00] [INFO] [MyApp] First line
 
 [2025-12-11 10:00:02] [INFO] [MyApp] Third line" );
-				
+
 				loader = new LogLoader( source: logPath );
 				rawDocs = loader.load();
-				
+
 				result = rawDocs.len();
 		    """,
 		    context
@@ -190,7 +190,7 @@ public class LogLoaderTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		int count = variables.getAsInteger( result );
-		
+
 		// Should skip the empty line (2 documents)
 		assertThat( count ).isEqualTo( 2 );
 	}
@@ -202,14 +202,14 @@ public class LogLoaderTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.loaders.LogLoader;
-				
+
 				logPath = getTempFile( getTempDirectory(), "test" ) & ".log";
 				fileWrite( logPath, "[2025-12-11 10:00:00] [ERROR] [ortus.boxlang.runtime] Connection timeout occurred" );
-				
+
 				loader = new LogLoader( source: logPath );
 				rawDocs = loader.load();
 				doc = rawDocs[1];
-				
+
 				result = {
 					content: doc.getContent(),
 					timestamp: doc.getMetadata().timestamp,
@@ -222,7 +222,7 @@ public class LogLoaderTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		IStruct result = ( IStruct ) variables.get( "result" );
-		
+
 		assertThat( result.getAsString( Key.of( "content" ) ) ).contains( "Connection timeout" );
 		assertThat( result.getAsString( Key.of( "timestamp" ) ) ).isEqualTo( "2025-12-11 10:00:00" );
 		assertThat( result.getAsString( Key.of( "level" ) ) ).isEqualTo( "ERROR" );
@@ -236,15 +236,15 @@ public class LogLoaderTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.loaders.LogLoader;
-				
+
 				logPath = getTempFile( getTempDirectory(), "test" ) & ".log";
 				fileWrite( logPath, "[2025-12-11 10:00:00] [ERROR] [MyApp] Error message" );
-				
+
 				loader = new LogLoader( source: logPath )
 					.parseStructure( false );
 				rawDocs = loader.load();
 				doc = rawDocs[1];
-				
+
 				result = {
 					content: doc.getContent(),
 					level: doc.getMetadata().level
@@ -255,7 +255,7 @@ public class LogLoaderTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		IStruct result = ( IStruct ) variables.get( "result" );
-		
+
 		// Content should be the entire line when parsing is disabled
 		assertThat( result.getAsString( Key.of( "content" ) ) ).contains( "[2025-12-11 10:00:00]" );
 		// Level should be empty when parsing is disabled
@@ -269,7 +269,7 @@ public class LogLoaderTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.loaders.LogLoader;
-				
+
 				try {
 					loader = new LogLoader( source: "/nonexistent/file.log" );
 					rawDocs = loader.load();

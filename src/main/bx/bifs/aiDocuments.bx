@@ -106,44 +106,51 @@ class {
 		// Create the appropriate loader
 		var loaderClass = "";
 		switch ( loaderType ) {
-			case "text":
-			case "txt":
-				loaderClass = "bxmodules.bxai.models.loaders.TextLoader"
-				break
-			case "markdown":
-			case "md":
-				loaderClass = "bxmodules.bxai.models.loaders.MarkdownLoader"
-				break
+
+			case "crawler": case "webcrawler": case "scraper":
+				loaderClass = "bxmodules.bxai.models.loaders.WebCrawlerLoader"
+				break;
+
 			case "csv":
 				loaderClass = "bxmodules.bxai.models.loaders.CSVLoader"
-				break
+				break;
+
+			case "db": case "sql" :
+				loaderClass = "bxmodules.bxai.models.loaders.SQLLoader"
+				break;
+
+			case "directory": case "dir":
+				loaderClass = "bxmodules.bxai.models.loaders.DirectoryLoader"
+				break;
+
+			case "feed": case "rss": case "atom":
+				loaderClass = "bxmodules.bxai.models.loaders.FeedLoader"
+				break;
+
 			case "json":
 				loaderClass = "bxmodules.bxai.models.loaders.JSONLoader"
-				break
+				break;
+
+			case "http" : case "html" :
+				loaderClass = "bxmodules.bxai.models.loaders.HTTPLoader"
+				break;
+
+			case "log" :
+				loaderClass = "bxmodules.bxai.models.loaders.LogLoader"
+				break;
+
+			case "markdown": case "md":
+				loaderClass = "bxmodules.bxai.models.loaders.MarkdownLoader"
+				break;
+
+			case "text": case "txt":
+				loaderClass = "bxmodules.bxai.models.loaders.TextLoader"
+				break;
+
 			case "xml":
 				loaderClass = "bxmodules.bxai.models.loaders.XMLLoader"
-				break
-			case "directory":
-			case "dir":
-				loaderClass = "bxmodules.bxai.models.loaders.DirectoryLoader"
-				break
-			case "http":
-			case "html":
-				loaderClass = "bxmodules.bxai.models.loaders.HTTPLoader"
-				break
-			case "feed":
-			case "rss":
-			case "atom":
-				loaderClass = "bxmodules.bxai.models.loaders.FeedLoader"
-				break
-			case "db":
-				loaderClass = "bxmodules.bxai.models.loaders.SQLLoader"
-				break
-			case "crawler":
-			case "webcrawler":
-			case "scraper":
-				loaderClass = "bxmodules.bxai.models.loaders.WebCrawlerLoader"
-				break
+				break;
+
 			default:
 				// Check if it's a full class path
 				if ( loaderType.findNoCase( "." ) ) {

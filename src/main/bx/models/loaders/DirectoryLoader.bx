@@ -24,6 +24,7 @@ import bxModules.bxai.models.loaders.CSVLoader
 import bxModules.bxai.models.loaders.JSONLoader
 import bxModules.bxai.models.loaders.XMLLoader
 import bxModules.bxai.models.loaders.FeedLoader
+import bxModules.bxai.models.loaders.LogLoader
 
 class extends="BaseDocumentLoader" {
 
@@ -58,7 +59,8 @@ class extends="BaseDocumentLoader" {
 			"csv"  : "CSVLoader",
 			"json" : "JSONLoader",
 			"xml"  : "XMLLoader",
-			"rss"  : "FeedLoader"
+			"rss"  : "FeedLoader",
+			"log"  : "LogLoader"
 		}
 	}
 
@@ -242,6 +244,8 @@ class extends="BaseDocumentLoader" {
 				return new XMLLoader( source: arguments.filePath, config: variables.config )
 			case "FeedLoader":
 				return new FeedLoader( source: arguments.filePath, config: variables.config )
+			case "LogLoader":
+				return new LogLoader( source: arguments.filePath, config: variables.config )
 			default:
 				return null
 		}
