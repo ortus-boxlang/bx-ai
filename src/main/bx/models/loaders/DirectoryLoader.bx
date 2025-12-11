@@ -60,7 +60,8 @@ class extends="BaseDocumentLoader" {
 			"json" : "JSONLoader",
 			"xml"  : "XMLLoader",
 			"rss"  : "FeedLoader",
-			"log"  : "LogLoader"
+			"log"  : "LogLoader",
+			"pdf"  : "PDFLoader"
 		}
 	}
 

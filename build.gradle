@@ -43,9 +43,8 @@ dependencies {
 		testImplementation files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
 	}
 
-	// Apache Tika for document parsing (PDF, Word, etc.)
-	//implementation 'org.apache.tika:tika-core:2.9.2'
-	//implementation 'org.apache.tika:tika-parsers-standard-package:2.9.2'
+	// PDF Extraction
+	implementation 'org.apache.pdfbox:pdfbox:3.0.6'
 
 	// JSoup for HTML parsing and web scraping
 	implementation 'org.jsoup:jsoup:1.18.1'
