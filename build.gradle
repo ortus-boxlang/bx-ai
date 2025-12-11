@@ -152,6 +152,19 @@ shadowJar {
 	archiveClassifier = ''
     mergeServiceFiles()
     destinationDirectory = file( "build/libs" )
+
+	// Minimize the JAR by only including classes that are actually used
+	// This significantly reduces the size by excluding unused PDFBox classes
+	minimize {
+		// Keep JSoup classes (used by WebCrawlerLoader)
+		exclude( dependency( 'org.jsoup:.*' ) )
+		// Keep RSS Reader classes (used by FeedLoader)
+		exclude( dependency( 'com.apptasticsoftware:.*' ) )
+		// Keep PDFBox classes (used by PDFLoader.bx - BoxLang files aren't analyzed by bytecode scanner)
+		exclude( dependency( 'org.apache.pdfbox:.*' ) )
+		// Keep FontBox classes (required by PDFBox for text extraction)
+		exclude( dependency( 'org.apache.fontbox:.*' ) )
+	}
 }
 
 /**
