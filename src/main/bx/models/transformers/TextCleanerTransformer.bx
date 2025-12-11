@@ -1,0 +1,327 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License")
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Transformer that cleans and normalizes text for AI processing.
+ *
+ * Features:
+ * - Trim whitespace
+ * - Normalize line breaks
+ * - Remove extra spaces
+ * - Strip HTML tags
+ * - Remove control characters
+ * - Normalize unicode
+ */
+class implements="ITransformer" {
+
+	/**
+	 * Current configuration
+	 */
+	property name="config" type="struct";
+
+	/**
+	 * Configuration options
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			// Whitespace handling
+			trim                  : true,
+			normalizeLineBreaks   : true,
+			removeExtraSpaces     : true,
+			collapseWhitespace    : false,
+			// HTML/Markup handling
+			stripHTML             : false,
+			stripMarkdown         : false,
+			// Character handling
+			removeControlChars    : true,
+			removeEmojis          : false,
+			normalizeUnicode      : false,
+			// Line handling
+			removeEmptyLines      : false,
+			maxConsecutiveNewlines: 0
+		}
+	}
+
+	/**
+	 * Initialize the text cleaner transformer
+	 *
+	 * @config Optional configuration struct
+	 *
+	 * @return This transformer instance
+	 */
+	function init( struct config = {} ) {
+		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true )
+		return this
+	}
+
+	/**
+	 * Configure the transformer with settings
+	 *
+	 * @config Configuration struct
+	 *
+	 * @return This transformer instance
+	 */
+	public ITransformer function configure( required struct config ) {
+		variables.config.append( arguments.config, true )
+		return this
+	}
+
+	/**
+	 * Apply text cleaning transformation
+	 *
+	 * @input The text to clean (string or array of strings)
+	 *
+	 * @return The cleaned text
+	 */
+	public any function transform( required any input ) {
+		// Handle arrays by transforming each element
+		if ( isArray( arguments.input ) ) {
+			return arguments.input.map( text => cleanText( text ) )
+		}
+
+		// Handle single string
+		return cleanText( arguments.input )
+	}
+
+	/**
+	 * Clean a single text string
+	 *
+	 * @text The text to clean
+	 *
+	 * @return The cleaned text
+	 */
+	private string function cleanText( required string text ) {
+		var result = arguments.text
+
+		// Strip HTML tags if configured
+		if ( variables.config.stripHTML ) {
+			result = stripHTMLTags( result )
+		}
+
+		// Strip markdown if configured
+		if ( variables.config.stripMarkdown ) {
+			result = stripMarkdownSyntax( result )
+		}
+
+		// Remove control characters
+		if ( variables.config.removeControlChars ) {
+			result = removeControlCharacters( result )
+		}
+
+		// Remove emojis if configured
+		if ( variables.config.removeEmojis ) {
+			result = removeEmojiCharacters( result )
+		}
+
+		// Normalize unicode if configured
+		if ( variables.config.normalizeUnicode ) {
+			result = normalizeUnicodeCharacters( result )
+		}
+
+		// Normalize line breaks
+		if ( variables.config.normalizeLineBreaks ) {
+			result = result.replace( char( 13 ) & char( 10 ), char( 10 ), "all" ) // CRLF to LF
+			result = result.replace( char( 13 ), char( 10 ), "all" ) // CR to LF
+		}
+
+		// Remove empty lines
+		if ( variables.config.removeEmptyLines ) {
+			var lines = result.split( char( 10 ) )
+			lines = lines.filter( line => len( line.trim() ) > 0 )
+			result = lines.toList( char( 10 ) )
+		}
+
+		// Limit consecutive newlines
+		if ( variables.config.maxConsecutiveNewlines > 0 ) {
+			var pattern = "(\n{" & ( variables.config.maxConsecutiveNewlines + 1 ) & ",})"
+			var replacement = repeatString( char( 10 ), variables.config.maxConsecutiveNewlines )
+			result = reReplace( result, pattern, replacement, "all" )
+		}
+
+		// Remove extra spaces
+		if ( variables.config.removeExtraSpaces ) {
+			result = reReplace( result, " {2,}", " ", "all" )
+		}
+
+		// Collapse all whitespace to single spaces
+		if ( variables.config.collapseWhitespace ) {
+			result = reReplace( result, "\s+", " ", "all" )
+		}
+
+		// Trim whitespace
+		if ( variables.config.trim ) {
+			result = result.trim()
+		}
+
+		return result
+	}
+
+	/**
+	 * Strip HTML tags from text
+	 *
+	 * @text The text to process
+	 *
+	 * @return Text without HTML tags
+	 */
+	private string function stripHTMLTags( required string text ) {
+		var result = arguments.text
+
+		// Remove script and style tags with their content
+		result = reReplace( result, "<script[^>]*>.*?</script>", "", "all" )
+		result = reReplace( result, "<style[^>]*>.*?</style>", "", "all" )
+
+		// Remove HTML comments
+		result = reReplace( result, "<!--.*?-->", "", "all" )
+
+		// Remove all HTML tags
+		result = reReplace( result, "<[^>]+>", "", "all" )
+
+		// Decode common HTML entities
+		result = result.replace( "&nbsp;", " ", "all" )
+		result = result.replace( "&lt;", "<", "all" )
+		result = result.replace( "&gt;", ">", "all" )
+		result = result.replace( "&amp;", "&", "all" )
+		result = result.replace( "&quot;", '"', "all" )
+		result = result.replace( "&apos;", "'", "all" )
+
+		return result
+	}
+
+	/**
+	 * Strip markdown syntax from text
+	 *
+	 * @text The text to process
+	 *
+	 * @return Text without markdown syntax
+	 */
+	private string function stripMarkdownSyntax( required string text ) {
+		var result = arguments.text
+		var hashChar = char(35);  // # character
+		
+		// Remove code blocks
+		result = reReplace( result, "```[^`]*```", "", "all" )
+		result = reReplace( result, "`[^`]+`", "", "all" )
+
+		// Remove headers (using char(35) for # to avoid string interpolation issues)
+		result = reReplace( result, "^" & hashChar & "{1,6}\s+", "", "all" )
+
+		// Remove bold/italic (using Java String methods for complex patterns)
+		result = result.replaceAll( "\*\*([^\*]+)\*\*", "$1" )
+		result = result.replaceAll( "\*([^\*]+)\*", "$1" )
+		result = result.replaceAll( "__([^_]+)__", "$1" )
+		result = result.replaceAll( "_([^_]+)_", "$1" )
+
+		// Remove links but keep text
+		result = result.replaceAll( "\[([^\]]+)\]\([^\)]+\)", "$1" )
+
+		// Remove images
+		result = result.replaceAll( "!\[([^\]]*)\]\([^\)]+\)", "" )
+
+		// Remove horizontal rules
+		result = result.replaceAll( "^[\-\*_]{3,}$", "" )
+
+		// Remove blockquotes
+		result = result.replaceAll( "^>\s+", "" )
+
+		// Remove list markers
+		result = result.replaceAll( "^[\*\-\+]\s+", "" )
+		result = result.replaceAll( "^\d+\.\s+", "" )
+
+		return result
+	}
+
+	/**
+	 * Remove control characters (0x00-0x1F except tab, newline, carriage return)
+	 *
+	 * @text The text to process
+	 *
+	 * @return Text without control characters
+	 */
+	private string function removeControlCharacters( required string text ) {
+		// Keep tab (0x09), newline (0x0A), carriage return (0x0D)
+		// Remove all other control characters (0x00-0x1F and 0x7F)
+		// Using Java String replaceAll for more reliable regex handling
+		return arguments.text.replaceAll(
+			"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]",
+			""
+		)
+	}
+
+	/**
+	 * Remove emoji characters
+	 *
+	 * @text The text to process
+	 *
+	 * @return Text without emojis
+	 */
+	private string function removeEmojiCharacters( required string text ) {
+		// Remove common emoji ranges
+		// This is a simplified version - full emoji support requires more complex patterns
+		var result = arguments.text
+
+		// Emoticons range (1F600-1F64F)
+		result = reReplace( result, "[\x{1F600}-\x{1F64F}]", "", "all" )
+
+		// Symbols & Pictographs (1F300-1F5FF)
+		result = reReplace( result, "[\x{1F300}-\x{1F5FF}]", "", "all" )
+
+		// Transport & Map Symbols (1F680-1F6FF)
+		result = reReplace( result, "[\x{1F680}-\x{1F6FF}]", "", "all" )
+
+		// Supplemental Symbols and Pictographs (1F900-1F9FF)
+		result = reReplace( result, "[\x{1F900}-\x{1F9FF}]", "", "all" )
+
+		// Miscellaneous Symbols (2600-26FF)
+		result = reReplace( result, "[\x{2600}-\x{26FF}]", "", "all" )
+
+		return result
+	}
+
+	/**
+	 * Normalize unicode characters to their closest ASCII equivalents
+	 *
+	 * @text The text to process
+	 *
+	 * @return Text with normalized unicode
+	 */
+	private string function normalizeUnicodeCharacters( required string text ) {
+		var result = arguments.text
+
+		// Common replacements using char() for unicode values
+		var replacements = {
+			// Quotes
+			"#char(8216)#" : "'",  // Left single quote (U+2018)
+			"#char(8217)#" : "'",  // Right single quote (U+2019)
+			"#char(8220)#" : '"',  // Left double quote (U+201C)
+			"#char(8221)#" : '"',  // Right double quote (U+201D)
+			// Dashes
+			"#char(8211)#" : "-",  // En dash (U+2013)
+			"#char(8212)#" : "-",  // Em dash (U+2014)
+			// Spaces
+			"#char(160)#"  : " ",  // Non-breaking space (U+00A0)
+			"#char(8201)#" : " ",  // Thin space (U+2009)
+			// Ellipsis
+			"#char(8230)#" : "..."  // Ellipsis (U+2026)
+		}
+
+		for ( var unicode in replacements ) {
+			result = result.replace( unicode, replacements[ unicode ], "all" )
+		}
+
+		return result
+	}
+
+}
