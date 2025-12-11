@@ -44,10 +44,11 @@ class {
 	 * ```
 	 *
 	 * @transformer The transformation function to apply or an internal transformer or a full classpath to a transformer. Receives input and returns transformed output.
+	 * @config Optional configuration struct for the transformer
 	 *
 	 * @return The AI Transform Runnable object
      */
-    function invoke( required any transformer ) {
+    function invoke( required any transformer, struct config = {} ) {
 		var oTransform = null
 
 		// If it's a function closure, wrap it
@@ -59,7 +60,45 @@ class {
 			// oTransform = new #arguments.transformer#()
 			// Check for internal shortcuts or if not, try to build it as a class path.
 
-			throw BoxException( "Invalid transformer [#arguments.transformer#]. None found locally or in class path." )
+			switch( arguments.transformer ){
+				case "code" : case "codeExtractor" : {
+					oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable(
+						new bxModules.bxai.models.transformers.CodeExtractorTransformer().configure( arguments.config )
+					)
+					break
+				}
+
+				case "json" : case "jsonExtractor" : {
+					oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable(
+						new bxModules.bxai.models.transformers.JSONExtractorTransformer().configure( arguments.config )
+					)
+					break
+				}
+
+				case "text" : case "textExtractor" : {
+					oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable(
+						new bxModules.bxai.models.transformers.TextExtractorTransformer().configure( arguments.config )
+					)
+					break
+				}
+
+				case "xml" : case "xmlExtractor" : {
+					oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable(
+						new bxModules.bxai.models.transformers.XMLExtractorTransformer().configure( arguments.config )
+					)
+					break
+				}
+
+				default : {
+					// Try to build it as a class path
+					// If it fails, let it bubble up
+					oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable(
+						createObject( arguments.transformer ).init().configure( arguments.config )
+					)
+					break
+				}
+			}
+
 		}
 		else {
 			throw BoxException( "Invalid transformer argument. Must be a closure or string classpath." )

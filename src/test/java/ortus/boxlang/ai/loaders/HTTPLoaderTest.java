@@ -85,7 +85,7 @@ public class HTTPLoaderTest extends BaseIntegrationTest {
 		runtime.executeSource(
 		    """
 				import bxModules.bxai.models.loaders.HTTPLoader;
-				loader = new HTTPLoader( source: "https://github.com/ortus-boxlang/boxlang" )
+				loader = new HTTPLoader( source: "https://www.boxlang.io" )
 					.contentType( "html" )
 					.extractText( true );
 				rawDocs = loader.load();
@@ -95,8 +95,8 @@ public class HTTPLoaderTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		Array	docs	= ( Array ) variables.get( "result" );
-		IStruct	doc		= ( IStruct ) docs.get( 0 );
+		Array	docs	= variables.getAsArray( result );
+		IStruct	doc		= ( IStruct ) docs.getFirst();
 		String	content	= doc.getAsString( Key.of( "content" ) );
 
 		assertThat( docs.size() ).isEqualTo( 1 );
