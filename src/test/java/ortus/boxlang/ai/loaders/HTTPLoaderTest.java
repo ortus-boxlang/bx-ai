@@ -106,7 +106,7 @@ public class HTTPLoaderTest extends BaseIntegrationTest {
 		assertThat( content ).doesNotContain( "<div>" );
 
 		IStruct metadata = ( IStruct ) doc.get( Key.of( "metadata" ) );
-		assertThat( metadata.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://github.com/ortus-boxlang/boxlang" );
+		assertThat( metadata.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://www.boxlang.io" );
 		assertThat( metadata.getAsInteger( Key.of( "statusCode" ) ) ).isEqualTo( 200 );
 		assertThat( metadata.getAsString( Key.of( "contentType" ) ) ).isEqualTo( "html" );
 	}

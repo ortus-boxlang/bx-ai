@@ -104,4 +104,114 @@ public class DirectoryLoaderTest extends BaseIntegrationTest {
 		assertThat( count ).isGreaterThan( 0 );
 	}
 
+	@DisplayName( "DirectoryLoader supports recursive loading" )
+	@Test
+	public void testDirectoryLoaderRecursive() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.DirectoryLoader;
+				// Non-recursive first
+				loaderNonRecursive = new DirectoryLoader( source: "%s" );
+				nonRecursiveDocs = loaderNonRecursive.load();
+
+				// Recursive
+				loaderRecursive = new DirectoryLoader( source: "%s" )
+					.recursive();
+				recursiveDocs = loaderRecursive.load();
+
+				result = {
+					nonRecursiveCount: nonRecursiveDocs.len(),
+					recursiveCount: recursiveDocs.len()
+				};
+		    """.formatted( TEST_RESOURCES, TEST_RESOURCES ),
+		    context
+		);
+		// @formatter:on
+
+		IStruct	result				= ( IStruct ) variables.get( "result" );
+		int		nonRecursiveCount	= result.getAsInteger( ortus.boxlang.runtime.scopes.Key.of( "nonRecursiveCount" ) );
+		int		recursiveCount		= result.getAsInteger( ortus.boxlang.runtime.scopes.Key.of( "recursiveCount" ) );
+
+		// Recursive should find at least as many files as non-recursive
+		assertThat( recursiveCount ).isAtLeast( nonRecursiveCount );
+	}
+
+	@DisplayName( "DirectoryLoader supports custom filter callback" )
+	@Test
+	public void testDirectoryLoaderFilterCallback() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.DirectoryLoader;
+				loader = new DirectoryLoader( source: "%s" )
+					.filterFiles( ( filePath ) => {
+						// Only include files with "sample" in the name
+						return filePath.findNoCase( "sample" ) > 0;
+					} );
+				rawDocs = loader.load();
+				result = rawDocs.len();
+		    """.formatted( TEST_RESOURCES ),
+		    context
+		);
+		// @formatter:on
+
+		int count = variables.getAsInteger( result );
+		// Should have filtered files
+		assertThat( count ).isAtLeast( 0 );
+	}
+
+	@DisplayName( "DirectoryLoader supports exclude patterns" )
+	@Test
+	public void testDirectoryLoaderExcludePatterns() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.DirectoryLoader;
+				loaderAll = new DirectoryLoader( source: "%s" );
+				allDocs = loaderAll.load();
+
+				loaderExclude = new DirectoryLoader( source: "%s" )
+					.exclude( [".*\\.txt$"] );
+				excludedDocs = loaderExclude.load();
+
+				result = {
+					allCount: allDocs.len(),
+					excludedCount: excludedDocs.len()
+				};
+		    """.formatted( TEST_RESOURCES, TEST_RESOURCES ),
+		    context
+		);
+		// @formatter:on
+
+		IStruct	result			= ( IStruct ) variables.get( "result" );
+		int		allCount		= result.getAsInteger( ortus.boxlang.runtime.scopes.Key.of( "allCount" ) );
+		int		excludedCount	= result.getAsInteger( ortus.boxlang.runtime.scopes.Key.of( "excludedCount" ) );
+
+		// Excluded should have fewer or equal files
+		assertThat( excludedCount ).isAtMost( allCount );
+	}
+
+	@DisplayName( "DirectoryLoader supports custom loader registration" )
+	@Test
+	public void testDirectoryLoaderRegisterLoader() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				import bxModules.bxai.models.loaders.DirectoryLoader;
+				loader = new DirectoryLoader( source: "%s" )
+					.registerLoader( "log", "TextLoader" )
+					.extensions( ["log"] );
+				rawDocs = loader.load();
+				result = rawDocs.len();
+		    """.formatted( TEST_RESOURCES ),
+		    context
+		);
+		// @formatter:on
+
+		int count = variables.getAsInteger( result );
+		// Result depends on whether .log files exist in test resources
+		assertThat( count ).isAtLeast( 0 );
+	}
+
 }

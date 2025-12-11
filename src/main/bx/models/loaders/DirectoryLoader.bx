@@ -18,6 +18,13 @@
  * Loads all files from a directory using appropriate loaders.
  * Automatically selects the right loader based on file extension.
  */
+import bxModules.bxai.models.loaders.TextLoader
+import bxModules.bxai.models.loaders.MarkdownLoader
+import bxModules.bxai.models.loaders.CSVLoader
+import bxModules.bxai.models.loaders.JSONLoader
+import bxModules.bxai.models.loaders.XMLLoader
+import bxModules.bxai.models.loaders.FeedLoader
+
 class extends="BaseDocumentLoader" {
 
 	/**
