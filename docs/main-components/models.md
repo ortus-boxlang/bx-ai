@@ -863,10 +863,10 @@ vectorMemory = aiMemory( "chroma", {
 } );
 
 // Step 2: Load and ingest documents
-result = aiDocuments( "/docs", { 
+result = aiDocuments( "/docs", {
     type: "directory",
-    recursive: true, 
-    extensions: ["md", "pdf"] 
+    recursive: true,
+    extensions: ["md", "pdf"]
 } ).toMemory(
     memory  = vectorMemory,
     options = { chunkSize: 1000, overlap: 200 }

@@ -754,7 +754,7 @@ For comprehensive ingestion with reporting:
 // Single memory with full reporting
 result = aiDocuments( "/knowledge-base", {
     type: "directory",
-    recursive: true, 
+    recursive: true,
     extensions: ["md", "txt"]
 } ).toMemory(
     memory  = vectorMemory,
@@ -897,7 +897,7 @@ vectorMemory = aiMemory( "chroma", {
 // Step 2: Ingest documents
 result = aiDocuments( "/knowledge-base", {
     type: "directory",
-    recursive: true, 
+    recursive: true,
     extensions: ["md", "txt", "pdf"]
 } ).toMemory(
     memory  = vectorMemory,

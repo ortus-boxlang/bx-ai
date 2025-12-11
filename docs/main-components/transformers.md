@@ -442,9 +442,9 @@ pipeline = aiMessage()
     .user( "Write a Python function to calculate fibonacci" )
     .toDefaultModel()
     .transform( r => r.content )
-    .to( new CodeExtractorTransformer({ 
+    .to( new CodeExtractorTransformer({
         language: "python",
-        stripComments: false 
+        stripComments: false
     }) );
 
 pythonCode = pipeline.run();

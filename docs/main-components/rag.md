@@ -91,10 +91,10 @@ vectorMemory = aiMemory( "chroma", {
 } );
 
 // Step 2: Ingest documents
-result = aiDocuments( "/docs", { 
+result = aiDocuments( "/docs", {
     type: "directory",
-    recursive: true, 
-    extensions: ["md", "txt", "pdf"] 
+    recursive: true,
+    extensions: ["md", "txt", "pdf"]
 } ).toMemory(
     memory  = vectorMemory,
     options = { chunkSize: 1000, overlap: 200 }
@@ -223,9 +223,9 @@ println( "✅ Stored #allChunks.len()# chunks in vector database" );
 
 ```javascript
 // All-in-one ingestion
-result = aiDocuments( "/docs", { 
+result = aiDocuments( "/docs", {
     type: "directory",
-    recursive: true 
+    recursive: true
 } ).toMemory(
     memory  = vectorMemory,
     options = { chunkSize: 1000, overlap: 200 }

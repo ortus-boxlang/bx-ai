@@ -46,7 +46,7 @@ graph LR
     B --> C[Write Code]
     C --> D[Run Script]
     D --> E[Get AI Response]
-    
+
     style A fill:#BD10E0
     style B fill:#F5A623
     style C fill:#4A90E2
@@ -117,7 +117,7 @@ graph TB
     subgraph "Your Code"
         C[aiChat Function]
     end
-    
+
     subgraph "Provider Options"
         O[OpenAI]
         CL[Claude]
@@ -125,7 +125,7 @@ graph TB
         M[Mistral]
         OL[Ollama - Local]
     end
-    
+
     subgraph "AI Models"
         GPT[GPT-4]
         CLAUDE[Claude 3]
@@ -133,19 +133,19 @@ graph TB
         MIST[Mistral]
         LLAMA[Llama 3]
     end
-    
+
     C --> O
     C --> CL
     C --> G
     C --> M
     C --> OL
-    
+
     O --> GPT
     CL --> CLAUDE
     G --> GEM
     M --> MIST
     OL --> LLAMA
-    
+
     style C fill:#BD10E0
     style OL fill:#7ED321
 ```
@@ -472,7 +472,7 @@ vectorMemory = aiMemory( "chroma", {
 
 // Step 2: Ingest documents
 result = aiDocuments( "/docs", { type: "directory" } )
-    .toMemory( 
+    .toMemory(
         memory  = vectorMemory,
         options = { chunkSize: 1000, overlap: 200 }
     )
@@ -483,10 +483,10 @@ println( "✅ Ingested #result.chunksOut# chunks" )
 function ragQuery( question ) {
     // Retrieve relevant docs
     docs = vectorMemory.getRelevant( question, limit = 3 )
-    
+
     // Build context
     context = docs.map( d => d.content ).toList( "\n\n" )
-    
+
     // Query with context
     return aiMessage()
         .system( "Answer using the provided context" )
@@ -515,7 +515,7 @@ graph TB
     MEM --> TOOLS[Add Tools]
     TOOLS --> RUN[Run Agent]
     RUN --> RESP[Get Response]
-    
+
     style START fill:#BD10E0
     style MEM fill:#50E3C2
     style TOOLS fill:#B8E986
@@ -570,7 +570,7 @@ sequenceDiagram
     participant A as Agent
     participant T as Weather Tool
     participant API as Weather API
-    
+
     U->>A: "What's the weather in Boston?"
     A->>A: Analyze question
     Note over A: Realizes it needs<br/>weather data
@@ -580,7 +580,7 @@ sequenceDiagram
     T->>A: Return weather data
     A->>A: Format response
     A->>U: "The weather in Boston is 15°C and cloudy"
-    
+
     Note over U,API: Agent automatically decides<br/>when to use tools
 ```
 
