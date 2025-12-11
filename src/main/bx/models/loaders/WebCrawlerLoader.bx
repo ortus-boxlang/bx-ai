@@ -16,7 +16,7 @@
  * limitations under the License.
  * ----------------------------------------------------------------------------------
  * Web crawler that loads multiple pages by following links.
- * Built on top of HTTPLoader with support for robots.txt, link filtering,
+ * Built on top of HTTPLoader with support for link filtering
  * and depth-limited crawling. Uses JSoup for HTML parsing.
  */
 class extends="BaseDocumentLoader" {
@@ -30,11 +30,6 @@ class extends="BaseDocumentLoader" {
 	 * URLs to visit (queue)
 	 */
 	property name="urlQueue" type="array";
-
-	/**
-	 * robots.txt rules cache
-	 */
-	property name="robotsRules" type="struct";
 
 	/**
 	 * Content hashes for deduplication
@@ -58,8 +53,6 @@ class extends="BaseDocumentLoader" {
 			excludedPaths      : [],
 			urlPatterns        : [],
 			excludeUrlPatterns : [],
-			// robots.txt
-			respectRobotsTxt   : true,
 			// Content extraction
 			extractText        : true,
 			removeScripts      : true,
@@ -89,18 +82,8 @@ class extends="BaseDocumentLoader" {
 		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
 		variables.visitedUrls = {};
 		variables.urlQueue = [];
-		variables.robotsRules = {};
 		variables.contentHashes = {};
 		return this;
-	}
-
-	/**
-	 * Get the loader name
-	 *
-	 * @return The loader name
-	 */
-	string function getName() {
-		return "WebCrawlerLoader";
 	}
 
 	/**
@@ -131,11 +114,6 @@ class extends="BaseDocumentLoader" {
 		variables.visitedUrls = {};
 		variables.contentHashes = {};
 
-		// Load robots.txt for the starting domain
-		if ( variables.config.respectRobotsTxt ) {
-			loadRobotsTxt( variables.source );
-		}
-
 		// Crawl loop
 		while ( variables.urlQueue.len() > 0 && documents.len() < variables.config.maxPages ) {
 			var item = variables.urlQueue[ 1 ];
@@ -151,11 +129,6 @@ class extends="BaseDocumentLoader" {
 
 			// Mark as visited
 			variables.visitedUrls[ currentUrl ] = true;
-
-			// Check robots.txt
-			if ( variables.config.respectRobotsTxt && !isAllowedByRobots( currentUrl ) ) {
-				continue;
-			}
 
 			// Check URL filters
 			if ( !shouldCrawlUrl( currentUrl ) ) {
@@ -223,10 +196,10 @@ class extends="BaseDocumentLoader" {
 	 * @return Struct with content, metadata, and html or null
 	 */
 	private any function loadPage( required string pageUrl ) {
-		var response = http( url: arguments.pageUrl, timeout: variables.config.timeout )
-			.addHeader( "User-Agent", variables.config.userAgent )
-			.addHeader( "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" )
-			.get()
+		var response = http( url: arguments.pageUrl )
+			.timeout( variables.config.timeout )
+			.header( "User-Agent", variables.config.userAgent )
+			.header( "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" )
 			.send();
 
 		// Check for success
@@ -235,7 +208,7 @@ class extends="BaseDocumentLoader" {
 		}
 
 		// Check content type is HTML
-		var contentType = response.headers[ "Content-Type" ] ?: "";
+		var contentType = response.responseHeader[ "Content-Type" ] ?: "";
 		if ( !contentType.findNoCase( "text/html" ) && !contentType.findNoCase( "application/xhtml" ) ) {
 			return javacast( "null", "" );
 		}
@@ -508,113 +481,6 @@ class extends="BaseDocumentLoader" {
 		return "/";
 	}
 
-	/**
-	 * Load and parse robots.txt for a domain
-	 *
-	 * @url URL to get robots.txt for
-	 */
-	private void function loadRobotsTxt( required string url ) {
-		var domain = getDomain( arguments.url );
-
-		if ( variables.robotsRules.keyExists( domain ) ) {
-			return;
-		}
-
-		var robotsUrl = "https://" & domain & "/robots.txt";
-
-		try {
-			var response = http( url: robotsUrl, timeout: 10 )
-				.addHeader( "User-Agent", variables.config.userAgent )
-				.get()
-				.send();
-
-			if ( response.statusCode == 200 ) {
-				variables.robotsRules[ domain ] = parseRobotsTxt( response.fileContent );
-			} else {
-				// No robots.txt or error - allow all
-				variables.robotsRules[ domain ] = { disallowed: [], allowed: [] };
-			}
-		} catch ( any e ) {
-			// Error loading robots.txt - allow all
-			variables.robotsRules[ domain ] = { disallowed: [], allowed: [] };
-		}
-	}
-
-	/**
-	 * Parse robots.txt content
-	 *
-	 * @content robots.txt content
-	 *
-	 * @return Struct with disallowed and allowed paths
-	 */
-	private struct function parseRobotsTxt( required string content ) {
-		var rules    = { disallowed: [], allowed: [] };
-		var lines    = arguments.content.listToArray( char( 10 ) );
-		var hashChar = char( 35 );
-		var isRelevantAgent = false;
-
-		for ( var line in lines ) {
-			line = line.trim();
-
-			// Skip comments and empty lines
-			if ( !len( line ) || left( line, 1 ) == hashChar ) {
-				continue;
-			}
-
-			var colonPos = line.find( ":" );
-			if ( colonPos == 0 ) continue;
-
-			var directive = left( line, colonPos - 1 ).trim().lCase();
-			var value = mid( line, colonPos + 1, len( line ) ).trim();
-
-			if ( directive == "user-agent" ) {
-				isRelevantAgent = ( value == "*" || value.findNoCase( "boxlang" ) );
-			} else if ( isRelevantAgent ) {
-				if ( directive == "disallow" && len( value ) ) {
-					rules.disallowed.append( value );
-				} else if ( directive == "allow" && len( value ) ) {
-					rules.allowed.append( value );
-				}
-			}
-		}
-
-		return rules;
-	}
-
-	/**
-	 * Check if URL is allowed by robots.txt
-	 *
-	 * @url URL to check
-	 *
-	 * @return True if allowed
-	 */
-	private boolean function isAllowedByRobots( required string url ) {
-		var domain = getDomain( arguments.url );
-
-		if ( !variables.robotsRules.keyExists( domain ) ) {
-			return true;
-		}
-
-		var rules = variables.robotsRules[ domain ];
-		var path = getUrlPath( arguments.url );
-
-		// Check allowed first (more specific)
-		for ( var allowedPath in rules.allowed ) {
-			if ( path.startsWith( allowedPath ) ) {
-				return true;
-			}
-		}
-
-		// Check disallowed
-		for ( var disallowedPath in rules.disallowed ) {
-			if ( path.startsWith( disallowedPath ) ) {
-				return false;
-			}
-		}
-
-		return true;
-	}
-
 	// ==========================================
 	// Fluent Configuration Methods
 	// ==========================================
@@ -710,18 +576,6 @@ class extends="BaseDocumentLoader" {
 	 */
 	WebCrawlerLoader function excludeUrlPatterns( required array patterns ) {
 		variables.config.excludeUrlPatterns = arguments.patterns;
-		return this;
-	}
-
-	/**
-	 * Respect robots.txt rules
-	 *
-	 * @respect Whether to respect robots.txt
-	 *
-	 * @return WebCrawlerLoader for chaining
-	 */
-	WebCrawlerLoader function respectRobotsTxt( boolean respect = true ) {
-		variables.config.respectRobotsTxt = arguments.respect;
 		return this;
 	}
 
