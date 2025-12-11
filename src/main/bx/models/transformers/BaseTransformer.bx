@@ -1,0 +1,98 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License")
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Base transformer class providing common functionality for all transformers.
+ *
+ * Features:
+ * - Standard configuration management
+ * - Config initialization with defaults
+ * - Chainable configure() method
+ * - Config getter/setter methods
+ */
+abstract class implements="ITransformer" {
+
+	/**
+	 * Current configuration
+	 */
+	property name="config" type="struct";
+
+	/**
+	 * Configure the transformer with settings
+	 * This method is chainable and merges new config with existing
+	 *
+	 * @config Configuration struct
+	 *
+	 * @return This transformer instance
+	 */
+	public ITransformer function configure( required struct config ) {
+		variables.config.append( arguments.config, true )
+		return this
+	}
+
+	/**
+	 * Set a single configuration value
+	 *
+	 * @key The configuration key
+	 * @value The configuration value
+	 *
+	 * @return This transformer instance
+	 */
+	public ITransformer function setConfigValue( required string key, required any value ) {
+		variables.config[ arguments.key ] = arguments.value
+		return this
+	}
+
+	/**
+	 * Get a single configuration value
+	 *
+	 * @key The configuration key
+	 * @defaultValue Optional default value if key doesn't exist
+	 *
+	 * @return The configuration value or default or empty string
+	 */
+	public any function getConfigValue( required string key, any defaultValue="" ) {
+		return variables.config[ arguments.key ] ?: arguments.defaultValue
+	}
+
+	/**
+	 * Check if a configuration key exists
+	 *
+	 * @key The configuration key
+	 *
+	 * @return True if the key exists
+	 */
+	public boolean function hasConfigValue( required string key ) {
+		return structKeyExists( variables.config, arguments.key )
+	}
+
+	/**
+	 * Abstract transform method - must be implemented by child classes
+	 * This base implementation throws an error to enforce implementation
+	 *
+	 * @input The input data to transform
+	 *
+	 * @return The transformed output data
+	 */
+	public any function transform( required any input ) {
+		throw(
+			type    = "AbstractMethodException",
+			message = "The transform() method must be implemented by child classes",
+			detail  = "Class #getMetadata( this ).name# must override the transform() method"
+		)
+	}
+
+}

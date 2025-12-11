@@ -24,12 +24,7 @@
  * - Extract specific paths from JSON using dot notation
  * - Handle arrays of text containing JSON
  */
-class implements="ITransformer" {
-
-	/**
-	 * Current configuration
-	 */
-	property name="config" type="struct";
+class extends="BaseTransformer" {
 
 	/**
 	 * Configuration options
@@ -50,7 +45,7 @@ class implements="ITransformer" {
 	}
 
 	/**
-	 * Initialize the JSON extractor transformer
+	 * Initialize with optional configuration
 	 *
 	 * @config Optional configuration struct
 	 *
@@ -58,18 +53,6 @@ class implements="ITransformer" {
 	 */
 	function init( struct config = {} ) {
 		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true )
-		return this
-	}
-
-	/**
-	 * Configure the transformer with settings
-	 *
-	 * @config Configuration struct
-	 *
-	 * @return This transformer instance
-	 */
-	public ITransformer function configure( required struct config ) {
-		variables.config.append( arguments.config, true )
 		return this
 	}
 

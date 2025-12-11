@@ -24,12 +24,7 @@
  * - Return metadata (language, line numbers)
  * - Handle code blocks with and without language identifiers
  */
-class implements="ITransformer" {
-
-	/**
-	 * Current configuration
-	 */
-	property name="config" type="struct";
+class extends="BaseTransformer" {
 
 	/**
 	 * Configuration options
@@ -55,7 +50,7 @@ class implements="ITransformer" {
 	}
 
 	/**
-	 * Initialize the code extractor transformer
+	 * Initialize with optional configuration
 	 *
 	 * @config Optional configuration struct
 	 *
@@ -63,18 +58,6 @@ class implements="ITransformer" {
 	 */
 	function init( struct config = {} ) {
 		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true )
-		return this
-	}
-
-	/**
-	 * Configure the transformer with settings
-	 *
-	 * @config Configuration struct
-	 *
-	 * @return This transformer instance
-	 */
-	public ITransformer function configure( required struct config ) {
-		variables.config.append( arguments.config, true )
 		return this
 	}
 
