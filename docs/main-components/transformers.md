@@ -436,9 +436,9 @@ chunks = aiChunk( longText, {
 result = aiMemoryIngest(
     memory        = vectorMemory,
     source        = documents,
-    ingestOptions = { 
+    ingestOptions = {
         chunkSize: 1000,  // Uses TextChunker internally
-        overlap: 200 
+        overlap: 200
     }
 );
 ```
@@ -508,7 +508,7 @@ A wrapper class that converts any lambda function into a pipeline-compatible tra
 import bxModules.bxai.models.transformers.AiTransformRunnable;
 
 // Create transformer from function
-transformer = new AiTransformRunnable( 
+transformer = new AiTransformRunnable(
     transformFn: ( data ) => data.ucase(),
     name: "uppercase-transformer"
 );

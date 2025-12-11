@@ -650,13 +650,13 @@ result = aiMemoryIngest(
     memory        = vectorMemory,
     source        = "/docs/products",
     type          = "directory",
-    loaderConfig  = { 
-        recursive: true, 
-        extensions: ["md", "txt", "pdf"] 
+    loaderConfig  = {
+        recursive: true,
+        extensions: ["md", "txt", "pdf"]
     },
-    ingestOptions = { 
-        chunkSize: 1000, 
-        overlap: 200 
+    ingestOptions = {
+        chunkSize: 1000,
+        overlap: 200
     }
 );
 
@@ -809,9 +809,9 @@ agent = aiAgent(
 );
 
 // Transform output
-cleaner = new TextCleanerTransformer({ 
-    stripHTML: true, 
-    removeExtraSpaces: true 
+cleaner = new TextCleanerTransformer({
+    stripHTML: true,
+    removeExtraSpaces: true
 });
 
 // Use in pipeline

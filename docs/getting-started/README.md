@@ -18,7 +18,7 @@ graph LR
     ADV -->|Simple| CHAT[📚 Basic Chatting]
     ADV -->|Complex| AGENT[🤖 Build Agents]
     ADV -->|Workflows| PIPE[🔄 Pipelines]
-    
+
     style START fill:#7ED321
     style INSTALL fill:#4A90E2
     style FIRST fill:#F5A623

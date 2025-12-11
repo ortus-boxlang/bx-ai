@@ -839,7 +839,7 @@ graph TB
     DOCS[Load Documents] --> CHUNK[Chunk Text]
     CHUNK --> EMB[Generate Embeddings]
     EMB --> STORE[Vector Memory]
-    
+
     Q[User Query] --> QEMB[Embed Query]
     QEMB --> SEARCH[Vector Search]
     STORE --> SEARCH
@@ -874,24 +874,24 @@ result = aiMemoryIngest(
 // Step 3: Query with context injection
 function ragQuery( required string question ) {
     // Retrieve relevant documents
-    relevantDocs = vectorMemory.getRelevant( 
-        text  = arguments.question, 
-        limit = 3 
+    relevantDocs = vectorMemory.getRelevant(
+        text  = arguments.question,
+        limit = 3
     );
-    
+
     // Build context from documents
     context = relevantDocs.map( d => d.content ).toList( "\n\n" );
-    
+
     // Create message with context
     message = aiMessage()
         .system( "Answer using only the provided context. If unsure, say so." )
         .setContext( context )
         .user( arguments.question );
-    
+
     // Use model to generate answer
     model = aiModel( "openai" )
         .withParams({ temperature: 0.2 });  // Lower temp for factual answers
-    
+
     return message.to( model ).run();
 }
 
@@ -903,9 +903,9 @@ answer = ragQuery( "How do I configure SSL?" );
 
 ```javascript
 // Load different document types
-pdfDocs = aiDocuments( "/docs/manuals", "directory", { 
+pdfDocs = aiDocuments( "/docs/manuals", "directory", {
     extensions: ["pdf"],
-    recursive: true 
+    recursive: true
 } );
 
 markdownDocs = aiDocuments( "/docs/guides", "directory", {
@@ -920,7 +920,7 @@ allDocs = pdfDocs.append( markdownDocs ).append( webDocs );
 
 // Ingest into vector memory
 vectorMemory = aiMemory( "chroma", { collection: "multi_source" } );
-aiMemoryIngest( 
+aiMemoryIngest(
     memory    = vectorMemory,
     source    = allDocs,
     type      = "documents"
@@ -943,7 +943,7 @@ answer = ragPipeline.run({ query: "Explain the authentication flow" });
 function smartRAG( required string query ) {
     var docs = [];
     var model = aiModel( "openai" );
-    
+
     // Load different docs based on query type
     if ( query.contains( "API" ) || query.contains( "endpoint" ) ) {
         docs = aiDocuments( "/docs/api", "directory" );
@@ -955,10 +955,10 @@ function smartRAG( required string query ) {
         docs = aiDocuments( "/docs/general", "directory" );
         model.withParams({ temperature: 0.3 });
     }
-    
+
     // Build context and query
     context = docs.map( d => d.content ).toList( "\n\n" );
-    
+
     return aiMessage()
         .system( "Answer based on the documentation provided" )
         .setContext( context )
@@ -981,12 +981,12 @@ function hybridRAG( required string query ) {
     // Semantic search via vector memory
     vectorMemory = aiMemory( "chroma", { collection: "docs" } );
     semanticDocs = vectorMemory.getRelevant( query, limit = 3 );
-    
+
     // Keyword search
     keywordDocs = aiDocuments( "/docs", "directory" )
         .filter( doc => doc.content.contains( query ) )
         .slice( 1, 3 );
-    
+
     // Combine and deduplicate
     allDocs = semanticDocs.append( keywordDocs );
     uniqueDocs = allDocs.reduce( ( acc, doc ) => {
@@ -995,10 +995,10 @@ function hybridRAG( required string query ) {
         }
         return acc;
     }, [] );
-    
+
     // Build context
     context = uniqueDocs.map( d => d.content ).toList( "\n\n" );
-    
+
     // Query model
     return aiMessage()
         .system( "Answer using the provided documentation" )
@@ -1019,9 +1019,9 @@ Models work seamlessly with transformers for data processing pipelines.
 import bxModules.bxai.models.transformers.TextCleanerTransformer;
 
 // Model with output cleaning
-cleaner = new TextCleanerTransformer({ 
+cleaner = new TextCleanerTransformer({
     stripHTML: true,
-    removeExtraSpaces: true 
+    removeExtraSpaces: true
 });
 
 pipeline = aiMessage()
@@ -1137,12 +1137,12 @@ model = aiModel( "openai" );
 validator = aiTransform( response => {
     try {
         data = jsonDeserialize( response.content );
-        
+
         // Validate structure
         if ( !structKeyExists( data, "name" ) ) {
             throw( "Missing name field" );
         }
-        
+
         return {
             valid: true,
             data: data,
