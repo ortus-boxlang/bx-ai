@@ -147,12 +147,11 @@ BoxLang AI provides a comprehensive set of BIFs for different AI operations:
 | `aiChatRequest()` | Build structured chat requests | AiRequest | Complex requests with tools |
 | `aiChatStream()` | Real-time streaming responses | void | Live chat, progressive output |
 | `aiChunk()` | Split text into manageable chunks | Array | Processing large documents |
-| `aiDocuments()` | Load documents from files/URLs | Array | Document processing, RAG |
+| `aiDocuments()` | Load documents from files/URLs | Array/Loader | Document processing, RAG, memory ingestion |
 | `aiDocumentLoader()` | Create document loader instance | IDocumentLoader | Advanced loader configuration |
 | `aiDocumentLoaders()` | Get all registered loaders | Struct | Loader metadata and capabilities |
 | `aiEmbed()` | Generate vector embeddings | Array/Struct | Semantic search, similarity |
 | `aiMemory()` | Create conversation memory systems | Memory | Context-aware conversations, history |
-| `aiMemoryIngest()` | Ingest documents into memory | Report | RAG pipelines, knowledge bases |
 | `aiMessage()` | Build message pipelines | AiMessage | Reusable prompts, templates |
 | `aiModel()` | Create model runnables | AiModel | Pipeline integration |
 | `aiService()` | Get AI service instances | Service | Multi-provider management |

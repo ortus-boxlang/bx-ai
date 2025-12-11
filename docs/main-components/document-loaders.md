@@ -98,13 +98,11 @@ future = aiDocuments( "/large-dataset" ).loadAsync()
 docs = future.get()
 ```
 
-### Using `aiMemoryIngest()`
-
 ### Memory Integration with `toMemory()`
 
 Ingest documents into memory with comprehensive reporting:
 
-```javascriptscript
+```javascript
 // Single memory ingestion
 result = aiDocuments( "/docs", { type: "markdown" } )
     .toMemory( myVectorMemory )
@@ -748,18 +746,19 @@ docs = loader.loadTo(
 )
 ```
 
-### Using `aiMemoryIngest()` BIF (Recommended)
+### Using `toMemory()` for Full Reporting (Recommended)
 
 For comprehensive ingestion with reporting:
 
 ```javascript
 // Single memory with full reporting
-result = aiMemoryIngest(
-    memory        = vectorMemory,
-    source        = "/knowledge-base",
-    type          = "directory",
-    loaderConfig  = { recursive: true, extensions: ["md", "txt"] },
-    ingestOptions = {
+result = aiDocuments( "/knowledge-base", {
+    type: "directory",
+    recursive: true, 
+    extensions: ["md", "txt"]
+} ).toMemory(
+    memory  = vectorMemory,
+    options = {
         chunkSize       : 500,
         overlap         : 50,
         trackTokens     : true,
@@ -895,13 +894,14 @@ vectorMemory = aiMemory( "chroma", {
     embeddingModel: "text-embedding-3-small"
 } )
 
-// Step 2: Ingest documents with aiMemoryIngest
-result = aiMemoryIngest(
-    memory        = vectorMemory,
-    source        = "/knowledge-base",
-    type          = "directory",
-    loaderConfig  = { recursive: true, extensions: ["md", "txt", "pdf"] },
-    ingestOptions = { chunkSize: 1000, overlap: 200 }
+// Step 2: Ingest documents
+result = aiDocuments( "/knowledge-base", {
+    type: "directory",
+    recursive: true, 
+    extensions: ["md", "txt", "pdf"]
+} ).toMemory(
+    memory  = vectorMemory,
+    options = { chunkSize: 1000, overlap: 200 }
 )
 
 println( "Loaded #result.documentsIn# docs as #result.chunksOut# chunks" )
@@ -921,7 +921,7 @@ println( response )
 
 ## Best Practices
 
-1. **Use `aiMemoryIngest()` for Production**: It provides comprehensive reporting, error handling, and multi-memory support.
+1. **Use `toMemory()` for Production**: It provides comprehensive reporting, error handling, and multi-memory support.
 
 2. **Configure Chunking**: For vector memory, use appropriate chunk sizes (500-1000 chars) with overlap (100-200 chars).
 

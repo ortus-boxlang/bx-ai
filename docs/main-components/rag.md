@@ -91,12 +91,13 @@ vectorMemory = aiMemory( "chroma", {
 } );
 
 // Step 2: Ingest documents
-result = aiMemoryIngest(
-    memory        = vectorMemory,
-    source        = "/docs",
-    type          = "directory",
-    loaderConfig  = { recursive: true, extensions: ["md", "txt", "pdf"] },
-    ingestOptions = { chunkSize: 1000, overlap: 200 }
+result = aiDocuments( "/docs", { 
+    type: "directory",
+    recursive: true, 
+    extensions: ["md", "txt", "pdf"] 
+} ).toMemory(
+    memory  = vectorMemory,
+    options = { chunkSize: 1000, overlap: 200 }
 );
 
 println( "✅ Ingested #result.documentsIn# docs as #result.chunksOut# chunks" );
@@ -222,12 +223,12 @@ println( "✅ Stored #allChunks.len()# chunks in vector database" );
 
 ```javascript
 // All-in-one ingestion
-result = aiMemoryIngest(
-    memory = vectorMemory,
-    source = "/docs",
-    type   = "directory",
-    loaderConfig  = { recursive: true },
-    ingestOptions = { chunkSize: 1000, overlap: 200 }
+result = aiDocuments( "/docs", { 
+    type: "directory",
+    recursive: true 
+} ).toMemory(
+    memory  = vectorMemory,
+    options = { chunkSize: 1000, overlap: 200 }
 );
 ```
 
@@ -599,11 +600,7 @@ for ( var i = 1; i <= allDocs.len(); i += batchSize ) {
     var batch = allDocs.slice( i, min( i + batchSize - 1, allDocs.len() ) );
 
     // Batch embed and store
-    aiMemoryIngest(
-        memory = vectorMemory,
-        documents = batch,
-        ingestOptions = { chunkSize: 1000 }
-    );
+    vectorMemory.seed( batch );
 
     println( "Processed batch #ceiling(i/batchSize)#" );
 }

@@ -646,15 +646,13 @@ vectorMemory = aiMemory( "chroma", {
 } );
 
 // Step 2: Ingest documents using loaders
-result = aiMemoryIngest(
-    memory        = vectorMemory,
-    source        = "/docs/products",
-    type          = "directory",
-    loaderConfig  = {
-        recursive: true,
-        extensions: ["md", "txt", "pdf"]
-    },
-    ingestOptions = {
+result = aiDocuments( "/docs/products", {
+    type: "directory",
+    recursive: true,
+    extensions: ["md", "txt", "pdf"]
+} ).toMemory(
+    memory  = vectorMemory,
+    options = {
         chunkSize: 1000,
         overlap: 200
     }
@@ -686,9 +684,9 @@ apiDocs = aiMemory( "chroma", { collection: "api_docs" } );
 faqMemory = aiMemory( "chroma", { collection: "faq" } );
 
 // Ingest different sources
-aiMemoryIngest( productDocs, "/docs/products", "directory" );
-aiMemoryIngest( apiDocs, "/docs/api", "directory" );
-aiMemoryIngest( faqMemory, "/docs/faq.md", "markdown" );
+aiDocuments( "/docs/products", { type: "directory" } ).toMemory( productDocs );
+aiDocuments( "/docs/api", { type: "directory" } ).toMemory( apiDocs );
+aiDocuments( "/docs/faq.md", { type: "markdown" } ).toMemory( faqMemory );
 
 // Agent with access to all knowledge bases
 agent = aiAgent(
@@ -708,7 +706,7 @@ Combine document retrieval with live data access:
 ```javascript
 // Vector memory for static docs
 docMemory = aiMemory( "chroma", { collection: "documentation" } );
-aiMemoryIngest( docMemory, "/docs", "directory" );
+aiDocuments( "/docs", { type: "directory" } ).toMemory( docMemory );
 
 // Tool for real-time data
 statusTool = aiTool(

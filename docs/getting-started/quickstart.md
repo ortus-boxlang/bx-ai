@@ -471,12 +471,11 @@ vectorMemory = aiMemory( "chroma", {
 } )
 
 // Step 2: Ingest documents
-result = aiMemoryIngest(
-    memory        = vectorMemory,
-    source        = "/docs",
-    type          = "directory",
-    ingestOptions = { chunkSize: 1000, overlap: 200 }
-)
+result = aiDocuments( "/docs", { type: "directory" } )
+    .toMemory( 
+        memory  = vectorMemory,
+        options = { chunkSize: 1000, overlap: 200 }
+    )
 
 println( "✅ Ingested #result.chunksOut# chunks" )
 
@@ -674,11 +673,8 @@ vectorMemory = aiMemory( "chroma", {
     embeddingProvider: "openai"
 } )
 
-aiMemoryIngest(
-    memory = vectorMemory,
-    source = "/docs/support",
-    type   = "directory"
-)
+aiDocuments( "/docs/support", { type: "directory" } )
+    .toMemory( vectorMemory )
 
 // Step 2: Create agent with vector memory
 agent = aiAgent(

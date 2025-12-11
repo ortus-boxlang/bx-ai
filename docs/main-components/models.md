@@ -863,12 +863,13 @@ vectorMemory = aiMemory( "chroma", {
 } );
 
 // Step 2: Load and ingest documents
-result = aiMemoryIngest(
-    memory        = vectorMemory,
-    source        = "/docs",
-    type          = "directory",
-    loaderConfig  = { recursive: true, extensions: ["md", "pdf"] },
-    ingestOptions = { chunkSize: 1000, overlap: 200 }
+result = aiDocuments( "/docs", { 
+    type: "directory",
+    recursive: true, 
+    extensions: ["md", "pdf"] 
+} ).toMemory(
+    memory  = vectorMemory,
+    options = { chunkSize: 1000, overlap: 200 }
 );
 
 // Step 3: Query with context injection
@@ -920,11 +921,8 @@ allDocs = pdfDocs.append( markdownDocs ).append( webDocs );
 
 // Ingest into vector memory
 vectorMemory = aiMemory( "chroma", { collection: "multi_source" } );
-aiMemoryIngest(
-    memory    = vectorMemory,
-    source    = allDocs,
-    type      = "documents"
-);
+// Seed memory directly with pre-loaded documents
+vectorMemory.seed( allDocs );
 
 // RAG pipeline with model
 ragPipeline = aiMessage()
