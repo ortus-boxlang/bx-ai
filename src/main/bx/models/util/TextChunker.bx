@@ -195,7 +195,7 @@ class {
 
 		var overlappedChunks = [ arguments.chunks[ 1 ] ]
 
-		for ( var i = 2 i <= arguments.chunks.len() i++ ) {
+		for ( var i = 2; i <= arguments.chunks.len(); i++ ) {
 			var previousChunk = arguments.chunks[ i - 1 ]
 			var currentChunk = arguments.chunks[ i ]
 
