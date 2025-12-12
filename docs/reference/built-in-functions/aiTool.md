@@ -73,11 +73,11 @@ userLookupTool = aiTool(
             "SELECT * FROM users WHERE email = :id OR id = :id",
             { id: identifier }
         );
-        
+
         if ( !user.recordCount ) {
             return "User not found";
         }
-        
+
         return jsonSerialize({
             name: user.name,
             email: user.email,
@@ -98,7 +98,7 @@ searchTool = aiTool(
             .setMethod( "POST" )
             .setBody( { q: query } )
             .send();
-            
+
         results = jsonDeserialize( response.getContent() );
         return results.toList( "\n" );
     }
@@ -142,7 +142,7 @@ analyticsTool = aiTool(
     "Get website analytics for specified date range",
     ( startDate, endDate ) => {
         data = getAnalyticsData( startDate, endDate );
-        
+
         return {
             pageViews: data.views,
             uniqueVisitors: data.visitors,
@@ -165,14 +165,14 @@ emailTool = aiTool(
         if ( !isValid( "email", recipient ) ) {
             return "Error: Invalid email address";
         }
-        
+
         // Send email
         mailService.send(
             to: recipient,
             subject: subject,
             body: body
         );
-        
+
         return "Email sent successfully to #recipient#";
     }
 );

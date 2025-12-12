@@ -134,9 +134,9 @@ prompts.each( prompt => {
 // Get a prompt template
 client = MCP( "http://localhost:3000" );
 
-prompt = client.getPrompt( "greeting", { 
+prompt = client.getPrompt( "greeting", {
     name: "John",
-    language: "Spanish" 
+    language: "Spanish"
 });
 
 messages = prompt.getData();
@@ -175,7 +175,7 @@ client = MCP( "http://localhost:3000" );
 
 try {
     result = client.send( "riskyOperation", { input: data } );
-    
+
     if ( result.isError() ) {
         println( "MCP Error: #result.getError()#" );
     } else {
@@ -262,7 +262,7 @@ if ( checkMCPHealth( "http://localhost:3000" ) ) {
 function createLoggingMCPClient( baseURL ) {
     return MCP( baseURL )
         .onSuccess( ( response ) => {
-            writeLog( 
+            writeLog(
                 "MCP Success: #serializeJSON(response.getData())#",
                 "information"
             );
@@ -286,11 +286,11 @@ function mcpCallWithRetry( client, toolName, args, maxRetries = 3 ) {
     for ( var i = 1; i <= maxRetries; i++ ) {
         try {
             result = client.callTool( toolName, args );
-            
+
             if ( !result.isError() ) {
                 return result.getData();
             }
-            
+
             if ( i < maxRetries ) {
                 sleep( 1000 * i ); // Exponential backoff
             }
@@ -300,7 +300,7 @@ function mcpCallWithRetry( client, toolName, args, maxRetries = 3 ) {
             }
         }
     }
-    
+
     throw( "MCP call failed after #maxRetries# attempts" );
 }
 ```
@@ -327,14 +327,14 @@ if ( !isNull( searchTool ) ) {
 // Cache MCP tool responses
 function callMCPWithCache( client, toolName, args, ttl = 60 ) {
     cacheKey = "mcp_#toolName#_#hash(serializeJSON(args))#";
-    
+
     if ( cacheExists( cacheKey ) ) {
         return cacheGet( cacheKey );
     }
-    
+
     result = client.callTool( toolName, args );
     data = result.getData();
-    
+
     cachePut( cacheKey, data, ttl );
     return data;
 }

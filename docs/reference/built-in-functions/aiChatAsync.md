@@ -104,7 +104,7 @@ try {
 function processQueries( queries ) {
     // Launch all requests
     futures = queries.map( ( q ) => aiChatAsync( q ) );
-    
+
     // Wait for all to complete
     return futures.map( ( f ) => f.get() );
 }

@@ -103,11 +103,11 @@ println( "Generated #vectors.len()# embeddings" );
 // OpenAI with specific model
 embedding = aiEmbed(
     input: "Semantic search query",
-    params: { 
+    params: {
         model: "text-embedding-3-large"
     },
-    options: { 
-        provider: "openai" 
+    options: {
+        provider: "openai"
     }
 );
 
@@ -172,7 +172,7 @@ embeddedChunks = chunks.map( ( chunk, idx ) => {
         input: chunk,
         options: { returnFormat: "first" }
     );
-    
+
     return {
         id: idx,
         text: chunk,
@@ -267,18 +267,18 @@ embeddings = aiEmbed(
 // Cache expensive embeddings
 function getEmbeddingCached( text ) {
     var cacheKey = "embed_" & hash( text );
-    
+
     // Check cache
     if ( cacheExists( cacheKey ) ) {
         return cacheGet( cacheKey );
     }
-    
+
     // Generate and cache
     var embedding = aiEmbed(
         input: text,
         options: { returnFormat: "first" }
     );
-    
+
     cachePut( cacheKey, embedding, 60 ); // Cache 1 hour
     return embedding;
 }

@@ -189,15 +189,15 @@ println( "Total: #totalTokens# tokens" );
 // Reduce prompt size if too large
 function optimizePrompt( text, maxTokens = 2000 ) {
     tokens = aiTokens( text );
-    
+
     if ( tokens <= maxTokens ) {
         return text;
     }
-    
+
     // Truncate to approximate character limit
     approxChars = maxTokens * 4; // ~4 chars per token
     truncated = left( text, approxChars );
-    
+
     return truncated;
 }
 
@@ -247,18 +247,18 @@ conversation = [];
 function addMessage( role, content ) {
     // Add new message
     conversation.append({ role: role, content: content });
-    
+
     // Check total tokens
     allContent = conversation.map( m => m.content ).toList( " " );
     tokens = aiTokens( allContent );
-    
+
     // Trim old messages if over limit
     while ( tokens > maxContextTokens && conversation.len() > 1 ) {
         conversation.deleteAt( 1 ); // Remove oldest (after system message)
         allContent = conversation.map( m => m.content ).toList( " " );
         tokens = aiTokens( allContent );
     }
-    
+
     println( "Context tokens: #tokens#" );
 }
 ```
@@ -270,19 +270,19 @@ function addMessage( role, content ) {
 function preflightCheck( prompt, options = {} ) {
     tokens = aiTokens( prompt );
     stats = aiTokens( prompt, { detailed: true } );
-    
+
     println( "=== Pre-Flight Check ===" );
     println( "Tokens: #tokens#" );
     println( "Characters: #stats.characters#" );
     println( "Words: #stats.words#" );
-    
+
     maxTokens = options.maxTokens ?: 4000;
-    
+
     if ( tokens > maxTokens ) {
         println( "⚠️  Exceeds limit of #maxTokens# tokens" );
         return false;
     }
-    
+
     println( "✅ Within limits" );
     return true;
 }
@@ -302,13 +302,13 @@ tokensUsed = 0;
 function trackTokens( text ) {
     tokens = aiTokens( text );
     tokensUsed += tokens;
-    
+
     remaining = tokenBudget - tokensUsed;
     percentUsed = ( tokensUsed / tokenBudget ) * 100;
-    
+
     println( "Tokens used: #tokensUsed# / #tokenBudget# (#numberFormat(percentUsed,'0.0')#%)" );
     println( "Remaining: #remaining# tokens" );
-    
+
     if ( remaining < 0 ) {
         throw( "Token budget exceeded!" );
     }

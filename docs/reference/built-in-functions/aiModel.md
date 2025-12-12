@@ -115,7 +115,7 @@ analyzer = aiMessage()
     .to( aiModel( "openai" ) )
     .to( aiTransform( r => r.content ) )
     .to( aiTransform( text => text.trim() ) )
-    .to( aiTransform( text => { 
+    .to( aiTransform( text => {
         sentiment: text,
         timestamp: now()
     }));
@@ -141,7 +141,7 @@ storyteller.stream(
 
 ```javascript
 // Bind tools to model
-searchTool = aiTool( 
+searchTool = aiTool(
     name: "search",
     description: "Search the web",
     handler: ( query ) => searchEngine.search( query )
@@ -298,7 +298,7 @@ result2 = aiMessage( "Search for AI" ).to( model ).run();
 ## Notes
 
 - 🔄 **IAiRunnable**: Implements full runnable interface for pipelines
-- 🎯 **Service Wrapper**: Wraps `aiService()` for pipeline compatibility  
+- 🎯 **Service Wrapper**: Wraps `aiService()` for pipeline compatibility
 - 🔧 **Tool Support**: Bind tools for function calling capabilities
 - 📦 **Reusable**: Create once, use in multiple pipelines
 - 🚀 **Events**: Fires `onAIModelCreate` event for interceptors

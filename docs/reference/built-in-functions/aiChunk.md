@@ -174,7 +174,7 @@ if ( totalTokens > 8000 ) {
         chunkSize: 2000,  // ~500 tokens per chunk
         overlap: 400
     });
-    
+
     println( "Split into #chunks.len()# chunks" );
 }
 ```

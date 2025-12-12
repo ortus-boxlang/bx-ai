@@ -99,9 +99,9 @@ response = aiChat(
 );
 
 // Populate from AI response
-tasks = aiPopulate( 
-    [new Task()], 
-    response.choices[1].message.content 
+tasks = aiPopulate(
+    [new Task()],
+    response.choices[1].message.content
 );
 ```
 
@@ -111,17 +111,17 @@ tasks = aiPopulate(
 // Reuse cached AI responses
 function getEmployeeData( employeeId ) {
     cacheKey = "employee_#employeeId#";
-    
+
     // Check cache
     if ( cacheExists( cacheKey ) ) {
         cachedData = cacheGet( cacheKey );
         return aiPopulate( new Employee(), cachedData );
     }
-    
+
     // Fetch fresh data
     response = aiChat( "Get employee #employeeId# data" );
     cacheSet( cacheKey, response );
-    
+
     return aiPopulate( new Employee(), response );
 }
 ```
@@ -132,12 +132,12 @@ function getEmployeeData( employeeId ) {
 // Test AI workflows without API calls
 function processUserProfile( profileData ) {
     profile = aiPopulate( new UserProfile(), profileData );
-    
+
     // Business logic
     if ( profile.getAge() < 18 ) {
         profile.setAccountType( "minor" );
     }
-    
+
     return profile;
 }
 
@@ -303,18 +303,18 @@ function createTasksFromPrompt( prompt ) {
         params: { response_format: { type: "json_object" } },
         options: { returnFormat: "raw" }
     );
-    
+
     // 2. Parse and populate
-    tasks = aiPopulate( 
-        [new Task()], 
-        response.choices[1].message.content 
+    tasks = aiPopulate(
+        [new Task()],
+        response.choices[1].message.content
     );
-    
+
     // 3. Save to database
     tasks.each( task => {
         taskService.save( task );
     });
-    
+
     return tasks;
 }
 

@@ -77,7 +77,7 @@ println( "Loaded #docs.len()# documents" );
 
 ```javascript
 // Load all markdown files from directory
-docs = aiDocuments( "/docs", { 
+docs = aiDocuments( "/docs", {
     type: "directory",
     extensions: ["md"]
 } ).load();
@@ -185,7 +185,7 @@ docs = aiDocuments( "https://example.com", {
 
 ```javascript
 // Load from database
-docs = aiDocuments( 
+docs = aiDocuments(
     "SELECT title, content, created_date FROM articles WHERE published = true",
     {
         type: "sql",

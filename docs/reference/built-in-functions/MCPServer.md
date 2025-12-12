@@ -52,22 +52,22 @@ myServer.registerTool(
 ```javascript
 // Application.bx - Register tools at startup
 function onApplicationStart() {
-    server = MCPServer( 
+    server = MCPServer(
         name: "myApp",
         description: "My Application MCP Server",
         version: "1.0.0",
         cors: "https://myapp.com"
     );
-    
+
     // Register multiple tools
     server.registerTool(
         aiTool( "search", "Search documents", ( query ) => search( query ) )
     );
-    
+
     server.registerTool(
         aiTool( "getData", "Get user data", ( userId ) => getUserData( userId ) )
     );
-    
+
     server.registerTool(
         aiTool( "calculate", "Do math", ( expr ) => evaluate( expr ) )
     );
@@ -158,7 +158,7 @@ server
 
 ```javascript
 // Enable CORS for specific domain
-publicServer = MCPServer( 
+publicServer = MCPServer(
     name: "public-api",
     cors: "https://app.example.com"
 );
@@ -172,7 +172,7 @@ server = MCPServer( "myApp" );
 
 ```javascript
 // Enable statistics
-server = MCPServer( 
+server = MCPServer(
     name: "myApp",
     statsEnabled: true
 );
@@ -259,7 +259,7 @@ tools.each( tool => {
 
 ```javascript
 // Rebuild server (useful for development)
-server = MCPServer( 
+server = MCPServer(
     name: "myApp",
     force: true  // Clears existing and creates new
 );
@@ -291,8 +291,8 @@ server2 = getAppMCPServer();
 server = MCPServer( "myApp" );
 
 // Register
-server.registerTool( 
-    aiTool( "tempTool", "Temporary tool", () => "temp" ) 
+server.registerTool(
+    aiTool( "tempTool", "Temporary tool", () => "temp" )
 );
 
 // Later, remove
@@ -315,7 +315,7 @@ server.registerTool(
         try {
             return processData( data );
         } catch ( any e ) {
-            throw( 
+            throw(
                 type: "MCPToolError",
                 message: "Operation failed: #e.message#"
             );
@@ -354,12 +354,12 @@ server = MCPServer( "secureApp" );
 function handleMCPRequest() {
     // Verify auth token
     token = getHttpRequestData().headers[ "Authorization" ];
-    
+
     if ( !verifyToken( token ) ) {
         cfheader( statusCode: 401 );
         return { error: "Unauthorized" };
     }
-    
+
     // Process MCP request
     requestBody = getHttpRequestData().content;
     return server.handleRequest( requestBody );
@@ -371,7 +371,7 @@ function handleMCPRequest() {
 ```javascript
 // Different configs for environments
 if ( application.environment == "development" ) {
-    server = MCPServer( 
+    server = MCPServer(
         name: "devApp",
         cors: "*",  // Allow all in dev
         statsEnabled: true

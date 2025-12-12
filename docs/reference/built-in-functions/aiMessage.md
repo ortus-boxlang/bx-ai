@@ -143,7 +143,7 @@ if ( includeContext ) {
 
 builder.user( "Question: ${question}" );
 
-response = aiChat( builder, { 
+response = aiChat( builder, {
     context: "BoxLang docs",
     question: "What is a BIF?"
 });
@@ -172,12 +172,12 @@ baseTemplate = aiMessage()
 
 // Teacher use case
 teacherMsg = baseTemplate.clone()
-    .run({ 
+    .run({
         role: "teacher",
         prompt: "Explain loops"
     });
 
-// Expert use case  
+// Expert use case
 expertMsg = baseTemplate.clone()
     .run({
         role: "expert",

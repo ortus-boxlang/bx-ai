@@ -74,7 +74,7 @@ println( "\n\nComplete response length: #fullResponse.len()#" );
 function streamToUI( prompt ) {
     var responseDiv = getElementById( "ai-response" );
     var buffer = "";
-    
+
     aiChatStream(
         prompt,
         ( chunk ) => {
@@ -99,9 +99,9 @@ aiChatStream(
     ( chunk ) => {
         charCount += chunk.len();
         wordCount += chunk.split( " " ).len();
-        
+
         write( chunk );
-        
+
         // Update progress every 100 chars
         if ( charCount % 100 == 0 ) {
             writeLog( "Received #charCount# chars, #wordCount# words" );
@@ -188,7 +188,7 @@ try {
 function streamToSSE( prompt ) {
     response.setContentType( "text/event-stream" );
     response.setHeader( "Cache-Control", "no-cache" );
-    
+
     aiChatStream(
         prompt,
         ( chunk ) => {
@@ -197,7 +197,7 @@ function streamToSSE( prompt ) {
             flush;
         }
     );
-    
+
     writeOutput( "data: [DONE]\n\n" );
 }
 ```

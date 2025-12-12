@@ -154,7 +154,7 @@ println( xml.user.name ); // "John"
 // Complex transformation logic
 analyzer = aiTransform( response => {
     content = response.content;
-    
+
     return {
         text: content,
         length: len( content ),
@@ -213,13 +213,13 @@ result = aiMessage( "What is 2+2?" )
 // Filter and process data
 processor = aiTransform( response => {
     content = response.content;
-    
+
     // Extract lines
     lines = listToArray( content, char(10) );
-    
+
     // Filter non-empty
     filtered = lines.filter( line => len( trim( line ) ) > 0 );
-    
+
     // Return processed
     return filtered.map( line => trim( line ) );
 });
@@ -265,13 +265,13 @@ aggregator = aiTransform( responses => {
     if ( !isArray( responses ) ) {
         return responses;
     }
-    
+
     return {
         count: responses.len(),
         combined: responses.map( r => r.content ).toList( char(10) ),
-        avgLength: responses.reduce( 
-            ( sum, r ) => sum + len( r.content ), 
-            0 
+        avgLength: responses.reduce(
+            ( sum, r ) => sum + len( r.content ),
+            0
         ) / responses.len()
     };
 });
@@ -283,12 +283,12 @@ aggregator = aiTransform( responses => {
 // Validate and transform
 validator = aiTransform( response => {
     content = response.content;
-    
+
     // Validate
     if ( len( content ) < 10 ) {
         throw( "Response too short" );
     }
-    
+
     // Transform
     return {
         valid: true,
@@ -304,14 +304,14 @@ validator = aiTransform( response => {
 // Cache expensive transformations
 cachingTransform = aiTransform( data => {
     cacheKey = "transform_" & hash( data.content );
-    
+
     if ( cacheExists( cacheKey ) ) {
         return cacheGet( cacheKey );
     }
-    
+
     // Expensive transformation
     result = expensiveProcess( data.content );
-    
+
     cachePut( cacheKey, result, 60 ); // Cache 1 hour
     return result;
 });
@@ -323,11 +323,11 @@ cachingTransform = aiTransform( data => {
 // Create reusable transform pipelines
 function createPipeline( transformers ) {
     var pipeline = aiMessage( "${input}" ).toDefaultModel();
-    
+
     transformers.each( t => {
         pipeline = pipeline.to( aiTransform( t ) );
     });
-    
+
     return pipeline;
 }
 

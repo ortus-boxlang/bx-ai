@@ -98,7 +98,7 @@ service = aiService( "openai" );
 
 request = aiChatRequest( "Tell a story about dragons" );
 
-service.invokeStream( 
+service.invokeStream(
     request,
     ( chunk ) => writeOutput( chunk )
 );
@@ -252,9 +252,9 @@ function compareProviders( prompt, providers ) {
     }, {} );
 }
 
-results = compareProviders( 
-    "Explain quantum computing", 
-    ["openai", "claude", "ollama"] 
+results = compareProviders(
+    "Explain quantum computing",
+    ["openai", "claude", "ollama"]
 );
 ```
 
@@ -291,10 +291,10 @@ conversation = aiChatRequest()
 while ( !done ) {
     userInput = getUserInput();
     conversation.addUserMessage( userInput );
-    
+
     response = service.invoke( conversation );
     conversation.addAssistantMessage( response.content );
-    
+
     println( response.content );
 }
 ```
