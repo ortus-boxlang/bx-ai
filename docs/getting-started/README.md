@@ -22,7 +22,25 @@ Complete guide to installing the BoxLang AI module and configuring your preferre
 - Environment variables and configuration options
 - Troubleshooting common setup issues
 
-**Time:** 5-10 minutes
+- **🤖 Multi-Provider Support** - OpenAI, Claude, Gemini, Ollama, Grok, Groq, DeepSeek, Perplexity, and more
+- **💬 Simple Chat Interface** - Start with one-line AI conversations
+- **🔄 Composable Pipelines** - Build complex AI workflows by chaining operations
+- **🧠 Intelligent Agents** - Create autonomous agents with memory and tools
+- **📊 Structured Output** - Extract data into classes, structs, or arrays
+- **🎙️ Multimodal Content** - Process images, audio, video, and documents
+- **🛠️ Real-Time Tools** - Enable AI to call functions and APIs
+- **💭 Memory Systems** - Maintain conversation context across interactions
+- **📡 Streaming Support** - Real-time response streaming for better UX
+
+## 🧭 Quick Navigation
+
+### 🆕 New to BoxLang AI?
+
+**[Installation Guide](installation.md)**
+Get the module installed and configured in minutes.
+
+**[Quickstart Tutorial](quickstart.md)**
+Your first AI conversation in 5 lines of code.
 
 ---
 
