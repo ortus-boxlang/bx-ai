@@ -1,15 +1,15 @@
 ---
-description: "Installation and configuration guide for the BoxLang AI module."
+description: "Installation and configuration guide for BoxLang AI."
 icon: download
 ---
 
 # Installation & Configuration
 
-Learn how to install the BoxLang AI module and configure it for your preferred AI provider.
+Learn how to install BoxLang AI and configure it for your preferred AI provider.
 
 ## System Requirements
 
-- **BoxLang Runtime**: 1.7+
+- **BoxLang Runtime**: 1.8+
 - **Internet**: Required for cloud providers (OpenAI, Claude, etc.)
 - **Optional**: Docker for running Ollama locally
 
@@ -17,17 +17,21 @@ Learn how to install the BoxLang AI module and configure it for your preferred A
 
 ### BoxLang Module Installer
 
-The simplest way to install the module:
+The simplest way to install the module is via the BoxLang Module Installer globally:
 
 ```bash
 install-bx-module bx-ai
 ```
 
-This command downloads and installs the module globally, making it available to all BoxLang applications on your system.
+This command downloads and installs the module globally, making it available to all BoxLang applications on your system.  If you want to install it locally in your cli or other runtimes:
+
+```bash
+install-bx-module bx-ai --local
+```
 
 ### CommandBox Package Manager
 
-For CommandBox-based web applications:
+For CommandBox-based web applications and runtimes
 
 ```bash
 box install bx-ai
@@ -44,7 +48,7 @@ Add to your `box.json` for managed dependencies:
   "name": "my-boxlang-app",
   "version": "1.0.0",
   "dependencies": {
-    "bx-ai": "^1.0.0"
+    "bx-ai": "^2"
   }
 }
 ```
@@ -66,7 +70,9 @@ Configure the module in your `boxlang.json` file to set defaults for your applic
   "modules": {
     "bxai": {
       "settings": {
+		// The default provider
         "provider": "openai",
+		// The default API Key for the Default Provider
         "apiKey": "your-api-key-here"
       }
     }
@@ -125,6 +131,7 @@ Configure the module in your `boxlang.json` file to set defaults for your applic
 
 **Popular models**:
 
+- `gpt-5` - Latest and most advanced
 - `gpt-4` - Most capable, best for complex tasks
 - `gpt-4-turbo` - Faster, more cost-effective
 - `gpt-3.5-turbo` - Fast and affordable

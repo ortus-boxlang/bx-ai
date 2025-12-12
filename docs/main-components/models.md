@@ -1175,3 +1175,4 @@ if ( result.valid ) {
 - **[RAG Guide](rag.md)** - Complete RAG workflow documentation
 - **[Vector Memory](vector-memory.md)** - Semantic search and embeddings
 - **[Pipeline Streaming](streaming.md)** - Real-time responses
+- **[Custom AI Providers](../advanced/custom-providers.md)** - Integrate custom LLM services

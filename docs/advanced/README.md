@@ -146,6 +146,23 @@ Expose your BoxLang tools, resources, and prompts via the Model Context Protocol
 
 ---
 
+### 🎨 [Custom AI Providers](custom-providers.md)
+
+Build custom provider integrations to connect any LLM service with BoxLang AI.
+
+**What you'll learn:**
+
+- Extending `BaseService` and implementing `IAiService`
+- OpenAI-compatible vs. custom implementations
+- Handling authentication and request/response formats
+- Implementing streaming and embeddings
+- Tool/function calling support
+- Registration and testing patterns
+
+**Use when:** Integrating enterprise AI services, private deployments, emerging providers, or building mock providers for testing.
+
+---
+
 ### 🛠️ [Utilities](utilities.md)
 
 Helper functions for text processing, token counting, and data manipulation.
@@ -276,6 +293,9 @@ chunks.each( function( chunk ) {
 
 **"I want to expose my tools to AI clients"**
 → [MCP Server](mcp-server.md)
+
+**"I need to integrate a custom AI provider"**
+→ [Custom AI Providers](custom-providers.md)
 
 **"I'm processing large documents or managing costs"**
 → [Utilities](utilities.md)

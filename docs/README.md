@@ -8,9 +8,9 @@ BoxLang AI is a comprehensive module that brings enterprise-grade artificial int
 
 ```mermaid
 graph TB
-    App["🚀 Your BoxLang Application"]
+    App["🚀 Your BoxLang App"]
 
-    App --> Module["⚡ BoxLang AI Module"]
+    App --> Module["⚡ BoxLang AI"]
 
     Module --> Components["Core Components"]
     Components --> Agents["🤖 Agents"]
@@ -62,9 +62,11 @@ graph TB
 
 ### Supported Providers
 
+BoxLang supports out of the box with a variety of AI providers.  You can also create custom providers by following our [Custom Provider Guide](advanced/custom-providers.md).
+
 | Provider | Type | Best For |
 |----------|------|----------|
-| **OpenAI** | Cloud | General purpose, GPT-4, GPT-3.5 |
+| **OpenAI** | Cloud | General purpose, GPT-5, etc |
 | **Claude** | Cloud | Long context, detailed analysis |
 | **Gemini** | Cloud | Google integration, multimodal |
 | **Grok** | Cloud | Real-time data, Twitter integration |
@@ -197,7 +199,10 @@ Generate vector representations for semantic search, recommendations, and simila
 **🔌 [MCP Client](advanced/mcp-client.md)**
 Connect to Model Context Protocol servers for external tools, resources, and prompts.
 
-**🎨 [Custom Memory](advanced/custom-memory.md)**
+**🎨 [Custom AI Providers](advanced/custom-providers.md)**
+Build custom provider integrations to connect any LLM service with BoxLang AI.
+
+**🧠 [Custom Memory](advanced/custom-memory.md)**
 Build your own memory implementations by extending BaseMemory.
 
 **🧩 [Custom Vector Memory](advanced/custom-vector-memory.md)**
@@ -287,12 +292,14 @@ BoxLang AI provides a comprehensive set of BIFs for different AI operations.  Yo
 
 ### 💬 Simple Chat
 
+Leveer
+
 ```javascript
 answer = aiChat( "What is BoxLang?" )
 println( answer )
 ```
 
-### 🎨 Chat with Parameters
+### 🎨 Simple Chat with Parameters
 
 ```javascript
 answer = aiChat(
