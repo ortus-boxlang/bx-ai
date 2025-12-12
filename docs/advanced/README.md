@@ -16,36 +16,36 @@ graph TB
         EVT[🎯 Events]
         MCP[🌐 MCP]
     end
-    
+
     subgraph "Memory Systems"
         CM[🔧 Custom Memory]
         VM[🧠 Vector Memory]
         MT[👥 Multi-Tenant]
     end
-    
+
     subgraph "Utilities"
         UTIL[🛠️ Text Utils]
         TOK[🔢 Tokens]
         CTX[🔐 Context]
     end
-    
+
     subgraph "Integration"
         MCPS[MCP Server]
         MCPC[MCP Client]
         API[External APIs]
     end
-    
+
     EMB --> VM
     EVT --> CM
     MCP --> MCPS
     MCP --> MCPC
-    
+
     CM --> MT
     VM --> MT
-    
+
     UTIL --> TOK
     CTX --> MT
-    
+
     style EMB fill:#4A90E2
     style EVT fill:#BD10E0
     style MCP fill:#7ED321

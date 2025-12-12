@@ -123,10 +123,10 @@ class extends="BaseService" {
         variables.chatURL = "https://api.myai.com/v1/chat/completions";
         variables.embeddingsURL = "https://api.myai.com/v1/embeddings";
         variables.name = "MyAI";
-        
+
         // Set default parameters
         defaults( static.DEFAULT_CHAT_PARAMS );
-        
+
         return this;
     }
 }
@@ -191,7 +191,7 @@ If your provider follows OpenAI's API format, just extend `BaseService`:
 
 ```javascript
 class extends="BaseService" {
-    
+
     static {
         DEFAULT_CHAT_PARAMS = {
             "model": "your-default-model"
@@ -220,7 +220,7 @@ Override methods to handle non-standard authentication:
 
 ```javascript
 class extends="BaseService" {
-    
+
     function init() {
         variables.chatURL = "https://api.provider.com/chat";
         variables.name = "CustomAuth";
@@ -277,7 +277,7 @@ Override methods to transform request/response formats:
 
 ```javascript
 class extends="BaseService" {
-    
+
     static {
         DEFAULT_CHAT_PARAMS = {
             "model": "custom-model"
@@ -324,7 +324,7 @@ class extends="BaseService" {
      */
     private function formatMessagesAsPrompt( required aiMessage ) {
         var prompt = "";
-        
+
         for ( var msg in arguments.aiMessage.getMessages() ) {
             if ( msg.role == "system" ) {
                 prompt &= "System: #msg.content#" & char(10);
@@ -334,7 +334,7 @@ class extends="BaseService" {
                 prompt &= "Assistant: #msg.content#" & char(10);
             }
         }
-        
+
         return prompt;
     }
 }
@@ -350,7 +350,7 @@ Override streaming to handle provider-specific SSE formats:
 
 ```javascript
 class extends="BaseService" {
-    
+
     /**
      * Override chatStream to handle custom streaming format
      */
@@ -387,7 +387,7 @@ class extends="BaseService" {
 
                 try {
                     var parsedChunk = jsonDeserialize( chunk.data );
-                    
+
                     // Transform to standard format if needed
                     var standardChunk = {
                         "choices": [{
@@ -396,7 +396,7 @@ class extends="BaseService" {
                             }
                         }]
                     };
-                    
+
                     userCallback( standardChunk );
                 } catch ( any e ) {
                     writeLog(
@@ -412,7 +412,7 @@ class extends="BaseService" {
                     type: "error",
                     log: "ai"
                 );
-                
+
                 BoxAnnounce( "onAIError", {
                     error: error,
                     provider: this,
@@ -439,7 +439,7 @@ If your provider supports tools, format them correctly:
 
 ```javascript
 class extends="BaseService" {
-    
+
     @override
     function chat( required AiRequest aiRequest ) {
         var dataPacket = {
@@ -449,8 +449,8 @@ class extends="BaseService" {
 
         // Add tools if present
         if ( aiRequest.getParams()?.tools?.len() ) {
-            dataPacket[ "tools" ] = formatToolsForProvider( 
-                aiRequest.getParams().tools 
+            dataPacket[ "tools" ] = formatToolsForProvider(
+                aiRequest.getParams().tools
             );
         }
 
@@ -481,7 +481,7 @@ Add provider-specific headers:
 
 ```javascript
 class extends="BaseService" {
-    
+
     static {
         DEFAULT_HEADERS = {
             "X-Provider-Version": "v1",
@@ -493,12 +493,12 @@ class extends="BaseService" {
         variables.chatURL = "https://api.provider.com/chat";
         variables.name = "CustomHeaders";
         defaults( { "model": "default" } );
-        
+
         // Add static headers
         for ( var header in static.DEFAULT_HEADERS ) {
             addHeader( header, static.DEFAULT_HEADERS[ header ] );
         }
-        
+
         return this;
     }
 }
@@ -513,7 +513,7 @@ Override embeddings for custom embedding endpoints:
 
 ```javascript
 class extends="BaseService" {
-    
+
     static {
         DEFAULT_EMBED_PARAMS = {
             "model": "text-embeddings-v1"
@@ -575,10 +575,10 @@ class extends="BaseService" {
         variables.chatURL = "https://api.acme-ai.com/v1/completions";
         variables.embeddingsURL = "https://api.acme-ai.com/v1/embed";
         variables.name = "AcmeAI";
-        
+
         defaults( static.DEFAULT_CHAT_PARAMS );
         addHeader( "X-API-Version", static.API_VERSION );
-        
+
         return this;
     }
 
@@ -590,7 +590,7 @@ class extends="BaseService" {
         // Transform messages for Acme's format
         var messages = arguments.aiRequest.getAiMessage().getMessages();
         var acmeMessages = [];
-        
+
         for ( var msg in messages ) {
             acmeMessages.append({
                 "speaker": msg.role == "user" ? "human" : "ai",
@@ -611,8 +611,8 @@ class extends="BaseService" {
 
         // Add tools if present
         if ( arguments.aiRequest.getParams()?.tools?.len() ) {
-            dataPacket[ "functions" ] = formatAcmeTools( 
-                arguments.aiRequest.getParams().tools 
+            dataPacket[ "functions" ] = formatAcmeTools(
+                arguments.aiRequest.getParams().tools
             );
         }
 
@@ -722,7 +722,7 @@ class extends="BaseService" {
 
                 try {
                     var parsedChunk = jsonDeserialize( chunk.data );
-                    
+
                     // Transform Acme format to OpenAI-compatible
                     var standardChunk = {
                         "choices": [{
@@ -731,7 +731,7 @@ class extends="BaseService" {
                             }
                         }]
                     };
-                    
+
                     userCallback( standardChunk );
                 } catch ( any e ) {
                     writeLog(
@@ -747,7 +747,7 @@ class extends="BaseService" {
                     type: "error",
                     log: "ai"
                 );
-                
+
                 BoxAnnounce( "onAIError", {
                     error: error,
                     provider: this,
@@ -771,8 +771,8 @@ class extends="BaseService" {
 
         var dataPacket = {
             "model_name": embeddingRequest.getModel(),
-            "texts": isArray( embeddingRequest.getInput() ) 
-                ? embeddingRequest.getInput() 
+            "texts": isArray( embeddingRequest.getInput() )
+                ? embeddingRequest.getInput()
                 : [ embeddingRequest.getInput() ]
         };
 
@@ -883,10 +883,10 @@ function configure() {
 ```javascript
 // interceptors/ProviderRegistration.bx
 component {
-    
+
     function onAIProviderCreate( event, interceptData ) {
         var providerName = interceptData.providerName ?: "";
-        
+
         // Register Acme AI provider
         if ( providerName == "acmeai" ) {
             import AcmeAIService;
@@ -905,7 +905,7 @@ For non-module registration, use `BoxRegisterInterceptor()`:
 import AcmeAIService;
 
 component {
-    
+
     this.name = "MyApp";
 
     function onApplicationStart() {
@@ -954,7 +954,7 @@ Validate configuration on initialization:
 function init() {
     variables.chatURL = "https://api.provider.com/chat";
     variables.name = "Provider";
-    
+
     // Validate URLs
     if ( !variables.chatURL.len() ) {
         throw(
@@ -962,7 +962,7 @@ function init() {
             message: "Chat URL must be configured"
         );
     }
-    
+
     defaults( static.DEFAULT_CHAT_PARAMS );
     return this;
 }
@@ -975,7 +975,7 @@ function configure( required any apiKey ) {
             message: "API key cannot be empty"
         );
     }
-    
+
     variables.apiKey = arguments.apiKey;
     return this;
 }
@@ -993,7 +993,7 @@ try {
         .send();
 
     var result = response.getDataAsJSON();
-    
+
     // Check for API errors
     if ( result.error?.message?.len() ) {
         throw(
@@ -1002,7 +1002,7 @@ try {
             detail: jsonSerialize( result.error )
         );
     }
-    
+
     return result;
 
 } catch ( any e ) {
@@ -1113,14 +1113,14 @@ import testbox.system.BaseSpec;
 import AcmeAIService;
 
 class extends="BaseSpec" {
-    
+
     function beforeAll() {
         variables.service = new AcmeAIService();
     }
 
     function run() {
         describe( "AcmeAIService", function() {
-            
+
             it( "should initialize with defaults", function() {
                 expect( service.getName() ).toBe( "AcmeAI" );
                 expect( service.getChatURL() ).toInclude( "acme-ai.com" );
@@ -1162,10 +1162,10 @@ import testbox.system.BaseSpec;
 import AcmeAIService;
 
 class extends="BaseSpec" {
-    
+
     function run() {
         describe( "AcmeAI Integration", function() {
-            
+
             beforeEach( function() {
                 variables.apiKey = getSystemSetting( "ACME_API_KEY", "" );
                 if ( !variables.apiKey.len() ) {
@@ -1179,12 +1179,12 @@ class extends="BaseSpec" {
 
                 var aiRequest = new AiRequest()
                     .setModel( "acme-gpt-turbo" )
-                    .setMessages([ 
+                    .setMessages([
                         { role: "user", content: "Say hello" }
                     ]);
 
                 var response = service.invoke( aiRequest );
-                
+
                 expect( response ).toBeString();
                 expect( response.len() ).toBeGT( 0 );
             });
@@ -1196,11 +1196,11 @@ class extends="BaseSpec" {
                 var chunks = [];
                 var aiRequest = new AiRequest()
                     .setModel( "acme-gpt-turbo" )
-                    .setMessages([ 
+                    .setMessages([
                         { role: "user", content: "Count to 3" }
                     ]);
 
-                service.invokeStream( 
+                service.invokeStream(
                     aiRequest,
                     function( chunk ) {
                         chunks.append( chunk );

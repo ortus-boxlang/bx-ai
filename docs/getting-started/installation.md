@@ -3,19 +3,31 @@ description: "Installation and configuration guide for BoxLang AI."
 icon: download
 ---
 
-# Installation & Configuration
+# 📦 Installation & Configuration
 
 Learn how to install BoxLang AI and configure it for your preferred AI provider.
 
-## System Requirements
+## 📑 Table of Contents
+
+- [System Requirements](#system-requirements)
+- [Installation Methods](#installation-methods)
+- [Configuration](#configuration)
+- [Provider Configuration](#provider-configuration)
+- [Running Ollama with Docker](#running-ollama-with-docker)
+- [Configuration Options](#configuration-options)
+- [Verification](#verification)
+- [Troubleshooting](#troubleshooting)
+- [Next Steps](#next-steps)
+
+## ⚙️ System Requirements
 
 - **BoxLang Runtime**: 1.8+
 - **Internet**: Required for cloud providers (OpenAI, Claude, etc.)
 - **Optional**: Docker for running Ollama locally
 
-## Installation Methods
+## 🚀 Installation Methods
 
-### BoxLang Module Installer
+### 📥 BoxLang Module Installer
 
 The simplest way to install the module is via the BoxLang Module Installer globally:
 
@@ -29,7 +41,7 @@ This command downloads and installs the module globally, making it available to 
 install-bx-module bx-ai --local
 ```
 
-### CommandBox Package Manager
+### 📦 CommandBox Package Manager
 
 For CommandBox-based web applications and runtimes
 
@@ -39,7 +51,7 @@ box install bx-ai
 
 This adds the module to your application's dependencies and installs it in the appropriate location.
 
-### Application Dependencies
+### 📋 Application Dependencies
 
 Add to your `box.json` for managed dependencies:
 
@@ -59,11 +71,11 @@ Then run:
 box install
 ```
 
-## Configuration
+## 🔧 Configuration
 
 Configure the module in your `boxlang.json` file to set defaults for your application.
 
-### Basic Configuration
+### ⚡ Basic Configuration
 
 ```json
 {
@@ -80,7 +92,7 @@ Configure the module in your `boxlang.json` file to set defaults for your applic
 }
 ```
 
-### Complete Configuration
+### 🎯 Complete Configuration
 
 ```json
 {
@@ -106,9 +118,9 @@ Configure the module in your `boxlang.json` file to set defaults for your applic
 }
 ```
 
-## Provider Configuration
+## 🤖 Provider Configuration
 
-### OpenAI (ChatGPT)
+### 🟢 OpenAI (ChatGPT)
 
 ```json
 {
@@ -136,7 +148,7 @@ Configure the module in your `boxlang.json` file to set defaults for your applic
 - `gpt-4-turbo` - Faster, more cost-effective
 - `gpt-3.5-turbo` - Fast and affordable
 
-### Claude (Anthropic)
+### 🟣 Claude (Anthropic)
 
 ```json
 {
@@ -163,7 +175,7 @@ Configure the module in your `boxlang.json` file to set defaults for your applic
 - `claude-3-sonnet-20240229` - Balanced
 - `claude-3-haiku-20240307` - Fastest
 
-### Gemini (Google)
+### 🔵 Gemini (Google)
 
 ```json
 {
@@ -183,11 +195,11 @@ Configure the module in your `boxlang.json` file to set defaults for your applic
 
 **Get your API key**: [https://makersuite.google.com/app/apikey](https://makersuite.google.com/app/apikey)
 
-### Ollama (Local AI)
+### 🦙 Ollama (Local AI)
 
 **Perfect for privacy, offline use, and zero API costs!**
 
-#### 1. Install Ollama
+#### 1️⃣ Install Ollama
 
 Download from [https://ollama.ai](https://ollama.ai) for your platform:
 
@@ -195,7 +207,7 @@ Download from [https://ollama.ai](https://ollama.ai) for your platform:
 - **Linux**: `curl -fsSL https://ollama.ai/install.sh | sh`
 - **Windows**: Download installer from website
 
-#### 2. Pull a Model
+#### 2️⃣ Pull a Model
 
 ```bash
 # Recommended general model
@@ -212,7 +224,7 @@ ollama pull codellama
 ollama pull mistral
 ```
 
-#### 3. Configure BoxLang
+#### 3️⃣ Configure BoxLang
 
 ```json
 {
@@ -233,7 +245,7 @@ ollama pull mistral
 
 **Note**: Ollama doesn't require an API key for local use.
 
-#### 4. Verify Installation
+#### 4️⃣ Verify Installation
 
 ```bash
 # Check Ollama is running
@@ -243,9 +255,132 @@ ollama list
 ollama run llama3.2 "Hello!"
 ```
 
-### Other Providers
+## 🐳 Running Ollama with Docker
 
-**Grok (xAI)**:
+For production deployments or easier setup, use the included Docker Compose configuration:
+
+### 📋 Quick Start
+
+```bash
+  "apiKey": "xai-..."
+}
+```
+
+**🤗 HuggingFace**:
+- **Ollama Server** on `http://localhost:11434`
+- **Web UI** on `http://localhost:3000`
+
+### 🎯 What's Included
+
+The Docker setup provides:
+
+- ✅ **Ollama LLM Server** - Fully configured and ready to use
+- ✅ **Web UI** - Browser-based interface for testing and management
+- ✅ **Pre-loaded Model** - Automatically downloads `qwen2.5:0.5b-instruct`
+- ✅ **Health Checks** - Automatic monitoring and restart capabilities
+- ✅ **Persistent Storage** - Data stored locally in `./.ollama` directory
+- ✅ **Production Ready** - Configured with proper restart policies
+
+- `mistralai/Mistral-7B-Instruct-v0.3` - Fast and efficient for quick responses
+
+**⚡ Groq**:deploying to production, update these settings in `docker-compose-ollama.yml`:**
+
+1. **Change Default Credentials**
+
+```yaml
+   environment:
+  "apiKey": "gsk_..."
+}
+```
+
+**🔷 DeepSeek**:e Models** - Update the preloaded model:
+   ```yaml
+   command: |
+     "ollama serve &
+     sleep 10
+  "apiKey": "sk-..."
+}
+```
+
+**🟠 Mistral**:
+1. **Add Resource Limits** (recommended):
+   ```yaml
+   deploy:
+     resources:
+       limits:
+         memory: 8g
+         cpus: '4.0'
+   ```
+
+2. **SSL/TLS** - Use a reverse proxy (nginx/traefik) for HTTPS
+
+See the comments in `docker-compose-ollama.yml` for complete production setup notes.
+
+### 📊 Managing the Service
+
+- `mistral-large-latest` - Most capable
+
+**🌐 OpenRouter** (Multi-model gateway):
+docker compose -f docker-compose-ollama.yml up -d
+
+# View logs
+
+docker compose -f docker-compose-ollama.yml logs -f
+  "apiKey": "sk-or-..."
+}
+```
+
+**🔎 Perplexity**:ces
+docker compose -f docker-compose-ollama.yml restart
+
+# Check status
+docker compose -f docker-compose-ollama.yml ps
+```
+}
+```
+
+## ⚙️ Configuration Options
+
+### 📊 Settings Reference
+{
+  "modules": {
+    "bxai": {
+      "settings": {
+        "provider": "ollama",
+        "apiKey": "",
+        "chatURL": "http://localhost:11434",
+        "defaultParams": {
+          "model": "qwen2.5:0.5b-instruct"
+        }
+      }
+| `returnFormat` | string | `"single"` | Default return format: `single`, `all`, `json`, `xml` or `raw` |
+
+### 🎛️ Default Parameters
+```
+
+### 🌐 Accessing the Web UI
+
+Open your browser to `http://localhost:3000` and login with:
+- **Username**: `boxlang` (default)
+- **Password**: `rocks` (default)
+
+**⚠️ Change these credentials before production use!**
+
+| `frequency_penalty` | number | Encourage diversity | `0.1` |
+
+### 🔐 Environment Variablesconfigurations) is stored in `./.ollama` directory:
+
+```bash
+.ollama/
+├── server/     # Ollama model data
+└── webui/      # Web UI data and settings
+```
+
+**Important**: Add `.ollama/` to your `.gitignore` to avoid committing large model files.
+
+### 🔧 Other Providers
+
+**🔸 Grok (xAI)**:
 
 ```json
 {
@@ -253,10 +388,10 @@ ollama run llama3.2 "Hello!"
   "apiKey": "xai-..."
 }
 ```
+export OPENAI_API_KEY="sk-..."
+```
 
-**HuggingFace**:
-
-```json
+## ✅ Verification
 {
   "provider": "huggingface",
   "apiKey": "hf_..."
@@ -272,19 +407,19 @@ ollama run llama3.2 "Hello!"
 - `mistralai/Mistral-7B-Instruct-v0.3` - Fast and efficient for quick responses
 
 **Groq**:
+If configured correctly, you should see a response from your AI provider.
 
-```json
-{
-  "provider": "groq",
-  "apiKey": "gsk_..."
+## 🔧 Troubleshooting
+
+### ❌ "No API key provided"
 }
 ```
 
 **DeepSeek**:
+answer = aiChat( "Hello", {}, { provider: "openai", apiKey: "sk-..." } )
+```
 
-```json
-{
-  "provider": "deepseek",
+### ⏱️ "Connection timeout",
   "apiKey": "sk-..."
 }
 ```
@@ -297,10 +432,10 @@ ollama run llama3.2 "Hello!"
   "apiKey": "..."
 }
 ```
+}
+```
 
-**Get your API key**: [https://console.mistral.ai/](https://console.mistral.ai/)
-
-**Popular models**:
+### 🦙 Ollama not responding
 
 - `mistral-small-latest` - Cost-effective, fast (default)
 - `mistral-medium-latest` - Balanced performance
@@ -434,7 +569,7 @@ Or check if it's already running:
 curl http://localhost:11434/api/tags
 ```
 
-## Next Steps
+## 🚀 Next Steps
 
 - [Quick Start Guide](quickstart.md) - Get started with simple examples
 - [Basic Chatting](../chatting/basic-chatting.md) - Learn the basics
