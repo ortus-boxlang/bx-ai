@@ -15,21 +15,21 @@ BoxLang AI is a comprehensive module that brings enterprise-grade artificial int
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           BoxLang AI Module                                 │
 │                                                                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
-│  │  Agents  │  │ Pipelines│  │  Memory  │  │  Tools   │  │Documents │    │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘    │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+│  │  Agents  │  │ Pipelines│  │  Memory  │  │  Tools   │  │Documents │       │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘.      │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
            │                        │                           │
            │ AI Providers           │ Document Loaders          │ Vector Stores
            │                        │                           │
-    ┌──────┴────────┐      ┌────────┴────────┐         ┌──────┴──────┐
-    ▼               ▼      ▼                 ▼         ▼              ▼
+    ┌──────┴────────┐      ┌────────┴────────┐           ┌──────┴──────┐
+    ▼               ▼      ▼                 ▼           ▼             ▼
 ┌──────────┐  ┌──────────┐│┌──────────┐ ┌──────────┐ │┌──────────┐ ┌──────────┐
-│ OpenAI   │  │  Claude  ││ Text     │ │   CSV    │ ││ ChromaDB │ │Pinecone  │
-│ Gemini   │  │  Groq    ││ Markdown │ │   JSON   │ ││PostgreSQL│ │TypeSense │
-│ Cohere   │  │  Ollama  ││ XML      │ │   PDF    │ ││  Qdrant  │ │ Weaviate │
-│DeepSeek  │  │(Local AI)││ HTTP     │ │Directory │ ││  MySQL   │ │BoxVector │
+│ OpenAI   │  │  Claude  ││|Text      │ │   CSV    │ ││ ChromaDB │ │Pinecone  │
+│ Gemini   │  │  Groq    ││|Markdown  │ │   JSON   │ ││PostgreSQL│ │TypeSense │
+│ Cohere   │  │  Ollama  ││|XML       │ │   PDF    │ ││  Qdrant  │ │Weaviate  │
+│ Deepseek │  │(Local AI)││|HTTP      │ │Directory │ ││  MySQL   │ │BoxVector │
 └──────────┘  └──────────┘│└──────────┘ └──────────┘ │└──────────┘ └──────────┘
                           │                          │
                           │  14 Loader Types         │  10+ Vector DBs
