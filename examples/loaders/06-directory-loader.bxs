@@ -1,0 +1,166 @@
+/**
+ * Directory Loader Example
+ *
+ * Demonstrates loading multiple files from a directory into Document objects.
+ * Perfect for batch processing documentation, codebases, and file collections.
+ *
+ * Learn more: https://boxlang.ortusbooks.com/bx-modules/bx-ai/loaders
+ */
+
+println( "=== Directory Loader Example ===" )
+println()
+
+// Create a sample directory with files
+testDir = getTempDirectory() & "docs-" & createUUID() & "/"
+directoryCreate( testDir )
+
+// Create multiple files
+files = [
+	{ name: "intro.txt", content: "Introduction to BoxLang AI Module. A comprehensive guide to getting started." },
+	{ name: "features.txt", content: "Key features include multi-provider support, streaming, memory, and tools." },
+	{ name: "quickstart.md", content: "# Quick Start\n\nInstall and use BoxLang AI in minutes." },
+	{ name: "api.md", content: "# API Reference\n\n## aiChat()\n\nBasic chat function." },
+	{ name: "changelog.txt", content: "v1.0.0 - Initial release with OpenAI support" }
+]
+
+files.each( file => {
+	fileWrite( testDir & file.name, file.content )
+})
+
+try {
+	// Example 1: Load all files from directory
+	println( "Example 1: Load All Files" )
+	println( "─".repeat( 50 ) )
+
+	dirLoader = new src.main.bx.models.loaders.DirectoryLoader(
+		source: testDir
+	)
+
+	documents = dirLoader.load()
+
+	println( "Loaded #documents.len()# documents from directory" )
+	documents.each( ( doc, idx ) => {
+		println( "  ##idx#: #doc.metadata.source ?: 'unknown'#" )
+	})
+	println()
+
+	// Example 2: Filter by file extension
+	println( "Example 2: Filter by Extension (.txt only)" )
+	println( "─".repeat( 50 ) )
+
+	dirLoaderFiltered = new src.main.bx.models.loaders.DirectoryLoader(
+		source: testDir,
+		config: {
+			glob: "*.txt"
+		}
+	)
+
+	txtDocs = dirLoaderFiltered.load()
+
+	println( "Loaded #txtDocs.len()# .txt files:" )
+	txtDocs.each( ( doc, idx ) => {
+		println( "  ##idx#: #doc.metadata.source ?: 'unknown'#" )
+	})
+	println()
+
+	// Example 3: Recursive directory loading
+	println( "Example 3: Recursive Directory Loading" )
+	println( "─".repeat( 50 ) )
+
+	// Create subdirectory with files
+	subDir = testDir & "advanced/"
+	directoryCreate( subDir )
+	fileWrite( subDir & "agents.md", "# Agents\n\nAdvanced agent patterns and workflows." )
+	fileWrite( subDir & "memory.md", "# Memory\n\nConversation history and context management." )
+
+	dirLoaderRecursive = new src.main.bx.models.loaders.DirectoryLoader(
+		source: testDir,
+		config: {
+			recursive: true
+		}
+	)
+
+	allDocs = dirLoaderRecursive.load()
+
+	println( "Loaded #allDocs.len()# documents (including subdirectories)" )
+	println()
+
+	// Example 4: Ask AI about entire documentation
+	println( "Example 4: AI Query Across All Documents" )
+	println( "─".repeat( 50 ) )
+
+	// Combine all content
+	allContent = documents.map( doc => doc.content ).toList( char( 10 ) & "---" & char( 10 ) )
+
+	message = aiMessage()
+		.system( "Answer based on this documentation: ${context}" )
+		.user( "What features does BoxLang AI provide?" )
+		.setContext( allContent )
+
+	println( "Query: What features does BoxLang AI provide?" )
+	println( "Answer: " & aiChat( message ) )
+	println()
+
+	// Example 5: Create document index
+	println( "Example 5: Create Document Index" )
+	println( "─".repeat( 50 ) )
+
+	docIndex = allDocs.map( ( doc, idx ) => {
+		return {
+			id: idx,
+			filename: doc.metadata.source ?: "unknown",
+			contentLength: len( doc.content ),
+			preview: left( doc.content, 50 )
+		}
+	})
+
+	println( "Document index created:" )
+	docIndex.each( entry => {
+		if ( entry.id <= 5 ) {
+			println( "  ##entry.id#: #entry.filename# (#entry.contentLength# chars)" )
+		}
+	})
+	println()
+
+	// Example 6: Prepare for embeddings
+	println( "Example 6: Prepare for Vector Search" )
+	println( "─".repeat( 50 ) )
+
+	embeddingDocs = allDocs.map( doc => {
+		return {
+			content: doc.content,
+			metadata: doc.metadata
+		}
+	})
+
+	println( "Prepared #embeddingDocs.len()# documents for embeddings" )
+	println( "💡 Next step: Generate embeddings" )
+	println( "   embeddings = aiEmbeddings( embeddingDocs.map( d => d.content ) )" )
+	println( "   Store in vector database for semantic search" )
+
+} catch ( any e ) {
+	println( "Error: #e.message#" )
+	println( e.detail ?: "" )
+} finally {
+	// Cleanup - recursively delete directory
+	if ( directoryExists( testDir ) ) {
+		// Delete subdirectory first
+		subDir = testDir & "advanced/"
+		if ( directoryExists( subDir ) ) {
+			directoryDelete( subDir, true )
+		}
+		directoryDelete( testDir, true )
+	}
+}
+
+println()
+println( "✅ Directory Loader example complete!" )
+println()
+println( "Key Takeaways:" )
+println( "  • DirectoryLoader loads multiple files at once" )
+println( "  • Use glob patterns to filter by extension" )
+println( "  • recursive: true loads subdirectories" )
+println( "  • Perfect for processing documentation sets" )
+println( "  • Combine content for comprehensive AI context" )
+println( "  • Create indexes for document management" )
+println( "  • Prepare batches for vector embeddings" )

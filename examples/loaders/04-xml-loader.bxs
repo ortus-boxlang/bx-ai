@@ -1,0 +1,210 @@
+/**
+ * XML Loader Example
+ *
+ * Demonstrates loading XML files into Document objects.
+ * Perfect for RSS feeds, SOAP responses, configuration files, and XML data.
+ *
+ * Learn more: https://boxlang.ortusbooks.com/bx-modules/bx-ai/loaders
+ */
+
+println( "=== XML Loader Example ===" )
+println()
+
+// Create a sample XML file
+xmlFile = getTempDirectory() & "books-" & createUUID() & ".xml"
+fileWrite( xmlFile, '
+<?xml version="1.0" encoding="UTF-8"?>
+<library>
+	<book id="1" category="fiction">
+		<title>The Great Adventure</title>
+		<author>Jane Smith</author>
+		<year>2023</year>
+		<price>24.99</price>
+		<description>An epic journey through uncharted territories.</description>
+	</book>
+	<book id="2" category="technical">
+		<title>BoxLang Programming</title>
+		<author>John Doe</author>
+		<year>2025</year>
+		<price>49.99</price>
+		<description>Complete guide to BoxLang development.</description>
+	</book>
+	<book id="3" category="fiction">
+		<title>Mystery at Midnight</title>
+		<author>Alice Johnson</author>
+		<year>2024</year>
+		<price>19.99</price>
+		<description>A thrilling detective story.</description>
+	</book>
+</library>
+' )
+
+try {
+	// Example 1: Basic XML loading
+	println( "Example 1: Basic XML Loading" )
+	println( "─".repeat( 50 ) )
+
+	xmlLoader = new src.main.bx.models.loaders.XMLLoader(
+		source: xmlFile
+	)
+
+	documents = xmlLoader.load()
+
+	println( "Loaded #documents.len()# documents" )
+	println( "First document preview: #left( documents[ 1 ].content, 80 )#..." )
+	println()
+
+	// Example 2: Query XML data with AI
+	println( "Example 2: AI Query on XML Data" )
+	println( "─".repeat( 50 ) )
+
+	// Parse XML for AI context
+	xmlContent = fileRead( xmlFile )
+	xmlData = xmlParse( xmlContent )
+	books = []
+
+	xmlData.library.XmlChildren.each( node => {
+		books.append({
+			title: node.title.XmlText,
+			author: node.author.XmlText,
+			year: node.year.XmlText,
+			category: node.XmlAttributes.category,
+			price: node.price.XmlText,
+			description: node.description.XmlText
+		})
+	})
+
+	message = aiMessage()
+		.system( "Answer questions about these books: ${context}" )
+		.user( "Which technical books are available and who wrote them?" )
+		.setContext( jsonSerialize({ books: books }) )
+
+	println( "Query: Which technical books are available?" )
+	println( "Answer: " & aiChat( message ) )
+	println()
+
+	// Example 3: RSS Feed simulation
+	println( "Example 3: RSS Feed Loading" )
+	println( "─".repeat( 50 ) )
+
+	rssFile = getTempDirectory() & "feed-" & createUUID() & ".xml"
+	fileWrite( rssFile, '
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+	<channel>
+		<title>Tech News</title>
+		<description>Latest technology updates</description>
+		<item>
+			<title>AI Breakthrough in 2025</title>
+			<link>https://example.com/ai-news</link>
+			<description>New AI model achieves human-level reasoning.</description>
+			<pubDate>Thu, 12 Dec 2025 10:00:00 GMT</pubDate>
+		</item>
+		<item>
+			<title>BoxLang 2.0 Released</title>
+			<link>https://example.com/boxlang-2</link>
+			<description>Major update brings new features and performance improvements.</description>
+			<pubDate>Wed, 11 Dec 2025 15:30:00 GMT</pubDate>
+		</item>
+	</channel>
+</rss>
+' )
+
+	rssLoader = new src.main.bx.models.loaders.XMLLoader(
+		source: rssFile
+	)
+
+	rssDocs = rssLoader.load()
+
+	println( "Loaded RSS feed with #rssDocs.len()# document(s)" )
+	println( "Feed content available for AI processing" )
+
+	fileDelete( rssFile )
+	println()
+
+	// Example 4: Configuration XML
+	println( "Example 4: Configuration XML" )
+	println( "─".repeat( 50 ) )
+
+	configFile = getTempDirectory() & "config-" & createUUID() & ".xml"
+	fileWrite( configFile, '
+<?xml version="1.0"?>
+<configuration>
+	<database>
+		<host>localhost</host>
+		<port>5432</port>
+		<name>myapp_db</name>
+		<pool>
+			<min>5</min>
+			<max>20</max>
+		</pool>
+	</database>
+	<cache enabled="true">
+		<provider>redis</provider>
+		<ttl>3600</ttl>
+	</cache>
+</configuration>
+' )
+
+	configLoader = new src.main.bx.models.loaders.XMLLoader(
+		source: configFile
+	)
+
+	configDocs = configLoader.load()
+
+	println( "Loaded configuration XML" )
+	println( "Content length: #len( configDocs[ 1 ].content )# characters" )
+
+	fileDelete( configFile )
+	println()
+
+	// Example 5: Extract specific elements
+	println( "Example 5: Extract Book Titles" )
+	println( "─".repeat( 50 ) )
+
+	titles = books.map( book => book.title )
+
+	println( "Extracted titles:" )
+	titles.each( ( title, idx ) => {
+		println( "  #idx#. #title#" )
+	})
+	println()
+
+	// Example 6: XML to embeddings for search
+	println( "Example 6: Convert XML to Searchable Text" )
+	println( "─".repeat( 50 ) )
+
+	bookDescriptions = books.map( book => {
+		return "#book.title# by #book.author# (#book.year#) - #book.description#"
+	})
+
+	println( "Created searchable descriptions:" )
+	bookDescriptions.each( ( desc, idx ) => {
+		if ( idx <= 2 ) {
+			println( "  #idx#. #left( desc, 60 )#..." )
+		}
+	})
+	println()
+	println( "💡 Convert to embeddings for semantic book search:" )
+	println( "   embeddings = aiEmbeddings( text: bookDescriptions )" )
+
+} catch ( any e ) {
+	println( "Error: #e.message#" )
+	println( e.detail ?: "" )
+} finally {
+	// Cleanup
+	if ( fileExists( xmlFile ) ) {
+		fileDelete( xmlFile )
+	}
+}
+
+println()
+println( "✅ XML Loader example complete!" )
+println()
+println( "Key Takeaways:" )
+println( "  • XMLLoader loads XML files into Document objects" )
+println( "  • Perfect for RSS feeds, SOAP responses, configs" )
+println( "  • Parse XML to extract structured data" )
+println( "  • Convert to JSON-like structs for AI context" )
+println( "  • Use XPath or manual parsing for specific elements" )
+println( "  • Transform to text for embeddings and search" )

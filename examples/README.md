@@ -4,9 +4,51 @@ Comprehensive examples demonstrating all features of the BoxLang AI module, orga
 
 ## ⚙️ Requirements
 
+### Dependencies
+
+You will need CommandBox in order to install the dependencies:
+
+* `bx-ai` - This module
+* `bx-derby` - For examples using DerbyDB for memory, caching, or whatever you need
+* `bx-mysql` - For examples using MySQL for memory, caching, or whatever you need
+* `bx-postgres` - For examples using PostgreSQL for memory, caching, or whatever you need
+* `bx-sqlite` - For examples using SQLite for memory, caching, or whatever you need
+
+You can get CommandBox from here: https://www.ortussolutions.com/products/commandbox or the installation instructions here: https://commandbox.ortusbooks.com/setup/installation.  Then just run the install command:
+
+```bash
+box install
+```
+
+That's it!  Now you are ready to run the examples
+
+### Development
+
+If you want to test against this same repo you will have to first install the module locally by creating a symlink to the build output.
+
+**Linux/Mac**:
+
+```bash
+ln -s build/module boxlang_modules/bx-ai
+```
+
+**Windows/PowerShell**:
+
+```powershell
+New-Item -ItemType SymbolicLink -Path boxlang_modules/bx-ai -Target build/module
+```
+
+To run the build you will do:
+
+```bash
+./gradlew build -x test
+```
+
 ### API Keys
 
-Most examples require an API key from your chosen AI provider. You have two options:
+Most examples require an API key fr
+
+om your chosen AI provider. You have two options:
 
 **Option 1: Environment Variables (Recommended)**
 
@@ -88,6 +130,20 @@ Type-safe AI responses with classes and templates:
 - **05-aipopulate.bxs** - Manual population from JSON (testing/caching)
 - **06-pipeline-structured-output.bxs** - Structured output in reusable pipelines
 
+### `/loaders` - Document Loaders 🆕
+
+Load various file formats and data sources into Document objects:
+
+- **01-text-loader.bxs** - Load plain text files with chunking for RAG
+- **02-csv-loader.bxs** - Load CSV files, each row becomes a Document
+- **03-json-loader.bxs** - Parse JSON files with jqFilter field extraction
+- **04-xml-loader.bxs** - Parse XML files, RSS feeds, SOAP responses
+- **05-markdown-loader.bxs** - Load markdown documentation with header extraction
+- **06-directory-loader.bxs** - Batch load multiple files from folders
+- **07-http-loader.bxs** - Fetch web content and API responses
+- **08-web-crawler.bxs** - Crawl websites for documentation indexing
+- **09-sql-loader.bxs** - Load database query results into Documents
+
 ### `/pipelines` - Pipeline Workflows
 
 Composable multi-step AI workflows:
@@ -97,6 +153,9 @@ Composable multi-step AI workflows:
 - **02-multi-model-pipeline.bxs** - Using different AI models in workflows
 - **03-streaming-pipeline.bxs** - Real-time pipeline execution with progress tracking
 - **04-message-templates.bxs** - Reusable prompt templates and few-shot learning
+- **06-code-extractor.bxs** - Extract clean code from AI markdown responses 🆕
+- **07-text-cleaner.bxs** - Clean and normalize messy AI responses 🆕
+- **08-transformer-pipeline.bxs** - Chain transformers for pre/post processing 🆕
 
 ### `/agents` - AI Agents
 
@@ -174,6 +233,21 @@ boxlang examples/agents/06-sub-agents.bxs
 
 # Pipeline workflows
 boxlang examples/pipelines/runnable-example.bxs
+
+# Document loaders - Load text files (NEW!)
+boxlang examples/loaders/01-text-loader.bxs
+
+# Document loaders - Load CSV data (NEW!)
+boxlang examples/loaders/02-csv-loader.bxs
+
+# Pipeline transformers - Extract code (NEW!)
+boxlang examples/pipelines/06-code-extractor.bxs
+
+# Pipeline transformers - Clean text (NEW!)
+boxlang examples/pipelines/07-text-cleaner.bxs
+
+# Full transformer pipeline (NEW!)
+boxlang examples/pipelines/08-transformer-pipeline.bxs
 ```
 
 ### Ollama (Local AI)
@@ -207,8 +281,14 @@ ollama serve
 - `structured/02-struct-template.bxs` - Quick structured extraction
 - `structured/03-array-extraction.bxs` - Extract multiple items
 - `structured/04-multiple-schemas.bxs` - Multiple entity types
+- `loaders/01-text-loader.bxs` - Load text files with chunking 🆕
+- `loaders/02-csv-loader.bxs` - CSV data to Documents 🆕
+- `loaders/03-json-loader.bxs` - JSON file loading 🆕
+- `loaders/06-directory-loader.bxs` - Batch load files 🆕
 - `pipelines/01-simple-pipeline.bxs` - Basic pipeline patterns
 - `pipelines/04-message-templates.bxs` - Reusable templates
+- `pipelines/06-code-extractor.bxs` - Extract code from responses 🆕
+- `pipelines/07-text-cleaner.bxs` - Clean AI responses 🆕
 - `agents/01-basic-agent.bxs` - Agent with memory
 - `agents/02-agent-with-tools.bxs` - Agent with function calling
 - `advanced/vision-example.bxs` - Image analysis
@@ -222,8 +302,14 @@ ollama serve
 
 - `structured/05-aipopulate.bxs` - Manual population & caching
 - `structured/06-pipeline-structured-output.bxs` - Pipeline integration
+- `loaders/04-xml-loader.bxs` - XML and RSS feeds 🆕
+- `loaders/05-markdown-loader.bxs` - Markdown documentation 🆕
+- `loaders/07-http-loader.bxs` - Fetch web content 🆕
+- `loaders/08-web-crawler.bxs` - Crawl websites 🆕
+- `loaders/09-sql-loader.bxs` - Database to Documents 🆕
 - `pipelines/02-multi-model-pipeline.bxs` - Multi-model workflows
 - `pipelines/03-streaming-pipeline.bxs` - Streaming pipelines
+- `pipelines/08-transformer-pipeline.bxs` - Advanced transformations 🆕
 - `agents/03-customer-support-agent.bxs` - Production support bot
 - `agents/04-research-agent.bxs` - Multi-source research agent
 - `agents/06-sub-agents.bxs` - Agent orchestration patterns
@@ -282,7 +368,22 @@ ollama serve
 - `pipelines/02-multi-model-pipeline.bxs` - Multi-model workflows
 - `pipelines/03-streaming-pipeline.bxs` - Real-time streaming
 - `pipelines/04-message-templates.bxs` - Reusable prompt patterns
+- `pipelines/06-code-extractor.bxs` - Extract code from AI responses 🆕
+- `pipelines/07-text-cleaner.bxs` - Clean and normalize text 🆕
+- `pipelines/08-transformer-pipeline.bxs` - Chain transformers (pre/post processing) 🆕
 - `basic/return-formats-example.bxs` - Response format options
+
+**📄 Document Loaders (NEW!)**
+
+- `loaders/01-text-loader.bxs` - Plain text files with chunking
+- `loaders/02-csv-loader.bxs` - CSV data to Documents
+- `loaders/03-json-loader.bxs` - JSON files and API responses
+- `loaders/04-xml-loader.bxs` - XML, RSS feeds, SOAP
+- `loaders/05-markdown-loader.bxs` - Markdown documentation
+- `loaders/06-directory-loader.bxs` - Batch load multiple files
+- `loaders/07-http-loader.bxs` - Fetch web content
+- `loaders/08-web-crawler.bxs` - Crawl websites
+- `loaders/09-sql-loader.bxs` - Database queries to Documents
 
 **🤖 AI Agents**
 
@@ -343,7 +444,16 @@ ollama serve
 5. `agents/05-multi-memory-agent.bxs` - Advanced memory strategies
 6. `agents/06-sub-agents.bxs` - Agent orchestration and delegation
 
-### Path 4: Cloud AI & Advanced Features
+### Path 4: Document Processing & RAG (NEW!)
+
+1. `loaders/01-text-loader.bxs` - Start with basic text loading
+2. `loaders/02-csv-loader.bxs` - Load structured data
+3. `loaders/03-json-loader.bxs` - Parse JSON files
+4. `loaders/06-directory-loader.bxs` - Batch load documents
+5. `pipelines/07-text-cleaner.bxs` - Clean document content
+6. `pipelines/08-transformer-pipeline.bxs` - Build RAG pipelines
+
+### Path 5: Cloud AI & Advanced Features
 
 1. `streaming-example.bxs` - Start here (needs API key)
 2. `vision-example.bxs` - Image analysis
@@ -351,7 +461,7 @@ ollama serve
 4. `embeddings-example.bxs` - Semantic search
 5. `token-counting-example.bxs` - Optimize costs
 
-### Path 5: Local/Privacy Focused
+### Path 6: Local/Privacy Focused
 
 1. `ollama-example.bxs` - Local AI setup
 2. `memory-file.bxs` - File-based memory
@@ -381,6 +491,8 @@ ollama serve
 - [Memory Systems](../docs/main-components/memory.md) 🆕
 - [Vector Memory](../docs/main-components/vector-memory.md) 🆕
 - [Custom Memory](../docs/advanced/custom-memory.md) 🆕
+- [Document Loaders](../docs/main-components/document-loaders.md) 🆕
+- [Transformers](../docs/main-components/transformers.md) 🆕
 
 ## 🤝 Contributing Examples
 

@@ -1,0 +1,44 @@
+class{
+
+	this.name = 'BoxLang AI Examples Gallery'
+
+	// If you want examples with sessions
+	this.sessionManagement = true
+
+	// If you want to connect to databases
+	// We have created an inline datasource for you via Apache Derby
+	this.datasources = {
+		"bxai": {
+			"driver": "derby",
+			"connectionString": "jdbc:derby:memory:bxai;create=true"
+		}
+	}
+
+	// Use this to create your own cache regions, we created one for you.
+	this.caches = {
+		"aiCache" : {
+			provider : "BoxCache",
+			properties : {
+				maxObjects : 1000,
+				evictionPolicy : "LRU",
+				objectStore : "ConcurrentStore"
+			}
+		}
+	}
+
+	function onApplicationStart() {
+		application.startTime = now();
+
+		// Custom startup logic here for the entire examples gallery
+
+		// Return true to continue, false to abort
+		return true;
+	}
+
+	function onRequestStart( string targetPage ) {
+		// On request start stuff here
+
+		return true; // Continue processing
+	}
+
+}

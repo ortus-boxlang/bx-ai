@@ -1,0 +1,236 @@
+/**
+ * Markdown Loader Example
+ *
+ * Demonstrates loading Markdown files into Document objects.
+ * Perfect for documentation, README files, blog posts, and technical writing.
+ *
+ * Learn more: https://boxlang.ortusbooks.com/bx-modules/bx-ai/loaders
+ */
+
+println( "=== Markdown Loader Example ===" )
+println()
+
+// Create a sample Markdown file
+mdFile = getTempDirectory() & "guide-" & createUUID() & ".md"
+fileWrite( mdFile, "
+# BoxLang AI Module Guide
+
+## Introduction
+
+The BoxLang AI module provides a unified interface for working with multiple AI providers.
+
+### Key Features
+
+- **Multiple Providers**: OpenAI, Claude, Gemini, Ollama, and more
+- **Streaming Support**: Real-time response streaming
+- **Memory Systems**: Conversation history and context management
+- **Tool Calling**: AI agents can call custom functions
+
+## Quick Start
+
+```javascript
+// Simple chat example
+response = aiChat( ""Hello, AI!"" )
+println( response )
+```
+
+### Advanced Usage
+
+For production applications, consider using:
+
+1. **Agents** for complex workflows
+2. **Memory** for conversation context
+3. **Tools** for function calling
+4. **Pipelines** for multi-step processes
+
+## Best Practices
+
+> **Important:** Always handle API keys securely using environment variables.
+
+- Use environment variables for API keys
+- Implement rate limiting
+- Cache responses when possible
+- Monitor token usage
+
+## Conclusion
+
+The BoxLang AI module simplifies AI integration in your applications.
+
+---
+
+*Documentation v1.0 - December 2025*
+" )
+
+try {
+	// Example 1: Basic Markdown loading
+	println( "Example 1: Basic Markdown Loading" )
+	println( "─".repeat( 50 ) )
+
+	mdLoader = new src.main.bx.models.loaders.MarkdownLoader(
+		source: mdFile
+	)
+
+	documents = mdLoader.load()
+
+	println( "Loaded #documents.len()# document(s)" )
+	println( "Content preview: #left( documents[ 1 ].content, 100 )#..." )
+	println()
+
+	// Example 2: Load with metadata
+	println( "Example 2: Markdown with Metadata" )
+	println( "─".repeat( 50 ) )
+
+	mdLoaderMeta = new src.main.bx.models.loaders.MarkdownLoader(
+		source: mdFile,
+		config: {
+			includeMetadata: true
+		}
+	)
+
+	docsWithMeta = mdLoaderMeta.load()
+	doc = docsWithMeta[ 1 ]
+
+	println( "Document metadata:" )
+	println( "  Source: #doc.metadata.source#" )
+	println( "  Type: #doc.metadata.type ?: 'markdown'#" )
+	println()
+
+	// Example 3: Extract headers
+	println( "Example 3: Extract Headers and Sections" )
+	println( "─".repeat( 50 ) )
+
+	content = fileRead( mdFile )
+	headers = []
+
+	// Simple regex to find headers
+	reFind( "(?m)^##?\s+(.+)$", content, 1, true ).each( match => {
+		headers.append( match[ 2 ][ 1 ] )
+	})
+
+	println( "Found #headers.len()# headers:" )
+	headers.each( ( header, idx ) => {
+		println( "  #idx#. #header#" )
+	})
+	println()
+
+	// Example 4: Ask AI about documentation
+	println( "Example 4: AI Query on Markdown Content" )
+	println( "─".repeat( 50 ) )
+
+	mdContent = documents[ 1 ].content
+
+	message = aiMessage()
+		.system( "Answer questions about this documentation: ${context}" )
+		.user( "What are the key features of the BoxLang AI module?" )
+		.setContext( mdContent )
+
+	println( "Query: What are the key features?" )
+	println( "Answer: " & aiChat( message ) )
+	println()
+
+	// Example 5: Extract code blocks
+	println( "Example 5: Extract Code Examples" )
+	println( "─".repeat( 50 ) )
+
+	codeBlocks = []
+	reFind( "(?s)```\w*\n(.*?)```", content, 1, true ).each( match => {
+		if ( match[ 2 ][ 1 ] != "" ) {
+			codeBlocks.append( trim( match[ 2 ][ 1 ] ) )
+		}
+	})
+
+	println( "Found #codeBlocks.len()# code block(s):" )
+	codeBlocks.each( ( code, idx ) => {
+		println( "  Code ##idx#: #left( code, 40 )#..." )
+	})
+	println()
+
+	// Example 6: Chunk for RAG
+	println( "Example 6: Chunk Markdown for RAG" )
+	println( "─".repeat( 50 ) )
+
+	mdLoaderChunked = new src.main.bx.models.loaders.MarkdownLoader(
+		source: mdFile,
+		config: {
+			chunkSize: 200,
+			chunkOverlap: 50
+		}
+	)
+
+	chunks = mdLoaderChunked.load()
+
+	println( "Split documentation into #chunks.len()# chunks" )
+	chunks.each( ( chunk, idx ) => {
+		if ( idx <= 3 ) {
+			println( "  Chunk ##idx#: #left( chunk.content, 50 )#..." )
+		}
+	})
+	println()
+
+	// Example 7: README file processing
+	println( "Example 7: Process README Files" )
+	println( "─".repeat( 50 ) )
+
+	readmeFile = getTempDirectory() & "README-" & createUUID() & ".md"
+	fileWrite( readmeFile, "
+# My Project
+
+A simple project for demonstration.
+
+## Installation
+
+```bash
+npm install my-project
+```
+
+## Usage
+
+Import and use:
+
+```javascript
+import { MyClass } from 'my-project';
+const instance = new MyClass();
+```
+
+## License
+
+MIT License - See LICENSE file for details.
+" )
+
+	readmeLoader = new src.main.bx.models.loaders.MarkdownLoader(
+		source: readmeFile
+	)
+
+	readmeDocs = readmeLoader.load()
+
+	println( "Loaded README with #len( readmeDocs[ 1 ].content )# characters" )
+
+	// Ask AI to summarize
+	summaryMessage = aiMessage()
+		.system( "Summarize this README file concisely" )
+		.user( readmeDocs[ 1 ].content )
+
+	println( "Summary: " & aiChat( summaryMessage ) )
+
+	fileDelete( readmeFile )
+
+} catch ( any e ) {
+	println( "Error: #e.message#" )
+	println( e.detail ?: "" )
+} finally {
+	// Cleanup
+	if ( fileExists( mdFile ) ) {
+		fileDelete( mdFile )
+	}
+}
+
+println()
+println( "✅ Markdown Loader example complete!" )
+println()
+println( "Key Takeaways:" )
+println( "  • MarkdownLoader loads .md files into Documents" )
+println( "  • Perfect for README files, docs, blog posts" )
+println( "  • Extract headers, code blocks, and sections" )
+println( "  • Use chunking for large documentation (RAG)" )
+println( "  • Markdown content works great with AI queries" )
+println( "  • Preserves formatting for accurate processing" )

@@ -1,0 +1,138 @@
+/**
+ * HTTP Loader Example
+ *
+ * Demonstrates fetching web content into Document objects.
+ * Perfect for scraping websites, fetching APIs, and loading remote content.
+ *
+ * Learn more: https://boxlang.ortusbooks.com/bx-modules/bx-ai/loaders
+ */
+
+println( "=== HTTP Loader Example ===" )
+println()
+
+try {
+	// Example 1: Fetch Wikipedia article
+	println( "Example 1: Load Wikipedia Article" )
+	println( "─".repeat( 50 ) )
+
+	httpLoader = new src.main.bx.models.loaders.HTTPLoader(
+		source: "https://en.wikipedia.org/wiki/Artificial_intelligence"
+	)
+
+	documents = httpLoader.load()
+
+	println( "Loaded #documents.len()# document(s)" )
+	println( "Content length: #len( documents[ 1 ].content )# characters" )
+	println( "Preview: #left( documents[ 1 ].content, 100 )#..." )
+	println()
+
+	// Example 2: Fetch JSON API
+	println( "Example 2: Fetch JSON API Response" )
+	println( "─".repeat( 50 ) )
+
+	// Public API example - JSONPlaceholder
+	jsonLoader = new src.main.bx.models.loaders.HTTPLoader(
+		source: "https://jsonplaceholder.typicode.com/posts/1"
+	)
+
+	jsonDocs = jsonLoader.load()
+	jsonContent = jsonDeserialize( jsonDocs[ 1 ].content )
+
+	println( "Fetched post:" )
+	println( "  Title: #jsonContent.title#" )
+	println( "  Body: #left( jsonContent.body, 50 )#..." )
+	println()
+
+	// Example 3: Multiple URLs
+	println( "Example 3: Load Multiple URLs" )
+	println( "─".repeat( 50 ) )
+
+	urls = [
+		"https://jsonplaceholder.typicode.com/posts/1",
+		"https://jsonplaceholder.typicode.com/posts/2",
+		"https://jsonplaceholder.typicode.com/posts/3"
+	]
+
+	allDocs = []
+	urls.each( url => {
+		loader = new src.main.bx.models.loaders.HTTPLoader( source: url )
+		allDocs.append( loader.load()[ 1 ] )
+	})
+
+	println( "Loaded #allDocs.len()# documents from multiple URLs" )
+	allDocs.each( ( doc, idx ) => {
+		content = jsonDeserialize( doc.content )
+		println( "  ##idx#: #content.title#" )
+	})
+	println()
+
+	// Example 4: AI Analysis of Web Content
+	println( "Example 4: AI Analysis of Web Content" )
+	println( "─".repeat( 50 ) )
+
+	articleLoader = new src.main.bx.models.loaders.HTTPLoader(
+		source: "https://jsonplaceholder.typicode.com/posts/1"
+	)
+
+	articleDoc = articleLoader.load()[ 1 ]
+	articleData = jsonDeserialize( articleDoc.content )
+
+	message = aiMessage()
+		.system( "Summarize this content in one sentence" )
+		.user( articleData.body )
+
+	println( "Original: #left( articleData.body, 60 )#..." )
+	println( "Summary: " & aiChat( message ) )
+	println()
+
+	// Example 5: Custom headers
+	println( "Example 5: HTTP with Custom Headers" )
+	println( "─".repeat( 50 ) )
+
+	customLoader = new src.main.bx.models.loaders.HTTPLoader(
+		source: "https://jsonplaceholder.typicode.com/posts/1",
+		config: {
+			headers: {
+				"User-Agent": "BoxLang-AI/1.0",
+				"Accept": "application/json"
+			}
+		}
+	)
+
+	customDocs = customLoader.load()
+
+	println( "Loaded with custom headers" )
+	println( "Content type: JSON" )
+	println( "Status: Success" )
+	println()
+
+	// Example 6: Error handling
+	println( "Example 6: Handle Invalid URLs" )
+	println( "─".repeat( 50 ) )
+
+	try {
+		invalidLoader = new src.main.bx.models.loaders.HTTPLoader(
+			source: "https://this-domain-does-not-exist-12345.com"
+		)
+		invalidDocs = invalidLoader.load()
+	} catch ( any e ) {
+		println( "✅ Caught expected error: " & e.message )
+		println( "Always wrap HTTP loads in try/catch" )
+	}
+
+} catch ( any e ) {
+	println( "Error: #e.message#" )
+	println( e.detail ?: "" )
+}
+
+println()
+println( "✅ HTTP Loader example complete!" )
+println()
+println( "Key Takeaways:" )
+println( "  • HTTPLoader fetches web content as Documents" )
+println( "  • Works with HTML pages, APIs, and remote files" )
+println( "  • Supports custom headers for authentication" )
+println( "  • Perfect for real-time web scraping" )
+println( "  • Combine with AI for content analysis" )
+println( "  • Always handle network errors with try/catch" )
+println( "  • Load multiple URLs in loops for batch processing" )
