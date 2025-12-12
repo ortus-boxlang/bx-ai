@@ -6,34 +6,42 @@ Welcome to the **BoxLang AI Module** - your unified gateway to integrating AI ca
 
 BoxLang AI is a comprehensive module that brings enterprise-grade artificial intelligence capabilities to the BoxLang ecosystem. Whether you're building chatbots, content generators, code assistants, RAG systems, or complex AI workflows, this module provides everything you need.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Your BoxLang Application                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           BoxLang AI Module                                 │
-│                                                                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
-│  │  Agents  │  │ Pipelines│  │  Memory  │  │  Tools   │  │Documents │       │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘.      │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-           │                        │                           │
-           │ AI Providers           │ Document Loaders          │ Vector Stores
-           │                        │                           │
-    ┌──────┴────────┐      ┌────────┴────────┐           ┌──────┴──────┐
-    ▼               ▼      ▼                 ▼           ▼             ▼
-┌──────────┐  ┌──────────┐│┌──────────┐ ┌──────────┐ │┌──────────┐ ┌──────────┐
-│ OpenAI   │  │  Claude  ││|Text      │ │   CSV    │ ││ ChromaDB │ │Pinecone  │
-│ Gemini   │  │  Groq    ││|Markdown  │ │   JSON   │ ││PostgreSQL│ │TypeSense │
-│ Cohere   │  │  Ollama  ││|XML       │ │   PDF    │ ││  Qdrant  │ │Weaviate  │
-│ Deepseek │  │(Local AI)││|HTTP      │ │Directory │ ││  MySQL   │ │BoxVector │
-└──────────┘  └──────────┘│└──────────┘ └──────────┘ │└──────────┘ └──────────┘
-                          │                          │
-                          │  14 Loader Types         │  10+ Vector DBs
-                          └──────────────────────────┘
+```mermaid
+graph TB
+    App["🚀 Your BoxLang Application"]
+
+    App --> Module["⚡ BoxLang AI Module"]
+
+    Module --> Components["Core Components"]
+    Components --> Agents["🤖 Agents"]
+    Components --> Pipelines["🔗 Pipelines"]
+    Components --> Memory["💭 Memory"]
+    Components --> Tools["🛠️ Tools"]
+    Components --> Documents["📄 Documents"]
+
+    Module --> Providers["AI Providers"]
+    Module --> Loaders["Document Loaders"]
+    Module --> Vectors["Vector Stores"]
+
+    Providers --> OpenAI["OpenAI<br/>Gemini<br/>Cohere<br/>DeepSeek"]
+    Providers --> Claude["Claude<br/>Groq<br/>Ollama<br/>(Local AI)"]
+
+    Loaders --> LoaderSet1["Text<br/>Markdown<br/>XML<br/>HTTP"]
+    Loaders --> LoaderSet2["CSV<br/>JSON<br/>PDF<br/>Directory"]
+    Loaders --> LoaderNote["14 Loader Types"]
+
+    Vectors --> VectorSet1["ChromaDB<br/>PostgreSQL<br/>Qdrant<br/>MySQL"]
+    Vectors --> VectorSet2["Pinecone<br/>TypeSense<br/>Weaviate<br/>BoxVector"]
+    Vectors --> VectorNote["10+ Vector DBs"]
+
+    style App fill:#4CAF50,stroke:#333,stroke-width:2px,color:#fff
+    style Module fill:#2196F3,stroke:#333,stroke-width:2px,color:#fff
+    style Components fill:#9C27B0,stroke:#333,stroke-width:2px,color:#fff
+    style Providers fill:#FF9800,stroke:#333,stroke-width:2px,color:#fff
+    style Loaders fill:#FF9800,stroke:#333,stroke-width:2px,color:#fff
+    style Vectors fill:#FF9800,stroke:#333,stroke-width:2px,color:#fff
+    style LoaderNote fill:#FFC107,stroke:#333,stroke-width:1px,color:#000
+    style VectorNote fill:#FFC107,stroke:#333,stroke-width:1px,color:#000
 ```
 
 ### ✨ Key Features
