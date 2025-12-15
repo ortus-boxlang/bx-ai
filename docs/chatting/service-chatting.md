@@ -7,6 +7,52 @@ icon: bus
 
 Take full control of AI interactions by working directly with service objects. Perfect for advanced scenarios requiring custom configuration, multiple providers, or direct API access.
 
+## 🏗️ Service Architecture
+
+```mermaid
+graph TB
+    subgraph "Your Application"
+        CODE[Your Code]
+    end
+
+    subgraph "Service Layer"
+        SVC1[aiService OpenAI]
+        SVC2[aiService Claude]
+        SVC3[aiService Ollama]
+    end
+
+    subgraph "Request Building"
+        REQ[aiChatRequest]
+    end
+
+    subgraph "AI Providers"
+        API1[OpenAI API]
+        API2[Claude API]
+        API3[Ollama Local]
+    end
+
+    CODE --> REQ
+    REQ --> SVC1
+    REQ --> SVC2
+    REQ --> SVC3
+
+    SVC1 --> API1
+    SVC2 --> API2
+    SVC3 --> API3
+
+    style CODE fill:#4CAF50
+    style SVC1 fill:#2196F3
+    style SVC2 fill:#9C27B0
+    style SVC3 fill:#FF9800
+    style REQ fill:#FFC107
+```
+
+**Benefits:**
+- Direct control over service configuration
+- Multiple providers in one application
+- Custom timeouts and endpoints
+- Reusable service instances
+
 ## 📋 Table of Contents
 
 - [Creating Services](#creating-services)
@@ -20,6 +66,36 @@ Take full control of AI interactions by working directly with service objects. P
 ---
 
 ## Creating Services
+
+### 🔄 Service Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant App as Your App
+    participant Svc as Service Instance
+    participant Req as Chat Request
+    participant API as Provider API
+
+    App->>Svc: aiService("openai")
+    activate Svc
+    Note over Svc: Configure defaults<br/>Set API key<br/>Set endpoints
+
+    App->>Req: aiChatRequest("message")
+    App->>Req: setParams({...})
+
+    App->>Svc: invoke(request)
+    Svc->>Svc: Merge request params<br/>with service defaults
+    Svc->>API: HTTP POST
+    API-->>Svc: Response
+    Svc->>Svc: Parse & transform
+    Svc-->>App: Result
+
+    Note over Svc: Service stays alive<br/>for reuse
+
+    App->>Svc: invoke(request2)
+    Note over Svc: Reuse same config
+    deactivate Svc
+```
 
 ### Basic Service Creation
 

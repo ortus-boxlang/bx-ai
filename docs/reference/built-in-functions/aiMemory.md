@@ -2,6 +2,53 @@
 
 Create AI memory instances for storing conversation history, context, or knowledge bases.
 
+## 🧠 Memory Types Overview
+
+```mermaid
+graph TB
+    subgraph "Conversation Memory"
+        WIN[Window - Buffer]
+        CACHE[Cache - Distributed]
+        FILE[File - Persistent]
+        JDBC[JDBC - Database]
+        SESS[Session - User Scoped]
+        SUM[Summary - Compressed]
+    end
+    
+    subgraph "Vector Memory (RAG)"
+        BOXV[BoxVector - Built-in]
+        CHROMA[Chroma - Local/Cloud]
+        MILV[Milvus - Large Scale]
+        PG[PgVector - PostgreSQL]
+        PINE[Pinecone - Managed]
+        QDRANT[Qdrant - Performance]
+    end
+    
+    subgraph "Use Cases"
+        CHAT[Chat Context]
+        KB[Knowledge Base]
+        SEARCH[Semantic Search]
+        RAG[RAG Applications]
+    end
+    
+    WIN --> CHAT
+    CACHE --> CHAT
+    FILE --> CHAT
+    
+    CHROMA --> KB
+    CHROMA --> SEARCH
+    CHROMA --> RAG
+    
+    BOXV --> KB
+    PINE --> RAG
+    PG --> RAG
+    
+    style WIN fill:#4A90E2
+    style CHROMA fill:#7ED321
+    style CHAT fill:#BD10E0
+    style RAG fill:#F5A623
+```
+
 ## Syntax
 
 ```javascript

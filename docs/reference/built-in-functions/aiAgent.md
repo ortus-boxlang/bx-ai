@@ -2,6 +2,41 @@
 
 Create an autonomous AI Agent that can reason, use tools, maintain memory, and execute multi-step tasks.
 
+## 🔄 Agent Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant M as Memory
+    participant AI as AI Model
+    participant T as Tools
+    
+    U->>A: run(input)
+    A->>M: Retrieve context
+    M-->>A: Relevant history
+    
+    A->>AI: Send request + context + tools
+    
+    alt Tool Call Needed
+        AI-->>A: Tool call request
+        A->>T: Execute tool
+        T-->>A: Tool result
+        A->>AI: Send tool result
+        AI-->>A: Final response
+    else Direct Response
+        AI-->>A: Direct response
+    end
+    
+    A->>M: Store interaction
+    A->>U: Return response
+    
+    style A fill:#BD10E0
+    style M fill:#4A90E2
+    style AI fill:#7ED321
+    style T fill:#F5A623
+```
+
 ## Syntax
 
 ```javascript

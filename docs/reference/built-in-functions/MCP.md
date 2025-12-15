@@ -2,6 +2,48 @@
 
 Create a fluent MCP (Model Context Protocol) client for consuming external MCP servers. MCP enables AI applications to connect to tools, data sources, and external systems through a standardized protocol.
 
+## 🔌 MCP Client-Server Flow
+
+```mermaid
+sequenceDiagram
+    participant App as Your Application
+    participant MCP as MCP Client
+    participant Server as MCP Server
+    participant Res as External Resources
+    
+    App->>MCP: MCP(baseURL)
+    App->>MCP: withTimeout/withAuth
+    
+    alt Discovery Phase
+        App->>MCP: listTools()
+        MCP->>Server: GET /tools
+        Server-->>MCP: Available tools
+        MCP-->>App: Tool definitions
+    end
+    
+    alt Invocation Phase
+        App->>MCP: callTool(name, args)
+        MCP->>Server: POST /call
+        Server->>Res: Access data/API
+        Res-->>Server: Resource data
+        Server-->>MCP: Tool result
+        MCP-->>App: Response data
+    end
+    
+    alt Resource Access
+        App->>MCP: getResource(uri)
+        MCP->>Server: GET /resource
+        Server->>Res: Fetch resource
+        Res-->>Server: Resource content
+        Server-->>MCP: Resource data
+        MCP-->>App: Resource
+    end
+    
+    style MCP fill:#4A90E2
+    style Server fill:#7ED321
+    style Res fill:#F5A623
+```
+
 ## Syntax
 
 ```javascript

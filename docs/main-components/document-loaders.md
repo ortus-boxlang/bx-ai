@@ -2,6 +2,73 @@
 
 Document loaders are a powerful feature for importing content from various sources (files, directories, URLs, databases) into a standardized `Document` format that can be processed by AI workflows, stored in vector databases, or used for retrieval-augmented generation (RAG).
 
+## 🔄 Document Loading Flow
+
+```mermaid
+graph TB
+    subgraph "Sources"
+        FILE[📄 Files]
+        DIR[📁 Directories]
+        URL[🌐 URLs]
+        DB[🗄️ Databases]
+        API[🔌 APIs]
+    end
+
+    subgraph "Loaders"
+        TXT[TextLoader]
+        MD[MarkdownLoader]
+        CSV[CSVLoader]
+        JSON[JSONLoader]
+        XML[XMLLoader]
+        PDF[PDFLoader]
+        HTTP[HTTPLoader]
+        SQL[SQLLoader]
+    end
+
+    subgraph "Processing"
+        PARSE[Parse Content]
+        META[Extract Metadata]
+        CHUNK[Chunk Text]
+        TRANS[Transform]
+    end
+
+    subgraph "Output"
+        DOC[Document Objects]
+        MEM[Vector Memory]
+    end
+
+    FILE --> TXT
+    FILE --> MD
+    FILE --> CSV
+    FILE --> PDF
+    DIR --> TXT
+    DIR --> MD
+    URL --> HTTP
+    DB --> SQL
+    API --> JSON
+
+    TXT --> PARSE
+    MD --> PARSE
+    CSV --> PARSE
+    JSON --> PARSE
+    XML --> PARSE
+    PDF --> PARSE
+    HTTP --> PARSE
+    SQL --> PARSE
+
+    PARSE --> META
+    META --> CHUNK
+    CHUNK --> TRANS
+    TRANS --> DOC
+    DOC --> MEM
+
+    style FILE fill:#4A90E2
+    style DIR fill:#4A90E2
+    style URL fill:#4A90E2
+    style DOC fill:#7ED321
+    style MEM fill:#BD10E0
+```
+
 ## 📖 Table of Contents
 
 - [Overview](#overview)

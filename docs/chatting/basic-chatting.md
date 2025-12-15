@@ -25,6 +25,28 @@ Learn the fundamentals of interacting with AI using simple, straightforward chat
 
 The `aiChat()` function is your primary interface for AI interactions. It's designed to be simple yet powerful.
 
+### 🔄 Request-Response Flow
+
+```mermaid
+sequenceDiagram
+    participant U as Your Code
+    participant AC as aiChat()
+    participant P as AI Provider
+    participant M as AI Model
+
+    U->>AC: message + params + options
+    AC->>AC: Build request
+    AC->>P: HTTP Request
+    P->>M: Process with model
+    M->>M: Generate response
+    M->>P: Return completion
+    P->>AC: HTTP Response
+    AC->>AC: Extract content
+    AC->>U: Return string/array/struct
+
+    Note over U,M: Simple API hides complexity
+```
+
 ### Signature
 
 ```java
@@ -65,6 +87,27 @@ Parameters control how the AI behaves and responds.
 ### Temperature
 
 Controls randomness and creativity (0.0 = focused, 1.0 = creative):
+
+```mermaid
+graph LR
+    subgraph Temperature Scale
+        T0[0.0<br/>Deterministic<br/>Factual] --> T3[0.3<br/>Focused<br/>Technical]
+        T3 --> T7[0.7<br/>Balanced<br/>Natural]
+        T7 --> T9[0.9<br/>Creative<br/>Stories]
+        T9 --> T1[1.0+<br/>Random<br/>Experimental]
+    end
+
+    style T0 fill:#4CAF50
+    style T3 fill:#8BC34A
+    style T7 fill:#FFC107
+    style T9 fill:#FF9800
+    style T1 fill:#F44336
+```
+
+**Usage Guide:**
+- **0.0 - 0.3**: Math, facts, code, technical docs
+- **0.5 - 0.7**: General chat, balanced responses
+- **0.8 - 1.0**: Creative writing, brainstorming
 
 ```java
 // Very focused, deterministic

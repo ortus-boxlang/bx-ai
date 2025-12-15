@@ -21,6 +21,43 @@ Get **type-safe, validated responses** from AI providers by defining expected ou
 
 ## Why Use Structured Output?
 
+### 🔄 Data Extraction Flow
+
+```mermaid
+sequenceDiagram
+    participant Code as Your Code
+    participant AI as AI Provider
+    participant Schema as Schema Builder
+    participant Valid as Validator
+    participant Obj as Typed Object
+
+    Code->>Schema: Define class/template<br/>Person { name, age, email }
+    Code->>AI: Send prompt + schema
+
+    Note over AI: AI understands<br/>required structure
+
+    AI->>AI: Generate JSON matching schema
+    AI->>Valid: Return structured JSON
+
+    Valid->>Valid: Validate against schema
+    alt Valid JSON
+        Valid->>Obj: Populate typed object
+        Obj->>Code: Return Person instance
+        Note over Code: person.getName()<br/>person.getAge()
+    else Invalid JSON
+        Valid->>AI: Retry with schema hints
+        AI->>Valid: Corrected JSON
+        Valid->>Obj: Populate typed object
+        Obj->>Code: Return Person instance
+    end
+
+    style Obj fill:#4CAF50
+    style Valid fill:#2196F3
+    style Schema fill:#FFC107
+```
+
+**Benefits:**
+
 - **Type Safety**: Get validated objects with proper types, not generic structs
 - **Automatic Validation**: Schema constraints ensure correct data structure
 - **Better Reliability**: Reduces hallucinations by strictly constraining format
@@ -28,6 +65,50 @@ Get **type-safe, validated responses** from AI providers by defining expected ou
 - **No Manual Parsing**: Direct access to typed properties and methods
 
 ## Quick Start
+
+### 📊 Class vs Struct Template
+
+```mermaid
+graph TB
+    subgraph "Class-Based (Recommended)"
+        C1["class Person {<br/>property name<br/>property age<br/>}"]
+        C2[Type Safety ✓]
+        C3[IDE Autocomplete ✓]
+        C4[Validation ✓]
+        C5[Reusable ✓]
+
+        C1 --> C2
+        C1 --> C3
+        C1 --> C4
+        C1 --> C5
+    end
+
+    subgraph "Struct Template (Quick)"
+        S1["{<br/>name: '',<br/>age: 0<br/>}"]
+        S2[Type Safety ✗]
+        S3[IDE Autocomplete ✗]
+        S4[Validation ✓]
+        S5[Reusable ✓]
+
+        S1 --> S2
+        S1 --> S3
+        S1 --> S4
+        S1 --> S5
+    end
+
+    style C1 fill:#4CAF50
+    style C2 fill:#4CAF50
+    style C3 fill:#4CAF50
+    style C4 fill:#4CAF50
+    style C5 fill:#4CAF50
+    style S1 fill:#FF9800
+    style S2 fill:#F44336
+    style S3 fill:#F44336
+    style S4 fill:#4CAF50
+    style S5 fill:#4CAF50
+```
+
+**Recommendation:** Use classes for production code, struct templates for quick prototypes.
 
 ### Using a Class
 
