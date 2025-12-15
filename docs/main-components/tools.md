@@ -7,6 +7,19 @@ icon: wrench
 
 AI Tools enable AI models to call functions in your code, providing access to real-time data, external APIs, databases, and any other system integration.
 
+## 📋 Table of Contents
+
+- [What are AI Tools?](#-what-are-ai-tools)
+- [Creating Tools](#-creating-tools)
+- [Tool Parameters](#-tool-parameters)
+- [Using Tools with aiChat()](#-using-tools-with-aichat)
+- [Tools with Agents](#-tools-with-agents)
+- [Advanced Tool Patterns](#-advanced-tool-patterns)
+- [Best Practices](#-best-practices)
+- [Real-World Examples](#-real-world-examples)
+
+---
+
 ## 🎯 What are AI Tools?
 
 Tools are functions that you define and make available to AI models. When the AI needs information or wants to perform an action, it can call these tools:

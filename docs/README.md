@@ -252,8 +252,7 @@ BoxLang AI provides a comprehensive set of BIFs for different AI operations.  Yo
 
 | BIF | Purpose | Return Type | Example Use Case |
 |-----|---------|-------------|------------------|
-| `aiMemory()` | Create conversation memory | Memory | Context-aware conversations |
-| `aiVectorMemory()` | Create vector memory | VectorMemory | Semantic search, RAG |
+| `aiMemory()` | Create conversation or vector memory | Memory | Context-aware conversations, RAG, semantic search |
 
 ### 📄 Document Processing
 
@@ -291,8 +290,6 @@ BoxLang AI provides a comprehensive set of BIFs for different AI operations.  Yo
 ## 🚀 Quick Examples
 
 ### 💬 Simple Chat
-
-Leveer
 
 ```javascript
 answer = aiChat( "What is BoxLang?" )

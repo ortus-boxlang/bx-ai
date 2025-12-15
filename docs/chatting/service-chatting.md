@@ -7,6 +7,18 @@ icon: bus
 
 Take full control of AI interactions by working directly with service objects. Perfect for advanced scenarios requiring custom configuration, multiple providers, or direct API access.
 
+## 📋 Table of Contents
+
+- [Creating Services](#creating-services)
+- [Building Chat Requests](#building-chat-requests)
+- [Direct Service Invocation](#direct-service-invocation)
+- [Multiple Providers](#multiple-providers)
+- [Custom Configuration](#custom-configuration)
+- [When to Use Services](#when-to-use-services)
+- [Best Practices](#best-practices)
+
+---
+
 ## Creating Services
 
 ### Basic Service Creation

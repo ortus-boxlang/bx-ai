@@ -330,7 +330,7 @@ answer = aiChat( "Context: #relevantDoc#" & char(10) & "Question: #question#" );
 
 - [`aiChunk()`](aiChunk.md) - Chunk large documents before embedding
 - [`aiTokens()`](aiTokens.md) - Estimate token usage
-- [`aiVectorMemory()`](aiVectorMemory.md) - Store and search embeddings
+- [`aiMemory()`](aiMemory.md) - Store and search embeddings with vector memory
 - [`aiService()`](aiService.md) - Get embedding service providers
 
 ## Best Practices

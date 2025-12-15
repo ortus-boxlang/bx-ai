@@ -241,7 +241,7 @@ println( "With overlap: #withOverlap.toJSON()#" );
 
 - [`aiEmbed()`](aiEmbed.md) - Generate embeddings for chunks
 - [`aiTokens()`](aiTokens.md) - Estimate token counts
-- [`aiVectorMemory()`](aiVectorMemory.md) - Store chunked documents with embeddings
+- [`aiMemory()`](aiMemory.md) - Store chunked documents with embeddings
 - [`aiDocuments()`](aiDocuments.md) - Load and process documents
 
 ## Best Practices
