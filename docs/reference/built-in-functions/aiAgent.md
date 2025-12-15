@@ -11,13 +11,13 @@ sequenceDiagram
     participant M as Memory
     participant AI as AI Model
     participant T as Tools
-    
+
     U->>A: run(input)
     A->>M: Retrieve context
     M-->>A: Relevant history
-    
+
     A->>AI: Send request + context + tools
-    
+
     alt Tool Call Needed
         AI-->>A: Tool call request
         A->>T: Execute tool
@@ -27,10 +27,10 @@ sequenceDiagram
     else Direct Response
         AI-->>A: Direct response
     end
-    
+
     A->>M: Store interaction
     A->>U: Return response
-    
+
     style A fill:#BD10E0
     style M fill:#4A90E2
     style AI fill:#7ED321

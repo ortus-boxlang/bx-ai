@@ -14,7 +14,7 @@ graph TB
         SESS[Session - User Scoped]
         SUM[Summary - Compressed]
     end
-    
+
     subgraph "Vector Memory (RAG)"
         BOXV[BoxVector - Built-in]
         CHROMA[Chroma - Local/Cloud]
@@ -23,26 +23,26 @@ graph TB
         PINE[Pinecone - Managed]
         QDRANT[Qdrant - Performance]
     end
-    
+
     subgraph "Use Cases"
         CHAT[Chat Context]
         KB[Knowledge Base]
         SEARCH[Semantic Search]
         RAG[RAG Applications]
     end
-    
+
     WIN --> CHAT
     CACHE --> CHAT
     FILE --> CHAT
-    
+
     CHROMA --> KB
     CHROMA --> SEARCH
     CHROMA --> RAG
-    
+
     BOXV --> KB
     PINE --> RAG
     PG --> RAG
-    
+
     style WIN fill:#4A90E2
     style CHROMA fill:#7ED321
     style CHAT fill:#BD10E0

@@ -10,17 +10,17 @@ sequenceDiagram
     participant MCP as MCP Client
     participant Server as MCP Server
     participant Res as External Resources
-    
+
     App->>MCP: MCP(baseURL)
     App->>MCP: withTimeout/withAuth
-    
+
     alt Discovery Phase
         App->>MCP: listTools()
         MCP->>Server: GET /tools
         Server-->>MCP: Available tools
         MCP-->>App: Tool definitions
     end
-    
+
     alt Invocation Phase
         App->>MCP: callTool(name, args)
         MCP->>Server: POST /call
@@ -29,7 +29,7 @@ sequenceDiagram
         Server-->>MCP: Tool result
         MCP-->>App: Response data
     end
-    
+
     alt Resource Access
         App->>MCP: getResource(uri)
         MCP->>Server: GET /resource
@@ -38,7 +38,7 @@ sequenceDiagram
         Server-->>MCP: Resource data
         MCP-->>App: Resource
     end
-    
+
     style MCP fill:#4A90E2
     style Server fill:#7ED321
     style Res fill:#F5A623
