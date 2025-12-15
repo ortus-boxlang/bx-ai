@@ -13,7 +13,7 @@
 
 ## 📋 About This Bootcamp
 
-This intensive, hands-on course takes you from zero AI experience to building intelligent applications with BoxLang in just 6-7 hours.
+This intensive, hands-on course takes you from zero AI experience to building intelligent applications with BoxLang in just 8-9 hours (8 lessons).
 
 ### What You'll Learn / Lo que Aprenderás
 
@@ -24,6 +24,8 @@ This intensive, hands-on course takes you from zero AI experience to building in
 - ✅ Extract structured data from AI responses
 - ✅ Create tools that AI can use
 - ✅ Build an autonomous AI agent
+- ✅ Load and process documents for RAG systems
+- ✅ Create MCP servers and clients for remote tools
 
 ---
 

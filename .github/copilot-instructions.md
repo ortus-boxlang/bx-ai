@@ -1,5 +1,24 @@
 # BoxLang AI Module - AI Agent Instructions
 
+## ⚠️ CRITICAL: Do Not Hallucinate
+
+**If you don't know something, DO NOT make it up. Either:**
+1. **Ask the user** for clarification
+2. **Search the codebase** using available tools (grep_search, semantic_search, read_file)
+3. **Check the actual BIF files** in `src/main/bx/bifs/` to verify function names and signatures
+4. **Acknowledge uncertainty** - It's better to say "I'm not sure, let me check" than to provide incorrect information
+
+**Never assume:**
+- Function names or BIF names that you haven't verified
+- API signatures or parameter names
+- Class names or file locations
+- Feature availability
+
+**Always verify before suggesting code that uses:**
+- BIFs (Built-in Functions) - check `src/main/bx/bifs/*.bx`
+- Classes - check `src/main/bx/models/`
+- Configuration options - check actual source files
+
 ## Project Overview
 
 This is a **BoxLang module** providing unified AI provider integration. BoxLang is a modern dynamic JVM language (CFML-like syntax) with Java interop. The module exposes **Built-in Functions (BIFs)** written in BoxLang that interface with multiple AI providers (OpenAI, Claude, Gemini, Ollama, etc.) through a consistent API.

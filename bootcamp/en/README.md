@@ -2,7 +2,7 @@
 
 **Get Started with AI Development in One Day**
 
-Welcome to the BoxLang AI Bootcamp! This intensive, hands-on course will take you from zero AI experience to building intelligent applications with BoxLang in just 6-7 hours.
+Welcome to the BoxLang AI Bootcamp! This intensive, hands-on course will take you from zero AI experience to building intelligent applications with BoxLang in just 8-9 hours.
 
 ```
 ╔════════════════════════════════════════════════════════════════════╗
@@ -21,7 +21,7 @@ Welcome to the BoxLang AI Bootcamp! This intensive, hands-on course will take yo
 
 | | |
 |---|---|
-| **Duration** | 6-7 hours (1 day) |
+| **Duration** | 8-9 hours (1 day) |
 | **Level** | Complete Beginner |
 | **Prerequisites** | Basic programming knowledge |
 | **Goal** | Build AI-powered applications with BoxLang |
@@ -37,6 +37,8 @@ By the end of this bootcamp, you will:
 - ✅ Extract structured data from AI responses
 - ✅ Create tools that AI can use
 - ✅ Build an autonomous AI agent
+- ✅ Load and process documents for RAG systems
+- ✅ Create MCP servers and clients for remote tools
 
 ### What You'll Build
 
@@ -48,6 +50,8 @@ Throughout this bootcamp, you'll create:
 4. 📝 **Data Extractor** - Type-safe structured output
 5. 🌤️ **Weather Bot** - AI with real-time tools
 6. 🤖 **Smart Agent** - Autonomous AI assistant
+7. 📚 **RAG System** - Document-based knowledge retrieval
+8. 🔌 **MCP Server** - Remote tool exposure and integration
 
 ---
 
@@ -71,9 +75,17 @@ Throughout this bootcamp, you'll create:
 │  │   60 mins    │   │   60 mins    │   │   90 mins    │        │
 │  │  📝 Output   │   │  🛠️ Tools    │   │  🤖 Agents   │        │
 │  └──────────────┘   └──────────────┘   └──────────────┘        │
+│          │                                    │                 │
+│          │            ☕ BREAK                │                 │
+│          ▼                                    ▼                 │
+│  ┌──────────────┐   ┌──────────────┐                            │
+│  │   Lesson 7   │──▶│   Lesson 8   │                            │
+│  │   60 mins    │   │   60 mins    │                            │
+│  │  📚 Loaders  │   │  🔌 MCP      │                            │
+│  └──────────────┘   └──────────────┘                            │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
-                         Total: ~6.5 hours
+                         Total: ~8.5 hours
 ```
 
 ### Lesson Breakdown
@@ -86,6 +98,8 @@ Throughout this bootcamp, you'll create:
 | **4** | [Structured Output](lesson-04-structured-output/) | 60 mins | Type-safe responses, classes, data extraction |
 | **5** | [AI Tools](lesson-05-tools/) | 60 mins | Function calling, real-time data, tool creation |
 | **6** | [Building Agents](lesson-06-agents/) | 90 mins | Autonomous AI, memory, multi-step tasks |
+| **7** | [Loaders & Documents](lesson-07-loaders-documents/) | 60 mins | File loading, chunking, RAG systems, vector memory |
+| **8** | [MCP Servers & Clients](lesson-08-mcp-servers-clients/) | 60 mins | Model Context Protocol, remote tools, server creation |
 
 ---
 
