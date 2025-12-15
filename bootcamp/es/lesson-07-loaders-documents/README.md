@@ -418,10 +418,10 @@ println( "✅ Indexados #result.stored# fragmentos de documentos" )
 function preguntarRAG( pregunta ) {
     // Recuperar documentos relevantes
     resultados = memory.search( pregunta, 3 )
-    
+
     // Construir contexto desde documentos recuperados
     contexto = resultados.map( r => r.content ).toList( "\n\n" )
-    
+
     // Preguntar a IA con contexto
     return aiChat(
         message: "Contexto:\n#contexto#\n\nPregunta: #pregunta#",
@@ -548,12 +548,12 @@ for ( pregunta in preguntas ) {
 
 ### Lo que Aprendiste
 
-✅ **Cargadores de Documentos** - Cargar archivos, directorios, URLs, bases de datos  
-✅ **Formatos de Archivo** - Texto, markdown, PDF, CSV, JSON, XML  
-✅ **Carga de Directorios** - Carga recursiva con filtros  
-✅ **División** - Dividir documentos grandes inteligentemente  
-✅ **Integración de Memoria** - Usar `toMemory()` para RAG  
-✅ **Sistemas RAG** - Flujo de trabajo de Generación Aumentada por Recuperación  
+✅ **Cargadores de Documentos** - Cargar archivos, directorios, URLs, bases de datos
+✅ **Formatos de Archivo** - Texto, markdown, PDF, CSV, JSON, XML
+✅ **Carga de Directorios** - Carga recursiva con filtros
+✅ **División** - Dividir documentos grandes inteligentemente
+✅ **Integración de Memoria** - Usar `toMemory()` para RAG
+✅ **Sistemas RAG** - Flujo de trabajo de Generación Aumentada por Recuperación
 
 ### BIFs Clave
 

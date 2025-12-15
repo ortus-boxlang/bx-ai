@@ -21,7 +21,7 @@
 
 | | |
 |---|---|
-| **Duración** | 6-7 horas (1 día) |
+| **Duración** | 8-9 horas (1 día completo) |
 | **Nivel** | Principiante Completo |
 | **Prerrequisitos** | Conocimientos básicos de programación |
 | **Objetivo** | Construir aplicaciones con IA usando BoxLang |
@@ -37,6 +37,8 @@ Al final de este bootcamp, podrás:
 - ✅ Extraer datos estructurados de las respuestas de IA
 - ✅ Crear herramientas que la IA puede usar
 - ✅ Construir un agente de IA autónomo
+- ✅ Cargar y procesar documentos para sistemas RAG
+- ✅ Crear servidores y clientes MCP para distribución de herramientas
 
 ### Lo que Construirás
 
@@ -48,6 +50,8 @@ A lo largo de este bootcamp, crearás:
 4. 📝 **Extractor de Datos** - Salida estructurada con tipos seguros
 5. 🌤️ **Bot del Clima** - IA con herramientas en tiempo real
 6. 🤖 **Agente Inteligente** - Asistente de IA autónomo
+7. 📚 **Sistema RAG** - Soporte al cliente basado en documentos
+8. 🌐 **Servidor MCP** - Servicios de IA distribuidos
 
 ---
 
@@ -71,9 +75,17 @@ A lo largo de este bootcamp, crearás:
 │  │   60 mins    │   │   60 mins    │   │   90 mins    │        │
 │  │  📝 Salida   │   │  🛠️ Herram.  │   │  🤖 Agentes  │        │
 │  └──────────────┘   └──────────────┘   └──────────────┘        │
+│          │                                    │                 │
+│          │            ☕ DESCANSO             │                 │
+│          ▼                                    ▼                 │
+│  ┌──────────────┐   ┌──────────────┐                            │
+│  │   Lección 7  │──▶│   Lección 8  │                            │
+│  │   60 mins    │   │   60 mins    │                            │
+│  │  📚 Docs     │   │  🌐 MCP      │                            │
+│  └──────────────┘   └──────────────┘                            │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
-                          Total: ~6.5 horas
+                          Total: ~8.5 horas
 ```
 
 ### Desglose de Lecciones
@@ -86,6 +98,8 @@ A lo largo de este bootcamp, crearás:
 | **4** | [Salida Estructurada](lesson-04-structured-output/) | 60 mins | Respuestas con tipos seguros, clases, extracción de datos |
 | **5** | [Herramientas de IA](lesson-05-tools/) | 60 mins | Llamadas a funciones, datos en tiempo real, creación de herramientas |
 | **6** | [Construyendo Agentes](lesson-06-agents/) | 90 mins | IA autónoma, memoria, tareas de múltiples pasos |
+| **7** | [Cargadores y Documentos](lesson-07-loaders-documents/) | 60 mins | Carga de documentos, fragmentación, sistemas RAG, memoria vectorial |
+| **8** | [Servidores y Clientes MCP](lesson-08-mcp-servers-clients/) | 60 mins | Protocolo MCP, servidores, clientes, herramientas distribuidas |
 
 ---
 
@@ -170,7 +184,15 @@ bootcamp/es/
 │   ├── README.md
 │   ├── examples/
 │   └── labs/
-└── lesson-06-agents/              # IA autónoma
+├── lesson-06-agents/              # IA autónoma
+│   ├── README.md
+│   ├── examples/
+│   └── labs/
+├── lesson-07-loaders-documents/   # Carga de documentos y RAG
+│   ├── README.md
+│   ├── examples/
+│   └── labs/
+└── lesson-08-mcp-servers-clients/ # Servidores y clientes MCP
     ├── README.md
     ├── examples/
     └── labs/

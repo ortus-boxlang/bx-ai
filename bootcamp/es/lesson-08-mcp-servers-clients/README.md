@@ -142,9 +142,9 @@ respuestaHerramientas = cliente.listTools()
 
 if ( respuestaHerramientas.getSuccess() ) {
     herramientas = respuestaHerramientas.getData()
-    
+
     println( "Herramientas disponibles: #arrayLen( herramientas )#" )
-    
+
     for ( herramienta in herramientas ) {
         println( "- #herramienta.name#: #herramienta.description#" )
     }
@@ -236,7 +236,7 @@ Los servidores MCP pueden usar dos tipos de transporte:
   ✅ Estilo REST API                ✅ Apps de escritorio (Claude, VS Code)
   ✅ Clientes de navegador          ✅ Proceso a proceso
   ✅ Acceso remoto                  ✅ Ejecución local
-  
+
   POST http://localhost/mcp.bxm    stdin → Servidor MCP → stdout
 ```
 
@@ -601,12 +601,12 @@ println( "\n" & agente.run( "Cuéntame sobre el usuario 12345 - su información,
 
 ### Lo que Aprendiste
 
-✅ **Conceptos Básicos MCP** - Entender el Protocolo de Contexto de Modelo  
-✅ **Clientes MCP** - Conectarse y usar servidores MCP  
-✅ **Servidores MCP** - Construir y exponer herramientas vía MCP  
-✅ **Transportes** - Comunicación HTTP y STDIO  
-✅ **Integración con Agentes** - Usar herramientas MCP con agentes de IA  
-✅ **Producción** - Seguridad, limitación de tasa, CORS  
+✅ **Conceptos Básicos MCP** - Entender el Protocolo de Contexto de Modelo
+✅ **Clientes MCP** - Conectarse y usar servidores MCP
+✅ **Servidores MCP** - Construir y exponer herramientas vía MCP
+✅ **Transportes** - Comunicación HTTP y STDIO
+✅ **Integración con Agentes** - Usar herramientas MCP con agentes de IA
+✅ **Producción** - Seguridad, limitación de tasa, CORS
 
 ### BIFs y Componentes Clave
 
