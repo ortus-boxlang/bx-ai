@@ -133,30 +133,30 @@ graph TB
         EMB[Generate Embedding]
         VEC[Vector Representation]
     end
-    
+
     subgraph "Vector Database"
         STORE[(Vector Store)]
         IDX[Vector Index]
     end
-    
+
     subgraph "Search & Retrieval"
         Q[Query]
         QEMB[Query Embedding]
         SIM[Similarity Search]
         RES[Relevant Results]
     end
-    
+
     MSG --> EMB
     EMB --> VEC
     VEC --> STORE
     VEC --> IDX
-    
+
     Q --> QEMB
     QEMB --> SIM
     IDX --> SIM
     STORE --> SIM
     SIM --> RES
-    
+
     style STORE fill:#BD10E0
     style SIM fill:#4A90E2
     style RES fill:#7ED321
@@ -190,13 +190,13 @@ sequenceDiagram
     participant M as Vector Memory
     participant E as Embedding Model
     participant DB as Vector Database
-    
+
     Note over U,DB: Storing Messages
     U->>M: Add message
     M->>E: Generate embedding
     E->>M: Return vector
     M->>DB: Store vector + metadata
-    
+
     Note over U,DB: Searching
     U->>M: Search query
     M->>E: Generate query embedding

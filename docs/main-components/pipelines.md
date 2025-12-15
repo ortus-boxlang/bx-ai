@@ -92,11 +92,11 @@ result = pipeline.run()
 
 ### Key Benefits
 
-✅ **Composability** - Mix and match components like LEGO blocks  
-✅ **Reusability** - Define once, execute with different inputs  
-✅ **Readability** - Pipelines read like natural workflows  
-✅ **Flexibility** - Swap providers, add steps, modify behavior easily  
-✅ **Testability** - Each step can be tested independently  
+✅ **Composability** - Mix and match components like LEGO blocks
+✅ **Reusability** - Define once, execute with different inputs
+✅ **Readability** - Pipelines read like natural workflows
+✅ **Flexibility** - Swap providers, add steps, modify behavior easily
+✅ **Testability** - Each step can be tested independently
 ✅ **Maintainability** - Changes are isolated to specific steps
 
 ### Real-World Analogy
@@ -168,7 +168,7 @@ graph LR
     B --> C[Step 2<br/>AiModel]
     C --> D[Step 3<br/>Transform]
     D --> E[Output]
-    
+
     style A fill:#7ED321
     style E fill:#7ED321
     style B fill:#4A90E2
@@ -867,7 +867,7 @@ factual = pipeline.run(
 
 ### Options vs Parameters
 
-**Parameters** configure the **AI provider** (model, temperature, etc.)  
+**Parameters** configure the **AI provider** (model, temperature, etc.)
 **Options** configure the **runnable behavior** (returnFormat, timeout, logging)
 
 ```javascript
@@ -1158,11 +1158,11 @@ pipeline = aiMessage()
 
 ### Design Principles
 
-✅ **Single Responsibility** - Each step does one thing well  
-✅ **Immutability** - Don't modify pipeline state during execution  
-✅ **Composition** - Build complex workflows from simple components  
-✅ **Reusability** - Design pipelines as reusable templates  
-✅ **Explicit > Implicit** - Be clear about data transformations  
+✅ **Single Responsibility** - Each step does one thing well
+✅ **Immutability** - Don't modify pipeline state during execution
+✅ **Composition** - Build complex workflows from simple components
+✅ **Reusability** - Design pipelines as reusable templates
+✅ **Explicit > Implicit** - Be clear about data transformations
 
 ### Common Patterns
 
@@ -1189,11 +1189,11 @@ safePipeline = inputValidator          // Validate input
 
 ### Anti-Patterns to Avoid
 
-❌ **Overly Long Pipelines** (>10 steps) - Break into sub-pipelines  
-❌ **Side Effects in Transforms** - Keep transforms pure (no DB writes, no external API calls)  
-❌ **Tight Coupling** - Don't hardcode provider-specific logic  
-❌ **Missing Error Handling** - Always handle AI failures gracefully  
-❌ **Ignoring Performance** - Profile and optimize expensive operations  
+❌ **Overly Long Pipelines** (>10 steps) - Break into sub-pipelines
+❌ **Side Effects in Transforms** - Keep transforms pure (no DB writes, no external API calls)
+❌ **Tight Coupling** - Don't hardcode provider-specific logic
+❌ **Missing Error Handling** - Always handle AI failures gracefully
+❌ **Ignoring Performance** - Profile and optimize expensive operations
 
 ---
 

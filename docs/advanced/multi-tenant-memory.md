@@ -33,39 +33,39 @@ graph TB
     subgraph "Application Layer"
         APP[Application]
     end
-    
+
     subgraph "User A"
         UA[userId: alice]
         CA1[conversationId: support]
         CA2[conversationId: sales]
     end
-    
+
     subgraph "User B"
         UB[userId: bob]
         CB1[conversationId: support]
         CB2[conversationId: billing]
     end
-    
+
     subgraph "Memory Storage"
         MA1[(Memory: alice-support)]
         MA2[(Memory: alice-sales)]
         MB1[(Memory: bob-support)]
         MB2[(Memory: bob-billing)]
     end
-    
+
     APP --> UA
     APP --> UB
-    
+
     UA --> CA1
     UA --> CA2
     UB --> CB1
     UB --> CB2
-    
+
     CA1 --> MA1
     CA2 --> MA2
     CB1 --> MB1
     CB2 --> MB2
-    
+
     style APP fill:#BD10E0
     style UA fill:#4A90E2
     style UB fill:#4A90E2
@@ -125,11 +125,11 @@ graph LR
     A[Application] --> U1[User: alice]
     A --> U2[User: bob]
     A --> U3[User: charlie]
-    
+
     U1 --> M1[(Memory)]
     U2 --> M2[(Memory)]
     U3 --> M3[(Memory)]
-    
+
     style A fill:#BD10E0
     style U1 fill:#4A90E2
     style U2 fill:#4A90E2
@@ -164,11 +164,11 @@ graph TB
     U[User: alice] --> C1[Conversation: support]
     U --> C2[Conversation: sales]
     U --> C3[Conversation: billing]
-    
+
     C1 --> M1[(Memory 1)]
     C2 --> M2[(Memory 2)]
     C3 --> M3[(Memory 3)]
-    
+
     style U fill:#4A90E2
     style C1 fill:#F5A623
     style C2 fill:#F5A623
