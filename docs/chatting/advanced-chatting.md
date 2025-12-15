@@ -31,19 +31,19 @@ sequenceDiagram
     participant U as User
     participant C as Conversation Array
     participant AI as AI Model
-    
+
     U->>C: Add system message
     U->>C: Add user message 1
     U->>AI: Send to AI
     AI->>C: Return assistant response
-    
+
     Note over C: Message history builds
-    
+
     U->>C: Add user message 2
     U->>AI: Send full history
     AI->>AI: Process with context
     AI->>C: Return contextual response
-    
+
     Note over AI: AI has full context<br/>of conversation
 ```
 

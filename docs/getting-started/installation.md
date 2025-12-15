@@ -1,23 +1,20 @@
 ---
-description: "Installation and configuration guide for BoxLang AI."
+description: "Quick installation guide for BoxLang AI module."
 icon: download
 ---
 
-# 📦 Installation & Configuration
+# 📦 Installation
 
-Learn how to install BoxLang AI and configure it for your preferred AI provider.
+Get the BoxLang AI module installed and ready to use in minutes.
 
 ## 📑 Table of Contents
 
-- [System Requirements](#system-requirements)
-- [Installation Methods](#installation-methods)
-- [Configuration](#configuration)
-- [Provider Configuration](#provider-configuration)
-- [Running Ollama with Docker](#running-ollama-with-docker)
-- [Configuration Options](#configuration-options)
-- [Verification](#verification)
-- [Troubleshooting](#troubleshooting)
-- [Next Steps](#next-steps)
+- [System Requirements](#-system-requirements)
+- [Installation Methods](#-installation-methods)
+- [Quick Configuration](#-quick-configuration)
+- [Running Ollama with Docker](#-running-ollama-with-docker)
+- [Verification](#-verification)
+- [Next Steps](#-next-steps)
 
 ## ⚙️ System Requirements
 
@@ -71,28 +68,11 @@ Then run:
 box install
 ```
 
-## 🔧 Configuration
+## 🔧 Quick Configuration
 
-Configure the module in your `boxlang.json` file to set defaults for your application.
+Set up your first AI provider in `boxlang.json`:
 
-### ⚡ Basic Configuration
-
-```json
-{
-  "modules": {
-    "bxai": {
-      "settings": {
-		// The default provider
-        "provider": "openai",
-		// The default API Key for the Default Provider
-        "apiKey": "your-api-key-here"
-      }
-    }
-  }
-}
-```
-
-### 🎯 Complete Configuration
+### Basic Setup (OpenAI)
 
 ```json
 {
@@ -100,27 +80,14 @@ Configure the module in your `boxlang.json` file to set defaults for your applic
     "bxai": {
       "settings": {
         "provider": "openai",
-        "apiKey": "your-api-key-here",
-        "defaultParams": {
-          "model": "gpt-4",
-          "temperature": 0.7,
-          "max_tokens": 1000
-        },
-        "timeout": 30,
-        "logRequest": false,
-        "logRequestToConsole": false,
-        "logResponse": false,
-        "logResponseToConsole": false,
-        "returnFormat": "single"
+        "apiKey": "sk-your-key-here"
       }
     }
   }
 }
 ```
 
-## 🤖 Provider Configuration
-
-### 🟢 OpenAI (ChatGPT)
+### Using Environment Variables (Recommended)
 
 ```json
 {
@@ -128,103 +95,22 @@ Configure the module in your `boxlang.json` file to set defaults for your applic
     "bxai": {
       "settings": {
         "provider": "openai",
-        "apiKey": "sk-...",
-        "defaultParams": {
-          "model": "gpt-4",
-          "temperature": 0.7
-        }
+        "apiKey": "${OPENAI_API_KEY}"
       }
     }
   }
 }
 ```
 
-**Get your API key**: [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-
-**Popular models**:
-
-- `gpt-5` - Latest and most advanced
-- `gpt-4` - Most capable, best for complex tasks
-- `gpt-4-turbo` - Faster, more cost-effective
-- `gpt-3.5-turbo` - Fast and affordable
-
-### 🟣 Claude (Anthropic)
-
-```json
-{
-  "modules": {
-    "bxai": {
-      "settings": {
-        "provider": "claude",
-        "apiKey": "sk-ant-...",
-        "defaultParams": {
-          "model": "claude-3-opus-20240229",
-          "max_tokens": 4096
-        }
-      }
-    }
-  }
-}
-```
-
-**Get your API key**: [https://console.anthropic.com/](https://console.anthropic.com/)
-
-**Popular models**:
-
-- `claude-3-opus-20240229` - Most capable
-- `claude-3-sonnet-20240229` - Balanced
-- `claude-3-haiku-20240307` - Fastest
-
-### 🔵 Gemini (Google)
-
-```json
-{
-  "modules": {
-    "bxai": {
-      "settings": {
-        "provider": "gemini",
-        "apiKey": "...",
-        "defaultParams": {
-          "model": "gemini-pro"
-        }
-      }
-    }
-  }
-}
-```
-
-**Get your API key**: [https://makersuite.google.com/app/apikey](https://makersuite.google.com/app/apikey)
-
-### 🦙 Ollama (Local AI)
-
-**Perfect for privacy, offline use, and zero API costs!**
-
-#### 1️⃣ Install Ollama
-
-Download from [https://ollama.ai](https://ollama.ai) for your platform:
-
-- **macOS**: `brew install ollama`
-- **Linux**: `curl -fsSL https://ollama.ai/install.sh | sh`
-- **Windows**: Download installer from website
-
-#### 2️⃣ Pull a Model
+Then set the environment variable:
 
 ```bash
-# Recommended general model
-ollama pull llama3.2
-
-# Smaller/faster options
-ollama pull llama3.2:1b
-ollama pull phi3
-
-# Code-focused
-ollama pull codellama
-
-# High quality
-ollama pull mistral
+export OPENAI_API_KEY="sk-..."
 ```
 
-#### 3️⃣ Configure BoxLang
+### Local AI (Ollama)
+
+For free, local AI with no API costs:
 
 ```json
 {
@@ -232,7 +118,6 @@ ollama pull mistral
     "bxai": {
       "settings": {
         "provider": "ollama",
-        "apiKey": "",
         "chatURL": "http://localhost:11434",
         "defaultParams": {
           "model": "llama3.2"
@@ -243,17 +128,9 @@ ollama pull mistral
 }
 ```
 
-**Note**: Ollama doesn't require an API key for local use.
+**📖 For detailed provider setup, see [Provider Setup Guide](provider-setup.md)**
 
-#### 4️⃣ Verify Installation
-
-```bash
-# Check Ollama is running
-ollama list
-
-# Test a model
-ollama run llama3.2 "Hello!"
-```
+---
 
 ## 🐳 Running Ollama with Docker
 
@@ -450,72 +327,11 @@ answer = aiChat( "Hello", {}, { provider: "openai", apiKey: "sk-..." } )
 }
 ```
 
-**Perplexity**:
-
-```json
-{
-  "provider": "perplexity",
-  "apiKey": "pplx-..."
-}
-```
-
-## Configuration Options
-
-### Settings Reference
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `provider` | string | `"openai"` | Default AI provider to use |
-| `apiKey` | string | `""` | API key for the provider |
-| `defaultParams` | struct | `{}` | Default parameters for all requests |
-| `timeout` | number | `30` | Request timeout in seconds |
-| `logRequest` | boolean | `false` | Log requests to ai.log |
-| `logRequestToConsole` | boolean | `false` | Log requests to console |
-| `logResponse` | boolean | `false` | Log responses to ai.log |
-| `logResponseToConsole` | boolean | `false` | Log responses to console |
-| `returnFormat` | string | `"single"` | Default return format: `single`, `all`, `json`, `xml` or `raw` |
-
-### Default Parameters
-
-Common parameters you can set in `defaultParams`:
-
-| Parameter | Type | Description | Example |
-|-----------|------|-------------|---------|
-| `model` | string | The model to use | `"gpt-4"`, `"claude-3-opus"` |
-| `temperature` | number | Randomness (0.0-1.0) | `0.7` |
-| `max_tokens` | number | Maximum response length | `1000` |
-| `top_p` | number | Nucleus sampling | `0.9` |
-| `presence_penalty` | number | Reduce repetition | `0.1` |
-| `frequency_penalty` | number | Encourage diversity | `0.1` |
-
-### Environment Variables
-
-You can use environment variables for API keys:
-
-```json
-{
-  "modules": {
-    "bxai": {
-      "settings": {
-        "provider": "openai",
-        "apiKey": "${OPENAI_API_KEY}"
-      }
-    }
-  }
-}
-```
-
-Then set the environment variable:
-
-```bash
-export OPENAI_API_KEY="sk-..."
-```
-
-## Verification
+## ✅ Verification
 
 Test your installation:
 
-```java
+```javascript
 // test-ai.bxs
 answer = aiChat( "Say hello!" )
 println( answer )
@@ -529,48 +345,19 @@ boxlang test-ai.bxs
 
 If configured correctly, you should see a response from your AI provider.
 
-## Troubleshooting
-
-### "No API key provided"
-
-Make sure your API key is set in `boxlang.json` or passed directly:
-
-```java
-answer = aiChat( "Hello", {}, { provider: "openai", apiKey: "sk-..." } )
-```
-
-### "Connection timeout"
-
-Increase the timeout setting:
-
-```json
-{
-  "modules": {
-    "bxai": {
-      "settings": {
-        "timeout": 60
-      }
-    }
-  }
-}
-```
-
-### Ollama not responding
-
-Make sure Ollama is running:
-
-```bash
-ollama serve
-```
-
-Or check if it's already running:
-
-```bash
-curl http://localhost:11434/api/tags
-```
+---
 
 ## 🚀 Next Steps
 
-- [Quick Start Guide](quickstart.md) - Get started with simple examples
-- [Basic Chatting](../chatting/basic-chatting.md) - Learn the basics
-- [Provider Information](../README.md#supported-providers) - Compare features and capabilities
+Now that you're installed and configured:
+
+1. **[Provider Setup Guide](provider-setup.md)** - Detailed configuration for all 12+ providers
+2. **[Quick Start Guide](quickstart.md)** - Your first AI conversation in 5 minutes
+3. **[Basic Chatting](../chatting/basic-chatting.md)** - Learn the fundamentals
+
+### 💡 Quick Tips
+
+- **Use environment variables** for API keys (never commit to git)
+- **Start with Ollama** for free development/testing
+- **Try multiple providers** to find what works best for your use case
+- **Read the provider guide** for cost comparisons and model recommendations

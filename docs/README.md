@@ -118,8 +118,11 @@ Deep dives into specialized features and customization
 
 ### 🎓 Getting Started
 
-**📦 [Installation & Configuration](getting-started/installation.md)**
-Install the module, configure providers, and set up your first AI integration.
+**📦 [Installation](getting-started/installation.md)**
+Install the BoxLang AI module in minutes.
+
+**🧩 [Provider Setup & Configuration](getting-started/provider-setup.md)**
+Detailed setup for all 12+ AI providers with API keys, models, and best practices.
 
 **⚡ [Quick Start Guide](getting-started/quickstart.md)**
 Get up and running in minutes with simple examples and your first AI chat.

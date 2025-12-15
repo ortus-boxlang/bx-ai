@@ -27,6 +27,7 @@ Get up and running with BoxLang AI in minutes. This comprehensive guide walks yo
 
 - BoxLang installed and configured
 - bx-ai module installed ([Installation Guide](installation.md))
+- At least one AI provider configured ([Provider Setup](provider-setup.md))
 - API key for your chosen provider OR Ollama installed locally
 
 ## 💬 Your First AI Chat

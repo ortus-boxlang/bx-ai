@@ -1218,6 +1218,7 @@ class extends="BaseSpec" {
 
 - 📖 **AI Models**: [Understanding AI models](../main-components/models.md)
 - 🔧 **Configuration**: [Module settings](../getting-started/installation.md)
+- 🧩 **Provider Setup**: [Configuring providers](../getting-started/provider-setup.md)
 - 🎯 **Events**: [Event system](./events.md)
 - 🧪 **Testing**: Check existing provider tests in `src/test/`
 

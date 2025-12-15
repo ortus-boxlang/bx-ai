@@ -9,18 +9,36 @@ Welcome to BoxLang AI! This section covers everything you need to get up and run
 
 ## 📚 In This Section
 
-### 📦 [Installation & Configuration](installation.md)
+### 📦 [Installation](installation.md)
 
-Complete guide to installing the BoxLang AI module and configuring your preferred AI providers.
+Quick guide to installing the BoxLang AI module.
 
 **What you'll learn:**
 
 - Installing via BoxLang Module Installer, CommandBox, or package dependencies
-- Configuring API keys for OpenAI, Claude, Gemini, and other providers
-- Setting up Ollama for local AI (no API costs!)
+- Basic configuration setup
 - Running Ollama with Docker for production deployments
-- Environment variables and configuration options
-- Troubleshooting common setup issues
+- Verification and next steps
+
+**Time:** 5 minutes
+
+---
+
+### 🧩 [Provider Setup & Configuration](provider-setup.md)
+
+Comprehensive guide to configuring all supported AI providers.
+
+**What you'll learn:**
+
+- Provider comparison and recommendations
+- Getting API keys for 12+ cloud providers (OpenAI, Claude, Gemini, etc.)
+- Setting up Ollama for local AI (no API costs!)
+- Configuration best practices
+- Environment variables and security
+- Multiple provider management
+- Troubleshooting provider issues
+
+**Time:** 10-15 minutes
 
 - **🤖 Multi-Provider Support** - OpenAI, Claude, Gemini, Ollama, Grok, Groq, DeepSeek, Perplexity, and more
 - **💬 Simple Chat Interface** - Start with one-line AI conversations
@@ -37,7 +55,10 @@ Complete guide to installing the BoxLang AI module and configuring your preferre
 ### 🆕 New to BoxLang AI?
 
 **[Installation Guide](installation.md)**
-Get the module installed and configured in minutes.
+Get the module installed in minutes.
+
+**[Provider Setup](provider-setup.md)**
+Configure your AI providers.
 
 **[Quickstart Tutorial](quickstart.md)**
 Your first AI conversation in 5 lines of code.
@@ -66,7 +87,8 @@ Your first AI conversation in 5 lines of code, plus essential patterns and examp
 
 We recommend this progression:
 
-1. **📦 [Install](installation.md)** - Get the module installed and configured (5 min)
+1. **📦 [Install](installation.md)** - Get the module installed (5 min)
+1. **🧩 [Configure Providers](provider-setup.md)** - Set up your AI providers (10 min)
 2. **⚡ [Quick Start](quickstart.md)** - Your first AI conversation (10 min)
 3. **💬 [Basic Chatting](../chatting/basic-chatting.md)** - Simple interactions and parameters (15 min)
 4. **🎯 [Advanced Chatting](../chatting/advanced-chatting.md)** - Streaming, tools, multimodal content (20 min)
