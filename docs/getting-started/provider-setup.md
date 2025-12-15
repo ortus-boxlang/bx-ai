@@ -9,25 +9,49 @@ This guide covers detailed setup instructions for all supported AI providers, he
 
 ## 📋 Table of Contents
 
-- [Quick Provider Comparison](#-quick-provider-comparison)
-- [Configuration Basics](#-configuration-basics)
-- [Cloud Providers](#-cloud-providers)
-  - [OpenAI (ChatGPT)](#-openai-chatgpt)
-  - [Claude (Anthropic)](#-claude-anthropic)
-  - [Gemini (Google)](#-gemini-google)
-  - [Grok (xAI)](#-grok-xai)
-  - [HuggingFace](#-huggingface)
-  - [Groq](#-groq)
-  - [DeepSeek](#-deepseek)
-  - [Mistral](#-mistral)
-  - [OpenRouter](#-openrouter-multi-model-gateway)
-  - [Perplexity](#-perplexity)
-  - [Cohere](#-cohere)
-  - [Voyage](#-voyage)
-- [Local AI with Ollama](#-local-ai-with-ollama)
-- [Environment Variables](#-environment-variables)
-- [Multiple Providers](#-multiple-providers)
-- [Troubleshooting](#-troubleshooting)
+- [📋 Table of Contents](#-table-of-contents)
+- [🎯 Quick Provider Comparison](#-quick-provider-comparison)
+	- [💡 Recommendations by Use Case](#-recommendations-by-use-case)
+- [🔧 Configuration Basics](#-configuration-basics)
+	- [Configuration Options Reference](#configuration-options-reference)
+- [☁️ Cloud Providers](#️-cloud-providers)
+	- [🟢 OpenAI (ChatGPT)](#-openai-chatgpt)
+	- [🟣 Claude (Anthropic)](#-claude-anthropic)
+	- [🔵 Gemini (Google)](#-gemini-google)
+	- [🔸 Grok (xAI)](#-grok-xai)
+	- [🤗 HuggingFace](#-huggingface)
+	- [⚡ Groq](#-groq)
+	- [🔷 DeepSeek](#-deepseek)
+	- [🟠 Mistral](#-mistral)
+	- [🌐 OpenRouter (Multi-Model Gateway)](#-openrouter-multi-model-gateway)
+	- [🔎 Perplexity](#-perplexity)
+	- [🧡 Cohere](#-cohere)
+	- [🚀 Voyage](#-voyage)
+- [🦙 Local AI with Ollama](#-local-ai-with-ollama)
+	- [Why Ollama?](#why-ollama)
+	- [Installation Methods](#installation-methods)
+		- [Option 1: Native Installation](#option-1-native-installation)
+		- [Option 2: Docker (Recommended for Production)](#option-2-docker-recommended-for-production)
+	- [Pull and Configure Models](#pull-and-configure-models)
+	- [BoxLang Configuration](#boxlang-configuration)
+	- [Verify Installation](#verify-installation)
+	- [Model Selection Guide](#model-selection-guide)
+	- [Hardware Requirements](#hardware-requirements)
+- [🔐 Environment Variables](#-environment-variables)
+	- [In boxlang.json](#in-boxlangjson)
+	- [Set Environment Variables](#set-environment-variables)
+	- [Auto-Detection](#auto-detection)
+- [🔄 Multiple Providers](#-multiple-providers)
+	- [Provider Services](#provider-services)
+- [🔧 Troubleshooting](#-troubleshooting)
+	- [❌ "No API key provided"](#-no-api-key-provided)
+	- [⏱️ "Connection timeout"](#️-connection-timeout)
+	- [🔌 "Connection refused" (Ollama)](#-connection-refused-ollama)
+	- [🚫 "Model not found"](#-model-not-found)
+	- [💰 "Rate limit exceeded"](#-rate-limit-exceeded)
+	- [🔑 "Invalid API key"](#-invalid-api-key)
+- [🚀 Next Steps](#-next-steps)
+- [💡 Tips for Production](#-tips-for-production)
 
 ---
 
@@ -146,7 +170,7 @@ All providers are configured in your `boxlang.json` file:
 result = aiChat( "Explain quantum computing" )
 
 // Override provider and model
-result = aiChat( 
+result = aiChat(
     "Explain quantum computing",
     { model: "gpt-4-turbo" },
     { provider: "openai" }
@@ -190,7 +214,7 @@ result = aiChat(
 
 **Pricing**:
 - Opus: ~$15/1M input, ~$75/1M output
-- Sonnet: ~$3/1M input, ~$15/1M output  
+- Sonnet: ~$3/1M input, ~$15/1M output
 - Haiku: ~$0.25/1M input, ~$1.25/1M output
 
 **Special Features**:
@@ -644,17 +668,24 @@ set CLAUDE_API_KEY=sk-ant-...
 
 ### Auto-Detection
 
-BoxLang AI automatically detects these environment variables:
+**Convention:** By default, BoxLang AI automatically detects environment variables following the pattern `{PROVIDER_NAME}_API_KEY`. This means you don't need to explicitly configure API keys in `boxlang.json` if you set the appropriate environment variable.
+
+For example:
+- Setting `OPENAI_API_KEY` allows you to use OpenAI without configuration
+- Setting `CLAUDE_API_KEY` allows you to use Claude without configuration
+- And so on for all providers
+
+**Automatically detected environment variables:**
 
 - `OPENAI_API_KEY`
 - `CLAUDE_API_KEY`
-- `ANTHROPIC_API_KEY`
+- `ANTHROPIC_API_KEY` (alternative for Claude)
 - `GEMINI_API_KEY`
-- `GOOGLE_API_KEY`
+- `GOOGLE_API_KEY` (alternative for Gemini)
 - `GROQ_API_KEY`
 - `DEEPSEEK_API_KEY`
 - `HUGGINGFACE_API_KEY`
-- `HF_TOKEN`
+- `HF_TOKEN` (alternative for HuggingFace)
 - `MISTRAL_API_KEY`
 - `PERPLEXITY_API_KEY`
 - `COHERE_API_KEY`
@@ -668,7 +699,7 @@ Use different providers for different tasks:
 
 ```javascript
 // Use OpenAI for general chat
-chatResult = aiChat( 
+chatResult = aiChat(
     "Explain AI",
     {},
     { provider: "openai", apiKey: getSystemSetting( "OPENAI_API_KEY" ) }
