@@ -4,7 +4,7 @@ The BoxLang AI Module provides a complete MCP (Model Context Protocol) server im
 
 ## 📋 Table of Contents
 
-- [What is an MCP Server?](#what-is-an-mcp-server)
+- [🎯 What is an MCP Server?](#-what-is-an-mcp-server)
 - [Transport Types](#transport-types)
 - [Quick Start](#quick-start)
 - [Server Configuration](#server-configuration)

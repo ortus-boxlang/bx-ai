@@ -114,7 +114,7 @@ Deep dives into specialized features and customization
 
 ---
 
-## 📚 Table of Contents
+## 📋 Table of Contents
 
 ### 🎓 Getting Started
 
@@ -173,6 +173,9 @@ Semantic search using vector embeddings. Integrate ChromaDB, Pinecone, PostgreSQ
 
 **🔧 [Transformers](main-components/transformers.md)**
 Process and transform data between pipeline steps with pre/post-processing.
+
+**🔗 [Pipelines](main-components/pipelines.md)**
+Build composable AI workflows by chaining models, messages, and transformers into reusable templates.
 
 **📡 [Pipeline Streaming](main-components/streaming.md)**
 Real-time streaming through pipelines for responsive applications.

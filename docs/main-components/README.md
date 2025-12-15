@@ -67,16 +67,20 @@ START HERE
 └──────────────────────────────────────────────────────────────┘
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 9️⃣ Vector Memory - Semantic search for RAG apps             │
+│ 9️⃣ Pipelines - Build composable AI workflows                │
+└──────────────────────────────────────────────────────────────┘
+   ↓
+┌──────────────────────────────────────────────────────────────┐
+│ 🔟 Vector Memory - Semantic search for RAG apps              │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 **Quick Paths:**
 
 - 🚀 **Building a chatbot?** → Start with Models → Messages → Memory → Agents
-- 📊 **Extracting data?** → Start with Models → Structured Output → Transformers
+- 📊 **Extracting data?** → Start with Models → Structured Output → Transformers → Pipelines
 - 🔍 **Building RAG?** → Start with Models → Messages → Vector Memory → Agents
-- 🛠️ **Creating tools?** → Start with Models → Tools → Agents
+- 🛠️ **Creating workflows?** → Start with Models → Transformers → Pipelines → Agents
 
 ---
 
@@ -293,7 +297,36 @@ result = pipeline.run( "hello" ) // "HELLO!"
 
 ---
 
-### 9️⃣ [Vector Memory](vector-memory.md)
+### 9️⃣ [Pipelines](pipelines.md)
+
+**What:** Composable AI workflows - chain models, messages, and transformers
+
+**When to use:** Complex multi-step workflows, reusable templates, data processing flows
+
+**Quick example:**
+```javascript
+// Reusable pipeline
+translator = aiMessage()
+    .user( "Translate to ${lang}: ${text}" )
+    .toDefaultModel()
+    .transform( r => r.content )
+
+spanish = translator.run({ text: "Hello", lang: "Spanish" })
+french = translator.run({ text: "Hello", lang: "French" })
+```
+
+**Key concepts:**
+- Runnable interface (IAiRunnable)
+- Fluent chaining with `.to()`
+- Template reusability
+- Multi-step workflows
+- Data flow and transformations
+
+→ **[Read Pipelines Guide](pipelines.md)**
+
+---
+
+### 🔟 [Vector Memory](vector-memory.md)
 
 **What:** Semantic search through conversation history
 

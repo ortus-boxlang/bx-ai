@@ -7,11 +7,9 @@ icon: users-gear
 
 This guide covers implementing **secure, isolated memory** for multi-user and multi-conversation applications using BoxLang AI's built-in multi-tenant support.
 
----
-
 ## 📋 Table of Contents
 
-- [Overview](#overview)
+- [📖 Overview](#-overview)
 - [Core Concepts](#core-concepts)
 - [Implementation Patterns](#implementation-patterns)
 - [Memory Type Strategies](#memory-type-strategies)

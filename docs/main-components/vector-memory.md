@@ -9,11 +9,9 @@ Vector memory enables **semantic search and retrieval** using embeddings to find
 
 > **📖 Looking for Standard Memory?** For conversation history management, see the [Memory Systems Guide](memory.md).
 
----
-
 ## 📋 Table of Contents
 
-- [Multi-Tenant Isolation](#multi-tenant-isolation)
+- [🔒 Multi-Tenant Isolation](#-multi-tenant-isolation)
 - [Overview](#overview)
 - [How Vector Memory Works](#how-vector-memory-works)
 - [Choosing a Vector Provider](#choosing-a-vector-provider)
