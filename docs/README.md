@@ -124,9 +124,6 @@ Install the module, configure providers, and set up your first AI integration.
 **⚡ [Quick Start Guide](getting-started/quickstart.md)**
 Get up and running in minutes with simple examples and your first AI chat.
 
-**🤖 [AI Agents Quick Start](getting-started/quickstart.md#-ai-agents-quick-start)**
-Build autonomous AI agents with memory, tools, and reasoning capabilities.
-
 ---
 
 ### 💬 Simple AI Interactions
@@ -146,6 +143,9 @@ Extract type-safe, validated data from AI responses using classes, structs, or s
 ---
 
 ### 🔗 AI Pipelines & Components
+
+**✈️ [Main Components Overview](main-components/README.md)**
+Core concepts of AI pipelines, composability, and building workflows.
 
 **🔄 [Understanding Pipelines](main-components/overview.md)**
 Core concepts of AI pipelines, composability, and building workflows.
