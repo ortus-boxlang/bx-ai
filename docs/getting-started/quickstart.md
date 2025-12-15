@@ -56,13 +56,15 @@ println( answer )
 ```
 
 Run it:
+
 ```bash
 boxlang hello.bxs
 ```
 
 **Output:**
+
 ```
-BoxLang is a modern, dynamic programming language for the JVM that combines the best features of CFML with modern language design...
+BoxLang is a modern, dynamic programming language for the JVM that combines the best features of many dynamic languages with modern language design...
 ```
 
 ## 📖 Understanding the Basics
@@ -203,6 +205,7 @@ answer = aiChat(
 ```
 
 **Benefits of Ollama:**
+
 - 🔒 **Privacy**: Data never leaves your machine
 - 💰 **Cost**: Zero API charges
 - 🚀 **Speed**: No network latency
@@ -230,7 +233,7 @@ message = aiMessage()
     .system( "You are a code reviewer" )
     .user( "Review: function add(a,b) { return a+b }" )
 
-answer = aiChat( message.getMessages() )
+answer = aiChat( message )
 ```
 
 ## 🎛️ Controlling AI Behavior
@@ -363,10 +366,10 @@ pipeline = aiMessage()
     .transform( r => r.content )
 
 // Run it with different topics
-explanation = pipeline.run({ topic: "recursion" })
+explanation = pipeline.run( { topic: "recursion" } )
 println( explanation )
 
-result = pipeline.run({ topic: "closures" })
+result = pipeline.run( { topic: "closures" } )
 println( result )
 ```
 
@@ -841,53 +844,64 @@ println( "\nDone!" )
 Now that you're comfortable with the basics, explore:
 
 ### 📚 Core Concepts
+
 - **[Basic Chatting](../chatting/basic-chatting.md)** - Master the fundamentals
 - **[Advanced Chatting](../chatting/advanced-chatting.md)** - Tools, async, streaming
 - **[Service-Level Control](../chatting/service-chatting.md)** - Direct service management
 
 ### 🤖 AI Agents
+
 - **[Agents Guide](../main-components/agents.md)** - Complete agent documentation
 - **[Agent Examples](../../examples/agents/)** - Working code examples
 - **[Memory Systems](../main-components/memory.md)** - Conversation history
 - **[Tools](../main-components/tools.md)** - Function calling patterns
 
 ### 🧬 RAG & Documents
+
 - **[RAG Guide](../main-components/rag.md)** - Complete RAG workflow
 - **[Document Loaders](../main-components/document-loaders.md)** - Load data from various sources
 - **[Vector Memory](../main-components/vector-memory.md)** - Semantic search
 
 ### ⛓️ AI Pipelines
+
 - **[Pipeline Overview](../main-components/overview.md)** - Learn about composable workflows
 - **[Working with Models](../main-components/models.md)** - Pipeline-compatible AI models
 - **[Message Templates](../main-components/messages.md)** - Reusable prompts
 - **[Transformers](../main-components/transformers.md)** - Data processing
 
 ### 🔧 Advanced Topics
+
 - **[Event System](../advanced/events.md)** - Intercept and customize AI operations
 - **[Custom Memory](../advanced/custom-memory.md)** - Build custom memory implementations
 - **[Custom Loaders](../advanced/custom-loader.md)** - Create custom document loaders
 - **[Custom Transformers](../advanced/custom-transformer.md)** - Build custom transformers
 
 ### 💻 Examples
+
 Check the `/examples` folder in the repository for more complete applications.
 
 ## ❓ Common Issues
 
 **"No API key provided"**
+
 - Set API key in `boxlang.json` or pass directly in options
 
 **"Connection timeout"**
+
 - Increase timeout in settings or pass longer timeout in options
 
 **"Model not found"**
+
 - Check provider documentation for available model names
 - For Ollama: make sure you've pulled the model with `ollama pull <model>`
 
 **Ollama not responding**
+
 - Start Ollama: `ollama serve`
 - Check status: `curl http://localhost:11434/api/tags`
 
 **"Agent not remembering context"**
+
 - Ensure memory is configured: `.setMemories( aiMemory(...) )`
 - Check memory isn't being cleared between calls
 - Verify session/key is consistent across calls
