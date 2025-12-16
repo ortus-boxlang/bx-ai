@@ -244,7 +244,7 @@ Los servidores MCP pueden usar dos tipos de transporte:
 
 ```javascript
 // Obtener o crear una instancia de servidor MCP
-servidorMCP = mcpServer( "miServidor" )
+servidorMCP = MCPServer( "miServidor" )
 
 // Registrar herramientas
 servidorMCP.registerTool(
@@ -264,7 +264,7 @@ servidorMCP.registerTool(
 // 03-primer-servidor-mcp.bxs
 
 // Crear servidor
-servidorMCP = mcpServer( "servidorMatematico" )
+servidorMCP = MCPServer( "servidorMatematico" )
 
 // Registrar una herramienta calculadora
 servidorMCP.registerTool(
@@ -337,7 +337,7 @@ POST http://localhost/mcp.bxm
 ```javascript
 // 04-servidor-mcp-clima.bxs
 
-servidorMCP = mcpServer( "servidorClima" )
+servidorMCP = MCPServer( "servidorClima" )
 
 // Datos simulados del clima (en app real, llamar API)
 datosClima = {
@@ -397,7 +397,7 @@ for ( herramienta in servidorMCP.getTools() ) {
 - **Herramientas Útiles** - `generarUUID()`, `hashTexto()`, `numeroAleatorio()`
 
 **Requisitos:**
-1. Crear `mcpServer()` con un nombre
+1. Crear `MCPServer()` con un nombre
 2. Registrar al menos 2 herramientas con `registerTool()`
 3. Cada herramienta debe tener descripción clara y argumentos
 4. Probar localmente llamando herramientas directamente
@@ -435,7 +435,7 @@ agente = aiAgent()
 // 05-agente-con-mcp.bxs
 
 // Crear servidor MCP con herramientas de utilidad
-servidorMCP = mcpServer( "utilidades" )
+servidorMCP = MCPServer( "utilidades" )
 
 servidorMCP.registerTool(
     aiTool()
@@ -474,7 +474,7 @@ println( agente.run( "Genera 3 UUIDs y dime la hora actual" ) )
 
 ```javascript
 // Agregar autenticación al servidor MCP
-servidorMCP = mcpServer( "servidorSeguro", {
+servidorMCP = MCPServer( "servidorSeguro", {
     requireAuth: true,
     apiKeys: [ "tu-clave-secreta-1", "tu-clave-secreta-2" ]
 } )
@@ -490,7 +490,7 @@ servidorMCP.setAuthHandler( ( headers ) => {
 
 ```javascript
 // Configurar límites de tasa
-servidorMCP = mcpServer( "servidorLimitado", {
+servidorMCP = MCPServer( "servidorLimitado", {
     rateLimit: {
         maxRequests: 100,
         windowSeconds: 60
@@ -502,7 +502,7 @@ servidorMCP = mcpServer( "servidorLimitado", {
 
 ```javascript
 // Configurar CORS para clientes web
-servidorMCP = mcpServer( "servidorWeb", {
+servidorMCP = MCPServer( "servidorWeb", {
     cors: {
         allowOrigin: [ "https://miapp.com", "https://app.ejemplo.com" ],
         allowMethods: [ "POST", "OPTIONS" ],
@@ -520,7 +520,7 @@ servidorMCP = mcpServer( "servidorWeb", {
 ```javascript
 // 06-mcp-multi-servicio.bxs
 
-servidorMCP = mcpServer( "multiServicio" )
+servidorMCP = MCPServer( "multiServicio" )
 
 // Servicio de usuarios
 servidorMCP.registerTool(
@@ -613,7 +613,7 @@ println( "\n" & agente.run( "Cuéntame sobre el usuario 12345 - su información,
 | Función | Propósito |
 |---------|-----------|
 | `MCP()` | Crear cliente MCP |
-| `mcpServer()` | Crear u obtener servidor MCP |
+| `MCPServer()` | Crear u obtener servidor MCP |
 | `registerTool()` | Agregar herramientas al servidor MCP |
 | `listTools()` | Descubrir capacidades del servidor |
 | `send()` | Llamar herramientas del servidor MCP |

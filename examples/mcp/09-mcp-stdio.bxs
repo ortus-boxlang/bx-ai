@@ -30,11 +30,11 @@ import bxModules.bxai.models.mcp.MCPRequestProcessor
  * REGISTER YOUR MCP SERVERS AND TOOLS IN Application.bx OR A STARTUP SCRIPT
  * OR HERE.
  * E.g.:
- * mcpServer( "default" )
+ * MCPServer( "default" )
  *     .registerTool( aiTool( "echo", "Echo tool", ( msg ) => msg ) );
  */
 
-mcpServer( "default" )
+MCPServer( "default" )
 	.registerTool( aiTool( "echo", "Echo tool", ( msg ) => msg ) )
 
  /**

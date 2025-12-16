@@ -14,7 +14,7 @@
  */
 
 // Get or create the MCP server (singleton pattern)
-mcp = mcpServer( "webApp" )
+mcp = MCPServer( "webApp" )
     .setDescription( "Web Application MCP Server" )
     .setVersion( "1.0.0" )
 

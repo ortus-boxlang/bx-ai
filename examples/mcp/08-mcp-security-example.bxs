@@ -12,7 +12,7 @@
 println( "=== Example 1: CORS Configuration ===" )
 
 // Simple single origin
-server1 = mcpServer( "corsBasic" )
+server1 = MCPServer( "corsBasic" )
 	.withCors( "https://example.com" )
 	.registerTool( aiTool( "ping", "Ping", ( x ) => "pong" ) )
 
@@ -21,7 +21,7 @@ println( "Is https://example.com allowed? " & server1.isCorsAllowed( "https://ex
 println( "Is https://other.com allowed? " & server1.isCorsAllowed( "https://other.com" ) )
 
 // Multiple origins with wildcards
-server2 = mcpServer( "corsWildcard" )
+server2 = MCPServer( "corsWildcard" )
 	.withCors( [ "https://app.example.com", "*.example.com", "https://trusted.org" ] )
 	.registerTool( aiTool( "ping", "Ping", ( x ) => "pong" ) )
 
@@ -42,14 +42,14 @@ println( "" )
 println( "=== Example 2: Request Body Size Limits ===" )
 
 // Set a 1MB limit
-serverLimited = mcpServer( "limited" )
+serverLimited = MCPServer( "limited" )
 	.withBodyLimit( 1048576 )  // 1MB
 	.registerTool( aiTool( "upload", "Upload data", ( data ) => "Uploaded" ) )
 
 println( "Max body size: " & serverLimited.getMaxRequestBodySize() & " bytes (1MB)" )
 
 // Set unlimited
-serverUnlimited = mcpServer( "unlimited" )
+serverUnlimited = MCPServer( "unlimited" )
 	.withBodyLimit( 0 )  // No limit
 	.registerTool( aiTool( "bulk", "Bulk import", ( data ) => "Imported" ) )
 
@@ -62,7 +62,7 @@ println( "" )
 println( "=== Example 3: Custom API Key Validation ===" )
 
 // Simple validation
-serverSimple = mcpServer( "simpleApi" )
+serverSimple = MCPServer( "simpleApi" )
 	.withApiKeyProvider( ( apiKey, requestData ) => {
 		println( "  → Validating API key: " & apiKey )
 		println( "  → Method: " & requestData.method )
@@ -75,7 +75,7 @@ println( "Testing valid key: " & serverSimple.verifyApiKey( "secret-key-12345", 
 println( "Testing invalid key: " & serverSimple.verifyApiKey( "wrong-key", { method: "tools/list" } ) )
 
 // Advanced validation with logging
-serverAdvanced = mcpServer( "advancedApi" )
+serverAdvanced = MCPServer( "advancedApi" )
 	.withApiKeyProvider( ( apiKey, requestData ) => {
 		// Simulate database lookup
 		validKeys = {
@@ -112,7 +112,7 @@ serverAdvanced.verifyApiKey( "invalid-key", { method: "tools/list" } )
 println( "" )
 println( "=== Example 4: HTTP Basic Authentication ===" )
 
-serverAuth = mcpServer( "secured" )
+serverAuth = MCPServer( "secured" )
 	.withBasicAuth( "admin", "secretPassword123" )
 	.setDescription( "Secured Admin Server" )
 	.registerTool( aiTool( "adminTool", "Admin tool", ( x ) => "admin action" ) )
@@ -127,7 +127,7 @@ println( "" )
 println( "=== Example 5: Combined Security Configuration ===" )
 
 // Enterprise-grade security configuration
-serverEnterprise = mcpServer( "enterprise" )
+serverEnterprise = MCPServer( "enterprise" )
 	.setDescription( "Enterprise API with Full Security" )
 	.setVersion( "2.0.0" )
 	// CORS - restrict to specific origins
@@ -163,7 +163,7 @@ println( "=== Example 6: Environment-Based Configuration ===" )
 
 // Configuration based on environment
 function configureSecureServer( serverName, environment ) {
-	var server = mcpServer( serverName )
+	var server = MCPServer( serverName )
 
 	if ( environment == "production" ) {
 		// Strict production settings

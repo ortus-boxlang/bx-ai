@@ -10,7 +10,7 @@
  */
 
 // Create server with CORS enabled
-myServer = mcpServer( "advanced-api" )
+myServer = MCPServer( "advanced-api" )
     .setDescription( "Advanced MCP API" )
     .setVersion( "2.0.0" )
 

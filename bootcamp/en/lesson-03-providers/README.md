@@ -174,25 +174,25 @@ aiChat( "message", {}, { provider: "perplexity" } )
 
 ```java
 // OpenAI embeddings
-embedding = aiEmbedding(
+embedding = aiEmbed(
     input: "BoxLang is a modern JVM language",
     options: { provider: "openai" }
 )
 
 // Voyage embeddings (best for RAG)
-embedding = aiEmbedding(
+embedding = aiEmbed(
     input: "Document text for semantic search",
     options: { provider: "voyage", model: "voyage-2" }
 )
 
 // Cohere embeddings (multilingual)
-embedding = aiEmbedding(
+embedding = aiEmbed(
     input: "Text in any language",
     options: { provider: "cohere" }
 )
 
 // Ollama embeddings (local/private)
-embedding = aiEmbedding(
+embedding = aiEmbed(
     input: "Private document",
     options: { provider: "ollama", model: "nomic-embed-text" }
 )

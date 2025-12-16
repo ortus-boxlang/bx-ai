@@ -13,7 +13,7 @@ println( "=" repeat 50 )
 
 // Create or get an MCP server instance
 // Servers are singletons by name - multiple calls with same name return same instance
-var mcpSrv = mcpServer( "myApp" )
+var mcpSrv = MCPServer( "myApp" )
     .setDescription( "My Application MCP Server" )
     .setVersion( "1.0.0" )
 

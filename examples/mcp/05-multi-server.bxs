@@ -6,11 +6,11 @@
  */
 
 // Create different servers for different purposes
-publicServer = mcpServer( "public-api" )
+publicServer = MCPServer( "public-api" )
     .setDescription( "Public API Server" )
     .setVersion( "1.0.0" )
 
-adminServer = mcpServer( "admin-api" )
+adminServer = MCPServer( "admin-api" )
     .setDescription( "Admin API Server" )
     .setVersion( "1.0.0" )
 

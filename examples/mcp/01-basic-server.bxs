@@ -6,7 +6,7 @@
  */
 
 // Create an MCP server instance
-myServer = mcpServer( "myApp" )
+myServer = MCPServer( "myApp" )
     .setDescription( "My Application MCP Server" )
     .setVersion( "1.0.0" )
 

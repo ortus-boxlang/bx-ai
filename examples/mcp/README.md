@@ -18,7 +18,7 @@ boxlang examples/mcp/basic-server.bxs
 ```
 
 **Key concepts:**
-- `mcpServer()` - Create or get a server instance
+- `MCPServer()` - Create or get a server instance
 - `registerTool()` - Add callable tools
 - `registerResource()` - Add readable resources
 - `registerPrompt()` - Add prompt templates
@@ -161,7 +161,7 @@ boxlang examples/mcp/advanced-features.bx
 ### Creating a Server
 
 ```javascript
-myServer = mcpServer( "myApp" )
+myServer = MCPServer( "myApp" )
     .setDescription( "My MCP Server" )
     .setVersion( "1.0.0" )
 ```

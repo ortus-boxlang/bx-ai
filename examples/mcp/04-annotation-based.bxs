@@ -54,7 +54,7 @@ class name="MyTools" {
 }
 
 // Create MCP server
-myServer = mcpServer( "annotatedApp" )
+myServer = MCPServer( "annotatedApp" )
     .setDescription( "Annotation-based MCP Server" )
 
 // Save the class to a file (in real app, this would already exist)

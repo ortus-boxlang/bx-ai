@@ -244,7 +244,7 @@ MCP servers can use two transport types:
 
 ```javascript
 // Get or create an MCP server instance
-mcpSrv = mcpServer( "myServer" )
+mcpSrv = MCPServer( "myServer" )
 
 // Register tools
 mcpSrv.registerTool(
@@ -264,7 +264,7 @@ mcpSrv.registerTool(
 // 03-first-mcp-server.bxs
 
 // Create server
-mcpSrv = mcpServer( "mathServer" )
+mcpSrv = MCPServer( "mathServer" )
 
 // Register a calculator tool
 mcpSrv.registerTool(
@@ -337,7 +337,7 @@ POST http://localhost/mcp.bxm
 ```javascript
 // 04-weather-mcp-server.bxs
 
-mcpSrv = mcpServer( "weatherServer" )
+mcpSrv = MCPServer( "weatherServer" )
 
 // Mock weather data (in real app, call API)
 weatherData = {
@@ -397,7 +397,7 @@ for ( tool in mcpSrv.getTools() ) {
 - **Utility Tools** - `generateUUID()`, `hashString()`, `randomNumber()`
 
 **Requirements:**
-1. Create `mcpServer()` with a name
+1. Create `MCPServer()` with a name
 2. Register at least 2 tools with `registerTool()`
 3. Each tool should have clear description and arguments
 4. Test locally by calling tools directly
@@ -435,7 +435,7 @@ agent = aiAgent()
 // 05-agent-with-mcp.bxs
 
 // Create MCP server with utility tools
-mcpSrv = mcpServer( "utilities" )
+mcpSrv = MCPServer( "utilities" )
 
 mcpSrv.registerTool(
     aiTool()
@@ -474,7 +474,7 @@ println( agent.run( "Generate 3 UUIDs and tell me the current time" ) )
 
 ```javascript
 // Add authentication to MCP server
-mcpSrv = mcpServer( "secureServer", {
+mcpSrv = MCPServer( "secureServer", {
     requireAuth: true,
     apiKeys: [ "your-secret-key-1", "your-secret-key-2" ]
 } )
@@ -490,7 +490,7 @@ mcpSrv.setAuthHandler( ( headers ) => {
 
 ```javascript
 // Configure rate limits
-mcpSrv = mcpServer( "limitedServer", {
+mcpSrv = MCPServer( "limitedServer", {
     rateLimit: {
         maxRequests: 100,
         windowSeconds: 60
@@ -502,7 +502,7 @@ mcpSrv = mcpServer( "limitedServer", {
 
 ```javascript
 // Configure CORS for web clients
-mcpSrv = mcpServer( "webServer", {
+mcpSrv = MCPServer( "webServer", {
     cors: {
         allowOrigin: [ "https://myapp.com", "https://app.example.com" ],
         allowMethods: [ "POST", "OPTIONS" ],
@@ -520,7 +520,7 @@ mcpSrv = mcpServer( "webServer", {
 ```javascript
 // 06-multi-service-mcp.bxs
 
-mcpSrv = mcpServer( "multiService" )
+mcpSrv = MCPServer( "multiService" )
 
 // User service
 mcpSrv.registerTool(
@@ -613,7 +613,7 @@ println( "\n" & agent.run( "Tell me about user 12345 - their info, orders, and s
 | Function | Purpose |
 |----------|---------|
 | `MCP()` | Create MCP client |
-| `mcpServer()` | Create or get MCP server |
+| `MCPServer()` | Create or get MCP server |
 | `registerTool()` | Add tools to MCP server |
 | `listTools()` | Discover server capabilities |
 | `send()` | Call MCP server tools |

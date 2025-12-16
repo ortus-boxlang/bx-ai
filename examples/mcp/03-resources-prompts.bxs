@@ -12,7 +12,7 @@ println( "🚀 BoxLang AI - MCP Resources and Prompts Example" )
 println( "=" repeat 50 )
 
 // Create an MCP server
-var mcpSrv = mcpServer( "resourcesDemo" )
+var mcpSrv = MCPServer( "resourcesDemo" )
     .setDescription( "Resources and Prompts Demo Server" )
 
 println( "✅ Created MCP server: #mcpSrv.getServerName()#" )
