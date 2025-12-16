@@ -18,7 +18,7 @@
  * to AI clients via the Model Context Protocol (JSON-RPC 2.0).
  *
  * Usage:
- * ```boxlang
+ * ```js
  * // Get or create an MCP server instance
  * server = mcpServer( "myApp" )
  *     .registerTool( aiTool( "search", "Search for documents", ( query ) => searchDocs( query ) ) )

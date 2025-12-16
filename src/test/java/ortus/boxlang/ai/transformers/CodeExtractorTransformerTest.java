@@ -373,7 +373,7 @@ function foo() {
 
 			text = "Here's BoxLang:
 
-```boxlang
+```js
 function calculate(x, y) {
     return x + y;
 }

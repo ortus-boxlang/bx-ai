@@ -500,7 +500,7 @@ Have a great example? Please contribute!
 
 ### Example Template
 
-```boxlang
+```js
 // example-name.bxs
 /**
  * [Example Title]

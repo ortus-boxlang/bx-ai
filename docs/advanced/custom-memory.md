@@ -108,7 +108,7 @@ Consider building custom memory when you need:
 
 ### Key Properties
 
-```boxlang
+```js
 property name="key" type="string";           // Unique identifier
 property name="metadata" type="struct";      // Custom metadata
 property name="messages" type="array";       // Message storage
@@ -124,7 +124,7 @@ The `IAiMemory` interface defines the contract all memory implementations must f
 
 ### Required Methods
 
-```boxlang
+```js
 /**
  * Configure the memory instance
  * @config Configuration struct
@@ -180,7 +180,7 @@ struct function export();
 
 Store messages in Redis for distributed applications:
 
-```boxlang
+```js
 /**
  * Redis-backed Memory Implementation
  * Stores conversation history in Redis for distributed access
@@ -327,7 +327,7 @@ class extends="BaseMemory" {
 
 **Usage:**
 
-```boxlang
+```js
 memory = new RedisMemory().configure({
     redisHost: "localhost",
     redisPort: 6379,
@@ -348,7 +348,7 @@ agent = aiAgent(
 
 Automatically prioritize and filter messages based on importance:
 
-```boxlang
+```js
 /**
  * Priority-based Memory
  * Automatically filters messages based on priority levels
@@ -487,7 +487,7 @@ class extends="BaseMemory" {
 
 **Usage:**
 
-```boxlang
+```js
 memory = new PriorityMemory().configure({
     minPriority: 50,  // Only keep medium priority and above
     maxMessages: 20
@@ -516,7 +516,7 @@ messages = memory.getAll()  // Only critical/high/medium messages
 
 Implements time-based rotation with archiving:
 
-```boxlang
+```js
 /**
  * Rotating Memory with Archive
  * Automatically rotates messages to archive based on time
@@ -681,7 +681,7 @@ class extends="BaseMemory" {
 
 **Usage:**
 
-```boxlang
+```js
 memory = new RotatingMemory().configure({
     rotationHours: 24,
     archivePath: "/var/logs/ai/archives",
@@ -702,7 +702,7 @@ archives = memory.getArchived()
 
 ### Example 4: Multi-Tenant Memory
 
-```boxlang
+```js
 /**
  * Multi-tenant Memory
  * Isolates conversations by tenant ID
@@ -803,7 +803,7 @@ class extends="BaseMemory" {
 
 ### Unit Tests
 
-```boxlang
+```js
 class extends="testbox.system.BaseSpec" {
 
     function run() {
@@ -863,7 +863,7 @@ class extends="testbox.system.BaseSpec" {
 
 ### 1. Always Call super.configure()
 
-```boxlang
+```js
 IAiMemory function configure( required struct config ) {
     super.configure( arguments.config );  // Essential!
 
@@ -874,7 +874,7 @@ IAiMemory function configure( required struct config ) {
 
 ### 2. Validate Configuration
 
-```boxlang
+```js
 IAiMemory function configure( required struct config ) {
     super.configure( arguments.config );
 
@@ -889,7 +889,7 @@ IAiMemory function configure( required struct config ) {
 
 ### 3. Handle Errors Gracefully
 
-```boxlang
+```js
 array function getAll() {
     try {
         return loadFromExternalSource();
@@ -902,7 +902,7 @@ array function getAll() {
 
 ### 4. Implement Export/Import
 
-```boxlang
+```js
 struct function export() {
     var data = super.export();
     // Add your custom data
@@ -913,7 +913,7 @@ struct function export() {
 
 ### 5. Add Event Announcements
 
-```boxlang
+```js
 IAiMemory function add( required any message ) {
     super.add( arguments.message );
 
@@ -929,7 +929,7 @@ IAiMemory function add( required any message ) {
 
 ### 6. Thread Safety
 
-```boxlang
+```js
 // Use locks for concurrent access
 IAiMemory function add( required any message ) {
     lock name="memory_#variables.key#" type="exclusive" timeout="5" {

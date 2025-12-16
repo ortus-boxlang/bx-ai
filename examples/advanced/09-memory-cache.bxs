@@ -247,7 +247,7 @@ println( "✓ Bob's conversation completely isolated from Alice\n" )
 println( "=== CacheBox Configuration Examples ===\n" )
 
 println( "Application.cfc / ModuleConfig.bx:\n" )
-println( "```boxlang" )
+println( "```js" )
 println( "cacheBox = {" )
 println( "    providers: {" )
 println( "        conversations: {" )

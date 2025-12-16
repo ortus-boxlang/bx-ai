@@ -75,7 +75,7 @@ The `BaseVectorMemory` class provides most of the functionality you need:
 
 ### What BaseVectorMemory Provides
 
-```boxlang
+```js
 // Automatic handling of:
 - Message storage and retrieval
 - Embedding generation via configured provider
@@ -89,7 +89,7 @@ The `BaseVectorMemory` class provides most of the functionality you need:
 
 When extending `BaseVectorMemory`, you must implement these key methods:
 
-```boxlang
+```js
 /**
  * Store a message with its vector representation
  */
@@ -118,7 +118,7 @@ function count()
 
 ### Key Properties in BaseVectorMemory
 
-```boxlang
+```js
 variables.collection           // Collection/index name
 variables.embeddingProvider    // AI provider for embeddings (openai, etc.)
 variables.embeddingModel       // Model to use (text-embedding-3-small, etc.)
@@ -131,7 +131,7 @@ variables.key                  // Conversation/session identifier
 
 The complete interface you must implement:
 
-```boxlang
+```js
 interface {
     /**
      * Configure the vector memory
@@ -194,7 +194,7 @@ interface {
 
 A complete implementation using Elasticsearch with vector similarity search:
 
-```boxlang
+```js
 import bxModules.bxai.models.util.TextChunker;
 
 /**
@@ -491,7 +491,7 @@ class extends="BaseVectorMemory" implements="IVectorMemory" {
 
 ### Usage Example
 
-```boxlang
+```js
 // Create Elasticsearch vector memory
 memory = new ElasticsearchVectorMemory().configure({
     collection: "customer_support",
@@ -516,7 +516,7 @@ agent = aiAgent(
 
 Implementation using Redis with RediSearch vector similarity:
 
-```boxlang
+```js
 /**
  * Redis Vector Memory
  * Uses Redis Stack with vector similarity search (RediSearch)
@@ -749,7 +749,7 @@ class extends="BaseVectorMemory" implements="IVectorMemory" {
 
 A wrapper that adds caching layer to any vector memory:
 
-```boxlang
+```js
 /**
  * Cached Vector Memory Wrapper
  * Adds intelligent caching to reduce embedding API calls
@@ -908,7 +908,7 @@ class extends="BaseVectorMemory" implements="IVectorMemory" {
 
 ### Usage Example
 
-```boxlang
+```js
 // Wrap any vector memory with caching
 baseMemory = aiMemory( "pinecone", {
     apiKey: getSystemSetting( "PINECONE_API_KEY" ),
@@ -936,7 +936,7 @@ agent = aiAgent(
 
 Search across multiple collections with custom ranking:
 
-```boxlang
+```js
 /**
  * Multi-Collection Vector Memory
  * Searches multiple collections and merges results intelligently
@@ -1056,7 +1056,7 @@ class extends="BaseVectorMemory" implements="IVectorMemory" {
 
 ### Usage Example
 
-```boxlang
+```js
 // Create multi-collection memory
 memory = new MultiCollectionVectorMemory().configure({
     collections: [
@@ -1097,7 +1097,7 @@ agent = aiAgent(
 
 ### Unit Test Example
 
-```boxlang
+```js
 class extends="testbox.system.BaseSpec" {
 
     function run() {
@@ -1181,7 +1181,7 @@ class extends="testbox.system.BaseSpec" {
 
 ### 1. Always Call `super.configure()`
 
-```boxlang
+```js
 function configure( required struct config ) {
     // CRITICAL: Call parent configuration first
     super.configure( arguments.config );
@@ -1195,7 +1195,7 @@ function configure( required struct config ) {
 
 ### 2. Validate Configuration
 
-```boxlang
+```js
 function configure( required struct config ) {
     super.configure( arguments.config );
 
@@ -1221,7 +1221,7 @@ function configure( required struct config ) {
 
 ### 3. Handle Errors Gracefully
 
-```boxlang
+```js
 function getRelevant( required string query, numeric limit = 5 ) {
     try {
         // Attempt vector search
@@ -1251,7 +1251,7 @@ function getRelevant( required string query, numeric limit = 5 ) {
 
 ### 4. Optimize Embedding Generation
 
-```boxlang
+```js
 /**
  * Generate embeddings with batching and caching
  */
@@ -1277,7 +1277,7 @@ private function generateEmbeddings( required array texts ) {
 
 ### 5. Implement Proper Export/Import
 
-```boxlang
+```js
 function export() {
     return {
         "type": "custom",
@@ -1318,7 +1318,7 @@ function import( required struct data ) {
 
 ### 6. Monitor Performance
 
-```boxlang
+```js
 function getRelevant( required string query, numeric limit = 5 ) {
     var startTime = getTickCount();
 
@@ -1351,7 +1351,7 @@ function getRelevant( required string query, numeric limit = 5 ) {
 
 ### 7. Support Metadata Filtering
 
-```boxlang
+```js
 function getRelevant(
     required string query,
     numeric limit = 5,
@@ -1380,7 +1380,7 @@ function getRelevant(
 
 Wrap existing memory to add functionality:
 
-```boxlang
+```js
 class extends="BaseVectorMemory" {
     property name="wrappedMemory";
 
@@ -1404,7 +1404,7 @@ class extends="BaseVectorMemory" {
 
 Adapt existing clients to IVectorMemory interface:
 
-```boxlang
+```js
 class extends="BaseVectorMemory" {
     property name="thirdPartyClient";
 
@@ -1429,7 +1429,7 @@ class extends="BaseVectorMemory" {
 
 Combine multiple vector memories:
 
-```boxlang
+```js
 class extends="BaseVectorMemory" {
     property name="memories" type="array";
 
