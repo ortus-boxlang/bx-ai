@@ -316,7 +316,7 @@ embedding = aiEmbed(
 // In your interceptor
 function onAIRequest( event, interceptData ) {
     var data = arguments.interceptData;
-    systemLog( "AI Request to #data.provider#: #data.chatRequest.toString()#" );
+    writeLog( "AI Request to #data.provider#: #data.chatRequest.toString()#" );
 }
 ```
 
@@ -325,8 +325,11 @@ function onAIRequest( event, interceptData ) {
 ```java
 agent = aiAgent()
     .withInstructions( "You are a helpful assistant" )
-    .withMcpClient( "filesystem" )  // Gives agent file access
-    .build();
+    .addTool(
+		"file-read",
+		"Read files from the filesystem",
+		( path ) => directoryList( path )
+	)
 
 response = agent.run( "List files in /tmp" );
 ```
@@ -349,7 +352,7 @@ mcpServer( "myApp" )
 ### Chunk Large Documents
 
 ```java
-chunks = aiTextChunk(
+chunks = aiChunk(
     text: largeDocument,
     maxSize: 1000,
     overlap: 200

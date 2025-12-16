@@ -388,11 +388,10 @@ results = memory.getRelevant( "French capital", 1 )
 **Quick example:**
 ```javascript
 // Load a single file
-docs = aiDocumentLoader( "text" ).load( "/path/to/file.txt" )
+docs = aiDocuments( "/path/to/file.txt" ).load()
 
 // Load entire directory
-docs = aiDocumentLoader( "directory" )
-    .load( "/docs", { recursive: true } )
+docs = aiDocuments( "/docs", { recursive: true } ).load()
 
 // Load and chunk for RAG
 aiDocuments( "/docs" )

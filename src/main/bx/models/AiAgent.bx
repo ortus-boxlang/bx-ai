@@ -331,6 +331,16 @@ class extends="AiBaseRunnable" {
 	 */
 
 	 /**
+	  * Set instructions
+	 * @instructions The agent's instructions
+	 * @return this for chaining
+	 */
+	AiAgent function withInstructions( required string instructions ) {
+		variables.instructions = arguments.instructions;
+		return this;
+	}
+
+	 /**
 	 * Set the agent's name
 	 *
 	 * @name The agent's name
