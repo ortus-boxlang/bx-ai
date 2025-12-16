@@ -439,22 +439,22 @@ class extends="BaseVectorMemory" implements="IVectorMemory" {
     ) {
         var url = variables.esClient.baseURL & arguments.endpoint;
 
-        var httpRequest = httpRequest( url )
-            .setMethod( arguments.method )
-            .addHeader( "Content-Type", "application/json" );
+        var httpReq = http( url )
+            .method( arguments.method )
+            .header( "Content-Type", "application/json" );
 
         // Add authentication if configured
         if ( variables.esClient.user.len() ) {
             var auth = toBase64( "#variables.esClient.user#:#variables.esClient.password#" );
-            httpRequest.addHeader( "Authorization", "Basic #auth#" );
+            httpReq.header( "Authorization", "Basic #auth#" );
         }
 
         // Add body for non-GET/HEAD requests
         if ( ![ "GET", "HEAD" ].findNoCase( arguments.method ) && !arguments.body.isEmpty() ) {
-            httpRequest.setBody( jsonSerialize( arguments.body ) );
+            httpReq.body( jsonSerialize( arguments.body ) );
         }
 
-        var response = httpRequest.send();
+        var response = httpReq.send();
 
         // Parse JSON response
         return response.getStatusCode() == 200 || response.getStatusCode() == 201

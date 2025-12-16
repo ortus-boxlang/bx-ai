@@ -250,8 +250,8 @@ class extends="BaseMemory" {
     IAiMemory function clear() {
         var redisKey = variables.keyPrefix & variables.key;
 
-        httpRequest( buildRedisUrl( "del", redisKey ) )
-            .setMethod( "POST" )
+        http( buildRedisUrl( "del", redisKey ) )
+            .method( "POST" )
             .send();
 
         variables.messages = [];
@@ -266,9 +266,9 @@ class extends="BaseMemory" {
         var redisKey = variables.keyPrefix & variables.key;
         var data = jsonSerialize( variables.messages );
 
-        httpRequest( buildRedisUrl( "setex", redisKey ) )
-            .setMethod( "POST" )
-            .setBody( jsonSerialize({
+        http( buildRedisUrl( "setex", redisKey ) )
+            .method( "POST" )
+            .body( jsonSerialize({
                 key: redisKey,
                 seconds: variables.ttl,
                 value: data
@@ -282,8 +282,7 @@ class extends="BaseMemory" {
     private array function loadFromRedis() {
         var redisKey = variables.keyPrefix & variables.key;
 
-        var response = httpRequest( buildRedisUrl( "get", redisKey ) )
-            .setMethod( "GET" )
+        var response = http( buildRedisUrl( "get", redisKey ) )
             .send();
 
         if ( response.statusCode == 200 && response.fileContent.len() ) {
@@ -312,9 +311,8 @@ class extends="BaseMemory" {
      */
     private function testConnection() {
         try {
-            httpRequest( buildRedisUrl( "ping" ) )
-                .setTimeout( 5 )
-                .setMethod( "GET" )
+            http( buildRedisUrl( "ping" ) )
+                .timeout( 5 )
                 .send();
         } catch( any e ) {
             throw(

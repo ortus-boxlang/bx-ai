@@ -118,6 +118,11 @@ Deep dives into specialized features and customization
 
 ### 🎓 Getting Started
 
+Get started with BoxLang AI quickly and easily: [Overview](getting-started/README.md)
+
+**🎓 [AI Concepts](getting-started/concepts.md)**
+Overview of AI concepts, terminology, and architecture.
+
 **📦 [Installation](getting-started/installation.md)**
 Install the BoxLang AI module in minutes.
 
@@ -127,9 +132,14 @@ Detailed setup for all 12+ AI providers with API keys, models, and best practice
 **⚡ [Quick Start Guide](getting-started/quickstart.md)**
 Get up and running in minutes with simple examples and your first AI chat.
 
+**🙋[FAQ](getting-started/faq.md)**
+Common questions and troubleshooting tips for BoxLang AI.
+
 ---
 
 ### 💬 Simple AI Interactions
+
+Get started quickly with BoxLang AI's core chat capabilities: [Overview](chatting/README.md)
 
 **🗣️ [Basic Chatting](chatting/basic-chatting.md)**
 Simple question-answer interactions, parameters, and provider switching.
@@ -174,6 +184,9 @@ Semantic search using vector embeddings. Integrate ChromaDB, Pinecone, PostgreSQ
 **🔧 [Transformers](main-components/transformers.md)**
 Process and transform data between pipeline steps with pre/post-processing.
 
+**🏗️[Structured Output](main-components/structured-output.md)**
+Extract type-safe, validated data from AI responses using classes, structs, or schemas.
+
 **🔗 [Pipelines](main-components/pipelines.md)**
 Build composable AI workflows by chaining models, messages, and transformers into reusable templates.
 
@@ -196,14 +209,26 @@ Inject security, RAG, and application context into AI messages with multi-tenant
 **🎪 [Event System](advanced/events.md)**
 Intercept and customize AI operations with hooks for monitoring, security, and extensibility.
 
-**🛠️ [Utility Functions](advanced/utilities.md)**
-Text chunking, token counting, and optimization techniques for AI processing.
-
 **🔢 [Embeddings](advanced/embeddings.md)**
 Generate vector representations for semantic search, recommendations, and similarity detection.
 
+**👥 [Multi-Tenant Memory](advanced/multi-tenant-memory.md)**
+Enterprise-grade memory isolation with userId and conversationId patterns.
+
+**🛠️ [Utility Functions](advanced/utilities.md)**
+Text chunking, token counting, and optimization techniques for AI processing.
+
 **🔌 [MCP Client](advanced/mcp-client.md)**
 Connect to Model Context Protocol servers for external tools, resources, and prompts.
+
+**🖥️ [MCP Server](advanced/mcp-server.md)**
+Expose BoxLang capabilities as MCP server for integration with other AI systems.
+
+**🦾[Production Deployments](advanced/production.md)**
+Best practices for deploying BoxLang AI applications in production environments.
+
+**🔰[Security & Compliance](advanced/security.md)**
+Guidelines and best practices for securing AI applications and ensuring compliance.
 
 **🎨 [Custom AI Providers](advanced/custom-providers.md)**
 Build custom provider integrations to connect any LLM service with BoxLang AI.
@@ -220,17 +245,7 @@ Create custom loaders for specialized data sources and formats.
 **🔄 [Custom Transformers](advanced/custom-transformer.md)**
 Build custom transformers for specialized data processing in pipelines.
 
-**👥 [Multi-Tenant Memory](advanced/multi-tenant-memory.md)**
-Enterprise-grade memory isolation with userId and conversationId patterns.
-
-**🖥️ [MCP Server](advanced/mcp-server.md)**
-Expose BoxLang capabilities as MCP server for integration with other AI systems.
-
 ---
-
-## 👨‍💻 Class Models Reference
-
-You can find all of our class model reference documentation here: [Class Models Reference](reference/models/README.md).
 
 ## 🔧 Built-In Functions (BIFs)
 
@@ -265,8 +280,6 @@ BoxLang AI provides a comprehensive set of BIFs for different AI operations.  Yo
 | BIF | Purpose | Return Type | Example Use Case |
 |-----|---------|-------------|------------------|
 | `aiDocuments()` | Load documents from sources | Array/Loader | Document processing, RAG |
-| `aiDocumentLoader()` | Create loader instance | IDocumentLoader | Advanced loader configuration |
-| `aiDocumentLoaders()` | Get all registered loaders | Struct | Loader metadata and capabilities |
 
 ### 🔢 Utilities
 

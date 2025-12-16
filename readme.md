@@ -61,6 +61,8 @@ answer = aiChat( "How amazing is BoxLang?" )
 println( answer )
 ```
 
+**📚 New to AI concepts?** Check out our [Key Concepts Guide](docs/getting-started/concepts.md) for terminology and fundamentals, or browse our [FAQ](docs/getting-started/faq.md) for quick answers to common questions.
+
 ## 🤖 Providers
 
 The following are the AI providers supported by this module. **Please note that in order to interact with these providers you will need to have an account with them and an API key.** 🔑

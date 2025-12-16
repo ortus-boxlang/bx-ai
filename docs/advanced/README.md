@@ -7,6 +7,54 @@ icon: user-ninja
 
 Take your BoxLang AI skills to the next level with advanced features, integrations, and customization options.
 
+## 📚 In This Section
+
+### 🚀 [Production Deployment](production.md)
+
+Comprehensive guide for deploying BoxLang AI to production environments.
+
+**What you'll learn:**
+
+- Pre-deployment checklist
+- Configuration management (environment-based, secrets managers)
+- Error handling & resilience (circuit breaker, retry logic, fallback providers)
+- Monitoring & observability (events, metrics, health checks, audit logs)
+- Performance optimization (caching, async, batching, connection pooling)
+- Cost management & tracking
+- High availability (failover, load balancing)
+- Scaling strategies
+- Database & memory configuration
+- Container deployment (Docker, Kubernetes)
+- Security hardening
+- Operational procedures
+
+**Time:** 45-60 minutes
+
+---
+
+### 🔐 [Security Guide](security.md)
+
+Security best practices for BoxLang AI applications.
+
+**What you'll learn:**
+
+- API key management (secrets managers, rotation, scope limitation)
+- Input validation & sanitization
+- Prompt injection prevention (detection, protection strategies, testing)
+- Output validation
+- Data privacy (PII detection/redaction, encryption, data minimization)
+- Multi-tenant security (isolation, namespaces, row-level security)
+- PII handling
+- Audit logging
+- Compliance (GDPR, HIPAA, data retention)
+- Secure configuration
+- Network security (API gateway, TLS/SSL)
+- Incident response
+
+**Time:** 45-60 minutes
+
+---
+
 ## 🎯 Advanced Topics Architecture
 
 ```mermaid
@@ -35,6 +83,11 @@ graph TB
         API[External APIs]
     end
 
+    subgraph "Operations"
+        PROD[🚀 Production]
+        SEC[🔐 Security]
+    end
+
     EMB --> VM
     EVT --> CM
     MCP --> MCPS
@@ -45,9 +98,13 @@ graph TB
 
     UTIL --> TOK
     CTX --> MT
+    
+    PROD --> SEC
 
     style EMB fill:#4A90E2
     style EVT fill:#BD10E0
+    style PROD fill:#27AE60
+    style SEC fill:#E74C3C
     style MCP fill:#7ED321
     style CM fill:#F5A623
 ```

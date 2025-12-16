@@ -121,12 +121,11 @@ class extends="BaseDocumentLoader" {
 
         try {
             // Make HTTP request
-            var response = httpRequest( variables.endpoint )
-                .setMethod( "GET" )
-                .addHeader( "Authorization", "Bearer #variables.apiKey#" )
+            var data = http( variables.endpoint )
+                .header( "Authorization", "Bearer #variables.apiKey#" )
+				.asJson()
                 .send();
 
-            var data = response.getDataAsJSON();
 
             // Convert each item to a Document
             for ( var item in data.items ) {

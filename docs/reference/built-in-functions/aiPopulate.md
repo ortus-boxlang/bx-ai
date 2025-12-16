@@ -207,9 +207,9 @@ class Product {
 }
 
 // External API response
-apiResponse = httpRequest( "https://api.example.com/products/123" )
+apiResponse = http( "https://api.example.com/products/123" )
+	.asJson()
     .send()
-    .getPrefix().fileContent;
 
 // Populate from API
 product = aiPopulate( new Product(), apiResponse );

@@ -11,29 +11,29 @@ graph TB
         TOKEN[aiTokenCount]
         POP[aiPopulate]
     end
-    
+
     subgraph "Chunking Strategies"
         REC[Recursive - Smart]
         WORD[Words - Boundary]
         CHAR[Characters - Fixed]
     end
-    
+
     subgraph "Use Cases"
         DOC[Document Processing]
         COST[Cost Estimation]
         OBJ[Object Population]
         EMBED[Embedding Prep]
     end
-    
+
     CHUNK --> REC
     CHUNK --> WORD
     CHUNK --> CHAR
-    
+
     CHUNK --> DOC
     TOKEN --> COST
     POP --> OBJ
     CHUNK --> EMBED
-    
+
     style CHUNK fill:#4A90E2
     style TOKEN fill:#7ED321
     style POP fill:#BD10E0
@@ -59,10 +59,10 @@ sequenceDiagram
     participant AC as aiChunk()
     participant S as Strategy
     participant R as Result
-    
+
     U->>AC: text + options
     AC->>S: Apply chunking strategy
-    
+
     alt Recursive Strategy
         S->>S: Try paragraphs
         S->>S: Try sentences
@@ -73,7 +73,7 @@ sequenceDiagram
     else Characters Strategy
         S->>S: Split at fixed size
     end
-    
+
     S->>AC: Chunks array
     AC->>R: Add overlap
     R->>U: Chunked text array
@@ -876,9 +876,9 @@ typedUsers.each( user => {
 
 ```java
 // External API returns JSON
-apiResponse = httpRequest( "https://api.example.com/products" )
+apiResponse = http( "https://api.example.com/products" )
+	.asJson()
     .send()
-    .json()
 
 // Convert to typed objects
 products = apiResponse.data.map( item => {

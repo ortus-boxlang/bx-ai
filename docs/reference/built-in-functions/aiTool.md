@@ -94,13 +94,12 @@ searchTool = aiTool(
     "search_docs",
     "Search documentation for specific topics",
     ( query ) => {
-        response = httpRequest( "https://api.example.com/search" )
-            .setMethod( "POST" )
-            .setBody( { q: query } )
-            .send();
-
-        results = jsonDeserialize( response.getContent() );
-        return results.toList( "\n" );
+        return http( "https://api.example.com/search" )
+            .method( "POST" )
+			.asJson()
+            .body( { q: query } )
+            .send()
+			.toList( char( 10 ) )
     }
 );
 ```

@@ -226,12 +226,10 @@ apiTool = aiTool(
     "get_stock_price",
     "Get current stock price",
     ( args ) => {
-        response = httpRequest( "https://api.stocks.com/v1/price/#args.symbol#" )
-            .setMethod( "GET" )
-            .addHeader( "Authorization", "Bearer #getApiKey()#" )
+        return http( "https://api.stocks.com/v1/price/#args.symbol#" )
+            .header( "Authorization", "Bearer #getApiKey()#" )
+			.asJson()
             .send()
-
-        return deserializeJSON( response.getBody() )
     }
 ).describeSymbol( "Stock ticker symbol, e.g. AAPL, GOOGL" )
 ```

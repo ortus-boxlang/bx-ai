@@ -247,14 +247,13 @@ class extends="BaseService" {
         });
 
         // Make HTTP request with custom auth
-        var response = httpRequest( getChatURL() )
-            .setMethod( "POST" )
-            .addHeader( "X-API-Key", arguments.aiRequest.getApiKey() )
-            .addHeader( "X-Client-ID", "your-client-id" )
-            .setBody( jsonSerialize( dataPacket ) )
+        var result = http( getChatURL() )
+            .method( "POST" )
+            .header( "X-API-Key", arguments.aiRequest.getApiKey() )
+            .header( "X-Client-ID", "your-client-id" )
+			.asJson()
+            .body( jsonSerialize( dataPacket ) )
             .send();
-
-        var result = response.getDataAsJSON();
 
         // Announce response
         BoxAnnounce( "onAIResponse", {
@@ -307,13 +306,12 @@ class extends="BaseService" {
         };
 
         // Make request
-        var response = httpRequest( getChatURL() )
-            .setMethod( "POST" )
-            .addHeader( "Authorization", "Bearer #arguments.aiRequest.getApiKey()#" )
-            .setBody( jsonSerialize( dataPacket ) )
+        var result = http( getChatURL() )
+            .method( "POST" )
+            .header( "Authorization", "Bearer #arguments.aiRequest.getApiKey()#" )
+			.asJson()
+            .body( jsonSerialize( dataPacket ) )
             .send();
-
-        var result = response.getDataAsJSON();
 
         // Transform response to standard format
         return result.generatedText ?: "";
@@ -629,16 +627,15 @@ class extends="BaseService" {
 
         try {
             // Make request with custom authentication
-            var response = httpRequest( getChatURL() )
-                .setMethod( "POST" )
-                .addHeader( "X-Acme-Key", arguments.aiRequest.getApiKey() )
-                .addHeader( "X-API-Version", static.API_VERSION )
-                .addHeader( "Content-Type", "application/json" )
-                .setTimeout( arguments.aiRequest.getTimeout() )
-                .setBody( jsonSerialize( dataPacket ) )
+            var result = http( getChatURL() )
+                .method( "POST" )
+				.asJson()
+                .header( "X-Acme-Key", arguments.aiRequest.getApiKey() )
+                .header( "X-API-Version", static.API_VERSION )
+                .header( "Content-Type", "application/json" )
+                .timeout( arguments.aiRequest.getTimeout() )
+                .body( jsonSerialize( dataPacket ) )
                 .send();
-
-            var result = response.getDataAsJSON();
 
             if ( arguments.aiRequest.getLogResponseToConsole() ) {
                 println( "📨 Acme AI Response:" );
@@ -776,14 +773,13 @@ class extends="BaseService" {
                 : [ embeddingRequest.getInput() ]
         };
 
-        var response = httpRequest( getEmbeddingsURL() )
-            .setMethod( "POST" )
-            .addHeader( "X-Acme-Key", embeddingRequest.getApiKey() )
-            .addHeader( "X-API-Version", static.API_VERSION )
-            .setBody( jsonSerialize( dataPacket ) )
+        var result = http( getEmbeddingsURL() )
+            .method( "POST" )
+			.asJson()
+            .header( "X-Acme-Key", embeddingRequest.getApiKey() )
+            .header( "X-API-Version", static.API_VERSION )
+            .body( jsonSerialize( dataPacket ) )
             .send();
-
-        var result = response.getDataAsJSON();
 
         // Transform to standard format
         return {
@@ -987,12 +983,11 @@ Provide detailed error information:
 
 ```javascript
 try {
-    var response = httpRequest( getChatURL() )
-        .setMethod( "POST" )
-        .setBody( jsonSerialize( dataPacket ) )
+    var result = http( getChatURL() )
+        .method( "POST" )
+		.asJson()
+        .body( jsonSerialize( dataPacket ) )
         .send();
-
-    var result = response.getDataAsJSON();
 
     // Check for API errors
     if ( result.error?.message?.len() ) {
