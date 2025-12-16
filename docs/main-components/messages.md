@@ -22,26 +22,26 @@ graph TB
         A[Assistant Messages]
         P[Placeholders]
     end
-    
+
     subgraph "Runtime Binding"
         B[Bindings Data]
         M[Merge Process]
     end
-    
+
     subgraph "Output"
         MSG[Rendered Messages]
     end
-    
+
     T --> S
     T --> U
     T --> A
     T --> P
-    
+
     B --> M
     P --> M
-    
+
     M --> MSG
-    
+
     style T fill:#BD10E0
     style B fill:#4A90E2
     style M fill:#F5A623
@@ -88,11 +88,11 @@ sequenceDiagram
     participant T as Message Template
     participant B as Bindings
     participant R as Rendered Messages
-    
+
     U->>T: Create template with ${placeholders}
     U->>B: Provide binding values
     U->>T: call run(bindings)
-    
+
     T->>T: Find all ${placeholders}
     T->>B: Lookup values
     B->>T: Return values
@@ -211,26 +211,26 @@ graph TB
         D[Documents/RAG]
         M[Metadata]
     end
-    
+
     subgraph "Context System"
         C[Message Context]
         S[JSON Serialization]
     end
-    
+
     subgraph "Template"
         T[${context} Placeholder]
         R[Rendered Message]
     end
-    
+
     U --> C
     P --> C
     D --> C
     M --> C
-    
+
     C --> S
     S --> T
     T --> R
-    
+
     style C fill:#BD10E0
     style S fill:#F5A623
     style R fill:#7ED321
@@ -967,7 +967,7 @@ answer = assistant.run( { question: "What is a function?" } )
 ### Multi-Language Support
 
 ```java
-component {
+class {
     property name="templates" type="struct";
 
     function init() {
@@ -1009,7 +1009,7 @@ component {
 ## Template Library Pattern
 
 ```java
-component {
+class {
     function greeting( required string style ) {
         return aiMessage()
             .system( "You are ${style}" )

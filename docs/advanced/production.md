@@ -83,7 +83,7 @@ BoxAnnounce( "onApplicationStart", {
 
 ```javascript
 // config/ai-config.bx
-component {
+class {
     function getAIConfig() {
         var env = getSystemSetting( "ENVIRONMENT", "production" )
 
@@ -150,7 +150,7 @@ function getAPIKey( path ) {
 
 ```javascript
 // Reload config without restarting app
-component singleton {
+class singleton {
     property name="config" type="struct";
     property name="lastReload" type="date";
 
@@ -184,7 +184,7 @@ component singleton {
 ### Comprehensive Error Handling
 
 ```javascript
-component {
+class {
     function safeAIChat( required string prompt, struct params = {}, struct options = {} ) {
         var maxRetries = params.maxRetries ?: 3
         var retryDelay = params.retryDelay ?: 1000  // milliseconds
@@ -278,7 +278,7 @@ component {
 Prevent cascading failures:
 
 ```javascript
-component singleton {
+class singleton {
     property name="failures" type="numeric" default="0";
     property name="lastFailure" type="date";
     property name="state" type="string" default="CLOSED";  // CLOSED, OPEN, HALF_OPEN
@@ -350,7 +350,7 @@ Use BoxLang AI's event system:
 
 ```javascript
 // EventListener.bx
-component {
+class {
     function onAIRequest( event, interceptData ) {
         var startTime = getTickCount()
         interceptData.startTime = startTime
@@ -416,7 +416,7 @@ BoxRegisterInterceptor(
 ### Metrics Collection
 
 ```javascript
-component singleton {
+class singleton {
     property name="metrics" type="struct";
 
     function init() {
@@ -581,7 +581,7 @@ logAIInteraction(
 ### Response Caching
 
 ```javascript
-component {
+class {
     function getCachedAIResponse(
         required string prompt,
         struct params = {},
@@ -727,7 +727,7 @@ function batchAIChat( required array prompts ) {
 ### Usage Tracking
 
 ```javascript
-component singleton {
+class singleton {
     property name="dailyUsage" type="struct";
 
     function init() {
@@ -840,7 +840,7 @@ function estimateCost(
 ### Provider Failover
 
 ```javascript
-component {
+class {
     property name="providers" type="array";
     property name="currentProvider" type="numeric" default="1";
 
@@ -883,7 +883,7 @@ component {
 ### Load Balancing
 
 ```javascript
-component {
+class {
     property name="providers" type="array";
     property name="currentIndex" type="numeric" default="1";
 
@@ -1075,7 +1075,7 @@ spec:
 ### API Key Rotation
 
 ```javascript
-component singleton {
+class singleton {
     property name="apiKeys" type="struct";
     property name="currentKeyIndex" type="struct";
 

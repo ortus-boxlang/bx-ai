@@ -11,7 +11,7 @@ graph TB
         BVM[extends BaseVectorMemory]
         IVM[implements IVectorMemory]
     end
-    
+
     subgraph "Required Methods"
         ADD[add - Store vectors]
         REL[getRelevant - Search]
@@ -19,39 +19,39 @@ graph TB
         CLR[clear - Remove all]
         CNT[count - Count messages]
     end
-    
+
     subgraph "Vector Database"
         DB[(Custom Vector DB)]
         IDX[Index/Collection]
         EMB[Embeddings]
     end
-    
+
     subgraph "Embedding Provider"
         EP[OpenAI/Claude/etc]
         MOD[Embedding Model]
     end
-    
+
     CVM --> BVM
     CVM --> IVM
-    
+
     CVM --> ADD
     CVM --> REL
     CVM --> ALL
     CVM --> CLR
     CVM --> CNT
-    
+
     ADD --> DB
     REL --> DB
     ALL --> DB
     CLR --> DB
     CNT --> DB
-    
+
     DB --> IDX
     DB --> EMB
-    
+
     ADD -.Generate.-> EP
     EP --> MOD
-    
+
     style CVM fill:#BD10E0
     style BVM fill:#4A90E2
     style IVM fill:#7ED321
@@ -1098,7 +1098,7 @@ agent = aiAgent(
 ### Unit Test Example
 
 ```boxlang
-component extends="testbox.system.BaseSpec" {
+class extends="testbox.system.BaseSpec" {
 
     function run() {
         describe( "ElasticsearchVectorMemory", () => {

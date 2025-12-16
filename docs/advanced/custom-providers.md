@@ -878,7 +878,7 @@ function configure() {
 
 ```javascript
 // interceptors/ProviderRegistration.bx
-component {
+class {
 
     function onAIProviderCreate( event, interceptData ) {
         var providerName = interceptData.providerName ?: "";
@@ -900,7 +900,7 @@ For non-module registration, use `BoxRegisterInterceptor()`:
 // Application.bx
 import AcmeAIService;
 
-component {
+class {
 
     this.name = "MyApp";
 

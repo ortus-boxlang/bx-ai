@@ -360,7 +360,7 @@ analysisModel = aiModel( "claude" )
 ### Model Factory
 
 ```java
-component {
+class {
     function getModel( required string purpose ) {
         switch( arguments.purpose ) {
             case "creative":
@@ -475,7 +475,7 @@ function robustPipeline( required string question ) {
 ### Cost-Aware Model Selection
 
 ```java
-component {
+class {
     property name="budget" type="numeric" default="0";
     property name="spent" type="numeric" default="0";
 

@@ -198,7 +198,7 @@ println( "=== Web Framework Integration Pattern ===\n" )
 println( "Example: ColdBox/ContentBox multi-tenant handler\n" )
 
 println( "```boxlang" )
-println( "component {" )
+println( "class {" )
 println( "    // Multi-tenant chat endpoint" )
 println( "    function chat( event, rc, prc ) {" )
 println( "        // Get authenticated user ID" )

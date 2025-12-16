@@ -1843,7 +1843,7 @@ Expose stats via REST API:
 
 ```java
 // In your API handler
-component {
+class {
 
     function getServerStats( required string serverName ) {
         var server = mcpServer( arguments.serverName )

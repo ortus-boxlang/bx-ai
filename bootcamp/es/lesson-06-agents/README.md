@@ -243,7 +243,7 @@ agenteTecnico.run( "¿Cómo integro la API?" )
 ```java
 // handler-chat.cfc
 
-component {
+class {
     property name="cacheService" inject="cachebox:default";
 
     function chat( event, rc, prc ) {
@@ -412,7 +412,7 @@ NIVEL 2: Usuario + Conversación
 
 ```java
 // Sistema de soporte completo con multi-tenancy
-component {
+class {
     function initSupport( userId, tenantId ) {
         // Crear agente de soporte específico del usuario
         this.agent = aiAgent(

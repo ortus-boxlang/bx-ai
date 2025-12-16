@@ -17,19 +17,19 @@ sequenceDiagram
     participant P as Pipeline
     participant AI as AI Provider
     participant C as Callback
-    
+
     U->>P: pipeline.stream(callback)
     P->>AI: Start streaming request
-    
+
     loop For each chunk
         AI->>P: Stream chunk
         P->>C: Call callback(chunk)
         C->>U: Display/Process chunk
     end
-    
+
     AI->>P: Stream complete
     P->>U: Return
-    
+
     Note over U,C: Real-time response<br/>as it's generated
 ```
 
@@ -169,7 +169,7 @@ println( "Total: " & len( fullResponse ) & " characters" )
 ### Structured Collection
 
 ```java
-component {
+class {
     property name="chunks" type="array";
     property name="fullText" type="string" default="";
 
@@ -413,7 +413,7 @@ pipeline.stream( ( chunk ) => {
 ### Interactive Chat
 
 ```java
-component {
+class {
     property name="pipeline";
 
     function init() {

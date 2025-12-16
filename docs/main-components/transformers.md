@@ -1272,7 +1272,7 @@ pipeline = aiMessage()
 ### Response Cache
 
 ```java
-component {
+class {
     property name="cache" type="struct";
 
     function init() {
@@ -1366,7 +1366,7 @@ aggregator = aiTransform( data => {
 ## Transform Library
 
 ```java
-component {
+class {
     function extractContent() {
         return aiTransform( r => r.content )
     }

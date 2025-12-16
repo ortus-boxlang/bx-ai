@@ -14,20 +14,20 @@ graph LR
         APP[Application Code]
         CLIENT[MCP Client]
     end
-    
+
     subgraph "MCP Server"
         SVR[MCP Server]
         TOOLS[Tools]
         RES[Resources]
         PROMPT[Prompts]
     end
-    
+
     APP --> CLIENT
     CLIENT -->|HTTP/STDIO| SVR
     SVR --> TOOLS
     SVR --> RES
     SVR --> PROMPT
-    
+
     style CLIENT fill:#4A90E2
     style SVR fill:#BD10E0
     style TOOLS fill:#B8E986
@@ -407,7 +407,7 @@ writeOutput( answer )
 ### Resource Caching
 
 ```java
-component {
+class {
     property name="mcpClient";
     property name="cache";
 
@@ -551,7 +551,7 @@ client = MCP( "http://localhost:3000" )
 ### Unit Testing
 
 ```java
-component extends="testbox.system.BaseSpec" {
+class extends="testbox.system.BaseSpec" {
 
     function run() {
         describe( "MCP Client", () => {

@@ -271,7 +271,7 @@ println( salesAgent.run( "What were we discussing?" ) )
 
 ```java
 // web-app-pattern.bxs (pseudo-code for ColdBox/web framework)
-component {
+class {
 
     function chat( event, rc, prc ) {
         // Get authenticated user from session
@@ -361,7 +361,7 @@ function createEnterpriseAgent( userId, conversationId ) {
 
 ```java
 // secure-agent-factory.bxs
-component {
+class {
 
     function createSecureAgent(
         required string userId,
@@ -437,7 +437,7 @@ Level 2: Conversation Isolation (per user)
 
 ```java
 // customer-support-system.bxs
-component {
+class {
 
     function handleSupportRequest(
         required string customerId,
@@ -616,7 +616,7 @@ println()
 
 ```java
 // web-streaming.bxs (pseudo-code for web framework)
-component {
+class {
 
     function streamChat( event, rc, prc ) {
         userId = session.getUserId()

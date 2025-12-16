@@ -227,7 +227,7 @@ This provides:
 Simplest pattern - one conversation per user:
 
 ```java
-component {
+class {
     property name="userMemories" default="{}";
 
     function getUserMemory( required string userId ) {
@@ -254,7 +254,7 @@ component {
 Enterprise pattern - users have multiple concurrent conversations:
 
 ```java
-component {
+class {
     function getConversationMemory(
         required string userId,
         required string conversationId
@@ -307,7 +307,7 @@ component {
 Complex enterprise pattern with organization-level isolation:
 
 ```java
-component {
+class {
     function getMemory(
         required string organizationId,
         required string userId,
@@ -821,7 +821,7 @@ function getAuditedMemory(
 Prevent abuse by limiting conversation access:
 
 ```java
-component {
+class {
     property name="accessCounts" default="{}";
 
     function getRateLimitedMemory( required string userId ) {
@@ -912,7 +912,7 @@ CREATE INDEX idx_vector_composite ON ai_vectors(user_id, conversation_id);
 Cache memory instances to avoid repeated creation:
 
 ```java
-component {
+class {
     property name="memoryCache" default="{}";
 
     function getOptimizedMemory( required string userId, required string conversationId ) {
@@ -990,7 +990,7 @@ For database-backed memory, configure connection pooling:
 Isolate by organization → user → conversation:
 
 ```java
-component {
+class {
     function getEnterpriseMemory(
         required string organizationId,
         required string userId,
@@ -1038,7 +1038,7 @@ component {
 Map conversations to support tickets:
 
 ```java
-component {
+class {
     function getTicketMemory( required string ticketId ) {
         // Get ticket details
         var ticket = getTicketById( arguments.ticketId );

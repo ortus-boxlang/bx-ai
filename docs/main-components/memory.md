@@ -675,7 +675,7 @@ function streamChat( userInput ) {
 Encapsulate memory logic in a reusable component:
 
 ```java
-component {
+class {
     property name="memory";
     property name="systemPrompt";
 
@@ -759,7 +759,7 @@ println( chat( "alice", "What's my name?", "support" ) )  // "Alice" - correct c
 println( chat( "bob", "What's my name?", "support" ) )    // "Bob" - isolated
 
 // Alternative: Legacy pattern with manual dictionary (not recommended)
-component {
+class {
     property name="userMemories" default="{}";
 
     function getUserMemory( userId ) {
@@ -778,7 +778,7 @@ component {
 Switch memory contexts based on conversation topics:
 
 ```java
-component {
+class {
     property name="memories" default="{}";
     property name="currentContext" default="general";
 
@@ -1175,7 +1175,7 @@ solution = aiChat( solutionMemory.getAll() )
 Adjust memory size based on conversation complexity:
 
 ```java
-component {
+class {
     property name="memory";
     property name="baseLimit" default="10";
 

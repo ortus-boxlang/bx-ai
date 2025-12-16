@@ -15,28 +15,28 @@ graph TB
         T2[Text: "kitten"]
         T3[Text: "car"]
     end
-    
+
     subgraph "Embedding Model"
         M[AI Embedding Model]
     end
-    
+
     subgraph "Vector Space"
         V1[Vector: close to V2]
         V2[Vector: close to V1]
         V3[Vector: far from V1,V2]
     end
-    
+
     T1 --> M
     T2 --> M
     T3 --> M
-    
+
     M --> V1
     M --> V2
     M --> V3
-    
+
     V1 -.Similar.-> V2
     V1 -.Different.-> V3
-    
+
     style M fill:#4A90E2
     style V1 fill:#7ED321
     style V2 fill:#7ED321
@@ -74,7 +74,7 @@ sequenceDiagram
     participant F as aiEmbed()
     participant P as Provider
     participant M as Model
-    
+
     U->>F: Input text(s)
     F->>P: Select provider (OpenAI/Ollama/etc)
     P->>M: Send to embedding model
@@ -82,7 +82,7 @@ sequenceDiagram
     M->>P: Return embeddings
     P->>F: Format response
     F->>U: Return vectors
-    
+
     Note over U,M: Single API call,<br/>batch processing supported
 ```
 
@@ -250,26 +250,26 @@ graph TB
         D1[Document 1] --> E1[Embed]
         D2[Document 2] --> E2[Embed]
         D3[Document 3] --> E3[Embed]
-        
+
         E1 --> V1[Vector 1]
         E2 --> V2[Vector 2]
         E3 --> V3[Vector 3]
     end
-    
+
     subgraph "Search Process"
         Q[Query] --> EQ[Embed Query]
         EQ --> VQ[Query Vector]
-        
+
         VQ --> C[Calculate Similarity]
         V1 --> C
         V2 --> C
         V3 --> C
     end
-    
+
     subgraph "Results"
         C --> R[Ranked Results]
     end
-    
+
     style Q fill:#BD10E0
     style VQ fill:#4A90E2
     style C fill:#F5A623
@@ -555,7 +555,7 @@ Embeddings are expensive - cache them:
 
 ```java
 // Simple file-based cache
-component {
+class {
     property name="cacheDir" default="./embeddings-cache";
 
     function init() {

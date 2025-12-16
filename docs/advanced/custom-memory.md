@@ -16,39 +16,39 @@ graph TB
         BM[extends BaseMemory]
         IM[implements IAiMemory]
     end
-    
+
     subgraph "Required Methods"
         CONF[configure]
         ADD[add]
         GET[getAll]
         CLR[clear]
     end
-    
+
     subgraph "Storage Backend"
         DB[(Custom Database)]
         API[External API]
         CACHE[Custom Cache]
         FILE[File System]
     end
-    
+
     CM --> BM
     CM --> IM
-    
+
     CM --> CONF
     CM --> ADD
     CM --> GET
     CM --> CLR
-    
+
     ADD --> DB
     ADD --> API
     ADD --> CACHE
     ADD --> FILE
-    
+
     GET --> DB
     GET --> API
     GET --> CACHE
     GET --> FILE
-    
+
     style CM fill:#BD10E0
     style BM fill:#4A90E2
     style IM fill:#7ED321
@@ -804,7 +804,7 @@ class extends="BaseMemory" {
 ### Unit Tests
 
 ```boxlang
-component extends="testbox.system.BaseSpec" {
+class extends="testbox.system.BaseSpec" {
 
     function run() {
         describe( "Custom Memory Tests", function() {
