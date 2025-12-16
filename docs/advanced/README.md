@@ -303,9 +303,9 @@ Helper functions for text processing, token counting, and data manipulation.
 ### Generate Embeddings
 
 ```java
-embedding = aiEmbedding(
-    provider: "openai",
-    input: "BoxLang is a modern dynamic JVM language"
+embedding = aiEmbed(
+    input: "BoxLang is a modern dynamic JVM language",
+    options: { provider: "openai" }
 );
 // Returns: [0.023, -0.015, 0.089, ...] (vector of 1536 dimensions)
 ```

@@ -231,7 +231,7 @@ response = service.invoke( request );
 service = aiService( "openai" );
 
 // Create embedding request
-request = aiEmbeddingRequest( "Hello World" )
+embedding = aiEmbed( "Hello World" )
     .setParams({ model: "text-embedding-3-small" });
 
 // Generate embeddings
