@@ -7,54 +7,6 @@ icon: user-ninja
 
 Take your BoxLang AI skills to the next level with advanced features, integrations, and customization options.
 
-## 📚 In This Section
-
-### 🚀 [Production Deployment](production.md)
-
-Comprehensive guide for deploying BoxLang AI to production environments.
-
-**What you'll learn:**
-
-- Pre-deployment checklist
-- Configuration management (environment-based, secrets managers)
-- Error handling & resilience (circuit breaker, retry logic, fallback providers)
-- Monitoring & observability (events, metrics, health checks, audit logs)
-- Performance optimization (caching, async, batching, connection pooling)
-- Cost management & tracking
-- High availability (failover, load balancing)
-- Scaling strategies
-- Database & memory configuration
-- Container deployment (Docker, Kubernetes)
-- Security hardening
-- Operational procedures
-
-**Time:** 45-60 minutes
-
----
-
-### 🔐 [Security Guide](security.md)
-
-Security best practices for BoxLang AI applications.
-
-**What you'll learn:**
-
-- API key management (secrets managers, rotation, scope limitation)
-- Input validation & sanitization
-- Prompt injection prevention (detection, protection strategies, testing)
-- Output validation
-- Data privacy (PII detection/redaction, encryption, data minimization)
-- Multi-tenant security (isolation, namespaces, row-level security)
-- PII handling
-- Audit logging
-- Compliance (GDPR, HIPAA, data retention)
-- Secure configuration
-- Network security (API gateway, TLS/SSL)
-- Incident response
-
-**Time:** 45-60 minutes
-
----
-
 ## 🎯 Advanced Topics Architecture
 
 ```mermaid
@@ -98,7 +50,7 @@ graph TB
 
     UTIL --> TOK
     CTX --> MT
-    
+
     PROD --> SEC
 
     style EMB fill:#4A90E2
@@ -108,19 +60,6 @@ graph TB
     style MCP fill:#7ED321
     style CM fill:#F5A623
 ```
-
-## 📖 Overview
-
-This section covers specialized topics for building production-grade AI applications, extending functionality, and integrating with external systems.
-
-**Perfect for:**
-
-- Production deployments requiring customization
-- Complex AI workflows with external tools
-- Performance optimization and monitoring
-- Advanced integration scenarios
-
----
 
 ## 📚 Guides
 
@@ -153,6 +92,21 @@ Inject security, RAG, and application context into AI messages.
 **Use when:** Building secure multi-user applications, implementing RAG, or customizing AI behavior based on user/tenant context.
 
 ---
+
+### 👥 [Multi-Tenant Memory](multi-tenant-memory.md)
+
+Enterprise-grade memory isolation with userId and conversationId patterns.
+
+**What you'll learn:**
+
+- Configuring multi-tenant memory systems
+- Isolating conversation and vector memory by user and conversation
+- Best practices for secure data handling
+- Integration with agents and chat services
+- Performance considerations
+- Scalability strategies
+
+**Use when:** Building SaaS applications, multi-user platforms, or any system requiring strict data isolation.
 
 ### 📡 [Event System](events.md)
 
@@ -203,7 +157,7 @@ Expose your BoxLang tools, resources, and prompts via the Model Context Protocol
 
 ---
 
-### 🎨 [Custom AI Providers](custom-providers.md)
+### 🧠 [Custom AI Providers](custom-providers.md)
 
 Build custom provider integrations to connect any LLM service with BoxLang AI.
 
@@ -217,6 +171,115 @@ Build custom provider integrations to connect any LLM service with BoxLang AI.
 - Registration and testing patterns
 
 **Use when:** Integrating enterprise AI services, private deployments, emerging providers, or building mock providers for testing.
+
+---
+
+### 📁 [Custom Loaders](custom-loaders.md)
+
+Create custom document loaders to ingest data from any source for RAG applications.
+
+**What you'll learn:**
+
+- Implementing the `IAiDocumentLoader` interface
+- Fetching and processing documents from APIs, databases, or file systems
+- Text extraction and metadata handling
+- Integration with RAG pipelines
+- Error handling and performance optimization
+
+**Use when:** Ingesting documents from non-standard sources or formats for retrieval-augmented generation.
+
+---
+
+### 🐏 [Custom Memory](custom-memory.md)
+
+Build custom memory solutions to store and retrieve conversation history and embeddings.
+
+**What you'll learn:**
+
+- Implementing the `IAiMemory` interface
+- Storing conversation history and embeddings
+- Custom retrieval strategies
+- Integration with agents and chat services
+- Performance and scalability considerations
+- Multi-tenant memory patterns
+
+**Use when:** Creating specialized memory solutions for unique application requirements or optimizing performance.
+
+---
+
+### 📐[Custom Vector Memory](custom-vector-memory.md)
+
+Create custom vector memory systems for storing and retrieving embeddings.
+
+**What you'll learn:**
+
+- Implementing the `IAiVectorMemory` interface
+- Storing and querying vector embeddings
+- Custom similarity search algorithms
+- Integration with RAG and chat services
+- Performance tuning and scalability
+- Multi-tenant vector memory patterns
+
+**Use when:** Building specialized vector storage solutions or optimizing similarity search for specific use cases.
+
+---
+
+### 🤖[Custom Transformers](custom-transformer.md)
+
+Build custom data transformers for use in AI pipelines.
+
+**What you'll learn:**
+
+- Implementing the `IAiTransformer` interface
+- Creating data processing steps for pipelines
+- Handling input and output formats
+- Integration with existing pipeline components
+- Testing and debugging transformers
+- Performance optimization
+
+**Use when:** You need specialized data processing steps in your AI workflows.
+
+---
+
+### 🚀 [Production Deployment](production.md)
+
+Comprehensive guide for deploying BoxLang AI to production environments.
+
+**What you'll learn:**
+
+- Pre-deployment checklist
+- Configuration management (environment-based, secrets managers)
+- Error handling & resilience (circuit breaker, retry logic, fallback providers)
+- Monitoring & observability (events, metrics, health checks, audit logs)
+- Performance optimization (caching, async, batching, connection pooling)
+- Cost management & tracking
+- High availability (failover, load balancing)
+- Scaling strategies
+- Database & memory configuration
+- Container deployment (Docker, Kubernetes)
+- Security hardening
+- Operational procedures
+
+---
+
+### 🔐 [Security Guide](security.md)
+
+Security best practices for BoxLang AI applications.
+
+**What you'll learn:**
+
+- API key management (secrets managers, rotation, scope limitation)
+- Input validation & sanitization
+- Prompt injection prevention (detection, protection strategies, testing)
+- Output validation
+- Data privacy (PII detection/redaction, encryption, data minimization)
+- Multi-tenant security (isolation, namespaces, row-level security)
+- PII handling
+- Audit logging
+- Compliance (GDPR, HIPAA, data retention)
+- Secure configuration
+- Network security (API gateway, TLS/SSL)
+- Incident response
 
 ---
 

@@ -19,6 +19,7 @@ BoxLang AI uses a **runnable pipeline architecture** - think of it as composable
 ```
 
 Each component:
+
 - 🔗 **Chains easily** - Connect pieces with `.to()`
 - ♻️ **Reuses workflows** - Define once, run many times
 - 🧩 **Composes freely** - Mix and match as needed
@@ -35,43 +36,51 @@ We recommend learning the components in this order for the best experience:
 START HERE
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 1️⃣ Models - Connect to AI providers (OpenAI, Claude, etc.)  │
+│ 1️⃣ Models - Connect to AI providers (OpenAI, Claude, etc.)   │
 └──────────────────────────────────────────────────────────────┘
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 2️⃣ Messages - Build conversations with templates            │
+│ 2️⃣ Messages - Build conversations with templates             │
 └──────────────────────────────────────────────────────────────┘
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 3️⃣ Streaming - Real-time responses for better UX            │
+│ 3️⃣ Streaming - Real-time responses for better UX             │
 └──────────────────────────────────────────────────────────────┘
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 4️⃣ Structured Output - Extract typed data from responses    │
+│ 4️⃣ Structured Output - Extract typed data from responses     │
 └──────────────────────────────────────────────────────────────┘
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 5️⃣ Tools - Enable AI to call your functions                 │
+│ 5️⃣ Tools - Enable AI to call your functions                  │
 └──────────────────────────────────────────────────────────────┘
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 6️⃣ Memory - Maintain conversation context                   │
+│ 6️⃣ Memory - Maintain conversation context                    │
 └──────────────────────────────────────────────────────────────┘
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 7️⃣ Agents - Autonomous AI with memory & tools               │
+│ 7️⃣ Agents - Autonomous AI with memory & tools                │
 └──────────────────────────────────────────────────────────────┘
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 8️⃣ Transformers - Data processing in pipelines              │
+│ 8️⃣ Pipelines - Build composable AI workflows                 │
 └──────────────────────────────────────────────────────────────┘
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ 9️⃣ Pipelines - Build composable AI workflows                │
+│ 9️⃣ Transformers - Data processing in pipelines               │
 └──────────────────────────────────────────────────────────────┘
    ↓
 ┌──────────────────────────────────────────────────────────────┐
 │ 🔟 Vector Memory - Semantic search for RAG apps              │
+└──────────────────────────────────────────────────────────────┘
+   ↓
+┌──────────────────────────────────────────────────────────────┐
+│ 1️⃣1️⃣ Document Loaders - Import content from any source       │
+└──────────────────────────────────────────────────────────────┘
+   ↓
+┌──────────────────────────────────────────────────────────────┐
+│ 1️⃣2️⃣ RAG - Complete retrieval-augmented generation workflow  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -79,7 +88,7 @@ START HERE
 
 - 🚀 **Building a chatbot?** → Start with Models → Messages → Memory → Agents
 - 📊 **Extracting data?** → Start with Models → Structured Output → Transformers → Pipelines
-- 🔍 **Building RAG?** → Start with Models → Messages → Vector Memory → Agents
+- 🔍 **Building RAG?** → Start with Document Loaders → Vector Memory → RAG → Agents
 - 🛠️ **Creating workflows?** → Start with Models → Transformers → Pipelines → Agents
 
 ---
@@ -88,17 +97,19 @@ START HERE
 
 ### 1️⃣ [AI Models](models.md)
 
-**What:** AI provider integrations (OpenAI, Claude, Gemini, Ollama, etc.)
+**What:** Direct AI provider integrations (OpenAI, Claude, Gemini, Ollama, etc.)
 
 **When to use:** Every AI application - this is your foundation
 
 **Quick example:**
+
 ```javascript
 model = aiModel( "openai" )
 response = model.run( "Explain quantum computing" )
 ```
 
 **Key concepts:**
+
 - Provider abstraction
 - Parameter configuration
 - Return formats (text, JSON, XML, raw)
@@ -110,15 +121,17 @@ response = model.run( "Explain quantum computing" )
 
 ### 2️⃣ [Messages](messages.md)
 
-**What:** Reusable message templates with dynamic placeholders
+**What:** Reusable message templates with dynamic placeholders and multi-modal content
 
 **When to use:** Repeated prompts, variable content, organized conversations
 
 **Quick example:**
+
 ```javascript
 template = aiMessage()
     .system( "You are a ${role}" )
     .user( "Explain ${topic} in simple terms" )
+	.image( "/opt/images/myImage.png" )
 
 response = template
     .to( aiModel( "openai" ) )
@@ -126,6 +139,7 @@ response = template
 ```
 
 **Key concepts:**
+
 - Role-based messages (system, user, assistant)
 - Variable binding with `${}` placeholders
 - Multimodal content (images, audio, documents)
@@ -142,6 +156,7 @@ response = template
 **When to use:** Interactive UIs, chatbots, long responses
 
 **Quick example:**
+
 ```javascript
 aiModel( "openai" ).stream(
     onChunk: ( chunk ) => systemOutput( chunk, false ),
@@ -150,6 +165,7 @@ aiModel( "openai" ).stream(
 ```
 
 **Key concepts:**
+
 - Callback functions
 - Progressive UI updates
 - Streaming with agents
@@ -166,6 +182,7 @@ aiModel( "openai" ).stream(
 **When to use:** Form extraction, data parsing, type-safe results
 
 **Quick example:**
+
 ```javascript
 class Person {
     property name="name" type="string";
@@ -195,12 +212,13 @@ println( person.getName() ) // "John"
 **When to use:** Real-time data, external APIs, database queries
 
 **Quick example:**
+
 ```javascript
 weatherTool = aiTool(
     name: "get_weather",
     description: "Get current weather",
-    action: ( args ) => getWeatherAPI( args.location )
-)
+    action: ( location ) => getWeatherAPI( location )
+).describeLocation( "City name, e.g. London, New York" )
 
 agent = aiAgent( tools: [ weatherTool ] )
 response = agent.run( "What's the weather in Boston?" )
@@ -208,6 +226,7 @@ response = agent.run( "What's the weather in Boston?" )
 ```
 
 **Key concepts:**
+
 - Function calling
 - Parameter schemas
 - Tool registration
@@ -224,6 +243,7 @@ response = agent.run( "What's the weather in Boston?" )
 **When to use:** Multi-turn conversations, context preservation
 
 **Quick example:**
+
 ```javascript
 // Keep last 20 messages
 memory = aiMemory( "windowed", { maxMessages: 20 } )
@@ -250,6 +270,7 @@ agent.run( "What's my name?" ) // "Alice"
 **When to use:** Complex workflows, multi-step tasks, autonomous behavior
 
 **Quick example:**
+
 ```javascript
 agent = aiAgent(
     name: "Assistant",
@@ -272,38 +293,14 @@ response = agent.run( "Find info about quantum computing" )
 
 ---
 
-### 8️⃣ [Transformers](transformers.md)
-
-**What:** Data processing steps in pipelines
-
-**When to use:** Format conversion, data extraction, custom logic
-
-**Quick example:**
-```javascript
-pipeline = aiModel( "openai" )
-    .to( aiTransform( r => r.content ) )
-    .to( aiTransform( text => text.toUpper() ) )
-
-result = pipeline.run( "hello" ) // "HELLO!"
-```
-
-**Key concepts:**
-- Pipeline transformations
-- Data extraction
-- Format conversion
-- Custom processors
-
-→ **[Read Transformers Guide](transformers.md)**
-
----
-
-### 9️⃣ [Pipelines](pipelines.md)
+### 8️⃣ [Pipelines](pipelines.md)
 
 **What:** Composable AI workflows - chain models, messages, and transformers
 
 **When to use:** Complex multi-step workflows, reusable templates, data processing flows
 
 **Quick example:**
+
 ```javascript
 // Reusable pipeline
 translator = aiMessage()
@@ -323,6 +320,33 @@ french = translator.run({ text: "Hello", lang: "French" })
 - Data flow and transformations
 
 → **[Read Pipelines Guide](pipelines.md)**
+
+---
+
+### 9️⃣ [Transformers](transformers.md)
+
+**What:** Data processing steps in pipelines
+
+**When to use:** Format conversion, data extraction, custom logic
+
+**Quick example:**
+
+```javascript
+pipeline = aiModel( "openai" )
+    .to( aiTransform( r => r.content ) )
+    .to( aiTransform( text => text.toUpper() ) )
+
+result = pipeline.run( "hello" ) // "HELLO!"
+```
+
+**Key concepts:**
+
+- Pipeline transformations
+- Data extraction
+- Format conversion
+- Custom processors
+
+→ **[Read Transformers Guide](transformers.md)**
 
 ---
 
@@ -352,6 +376,71 @@ results = memory.getRelevant( "French capital", 1 )
 - RAG workflows
 
 → **[Read Vector Memory Guide](vector-memory.md)**
+
+---
+
+### 1️⃣1️⃣ [Document Loaders](document-loaders.md)
+
+**What:** Import content from files, directories, URLs, databases, and APIs
+
+**When to use:** Building knowledge bases, RAG systems, data ingestion pipelines
+
+**Quick example:**
+```javascript
+// Load a single file
+docs = aiDocumentLoader( "text" ).load( "/path/to/file.txt" )
+
+// Load entire directory
+docs = aiDocumentLoader( "directory" )
+    .load( "/docs", { recursive: true } )
+
+// Load and chunk for RAG
+aiDocuments( "/docs" )
+    .chunk( 1000, 200 )
+    .toMemory( aiMemory( "chroma" ) )
+```
+
+**Key concepts:**
+- 12+ built-in loaders (Text, Markdown, CSV, JSON, XML, PDF, etc.)
+- Automatic metadata extraction
+- Chunking strategies
+- Directory traversal
+- Direct vector memory integration
+
+→ **[Read Document Loaders Guide](document-loaders.md)**
+
+---
+
+### 1️⃣2️⃣ [RAG (Retrieval-Augmented Generation)](rag.md)
+
+**What:** Complete workflow for answering questions using your documents
+
+**When to use:** Q&A systems, documentation search, knowledge bases, chatbots with domain expertise
+
+**Quick example:**
+```javascript
+// Complete RAG in 5 lines
+memory = aiMemory( "chroma" )
+aiDocuments( "./knowledge-base" ).toMemory( memory )
+
+agent = aiAgent(
+    instructions: "Answer using provided context",
+    memory: memory
+)
+
+response = agent.run( "How do I install BoxLang?" )
+// Agent retrieves relevant docs, then answers
+```
+
+**Key concepts:**
+- Document loading and chunking
+- Embedding generation
+- Vector similarity search
+- Context injection
+- Source attribution
+- Hybrid search (keyword + semantic)
+
+→ **[Read RAG Guide](rag.md)**
 
 ---
 
@@ -398,11 +487,11 @@ result = pipeline.run( { topic: "AI" } )
 ┌─────────────────────────────────────────────────────────┐
 │                    PIPELINE BENEFITS                    │
 ├─────────────────────────────────────────────────────────┤
-│ ✅ Reusability  - Define once, run many times         │
-│ ✅ Composability - Mix and match components            │
-│ ✅ Testability  - Test each step independently         │
-│ ✅ Flexibility  - Swap providers without refactoring   │
-│ ✅ Clarity      - Self-documenting code flow           │
+│ ✅ Reusability  - Define once, run many times           │
+│ ✅ Composability - Mix and match components             │
+│ ✅ Testability  - Test each step independently          │
+│ ✅ Flexibility  - Swap providers without refactoring    │
+│ ✅ Clarity      - Self-documenting code flow            │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -523,8 +612,10 @@ agent.run( "What's my favorite color?" ) // "Blue"
 calculatorTool = aiTool(
     name: "calculate",
     description: "Do math",
-    action: ( args ) => evaluate( args.expression )
+    action: ( a, b ) => a * b
 )
+.describeA( "First number" )
+.describeB( "Second number")
 
 agent = aiAgent( tools: [ calculatorTool ] )
 response = agent.run( "What is 25 times 48?" )
@@ -542,35 +633,6 @@ class Contact {
 contact = aiChat( "Extract: John Doe, john@example.com" )
     .structuredOutput( new Contact() )
 ```
-
----
-
-## 🎓 Next Steps
-
-### Beginner Path
-1. Start with **[Models](models.md)** - Learn the foundation
-2. Move to **[Messages](messages.md)** - Build better prompts
-3. Add **[Streaming](streaming.md)** - Improve UX
-
-### Intermediate Path
-4. Explore **[Structured Output](structured-output.md)** - Extract data
-5. Learn **[Tools](tools.md)** - Add function calling
-6. Study **[Memory](memory.md)** - Maintain context
-
-### Advanced Path
-7. Master **[Agents](agents.md)** - Build autonomous AI
-8. Dive into **[Transformers](transformers.md)** - Custom processing
-9. Implement **[Vector Memory](vector-memory.md)** - RAG applications
-
----
-
-## 📖 Additional Resources
-
-- **[Overview](overview.md)** - Architecture deep dive
-- **[Getting Started](../getting-started/)** - Installation and quick start
-- **[Examples](../../examples/)** - Real-world code samples
-- **[API Reference](../reference/)** - Complete BIF and class documentation
-- **[Advanced Topics](../advanced/)** - Events, embeddings, utilities
 
 ---
 

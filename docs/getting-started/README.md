@@ -9,28 +9,6 @@ Welcome to BoxLang AI! This section covers everything you need to get up and run
 
 ## 📚 In This Section
 
-### 🎓[AI Concepts](concepts.md)
-
-Essential AI terminology and concepts explained in plain language.
-
-**What you'll learn:**
-
-- AI & Machine Learning fundamentals (LLMs, training vs inference)
-- Language model parameters (temperature, top-p, tokens, context windows)
-- Messages & conversations (roles, system messages, multi-turn)
-- Embeddings & vectors (dimensions, cosine similarity, vector databases)
-- Memory systems (conversation, vector, hybrid, multi-tenant)
-- RAG (Retrieval Augmented Generation) workflow
-- Tools & function calling
-- Streaming & async operations
-- Pipelines & composition
-- Providers & services comparison
-- Tokens & costs
-
-**Time:** 30 minutes reference
-
----
-
 ### 📦 [Installation](installation.md)
 
 Quick guide to installing the BoxLang AI module.
@@ -72,6 +50,19 @@ Comprehensive guide to configuring all supported AI providers.
 - **💭 Memory Systems** - Maintain conversation context across interactions
 - **📡 Streaming Support** - Real-time response streaming for better UX
 
+## 🧭 Quick Navigation
+
+### 🆕 New to BoxLang AI?
+
+**[Installation Guide](installation.md)**
+Get the module installed in minutes.
+
+**[Provider Setup](provider-setup.md)**
+Configure your AI providers.
+
+**[Quickstart Tutorial](quickstart.md)**
+Your first AI conversation in 5 lines of code.
+
 ---
 
 ### ⚡ [Quick Start Guide](quickstart.md)
@@ -89,6 +80,28 @@ Your first AI conversation in 5 lines of code, plus essential patterns and examp
 - Common patterns and best practices
 
 **Time:** 15-20 minutes
+
+---
+
+### 📖 [Key Concepts](concepts.md)
+
+Essential AI terminology and concepts explained in plain language.
+
+**What you'll learn:**
+
+- AI & Machine Learning fundamentals (LLMs, training vs inference)
+- Language model parameters (temperature, top-p, tokens, context windows)
+- Messages & conversations (roles, system messages, multi-turn)
+- Embeddings & vectors (dimensions, cosine similarity, vector databases)
+- Memory systems (conversation, vector, hybrid, multi-tenant)
+- RAG (Retrieval Augmented Generation) workflow
+- Tools & function calling
+- Streaming & async operations
+- Pipelines & composition
+- Providers & services comparison
+- Tokens & costs
+
+**Time:** 30 minutes reference
 
 ---
 
@@ -116,10 +129,10 @@ Quick answers to the most common questions about BoxLang AI.
 
 We recommend this progression:
 
-1. **📖 [Key Concepts](concepts.md)** - Learn AI terminology (reference as needed)
-2. **📦 [Install](installation.md)** - Get the module installed (5 min)
-3. **🧩 [Configure Providers](provider-setup.md)** - Set up your AI providers (10 min)
-4. **⚡ [Quick Start](quickstart.md)** - Your first AI conversation (10 min)
+1. **📦 [Install](installation.md)** - Get the module installed (5 min)
+2. **🧩 [Configure Providers](provider-setup.md)** - Set up your AI providers (10 min)
+3. **⚡ [Quick Start](quickstart.md)** - Your first AI conversation (10 min)
+4. **📖 [Key Concepts](concepts.md)** - Learn AI terminology (reference as needed)
 5. **💬 [Basic Chatting](../chatting/basic-chatting.md)** - Simple interactions and parameters (15 min)
 6. **🎯 [Advanced Chatting](../chatting/advanced-chatting.md)** - Streaming, tools, multimodal content (20 min)
 7. **🤖 [AI Agents](../main-components/agents.md)** - Build autonomous agents (30 min)
