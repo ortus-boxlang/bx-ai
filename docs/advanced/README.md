@@ -338,7 +338,7 @@ response = agent.run( "List files in /tmp" );
 
 ```java
 // Register tools at application startup
-mcpServer( "myApp" )
+MCPServer( "myApp" )
     .registerTool(
         aiTool( "search", "Search documents", ( query ) => searchService.search( query ) )
     )

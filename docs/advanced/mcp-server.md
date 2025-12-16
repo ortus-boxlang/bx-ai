@@ -162,7 +162,7 @@ MCPRequestProcessor::startHttp()
 import bxModules.bxai.models.mcp.MCPRequestProcessor
 
 // Register your server and tools
-mcpServer( "myApp" )
+MCPServer( "myApp" )
     .registerTool( aiTool( "echo", "Echo tool", ( msg ) => msg ) )
 
 // Get server name from CLI args
@@ -238,7 +238,7 @@ class {
 
     function onApplicationStart() {
         // Get or create an MCP server instance
-        mcpServer( "myApp" )
+        MCPServer( "myApp" )
             .setDescription( "My Application MCP Server" )
             .setVersion( "1.0.0" )
             .registerTool(
@@ -351,17 +351,17 @@ The processor automatically:
 
 ```java
 // Get or create a server instance (singleton by name)
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
 
 // Multiple servers for different purposes
-apiServer = mcpServer( "api" )
-adminServer = mcpServer( "admin" )
+apiServer = MCPServer( "api" )
+adminServer = MCPServer( "admin" )
 ```
 
 ### Configure Description and Version
 
 ```java
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .setDescription( "My Application MCP Server" )
     .setVersion( "2.0.0" )
 ```
@@ -379,7 +379,7 @@ Protect your MCP server with HTTP Basic Authentication:
 
 ```javascript
 // Configure basic auth credentials
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .withBasicAuth( "admin", "secretPassword123" )
     .registerTool( myTool )
 ```
@@ -396,7 +396,7 @@ server = mcpServer( "myApp" )
 ```javascript
 // Application.bx
 function onApplicationStart() {
-    mcpServer( "admin" )
+    MCPServer( "admin" )
         .withBasicAuth( "admin", application.adminPassword )
         .setDescription( "Admin MCP Server - Requires Authentication" )
         .registerTool( adminTool )
@@ -446,7 +446,7 @@ function onApplicationStart() {
     var adminPass = getEnv( "MCP_ADMIN_PASS" )
 
     if ( len( adminUser ) && len( adminPass ) ) {
-        mcpServer( "admin" )
+        MCPServer( "admin" )
             .withBasicAuth( adminUser, adminPass )
             .registerTool( adminTool )
     }
@@ -459,19 +459,19 @@ Configure Cross-Origin Resource Sharing (CORS) to control which origins can acce
 
 ```javascript
 // Allow a single origin
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .withCors( "https://example.com" )
 
 // Allow multiple origins
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .withCors( [ "https://example.com", "https://app.example.com" ] )
 
 // Allow all origins (use with caution!)
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .withCors( "*" )
 
 // Wildcard subdomain matching
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .withCors( [ "*.example.com", "https://trusted.org" ] )
 ```
 
@@ -487,7 +487,7 @@ The CORS implementation supports wildcard patterns for flexible domain matching:
 
 ```javascript
 // Add origins incrementally
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .addCorsOrigin( "https://example.com" )
     .addCorsOrigin( "https://app.example.com" )
 
@@ -547,7 +547,7 @@ function onApplicationStart() {
         ]
     }
 
-    mcpServer( "api" )
+    MCPServer( "api" )
         .withCors( allowedOrigins )
         .registerTool( myTool )
 }
@@ -559,15 +559,15 @@ Protect your server from large payloads by setting request body size limits:
 
 ```javascript
 // Limit to 1MB (in bytes)
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .withBodyLimit( 1048576 )
 
 // Limit to 500KB
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .withBodyLimit( 500 * 1024 )
 
 // Unlimited (default: 0)
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .withBodyLimit( 0 )
 ```
 
@@ -609,18 +609,18 @@ maxSize = server.getMaxRequestBodySize()
 
 ```javascript
 // Public API - strict limits
-mcpServer( "public" )
+MCPServer( "public" )
     .withBodyLimit( 100 * 1024 )  // 100KB
     .registerTool( publicTool )
 
 // Internal API - generous limits
-mcpServer( "internal" )
+MCPServer( "internal" )
     .withBodyLimit( 10 * 1024 * 1024 )  // 10MB
     .withBasicAuth( "admin", "secret" )
     .registerTool( adminTool )
 
 // Data import - unlimited
-mcpServer( "import" )
+MCPServer( "import" )
     .withBodyLimit( 0 )  // No limit
     .withBasicAuth( "importer", "secret" )
     .registerTool( importTool )
@@ -632,20 +632,20 @@ Implement custom API key authentication logic with provider callbacks:
 
 ```javascript
 // Simple API key validation
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .withApiKeyProvider( ( apiKey, requestData ) => {
         return apiKey == "my-secret-key-12345"
     } )
 
 // Database lookup
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .withApiKeyProvider( ( apiKey, requestData ) => {
         var user = userService.findByApiKey( apiKey )
         return !isNull( user ) && user.isActive
     } )
 
 // Complex validation with rate limiting
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .withApiKeyProvider( ( apiKey, requestData ) => {
         var key = apiKeyService.validate( apiKey )
         if ( isNull( key ) ) return false
@@ -738,7 +738,7 @@ curl -X POST http://localhost/~bxai/mcp.bxm?server=myApp \
 ```javascript
 // Application.bx
 function onApplicationStart() {
-    mcpServer( "api" )
+    MCPServer( "api" )
         .withApiKeyProvider( ( apiKey, requestData ) => {
             // Validate and get tenant
             var tenant = tenantService.validateApiKey( apiKey )
@@ -771,7 +771,7 @@ function onApplicationStart() {
 You can use multiple security features together:
 
 ```javascript
-server = mcpServer( "enterprise" )
+server = MCPServer( "enterprise" )
     // CORS - restrict origins
     .withCors( [ "https://app.example.com", "*.example.com" ] )
     // Body limits - prevent abuse
@@ -821,7 +821,7 @@ No configuration needed - these headers are applied automatically to enhance sec
 ### Register a Single Tool
 
 ```java
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .registerTool(
         aiTool( "getWeather", "Get current weather for a location", ( location ) => {
             return weatherService.getCurrent( location )
@@ -839,7 +839,7 @@ tools = [
     aiTool( "summarize", "Summarize text", summarizeHandler )
 ]
 
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .registerTools( tools )
 ```
 
@@ -895,10 +895,10 @@ The MCP server can automatically discover and register tools, resources, and pro
 
 ```java
 // Scan a class file
-mcpServer( "myApp" ).scan( "/path/to/MyTools.bx" )
+MCPServer( "myApp" ).scan( "/path/to/MyTools.bx" )
 
 // Scan a directory (recursively scans all .bx files)
-mcpServer( "myApp" ).scan( "/path/to/tools/" )
+MCPServer( "myApp" ).scan( "/path/to/tools/" )
 ```
 
 ### @mcpTool Annotation
@@ -1021,7 +1021,7 @@ Resources provide access to documents and data:
 ### Register a Resource
 
 ```java
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .registerResource(
         uri: "docs://readme",
         name: "README",
@@ -1098,7 +1098,7 @@ Prompts provide reusable prompt templates:
 ### Register a Prompt
 
 ```java
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
     .registerPrompt(
         name: "codeReview",
         description: "Code review prompt template",
@@ -1279,7 +1279,7 @@ class {
 
     function onApplicationStart() {
         // Create the MCP server
-        var server = mcpServer( "myApp" )
+        var server = MCPServer( "myApp" )
             .setDescription( "My Application API" )
             .setVersion( "1.0.0" )
 
@@ -1509,7 +1509,7 @@ class {
         BoxRegisterInterceptor( this, "onMCPRequest,onMCPResponse,onMCPError" )
 
         // Create server
-        mcpServer( "myApp" )
+        MCPServer( "myApp" )
             .registerTool( myTool )
     }
 
@@ -1593,10 +1593,10 @@ Statistics are **enabled by default** when creating an MCP server:
 
 ```java
 // Stats enabled by default
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
 
 // Explicitly control stats tracking
-server = mcpServer(
+server = MCPServer(
     name: "myApp",
     statsEnabled: true  // or false to disable
 )
@@ -1715,7 +1715,7 @@ Create a real-time monitoring dashboard:
 
 ```java
 // Get server stats
-server = mcpServer( "myApp" )
+server = MCPServer( "myApp" )
 stats = server.getStatsSummary()
 
 writeOutput( "
@@ -1764,7 +1764,7 @@ Combine statistics with event interception for custom monitoring:
 class {
 
     function onApplicationStart() {
-        mcpServer( "myApp" )
+        MCPServer( "myApp" )
             .registerTool( myTool )
 
         // Register interceptor for custom metrics
@@ -1846,7 +1846,7 @@ Expose stats via REST API:
 class {
 
     function getServerStats( required string serverName ) {
-        var server = mcpServer( arguments.serverName )
+        var server = MCPServer( arguments.serverName )
 
         if ( isNull( server ) ) {
             return {
@@ -1862,7 +1862,7 @@ class {
     }
 
     function resetServerStats( required string serverName ) {
-        var server = mcpServer( arguments.serverName )
+        var server = MCPServer( arguments.serverName )
 
         if ( isNull( server ) ) {
             return { success: false }
@@ -1909,12 +1909,12 @@ bxModules.bxai.models.mcp.MCPServer::removeInstance( "myApp" )
 
 ```javascript
 // API server for external clients
-mcpServer( "api" )
+MCPServer( "api" )
     .registerTool( publicTool1 )
     .registerTool( publicTool2 )
 
 // Admin server for internal tools
-mcpServer( "admin" )
+MCPServer( "admin" )
     .withBasicAuth( "admin", getEnv( "ADMIN_PASSWORD" ) )
     .registerTool( adminTool1 )
     .registerTool( adminTool2 )
@@ -1924,13 +1924,13 @@ mcpServer( "admin" )
 
 ```javascript
 // Protect production servers with authentication
-mcpServer( "production" )
+MCPServer( "production" )
     .withBasicAuth( getEnv( "MCP_USER" ), getEnv( "MCP_PASS" ) )
     .setCors( "https://trusted-domain.com" )
     .registerTool( sensitiveDataTool )
 
 // Public servers can remain open
-mcpServer( "public" )
+MCPServer( "public" )
     .setCors( "*" )
     .registerTool( publicSearchTool )
 ```
@@ -1956,7 +1956,7 @@ aiTool( "calculateShipping", "Calculate shipping cost based on weight and destin
 
 ```java
 // Enable stats for production monitoring
-server = mcpServer(
+server = MCPServer(
     name: "production",
     statsEnabled: true
 )

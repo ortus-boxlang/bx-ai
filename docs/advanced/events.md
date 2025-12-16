@@ -1302,7 +1302,7 @@ Events fire in this order during a typical AI chat with tools:
 
 Fired when a new MCP (Model Context Protocol) server instance is created.
 
-**When**: MCP server instantiation via `mcpServer()`
+**When**: MCP server instantiation via `MCPServer()`
 **Frequency**: Once per unique server creation
 
 #### Event Arguments
