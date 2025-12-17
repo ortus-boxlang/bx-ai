@@ -143,6 +143,241 @@ The AI module supports different return formats for the responses. You can speci
 | `raw` | Returns the full raw response from the AI provider. This is useful for debugging or when you need the full response structure with metadata. This is the default for pipelines. |
 | `structuredOutput` | Used internally when `.structuredOutput()` is called. Returns a populated class/struct based on the schema. |
 
+## 💬 Chats
+
+Interact with AI models through **simple and powerful chat interfaces** 🎯 supporting both one-shot responses and streaming conversations. BoxLang AI provides fluent APIs for building everything from basic Q&A to complex multi-turn dialogues with system prompts, message history, and structured outputs. 💡
+
+### 🤔 Why Use Chats?
+
+- ⚡ **Simple & Fast** - One-line chat interactions with `aiChat()`
+- 🔄 **Streaming Support** - Real-time token streaming with `aiChatStream()`
+- 💾 **Memory Integration** - Automatic conversation history with memory systems
+- 🎨 **Flexible Messages** - Support for text, images, files, and structured data
+- 🌊 **Fluent API** - Chain message builders for readable, maintainable code
+
+### 💡 Quick Examples
+
+**Simple One-Shot Chat:**
+```javascript
+// Quick question-answer
+response = aiChat( "What is BoxLang?" )
+println( response )
+
+// With custom model and options
+response = aiChat(
+    messages: "Explain quantum computing",
+    model: "gpt-4",
+    temperature: 0.7,
+    maxTokens: 500
+)
+```
+
+**Multi-Turn Conversation with Memory:**
+```javascript
+// Create conversation with memory
+memory = aiMemory( "windowed", maxMessages: 10 )
+
+// First turn
+response = aiChat(
+    messages: "My name is Luis",
+    memory: memory
+)
+
+// Second turn - AI remembers context
+response = aiChat(
+    messages: "What's my name?",
+    memory: memory
+)
+println( response ) // "Your name is Luis"
+```
+
+**Streaming Chat:**
+```javascript
+// Stream tokens as they arrive
+aiChatStream(
+    onChunk: ( chunk ) => {
+        writeOutput( chunk )
+        flush
+    },
+    messages: "Write a short story about a robot",
+    model: "claude-3-5-sonnet-20241022"
+)
+```
+
+**Fluent Message Builder:**
+```javascript
+// Build complex message chains
+request = aiChatRequest()
+    .setModel( "gpt-4o" )
+    .addSystemMessage( "You are a helpful coding assistant" )
+    .addUserMessage( "How do I create a REST API in BoxLang?" )
+    .addImage( "diagram.png" )
+    .setTemperature( 0.7 )
+
+response = request.send()
+```
+
+### 📚 Learn More
+
+- 🚀 **Quick Start**: [Getting Started Guide](docs/getting-started/quickstart.md)
+- 📖 **Full Guide**: [Chatting Documentation](docs/chatting/)
+- 🌊 **Streaming**: [Streaming Guide](docs/chatting/streaming.md)
+- 🎨 **Message Formats**: [Message Builder Guide](docs/chatting/messages.md)
+- 💻 **Examples**: Check `examples/chats/` for complete examples
+
+## 🔗 Pipelines
+
+Build **composable AI workflows** 🎯 using BoxLang AI's powerful runnable pipeline system. Chain models, transformers, tools, and custom logic into reusable, testable components that flow data through processing stages. Perfect for complex AI workflows, data transformations, and multi-step reasoning. 💡
+
+### 🤔 Why Use Pipelines?
+
+- 🔄 **Composable** - Chain any runnable components together with `.to()`
+- 🧪 **Testable** - Each pipeline stage is independently testable
+- ♻️ **Reusable** - Build once, use in multiple workflows
+- 🌊 **Streaming** - Full streaming support through entire pipeline
+- 🎯 **Type-Safe** - Input/output contracts ensure data flows correctly
+
+### 💡 Quick Examples
+
+**Simple Transformation Pipeline:**
+```javascript
+// Chain model with transformers
+pipeline = aiModel( "gpt-4o" )
+    .to( aiTransform( data => data.toUpperCase() ) )
+    .to( aiTransform( data => data.trim() ) )
+
+result = pipeline.run( "hello world" )
+println( result ) // "HELLO WORLD"
+```
+
+**Multi-Stage AI Pipeline:**
+```javascript
+// Create reusable stages
+summarizer = aiModel( "gpt-4o-mini" )
+    .setSystemMessage( "Summarize in one sentence" )
+
+translator = aiModel( "gpt-4o" )
+    .setSystemMessage( "Translate to Spanish" )
+
+formatter = aiTransform( text => {
+    return { summary: text, timestamp: now() }
+} )
+
+// Compose full pipeline
+pipeline = summarizer
+    .to( translator )
+    .to( formatter )
+
+// Run through all stages
+result = pipeline.run( "Long article text here..." )
+println( result.summary ) // Spanish summary
+```
+
+**Streaming Pipeline:**
+```javascript
+// Stream through entire pipeline
+pipeline = aiModel( "claude-3-5-sonnet-20241022" )
+    .to( aiTransform( chunk => chunk.toUpperCase() ) )
+
+pipeline.stream(
+    onChunk: ( chunk ) => writeOutput( chunk ),
+    input: "Tell me a story"
+)
+```
+
+**Custom Runnable Component:**
+```javascript
+// Implement IAiRunnable for custom logic
+component implements="IAiRunnable" {
+    function run( input, params = {} ) {
+        // Custom processing
+        return processedData;
+    }
+
+    function stream( onChunk, input, params = {} ) {
+        // Streaming support
+        onChunk( processedChunk );
+    }
+
+    function to( nextRunnable ) {
+        // Chain to next stage
+        return createPipeline( this, nextRunnable );
+    }
+}
+
+// Use in pipeline
+customStage = new CustomRunnable()
+pipeline = aiModel( "gpt-4o" ).to( customStage )
+```
+
+### 📚 Learn More
+
+- 📖 **Full Guide**: [Runnables & Pipelines](docs/main-components/runnables.md)
+- 🎯 **Overview**: [Main Components](docs/main-components/overview.md)
+- 🔧 **Custom Runnables**: [Building Custom Components](docs/advanced/custom-runnables.md)
+- 💻 **Examples**: Check `examples/pipelines/` for complete examples
+
+
+## 🤖 AI Agents
+
+Build **autonomous AI agents** 🎯 that can use tools, maintain memory, and orchestrate complex workflows. BoxLang AI agents combine LLMs with function calling, memory systems, and orchestration patterns to create intelligent assistants that can interact with external systems and solve complex tasks. 💡
+
+### 🤔 Why Use Agents?
+
+- 🛠️ **Tool Integration** - Agents can execute functions, call APIs, and interact with external systems
+- 🧠 **Stateful Intelligence** - Built-in memory keeps context across multi-turn interactions
+- 🔄 **Self-Orchestration** - Agents decide which tools to use and when
+- 🎯 **Goal-Oriented** - Give high-level instructions, agents figure out the steps
+- 🤝 **Human-in-the-Loop** - Optional approval workflows for sensitive operations
+
+### 💡 Quick Examples
+
+**Simple Agent with Tools:**
+```javascript
+// Define tools the agent can use
+weatherTool = aiTool()
+    .setName( "get_weather" )
+    .setDescription( "Get current weather for a location" )
+    .setFunction( ( location ) => {
+        return { temp: 72, condition: "sunny", location: location };
+    } )
+
+// Create agent with memory
+agent = aiAgent()
+    .setName( "Weather Assistant" )
+    .setDescription( "Helpful weather assistant" )
+    .setTools( [ weatherTool ] )
+    .setMemory( aiMemory( "windowed" ) )
+
+// Agent decides when to call tools
+response = agent.run( "What's the weather in Miami?" )
+println( response ) // Agent calls get_weather tool and responds
+```
+
+**Autonomous Agent with Multiple Tools:**
+```javascript
+// Agent with database and email tools
+agent = aiAgent()
+    .setName( "Customer Support Agent" )
+    .setTools( [
+        aiTool( "query_orders", orderQueryFunction ),
+        aiTool( "send_email", emailFunction ),
+        aiTool( "create_ticket", ticketFunction )
+    ] )
+    .setMemory( aiMemory( "session" ) )
+    .setMaxIterations( 5 ) // Prevent infinite loops
+
+// Agent orchestrates multiple tool calls
+agent.run( "Find order #12345, email the customer with status, and create a ticket if there's an issue" )
+```
+
+### 📚 Learn More
+
+- 📖 **Full Guide**: [AI Agents Documentation](docs/main-components/agents.md)
+- 🎓 **Interactive Course**: [Lesson 6 - Building AI Agents](course/lesson-06-agents/)
+- 🔧 **Advanced Patterns**: [Agent Orchestration](docs/advanced/agent-orchestration.md)
+- 💻 **Examples**: Check `examples/agents/` for complete working examples
+
 ## 📦 Structured Output
 
 Get **type-safe, validated responses** ✅ from AI providers by defining expected output schemas using BoxLang classes, structs, or JSON schemas. The module automatically converts AI responses into properly typed objects, eliminating manual parsing and validation. 🎯
@@ -482,6 +717,176 @@ println( response )
 - 🧬 **RAG Workflow**: [RAG Implementation Guide](docs/main-components/rag.md)
 - 🔧 **Custom Loaders**: [Building Custom Loaders](docs/advanced/custom-loader.md)
 - 💻 **Examples**: Check `examples/loaders/` and `examples/rag/` for complete examples
+
+
+
+
+
+## 🔌 MCP Client
+
+Connect to **Model Context Protocol (MCP) servers** 🎯 and use their tools, prompts, and resources in your AI applications. BoxLang AI's MCP client provides seamless integration with the growing MCP ecosystem, allowing your agents to access databases, APIs, filesystems, and more through standardized interfaces. 💡
+
+### 🤔 Why Use MCP Client?
+
+- 🌍 **Ecosystem Access** - Use any MCP server (filesystems, databases, APIs, tools)
+- 🔒 **Secure Integration** - Standardized permissions and authentication
+- 🎯 **Tool Discovery** - Automatically discover and use server capabilities
+- 🔄 **Dynamic Resources** - Access changing data sources (files, DB records, etc.)
+- 🤖 **Agent Integration** - Seamlessly add MCP tools to your AI agents
+
+### 💡 Quick Examples
+
+**Connect to MCP Server:**
+```javascript
+// Connect to filesystem MCP server
+mcpClient = aiMcpClient( "filesystem" )
+    .setCommand( "npx" )
+    .setArgs( [ "-y", "@modelcontextprotocol/server-filesystem", "/path/to/docs" ] )
+    .connect()
+
+// List available tools
+tools = mcpClient.listTools()
+println( tools ) // read_file, write_file, list_directory, etc.
+```
+
+**Use MCP Tools in Agent:**
+```javascript
+// Connect to multiple MCP servers
+filesystemMcp = aiMcpClient( "filesystem" )
+    .setCommand( "npx" )
+    .setArgs( [ "-y", "@modelcontextprotocol/server-filesystem", "/data" ] )
+    .connect()
+
+databaseMcp = aiMcpClient( "postgres" )
+    .setCommand( "npx" )
+    .setArgs( [ "-y", "@modelcontextprotocol/server-postgres", "postgresql://..." ] )
+    .connect()
+
+// Agent can use all MCP tools
+agent = aiAgent()
+    .setName( "Data Assistant" )
+    .addMcpClient( filesystemMcp )
+    .addMcpClient( databaseMcp )
+
+// Agent automatically uses MCP tools
+agent.run( "Read config.json and update the database with its contents" )
+```
+
+**Access MCP Resources:**
+```javascript
+// List available resources
+resources = mcpClient.listResources()
+
+// Read resource content
+content = mcpClient.readResource( "file:///docs/readme.md" )
+println( content )
+
+// Use prompts from server
+prompts = mcpClient.listPrompts()
+prompt = mcpClient.getPrompt( "code-review", { language: "BoxLang" } )
+```
+
+### 📚 Learn More
+
+- 📖 **Full Guide**: [MCP Client Documentation](docs/advanced/mcp-client.md)
+- 🌍 **MCP Ecosystem**: [Model Context Protocol](https://modelcontextprotocol.io)
+- 🔧 **Available Servers**: [MCP Servers List](https://github.com/modelcontextprotocol/servers)
+- 💻 **Examples**: Check `examples/mcp/` for complete examples
+
+## 🖥️ MCP Server
+
+Expose your **BoxLang functions and data as MCP tools** 🎯 for use by AI agents and applications. Build custom MCP servers that provide tools, prompts, and resources through the standardized Model Context Protocol, making your functionality accessible to any MCP client. 💡
+
+### 🤔 Why Build MCP Servers?
+
+- 🔌 **Universal Access** - Any MCP client can use your tools
+- 🎯 **Standardized Interface** - No custom integration code needed
+- 🛠️ **Expose Functionality** - Make BoxLang functions available to AI agents
+- 📊 **Share Resources** - Provide data sources, templates, and prompts
+- 🏢 **Enterprise Integration** - Connect AI to internal systems safely
+
+### 💡 Quick Examples
+
+**Simple MCP Server:**
+```javascript
+// Create server with tools
+server = aiMcpServer( "my-tools" )
+    .setDescription( "Custom BoxLang tools" )
+
+// Register tool
+server.registerTool(
+    name: "calculate_tax",
+    description: "Calculate tax for a given amount",
+    function: ( amount, rate = 0.08 ) => {
+        return amount * rate;
+    },
+    parameters: {
+        amount: { type: "number", description: "Amount to calculate tax on" },
+        rate: { type: "number", description: "Tax rate as decimal" }
+    }
+)
+
+// Start server
+server.start() // Listens on stdio by default
+```
+
+**Advanced Server with Resources:**
+```javascript
+// Create server with tools, prompts, and resources
+server = aiMcpServer( "enterprise-api" )
+    .setDescription( "Internal enterprise tools" )
+
+// Register multiple tools
+server.registerTool( "query_orders", queryOrdersFunction, orderSchema )
+server.registerTool( "create_invoice", createInvoiceFunction, invoiceSchema )
+server.registerTool( "send_notification", notifyFunction, notifySchema )
+
+// Provide templates as prompts
+server.registerPrompt(
+    name: "customer-email",
+    description: "Generate customer email",
+    template: ( orderNumber ) => {
+        return "Write a professional email about order ##orderNumber#";
+    }
+)
+
+// Expose data resources
+server.registerResource(
+    uri: "config://database",
+    description: "Database configuration",
+    getData: () => {
+        return fileRead( "/config/database.json" );
+    }
+)
+
+// Start with custom transport
+server.start( transport: "http", port: 3000 )
+```
+
+**Integration with BoxLang Web App:**
+```javascript
+// In your BoxLang app's Application.bx
+component {
+    function onApplicationStart() {
+        // Start MCP server on app startup
+        application.mcpServer = aiMcpServer( "myapp-api" )
+            .registerTool( "search", variables.searchFunction )
+            .registerTool( "create", variables.createFunction )
+            .start( background: true )
+    }
+
+    function onApplicationEnd() {
+        application.mcpServer.stop()
+    }
+}
+```
+
+### 📚 Learn More
+
+- 📖 **Full Guide**: [MCP Server Documentation](docs/advanced/mcp-server.md)
+- 🌍 **MCP Protocol**: [Model Context Protocol Specification](https://spec.modelcontextprotocol.io)
+- 🔧 **Advanced Features**: [Custom Transports & Authentication](docs/advanced/mcp-server-advanced.md)
+- 💻 **Examples**: Check `examples/mcp/server/` for complete examples
 
 ---
 
