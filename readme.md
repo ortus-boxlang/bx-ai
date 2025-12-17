@@ -129,6 +129,20 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 - Voyage AI is a specialized embeddings-only provider with state-of-the-art models optimized for semantic search, RAG applications, and clustering. It does not support chat completions or structured output.
 - Cohere provides high-quality embeddings with excellent multilingual support (100+ languages), chat capabilities, real-time tool calling, and structured output via JSON schema validation.
 
+
+## 📤 Return Formats
+
+The AI module supports different return formats for the responses. You can specify the return format in the `options` struct when calling the `aiChat()` or `aiChatAsync()` functions, globally in the settings (as we saw above), or in the `ChatRequest` object. 🎯
+
+| Format | Description |
+|--------|-------------|
+| `single` | Returns a single message as a string (the content from the first choice). This is the default format for BIFs. |
+| `all` | Returns an array of all choice messages. Each message is a struct with `role` and `content` keys. |
+| `json` | Returns the parsed JSON object from the content string. Automatically parses JSON responses. |
+| `xml` | Returns the parsed XML document from the content string. Automatically parses XML responses. |
+| `raw` | Returns the full raw response from the AI provider. This is useful for debugging or when you need the full response structure with metadata. This is the default for pipelines. |
+| `structuredOutput` | Used internally when `.structuredOutput()` is called. Returns a populated class/struct based on the schema. |
+
 ## 📦 Structured Output
 
 Get **type-safe, validated responses** ✅ from AI providers by defining expected output schemas using BoxLang classes, structs, or JSON schemas. The module automatically converts AI responses into properly typed objects, eliminating manual parsing and validation. 🎯
@@ -544,16 +558,6 @@ Here are the settings you can place in your `boxlang.json` file:
 - 🎯 `mistral` - High-quality general model
 - 🔷 `phi3` - Microsoft's efficient model
 
-## 📤 Return Formats
-
-The AI module supports different return formats for the responses. You can specify the return format in the `options` struct when calling the `aiChat()` or `aiChatAsync()` functions, globally in the settings (as we saw above), or in the `ChatRequest` object. 🎯
-
-| Format | Description |
-|--------|-------------|
-| `single` | Returns a single message as a string. This is the default format. |
-| `all` | Returns an array of messages. Each message is a struct with `role` and `content` keys, or whatever the LLM returns |
-| `raw` | Returns the raw response from the AI provider. This is useful for debugging or when you need the full response structure so you can mold it as you see fit |
-
 ## 🛠️ Global Functions (BIFs)
 
 | Function | Purpose | Parameters | Return Type | Async Support |
@@ -564,19 +568,16 @@ The AI module supports different return formats for the responses. You can speci
 | `aiChatRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | AiRequestObject | N/A |
 | `aiChatStream()` | Stream chat responses from AI provider | `messages`, `callback`, `params={}`, `options={}` | void | N/A |
 | `aiChunk()` | Split text into chunks | `text`, `options={}` | Array of Strings | N/A |
-| `aiDocuments()` | Load documents from source | `source`, `type=""`, `config={}` | Array of Documents | N/A |
-| `aiDocumentLoader()` | Create document loader instance | `source`, `type=""`, `config={}` | IDocumentLoader Object | N/A |
-| `aiDocumentLoaders()` | Get all registered loaders | none | Struct of Loader Metadata | N/A |
+| `aiDocuments()` | Create fluent document loader | `source`, `config={}` | IDocumentLoader Object | N/A |
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
 | `aiMemory()` | Create memory instance | `type`, `config={}` | IAiMemory Object | N/A |
-| `aiMemoryIngest()` | Ingest documents into memory | `memory`, `source`, `type=""`, `loaderConfig={}`, `ingestOptions={}` | Ingestion Report | ✅ |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
 | `aiModel()` | Create AI model wrapper | `provider`, `apiKey` | AiModel Object | N/A |
 | `aiPopulate()` | Populate class/struct from JSON | `target`, `data` | Populated Object | N/A |
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
 | `aiTokens()` | Estimate token count | `text`, `options={}` | Numeric | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
-| `aiTransform()` | Create data transformer | `transformer` | Transformer function | N/A |
+| `aiTransform()` | Create data transformer | `transformer` | Transformer Runnable | N/A |
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
 | `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors` | MCPServer Object | N/A |
 
