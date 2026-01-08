@@ -98,4 +98,28 @@ class {
 		return variables.success;
 	}
 
+	/**
+	 * Execute the incoming function if the response is successful
+	 * @target Function to execute on success
+	 * @return The current MCPResponse instance
+	 */
+	function onSuccess(function target){
+		if( variables.success ){
+			arguments.target( this );
+		}
+		return this;
+	}
+
+	/**
+	 * Execute the incoming function if the response has an error
+	 * @target Function to execute on error
+	 * @return The current MCPResponse instance
+	 */
+	function onError(function target){
+		if( !variables.success ){
+			arguments.target( this );
+		}
+		return this;
+	}
+
 }
