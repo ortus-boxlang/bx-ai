@@ -1,34 +1,36 @@
 ---
-description: "Complete quick start guide for BoxLang AI - from basic chatting to advanced agents, RAG, and pipelines."
+description: >-
+  Complete quick start guide for BoxLang AI - from basic chatting to advanced
+  agents, RAG, and pipelines.
 icon: circle-play
 ---
 
-# 🚀 Quick Start Guide
+# Quick Start Guide
 
 Get up and running with BoxLang AI in minutes. This comprehensive guide walks you through everything from your first AI chat to building autonomous agents with memory, tools, and RAG capabilities.
 
 ## 📖 Table of Contents
 
-- [Prerequisites](#-prerequisites)
-- [Your First AI Chat](#-your-first-ai-chat)
-- [Understanding the Basics](#-understanding-the-basics)
-- [Working with Different Providers](#-working-with-different-providers)
-- [Building Conversations](#-building-conversations)
-- [Controlling AI Behavior](#-controlling-ai-behavior)
-- [Practical Examples](#-practical-examples)
-- [Introduction to Pipelines](#-introduction-to-pipelines)
-- [Document Loading & RAG](#-document-loading--rag)
-- [AI Agents Quick Start](#-ai-agents-quick-start)
-- [Structured Output](#-structured-output)
-- [Async & Streaming](#-async--streaming)
-- [Next Steps](#-next-steps)
+* [Prerequisites](quickstart.md#-prerequisites)
+* [Your First AI Chat](quickstart.md#-your-first-ai-chat)
+* [Understanding the Basics](quickstart.md#-understanding-the-basics)
+* [Working with Different Providers](quickstart.md#-working-with-different-providers)
+* [Building Conversations](quickstart.md#-building-conversations)
+* [Controlling AI Behavior](quickstart.md#-controlling-ai-behavior)
+* [Practical Examples](quickstart.md#-practical-examples)
+* [Introduction to Pipelines](quickstart.md#-introduction-to-pipelines)
+* [Document Loading & RAG](quickstart.md#-document-loading--rag)
+* [AI Agents Quick Start](quickstart.md#-ai-agents-quick-start)
+* [Structured Output](quickstart.md#-structured-output)
+* [Async & Streaming](quickstart.md#-async--streaming)
+* [Next Steps](quickstart.md#-next-steps)
 
 ## 📋 Prerequisites
 
-- BoxLang installed and configured
-- bx-ai module installed ([Installation Guide](installation.md))
-- At least one AI provider configured ([Provider Setup](provider-setup.md))
-- API key for your chosen provider OR Ollama installed locally
+* BoxLang installed and configured
+* bx-ai module installed ([Installation Guide](installation/))
+* At least one AI provider configured ([Provider Setup](installation/provider-setup.md))
+* API key for your chosen provider OR Ollama installed locally
 
 ## 💬 Your First AI Chat
 
@@ -76,9 +78,9 @@ BoxLang is a modern, dynamic programming language for the JVM that combines the 
 aiChat( message, params, options )
 ```
 
-- **message**: Your question or prompt (string or array of messages)
-- **params**: Model parameters like temperature, max_tokens (optional)
-- **options**: Provider, API key, return format (optional)
+* **message**: Your question or prompt (string or array of messages)
+* **params**: Model parameters like temperature, max\_tokens (optional)
+* **options**: Provider, API key, return format (optional)
 
 ### Simple Examples
 
@@ -207,10 +209,10 @@ answer = aiChat(
 
 **Benefits of Ollama:**
 
-- 🔒 **Privacy**: Data never leaves your machine
-- 💰 **Cost**: Zero API charges
-- 🚀 **Speed**: No network latency
-- 🔌 **Offline**: Works without internet
+* 🔒 **Privacy**: Data never leaves your machine
+* 💰 **Cost**: Zero API charges
+* 🚀 **Speed**: No network latency
+* 🔌 **Offline**: Works without internet
 
 ## 💭 Building Conversations
 
@@ -330,7 +332,7 @@ println( spanish )
 println( french )
 ```
 
-### Smart Q&A
+### Smart Q\&A
 
 ```javascript
 // qa.bxs
@@ -433,7 +435,7 @@ greeter.run({ name: "Bob", style: "casual" })
 greeter.run({ name: "Charlie", style: "funny" })
 ```
 
-Learn more about pipelines in the [Pipeline Overview](../main-components/overview.md) section.
+Learn more about pipelines in the [Pipeline Overview](../main-components/main-components/overview.md) section.
 
 ## 📚 Document Loading & RAG
 
@@ -499,7 +501,7 @@ function ragQuery( question ) {
 answer = ragQuery( "How do I configure SSL?" )
 ```
 
-Learn more in the [RAG Guide](../main-components/rag.md) and [Document Loaders](../main-components/document-loaders.md).
+Learn more in the [RAG Guide](../rag/rag.md) and [Document Loaders](../rag/document-loaders.md).
 
 ## 🤖 AI Agents Quick Start
 
@@ -522,17 +524,17 @@ graph TB
     style RESP fill:#7ED321
 ```
 
-- **Remember context** across conversations using memory systems
-- **Use tools** to perform actions and access real-time data
-- **Reason** about tasks and break them into steps
-- **Maintain state** across multiple interactions
+* **Remember context** across conversations using memory systems
+* **Use tools** to perform actions and access real-time data
+* **Reason** about tasks and break them into steps
+* **Maintain state** across multiple interactions
 
 Think of agents as AI assistants that can:
 
-- Answer questions while remembering previous context
-- Search databases or APIs when they need information
-- Execute functions to perform actions
-- Make decisions based on accumulated knowledge
+* Answer questions while remembering previous context
+* Search databases or APIs when they need information
+* Execute functions to perform actions
+* Make decisions based on accumulated knowledge
 
 ### 🚀 Your First Agent
 
@@ -782,7 +784,7 @@ tasks = aiChat( "Extract: Finish report (high), Review code (medium)" )
 tasks.each( t => println( "#t.getTitle()# [#t.getPriority()#]" ) )
 ```
 
-Learn more in the [Structured Output Guide](../chatting/structured-output.md).
+Learn more in the [Structured Output Guide](../main-components/chatting/structured-output.md).
 
 ## ⚡ Async & Streaming
 
@@ -846,36 +848,36 @@ Now that you're comfortable with the basics, explore:
 
 ### 📚 Core Concepts
 
-- **[Basic Chatting](../chatting/basic-chatting.md)** - Master the fundamentals
-- **[Advanced Chatting](../chatting/advanced-chatting.md)** - Tools, async, streaming
-- **[Service-Level Control](../chatting/service-chatting.md)** - Direct service management
+* [**Basic Chatting**](../main-components/chatting/basic-chatting.md) - Master the fundamentals
+* [**Advanced Chatting**](../main-components/chatting/advanced-chatting.md) - Tools, async, streaming
+* [**Service-Level Control**](../main-components/chatting/service-chatting.md) - Direct service management
 
 ### 🤖 AI Agents
 
-- **[Agents Guide](../main-components/agents.md)** - Complete agent documentation
-- **[Agent Examples](../../examples/agents/)** - Working code examples
-- **[Memory Systems](../main-components/memory.md)** - Conversation history
-- **[Tools](../main-components/tools.md)** - Function calling patterns
+* [**Agents Guide**](../main-components/agents.md) - Complete agent documentation
+* [**Agent Examples**](../../examples/agents/) - Working code examples
+* [**Memory Systems**](../main-components/memory/) - Conversation history
+* [**Tools**](../main-components/tools.md) - Function calling patterns
 
 ### 🧬 RAG & Documents
 
-- **[RAG Guide](../main-components/rag.md)** - Complete RAG workflow
-- **[Document Loaders](../main-components/document-loaders.md)** - Load data from various sources
-- **[Vector Memory](../main-components/vector-memory.md)** - Semantic search
+* [**RAG Guide**](../rag/rag.md) - Complete RAG workflow
+* [**Document Loaders**](../rag/document-loaders.md) - Load data from various sources
+* [**Vector Memory**](../main-components/vector-memory.md) - Semantic search
 
 ### ⛓️ AI Pipelines
 
-- **[Pipeline Overview](../main-components/overview.md)** - Learn about composable workflows
-- **[Working with Models](../main-components/models.md)** - Pipeline-compatible AI models
-- **[Message Templates](../main-components/messages.md)** - Reusable prompts
-- **[Transformers](../main-components/transformers.md)** - Data processing
+* [**Pipeline Overview**](../main-components/main-components/overview.md) - Learn about composable workflows
+* [**Working with Models**](../main-components/models.md) - Pipeline-compatible AI models
+* [**Message Templates**](../main-components/messages/) - Reusable prompts
+* [**Transformers**](../main-components/transformers.md) - Data processing
 
 ### 🔧 Advanced Topics
 
-- **[Event System](../advanced/events.md)** - Intercept and customize AI operations
-- **[Custom Memory](../advanced/custom-memory.md)** - Build custom memory implementations
-- **[Custom Loaders](../advanced/custom-loader.md)** - Create custom document loaders
-- **[Custom Transformers](../advanced/custom-transformer.md)** - Build custom transformers
+* [**Event System**](../advanced/events.md) - Intercept and customize AI operations
+* [**Custom Memory**](../extending-boxlang-ai/custom-memory.md) - Build custom memory implementations
+* [**Custom Loaders**](../extending-boxlang-ai/custom-loader.md) - Create custom document loaders
+* [**Custom Transformers**](../extending-boxlang-ai/custom-transformer.md) - Build custom transformers
 
 ### 💻 Examples
 
@@ -885,24 +887,24 @@ Check the `/examples` folder in the repository for more complete applications.
 
 **"No API key provided"**
 
-- Set API key in `boxlang.json` or pass directly in options
+* Set API key in `boxlang.json` or pass directly in options
 
 **"Connection timeout"**
 
-- Increase timeout in settings or pass longer timeout in options
+* Increase timeout in settings or pass longer timeout in options
 
 **"Model not found"**
 
-- Check provider documentation for available model names
-- For Ollama: make sure you've pulled the model with `ollama pull <model>`
+* Check provider documentation for available model names
+* For Ollama: make sure you've pulled the model with `ollama pull <model>`
 
 **Ollama not responding**
 
-- Start Ollama: `ollama serve`
-- Check status: `curl http://localhost:11434/api/tags`
+* Start Ollama: `ollama serve`
+* Check status: `curl http://localhost:11434/api/tags`
 
 **"Agent not remembering context"**
 
-- Ensure memory is configured: `.setMemories( aiMemory(...) )`
-- Check memory isn't being cleared between calls
-- Verify session/key is consistent across calls
+* Ensure memory is configured: `.setMemories( aiMemory(...) )`
+* Check memory isn't being cleared between calls
+* Verify session/key is consistent across calls

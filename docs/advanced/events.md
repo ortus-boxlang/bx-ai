@@ -4,14 +4,14 @@ The BoxLang AI module provides a comprehensive event system that allows you to i
 
 ## 📋 Table of Contents
 
-- [Overview](#overview)
-- [Event Interception](#event-interception)
-- [Available Events](#available-events)
-- [Common Use Cases](#common-use-cases)
-- [Examples](#examples)
-- [Best Practices](#best-practices)
+* [Overview](events.md#overview)
+* [Event Interception](events.md#event-interception)
+* [Available Events](events.md#available-events)
+* [Common Use Cases](events.md#common-use-cases)
+* [Examples](events.md#examples)
+* [Best Practices](events.md#best-practices)
 
----
+***
 
 ## 🔍 Overview
 
@@ -19,31 +19,31 @@ The event system allows you to **monitor**, **modify**, **validate**, **audit**,
 
 ### All Available Events
 
-| # | Event | When Fired | Key Data |
-|---|-------|------------|----------|
-| 1 | [onAIMessageCreate](#1-onaimessagecreate) | Message template created | `message` |
-| 2 | [onAIRequestCreate](#2-onairequestcreate) | Request object instantiated | `aiRequest` |
-| 3 | [onAIProviderRequest](#3-onaiproviderrequest) | Before provider creation | `provider`, `apiKey` |
-| 4 | [onAIProviderCreate](#4-onaiprovidercreate) | Provider instance created | `provider` |
-| 5 | [onAIModelCreate](#5-onaimodelcreate) | Model runnable created | `model`, `service` |
-| 6 | [onAITransformCreate](#6-onaitransformcreate) | Transform runnable created | `transform` |
-| 7 | [beforeAIModelInvoke](#7-beforeaimodelinvoke) | Before model execution | `model`, `request` |
-| 8 | [onAIRequest](#8-onairequest) | Before HTTP request sent | `dataPacket`, `aiRequest`, `provider` |
-| 9 | [onAIResponse](#9-onairesponse) | After HTTP response received | `response`, `rawResponse`, `provider` |
-| 10 | [afterAIModelInvoke](#10-afteraimodelinvoke) | After model execution completes | `model`, `request`, `results` |
-| 11 | [onAIToolCreate](#11-onaitoolcreate) | Tool created | `tool`, `name`, `description` |
-| 12 | [beforeAIToolExecute](#12-beforeaitoolexecute) | Before tool execution | `tool`, `name`, `arguments` |
-| 13 | [afterAIToolExecute](#13-afteraitoolexecute) | After tool execution | `tool`, `results`, `executionTime` |
-| 14 | [onAIError](#14-onaierror) | Error occurs | `error`, `errorMessage`, `provider`, `canRetry` |
-| 15 | [onAIRateLimitHit](#15-onairatelimithit) | Rate limit detected (429) | `provider`, `statusCode`, `retryAfter` |
-| 16 | [beforeAIPipelineRun](#16-beforeaipipelinerun) | Before pipeline starts | `sequence`, `stepCount`, `input` |
-| 17 | [afterAIPipelineRun](#17-afteraipipelinerun) | After pipeline completes | `sequence`, `result`, `executionTime` |
-| 18 | [onAITokenCount](#18-onaitokencount) | Token usage available | `provider`, `model`, `totalTokens` |
-| 19 | [onMCPServerCreate](#19-onmcpservercreate) | MCP server instance created | `server`, `name`, `description` |
-| 20 | [onMCPServerRemove](#20-onmcpserverremove) | MCP server instance removed | `name` |
-| 21 | [onMCPRequest](#21-onmcprequest) | Before processing MCP request | `server`, `requestData`, `serverName` |
-| 22 | [onMCPResponse](#22-onmcpresponse) | After processing MCP response | `server`, `response`, `requestData` |
-| 23 | [onMCPError](#23-onmcperror) | Exception during MCP operations | `server`, `context`, `exception`, request details |
+| #  | Event                                                   | When Fired                      | Key Data                                          |
+| -- | ------------------------------------------------------- | ------------------------------- | ------------------------------------------------- |
+| 1  | [onAIMessageCreate](events.md#1-onaimessagecreate)      | Message template created        | `message`                                         |
+| 2  | [onAIRequestCreate](events.md#2-onairequestcreate)      | Request object instantiated     | `aiRequest`                                       |
+| 3  | [onAIProviderRequest](events.md#3-onaiproviderrequest)  | Before provider creation        | `provider`, `apiKey`                              |
+| 4  | [onAIProviderCreate](events.md#4-onaiprovidercreate)    | Provider instance created       | `provider`                                        |
+| 5  | [onAIModelCreate](events.md#5-onaimodelcreate)          | Model runnable created          | `model`, `service`                                |
+| 6  | [onAITransformCreate](events.md#6-onaitransformcreate)  | Transform runnable created      | `transform`                                       |
+| 7  | [beforeAIModelInvoke](events.md#7-beforeaimodelinvoke)  | Before model execution          | `model`, `request`                                |
+| 8  | [onAIRequest](events.md#8-onairequest)                  | Before HTTP request sent        | `dataPacket`, `aiRequest`, `provider`             |
+| 9  | [onAIResponse](events.md#9-onairesponse)                | After HTTP response received    | `response`, `rawResponse`, `provider`             |
+| 10 | [afterAIModelInvoke](events.md#10-afteraimodelinvoke)   | After model execution completes | `model`, `request`, `results`                     |
+| 11 | [onAIToolCreate](events.md#11-onaitoolcreate)           | Tool created                    | `tool`, `name`, `description`                     |
+| 12 | [beforeAIToolExecute](events.md#12-beforeaitoolexecute) | Before tool execution           | `tool`, `name`, `arguments`                       |
+| 13 | [afterAIToolExecute](events.md#13-afteraitoolexecute)   | After tool execution            | `tool`, `results`, `executionTime`                |
+| 14 | [onAIError](events.md#14-onaierror)                     | Error occurs                    | `error`, `errorMessage`, `provider`, `canRetry`   |
+| 15 | [onAIRateLimitHit](events.md#15-onairatelimithit)       | Rate limit detected (429)       | `provider`, `statusCode`, `retryAfter`            |
+| 16 | [beforeAIPipelineRun](events.md#16-beforeaipipelinerun) | Before pipeline starts          | `sequence`, `stepCount`, `input`                  |
+| 17 | [afterAIPipelineRun](events.md#17-afteraipipelinerun)   | After pipeline completes        | `sequence`, `result`, `executionTime`             |
+| 18 | [onAITokenCount](events.md#18-onaitokencount)           | Token usage available           | `provider`, `model`, `totalTokens`                |
+| 19 | [onMCPServerCreate](events.md#19-onmcpservercreate)     | MCP server instance created     | `server`, `name`, `description`                   |
+| 20 | [onMCPServerRemove](events.md#20-onmcpserverremove)     | MCP server instance removed     | `name`                                            |
+| 21 | [onMCPRequest](events.md#21-onmcprequest)               | Before processing MCP request   | `server`, `requestData`, `serverName`             |
+| 22 | [onMCPResponse](events.md#22-onmcpresponse)             | After processing MCP response   | `server`, `response`, `requestData`               |
+| 23 | [onMCPError](events.md#23-onmcperror)                   | Exception during MCP operations | `server`, `context`, `exception`, request details |
 
 ### 🔄 Event Lifecycle Diagram
 
@@ -137,7 +137,7 @@ graph TB
     style E18 fill:#BD10E0
 ```
 
----
+***
 
 ## 🔌 Event Interception
 
@@ -226,7 +226,7 @@ BoxRegisterInterceptor( "AIMonitor", "path.to.AIMonitor" );
 
 📖 **Reference**: [BoxRegisterInterceptor() Documentation](https://boxlang.ortusbooks.com/boxlang-language/reference/built-in-functions/system/boxregisterinterceptor)
 
----
+***
 
 ## 📡 Available Events
 
@@ -234,13 +234,12 @@ BoxRegisterInterceptor( "AIMonitor", "path.to.AIMonitor" );
 
 Fired when an AI message object is created via `aiMessage()`.
 
-**When**: Message template creation
-**Frequency**: Once per `aiMessage()` call
+**When**: Message template creation **Frequency**: Once per `aiMessage()` call
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
+| Argument  | Type        | Description                |
+| --------- | ----------- | -------------------------- |
 | `message` | `AiMessage` | The created message object |
 
 #### Example
@@ -263,21 +262,21 @@ function onAIMessageCreate( event, interceptData ) {
 }
 ```
 
----
+***
 
 ### 2. onAIRequestCreate
 
 Fired when an AI request object is created via `aiChatRequest()`.
 
-**When**: Request object instantiation
-**Frequency**: Once per `aiChatRequest()` call
+**When**: Request object instantiation **Frequency**: Once per `aiChatRequest()` call
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
+| Argument    | Type        | Description                |
+| ----------- | ----------- | -------------------------- |
 | `aiRequest` | `AiRequest` | The created request object |
-```
+
+````
 
 #### Example
 
@@ -297,26 +296,26 @@ function onAIRequestCreate( event, interceptData ) {
         request.setParam( "temperature", 0.7 );
     }
 }
-```
+````
 
----
+***
 
 ### 3. onAIProviderRequest
 
 Fired when a provider is requested from the factory.
 
-**When**: Before provider/service is created or retrieved
-**Frequency**: Once per provider request
+**When**: Before provider/service is created or retrieved **Frequency**: Once per provider request
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
+| Argument   | Type     | Description                              |
+| ---------- | -------- | ---------------------------------------- |
 | `provider` | `String` | Provider name (e.g., "openai", "claude") |
-| `apiKey` | `String` | API key (if provided) |
-| `params` | `Struct` | Request parameters |
-| `options` | `Struct` | Request options |
-```
+| `apiKey`   | `String` | API key (if provided)                    |
+| `params`   | `Struct` | Request parameters                       |
+| `options`  | `Struct` | Request options                          |
+
+````
 
 #### Example
 
@@ -335,23 +334,23 @@ function onAIProviderRequest( event, interceptData ) {
         throw( "Rate limit exceeded for provider: #provider#" );
     }
 }
-```
+````
 
----
+***
 
 ### 4. onAIProviderCreate
 
 Fired when a provider/service instance is created.
 
-**When**: After provider instantiation
-**Frequency**: Once per unique provider instance
+**When**: After provider instantiation **Frequency**: Once per unique provider instance
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
+| Argument   | Type       | Description                  |
+| ---------- | ---------- | ---------------------------- |
 | `provider` | `IService` | The created service instance |
-```
+
+````
 
 #### Example
 
@@ -373,24 +372,24 @@ function onAIProviderCreate( event, interceptData ) {
         type: "info"
     );
 }
-```
+````
 
----
+***
 
 ### 5. onAIModelCreate
 
 Fired when an AI model runnable is created via `aiModel()`.
 
-**When**: Model wrapper creation
-**Frequency**: Once per `aiModel()` call
+**When**: Model wrapper creation **Frequency**: Once per `aiModel()` call
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `model` | `AiModel` | The created model runnable |
-| `service` | `IService` | The underlying service |
-```
+| Argument  | Type       | Description                |
+| --------- | ---------- | -------------------------- |
+| `model`   | `AiModel`  | The created model runnable |
+| `service` | `IService` | The underlying service     |
+
+````
 
 #### Example
 
@@ -411,23 +410,23 @@ function onAIModelCreate( event, interceptData ) {
         timestamp: now()
     });
 }
-```
+````
 
----
+***
 
 ### 6. onAITransformCreate
 
 Fired when a transform runnable is created via `aiTransform()`.
 
-**When**: Transform function creation
-**Frequency**: Once per `aiTransform()` call
+**When**: Transform function creation **Frequency**: Once per `aiTransform()` call
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
+| Argument    | Type                  | Description                    |
+| ----------- | --------------------- | ------------------------------ |
 | `transform` | `AiTransformRunnable` | The created transform runnable |
-```
+
+````
 
 #### Example
 
@@ -446,24 +445,24 @@ function onAITransformCreate( event, interceptData ) {
         }
     });
 }
-```
+````
 
----
+***
 
 ### 7. beforeAIModelInvoke
 
 Fired before an AI model is invoked (before sending to provider).
 
-**When**: Before model execution
-**Frequency**: Every model invocation
+**When**: Before model execution **Frequency**: Every model invocation
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `model` | `AiModel` | The model being invoked |
-| `request` | `AiRequest` | The request being sent |
-```
+| Argument  | Type        | Description             |
+| --------- | ----------- | ----------------------- |
+| `model`   | `AiModel`   | The model being invoked |
+| `request` | `AiRequest` | The request being sent  |
+
+````
 
 #### Example
 
@@ -490,25 +489,25 @@ function beforeAIModelInvoke( event, interceptData ) {
         type: "info"
     );
 }
-```
+````
 
----
+***
 
 ### 8. onAIRequest
 
 Fired immediately before sending the HTTP request to the AI provider.
 
-**When**: Before HTTP request
-**Frequency**: Every API call (including streaming)
+**When**: Before HTTP request **Frequency**: Every API call (including streaming)
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `dataPacket` | `Struct` | The HTTP request data packet |
-| `aiRequest` | `AiRequest` | The AI request object |
-| `provider` | `IService` | The service making the request |
-```
+| Argument     | Type        | Description                    |
+| ------------ | ----------- | ------------------------------ |
+| `dataPacket` | `Struct`    | The HTTP request data packet   |
+| `aiRequest`  | `AiRequest` | The AI request object          |
+| `provider`   | `IService`  | The service making the request |
+
+````
 
 #### Example
 
@@ -537,26 +536,26 @@ function onAIRequest( event, interceptData ) {
         dataPacket.headers[ "Authorization" ] = getCustomAuthToken();
     }
 }
-```
+````
 
----
+***
 
 ### 9. onAIResponse
 
 Fired after receiving the HTTP response from the AI provider.
 
-**When**: After HTTP response
-**Frequency**: Every API call (including streaming)
+**When**: After HTTP response **Frequency**: Every API call (including streaming)
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `aiRequest` | `AiRequest` | The original request |
-| `response` | `Struct` | The deserialized response |
-| `rawResponse` | `Struct` | The raw HTTP response |
-| `provider` | `IService` | The service that made the request |
-```
+| Argument      | Type        | Description                       |
+| ------------- | ----------- | --------------------------------- |
+| `aiRequest`   | `AiRequest` | The original request              |
+| `response`    | `Struct`    | The deserialized response         |
+| `rawResponse` | `Struct`    | The raw HTTP response             |
+| `provider`    | `IService`  | The service that made the request |
+
+````
 
 #### Example
 
@@ -593,25 +592,25 @@ function onAIResponse( event, interceptData ) {
         cacheResponse( request, response );
     }
 }
-```
+````
 
----
+***
 
 ### 10. afterAIModelInvoke
 
 Fired after an AI model completes its invocation.
 
-**When**: After model execution completes
-**Frequency**: Every model invocation
+**When**: After model execution completes **Frequency**: Every model invocation
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `model` | `AiModel` | The model that was invoked |
-| `request` | `AiRequest` | The request that was sent |
-| `results` | `Any` | The results returned by the model |
-```
+| Argument  | Type        | Description                       |
+| --------- | ----------- | --------------------------------- |
+| `model`   | `AiModel`   | The model that was invoked        |
+| `request` | `AiRequest` | The request that was sent         |
+| `results` | `Any`       | The results returned by the model |
+
+````
 
 #### Example
 
@@ -639,25 +638,25 @@ function afterAIModelInvoke( event, interceptData ) {
         logError( "Model returned error: #results.error.message#" );
     }
 }
-```
+````
 
----
+***
 
 ### 11. onAIToolCreate
 
 Fired when an AI tool is created via `aiTool()`.
 
-**When**: Tool creation
-**Frequency**: Once per `aiTool()` call
+**When**: Tool creation **Frequency**: Once per `aiTool()` call
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `tool` | `Tool` | The created tool instance |
-| `name` | `String` | Tool name |
-| `description` | `String` | Tool description |
-```
+| Argument      | Type     | Description               |
+| ------------- | -------- | ------------------------- |
+| `tool`        | `Tool`   | The created tool instance |
+| `name`        | `String` | Tool name                 |
+| `description` | `String` | Tool description          |
+
+````
 
 #### Example
 
@@ -676,25 +675,25 @@ function onAIToolCreate( event, interceptData ) {
         );
     }
 }
-```
+````
 
----
+***
 
 ### 12. beforeAIToolExecute
 
 Fired immediately before a tool's callable function is executed.
 
-**When**: Before tool execution
-**Frequency**: Every tool call
+**When**: Before tool execution **Frequency**: Every tool call
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `tool` | `Tool` | The tool being executed |
-| `name` | `String` | Tool name |
+| Argument    | Type     | Description                  |
+| ----------- | -------- | ---------------------------- |
+| `tool`      | `Tool`   | The tool being executed      |
+| `name`      | `String` | Tool name                    |
 | `arguments` | `Struct` | Arguments passed to the tool |
-```
+
+````
 
 #### Example
 
@@ -724,27 +723,27 @@ function beforeAIToolExecute( event, interceptData ) {
         log: "ai-tools"
     );
 }
-```
+````
 
----
+***
 
 ### 13. afterAIToolExecute
 
 Fired immediately after a tool's callable function completes execution.
 
-**When**: After tool execution
-**Frequency**: Every tool call
+**When**: After tool execution **Frequency**: Every tool call
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `tool` | `Tool` | The tool that was executed |
-| `name` | `String` | Tool name |
-| `arguments` | `Struct` | Arguments passed to the tool |
-| `results` | `Any` | Results returned by the tool |
+| Argument        | Type      | Description                    |
+| --------------- | --------- | ------------------------------ |
+| `tool`          | `Tool`    | The tool that was executed     |
+| `name`          | `String`  | Tool name                      |
+| `arguments`     | `Struct`  | Arguments passed to the tool   |
+| `results`       | `Any`     | Results returned by the tool   |
 | `executionTime` | `Numeric` | Execution time in milliseconds |
-```
+
+````
 
 #### Example
 
@@ -781,29 +780,29 @@ function afterAIToolExecute( event, interceptData ) {
         );
     }
 }
-```
+````
 
----
+***
 
 ### 14. onAIError
 
 Fired when an error occurs during AI operations (chat, embeddings, or streaming).
 
-**When**: Before throwing provider errors
-**Frequency**: Every error condition
+**When**: Before throwing provider errors **Frequency**: Every error condition
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `error` | `Any` | The error object/message from provider |
-| `errorMessage` | `String` | Formatted error message |
-| `provider` | `IService` | The provider where error occurred |
-| `operation` | `String` | Operation type: "chat", "embeddings", "stream" |
-| `aiRequest` | `AiRequest` | The request that caused the error (if available) |
-| `embeddingRequest` | `AiEmbeddingRequest` | For embedding errors |
-| `canRetry` | `Boolean` | Whether operation can be retried |
-```
+| Argument           | Type                 | Description                                      |
+| ------------------ | -------------------- | ------------------------------------------------ |
+| `error`            | `Any`                | The error object/message from provider           |
+| `errorMessage`     | `String`             | Formatted error message                          |
+| `provider`         | `IService`           | The provider where error occurred                |
+| `operation`        | `String`             | Operation type: "chat", "embeddings", "stream"   |
+| `aiRequest`        | `AiRequest`          | The request that caused the error (if available) |
+| `embeddingRequest` | `AiEmbeddingRequest` | For embedding errors                             |
+| `canRetry`         | `Boolean`            | Whether operation can be retried                 |
+
+````
 
 #### Example
 
@@ -875,28 +874,28 @@ class {
         }
     }
 }
-```
+````
 
----
+***
 
 ### 15. onAIRateLimitHit
 
 Fired when a provider returns a 429 (rate limit) HTTP status code.
 
-**When**: When rate limit is detected
-**Frequency**: Every rate limit response
+**When**: When rate limit is detected **Frequency**: Every rate limit response
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `provider` | `IService` | The provider that hit rate limit |
-| `operation` | `String` | Operation type: "chat", "embeddings" |
-| `statusCode` | `String` | HTTP status code (429) |
-| `errorData` | `Struct` | Error response from provider |
-| `aiRequest` | `AiRequest` | The request that hit the limit |
-| `retryAfter` | `String` | Retry-After header value (if present) |
-```
+| Argument     | Type        | Description                           |
+| ------------ | ----------- | ------------------------------------- |
+| `provider`   | `IService`  | The provider that hit rate limit      |
+| `operation`  | `String`    | Operation type: "chat", "embeddings"  |
+| `statusCode` | `String`    | HTTP status code (429)                |
+| `errorData`  | `Struct`    | Error response from provider          |
+| `aiRequest`  | `AiRequest` | The request that hit the limit        |
+| `retryAfter` | `String`    | Retry-After header value (if present) |
+
+````
 
 #### Example
 
@@ -966,29 +965,29 @@ class {
         };
     }
 }
-```
+````
 
----
+***
 
 ### 16. beforeAIPipelineRun
 
 Fired before a runnable pipeline sequence begins execution.
 
-**When**: Before pipeline execution starts
-**Frequency**: Every pipeline run
+**When**: Before pipeline execution starts **Frequency**: Every pipeline run
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `sequence` | `AiRunnableSequence` | The sequence being executed |
-| `name` | `String` | Sequence name |
-| `stepCount` | `Numeric` | Number of steps in pipeline |
-| `steps` | `Array` | Array of step information |
-| `input` | `Any` | Initial input to pipeline |
-| `params` | `Struct` | Parameters passed to pipeline |
-| `options` | `Struct` | Options passed to pipeline |
-```
+| Argument    | Type                 | Description                   |
+| ----------- | -------------------- | ----------------------------- |
+| `sequence`  | `AiRunnableSequence` | The sequence being executed   |
+| `name`      | `String`             | Sequence name                 |
+| `stepCount` | `Numeric`            | Number of steps in pipeline   |
+| `steps`     | `Array`              | Array of step information     |
+| `input`     | `Any`                | Initial input to pipeline     |
+| `params`    | `Struct`             | Parameters passed to pipeline |
+| `options`   | `Struct`             | Options passed to pipeline    |
+
+````
 
 #### Example
 
@@ -1030,29 +1029,29 @@ function beforeAIPipelineRun( event, interceptData ) {
         timestamp: now()
     });
 }
-```
+````
 
----
+***
 
 ### 17. afterAIPipelineRun
 
 Fired after a runnable pipeline sequence completes execution.
 
-**When**: After pipeline execution completes
-**Frequency**: Every pipeline run
+**When**: After pipeline execution completes **Frequency**: Every pipeline run
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `sequence` | `AiRunnableSequence` | The sequence that was executed |
-| `name` | `String` | Sequence name |
-| `stepCount` | `Numeric` | Number of steps in pipeline |
-| `steps` | `Array` | Array of step information |
-| `input` | `Any` | Initial input to pipeline |
-| `result` | `Any` | Final result from pipeline |
-| `executionTime` | `Numeric` | Total execution time in milliseconds |
-```
+| Argument        | Type                 | Description                          |
+| --------------- | -------------------- | ------------------------------------ |
+| `sequence`      | `AiRunnableSequence` | The sequence that was executed       |
+| `name`          | `String`             | Sequence name                        |
+| `stepCount`     | `Numeric`            | Number of steps in pipeline          |
+| `steps`         | `Array`              | Array of step information            |
+| `input`         | `Any`                | Initial input to pipeline            |
+| `result`        | `Any`                | Final result from pipeline           |
+| `executionTime` | `Numeric`            | Total execution time in milliseconds |
+
+````
 
 #### Example
 
@@ -1101,30 +1100,30 @@ function afterAIPipelineRun( event, interceptData ) {
         );
     }
 }
-```
+````
 
----
+***
 
 ### 18. onAITokenCount
 
 Fired when token usage information is available from the AI provider response.
 
-**When**: After receiving response with usage data
-**Frequency**: Every successful API call that returns usage
+**When**: After receiving response with usage data **Frequency**: Every successful API call that returns usage
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `provider` | `IService` | The provider used |
-| `operation` | `String` | Operation type: "chat", "embeddings" |
-| `model` | `String` | Model name |
-| `promptTokens` | `Numeric` | Input tokens used |
-| `completionTokens` | `Numeric` | Output tokens used |
-| `totalTokens` | `Numeric` | Total tokens (prompt + completion) |
-| `aiRequest` | `AiRequest` | The request object |
-| `usage` | `Struct` | Full usage object from provider |
-```
+| Argument           | Type        | Description                          |
+| ------------------ | ----------- | ------------------------------------ |
+| `provider`         | `IService`  | The provider used                    |
+| `operation`        | `String`    | Operation type: "chat", "embeddings" |
+| `model`            | `String`    | Model name                           |
+| `promptTokens`     | `Numeric`   | Input tokens used                    |
+| `completionTokens` | `Numeric`   | Output tokens used                   |
+| `totalTokens`      | `Numeric`   | Total tokens (prompt + completion)   |
+| `aiRequest`        | `AiRequest` | The request object                   |
+| `usage`            | `Struct`    | Full usage object from provider      |
+
+````
 
 #### Example
 
@@ -1274,7 +1273,7 @@ class {
         return promptCost + completionCost;
     }
 }
-```
+````
 
 ### Event Priority Reference
 
@@ -1296,24 +1295,24 @@ Events fire in this order during a typical AI chat with tools:
 14. `afterAIModelInvoke` - Model invocation complete
 15. `afterAIPipelineRun` - Pipeline execution complete
 
----
+***
 
 ### 19. onMCPServerCreate
 
 Fired when a new MCP (Model Context Protocol) server instance is created.
 
-**When**: MCP server instantiation via `MCPServer()`
-**Frequency**: Once per unique server creation
+**When**: MCP server instantiation via `MCPServer()` **Frequency**: Once per unique server creation
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `server` | `MCPServer` | The created server instance |
-| `name` | `String` | Server name/identifier |
-| `description` | `String` | Server description |
-| `version` | `String` | Server version |
-```
+| Argument      | Type        | Description                 |
+| ------------- | ----------- | --------------------------- |
+| `server`      | `MCPServer` | The created server instance |
+| `name`        | `String`    | Server name/identifier      |
+| `description` | `String`    | Server description          |
+| `version`     | `String`    | Server version              |
+
+````
 
 #### Example
 
@@ -1337,23 +1336,23 @@ function onMCPServerCreate( event, interceptData ) {
         description: interceptData.description
     });
 }
-```
+````
 
----
+***
 
 ### 20. onMCPServerRemove
 
 Fired when an MCP server instance is being removed from the registry.
 
-**When**: Before server removal via `MCPServer::removeInstance()`
-**Frequency**: Once per server removal
+**When**: Before server removal via `MCPServer::removeInstance()` **Frequency**: Once per server removal
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `name` | `String` | Name of the server being removed |
-```
+| Argument | Type     | Description                      |
+| -------- | -------- | -------------------------------- |
+| `name`   | `String` | Name of the server being removed |
+
+````
 
 #### Example
 
@@ -1373,25 +1372,25 @@ function onMCPServerRemove( event, interceptData ) {
     // Notify connected clients
     notifyClientsOfServerShutdown( serverName );
 }
-```
+````
 
----
+***
 
 ### 21. onMCPRequest
 
 Fired before processing an incoming MCP request (JSON-RPC 2.0).
 
-**When**: After CORS handling, before request processing
-**Frequency**: Every MCP request
+**When**: After CORS handling, before request processing **Frequency**: Every MCP request
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `server` | `MCPServer` | The target server instance |
-| `requestData` | `Struct` | Request metadata (method, body, urlParams) |
-| `serverName` | `String` | Server identifier |
-```
+| Argument      | Type        | Description                                |
+| ------------- | ----------- | ------------------------------------------ |
+| `server`      | `MCPServer` | The target server instance                 |
+| `requestData` | `Struct`    | Request metadata (method, body, urlParams) |
+| `serverName`  | `String`    | Server identifier                          |
+
+````
 
 #### Example
 
@@ -1424,26 +1423,26 @@ function onMCPRequest( event, interceptData ) {
         timestamp: now()
     });
 }
-```
+````
 
----
+***
 
 ### 22. onMCPResponse
 
 Fired after processing an MCP response, before returning to client.
 
-**When**: After request handling, before HTTP response
-**Frequency**: Every MCP response
+**When**: After request handling, before HTTP response **Frequency**: Every MCP response
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `server` | `MCPServer` | The server instance |
-| `response` | `Struct` | Response data (content, contentType, headers, statusCode) |
-| `requestData` | `Struct` | Original request metadata |
-| `serverName` | `String` | Server identifier |
-```
+| Argument      | Type        | Description                                               |
+| ------------- | ----------- | --------------------------------------------------------- |
+| `server`      | `MCPServer` | The server instance                                       |
+| `response`    | `Struct`    | Response data (content, contentType, headers, statusCode) |
+| `requestData` | `Struct`    | Original request metadata                                 |
+| `serverName`  | `String`    | Server identifier                                         |
+
+````
 
 #### Example
 
@@ -1470,30 +1469,29 @@ function onMCPResponse( event, interceptData ) {
         incrementMetric( "mcp.errors.#serverName#" );
     }
 }
-```
+````
 
----
+***
 
 ### 23. onMCPError
 
 Fired when an exception occurs during MCP server operations.
 
-**When**: Exception in request handling, class scanning, or other MCP operations
-**Frequency**: When errors occur
+**When**: Exception in request handling, class scanning, or other MCP operations **Frequency**: When errors occur
 
 #### Event Arguments
 
-| Argument | Type | Description |
-|----------|------|-------------|
-| `server` | `MCPServer` | The server instance |
-| `context` | `String` | Where error occurred (`handleRequest`, `scanClass`, etc.) |
-| `exception` | `Struct` | Exception object (message, detail, stackTrace, type) |
-| `method` | `String` | Request method (context: `handleRequest`) |
-| `requestId` | `Any` | Request ID (context: `handleRequest`) |
-| `params` | `Struct` | Request parameters (context: `handleRequest`) |
-| `responseTime` | `Numeric` | Time elapsed in ms (context: `handleRequest`) |
-| `errorCode` | `Numeric` | RPC error code (context: `handleRequest`) |
-| `classPath` | `String` | Class being scanned (context: `scanClass`) |
+| Argument       | Type        | Description                                               |
+| -------------- | ----------- | --------------------------------------------------------- |
+| `server`       | `MCPServer` | The server instance                                       |
+| `context`      | `String`    | Where error occurred (`handleRequest`, `scanClass`, etc.) |
+| `exception`    | `Struct`    | Exception object (message, detail, stackTrace, type)      |
+| `method`       | `String`    | Request method (context: `handleRequest`)                 |
+| `requestId`    | `Any`       | Request ID (context: `handleRequest`)                     |
+| `params`       | `Struct`    | Request parameters (context: `handleRequest`)             |
+| `responseTime` | `Numeric`   | Time elapsed in ms (context: `handleRequest`)             |
+| `errorCode`    | `Numeric`   | RPC error code (context: `handleRequest`)                 |
+| `classPath`    | `String`    | Class being scanned (context: `scanClass`)                |
 
 #### Example
 
@@ -1549,7 +1547,7 @@ function onMCPError( event, interceptData ) {
 }
 ```
 
----
+***
 
 ## 💡 Common Use Cases
 
@@ -1897,7 +1895,7 @@ class {
 }
 ```
 
----
+***
 
 ## ✅ Best Practices
 
@@ -2041,7 +2039,7 @@ class {
 }
 ```
 
----
+***
 
 ## 📚 Examples
 
@@ -2172,28 +2170,28 @@ class {
 }
 ```
 
----
+***
 
 ## Next Steps
 
 Now that you understand the event system, you can:
 
-- **Monitor**: Track AI usage and performance
-- **Secure**: Add authentication and content filtering
-- **Optimize**: Implement caching and cost controls
-- **Extend**: Build custom behaviors without modifying core code
+* **Monitor**: Track AI usage and performance
+* **Secure**: Add authentication and content filtering
+* **Optimize**: Implement caching and cost controls
+* **Extend**: Build custom behaviors without modifying core code
 
 ### Related Documentation
 
-- **[Pipeline Overview](../main-components/overview.md)** - Understanding AI pipelines
-- **[Service-Level Chatting](../chatting/service-chatting.md)** - Direct service control
+* [**Pipeline Overview**](../main-components/main-components/overview.md) - Understanding AI pipelines
+* [**Service-Level Chatting**](../main-components/chatting/service-chatting.md) - Direct service control
 
 ### Additional Resources
 
-- **BoxLang Interceptor Documentation**: Learn more about the interceptor system
-- **Event-Driven Architecture**: Best practices for event handling
-- **Security Guidelines**: Protecting AI operations
+* **BoxLang Interceptor Documentation**: Learn more about the interceptor system
+* **Event-Driven Architecture**: Best practices for event handling
+* **Security Guidelines**: Protecting AI operations
 
----
+***
 
 **Copyright** © 2023-2025 Ortus Solutions, Corp

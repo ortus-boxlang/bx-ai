@@ -1,24 +1,26 @@
 ---
-description: "Create AI tools that enable function calling, letting AI models access real-time data, perform calculations, and interact with your systems."
+description: >-
+  Create AI tools that enable function calling, letting AI models access
+  real-time data, perform calculations, and interact with your systems.
 icon: wrench
 ---
 
-# 🛠️ AI Tools (Function Calling)
+# AI Tools (Function Calling)
 
 AI Tools enable AI models to call functions in your code, providing access to real-time data, external APIs, databases, and any other system integration.
 
 ## 📋 Table of Contents
 
-- [What are AI Tools?](#-what-are-ai-tools)
-- [Creating Tools](#-creating-tools)
-- [Tool Parameters](#-tool-parameters)
-- [Using Tools with aiChat()](#-using-tools-with-aichat)
-- [Tools with Agents](#-tools-with-agents)
-- [Advanced Tool Patterns](#-advanced-tool-patterns)
-- [Best Practices](#-best-practices)
-- [Real-World Examples](#-real-world-examples)
+* [What are AI Tools?](tools.md#-what-are-ai-tools)
+* [Creating Tools](tools.md#-creating-tools)
+* [Tool Parameters](tools.md#-tool-parameters)
+* [Using Tools with aiChat()](tools.md#-using-tools-with-aichat)
+* [Tools with Agents](tools.md#-tools-with-agents)
+* [Advanced Tool Patterns](tools.md#-advanced-tool-patterns)
+* [Best Practices](tools.md#-best-practices)
+* [Real-World Examples](tools.md#-real-world-examples)
 
----
+***
 
 ## 🎯 What are AI Tools?
 
@@ -134,9 +136,9 @@ aiTool( name, description, callback )
 
 **Parameters:**
 
-- `name` (string): The function name the AI uses to call the tool
-- `description` (string): Explains what the tool does (AI uses this to decide when to call it)
-- `callback` (function): Your function that executes when called
+* `name` (string): The function name the AI uses to call the tool
+* `description` (string): Explains what the tool does (AI uses this to decide when to call it)
+* `callback` (function): Your function that executes when called
 
 ### Describing Parameters
 
@@ -547,18 +549,18 @@ aiTool( "manage_order", "Get, update, or cancel orders", ... )
 
 ## Provider Support
 
-| Provider | Tool Support | Notes |
-|----------|-------------|-------|
-| OpenAI | ✅ Full | Best support, parallel tool calls |
-| Claude | ✅ Full | Excellent tool use |
-| Gemini | 🔜 Coming | In development |
-| Ollama | ✅ Model-dependent | Works with supported models |
-| DeepSeek | ✅ Full | Good support |
-| Grok | ✅ Full | Good support |
+| Provider | Tool Support      | Notes                             |
+| -------- | ----------------- | --------------------------------- |
+| OpenAI   | ✅ Full            | Best support, parallel tool calls |
+| Claude   | ✅ Full            | Excellent tool use                |
+| Gemini   | 🔜 Coming         | In development                    |
+| Ollama   | ✅ Model-dependent | Works with supported models       |
+| DeepSeek | ✅ Full            | Good support                      |
+| Grok     | ✅ Full            | Good support                      |
 
 ## Next Steps
 
-- **[Advanced Chatting](../chatting/advanced-chatting.md#ai-tools)** - Tool examples with `aiChat()`
-- **[AI Agents](agents.md)** - Using tools with autonomous agents
-- **[Working with Models](models.md#binding-tools-to-models)** - Binding tools to models
-- **[MCP Client](../advanced/mcp-client.md)** - Connect to external tool servers
+* [**Advanced Chatting**](chatting/advanced-chatting.md#ai-tools) - Tool examples with `aiChat()`
+* [**AI Agents**](agents.md) - Using tools with autonomous agents
+* [**Working with Models**](models.md#binding-tools-to-models) - Binding tools to models
+* [**MCP Client**](../advanced/mcp-client.md) - Connect to external tool servers

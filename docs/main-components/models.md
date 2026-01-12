@@ -1,22 +1,25 @@
 ---
-description: "The comprehensive guide to working with AI models in BoxLang, covering creation, configuration, pipeline integration, parameters, options, and advanced usage."
+description: >-
+  The comprehensive guide to working with AI models in BoxLang, covering
+  creation, configuration, pipeline integration, parameters, options, and
+  advanced usage.
 icon: brain
 ---
 
-# 🧠 Working with Models
+# Working with Models
 
 Learn how to use AI models as pipeline-compatible runnables. Models wrap AI service providers for seamless integration into pipelines.
 
 ## 📖 Table of Contents
 
-- [Creating Models](#-creating-models)
-- [Models in Pipelines](#-models-in-pipelines)
-- [Model Parameters](#-model-parameters)
-- [Model Options](#-model-options)
-- [Models with Document Loaders & RAG](#-models-with-document-loaders--rag)
-- [Models with Transformers](#-models-with-transformers)
-- [Model Patterns](#model-patterns)
-- [Advanced Usage](#advanced-usage)
+* [Creating Models](models.md#-creating-models)
+* [Models in Pipelines](models.md#-models-in-pipelines)
+* [Model Parameters](models.md#-model-parameters)
+* [Model Options](models.md#-model-options)
+* [Models with Document Loaders & RAG](models.md#-models-with-document-loaders--rag)
+* [Models with Transformers](models.md#-models-with-transformers)
+* [Model Patterns](models.md#model-patterns)
+* [Advanced Usage](models.md#advanced-usage)
 
 ## 🚀 Creating Models
 
@@ -183,6 +186,7 @@ model = aiModel( "openai" )
 ### Provider-Specific Parameters
 
 **OpenAI:**
+
 ```java
 model = aiModel( "openai" )
     .withParams( {
@@ -194,6 +198,7 @@ model = aiModel( "openai" )
 ```
 
 **Claude:**
+
 ```java
 model = aiModel( "claude" )
     .withParams( {
@@ -204,6 +209,7 @@ model = aiModel( "claude" )
 ```
 
 **Ollama:**
+
 ```java
 model = aiModel( "ollama" )
     .withParams( {
@@ -296,14 +302,14 @@ result = aiMessage()
 
 ### Available Options
 
-- `returnFormat:string` - `"raw"` (default), `"single"`, or `"all"`
-- `timeout:numeric` - Request timeout in seconds
-- `logRequest:boolean` - Log requests to `ai.log`
-- `logRequestToConsole:boolean` - Log requests to console
-- `logResponse:boolean` - Log responses to `ai.log`
-- `logResponseToConsole:boolean` - Log responses to console
-- `provider:string` - Override AI provider
-- `apiKey:string` - Override API key
+* `returnFormat:string` - `"raw"` (default), `"single"`, or `"all"`
+* `timeout:numeric` - Request timeout in seconds
+* `logRequest:boolean` - Log requests to `ai.log`
+* `logRequestToConsole:boolean` - Log requests to console
+* `logResponse:boolean` - Log responses to `ai.log`
+* `logResponseToConsole:boolean` - Log responses to console
+* `provider:string` - Override AI provider
+* `apiKey:string` - Override API key
 
 ### Debugging with Options
 
@@ -718,16 +724,16 @@ response = agent.run( "What's the weather in Paris?" )
 
 **Bound Tools (via bindTools/addTools):**
 
-- Permanently attached to the model
-- Available in all executions
-- Ideal for reusable models
-- Used automatically in agents
+* Permanently attached to the model
+* Available in all executions
+* Ideal for reusable models
+* Used automatically in agents
 
 **Runtime Tools (via params.tools):**
 
-- Passed per execution
-- Merged with bound tools
-- Useful for context-specific needs
+* Passed per execution
+* Merged with bound tools
+* Useful for context-specific needs
 
 ```java
 // Model with common tools
@@ -1169,10 +1175,10 @@ if ( result.valid ) {
 
 ## Next Steps
 
-- **[Message Templates](messages.md)** - Build dynamic prompts
-- **[Transformers](transformers.md)** - Process model outputs
-- **[Document Loaders](document-loaders.md)** - Load data from various sources
-- **[RAG Guide](rag.md)** - Complete RAG workflow documentation
-- **[Vector Memory](vector-memory.md)** - Semantic search and embeddings
-- **[Pipeline Streaming](streaming.md)** - Real-time responses
-- **[Custom AI Providers](../advanced/custom-providers.md)** - Integrate custom LLM services
+* [**Message Templates**](messages/) - Build dynamic prompts
+* [**Transformers**](transformers.md) - Process model outputs
+* [**Document Loaders**](../rag/document-loaders.md) - Load data from various sources
+* [**RAG Guide**](../rag/rag.md) - Complete RAG workflow documentation
+* [**Vector Memory**](vector-memory.md) - Semantic search and embeddings
+* [**Pipeline Streaming**](pipelines/streaming.md) - Real-time responses
+* [**Custom AI Providers**](../extending-boxlang-ai/custom-providers.md) - Integrate custom LLM services

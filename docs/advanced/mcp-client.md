@@ -37,10 +37,10 @@ graph LR
 
 Model Context Protocol is an open protocol that enables AI models to:
 
-- 🔧 **Access Tools**: Execute functions on remote servers
-- 📚 **Read Resources**: Access documents, databases, and external data
-- 💬 **Use Prompts**: Leverage server-defined prompt templates
-- 🔍 **Discover Capabilities**: Dynamically learn what a server offers
+* 🔧 **Access Tools**: Execute functions on remote servers
+* 📚 **Read Resources**: Access documents, databases, and external data
+* 💬 **Use Prompts**: Leverage server-defined prompt templates
+* 🔍 **Discover Capabilities**: Dynamically learn what a server offers
 
 ## 🚀 Basic Usage
 
@@ -446,15 +446,15 @@ content = resourceLoader.getResource( "docs://api-reference.md" )
 
 The MCP client expects servers to implement these endpoints:
 
-| Endpoint | Method | Purpose | Request Body |
-|----------|--------|---------|--------------|
-| `/tools` | GET | List available tools | None |
-| `/tools/{name}/invoke` | POST | Invoke a tool | `{ "params": {...} }` |
-| `/resources` | GET | List available resources | None |
-| `/resources/read` | POST | Read a resource | `{ "uri": "..." }` |
-| `/prompts` | GET | List available prompts | None |
-| `/prompts/{name}` | POST | Get a prompt | `{ "params": {...} }` |
-| `/capabilities` | GET | Get server capabilities | None |
+| Endpoint               | Method | Purpose                  | Request Body          |
+| ---------------------- | ------ | ------------------------ | --------------------- |
+| `/tools`               | GET    | List available tools     | None                  |
+| `/tools/{name}/invoke` | POST   | Invoke a tool            | `{ "params": {...} }` |
+| `/resources`           | GET    | List available resources | None                  |
+| `/resources/read`      | POST   | Read a resource          | `{ "uri": "..." }`    |
+| `/prompts`             | GET    | List available prompts   | None                  |
+| `/prompts/{name}`      | POST   | Get a prompt             | `{ "params": {...} }` |
+| `/capabilities`        | GET    | Get server capabilities  | None                  |
 
 ## Best Practices
 
@@ -584,12 +584,12 @@ class extends="testbox.system.BaseSpec" {
 
 ## Related Documentation
 
-- [BoxLang AI Module](../../readme.md)
-- [AI Tools](../main-components/tools.md)
-- [AI Agents](../main-components/agents.md)
+* [BoxLang AI Module](../../)
+* [AI Tools](../main-components/tools.md)
+* [AI Agents](../main-components/agents.md)
 
 ## External Resources
 
-- [Model Context Protocol Specification](https://modelcontextprotocol.io)
-- [MCP Server Examples](https://github.com/modelcontextprotocol)
-- [BoxLang Documentation MCP Server](https://boxlang.ortusbooks.com/~gitbook/mcp)
+* [Model Context Protocol Specification](https://modelcontextprotocol.io)
+* [MCP Server Examples](https://github.com/modelcontextprotocol)
+* [BoxLang Documentation MCP Server](https://boxlang.ortusbooks.com/~gitbook/mcp)

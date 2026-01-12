@@ -1,39 +1,41 @@
 ---
-description: "The complete guide to AI Agents in BoxLang, covering creation, memory management, tool usage, configuration, and advanced patterns."
+description: >-
+  The complete guide to AI Agents in BoxLang, covering creation, memory
+  management, tool usage, configuration, and advanced patterns.
 icon: robot
 ---
 
-# 🤖 AI Agents
+# AI Agents
 
 AI Agents are autonomous entities that can reason, use tools, and maintain conversation memory. Inspired by LangChain agents but "Boxified" for simplicity and productivity, agents handle complex AI workflows by automatically managing state, context, and tool execution.
 
 ## 📖 Table of Contents
 
-- [What are AI Agents?](#-what-are-ai-agents)
-- [Creating Agents](#-creating-agents)
-- [Memory Management](#-memory-management)
-- [Configuration](#-configuration)
-- [Return Formats](#-return-formats)
-- [Streaming Responses](#streaming-responses)
-- [Pipeline Integration](#pipeline-integration)
-- [Agents with Document Loaders & RAG](#-agents-with-document-loaders--rag)
-- [Agents with Transformers](#-agents-with-transformers)
-- [Advanced Patterns](#advanced-patterns)
-  - [Sub-Agents (Delegation)](#sub-agents-delegation)
-  - [Event Interception](#event-interception)
-- [Best Practices](#best-practices)
-- [Real-World Examples](#real-world-examples)
+* [What are AI Agents?](agents.md#-what-are-ai-agents)
+* [Creating Agents](agents.md#-creating-agents)
+* [Memory Management](agents.md#-memory-management)
+* [Configuration](agents.md#-configuration)
+* [Return Formats](agents.md#-return-formats)
+* [Streaming Responses](agents.md#streaming-responses)
+* [Pipeline Integration](agents.md#pipeline-integration)
+* [Agents with Document Loaders & RAG](agents.md#-agents-with-document-loaders--rag)
+* [Agents with Transformers](agents.md#-agents-with-transformers)
+* [Advanced Patterns](agents.md#advanced-patterns)
+  * [Sub-Agents (Delegation)](agents.md#sub-agents-delegation)
+  * [Event Interception](agents.md#event-interception)
+* [Best Practices](agents.md#best-practices)
+* [Real-World Examples](agents.md#real-world-examples)
 
 ## 🎯 What are AI Agents?
 
 An agent is more than a simple chat interface - it's an intelligent entity that:
 
-- **Maintains Memory**: Remembers conversation history across interactions
-- **Uses Tools**: Can call functions to access data, perform calculations, or interact with systems
-- **Reasons and Plans**: Determines when and how to use tools to accomplish tasks
-- **Manages State**: Automatically handles message history and context
-- **Integrates with Pipelines**: Works seamlessly in BoxLang AI pipelines
-- **Delegates to Sub-Agents**: Can orchestrate specialized sub-agents for complex tasks
+* **Maintains Memory**: Remembers conversation history across interactions
+* **Uses Tools**: Can call functions to access data, perform calculations, or interact with systems
+* **Reasons and Plans**: Determines when and how to use tools to accomplish tasks
+* **Manages State**: Automatically handles message history and context
+* **Integrates with Pipelines**: Works seamlessly in BoxLang AI pipelines
+* **Delegates to Sub-Agents**: Can orchestrate specialized sub-agents for complex tasks
 
 ### 🏗️ Agent Architecture
 
@@ -1095,13 +1097,13 @@ conversation = researchAgent.getMemoryMessages()
 
 ## Next Steps
 
-- Explore [Memory Systems](./memory.md) for conversation history and context management
-- See [Vector Memory](./vector-memory.md) for semantic search and RAG workflows
-- Learn about [RAG Pipelines](./rag.md) for complete document-to-answer workflows
-- See [Document Loaders](./document-loaders.md) for loading data from various sources
-- Learn about [Transformers](./transformers.md) for data processing in pipelines
-- See [Message Context](../advanced/message-context.md) for injecting security and RAG data into agents
-- See [Custom Memory](../advanced/custom-memory.md) for building custom memory implementations
-- Learn about [Tools](./tools.md) for function calling patterns
-- See [Events](../advanced/events.md) for agent event handling
-- Check [Pipeline Overview](./overview.md) for advanced agent workflows
+* Explore [Memory Systems](memory/) for conversation history and context management
+* See [Vector Memory](vector-memory.md) for semantic search and RAG workflows
+* Learn about [RAG Pipelines](../rag/rag.md) for complete document-to-answer workflows
+* See [Document Loaders](../rag/document-loaders.md) for loading data from various sources
+* Learn about [Transformers](transformers.md) for data processing in pipelines
+* See [Message Context](messages/message-context.md) for injecting security and RAG data into agents
+* See [Custom Memory](../extending-boxlang-ai/custom-memory.md) for building custom memory implementations
+* Learn about [Tools](tools.md) for function calling patterns
+* See [Events](../advanced/events.md) for agent event handling
+* Check [Pipeline Overview](main-components/overview.md) for advanced agent workflows

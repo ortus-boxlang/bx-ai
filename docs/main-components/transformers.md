@@ -1,39 +1,41 @@
 ---
-description: "The guide to data transformation between AI pipeline steps using built-in return formats and custom transformers."
+description: >-
+  The guide to data transformation between AI pipeline steps using built-in
+  return formats and custom transformers.
 icon: arrow-right-arrow-left
 ---
 
-# 🔄 Transformers & Return Formats
+# Transformers & Return Formats
 
 Transform and process data between pipeline steps. Learn about built-in transformers (return formats) and custom data transformations.
 
 ## 📖 Table of Contents
 
-- [Built-In Transformers: Return Formats](#-built-in-transformers-return-formats)
-  - [Transformation Pipeline](#-transformation-pipeline)
-  - [Available Return Formats](#-available-return-formats)
-  - [Single Format](#single-format-default-for-functions)
-  - [All Format](#all-format)
-  - [Raw Format](#raw-format-default-for-pipelines)
-  - [JSON Format](#json-format-new)
-  - [XML Format](#xml-format-new)
-  - [Using Return Formats in Pipelines](#using-return-formats-in-pipelines)
-- [Core Built-In Transformers](#-core-built-in-transformers)
-  - [CodeExtractorTransformer](#codeextractortransformer)
-  - [JSONExtractorTransformer](#jsonextractortransformer)
-  - [XMLExtractorTransformer](#xmlextractortransformer)
-  - [TextCleanerTransformer](#textcleanertransformer)
-  - [AiTransformRunnable](#aitransformrunnable)
-- [Custom Transformers](#-custom-transformers)
-  - [Custom Transform Flow](#-custom-transform-flow)
-  - [Inline Transform](#inline-transform)
-  - [Using aiTransform()](#using-aitransform)
-- [Advanced Patterns](#advanced-patterns)
-  - [Chaining Transforms](#-chaining-transforms)
-  - [Combining Return Formats with Custom Transforms](#combining-return-formats-with-custom-transforms)
-  - [Transform Library](#transform-library)
-- [Best Practices](#best-practices)
-- [Building Your Own Transformers](#-building-your-own-transformers)
+* [Built-In Transformers: Return Formats](transformers.md#-built-in-transformers-return-formats)
+  * [Transformation Pipeline](transformers.md#-transformation-pipeline)
+  * [Available Return Formats](transformers.md#-available-return-formats)
+  * [Single Format](transformers.md#single-format-default-for-functions)
+  * [All Format](transformers.md#all-format)
+  * [Raw Format](transformers.md#raw-format-default-for-pipelines)
+  * [JSON Format](transformers.md#json-format-new)
+  * [XML Format](transformers.md#xml-format-new)
+  * [Using Return Formats in Pipelines](transformers.md#using-return-formats-in-pipelines)
+* [Core Built-In Transformers](transformers.md#-core-built-in-transformers)
+  * [CodeExtractorTransformer](transformers.md#codeextractortransformer)
+  * [JSONExtractorTransformer](transformers.md#jsonextractortransformer)
+  * [XMLExtractorTransformer](transformers.md#xmlextractortransformer)
+  * [TextCleanerTransformer](transformers.md#textcleanertransformer)
+  * [AiTransformRunnable](transformers.md#aitransformrunnable)
+* [Custom Transformers](transformers.md#-custom-transformers)
+  * [Custom Transform Flow](transformers.md#-custom-transform-flow)
+  * [Inline Transform](transformers.md#inline-transform)
+  * [Using aiTransform()](transformers.md#using-aitransform)
+* [Advanced Patterns](transformers.md#advanced-patterns)
+  * [Chaining Transforms](transformers.md#-chaining-transforms)
+  * [Combining Return Formats with Custom Transforms](transformers.md#combining-return-formats-with-custom-transforms)
+  * [Transform Library](transformers.md#transform-library)
+* [Best Practices](transformers.md#best-practices)
+* [Building Your Own Transformers](transformers.md#-building-your-own-transformers)
 
 ## 🎯 Built-In Transformers: Return Formats
 
@@ -98,13 +100,13 @@ graph TB
     style X fill:#D0021B
 ```
 
-| Format | Description | Returns | Use Case |
-|--------|-------------|---------|----------|
-| `single` | Extract content only | String | Simple text responses |
-| `all` | Full messages array | Array | Conversation history |
-| `raw` | Complete API response | Struct | Debugging, metadata |
-| `json` | Parse JSON response | Any | Structured data |
-| `xml` | Parse XML response | XML Object | XML documents |
+| Format   | Description           | Returns    | Use Case              |
+| -------- | --------------------- | ---------- | --------------------- |
+| `single` | Extract content only  | String     | Simple text responses |
+| `all`    | Full messages array   | Array      | Conversation history  |
+| `raw`    | Complete API response | Struct     | Debugging, metadata   |
+| `json`   | Parse JSON response   | Any        | Structured data       |
+| `xml`    | Parse XML response    | XML Object | XML documents         |
 
 ### Single Format (Default for Functions)
 
@@ -119,9 +121,10 @@ println( result )  // "BoxLang is a modern dynamic JVM language..."
 ```
 
 **Perfect for:**
-- Simple questions
-- Text generation
-- When you only need the answer
+
+* Simple questions
+* Text generation
+* When you only need the answer
 
 ### All Format
 
@@ -150,9 +153,10 @@ println( result )
 ```
 
 **Perfect for:**
-- Conversation history
-- Multi-turn chats
-- Analyzing conversation flow
+
+* Conversation history
+* Multi-turn chats
+* Analyzing conversation flow
 
 ### Raw Format (Default for Pipelines)
 
@@ -190,10 +194,11 @@ println( result )
 ```
 
 **Perfect for:**
-- Token usage tracking
-- Debugging
-- Custom response processing
-- Accessing metadata
+
+* Token usage tracking
+* Debugging
+* Custom response processing
+* Accessing metadata
 
 ### JSON Format (NEW!)
 
@@ -216,10 +221,11 @@ println( "Age: #result.age#" )
 ```
 
 **Perfect for:**
-- Structured data extraction
-- API-like responses
-- Data transformation
-- Form generation
+
+* Structured data extraction
+* API-like responses
+* Data transformation
+* Form generation
 
 **Advanced JSON Usage:**
 
@@ -261,10 +267,11 @@ println( result.xmlRoot.person.age.xmlText )
 ```
 
 **Perfect for:**
-- XML document generation
-- Legacy system integration
-- RSS/ATOM feeds
-- SOAP responses
+
+* XML document generation
+* Legacy system integration
+* RSS/ATOM feeds
+* SOAP responses
 
 **Advanced XML Usage:**
 
@@ -381,29 +388,30 @@ BoxLang AI ships with several powerful built-in transformers ready to use in you
 Extracts code blocks from AI responses, particularly useful when AI returns code embedded in markdown formatting.
 
 **Features:**
-- Extract code from markdown code blocks (` ```language ... ``` `)
-- Filter by programming language (or extract all)
-- Extract single or multiple code blocks
-- Include metadata (language, line numbers, etc.)
-- Strip comments and normalize formatting
-- Strict mode for error handling
+
+* Extract code from markdown code blocks (` ```language ... ``` `)
+* Filter by programming language (or extract all)
+* Extract single or multiple code blocks
+* Include metadata (language, line numbers, etc.)
+* Strip comments and normalize formatting
+* Strict mode for error handling
 
 **Configuration Options:**
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `language` | string | `"all"` | Filter by language (`"all"`, `"python"`, `"java"`, etc.) |
-| `multiple` | boolean | `false` | Extract all blocks (`true`) or first only (`false`) |
-| `returnMetadata` | boolean | `false` | Return metadata with code or just code string |
-| `stripComments` | boolean | `false` | Remove comments from extracted code |
-| `trim` | boolean | `true` | Trim whitespace from code blocks |
-| `stripMarkdown` | boolean | `true` | Look for markdown code blocks |
-| `strictMode` | boolean | `false` | Throw error if no code found |
-| `defaultLanguage` | string | `"text"` | Default language when not specified |
+| Option            | Type    | Default  | Description                                              |
+| ----------------- | ------- | -------- | -------------------------------------------------------- |
+| `language`        | string  | `"all"`  | Filter by language (`"all"`, `"python"`, `"java"`, etc.) |
+| `multiple`        | boolean | `false`  | Extract all blocks (`true`) or first only (`false`)      |
+| `returnMetadata`  | boolean | `false`  | Return metadata with code or just code string            |
+| `stripComments`   | boolean | `false`  | Remove comments from extracted code                      |
+| `trim`            | boolean | `true`   | Trim whitespace from code blocks                         |
+| `stripMarkdown`   | boolean | `true`   | Look for markdown code blocks                            |
+| `strictMode`      | boolean | `false`  | Throw error if no code found                             |
+| `defaultLanguage` | string  | `"text"` | Default language when not specified                      |
 
 **Basic Usage:**
 
-```javascript
+````javascript
 import bxModules.bxai.models.transformers.CodeExtractorTransformer;
 
 // Create extractor for Python code
@@ -423,15 +431,13 @@ def add_numbers(a, b):
 
 result = add_numbers(5, 3)
 print(result)
-```
+````
 
-Hope this helps!
-""";
+Hope this helps! """;
 
-// Extract just the Python code
-code = extractor.transform( aiResponse );
-// Returns: "def add_numbers(a, b):\n    return a + b\n\nresult = add_numbers(5, 3)\nprint(result)"
-```
+// Extract just the Python code code = extractor.transform( aiResponse ); // Returns: "def add\_numbers(a, b):\n return a + b\n\nresult = add\_numbers(5, 3)\nprint(result)"
+
+````
 
 **Pipeline Integration:**
 
@@ -449,11 +455,11 @@ pipeline = aiMessage()
 
 pythonCode = pipeline.run();
 // Returns clean Python code ready to execute
-```
+````
 
 **Extract Multiple Blocks:**
 
-```javascript
+````javascript
 extractor = new CodeExtractorTransformer({
     language: "all",
     multiple: true,
@@ -464,20 +470,19 @@ multiCodeResponse = """
 Python example:
 ```python
 print("Hello")
-```
+````
 
 JavaScript example:
+
 ```javascript
 console.log("Hello");
 ```
+
 """;
 
-blocks = extractor.transform( multiCodeResponse );
-// Returns: [
-//   { language: "python", code: 'print("Hello")' },
-//   { language: "javascript", code: 'console.log("Hello");' }
-// ]
-```
+blocks = extractor.transform( multiCodeResponse ); // Returns: \[ // { language: "python", code: 'print("Hello")' }, // { language: "javascript", code: 'console.log("Hello");' } // ]
+
+````
 
 **Use Cases:**
 - ✅ Extracting code from AI code generation responses
@@ -530,15 +535,13 @@ Here's the data you requested:
     "age": 30,
     "email": "john@example.com"
 }
-```
+````
 
-Does this help?
-""";
+Does this help? """;
 
-// Extract and parse JSON
-data = extractor.transform( aiResponse );
-// Returns: { name: "John Doe", age: 30, email: "john@example.com" }
-```
+// Extract and parse JSON data = extractor.transform( aiResponse ); // Returns: { name: "John Doe", age: 30, email: "john@example.com" }
+
+````
 
 **Pipeline Integration:**
 
@@ -553,11 +556,11 @@ pipeline = aiMessage()
 
 userData = pipeline.run({ userId: 123 });
 // Returns parsed struct, ready to use
-```
+````
 
 **Path Extraction:**
 
-```javascript
+````javascript
 extractor = new JSONExtractorTransformer({
     extractPath: "data.users"
 });
@@ -573,12 +576,13 @@ response = """
         ]
     }
 }
-```
+````
+
 """;
 
-users = extractor.transform( response );
-// Returns: [ { id: 1, name: "Alice" }, { id: 2, name: "Bob" } ]
-```
+users = extractor.transform( response ); // Returns: \[ { id: 1, name: "Alice" }, { id: 2, name: "Bob" } ]
+
+````
 
 **Schema Validation:**
 
@@ -596,41 +600,43 @@ extractor = new JSONExtractorTransformer({
 });
 
 // Will throw error if JSON doesn't match schema (when strictMode: true)
-```
+````
 
 **Use Cases:**
-- ✅ Extracting structured data from AI responses
-- ✅ Building form auto-population from AI
-- ✅ API response parsing
-- ✅ Configuration generation
 
----
+* ✅ Extracting structured data from AI responses
+* ✅ Building form auto-population from AI
+* ✅ API response parsing
+* ✅ Configuration generation
+
+***
 
 ### XMLExtractorTransformer
 
 Extracts and validates XML from AI responses, with support for XPath queries and case-sensitive parsing.
 
 **Features:**
-- Extract XML from markdown code blocks
-- Find XML in mixed text (looks for `<?xml` or root tags)
-- Parse and validate XML structure
-- XPath queries for specific elements
-- Case-sensitive or case-insensitive parsing
-- Strict mode for error handling
+
+* Extract XML from markdown code blocks
+* Find XML in mixed text (looks for `<?xml` or root tags)
+* Parse and validate XML structure
+* XPath queries for specific elements
+* Case-sensitive or case-insensitive parsing
+* Strict mode for error handling
 
 **Configuration Options:**
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `stripMarkdown` | boolean | `true` | Remove markdown code block formatting |
-| `strictMode` | boolean | `false` | Throw error if XML invalid or not found |
-| `xPath` | string | `""` | XPath query to extract specific elements |
-| `returnRaw` | boolean | `false` | Return raw XML string instead of parsed |
-| `caseSensitive` | boolean | `true` | Case-sensitive parsing |
+| Option          | Type    | Default | Description                              |
+| --------------- | ------- | ------- | ---------------------------------------- |
+| `stripMarkdown` | boolean | `true`  | Remove markdown code block formatting    |
+| `strictMode`    | boolean | `false` | Throw error if XML invalid or not found  |
+| `xPath`         | string  | `""`    | XPath query to extract specific elements |
+| `returnRaw`     | boolean | `false` | Return raw XML string instead of parsed  |
+| `caseSensitive` | boolean | `true`  | Case-sensitive parsing                   |
 
 **Basic Usage:**
 
-```javascript
+````javascript
 import bxModules.bxai.models.transformers.XMLExtractorTransformer;
 
 // Create extractor
@@ -650,13 +656,13 @@ Here's the config:
         <port>5432</port>
     </database>
 </config>
-```
+````
+
 """;
 
-// Extract and parse XML
-config = extractor.transform( aiResponse );
-// Returns parsed XML document object
-```
+// Extract and parse XML config = extractor.transform( aiResponse ); // Returns parsed XML document object
+
+````
 
 **Pipeline Integration:**
 
@@ -671,11 +677,11 @@ pipeline = aiMessage()
 
 xmlConfig = pipeline.run({ environment: "production" });
 // Returns parsed XML, ready to process
-```
+````
 
 **XPath Queries:**
 
-```javascript
+````javascript
 extractor = new XMLExtractorTransformer({
     xPath: "//database/host"
 });
@@ -688,12 +694,13 @@ response = """
         <port>5432</port>
     </database>
 </config>
-```
+````
+
 """;
 
-hosts = extractor.transform( response );
-// Returns array of matching nodes: [<host>localhost</host>]
-```
+hosts = extractor.transform( response ); // Returns array of matching nodes: \[localhost]
+
+````
 
 **Use Cases:**
 - ✅ Extracting XML configs from AI responses
@@ -738,7 +745,7 @@ pipeline = aiMessage()
 
 result = pipeline.run({ rawText: "<p>Hello   World!</p>" });
 // "Cleaned: Hello World!"
-```
+````
 
 **Configuration Options:**
 
@@ -757,10 +764,11 @@ cleaner = new TextCleanerTransformer({
 A wrapper class that converts any lambda function into a pipeline-compatible transformer. This is what `aiTransform()` BIF creates internally.
 
 **Features:**
-- Converts functions to IAiRunnable interface
-- Fluent API support
-- Pipeline integration
-- Named transformers
+
+* Converts functions to IAiRunnable interface
+* Fluent API support
+* Pipeline integration
+* Named transformers
 
 **Usage:**
 
@@ -1042,7 +1050,7 @@ person = pipeline.run( { name: "Alice", age: 30 } )
 
 ### Extract Code
 
-```java
+````java
 codeExtractor = aiTransform( response => {
     content = response.content ?: ""
     // Extract from markdown code blocks
@@ -1054,7 +1062,7 @@ pipeline = aiMessage()
     .user( "Write a BoxLang function to ${task}" )
     .toDefaultModel()
     .to( codeExtractor )
-```
+````
 
 ## ⛓️ Chaining Transforms
 
@@ -1250,7 +1258,7 @@ pipeline = aiMessage()
 
 ### SQL Generator
 
-```java
+````java
 sqlTransform = aiTransform( response => {
     sql = response.content
         .reReplace( "(?s).*```sql\n(.*?)```.*", "\1", "one" )
@@ -1267,7 +1275,7 @@ pipeline = aiMessage()
     .user( "Write SQL to ${task}" )
     .toDefaultModel()
     .to( sqlTransform )
-```
+````
 
 ### Response Cache
 
@@ -1365,7 +1373,7 @@ aggregator = aiTransform( data => {
 
 ## Transform Library
 
-```java
+````java
 class {
     function extractContent() {
         return aiTransform( r => r.content )
@@ -1416,7 +1424,7 @@ pipeline = aiMessage()
     .to( lib.extractContent() )
     .to( lib.trim() )
     .to( lib.wordCount() )
-```
+````
 
 ## TransformAndRun Shortcut
 
@@ -1457,23 +1465,25 @@ assert( result == "HELLO" )
 Want to create custom transformers for your specific needs? BoxLang AI provides a complete framework for building reusable, pipeline-compatible transformers.
 
 **Learn More:**
-- **[Building Custom Transformers](../advanced/custom-transformer.md)** - Complete guide with examples:
-  - Implementing the ITransformer interface
-  - Extending BaseTransformer
-  - Real-world examples (JSONSchemaTransformer, code extractor, sentiment analyzer)
-  - Pipeline integration patterns
-  - Testing and best practices
+
+* [**Building Custom Transformers**](../extending-boxlang-ai/custom-transformer.md) - Complete guide with examples:
+  * Implementing the ITransformer interface
+  * Extending BaseTransformer
+  * Real-world examples (JSONSchemaTransformer, code extractor, sentiment analyzer)
+  * Pipeline integration patterns
+  * Testing and best practices
 
 **Common Custom Transformer Use Cases:**
-- 🔍 **Data Validation** - Validate and sanitize AI responses
-- 🔄 **Format Conversion** - Convert between JSON, XML, and custom formats
-- 📊 **Content Extraction** - Parse specific data from responses (code, prices, entities)
-- 🧮 **Business Logic** - Apply domain-specific rules and calculations
-- 📝 **Logging & Monitoring** - Track and audit data flow through pipelines
+
+* 🔍 **Data Validation** - Validate and sanitize AI responses
+* 🔄 **Format Conversion** - Convert between JSON, XML, and custom formats
+* 📊 **Content Extraction** - Parse specific data from responses (code, prices, entities)
+* 🧮 **Business Logic** - Apply domain-specific rules and calculations
+* 📝 **Logging & Monitoring** - Track and audit data flow through pipelines
 
 ## Next Steps
 
-- **[Building Custom Transformers](../advanced/custom-transformer.md)** - Create your own transformers
-- **[Pipeline Streaming](streaming.md)** - Stream through transforms
-- **[Working with Models](models.md)** - Model output transforms
-- **[Pipeline Overview](overview.md)** - Complete pipeline guide
+* [**Building Custom Transformers**](../extending-boxlang-ai/custom-transformer.md) - Create your own transformers
+* [**Pipeline Streaming**](pipelines/streaming.md) - Stream through transforms
+* [**Working with Models**](models.md) - Model output transforms
+* [**Pipeline Overview**](main-components/overview.md) - Complete pipeline guide

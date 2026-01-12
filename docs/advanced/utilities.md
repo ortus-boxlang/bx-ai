@@ -41,11 +41,11 @@ graph TB
 
 ## 📋 Table of Contents
 
-- [Text Chunking](#text-chunking)
-- [Token Counting](#token-counting)
-- [Combining Utilities](#combining-utilities)
-- [Tips and Tricks](#tips-and-tricks)
-- [Object Population](#object-population)
+* [Text Chunking](utilities.md#text-chunking)
+* [Token Counting](utilities.md#token-counting)
+* [Combining Utilities](utilities.md#combining-utilities)
+* [Tips and Tricks](utilities.md#tips-and-tricks)
+* [Object Population](utilities.md#object-population)
 
 ## 📄 Text Chunking
 
@@ -122,12 +122,14 @@ chunks = aiChunk( text, { strategy: "recursive" } )
 ```
 
 **Best for:**
-- Natural language documents
-- Articles, blog posts, documentation
-- Preserving semantic meaning
-- General-purpose text processing
+
+* Natural language documents
+* Articles, blog posts, documentation
+* Preserving semantic meaning
+* General-purpose text processing
 
 **How it works:**
+
 1. Tries to split by paragraphs (double newlines)
 2. If paragraphs too large, splits by sentences (. ! ?)
 3. If sentences too large, splits by words
@@ -145,9 +147,10 @@ chunks = aiChunk( text, {
 ```
 
 **Best for:**
-- Consistent chunk sizes
-- Code or structured text
-- Maximum control over size
+
+* Consistent chunk sizes
+* Code or structured text
+* Maximum control over size
 
 #### Words
 
@@ -161,9 +164,10 @@ chunks = aiChunk( text, {
 ```
 
 **Best for:**
-- Preserving complete words
-- Avoiding mid-word breaks
-- Language processing
+
+* Preserving complete words
+* Avoiding mid-word breaks
+* Language processing
 
 #### Sentences
 
@@ -177,9 +181,10 @@ chunks = aiChunk( text, {
 ```
 
 **Best for:**
-- Preserving complete thoughts
-- Question answering systems
-- Semantic search preparation
+
+* Preserving complete thoughts
+* Question answering systems
+* Semantic search preparation
 
 #### Paragraphs
 
@@ -193,9 +198,10 @@ chunks = aiChunk( text, {
 ```
 
 **Best for:**
-- Maintaining topic coherence
-- Document summarization
-- Large context windows
+
+* Maintaining topic coherence
+* Document summarization
+* Large context windows
 
 ### Understanding Overlap
 
@@ -213,10 +219,11 @@ chunks = aiChunk( text, {
 ```
 
 **Why use overlap?**
-- Prevents losing context at chunk boundaries
-- Improves semantic search accuracy
-- Better for question answering across chunks
-- Helps AI models maintain coherence
+
+* Prevents losing context at chunk boundaries
+* Improves semantic search accuracy
+* Better for question answering across chunks
+* Helps AI models maintain coherence
 
 **Recommended overlap:** 10-20% of chunk size
 
@@ -336,7 +343,7 @@ println( "Estimated tokens: #tokens#" )  // ~7 tokens
 
 #### Estimation Methods
 
-##### Characters Method (Default)
+**Characters Method (Default)**
 
 Uses the rule: **1 token ≈ 4 characters** (OpenAI standard):
 
@@ -345,12 +352,13 @@ tokens = aiTokens( text, { method: "characters" } )
 ```
 
 **Best for:**
-- English text
-- General-purpose estimation
-- Quick calculations
-- Conservative estimates
 
-##### Words Method
+* English text
+* General-purpose estimation
+* Quick calculations
+* Conservative estimates
+
+**Words Method**
 
 Uses the multiplier: **1 token ≈ 1.3 words**:
 
@@ -359,9 +367,10 @@ tokens = aiTokens( text, { method: "words" } )
 ```
 
 **Best for:**
-- Non-English text
-- Technical content
-- More accurate word-based languages
+
+* Non-English text
+* Technical content
+* More accurate word-based languages
 
 #### Detailed Statistics
 
@@ -550,50 +559,51 @@ println( "Created #chunks.len()# chunks of ~1000 tokens each" )
 
 Different content types have different character-to-token ratios:
 
-| Content Type | Characters per Token | Example |
-|--------------|---------------------|---------|
-| English text | ~4 | "Hello world" = 3 tokens |
-| Code | ~3.5 | `function foo()` = 4 tokens |
-| JSON | ~3 | `{"key":"value"}` = 6 tokens |
-| Technical terms | ~5 | "Parameterization" = 4 tokens |
+| Content Type    | Characters per Token | Example                       |
+| --------------- | -------------------- | ----------------------------- |
+| English text    | \~4                  | "Hello world" = 3 tokens      |
+| Code            | \~3.5                | `function foo()` = 4 tokens   |
+| JSON            | \~3                  | `{"key":"value"}` = 6 tokens  |
+| Technical terms | \~5                  | "Parameterization" = 4 tokens |
 
 ### Best Practices
 
-1. **Always estimate before large requests**
-   ```java
-   tokens = aiTokens( prompt )
-   if ( tokens > 3000 ) {
-       // Consider chunking
-   }
-   ```
+1.  **Always estimate before large requests**
 
-2. **Use detailed stats for optimization**
-   ```java
-   stats = aiTokens( text, { detailed: true } )
-   avgTokensPerWord = stats.tokens / stats.words  // Your actual ratio
-   ```
+    ```java
+    tokens = aiTokens( prompt )
+    if ( tokens > 3000 ) {
+        // Consider chunking
+    }
+    ```
+2.  **Use detailed stats for optimization**
 
-3. **Add safety margins**
-   ```java
-   estimatedTokens = aiTokens( text )
-   maxAllowed = 4000
-   if ( estimatedTokens > maxAllowed * 0.9 ) {  // 90% threshold
-       println( "Warning: Approaching token limit" )
-   }
-   ```
+    ```java
+    stats = aiTokens( text, { detailed: true } )
+    avgTokensPerWord = stats.tokens / stats.words  // Your actual ratio
+    ```
+3.  **Add safety margins**
 
-4. **Cache token counts for repeated use**
-   ```java
-   // Cache expensive calculations
-   tokenCache = {}
-   function getTokenCount( text ) {
-       hash = hash( text )
-       if ( !tokenCache.keyExists( hash ) ) {
-           tokenCache[ hash ] = aiTokens( text )
-       }
-       return tokenCache[ hash ]
-   }
-   ```
+    ```java
+    estimatedTokens = aiTokens( text )
+    maxAllowed = 4000
+    if ( estimatedTokens > maxAllowed * 0.9 ) {  // 90% threshold
+        println( "Warning: Approaching token limit" )
+    }
+    ```
+4.  **Cache token counts for repeated use**
+
+    ```java
+    // Cache expensive calculations
+    tokenCache = {}
+    function getTokenCount( text ) {
+        hash = hash( text )
+        if ( !tokenCache.keyExists( hash ) ) {
+            tokenCache[ hash ] = aiTokens( text )
+        }
+        return tokenCache[ hash ]
+    }
+    ```
 
 ## Combining Utilities
 
@@ -950,31 +960,34 @@ try {
 
 ### Comparison: aiPopulate vs Structured Output
 
-| Feature | `aiPopulate()` | `.structuredOutput()` |
-|---------|----------------|----------------------|
-| Purpose | Manual population | AI extraction |
-| Input | JSON/struct data | Natural language prompt |
-| AI Call | ❌ No (instant) | ✅ Yes (costs tokens) |
-| Use Case | Testing, caching, conversion | Live AI extraction |
-| Type Safety | ✅ Yes | ✅ Yes |
-| Validation | ✅ Yes | ✅ Yes |
-| Best For | Known data, offline processing | Unknown data, AI parsing |
+| Feature     | `aiPopulate()`                 | `.structuredOutput()`    |
+| ----------- | ------------------------------ | ------------------------ |
+| Purpose     | Manual population              | AI extraction            |
+| Input       | JSON/struct data               | Natural language prompt  |
+| AI Call     | ❌ No (instant)                 | ✅ Yes (costs tokens)     |
+| Use Case    | Testing, caching, conversion   | Live AI extraction       |
+| Type Safety | ✅ Yes                          | ✅ Yes                    |
+| Validation  | ✅ Yes                          | ✅ Yes                    |
+| Best For    | Known data, offline processing | Unknown data, AI parsing |
 
 **Use `aiPopulate()` when:**
-- Writing tests with mock data
-- Working with cached responses
-- Converting existing JSON/structs to typed objects
-- No AI interpretation needed
+
+* Writing tests with mock data
+* Working with cached responses
+* Converting existing JSON/structs to typed objects
+* No AI interpretation needed
 
 **Use `.structuredOutput()` when:**
-- Extracting data from natural language
-- Need AI to understand and parse content
-- Dealing with unstructured text
-- Real-time data extraction
+
+* Extracting data from natural language
+* Need AI to understand and parse content
+* Dealing with unstructured text
+* Real-time data extraction
 
 ### Learn More
 
 For complete details on structured output and object population:
-- **[Structured Output Guide](../chatting/structured-output.md)** - Full documentation
-- **[Advanced Chatting](../chatting/advanced-chatting.md#structured-output)** - Integration examples
-- **[Course Lesson 12](../../course/lesson-12-structured-output/)** - Interactive learning
+
+* [**Structured Output Guide**](../main-components/chatting/structured-output.md) - Full documentation
+* [**Advanced Chatting**](../main-components/chatting/advanced-chatting.md#structured-output) - Integration examples
+* [**Course Lesson 12**](../../course/lesson-12-structured-output/) - Interactive learning

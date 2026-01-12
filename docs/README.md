@@ -1,4 +1,8 @@
-# ⚡ BoxLang AI Module Documentation
+---
+description: The official AI library for the BoxLang JVM dynamic language.
+---
+
+# 🏠 Introduction
 
 Welcome to the **BoxLang AI Module** - your unified gateway to integrating AI capabilities into BoxLang applications. This module provides an elegant, easy-to-use API for interacting with multiple AI providers, from simple chat requests to complex multi-agent systems.
 
@@ -46,53 +50,53 @@ graph TB
 
 ### ✨ Key Features
 
-- 🌐 **Multi-Provider Support**: Work with OpenAI, Claude, Gemini, Grok, Groq, DeepSeek, Ollama, and more
-- 🔄 **Unified API**: One consistent interface across all providers
-- 👥 **Multi-Tenant Memory**: Enterprise-grade isolation with userId and conversationId across all 20 memory types
-- 🎨 **Multimodal Content**: Process images, audio, video, and documents alongside text
-- 🏠 **Local AI Support**: Run models locally with Ollama for privacy and offline use
-- 🔗 **AI Pipelines**: Chain operations together for complex multi-step workflows
-- ⚡ **Streaming Responses**: Get real-time responses as they're generated
-- 🛠️ **Tool Integration**: Enable AI to call functions and access real-time data
-- 🚀 **Async Support**: Non-blocking operations for better performance
-- 📝 **Template System**: Create reusable prompts with dynamic placeholders
-- 🤖 **AI Agents**: Autonomous agents with memory, tools, and reasoning
-- 📄 **Document Loaders**: Load and process various file formats for RAG
-- 🧠 **Vector Memory**: Semantic search with 10+ vector database integrations
+* 🌐 **Multi-Provider Support**: Work with OpenAI, Claude, Gemini, Grok, Groq, DeepSeek, Ollama, and more
+* 🔄 **Unified API**: One consistent interface across all providers
+* 👥 **Multi-Tenant Memory**: Enterprise-grade isolation with userId and conversationId across all 20 memory types
+* 🎨 **Multimodal Content**: Process images, audio, video, and documents alongside text
+* 🏠 **Local AI Support**: Run models locally with Ollama for privacy and offline use
+* 🔗 **AI Pipelines**: Chain operations together for complex multi-step workflows
+* ⚡ **Streaming Responses**: Get real-time responses as they're generated
+* 🛠️ **Tool Integration**: Enable AI to call functions and access real-time data
+* 🚀 **Async Support**: Non-blocking operations for better performance
+* 📝 **Template System**: Create reusable prompts with dynamic placeholders
+* 🤖 **AI Agents**: Autonomous agents with memory, tools, and reasoning
+* 📄 **Document Loaders**: Load and process various file formats for RAG
+* 🧠 **Vector Memory**: Semantic search with 10+ vector database integrations
 
 ### Supported Providers
 
-BoxLang supports out of the box with a variety of AI providers.  You can also create custom providers by following our [Custom Provider Guide](advanced/custom-providers.md).
+BoxLang supports out of the box with a variety of AI providers. You can also create custom providers by following our [Custom Provider Guide](extending-boxlang-ai/custom-providers.md).
 
-| Provider | Type | Best For |
-|----------|------|----------|
-| **OpenAI** | Cloud | General purpose, GPT-5, etc |
-| **Claude** | Cloud | Long context, detailed analysis |
-| **Gemini** | Cloud | Google integration, multimodal |
-| **Grok** | Cloud | Real-time data, Twitter integration |
-| **HuggingFace** | Cloud | Open-source models, community-driven |
-| **Groq** | Cloud | Ultra-fast inference, LPU architecture |
-| **DeepSeek** | Cloud | Code generation, reasoning |
-| **Ollama** | Local | Privacy, offline use, no API costs |
-| **OpenRouter** | Gateway | Access multiple models through one API |
-| **Perplexity** | Cloud | Research, citations, factual answers |
-| **Voyage** | Cloud | State-of-the-art embeddings, specialized for RAG |
-| **Cohere** | Cloud | Embeddings, multilingual, chat, tool calling |
+| Provider        | Type    | Best For                                         |
+| --------------- | ------- | ------------------------------------------------ |
+| **OpenAI**      | Cloud   | General purpose, GPT-5, etc                      |
+| **Claude**      | Cloud   | Long context, detailed analysis                  |
+| **Gemini**      | Cloud   | Google integration, multimodal                   |
+| **Grok**        | Cloud   | Real-time data, Twitter integration              |
+| **HuggingFace** | Cloud   | Open-source models, community-driven             |
+| **Groq**        | Cloud   | Ultra-fast inference, LPU architecture           |
+| **DeepSeek**    | Cloud   | Code generation, reasoning                       |
+| **Ollama**      | Local   | Privacy, offline use, no API costs               |
+| **OpenRouter**  | Gateway | Access multiple models through one API           |
+| **Perplexity**  | Cloud   | Research, citations, factual answers             |
+| **Voyage**      | Cloud   | State-of-the-art embeddings, specialized for RAG |
+| **Cohere**      | Cloud   | Embeddings, multilingual, chat, tool calling     |
 
 ### 🚀 Use Cases
 
-- 💬 **Chatbots**: Build conversational interfaces with memory and context
-- ✍️ **Content Generation**: Create articles, documentation, marketing copy
-- 💻 **Code Assistance**: Generate, review, and explain code
-- 📊 **Data Analysis**: Extract insights from text and structured data
-- 📄 **Document Processing**: Analyze PDFs, contracts, and reports
-- 🎥 **Media Analysis**: Process images, audio, and video content
-- 🌍 **Translations**: Multi-language content translation
-- 📋 **Summarization**: Condense long documents intelligently
-- ❓ **Question Answering**: Build knowledge bases and FAQs with RAG
-- 🔄 **Custom Workflows**: Multi-step AI processing pipelines
+* 💬 **Chatbots**: Build conversational interfaces with memory and context
+* ✍️ **Content Generation**: Create articles, documentation, marketing copy
+* 💻 **Code Assistance**: Generate, review, and explain code
+* 📊 **Data Analysis**: Extract insights from text and structured data
+* 📄 **Document Processing**: Analyze PDFs, contracts, and reports
+* 🎥 **Media Analysis**: Process images, audio, and video content
+* 🌍 **Translations**: Multi-language content translation
+* 📋 **Summarization**: Condense long documents intelligently
+* ❓ **Question Answering**: Build knowledge bases and FAQs with RAG
+* 🔄 **Custom Workflows**: Multi-step AI processing pipelines
 
----
+***
 
 ## 📖 Documentation Structure
 
@@ -112,199 +116,162 @@ Build complex workflows with agents, memory, and tools
 
 Deep dives into specialized features and customization
 
----
+***
 
 ## 📋 Table of Contents
 
 ### 🎓 Getting Started
 
-Get started with BoxLang AI quickly and easily: [Overview](getting-started/README.md)
+Get started with BoxLang AI quickly and easily: [Overview](getting-started/getting-started.md)
 
-**🎓 [AI Concepts](getting-started/concepts.md)**
-Overview of AI concepts, terminology, and architecture.
+**🎓** [**AI Concepts**](getting-started/concepts.md) Overview of AI concepts, terminology, and architecture.
 
-**📦 [Installation](getting-started/installation.md)**
-Install the BoxLang AI module in minutes.
+**📦** [**Installation**](getting-started/installation/) Install the BoxLang AI module in minutes.
 
-**🧩 [Provider Setup & Configuration](getting-started/provider-setup.md)**
-Detailed setup for all 12+ AI providers with API keys, models, and best practices.
+**🧩** [**Provider Setup & Configuration**](getting-started/installation/provider-setup.md) Detailed setup for all 12+ AI providers with API keys, models, and best practices.
 
-**⚡ [Quick Start Guide](getting-started/quickstart.md)**
-Get up and running in minutes with simple examples and your first AI chat.
+**⚡** [**Quick Start Guide**](getting-started/quickstart.md) Get up and running in minutes with simple examples and your first AI chat.
 
-**🙋[FAQ](getting-started/faq.md)**
-Common questions and troubleshooting tips for BoxLang AI.
+**🙋**[**FAQ**](readme/faq.md) Common questions and troubleshooting tips for BoxLang AI.
 
----
+***
 
 ### 💬 Simple AI Interactions
 
-Get started quickly with BoxLang AI's core chat capabilities: [Overview](chatting/README.md)
+Get started quickly with BoxLang AI's core chat capabilities: [Overview](main-components/chatting/)
 
-**🗣️ [Basic Chatting](chatting/basic-chatting.md)**
-Simple question-answer interactions, parameters, and provider switching.
+**🗣️** [**Basic Chatting**](main-components/chatting/basic-chatting.md) Simple question-answer interactions, parameters, and provider switching.
 
-**🎯 [Advanced Chatting](chatting/advanced-chatting.md)**
-Multi-message conversations, AI tools, async requests, and streaming responses.
+**🎯** [**Advanced Chatting**](main-components/chatting/advanced-chatting.md) Multi-message conversations, AI tools, async requests, and streaming responses.
 
-**⚙️ [Service-Level Chatting](chatting/service-chatting.md)**
-Direct service control, custom requests, headers, and managing multiple providers.
+**⚙️** [**Service-Level Chatting**](main-components/chatting/service-chatting.md) Direct service control, custom requests, headers, and managing multiple providers.
 
-**📦 [Structured Output](chatting/structured-output.md)**
-Extract type-safe, validated data from AI responses using classes, structs, or schemas.
+**📦** [**Structured Output**](main-components/chatting/structured-output.md) Extract type-safe, validated data from AI responses using classes, structs, or schemas.
 
----
+***
 
 ### 🔗 AI Pipelines & Components
 
-**✈️ [Main Components Overview](main-components/README.md)**
-Core concepts of AI pipelines, composability, and building workflows.
+**✈️** [**Main Components Overview**](main-components/main-components/) Core concepts of AI pipelines, composability, and building workflows.
 
-**🔄 [Understanding Pipelines](main-components/overview.md)**
-Core concepts of AI pipelines, composability, and building workflows.
+**🔄** [**Understanding Pipelines**](main-components/main-components/overview.md) Core concepts of AI pipelines, composability, and building workflows.
 
-**🤖 [AI Agents](main-components/agents.md)**
-Create autonomous agents with memory, tools, and reasoning. Simplify complex AI workflows.
+**🤖** [**AI Agents**](main-components/agents.md) Create autonomous agents with memory, tools, and reasoning. Simplify complex AI workflows.
 
-**🧠 [Working with Models](main-components/models.md)**
-Creating model runnables, configuration, and integrating AI providers into pipelines.
+**🧠** [**Working with Models**](main-components/models.md) Creating model runnables, configuration, and integrating AI providers into pipelines.
 
-**✉️ [Message Templates](main-components/messages.md)**
-Building reusable prompts with dynamic placeholders and binding strategies.
+**✉️** [**Message Templates**](main-components/messages/) Building reusable prompts with dynamic placeholders and binding strategies.
 
-**🛠️ [AI Tools & Function Calling](main-components/tools.md)**
-Enable AI to call functions, access real-time data, and interact with external systems.
+**🛠️** [**AI Tools & Function Calling**](main-components/tools.md) Enable AI to call functions, access real-time data, and interact with external systems.
 
-**💭 [Memory Systems](main-components/memory.md)**
-Maintain conversation context with Windowed, Summary, Session, File, Cache, and JDBC memory.
+**💭** [**Memory Systems**](main-components/memory/) Maintain conversation context with Windowed, Summary, Session, File, Cache, and JDBC memory.
 
-**🔮 [Vector Memory](main-components/vector-memory.md)**
-Semantic search using vector embeddings. Integrate ChromaDB, Pinecone, PostgreSQL, and more.
+**🔮** [**Vector Memory**](main-components/vector-memory.md) Semantic search using vector embeddings. Integrate ChromaDB, Pinecone, PostgreSQL, and more.
 
-**🔧 [Transformers](main-components/transformers.md)**
-Process and transform data between pipeline steps with pre/post-processing.
+**🔧** [**Transformers**](main-components/transformers.md) Process and transform data between pipeline steps with pre/post-processing.
 
-**🏗️[Structured Output](main-components/structured-output.md)**
-Extract type-safe, validated data from AI responses using classes, structs, or schemas.
+**🏗️**[**Structured Output**](main-components/pipelines/structured-output.md) Extract type-safe, validated data from AI responses using classes, structs, or schemas.
 
-**🔗 [Pipelines](main-components/pipelines.md)**
-Build composable AI workflows by chaining models, messages, and transformers into reusable templates.
+**🔗** [**Pipelines**](main-components/pipelines/) Build composable AI workflows by chaining models, messages, and transformers into reusable templates.
 
-**📡 [Pipeline Streaming](main-components/streaming.md)**
-Real-time streaming through pipelines for responsive applications.
+**📡** [**Pipeline Streaming**](main-components/pipelines/streaming.md) Real-time streaming through pipelines for responsive applications.
 
-**📄 [Document Loaders](main-components/document-loaders.md)**
-Load documents from files, directories, URLs. Supports text, Markdown, CSV, JSON, XML, and more.
+**📄** [**Document Loaders**](rag/document-loaders.md) Load documents from files, directories, URLs. Supports text, Markdown, CSV, JSON, XML, and more.
 
-**🎯 [RAG (Retrieval Augmented Generation)](main-components/rag.md)**
-Build RAG systems combining document loaders, vector memory, and AI models.
+**🎯** [**RAG (Retrieval Augmented Generation)**](rag/rag.md) Build RAG systems combining document loaders, vector memory, and AI models.
 
----
+***
 
 ### 🔬 Advanced Topics
 
-**🔐 [Message Context](advanced/message-context.md)**
-Inject security, RAG, and application context into AI messages with multi-tenant patterns.
+**🔐** [**Message Context**](main-components/messages/message-context.md) Inject security, RAG, and application context into AI messages with multi-tenant patterns.
 
-**🎪 [Event System](advanced/events.md)**
-Intercept and customize AI operations with hooks for monitoring, security, and extensibility.
+**🎪** [**Event System**](advanced/events.md) Intercept and customize AI operations with hooks for monitoring, security, and extensibility.
 
-**🔢 [Embeddings](advanced/embeddings.md)**
-Generate vector representations for semantic search, recommendations, and similarity detection.
+**🔢** [**Embeddings**](rag/embeddings.md) Generate vector representations for semantic search, recommendations, and similarity detection.
 
-**👥 [Multi-Tenant Memory](advanced/multi-tenant-memory.md)**
-Enterprise-grade memory isolation with userId and conversationId patterns.
+**👥** [**Multi-Tenant Memory**](main-components/memory/multi-tenant-memory.md) Enterprise-grade memory isolation with userId and conversationId patterns.
 
-**🛠️ [Utility Functions](advanced/utilities.md)**
-Text chunking, token counting, and optimization techniques for AI processing.
+**🛠️** [**Utility Functions**](advanced/utilities.md) Text chunking, token counting, and optimization techniques for AI processing.
 
-**🔌 [MCP Client](advanced/mcp-client.md)**
-Connect to Model Context Protocol servers for external tools, resources, and prompts.
+**🔌** [**MCP Client**](advanced/mcp-client.md) Connect to Model Context Protocol servers for external tools, resources, and prompts.
 
-**🖥️ [MCP Server](advanced/mcp-server.md)**
-Expose BoxLang capabilities as MCP server for integration with other AI systems.
+**🖥️** [**MCP Server**](advanced/mcp-server.md) Expose BoxLang capabilities as MCP server for integration with other AI systems.
 
-**🦾[Production Deployments](advanced/production.md)**
-Best practices for deploying BoxLang AI applications in production environments.
+**🦾**[**Production Deployments**](deployment/production.md) Best practices for deploying BoxLang AI applications in production environments.
 
-**🔰[Security & Compliance](advanced/security.md)**
-Guidelines and best practices for securing AI applications and ensuring compliance.
+**🔰**[**Security & Compliance**](deployment/security.md) Guidelines and best practices for securing AI applications and ensuring compliance.
 
-**🎨 [Custom AI Providers](advanced/custom-providers.md)**
-Build custom provider integrations to connect any LLM service with BoxLang AI.
+**🎨** [**Custom AI Providers**](extending-boxlang-ai/custom-providers.md) Build custom provider integrations to connect any LLM service with BoxLang AI.
 
-**🧠 [Custom Memory](advanced/custom-memory.md)**
-Build your own memory implementations by extending BaseMemory.
+**🧠** [**Custom Memory**](extending-boxlang-ai/custom-memory.md) Build your own memory implementations by extending BaseMemory.
 
-**🧩 [Custom Vector Memory](advanced/custom-vector-memory.md)**
-Implement custom vector memory providers by extending BaseVectorMemory.
+**🧩** [**Custom Vector Memory**](extending-boxlang-ai/custom-vector-memory.md) Implement custom vector memory providers by extending BaseVectorMemory.
 
-**📚 [Custom Document Loaders](advanced/custom-loader.md)**
-Create custom loaders for specialized data sources and formats.
+**📚** [**Custom Document Loaders**](extending-boxlang-ai/custom-loader.md) Create custom loaders for specialized data sources and formats.
 
-**🔄 [Custom Transformers](advanced/custom-transformer.md)**
-Build custom transformers for specialized data processing in pipelines.
+**🔄** [**Custom Transformers**](extending-boxlang-ai/custom-transformer.md) Build custom transformers for specialized data processing in pipelines.
 
----
+***
 
 ## 🔧 Built-In Functions (BIFs)
 
-BoxLang AI provides a comprehensive set of BIFs for different AI operations.  You can see all of our BIF reference documentation here: [BIF Reference](reference/built-in-functions/README.md).
+BoxLang AI provides a comprehensive set of BIFs for different AI operations. You can see all of our BIF reference documentation here: [BIF Reference](advanced/reference/built-in-functions/).
 
 ### 💬 Chat & Conversation
 
-| BIF | Purpose | Return Type | Example Use Case |
-|-----|---------|-------------|------------------|
-| `aiChat()` | Simple one-shot chat request | String | Quick Q&A, content generation |
-| `aiChatAsync()` | Non-blocking chat request | Future | Background processing, parallel requests |
-| `aiChatRequest()` | Build structured chat requests | AiRequest | Complex requests with tools |
-| `aiChatStream()` | Real-time streaming responses | void | Live chat, progressive output |
+| BIF               | Purpose                        | Return Type | Example Use Case                         |
+| ----------------- | ------------------------------ | ----------- | ---------------------------------------- |
+| `aiChat()`        | Simple one-shot chat request   | String      | Quick Q\&A, content generation           |
+| `aiChatAsync()`   | Non-blocking chat request      | Future      | Background processing, parallel requests |
+| `aiChatRequest()` | Build structured chat requests | AiRequest   | Complex requests with tools              |
+| `aiChatStream()`  | Real-time streaming responses  | void        | Live chat, progressive output            |
 
 ### 🏗️ Pipeline Components
 
-| BIF | Purpose | Return Type | Example Use Case |
-|-----|---------|-------------|------------------|
-| `aiMessage()` | Build message pipelines | AiMessage | Reusable prompts, templates |
-| `aiModel()` | Create model runnables | AiModel | Pipeline integration |
-| `aiTransform()` | Create data transformers | Transformer | Pipeline data processing |
-| `aiTool()` | Define callable functions | Tool | Real-time data, function calling |
+| BIF             | Purpose                   | Return Type | Example Use Case                 |
+| --------------- | ------------------------- | ----------- | -------------------------------- |
+| `aiMessage()`   | Build message pipelines   | AiMessage   | Reusable prompts, templates      |
+| `aiModel()`     | Create model runnables    | AiModel     | Pipeline integration             |
+| `aiTransform()` | Create data transformers  | Transformer | Pipeline data processing         |
+| `aiTool()`      | Define callable functions | Tool        | Real-time data, function calling |
 
 ### 🧠 Memory & Context
 
-| BIF | Purpose | Return Type | Example Use Case |
-|-----|---------|-------------|------------------|
-| `aiMemory()` | Create conversation or vector memory | Memory | Context-aware conversations, RAG, semantic search |
+| BIF          | Purpose                              | Return Type | Example Use Case                                  |
+| ------------ | ------------------------------------ | ----------- | ------------------------------------------------- |
+| `aiMemory()` | Create conversation or vector memory | Memory      | Context-aware conversations, RAG, semantic search |
 
 ### 📄 Document Processing
 
-| BIF | Purpose | Return Type | Example Use Case |
-|-----|---------|-------------|------------------|
+| BIF             | Purpose                     | Return Type  | Example Use Case         |
+| --------------- | --------------------------- | ------------ | ------------------------ |
 | `aiDocuments()` | Load documents from sources | Array/Loader | Document processing, RAG |
 
 ### 🔢 Utilities
 
-| BIF | Purpose | Return Type | Example Use Case |
-|-----|---------|-------------|------------------|
-| `aiChunk()` | Split text into chunks | Array | Processing large documents |
-| `aiTokens()` | Estimate token counts | Numeric | Cost estimation, limits |
-| `aiEmbed()` | Generate vector embeddings | Array/Struct | Semantic search, similarity |
+| BIF          | Purpose                    | Return Type  | Example Use Case            |
+| ------------ | -------------------------- | ------------ | --------------------------- |
+| `aiChunk()`  | Split text into chunks     | Array        | Processing large documents  |
+| `aiTokens()` | Estimate token counts      | Numeric      | Cost estimation, limits     |
+| `aiEmbed()`  | Generate vector embeddings | Array/Struct | Semantic search, similarity |
 
 ### ⚙️ Service Management
 
-| BIF | Purpose | Return Type | Example Use Case |
-|-----|---------|-------------|------------------|
-| `aiService()` | Get AI service instances | Service | Multi-provider management |
-| `MCP()` | Connect to MCP servers | MCPClient | External tools, resources |
+| BIF           | Purpose                  | Return Type | Example Use Case          |
+| ------------- | ------------------------ | ----------- | ------------------------- |
+| `aiService()` | Get AI service instances | Service     | Multi-provider management |
+| `MCP()`       | Connect to MCP servers   | MCPClient   | External tools, resources |
 
 **Quick Reference by Category:**
 
-- 🚀 **Simple Operations**: `aiChat()`, `aiChatAsync()`, `aiChatStream()`
-- 📝 **Structured Requests**: `aiChatRequest()`, `aiMessage()`, `aiModel()`
-- 🔧 **Advanced Features**: `aiTool()`, `aiMemory()`, `aiTransform()`
-- 📊 **Utilities**: `aiChunk()`, `aiTokens()`, `aiEmbed()`
-- 🎛️ **Service Management**: `aiService()`, `MCP()`
+* 🚀 **Simple Operations**: `aiChat()`, `aiChatAsync()`, `aiChatStream()`
+* 📝 **Structured Requests**: `aiChatRequest()`, `aiMessage()`, `aiModel()`
+* 🔧 **Advanced Features**: `aiTool()`, `aiMemory()`, `aiTransform()`
+* 📊 **Utilities**: `aiChunk()`, `aiTokens()`, `aiEmbed()`
+* 🎛️ **Service Management**: `aiService()`, `MCP()`
 
----
+***
 
 ## 🚀 Quick Examples
 
@@ -428,49 +395,47 @@ agent = aiAgent()
 response = agent.chat( "Research AI trends in 2025" )
 ```
 
----
+***
 
 ## 🆘 Need Help?
 
 ### 📚 Resources
 
-- **📖 Full Documentation**: Explore all sections above for comprehensive guides
-- **💡 Examples**: Check the [`/examples`](../examples/README.md) folder for runnable code samples
-- **🔍 BIF Reference**: See [`reference/built-in-functions/`](reference/built-in-functions/) for detailed function docs
-- **📦 Module Components**: Explore [`main-components/`](main-components/) for in-depth component guides
+* **📖 Full Documentation**: Explore all sections above for comprehensive guides
+* **💡 Examples**: Check the [`/examples`](../examples/) folder for runnable code samples
+* **🔍 BIF Reference**: See [`reference/built-in-functions/`](advanced/reference/built-in-functions/) for detailed function docs
+* **📦 Module Components**: Explore [`main-components/`](main-components/main-components/) for in-depth component guides
 
 ### 🤝 Community & Support
 
-- **👥 Community**: [BoxLang Community Forum](https://community.boxlang.io)
-- **🐛 Issues**: [GitHub Issues](https://github.com/ortus-boxlang/bx-ai/issues)
-- **💬 Discussions**: [GitHub Discussions](https://github.com/ortus-boxlang/bx-ai/discussions)
-- **✉️ Email Support**: support@ortussolutions.com
+* **👥 Community**: [BoxLang Community Forum](https://community.boxlang.io)
+* **🐛 Issues**: [GitHub Issues](https://github.com/ortus-boxlang/bx-ai/issues)
+* **💬 Discussions**: [GitHub Discussions](https://github.com/ortus-boxlang/bx-ai/discussions)
+* **✉️ Email Support**: support@ortussolutions.com
 
 ### 🎓 Learning Paths
 
-1. **🌱 Beginners**: Start with [Quick Start](getting-started/quickstart.md) → [Basic Chatting](chatting/basic-chatting.md) → [Examples](../examples/README.md)
-2. **🏗️ Builders**: Learn [Pipelines](main-components/overview.md) → [Memory](main-components/memory.md) → [Tools](main-components/tools.md)
-3. **🚀 Advanced**: Explore [Agents](main-components/agents.md) → [RAG](main-components/rag.md) → [Custom Components](advanced/)
+1. **🌱 Beginners**: Start with [Quick Start](getting-started/quickstart.md) → [Basic Chatting](main-components/chatting/basic-chatting.md) → [Examples](../examples/)
+2. **🏗️ Builders**: Learn [Pipelines](main-components/main-components/overview.md) → [Memory](main-components/memory/) → [Tools](main-components/tools.md)
+3. **🚀 Advanced**: Explore [Agents](main-components/agents.md) → [RAG](rag/rag.md) → [Custom Components](advanced/advanced.md)
 
----
+***
 
 ## 🌟 Upgrade to Plus
 
 Want enterprise features and priority support?
 
-- 🏢 **Enterprise Modules**: Advanced components and integrations
-- 🛠️ **Advanced Tooling**: Enhanced development and debugging tools
-- ⚡ **Priority Support**: Direct access to our engineering team
-- 🔐 **Enterprise Features**: SSO, audit logs, advanced security
+* 🏢 **Enterprise Modules**: Advanced components and integrations
+* 🛠️ **Advanced Tooling**: Enhanced development and debugging tools
+* ⚡ **Priority Support**: Direct access to our engineering team
+* 🔐 **Enterprise Features**: SSO, audit logs, advanced security
 
 **Learn more**: [boxlang.io/plans](https://boxlang.io/plans)
 
----
+***
 
 ## 📜 Legal & Credits
 
-**Copyright** © 2023-2025 Ortus Solutions, Corp
-**License**: [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0)
-**Website**: [boxlang.io](https://boxlang.io)
+**Copyright** © 2023-2025 Ortus Solutions, Corp **License**: [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) **Website**: [boxlang.io](https://boxlang.io)
 
 Made with ❤️ by the Ortus Solutions team

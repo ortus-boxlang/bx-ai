@@ -1,35 +1,37 @@
 ---
-description: "Comprehensive guide to vector memory systems for semantic search and retrieval in BoxLang AI applications."
+description: >-
+  Comprehensive guide to vector memory systems for semantic search and retrieval
+  in BoxLang AI applications.
 icon: brain-circuit
 ---
 
-# 🧠 Vector Memory Systems
+# Vector Memory Systems
 
 Vector memory enables **semantic search and retrieval** using embeddings to find contextually relevant information based on meaning rather than just recency. This guide covers all vector memory implementations and how to choose the right one for your needs.
 
-> **📖 Looking for Standard Memory?** For conversation history management, see the [Memory Systems Guide](memory.md).
+> **📖 Looking for Standard Memory?** For conversation history management, see the [Memory Systems Guide](memory/).
 
 ## 📋 Table of Contents
 
-- [🔒 Multi-Tenant Isolation](#-multi-tenant-isolation)
-- [Overview](#overview)
-- [How Vector Memory Works](#how-vector-memory-works)
-- [Choosing a Vector Provider](#choosing-a-vector-provider)
-- [Vector Memory Types](#vector-memory-types)
-- [Hybrid Memory](#hybrid-memory)
-- [Configuration Examples](#configuration-examples)
-- [Best Practices](#best-practices)
-- [Advanced Usage](#advanced-usage)
+* [🔒 Multi-Tenant Isolation](vector-memory.md#-multi-tenant-isolation)
+* [Overview](vector-memory.md#overview)
+* [How Vector Memory Works](vector-memory.md#how-vector-memory-works)
+* [Choosing a Vector Provider](vector-memory.md#choosing-a-vector-provider)
+* [Vector Memory Types](vector-memory.md#vector-memory-types)
+* [Hybrid Memory](vector-memory.md#hybrid-memory)
+* [Configuration Examples](vector-memory.md#configuration-examples)
+* [Best Practices](vector-memory.md#best-practices)
+* [Advanced Usage](vector-memory.md#advanced-usage)
 
----
+***
 
 ## 🔒 Multi-Tenant Isolation
 
 **All vector memory providers support multi-tenant isolation** through `userId` and `conversationId` parameters. This enables secure, isolated vector storage for:
 
-- **Per-user isolation**: Separate vector collections per user
-- **Per-conversation isolation**: Multiple conversations for same user
-- **Combined isolation**: Complete conversation isolation in shared collections
+* **Per-user isolation**: Separate vector collections per user
+* **Per-conversation isolation**: Multiple conversations for same user
+* **Combined isolation**: Complete conversation isolation in shared collections
 
 ### How Multi-Tenant Works
 
@@ -101,24 +103,24 @@ salesResults = salesChat.getRelevant( "plan", 5 )       // Only sales messages
 
 ### Storage Strategy by Provider
 
-| Provider | Storage Method | Filter Type |
-|----------|----------------|-------------|
-| BoxVector | Metadata | In-memory filter |
-| Chroma | Metadata | $and operator |
-| Milvus | Metadata | filter expressions |
-| MySQL | Dedicated columns | SQL WHERE |
-| Postgres | Dedicated columns | SQL WHERE |
-| Pinecone | Metadata | $eq operators |
-| Qdrant | Payload root | match filters |
-| TypeSense | Root fields | := filters |
-| Weaviate | Properties root | GraphQL Equal |
-| Hybrid | Delegates to vector provider | Provider-specific |
+| Provider  | Storage Method               | Filter Type        |
+| --------- | ---------------------------- | ------------------ |
+| BoxVector | Metadata                     | In-memory filter   |
+| Chroma    | Metadata                     | $and operator      |
+| Milvus    | Metadata                     | filter expressions |
+| MySQL     | Dedicated columns            | SQL WHERE          |
+| Postgres  | Dedicated columns            | SQL WHERE          |
+| Pinecone  | Metadata                     | $eq operators      |
+| Qdrant    | Payload root                 | match filters      |
+| TypeSense | Root fields                  | := filters         |
+| Weaviate  | Properties root              | GraphQL Equal      |
+| Hybrid    | Delegates to vector provider | Provider-specific  |
 
 All providers support `getAllDocuments()`, `getRelevant()`, and `findSimilar()` with automatic tenant filtering.
 
-For enterprise patterns, security considerations, and advanced multi-tenancy, see the [Multi-Tenant Memory Guide](../advanced/multi-tenant-memory.md).
+For enterprise patterns, security considerations, and advanced multi-tenancy, see the [Multi-Tenant Memory Guide](memory/multi-tenant-memory.md).
 
----
+***
 
 ## 📖 Overview
 
@@ -164,21 +166,21 @@ graph TB
 
 ### Key Benefits
 
-- **Semantic Understanding**: Find relevant context based on meaning, not just keywords
-- **Long-term Context**: Search across thousands of past messages efficiently
-- **Intelligent Retrieval**: Get the most relevant history, even if discussed long ago
-- **Scalable**: Handle large conversation datasets with specialized vector databases
-- **Flexible**: Choose from local (in-memory), cloud, or self-hosted solutions
+* **Semantic Understanding**: Find relevant context based on meaning, not just keywords
+* **Long-term Context**: Search across thousands of past messages efficiently
+* **Intelligent Retrieval**: Get the most relevant history, even if discussed long ago
+* **Scalable**: Handle large conversation datasets with specialized vector databases
+* **Flexible**: Choose from local (in-memory), cloud, or self-hosted solutions
 
 ### Use Cases
 
-- **Customer Support**: Retrieve relevant past support cases
-- **Knowledge Bases**: Find similar questions and answers
-- **Long Conversations**: Maintain context across lengthy interactions
-- **Multi-session**: Remember user preferences across sessions
-- **RAG Applications**: Combine document retrieval with AI responses
+* **Customer Support**: Retrieve relevant past support cases
+* **Knowledge Bases**: Find similar questions and answers
+* **Long Conversations**: Maintain context across lengthy interactions
+* **Multi-session**: Remember user preferences across sessions
+* **RAG Applications**: Combine document retrieval with AI responses
 
----
+***
 
 ## 🔄 How Vector Memory Works
 
@@ -245,52 +247,52 @@ agent = aiAgent(
 agent.run( "What was my last invoice amount?" )
 ```
 
----
+***
 
 ## Choosing a Vector Provider
 
 ### Quick Decision Matrix
 
-| Provider | Best For | Setup | Cost | Performance | Multi-Tenant |
-|----------|---------|-------|------|-------------|-------------|
-| **BoxVector** | Development, testing, small datasets | ✅ Instant | Free | Good | ✅ |
-| **Hybrid** | Balanced recent + semantic | ✅ Easy | Low | Excellent | ✅ |
-| **ChromaDB** | Python integration, local dev | ⚙️ Moderate | Free | Good | ✅ |
-| **PostgreSQL** | Existing Postgres infrastructure | ⚙️ Moderate | Low | Good | ✅ |
-| **MySQL** | Existing MySQL 9+ infrastructure | ⚙️ Moderate | Low | Good | ✅ |
-| **TypeSense** | Fast typo-tolerant search, autocomplete | ⚙️ Easy | Free/Paid | Excellent | ✅ |
-| **Pinecone** | Production, cloud-first | ⚙️ Easy | Paid | Excellent | ✅ |
-| **Qdrant** | Self-hosted, high performance | ⚙️ Complex | Free/Paid | Excellent | ✅ |
-| **Weaviate** | GraphQL, knowledge graphs | ⚙️ Complex | Free/Paid | Excellent | ✅ |
-| **Milvus** | Enterprise, massive scale | ⚙️ Complex | Free/Paid | Outstanding | ✅ |
+| Provider       | Best For                                | Setup       | Cost      | Performance | Multi-Tenant |
+| -------------- | --------------------------------------- | ----------- | --------- | ----------- | ------------ |
+| **BoxVector**  | Development, testing, small datasets    | ✅ Instant   | Free      | Good        | ✅            |
+| **Hybrid**     | Balanced recent + semantic              | ✅ Easy      | Low       | Excellent   | ✅            |
+| **ChromaDB**   | Python integration, local dev           | ⚙️ Moderate | Free      | Good        | ✅            |
+| **PostgreSQL** | Existing Postgres infrastructure        | ⚙️ Moderate | Low       | Good        | ✅            |
+| **MySQL**      | Existing MySQL 9+ infrastructure        | ⚙️ Moderate | Low       | Good        | ✅            |
+| **TypeSense**  | Fast typo-tolerant search, autocomplete | ⚙️ Easy     | Free/Paid | Excellent   | ✅            |
+| **Pinecone**   | Production, cloud-first                 | ⚙️ Easy     | Paid      | Excellent   | ✅            |
+| **Qdrant**     | Self-hosted, high performance           | ⚙️ Complex  | Free/Paid | Excellent   | ✅            |
+| **Weaviate**   | GraphQL, knowledge graphs               | ⚙️ Complex  | Free/Paid | Excellent   | ✅            |
+| **Milvus**     | Enterprise, massive scale               | ⚙️ Complex  | Free/Paid | Outstanding | ✅            |
 
 ### Detailed Recommendations
 
 **Start Development:**
 
-- Use **BoxVector** for immediate prototyping
-- Use **Hybrid** when you need both recent and semantic context
+* Use **BoxVector** for immediate prototyping
+* Use **Hybrid** when you need both recent and semantic context
 
 **Production (Cloud):**
 
-- **Pinecone**: Best for cloud-native, managed service
-- **Qdrant Cloud**: Excellent performance, generous free tier
+* **Pinecone**: Best for cloud-native, managed service
+* **Qdrant Cloud**: Excellent performance, generous free tier
 
 **Production (Self-Hosted):**
 
-- **PostgreSQL**: If you already use Postgres
-- **MySQL**: If you already use MySQL 9+
-- **TypeSense**: Fast typo-tolerant search with low latency
-- **Qdrant**: Best performance for self-hosted
-- **Milvus**: Enterprise-grade, handles billions of vectors
+* **PostgreSQL**: If you already use Postgres
+* **MySQL**: If you already use MySQL 9+
+* **TypeSense**: Fast typo-tolerant search with low latency
+* **Qdrant**: Best performance for self-hosted
+* **Milvus**: Enterprise-grade, handles billions of vectors
 
 **Special Use Cases:**
 
-- **ChromaDB**: Python ML infrastructure
-- **Weaviate**: Complex queries, GraphQL API
-- **Hybrid**: Best of both worlds (recent + semantic)
+* **ChromaDB**: Python ML infrastructure
+* **Weaviate**: Complex queries, GraphQL API
+* **Hybrid**: Best of both worlds (recent + semantic)
 
----
+***
 
 ## Vector Memory Types
 
@@ -299,10 +301,11 @@ agent.run( "What was my last invoice amount?" )
 In-memory vector storage perfect for development and testing.
 
 **Features:**
-- No external dependencies
-- Instant setup
-- Full feature support
-- Cosine similarity search
+
+* No external dependencies
+* Instant setup
+* Full feature support
+* Cosine similarity search
 
 **Configuration:**
 
@@ -352,27 +355,30 @@ exported = memory.export()
 ```
 
 **Best For:**
-- Local development
-- Testing
-- Small datasets (< 10,000 messages)
-- Proof of concepts
+
+* Local development
+* Testing
+* Small datasets (< 10,000 messages)
+* Proof of concepts
 
 **Limitations:**
-- Data lost on restart
-- Limited to single instance
-- Memory usage grows with dataset
 
----
+* Data lost on restart
+* Limited to single instance
+* Memory usage grows with dataset
+
+***
 
 ### ChromaVectorMemory
 
 [ChromaDB](https://www.trychroma.com/) integration for local vector storage.
 
 **Features:**
-- Local persistence
-- Python ecosystem integration
-- Easy Docker deployment
-- Metadata filtering
+
+* Local persistence
+* Python ecosystem integration
+* Easy Docker deployment
+* Metadata filtering
 
 **Setup:**
 
@@ -441,21 +447,23 @@ exported = memory.export()
 ```
 
 **Best For:**
-- Python-based infrastructure
-- Local development with persistence
-- Medium datasets (< 1M vectors)
 
----
+* Python-based infrastructure
+* Local development with persistence
+* Medium datasets (< 1M vectors)
+
+***
 
 ### PostgresVectorMemory
 
 PostgreSQL with [pgvector](https://github.com/pgvector/pgvector) extension.
 
 **Features:**
-- Use existing Postgres infrastructure
-- ACID compliance
-- Familiar SQL queries
-- Mature ecosystem
+
+* Use existing Postgres infrastructure
+* ACID compliance
+* Familiar SQL queries
+* Mature ecosystem
 
 **Setup:**
 
@@ -518,12 +526,13 @@ exported = memory.export()
 ```
 
 **Best For:**
-- Existing PostgreSQL deployments
-- Applications requiring SQL access
-- Strong consistency requirements
-- Medium-large datasets
 
----
+* Existing PostgreSQL deployments
+* Applications requiring SQL access
+* Strong consistency requirements
+* Medium-large datasets
+
+***
 
 ### MysqlVectorMemory
 
@@ -531,17 +540,17 @@ MySQL 9+ with native [VECTOR](https://dev.mysql.com/doc/refman/9.0/en/vector-fun
 
 **Features:**
 
-- Native vector storage (MySQL 9+)
-- Use existing MySQL infrastructure
-- ACID compliance
-- Familiar SQL ecosystem
-- Application-layer distance calculations (MySQL Community Edition compatible)
+* Native vector storage (MySQL 9+)
+* Use existing MySQL infrastructure
+* ACID compliance
+* Familiar SQL ecosystem
+* Application-layer distance calculations (MySQL Community Edition compatible)
 
 **Requirements:**
 
-- MySQL 9.0 or later (Community or Enterprise Edition)
-- Configured BoxLang datasource
-- VECTOR data type support
+* MySQL 9.0 or later (Community or Enterprise Edition)
+* Configured BoxLang datasource
+* VECTOR data type support
 
 **Setup:**
 
@@ -596,9 +605,9 @@ memory = aiMemory( "mysql", {
 
 **Distance Functions:**
 
-- **COSINE**: Cosine distance (1 - cosine similarity), best for semantic search
-- **L2**: Euclidean distance (L2 norm), good for spatial data
-- **DOT**: Dot product similarity, efficient for normalized vectors
+* **COSINE**: Cosine distance (1 - cosine similarity), best for semantic search
+* **L2**: Euclidean distance (L2 norm), good for spatial data
+* **DOT**: Dot product similarity, efficient for normalized vectors
 
 **Usage Example:**
 
@@ -666,25 +675,25 @@ exported = memory.export()
 
 **Best For:**
 
-- Existing MySQL 9+ deployments
-- Organizations standardized on MySQL
-- Applications requiring SQL access
-- ACID compliance requirements
-- Medium-large datasets (millions of vectors)
+* Existing MySQL 9+ deployments
+* Organizations standardized on MySQL
+* Applications requiring SQL access
+* ACID compliance requirements
+* Medium-large datasets (millions of vectors)
 
 **Performance Notes:**
 
-- Distance calculations performed in application layer (MySQL Community Edition compatible)
-- MySQL HeatWave (Oracle Cloud) provides native DISTANCE() function for optimal performance
-- Suitable for production use with proper indexing
-- Table is automatically created with collection-based indexing
+* Distance calculations performed in application layer (MySQL Community Edition compatible)
+* MySQL HeatWave (Oracle Cloud) provides native DISTANCE() function for optimal performance
+* Suitable for production use with proper indexing
+* Table is automatically created with collection-based indexing
 
 **MySQL Community vs HeatWave:**
 
-- **Community Edition** (Free): VECTOR data type, app-layer distance calculations
-- **HeatWave** (Oracle Cloud): Native DISTANCE() function, VECTOR INDEX, GPU acceleration
+* **Community Edition** (Free): VECTOR data type, app-layer distance calculations
+* **HeatWave** (Oracle Cloud): Native DISTANCE() function, VECTOR INDEX, GPU acceleration
 
----
+***
 
 ### TypesenseVectorMemory
 
@@ -692,18 +701,18 @@ exported = memory.export()
 
 **Features:**
 
-- Lightning-fast search with typo tolerance
-- Native vector search support
-- Easy Docker deployment
-- RESTful API
-- Built-in relevance tuning
-- Excellent for autocomplete and instant search
+* Lightning-fast search with typo tolerance
+* Native vector search support
+* Easy Docker deployment
+* RESTful API
+* Built-in relevance tuning
+* Excellent for autocomplete and instant search
 
 **Requirements:**
 
-- TypeSense Server 0.23.0+ (vector search support)
-- HTTP/HTTPS access to TypeSense instance
-- API key for authentication
+* TypeSense Server 0.23.0+ (vector search support)
+* HTTP/HTTPS access to TypeSense instance
+* API key for authentication
 
 **Setup:**
 
@@ -834,55 +843,56 @@ exported = memory.export()
 
 **Best For:**
 
-- Applications requiring fast, low-latency search
-- Autocomplete and instant search features
-- Typo-tolerant semantic search
-- E-commerce product search
-- Documentation search
-- Customer support systems
-- Small to medium datasets (< 10M vectors)
+* Applications requiring fast, low-latency search
+* Autocomplete and instant search features
+* Typo-tolerant semantic search
+* E-commerce product search
+* Documentation search
+* Customer support systems
+* Small to medium datasets (< 10M vectors)
 
 **TypeSense Advantages:**
 
-- **Speed**: Sub-50ms search latency
-- **Typo Tolerance**: Built-in fuzzy search
-- **Simple Setup**: Single binary, easy Docker deployment
-- **RESTful API**: Simple HTTP API, easy integration
-- **Relevance Tuning**: Fine-grained control over ranking
+* **Speed**: Sub-50ms search latency
+* **Typo Tolerance**: Built-in fuzzy search
+* **Simple Setup**: Single binary, easy Docker deployment
+* **RESTful API**: Simple HTTP API, easy integration
+* **Relevance Tuning**: Fine-grained control over ranking
 
 **Pricing:**
 
-- **Self-Hosted**: Free (open source)
-- **TypeSense Cloud**:
-  - Free tier: Development clusters
-  - Paid: Production clusters from $0.03/hour
+* **Self-Hosted**: Free (open source)
+* **TypeSense Cloud**:
+  * Free tier: Development clusters
+  * Paid: Production clusters from $0.03/hour
 
 **When to Choose TypeSense:**
 
-- Need instant search with typo tolerance
-- Want simple deployment and management
-- Require low-latency semantic search
-- Building search-heavy applications
-- Need both keyword and vector search
+* Need instant search with typo tolerance
+* Want simple deployment and management
+* Require low-latency semantic search
+* Building search-heavy applications
+* Need both keyword and vector search
 
 **Performance Notes:**
 
-- Optimized for low-latency queries (< 50ms)
-- In-memory index for fast access
-- Horizontal scaling support
-- Efficient resource usage
+* Optimized for low-latency queries (< 50ms)
+* In-memory index for fast access
+* Horizontal scaling support
+* Efficient resource usage
 
----
+***
 
 ### PineconeVectorMemory
 
 [Pinecone](https://www.pinecone.io/) managed cloud vector database.
 
 **Features:**
-- Fully managed, no ops
-- Excellent performance
-- Auto-scaling
-- Built-in metadata filtering
+
+* Fully managed, no ops
+* Excellent performance
+* Auto-scaling
+* Built-in metadata filtering
 
 **Setup:**
 
@@ -945,26 +955,29 @@ exported = memory.export()
 ```
 
 **Best For:**
-- Production cloud deployments
-- Teams without ML ops expertise
-- Rapid scaling requirements
-- Global deployments
+
+* Production cloud deployments
+* Teams without ML ops expertise
+* Rapid scaling requirements
+* Global deployments
 
 **Pricing:**
-- Free tier: 1GB storage, 100K operations/month
-- Paid: Scales with usage
 
----
+* Free tier: 1GB storage, 100K operations/month
+* Paid: Scales with usage
+
+***
 
 ### QdrantVectorMemory
 
 [Qdrant](https://qdrant.tech/) high-performance vector search engine.
 
 **Features:**
-- Rust-based (excellent performance)
-- Rich filtering capabilities
-- Payload support
-- Self-hosted or cloud
+
+* Rust-based (excellent performance)
+* Rich filtering capabilities
+* Payload support
+* Self-hosted or cloud
 
 **Setup:**
 
@@ -1031,26 +1044,29 @@ exported = memory.export()
 ```
 
 **Best For:**
-- High-performance requirements
-- Self-hosted production
-- Complex filtering needs
-- Large datasets (millions of vectors)
+
+* High-performance requirements
+* Self-hosted production
+* Complex filtering needs
+* Large datasets (millions of vectors)
 
 **Qdrant Cloud:**
-- Free tier: 1GB cluster
-- Excellent developer experience
 
----
+* Free tier: 1GB cluster
+* Excellent developer experience
+
+***
 
 ### WeaviateVectorMemory
 
 [Weaviate](https://weaviate.io/) GraphQL vector database with knowledge graph capabilities.
 
 **Features:**
-- GraphQL API
-- Automatic vectorization (optional)
-- Knowledge graph functionality
-- Rich schema support
+
+* GraphQL API
+* Automatic vectorization (optional)
+* Knowledge graph functionality
+* Rich schema support
 
 **Setup:**
 
@@ -1118,22 +1134,24 @@ exported = memory.export()
 ```
 
 **Best For:**
-- Complex entity relationships
-- Knowledge graph requirements
-- GraphQL preferences
-- Multi-modal applications
 
----
+* Complex entity relationships
+* Knowledge graph requirements
+* GraphQL preferences
+* Multi-modal applications
+
+***
 
 ### MilvusVectorMemory
 
 [Milvus](https://milvus.io/) enterprise-grade distributed vector database.
 
 **Features:**
-- Massive scalability (billions of vectors)
-- Distributed architecture
-- GPU acceleration support
-- Enterprise features
+
+* Massive scalability (billions of vectors)
+* Distributed architecture
+* GPU acceleration support
+* Enterprise features
 
 **Setup:**
 
@@ -1204,12 +1222,13 @@ exported = memory.export()
 ```
 
 **Best For:**
-- Enterprise deployments
-- Massive datasets (> 10M vectors)
-- High throughput requirements
-- GPU-accelerated search
 
----
+* Enterprise deployments
+* Massive datasets (> 10M vectors)
+* High throughput requirements
+* GPU-accelerated search
+
+***
 
 ## Hybrid Memory
 
@@ -1261,10 +1280,10 @@ memory = aiMemory( "hybrid",
 
 ### Benefits
 
-- **Recent Context**: Always includes latest messages
-- **Semantic Relevance**: Finds related past conversations
-- **Balanced**: Best of both approaches
-- **Automatic**: No manual context management
+* **Recent Context**: Always includes latest messages
+* **Semantic Relevance**: Finds related past conversations
+* **Balanced**: Best of both approaches
+* **Automatic**: No manual context management
 
 ### Use Cases
 
@@ -1287,7 +1306,7 @@ agent = aiAgent(
 agent.run( "I'm having the same billing issue as before" )
 ```
 
----
+***
 
 ## Configuration Examples
 
@@ -1425,7 +1444,7 @@ memory = aiMemory( "chroma", {
 } )
 ```
 
----
+***
 
 ## Best Practices
 
@@ -1543,7 +1562,7 @@ aliceResults = aliceMemory.getRelevant( "billing", 5 )  // Only Alice's data
 bobResults = bobMemory.getRelevant( "billing", 5 )      // Only Bob's data
 ```
 
----
+***
 
 ## Advanced Usage
 
@@ -1613,56 +1632,67 @@ messages.each( function( msg ) {
 memory.addBatch( messages )
 ```
 
----
+***
 
 ## Troubleshooting
 
 ### Common Issues
 
 **1. Dimension Mismatch**
+
 ```
 Error: Vector dimension mismatch
 ```
+
 Solution: Ensure embedding model dimensions match collection configuration
 
 **2. Connection Errors**
+
 ```
 Error: Could not connect to vector database
 ```
+
 Solution: Verify host, port, and network accessibility. Check firewall rules.
 
 **3. API Key Issues**
+
 ```
 Error: Unauthorized
 ```
+
 Solution: Verify API keys for both embedding provider and vector database
 
 **4. Slow Performance**
+
 ```
 Searches taking too long
 ```
+
 Solution:
-- Enable caching for embeddings
-- Use appropriate index type (Milvus, Qdrant)
-- Reduce limit parameter
-- Consider smaller embedding model
+
+* Enable caching for embeddings
+* Use appropriate index type (Milvus, Qdrant)
+* Reduce limit parameter
+* Consider smaller embedding model
 
 **5. Out of Memory**
+
 ```
 Error: OutOfMemoryException (BoxVector)
 ```
+
 Solution: Switch to persistent vector database (Chroma, Postgres, etc.)
 
----
+***
 
 ## See Also
 
-- [Memory Systems Guide](memory.md) - Standard conversation memory
-- [Custom Vector Memory](../advanced/custom-vector-memory.md) - Build your own provider
-- [Embeddings Guide](../advanced/embeddings.md) - Understanding embeddings
-- [Agents Documentation](agents.md) - Using memory in agents
-- [Examples](../../examples/vector-memory/) - Complete working examples
+* [Memory Systems Guide](memory/) - Standard conversation memory
+* [Custom Vector Memory](../extending-boxlang-ai/custom-vector-memory.md) - Build your own provider
+* [Embeddings Guide](../rag/embeddings.md) - Understanding embeddings
+* [Agents Documentation](agents.md) - Using memory in agents
+* [Examples](../../examples/vector-memory/) - Complete working examples
 
----
+***
 
-**Next Steps:** Try the [Vector Memory Examples](../../examples/vector-memory/) or learn about [building custom vector memory](../advanced/custom-vector-memory.md) providers.
+**Next Steps:** Try the [Vector Memory Examples](../../examples/vector-memory/) or learn about [building custom vector memory](../extending-boxlang-ai/custom-vector-memory.md) providers.
