@@ -188,7 +188,7 @@ jobs:
           ref: development
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: boxlang-build
           path: .tmp
