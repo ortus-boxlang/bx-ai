@@ -126,21 +126,35 @@ class extends="BaseVectorMemory" {
 			);
 		}
 
-		// Build document with user_id and text as custom scalar fields
+		// Build document with docId (memory key), text, and metadata fields
 		var documentData = {
-			"vector"  : arguments.embedding,
-			"user_id" : arguments.id,
-			"text"    : arguments.text
+			"vector" : arguments.embedding,
+			"docId"  : arguments.id,
+			"text"   : arguments.text
 		};
 
-		// Add metadata fields
+		// Add optional metadata fields only if they have non-empty values
+		if ( arguments.metadata.keyExists( "userId" ) && arguments.metadata.userId != "" ) {
+			documentData.userId = arguments.metadata.userId;
+		}
+		if ( arguments.metadata.keyExists( "conversationId" ) && arguments.metadata.conversationId != "" ) {
+			documentData.conversationId = arguments.metadata.conversationId;
+		}
+
+		// Add any additional metadata fields (dynamic fields enabled in schema)
 		if ( !arguments.metadata.isEmpty() ) {
 			for ( var key in arguments.metadata ) {
-				documentData[ key ] = arguments.metadata[ key ];
+				// Skip fields already handled and the auto-generated id field
+				if ( ![ "id", "userId", "conversationId" ].find( key ) ) {
+					var value = arguments.metadata[ key ];
+					if ( !isNull( value ) && value != "" ) {
+						documentData[ key ] = value;
+					}
+				}
 			}
 		}
 
-		// Prepare insert payload (no id field - Milvus generates it, but we store user_id)
+		// Prepare insert payload (Milvus auto-generates primary id, we store docId as memory key)
 		var payload = {
 			"collectionName" : variables.collection,
 			"data"           : [ documentData ]
@@ -153,7 +167,7 @@ class extends="BaseVectorMemory" {
 			body   = payload
 		);
 
-		if ( response.code != 200 ) {
+		if ( response.code != 0 ) {
 			throw(
 				type    = "MilvusInsertError",
 				message = "Milvus insert failed: #response.message#"
@@ -178,7 +192,7 @@ class extends="BaseVectorMemory" {
 			body   = payload
 		);
 
-		if ( response.code != 200 ) {
+		if ( response.code != 0 ) {
 			throw(
 				type    = "MilvusFlushError",
 				message = "Milvus flush failed: #response.message#"
@@ -217,9 +231,9 @@ class extends="BaseVectorMemory" {
 
 			var payload = {
 				"collectionName" : variables.collection,
-				"vector"         : arguments.embedding,
+				"data"           : [ arguments.embedding ],
 				"limit"          : arguments.limit,
-				"outputFields"   : [ "id", "user_id", "text", "vector", "userId", "conversationId" ]
+				"outputFields"   : [ "*" ]
 			};
 
 			// Add filter if provided
@@ -234,7 +248,7 @@ class extends="BaseVectorMemory" {
 				body   = payload
 			);
 
-			if ( response.code != 200 ) {
+			if ( response.code != 0 ) {
 				throw(
 					type    = "MilvusSearchError",
 					message = "Milvus search failed: #response.message#"
@@ -247,16 +261,16 @@ class extends="BaseVectorMemory" {
 				for ( var item in response.data ) {
 					var score = item.keyExists( "distance" ) ? item.distance : 0;
 
-					// Extract metadata fields (all fields except id, user_id, text, vector, distance)
+					// Extract metadata fields (all fields except id, docId, text, vector, distance)
 					var metadata = {};
 					for ( var key in item ) {
-						if ( ![ "id", "user_id", "text", "vector", "distance" ].find( key ) ) {
+						if ( ![ "id", "docId", "text", "vector", "distance" ].find( key ) ) {
 							metadata[ key ] = item[ key ];
 						}
 					}
 
 					results.append( {
-						"id"        : item.keyExists( "user_id" ) ? item.user_id : item.id,
+						"id"        : item.keyExists( "docId" ) ? item.docId : item.id,
 						"score"     : score,
 						"text"      : item.keyExists( "text" ) ? item.text : "",
 						"embedding" : item.keyExists( "vector" ) ? item.vector : [],
@@ -284,7 +298,7 @@ class extends="BaseVectorMemory" {
 			var payload = {
 				"collectionName" : variables.collection,
 				"filter"         : "id > 0",
-				"outputFields"   : [ "id", "user_id", "text", "vector", "userId", "conversationId" ],
+				"outputFields"   : [ "*" ],
 				"limit"          : 1000
 			};
 
@@ -295,7 +309,7 @@ class extends="BaseVectorMemory" {
 				body   = payload
 			);
 
-			if ( response.code != 200 ) {
+			if ( response.code != 0 ) {
 				return [];
 			}
 
@@ -303,16 +317,16 @@ class extends="BaseVectorMemory" {
 			var results = [];
 			if ( response.keyExists( "data" ) && isArray( response.data ) ) {
 				for ( var item in response.data ) {
-					// Extract metadata fields (all fields except id, user_id, text, vector)
+					// Extract metadata fields (all fields except id, docId, text, vector)
 					var metadata = {};
 					for ( var key in item ) {
-						if ( ![ "id", "user_id", "text", "vector" ].find( key ) ) {
+						if ( ![ "id", "docId", "text", "vector" ].find( key ) ) {
 							metadata[ key ] = item[ key ];
 						}
 					}
 
 					results.append( {
-						"id"        : item.keyExists( "user_id" ) ? item.user_id : item.id,
+						"id"        : item.keyExists( "docId" ) ? item.docId : item.id,
 						"text"      : item.keyExists( "text" ) ? item.text : "",
 						"embedding" : item.keyExists( "vector" ) ? item.vector : [],
 						"metadata"  : metadata
@@ -331,11 +345,11 @@ class extends="BaseVectorMemory" {
 	 */
 	struct function getDocumentById( required string id ) {
 		try {
-			// Prepare query payload - filter by user_id scalar field
+			// Prepare query payload - filter by docId (memory key identifier)
 			var payload = {
 				"collectionName" : variables.collection,
-				"filter"         : 'user_id == "#arguments.id#"',
-				"outputFields"   : [ "id", "user_id", "text", "vector", "userId", "conversationId" ],
+				"filter"         : 'docId == "#arguments.id#"',
+				"outputFields"   : [ "*" ],
 				"limit"          : 1
 			};
 
@@ -346,19 +360,19 @@ class extends="BaseVectorMemory" {
 				body   = payload
 			);
 
-			if ( response.code == 200 && response.keyExists( "data" ) && response.data.len() > 0 ) {
+			if ( response.code == 0 && response.keyExists( "data" ) && response.data.len() > 0 ) {
 				var item = response.data[ 1 ];
 
-				// Extract metadata fields (all fields except id, user_id, text, vector)
+				// Extract metadata fields (all fields except id, docId, text, vector)
 				var metadata = {};
 				for ( var key in item ) {
-					if ( ![ "id", "user_id", "text", "vector" ].find( key ) ) {
+					if ( ![ "id", "docId", "text", "vector" ].find( key ) ) {
 						metadata[ key ] = item[ key ];
 					}
 				}
 
 				return {
-					"id"        : item.user_id,  // Return user's ID, not Milvus ID
+					"id"        : item.docId,  // Return memory key identifier, not Milvus auto-generated ID
 					"text"      : item.keyExists( "text" ) ? item.text : "",
 					"embedding" : item.keyExists( "vector" ) ? item.vector : [],
 					"metadata"  : metadata
@@ -376,10 +390,10 @@ class extends="BaseVectorMemory" {
 	 */
 	boolean function deleteDocument( required string id ) {
 		try {
-			// Prepare delete payload - filter by user_id scalar field
+			// Prepare delete payload - filter by docId (memory key identifier)
 			var payload = {
 				"collectionName" : variables.collection,
-				"filter"         : 'user_id == "#arguments.id#"'
+				"filter"         : 'docId == "#arguments.id#"'
 			};
 
 			// Delete via REST API
@@ -392,7 +406,7 @@ class extends="BaseVectorMemory" {
 			// Note: Milvus delete operations may have eventual consistency
 			// For strong consistency, consider adding a small delay or flush
 
-			return response.code == 200;
+			return response.code == 0;
 		} catch ( any e ) {
 			return false;
 		}
@@ -468,10 +482,63 @@ class extends="BaseVectorMemory" {
 		var oldCollection = variables.collection;
 		variables.collection = arguments.name;
 
+		// v2 API requires explicit schema definition
 		var payload = {
 			"collectionName" : variables.collection,
-			"dimension" : variables.dimension,
-			"metricType" : variables.metricType
+			"schema"         : {
+				"autoId"             : true,
+				"enableDynamicField" : true,
+				"fields" : [
+					{
+						"fieldName"  : "id",
+						"dataType"   : "Int64",
+						"isPrimary"  : true,
+						"autoID"     : true
+					},
+					{
+						"fieldName"     : "vector",
+						"dataType"      : "FloatVector",
+						"elementTypeParams" : {
+							"dim" : variables.dimension
+						}
+					},
+					{
+						"fieldName" : "docId",
+						"dataType"  : "VarChar",
+						"elementTypeParams" : {
+							"max_length" : 256
+						}
+					},
+					{
+						"fieldName" : "text",
+						"dataType"  : "VarChar",
+						"elementTypeParams" : {
+							"max_length" : 65535
+						}
+					},
+					{
+						"fieldName" : "userId",
+						"dataType"  : "VarChar",
+						"nullable"  : true,
+						"elementTypeParams" : {
+							"max_length" : 256
+						}
+					},
+					{
+						"fieldName" : "conversationId",
+						"dataType"  : "VarChar",
+						"nullable"  : true,
+						"elementTypeParams" : {
+							"max_length" : 256
+						}
+					}
+				]
+			},
+			"indexParams" : [ {
+				"fieldName"  : "vector",
+				"indexName"  : "vector_idx",
+				"metricType" : variables.metricType
+			} ]
 		};
 
 		// Create collection via REST API
@@ -481,7 +548,7 @@ class extends="BaseVectorMemory" {
 			body   = payload
 		);
 
-		if ( response.code != 200 ) {
+		if ( response.code != 0 ) {
 			throw(
 				type    = "MilvusCollectionError",
 				message = "Failed to create collection: #response.toString()#"
@@ -500,13 +567,15 @@ class extends="BaseVectorMemory" {
 	 */
 	boolean function collectionExists( required string name ) {
 		try {
-			// List all collections
+			// List all collections (v2 API requires POST with empty body)
 			var response = makeRequest(
-				path   = "/v2/vectordb/collections/list"
+				method = "POST",
+				path   = "/v2/vectordb/collections/list",
+				body   = {}
 			);
 
 			// Check if our collection is in the list
-			if ( response.code == 200 && response.keyExists( "data" ) && isArray( response.data ) ) {
+			if ( response.code == 0 && response.keyExists( "data" ) && isArray( response.data ) ) {
 				return response.data.contains( arguments.name );
 			}
 
