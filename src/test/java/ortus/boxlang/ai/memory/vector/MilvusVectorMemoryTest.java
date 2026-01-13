@@ -109,6 +109,9 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		    		}
 		    	)
 
+		    	// Flush to ensure data is available immediately
+		    	memory.flush()
+
 		    	// Retrieve by ID
 		    	doc = memory.getDocumentById("doc1");
 		    """,
@@ -147,6 +150,9 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		    		embedding = [0.0, 1.0, 0.0],
 		    		metadata = { "title": "Document 3" }
 		    	);
+
+		    	// Flush to ensure data is available
+		    	memory.flush();
 
 		    	// Search for similar vectors
 		    	results = memory.searchByVector(
@@ -191,6 +197,9 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		    		metadata = { "category": "articles" }
 		    	);
 
+		    	// Flush to ensure data is available
+		    	memory.flush();
+
 		    	// Search with category filter
 		    	results = memory.searchByVector(
 		    		embedding = [1.0, 0.0, 0.0],
@@ -220,6 +229,9 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		    		embedding = [1.0, 0.0, 0.0],
 		    		metadata = { "title": "Delete Me" }
 		    	);
+
+		    	// Flush to ensure data is available
+		    	memory.flush();
 
 		    	// Delete it
 		    	deleted = memory.deleteDocument("doc_to_delete");
@@ -260,6 +272,9 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		    		embedding = [0.0, 1.0, 0.0],
 		    		metadata = { "title": "Document 2" }
 		    	);
+
+		    	// Flush to ensure data is available
+		    	memory.flush();
 
 		    	// Clear collection
 		    	memory.clearCollection();
@@ -323,8 +338,8 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		    		metadata = { "title": "Not Similar" }
 		    	);
 
-		    	// Wait for Milvus to index documents (eventual consistency)
-		    	sleep(500);
+		    	// Flush to ensure data is available
+		    	memory.flush();
 
 		    	// Note: BaseVectorMemory searchByVector doesn't support threshold parameter
 		    	// We'll just search and filter results manually if needed

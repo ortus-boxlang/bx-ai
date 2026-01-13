@@ -149,7 +149,7 @@ class extends="BaseVectorMemory" {
 		// Insert via REST API
 		var response = makeRequest(
 			method = "POST",
-			path   = "/v1/vector/insert",
+			path   = "/v2/vectordb/entities/insert",
 			body   = payload
 		);
 
@@ -157,6 +157,31 @@ class extends="BaseVectorMemory" {
 			throw(
 				type    = "MilvusInsertError",
 				message = "Milvus insert failed: #response.message#"
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * Flush the collection to ensure all data is persisted and queryable
+	 * This is essential for Milvus to make recently inserted data immediately available for queries
+	 */
+	IVectorMemory function flush() {
+		var payload = {
+			"collectionName" : variables.collection
+		};
+
+		var response = makeRequest(
+			method = "POST",
+			path   = "/v2/vectordb/collections/flush",
+			body   = payload
+		);
+
+		if ( response.code != 200 ) {
+			throw(
+				type    = "MilvusFlushError",
+				message = "Milvus flush failed: #response.message#"
 			);
 		}
 
@@ -190,7 +215,6 @@ class extends="BaseVectorMemory" {
 				filterExpression = expressions.toList( " && " );
 			}
 
-			// Prepare search payload - v1 API uses "vector" not "data"
 			var payload = {
 				"collectionName" : variables.collection,
 				"vector"         : arguments.embedding,
@@ -206,7 +230,7 @@ class extends="BaseVectorMemory" {
 			// Search via REST API
 			var response = makeRequest(
 				method = "POST",
-				path   = "/v1/vector/search",
+				path   = "/v2/vectordb/entities/search",
 				body   = payload
 			);
 
@@ -267,7 +291,7 @@ class extends="BaseVectorMemory" {
 			// Query via REST API
 			var response = makeRequest(
 				method = "POST",
-				path   = "/v1/vector/query",
+				path   = "/v2/vectordb/entities/query",
 				body   = payload
 			);
 
@@ -318,7 +342,7 @@ class extends="BaseVectorMemory" {
 			// Query via REST API
 			var response = makeRequest(
 				method = "POST",
-				path   = "/v1/vector/query",
+				path   = "/v2/vectordb/entities/query",
 				body   = payload
 			);
 
@@ -361,7 +385,7 @@ class extends="BaseVectorMemory" {
 			// Delete via REST API
 			var response = makeRequest(
 				method = "POST",
-				path   = "/v1/vector/delete",
+				path   = "/v2/vectordb/entities/delete",
 				body   = payload
 			);
 
@@ -395,7 +419,7 @@ class extends="BaseVectorMemory" {
 			// Delete via REST API
 			var response = makeRequest(
 				method = "POST",
-				path   = "/v1/vector/delete",
+				path   = "/v2/vectordb/entities/delete",
 				body   = payload
 			);
 
@@ -444,8 +468,6 @@ class extends="BaseVectorMemory" {
 		var oldCollection = variables.collection;
 		variables.collection = arguments.name;
 
-		// Prepare collection payload for v1 API (simplified)
-		// Note: v1 API always creates collections with autoID=true
 		var payload = {
 			"collectionName" : variables.collection,
 			"dimension" : variables.dimension,
@@ -455,7 +477,7 @@ class extends="BaseVectorMemory" {
 		// Create collection via REST API
 		var response = makeRequest(
 			method = "POST",
-			path   = "/v1/vector/collections/create",
+			path   = "/v2/vectordb/collections/create",
 			body   = payload
 		);
 
@@ -466,7 +488,6 @@ class extends="BaseVectorMemory" {
 			);
 		}
 
-		// Collection is automatically loaded in v1 API
 		return this;
 	}
 
@@ -481,7 +502,7 @@ class extends="BaseVectorMemory" {
 		try {
 			// List all collections
 			var response = makeRequest(
-				path   = "/v1/vector/collections"
+				path   = "/v2/vectordb/collections/list"
 			);
 
 			// Check if our collection is in the list
@@ -511,7 +532,7 @@ class extends="BaseVectorMemory" {
 		// Drop via REST API
 		makeRequest(
 			method = "POST",
-			path   = "/v1/vector/collections/drop",
+			path   = "/v2/vectordb/collections/drop",
 			body   = payload
 		);
 
@@ -555,7 +576,7 @@ class extends="BaseVectorMemory" {
 
 			makeRequest(
 				method = "POST",
-				path   = "/v1/vector/collections/load",
+				path   = "/v2/vectordb/collections/load",
 				body   = payload
 			);
 		} catch ( any e ) {
@@ -605,7 +626,15 @@ class extends="BaseVectorMemory" {
 
 		// Parse response, making sure no hard errors
 		if ( result.errorDetail.isEmpty() &&  result.filecontent.len() > 0 ) {
-			return jsonDeserialize( result.filecontent );
+			var targetResult = jsonDeserialize( result.filecontent );
+			// If it's just a status code, return as error
+			if( !isStruct( targetResult ) ){
+				return {
+					"code" : result.statusCode,
+					"message" : "Unexpected response from Milvus: #result.filecontent#"
+				};
+			}
+			return targetResult;
 		}
 
 		// Return error response if no content
