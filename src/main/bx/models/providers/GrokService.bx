@@ -21,7 +21,8 @@ class extends="BaseService"{
 	static {
 		DEFAULT_CHAT_PARAMS = {
 			// according to the docs, this is the default model
-			"model" : "grok-2-latest"
+			// https://docs.x.ai/docs/models
+			"model" : "grok-4-1-fast-reasoning"
 		};
 	}
 

@@ -73,6 +73,7 @@ public abstract class BaseIntegrationTest {
 			    .register( context )
 			    .activate( context );
 		} else {
+			moduleRecord = moduleService.getRegistry().get( moduleName );
 			System.out.println( "Module already loaded: " + moduleName );
 		}
 	}
