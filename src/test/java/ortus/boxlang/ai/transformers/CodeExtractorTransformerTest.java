@@ -373,7 +373,7 @@ function foo() {
 
 			text = "Here's BoxLang:
 
-```js
+```boxlang
 function calculate(x, y) {
     return x + y;
 }
@@ -381,8 +381,8 @@ function calculate(x, y) {
 ";
 
 			result = new CodeExtractorTransformer()
-				.configure({ language: "boxlang" })
-				.transform(text);
+				.configure( { language: "boxlang" } )
+				.transform( text );
 			""",
 			context
 		);
