@@ -382,7 +382,11 @@ class extends="BaseVectorMemory" {
 	}
 
 	/**
-	 * Delete a document by ID
+	 * Delete document by ID from ChromaDB
+	 *
+	 * @id Document ID
+	 *
+	 * @return Boolean success
 	 */
 	boolean function deleteDocument( required string id ) {
 		// Prepare delete payload - filter by docId (memory key identifier)
