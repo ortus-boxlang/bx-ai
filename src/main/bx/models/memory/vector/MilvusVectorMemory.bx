@@ -13,6 +13,7 @@ class extends="BaseVectorMemory" {
 	 */
 	property name="host" type="string" default="localhost";
 	property name="port" type="numeric" default=19530;
+	property name="protocol" type="string" default="http";
 	property name="token" type="string" default="";
 	property name="databaseName" type="string" default="default";
 
@@ -25,16 +26,6 @@ class extends="BaseVectorMemory" {
 	 * HTTP timeout in seconds
 	 */
 	property name="timeout" type="numeric" default=30;
-
-	/**
-	 * Vector dimension (auto-detected or configured)
-	 */
-	property name="dimension" type="numeric" default=0;
-
-	/**
-	 * Metric type for similarity (L2, IP, COSINE)
-	 */
-	property name="metricType" type="string" default="COSINE";
 
 	/**
 	 * ------------------------------------------------------------------------------
@@ -50,31 +41,24 @@ class extends="BaseVectorMemory" {
 	 * @return MilvusVectorMemory for chaining
 	 */
 	function configure( required struct config ) {
-		// Extract Milvus specific config
-		if ( arguments.config.keyExists( "host" ) ) {
-			variables.host = arguments.config.host;
-		}
-		if ( arguments.config.keyExists( "port" ) ) {
-			variables.port = arguments.config.port;
-		}
-		if ( arguments.config.keyExists( "token" ) ) {
-			variables.token = arguments.config.token;
-		}
-		if ( arguments.config.keyExists( "databaseName" ) ) {
-			variables.databaseName = arguments.config.databaseName;
-		}
-		if ( arguments.config.keyExists( "dimension" ) ) {
-			variables.dimension = arguments.config.dimension;
-		}
-		if ( arguments.config.keyExists( "metricType" ) ) {
-			variables.metricType = arguments.config.metricType;
-		}
-		if ( arguments.config.keyExists( "timeout" ) ) {
-			variables.timeout = arguments.config.timeout;
-		}
+		// Param config defaults
+		param arguments.config.host = "localhost";
+		param arguments.config.port = 19530;
+		param arguments.config.protocol = "http";
+		param arguments.config.token = "";
+		param arguments.config.databaseName = "default";
+		param arguments.config.timeout = 30;
+
+		// Register variables
+		variables.host = arguments.config.host;
+		variables.port = arguments.config.port;
+		variables.protocol = arguments.config.protocol;
+		variables.token = arguments.config.token;
+		variables.databaseName = arguments.config.databaseName;
+		variables.timeout = arguments.config.timeout;
 
 		// Build base URL for REST API
-		variables.baseUrl = "http://#variables.host#:#variables.port#";
+		variables.baseUrl = "#variables.protocol#://#variables.host#:#variables.port#";
 
 		// Call parent configure
 		super.configure( arguments.config );
@@ -94,10 +78,10 @@ class extends="BaseVectorMemory" {
 	IVectorMemory function ensureCollection() {
 		// Check if collection exists
 		if ( !collectionExists( variables.collection ) ) {
-			createCollection( variables.collection );
+			createCollection( variables.collection )
 		} else {
 			// Load collection into memory
-			loadCollection();
+			loadCollection()
 		}
 
 		return this;
@@ -113,16 +97,16 @@ class extends="BaseVectorMemory" {
 		required struct metadata
 	) {
 		// Auto-detect dimension from first vector
-		if ( variables.dimension == 0 ) {
-			variables.dimension = arguments.embedding.len();
+		if ( variables.dimensions == 0 ) {
+			variables.dimensions = arguments.embedding.len();
 			ensureCollection();
 		}
 
 		// Validate dimension
-		if ( arguments.embedding.len() != variables.dimension ) {
+		if ( arguments.embedding.len() != variables.dimensions ) {
 			throw(
 				type    = "VectorDimensionMismatch",
-				message = "VectorDimensionMismatch: All vectors must have the same dimensions. Expected #variables.dimension#, got #arguments.embedding.len()#"
+				message = "VectorDimensionMismatch: All vectors must have the same dimensions. Expected #variables.dimensions#, got #arguments.embedding.len()#"
 			);
 		}
 
@@ -184,22 +168,22 @@ class extends="BaseVectorMemory" {
 	IVectorMemory function flush() {
 		var payload = {
 			"collectionName" : variables.collection
-		};
+		}
 
 		var response = makeRequest(
 			method = "POST",
 			path   = "/v2/vectordb/collections/flush",
 			body   = payload
-		);
+		)
 
 		if ( response.code != 0 ) {
 			throw(
 				type    = "MilvusFlushError",
 				message = "Milvus flush failed: #response.message#"
-			);
+			)
 		}
 
-		return this;
+		return this
 	}
 
 	/**
@@ -210,12 +194,12 @@ class extends="BaseVectorMemory" {
 		required numeric limit,
 		required struct filter
 	) {
-		if ( variables.dimension > 0 && arguments.embedding.len() != variables.dimension ) {
+		if ( variables.dimensions > 0 && arguments.embedding.len() != variables.dimensions ) {
 			throw(
 				type    = "VectorDimensionMismatch",
 				message = "Query vector must have the same dimensions as stored vectors",
-				detail  = "Expected #variables.dimension#, got #arguments.embedding.len()#"
-			);
+				detail  = "Expected #variables.dimensions#, got #arguments.embedding.len()#"
+			)
 		}
 
 		try {
@@ -342,6 +326,10 @@ class extends="BaseVectorMemory" {
 
 	/**
 	 * Get a document by ID
+	 *
+	 * @id Document ID to retrieve
+	 *
+	 * @return Document struct or empty struct if not found
 	 */
 	struct function getDocumentById( required string id ) {
 		try {
@@ -389,63 +377,55 @@ class extends="BaseVectorMemory" {
 	 * Delete a document by ID
 	 */
 	boolean function deleteDocument( required string id ) {
-		try {
-			// Prepare delete payload - filter by docId (memory key identifier)
-			var payload = {
-				"collectionName" : variables.collection,
-				"filter"         : 'docId == "#arguments.id#"'
-			};
+		// Prepare delete payload - filter by docId (memory key identifier)
+		var payload = {
+			"collectionName" : variables.collection,
+			"filter"         : 'docId == "#arguments.id#"'
+		};
 
-			// Delete via REST API
-			var response = makeRequest(
-				method = "POST",
-				path   = "/v2/vectordb/entities/delete",
-				body   = payload
-			);
+		// Delete via REST API
+		var response = makeRequest(
+			method = "POST",
+			path   = "/v2/vectordb/entities/delete",
+			body   = payload
+		);
 
-			// Note: Milvus delete operations may have eventual consistency
-			// For strong consistency, consider adding a small delay or flush
+		// Note: Milvus delete operations may have eventual consistency
+		// For strong consistency, consider adding a small delay or flush
 
-			return response.code == 0;
-		} catch ( any e ) {
-			return false;
-		}
+		return response.code == 0;
 	}
 
 	/**
 	 * Delete documents by metadata filter
 	 */
 	numeric function deleteDocumentsByFilter( required struct filter ) {
-		try {
-			// Build filter expression
-			var expressions = [];
-			for ( var key in arguments.filter ) {
-				expressions.append( 'metadata["#key#"] == "#arguments.filter[ key ]#"' );
-			}
-			var filterExpression = expressions.toList( " && " );
-
-			// Prepare delete payload
-			var payload = {
-				"collectionName" : variables.collection,
-				"filter" : filterExpression
-			};
-
-			// Delete via REST API
-			var response = makeRequest(
-				method = "POST",
-				path   = "/v2/vectordb/entities/delete",
-				body   = payload
-			);
-
-			// Return count if available
-			if ( response.code == 0 && response.keyExists( "data" ) && response.data.keyExists( "deleteCount" ) ) {
-				return response.data.deleteCount;
-			}
-
-			return response.code == 0 ? 1 : 0;
-		} catch ( any e ) {
-			return 0;
+		// Build filter expression
+		var expressions = [];
+		for ( var key in arguments.filter ) {
+			expressions.append( 'metadata["#key#"] == "#arguments.filter[ key ]#"' );
 		}
+		var filterExpression = expressions.toList( " && " );
+
+		// Prepare delete payload
+		var payload = {
+			"collectionName" : variables.collection,
+			"filter" : filterExpression
+		};
+
+		// Delete via REST API
+		var response = makeRequest(
+			method = "POST",
+			path   = "/v2/vectordb/entities/delete",
+			body   = payload
+		);
+
+		// Return count if available
+		if ( response.code == 0 && response.keyExists( "data" ) && response.data.keyExists( "deleteCount" ) ) {
+			return response.data.deleteCount;
+		}
+
+		return response.code == 0 ? 1 : 0;
 	}
 
 	/**
@@ -471,35 +451,32 @@ class extends="BaseVectorMemory" {
 	 * @return IVectorMemory for chaining
 	 */
 	IVectorMemory function createCollection( required string name ) {
-		if ( variables.dimension == 0 ) {
+		if ( variables.dimensions == 0 ) {
 			throw(
 				type    = "MilvusDimensionError",
 				message = "Vector dimension must be specified before creating collection",
 				detail  = "Set dimension in configure() or add a vector first"
-			);
+			)
 		}
-
-		var oldCollection = variables.collection;
-		variables.collection = arguments.name;
 
 		// v2 API requires explicit schema definition
 		var payload = {
 			"collectionName" : variables.collection,
 			"schema"         : {
+				// Enable auto generation of primary key
 				"autoId"             : true,
 				"enableDynamicField" : true,
 				"fields" : [
 					{
 						"fieldName"  : "id",
 						"dataType"   : "Int64",
-						"isPrimary"  : true,
-						"autoID"     : true
+						"isPrimary"  : true
 					},
 					{
 						"fieldName"     : "vector",
 						"dataType"      : "FloatVector",
 						"elementTypeParams" : {
-							"dim" : variables.dimension
+							"dim" : variables.dimensions
 						}
 					},
 					{
@@ -537,11 +514,12 @@ class extends="BaseVectorMemory" {
 			"indexParams" : [ {
 				"fieldName"  : "vector",
 				"indexName"  : "vector_idx",
-				"metricType" : variables.metricType
-			} ]
+				"metricType" : variables.metric,
+				"indexType"  : "AUTOINDEX"
+			] )
 		};
 
-		// Create collection via REST API
+		// Create via REST API
 		var response = makeRequest(
 			method = "POST",
 			path   = "/v2/vectordb/collections/create",
@@ -566,23 +544,21 @@ class extends="BaseVectorMemory" {
 	 * @return Boolean indicating existence
 	 */
 	boolean function collectionExists( required string name ) {
-		try {
-			// List all collections (v2 API requires POST with empty body)
-			var response = makeRequest(
-				method = "POST",
-				path   = "/v2/vectordb/collections/list",
-				body   = {}
-			);
-
-			// Check if our collection is in the list
-			if ( response.code == 0 && response.keyExists( "data" ) && isArray( response.data ) ) {
-				return response.data.contains( arguments.name );
+		// https://milvus.io/api-reference/restful/v2.6.x/v2/Collection%20(v2)/Has.md
+		var response = makeRequest(
+			method = "POST",
+			path   = "/v2/vectordb/collections/has",
+			body   = {
+				"collectionName": arguments.name
 			}
+		)
 
-			return false;
-		} catch ( any e ) {
-			return false;
+		// Verify the result
+		if ( response.code == 0 && response.keyExists( "data" ) ) {
+			return response.data?.has ?: false
 		}
+
+		return false
 	}
 
 	/**
@@ -599,33 +575,16 @@ class extends="BaseVectorMemory" {
 		};
 
 		// Drop via REST API
+		// https://milvus.io/api-reference/restful/v2.6.x/v2/Collection%20(v2)/Drop.md
 		makeRequest(
 			method = "POST",
 			path   = "/v2/vectordb/collections/drop",
 			body   = payload
 		);
 
+		// We do not check the response, as dropping a non-existent collection is not an error
+
 		return this;
-	}
-
-	/**
-	 * ------------------------------------------------------------------------------
-	 * UTILITY METHODS
-	 * ------------------------------------------------------------------------------
-	 */
-
-	/**
-	 * Get the name of the memory store
-	 */
-	function getName() {
-		return "MilvusVectorMemory";
-	}
-
-	/**
-	 * Close connection (no-op for REST API)
-	 */
-	function close() {
-		// No persistent connection to close with REST API
 	}
 
 	/**
@@ -638,18 +597,29 @@ class extends="BaseVectorMemory" {
 	 * Load collection into memory
 	 */
 	private function loadCollection() {
-		try {
-			var payload = {
-				"collectionName" : variables.collection
-			};
 
+		// Check current load state
+        var stateResponse = makeRequest(
+            method = "POST",
+            path   = "/v2/vectordb/collections/get_load_state",
+            body   = {
+                "collectionName" : variables.collection
+            }
+        )
+
+		// Only load if not already loaded
+		if ( stateResponse.code == 0 &&
+				stateResponse.keyExists( "data" ) &&
+				stateResponse.data.loadState != "LoadStateLoaded"
+		) {
+			// Load via REST API
 			makeRequest(
 				method = "POST",
 				path   = "/v2/vectordb/collections/load",
-				body   = payload
-			);
-		} catch ( any e ) {
-			// Collection might already be loaded, continue
+				body   = {
+					"collectionName" : variables.collection
+				}
+			)
 		}
 	}
 
@@ -682,7 +652,7 @@ class extends="BaseVectorMemory" {
 
 		// Add database name if not default
 		if ( variables.databaseName != "default" ) {
-			httpService.header( "db-name", variables.databaseName )
+			arguments.body.dbName = variables.databaseName
 		}
 
 		// Add body for POST requests

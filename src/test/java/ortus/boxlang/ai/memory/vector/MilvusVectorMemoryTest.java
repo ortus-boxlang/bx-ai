@@ -50,15 +50,24 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "provider", "openai" );
 
 		// Create and configure Milvus memory instance
+		//@formatter:off
 		runtime.executeSource(
 		    """
-		    	memory = new bxModules.bxai.models.memory.vector.MilvusVectorMemory()
-		    		.configure({
-		    			collection: "@collection@",
-		    			host: "@host@",
-		    			port: @port@,
-		    			dimension: @dimension@
-		    		});
+				memory = aiMemory(
+					memory: "milvus",
+					key: createUUID(),
+					userId: "test_user",
+					conversationId: "conv1",
+					config = {
+						host: "@host@",
+						port: @port@,
+						dimensions: @dimension@,
+						collection: "@collection@",
+						embeddingProvider: "openai",
+		       	 		embeddingModel: "text-embedding-3-small",
+						useCache: true
+					}
+				)
 		    """
 		        .replace( "@collection@", TEST_COLLECTION )
 		        .replace( "@host@", MILVUS_HOST )
@@ -66,17 +75,19 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		        .replace( "@dimension@", String.valueOf( VECTOR_DIMENSION ) ),
 		    context
 		);
+		//@formatter:on
 	}
 
 	@AfterEach
 	public void cleanupMilvusMemory() {
 		// Clear collection after each test
+		//@formatter:off
 		runtime.executeSource(
 		    """
-		    	if (isDefined("memory")) {
+		    	if ( isDefined("memory") ) {
 		    		try {
+		    			println( "===== Cleaning up Milvus collection =====" );
 		    			memory.clearCollection();
-		    			memory.close();
 		    		} catch (any e) {
 		    			// Ignore cleanup errors
 		    		}
@@ -84,6 +95,7 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		    """,
 		    context
 		);
+		//@formatter:on
 	}
 
 	@Test
