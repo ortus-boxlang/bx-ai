@@ -125,7 +125,7 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		    	memory.flush()
 
 		    	// Retrieve by ID
-		    	doc = memory.getDocumentById("doc1");
+		    	doc = memory.getDocumentById( "doc1" );
 		    """,
 		    context
 		);

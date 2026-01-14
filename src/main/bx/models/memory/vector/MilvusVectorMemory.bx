@@ -91,6 +91,11 @@ class extends="BaseVectorMemory" {
 
 	/**
 	 * Store a document with its vector embedding
+	 *
+	  * @id Document ID
+	 * @text Document text
+	 * @embedding Vector embedding
+	 * @metadata Document metadata
 	 */
 	IVectorMemory function storeDocument(
 		required string id,
@@ -147,6 +152,7 @@ class extends="BaseVectorMemory" {
 		};
 
 		// Insert via REST API
+		// https://milvus.io/api-reference/restful/v2.6.x/v2/Vector%20(v2)/Insert.md
 		var response = makeRequest(
 			method = "POST",
 			path   = "/v2/vectordb/entities/insert",
@@ -172,6 +178,7 @@ class extends="BaseVectorMemory" {
 			"collectionName" : variables.collection
 		}
 
+		// https://milvus.io/api-reference/restful/v2.6.x/v2/Collection%20(v2)/Flush.md
 		var response = makeRequest(
 			method = "POST",
 			path   = "/v2/vectordb/collections/flush",
@@ -334,45 +341,43 @@ class extends="BaseVectorMemory" {
 	 * @return Document struct or empty struct if not found
 	 */
 	struct function getDocumentById( required string id ) {
-		try {
-			// Prepare query payload - filter by docId (memory key identifier)
-			var payload = {
-				"collectionName" : variables.collection,
-				"filter"         : 'docId == "#arguments.id#"',
-				"outputFields"   : [ "*" ],
-				"limit"          : 1
-			};
+		// Prepare query payload - filter by docId (memory key identifier)
+		var payload = {
+			"collectionName" : variables.collection,
+			"filter"         : 'docId == "#arguments.id#"',
+			"outputFields"   : [ "*" ],
+			"limit"          : 1
+		};
 
-			// Query via REST API
-			var response = makeRequest(
-				method = "POST",
-				path   = "/v2/vectordb/entities/query",
-				body   = payload
-			);
+		// Query via REST API
+		// https://milvus.io/api-reference/restful/v2.6.x/v2/Vector%20(v2)/Query.md
+		var response = makeRequest(
+			method = "POST",
+			path   = "/v2/vectordb/entities/query",
+			body   = payload
+		);
 
-			if ( response.code == 0 && response.keyExists( "data" ) && response.data.len() > 0 ) {
-				var item = response.data[ 1 ];
+		if ( response.code == 0 && response.keyExists( "data" ) && response.data.len() > 0 ) {
+			var item = response.data.first()
 
-				// Extract metadata fields (all fields except id, docId, text, vector)
-				var metadata = {};
-				for ( var key in item ) {
-					if ( ![ "id", "docId", "text", "vector" ].find( key ) ) {
-						metadata[ key ] = item[ key ];
-					}
+			// Extract metadata fields (all fields except id, docId, text, vector)
+			var metadata = {}
+			for ( var key in item ) {
+				if ( ![ "id", "docId", "text", "vector" ].find( key ) ) {
+					metadata[ key ] = item[ key ];
 				}
-
-				return {
-					"id"        : item.docId,  // Return memory key identifier, not Milvus auto-generated ID
-					"text"      : item.keyExists( "text" ) ? item.text : "",
-					"embedding" : item.keyExists( "vector" ) ? item.vector : [],
-					"metadata"  : metadata
-				};
 			}
 
-			return {};
-		} catch ( any e ) {
-			return {};
+			return {
+				"id"        : item.docId,  // Return memory key identifier, not Milvus auto-generated ID
+				"text"      : item.keyExists( "text" ) ? item.text : "",
+				"embedding" : item.keyExists( "vector" ) ? item.vector : [],
+				"metadata"  : metadata,
+				// Add the internal id
+				"_internalId" : item.id
+			}
 		}
+		return {}
 	}
 
 	/**
