@@ -569,15 +569,6 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 
 		runtime.executeSource(
 		    """
-		    memory = aiMemory( memory: "milvus", key: replace( createUUID(), "-", "_", "all" ), config: {
-		        host: "localhost",
-		        port: 19530,
-		        collection: "test_export_type_" & replace( createUUID(), "-", "_", "all" ),
-		        dimension: 1536,
-		        embeddingProvider: "openai",
-		        embeddingModel: "text-embedding-3-small"
-		    } );
-
 		    memory.add( { id: "doc1", text: "Test document" } );
 
 		    exported = memory.export();

@@ -409,7 +409,11 @@ class extends="BaseVectorMemory" {
 	}
 
 	/**
-	 * Delete documents by metadata filter
+	 * Delete documents by filter from ChromaDB
+	 *
+	 * @filter Metadata filter
+	 *
+	 * @return Numeric count deleted (ChromaDB doesn't return count, so we estimate)
 	 */
 	numeric function deleteDocumentsByFilter( required struct filter ) {
 		// Build filter expression
