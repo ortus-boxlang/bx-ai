@@ -516,7 +516,7 @@ class extends="BaseVectorMemory" {
 				"indexName"  : "vector_idx",
 				"metricType" : variables.metric,
 				"indexType"  : "AUTOINDEX"
-			] )
+			} ]
 		};
 
 		// Create via REST API
