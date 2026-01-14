@@ -358,6 +358,10 @@ class extends="BaseVectorMemory" {
 			body   = payload
 		);
 
+		println( "===============================" )
+		println( "Milvus getDocumentById response: #response.toString()#" )
+		println( "===============================" )
+
 		if ( response.code == 0 && response.keyExists( "data" ) && response.data.len() > 0 ) {
 			var item = response.data.first()
 
