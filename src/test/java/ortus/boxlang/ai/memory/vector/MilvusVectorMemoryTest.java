@@ -108,22 +108,23 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 	public void testStoreAndRetrieveDocument() {
 		runtime.executeSource(
 		    """
-		    	// Store a document (will use OpenAI to generate embedding)
-		    	memory.add( {
-		    		id: "doc1",
-		    		text: "Test Document",
-		    		metadata: {
-		    			title: "Test Document",
-		    			category: "test"
-		    		}
-		    	} );
+		      	// Store a document (will use OpenAI to generate embedding)
+		      	memory.add( {
+		      		id: "doc1",
+		      		text: "Test Document",
+		      		metadata: {
+		      			title: "Test Document",
+		      			category: "test"
+		      		}
+		      	} );
 
-		    	// Flush to ensure data is available immediately
-		    	memory.flush();
-
-		    	// Retrieve by ID
-		    	doc = memory.getDocumentById( "doc1" );
-		    """,
+		      	// Flush to ensure data is available immediately
+		      	memory.flush();
+		    // Wait for Milvus to make data queryable (eventual consistency)
+		    sleep(500);
+		      	// Retrieve by ID
+		      	doc = memory.getDocumentById( "doc1" );
+		      """,
 		    context
 		);
 
@@ -145,6 +146,9 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 
 		    	// Flush to ensure data is available
 		    	memory.flush();
+
+		    	// Wait for Milvus to make data queryable
+		    	sleep(500);
 
 		    	// Search using semantic similarity
 		    	results = memory.getRelevant( query: "machine learning", limit: 2 );
@@ -173,6 +177,9 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 
 		    	// Flush to ensure data is available
 		    	memory.flush();
+
+		    	// Wait for Milvus to make data queryable
+		    	sleep(500);
 
 		    	// Search with category filter
 		    	results = memory.getRelevant( query: "document", limit: 10, filter: { category: "books" } );
@@ -254,6 +261,7 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 			    	// Add first document to establish dimension
 			    	memory.add( { id: "doc1", text: "First document" } );
 			    	memory.flush();
+			    	sleep(500);
 
 			    	// Try to store vector with mismatched dimension (use storeDocument directly)
 			    	memory.storeDocument(
@@ -283,6 +291,9 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 
 		    	// Flush to ensure data is available
 		    	memory.flush();
+
+		    	// Wait for Milvus to make data queryable
+		    	sleep(500);
 
 		    	// Search using semantic similarity
 		    	results = memory.getRelevant( query: "artificial intelligence", limit: 10 );
