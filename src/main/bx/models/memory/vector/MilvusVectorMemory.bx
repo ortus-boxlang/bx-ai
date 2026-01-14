@@ -42,28 +42,30 @@ class extends="BaseVectorMemory" {
 	 */
 	function configure( required struct config ) {
 		// Param config defaults
-		param arguments.config.host = "localhost";
-		param arguments.config.port = 19530;
-		param arguments.config.protocol = "http";
-		param arguments.config.token = "";
-		param arguments.config.databaseName = "default";
-		param arguments.config.timeout = 30;
+		param arguments.config.host = "localhost"
+		param arguments.config.port = 19530
+		param arguments.config.protocol = "http"
+		param arguments.config.token = ""
+		param arguments.config.databaseName = "default"
+		param arguments.config.timeout = 30
+		param arguments.config.metric = "COSINE"
 
 		// Register variables
-		variables.host = arguments.config.host;
-		variables.port = arguments.config.port;
-		variables.protocol = arguments.config.protocol;
-		variables.token = arguments.config.token;
-		variables.databaseName = arguments.config.databaseName;
-		variables.timeout = arguments.config.timeout;
+		variables.host = arguments.config.host
+		variables.port = arguments.config.port
+		variables.protocol = arguments.config.protocol
+		variables.token = arguments.config.token
+		variables.databaseName = arguments.config.databaseName
+		variables.timeout = arguments.config.timeout
+		variables.metric = arguments.config.metric.ucase()
 
 		// Build base URL for REST API
-		variables.baseUrl = "#variables.protocol#://#variables.host#:#variables.port#";
+		variables.baseUrl = "#variables.protocol#://#variables.host#:#variables.port#"
 
 		// Call parent configure
-		super.configure( arguments.config );
+		super.configure( arguments.config )
 
-		return this;
+		return this
 	}
 
 	/**
@@ -84,7 +86,7 @@ class extends="BaseVectorMemory" {
 			loadCollection()
 		}
 
-		return this;
+		return this
 	}
 
 	/**
