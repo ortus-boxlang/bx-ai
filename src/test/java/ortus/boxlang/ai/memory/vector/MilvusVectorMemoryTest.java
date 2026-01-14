@@ -323,7 +323,7 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		            host: "localhost",
 		            port: 19530,
 		            collection: "test_user_conversation_" & replace( createUUID(), "-", "_", "all" ),
-		            dimension: 1536,
+		            dimensions: 1536,
 		            embeddingProvider: "openai",
 		            embeddingModel: "text-embedding-3-small"
 		        }
@@ -358,7 +358,7 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		            host: "localhost",
 		            port: 19530,
 		            collection: "test_export_identifiers_" & replace( createUUID(), "-", "_", "all" ),
-		            dimension: 1536,
+		            dimensions: 1536,
 		            embeddingProvider: "openai",
 		            embeddingModel: "text-embedding-3-small"
 		        }
@@ -402,7 +402,7 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		            host: "localhost",
 		            port: 19530,
 		            collection: uniqueCollection,
-		            dimension: 1536,
+		            dimensions: 1536,
 		            embeddingProvider: "openai",
 		            embeddingModel: "text-embedding-3-small"
 		        }
@@ -417,7 +417,7 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		            host: "localhost",
 		            port: 19530,
 		            collection: uniqueCollection,
-		            dimension: 1536,
+		            dimensions: 1536,
 		            embeddingProvider: "openai",
 		            embeddingModel: "text-embedding-3-small"
 		        }
@@ -432,7 +432,7 @@ public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 		            host: "localhost",
 		            port: 19530,
 		            collection: uniqueCollection,
-		            dimension: 1536,
+		            dimensions: 1536,
 		            embeddingProvider: "openai",
 		            embeddingModel: "text-embedding-3-small"
 		        }
