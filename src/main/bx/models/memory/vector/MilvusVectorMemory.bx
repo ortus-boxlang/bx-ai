@@ -196,7 +196,13 @@ class extends="BaseVectorMemory" {
 	}
 
 	/**
-	 * Search by vector similarity
+	 * Search by vector embedding in ChromaDB
+	 *
+	 * @embedding Vector to search with
+	 * @limit Max results
+	 * @filter Metadata filter
+	 *
+	 * @return Array of results with similarity scores
 	 */
 	array function searchByVector(
 		required array embedding,
@@ -211,75 +217,70 @@ class extends="BaseVectorMemory" {
 			)
 		}
 
-		try {
-			// Build search expression for filtering (using scalar fields, not metadata)
-			var filterExpression = "";
-			if ( !arguments.filter.isEmpty() ) {
-				var expressions = [];
-				for ( var key in arguments.filter ) {
-					expressions.append( '#key# == "#arguments.filter[ key ]#"' );
-				}
-				filterExpression = expressions.toList( " && " );
+		// Build search expression for filtering (using scalar fields, not metadata)
+		var filterExpression = "";
+		if ( !arguments.filter.isEmpty() ) {
+			var expressions = [];
+			for ( var key in arguments.filter ) {
+				expressions.append( '#key# == "#arguments.filter[ key ]#"' );
 			}
+			filterExpression = expressions.toList( " && " );
+		}
 
-			var payload = {
-				"collectionName" : variables.collection,
-				"data"           : [ arguments.embedding ],
-				"limit"          : arguments.limit,
-				"outputFields"   : [ "*" ]
-			};
+		var payload = {
+			"collectionName" : variables.collection,
+			"data"           : [ arguments.embedding ],
+			"limit"          : arguments.limit,
+			"outputFields"   : [ "*" ]
+		};
 
-			// Add filter if provided
-			if ( filterExpression.len() > 0 ) {
-				payload.filter = filterExpression;
-			}
+		// Add filter if provided
+		if ( filterExpression.len() > 0 ) {
+			payload.filter = filterExpression;
+		}
 
-			// Search via REST API
-			var response = makeRequest(
-				method = "POST",
-				path   = "/v2/vectordb/entities/search",
-				body   = payload
-			);
+		// Search via REST API
+		// https://milvus.io/api-reference/restful/v2.6.x/v2/Vector%20(v2)/Search.md
+		var response = makeRequest(
+			method = "POST",
+			path   = "/v2/vectordb/entities/search",
+			body   = payload
+		);
 
-			if ( response.code != 0 ) {
-				throw(
-					type    = "MilvusSearchError",
-					message = "Milvus search failed: #response.message#"
-				);
-			}
-
-			// Parse results
-			var results = [];
-			if ( response.keyExists( "data" ) && isArray( response.data ) ) {
-				for ( var item in response.data ) {
-					var score = item.keyExists( "distance" ) ? item.distance : 0;
-
-					// Extract metadata fields (all fields except id, docId, text, vector, distance)
-					var metadata = {};
-					for ( var key in item ) {
-						if ( ![ "id", "docId", "text", "vector", "distance" ].find( key ) ) {
-							metadata[ key ] = item[ key ];
-						}
-					}
-
-					results.append( {
-						"id"        : item.keyExists( "docId" ) ? item.docId : item.id,
-						"score"     : score,
-						"text"      : item.keyExists( "text" ) ? item.text : "",
-						"embedding" : item.keyExists( "vector" ) ? item.vector : [],
-						"metadata"  : metadata
-					} );
-				}
-			}
-
-			return results;
-		} catch ( any e ) {
+		if ( response.code != 0 ) {
 			throw(
 				type    = "MilvusSearchError",
-				message = "Failed to search in Milvus",
-				detail  = e.message
+				message = "Milvus search failed: #response.message#"
 			);
 		}
+
+		// Parse results
+		var results = [];
+		if ( response.keyExists( "data" ) && isArray( response.data ) ) {
+			for ( var item in response.data ) {
+				var score = item.keyExists( "distance" ) ? item.distance : 0;
+
+				// Extract metadata fields (all fields except id, docId, text, vector, distance)
+				var metadata = {};
+				for ( var key in item ) {
+					if ( ![ "id", "docId", "text", "vector", "distance" ].find( key ) ) {
+						metadata[ key ] = item[ key ];
+					}
+				}
+
+				results.append( {
+					"id"        : item.keyExists( "docId" ) ? item.docId : item.id,
+					"score"     : score,
+					"text"      : item.keyExists( "text" ) ? item.text : "",
+					"embedding" : item.keyExists( "vector" ) ? item.vector : [],
+					"metadata"  : metadata,
+					// Internal id for reference
+					"_internalId" : item.id
+				} );
+			}
+		}
+
+		return results;
 	}
 
 	/**
