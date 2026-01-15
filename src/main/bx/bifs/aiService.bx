@@ -25,9 +25,11 @@ class {
 	 * - log : A logger for the module config itself
 	 */
 	static final CORE_PROVIDERS = [
+		"bedrock",
 		"claude",
         "cohere",
 		"deepseek",
+		"docker",
 		"gemini",
 		"grok",
 		"groq",
@@ -74,6 +76,9 @@ class {
         // Build the target service
 		var targetClass = ""
 		switch( arguments.provider ) {
+			case "bedrock":
+				oTargetService = new bxModules.bxai.models.providers.BedrockService().configure( arguments.apiKey )
+				break
 			case "claude":
 				targetClass = "bxModules.bxai.models.providers.ClaudeService"
 				break
@@ -82,6 +87,9 @@ class {
                 break
 			case "deepseek":
 				targetClass = "bxModules.bxai.models.providers.DeepSeekService"
+				break
+			case "docker":
+				oTargetService = new bxModules.bxai.models.providers.DockerModelRunnerService().configure( arguments.apiKey )
 				break
 			case "gemini":
 				targetClass = "bxModules.bxai.models.providers.GeminiService"

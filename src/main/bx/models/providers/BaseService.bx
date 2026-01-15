@@ -114,7 +114,7 @@ abstract class implements="IAiService" {
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
 
-	 /**
+	/**
 	 * Configure the service provider with the given options
 	 *
 	 * @options - The configuration options or API key string

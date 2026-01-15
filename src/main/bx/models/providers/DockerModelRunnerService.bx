@@ -1,0 +1,249 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Docker Model Runner Service
+ *
+ * This service provides integration with Docker Model Runner, which exposes
+ * OpenAI-compatible APIs for running local AI models.
+ *
+ * Docker Model Runner allows running models locally with GPU acceleration
+ * through Docker Desktop's AI features.
+ *
+ * @see https://docs.docker.com/ai/model-runner/
+ */
+class extends="BaseService" {
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		// Default endpoint for Docker Model Runner (accessible from Docker containers)
+		DEFAULT_BASE_URL = "http://model-runner.docker.internal/v1";
+		// Alternative for host machine access
+		HOST_BASE_URL = "http://localhost:12434/v1";
+
+		DEFAULT_CHAT_PARAMS = {
+			// Default to a common local model - users can override
+			"model" : "ai/gpt-oss:latest"
+		};
+		DEFAULT_EMBED_PARAMS = {
+			"model" : "ai/gpt-oss:latest"
+		};
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		// Default to Docker internal URL (for container-to-container communication)
+		variables.baseURL = static.DEFAULT_BASE_URL;
+		variables.chatURL = variables.baseURL & "/chat/completions";
+		variables.embeddingsURL = variables.baseURL & "/embeddings";
+		variables.name = "DockerModelRunner";
+
+		defaults( static.DEFAULT_CHAT_PARAMS );
+
+		// Docker Model Runner typically doesn't require authentication
+		// but supports optional API keys for secured deployments
+	}
+
+	/**
+	 * Configure the service with options
+	 *
+	 * @config Can be:
+	 *   - String: API key (optional, empty string for no auth)
+	 *   - Struct: Configuration options (see BaseService.configure) plus:
+	 *     - useHostURL: Boolean to use localhost URL instead of Docker internal
+	 *
+	 * @return The service instance for chaining
+	 */
+	@override
+	IAiService function configure( required any config ) {
+		// Handle Docker-specific useHostURL option before calling parent
+		if ( isStruct( arguments.config ) && arguments.config.keyExists( "useHostURL" ) && arguments.config.useHostURL ) {
+			arguments.config.baseURL = static.HOST_BASE_URL;
+		}
+
+		// Delegate to parent for standard configuration
+		return super.configure( arguments.config );
+	}
+
+	/**
+	 * Set the base URL and update chat/embeddings URLs accordingly
+	 *
+	 * @url The base URL (e.g., http://model-runner.docker.internal/v1)
+	 * @return This service instance for chaining
+	 */
+	public DockerModelRunnerService function setBaseURL( required string url ) {
+		// Normalize URL - remove trailing slash
+		var normalizedURL = arguments.url.reReplace( "/$", "" );
+
+		// Remove /v1 suffix if present (we'll add endpoints directly)
+		if ( normalizedURL.endsWith( "/v1" ) ) {
+			variables.baseURL = normalizedURL;
+		} else {
+			// Assume they want /v1 endpoint
+			variables.baseURL = normalizedURL & "/v1";
+		}
+
+		// Update endpoint URLs
+		variables.chatURL = variables.baseURL & "/chat/completions";
+		variables.embeddingsURL = variables.baseURL & "/embeddings";
+
+		return this;
+	}
+
+	/**
+	 * Get the base URL
+	 * @return The base URL string
+	 */
+	public string function getBaseURL() {
+		return variables.baseURL;
+	}
+
+	/**
+	 * Override chat to handle Docker Model Runner specifics
+	 * Docker Model Runner is OpenAI-compatible, so we use the base implementation
+	 * but disable auth header if no API key is set.
+	 * Also handles model loading (503) with automatic retry.
+	 *
+	 * @aiRequest The AiRequest object to send to the provider
+	 * @interactionCount Current tool call interaction count (used internally)
+	 * @retryCount Current retry attempt for model loading (used internally)
+	 *
+	 * @return The response from the provider according to the return format
+	 */
+	@override
+	public function chat( required AiRequest aiRequest, numeric interactionCount = 0, numeric retryCount = 0 ) {
+		// If no API key is set, disable auth header
+		if ( variables.apiKey.isEmpty() || !len( variables.apiKey ) ) {
+			arguments.aiRequest.setSendAuthHeader( false );
+		}
+
+		// Use the base OpenAI-compatible implementation with retry for model loading
+		try {
+			return super.chat( aiRequest = arguments.aiRequest, interactionCount = arguments.interactionCount );
+		} catch ( ProviderError e ) {
+			// Check if this is a "model loading" error (503)
+			if ( e.message.findNoCase( "Loading model" ) > 0 || e.message.findNoCase( "503" ) > 0 ) {
+				// Retry up to 3 times with exponential backoff
+				if ( arguments.retryCount < 3 ) {
+					var waitTime = ( 2 ^ arguments.retryCount ) * 1000; // 1s, 2s, 4s
+					writeLog(
+						text : "Docker Model Runner: Model loading, retrying in #waitTime/1000#s (attempt #arguments.retryCount + 1#/3)",
+						type : "info",
+						log  : "ai"
+					);
+					sleep( waitTime );
+					return chat( arguments.aiRequest, arguments.interactionCount, arguments.retryCount + 1 );
+				}
+			}
+			// Re-throw if not a loading error or max retries exceeded
+			rethrow;
+		}
+	}
+
+	/**
+	 * Override chatStream to handle Docker Model Runner specifics
+	 *
+	 * @aiRequest The AiRequest object to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream
+	 */
+	@override
+	public function chatStream( required AiRequest aiRequest, required function callback ) {
+		// If no API key is set, disable auth header
+		if ( variables.apiKey.isEmpty() || !len( variables.apiKey ) ) {
+			arguments.aiRequest.setSendAuthHeader( false );
+		}
+
+		// Use the base OpenAI-compatible streaming implementation
+		return super.chatStream( argumentCollection = arguments );
+	}
+
+	/**
+	 * Override embeddings to handle Docker Model Runner specifics
+	 *
+	 * @embeddingRequest The embedding request object
+	 * @return The embeddings response from the provider
+	 */
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ) {
+		// Set default embedding model if not specified
+		if ( embeddingRequest.getModel().isEmpty() ) {
+			embeddingRequest.setModelIfEmpty( static.DEFAULT_EMBED_PARAMS.model );
+		}
+
+		// If no API key is set, disable auth header
+		if ( variables.apiKey.isEmpty() || !len( variables.apiKey ) ) {
+			arguments.embeddingRequest.setSendAuthHeader( false );
+		}
+
+		return super.embeddings( embeddingRequest );
+	}
+
+	/**
+	 * Check if the Docker Model Runner is available
+	 * Makes a simple request to verify connectivity
+	 *
+	 * @return Boolean indicating if the service is reachable
+	 */
+	public boolean function isAvailable() {
+		try {
+			bx:http
+				url     = variables.baseURL & "/models"
+				method  = "get"
+				result  = "checkResult"
+				charset = "utf-8"
+				timeout = 5
+			{}
+
+			return checkResult.statusCode == 200 || checkResult.statusCode == "200 OK";
+		} catch ( any e ) {
+			return false;
+		}
+	}
+
+	/**
+	 * List available models from Docker Model Runner
+	 *
+	 * @return Array of available model names or empty array on error
+	 */
+	public array function listModels() {
+		try {
+			bx:http
+				url     = variables.baseURL & "/models"
+				method  = "get"
+				result  = "modelsResult"
+				charset = "utf-8"
+				timeout = 10
+			{}
+
+			if ( modelsResult.statusCode == 200 || modelsResult.statusCode == "200 OK" ) {
+				var response = jsonDeserialize( modelsResult.filecontent );
+				if ( response.keyExists( "data" ) && isArray( response.data ) ) {
+					return response.data.map( ( model ) => model.id ?: model.name ?: "" );
+				}
+			}
+			return [];
+		} catch ( any e ) {
+			writeLog(
+				text : "Error listing Docker Model Runner models: #e.message#",
+				type : "error",
+				log  : "ai"
+			);
+			return [];
+		}
+	}
+
+}
