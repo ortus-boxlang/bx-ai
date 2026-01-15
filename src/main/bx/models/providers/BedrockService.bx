@@ -132,16 +132,16 @@ class extends="BaseService" {
 	 */
 	private function loadAwsCredentialsFromEnvironment() {
 		if( !len( variables.awsAccessKeyId ) ) {
-			variables.awsAccessKeyId = systemGetEnv( "AWS_ACCESS_KEY_ID" ) ?: "";
+			variables.awsAccessKeyId = getSystemSetting( "AWS_ACCESS_KEY_ID", "" );
 		}
 		if( !len( variables.awsSecretAccessKey ) ) {
-			variables.awsSecretAccessKey = systemGetEnv( "AWS_SECRET_ACCESS_KEY" ) ?: "";
+			variables.awsSecretAccessKey = getSystemSetting( "AWS_SECRET_ACCESS_KEY", "" );
 		}
 		if( !len( variables.awsSessionToken ) ) {
-			variables.awsSessionToken = systemGetEnv( "AWS_SESSION_TOKEN" ) ?: "";
+			variables.awsSessionToken = getSystemSetting( "AWS_SESSION_TOKEN", "" );
 		}
 		if( !len( variables.region ) || variables.region == "us-east-1" ) {
-			var envRegion = systemGetEnv( "AWS_REGION" ) ?: systemGetEnv( "AWS_DEFAULT_REGION" ) ?: "";
+			var envRegion = getSystemSetting( "AWS_REGION", getSystemSetting( "AWS_DEFAULT_REGION", "" ) );
 			if( len( envRegion ) ) {
 				variables.region = envRegion;
 			}
