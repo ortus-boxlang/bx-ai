@@ -275,11 +275,11 @@ class extends="BaseService" {
 
 		for( var msg in arguments.messages ) {
 			if( msg.role == "system" ) {
-				inputText &= "System: " & msg.content & chr(10);
+				inputText &= "System: " & msg.content & char(10);
 			} else if( msg.role == "user" ) {
-				inputText &= "User: " & msg.content & chr(10);
+				inputText &= "User: " & msg.content & char(10);
 			} else if( msg.role == "assistant" ) {
-				inputText &= "Assistant: " & msg.content & chr(10);
+				inputText &= "Assistant: " & msg.content & char(10);
 			}
 		}
 
@@ -306,11 +306,11 @@ class extends="BaseService" {
 
 		for( var msg in arguments.messages ) {
 			if( msg.role == "system" ) {
-				prompt &= "<<SYS>>" & chr(10) & msg.content & chr(10) & "<</SYS>>" & chr(10) & chr(10);
+				prompt &= "<<SYS>>" & char(10) & msg.content & char(10) & "<</SYS>>" & char(10) & char(10);
 			} else if( msg.role == "user" ) {
-				prompt &= "[INST] " & msg.content & " [/INST]" & chr(10);
+				prompt &= "[INST] " & msg.content & " [/INST]" & char(10);
 			} else if( msg.role == "assistant" ) {
-				prompt &= msg.content & chr(10);
+				prompt &= msg.content & char(10);
 			}
 		}
 
@@ -336,7 +336,7 @@ class extends="BaseService" {
 				prompt &= msg.content & "</s>";
 			} else if( msg.role == "system" ) {
 				// Prepend system message to first user message
-				prompt = msg.content & chr(10) & chr(10) & prompt;
+				prompt = msg.content & char(10) & char(10) & prompt;
 			}
 		}
 
@@ -382,7 +382,7 @@ class extends="BaseService" {
 	private struct function transformResponseFromClaude( required struct response, required string modelId ) {
 		var content = "";
 
-		if( arguments.response.keyExists( "content" ) && isArray( arguments.response.content ) && arrayLen( arguments.response.content ) > 0 ) {
+		if( arguments.response.keyExists( "content" ) && isArray( arguments.response.content ) && arguments.response.content.len() > 0 ) {
 			var contentBlock = arguments.response.content[ 1 ];
 			if( isStruct( contentBlock ) && contentBlock.keyExists( "text" ) ) {
 				content = contentBlock.text;
@@ -415,7 +415,7 @@ class extends="BaseService" {
 	private struct function transformResponseFromTitan( required struct response, required string modelId ) {
 		var content = "";
 
-		if( arguments.response.keyExists( "results" ) && isArray( arguments.response.results ) && arrayLen( arguments.response.results ) > 0 ) {
+		if( arguments.response.keyExists( "results" ) && isArray( arguments.response.results ) && arguments.response.results.len() > 0 ) {
 			content = arguments.response.results[ 1 ].outputText ?: "";
 		}
 
@@ -469,7 +469,7 @@ class extends="BaseService" {
 	private struct function transformResponseFromMistral( required struct response, required string modelId ) {
 		var content = "";
 
-		if( arguments.response.keyExists( "outputs" ) && isArray( arguments.response.outputs ) && arrayLen( arguments.response.outputs ) > 0 ) {
+		if( arguments.response.keyExists( "outputs" ) && isArray( arguments.response.outputs ) && arguments.response.outputs.len() > 0 ) {
 			content = arguments.response.outputs[ 1 ].text ?: "";
 		}
 
@@ -741,7 +741,7 @@ class extends="BaseService" {
 		// Titan embeddings handles one text at a time
 		var textsToProcess = isArray( input ) ? input : [ input ];
 
-		for( var i = 1; i <= arrayLen( textsToProcess ); i++ ) {
+		for( var i = 1; i <= textsToProcess.len(); i++ ) {
 			var text = textsToProcess[ i ];
 
 			var dataPacket = {
