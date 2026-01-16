@@ -37,6 +37,7 @@ class {
 		"mistral",
 		"ollama",
 		"openai",
+		"openai-compatible",
 		"openrouter",
 		"perplexity",
         "voyage"
@@ -111,6 +112,9 @@ class {
 				break
 			case "openai" :
 				targetClass = "bxModules.bxai.models.providers.OpenAIService"
+				break
+			case "openai-compatible":
+				oTargetService = new bxModules.bxai.models.providers.OpenAICompatibleService().configure( arguments.apiKey )
 				break
 			case "openrouter":
 				targetClass = "bxModules.bxai.models.providers.OpenRouterService"

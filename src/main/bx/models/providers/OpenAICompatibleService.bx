@@ -1,0 +1,249 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * OpenAI Compatible Service
+ *
+ * This service provides integration with any OpenAI-compatible API endpoint,
+ * including local containers, Lambda functions, self-hosted models, or any
+ * service that implements the OpenAI API specification.
+ *
+ * Use cases:
+ * - Local embedding containers (BGE-M3, Text Embeddings Inference)
+ * - Self-hosted LLMs (vLLM, text-generation-inference, LocalAI)
+ * - AWS Lambda or Azure Functions with OpenAI-compatible interfaces
+ * - Any OpenAI API proxy or gateway
+ *
+ * Configuration options:
+ * - baseURL: Base URL for the service (e.g., http://localhost:8080/v1)
+ * - embeddingsURL: Direct embeddings endpoint URL (overrides baseURL)
+ * - chatURL: Direct chat endpoint URL (overrides baseURL)
+ * - model: Default model name
+ * - apiKey: Optional API key (auth header disabled if empty)
+ *
+ * @example
+ * ```
+ * // Configure for a local embedding container
+ * var service = aiService("openai-compatible").configure({
+ *     "baseURL": "http://embedding-service:8080/v1",
+ *     "model": "bge-m3"
+ * });
+ *
+ * // Generate embeddings
+ * var result = service.embeddings(
+ *     new AiEmbeddingRequest( input: "Hello World" )
+ * );
+ *
+ * // Configure for a self-hosted LLM
+ * var llmService = aiService("openai-compatible").configure({
+ *     "baseURL": "http://vllm-server:8000/v1",
+ *     "model": "llama-2-70b"
+ * });
+ * ```
+ */
+class extends="BaseService" {
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_BASE_URL = "http://localhost:8080/v1";
+
+		DEFAULT_CHAT_PARAMS = {
+			"model" : "default"
+		};
+		DEFAULT_EMBED_PARAMS = {
+			"model" : "default"
+		};
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		variables.baseURL = static.DEFAULT_BASE_URL;
+		variables.chatURL = variables.baseURL & "/chat/completions";
+		variables.embeddingsURL = variables.baseURL & "/embeddings";
+		variables.name = "OpenAICompatible";
+
+		defaults( static.DEFAULT_CHAT_PARAMS );
+	}
+
+	/**
+	 * Configure the service with options
+	 *
+	 * @config Can be:
+	 *   - String: API key (optional, empty string for no auth)
+	 *   - Struct: Configuration options including:
+	 *     - apiKey: API key for authenticated endpoints (optional)
+	 *     - baseURL: Base URL (will append /chat/completions and /embeddings)
+	 *     - chatURL: Direct chat endpoint URL (overrides baseURL)
+	 *     - embeddingsURL: Direct embeddings endpoint URL (overrides baseURL)
+	 *     - model: Default model name
+	 *     - timeout: Request timeout in seconds
+	 *
+	 * @return The service instance for chaining
+	 */
+	@override
+	IAiService function configure( required any config ) {
+		// Delegate to parent for standard configuration
+		super.configure( arguments.config );
+
+		// Store baseURL for reference if provided
+		if ( isStruct( arguments.config ) && arguments.config.keyExists( "baseURL" ) && len( arguments.config.baseURL ) ) {
+			variables.baseURL = arguments.config.baseURL.reReplace( "/$", "" );
+		}
+
+		return this;
+	}
+
+	/**
+	 * Set the base URL and update chat/embeddings URLs accordingly
+	 *
+	 * @url The base URL (e.g., http://localhost:8080/v1)
+	 * @return This service instance for chaining
+	 */
+	public OpenAICompatibleService function setBaseURL( required string url ) {
+		// Normalize URL - remove trailing slash
+		var normalizedURL = arguments.url.reReplace( "/$", "" );
+
+		// Add /v1 suffix if not present
+		if ( !normalizedURL.endsWith( "/v1" ) ) {
+			normalizedURL = normalizedURL & "/v1";
+		}
+
+		variables.baseURL = normalizedURL;
+		variables.chatURL = variables.baseURL & "/chat/completions";
+		variables.embeddingsURL = variables.baseURL & "/embeddings";
+
+		return this;
+	}
+
+	/**
+	 * Get the base URL
+	 * @return The base URL string
+	 */
+	public string function getBaseURL() {
+		return variables.baseURL;
+	}
+
+	/**
+	 * Override chat to disable auth header when no API key is set
+	 *
+	 * @aiRequest The AiRequest object to send to the provider
+	 * @interactionCount Current tool call interaction count (used internally)
+	 *
+	 * @return The response from the provider according to the return format
+	 */
+	@override
+	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ) {
+		// If no API key is set, disable auth header
+		if ( variables.apiKey.isEmpty() || !len( variables.apiKey ) ) {
+			arguments.aiRequest.setSendAuthHeader( false );
+		}
+
+		return super.chat( aiRequest = arguments.aiRequest, interactionCount = arguments.interactionCount );
+	}
+
+	/**
+	 * Override chatStream to disable auth header when no API key is set
+	 *
+	 * @aiRequest The AiRequest object to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream
+	 */
+	@override
+	public function chatStream( required AiRequest aiRequest, required function callback ) {
+		// If no API key is set, disable auth header
+		if ( variables.apiKey.isEmpty() || !len( variables.apiKey ) ) {
+			arguments.aiRequest.setSendAuthHeader( false );
+		}
+
+		return super.chatStream( argumentCollection = arguments );
+	}
+
+	/**
+	 * Override embeddings to disable auth header when no API key is set
+	 *
+	 * @embeddingRequest The embedding request object
+	 * @return The embeddings response from the provider
+	 */
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ) {
+		// Set default embedding model if not specified
+		if ( embeddingRequest.getModel().isEmpty() ) {
+			embeddingRequest.setModelIfEmpty( static.DEFAULT_EMBED_PARAMS.model );
+		}
+
+		// If no API key is set, disable auth header
+		if ( variables.apiKey.isEmpty() || !len( variables.apiKey ) ) {
+			arguments.embeddingRequest.setSendAuthHeader( false );
+		}
+
+		return super.embeddings( embeddingRequest );
+	}
+
+	/**
+	 * Check if the service is available
+	 * Makes a simple request to verify connectivity
+	 *
+	 * @return Boolean indicating if the service is reachable
+	 */
+	public boolean function isAvailable() {
+		try {
+			bx:http
+				url     = variables.baseURL & "/models"
+				method  = "get"
+				result  = "checkResult"
+				charset = "utf-8"
+				timeout = 5
+			{}
+
+			return checkResult.statusCode == 200 || checkResult.statusCode == "200 OK";
+		} catch ( any e ) {
+			return false;
+		}
+	}
+
+	/**
+	 * List available models from the service
+	 *
+	 * @return Array of available model names or empty array on error
+	 */
+	public array function listModels() {
+		try {
+			bx:http
+				url     = variables.baseURL & "/models"
+				method  = "get"
+				result  = "modelsResult"
+				charset = "utf-8"
+				timeout = 10
+			{}
+
+			if ( modelsResult.statusCode == 200 || modelsResult.statusCode == "200 OK" ) {
+				var response = jsonDeserialize( modelsResult.filecontent );
+				if ( response.keyExists( "data" ) && isArray( response.data ) ) {
+					return response.data.map( ( model ) => model.id ?: model.name ?: "" );
+				}
+			}
+			return [];
+		} catch ( any e ) {
+			writeLog(
+				text : "Error listing models from OpenAI-compatible service: #e.message#",
+				type : "error",
+				log  : "ai"
+			);
+			return [];
+		}
+	}
+
+}

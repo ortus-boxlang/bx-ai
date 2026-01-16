@@ -33,8 +33,7 @@
  */
 import bxModules.bxai.models.util.AwsSignatureV4;
 
-class extends="BaseService" {
-
+class extends = "BaseService"{
 	/**
 	 * AWS Region for Bedrock
 	 */
@@ -65,8 +64,8 @@ class extends="BaseService" {
 	 */
 	static {
 		DEFAULT_CHAT_PARAMS = {
-			"model": "anthropic.claude-3-sonnet-20240229-v1:0",
-			"max_tokens": 4096
+			"model"      : "anthropic.claude-3-sonnet-20240229-v1:0",
+			"max_tokens" : 4096
 		};
 		// Bedrock service name for AWS signing
 		AWS_SERVICE = "bedrock";
@@ -75,10 +74,10 @@ class extends="BaseService" {
 	/**
 	 * Constructor
 	 */
-	function init() {
-		variables.name = "Bedrock";
+	function init(){
+		variables.name          = "Bedrock";
 		// Bedrock doesn't use a fixed URL - it's constructed per request based on region and model
-		variables.chatURL = "";
+		variables.chatURL       = "";
 		variables.embeddingsURL = "";
 
 		// Set default params
@@ -93,33 +92,34 @@ class extends="BaseService" {
 	/**
 	 * Configure the service with AWS credentials and region
 	 *
-	 * @config A struct containing: region, awsAccessKeyId, awsSecretAccessKey, awsSessionToken (optional), modelId (optional)
 	 *         OR a simple string for backward compatibility (treated as modelId)
+	 *
+	 * @config A struct containing: region, awsAccessKeyId, awsSecretAccessKey, awsSessionToken (optional), modelId (optional)
 	 *
 	 * @return The service instance
 	 */
-	IAiService function configure( required any config ) {
-		if( isSimpleValue( arguments.config ) ) {
+	IAiService function configure( required any config ){
+		if ( isSimpleValue( arguments.config ) ) {
 			// If a simple string is passed, treat it as model ID for compatibility
 			variables.modelId = arguments.config;
-		} else if( isStruct( arguments.config ) ) {
+		} else if ( isStruct( arguments.config ) ) {
 			// Configure with struct of settings
-			if( arguments.config.keyExists( "region" ) ) {
+			if ( arguments.config.keyExists( "region" ) ) {
 				variables.region = arguments.config.region;
 			}
-			if( arguments.config.keyExists( "awsAccessKeyId" ) ) {
+			if ( arguments.config.keyExists( "awsAccessKeyId" ) ) {
 				variables.awsAccessKeyId = arguments.config.awsAccessKeyId;
 			}
-			if( arguments.config.keyExists( "awsSecretAccessKey" ) ) {
+			if ( arguments.config.keyExists( "awsSecretAccessKey" ) ) {
 				variables.awsSecretAccessKey = arguments.config.awsSecretAccessKey;
 			}
-			if( arguments.config.keyExists( "awsSessionToken" ) ) {
+			if ( arguments.config.keyExists( "awsSessionToken" ) ) {
 				variables.awsSessionToken = arguments.config.awsSessionToken;
 			}
-			if( arguments.config.keyExists( "modelId" ) ) {
+			if ( arguments.config.keyExists( "modelId" ) ) {
 				variables.modelId = arguments.config.modelId;
 			}
-			if( arguments.config.keyExists( "model" ) ) {
+			if ( arguments.config.keyExists( "model" ) ) {
 				variables.params.model = arguments.config.model;
 			}
 		}
@@ -130,19 +130,19 @@ class extends="BaseService" {
 	/**
 	 * Load AWS credentials from environment variables if not already set
 	 */
-	private function loadAwsCredentialsFromEnvironment() {
-		if( !len( variables.awsAccessKeyId ) ) {
+	private function loadAwsCredentialsFromEnvironment(){
+		if ( !len( variables.awsAccessKeyId ) ) {
 			variables.awsAccessKeyId = getSystemSetting( "AWS_ACCESS_KEY_ID", "" );
 		}
-		if( !len( variables.awsSecretAccessKey ) ) {
+		if ( !len( variables.awsSecretAccessKey ) ) {
 			variables.awsSecretAccessKey = getSystemSetting( "AWS_SECRET_ACCESS_KEY", "" );
 		}
-		if( !len( variables.awsSessionToken ) ) {
+		if ( !len( variables.awsSessionToken ) ) {
 			variables.awsSessionToken = getSystemSetting( "AWS_SESSION_TOKEN", "" );
 		}
-		if( !len( variables.region ) || variables.region == "us-east-1" ) {
+		if ( !len( variables.region ) || variables.region == "us-east-1" ) {
 			var envRegion = getSystemSetting( "AWS_REGION", getSystemSetting( "AWS_DEFAULT_REGION", "" ) );
-			if( len( envRegion ) ) {
+			if ( len( envRegion ) ) {
 				variables.region = envRegion;
 			}
 		}
@@ -152,23 +152,24 @@ class extends="BaseService" {
 	 * Get the Bedrock endpoint URL for the configured region and model
 	 *
 	 * @modelId The model ID to invoke
+	 *
 	 * @return The full endpoint URL
 	 */
-	private string function getBedrockEndpoint( required string modelId ) {
+	private string function getBedrockEndpoint( required string modelId ){
 		return "https://bedrock-runtime.#variables.region#.amazonaws.com/model/#arguments.modelId#/invoke";
 	}
 
 	/**
 	 * Get the Bedrock host for the configured region
 	 */
-	private string function getBedrockHost() {
+	private string function getBedrockHost(){
 		return "bedrock-runtime.#variables.region#.amazonaws.com";
 	}
 
 	/**
 	 * Get the request path for a model invocation
 	 */
-	private string function getBedrockPath( required string modelId ) {
+	private string function getBedrockPath( required string modelId ){
 		return "/model/#arguments.modelId#/invoke";
 	}
 
@@ -176,22 +177,23 @@ class extends="BaseService" {
 	 * Detect the model family from the model ID
 	 *
 	 * @modelId The Bedrock model ID
+	 *
 	 * @return The model family: "claude", "titan", "llama", "cohere", "ai21", "mistral", or "unknown"
 	 */
-	private string function detectModelFamily( required string modelId ) {
+	private string function detectModelFamily( required string modelId ){
 		var id = arguments.modelId.lcase();
 
-		if( id.findNoCase( "anthropic" ) || id.findNoCase( "claude" ) ) {
+		if ( id.findNoCase( "anthropic" ) || id.findNoCase( "claude" ) ) {
 			return "claude";
-		} else if( id.findNoCase( "amazon.titan" ) ) {
+		} else if ( id.findNoCase( "amazon.titan" ) ) {
 			return "titan";
-		} else if( id.findNoCase( "meta.llama" ) ) {
+		} else if ( id.findNoCase( "meta.llama" ) ) {
 			return "llama";
-		} else if( id.findNoCase( "cohere" ) ) {
+		} else if ( id.findNoCase( "cohere" ) ) {
 			return "cohere";
-		} else if( id.findNoCase( "ai21" ) ) {
+		} else if ( id.findNoCase( "ai21" ) ) {
 			return "ai21";
-		} else if( id.findNoCase( "mistral" ) ) {
+		} else if ( id.findNoCase( "mistral" ) ) {
 			return "mistral";
 		}
 
@@ -201,8 +203,8 @@ class extends="BaseService" {
 	/**
 	 * Transform an OpenAI-format request to Bedrock model-specific format
 	 *
-	 * @messages Array of messages in OpenAI format
-	 * @params Additional parameters
+	 * @messages    Array of messages in OpenAI format
+	 * @params      Additional parameters
 	 * @modelFamily The detected model family
 	 *
 	 * @return Struct formatted for the specific Bedrock model
@@ -211,8 +213,8 @@ class extends="BaseService" {
 		required array messages,
 		required struct params,
 		required string modelFamily
-	) {
-		switch( arguments.modelFamily ) {
+	){
+		switch ( arguments.modelFamily ) {
 			case "claude":
 				return transformRequestForClaude( arguments.messages, arguments.params );
 			case "titan":
@@ -231,35 +233,35 @@ class extends="BaseService" {
 	 * Transform request for Claude models on Bedrock
 	 * Uses Claude Messages API format with Bedrock-specific wrapper
 	 */
-	private struct function transformRequestForClaude( required array messages, required struct params ) {
+	private struct function transformRequestForClaude( required array messages, required struct params ){
 		var result = {
-			"anthropic_version": "bedrock-2023-05-31",
-			"max_tokens": arguments.params.max_tokens ?: 4096
+			"anthropic_version" : "bedrock-2023-05-31",
+			"max_tokens"        : arguments.params.max_tokens ?: 4096
 		};
 
 		// Handle temperature if provided
-		if( arguments.params.keyExists( "temperature" ) ) {
+		if ( arguments.params.keyExists( "temperature" ) ) {
 			result[ "temperature" ] = arguments.params.temperature;
 		}
 
 		// Separate system message from other messages
-		var systemPrompt = "";
+		var systemPrompt         = "";
 		var conversationMessages = [];
 
-		for( var msg in arguments.messages ) {
-			if( msg.role == "system" ) {
+		for ( var msg in arguments.messages ) {
+			if ( msg.role == "system" ) {
 				systemPrompt = isSimpleValue( msg.content ) ? msg.content : msg.content.toString();
 			} else {
-				conversationMessages.append({
-					"role": msg.role,
-					"content": isSimpleValue( msg.content ) ? msg.content : msg.content.toString()
-				});
+				conversationMessages.append( {
+					"role"    : msg.role,
+					"content" : isSimpleValue( msg.content ) ? msg.content : msg.content.toString()
+				} );
 			}
 		}
 
 		result[ "messages" ] = conversationMessages;
 
-		if( len( trim( systemPrompt ) ) ) {
+		if ( len( trim( systemPrompt ) ) ) {
 			result[ "system" ] = systemPrompt;
 		}
 
@@ -269,28 +271,28 @@ class extends="BaseService" {
 	/**
 	 * Transform request for Amazon Titan models
 	 */
-	private struct function transformRequestForTitan( required array messages, required struct params ) {
+	private struct function transformRequestForTitan( required array messages, required struct params ){
 		// Titan uses a simpler format with inputText
 		var inputText = "";
 
-		for( var msg in arguments.messages ) {
-			if( msg.role == "system" ) {
-				inputText &= "System: " & msg.content & char(10);
-			} else if( msg.role == "user" ) {
-				inputText &= "User: " & msg.content & char(10);
-			} else if( msg.role == "assistant" ) {
-				inputText &= "Assistant: " & msg.content & char(10);
+		for ( var msg in arguments.messages ) {
+			if ( msg.role == "system" ) {
+				inputText &= "System: " & msg.content & char( 10 );
+			} else if ( msg.role == "user" ) {
+				inputText &= "User: " & msg.content & char( 10 );
+			} else if ( msg.role == "assistant" ) {
+				inputText &= "Assistant: " & msg.content & char( 10 );
 			}
 		}
 
 		inputText &= "Assistant: ";
 
 		var result = {
-			"inputText": inputText,
-			"textGenerationConfig": {
-				"maxTokenCount": arguments.params.max_tokens ?: 4096,
-				"temperature": arguments.params.temperature ?: 0.7,
-				"topP": arguments.params.top_p ?: 0.9
+			"inputText"            : inputText,
+			"textGenerationConfig" : {
+				"maxTokenCount" : arguments.params.max_tokens ?: 4096,
+				"temperature"   : arguments.params.temperature ?: 0.7,
+				"topP"          : arguments.params.top_p ?: 0.9
 			}
 		};
 
@@ -300,60 +302,60 @@ class extends="BaseService" {
 	/**
 	 * Transform request for Meta Llama models
 	 */
-	private struct function transformRequestForLlama( required array messages, required struct params ) {
+	private struct function transformRequestForLlama( required array messages, required struct params ){
 		// Llama uses a prompt-based format
 		var prompt = "";
 
-		for( var msg in arguments.messages ) {
-			if( msg.role == "system" ) {
-				prompt &= "<<SYS>>" & char(10) & msg.content & char(10) & "<</SYS>>" & char(10) & char(10);
-			} else if( msg.role == "user" ) {
-				prompt &= "[INST] " & msg.content & " [/INST]" & char(10);
-			} else if( msg.role == "assistant" ) {
-				prompt &= msg.content & char(10);
+		for ( var msg in arguments.messages ) {
+			if ( msg.role == "system" ) {
+				prompt &= "<<SYS>>" & char( 10 ) & msg.content & char( 10 ) & "<</SYS>>" & char( 10 ) & char( 10 );
+			} else if ( msg.role == "user" ) {
+				prompt &= "[INST] " & msg.content & " [/INST]" & char( 10 );
+			} else if ( msg.role == "assistant" ) {
+				prompt &= msg.content & char( 10 );
 			}
 		}
 
 		return {
-			"prompt": prompt,
-			"max_gen_len": arguments.params.max_tokens ?: 2048,
-			"temperature": arguments.params.temperature ?: 0.7,
-			"top_p": arguments.params.top_p ?: 0.9
+			"prompt"      : prompt,
+			"max_gen_len" : arguments.params.max_tokens ?: 2048,
+			"temperature" : arguments.params.temperature ?: 0.7,
+			"top_p"       : arguments.params.top_p ?: 0.9
 		};
 	}
 
 	/**
 	 * Transform request for Mistral models
 	 */
-	private struct function transformRequestForMistral( required array messages, required struct params ) {
+	private struct function transformRequestForMistral( required array messages, required struct params ){
 		// Mistral uses a similar format to OpenAI
 		var prompt = "";
 
-		for( var msg in arguments.messages ) {
-			if( msg.role == "user" ) {
+		for ( var msg in arguments.messages ) {
+			if ( msg.role == "user" ) {
 				prompt &= "<s>[INST] " & msg.content & " [/INST]";
-			} else if( msg.role == "assistant" ) {
+			} else if ( msg.role == "assistant" ) {
 				prompt &= msg.content & "</s>";
-			} else if( msg.role == "system" ) {
+			} else if ( msg.role == "system" ) {
 				// Prepend system message to first user message
-				prompt = msg.content & char(10) & char(10) & prompt;
+				prompt = msg.content & char( 10 ) & char( 10 ) & prompt;
 			}
 		}
 
 		return {
-			"prompt": prompt,
-			"max_tokens": arguments.params.max_tokens ?: 4096,
-			"temperature": arguments.params.temperature ?: 0.7,
-			"top_p": arguments.params.top_p ?: 0.9
+			"prompt"      : prompt,
+			"max_tokens"  : arguments.params.max_tokens ?: 4096,
+			"temperature" : arguments.params.temperature ?: 0.7,
+			"top_p"       : arguments.params.top_p ?: 0.9
 		};
 	}
 
 	/**
 	 * Transform Bedrock response to OpenAI-compatible format
 	 *
-	 * @response The raw response from Bedrock
+	 * @response    The raw response from Bedrock
 	 * @modelFamily The model family
-	 * @modelId The model ID
+	 * @modelId     The model ID
 	 *
 	 * @return OpenAI-compatible response struct
 	 */
@@ -361,8 +363,8 @@ class extends="BaseService" {
 		required struct response,
 		required string modelFamily,
 		required string modelId
-	) {
-		switch( arguments.modelFamily ) {
+	){
+		switch ( arguments.modelFamily ) {
 			case "claude":
 				return transformResponseFromClaude( arguments.response, arguments.modelId );
 			case "titan":
@@ -379,131 +381,134 @@ class extends="BaseService" {
 	/**
 	 * Transform Claude Bedrock response to OpenAI format
 	 */
-	private struct function transformResponseFromClaude( required struct response, required string modelId ) {
+	private struct function transformResponseFromClaude( required struct response, required string modelId ){
 		var content = "";
 
-		if( arguments.response.keyExists( "content" ) && isArray( arguments.response.content ) && arguments.response.content.len() > 0 ) {
+		if (
+			arguments.response.keyExists( "content" ) && isArray( arguments.response.content ) && arguments.response.content.len() > 0
+		) {
 			var contentBlock = arguments.response.content[ 1 ];
-			if( isStruct( contentBlock ) && contentBlock.keyExists( "text" ) ) {
+			if ( isStruct( contentBlock ) && contentBlock.keyExists( "text" ) ) {
 				content = contentBlock.text;
 			}
 		}
 
 		return {
-			"choices": [
+			"choices" : [
 				{
-					"message": {
-						"role": "assistant",
-						"content": content
-					},
-					"finish_reason": arguments.response.stop_reason ?: "stop",
-					"index": 0
+					"message"       : { "role" : "assistant", "content" : content },
+					"finish_reason" : arguments.response.stop_reason ?: "stop",
+					"index"         : 0
 				}
 			],
-			"usage": {
-				"prompt_tokens": arguments.response.usage?.input_tokens ?: 0,
-				"completion_tokens": arguments.response.usage?.output_tokens ?: 0,
-				"total_tokens": ( arguments.response.usage?.input_tokens ?: 0 ) + ( arguments.response.usage?.output_tokens ?: 0 )
+			"usage" : {
+				"prompt_tokens"     : arguments.response.usage?.input_tokens ?: 0,
+				"completion_tokens" : arguments.response.usage?.output_tokens ?: 0,
+				"total_tokens"      : ( arguments.response.usage?.input_tokens ?: 0 ) + (
+					arguments.response.usage?.output_tokens ?: 0
+				)
 			},
-			"model": arguments.modelId
+			"model" : arguments.modelId
 		};
 	}
 
 	/**
 	 * Transform Titan response to OpenAI format
 	 */
-	private struct function transformResponseFromTitan( required struct response, required string modelId ) {
+	private struct function transformResponseFromTitan( required struct response, required string modelId ){
 		var content = "";
 
-		if( arguments.response.keyExists( "results" ) && isArray( arguments.response.results ) && arguments.response.results.len() > 0 ) {
+		if (
+			arguments.response.keyExists( "results" ) && isArray( arguments.response.results ) && arguments.response.results.len() > 0
+		) {
 			content = arguments.response.results[ 1 ].outputText ?: "";
 		}
 
 		return {
-			"choices": [
+			"choices" : [
 				{
-					"message": {
-						"role": "assistant",
-						"content": content
-					},
-					"finish_reason": "stop",
-					"index": 0
+					"message"       : { "role" : "assistant", "content" : content },
+					"finish_reason" : "stop",
+					"index"         : 0
 				}
 			],
-			"usage": {
-				"prompt_tokens": arguments.response.inputTextTokenCount ?: 0,
-				"completion_tokens": arguments.response.results[ 1 ]?.tokenCount ?: 0,
-				"total_tokens": ( arguments.response.inputTextTokenCount ?: 0 ) + ( arguments.response.results[ 1 ]?.tokenCount ?: 0 )
+			"usage" : {
+				"prompt_tokens"     : arguments.response.inputTextTokenCount ?: 0,
+				"completion_tokens" : arguments.response.results[ 1 ]?.tokenCount ?: 0,
+				"total_tokens"      : ( arguments.response.inputTextTokenCount ?: 0 ) + (
+					arguments.response.results[ 1 ]?.tokenCount ?: 0
+				)
 			},
-			"model": arguments.modelId
+			"model" : arguments.modelId
 		};
 	}
 
 	/**
 	 * Transform Llama response to OpenAI format
 	 */
-	private struct function transformResponseFromLlama( required struct response, required string modelId ) {
+	private struct function transformResponseFromLlama( required struct response, required string modelId ){
 		return {
-			"choices": [
+			"choices" : [
 				{
-					"message": {
-						"role": "assistant",
-						"content": arguments.response.generation ?: ""
+					"message" : {
+						"role"    : "assistant",
+						"content" : arguments.response.generation ?: ""
 					},
-					"finish_reason": arguments.response.stop_reason ?: "stop",
-					"index": 0
+					"finish_reason" : arguments.response.stop_reason ?: "stop",
+					"index"         : 0
 				}
 			],
-			"usage": {
-				"prompt_tokens": arguments.response.prompt_token_count ?: 0,
-				"completion_tokens": arguments.response.generation_token_count ?: 0,
-				"total_tokens": ( arguments.response.prompt_token_count ?: 0 ) + ( arguments.response.generation_token_count ?: 0 )
+			"usage" : {
+				"prompt_tokens"     : arguments.response.prompt_token_count ?: 0,
+				"completion_tokens" : arguments.response.generation_token_count ?: 0,
+				"total_tokens"      : ( arguments.response.prompt_token_count ?: 0 ) + (
+					arguments.response.generation_token_count ?: 0
+				)
 			},
-			"model": arguments.modelId
+			"model" : arguments.modelId
 		};
 	}
 
 	/**
 	 * Transform Mistral response to OpenAI format
 	 */
-	private struct function transformResponseFromMistral( required struct response, required string modelId ) {
+	private struct function transformResponseFromMistral( required struct response, required string modelId ){
 		var content = "";
 
-		if( arguments.response.keyExists( "outputs" ) && isArray( arguments.response.outputs ) && arguments.response.outputs.len() > 0 ) {
+		if (
+			arguments.response.keyExists( "outputs" ) && isArray( arguments.response.outputs ) && arguments.response.outputs.len() > 0
+		) {
 			content = arguments.response.outputs[ 1 ].text ?: "";
 		}
 
 		return {
-			"choices": [
+			"choices" : [
 				{
-					"message": {
-						"role": "assistant",
-						"content": content
-					},
-					"finish_reason": arguments.response.outputs[ 1 ]?.stop_reason ?: "stop",
-					"index": 0
+					"message"       : { "role" : "assistant", "content" : content },
+					"finish_reason" : arguments.response.outputs[ 1 ]?.stop_reason ?: "stop",
+					"index"         : 0
 				}
 			],
-			"usage": {
-				"prompt_tokens": 0,
-				"completion_tokens": 0,
-				"total_tokens": 0
+			"usage" : {
+				"prompt_tokens"     : 0,
+				"completion_tokens" : 0,
+				"total_tokens"      : 0
 			},
-			"model": arguments.modelId
+			"model" : arguments.modelId
 		};
 	}
 
 	/**
 	 * Override chat to handle Bedrock-specific request signing and model transformation
 	 *
-	 * @aiRequest The AiRequest object
+	 * @aiRequest        The AiRequest object
 	 * @interactionCount Current tool call interaction count
 	 */
-	@override
-	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ) {
+		@override
+	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ){
 		// Get the model to use
 		var modelId = len( variables.modelId ) ? variables.modelId : arguments.aiRequest.getModel();
-		if( !len( modelId ) ) {
+		if ( !len( modelId ) ) {
 			modelId = variables.params.model;
 		}
 
@@ -512,8 +517,8 @@ class extends="BaseService" {
 
 		// Build the request body for the specific model
 		var dataPacket = transformRequestForModel(
-			messages = arguments.aiRequest.getMessages(),
-			params = arguments.aiRequest.getParams(),
+			messages    = arguments.aiRequest.getMessages(),
+			params      = arguments.aiRequest.getParams(),
 			modelFamily = modelFamily
 		);
 
@@ -521,49 +526,52 @@ class extends="BaseService" {
 		var result = sendBedrockRequest( modelId, dataPacket, arguments.aiRequest );
 
 		// Check for errors
-		if( result.keyExists( "error" ) ) {
+		if ( result.keyExists( "error" ) ) {
 			writeLog(
 				text: "Bedrock error: #result.error.toString()#",
 				type: "error",
-				log: "ai"
+				log : "ai"
 			);
 
-			BoxAnnounce( "onAIError", {
-				error: result.error,
-				errorMessage: result.error.toString(),
-				provider: this,
-				operation: "chat",
-				aiRequest: arguments.aiRequest,
-				canRetry: true
-			} );
-
-			throw(
-				type: "ProviderError",
-				message: result.error.toString()
+			boxAnnounce(
+				"onAIError",
+				{
+					error        : result.error,
+					errorMessage : result.error.toString(),
+					provider     : this,
+					operation    : "chat",
+					aiRequest    : arguments.aiRequest,
+					canRetry     : true
+				}
 			);
+
+			throw( type: "ProviderError", message: result.error.toString() );
 		}
 
 		// Transform response to OpenAI format
 		var openAIResponse = transformResponseFromModel( result, modelFamily, modelId );
 
 		// Announce token usage
-		if( openAIResponse.keyExists( "usage" ) ) {
-			BoxAnnounce( "onAITokenCount", {
-				provider: this,
-				operation: "chat",
-				model: modelId,
-				promptTokens: openAIResponse.usage.prompt_tokens,
-				completionTokens: openAIResponse.usage.completion_tokens,
-				totalTokens: openAIResponse.usage.total_tokens,
-				aiRequest: arguments.aiRequest,
-				usage: openAIResponse.usage
-			} );
+		if ( openAIResponse.keyExists( "usage" ) ) {
+			boxAnnounce(
+				"onAITokenCount",
+				{
+					provider         : this,
+					operation        : "chat",
+					model            : modelId,
+					promptTokens     : openAIResponse.usage.prompt_tokens,
+					completionTokens : openAIResponse.usage.completion_tokens,
+					totalTokens      : openAIResponse.usage.total_tokens,
+					aiRequest        : arguments.aiRequest,
+					usage            : openAIResponse.usage
+				}
+			);
 		}
 
 		// Handle response based on return format
 		var content = openAIResponse.choices[ 1 ].message.content;
 
-		switch( arguments.aiRequest.getReturnFormat() ) {
+		switch ( arguments.aiRequest.getReturnFormat() ) {
 			case "all":
 				return openAIResponse.choices;
 			case "raw":
@@ -583,9 +591,9 @@ class extends="BaseService" {
 	/**
 	 * Send a signed request to AWS Bedrock
 	 *
-	 * @modelId The model ID to invoke
+	 * @modelId    The model ID to invoke
 	 * @dataPacket The request payload
-	 * @aiRequest The AiRequest for logging settings
+	 * @aiRequest  The AiRequest for logging settings
 	 *
 	 * @return The parsed response from Bedrock
 	 */
@@ -593,67 +601,69 @@ class extends="BaseService" {
 		required string modelId,
 		required struct dataPacket,
 		required AiRequest aiRequest
-	) {
-		var host = getBedrockHost();
-		var path = getBedrockPath( arguments.modelId );
+	){
+		var host     = getBedrockHost();
+		var path     = getBedrockPath( arguments.modelId );
 		var endpoint = getBedrockEndpoint( arguments.modelId );
-		var payload = jsonSerialize( arguments.dataPacket );
+		var payload  = jsonSerialize( arguments.dataPacket );
 
 		// Announce the request
-		BoxAnnounce( "onAIRequest", {
-			"dataPacket": arguments.dataPacket,
-			"aiRequest": arguments.aiRequest,
-			"provider": this
-		} );
+		boxAnnounce(
+			"onAIRequest",
+			{
+				"dataPacket" : arguments.dataPacket,
+				"aiRequest"  : arguments.aiRequest,
+				"provider"   : this
+			}
+		);
 
 		// Log the request if enabled
-		if( arguments.aiRequest.getLogRequest() ) {
+		if ( arguments.aiRequest.getLogRequest() ) {
 			writeLog(
 				text: "Bedrock Request to #endpoint#: #payload#",
 				type: "info",
-				log: "ai"
+				log : "ai"
 			);
 		}
 
-		if( arguments.aiRequest.getLogRequestToConsole() ) {
+		if ( arguments.aiRequest.getLogRequestToConsole() ) {
 			println( "Bedrock Request" );
 			println( arguments.dataPacket );
 		}
 
 		// Sign the request using AWS Signature V4
-		var signer = new AwsSignatureV4();
+		var signer        = new AwsSignatureV4();
 		var signedHeaders = signer.signRequest(
-			method = "POST",
-			host = host,
-			path = path,
+			method      = "POST",
+			host        = host,
+			path        = path,
 			queryString = "",
-			headers = {
-				"content-type": "application/json",
-				"accept": "application/json"
+			headers     = {
+				"content-type" : "application/json",
+				"accept"       : "application/json"
 			},
-			payload = payload,
-			region = variables.region,
-			service = static.AWS_SERVICE,
-			accessKeyId = variables.awsAccessKeyId,
+			payload         = payload,
+			region          = variables.region,
+			service         = static.AWS_SERVICE,
+			accessKeyId     = variables.awsAccessKeyId,
 			secretAccessKey = variables.awsSecretAccessKey,
-			sessionToken = variables.awsSessionToken
+			sessionToken    = variables.awsSessionToken
 		);
 
 		// Make the HTTP request
-		var httpResult = "";
-		bx:http
-			url = endpoint
-			method = "POST"
-			result = "httpResult"
-			charset = "utf-8"
-			timeout = arguments.aiRequest.getTimeout()
-		{
-			bx:httpParam type="header" name="content-type" value="application/json";
-			bx:httpParam type="header" name="accept" value="application/json";
-			bx:httpParam type="header" name="host" value=host;
+		var httpResult= "";
+		bx            :http
+			url    =endpoint
+			method ="POST"
+			result ="httpResult"
+			charset="utf-8"
+			timeout=arguments.aiRequest.getTimeout() {
+			bx     :httpParam type="header" name="content-type" value="application/json";
+			bx     :httpParam type="header" name="accept" value="application/json";
+			bx     :httpParam type="header" name="host" value=host;
 
 			// Add signed headers
-			for( var headerName in signedHeaders ) {
+			for ( var headerName in signedHeaders ) {
 				bx:httpParam type="header" name=headerName value=signedHeaders[ headerName ];
 			}
 
@@ -661,38 +671,41 @@ class extends="BaseService" {
 		}
 
 		// Log response if enabled
-		if( arguments.aiRequest.getLogResponse() ) {
+		if ( arguments.aiRequest.getLogResponse() ) {
 			writeLog(
 				text: "Bedrock Response: #httpResult.filecontent#",
 				type: "info",
-				log: "ai"
+				log : "ai"
 			);
 		}
 
-		if( arguments.aiRequest.getLogResponseToConsole() ) {
+		if ( arguments.aiRequest.getLogResponseToConsole() ) {
 			println( "Bedrock Response" );
 			println( httpResult.filecontent );
 		}
 
 		// Check for HTTP errors
 		var statusCode = val( listFirst( httpResult.statusCode, " " ) );
-		if( statusCode != 200 ) {
+		if ( statusCode != 200 ) {
 			var errorResponse = {
-				"error": {
-					"message": "Bedrock request failed with status #statusCode#: #httpResult.filecontent#",
-					"statusCode": statusCode,
-					"response": httpResult.filecontent
+				"error" : {
+					"message"    : "Bedrock request failed with status #statusCode#: #httpResult.filecontent#",
+					"statusCode" : statusCode,
+					"response"   : httpResult.filecontent
 				}
 			};
 
-			BoxAnnounce( "onAIError", {
-				error: errorResponse.error,
-				errorMessage: errorResponse.error.message,
-				provider: this,
-				operation: "chat",
-				aiRequest: arguments.aiRequest,
-				canRetry: statusCode >= 500
-			} );
+			boxAnnounce(
+				"onAIError",
+				{
+					error        : errorResponse.error,
+					errorMessage : errorResponse.error.message,
+					provider     : this,
+					operation    : "chat",
+					aiRequest    : arguments.aiRequest,
+					canRetry     : statusCode >= 500
+				}
+			);
 
 			return errorResponse;
 		}
@@ -700,12 +713,15 @@ class extends="BaseService" {
 		// Parse and return response
 		var response = jsonDeserialize( httpResult.filecontent );
 
-		BoxAnnounce( "onAIResponse", {
-			"aiRequest": arguments.aiRequest,
-			"response": response,
-			"rawResponse": httpResult,
-			"provider": this
-		} );
+		boxAnnounce(
+			"onAIResponse",
+			{
+				"aiRequest"   : arguments.aiRequest,
+				"response"    : response,
+				"rawResponse" : httpResult,
+				"provider"    : this
+			}
+		);
 
 		return response;
 	}
@@ -714,10 +730,10 @@ class extends="BaseService" {
 	 * Streaming is not yet implemented for Bedrock
 	 * Bedrock supports streaming via InvokeModelWithResponseStream but requires different handling
 	 */
-	@override
-	public function chatStream( required AiRequest aiRequest, required function callback ) {
+		@override
+	public function chatStream( required AiRequest aiRequest, required function callback ){
 		throw(
-			type: "NotImplemented",
+			type   : "NotImplemented",
 			message: "Streaming is not yet implemented for Bedrock. Use the non-streaming chat() method."
 		);
 	}
@@ -727,54 +743,47 @@ class extends="BaseService" {
 	 *
 	 * @embeddingRequest The embedding request object
 	 */
-	@override
-	public function embeddings( required AiEmbeddingRequest embeddingRequest ) {
+		@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
 		// Get the embedding model - default to Titan Embeddings
 		var modelId = arguments.embeddingRequest.getModel();
-		if( !len( modelId ) ) {
+		if ( !len( modelId ) ) {
 			modelId = "amazon.titan-embed-text-v1";
 		}
 
-		var input = arguments.embeddingRequest.getInput();
+		var input   = arguments.embeddingRequest.getInput();
 		var results = [];
 
 		// Titan embeddings handles one text at a time
 		var textsToProcess = isArray( input ) ? input : [ input ];
 
-		for( var i = 1; i <= textsToProcess.len(); i++ ) {
+		for ( var i = 1; i <= textsToProcess.len(); i++ ) {
 			var text = textsToProcess[ i ];
 
-			var dataPacket = {
-				"inputText": text
-			};
+			var dataPacket = { "inputText" : text };
 
-			var result = sendBedrockEmbeddingRequest( modelId, dataPacket, arguments.embeddingRequest );
+			var result = sendBedrockEmbeddingRequest(
+				modelId,
+				dataPacket,
+				arguments.embeddingRequest
+			);
 
-			if( result.keyExists( "error" ) ) {
-				throw(
-					type: "ProviderError",
-					message: result.error.message ?: "Embedding request failed"
-				);
+			if ( result.keyExists( "error" ) ) {
+				throw( type: "ProviderError", message: result.error.message ?: "Embedding request failed" );
 			}
 
-			arrayAppend( results, {
-				"embedding": result.embedding,
-				"index": i - 1
-			} );
+			arrayAppend( results, { "embedding" : result.embedding, "index" : i - 1 } );
 		}
 
 		// Format response like OpenAI
 		var response = {
-			"data": results,
-			"model": modelId,
-			"usage": {
-				"prompt_tokens": 0,
-				"total_tokens": 0
-			}
+			"data"  : results,
+			"model" : modelId,
+			"usage" : { "prompt_tokens" : 0, "total_tokens" : 0 }
 		};
 
 		// Return based on format
-		switch( arguments.embeddingRequest.getReturnFormat() ) {
+		switch ( arguments.embeddingRequest.getReturnFormat() ) {
 			case "embeddings":
 				return response.data.map( item => item.embedding );
 			case "raw":
@@ -792,45 +801,44 @@ class extends="BaseService" {
 		required string modelId,
 		required struct dataPacket,
 		required AiEmbeddingRequest embeddingRequest
-	) {
-		var host = getBedrockHost();
-		var path = getBedrockPath( arguments.modelId );
+	){
+		var host     = getBedrockHost();
+		var path     = getBedrockPath( arguments.modelId );
 		var endpoint = getBedrockEndpoint( arguments.modelId );
-		var payload = jsonSerialize( arguments.dataPacket );
+		var payload  = jsonSerialize( arguments.dataPacket );
 
 		// Sign the request
-		var signer = new AwsSignatureV4();
+		var signer        = new AwsSignatureV4();
 		var signedHeaders = signer.signRequest(
-			method = "POST",
-			host = host,
-			path = path,
+			method      = "POST",
+			host        = host,
+			path        = path,
 			queryString = "",
-			headers = {
-				"content-type": "application/json",
-				"accept": "application/json"
+			headers     = {
+				"content-type" : "application/json",
+				"accept"       : "application/json"
 			},
-			payload = payload,
-			region = variables.region,
-			service = static.AWS_SERVICE,
-			accessKeyId = variables.awsAccessKeyId,
+			payload         = payload,
+			region          = variables.region,
+			service         = static.AWS_SERVICE,
+			accessKeyId     = variables.awsAccessKeyId,
 			secretAccessKey = variables.awsSecretAccessKey,
-			sessionToken = variables.awsSessionToken
+			sessionToken    = variables.awsSessionToken
 		);
 
 		// Make the request
-		var httpResult = "";
-		bx:http
-			url = endpoint
-			method = "POST"
-			result = "httpResult"
-			charset = "utf-8"
-			timeout = arguments.embeddingRequest.getTimeout()
-		{
-			bx:httpParam type="header" name="content-type" value="application/json";
-			bx:httpParam type="header" name="accept" value="application/json";
-			bx:httpParam type="header" name="host" value=host;
+		var httpResult= "";
+		bx            :http
+			url    =endpoint
+			method ="POST"
+			result ="httpResult"
+			charset="utf-8"
+			timeout=arguments.embeddingRequest.getTimeout() {
+			bx     :httpParam type="header" name="content-type" value="application/json";
+			bx     :httpParam type="header" name="accept" value="application/json";
+			bx     :httpParam type="header" name="host" value=host;
 
-			for( var headerName in signedHeaders ) {
+			for ( var headerName in signedHeaders ) {
 				bx:httpParam type="header" name=headerName value=signedHeaders[ headerName ];
 			}
 
@@ -838,16 +846,15 @@ class extends="BaseService" {
 		}
 
 		var statusCode = val( listFirst( httpResult.statusCode, " " ) );
-		if( statusCode != 200 ) {
+		if ( statusCode != 200 ) {
 			return {
-				"error": {
-					"message": "Bedrock embedding request failed: #httpResult.filecontent#",
-					"statusCode": statusCode
+				"error" : {
+					"message"    : "Bedrock embedding request failed: #httpResult.filecontent#",
+					"statusCode" : statusCode
 				}
 			};
 		}
 
 		return jsonDeserialize( httpResult.filecontent );
 	}
-
 }
