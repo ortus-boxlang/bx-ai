@@ -258,6 +258,64 @@ class extends="testbox.system.BaseSpec" {
 					expect( result[ "Authorization" ] ).toContain( "Signature=" );
 				} )
 
+				it( "correctly encodes model IDs with colons like openai.gpt-oss-120b-1:0", () => {
+					// This test reproduces the exact error scenario from production
+					// The model ID openai.gpt-oss-120b-1:0 must have the colon encoded as %3A
+					// Path should become: /model/openai.gpt-oss-120b-1%3A0/invoke
+					var result = signer.signRequest(
+						method = "POST",
+						host = "bedrock-runtime.eu-west-2.amazonaws.com",
+						path = "/model/openai.gpt-oss-120b-1:0/invoke",
+						queryString = "",
+						headers = {
+							"content-type": "application/json",
+							"accept": "application/json"
+						},
+						payload = '{"messages":[{"role":"user","content":"test"}]}',
+						region = "eu-west-2",
+						service = "bedrock",
+						accessKeyId = "AKIATEST",
+						secretAccessKey = "testsecretkey",
+						sessionToken = "testsessiontoken123"
+					);
+
+					// Verify all required headers are present
+					expect( result ).toBeStruct();
+					expect( result.keyExists( "Authorization" ) ).toBeTrue();
+					expect( result.keyExists( "x-amz-date" ) ).toBeTrue();
+					expect( result.keyExists( "x-amz-content-sha256" ) ).toBeTrue();
+					expect( result.keyExists( "x-amz-security-token" ) ).toBeTrue();
+
+					// Verify Authorization header format
+					var authHeader = result[ "Authorization" ];
+					expect( authHeader ).toMatch( "^AWS4-HMAC-SHA256" );
+					expect( authHeader ).toContain( "/eu-west-2/bedrock/aws4_request" );
+					expect( authHeader ).toContain( "Signature=" );
+
+					// Verify session token is included
+					expect( result[ "x-amz-security-token" ] ).toBe( "testsessiontoken123" );
+				} )
+
+				it( "encodes special characters in path segments per RFC 3986", () => {
+					// Test various special characters that need encoding
+					// Unreserved chars (A-Z a-z 0-9 - _ . ~) should NOT be encoded
+					// All other chars should be percent-encoded
+					var result = signer.signRequest(
+						method = "POST",
+						host = "test.amazonaws.com",
+						path = "/model/test-model_v1.0~beta:special/invoke",
+						queryString = "",
+						headers = {},
+						payload = "{}",
+						region = "us-east-1",
+						service = "test",
+						accessKeyId = "AKIATEST",
+						secretAccessKey = "secret"
+					);
+
+					expect( result[ "Authorization" ] ).toContain( "Signature=" );
+				} )
+
 			} )
 
 			describe( "Different Services", () => {

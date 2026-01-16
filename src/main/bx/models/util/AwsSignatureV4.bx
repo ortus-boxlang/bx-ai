@@ -110,17 +110,24 @@ class {
 		required string signedHeaders,
 		required string payloadHash
 	) {
-		var parts = [
-			arguments.method.ucase(),
-			uriEncodePath( arguments.path ),
-			arguments.queryString,
-			arguments.canonicalHeaders,
-			"",  // Empty line after headers
-			arguments.signedHeaders,
-			arguments.payloadHash
-		];
+		// AWS Signature V4 Canonical Request format:
+		// HTTPRequestMethod + \n
+		// CanonicalURI + \n
+		// CanonicalQueryString + \n
+		// CanonicalHeaders + \n (headers already end with \n)
+		// SignedHeaders + \n
+		// HashedPayload
+		//
+		// Note: canonicalHeaders already ends with a newline, so we don't use toList()
+		// which would add an extra newline between headers and signedHeaders
+		var canonicalRequest = arguments.method.ucase() & char(10)
+			& uriEncodePath( arguments.path ) & char(10)
+			& arguments.queryString & char(10)
+			& arguments.canonicalHeaders & char(10)
+			& arguments.signedHeaders & char(10)
+			& arguments.payloadHash;
 
-		return arrayToList( parts, char(10) );
+		return canonicalRequest;
 	}
 
 	/**
@@ -180,7 +187,7 @@ class {
 		}
 
 		arraySort( headerNames, "text", "asc" );
-		return arrayToList( headerNames, ";" );
+		return headerNames.toList( ";" );
 	}
 
 	/**
@@ -200,7 +207,7 @@ class {
 			canonicalRequestHash
 		];
 
-		return arrayToList( parts, char(10) );
+		return parts.toList( char(10) );
 	}
 
 	/**
@@ -243,22 +250,23 @@ class {
 	}
 
 	/**
-	 * URI encode a path component
+	 * URI encode a path component for AWS Signature V4
+	 * Each path segment must be individually encoded
 	 */
 	private string function uriEncodePath( required string path ) {
 		// Don't encode forward slashes in path
-		var segments = listToArray( arguments.path, "/" );
+		var segments = arguments.path.split( "/" );
 		var encodedSegments = [];
 
 		for( var segment in segments ) {
 			arrayAppend( encodedSegments, uriEncodeComponent( segment ) );
 		}
 
-		var result = "/" & arrayToList( encodedSegments, "/" );
+		var result = encodedSegments.toList( "/" );
 
-		// Handle trailing slash
-		if( right( arguments.path, 1 ) == "/" && len( arguments.path ) > 1 ) {
-			result &= "/";
+		// Ensure path starts with /
+		if( left( result, 1 ) != "/" ) {
+			result = "/" & result;
 		}
 
 		return result;
@@ -266,6 +274,8 @@ class {
 
 	/**
 	 * URI encode a single component (AWS-style encoding)
+	 * AWS Signature V4 requires RFC 3986 unreserved characters to NOT be encoded
+	 * All other characters must be percent-encoded
 	 */
 	private string function uriEncodeComponent( required string component ) {
 		var result = "";
@@ -288,6 +298,7 @@ class {
 
 	/**
 	 * Check if character is unreserved per RFC 3986
+	 * Unreserved characters: A-Z a-z 0-9 - _ . ~
 	 */
 	private boolean function isUnreservedChar( required string char ) {
 		var code = ascii( arguments.char );
