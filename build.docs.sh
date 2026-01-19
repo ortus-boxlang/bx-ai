@@ -1,3 +1,4 @@
+# Waiting on fix for pseudo constructors in BoxLang
 #!/bin/sh
 
 set -e
