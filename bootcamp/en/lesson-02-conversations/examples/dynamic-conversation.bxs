@@ -1,0 +1,24 @@
+// dynamic-conversation.bxs
+// Building a conversation dynamically over multiple exchanges
+// Run with: boxlang dynamic-conversation.bxs
+
+// Initialize conversation with system prompt
+conversation = aiMessage()
+    .system( "You are a helpful assistant. Keep responses brief." )
+
+// First exchange
+println( "User: Hi, my name is Jordan" )
+conversation.user( "Hi, my name is Jordan" )
+response1 = aiChat( conversation )
+println( "AI: " & response1 )
+conversation.assistant( response1 )
+
+println()
+
+// Second exchange - AI should remember the name!
+println( "User: What's my name?" )
+conversation.user( "What's my name?" )
+response2 = aiChat( conversation )
+println( "AI: " & response2 )
+
+// The AI should respond with "Jordan" because it remembers!

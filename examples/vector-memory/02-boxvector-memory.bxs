@@ -1,0 +1,152 @@
+/**
+ * BoxVector Memory Example
+ *
+ * Demonstrates in-memory vector storage for semantic search.
+ * Perfect for development, testing, and small-scale applications.
+ *
+ * Use Case: Development/testing without external dependencies
+ *
+ * Prerequisites: OPENAI_API_KEY environment variable set
+ */
+
+println( "=== BoxVector Memory Example ===" )
+println( "In-memory semantic search - no external dependencies!\n" )
+
+// Create BoxVector memory (in-memory, no setup required)
+memory = aiMemory( "boxvector", {
+    collection: "knowledge_base",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    dimensions: 1536,
+    metric: "cosine"
+} )
+
+println( "✓ BoxVector memory created (in-memory)" )
+println( "✓ Collection: knowledge_base" )
+println( "✓ Embeddings: OpenAI text-embedding-3-small\n" )
+
+// Create agent with vector memory
+agent = aiAgent(
+    name: "KnowledgeBot",
+    description: "An assistant with semantic memory",
+    instructions: "Answer questions based on provided context. Be accurate.",
+    memory: memory
+)
+
+println( "=== Building Knowledge Base ===\n" )
+
+// Add domain knowledge about BoxLang
+knowledge = [
+    "BoxLang is a modern dynamic JVM language with Java interop",
+    "BoxLang uses .bx file extension for classes and .bxs for scripts",
+    "BoxLang has built-in serialization with jsonSerialize() and jsonDeserialize()",
+    "BoxLang modules are created with ModuleConfig.bx and loaded via shadowJar",
+    "BoxLang supports null-safe navigation with the ?. operator",
+    "BoxLang has rich string manipulation BIFs and full Java String API access",
+    "BoxLang agents use aiAgent() BIF and support multiple memory types",
+    "BoxLang AI module integrates OpenAI, Claude, Gemini, and Ollama providers",
+    "BoxLang memory types include windowed, summary, session, file, cache, and JDBC",
+    "BoxLang vector memory providers include BoxVector, Chroma, Postgres, Pinecone, Qdrant, Weaviate, and Milvus"
+]
+
+println( "Adding #knowledge.len()# knowledge entries..." )
+knowledge.each( ( entry, idx ) => {
+    memory.add( entry )
+    print( "." )
+} )
+println( " Done!\n" )
+
+// Demonstrate semantic search (NOT keyword matching)
+println( "=== Semantic Search Demonstrations ===\n" )
+
+println( "1️⃣  Query: 'What file extensions does the language use?'" )
+println( "   (Looking for: .bx and .bxs)\n" )
+response = agent.run( "What file extensions does the language use?" )
+println( "   Agent: #response#\n" )
+
+println( "2️⃣  Query: 'How do I convert objects to JSON?'" )
+println( "   (Looking for: serialization)\n" )
+response = agent.run( "How do I convert objects to JSON?" )
+println( "   Agent: #response#\n" )
+
+println( "3️⃣  Query: 'What AI services are supported?'" )
+println( "   (Looking for: provider integration)\n" )
+response = agent.run( "What AI services are supported?" )
+println( "   Agent: #response#\n" )
+
+// Demonstrate direct semantic search
+println( "=== Direct Semantic Search (No Agent) ===\n" )
+
+query = "How do I handle nulls safely?"
+println( "Searching for: '#query#'\n" )
+
+results = memory.getRelevant( query, 3 )  // Get top 3 matches
+println( "Top #results.len()# semantic matches:" )
+results.each( ( result, idx ) => {
+    println( "\n#idx#. Score: #numberFormat(result.score, '0.000')#" )
+    println( "   Content: #result.content#" )
+} )
+
+// Show why it's "semantic" not "keyword"
+println( "\n=== Semantic vs Keyword Search ===\n" )
+
+println( "❌ Traditional keyword search:" )
+println( "   Query: 'null handling'" )
+println( "   Would need exact match: 'null', 'handling'" )
+println( "   Result: Miss! (knowledge says 'null-safe')\n" )
+
+println( "✓ Semantic search:" )
+println( "   Query: 'null handling'" )
+println( "   Understands meaning: safety, navigation, protection" )
+println( "   Result: Finds 'null-safe navigation' ✓\n" )
+
+// Demonstrate relevance filtering
+println( "=== Relevance Filtering ===\n" )
+
+println( "Query: 'How do I cook pasta?'  (unrelated topic)" )
+results = memory.getRelevant( "How do I cook pasta?", 3 )
+
+if ( results.len() > 0 ) {
+    println( "\nTop match score: #numberFormat(results[1].score, '0.000')#" )
+    println( "Content: #results[1].content#" )
+
+    if ( results[1].score < 0.7 ) {
+        println( "\n⚠️  Low relevance score indicates query is off-topic" )
+        println( "   Threshold recommendation: 0.7+ for good matches" )
+    }
+} else {
+    println( "No relevant results found" )
+}
+
+// Memory statistics
+println( "\n=== Memory Statistics ===\n" )
+println( "Total vectors stored: #memory.count()#" )
+println( "Storage type: In-memory" )
+println( "Persistence: No (resets on restart)" )
+println( "Setup required: None ✓" )
+println( "External dependencies: None ✓" )
+
+println( "\n📊 Performance Characteristics:" )
+println( "- Search speed: Very fast (in-memory)" )
+println( "- Scalability: Thousands of vectors" )
+println( "- RAM usage: ~1.5KB per vector (1536 dims)" )
+println( "- Best for: Development, testing, small datasets" )
+
+println( "\n💡 When to Use BoxVector:" )
+println( "✓ Development and testing" )
+println( "✓ Small knowledge bases (<10K vectors)" )
+println( "✓ Rapid prototyping" )
+println( "✓ No external dependencies desired" )
+
+println( "\n⚠️  When to Use External Vector DB:" )
+println( "• Production deployments" )
+println( "• Large datasets (>10K vectors)" )
+println( "• Distributed systems" )
+println( "• Persistence required" )
+println( "• Advanced filtering/indexing needed" )
+
+println( "\n🚀 Production Migration Path:" )
+println( "1. Start with BoxVector for development" )
+println( "2. Switch to Postgres for small production" )
+println( "3. Upgrade to Pinecone/Qdrant for scale" )
+println( "   (Same API, just change provider!)" )

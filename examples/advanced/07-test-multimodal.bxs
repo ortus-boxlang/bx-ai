@@ -1,0 +1,53 @@
+/**
+ * Quick test script for multimodal methods
+ * Tests that all new methods exist and return correct types
+ */
+
+println( "Testing new multimodal methods..." )
+
+// Test that all methods exist and chain properly
+message = aiMessage()
+    .user( "Test message" )
+    .image( "https://example.com/test.jpg", "auto" )
+    .audio( "https://example.com/test.mp3" )
+    .video( "https://example.com/test.mp4" )
+    .document( "https://example.com/test.pdf", "Test PDF" )
+    .pdf( "https://example.com/test2.pdf" )
+
+println( "✓ All URL methods exist and chain correctly" )
+
+// Get the rendered messages
+messages = message.render()
+
+println( "✓ Message renders successfully" )
+println( "✓ Message count: " & messages.len() )
+
+// Verify message structure
+if ( messages.len() > 0 ) {
+    lastMessage = messages[ messages.len() ]
+    println( "✓ Last message role: " & lastMessage.role )
+    println( "✓ Last message content type: " & ( isArray( lastMessage.content ) ? "array" : "string" ) )
+
+    if ( isArray( lastMessage.content ) ) {
+        println( "✓ Content parts: " & lastMessage.content.len() )
+
+        // Check content types
+        types = lastMessage.content.map( part => part.type )
+        println( "✓ Content types: " & types.toList( ", " ) )
+    }
+}
+
+println()
+println( "=== All multimodal methods working correctly! ===" )
+println()
+println( "Available methods:" )
+println( "  - image( path, detail = 'auto' )" )
+println( "  - embedImage( filePath, detail = 'auto' )" )
+println( "  - audio( path )" )
+println( "  - embedAudio( filePath )" )
+println( "  - video( path )" )
+println( "  - embedVideo( filePath )" )
+println( "  - document( path, name = '' )" )
+println( "  - embedDocument( filePath, name = '' )" )
+println( "  - pdf( path, name = '' )" )
+println( "  - embedPdf( filePath, name = '' )" )

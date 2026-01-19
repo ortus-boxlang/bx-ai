@@ -1,0 +1,5 @@
+class Task {
+	property name="title" type="string";
+	property name="priority" type="string";
+	property name="completed" type="boolean";
+}

@@ -1,0 +1,150 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Create an AI memory instance for storing conversation history
+ *
+ * @param memory The memory type to create (default: "window")
+ * @param config Configuration struct for the memory instance
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Create an AI memory instance
+	 *
+	 * @memory The memory type to create. Defaults to "window".
+	 * @key The key to identify the memory instance. Defaults to a new UUID.
+	 * @userId The user identifier for multi-tenant isolation.
+	 * @conversationId The conversation identifier for multiple conversations per user.
+	 * @config Configuration struct for the memory instance
+	 *
+	 * @return IAiMemory instance
+	 */
+	function invoke(
+		string memory,
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = "",
+		struct config = {}
+	) {
+
+		// Default the memory type from the module settings if not provided
+		var memoryType = arguments.memory ?: moduleRecord.settings.memory.provider;
+		var memoryConfig = arguments.config ?: moduleRecord.settings.memory.config;
+		var memoryClass = "";
+
+		// Map memory types to their class paths
+		switch( memoryType.lcase() ) {
+			case "buffered":
+			case "buffer":
+			case "window":
+			case "WindowMemory":
+				memoryClass = "bxModules.bxai.models.memory.WindowMemory";
+				break;
+			case "cache":
+			case "CacheMemory":
+				memoryClass = "bxModules.bxai.models.memory.CacheMemory";
+				break;
+			case "file":
+			case "FileMemory":
+				memoryClass = "bxModules.bxai.models.memory.FileMemory";
+				break;
+			case "jdbc":
+			case "JdbcMemory":
+			case "database":
+			case "db":
+				memoryClass = "bxModules.bxai.models.memory.JdbcMemory";
+				break;
+			case "summary":
+			case "SummaryMemory":
+				memoryClass = "bxModules.bxai.models.memory.SummaryMemory";
+				break;
+			case "session":
+			case "SessionMemory":
+				memoryClass = "bxModules.bxai.models.memory.SessionMemory";
+				break;
+			// --------------------------------------------------------------------------------
+			// Vector Memory Types
+			// --------------------------------------------------------------------------------
+			case "BoxVectorMemory":
+			case "boxvector":
+				memoryClass = "bxModules.bxai.models.memory.vector.BoxVectorMemory";
+				break;
+			case "chroma":
+			case "ChromaVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.ChromaVectorMemory";
+				break;
+			case "milvus":
+			case "MilvusVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.MilvusVectorMemory";
+				break;
+			case "mysql":
+			case "MysqlVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.MysqlVectorMemory";
+				break;
+			case "typesense":
+			case "TypesenseVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.TypesenseVectorMemory";
+				break;
+			case "hybrid":
+			case "HybridMemory":
+				memoryClass = "bxModules.bxai.models.memory.HybridMemory";
+				break;
+			case "postgres":
+			case "PostgresVectorMemory":
+			case "pgvector":
+				memoryClass = "bxModules.bxai.models.memory.vector.PostgresVectorMemory";
+				break;
+			case "pinecone":
+				memoryClass = "bxModules.bxai.models.memory.vector.PineconeVectorMemory";
+				break;
+			case "qdrant":
+			case "QdrantVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.QdrantVectorMemory";
+				break;
+			case "weaviate":
+			case "WeaviateVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.WeaviateVectorMemory";
+				break;
+			default:
+				// Check if it's a full class path
+				if ( memoryType.findNoCase( "." ) ) {
+					memoryClass = memoryType;
+				} else {
+					throw(
+						type: "InvalidMemoryType",
+						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, MilvusVectorMemory, MysqlVectorMemory, TypesenseVectorMemory, HybridMemory"
+					);
+				}
+		}
+
+		// Announce loader creation
+		BoxAnnounce( "onAiMemoryCreate", {
+			memoryType: memoryType,
+			memoryClass: memoryClass,
+			memoryConfig: memoryConfig
+		} );
+
+		// Create and configure the memory instance
+		return new "#memoryClass#"(
+			key: arguments.key,
+			userId: arguments.userId,
+			conversationId: arguments.conversationId
+		).configure( memoryConfig );
+	}
+
+}

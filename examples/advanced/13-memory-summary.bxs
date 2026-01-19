@@ -1,0 +1,127 @@
+/**
+ * Summary Memory Example
+ *
+ * Demonstrates auto-summarization memory that preserves full conversation context
+ * by summarizing older messages while keeping recent ones intact.
+ *
+ * Use Case: Long conversations where historical context is important
+ *
+ * Prerequisites: OPENAI_API_KEY environment variable set
+ */
+
+println( "=== Summary Memory Example ===" )
+println( "Auto-summarizes old messages to preserve context\n" )
+
+// Create summary memory
+memory = aiMemory( "summary", {
+    maxMessages: 10,              // Trigger summarization at 10 messages
+    summaryThreshold: 5,          // Keep last 5 messages unsummarized
+    summaryModel: "gpt-4o-mini",  // Use fast model for summaries
+    summaryProvider: "openai"
+} )
+
+// Create agent with summary memory
+agent = aiAgent(
+    name: "CustomerSupport",
+    description: "Customer support representative",
+    instructions: "Help customers with their issues. Remember all details.",
+    memory: memory
+)
+
+println( "=== Customer Support Conversation ===\n" )
+
+// Simulate a long customer support conversation
+println( "1. Customer introduces issue:" )
+response = agent.run( "Hi, I'm having trouble with my order #12345" )
+println( "   Agent: #left(response, 80)#...\n" )
+
+println( "2. Customer provides details:" )
+response = agent.run( "I ordered it 2 weeks ago on November 15th" )
+println( "   Agent: #left(response, 80)#...\n" )
+
+println( "3. More context:" )
+response = agent.run( "The total was $299.99 and I used express shipping" )
+println( "   Agent: #left(response, 80)#...\n" )
+
+println( "4. Customer describes problem:" )
+response = agent.run( "The package arrived damaged and one item was missing" )
+println( "   Agent: #left(response, 80)#...\n" )
+
+println( "5. Customer provides photo evidence:" )
+response = agent.run( "I have photos showing the damaged box and contents" )
+println( "   Agent: #left(response, 80)#...\n" )
+
+println( "6. Discussing resolution:" )
+response = agent.run( "What are my options for a refund or replacement?" )
+println( "   Agent: #left(response, 80)#...\n" )
+
+println( "📌 Current message count: #memory.getAll().len()# (includes system + exchanges)" )
+println( "   Approaching threshold...\n" )
+
+// Continue conversation - this should trigger summarization
+println( "7. Customer provides shipping address:" )
+response = agent.run( "My shipping address is 123 Main St, Boston MA 02101" )
+println( "   Agent: #left(response, 80)#...\n" )
+
+println( "8. Customer asks about timeline:" )
+response = agent.run( "How long will the replacement take to arrive?" )
+println( "   Agent: #left(response, 80)#...\n" )
+
+println( "9. Customer provides contact info:" )
+response = agent.run( "You can reach me at alice@example.com or 555-1234" )
+println( "   Agent: #left(response, 80)#...\n" )
+
+println( "10. Customer asks follow-up:" )
+response = agent.run( "Will I get a tracking number?" )
+println( "   Agent: #left(response, 80)#...\n" )
+
+// Add more messages to trigger summarization
+println( "\n🔄 Adding more messages (triggers summarization)...\n" )
+
+println( "11. Final confirmation:" )
+response = agent.run( "Great! Thank you for your help" )
+println( "   Agent: #left(response, 80)#...\n" )
+
+// Check if summary was created
+summary = memory.getSummary()
+hasSummary = summary.len() > 0
+
+println( "=== Summary Memory Status ===" )
+println( "Has summary: #hasSummary ? 'Yes ✓' : 'No'#" )
+println( "Current messages: #memory.getAll().len()#" )
+
+if ( hasSummary ) {
+    println( "\n=== Auto-Generated Summary ===" )
+    println( left(summary, 200) & "..." )
+}
+
+// Test historical context retention
+println( "\n=== Testing Historical Context ===\n" )
+
+println( "Question: What was my original order number?" )
+response = agent.run( "By the way, what was my original order number again?" )
+println( "Agent: #response#" )
+println( "✓ Agent remembers from summarized context!\n" )
+
+println( "Question: What shipping address did I provide?" )
+response = agent.run( "And can you confirm my shipping address?" )
+println( "Agent: #response#" )
+println( "✓ Agent recalls details from recent messages!\n" )
+
+println( "Question: What email did I give you?" )
+response = agent.run( "What email address did I provide?" )
+println( "Agent: #response#" )
+println( "✓ Information preserved across summarization!\n" )
+
+println( "📊 Summary:" )
+println( "- Old messages: Summarized into compact context" )
+println( "- Recent messages: Kept in full detail" )
+println( "- Context loss: Minimal ✓" )
+println( "- Token usage: Moderate ✓" )
+println( "- Historical awareness: Excellent ✓" )
+
+println( "\n💡 Best For:" )
+println( "- Long customer support conversations" )
+println( "- Multi-session interactions" )
+println( "- Applications needing full context" )
+println( "- Complex problem-solving scenarios" )

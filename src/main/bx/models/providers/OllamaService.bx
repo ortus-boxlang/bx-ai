@@ -1,0 +1,378 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ */
+class extends="BaseService"{
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// Popular local models - users can override with any Ollama model
+			"model" : "qwen2.5:0.5b-instruct",
+			"stream": false  // Ollama supports both streaming and non-streaming
+		};
+		DEFAULT_EMBED_PARAMS = {
+			"model" : "nomic-embed-text"
+		};
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		// Default to local Ollama instance
+		variables.chatURL = "http://localhost:11434/api/chat"
+		variables.embeddingsURL = "http://localhost:11434/api/embeddings"
+		variables.name = "Ollama"
+
+		defaults( static.DEFAULT_CHAT_PARAMS )
+
+		// Ollama typically doesn't require auth headers for local instances
+		// But supports basic auth for remote/secured instances
+	}
+
+	/**
+	 * Ollama chat request - customized for Ollama's API format
+	 * @see https://github.com/ollama/ollama/blob/main/docs/api.md
+	 *
+	 * @aiRequest The AiRequest object to send to the provider
+	 * @interactionCount The number of interactions (for tool calling recursion tracking)
+	 *
+	 * @throws ProviderError if the provider returns an error from the request
+	 * @throws MaxInteractionsExceeded if tool calls exceed the maximum allowed interactions
+	 */
+	@override
+	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ){
+		// Ollama typically doesn't use auth headers for local instances
+		// But may use basic auth for remote instances
+		if( !arguments.aiRequest.getApiKey().isEmpty() ){
+			arguments.aiRequest.addHeader( "Authorization", "Basic #toBase64( arguments.aiRequest.getApiKey() )#" );
+		} else {
+			arguments.aiRequest.setSendAuthHeader( false );
+		}
+
+		// Build the packet according to Ollama's API format
+		var dataPacket = {
+			"model": arguments.aiRequest.getModel(),
+			"messages": arguments.aiRequest.getMessages(),
+			"stream": false
+		}.append( arguments.aiRequest.getParams() )
+
+		// Add tool support if tools are present
+		if( aiRequest.getParams()?.tools?.len() ) {
+			dataPacket[ "tools" ] = formatToolsForOllama( aiRequest.getParams().tools )
+		}
+
+		// Send it
+		var result = sendRequest( arguments.aiRequest, dataPacket )
+
+		// If an error is returned, throw it
+		if( result.keyExists( "error" ) ){
+			writeLog(
+				text: result.error.toString(),
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "ProviderError",
+				message: result.error.toString()
+			);
+		}
+
+		// Handle tool use responses
+		// Check if Ollama wants to use tools
+		var toolCalls = result.message?.tool_calls ?: arrayNew()
+		if( toolCalls.len() ){
+			/**
+			 * ---------------------------------------------------------------------------------------------------------
+			 * Max Interactions Check
+			 * ---------------------------------------------------------------------------------------------------------
+			 */
+			var maxAllowed = aiRequest.getMaxInteractions() > 0 ? aiRequest.getMaxInteractions() : variables.maxInteractions;
+			if( arguments.interactionCount >= maxAllowed ){
+				writeLog(
+					text: "Max tool call interactions (#maxAllowed#) exceeded",
+					type: "error",
+					log : "ai"
+				)
+				throw(
+					type   : "MaxInteractionsExceeded",
+					message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
+				);
+			}
+
+			// Add the role assistant message with tool calls
+			aiRequest.getMessages().append( result.message );
+
+			// Execute each tool call
+			for( var toolCall in toolCalls ) {
+				executeOllamaTool( toolCall, aiRequest );
+			}
+
+			// Recursively call chat with the updated chat request and incremented interaction count
+			return chat( aiRequest, arguments.interactionCount + 1 );
+		}
+
+		// Determine return formats
+		var content = result.message?.content ?: "";
+		switch( arguments.aiRequest.getReturnFormat() ){
+			case "all":
+				return result;
+			case "raw":
+				return result;
+			case "json":
+				return JSONDeserialize( extractFromCodeBlock( content, "json" ) );
+			case "xml" :
+				return xmlParse( extractFromCodeBlock( content, "xml" ) );
+			case  "structuredOutput":
+				return populateStructuredOutput( content, arguments.aiRequest );
+			case "single": default:
+				return content;
+		}
+	}
+
+	/**
+	 * Ollama streaming chat request - overridden for Ollama's streaming format
+	 * Ollama uses newline-delimited JSON instead of SSE format
+	 *
+	 * @aiRequest The AiRequestobject to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream
+	 */
+	@override
+	public function chatStream( required AiRequest aiRequest, required function callback ){
+		// Handle authentication for remote/secured Ollama instances
+		if( !arguments.aiRequest.getApiKey().isEmpty() ){
+			arguments.aiRequest.addHeader( "Authorization", "Basic #toBase64( arguments.aiRequest.getApiKey() )#" );
+		} else {
+			arguments.aiRequest.setSendAuthHeader( false );
+		}
+
+		// Build the packet according to Ollama's API format with streaming
+		var dataPacket = {
+			"model": arguments.aiRequest.getModel(),
+			"messages": arguments.aiRequest.getMessages(),
+			"stream": true
+		}.append( arguments.aiRequest.getParams() )
+
+		// Add tool support if tools are present
+		if( aiRequest.getParams()?.tools?.len() ) {
+			dataPacket[ "tools" ] = formatToolsForOllama( aiRequest.getParams().tools )
+		}
+
+		// Announce the request
+		BoxAnnounce(
+			"onAIRequest",
+			{
+				"dataPacket" : dataPacket,
+				"aiRequest": arguments.aiRequest,
+				"provider"   : this
+			}
+		);
+
+		// Log the request if enabled
+		if( arguments.aiRequest.getLogRequestToConsole() ){
+			println( "AI Request (Stream)" )
+			println( dataPacket )
+		}
+
+		// Buffer for accumulating partial lines
+		var buffer = "";
+
+		// Capture callback in local variable for closure
+		var userCallback = arguments.callback;
+		var thisAiRequest = arguments.aiRequest;
+
+		// Build HTTP request with fluent API
+		// Note: Ollama uses newline-delimited JSON, NOT SSE format
+		var httpRequest = http( getChatURL() )
+			.method( "POST" )
+			.charset( "utf-8" )
+			.timeout( thisAiRequest.getTimeout() )
+			.header( "content-type", "application/json" );
+
+		// Auth Header ONLY if the provider requires it
+		if( thisAiRequest.getSendAuthHeader() ){
+			httpRequest.header( "Authorization", "Bearer #thisAiRequest.getApiKey()#" );
+		}
+
+		// Add custom headers
+		for( var thisHeader in thisAiRequest.getHeaders() ){
+			httpRequest.header( thisHeader, thisAiRequest.getHeaders()[ thisHeader ] );
+		}
+
+		// Set request body and callbacks
+		httpRequest
+			.body( jsonSerialize( dataPacket ) )
+			.onChunk( ( chunkNumber, content, totalBytes, httpResult, httpClient, response ) => {
+				// For regular streaming (not SSE), onChunk receives:
+				// chunkNumber, content (string), totalBytes, httpResult, httpClient, response
+				// Ollama sends newline-delimited JSON: {"message":{...}}\n{"message":{...}}\n
+
+				// Append chunk to buffer
+				buffer &= content;
+
+				// Process complete lines
+				var lines = buffer.split( char(10) );
+
+				// Keep the last potentially incomplete line in the buffer
+				buffer = lines[ lines.len() ];
+
+				// Process complete lines (all but the last)
+				for( var i = 1; i <= lines.len() - 1; i++ ){
+					var line = lines[ i ].trim();
+
+					// Skip empty lines
+					if( line.isEmpty() ){
+						continue;
+					}
+
+					// Each line is a complete JSON object
+					try {
+						var parsedChunk = jsonDeserialize( line );
+						userCallback( parsedChunk );
+					} catch( any e ){
+						writeLog(
+							text: "Error parsing Ollama stream chunk: #e.message# - Data: #line#",
+							type: "error",
+							log : "ai"
+						)
+					}
+				}
+			} )
+			.onError( ( error, httpResult ) => {
+				var errorMessage = "HTTP Error: #error.message#";
+
+				writeLog(
+					text: "Stream Request Error: #errorMessage#",
+					type: "error",
+					log : "ai"
+				)
+
+				throw(
+					type   : "ProviderError",
+					message: errorMessage
+				);
+			} )
+			.onComplete( ( httpResult ) => {
+				// Process any remaining data in buffer
+				if( !buffer.isEmpty() ){
+					try {
+						var parsedChunk = jsonDeserialize( buffer.trim() );
+						userCallback( parsedChunk );
+					} catch( any e ){
+						// Ignore parsing errors for final buffer
+					}
+				}
+
+				BoxAnnounce(
+					"onAIResponse",
+					{
+						"aiRequest" : thisAiRequest,
+						"provider"    : this,
+						"streamComplete" : true
+					}
+				);
+			} )
+			.send();
+	}
+
+	/**
+	 * Format tools for Ollama's specific tool format
+	 * @see https://github.com/ollama/ollama/blob/main/docs/api.md#tool-calling
+	 *
+	 * @tools The tools to format
+	 *
+	 * @return An array of tools formatted for Ollama
+	 */
+	private array function formatToolsForOllama( required array tools ) {
+		var ollamaTools = []
+
+		for( var tool in arguments.tools ) {
+			var argumentsSchema = tool.getArgumentsSchema();
+			var ollamaTool = {
+				"type": "function",
+				"function": {
+					"name": tool.getName(),
+					"description": tool.getDescription(),
+					"parameters": {
+						"type": "object",
+						"properties": argumentsSchema.properties,
+						"required": argumentsSchema.required
+					}
+				}
+			}
+			ollamaTools.append( ollamaTool )
+		}
+
+		return ollamaTools
+	}
+
+	/**
+	 * Execute Ollama tool calls
+	 *
+	 * @toolCall The tool call object from Ollama: { function: { name: "toolName", arguments: {} } }
+	 * @aiRequest The original chat request containing the tool
+	 */
+	private function executeOllamaTool( required struct toolCall, required AiRequest aiRequest ) {
+		var messages = arguments.aiRequest.getMessages();
+
+		// Get the tool from the chat request
+		arguments.aiRequest
+			.getTool( toolCall.function.name )
+			.ifPresentOrElse(
+				// Found, invoke the tool
+				tool => {
+					messages.append({
+						"role" : "tool",
+						"content" : tool.invoke( args : toolCall.function.arguments )
+					});
+				},
+				// Not found
+				() => {
+					writeLog(
+						text: "Unable to find tool named: [#toolCall.function.name#]",
+						type: "warning",
+						log : "ai"
+					)
+					messages.append({
+						"role" : "tool",
+						"content" : "Tool ['#toolCall.function.name#'] not found in chat request"
+					});
+				}
+			);
+	}
+
+	/**
+	 * Override the chat URL setter to support custom Ollama hosts
+	 *
+	 * @url The base URL for the Ollama instance
+	 * @return This service instance for chaining
+	 */
+	public function setChatURL( required string url ){
+		// Ensure URL ends with the correct endpoint
+		if( !arguments.url.endsWith( "/api/chat" ) ){
+			if( arguments.url.endsWith( "/" ) ){
+				arguments.url &= "api/chat";
+			} else {
+				arguments.url &= "/api/chat";
+			}
+		}
+
+		variables.chatURL = arguments.url;
+		return this;
+	}
+
+}

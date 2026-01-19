@@ -14,24 +14,31 @@ on:
 
 jobs:
   tests:
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
+      issues: read
     uses: ./.github/workflows/tests.yml
     secrets: inherit
 
   # Format PR
   format_check:
     name: Checks Source Code Formatting
+    permissions:
+      contents: read
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: "temurin"
           java-version: 21
 
-      - uses: Ortus-Solutions/commandbox-action@v1.0.2
+      - uses: Ortus-Solutions/commandbox-action@v1.0.3
         with:
           cmd: run-script format:check
 

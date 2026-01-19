@@ -1,0 +1,86 @@
+/**
+ * Basic MCP Server Example
+ *
+ * This example shows how to create a simple MCP server with tools,
+ * resources, and prompts.
+ */
+
+// Create an MCP server instance
+myServer = MCPServer( "myApp" )
+    .setDescription( "My Application MCP Server" )
+    .setVersion( "1.0.0" )
+
+// Register a simple tool
+myServer.registerTool(
+    aiTool( "search", "Search for documents", ( query ) => {
+        // In a real app, this would search your database
+        return "Found 5 results for: #query#"
+    } )
+        .describeArg( "query", "The search term" )
+)
+
+// Register a calculation tool
+myServer.registerTool(
+    aiTool( "calculate", "Perform a calculation", ( expression ) => {
+        try {
+            return evaluate( expression )
+        } catch ( any e ) {
+            return "Error: Invalid expression"
+        }
+    } )
+        .describeArg( "expression", "Mathematical expression to evaluate" )
+)
+
+// Register a resource (documentation)
+myServer.registerResource(
+    uri: "docs://readme",
+    name: "README",
+    description: "Application documentation",
+    mimeType: "text/markdown",
+    handler: () => "## My Application" & char(10) & char(10) & "This is the documentation."
+)
+
+// Register a prompt template
+myServer.registerPrompt(
+    name: "greeting",
+    description: "Generate a personalized greeting",
+    args: [
+        { name: "name", description: "Person's name", required: true },
+        { name: "language", description: "Language for greeting", required: false }
+    ],
+    handler: ( args ) => {
+        var lang = args.language ?: 'English'
+        return [
+            {
+                role: "user",
+                content: "Generate a greeting for #args.name# in #lang#"
+            }
+        ]
+    }
+)
+
+// Test the server with a JSON-RPC request
+rpcRequest = {
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "id": "1"
+}
+
+response = myServer.handleRequest( rpcRequest )
+println( "Server capabilities:" )
+println( jsonSerialize( response ) )
+
+// Test tool invocation
+toolCallRequest = {
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "id": "2",
+    "params": {
+        "name": "search",
+        "arguments": { "query": "BoxLang MCP" }
+    }
+}
+
+toolResponse = myServer.handleRequest( toolCallRequest )
+println( char(10) & "Tool call result:" )
+println( jsonSerialize( toolResponse ) )

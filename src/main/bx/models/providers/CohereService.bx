@@ -1,0 +1,563 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Cohere Service - Specialized embeddings and chat provider
+ * Cohere offers high-quality embeddings with excellent multilingual support
+ * @see https://docs.cohere.com/reference/embed
+ * @see https://docs.cohere.com/reference/chat
+ */
+import bxModules.bxai.models.util.SchemaBuilder
+
+class extends="BaseService"{
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// https://docs.cohere.com/docs/models
+			"model" : "command-a-03-2025"
+		};
+		DEFAULT_EMBED_PARAMS = {
+			// https://docs.cohere.com/docs/cohere-embed
+			"model" : "embed-v4.0",
+			"input_type" : "search_document"
+		};
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.chatURL = "https://api.cohere.com/v1/chat"
+		variables.embeddingsURL = "https://api.cohere.com/v1/embed"
+		variables.name = "Cohere"
+		defaults( static.DEFAULT_CHAT_PARAMS )
+	}
+
+	/**
+	 * Override embeddings to handle Cohere's specific API format
+	 * Cohere uses different request/response structure than OpenAI standard
+	 * @see https://docs.cohere.com/reference/embed
+	 */
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		// Set default embedding model if not specified
+		if( embeddingRequest.getModel().isEmpty() ){
+			embeddingRequest.setModelIfEmpty( static.DEFAULT_EMBED_PARAMS.model )
+		}
+
+		// Model Selection
+		embeddingRequest
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers )
+
+		// Build Cohere-specific data packet
+		var input = arguments.embeddingRequest.getInput();
+		var dataPacket = {
+			"texts": isArray( input ) ? input : [ input ],
+			"model": embeddingRequest.getModel(),
+			"input_type": embeddingRequest.getParams().input_type ?: static.DEFAULT_EMBED_PARAMS.input_type
+		}
+
+		// Add optional embedding_types parameter if specified
+		if( embeddingRequest.getParams().keyExists( "embedding_types" ) ){
+			dataPacket.embedding_types = embeddingRequest.getParams().embedding_types
+		}
+
+		// Add optional truncate parameter if specified
+		if( embeddingRequest.getParams().keyExists( "truncate" ) ){
+			dataPacket.truncate = embeddingRequest.getParams().truncate
+		}
+
+		// Log the request
+		if( arguments.embeddingRequest.getLogRequest() ){
+			writeLog(
+				text: "Embedding Request to Cohere: #dataPacket.toString()#",
+				type: "info",
+				log : "ai"
+			)
+		}
+
+		// Log the request to the console if enabled
+		if( arguments.embeddingRequest.getLogRequestToConsole() ){
+			println( "Cohere Embedding Request" )
+			println( dataPacket )
+		}
+
+		bx: http
+			url     = getEmbeddingsURL()
+			method  = "post"
+			result  = "embeddingResult"
+			charset = "utf-8"
+			timeout = arguments.embeddingRequest.getTimeout()
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+			bx:httpParam type="header" name="Authorization" value="Bearer #embeddingRequest.getApiKey()#";
+
+			// Custom Headers
+			for( var thisHeader in arguments.embeddingRequest.getHeaders() ){
+				bx:httpParam
+					type="header"
+					name="#thisHeader#"
+					value="#arguments.embeddingRequest.getHeaders()[ thisHeader ]#";
+			}
+
+			// Body Packet
+			bx:httpParam type="body" value=jsonSerialize( dataPacket );
+		}
+
+		// Final logging if enabled
+		if( arguments.embeddingRequest.getLogResponse() ){
+			writeLog(
+				text: "Embedding Response from Cohere: #embeddingResult.toString()#",
+				type: "info",
+				log : "ai"
+			)
+		}
+
+		// Log the response to the console if enabled
+		if( arguments.embeddingRequest.getLogResponseToConsole() ){
+			println( "Cohere Embedding Response" )
+			println( embeddingResult )
+			println( "Cohere Embedding Deserialized Response" )
+			println( jsonDeserialize( embeddingResult.filecontent ) )
+		}
+
+		var result = jsonDeserialize( embeddingResult.filecontent )
+
+		var iData = {
+			"embeddingRequest" = arguments.embeddingRequest,
+			"response" = result,
+			"rawResponse"	: embeddingResult,
+			"provider" = this
+		}
+
+		BoxAnnounce( "onAIEmbedResponse", iData );
+
+		// If an error is returned, throw it
+		if( result.keyExists( "message" ) && embeddingResult.statusCode != "200" ){
+			writeLog(
+				text: result.message.toString(),
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "ProviderError",
+				message: result.message.toString()
+			);
+		}
+
+		// Convert Cohere response format to standard OpenAI format
+		// Cohere returns: { id, texts, embeddings, meta }
+		var standardResponse = {
+			"data": result.embeddings.map( (embedding, index) => {
+				return {
+					"embedding": embedding,
+					"index": index - 1,
+					"object": "embedding"
+				}
+			} ),
+			"model": embeddingRequest.getModel(),
+			"object": "list",
+			"usage": result.keyExists( "meta" ) && result.meta.keyExists( "billed_units" ) ? {
+				"prompt_tokens": result.meta.billed_units.input_tokens ?: 0,
+				"total_tokens": result.meta.billed_units.input_tokens ?: 0
+			} : {}
+		}
+
+		// Determine return formats
+		switch( embeddingRequest.getReturnFormat() ){
+			case "embeddings":
+				return standardResponse.data.map( item => item.embedding );
+			case "raw":
+				return standardResponse;
+			case "first": default:
+				return standardResponse.data.first().embedding;
+		}
+	}
+
+	/**
+	 * Cohere chat request
+	 * @see https://docs.cohere.com/reference/chat
+	 *
+	 * @aiRequest The AIRequest object to send to the provider
+	 * @interactionCount Current tool call interaction count (used internally)
+	 *
+	 * @throws ProviderError if the provider returns an error from the request
+	 * @throws MaxInteractionsExceeded if tool calls exceed the maximum allowed interactions
+	 */
+	@override
+	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ){
+		// Cohere has a different message format
+		// Extract the last message as the main message
+		var messages = arguments.aiRequest.getMessages();
+		var lastMessage = messages.last();
+
+		// Build chat history (all messages except the last one)
+		var chatHistory = messages.len() > 1 ?
+			messages.slice( 1, messages.len() - 1 ).map( msg => {
+				return {
+					"role": msg.role == "assistant" ? "CHATBOT" : "USER",
+					"message": msg.content
+				}
+			} ) : [];
+
+		// Build the data packet
+		var dataPacket = {
+			"message": lastMessage.content,
+			"model": aiRequest.getModel()
+		}
+
+		// Add chat history if exists
+		if( chatHistory.len() > 0 ){
+			dataPacket.chat_history = chatHistory
+		}
+
+		// Add system message if exists (preamble in Cohere)
+		var systemMessages = messages.filter( msg => msg.role == "system" );
+		if( systemMessages.len() > 0 ){
+			dataPacket.preamble = systemMessages.first().content
+		}
+
+		// Add other parameters (but not tools and response_format yet, we'll transform them)
+		var tempParams = arguments.aiRequest.getParams().duplicate()
+		var tools = tempParams?.tools ?: []
+		var responseFormat = tempParams?.response_format ?: ""
+        tempParams.delete( "response_format" )
+        tempParams.delete( "tools" )
+		dataPacket.append( tempParams )
+
+		// Structured output support (Cohere format)
+		if( arguments.aiRequest.isStructuredOutput() ){
+			// Clean internal metadata before sending to provider
+			var cleanSchema = SchemaBuilder::cleanSchema( arguments.aiRequest.getStructuredOutput() );
+			dataPacket.response_format = {
+				"type": "json_object",
+				"schema": cleanSchema
+			};
+		}
+
+		// Tooling support - Convert OpenAI format to Cohere format
+		// OpenAI: { type: "function", function: { name, description, parameters: { properties, required } } }
+		// Cohere: { name, description, parameter_definitions: { param_name: { type, description, required } } }
+		if( !isNull( tools ) && tools.len() > 0 ){
+			dataPacket.tools = tools.map( tool => {
+				var schema = tool.getSchema();
+				var cohereToolDef = {
+					"name": schema.function.name,
+					"description": schema.function.description,
+					"parameter_definitions": {}
+				};
+
+				// Convert properties to parameter_definitions
+				schema.function.parameters.properties.each( (paramName, paramDef) => {
+					cohereToolDef.parameter_definitions[ paramName ] = {
+						"type": paramDef.type,
+						"description": paramDef.description,
+						"required": schema.function.parameters.required.findNoCase( paramName ) > 0
+					};
+				} );
+
+				return cohereToolDef;
+			} );
+		}
+
+		// Send it
+		var result = sendRequest( aiRequest, dataPacket )
+
+		// If an error is returned, throw it
+		if( result.keyExists( "message" ) && !result.keyExists( "text" ) ){
+			throw(
+				type   : "ProviderError",
+				message: result.message.toString()
+			);
+		}
+
+		// Handle tool calls if present
+		if( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ){
+			/**
+			 * ---------------------------------------------------------------------------------------------------------
+			 * Max Interactions Check
+			 * ---------------------------------------------------------------------------------------------------------
+			 */
+			var maxAllowed = aiRequest.getMaxInteractions() > 0 ? aiRequest.getMaxInteractions() : variables.maxInteractions;
+			if( arguments.interactionCount >= maxAllowed ){
+				writeLog(
+					text: "Max tool call interactions (#maxAllowed#) exceeded",
+					type: "error",
+					log : "ai"
+				)
+				throw(
+					type   : "MaxInteractionsExceeded",
+					message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
+				);
+			}
+
+			// Execute each tool call
+			var toolResults = result.tool_calls.map( toolCall => {
+				// Find the tool in our original tools list
+				var tool = tools.filter( t => t.getSchema().function.name == toolCall.name ).first();
+
+				// Invoke the tool with the parameters
+				var toolOutput = tool.invoke( toolCall.parameters );
+
+				return {
+					"call": toolCall,
+					"outputs": [ { "result": toolOutput } ]
+				};
+			} );
+
+			// Make a follow-up request with tool results
+			// NOTE: Cohere requires EITHER message OR tool_results, not both (unless force_single_step=true)
+			var followUpPacket = {
+				"model": aiRequest.getModel(),
+				"tool_results": toolResults
+			};
+
+			// Re-add tools for potential multi-step tool use
+			if( dataPacket.keyExists( "tools" ) ){
+				followUpPacket.tools = dataPacket.tools;
+			}
+
+			// Re-add chat history
+			if( dataPacket.keyExists( "chat_history" ) ){
+				followUpPacket.chat_history = dataPacket.chat_history;
+			}
+
+			// Re-add preamble
+			if( dataPacket.keyExists( "preamble" ) ){
+				followUpPacket.preamble = dataPacket.preamble;
+			}
+
+			// Add any remaining parameters
+			followUpPacket.append( tempParams );
+
+			// Send follow-up request with tool results
+			// Cohere typically needs only one follow-up; additional tool calls would require another interaction
+			result = sendRequest( aiRequest, followUpPacket );
+
+			// Check if Cohere is requesting MORE tool calls (multi-step reasoning)
+			if( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ){
+				// Increment interaction count and recurse
+				return chat( aiRequest, arguments.interactionCount + 1 );
+			}
+		}
+
+		// Determine return formats
+		switch( aiRequest.getReturnFormat() ){
+			case "all":
+				return result;
+			case "raw":
+				return result;
+			case "json":
+				return jsonDeserialize( extractFromCodeBlock( result.text, "json" ) );
+			case "xml":
+				return xmlParse( extractFromCodeBlock( result.text, "xml" ) );
+             case "structuredOutput":
+                return populateStructuredOutput( result.text, aiRequest );
+			case "single": default:
+				return result.text ?: result.message ?: ""
+		}
+	}
+
+	/**
+	 * Cohere streaming chat request
+	 * Cohere uses Server-Sent Events (SSE) format
+	 * @see https://docs.cohere.com/reference/chat#stream
+	 *
+	 * @aiRequest The AiRequest object to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream
+	 */
+	@override
+	public function chatStream( required AiRequest aiRequest, required function callback ){
+		// Capture callback and aiRequest in local variables for closure scope
+		var userCallback = arguments.callback;
+		var thisAiRequest = arguments.aiRequest;
+
+		// Cohere has a different message format
+		// Extract the last message as the main message
+		var messages = arguments.aiRequest.getMessages();
+		var lastMessage = messages.last();
+
+		// Build chat history (all messages except the last one)
+		var chatHistory = messages.len() > 1 ?
+			messages.slice( 1, messages.len() - 1 ).map( msg => {
+				return {
+					"role": msg.role == "assistant" ? "CHATBOT" : "USER",
+					"message": msg.content
+				}
+			} ) : [];
+
+		// Build the data packet with streaming enabled
+		var dataPacket = {
+			"message": lastMessage.content,
+			"model": aiRequest.getModel(),
+			"stream": true
+		}
+
+		// Add chat history if exists
+		if( chatHistory.len() > 0 ){
+			dataPacket.chat_history = chatHistory
+		}
+
+		// Add system message if exists (preamble in Cohere)
+		var systemMessages = messages.filter( msg => msg.role == "system" );
+		if( systemMessages.len() > 0 ){
+			dataPacket.preamble = systemMessages.first().content
+		}
+
+		// Add other parameters (but not tools and response_format yet, we'll transform them)
+		var tempParams = arguments.aiRequest.getParams().duplicate()
+		var tools = tempParams?.tools ?: []
+		var responseFormat = tempParams?.response_format ?: ""
+		tempParams.delete( "response_format" )
+		tempParams.delete( "tools" )
+		dataPacket.append( tempParams )
+
+		// Structured output support (Cohere format)
+		if( arguments.aiRequest.isStructuredOutput() ){
+			// Clean internal metadata before sending to provider
+			var cleanSchema = SchemaBuilder::cleanSchema( arguments.aiRequest.getStructuredOutput() );
+			dataPacket.response_format = {
+				"type": "json_object",
+				"schema": cleanSchema
+			};
+		}
+
+		// Tooling support - Convert OpenAI format to Cohere format
+		if( !isNull( tools ) && tools.len() > 0 ){
+			dataPacket.tools = tools.map( tool => {
+				var schema = tool.getSchema();
+				var cohereToolDef = {
+					"name": schema.function.name,
+					"description": schema.function.description,
+					"parameter_definitions": {}
+				};
+
+				// Convert properties to parameter_definitions
+				schema.function.parameters.properties.each( (paramName, paramDef) => {
+					cohereToolDef.parameter_definitions[ paramName ] = {
+						"type": paramDef.type,
+						"description": paramDef.description,
+						"required": schema.function.parameters.required.findNoCase( paramName ) > 0
+					};
+				} );
+
+				return cohereToolDef;
+			} );
+		}
+
+		// Announce the request
+		BoxAnnounce(
+			"onAIRequest",
+			{
+				"dataPacket" : dataPacket,
+				"aiRequest": arguments.aiRequest,
+				"provider"   : this
+			}
+		);
+
+		// Log the request if enabled
+		if( arguments.aiRequest.getLogRequestToConsole() ){
+			println( "Cohere AI Request (Stream)" )
+			println( dataPacket )
+		}
+
+		// Build HTTP request with fluent API
+		var httpRequest = http( getChatURL() )
+			.method( "POST" )
+			.charset( "utf-8" )
+			.timeout( arguments.aiRequest.getTimeout() )
+			.header( "content-type", "application/json" )
+			.header( "Authorization", "Bearer #arguments.aiRequest.getApiKey()#" )
+			.sse( true ); // Enable SSE mode for Cohere streaming
+
+		// Add custom headers
+		for( var thisHeader in arguments.aiRequest.getHeaders() ){
+			httpRequest.header( thisHeader, arguments.aiRequest.getHeaders()[ thisHeader ] );
+		}
+
+		// Set request body and callbacks
+		httpRequest
+			.body( jsonSerialize( dataPacket ) )
+			.onChunk( ( chunk, lastEventId, httpResult, httpClient, response ) => {
+				// chunk is already parsed SSE data: { data, event, id, retry }
+				// For SSE streams, chunk.data contains the actual payload
+
+				// Check for stream end marker
+				if( chunk.data == "[DONE]" ){
+					return;
+				}
+
+				// Try to parse and send to callback
+				try {
+					var parsedChunk = jsonDeserialize( chunk.data );
+					userCallback( parsedChunk );
+				} catch( any e ){
+					writeLog(
+						text: "Error parsing Cohere stream chunk: #e.message# - Data: #chunk.data#",
+						type: "error",
+						log : "ai"
+					)
+				}
+			} )
+			.onError( ( error, httpResult ) => {
+				var errorMessage = "HTTP Error: #error.message#";
+
+				writeLog(
+					text: "Cohere Stream Request Error: #errorMessage#",
+					type: "error",
+					log : "ai"
+				)
+
+				// Announce the error
+				BoxAnnounce( "onAIError", {
+					error: error,
+					errorMessage: errorMessage,
+					provider: this,
+					operation: "stream",
+					aiRequest: thisAiRequest,
+					canRetry: true
+				} );
+
+				throw(
+					type   : "ProviderError",
+					message: errorMessage
+				);
+			} )
+			.onComplete( ( httpResult ) => {
+				// Log the response if enabled
+				if( thisAiRequest.getLogResponse() ){
+					writeLog(
+						text: "Cohere stream completed successfully",
+						type: "info",
+						log : "ai"
+					)
+				}
+
+				BoxAnnounce(
+					"onAIResponse",
+					{
+						"aiRequest" : thisAiRequest,
+						"provider"    : this,
+						"streamComplete" : true
+					}
+				);
+			} )
+			.send();
+	}
+
+}

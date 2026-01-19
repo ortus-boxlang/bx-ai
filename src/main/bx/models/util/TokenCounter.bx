@@ -1,0 +1,94 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Token counting utility for estimating AI token usage
+ * Uses simple heuristics for estimation without external dependencies
+ */
+class {
+
+	// Static configuration
+	static {
+		DEFAULT_OPTIONS = {
+			method: "characters",
+			detailed: false
+		};
+		// Estimation ratios based on OpenAI's guidelines
+		CHARS_PER_TOKEN = 4;
+		WORDS_TO_TOKENS_MULTIPLIER = 1.3;
+	}
+
+	/**
+	 * Estimate token count for text or array of text chunks
+	 *
+	 * @text String or array of strings to count tokens for
+	 * @options Configuration options:
+	 *   - method (string, default: "characters") - Estimation method: "characters" or "words"
+	 *   - detailed (boolean, default: false) - Return detailed statistics
+	 *
+	 * @return Numeric token count, or struct if detailed=true
+	 */
+	static function count( required any text, struct options = {} ) {
+		// Apply defaults
+		var config = arguments.options.append( static.DEFAULT_OPTIONS, false );
+
+		// Normalize text to array
+		var textArray = isArray( arguments.text ) ? arguments.text : [ arguments.text ];
+
+		// Calculate statistics
+		var totalChars = 0;
+		var totalWords = 0;
+		var chunkCount = textArray.len();
+
+		for ( var chunk in textArray ) {
+			// Convert to string if needed
+			var chunkStr = toString( chunk );
+			totalChars += len( chunkStr );
+
+			// Count words (split on whitespace)
+			if ( len( trim( chunkStr ) ) ) {
+				var words = reMatch( "[^\s]+", chunkStr );
+				totalWords += words.len();
+			}
+		}
+
+		// Calculate token estimate based on method
+		var tokenEstimate = 0;
+		switch ( config.method.lcase() ) {
+			case "words":
+				tokenEstimate = ceiling( totalWords * static.WORDS_TO_TOKENS_MULTIPLIER );
+				break;
+			case "characters":
+			default:
+				tokenEstimate = ceiling( totalChars / static.CHARS_PER_TOKEN );
+				break;
+		}
+
+		// Return detailed stats or just token count
+		if ( config.detailed ) {
+			return {
+				tokens: tokenEstimate,
+				characters: totalChars,
+				words: totalWords,
+				chunks: chunkCount,
+				method: config.method
+			};
+		}
+
+		return tokenEstimate;
+	}
+
+}

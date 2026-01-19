@@ -1,0 +1,164 @@
+/**
+ * Multi-Memory Agent Example
+ *
+ * Demonstrates an agent using multiple memory types simultaneously
+ * for optimal context management.
+ *
+ * Use Case: Complex applications needing different memory strategies
+ *
+ * Prerequisites: OPENAI_API_KEY environment variable set
+ */
+
+println( "=== Multi-Memory Agent Example ===" )
+println( "One agent, multiple memory types\n" )
+
+// Memory 1: Windowed for immediate conversation
+recentMemory = aiMemory( "windowed", {
+    maxMessages: 5
+} )
+
+// Memory 2: Vector for knowledge base
+knowledgeMemory = aiMemory( "boxvector", {
+    collection: "product_knowledge",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    dimensions: 1536,
+    metric: "cosine"
+} )
+
+// Memory 3: File for audit trail
+auditMemory = aiMemory( "file", {
+    filePath: getTempDirectory() & "multi_memory_audit.json",
+    maxMessages: 1000
+} )
+
+println( "✓ Created 3 memory types:" )
+println( "  1. Windowed (last 5 messages)" )
+println( "  2. Vector (product knowledge)" )
+println( "  3. File (audit trail)\n" )
+
+// Load product knowledge into vector memory
+println( "Loading product knowledge..." )
+products = [
+    "Product SKU-001: Premium Laptop with 32GB RAM, 1TB SSD, RTX 4070 GPU. Price: $1,899",
+    "Product SKU-002: Business Laptop with 16GB RAM, 512GB SSD, Intel i7. Price: $1,299",
+    "Product SKU-003: Gaming Laptop with 64GB RAM, 2TB SSD, RTX 4090 GPU. Price: $2,899",
+    "Warranty: All laptops include 3-year warranty with on-site service",
+    "Financing: 0% APR available for purchases over $1,000",
+    "Return Policy: 30-day money-back guarantee on all products",
+    "Tech Support: 24/7 phone and chat support included",
+    "Shipping: Free express shipping on orders over $500"
+]
+products.each( info => knowledgeMemory.add( info ) )
+println( "✓ Loaded #products.len()# product knowledge entries\n" )
+
+// Create agent with multiple memories
+agent = aiAgent(
+    name: "ProductConsultant",
+    description: "Product consultant with comprehensive context",
+    instructions: "Help customers find the right products. Be helpful and accurate.",
+    memory: [ recentMemory, knowledgeMemory, auditMemory ]
+)
+
+println( "=== Sales Conversation ===\n" )
+
+println( "Customer: Hi! I'm looking for a laptop" )
+response = agent.run( "Hi! I'm looking for a laptop for software development" )
+println( "Agent: #left(response, 80)#...\n" )
+
+println( "Customer: What's in my budget?" )
+response = agent.run( "My budget is around $1,500. What do you recommend?" )
+println( "Agent: #response#\n" )
+
+println( "Customer: Does it come with support?" )
+response = agent.run( "Does it come with technical support?" )
+println( "Agent: #response#\n" )
+
+println( "Customer: What about returns?" )
+response = agent.run( "What if I need to return it?" )
+println( "Agent: #response#\n" )
+
+println( "Customer: Can I finance it?" )
+response = agent.run( "Can I pay in installments?" )
+println( "Agent: #response#\n" )
+
+// Demonstrate how each memory is used
+println( "=== Memory Analysis ===\n" )
+
+println( "1️⃣  Windowed Memory (Recent Conversation):" )
+recentMessages = recentMemory.getAll()
+println( "   Messages: #recentMessages.len()#" )
+println( "   Purpose: Maintains conversation flow" )
+println( "   Example: 'Can I pay in installments?' → knows 'it' = laptop\n" )
+
+println( "2️⃣  Vector Memory (Product Knowledge):" )
+println( "   Vectors: #knowledgeMemory.count()#" )
+println( "   Purpose: Semantic search for product info" )
+println( "   Example: 'budget $1,500' → finds SKU-002 ($1,299)\n" )
+
+println( "3️⃣  File Memory (Audit Trail):" )
+auditMessages = auditMemory.getAll()
+println( "   Messages: #auditMessages.len()#" )
+println( "   Purpose: Complete conversation history" )
+println( "   File: #auditMemory.export().filePath#\n" )
+
+// Show memory coordination
+println( "=== How Memories Work Together ===\n" )
+
+println( "When customer asks: 'Does it come with technical support?'\n" )
+
+println( "Step 1: Agent loads from ALL memories" )
+println( "  • Windowed: 'My budget is $1,500... SKU-002 recommended'" )
+println( "  • Vector: Searches for 'technical support' → finds '24/7 support included'" )
+println( "  • File: Full history available for context\n" )
+
+println( "Step 2: Agent combines context" )
+println( "  • Recent conversation: Knows we're discussing SKU-002" )
+println( "  • Product knowledge: Tech support details" )
+println( "  • Historical context: Full interaction history\n" )
+
+println( "Step 3: Agent responds accurately" )
+println( "  'Yes, SKU-002 includes 24/7 phone and chat support!'\n" )
+
+println( "Step 4: Response stored in ALL memories" )
+println( "  • Windowed: Adds to rolling window" )
+println( "  • Vector: (typically doesn't store responses)" )
+println( "  • File: Appends to audit log ✓\n" )
+
+// Configuration patterns
+println( "=== Multi-Memory Configuration Patterns ===\n" )
+
+println( "Pattern 1: Simple + Knowledge" )
+println( "  [ Windowed, Vector ]" )
+println( "  Use: Chat with knowledge base\n" )
+
+println( "Pattern 2: Distributed + Audit" )
+println( "  [ Cache, File ]" )
+println( "  Use: Multi-server with compliance\n" )
+
+println( "Pattern 3: Comprehensive (this example)" )
+println( "  [ Windowed, Vector, File ]" )
+println( "  Use: Production systems needing all capabilities\n" )
+
+println( "Pattern 4: Performance + Scale" )
+println( "  [ Summary, Hybrid, JDBC ]" )
+println( "  Use: Long conversations with persistence\n" )
+
+println( "📊 Summary:" )
+println( "- Windowed: Conversation flow ✓" )
+println( "- Vector: Knowledge retrieval ✓" )
+println( "- File: Audit compliance ✓" )
+println( "- Combined: Optimal context ✓" )
+
+println( "\n💡 Best Practices:" )
+println( "• Choose memories based on requirements" )
+println( "• Order doesn't matter (agent combines all)" )
+println( "• Each memory serves specific purpose" )
+println( "• Avoid redundant memory types" )
+
+// Cleanup
+println( "\n🧹 Cleaning up..." )
+if ( fileExists( getTempDirectory() & "multi_memory_audit.json" ) ) {
+    fileDelete( getTempDirectory() & "multi_memory_audit.json" )
+    println( "✓ Audit file deleted" )
+}

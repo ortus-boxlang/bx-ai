@@ -1,0 +1,438 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Base abstract class for all AI runnables.
+ * Provides common functionality for naming, parameter management, and chaining operations.
+ */
+import bxModules.bxai.models.transformers.*;
+import bxModules.bxai.models.util.SchemaBuilder;
+
+abstract class implements="IAiRunnable" {
+
+	/**
+	 * The name of the runnable
+	 */
+	property name="name" type="string" default="";
+
+	/**
+	 * Default parameters for this runnable
+	 */
+	property name="defaultParams" type="struct" default={};
+
+	/**
+	 * Default options for this runnable (returnFormat, timeout, logging, etc.)
+	 */
+	property name="defaultOptions" type="struct" default={};
+
+    /**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Interface Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Run the operation with the given input
+	 *
+	 * @input The input to process, empty struct if none
+	 * @params Optional parameters to configure the operation, these override defaults
+	 * @options Optional runtime options (returnFormat, timeout, logging, etc.)
+	 *
+	 * @return The result of the operation
+	 */
+	public any function run(
+		any input = {},
+		struct params = {},
+		struct options = {}
+	){
+        // Abstract method - to be implemented by subclasses
+        throw( type: "NotImplementedError", message: "The 'run' method must be implemented by subclasses of AiBaseRunnable." );
+    }
+
+	/**
+	 * Stream the operation with the given input, calling onChunk for each chunk
+	 *
+	 * @onChunk The callback function to invoke for each chunk
+	 * @input The input to process, empty struct if none
+	 * @params Optional parameters to configure the operation
+	 * @options Optional runtime options (returnFormat, timeout, logging, etc.)
+	 */
+	public void function stream(
+		required function onChunk,
+        any input = {},
+		struct params = {},
+		struct options = {}
+	){
+        // Abstract method - to be implemented by subclasses
+        throw( type: "NotImplementedError", message: "The 'stream' method must be implemented by subclasses of AiBaseRunnable." );
+    }
+
+	/**
+	 * Chain this runnable with another runnable
+	 * Creates a sequence that will execute this runnable followed by the next
+     *
+     * Example:
+     * ```
+     * var runnable1 = new SomeAiRunnable();
+     * var runnable2 = new AnotherAiRunnable();
+     * var sequence = runnable1.to( runnable2 );
+     * var result = sequence.run( inputData );
+     * ```
+     *
+     * In this example, `runnable1` is executed first, and its output is passed as input to `runnable2`.
+     * The final result is obtained from `runnable2`.
+	 *
+	 * @next The next runnable to execute
+	 *
+	 * @return A new AiRunnableSequence containing both runnables in order
+	 */
+	public IAiRunnable function to( required IAiRunnable next ) {
+		var sequence = new AiRunnableSequence( [ this, arguments.next ] );
+
+		// Propagate default options from this runnable to the sequence
+		if ( !variables.defaultOptions.isEmpty() ) {
+			sequence.withOptions( variables.defaultOptions );
+		}
+
+		return sequence;
+	}
+
+	/**
+	 * Alias to to()
+	 * Langchain style method name
+	 */
+	public IAiRunnable function pipe( required IAiRunnable next ) {
+		return this.to( arguments.next );
+	}
+
+	/**
+	 * Connect this runnable to a specific AI model
+	 * Uses the specified provider and apiKey
+	 * This is a convenience method
+	 *
+	 * Example:
+	 * ```
+	 * var runnable = aiMessage( "Hello ${name}" )
+	 * var pipeline = runnable.toModel( "openai", "my-api-key" )
+	 * var result = pipeline.run( { name: "World" } )
+	 * ```
+	 *
+	 * This is a convenience method equivalent to: this.to( aiModel( provider, apiKey ) )
+	 *
+	 * @provider The AI service provider to use
+	 * @apiKey The API key to use with the provider
+	 *
+	 * @return A new runnable sequence connected to the specified model
+	 */
+	public IAiRunnable function toModel(
+		required string provider,
+		string apiKey,
+		any tools=[],
+		struct params={}
+		) {
+		return this.to( aiModel( argumentCollection: arguments ) )
+	}
+
+    /**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Helper Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Apply a transformation function after this runnable
+	 * Creates a sequence with a transform runnable
+     *
+     * Example:
+     * ```
+     * var runnable = new SomeAiRunnable()
+     * var transformedRunnable = runnable.transform( input => input.ucase() )
+     * var finalResult = transformedRunnable.run( inputData )
+     * ```
+     *
+     * In this example, the output of `runnable` is transformed to uppercase by the provided function before being returned as `finalResult`.
+     * This allows for easy post-processing of results.
+	 *
+	 * @transformer The transformation function or object with a transform() method to apply
+	 *
+	 * @return A new runnable sequence with the transform step
+	 */
+	public IAiRunnable function transform( required any transformer ) {
+		return this.to( new AiTransformRunnable( arguments.transformer ) )
+	}
+
+	/**
+	 * Connect this runnable to the default AI model
+	 * Uses the provider and apiKey from module settings
+     *
+     * Example:
+     * ```
+     * var runnable = aiMessage( "Hello ${name}" )
+     * var pipeline = runnable.toDefaultModel()
+     * var result = pipeline.run( { name: "World" } )
+     * ```
+     *
+     * This is a convenience method equivalent to: this.to( aiModel() )
+	 *
+	 * @return A new runnable sequence connected to the default model
+	 */
+	public IAiRunnable function toDefaultModel() {
+		return this.to( aiModel() )
+	}
+
+    /**
+     * Apply a transformation function and run in one step
+     * Combines transform() and run() for convenience
+     *
+     * @transformer The transformation function or object with a transform() method to apply
+     * @input The input to process
+     * @params Optional parameters to configure the operation
+     *
+     * @return The transformed result of the operation
+     */
+    public any function transformAndRun(
+        required any transformer,
+        any input = {},
+        struct params = {}
+    ) {
+        return this.transform( arguments.transformer )
+            .run( arguments.input, arguments.params )
+    }
+
+	/**
+	 * Set the name of this runnable
+	 *
+	 * @name The name to set
+	 *
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function withName( required string name ) {
+		variables.name = arguments.name
+		return this
+	}
+
+	/**
+	 * Get the name of this runnable
+	 * Uses the explicitly set name if available, otherwise falls back to metadata
+	 *
+	 * @return The name of the runnable
+	 */
+	public string function getName() {
+		if ( len( variables.name ) ) {
+			return variables.name
+		}
+		return getMetadata( this ).name
+	}
+
+	/**
+	 * Set default parameters for this runnable
+	 * Merges with existing default parameters
+	 *
+	 * @params The parameters to merge
+	 *
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function withParams( required struct params ) {
+		variables.defaultParams.append( arguments.params, true );
+		return this;
+	}
+
+	/**
+	 * Merge incoming parameters with default parameters
+	 * Runtime parameters take precedence over defaults
+	 *
+	 * @params Runtime parameters to merge
+	 *
+	 * @return The merged parameter struct
+	 */
+	public struct function getMergedParams( struct params = {} ) {
+		var out = duplicate( variables.defaultParams );
+		out.append( arguments.params, true );
+		return out;
+	}
+
+    /**
+     * Clear all default parameters for this runnable
+     *
+     * @return This runnable for chaining
+     */
+    public IAiRunnable function clearParams(){
+        variables.defaultParams = {};
+        return this;
+    }
+
+	/**
+	 * Set default options for this runnable
+	 * Options control runtime behavior like returnFormat, timeout, logging, etc.
+	 * Merges with existing default options
+	 *
+	 * @options The options to merge
+	 *
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function withOptions( required struct options ) {
+		variables.defaultOptions.append( arguments.options, true );
+		return this;
+	}
+
+	/**
+	 * Merge incoming options with default options
+	 * Runtime options take precedence over defaults
+	 *
+	 * @options Runtime options to merge
+	 *
+	 * @return The merged options struct
+	 */
+	public struct function getMergedOptions( struct options = {} ) {
+		var out = duplicate( variables.defaultOptions );
+		out.append( arguments.options, true );
+		return out;
+	}
+
+	/**
+	 * Clear all default options for this runnable
+	 *
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function clearOptions(){
+		variables.defaultOptions = {};
+		return this;
+	}
+
+	/**
+	 * Convenience method to set return format to 'single'
+	 * Returns only the content string from the first message
+	 *
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function singleMessage() {
+		return this.withOptions( { returnFormat: "single" } );
+	}
+
+	/**
+	 * Convenience method to set return format to 'all'
+	 * Returns an array of all choice messages
+	 *
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function allMessages() {
+		return this.withOptions( { returnFormat: "all" } );
+	}
+
+	/**
+	 * Convenience method to set return format to 'json'
+	 * Returns the parsed JSON object from the content string
+	 *
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function asJson() {
+		return this.withOptions( { returnFormat: "json" } );
+	}
+
+	/**
+	 * Convenience method to set return format to 'xml'
+	 * Returns the parsed XML document from the content string
+	 *
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function asXml() {
+		return this.withOptions( { returnFormat: "xml" } );
+	}
+
+	/**
+	 * Convenience method to set return format to 'raw'
+	 * Returns the full raw response from the provider
+	 *
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function rawResponse() {
+		return this.withOptions( { returnFormat: "raw" } );
+	}
+
+	/**
+	 * Define structured output using a class, struct, or JSON schema
+	 * The LLM response will be validated against this schema and populated accordingly
+	 *
+	 * Example with class:
+	 * ```
+	 * class Person {
+	 *     property name="firstName" type="string";
+	 *     property name="age" type="numeric";
+	 * }
+	 * var person = aiModel().structuredOutput( new Person() ).run( "Extract: John Doe, age 30" );
+	 * ```
+	 *
+	 * Example with struct:
+	 * ```
+	 * var schema = { name: "", age: 0, active: true };
+	 * var result = aiModel().structuredOutput( schema ).run( "Parse this data" );
+	 * ```
+	 *
+	 * @schema Class instance, struct definition, JSON schema, or array notation [classInstance]
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function structuredOutput( required any schema ) {
+		return this.withOptions( { returnFormat: arguments.schema } );
+	}
+
+	/**
+	 * Define structured output using a raw JSON schema
+	 * Use this when you have a pre-built JSON schema object
+	 *
+	 * Example:
+	 * ```
+	 * var jsonSchema = {
+	 *     "type": "object",
+	 *     "properties": {
+	 *         "name": { "type": "string" },
+	 *         "age": { "type": "number" }
+	 *     },
+	 *     "required": ["name", "age"]
+	 * };
+	 * var result = aiModel().schema( jsonSchema ).run( "Extract data" );
+	 * ```
+	 *
+	 * @jsonSchema JSON schema struct or string
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function schema( required any jsonSchema ) {
+		return this.withOptions( { schema: arguments.jsonSchema } );
+	}
+
+	/**
+	 * Define multiple structured outputs with named schemas
+	 * Useful when you need to extract multiple different data structures
+	 *
+	 * Example:
+	 * ```
+	 * var result = aiModel()
+	 *     .structuredOutputs([
+	 *         { name: "contact", schema: new ContactInfo() },
+	 *         { name: "event", schema: new EventDetails() }
+	 *     ])
+	 *     .run( "Extract contact and event info" );
+	 * // result.contact.name, result.event.date, etc.
+	 * ```
+	 *
+	 * @schemas Array of schema definitions: [{ name: "schemaName", schema: definition }]
+	 * @return This runnable for chaining
+	 */
+	public IAiRunnable function structuredOutputs( required array schemas ) {
+		// Merge the schemas into a single struct-based schema
+		// Mark it so AiRequest knows it's already a schema (not data to infer from)
+		var mergedSchema = SchemaBuilder::merge( arguments.schemas );
+		mergedSchema._isSchema = true;  // Flag to prevent re-processing
+		return this.withOptions( { returnFormat: mergedSchema } );
+	}
+
+}

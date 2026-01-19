@@ -1,0 +1,12 @@
+// conversation-array.bxs
+// Building conversations with arrays of messages
+// Run with: boxlang conversation-array.bxs
+
+messages = [
+    { role: "system", content: "You are a friendly math tutor. Be encouraging!" },
+    { role: "user", content: "What is 5 + 3?" }
+]
+
+answer = aiChat( messages )
+println( answer )
+// Expected: "Great question! 5 + 3 equals 8. You're doing great!"

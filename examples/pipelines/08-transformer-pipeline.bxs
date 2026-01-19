@@ -1,0 +1,287 @@
+/**
+ * Transformer Pipeline Example
+ *
+ * Demonstrates chaining multiple transformers for complex data processing.
+ * Shows both pre-processing (before LLM) and post-processing (after LLM).
+ *
+ * Learn more: https://boxlang.ortusbooks.com/bx-modules/bx-ai/transformers
+ */
+
+println( "=== Transformer Pipeline Example ===" )
+println()
+
+try {
+	// Example 1: Simple transformation chain
+	println( "Example 1: Chain Multiple Transformers" )
+	println( "─".repeat( 50 ) )
+
+	// Transform: uppercase → trim → add prefix
+	pipeline = aiRunnableSequence([
+		aiTransform( text => uCase( text ) ),
+		aiTransform( text => trim( text ) ),
+		aiTransform( text => "PREFIX: " & text )
+	])
+
+	input = "  hello world  "
+	result = pipeline.run( input )
+
+	println( "Input:  [#input#]" )
+	println( "Output: [#result#]" )
+	println()
+
+	// Example 2: Pre-processing pipeline (before LLM)
+	println( "Example 2: Pre-Process Input" )
+	println( "─".repeat( 50 ) )
+
+	// Clean input → add context → send to LLM
+	preProcessPipeline = aiRunnableSequence([
+		// Step 1: Clean the input
+		aiTransform( input => {
+			cleaner = new src.main.bx.models.transformers.TextCleanerTransformer(
+				config: { trim: true, collapseSpaces: true }
+			)
+			return cleaner.run( input )
+		}),
+		// Step 2: Add context
+		aiTransform( input => {
+			return "User query: " & input & char( 10 ) & "Please respond professionally."
+		}),
+		// Step 3: Send to AI
+		aiModel( "openai" )
+	])
+
+	messy Input = "  What    is    BoxLang?   "
+
+	println( "Raw input: [#messyInput#]" )
+	println( "Pipeline: Clean → Add Context → AI" )
+	println()
+	aiResponse = preProcessPipeline.run( messyInput )
+	println( "AI Response: #aiResponse#" )
+	println()
+
+	// Example 3: Post-processing pipeline (after LLM)
+	println( "Example 3: Post-Process AI Response" )
+	println( "─".repeat( 50 ) )
+
+	// AI response → extract code → clean → validate
+	postProcessPipeline = aiRunnableSequence([
+		// Step 1: Get AI response
+		aiModel( "openai" ),
+		// Step 2: Extract code blocks
+		aiTransform( response => {
+			extractor = new src.main.bx.models.transformers.CodeExtractorTransformer()
+			return extractor.run( response )
+		}),
+		// Step 3: Clean the code
+		aiTransform( code => {
+			cleaner = new src.main.bx.models.transformers.TextCleanerTransformer(
+				config: { trim: true }
+			)
+			return cleaner.run( code )
+		})
+	])
+
+	codePrompt = aiMessage()
+		.system( "Generate BoxLang code wrapped in ```javascript blocks" )
+		.user( "Write a function to reverse a string" )
+
+	println( "Pipeline: AI → Extract Code → Clean" )
+	cleanCode = postProcessPipeline.run( codePrompt )
+	println( "Extracted clean code:" )
+	println( cleanCode )
+	println()
+
+	// Example 4: Bidirectional pipeline (pre + post)
+	println( "Example 4: Pre and Post Processing" )
+	println( "─".repeat( 50 ) )
+
+	// Clean input → AI → Clean output → Format
+	fullPipeline = aiRunnableSequence([
+		// Pre-processing
+		aiTransform( input => {
+			cleaner = new src.main.bx.models.transformers.TextCleanerTransformer()
+			return cleaner.run( input )
+		}),
+		// LLM processing
+		aiModel( "openai" ),
+		// Post-processing
+		aiTransform( response => trim( response ) ),
+		aiTransform( response => "✅ " & response )
+	])
+
+	rawInput = "   explain    BoxLang   in   one   line   "
+
+	println( "Pipeline: Clean Input → AI → Clean Output → Format" )
+	finalResult = fullPipeline.run( rawInput )
+	println( "Result: #finalResult#" )
+	println()
+
+	// Example 5: Conditional transformation
+	println( "Example 5: Conditional Transformations" )
+	println( "─".repeat( 50 ) )
+
+	conditionalPipeline = aiRunnableSequence([
+		aiModel( "openai" ),
+		aiTransform( response => {
+			// Extract code if response contains code blocks
+			if ( find( "```", response ) ) {
+				extractor = new src.main.bx.models.transformers.CodeExtractorTransformer()
+				return extractor.run( response )
+			}
+			// Otherwise just clean text
+			cleaner = new src.main.bx.models.transformers.TextCleanerTransformer()
+			return cleaner.run( response )
+		})
+	])
+
+	prompt1 = aiMessage().user( "Write a BoxLang function" )
+	prompt2 = aiMessage().user( "What is BoxLang?" )
+
+	println( "Prompt 1 (expects code): 'Write a BoxLang function'" )
+	result1 = conditionalPipeline.run( prompt1 )
+	println( "→ Extracted code" )
+	println()
+
+	println( "Prompt 2 (expects text): 'What is BoxLang?'" )
+	result2 = conditionalPipeline.run( prompt2 )
+	println( "→ Cleaned text" )
+	println()
+
+	// Example 6: Data validation pipeline
+	println( "Example 6: Validate AI Output" )
+	println( "─".repeat( 50 ) )
+
+	validationPipeline = aiRunnableSequence([
+		aiModel( "openai" ),
+		aiTransform( response => {
+			// Validate response length
+			if ( len( response ) < 10 ) {
+				throw( message: "Response too short", detail: "Expected at least 10 characters" )
+			}
+			return response
+		}),
+		aiTransform( response => {
+			// Ensure no profanity (simple check)
+			badWords = [ "badword1", "badword2" ]
+			for ( word in badWords ) {
+				if ( findNoCase( word, response ) ) {
+					return "[Content filtered]"
+				}
+			}
+			return response
+		})
+	])
+
+	println( "Pipeline: AI → Length Check → Content Filter" )
+	println( "Validates response meets requirements" )
+	println()
+
+	// Example 7: Transform to structured data
+	println( "Example 7: Text to Structured Data" )
+	println( "─".repeat( 50 ) )
+
+	structuredPipeline = aiRunnableSequence([
+		aiModel( "openai" ),
+		aiTransform( response => {
+			// Parse response into structured format
+			return {
+				text: response,
+				length: len( response ),
+				wordCount: arrayLen( listToArray( response, " " ) ),
+				timestamp: now()
+			}
+		})
+	])
+
+	prompt = aiMessage().user( "Say hello" )
+
+	structured = structuredPipeline.run( prompt )
+	println( "Structured output:" )
+	println( "  Text: #structured.text#" )
+	println( "  Length: #structured.length#" )
+	println( "  Words: #structured.wordCount#" )
+	println( "  Time: #dateTimeFormat( structured.timestamp, 'HH:mm:ss' )#" )
+	println()
+
+	// Example 8: Error handling in pipelines
+	println( "Example 8: Pipeline Error Handling" )
+	println( "─".repeat( 50 ) )
+
+	robustPipeline = aiRunnableSequence([
+		aiModel( "openai" ),
+		aiTransform( response => {
+			try {
+				// Attempt to extract JSON
+				return jsonDeserialize( response )
+			} catch ( any e ) {
+				// Fallback to plain text
+				return { text: response, format: "plain" }
+			}
+		})
+	])
+
+	println( "Pipeline handles JSON parsing failures gracefully" )
+	println( "Falls back to plain text format if needed" )
+	println()
+
+	// Example 9: Real-world RAG pipeline
+	println( "Example 9: Production RAG Pipeline" )
+	println( "─".repeat( 50 ) )
+
+	ragPipeline = aiRunnableSequence([
+		// 1. Clean user query
+		aiTransform( query => {
+			cleaner = new src.main.bx.models.transformers.TextCleanerTransformer()
+			return cleaner.run( query )
+		}),
+		// 2. Add context from vector search (simulated)
+		aiTransform( query => {
+			context = "BoxLang is a modern dynamic JVM language."
+			return aiMessage()
+				.system( "Answer using this context: ${context}" )
+				.user( query )
+				.setContext( context )
+		}),
+		// 3. Get AI response
+		aiModel( "openai" ),
+		// 4. Clean response
+		aiTransform( response => {
+			cleaner = new src.main.bx.models.transformers.TextCleanerTransformer(
+				config: { trim: true, collapseSpaces: true }
+			)
+			return cleaner.run( response )
+		}),
+		// 5. Add citation
+		aiTransform( response => response & char( 10 ) & char( 10 ) & "Source: Documentation" )
+	])
+
+	userQuery = "  What   is   BoxLang?  "
+
+	println( "Full RAG Pipeline:" )
+	println( "  1. Clean query" )
+	println( "  2. Add vector context" )
+	println( "  3. AI inference" )
+	println( "  4. Clean response" )
+	println( "  5. Add citation" )
+	println()
+	ragResult = ragPipeline.run( userQuery )
+	println( "Final output:" )
+	println( ragResult )
+
+} catch ( any e ) {
+	println( "Error: #e.message#" )
+	println( e.detail ?: "" )
+}
+
+println()
+println( "✅ Transformer Pipeline example complete!" )
+println()
+println( "Key Takeaways:" )
+println( "  • aiRunnableSequence chains multiple transformers" )
+println( "  • Each step's output becomes next step's input" )
+println( "  • Pre-process: Clean/validate BEFORE sending to LLM" )
+println( "  • Post-process: Extract/format AFTER LLM response" )
+println( "  • Conditional logic allows dynamic transformation" )
+println( "  • Validation ensures output meets requirements" )
+println( "  • Error handling prevents pipeline failures" )
+println( "  • Perfect for production RAG applications" )

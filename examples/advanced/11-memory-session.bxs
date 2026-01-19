@@ -1,0 +1,273 @@
+/**
+ * Session Memory Example
+ *
+ * Demonstrates web session-based memory for maintaining user context
+ * across HTTP requests in web applications.
+ *
+ * Use Case: Web applications needing per-user conversation state
+ *
+ * NEW: Shows multi-tenant isolation using userId + conversationId
+ * Session memory uses composite keys: key + userId + conversationId
+ */
+
+println( "=== Session Memory Example ===" )
+println( "Web session-based conversation persistence with multi-tenant isolation\n" )
+
+// ===================================================================
+// Part 1: Legacy Session Pattern (Session ID Only)
+// ===================================================================
+println( "=== Part 1: Legacy Pattern (Session ID Only) ===" )
+println( "Uses sessionId for isolation (simple but less flexible)\n" )
+
+// User 1's session
+println( "👤 User 1 Session (sessionId: abc123)" )
+println( "-" .repeatString( 50 ) )
+
+session1Memory = aiMemory( "session", {
+    sessionId: "abc123",
+    maxMessages: 20
+} )
+
+agent1 = aiAgent(
+    name: "WebAssistant",
+    description: "Web-based customer assistant",
+    memory: session1Memory
+)
+
+println( "Request 1: User introduces themselves" )
+response = agent1.run( "Hi, my name is Alice and I'm looking for laptops" )
+println( "Agent: #left(response, 80)#...\n" )
+
+println( "Request 2: User asks about features" )
+response = agent1.run( "I need something with 32GB RAM for development" )
+println( "Agent: #left(response, 80)#...\n" )
+
+// User 2's session (different user, different context)
+println( "\n👤 User 2 Session (sessionId: xyz789)" )
+println( "-" .repeatString( 50 ) )
+
+session2Memory = aiMemory( "session", {
+    sessionId: "xyz789",
+    maxMessages: 20
+} )
+
+agent2 = aiAgent(
+    name: "WebAssistant",
+    description: "Web-based customer assistant",
+    memory: session2Memory
+)
+
+println( "Request 1: Different user, different needs" )
+response = agent2.run( "Hi, I'm Bob and I need a gaming laptop" )
+println( "Agent: #left(response, 80)#...\n" )
+
+println( "Request 2: Gaming-specific questions" )
+response = agent2.run( "What GPUs do you have for high-end gaming?" )
+println( "Agent: #left(response, 80)#...\n" )
+
+// User 1 returns (session isolation test)
+println( "\n👤 User 1 Returns (sessionId: abc123)" )
+println( "-" .repeatString( 50 ) )
+
+// Same session ID = restored context
+session1bMemory = aiMemory( "session", {
+    sessionId: "abc123",
+    maxMessages: 20
+} )
+
+agent1b = aiAgent(
+    name: "WebAssistant",
+    description: "Web-based customer assistant",
+    memory: session1bMemory
+)
+
+println( "Request 3: Continues previous conversation" )
+response = agent1b.run( "Do you have any with SSDs?" )
+println( "Agent: #response#\n" )
+
+println( "✓ Agent remembered Alice's context (laptops for development)!" )
+println( "✓ Sessions are properly isolated\n" )
+
+// ===================================================================
+// Part 2: Modern Multi-Tenant Pattern (userId + conversationId)
+// ===================================================================
+println( "\n=== Part 2: Modern Multi-Tenant Pattern ===" )
+println( "Using userId + conversationId for better isolation and flexibility\n" )
+
+println( "👤 Alice - Multiple Conversations" )
+println( "-" .repeatString( 50 ) )
+
+// Alice has multiple simultaneous conversations
+aliceSupportMemory = aiMemory( "session",
+    key: "support",
+    userId: "alice",
+    conversationId: "support-ticket-123",
+    config: { maxMessages: 20 }
+)
+
+aliceSalesMemory = aiMemory( "session",
+    key: "sales",
+    userId: "alice",
+    conversationId: "sales-inquiry-456",
+    config: { maxMessages: 20 }
+)
+
+// Support conversation
+supportAgent = aiAgent( name: "SupportBot", memory: aliceSupportMemory )
+println( "📞 Support Chat:" )
+supportAgent.run( "My printer won't connect to WiFi" )
+println( "   ✓ Alice: 'My printer won't connect to WiFi'" )
+supportAgent.run( "It's a LaserJet Pro model" )
+println( "   ✓ Alice: 'It's a LaserJet Pro model'\n" )
+
+// Sales conversation (different topic, same user)
+salesAgent = aiAgent( name: "SalesBot", memory: aliceSalesMemory )
+println( "💰 Sales Chat:" )
+salesAgent.run( "I'm interested in upgrading my printer" )
+println( "   ✓ Alice: 'I'm interested in upgrading my printer'" )
+salesAgent.run( "What's your enterprise offering?" )
+println( "   ✓ Alice: 'What's your enterprise offering?'\n" )
+
+// Different user (Bob) - completely isolated
+println( "👤 Bob - Single Conversation" )
+println( "-" .repeatString( 50 ) )
+
+bobSupportMemory = aiMemory( "session",
+    key: "support",
+    userId: "bob",
+    conversationId: "support-ticket-789",
+    config: { maxMessages: 20 }
+)
+
+bobAgent = aiAgent( name: "SupportBot", memory: bobSupportMemory )
+println( "📞 Support Chat:" )
+bobAgent.run( "I need help with scanner setup" )
+println( "   ✓ Bob: 'I need help with scanner setup'" )
+bobAgent.run( "The USB cable isn't recognized" )
+println( "   ✓ Bob: 'The USB cable isn't recognized'\n" )
+
+// Test isolation
+println( "=== Testing Multi-Tenant Isolation ===" )
+println( "Each conversation is completely isolated:\n" )
+
+println( "Alice's Support: What am I asking about?" )
+response = supportAgent.run( "What am I asking about?" )
+println( "Response: #response#" )
+println( "✓ Remembers WiFi printer issue\n" )
+
+println( "Alice's Sales: What am I asking about?" )
+response = salesAgent.run( "What am I asking about?" )
+println( "Response: #response#" )
+println( "✓ Remembers upgrade inquiry\n" )
+
+println( "Bob's Support: What am I asking about?" )
+response = bobAgent.run( "What am I asking about?" )
+println( "Response: #response#" )
+println( "✓ Remembers scanner setup\n" )
+
+// Show composite key structure
+println( "=== Session Memory Composite Keys ===" )
+println( "Session memory builds composite keys internally:\n" )
+println( "Alice Support:  key='support' + userId='alice' + convId='support-ticket-123'" )
+println( "Alice Sales:    key='sales' + userId='alice' + convId='sales-inquiry-456'" )
+println( "Bob Support:    key='support' + userId='bob' + convId='support-ticket-789'" )
+println( "\n✓ Complete isolation achieved through composite keying\n" )
+
+// Demonstrate session management
+println( "=== Multi-Tenant Session Management ===\n" )
+
+// Export session data with tenant identifiers
+println( "Exporting Alice's support conversation..." )
+exportedSession = aliceSupportMemory.export()
+println( "✓ Session exported" )
+println( "  - User ID: #exportedSession.userId#" )
+println( "  - Conversation ID: #exportedSession.conversationId#" )
+println( "  - Key: #exportedSession.key#" )
+println( "  - Messages: #exportedSession.messages.len()#" )
+println( "  - Portable: Yes (includes tenant identifiers)\n" )
+
+// Clear specific conversation
+println( "Clearing Bob's support conversation..." )
+bobSupportMemory.clear()
+println( "✓ Conversation cleared (userId='bob', convId='support-ticket-789')" )
+println( "  Messages remaining: #bobSupportMemory.getAll().len()#" )
+println( "  Other conversations unaffected ✓\n" )
+
+// Integration example
+println( "=== Web Framework Integration Pattern ===\n" )
+println( "Example: ColdBox/ContentBox multi-tenant handler\n" )
+
+println( "```js" )
+println( "class {" )
+println( "    // Multi-tenant chat endpoint" )
+println( "    function chat( event, rc, prc ) {" )
+println( "        // Get authenticated user ID" )
+println( "        var userId = auth().user().getId();" )
+println( "" )
+println( "        // Get conversation ID from request" )
+println( "        var conversationId = rc.conversationId ?: createUUID();" )
+println( "" )
+println( "        // Create multi-tenant session memory" )
+println( "        var memory = aiMemory( 'session'," )
+println( "            key: 'chat'," )
+println( "            userId: userId," )
+println( "            conversationId: conversationId," )
+println( "            config: { maxMessages: 50 }" )
+println( "        );" )
+println( "" )
+println( "        // Create agent with isolated memory" )
+println( "        var agent = aiAgent(" )
+println( "            name: 'WebAssistant'," )
+println( "            memory: memory" )
+println( "        );" )
+println( "" )
+println( "        // Process user message" )
+println( "        var response = agent.run( rc.message );" )
+println( "" )
+println( "        // Return response with conversation ID" )
+println( "        return {" )
+println( "            'conversationId': conversationId," )
+println( "            'response': response," )
+println( "            'userId': userId" )
+println( "        };" )
+println( "    }" )
+println( "" )
+println( "    // List user's conversations" )
+println( "    function listConversations( event, rc, prc ) {" )
+println( "        var userId = auth().user().getId();" )
+println( "        // Query database for user's conversation IDs" )
+println( "        return queryExecute(" )
+println( "            'SELECT DISTINCT conversation_id " )
+println( "             FROM conversations " )
+println( "             WHERE user_id = :userId'," )
+println( "            { userId: userId }" )
+println( "        );" )
+println( "    }" )
+println( "}" )
+println( "```\n" )
+
+println( "📊 Summary:" )
+println( "- Storage: In-memory (per session)" )
+println( "- Isolation: Multi-tenant (userId + conversationId) ✓" )
+println( "- Composite keys: Automatic isolation ✓" )
+println( "- Auto-cleanup: On session timeout" )
+println( "- Web framework: Easy integration ✓" )
+println( "- Scalability: Good for single-server" )
+println( "- Multiple conversations per user: Supported ✓" )
+
+println( "\n💡 Best For:" )
+println( "- Web chat applications" )
+println( "- Multi-conversation per user" )
+println( "- Customer support (tickets)" )
+println( "- Shopping assistants" )
+println( "- Enterprise multi-tenant SaaS" )
+
+println( "\n⚠️  Note:" )
+println( "- Session memory is in-memory (not distributed)" )
+println( "- For distributed web apps, use Cache or JDBC memory" )
+println( "- Session timeout clears conversations automatically" )
+
+println( "\n⚠️  Considerations:" )
+println( "- Session memory is in-memory (not distributed)" )
+println( "- Use CacheMemory for distributed web apps" )
+println( "- Use FileMemory or JDBCMemory for persistence" )

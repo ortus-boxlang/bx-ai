@@ -1,0 +1,174 @@
+/**
+ * Hybrid Memory Example
+ *
+ * Demonstrates hybrid memory combining recent conversation history
+ * with semantic search for optimal context.
+ *
+ * Use Case: Best of both worlds - recency + relevance
+ *
+ * Prerequisites: OPENAI_API_KEY environment variable set
+ */
+
+println( "=== Hybrid Memory Example ===" )
+println( "Combines recent messages + semantic search\n" )
+
+// Create hybrid memory
+memory = aiMemory( "hybrid", {
+    recentLimit: 5,               // Keep last 5 messages
+    semanticLimit: 3,             // Add 3 relevant messages
+    vectorProvider: "boxvector",  // Use BoxVector for demo
+    vectorConfig: {
+        collection: "support_knowledge",
+        embeddingProvider: "openai",
+        embeddingModel: "text-embedding-3-small",
+        dimensions: 1536,
+        metric: "cosine"
+    }
+} )
+
+println( "✓ Hybrid memory configured:" )
+println( "  - Recent messages: 5" )
+println( "  - Semantic matches: 3" )
+println( "  - Total context: Up to 8 messages\n" )
+
+// Create customer support agent
+agent = aiAgent(
+    name: "SupportAgent",
+    description: "Customer support specialist",
+    instructions: "Help customers with technical issues. Use past solutions when relevant.",
+    memory: memory
+)
+
+println( "=== Building Support Knowledge Base ===\n" )
+
+// Simulate past support tickets (stored in vector memory)
+pastTickets = [
+    "Customer reported slow login. Solution: Clear browser cache and cookies. Issue resolved.",
+    "Database connection timeout error. Solution: Increase connection pool size to 50. Fixed.",
+    "Email notifications not sending. Solution: Configure SMTP settings in admin panel. Working now.",
+    "Payment gateway returning 500 errors. Solution: Update API credentials and endpoint URL. Resolved.",
+    "File upload failing for large files. Solution: Increase max upload size to 100MB in nginx. Fixed.",
+    "Search feature returning no results. Solution: Rebuild search index. All results showing now.",
+    "Mobile app crashing on iOS 17. Solution: Update to latest SDK version. Crash fixed.",
+    "API rate limiting too aggressive. Solution: Increase limit to 1000 req/hour for premium. Done.",
+    "Dashboard charts not loading. Solution: Clear Redis cache and restart app server. Working.",
+    "Password reset emails going to spam. Solution: Configure SPF and DKIM records. Inbox delivery now."
+]
+
+println( "Adding #pastTickets.len()# past support tickets..." )
+pastTickets.each( ( ticket, idx ) => {
+    memory.add( ticket )
+    print( "." )
+} )
+println( " Done!\n" )
+
+println( "=== Customer Support Conversation ===\n" )
+
+// Start fresh support ticket
+println( "Customer: Hi, I'm having issues with the system" )
+response = agent.run( "Hi, I'm having issues with the system" )
+println( "Agent: #left(response, 80)#...\n" )
+
+println( "Customer: The login page is really slow" )
+response = agent.run( "The login page is taking forever to load" )
+println( "Agent: #left(response, 80)#...\n" )
+
+println( "Customer: I've tried multiple browsers" )
+response = agent.run( "I've tried Chrome, Firefox, and Safari" )
+println( "Agent: #left(response, 80)#...\n" )
+
+println( "✓ Agent used hybrid context:" )
+println( "  - Recent messages: Current conversation flow" )
+println( "  - Semantic search: Found 'slow login' ticket from past" )
+println( "  - Result: Suggested cache clearing solution!\n" )
+
+// Demonstrate context switching
+println( "=== Context Switching Demonstration ===\n" )
+
+println( "Customer: Also, my file uploads are failing" )
+response = agent.run( "Also, my file uploads are failing for larger files" )
+println( "Agent: #response#\n" )
+
+println( "✓ Hybrid memory adjusted:" )
+println( "  - Recent: Kept current conversation" )
+println( "  - Semantic: Retrieved 'file upload' solution" )
+println( "  - Result: Agent knows about nginx upload size!\n" )
+
+println( "Customer: And emails aren't arriving" )
+response = agent.run( "The password reset emails aren't arriving in my inbox" )
+println( "Agent: #response#\n" )
+
+println( "✓ Multiple relevant contexts combined:" )
+println( "  - Recent: File upload + email discussion" )
+println( "  - Semantic: Email + spam solution" )
+println( "  - Result: Comprehensive support!\n" )
+
+// Show memory composition
+println( "=== Hybrid Memory Composition ===\n" )
+
+allMessages = memory.getAll()
+println( "Total messages in context: #allMessages.len()#" )
+println( "Breakdown:" )
+println( "  - Recent conversation: ~5 messages" )
+println( "  - Semantically relevant: ~3 past tickets" )
+println( "  - Deduplication: Removes overlaps" )
+
+println( "\n=== Comparison: Hybrid vs Single Strategy ===\n" )
+
+println( "❌ Recent-only memory (windowed):" )
+println( "   + Fast, low cost" )
+println( "   - Forgets solutions from 10 minutes ago" )
+println( "   - Can't leverage past knowledge" )
+println( "   Result: Repetitive troubleshooting\n" )
+
+println( "❌ Semantic-only memory (vector):" )
+println( "   + Finds relevant past solutions" )
+println( "   - Loses immediate conversation flow" )
+println( "   - Can't track current issue details" )
+println( "   Result: Disconnected responses\n" )
+
+println( "✓ Hybrid memory:" )
+println( "   + Maintains conversation flow" )
+println( "   + Retrieves relevant past solutions" )
+println( "   + Adapts to topic changes" )
+println( "   + Optimal context mix" )
+println( "   Result: Natural + knowledgeable support!\n" )
+
+// Configuration examples
+println( "=== Configuration Patterns ===\n" )
+
+println( "1️⃣  Balanced (default):" )
+println( "   recentLimit: 5, semanticLimit: 3" )
+println( "   Use for: General conversations\n" )
+
+println( "2️⃣  Recency-focused:" )
+println( "   recentLimit: 10, semanticLimit: 2" )
+println( "   Use for: Quick chats, task-focused\n" )
+
+println( "3️⃣  Knowledge-focused:" )
+println( "   recentLimit: 3, semanticLimit: 5" )
+println( "   Use for: Research, documentation lookup\n" )
+
+println( "4️⃣  Production support:" )
+println( "   recentLimit: 7, semanticLimit: 5" )
+println( "   vectorProvider: 'pinecone'  // Scalable!" )
+println( "   Use for: Customer support systems\n" )
+
+println( "📊 Summary:" )
+println( "- Recent context: Always included" )
+println( "- Semantic matches: Added based on query" )
+println( "- Deduplication: Automatic ✓" )
+println( "- Context optimization: Excellent ✓" )
+println( "- Token efficiency: High ✓" )
+
+println( "\n💡 Best For:" )
+println( "✓ Customer support systems" )
+println( "✓ Knowledge-base powered chat" )
+println( "✓ Long conversations with history" )
+println( "✓ Mixed recency + relevance needs" )
+
+println( "\n🎯 Pro Tips:" )
+println( "• Start with balanced config (5 recent, 3 semantic)" )
+println( "• Monitor which context type is more useful" )
+println( "• Adjust ratios based on use case" )
+println( "• Use BoxVector for dev, Pinecone for production" )

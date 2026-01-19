@@ -1,0 +1,73 @@
+// invoice-parser.bxs
+// Lab: Parse an invoice into structured data
+// Run with: boxlang invoice-parser.bxs
+
+println( "📄 Invoice Parser" )
+println( "═".repeat( 40 ) )
+println()
+
+// Define line item structure
+lineItemTemplate = {
+    "description": "",
+    "amount": 0.0
+}
+
+// Define invoice structure
+invoiceTemplate = {
+    "invoiceNumber": "",
+    "date": "",
+    "customerName": "",
+    "lineItems": [ lineItemTemplate ],
+    "total": 0.0
+}
+
+// Sample invoice text
+invoiceText = "
+INVOICE #INV-2024-001
+
+Date: November 15, 2024
+Bill To: Acme Corporation
+
+Items:
+  - Web Development: $5,000
+  - Design Services: $2,500
+  - Hosting (1 year): $500
+
+Total: $8,000
+"
+
+println( "Parsing invoice text..." )
+println()
+
+// Extract structured data
+try {
+    invoice = aiChat( "Parse this invoice: " & invoiceText )
+        .structuredOutput( invoiceTemplate )
+    
+    // Display results
+    println( "Invoice #: " & invoice.invoiceNumber )
+    println( "Date: " & invoice.date )
+    println( "Customer: " & invoice.customerName )
+    println()
+    println( "Line Items:" )
+    
+    calculatedTotal = 0
+    for( item in invoice.lineItems ) {
+        println( "  • #item.description#: $#numberFormat( item.amount, ',.00' )#" )
+        calculatedTotal += item.amount
+    }
+    
+    println()
+    println( "─".repeat( 40 ) )
+    println( "Total: $#numberFormat( invoice.total, ',.00' )#" )
+    
+    // Verify total (using penny precision for currency comparison)
+    if( abs( calculatedTotal - invoice.total ) < 0.01 ) {
+        println( "✅ Total verified!" )
+    } else {
+        println( "⚠️ Total mismatch! Calculated: $#numberFormat( calculatedTotal, ',.00' )#" )
+    }
+    
+} catch( any e ) {
+    println( "❌ Error parsing invoice: " & e.message )
+}

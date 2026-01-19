@@ -1,0 +1,790 @@
+<bx:script>
+	import bxModules.bxai.models.mcp.MCPServer
+
+	// Create a test MCP Server with sample data
+	mcpServer( "demo" )
+		.setDescription( "Demo MCP Server with sample tools and resources" )
+		.setVersion( "1.0.0" )
+		.registerTool(
+			aiTool( "echo", "Echoes the input message back to the caller", ( struct message ) => {
+				return {
+					"echoedMessage": message,
+					"timestamp": now()
+				}
+			} )
+			.describeMessage( "The message to echo back" )
+		)
+		.registerTool(
+			aiTool( "get_weather", "Get current weather for a location", ( struct location ) => {
+				return {
+					"location": location,
+					"temperature": randRange( 60, 90 ),
+					"condition": [ "sunny", "cloudy", "rainy" ][ randRange( 1, 3 ) ],
+					"timestamp": now()
+				}
+			} )
+			.describeLocation( "City name or coordinates" )
+		)
+		.registerTool(
+			aiTool( "calculate", "Perform basic mathematical calculations", ( string expression ) => {
+				try {
+					return {
+						"expression": expression,
+						"result": evaluate( expression )
+					}
+				} catch( any e ) {
+					return {
+						"error": "Invalid expression",
+						"expression": expression
+					}
+				}
+			} )
+			.describeExpression( "Mathematical expression to evaluate (e.g., '2 + 2')" )
+		)
+		.registerResource(
+			uri: "docs://readme",
+			name: "Project README",
+			description: "Main documentation for the project",
+			mimeType: "text/markdown",
+			handler: () => {
+				// Return the actual README content
+				readmePath = expandPath( "../readme.md" )
+				if( fileExists( readmePath ) ) {
+					return fileRead( readmePath )
+				}
+				return "## BoxLang AI Module\n\nWelcome to the BoxLang AI Module!"
+			}
+		)
+		.registerResource(
+			uri: "config://app",
+			name: "Application Config",
+			description: "Current application configuration",
+			mimeType: "application/json",
+			handler: () => {
+				// Return current module configuration
+				return serializeJSON({
+					"module": "bx-ai",
+					"version": "1.0.0",
+					"provider": getSystemSetting( "OPENAI_API_KEY", "" ) != "" ? "openai" : "not-configured",
+					"features": {
+						"tools": true,
+						"resources": true,
+						"prompts": true,
+						"streaming": true
+					},
+					"timestamp": now()
+				})
+			}
+		)
+		.registerResource(
+			uri: "file://examples",
+			name: "Example Files",
+			description: "Browse example BoxLang AI scripts",
+			mimeType: "application/json",
+			handler: () => {
+				// List example files
+				examplesPath = expandPath( "../examples" )
+				if( directoryExists( examplesPath ) ) {
+					files = directoryList(
+						path: examplesPath,
+						recurse: true,
+						filter: "*.bx*",
+						type: "file"
+					)
+					return serializeJSON({
+						"path": examplesPath,
+						"count": files.len(),
+						"files": files.map( f => {
+							return {
+								"name": getFileFromPath( f ),
+								"path": f.replace( examplesPath, "" ),
+								"size": getFileInfo( f ).size
+							}
+						})
+					})
+				}
+				return serializeJSON({ "error": "Examples directory not found" })
+			}
+		)
+		.registerPrompt(
+			name: "code_review",
+			description: "Review code for best practices and potential issues",
+			arguments: [
+				{ name: "code", description: "The code to review", required: true },
+				{ name: "language", description: "Programming language", required: false }
+			],
+			handler: ( args ) => {
+				code = args.code ?: ""
+				language = args.language ?: "unknown"
+				return "You are an expert code reviewer. Review the following #language# code for:
+					1. **Best Practices**: Are coding standards and conventions followed?
+					2. **Potential Issues**: Look for bugs, security vulnerabilities, or performance problems
+					3. **Code Quality**: Is the code maintainable, readable, and well-structured?
+					4. **Improvements**: Suggest specific improvements with examples"
+			}
+		)
+		.registerPrompt(
+			name: "summarize",
+			description: "Summarize text content",
+			arguments: [
+				{ name: "text", description: "The text to summarize", required: true },
+				{ name: "maxLength", description: "Maximum summary length", required: false }
+			],
+			handler: ( args ) => {
+				text = args.text ?: ""
+				maxLength = args.maxLength ?: "brief"
+
+				lengthInstruction = maxLength == "brief" ? "in 2-3 sentences" : "in approximately #maxLength# words"
+
+				return "Summarize the following text #lengthInstruction#. Focus on the main points and key takeaways:
+				Provide a clear, concise summary that captures the essential information."
+			}
+		)
+		.registerPrompt(
+			name: "explain_code",
+			description: "Explain how code works in simple terms",
+			arguments: [
+				{ name: "code", description: "The code to explain", required: true },
+				{ name: "audience", description: "Target audience (beginner/intermediate/advanced)", required: false }
+			],
+			handler: ( args ) => {
+				code = args.code ?: ""
+				audience = args.audience ?: "beginner"
+
+				audienceContext = {
+					"beginner": "someone new to programming",
+					"intermediate": "someone with programming experience",
+					"advanced": "an experienced developer"
+				}
+				target = audienceContext[ audience ] ?: audienceContext[ "beginner" ]
+
+				return "Explain the following code as if you're teaching #target#:
+				Break down:
+				1. What the code does (overall purpose)
+				2. How it works (step-by-step explanation)
+				3. Key concepts used
+				4. Any important patterns or techniques
+
+				Use clear language appropriate for a #audience# level."
+			}
+		)
+
+	mcpServer()
+			.registerTool(
+				aiTool( "list_servers", "List all registered MCP servers", () => {
+					return MCPServer::getInstanceNames()
+				} )
+			)
+
+	// Get all registered servers
+	aRegisteredServers = MCPServer::getInstanceNames()
+
+	// Get server details
+	servers = []
+	for( serverName in aRegisteredServers ) {
+		thisServer = MCPServer::getInstance( serverName )
+		servers.append({
+			"name": serverName,
+			"description": thisServer.getDescription(),
+			"version": thisServer.getVersion(),
+			"tools": thisServer.getTools(),
+			"resources": thisServer.getResources(),
+			"prompts": thisServer.getPrompts(),
+			"toolCount": thisServer.getTools().count(),
+			"resourceCount": thisServer.getResources().count(),
+			"promptCount": thisServer.getPrompts().count(),
+			"stats": thisServer.getStatsSummary(),
+			"statsEnabled": thisServer.isStatsEnabled()
+		})
+	}
+</bx:script>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>🚀 MCP Server Visualizer - BoxLang AI</title>
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			color: #333;
+			line-height: 1.6;
+			padding: 20px;
+			min-height: 100vh;
+		}
+
+		.container {
+			max-width: 1400px;
+			margin: 0 auto;
+		}
+
+		.header {
+			background: white;
+			padding: 30px;
+			border-radius: 15px;
+			box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+			margin-bottom: 30px;
+			text-align: center;
+		}
+
+		.header h1 {
+			color: #667eea;
+			font-size: 2.5em;
+			margin-bottom: 10px;
+		}
+
+		.header .subtitle {
+			color: #666;
+			font-size: 1.1em;
+		}
+
+		.stats-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+			gap: 20px;
+			margin-bottom: 30px;
+		}
+
+		.stat-card {
+			background: white;
+			padding: 25px;
+			border-radius: 12px;
+			box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+			text-align: center;
+			transition: transform 0.3s ease, box-shadow 0.3s ease;
+		}
+
+		.stat-card:hover {
+			transform: translateY(-5px);
+			box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+		}
+
+		.stat-card .icon {
+			font-size: 3em;
+			margin-bottom: 10px;
+		}
+
+		.stat-card .number {
+			font-size: 2.5em;
+			font-weight: bold;
+			color: #667eea;
+			margin-bottom: 5px;
+		}
+
+		.stat-card .label {
+			color: #666;
+			font-size: 0.9em;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+		}
+
+		.server-grid {
+			display: grid;
+			gap: 30px;
+		}
+
+		.server-card {
+			background: white;
+			border-radius: 15px;
+			box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+			overflow: hidden;
+			transition: transform 0.3s ease;
+		}
+
+		.server-card:hover {
+			transform: translateY(-5px);
+		}
+
+		.server-header {
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			color: white;
+			padding: 25px;
+		}
+
+		.server-header h2 {
+			font-size: 1.8em;
+			margin-bottom: 5px;
+		}
+
+		.server-header .meta {
+			opacity: 0.9;
+			font-size: 0.9em;
+		}
+
+		.server-header .badge {
+			display: inline-block;
+			background: rgba(255, 255, 255, 0.2);
+			padding: 5px 12px;
+			border-radius: 20px;
+			font-size: 0.85em;
+			margin-top: 10px;
+			margin-right: 8px;
+		}
+
+		.server-body {
+			padding: 30px;
+		}
+
+		.section {
+			margin-bottom: 30px;
+		}
+
+		.section:last-child {
+			margin-bottom: 0;
+		}
+
+		.section-title {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			font-size: 1.3em;
+			color: #667eea;
+			margin-bottom: 15px;
+			padding-bottom: 10px;
+			border-bottom: 2px solid #f0f0f0;
+		}
+
+		.section-title .icon {
+			font-size: 1.2em;
+		}
+
+		.empty-state {
+			text-align: center;
+			padding: 30px;
+			color: #999;
+			font-style: italic;
+		}
+
+		.item-grid {
+			display: grid;
+			gap: 15px;
+		}
+
+		.item-card {
+			background: #f8f9fa;
+			padding: 20px;
+			border-radius: 10px;
+			border-left: 4px solid #667eea;
+			transition: all 0.3s ease;
+		}
+
+		.item-card:hover {
+			background: #e9ecef;
+			border-left-color: #764ba2;
+		}
+
+		.item-header {
+			display: flex;
+			justify-content: space-between;
+			align-items: start;
+			margin-bottom: 10px;
+		}
+
+		.item-name {
+			font-weight: bold;
+			font-size: 1.1em;
+			color: #333;
+			font-family: 'Courier New', monospace;
+		}
+
+		.item-type {
+			font-size: 0.85em;
+			color: #667eea;
+			background: white;
+			padding: 3px 10px;
+			border-radius: 12px;
+			font-weight: 500;
+		}
+
+		.item-description {
+			color: #666;
+			margin-bottom: 12px;
+			line-height: 1.5;
+		}
+
+		.item-details {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 10px;
+			margin-top: 12px;
+		}
+
+		.detail-tag {
+			background: white;
+			padding: 5px 12px;
+			border-radius: 15px;
+			font-size: 0.85em;
+			color: #555;
+			border: 1px solid #e0e0e0;
+		}
+
+		.detail-tag strong {
+			color: #667eea;
+		}
+
+		.endpoint-info {
+			background: #fff3cd;
+			border: 1px solid #ffc107;
+			border-radius: 8px;
+			padding: 15px;
+			margin-top: 20px;
+		}
+
+		.endpoint-info strong {
+			color: #856404;
+		}
+
+		.endpoint-info code {
+			background: white;
+			padding: 4px 8px;
+			border-radius: 4px;
+			font-family: 'Courier New', monospace;
+			color: #333;
+			display: inline-block;
+			margin: 5px 0;
+		}
+
+		.tool-args, .prompt-args {
+			margin-top: 10px;
+			padding: 10px;
+			background: white;
+			border-radius: 6px;
+		}
+
+		.arg-item {
+			padding: 5px 0;
+			font-family: 'Courier New', monospace;
+			font-size: 0.9em;
+		}
+
+		.arg-name {
+			color: #667eea;
+			font-weight: bold;
+		}
+
+		.arg-required {
+			color: #dc3545;
+			font-size: 0.85em;
+		}
+
+		.resource-uri {
+			font-family: 'Courier New', monospace;
+			color: #667eea;
+			background: white;
+			padding: 8px 12px;
+			border-radius: 6px;
+			margin-bottom: 8px;
+			display: inline-block;
+		}
+
+		.stats-grid-detailed {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+			gap: 15px;
+			margin-top: 15px;
+		}
+
+		.stat-box {
+			background: white;
+			padding: 15px;
+			border-radius: 8px;
+			text-align: center;
+			border: 1px solid #e0e0e0;
+			transition: transform 0.2s ease, box-shadow 0.2s ease;
+		}
+
+		.stat-box:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+		}
+
+		.stat-label {
+			font-size: 0.75em;
+			color: #666;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+			margin-bottom: 8px;
+		}
+
+		.stat-value {
+			font-size: 1.8em;
+			font-weight: bold;
+			color: #667eea;
+		}
+
+		@media (max-width: 768px) {
+			.stats-grid {
+				grid-template-columns: 1fr;
+			}
+
+			.stats-grid-detailed {
+				grid-template-columns: repeat(2, 1fr);
+			}
+
+			.header h1 {
+				font-size: 1.8em;
+			}
+
+			.server-header h2 {
+				font-size: 1.4em;
+			}
+		}
+
+		.refresh-notice {
+			text-align: center;
+			padding: 15px;
+			background: rgba(255, 255, 255, 0.9);
+			border-radius: 10px;
+			margin-bottom: 20px;
+			color: #666;
+			font-size: 0.95em;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1>🚀 MCP Server Visualizer</h1>
+			<p class="subtitle">Model Context Protocol Server Registry - BoxLang AI Module</p>
+		</div>
+
+		<bx:output>
+			<div class="refresh-notice">
+				📡 Last Updated: #dateTimeFormat(now(), "iso" )# |
+				<a href="#cgi.script_name#" style="color: ##667eea; text-decoration: none; font-weight: bold;">🔄 Refresh</a>
+			</div>
+
+			<bx:set totalTools = 0>
+			<bx:set totalResources = 0>
+			<bx:set totalPrompts = 0>
+			<bx:loop array="#servers#" index="srv">
+				<bx:set totalTools += srv.toolCount>
+				<bx:set totalResources += srv.resourceCount>
+				<bx:set totalPrompts += srv.promptCount>
+			</bx:loop>
+
+			<div class="stats-grid">
+				<div class="stat-card">
+					<div class="icon">🖥️</div>
+					<div class="number">#servers.len()#</div>
+					<div class="label">Servers</div>
+				</div>
+				<div class="stat-card">
+					<div class="icon">🔧</div>
+					<div class="number">#totalTools#</div>
+					<div class="label">Tools</div>
+				</div>
+				<div class="stat-card">
+					<div class="icon">📦</div>
+					<div class="number">#totalResources#</div>
+					<div class="label">Resources</div>
+				</div>
+				<div class="stat-card">
+					<div class="icon">💬</div>
+					<div class="number">#totalPrompts#</div>
+					<div class="label">Prompts</div>
+				</div>
+			</div>
+
+			<bx:if servers.len() == 0>
+				<div class="server-card">
+					<div class="server-body">
+						<div class="empty-state">
+							<div style="font-size: 4em; margin-bottom: 20px;">🤷</div>
+							<h3>No MCP Servers Registered</h3>
+							<p>Create a server using <code>mcpServer( "name" )</code> to get started.</p>
+						</div>
+					</div>
+				</div>
+			</bx:if>
+
+			<div class="server-grid">
+				<bx:loop array="#servers#" index="srv">
+					<div class="server-card">
+						<div class="server-header">
+							<h2>🖥️ #srv.name#</h2>
+							<div class="meta">#srv.description#</div>
+							<div>
+								<span class="badge">v#srv.version#</span>
+								<span class="badge">#srv.toolCount# tools</span>
+								<span class="badge">#srv.resourceCount# resources</span>
+								<span class="badge">#srv.promptCount# prompts</span>
+							</div>
+						</div>
+
+						<div class="server-body">
+							<!-- Tools Section -->
+							<div class="section">
+								<div class="section-title">
+									<span class="icon">🔧</span>
+									<span>Tools (#srv.toolCount#)</span>
+								</div>
+
+								<bx:if srv.tools.count() == 0>
+									<div class="empty-state">No tools registered</div>
+								<bx:else>
+									<div class="item-grid">
+										<bx:loop collection="#srv.tools#" item="toolName">
+											<div class="item-card">
+												<div class="item-header">
+													<div class="item-name">#toolName#</div>
+													<div class="item-type">TOOL</div>
+												</div>
+												<div class="item-description">#srv.tools[ toolName ].getDescription()#</div>
+											</div>
+										</bx:loop>
+									</div>
+								</bx:if>
+							</div>
+
+							<!-- Resources Section -->
+							<div class="section">
+								<div class="section-title">
+									<span class="icon">📦</span>
+									<span>Resources (#srv.resourceCount#)</span>
+								</div>
+
+								<bx:if srv.resources.count() == 0>
+									<div class="empty-state">No resources registered</div>
+								<bx:else>
+									<div class="item-grid">
+										<bx:loop collection="#srv.resources#" item="resource">
+											<bx:set targetResource = srv.resources[ resource ]>
+											<div class="item-card">
+												<div class="item-header">
+													<div class="item-name">#resource#</div>
+													<div class="item-type">RESOURCE</div>
+												</div>
+												<div class="resource-uri">📍 #resource#</div>
+												<bx:if structKeyExists( targetResource, "description" ) && len( targetResource.description )>
+													<div class="item-description">#targetResource.description#</div>
+												</bx:if>
+												<div class="item-details">
+													<bx:if structKeyExists( targetResource, "mimeType" )>
+														<span class="detail-tag"><strong>Type:</strong> #targetResource.mimeType#</span>
+													</bx:if>
+												</div>
+											</div>
+										</bx:loop>
+									</div>
+								</bx:if>
+							</div>
+
+							<!-- Prompts Section -->
+							<div class="section">
+								<div class="section-title">
+									<span class="icon">💬</span>
+									<span>Prompts (#srv.promptCount#)</span>
+								</div>
+
+								<bx:if srv.prompts.count() == 0>
+									<div class="empty-state">No prompts registered</div>
+								<bx:else>
+									<div class="item-grid">
+										<bx:loop collection="#srv.prompts#" item="promptName">
+											<bx:set targetPrompt = srv.prompts[ promptName ]>
+											<div class="item-card">
+												<div class="item-header">
+													<div class="item-name">#promptName#</div>
+													<div class="item-type">PROMPT</div>
+												</div>
+
+												<bx:if structKeyExists( targetPrompt, "description" ) && len( targetPrompt.description )>
+													<div class="item-description">#targetPrompt.description#</div>
+												</bx:if>
+
+												<bx:if structKeyExists( targetPrompt, "arguments" ) && isArray( targetPrompt.arguments ) && targetPrompt.arguments.len() > 0>
+													<div class="prompt-args">
+														<strong>Arguments:</strong>
+														<bx:loop array="#targetPrompt.arguments#" index="arg">
+															<div class="arg-item">
+																<span class="arg-name">#arg.name#</span>
+																<bx:if structKeyExists( arg, "required" ) && arg.required>
+																	<span class="arg-required">*required</span>
+																</bx:if>
+																<bx:if structKeyExists( arg, "description" )>
+																	<span> - #arg.description#</span>
+																</bx:if>
+															</div>
+														</bx:loop>
+													</div>
+												</bx:if>
+											</div>
+										</bx:loop>
+									</div>
+								</bx:if>
+							</div>
+
+							<!-- Statistics Section -->
+							<bx:if srv.statsEnabled>
+								<div class="section">
+									<div class="section-title">
+										<span class="icon">📊</span>
+										<span>Performance Stats</span>
+									</div>
+
+									<div class="stats-grid-detailed">
+										<div class="stat-box">
+											<div class="stat-label">Uptime</div>
+											<div class="stat-value">#numberFormat( srv.stats.uptime / 1000, "0" )#s</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Total Requests</div>
+											<div class="stat-value">#srv.stats.totalRequests#</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Success Rate</div>
+											<div class="stat-value">#numberFormat( srv.stats.successRate, "0.00" )#%</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Avg Response</div>
+											<div class="stat-value">#numberFormat( srv.stats.avgResponseTime, "0" )#ms</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Tool Calls</div>
+											<div class="stat-value">#srv.stats.totalToolInvocations#</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Resource Reads</div>
+											<div class="stat-value">#srv.stats.totalResourceReads#</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Prompts Generated</div>
+											<div class="stat-value">#srv.stats.totalPromptGenerations#</div>
+										</div>
+										<div class="stat-box">
+											<div class="stat-label">Errors</div>
+											<div class="stat-value" style="color: ##dc3545;">#srv.stats.totalErrors#</div>
+										</div>
+									</div>
+
+									<bx:if len( srv.stats.lastRequestAt )>
+										<div style="margin-top: 15px; padding: 10px; background: ##f8f9fa; border-radius: 6px; font-size: 0.85em; color: ##666;">
+											<strong>Last Request:</strong> #dateTimeFormat( srv.stats.lastRequestAt, "medium" )#
+										</div>
+									</bx:if>
+								</div>
+							</bx:if>
+
+							<!-- Endpoint Information -->
+							<div class="endpoint-info">
+								<strong>📡 MCP Endpoint:</strong><br>
+								<code>/~bxai/mcp.bxm?server=#srv.name#</code><br>
+								<small style="color: ##856404;">Send JSON-RPC 2.0 requests to this endpoint to interact with the server</small>
+							</div>
+						</div>
+					</div>
+				</bx:loop>
+			</div>
+
+		</bx:output>
+	</div>
+</body>
+</html>

@@ -1,0 +1,75 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * A runnable that applies a transformation function to the input.
+ * Useful for data transformation and mapping operations in a pipeline.
+ */
+class extends="src.main.bx.models.runnables.AiBaseRunnable" {
+
+	/**
+	 * The transformation function or class to apply
+	 * This can be a function or an object with a transform() method
+	 */
+	property name="transformer" type="any";
+
+	/**
+	 * Initialize a new transform runnable
+	 *
+	 * @transformer The transformation function or object with a transform() method to apply
+	 *
+	 * @return This runnable
+	 */
+	function init( required any transformer ) {
+		variables.transformer = arguments.transformer;
+		return this;
+	}
+
+	/**
+	 * Run the transformation function on the input
+	 *
+	 * @input The input to transform
+	 * @params Optional parameters (unused in transform)
+	 * @options Optional runtime options (unused in transform)
+	 *
+	 * @return The transformed output
+	 */
+	public any function run( any input = {}, struct params = {}, struct options = {} ) {
+		// If it's a closure, call it directly
+		if( isClosure( variables.transformer ) ) {
+			return variables.transformer( arguments.input );
+		}
+
+		return variables.transformer.transform( arguments.input );
+	}
+
+	/**
+	 * Stream the transformation
+	 * Since transformation is synchronous, we run it and send the result as a chunk
+	 *
+	 * @onChunk The callback to invoke with the result
+	 * @input The input to transform
+	 * @params Optional parameters
+	 * @options Optional runtime options (unused in transform)
+	 */
+	public void function stream(
+		required function onChunk,
+		any input = {},
+		struct params = {},
+		struct options = {}
+	) {
+		var out = run( arguments.input, arguments.params, arguments.options );
+		arguments.onChunk( out, { step : "transform" } );
+	}
+
+}

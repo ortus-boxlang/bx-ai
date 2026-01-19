@@ -1,0 +1,64 @@
+// parser-factura.bxs
+// Laboratorio: Parser de facturas con salida estructurada
+// Ejecutar con: boxlang parser-factura.bxs
+
+// Definir estructura de línea de artículo
+lineItemTemplate = {
+    "description": "",
+    "amount": 0.0
+}
+
+// Definir estructura de factura
+invoiceTemplate = {
+    "invoiceNumber": "",
+    "date": "",
+    "customerName": "",
+    "lineItems": [ lineItemTemplate ],
+    "total": 0.0
+}
+
+// Texto de factura de ejemplo
+invoiceText = "
+INVOICE #INV-2024-001
+
+Date: November 15, 2024
+Bill To: Acme Corporation
+
+Items:
+  - Web Development: $5,000
+  - Design Services: $2,500
+  - Hosting (1 year): $500
+
+Total: $8,000
+"
+
+// Extraer datos estructurados
+invoice = aiChat( "Parse this invoice: " & invoiceText )
+    .structuredOutput( invoiceTemplate )
+
+// Mostrar resultados
+println( "📄 Resultados del Parser de Facturas" )
+println( "═".repeat( 40 ) )
+println()
+println( "Factura #: " & invoice.invoiceNumber )
+println( "Fecha: " & invoice.date )
+println( "Cliente: " & invoice.customerName )
+println()
+println( "Líneas de Artículos:" )
+
+calculatedTotal = 0
+for( item in invoice.lineItems ) {
+    println( "  • #item.description#: $#numberFormat( item.amount, ',.00' )#" )
+    calculatedTotal += item.amount
+}
+
+println()
+println( "─".repeat( 40 ) )
+println( "Total: $#numberFormat( invoice.total, ',.00' )#" )
+
+// Verificar total
+if( calculatedTotal == invoice.total ) {
+    println( "✅ ¡Total verificado!" )
+} else {
+    println( "⚠️ ¡Discrepancia de total! Calculado: $#calculatedTotal#" )
+}

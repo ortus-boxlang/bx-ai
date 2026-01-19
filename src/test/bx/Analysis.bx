@@ -1,0 +1,5 @@
+class Analysis {
+	property name="sentiment" type="string";
+	property name="confidence" type="numeric";
+	property name="summary" type="string";
+}

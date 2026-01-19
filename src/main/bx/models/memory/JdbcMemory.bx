@@ -1,0 +1,454 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License") you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * JDBC-based AI conversation storage
+ * Stores conversation history in a database table for persistence and scalability
+ * Works with any JDBC-compatible database
+ */
+class extends="BaseMemory" {
+
+	/**
+	 * The datasource name to use for database operations
+	 */
+	property name="datasource" type="string";
+
+	/**
+	 * The table name to use for storing memory data
+	 */
+	property name="table" type="string";
+
+	static{
+		final DEFAULT_TABLE = "bx_ai_memories"
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
+	 * @datasource The datasource name (optional, can be set via configure)
+	 * @table The table name (optional, defaults to bx_ai_memories)
+	 * @maxMessages Maximum number of messages to retain (0 = unbounded)
+	 */
+	function init(
+		required string key,
+		string userId = "",
+		string conversationId = "",
+		string datasource = "",
+		string table = static.DEFAULT_TABLE,
+		numeric maxMessages = 0
+	) {
+		super.init( argumentCollection: arguments )
+		variables.datasource = arguments.datasource
+		variables.table = arguments.table
+		return this
+	}
+
+	/**
+	 * Configure the memory instance
+	 * Supports datasource and table in config, ensures table exists
+	 */
+	public IAiMemory function configure( required struct config ) {
+		// Super Size this
+		super.configure( arguments.config )
+
+		if ( arguments.config.keyExists( "datasource" ) ) {
+			variables.datasource = arguments.config.datasource
+		}
+
+		if ( arguments.config.keyExists( "table" ) ) {
+			variables.table = arguments.config.table
+		}
+
+		// Ensure we have a datasource
+		if ( !len( variables.datasource ) ) {
+			throw(
+				type = "JdbcMemory.MissingDatasource",
+				message = "Datasource is required for JdbcMemory. Provide it via constructor or configure()."
+			)
+		}
+
+		// Ensure table exists
+		ensureTable()
+
+		// Load existing data from database if it exists
+		loadFromDatabase()
+
+		return this
+	}
+
+	/**
+	 * Get or set the datasource name
+	 *
+	 * @datasource Optional datasource name to set
+	 *
+	 * @return String (getter) or IAiMemory (setter)
+	 */
+	public any function datasource( string datasource ) {
+		if ( !isNull( arguments.datasource ) ) {
+			variables.datasource = arguments.datasource
+			// Ensure table and reload data
+			ensureTable()
+			loadFromDatabase()
+			return this
+		}
+		return variables.datasource
+	}
+
+	/**
+	 * Get or set the table name
+	 *
+	 * @table Optional table name to set
+	 *
+	 * @return String (getter) or IAiMemory (setter)
+	 */
+	public any function table( string table ) {
+		if ( !isNull( arguments.table ) ) {
+			variables.table = arguments.table
+			// Ensure table and reload data
+			ensureTable()
+			loadFromDatabase()
+			return this
+		}
+		return variables.table
+	}
+
+	/**
+	 * Clear all messages and remove from database
+	 */
+	public IAiMemory function clear() {
+		super.clear()
+		deleteFromDatabase()
+		return this
+	}
+
+	/**
+	 * Export memory state including database-specific fields
+	 */
+	public struct function export() {
+		var exported = super.export()
+		exported.datasource = variables.datasource
+		exported.table = variables.table
+		return exported
+	}
+
+	/**
+	 * Import memory state and persist to database
+	 */
+	public IAiMemory function import( required struct data ) {
+		super.import( arguments.data )
+
+		// Import database-specific fields
+		if ( arguments.data.keyExists( "datasource" ) ) {
+			variables.datasource = arguments.data.datasource
+		}
+		if ( arguments.data.keyExists( "table" ) ) {
+			variables.table = arguments.data.table
+		}
+
+		saveToDatabase()
+		return this
+	}
+
+	/**
+	 * Get summary including database connection info
+	 */
+	public struct function getSummary() {
+		var summary = super.getSummary()
+		summary.datasource = variables.datasource
+		summary.table = variables.table
+		summary.persisted = recordExists()
+		return summary
+	}
+
+	/**
+	 * Trim memory and persist changes to database
+	 */
+	public IAiMemory function trim() {
+		super.trim();     // performs memory-side window cutoff
+		saveToDatabase(); // sync DB storage
+		return this;
+	}
+
+	// ========================================
+	// Private Helper Methods
+	// ========================================
+
+	/**
+	 * Ensure the database table exists, create if necessary
+	 */
+	private void function ensureTable() {
+		// Check if table exists using DBInfo
+		bx:dbinfo
+			name="tables"
+			type="tables"
+			datasource="#variables.datasource#" {}
+
+		var tableExists = false
+		for ( var tableInfo in tables ) {
+			if ( tableInfo.table_name.toLowerCase() == variables.table.toLowerCase() ) {
+				tableExists = true
+				break
+			}
+		}
+
+		if ( !tableExists ) {
+			createTable()
+		}
+	}
+
+	/**
+	 * Create the memory table with database-agnostic SQL
+	 */
+	private void function createTable() {
+		// Get database type to use appropriate SQL
+		bx:dbinfo
+			name="dbVersion"
+			type="version"
+			datasource="#variables.datasource#" {}
+		var dbType = dbVersion.database_productname.toLowerCase()
+
+		// Build CREATE TABLE statement
+		// Using CLOB/TEXT for large JSON data storage
+		var sql = "
+			CREATE TABLE #variables.table# (
+				memory_key VARCHAR(255) PRIMARY KEY,
+				user_id VARCHAR(255),
+				conversation_id VARCHAR(255),
+				memory_data CLOB,
+				metadata_data CLOB,
+				config_data CLOB,
+				created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			)
+		"
+
+		// Adjust for database-specific types
+		if ( dbType.contains( "mysql" ) || dbType.contains( "mariadb" ) ) {
+			sql = sql.replace( "CLOB", "LONGTEXT" )
+		} else if ( dbType.contains( "postgres" ) ) {
+			sql = sql.replace( "CLOB", "TEXT" )
+		} else if ( dbType.contains( "sqlserver" ) || dbType.contains( "microsoft" ) ) {
+			sql = sql.replace( "CLOB", "NVARCHAR(MAX)" )
+		} else if ( dbType.contains( "oracle" ) ) {
+			// Oracle uses CLOB
+		}
+
+		queryExecute(
+			sql,
+			{},
+			{ datasource: variables.datasource }
+		)
+
+		// Create indexes for better query performance
+		try {
+			queryExecute(
+				"CREATE INDEX idx_#variables.table#_user_id ON #variables.table# (user_id)",
+				{},
+				{ datasource: variables.datasource }
+			)
+			queryExecute(
+				"CREATE INDEX idx_#variables.table#_conversation_id ON #variables.table# (conversation_id)",
+				{},
+				{ datasource: variables.datasource }
+			)
+			queryExecute(
+				"CREATE INDEX idx_#variables.table#_user_conv ON #variables.table# (user_id, conversation_id)",
+				{},
+				{ datasource: variables.datasource }
+			)
+		} catch( any e ) {
+			// Indexes might already exist or DB might not support them
+			// Silently continue - table creation is what matters
+		}
+	}
+
+	/**
+	 * Load data from database if record exists
+	 */
+	private void function loadFromDatabase() {
+		if ( !recordExists() ) {
+			return
+		}
+
+		// Get database-specific CLOB-to-string conversion SQL
+		var selectSQL = getDatabaseSpecificSelectSQL()
+
+		var result = queryExecute(
+			selectSQL,
+			{ key: variables.key },
+			{ datasource: variables.datasource }
+		)
+
+		if ( result.recordCount > 0 ) {
+			// Access as string values (conversion handled by database)
+			var messagesStr = result.memory_data[1]
+			var metadataStr = result.metadata_data[1]
+			var configStr = result.config_data[1]
+
+			// Deserialize JSON strings
+			variables.messages = jsonDeserialize( messagesStr )
+			variables.metadata = jsonDeserialize( metadataStr )
+			variables.config = jsonDeserialize( configStr )
+
+			// Load userId and conversationId if present
+			if ( result.keyExists( "user_id" ) && !isNull( result.user_id[1] ) ) {
+				variables.userId = result.user_id[1]
+			}
+			if ( result.keyExists( "conversation_id" ) && !isNull( result.conversation_id[1] ) ) {
+				variables.conversationId = result.conversation_id[1]
+			}
+		}
+	}
+
+	/**
+	 * Get database-specific SELECT SQL with CLOB-to-string conversion
+	 * This prevents "CLOB freed after transaction" errors by converting
+	 * CLOB data to strings before the ResultSet closes
+	 */
+	private string function getDatabaseSpecificSelectSQL() {
+		// Detect database type
+		bx:dbinfo
+			name="dbVersion"
+			type="version"
+			datasource="#variables.datasource#" {}
+
+		var dbType = dbVersion.database_productname.toLowerCase()
+
+		// Build database-specific SELECT with appropriate CLOB conversion
+		if ( dbType.findNoCase( "mysql" ) || dbType.findNoCase( "mariadb" ) ) {
+			// MySQL/MariaDB: CAST to CHAR (LONGTEXT is already string-compatible)
+			return "SELECT
+				CAST(memory_data AS CHAR) as memory_data,
+				CAST(metadata_data AS CHAR) as metadata_data,
+				CAST(config_data AS CHAR) as config_data,
+				user_id,
+				conversation_id
+			FROM #variables.table# WHERE memory_key = :key"
+		} else if ( dbType.findNoCase( "postgresql" ) || dbType.findNoCase( "postgres" ) ) {
+			// PostgreSQL: TEXT type is already string-compatible, but explicit cast for safety
+			return "SELECT
+				memory_data::text as memory_data,
+				metadata_data::text as metadata_data,
+				config_data::text as config_data,
+				user_id,
+				conversation_id
+			FROM #variables.table# WHERE memory_key = :key"
+		} else if ( dbType.findNoCase( "microsoft" ) || dbType.findNoCase( "sql server" ) ) {
+			// SQL Server: CAST to VARCHAR(MAX) or just select (NVARCHAR(MAX) is string-compatible)
+			return "SELECT
+				CAST(memory_data AS VARCHAR(MAX)) as memory_data,
+				CAST(metadata_data AS VARCHAR(MAX)) as metadata_data,
+				CAST(config_data AS VARCHAR(MAX)) as config_data,
+				user_id,
+				conversation_id
+			FROM #variables.table# WHERE memory_key = :key"
+		} else if ( dbType.findNoCase( "oracle" ) ) {
+			// Oracle: Use TO_CHAR or DBMS_LOB.SUBSTR for CLOB conversion
+			// TO_CHAR has 4000 char limit, so use CAST for consistency
+			return "SELECT
+				TO_CLOB(memory_data) as memory_data,
+				TO_CLOB(metadata_data) as metadata_data,
+				TO_CLOB(config_data) as config_data,
+				user_id,
+				conversation_id
+			FROM #variables.table# WHERE memory_key = :key"
+		} else {
+			// Derby and other databases: CAST to VARCHAR with max size
+			// Derby's max VARCHAR is 32672
+			return "SELECT
+				CAST(memory_data AS VARCHAR(32672)) as memory_data,
+				CAST(metadata_data AS VARCHAR(32672)) as metadata_data,
+				CAST(config_data AS VARCHAR(32672)) as config_data,
+				user_id,
+				conversation_id
+			FROM #variables.table# WHERE memory_key = :key"
+		}
+	}
+
+	/**
+	 * Save current state to database (INSERT or UPDATE)
+	 */
+	private void function saveToDatabase() {
+		var messagesJson = jsonSerialize( variables.messages )
+		var metadataJson = jsonSerialize( variables.metadata )
+		var configJson = jsonSerialize( variables.config )
+
+		if ( recordExists() ) {
+			// Update existing record
+			queryExecute(
+				"UPDATE #variables.table#
+				 SET memory_data = :messages,
+				     metadata_data = :metadata,
+				     config_data = :config,
+				     user_id = :userId,
+				     conversation_id = :conversationId,
+				     updated_date = CURRENT_TIMESTAMP
+				 WHERE memory_key = :key",
+				{
+					key: variables.key,
+					messages: messagesJson,
+					metadata: metadataJson,
+					config: configJson,
+					userId: variables.userId,
+					conversationId: variables.conversationId
+				},
+				{ datasource: variables.datasource }
+			)
+		} else {
+			// Insert new record
+			queryExecute(
+				"INSERT INTO #variables.table# (memory_key, user_id, conversation_id, memory_data, metadata_data, config_data)
+				 VALUES (:key, :userId, :conversationId, :messages, :metadata, :config)",
+				{
+					key: variables.key,
+					userId: variables.userId,
+					conversationId: variables.conversationId,
+					messages: messagesJson,
+					metadata: metadataJson,
+					config: configJson
+				},
+				{ datasource: variables.datasource }
+			)
+		}
+	}
+
+	/**
+	 * Delete record from database
+	 */
+	private void function deleteFromDatabase() {
+		queryExecute(
+			"DELETE FROM #variables.table# WHERE memory_key = :key",
+			{ key: variables.key },
+			{ datasource: variables.datasource }
+		)
+	}
+
+	/**
+	 * Check if a record exists in the database
+	 *
+	 * @return Boolean
+	 */
+	private boolean function recordExists() {
+		var result = queryExecute(
+			"SELECT COUNT(*) as record_count FROM #variables.table# WHERE memory_key = :key",
+			{ key: variables.key },
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		return result.len() > 0 && result[1].record_count > 0
+	}
+
+}

@@ -1,0 +1,36 @@
+// ejemplo-fallback.bxs
+// Patrón de fallback - probar múltiples proveedores
+// Ejecutar con: boxlang ejemplo-fallback.bxs
+
+function chatWithFallback( message ) {
+    // Probar proveedores en orden
+    providers = [ "openai", "claude", "ollama" ]
+
+    for( provider in providers ) {
+        try {
+            println( "Probando #provider#..." )
+
+            options = { provider: provider }
+            if( provider == "ollama" ) {
+                params = { model: "llama3.2" }
+            } else {
+                params = {}
+            }
+
+            return aiChat( message, params, options )
+        } catch( any e ) {
+            println( "  ❌ #provider# falló: #e.message#" )
+            continue
+        }
+    }
+
+    throw( message = "¡Todos los proveedores fallaron!" )
+}
+
+// Usarlo
+try {
+    answer = chatWithFallback( "What is 2 + 2?" )
+    println( "✅ Respuesta: " & answer )
+} catch( any e ) {
+    println( "❌ " & e.message )
+}

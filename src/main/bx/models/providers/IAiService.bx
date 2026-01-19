@@ -1,0 +1,68 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Interface for all AI Service classes
+ *
+ * This interface defines the contract that all AI service providers must implement
+ * to ensure consistent behavior across different AI service implementations.
+ * Implementing classes should provide concrete implementations for all methods
+ * defined in this interface to enable seamless integration with the AI module.
+ *
+ * @since 1.0.0
+ */
+interface{
+
+	/**
+	 * Get the name of the LLM
+	 */
+	function getName();
+
+	/**
+	 * Configure the service with an override API key
+	 *
+	 * @apiKey - The API key to use with the provider
+	 *
+	 * @return The service instance
+	 */
+	IAiService function configure( required any apiKey );
+
+	/**
+	 * Invoke the provider service with a AiRequestobject
+	 *
+	 * @aiRequest The AiRequestobject to send to the provider
+	 *
+	 * @return The response from the service, which can be anything according to their specs: string, or struct, or whatever
+	 */
+	function invoke( required AiRequest aiRequest );
+
+	/**
+	 * Invoke the provider service with a AiRequestobject in streaming mode
+	 *
+	 * @aiRequest The AiRequestobject to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream: `( chunk ) => { ... }`
+	 *
+	 * @return void
+	 */
+	function invokeStream( required AiRequest aiRequest, required function callback );
+
+	/**
+	 * Generate embeddings for the given input text(s)
+	 *
+	 * @embeddingRequest The embedding request object containing input and parameters
+	 *
+	 * @return The embeddings response from the provider
+	 */
+	function embeddings( required AiEmbeddingRequest embeddingRequest );
+
+}

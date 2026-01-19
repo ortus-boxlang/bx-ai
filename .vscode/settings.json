@@ -1,7 +1,11 @@
 {
+	// Gradle Settings
+	"java.import.gradle.enabled": true,
+	"java.import.gradle.wrapper.enabled": true,
+	"java.configuration.updateBuildConfiguration": "automatic",
+	// Java Settings
 	"java.format.enabled": true,
 	"java.format.settings.url": ".ortus-java-style.xml",
-	"java.configuration.updateBuildConfiguration": "automatic",
 	"java.dependency.packagePresentation": "hierarchical",
 	"java.project.explorer.showNonJavaResources": true,
 	"java.compile.nullAnalysis.mode": "automatic",
@@ -13,9 +17,8 @@
 		"editor.insertSpaces": false,
 		"editor.tabSize": 4
 	},
-	"editor.formatOnSave": true,
+	"editor.formatOnSave": false,
 	"editor.codeActionsOnSave": {
 		"source.organizeImports": "explicit"
 	}
 }
-

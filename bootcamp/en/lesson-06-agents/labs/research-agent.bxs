@@ -1,0 +1,119 @@
+// research-agent.bxs
+// Lab: Research agent with search and summarize tools
+// Run with: boxlang research-agent.bxs
+
+println( "🔍 Research Agent" )
+println( "═".repeat( 40 ) )
+println()
+
+// Simulated knowledge base
+knowledgeBase = {
+    "boxlang": "BoxLang is a modern dynamic JVM language that provides CFML compatibility while introducing modern language features. It runs on Java 21+ and supports modules, package management, and full Java interoperability.",
+    "java": "Java is a widely-used programming language for enterprise applications. It's known for its 'write once, run anywhere' philosophy and runs on the Java Virtual Machine (JVM).",
+    "ai": "Artificial Intelligence (AI) enables machines to simulate human intelligence. It includes subfields like machine learning, natural language processing, and computer vision.",
+    "llm": "Large Language Models (LLMs) are AI systems trained on vast amounts of text data. They can understand and generate human-like text, power chatbots, and assist with coding.",
+    "agents": "AI Agents are autonomous systems that can plan, reason, and take actions to achieve goals. They combine LLMs with tools and memory to complete complex tasks."
+}
+
+// Tool: Search
+searchTool = aiTool(
+    "search",
+    "Search the knowledge base for information on a topic",
+    ( args ) => {
+        query = args.query.lCase()
+        for( topic in knowledgeBase.keyList() ) {
+            if( query.findNoCase( topic ) > 0 ) {
+                return "Found [#topic#]: " & knowledgeBase[ topic ]
+            }
+        }
+        return "No results for '#args.query#'. Available topics: #knowledgeBase.keyList()#"
+    }
+).describeQuery( "Topic to search for (e.g., 'boxlang', 'java', 'ai')" )
+
+// Tool: Summarize
+summarizeTool = aiTool(
+    "summarize",
+    "Create a brief summary of given text",
+    ( args ) => {
+        text = args.text
+        // Simple word count and first sentence extraction
+        words = text.listToArray( " " ).len()
+        firstSentence = text.listFirst( "." ) & "."
+        return "Summary (#words# words): #firstSentence#"
+    }
+).describeText( "Text to summarize" )
+
+// Tool: Compare
+compareTool = aiTool(
+    "compare",
+    "Compare two topics from the knowledge base",
+    ( args ) => {
+        topic1 = args.topic1.lCase()
+        topic2 = args.topic2.lCase()
+        
+        found1 = ""
+        found2 = ""
+        
+        for( key in knowledgeBase.keyList() ) {
+            if( topic1.findNoCase( key ) > 0 ) found1 = knowledgeBase[ key ]
+            if( topic2.findNoCase( key ) > 0 ) found2 = knowledgeBase[ key ]
+        }
+        
+        if( found1.len() > 0 && found2.len() > 0 ) {
+            // Extract first sentence for cleaner comparison (respects word boundaries)
+            summary1 = found1.listFirst( "." ) & "."
+            summary2 = found2.listFirst( "." ) & "."
+            return "Topic 1 (#topic1#): #summary1#\nTopic 2 (#topic2#): #summary2#"
+        }
+        
+        return "Couldn't find both topics. Available: #knowledgeBase.keyList()#"
+    }
+)
+.describeTopic1( "First topic to compare" )
+.describeTopic2( "Second topic to compare" )
+
+// Create the research agent
+researchAgent = aiAgent(
+    name: "Researcher",
+    description: "A research assistant that searches and summarizes information",
+    instructions: "
+        You are a helpful research assistant.
+        
+        Capabilities:
+        - Search for topics in the knowledge base
+        - Summarize information
+        - Compare different topics
+        - Remember what the user has researched
+        
+        Be informative and cite the search results in your answers.
+        If you don't find something, suggest related topics.
+    ",
+    tools: [ searchTool, summarizeTool, compareTool ],
+    memory: aiMemory( "windowed", { maxMessages: 10 } )
+)
+
+// Interactive loop
+println( "Ask me to research something!" )
+println( "Topics I know: #knowledgeBase.keyList()#" )
+println( "─".repeat( 40 ) )
+println()
+
+running = true
+while( running ) {
+    print( "You: " )
+    userInput = readLine()
+    
+    if( userInput.trim() == "quit" ) {
+        running = false
+        println( "Goodbye! Happy researching! 📚" )
+    } else {
+        try {
+            response = researchAgent.run( userInput )
+            println( "Researcher: " & response )
+            println()
+        } catch( any e ) {
+            println( "Error: " & e.message )
+            println()
+        }
+    }
+}

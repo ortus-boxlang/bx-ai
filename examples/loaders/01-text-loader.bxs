@@ -1,0 +1,159 @@
+/**
+ * Text Loader Example
+ *
+ * Demonstrates loading plain text files into Document objects.
+ * Use this for loading .txt files, README files, or any plain text content.
+ *
+ * Learn more: https://boxlang.ortusbooks.com/bx-modules/bx-ai/loaders
+ */
+
+println( "=== Text Loader Example ===" )
+println()
+
+// Create a sample text file to load
+sampleFile = getTempDirectory() & "sample-" & createUUID() & ".txt"
+fileWrite( sampleFile, "
+This is a sample text file.
+
+It contains multiple paragraphs with different content.
+You can use the TextLoader to load any plain text file into a Document object.
+
+Benefits of TextLoader:
+- Simple and straightforward
+- Works with any .txt file
+- Preserves original formatting
+- Includes file metadata (path, size, modified date)
+" )
+
+try {
+	// Example 1: Basic text loading
+	println( "Example 1: Basic Text Loading" )
+	println( "─".repeat( 50 ) )
+
+	textLoader = new src.main.bx.models.loaders.TextLoader(
+		source: sampleFile
+	)
+
+	documents = textLoader.load()
+
+	println( "Loaded #documents.len()# document(s)" )
+	println( "Content preview: #left( documents[ 1 ].content, 100 )#..." )
+	println()
+
+	// Example 2: Load with metadata
+	println( "Example 2: Load with Metadata" )
+	println( "─".repeat( 50 ) )
+
+	textLoaderWithMeta = new src.main.bx.models.loaders.TextLoader(
+		source: sampleFile,
+		config: {
+			includeMetadata: true
+		}
+	)
+
+	docsWithMeta = textLoaderWithMeta.load()
+	doc = docsWithMeta[ 1 ]
+
+	println( "Document Metadata:" )
+	println( "  Source: #doc.metadata.source#" )
+	println( "  Size: #doc.metadata.size# bytes" )
+	if ( doc.metadata.keyExists( "modified" ) ) {
+		println( "  Modified: #doc.metadata.modified#" )
+	}
+	println()
+
+	// Example 3: Load and chunk for RAG
+	println( "Example 3: Load and Chunk for RAG" )
+	println( "─".repeat( 50 ) )
+
+	textLoaderChunked = new src.main.bx.models.loaders.TextLoader(
+		source: sampleFile,
+		config: {
+			chunkSize: 100,
+			chunkOverlap: 20
+		}
+	)
+
+	chunks = textLoaderChunked.load()
+
+	println( "Split into #chunks.len()# chunks" )
+	chunks.each( ( chunk, idx ) => {
+		println( "  Chunk ##idx#: #left( chunk.content, 50 )#..." )
+	})
+	println()
+
+	// Example 4: Use in RAG pipeline
+	println( "Example 4: RAG Pipeline Integration" )
+	println( "─".repeat( 50 ) )
+
+	// Load document
+	docs = textLoader.load()
+	docContent = docs[ 1 ].content
+
+	// Create RAG context
+	ragContext = {
+		query: "What are the benefits of TextLoader?",
+		retrievedDocuments: [{
+			source: sampleFile,
+			content: docContent,
+			relevanceScore: 0.95
+		}]
+	}
+
+	// Ask AI using loaded content
+	message = aiMessage()
+		.system( "Answer questions based only on the provided documents: ${context}" )
+		.user( "What are the benefits of TextLoader?" )
+		.setContext( jsonSerialize( ragContext ) )
+
+	println( "Query: What are the benefits of TextLoader?" )
+	println( "Answer: " & aiChat( message ) )
+	println()
+
+	// Example 5: Load multiple text files
+	println( "Example 5: Load Multiple Files" )
+	println( "─".repeat( 50 ) )
+
+	// Create additional files
+	file2 = getTempDirectory() & "notes-" & createUUID() & ".txt"
+	file3 = getTempDirectory() & "readme-" & createUUID() & ".txt"
+
+	fileWrite( file2, "Meeting notes from December 2025..." )
+	fileWrite( file3, "README: Installation instructions..." )
+
+	files = [ sampleFile, file2, file3 ]
+	allDocs = []
+
+	files.each( ( filePath ) => {
+		loader = new src.main.bx.models.loaders.TextLoader( source: filePath )
+		allDocs.append( loader.load(), true )
+	})
+
+	println( "Loaded #allDocs.len()# documents from #files.len()# files" )
+	allDocs.each( ( doc, idx ) => {
+		println( "  Doc ##idx#: #left( doc.content, 40 )#..." )
+	})
+
+	// Cleanup temp files
+	fileDelete( file2 )
+	fileDelete( file3 )
+
+} catch ( any e ) {
+	println( "Error: #e.message#" )
+	println( e.detail ?: "" )
+} finally {
+	// Cleanup
+	if ( fileExists( sampleFile ) ) {
+		fileDelete( sampleFile )
+	}
+}
+
+println()
+println( "✅ Text Loader example complete!" )
+println()
+println( "Key Takeaways:" )
+println( "  • TextLoader loads plain text files into Document objects" )
+println( "  • Set includeMetadata: true for file information" )
+println( "  • Use chunkSize/chunkOverlap for RAG applications" )
+println( "  • Perfect for README files, notes, logs, and text content" )
+println( "  • Documents can be used directly in AI context" )

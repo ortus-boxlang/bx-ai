@@ -1,0 +1,467 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Pinecone Vector Memory Implementation
+ * Provides vector storage and semantic search using Pinecone's managed vector database
+ * Ideal for production deployments requiring high performance and scalability
+ */
+class extends="BaseVectorMemory" {
+
+	/**
+	 * Pinecone configuration
+	 */
+	property name="apiKey" type="string";
+	property name="environment" type="string" default="us-east1-gcp";
+	property name="indexName" type="string";
+	property name="namespace" type="string" default="";
+	property name="host" type="string" default="";
+
+	/**
+	 * HTTP client timeout settings
+	 */
+	property name="timeout" type="numeric" default=30;
+
+	/**
+	 * Base URL for Pinecone API (computed from index and environment)
+	 */
+	property name="baseUrl" type="string" default="";
+
+	/**
+	 * Configure the Pinecone vector memory instance
+	 *
+	 * @config Configuration struct with Pinecone-specific options
+	 *
+	 * @return PineconeVectorMemory for chaining
+	 */
+	function configure( required struct config ) {
+		// Params
+		param arguments.config.apiKey = getSystemSetting( "PINECONE_API_KEY", "" )
+
+		// Set Pinecone-specific properties
+		variables.apiKey = arguments.config.apiKey
+
+		if ( !len( variables.apiKey ) ) {
+			throw(
+				type: "PineconeConfigurationException",
+				message: "Pinecone API key is required. Set PINECONE_API_KEY environment variable or pass 'apiKey' in config."
+			)
+		}
+
+		// Set configuration properties
+		variables.indexName = arguments.config.indexName ?: arguments.config.index ?: ""
+		if ( !len( variables.indexName ) ) {
+			throw(
+				type: "PineconeConfigurationException",
+				message: "Pinecone index name is required. Pass 'indexName' or 'index' in config."
+			)
+		}
+
+		// Optional properties
+		variables.environment = arguments.config.environment ?: variables.environment
+		variables.collection = variables.namespace = arguments.config.namespace ?: variables.namespace
+		variables.timeout = arguments.config.timeout ?: variables.timeout
+		variables.host = arguments.config.host ?: ""
+
+		// Build base URL - if host is provided, use it directly, otherwise construct from index and environment
+		if ( len( variables.host ) ) {
+			// For Pinecone Local, host is the database endpoint
+			// We need to get the actual index host by describing the index
+			if ( variables.host.findNoCase( "localhost" ) || variables.host.findNoCase( "127.0.0.1" ) ) {
+				// This is Pinecone Local - get the index host
+				try {
+					var describeResponse = http( "#variables.host#/indexes/#variables.indexName#" )
+						.get()
+						.header( "Api-Key", variables.apiKey )
+						.timeout( variables.timeout )
+						.send()
+
+					if ( describeResponse.statusCode == 200 ) {
+						var indexInfo = jsonDeserialize( describeResponse.fileContent )
+						var indexHost = indexInfo.host ?: variables.host
+						// Ensure http:// prefix for local hosts
+						if ( !indexHost.startsWith( "http" ) ) {
+							indexHost = "http://#indexHost#"
+						}
+						variables.baseUrl = indexHost
+					} else {
+						// Index doesn't exist yet, use host as baseUrl for now
+						variables.baseUrl = variables.host
+					}
+				} catch( any e ) {
+					// If we can't reach the server, use host as baseUrl
+					variables.baseUrl = variables.host
+				}
+			} else {
+				// Production Pinecone - host is the index host
+				variables.baseUrl = variables.host
+			}
+		} else {
+			// Pinecone URL format: https://{index-name}-{project-id}.svc.{environment}.pinecone.io
+			// For simplicity, we'll require the host to be provided or construct basic URL
+			variables.baseUrl = "https://#variables.indexName#.svc.#variables.environment#.pinecone.io"
+		}
+
+		// Call parent configure first
+		super.configure( arguments.config )
+
+		return this
+	}
+
+	/**
+	 * Ensure collection (namespace) exists in Pinecone
+	 * Note: Pinecone namespaces are created automatically on first use
+	 *
+	 * @return PineconeVectorMemory for chaining
+	 */
+	IVectorMemory function ensureCollection() {
+		// Pinecone creates namespaces automatically on first upsert
+		// No explicit creation needed
+		return this
+	}
+
+	/**
+	 * Store a document with its embedding in Pinecone
+	 *
+	 * @id Document identifier
+	 * @text Text content to store
+	 * @embedding Pre-computed embedding vector
+	 * @metadata Additional metadata
+	 *
+	 * @return PineconeVectorMemory for chaining
+	 */
+	IVectorMemory function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	) {
+		// Use provided embedding
+		var vector = arguments.embedding
+
+		// Prepare metadata with text
+		var fullMetadata = arguments.metadata.copy()
+		fullMetadata.text = arguments.text
+
+		// Prepare upsert payload
+		var payload = {
+			"vectors": [
+				{
+					"id": arguments.id,
+					"values": vector,
+					"metadata": fullMetadata
+				}
+			]
+		}
+
+		// Add namespace if configured
+		if ( len( variables.namespace ) ) {
+			payload.namespace = variables.namespace
+		}
+
+		// Make upsert request
+		var response = http( "#variables.baseUrl#/vectors/upsert" )
+			.post()
+			.header( "Api-Key", variables.apiKey )
+			.header( "Content-Type", "application/json" )
+			.body( jsonSerialize( payload ) )
+			.timeout( variables.timeout )
+			.send()
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type: "PineconeApiException",
+				message: "Failed to upsert vector to Pinecone: #response.statusCode# - #response.fileContent#"
+			)
+		}
+
+		return this
+	}
+
+	/**
+	 * Search for similar documents by vector
+	 *
+	 * @embedding Query embedding vector
+	 * @limit Maximum number of results
+	 * @filter Metadata filters
+	 *
+	 * @return Array of matching documents with scores
+	 */
+	array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		// Prepare query payload
+		var payload = {
+			"vector": arguments.embedding,
+			"topK": arguments.limit,
+			"includeMetadata": true,
+			"includeValues": false
+		}
+
+		// Add namespace if configured
+		if ( len( variables.namespace ) ) {
+			payload.namespace = variables.namespace
+		}
+
+		// Add filter if provided
+		if ( !arguments.filter.isEmpty() ) {
+			payload.filter = convertFilterToPinecone( arguments.filter )
+		}
+
+		// Make query request
+		var response = http( "#variables.baseUrl#/query" )
+			.post()
+			.header( "Api-Key", variables.apiKey )
+			.header( "Content-Type", "application/json" )
+			.body( jsonSerialize( payload ) )
+			.timeout( variables.timeout )
+			.send()
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type: "PineconeApiException",
+				message: "Failed to query Pinecone: #response.statusCode# - #response.fileContent#"
+			)
+		}
+
+		var result = jsonDeserialize( response.fileContent )
+		var matches = result.matches ?: []
+
+		// Convert to standard format (no minScore filtering since it's not a parameter)
+		return matches
+			.map( ( match ) => {
+				var metadata = match.metadata ?: {};
+				return {
+					"id": match.id,
+					"score": match.score,
+					"text": metadata.text ?: "",
+					"metadata": metadata
+				};
+			} );
+	}
+
+	/**
+	 * Get all documents (limited implementation - Pinecone doesn't support full scans)
+	 *
+	 * @return Array of all documents (limited by Pinecone's capabilities)
+	 */
+	array function getAllDocuments() {
+		// Pinecone doesn't support retrieving all documents efficiently
+		// This is a limitation of managed vector databases
+		// We'll return an empty array and log a warning
+		systemOutput( "WARNING: PineconeVectorMemory.getAllDocuments() is not efficiently supported. Use searchByVector() or getDocumentById() instead.", true )
+		return []
+	}
+
+	/**
+	 * Get document by ID
+	 *
+	 * @id Document identifier
+	 *
+	 * @return Document struct or empty struct if not found
+	 */
+	struct function getDocumentById( required string id ) {
+		// Build query string
+		var queryParams = "ids=#arguments.id#"
+		if ( len( variables.namespace ) ) {
+			queryParams &= "&namespace=#variables.namespace#"
+		}
+
+		// Make fetch request (GET with query parameters)
+		var response = http( "#variables.baseUrl#/vectors/fetch?#queryParams#" )
+			.get()
+			.header( "Api-Key", variables.apiKey )
+			.timeout( variables.timeout )
+			.send()
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type: "PineconeApiException",
+				message: "Failed to fetch vector from Pinecone: #response.statusCode# - #response.fileContent#"
+			)
+		}
+
+		var result = jsonDeserialize( response.fileContent )
+		var vectors = result.vectors ?: {}
+
+		if ( vectors.keyExists( arguments.id ) ) {
+			var vector = vectors[ arguments.id ]
+			var metadata = vector.metadata ?: {}
+			return {
+				"id": arguments.id,
+				"text": metadata.text ?: "",
+				"metadata": metadata,
+				"embedding": vector.values ?: []
+			}
+		}
+
+		return {}
+	}
+
+	/**
+	 * Delete a document by ID
+	 *
+	 * @id Document identifier
+	 *
+	 * @return Boolean indicating success
+	 */
+	boolean function deleteDocument( required string id ) {
+		// Prepare delete payload
+		var payload = {
+			"ids": [ arguments.id ]
+		}
+
+		// Add namespace if configured
+		if ( len( variables.namespace ) ) {
+			payload.namespace = variables.namespace
+		}
+
+		// Make delete request
+		var response = http( "#variables.baseUrl#/vectors/delete" )
+			.post()
+			.header( "Api-Key", variables.apiKey )
+			.header( "Content-Type", "application/json" )
+			.body( jsonSerialize( payload ) )
+			.timeout( variables.timeout )
+			.send()
+
+		// Pinecone returns 200 for successful deletes
+		return response.statusCode == 200
+	}
+
+	/**
+	 * Delete documents by metadata filter
+	 *
+	 * @filter Metadata filter
+	 *
+	 * @return Number of documents deleted
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		// Pinecone doesn't support delete by filter in a way that returns count
+		// We'll delete with filter and return 0
+		var payload = {
+			"filter": convertFilterToPinecone( arguments.filter )
+		}
+
+		// Add namespace if configured
+		if ( len( variables.namespace ) ) {
+			payload.namespace = variables.namespace
+		}
+
+		// Make delete request
+		var response = http( "#variables.baseUrl#/vectors/delete" )
+			.post()
+			.header( "Api-Key", variables.apiKey )
+			.header( "Content-Type", "application/json" )
+			.body( jsonSerialize( payload ) )
+			.timeout( variables.timeout )
+			.send()
+
+		// Pinecone doesn't return count, so we return 0
+		return 0
+	}
+
+	/**
+	 * Clear all documents from the namespace
+	 *
+	 * @return PineconeVectorMemory for chaining
+	 */
+	IVectorMemory function clearCollection() {
+		// Prepare delete all payload
+		var payload = {
+			"deleteAll": true
+		}
+
+		// Add namespace if configured (delete only from this namespace)
+		if ( len( variables.namespace ) ) {
+			payload.namespace = variables.namespace
+		}
+
+		// Make delete request
+		var response = http( "#variables.baseUrl#/vectors/delete" )
+			.post()
+			.header( "Api-Key", variables.apiKey )
+			.header( "Content-Type", "application/json" )
+			.body( jsonSerialize( payload ) )
+			.timeout( variables.timeout )
+			.send()
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type: "PineconeApiException",
+				message: "Failed to clear vectors from Pinecone: #response.statusCode# - #response.fileContent#"
+			)
+		}
+
+		return this
+	}
+
+	/**
+	 * Clear all documents (alias for clearCollection)
+	 */
+	function clearAll() {
+		return clearCollection()
+	}
+
+	/**
+	 * Get index statistics
+	 *
+	 * @return Struct with index stats
+	 */
+	function getStats() {
+		var response = http( "#variables.baseUrl#/describe_index_stats" )
+			.post()
+			.header( "Api-Key", variables.apiKey )
+			.header( "Content-Type", "application/json" )
+			.body( "{}" )
+			.timeout( variables.timeout )
+			.send()
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type: "PineconeApiException",
+				message: "Failed to get index stats from Pinecone: #response.statusCode# - #response.fileContent#"
+			)
+		}
+
+		return jsonDeserialize( response.fileContent )
+	}
+
+	/**
+	 * Convert BoxLang filter format to Pinecone filter format
+	 * Pinecone uses MongoDB-style query operators
+	 *
+	 * @filter BoxLang filter struct
+	 *
+	 * @return Pinecone-compatible filter struct
+	 */
+	private function convertFilterToPinecone( required struct filter ) {
+		// For simple equality filters, convert to Pinecone's $eq format
+		var pineconeFilter = {}
+
+		arguments.filter.each( ( key, value ) => {
+			// If value is already an operator struct (like {$eq: "value"}), use as-is
+			if ( isStruct( value ) && value.keyExists( "$eq" ) ) {
+				pineconeFilter[ key ] = value;
+			} else {
+				// Otherwise, wrap in $eq operator
+				pineconeFilter[ key ] = { "$eq": value };
+			}
+		} )
+
+		return pineconeFilter
+	}
+
+}

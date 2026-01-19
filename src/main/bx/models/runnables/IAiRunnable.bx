@@ -1,0 +1,78 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Interface for all AI runnables to implement.
+ * Provides a consistent interface for running AI operations with optional parameters.
+ */
+interface {
+
+	/**
+	 * Run the operation with the given input
+	 *
+	 * @input The input to process
+	 * @params Optional parameters to configure the operation, these override defaults
+	 * @options Optional runtime options (returnFormat, timeout, logging, etc.)
+	 *
+	 * @return The result of the operation
+	 */
+	public any function run(
+		any input = {},
+		struct params = {},
+		struct options = {}
+	);
+
+	/**
+	 * Stream the operation with the given input, calling onChunk for each chunk
+	 *
+	 * @onChunk The callback function to invoke for each chunk
+	 * @input The input to process
+	 * @params Optional parameters to configure the operation
+	 * @options Optional runtime options (returnFormat, timeout, logging, etc.)
+	 */
+	public void function stream(
+		required function onChunk,
+        any input = {},
+		struct params = {},
+		struct options = {}
+	);
+
+    /**
+     * Get the name of the runnable
+     *
+     * @return The name of the runnable
+     */
+    public string function getName();
+
+    /**
+	 * Chain this runnable with another runnable
+	 * Creates a sequence that will execute this runnable followed by the next
+     *
+     * Example:
+     * ```
+     * var runnable1 = new SomeAiRunnable();
+     * var runnable2 = new AnotherAiRunnable();
+     * var sequence = runnable1.to( runnable2 );
+     * var result = sequence.run( inputData );
+     * ```
+     *
+     * In this example, `runnable1` is executed first, and its output is passed as input to `runnable2`.
+     * The final result is obtained from `runnable2`.
+	 *
+	 * @next The next runnable to execute
+	 *
+	 * @return A new AiRunnableSequence containing both runnables in order
+	 */
+	public IAiRunnable function to( required IAiRunnable next );
+
+}

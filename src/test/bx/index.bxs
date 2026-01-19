@@ -1,0 +1,2 @@
+md = getMetadata( new test.users.Person() )
+println( md )

@@ -1,0 +1,113 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Create an AI Transform Runnable
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Inject the following references into the class
+	 * - moduleRecord : The ModuleRecord instance
+	 * - boxRuntime : The BoxRuntime instance
+	 * - interceptorService : The BoxLang InterceptorService
+	 * - log : A logger for the module config itself
+	 */
+
+    /**
+     * Create an AI Transform Runnable that applies a transformation function to input data.
+	 * <p>
+	 * This is useful for data transformation and mapping operations in AI pipelines.
+	 * The transformer function receives the input and returns the transformed output.
+	 *
+	 * Example:
+	 * ```
+	 * // Simple transformation
+	 * transformer = aiTransform( input => input.ucase() )
+	 * result = transformer.run( "hello world" )
+	 *
+	 * // In a pipeline
+	 * pipeline = aiPrompt()
+	 *     .to( aiService() )
+	 *     .to( aiTransform( result => result.trim() ) )
+	 * ```
+	 *
+	 * @transformer The transformation function to apply or an internal transformer or a full classpath to a transformer. Receives input and returns transformed output.
+	 * @config Optional configuration struct for the transformer
+	 *
+	 * @return The AI Transform Runnable object
+     */
+    function invoke( required any transformer, struct config = {} ) {
+		var oTransform = null
+
+		// If it's a function closure, wrap it
+		if( isClosure( arguments.transformer ) ){
+			oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable( arguments.transformer )
+		}
+		// If it's a string, assume it's a classpath or internal transformer
+		else if ( isSimpleValue( arguments.transformer )){
+			// oTransform = new #arguments.transformer#()
+			// Check for internal shortcuts or if not, try to build it as a class path.
+
+			switch( arguments.transformer ){
+				case "code" : case "codeExtractor" : {
+					oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable(
+						new bxModules.bxai.models.transformers.CodeExtractorTransformer().configure( arguments.config )
+					)
+					break
+				}
+
+				case "json" : case "jsonExtractor" : {
+					oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable(
+						new bxModules.bxai.models.transformers.JSONExtractorTransformer().configure( arguments.config )
+					)
+					break
+				}
+
+				case "text" : case "textExtractor" : {
+					oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable(
+						new bxModules.bxai.models.transformers.TextExtractorTransformer().configure( arguments.config )
+					)
+					break
+				}
+
+				case "xml" : case "xmlExtractor" : {
+					oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable(
+						new bxModules.bxai.models.transformers.XMLExtractorTransformer().configure( arguments.config )
+					)
+					break
+				}
+
+				default : {
+					// Try to build it as a class path
+					// If it fails, let it bubble up
+					oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable(
+						createObject( arguments.transformer ).init().configure( arguments.config )
+					)
+					break
+				}
+			}
+
+		}
+		else {
+			throw BoxException( "Invalid transformer argument. Must be a closure or string classpath." )
+		}
+
+		// Announce creation
+		BoxAnnounce( "onAITransformerCreate", { transform: oTransform } )
+
+		return oTransform
+    }
+
+}

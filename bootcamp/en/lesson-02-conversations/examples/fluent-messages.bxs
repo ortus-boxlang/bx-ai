@@ -1,0 +1,10 @@
+// fluent-messages.bxs
+// Using aiMessage() for cleaner message building
+// Run with: boxlang fluent-messages.bxs
+
+messages = aiMessage()
+    .system( "You are a friendly math tutor. Be encouraging!" )
+    .user( "What is 5 + 3?" )
+
+answer = aiChat( messages )
+println( answer )

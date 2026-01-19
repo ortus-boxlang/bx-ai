@@ -1,0 +1,188 @@
+/**
+ * Research Agent Example
+ *
+ * Demonstrates an agent that can perform research by searching multiple sources,
+ * synthesizing information, and providing comprehensive answers with citations.
+ */
+
+println( "=== Research AI Agent ===" )
+println( "" )
+
+// Mock data sources
+
+// Database of articles
+articles = [
+    {
+        id: "ART-001",
+        title: "Introduction to AI Agents",
+        content: "AI agents are autonomous systems that can perceive their environment, make decisions, and take actions to achieve goals. They use memory to maintain context and tools to interact with external systems.",
+        author: "Dr. Sarah Johnson",
+        date: "2024-03-15"
+    },
+    {
+        id: "ART-002",
+        title: "Memory Systems in AI",
+        content: "AI memory systems allow agents to store and retrieve information across interactions. Common types include window memory (keeps recent context), vector memory (semantic search), and summary memory (compressed history).",
+        author: "Prof. Michael Chen",
+        date: "2024-05-20"
+    },
+    {
+        id: "ART-003",
+        title: "Tool Use in AI Agents",
+        content: "Tools extend AI capabilities by allowing function calls to external systems. Agents can search databases, perform calculations, call APIs, and execute code through tools.",
+        author: "Dr. Emily White",
+        date: "2024-06-10"
+    },
+    {
+        id: "ART-004",
+        title: "BoxLang AI Framework",
+        content: "BoxLang AI provides a unified interface for working with multiple AI providers including OpenAI, Claude, and Ollama. It supports agents, pipelines, structured output, and embeddings.",
+        author: "Luis Majano",
+        date: "2024-09-01"
+    }
+]
+
+// Database of code examples
+codeExamples = {
+    "agent": 'agent = aiAgent( name: "Assistant", tools: [ myTool ] )',
+    "tool": 'tool = aiTool( name: "search", action: (q) => search(q) )',
+    "memory": 'memory = aiMemory( type: "window", key: "session-1" )',
+    "pipeline": 'pipeline = aiMessage().user("${prompt}").toDefaultModel()'
+}
+
+// Define research tools
+
+searchArticlesTool = aiTool(
+    name: "search_articles",
+    description: "Search article database for information on a topic",
+    action: ( query ) => {
+        query = lCase( arguments.query )
+        results = []
+
+        // Simple keyword search
+        articles.each( article => {
+            if ( lCase( article.title ).contains( query ) || lCase( article.content ).contains( query ) ) {
+                results.append({
+                    id: article.id,
+                    title: article.title,
+                    excerpt: left( article.content, 200 ) & "...",
+                    author: article.author,
+                    date: article.date
+                })
+            }
+        } )
+
+        return results.len() ? results : [ { message: "No articles found" } ]
+    }
+).addParameter( "query", "string", "Search keywords", true )
+
+getArticleTool = aiTool(
+    name: "get_article_content",
+    description: "Retrieve full content of a specific article by ID",
+    action: ( articleId ) => {
+        article = articles.find( a => a.id == arguments.articleId )
+        return isNull( article ) ? { error: "Article not found" } : article
+    }
+).addParameter( "articleId", "string", "Article ID (e.g., ART-001)", true )
+
+findCodeTool = aiTool(
+    name: "find_code_example",
+    description: "Find code examples for specific features",
+    action: ( feature ) => {
+        feature = lCase( arguments.feature )
+        code = codeExamples[ feature ]
+        return isNull( code ) ? { error: "No example found" } : { feature: feature, code: code }
+    }
+).addParameter( "feature", "string", "Feature name (agent, tool, memory, pipeline)", true )
+
+// Create vector memory for research (semantic search across articles)
+researchMemory = aiMemory( "boxvector", {
+    collection: "research_articles",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    dimensions: 1536,
+    metric: "cosine"
+} )
+
+// Load articles into vector memory for semantic search
+println( "Loading articles into vector memory..." )
+articles.each( article => {
+    // Store article with metadata for retrieval
+    researchMemory.add( article.content )
+} )
+println( "✓ Loaded #articles.len()# articles into vector memory\n" )
+
+citationTool = aiTool(
+    name: "create_citation",
+    description: "Format a proper citation for an article",
+    action: ( articleId ) => {
+        article = articles.find( a => a.id == arguments.articleId )
+        if ( isNull( article ) ) {
+            return { error: "Article not found" }
+        }
+        return "#article.author#. '#article.title#'. #article.date#. [#article.id#]"
+    }
+).addParameter( "articleId", "string", "Article ID to cite", true )
+
+// Create research agent with vector memory
+researchAgent = aiAgent(
+    name: "ResearchBot",
+    memory: researchMemory,
+    instructions: "You are a research assistant specializing in AI and BoxLang AI.
+
+    Research Process:
+    1. Search for relevant articles on the topic
+    2. Retrieve full content of promising articles
+    3. Find relevant code examples if needed
+    4. Synthesize information from multiple sources
+    5. Provide citations for all information
+    6. Give a comprehensive, well-structured answer
+
+    Always cite your sources using article IDs and provide code examples when relevant.",
+    tools: [ searchArticlesTool, getArticleTool, findCodeTool, citationTool ]
+)
+
+println( "Research agent initialized" )
+println( "" )
+
+// Research Query 1: Comprehensive topic research
+println( "=== Research Query 1: AI Agent Memory Systems ===" )
+println( "User: Explain how memory systems work in AI agents" )
+println( "" )
+response = researchAgent.run( "Explain how memory systems work in AI agents. Include code examples." )
+println( "ResearchBot:" )
+println( response )
+println( "" )
+
+// Research Query 2: Comparative analysis
+println( "=== Research Query 2: Tools vs Memory ===" )
+println( "User: What's the difference between tools and memory in AI agents?" )
+println( "" )
+response = researchAgent.run( "What's the difference between tools and memory in AI agents? Give examples of when to use each." )
+println( "ResearchBot:" )
+println( response )
+println( "" )
+
+// Research Query 3: Implementation question (uses memory from previous queries)
+println( "=== Research Query 3: Implementation Question ===" )
+println( "User: How would I implement this in BoxLang?" )
+println( "" )
+response = researchAgent.run( "How would I implement this in BoxLang? Show me code examples." )
+println( "ResearchBot:" )
+println( response )
+println( "(Agent uses context from previous questions)" )
+println( "" )
+
+println( "=== Summary ===" )
+println( "This research agent demonstrates:" )
+println( "  • Multi-source information gathering" )
+println( "  • Sequential tool use (search → retrieve → synthesize)" )
+println( "  • Proper citation of sources" )
+println( "  • Code example integration" )
+println( "  • Vector memory for semantic article search" )
+println( "  • Context-aware follow-up responses" )
+println( "\n💡 Memory Strategy:" )
+println( "  - Vector memory enables semantic search across all articles" )
+println( "  - Finds relevant information regardless of exact keywords" )
+println( "  - Combines tool-based search with memory-based retrieval" )
+println( "  - Result: Comprehensive research with proper citations" )

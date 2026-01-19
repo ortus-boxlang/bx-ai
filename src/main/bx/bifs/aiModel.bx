@@ -1,0 +1,72 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Creates an AI Model runnable for use in pipelines
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Inject the following references into the class
+	 * - moduleRecord : The ModuleRecord instance
+	 * - boxRuntime : The BoxRuntime instance
+	 * - interceptorService : The BoxLang InterceptorService
+	 * - log : A logger for the module config itself
+	 */
+
+	/**
+	 * Creates an AI Model runnable that wraps a service provider
+	 * This is the pipeline-friendly version of aiService()
+	 * <p>
+	 * Use this when you want to integrate AI calls into runnable pipelines.
+	 * Use aiService() when you need direct service invocation control.
+	 *
+	 * Example:
+	 * ```
+	 * // In a pipeline
+	 * chain = aiMessage("Hello ${name}")
+	 *     .to( aiModel("openai") )
+	 *     .to( aiTransform( r => r.content ) )
+	 *
+	 * result = chain.run({ name: "World" })
+	 * ```
+	 *
+	 * @provider The provider to use (openai, claude, etc.). If not provided, uses default from module settings.
+	 * @apiKey Optional API key override. If not provided, uses default from module settings.
+	 * @tools Optional ITool or an array of Tool instances to attach to the model for tool-augmented generation.
+	 * @param params Additional parameters to bind the model with
+	 *
+	 * @return An AiModel runnable
+	 */
+	function invoke(
+		string provider,
+		any apiKey,
+		any tools=[],
+		struct params={}
+	) {
+		// Get the underlying service
+		var service = aiService( argumentCollection: arguments );
+
+		// Wrap it as a model
+		var model = new bxModules.bxai.models.AiModel( service )
+			.bindTools( arguments.tools )
+			.bindParams( arguments.params );
+
+		// Notify of model creation
+		BoxAnnounce( "onAIModelCreate", { model: model, service: service } );
+
+		return model;
+	}
+
+}

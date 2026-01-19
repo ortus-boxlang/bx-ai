@@ -1,0 +1,75 @@
+/**
+ * BoxLang AI - Ollama Local AI Example
+ *
+ * This example demonstrates how to use Ollama for local AI processing
+ *
+ * Prerequisites:
+ * 1. Install Ollama from https://ollama.ai
+ * 2. Pull a model: `ollama pull llama3.2`
+ * 3. Start Ollama service (usually auto-starts)
+ *
+ * Benefits of Ollama:
+ * - 🔒 Privacy: Data never leaves your machine
+ * - 💰 Cost-effective: No API charges
+ * - 🚀 Fast: No network latency
+ * - 🔧 Customizable: Choose your own models
+ */
+
+// Simple chat with local Ollama
+result = aiChat(
+    "Explain what BoxLang is in one sentence",
+    {},
+    { provider: "ollama" }
+)
+println( "Simple Chat: " + result )
+
+// Using different models
+resultSmall = aiChat(
+    "What is recursion?",
+    { model: "llama3.2:1b" },  // Smaller, faster model
+    { provider: "ollama" }
+)
+println( "Small Model: " + resultSmall )
+
+// Code generation with CodeLlama
+codeResult = aiChat(
+    "Write a simple Java hello world function",
+    { model: "codellama" },  // Code-focused model
+    { provider: "ollama" }
+)
+println( "Code Generation: " + codeResult )
+
+// Streaming with Ollama
+println( "Streaming Example:" )
+aiChatStream(
+    "Tell me a short story about a robot",
+    ( chunk ) => {
+        // Ollama streaming format
+        content = chunk.response ?: ""
+        print( content )
+    },
+    { model: "llama3.2" },
+    { provider: "ollama" }
+)
+
+// Using custom Ollama host (for remote instances)
+service = aiService( "ollama" )
+    .setChatURL( "http://my-ollama-server:11434" )
+    .defaults( { model: "mistral", temperature: 0.7 } )
+
+response = service.invoke(
+    aiChatRequest( "What are the benefits of local AI?" )
+)
+println( "\nCustom Host Result: " + response )
+
+// Multi-message conversation
+conversation = aiChat( [
+    { role: "system", content: "You are a helpful programming tutor." },
+    { role: "user", content: "Explain functions in programming" },
+    { role: "assistant", content: "Functions are reusable blocks of code..." },
+    { role: "user", content: "Show me an example in Python" }
+], {}, { provider: "ollama" } )
+
+println( "Conversation: " + conversation )
+
+println( "\n✅ Ollama local AI examples completed!" )

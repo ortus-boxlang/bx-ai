@@ -1,0 +1,238 @@
+/**
+ * Text Cleaner Transformer Example
+ *
+ * Demonstrates cleaning and normalizing AI responses using TextCleanerTransformer.
+ * Perfect for removing extra whitespace, normalizing line endings, and cleaning text.
+ *
+ * Learn more: https://boxlang.ortusbooks.com/bx-modules/bx-ai/transformers
+ */
+
+println( "=== Text Cleaner Transformer Example ===" )
+println()
+
+try {
+	// Example 1: Basic text cleaning
+	println( "Example 1: Clean Messy AI Response" )
+	println( "─".repeat( 50 ) )
+
+	messyResponse = "
+
+	Hello,    this is   a    response   with
+
+	extra    whitespace    and
+
+	multiple    blank    lines.
+
+"
+
+	cleaner = new src.main.bx.models.transformers.TextCleanerTransformer()
+
+	cleanedText = cleaner.run( messyResponse )
+
+	println( "Original (#len( messyResponse )# chars):" )
+	println( "[#messyResponse#]" )
+	println()
+	println( "Cleaned (#len( cleanedText )# chars):" )
+	println( "[#cleanedText#]" )
+	println()
+
+	// Example 2: Trim whitespace only
+	println( "Example 2: Trim Leading/Trailing Whitespace" )
+	println( "─".repeat( 50 ) )
+
+	paddedText = "   This text has spaces around it   "
+
+	trimCleaner = new src.main.bx.models.transformers.TextCleanerTransformer(
+		config: { trim: true }
+	)
+
+	trimmedText = trimCleaner.run( paddedText )
+
+	println( "Before: [#paddedText#]" )
+	println( "After:  [#trimmedText#]" )
+	println()
+
+	// Example 3: Normalize line endings
+	println( "Example 3: Normalize Line Endings" )
+	println( "─".repeat( 50 ) )
+
+	mixedLineEndings = "Line 1" & chr( 13 ) & chr( 10 ) & "Line 2" & chr( 13 ) & "Line 3" & chr( 10 ) & "Line 4"
+
+	normalizeCleaner = new src.main.bx.models.transformers.TextCleanerTransformer(
+		config: { normalizeLineEndings: true }
+	)
+
+	normalizedText = normalizeCleaner.run( mixedLineEndings )
+
+	println( "Mixed line endings normalized to LF (\\n)" )
+	println( "Result: #replace( normalizedText, chr( 10 ), '\\n', 'all' )#" )
+	println()
+
+	// Example 4: Remove extra blank lines
+	println( "Example 4: Remove Extra Blank Lines" )
+	println( "─".repeat( 50 ) )
+
+	multiBlankLines = "Paragraph 1
+
+
+Paragraph 2
+
+
+
+Paragraph 3"
+
+	blankLineCleaner = new src.main.bx.models.transformers.TextCleanerTransformer(
+		config: { removeExtraBlankLines: true }
+	)
+
+	singleBlankLines = blankLineCleaner.run( multiBlankLines )
+
+	println( "Original has multiple consecutive blank lines" )
+	println( "Cleaned to single blank lines:" )
+	println( singleBlankLines )
+	println()
+
+	// Example 5: Collapse multiple spaces
+	println( "Example 5: Collapse Multiple Spaces" )
+	println( "─".repeat( 50 ) )
+
+	multiSpaces = "This    text    has    multiple    spaces    between    words."
+
+	spaceCleaner = new src.main.bx.models.transformers.TextCleanerTransformer(
+		config: { collapseSpaces: true }
+	)
+
+	singleSpaces = spaceCleaner.run( multiSpaces )
+
+	println( "Before: #multiSpaces#" )
+	println( "After:  #singleSpaces#" )
+	println()
+
+	// Example 6: Use in pipeline
+	println( "Example 6: Pipeline Integration" )
+	println( "─".repeat( 50 ) )
+
+	// Create pipeline: AI response → clean text
+	pipeline = aiModel( "openai" )
+		.to( aiTransform( input => {
+			cleaner = new src.main.bx.models.transformers.TextCleanerTransformer(
+				config: {
+					trim: true,
+					collapseSpaces: true,
+					removeExtraBlankLines: true
+				}
+			)
+			return cleaner.run( input )
+		}))
+
+	prompt = aiMessage()
+		.system( "Answer concisely" )
+		.user( "What is BoxLang in one sentence?" )
+
+	println( "Pipeline: AI → Text Cleaner" )
+	cleanResponse = pipeline.run( prompt )
+	println( "Cleaned response: #cleanResponse#" )
+	println()
+
+	// Example 7: Remove special characters
+	println( "Example 7: Remove Special Characters" )
+	println( "─".repeat( 50 ) )
+
+	specialChars = "Hello! @#$% This & text * has () special [] characters."
+
+	charCleaner = new src.main.bx.models.transformers.TextCleanerTransformer(
+		config: { removeSpecialChars: true }
+	)
+
+	plainText = charCleaner.run( specialChars )
+
+	println( "Before: #specialChars#" )
+	println( "After:  #plainText#" )
+	println()
+
+	// Example 8: Full cleaning preset
+	println( "Example 8: Full Cleaning (All Options)" )
+	println( "─".repeat( 50 ) )
+
+	dirtyText = "
+
+   This    is    a    VERY    messy
+
+
+   text    with    multiple
+
+
+   problems!!!   @#$
+
+"
+
+	fullCleaner = new src.main.bx.models.transformers.TextCleanerTransformer(
+		config: {
+			trim: true,
+			collapseSpaces: true,
+			removeExtraBlankLines: true,
+			normalizeLineEndings: true,
+			removeSpecialChars: false  // Keep punctuation
+		}
+	)
+
+	fullyClean = fullCleaner.run( dirtyText )
+
+	println( "Before (#len( dirtyText )# chars):" )
+	println( "[#dirtyText#]" )
+	println()
+	println( "After (#len( fullyClean )# chars):" )
+	println( "[#fullyClean#]" )
+	println()
+
+	// Example 9: Pre-processing for embeddings
+	println( "Example 9: Clean Text Before Embeddings" )
+	println( "─".repeat( 50 ) )
+
+	rawDocuments = [
+		"  Document   1    with    messy    spacing.  ",
+		"
+
+Document 2
+
+
+with blank lines.
+
+",
+		"   Document   3   needs   cleaning.   "
+	]
+
+	embeddingCleaner = new src.main.bx.models.transformers.TextCleanerTransformer(
+		config: {
+			trim: true,
+			collapseSpaces: true,
+			removeExtraBlankLines: true
+		}
+	)
+
+	cleanedDocs = rawDocuments.map( doc => embeddingCleaner.run( doc ) )
+
+	println( "Cleaned #cleanedDocs.len()# documents for embeddings:" )
+	cleanedDocs.each( ( doc, idx ) => {
+		println( "  ##idx#: #doc#" )
+	})
+	println()
+	println( "💡 Now ready for: embeddings = aiEmbeddings( cleanedDocs )" )
+
+} catch ( any e ) {
+	println( "Error: #e.message#" )
+	println( e.detail ?: "" )
+}
+
+println()
+println( "✅ Text Cleaner Transformer example complete!" )
+println()
+println( "Key Takeaways:" )
+println( "  • TextCleanerTransformer normalizes messy text" )
+println( "  • trim removes leading/trailing whitespace" )
+println( "  • collapseSpaces reduces multiple spaces to one" )
+println( "  • removeExtraBlankLines keeps only single blank lines" )
+println( "  • normalizeLineEndings standardizes to LF (\\n)" )
+println( "  • removeSpecialChars strips non-alphanumeric chars" )
+println( "  • Perfect for pre-processing and post-processing" )
+println( "  • Use before embeddings for consistent vectors" )

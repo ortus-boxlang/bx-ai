@@ -17,26 +17,31 @@ jobs:
     env:
       DB_USER: root
       DB_PASSWORD: root
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+      COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
-      CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ "ubuntu-latest" ]
-        jdkVersion: [ "21" ]
+        os: ["ubuntu-latest"]
+        jdkVersion: ["21"]
         experimental: [false]
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: "temurin"
           java-version: ${{ matrix.jdkVersion }}
@@ -46,15 +51,21 @@ jobs:
           # Setup .env
           touch .env
 
+      - name: Start Test Services
+        uses: hoverkraft-tech/compose-action@v2.4.2
+        with:
+          compose-file: "./docker-compose.yml"
+
       - name: Test Module
         run: |
+          # Download BoxLang and other dependencies
           ./gradlew downloadBoxLang
           # this is done in order to build the module structure before testing
           ./gradlew shadowJar test --stacktrace --console=plain
 
       - name: Upload Test Results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: tests-${{ matrix.os }}-${{ matrix.jdkVersion }}
           path: |
@@ -85,7 +96,7 @@ jobs:
       issues: read
     steps:
       - name: Download Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
 

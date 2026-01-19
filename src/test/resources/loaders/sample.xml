@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<library>
+    <metadata>
+        <name>Sample Library</name>
+        <location>Downtown</location>
+        <established>1925</established>
+    </metadata>
+    <books>
+        <book id="1" category="fiction">
+            <title>The Great Adventure</title>
+            <author>Jane Smith</author>
+            <year>2020</year>
+            <description>An exciting tale of discovery and courage in uncharted lands.</description>
+            <isbn>978-0-123456-78-9</isbn>
+        </book>
+        <book id="2" category="science">
+            <title>Quantum Computing Explained</title>
+            <author>Dr. John Doe</author>
+            <year>2022</year>
+            <description>A comprehensive guide to quantum computing principles and applications.</description>
+            <isbn>978-0-987654-32-1</isbn>
+        </book>
+        <book id="3" category="history">
+            <title>Ancient Civilizations</title>
+            <author>Prof. Maria Garcia</author>
+            <year>2019</year>
+            <description>Exploring the rise and fall of great civilizations throughout history.</description>
+            <isbn>978-0-555555-55-5</isbn>
+        </book>
+    </books>
+</library>

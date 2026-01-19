@@ -1,0 +1,83 @@
+/**
+ * HTTP Endpoint MCP Server Example
+ * 
+ * This example shows how to expose an MCP server over HTTP using BoxLang's
+ * built-in web capabilities. Place this file in your web root to create
+ * an MCP endpoint that AI clients can connect to.
+ * 
+ * Example URL: http://localhost:8080/mcp-endpoint.bx
+ * 
+ * Test with curl:
+ * curl -X POST http://localhost:8080/mcp-endpoint.bx \
+ *   -H "Content-Type: application/json" \
+ *   -d '{"jsonrpc":"2.0","method":"tools/list","id":"1"}'
+ */
+
+// Get or create the MCP server (singleton pattern)
+mcp = MCPServer( "webApp" )
+    .setDescription( "Web Application MCP Server" )
+    .setVersion( "1.0.0" )
+
+// Register tools on first initialization
+if ( mcp.getToolCount() == 0 ) {
+    
+    // User management tool
+    mcp.registerTool(
+        aiTool( "getUser", "Get user information", ( userId ) => {
+            // Simulate database query
+            return {
+                id: userId,
+                name: "John Doe",
+                email: "john@example.com",
+                role: "admin"
+            }
+        } )
+            .describeArg( "userId", "The user ID to retrieve" )
+    )
+    
+    // Data query tool
+    mcp.registerTool(
+        aiTool( "queryData", "Query application data", ( table, filter = "" ) => {
+            // Simulate data query
+            return "Found 42 records in #table# matching filter: #filter#"
+        } )
+            .describeArg( "table", "Table name to query" )
+            .describeArg( "filter", "Optional filter expression" )
+    )
+    
+    // Config resource
+    mcp.registerResource(
+        uri: "config://app-settings",
+        name: "App Settings",
+        description: "Application configuration",
+        mimeType: "application/json",
+        handler: () => {
+            return {
+                database: "postgres",
+                cacheEnabled: true,
+                maxConnections: 100
+            }
+        }
+    )
+}
+
+// Handle incoming HTTP request
+if ( structKeyExists( form, "jsonrpc" ) || structKeyExists( url, "jsonrpc" ) ) {
+    // Handle URL/form encoded request
+    requestData = form.jsonrpc ?: url.jsonrpc
+} else {
+    // Handle JSON POST body
+    requestData = toString( getHttpRequestData().content )
+}
+
+// Process the MCP request
+response = mcp.handleRequest( requestData )
+
+// Set response headers
+header( name: "Content-Type", value: "application/json" )
+header( name: "Access-Control-Allow-Origin", value: "*" )
+
+// Return JSON response
+content( type: "application/json", reset: true ) {
+    writeOutput( jsonSerialize( response ) )
+}

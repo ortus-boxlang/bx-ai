@@ -1,0 +1,192 @@
+/**
+ * SQL Loader Example
+ *
+ * Demonstrates loading database query results into Document objects.
+ * Perfect for RAG over databases, data analysis, and AI-powered reporting.
+ *
+ * Learn more: https://boxlang.ortusbooks.com/bx-modules/bx-ai/loaders
+ */
+
+println( "=== SQL Loader Example ===" )
+println()
+
+// Note: This example demonstrates the SQLLoader API
+// In production, configure your datasource in Application.bx
+
+try {
+	// Example 1: Basic SQL query
+	println( "Example 1: Load from SQL Query" )
+	println( "─".repeat( 50 ) )
+
+	println( "Simulated SQL query:" )
+	println( "  SELECT * FROM products WHERE category = 'Electronics'" )
+	println()
+
+	// In production, use:
+	// sqlLoader = new src.main.bx.models.loaders.SQLLoader(
+	//     source: "SELECT * FROM products WHERE category = 'Electronics'",
+	//     config: {
+	//         datasource: "mydb"
+	//     }
+	// )
+	//
+	// documents = sqlLoader.load()
+
+	// Simulate results
+	simulatedDocs = [
+		{
+			content: "Product: Laptop, Price: $999, Stock: 15",
+			metadata: { id: 1, category: "Electronics" }
+		},
+		{
+			content: "Product: Mouse, Price: $29, Stock: 50",
+			metadata: { id: 2, category: "Electronics" }
+		}
+	]
+
+	println( "Loaded #simulatedDocs.len()# documents from database" )
+	simulatedDocs.each( ( doc, idx ) => {
+		println( "  ##idx#: #doc.content#" )
+	})
+	println()
+
+	// Example 2: Convert rows to documents
+	println( "Example 2: Row-to-Document Conversion" )
+	println( "─".repeat( 50 ) )
+
+	// Simulate database rows
+	rows = [
+		{ id: 1, name: "Alice", role: "Engineer", salary: 90000 },
+		{ id: 2, name: "Bob", role: "Designer", salary: 80000 },
+		{ id: 3, name: "Charlie", role: "Manager", salary: 100000 }
+	]
+
+	// Convert to documents
+	employeeDocs = rows.map( row => {
+		return {
+			content: "#row.name# works as #row.role# earning $#row.salary#",
+			metadata: { id: row.id, role: row.role }
+		}
+	})
+
+	println( "Converted #employeeDocs.len()# rows to documents:" )
+	employeeDocs.each( ( doc, idx ) => {
+		println( "  ##idx#: #doc.content#" )
+	})
+	println()
+
+	// Example 3: AI query on database content
+	println( "Example 3: AI Query on Database Data" )
+	println( "─".repeat( 50 ) )
+
+	// Combine employee data
+	employeeContext = employeeDocs.map( d => d.content ).toList( char( 10 ) )
+
+	message = aiMessage()
+		.system( "Answer questions about these employees: ${context}" )
+		.user( "Who are the engineers and what do they earn?" )
+		.setContext( employeeContext )
+
+	println( "Query: Who are the engineers?" )
+	println( "Answer: " & aiChat( message ) )
+	println()
+
+	// Example 4: Aggregate data for AI
+	println( "Example 4: Aggregate Data Analysis" )
+	println( "─".repeat( 50 ) )
+
+	// Simulate sales data
+	salesData = [
+		{ month: "Jan", revenue: 45000, orders: 120 },
+		{ month: "Feb", revenue: 52000, orders: 135 },
+		{ month: "Mar", revenue: 48000, orders: 128 }
+	]
+
+	salesContext = salesData.map( s => "#s.month#: $#s.revenue# from #s.orders# orders" ).toList( char( 10 ) )
+
+	analysisMsg = aiMessage()
+		.system( "Analyze this sales data and identify trends" )
+		.user( salesContext )
+
+	println( "Sales data loaded from database" )
+	println( "AI Analysis: " & aiChat( analysisMsg ) )
+	println()
+
+	// Example 5: Chunked query results
+	println( "Example 5: Handle Large Result Sets" )
+	println( "─".repeat( 50 ) )
+
+	println( "For large tables, use LIMIT and OFFSET:" )
+	println( "  Query 1: SELECT * FROM logs LIMIT 1000 OFFSET 0" )
+	println( "  Query 2: SELECT * FROM logs LIMIT 1000 OFFSET 1000" )
+	println( "  Query 3: SELECT * FROM logs LIMIT 1000 OFFSET 2000" )
+	println()
+	println( "Or use SQLLoader with chunkSize config:" )
+	println( "  config: { chunkSize: 1000 }" )
+	println()
+
+	// Example 6: Generate embeddings from database
+	println( "Example 6: Database to Vector Embeddings" )
+	println( "─".repeat( 50 ) )
+
+	// Simulate product descriptions
+	products = [
+		{ id: 1, name: "Laptop Pro", description: "High-performance laptop with 16GB RAM and 512GB SSD" },
+		{ id: 2, name: "Wireless Mouse", description: "Ergonomic wireless mouse with precision tracking" },
+		{ id: 3, name: "USB-C Hub", description: "7-in-1 USB-C hub with HDMI, USB ports, and SD card reader" }
+	]
+
+	productTexts = products.map( p => "#p.name#: #p.description#" )
+
+	println( "Loaded #products.len()# products from database" )
+	println( "Prepared for embeddings:" )
+	productTexts.each( ( text, idx ) => {
+		println( "  ##idx#: #left( text, 50 )#..." )
+	})
+	println()
+	println( "💡 Generate embeddings:" )
+	println( "   embeddings = aiEmbeddings( text: productTexts )" )
+	println( "   Store in vector DB for semantic product search" )
+	println()
+
+	// Example 7: Real-time reporting
+	println( "Example 7: AI-Powered Database Reports" )
+	println( "─".repeat( 50 ) )
+
+	// Simulate customer data
+	customers = [
+		{ name: "Acme Corp", industry: "Technology", revenue: 500000 },
+		{ name: "Global Inc", industry: "Finance", revenue: 750000 },
+		{ name: "Tech Solutions", industry: "Technology", revenue: 300000 }
+	]
+
+	customerContext = jsonSerialize( customers )
+
+	reportMsg = aiMessage()
+		.system( "Generate a brief executive summary of these customers" )
+		.user( customerContext )
+
+	println( "Customer data loaded from CRM database" )
+	println( "Executive Summary: " & aiChat( reportMsg ) )
+
+} catch ( any e ) {
+	println( "Error: #e.message#" )
+	println( e.detail ?: "" )
+}
+
+println()
+println( "✅ SQL Loader example complete!" )
+println()
+println( "Key Takeaways:" )
+println( "  • SQLLoader loads query results as Documents" )
+println( "  • Each row becomes a document with metadata" )
+println( "  • Perfect for RAG over databases" )
+println( "  • Use LIMIT/OFFSET for large result sets" )
+println( "  • Combine with AI for data analysis" )
+println( "  • Generate embeddings for semantic search" )
+println( "  • Enable AI-powered reporting and insights" )
+println()
+println( "Configuration:" )
+println( "  • Define datasources in Application.bx" )
+println( "  • Pass datasource name in config" )
+println( "  • Use parameterized queries for security" )

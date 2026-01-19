@@ -1,0 +1,126 @@
+/**
+ * Multi-Model Pipeline Example
+ *
+ * Demonstrates using different AI models in a workflow, combining their
+ * strengths for different tasks (e.g., fast model for drafts, smart model for refinement).
+ */
+
+println( "=== Multi-Model Pipeline Workflow ===" )
+println( "" )
+
+// Stage 1: Fast model generates initial draft
+println( "Stage 1: Quick Draft Generation" )
+println( "" )
+
+draftGenerator = aiMessage()
+    .system( "You are a quick content writer. Generate concise drafts." )
+    .user( "Write a brief introduction about: ${topic}" )
+    .to( aiModel( "openai", { model: "gpt-4o-mini", temperature: 0.7 } ) )
+    .transform( r => r.content )
+
+topic = "artificial intelligence in healthcare"
+
+draft = draftGenerator.run({ topic: topic })
+println( "Quick Draft (gpt-4o-mini):" )
+println( draft )
+println( "" )
+
+// Stage 2: Better model refines and expands
+println( "Stage 2: Refinement and Expansion" )
+println( "" )
+
+refiner = aiMessage()
+    .system( "You are an expert editor. Improve and expand the content while maintaining the core message." )
+    .user( "Improve this draft: ${draft}" )
+    .to( aiModel( "openai", { model: "gpt-4o", temperature: 0.5 } ) )
+    .transform( r => r.content )
+
+refined = refiner.run({ draft: draft })
+println( "Refined Version (gpt-4o):" )
+println( refined )
+println( "" )
+
+// Stage 3: Fast model generates SEO keywords
+println( "Stage 3: SEO Keywords" )
+println( "" )
+
+keywordGenerator = aiMessage()
+    .user( "Generate 5 SEO keywords for: ${content}" )
+    .to( aiModel( "openai", { model: "gpt-4o-mini", temperature: 0.3 } ) )
+    .transform( r => r.content )
+
+keywords = keywordGenerator.run({ content: refined })
+println( "SEO Keywords (gpt-4o-mini):" )
+println( keywords )
+println( "" )
+
+// Example 2: Parallel multi-model processing
+println( "=== Parallel Multi-Model Analysis ===" )
+println( "" )
+
+text = "This product exceeded my expectations. The quality is outstanding,
+though the price is a bit high. Customer service was excellent and shipping was fast."
+
+// Model 1: Fast sentiment analysis
+sentimentPipeline = aiMessage()
+    .user( "Analyze sentiment: ${text}" )
+    .to( aiModel( "openai", { model: "gpt-4o-mini" } ) )
+    .transform( r => r.content )
+
+// Model 2: Detailed aspect extraction (using better model)
+aspectPipeline = aiMessage()
+    .user( "Extract aspects discussed (quality, price, service, shipping): ${text}" )
+    .to( aiModel( "openai", { model: "gpt-4o" } ) )
+    .transform( r => r.content )
+
+println( "Analyzing review text..." )
+println( "" )
+
+// Run both pipelines
+sentiment = sentimentPipeline.run({ text: text })
+aspects = aspectPipeline.run({ text: text })
+
+println( "Sentiment Analysis (Fast Model):" )
+println( sentiment )
+println( "" )
+
+println( "Aspect Extraction (Smart Model):" )
+println( aspects )
+println( "" )
+
+// Example 3: Model selection based on task complexity
+println( "=== Dynamic Model Selection ===" )
+println( "" )
+
+function createSmartPipeline( useAdvanced = false ) {
+    model = useAdvanced ?
+        aiModel( "openai", { model: "gpt-4o", temperature: 0.3 } ) :
+        aiModel( "openai", { model: "gpt-4o-mini", temperature: 0.5 } )
+
+    return aiMessage()
+        .user( "${prompt}" )
+        .to( model )
+        .transform( r => r.content )
+}
+
+// Simple task - use fast model
+simplePipeline = createSmartPipeline( false )
+simpleResult = simplePipeline.run({ prompt: "What is 2+2?" })
+println( "Simple Task (Fast Model): #simpleResult#" )
+println( "" )
+
+// Complex task - use advanced model
+complexPipeline = createSmartPipeline( true )
+complexResult = complexPipeline.run({
+    prompt: "Explain the implications of quantum computing on current encryption methods"
+})
+println( "Complex Task (Advanced Model):" )
+println( complexResult )
+println( "" )
+
+println( "=== Multi-Model Strategy ===" )
+println( "✓ Use fast models for simple/draft tasks (cost-effective)" )
+println( "✓ Use advanced models for complex/critical tasks" )
+println( "✓ Chain models: draft → refine → finalize" )
+println( "✓ Parallel processing for different aspects" )
+println( "✓ Dynamic model selection based on complexity" )

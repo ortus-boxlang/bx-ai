@@ -1,0 +1,5 @@
+class Event {
+	property name="name" type="string";
+	property name="date" type="string";
+	property name="location" type="string";
+}

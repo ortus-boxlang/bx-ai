@@ -1,3 +1,28 @@
 {
-	"modules": {}
+	"modulesDirectory": [
+		"src/test/resources/modules"
+	],
+	"modules": {},
+	"datasources": {
+		"bxai_test": {
+			"driver": "derby",
+			"connectionString": "jdbc:derby:memory:bxai_test;create=true"
+		},
+		"postgres_vector_test": {
+			"driver": "postgresql",
+			"connectionString": "jdbc:postgresql://localhost:5432/vectordb",
+			"username": "boxlang",
+			"password": "boxlang"
+		},
+		"mysql_vector_test": {
+			"driver": "mysql",
+			"connectionString": "jdbc:mysql://localhost:3307/vectordb",
+			"username": "boxlang",
+			"password": "boxlang"
+		},
+		"sqlite_test": {
+			"driver": "sqlite",
+			"connectionString": "jdbc:sqlite::memory:"
+		}
+	}
 }

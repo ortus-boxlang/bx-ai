@@ -1,0 +1,230 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * HTTPTransport
+ *
+ * HTTP transport implementation for MCP servers.
+ * Handles HTTP-specific concerns like headers, CORS, status codes, and SSE streaming.
+ */
+import bxModules.bxai.models.mcp.transports.BaseTransport;
+
+class extends="BaseTransport" {
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		super.init();
+
+		variables.name = "http";
+
+		// HTTP supports all features
+		variables.features = {
+			"headers": true,
+			"cors": true,
+			"streaming": true,
+			"preflight": true,
+			"statusCodes": true
+		};
+
+		return this;
+	}
+
+	/**
+	 * Read HTTP request and normalize it
+	 *
+	 * @serverName (optional) The forced MCP server name to use (overrides URL/path parameter)
+	 *
+	 * @return Normalized request struct
+	 */
+	struct function readRequest( string serverName ) {
+		// Extract server name from query param or path
+		var mcpServerName = url.server ?: "default";
+		var requestMethod = cgi.REQUEST_METHOD;
+		var requestBody = requestMethod eq "POST" ? getHTTPRequestData().content : "";
+		var acceptHeader = cgi.HTTP_ACCEPT ?: "application/json";
+		var headers = getHTTPRequestData( false ).headers;
+
+		// Check for server name in path segments
+		if ( len( cgi.PATH_INFO ) > 0 ) {
+			var pathSegments = listToArray( cgi.PATH_INFO, "/" ).filter( segment => len( segment ) > 0 );
+			if ( pathSegments.len() ) {
+				mcpServerName = pathSegments.first();
+			}
+		}
+
+		// If the serverName argument is provided, override the extracted server name
+		if( !isNull( arguments.serverName ) && len( arguments.serverName ) ) {
+			mcpServerName = arguments.serverName;
+		}
+
+		// Extract origin for CORS
+		var requestOrigin = headers[ "Origin" ] ?: "";
+
+		// Build normalized request
+		return {
+			"serverName": mcpServerName,
+			"method": requestMethod,
+			"body": requestBody,
+			"headers": headers,
+			"acceptHeader": acceptHeader,
+			"params": url,
+			"origin": requestOrigin,
+			"metadata": {
+				"protocol": "http",
+				"remoteAddr": cgi.REMOTE_ADDR ?: "",
+				"userAgent": cgi.HTTP_USER_AGENT ?: "",
+				"requestUri": cgi.REQUEST_URI ?: "",
+				"requestTime": now()
+			}
+		};
+	}
+
+	/**
+	 * Write the response to HTTP context
+	 */
+	void function writeResponse( required struct response ) {
+		// Set response headers
+		for ( var headerName in arguments.response.headers ) {
+			bx:header name=headerName value=arguments.response.headers[ headerName ];
+		}
+
+		// Set status code if not 200
+		if ( arguments.response.statusCode neq 200 ) {
+			bx:header statusCode=arguments.response.statusCode;
+		}
+
+		// Write content
+		bx:content
+			type=arguments.response.contentType
+			variable=arguments.response.content
+			reset=true;
+	}
+
+	/**
+	 * Handle CORS preflight (OPTIONS) request
+	 *
+	 * @mcpServer The MCP server instance for CORS configuration
+	 *
+	 * @return Response struct
+	 */
+	struct function handlePreflight( required any mcpServer ) {
+		var response = {
+			"content": "",
+			"contentType": "text/plain",
+			"headers": {},
+			"statusCode": 200
+		};
+
+		// Add CORS headers
+		response.headers[ "Access-Control-Allow-Methods" ] = "POST, GET, OPTIONS";
+		response.headers[ "Access-Control-Allow-Headers" ] = "Content-Type, Authorization, X-API-Key";
+		response.headers[ "Access-Control-Max-Age" ] = "86400";
+
+		// Apply security headers
+		return this.applySecurityHeaders( response );
+	}
+
+	/**
+	 * Apply CORS headers to response
+	 *
+	 * @response The response struct to modify
+	 * @mcpServer The MCP server instance
+	 * @origin The request origin
+	 *
+	 * @return Modified response struct
+	 */
+	struct function applyCorsHeaders(
+		required struct response,
+		required any mcpServer,
+		required string origin
+	) {
+		// Check if origin is allowed
+		if ( len( arguments.origin ) && arguments.mcpServer.isCorsAllowed( arguments.origin ) ) {
+			arguments.response.headers[ "Access-Control-Allow-Origin" ] = arguments.origin;
+			arguments.response.headers[ "Vary" ] = "Origin";
+		} else if ( arguments.mcpServer.getCorsAllowedOrigins().contains( "*" ) ) {
+			// Wildcard "*" allows all origins
+			arguments.response.headers[ "Access-Control-Allow-Origin" ] = "*";
+		}
+
+		return arguments.response;
+	}
+
+	/**
+	 * Extract authentication credentials from headers
+	 *
+	 * @headers Request headers
+	 *
+	 * @return struct { basicAuth: string, apiKey: string }
+	 */
+	struct function extractAuthCredentials( required struct headers ) {
+		var authHeader = arguments.headers[ "Authorization" ] ?: "";
+		var apiKey = "";
+
+		// Extract API key from X-API-Key header or Bearer token
+		if ( arguments.headers.keyExists( "X-API-Key" ) ) {
+			apiKey = arguments.headers[ "X-API-Key" ];
+		} else if ( authHeader.findNoCase( "Bearer " ) ) {
+			apiKey = authHeader.replaceNoCase( "Bearer ", "" ).trim();
+		}
+
+		return {
+			"basicAuth": authHeader,
+			"apiKey": apiKey
+		};
+	}
+
+	/**
+	 * Format response for SSE streaming
+	 *
+	 * @data The data to format
+	 *
+	 * @return SSE-formatted string
+	 */
+	string function formatSSE( required any data ) {
+		var jsonData = isSimpleValue( arguments.data ) ? arguments.data : jsonSerialize( arguments.data );
+		return "event: message" & chr( 10 ) & "data: " & jsonData & chr( 10 ) & chr( 10 );
+	}
+
+	/**
+	 * Check if SSE streaming is requested
+	 *
+	 * @acceptHeader The Accept header value
+	 *
+	 * @return True if SSE is requested
+	 */
+	boolean function isSSERequested( required string acceptHeader ) {
+		return arguments.acceptHeader contains "text/event-stream";
+	}
+
+	/**
+	 * Prepare SSE response headers
+	 *
+	 * @response The response struct to modify
+	 *
+	 * @return Modified response struct
+	 */
+	struct function prepareSSEResponse( required struct response ) {
+		arguments.response.contentType = "text/event-stream";
+		arguments.response.headers[ "Cache-Control" ] = "no-cache";
+		arguments.response.headers[ "Connection" ] = "keep-alive";
+		arguments.response.headers[ "X-Accel-Buffering" ] = "no";  // Disable nginx buffering
+		return arguments.response;
+	}
+
+}

@@ -1,0 +1,816 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * This class represents a chat conversation.  It holds a collection of messages
+ * that have been added to the chat.
+ * Please note that AI services only allow 1 `system` message per request.
+ *
+ * This class extends AiBaseRunnable, making it usable in runnable pipelines.
+ */
+import bxModules.bxai.models.runnables.*;
+
+class extends="AiBaseRunnable"{
+
+	/**
+	 * The collection of messages in the chat
+	 */
+	property name="messages" type="array" default=[];
+
+    /**
+     * A collection of bindings for the chat message
+     */
+    property name="bindings" type="struct" default={};
+
+	/**
+	 * A context struct for injecting additional data into the message.
+	 * This can be used for:
+	 * - Security context (user roles, permissions, tenant info)
+	 * - RAG context (retrieved documents, embeddings, metadata)
+	 * - Any additional contextual information needed by agents or chat handlers
+	 * The context is automatically available as ${context} in message bindings.
+	 */
+	property name="context" type="struct" default={};
+
+	/**
+	 * CONSTANTS
+	 */
+	static{
+		final DEFAULT_ROLE = 'user'
+	}
+
+	/**
+	 * Construct a new message holder
+	 *
+	 * @message The initial message to add to the chat: string, struct, or array, or null
+	 */
+	function init( any message ){
+		if( !isNull( arguments.message ) ){
+			this.add( message )
+		}
+		return this
+	}
+
+	/**
+	 * Count how many messages we have
+	 */
+	numeric function count() {
+		return variables.messages.len()
+	}
+
+	/**
+	 * Clear all messages
+	 */
+	AiMessage function clear() {
+		variables.messages = []
+		return this
+	}
+
+	/**
+	 * Verifies if there is a system message already in the chat
+	 */
+	boolean function hasSystemMessage() {
+		return variables.messages.filter( message -> message?.role == 'system' ).len() > 0
+	}
+
+	/**
+	 * Store bindings for later formatting/rendering
+	 *
+	 * @bindings A struct of key-value pairs to use for string replacement
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function bind( required struct bindings ) {
+		variables.bindings = arguments.bindings
+		return this
+	}
+
+	/**
+	 * Format the messages with the provided bindings using stringBind()
+	 *
+	 * @bindings A struct of key-value pairs to use for string replacement
+	 *
+	 * @return An array of formatted messages
+	 */
+	array function format( required struct bindings ) {
+		return variables.messages.map( message => {
+            var formattedMessage = duplicate( message );
+			if( isSimpleValue( formattedMessage.content ) ){
+				formattedMessage.content = stringBind( formattedMessage.content, bindings )
+			}
+			return formattedMessage;
+		} )
+	}
+
+	/**
+	 * Render the messages using the stored bindings or optional provided bindings
+     *
+     * @bindings Optional bindings to merge with stored bindings for rendering
+	 *
+	 * @return An array of formatted messages using the stored bindings
+	 */
+	array function render( struct bindings = {} ) {
+        // Merge provided bindings with stored bindings, in favor of provided
+        var allBindings = arguments.bindings.append( variables.bindings, false )
+		// If we have context, add it to bindings as ${context}
+		if( hasContext() ){
+			allBindings[ "context" ] = jsonSerialize( variables.context );
+		}
+		return format( allBindings )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Context Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Check if the message has any context data
+	 *
+	 * @return True if context is not empty
+	 */
+	boolean function hasContext(){
+		return !variables.context.isEmpty();
+	}
+
+	/**
+	 * Add or update a single context value
+	 *
+	 * @key The context key
+	 * @value The context value
+	 *
+	 * @return The message for chaining
+	 */
+	AiMessage function addContext( required string key, required any value ){
+		variables.context[ arguments.key ] = arguments.value;
+		return this;
+	}
+
+	/**
+	 * Merge additional context data into the existing context
+	 * Existing keys will be overwritten if present in the new context
+	 *
+	 * @contextData The context data to merge
+	 *
+	 * @return The message for chaining
+	 */
+	AiMessage function mergeContext( required struct contextData ){
+		variables.context.append( arguments.contextData, true );
+		return this;
+	}
+
+	/**
+	 * Get a specific context value by key
+	 *
+	 * @key The context key to retrieve
+	 * @defaultValue The default value if key doesn't exist
+	 *
+	 * @return The context value or default
+	 */
+	any function getContextValue( required string key, any defaultValue = "" ){
+		return variables.context.keyExists( arguments.key ) ? variables.context[ arguments.key ] : arguments.defaultValue;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiRunnable Interface Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Run the message as a runnable - returns the formatted messages
+	 * If input is provided and is a struct with bindings, it will be used for formatting
+	 *
+	 * @input Optional input, which is considered the bindings struct
+	 * @params Optional parameters (ignored in this implementation)
+	 * @options Optional runtime options (ignored in this implementation)
+	 *
+	 * @return An array of formatted messages
+	 */
+	public any function run( any input = {}, struct params = {}, struct options = {} ) {
+        var incomingBindings = isStruct( arguments.input ) ? arguments.input : {}
+		// Delegate to render with incoming bindings
+		return render( incomingBindings );
+	}
+
+	/**
+	 * Stream the messages through the callback
+	 * Each message is sent as a separate chunk
+	 *
+	 * @onChunk The callback to invoke for each message
+	 * @input Optional input with bindings
+	 * @params Optional parameters
+	 * @options Optional runtime options (ignored in this implementation)
+	 */
+	public void function stream(
+		required function onChunk,
+		any input = {},
+		struct params = {},
+		struct options = {}
+	) {
+		var formattedMessages = run( arguments.input, arguments.params, arguments.options );
+		var index = 1;
+
+		for( var message in formattedMessages ) {
+			arguments.onChunk( message, {
+				step: "message",
+				index: index,
+				total: formattedMessages.len()
+			} );
+			index++;
+		}
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Message Helpers
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Add a history of messages to the chat
+	 *
+	 * @messages An array of message structs to add to the chat, or an AiMessage instance
+	 *
+	 * @return The chat message instance
+	 */
+	 AiMessage function history( required any messages ) {
+		var targetMessages = arguments.messages;
+
+		// If an AiMessage instance is provided, extract its messages
+		if( targetMessages instanceof "AiMessage" ) {
+			targetMessages = targetMessages.getMessages();
+		}
+
+		if( !isArray( targetMessages ) ) {
+			throw( "History messages must be an array or an AiMessage instance" );
+		}
+
+		// Add each message to the chat
+		for( var message in targetMessages ) {
+			this.add( message );
+		}
+
+		return this;
+	}
+
+	/**
+	 * Get the system message
+	 *
+	 * @return The system message or an empty string
+	 */
+	string function getSystemMessage() {
+		return variables.messages
+			.filter( message -> message?.role == 'system' )
+			.map( message -> message.content )
+			.reduce( ( acc, message ) => message, "" );
+	}
+
+	/**
+	 * Replace the system message
+	 *
+	 * @content The new system message
+	 */
+	AiMessage function replaceSystemMessage( required string content ) {
+		if( !hasSystemMessage() ){
+			return this;
+		}
+		// Find the location of the system message in the array
+		var index = variables.messages.find( message => message.role == 'system' );
+		// Replace the message
+		variables.messages[ index ].content = arguments.content;
+		return this;
+	}
+
+	/**
+	 * Helper to get all messages that are not system messages
+	 *
+	 * @return An array of messages that are not system messages
+	 */
+	Array function getNonSystemMessages() {
+		return variables.messages.filter( message -> message?.role != 'system' );
+	}
+
+	/**
+	 * Adds a message to the chat.  The message content can be:
+	 * - A string : The message will be added with the default role of user
+	 * - A struct : The struct that represents the message according to the chat provider
+	 * - An array : The array of messages to incorporate
+	 *
+	 * @content A string, struct, or array of messages to add to the chat
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function add( required any content ) {
+		// Simple messages
+		if( IsSimpleValue( arguments.content ) ){
+
+			if( arguments.content.isEmpty() ){
+				throw( "Cannot add an empty message" );
+			}
+
+			variables.messages.push( {
+				"role" = static.DEFAULT_ROLE,
+				"content" = arguments.content
+			} );
+		}
+		// Struct messages
+		else if( IsStruct( arguments.content ) ){
+			// Default the role if non is provided
+			param arguments.content.role = static.DEFAULT_ROLE;
+
+			// System Message Rules
+			if( arguments.content.role == 'system' && hasSystemMessage() ){
+				// If the content is the same, ignore it, else replace it
+				if( arguments.content.content == getSystemMessage() ){
+					return this;
+				}
+				replaceSystemMessage( arguments.content.content );
+				return this;
+			}
+
+			// Add the message
+			variables.messages.push( arguments.content );
+		} else if( IsArray( arguments.content ) ){
+			arguments.content.each( message => this.add( message ) );
+		} else {
+			throw( 'Invalid content type. It must be a string, struct, or array' );
+		}
+
+		return this;
+	}
+
+	/**
+	 * Add an image URL to the message. This creates a message with multipart content
+	 * containing the image reference. If there's already a message with multipart content,
+	 * the image will be added to it. Otherwise, a new message is created.
+	 *
+	 * @path The URL or path to the image
+	 * @detail The detail level for image processing. Can be "auto", "low", or "high". Default is "auto"
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function image( required string path, string detail = "auto" ) {
+		var imageContent = {
+			"type": "image_url",
+			"image_url": {
+				"url": arguments.path
+			}
+		};
+
+		// Add detail if not default
+		if ( arguments.detail != "auto" ) {
+			imageContent.image_url.detail = arguments.detail;
+		}
+
+		// Check if the last message has an array content (multipart message)
+		if ( variables.messages.len() > 0 ) {
+			var lastMessage = variables.messages[ variables.messages.len() ];
+
+			// If content is already an array, append to it
+			if ( isArray( lastMessage.content ) ) {
+				lastMessage.content.append( imageContent );
+				return this;
+			}
+
+			// If content is a string, convert to array with text and image
+			if ( isSimpleValue( lastMessage.content ) ) {
+				lastMessage.content = [
+					{
+						"type": "text",
+						"text": lastMessage.content
+					},
+					imageContent
+				];
+				return this;
+			}
+		}
+
+		// No previous message or can't append, create new message with image
+		variables.messages.push( {
+			"role": static.DEFAULT_ROLE,
+			"content": [ imageContent ]
+		} );
+
+		return this;
+	}
+
+	/**
+	 * Private helper to determine MIME type from file extension
+	 *
+	 * @filePath The file path to analyze
+	 * @mediaType The media type category: "image", "audio", "video", or "document"
+	 *
+	 * @return The MIME type string (e.g., "image/jpeg", "audio/mp3")
+	 */
+	private string function getMimeType( required string filePath, required string mediaType ) {
+		var fileExtension = "";
+		if ( arguments.filePath.contains( "." ) ) {
+			fileExtension = listLast( arguments.filePath, "." ).toLowerCase();
+		}
+
+		// Image MIME types
+		if ( arguments.mediaType == "image" ) {
+			if ( fileExtension == "jpg" ) return "image/jpeg";
+			if ( fileExtension.isEmpty() ) return "image/png";
+			return "image/" & fileExtension;
+		}
+
+		// Audio MIME types
+		if ( arguments.mediaType == "audio" ) {
+			if ( fileExtension == "mp3" ) return "audio/mpeg";
+			if ( fileExtension == "m4a" ) return "audio/mp4";
+			if ( fileExtension == "wav" ) return "audio/wav";
+			if ( fileExtension == "webm" ) return "audio/webm";
+			if ( fileExtension == "mpeg" ) return "audio/mpeg";
+			if ( fileExtension == "mpga" ) return "audio/mpeg";
+			if ( fileExtension.isEmpty() ) return "audio/mpeg";
+			return "audio/" & fileExtension;
+		}
+
+		// Video MIME types
+		if ( arguments.mediaType == "video" ) {
+			if ( fileExtension == "mp4" ) return "video/mp4";
+			if ( fileExtension == "mpeg" ) return "video/mpeg";
+			if ( fileExtension == "mov" ) return "video/quicktime";
+			if ( fileExtension == "avi" ) return "video/x-msvideo";
+			if ( fileExtension == "webm" ) return "video/webm";
+			if ( fileExtension.isEmpty() ) return "video/mp4";
+			return "video/" & fileExtension;
+		}
+
+		// Document MIME types
+		if ( arguments.mediaType == "document" ) {
+			if ( fileExtension == "pdf" ) return "application/pdf";
+			if ( fileExtension == "doc" ) return "application/msword";
+			if ( fileExtension == "docx" ) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+			if ( fileExtension == "xls" ) return "application/vnd.ms-excel";
+			if ( fileExtension == "xlsx" ) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+			if ( fileExtension == "txt" ) return "text/plain";
+			if ( fileExtension.isEmpty() ) return "application/pdf";
+			return "application/" & fileExtension;
+		}
+
+		return "application/octet-stream";
+	}
+
+	/**
+	 * Embed an image from a file path by reading it and converting to base64.
+	 * This creates a data URI that can be used inline in the message.
+	 *
+	 * @filePath The file system path to the image file
+	 * @detail The detail level for image processing. Can be "auto", "low", or "high". Default is "auto"
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function embedImage( required string filePath, string detail = "auto" ) {
+		// Read the file as binary
+		var binaryData = fileReadBinary( arguments.filePath );
+
+		// Convert to base64
+		var base64Data = toBase64( binaryData );
+
+		// Determine MIME type
+		var mimeType = getMimeType( arguments.filePath, "image" );
+
+		// Create data URI
+		var dataUri = "data:#mimeType#;base64,#base64Data#";
+
+		// Use the image() method to add the embedded image
+		return this.image( dataUri, arguments.detail );
+	}
+
+	/**
+	 * Add an audio URL to the message. This creates a message with multipart content
+	 * containing the audio reference.
+	 *
+	 * Supported by: OpenAI (GPT-4o-audio), Gemini
+	 * Formats: mp3, mp4, mpeg, mpga, m4a, wav, webm
+	 *
+	 * @path The URL or path to the audio file
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function audio( required string path ) {
+		var audioContent = {
+			"type": "input_audio",
+			"input_audio": {
+				"data": arguments.path,
+				"format": "mp3"
+			}
+		};
+
+		// Check if the last message has an array content (multipart message)
+		if ( variables.messages.len() > 0 ) {
+			var lastMessage = variables.messages[ variables.messages.len() ];
+
+			// If content is already an array, append to it
+			if ( isArray( lastMessage.content ) ) {
+				lastMessage.content.append( audioContent );
+				return this;
+			}
+
+			// If content is a string, convert to array with text and audio
+			if ( isSimpleValue( lastMessage.content ) ) {
+				lastMessage.content = [
+					{
+						"type": "text",
+						"text": lastMessage.content
+					},
+					audioContent
+				];
+				return this;
+			}
+		}
+
+		// No previous message or can't append, create new message with audio
+		variables.messages.push( {
+			"role": static.DEFAULT_ROLE,
+			"content": [ audioContent ]
+		} );
+
+		return this;
+	}
+
+	/**
+	 * Embed an audio file from a file path by reading it and converting to base64.
+	 * This creates a data URI that can be used inline in the message.
+	 *
+	 * Supported by: OpenAI (GPT-4o-audio), Gemini
+	 * Formats: mp3, mp4, mpeg, mpga, m4a, wav, webm
+	 *
+	 * @filePath The file system path to the audio file
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function embedAudio( required string filePath ) {
+		// Read the file as binary
+		var binaryData = fileReadBinary( arguments.filePath );
+
+		// Convert to base64
+		var base64Data = toBase64( binaryData );
+
+		// Determine MIME type
+		var mimeType = getMimeType( arguments.filePath, "audio" );
+
+		// Create data URI
+		var dataUri = "data:#mimeType#;base64,#base64Data#";
+
+		// Use the audio() method to add the embedded audio
+		return this.audio( dataUri );
+	}
+
+	/**
+	 * Add a video URL to the message. This creates a message with multipart content
+	 * containing the video reference.
+	 *
+	 * Supported by: Gemini (gemini-1.5-pro, gemini-2.0-flash)
+	 * Formats: mp4, mpeg, mov, avi, flv, mpg, webm, wmv
+	 *
+	 * @path The URL or path to the video file
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function video( required string path ) {
+		var videoContent = {
+			"type": "video",
+			"video": {
+				"url": arguments.path
+			}
+		};
+
+		// Check if the last message has an array content (multipart message)
+		if ( variables.messages.len() > 0 ) {
+			var lastMessage = variables.messages[ variables.messages.len() ];
+
+			// If content is already an array, append to it
+			if ( isArray( lastMessage.content ) ) {
+				lastMessage.content.append( videoContent );
+				return this;
+			}
+
+			// If content is a string, convert to array with text and video
+			if ( isSimpleValue( lastMessage.content ) ) {
+				lastMessage.content = [
+					{
+						"type": "text",
+						"text": lastMessage.content
+					},
+					videoContent
+				];
+				return this;
+			}
+		}
+
+		// No previous message or can't append, create new message with video
+		variables.messages.push( {
+			"role": static.DEFAULT_ROLE,
+			"content": [ videoContent ]
+		} );
+
+		return this;
+	}
+
+	/**
+	 * Embed a video file from a file path by reading it and converting to base64.
+	 * This creates a data URI that can be used inline in the message.
+	 *
+	 * Supported by: Gemini (gemini-1.5-pro, gemini-2.0-flash)
+	 * Formats: mp4, mpeg, mov, avi, flv, mpg, webm, wmv
+	 *
+	 * @filePath The file system path to the video file
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function embedVideo( required string filePath ) {
+		// Read the file as binary
+		var binaryData = fileReadBinary( arguments.filePath );
+
+		// Convert to base64
+		var base64Data = toBase64( binaryData );
+
+		// Determine MIME type
+		var mimeType = getMimeType( arguments.filePath, "video" );
+
+		// Create data URI
+		var dataUri = "data:#mimeType#;base64,#base64Data#";
+
+		// Use the video() method to add the embedded video
+		return this.video( dataUri );
+	}
+
+	/**
+	 * Add a document URL to the message. This creates a message with multipart content
+	 * containing the document reference.
+	 *
+	 * Supported by: Claude (Opus, Sonnet), OpenAI (inline or file API)
+	 * Formats: pdf, doc, docx, txt, xls, xlsx
+	 *
+	 * @path The URL or path to the document file
+	 * @name Optional document name for display purposes
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function document( required string path, string name = "" ) {
+		var documentContent = {
+			"type": "document",
+			"source": {
+				"type": "url",
+				"url": arguments.path
+			}
+		};
+
+		// Add name if provided
+		if ( !arguments.name.isEmpty() ) {
+			documentContent.name = arguments.name;
+		}
+
+		// Check if the last message has an array content (multipart message)
+		if ( variables.messages.len() > 0 ) {
+			var lastMessage = variables.messages[ variables.messages.len() ];
+
+			// If content is already an array, append to it
+			if ( isArray( lastMessage.content ) ) {
+				lastMessage.content.append( documentContent );
+				return this;
+			}
+
+			// If content is a string, convert to array with text and document
+			if ( isSimpleValue( lastMessage.content ) ) {
+				lastMessage.content = [
+					{
+						"type": "text",
+						"text": lastMessage.content
+					},
+					documentContent
+				];
+				return this;
+			}
+		}
+
+		// No previous message or can't append, create new message with document
+		variables.messages.push( {
+			"role": static.DEFAULT_ROLE,
+			"content": [ documentContent ]
+		} );
+
+		return this;
+	}
+
+	/**
+	 * Embed a document from a file path by reading it and converting to base64.
+	 * This creates a data URI that can be used inline in the message.
+	 *
+	 * Supported by: Claude (Opus, Sonnet), OpenAI (inline or file API)
+	 * Formats: pdf, doc, docx, txt, xls, xlsx
+	 *
+	 * @filePath The file system path to the document file
+	 * @name Optional document name for display purposes
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function embedDocument( required string filePath, string name = "" ) {
+		// Read the file as binary
+		var binaryData = fileReadBinary( arguments.filePath );
+
+		// Convert to base64
+		var base64Data = toBase64( binaryData );
+
+		// Determine MIME type
+		var mimeType = getMimeType( arguments.filePath, "document" );
+
+		// Create data URI
+		var dataUri = "data:#mimeType#;base64,#base64Data#";
+
+		// Extract filename if name not provided
+		var docName = arguments.name;
+		if ( docName.isEmpty() && arguments.filePath.contains( "/" ) ) {
+			docName = listLast( arguments.filePath, "/" );
+		} else if ( docName.isEmpty() && arguments.filePath.contains( "\\" ) ) {
+			docName = listLast( arguments.filePath, "\\" );
+		}
+
+		// Use the document() method to add the embedded document
+		return this.document( dataUri, docName );
+	}
+
+	/**
+	 * Add a PDF URL to the message. Convenience alias for document().
+	 *
+	 * Supported by: Claude (Opus, Sonnet), OpenAI (inline or file API)
+	 *
+	 * @path The URL or path to the PDF file
+	 * @name Optional PDF name for display purposes
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function pdf( required string path, string name = "" ) {
+		return this.document( arguments.path, arguments.name );
+	}
+
+	/**
+	 * Embed a PDF from a file path. Convenience alias for embedDocument().
+	 *
+	 * Supported by: Claude (Opus, Sonnet), OpenAI (inline or file API)
+	 *
+	 * @filePath The file system path to the PDF file
+	 * @name Optional PDF name for display purposes
+	 *
+	 * @return The chat message instance
+	 */
+	AiMessage function embedPdf( required string filePath, string name = "" ) {
+		return this.embedDocument( arguments.filePath, arguments.name );
+	}
+
+	/**
+	 * Dynamic messages using onMissingMethod.
+	 * The missing method name should be add<role> where <role> is the role of the message.
+	 */
+	any function onMissingMethod( string name, struct args ){
+		// The missing method is the role, the first argument is the message
+		return this.add({
+			"role" = arguments.name,
+			"content" = arguments.args[ 1 ]
+		});
+	}
+
+	/**
+	 * Serialize this AiMessage instance to a JSON string
+	 *
+	 * @return A JSON string representation of the AiMessage
+	 */
+	string function toJson() {
+		return jsonSerialize( variables.messages );
+	}
+
+	/**
+	 * Create a AiMessage instance from a JSON string
+	 *
+	 * @json The JSON string to deserialize
+	 *
+	 * @return A new AiMessage instance populated with the deserialized data
+	 */
+	static AiMessage function fromJson( required string json ) {
+		var messages = jsonDeserialize( arguments.json );
+		var instance = new AiMessage();
+
+		// Restore messages if present
+		if( isArray( messages ) ){
+			instance.add( messages );
+		}
+
+		return instance;
+	}
+
+}

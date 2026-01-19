@@ -1,0 +1,54 @@
+/**
+ * Structured Output - Struct Template Example
+ *
+ * Demonstrates using struct templates for simpler scenarios where you don't
+ * need a full class. Perfect for quick data extraction.
+ */
+
+println( "=== Structured Output with Struct Template ===" )
+println( "" )
+
+// Define the expected structure with default values
+productTemplate = {
+    "productName": "",
+    "price": 0.0,
+    "category": "",
+    "inStock": false,
+    "rating": 0.0,
+    "features": []
+}
+
+// Product description to analyze
+description = "Premium Wireless Headphones - Only $199.99. Audio category. Currently in stock.
+4.5 star rating. Features: Noise cancelling, 30-hour battery, Bluetooth 5.0"
+
+println( "Product description:" )
+println( description )
+println( "" )
+println( "Extracting structured data..." )
+println( "" )
+
+// Extract into struct template
+product = aiChat( "Extract product information: #description#" )
+    .structuredOutput( productTemplate )
+
+// Direct struct access (no getters needed)
+println( "=== Extracted Product ===" )
+println( "Product: #product.productName#" )
+println( "Price: $#product.price#" )
+println( "Category: #product.category#" )
+println( "In Stock: #product.inStock ? 'Yes' : 'No'#" )
+println( "Rating: #product.rating# stars" )
+println( "" )
+println( "Features:" )
+product.features.each( feature => println( "  • #feature#" ) )
+println( "" )
+
+// Use the structured data
+if ( product.inStock && product.rating >= 4.0 ) {
+    println( "✓ Recommended: Great product and available!" )
+} else if ( !product.inStock ) {
+    println( "✗ Not recommended: Currently out of stock" )
+} else {
+    println( "⚠ Consider alternatives: Rating below 4.0 stars" )
+}

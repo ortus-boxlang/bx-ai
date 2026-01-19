@@ -1,0 +1,228 @@
+/**
+ * Code Extractor Transformer Example
+ *
+ * Demonstrates extracting code blocks from AI responses using CodeExtractorTransformer.
+ * Perfect for extracting clean code from markdown-formatted LLM responses.
+ *
+ * Learn more: https://boxlang.ortusbooks.com/bx-modules/bx-ai/transformers
+ */
+
+println( "=== Code Extractor Transformer Example ===" )
+println()
+
+try {
+	// Example 1: Basic code extraction from AI response
+	println( "Example 1: Extract Code from AI Response" )
+	println( "─".repeat( 50 ) )
+
+	// Simulate AI response with code blocks
+	aiResponse = "
+Here's a simple BoxLang function:
+
+```javascript
+function greet( name ) {
+	return 'Hello, ' & name & '!';
+}
+```
+
+And here's how to use it:
+
+```javascript
+result = greet( 'World' );
+println( result );
+```
+
+That's all you need!
+"
+
+	codeExtractor = new src.main.bx.models.transformers.CodeExtractorTransformer()
+
+	extractedCode = codeExtractor.run( aiResponse )
+
+	println( "Original response length: #len( aiResponse )# chars" )
+	println( "Extracted code:" )
+	println( extractedCode )
+	println()
+
+	// Example 2: Extract specific language
+	println( "Example 2: Filter by Language" )
+	println( "─".repeat( 50 ) )
+
+	multiLangResponse = "
+Here's the Python version:
+
+```python
+def greet(name):
+	return f'Hello, {name}!'
+```
+
+And the JavaScript version:
+
+```javascript
+function greet(name) {
+	return `Hello, ${name}!`;
+}
+```
+
+And BoxLang:
+
+```javascript
+function greet( name ) {
+	return 'Hello, ' & name & '!';
+}
+```
+"
+
+	pythonExtractor = new src.main.bx.models.transformers.CodeExtractorTransformer(
+		config: { language: "python" }
+	)
+
+	pythonCode = pythonExtractor.run( multiLangResponse )
+
+	println( "Extracted Python code only:" )
+	println( pythonCode )
+	println()
+
+	// Example 3: Extract multiple code blocks
+	println( "Example 3: Extract All Code Blocks" )
+	println( "─".repeat( 50 ) )
+
+	multiExtractor = new src.main.bx.models.transformers.CodeExtractorTransformer(
+		config: { multiple: true }
+	)
+
+	allCodeBlocks = multiExtractor.run( multiLangResponse )
+
+	println( "Extracted #allCodeBlocks.len()# code blocks:" )
+	allCodeBlocks.each( ( block, idx ) => {
+		println( "  Block ##idx#:" )
+		println( "  " & left( block, 40 ) & "..." )
+		println()
+	})
+
+	// Example 4: Use in AI pipeline
+	println( "Example 4: Pipeline Integration" )
+	println( "─".repeat( 50 ) )
+
+	// Create pipeline: AI generates code → extract clean code
+	pipeline = aiModel( "openai" )
+		.to( aiTransform( input => {
+			extractor = new src.main.bx.models.transformers.CodeExtractorTransformer()
+			return extractor.run( input )
+		}))
+
+	prompt = aiMessage()
+		.system( "You are a BoxLang coding assistant. Always wrap code in ```javascript blocks." )
+		.user( "Write a function to calculate factorial" )
+
+	println( "Prompt: Write a factorial function" )
+	println( "Pipeline: AI → Code Extractor" )
+	println()
+	println( "Extracted clean code:" )
+	cleanCode = pipeline.run( prompt )
+	println( cleanCode )
+	println()
+
+	// Example 5: Strip comments from extracted code
+	println( "Example 5: Strip Comments" )
+	println( "─".repeat( 50 ) )
+
+	commentedCode = "
+```javascript
+// Calculate factorial recursively
+function factorial( n ) {
+	// Base case
+	if ( n <= 1 ) return 1;
+
+	// Recursive case
+	return n * factorial( n - 1 );
+}
+```
+"
+
+	stripExtractor = new src.main.bx.models.transformers.CodeExtractorTransformer(
+		config: { stripComments: true }
+	)
+
+	strippedCode = stripExtractor.run( commentedCode )
+
+	println( "With comments:" )
+	println( commentedCode )
+	println( "Comments stripped:" )
+	println( strippedCode )
+	println()
+
+	// Example 6: Return metadata
+	println( "Example 6: Extract with Metadata" )
+	println( "─".repeat( 50 ) )
+
+	metaExtractor = new src.main.bx.models.transformers.CodeExtractorTransformer(
+		config: { returnMetadata: true }
+	)
+
+	codeWithMeta = metaExtractor.run( multiLangResponse )
+
+	println( "Extracted code with metadata:" )
+	println( "Language: #codeWithMeta.language ?: 'not specified'#" )
+	println( "Code length: #len( codeWithMeta.code )# characters" )
+	println( "Code preview: #left( codeWithMeta.code, 50 )#..." )
+	println()
+
+	// Example 7: Handle no code blocks gracefully
+	println( "Example 7: Handle Plain Text Responses" )
+	println( "─".repeat( 50 ) )
+
+	plainResponse = "This is just plain text without any code blocks."
+
+	safeExtractor = new src.main.bx.models.transformers.CodeExtractorTransformer()
+
+	try {
+		result = safeExtractor.run( plainResponse )
+		if ( len( trim( result ) ) == 0 ) {
+			println( "No code blocks found (empty result)" )
+		} else {
+			println( "Result: #result#" )
+		}
+	} catch ( any e ) {
+		println( "Handled gracefully: #e.message#" )
+	}
+	println()
+
+	// Example 8: Real-world use case - Code generation
+	println( "Example 8: Code Generation Workflow" )
+	println( "─".repeat( 50 ) )
+
+	codeGenPipeline = aiModel( "openai" )
+		.to( aiTransform( input => {
+			extractor = new src.main.bx.models.transformers.CodeExtractorTransformer(
+				config: { stripComments: true, trim: true }
+			)
+			return extractor.run( input )
+		}))
+
+	requirements = aiMessage()
+		.system( "Generate production-ready BoxLang code with ```javascript blocks" )
+		.user( "Create a function to validate email addresses using regex" )
+
+	println( "Generating email validator..." )
+	generatedCode = codeGenPipeline.run( requirements )
+	println( "Generated code:" )
+	println( generatedCode )
+
+} catch ( any e ) {
+	println( "Error: #e.message#" )
+	println( e.detail ?: "" )
+}
+
+println()
+println( "✅ Code Extractor Transformer example complete!" )
+println()
+println( "Key Takeaways:" )
+println( "  • CodeExtractorTransformer extracts code from markdown" )
+println( "  • Use language filter for specific languages" )
+println( "  • multiple: true returns array of code blocks" )
+println( "  • stripComments removes inline comments" )
+println( "  • returnMetadata includes language info" )
+println( "  • Perfect for AI code generation pipelines" )
+println( "  • Handles plain text gracefully (no errors)" )
+println( "  • Use in post-processing after LLM responses" )

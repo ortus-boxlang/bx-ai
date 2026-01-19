@@ -2,11 +2,11 @@
 plugins {
     id 'java'
     // For source code formatting
-    id "com.diffplug.spotless" version "7.0.4"
+    id "com.diffplug.spotless" version "8.1.0"
 	// https://github.com/harbby/gradle-serviceloader
     id "com.github.harbby.gradle.serviceloader" version "1.1.9"
 	// Shadow
-	id "com.gradleup.shadow" version "9.0.0-beta16"
+	id "com.gradleup.shadow" version "9.3.0"
     // Download task
     id "de.undercouch.download" version "5.6.0"
 }
@@ -43,10 +43,18 @@ dependencies {
 		testImplementation files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
 	}
 
+	// PDF Extraction
+	implementation 'org.apache.pdfbox:pdfbox:3.0.6'
+
+	// JSoup for HTML parsing and web scraping
+	implementation 'org.jsoup:jsoup:1.22.1'
+
+	// RSS Reader for feed parsing
+	implementation 'com.apptasticsoftware:rssreader:3.12.0'
 
 	// Testing Frameworks
 	testImplementation 'io.github.cdimascio:dotenv-java:3.2.0'
-	testImplementation "org.junit.jupiter:junit-jupiter:5.+"
+	testImplementation "org.junit.jupiter:junit-jupiter:6.+"
 	testImplementation "org.mockito:mockito-core:5.+"
 	testImplementation "com.google.truth:truth:1.+"
 	// Explicitly declare the JUnit platform launcher (to avoid deprecation)
@@ -60,6 +68,17 @@ java {
     }
     // Produces a javadocs jar
 	withJavadocJar()
+}
+
+// Exclude main resources from IDE classpath to avoid class loading conflicts
+// Resources are still included in the JAR/build outputs
+sourceSets {
+	main {
+		resources {
+			// Empty the resources to exclude from IDE classpath
+			srcDirs = []
+		}
+	}
 }
 
 compileJava {
@@ -133,8 +152,20 @@ shadowJar {
 	archiveClassifier = ''
     mergeServiceFiles()
     destinationDirectory = file( "build/libs" )
+
+	// Minimize the JAR by only including classes that are actually used
+	// This significantly reduces the size by excluding unused PDFBox classes
+	minimize {
+		// Keep JSoup classes (used by WebCrawlerLoader)
+		exclude( dependency( 'org.jsoup:.*' ) )
+		// Keep RSS Reader classes (used by FeedLoader)
+		exclude( dependency( 'com.apptasticsoftware:.*' ) )
+		// Keep PDFBox classes (used by PDFLoader.bx - BoxLang files aren't analyzed by bytecode scanner)
+		exclude( dependency( 'org.apache.pdfbox:.*' ) )
+		// Keep FontBox classes (required by PDFBox for text extraction)
+		exclude( dependency( 'org.apache.fontbox:.*' ) )
+	}
 }
-build.finalizedBy( shadowJar )
 
 /**
  * Source Code Formatting
@@ -156,12 +187,15 @@ spotless {
  * - Copies the src/main/bx/** to build/module/ folder.
  */
 task createModuleStructure(type: Copy) {
+	mustRunAfter shadowJar, jar
     from( 'build/libs' ) {
 		include "${project.name}-${version}.jar"
         into 'libs'
     }
     from( 'src/main/bx' ) {
 		include '**/*.bx'
+		include '**/*.bxm'
+		include '**/*.bxs'
 		// Token Replacements Go Here
 		filter{ line -> line.replaceAll( '@build.version@', project.version ) }
 		if( project.branch == "development" ){
@@ -181,6 +215,10 @@ task createModuleStructure(type: Copy) {
 		} else {
 			filter{ line -> line.replaceAll( '@build.number@', project.buildID ) }
 		}
+    }
+    from( 'docs' ) {
+        include '**/*.md'
+        into 'docs'
     }
 
     destinationDir = file( 'build/module' )
@@ -202,12 +240,15 @@ test {
     useJUnitPlatform()
     testLogging {
 		showStandardStreams = true
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+        showExceptions true
+        showCauses true
 	}
 	classpath = classpath.filter { !it.path.contains( "build${File.separator}resources" ) }
 }
 
 /**
- * TEMPORARY until we publish to maven
  * Task to download the latest jar from https://ortus-temp.s3.amazonaws.com/jericho/libs/boxlang-1.0.0.jar
  */
 task downloadBoxLang( type: Download ) {
@@ -222,6 +263,57 @@ task downloadBoxLang( type: Download ) {
     overwrite true
     onlyIfModified false
 }
+
+/**
+ * Task to download and extract the needed boxlang modules for testing.
+ */
+task downloadBoxLangModules( type: Download ) {
+	// Create the destination directory
+	doFirst {
+		def modulesDir = file( "src/test/resources/modules" )
+		// Delete the directory recursively first if it exists
+		if ( modulesDir.exists() ) {
+			modulesDir.deleteDir()
+		}
+		// Recreate it
+		modulesDir.mkdirs()
+	}
+    // Download the test dependencies
+    src( [
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-derby/${derbyModuleVersion}/bx-derby-${derbyModuleVersion}.zip",
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-postgresql/${postgresqlModuleVersion}/bx-postgresql-${postgresqlModuleVersion}.zip",
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-sqlite/${sqliteModuleVersion}/bx-sqlite-${sqliteModuleVersion}.zip",
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-mysql/${mysqlModuleVersion}/bx-mysql-${mysqlModuleVersion}.zip",
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-web-support/${webSupportVersion}/bx-web-support-${webSupportVersion}.zip"
+	] )
+    // Specify the destination for the downloaded file
+    dest "src/test/resources/modules/"
+    overwrite true
+    onlyIfModified false
+}
+
+task extractBoxLangModules( type: Copy ) {
+	dependsOn downloadBoxLangModules
+	from( zipTree( "src/test/resources/modules/bx-derby-${derbyModuleVersion}.zip" ) ) {
+		into "bx-derby"
+	}
+	from( zipTree( "src/test/resources/modules/bx-postgresql-${postgresqlModuleVersion}.zip" ) ) {
+		into "bx-postgresql"
+	}
+	from( zipTree( "src/test/resources/modules/bx-sqlite-${sqliteModuleVersion}.zip" ) ) {
+		into "bx-sqlite"
+	}
+	from( zipTree( "src/test/resources/modules/bx-mysql-${mysqlModuleVersion}.zip" ) ) {
+		into "bx-mysql"
+	}
+	from( zipTree( "src/test/resources/modules/bx-web-support-${webSupportVersion}.zip" ) ) {
+		into "bx-web-support"
+	}
+	destinationDir = file( "src/test/resources/modules" )
+}
+
+// Make sure test depends on Derby module extraction
+downloadBoxLang.finalizedBy( extractBoxLangModules )
 
 /**
  * Project Wide Helper function

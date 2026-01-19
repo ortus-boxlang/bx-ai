@@ -1,0 +1,117 @@
+/**
+ * Simple Pipeline Example
+ *
+ * Demonstrates basic pipeline concepts: creating reusable templates,
+ * chaining transformations, and running with different inputs.
+ */
+
+println( "=== Simple AI Pipeline ===" )
+println( "" )
+
+// Example 1: Basic pipeline with message template
+println( "1. Basic Message Pipeline" )
+println( "" )
+
+greeter = aiMessage()
+    .system( "You are a friendly greeter" )
+    .user( "Greet ${name} in ${style} style" )
+    .toDefaultModel()
+    .transform( r => r.content )
+
+// Run with different inputs
+println( "Formal greeting:" )
+result1 = greeter.run({ name: "Dr. Smith", style: "formal" })
+println( result1 )
+println( "" )
+
+println( "Casual greeting:" )
+result2 = greeter.run({ name: "Bob", style: "casual" })
+println( result2 )
+println( "" )
+
+println( "Pirate greeting:" )
+result3 = greeter.run({ name: "Captain Jack", style: "pirate" })
+println( result3 )
+println( "" )
+
+// Example 2: Pipeline with multiple transformations
+println( "2. Multi-Transform Pipeline" )
+println( "" )
+
+analyzer = aiMessage()
+    .user( "Analyze this text: ${text}" )
+    .toDefaultModel()
+    .transform( r => r.content )                    // Extract content
+    .transform( content => content.uCase() )         // Uppercase
+    .transform( content => "ANALYSIS: " & content )  // Add prefix
+
+result = analyzer.run({ text: "This is a great product!" })
+println( result )
+println( "" )
+
+// Example 3: Data processing pipeline
+println( "3. Data Processing Pipeline" )
+println( "" )
+
+summarizer = aiMessage()
+    .system( "You are a concise summarizer. Respond in 2 sentences maximum." )
+    .user( "Summarize: ${article}" )
+    .toDefaultModel()
+    .transform( r => r.content )
+    .transform( summary => {
+        return {
+            summary: summary,
+            wordCount: summary.split( " " ).len(),
+            charCount: summary.len(),
+            timestamp: now()
+        }
+    } )
+
+article = "Artificial intelligence is transforming industries worldwide.
+From healthcare to finance, AI systems are improving efficiency and decision-making.
+However, ethical considerations and responsible development remain crucial challenges."
+
+result = summarizer.run({ article: article })
+println( "Summary: #result.summary#" )
+println( "Words: #result.wordCount#" )
+println( "Characters: #result.charCount#" )
+println( "Generated: #dateFormat(result.timestamp, 'yyyy-mm-dd')# #timeFormat(result.timestamp, 'HH:mm:ss')#" )
+println( "" )
+
+// Example 4: Conditional transformation pipeline
+println( "4. Conditional Processing Pipeline" )
+println( "" )
+
+processor = aiMessage()
+    .user( "Rate the sentiment of: ${text}" )
+    .toDefaultModel()
+    .transform( r => r.content )
+    .transform( sentiment => {
+        sentiment = lCase( sentiment )
+        if ( sentiment.contains( "positive" ) ) {
+            return { sentiment: "positive", emoji: "😊", score: 5 }
+        } else if ( sentiment.contains( "negative" ) ) {
+            return { sentiment: "negative", emoji: "😞", score: 1 }
+        } else {
+            return { sentiment: "neutral", emoji: "😐", score: 3 }
+        }
+    } )
+
+texts = [
+    "I absolutely love this!",
+    "This is terrible and disappointing.",
+    "It's okay, nothing special."
+]
+
+texts.each( ( text, index ) => {
+    result = processor.run({ text: text })
+    println( "Text ##index#: '#text#'" )
+    println( "Sentiment: #result.sentiment# #result.emoji# (Score: #result.score#/5)" )
+    println( "" )
+} )
+
+println( "=== Pipeline Benefits ===" )
+println( "✓ Create once, use many times" )
+println( "✓ Easy to test with different inputs" )
+println( "✓ Chain transformations" )
+println( "✓ Separation of concerns" )

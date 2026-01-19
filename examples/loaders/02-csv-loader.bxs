@@ -1,0 +1,147 @@
+/**
+ * CSV Loader Example
+ *
+ * Demonstrates loading CSV files into Document objects.
+ * Each row becomes a separate document with column data as metadata.
+ *
+ * Learn more: https://boxlang.ortusbooks.com/bx-modules/bx-ai/loaders
+ */
+
+println( "=== CSV Loader Example ===" )
+println()
+
+// Create a sample CSV file
+csvFile = getTempDirectory() & "products-" & createUUID() & ".csv"
+fileWrite( csvFile, "
+id,name,category,price,stock
+1,Laptop Pro,Electronics,1299.99,45
+2,Office Chair,Furniture,249.99,120
+3,Desk Lamp,Furniture,39.99,200
+4,Wireless Mouse,Electronics,29.99,350
+5,Notebook Set,Office Supplies,12.99,500
+" )
+
+try {
+	// Example 1: Basic CSV loading
+	println( "Example 1: Basic CSV Loading" )
+	println( "─".repeat( 50 ) )
+
+	csvLoader = new src.main.bx.models.loaders.CSVLoader(
+		source: csvFile
+	)
+
+	documents = csvLoader.load()
+
+	println( "Loaded #documents.len()# documents (rows)" )
+	println( "First document content: #documents[ 1 ].content#" )
+	println( "Metadata keys: #documents[ 1 ].metadata.keyList()#" )
+	println()
+
+	// Example 2: Access row data
+	println( "Example 2: Access Row Data" )
+	println( "─".repeat( 50 ) )
+
+	documents.each( ( doc, idx ) => {
+		if ( idx <= 3 ) {  // Show first 3
+			println( "Product ##idx#:" )
+			println( "  Name: #doc.metadata.name#" )
+			println( "  Category: #doc.metadata.category#" )
+			println( "  Price: $#doc.metadata.price#" )
+		}
+	})
+	println()
+
+	// Example 3: Filter and query with AI
+	println( "Example 3: AI Query on CSV Data" )
+	println( "─".repeat( 50 ) )
+
+	// Convert documents to context for AI
+	products = documents.map( doc => doc.metadata )
+
+	message = aiMessage()
+		.system( "You are a product assistant. Answer questions about products using this data: ${context}" )
+		.user( "What electronics products are available under $50?" )
+		.setContext( jsonSerialize({ products: products }) )
+
+	println( "Query: What electronics products are available under $50?" )
+	println( "Answer: " & aiChat( message ) )
+	println()
+
+	// Example 4: Custom delimiter
+	println( "Example 4: Custom Delimiter (TSV)" )
+	println( "─".repeat( 50 ) )
+
+	tsvFile = getTempDirectory() & "data-" & createUUID() & ".tsv"
+	fileWrite( tsvFile, "
+name	age	city
+Alice	28	New York
+Bob	35	San Francisco
+Charlie	42	Seattle
+" )
+
+	tsvLoader = new src.main.bx.models.loaders.CSVLoader(
+		source: tsvFile,
+		config: {
+			delimiter: char( 9 )  // Tab character
+		}
+	)
+
+	tsvDocs = tsvLoader.load()
+
+	println( "Loaded #tsvDocs.len()# records from TSV" )
+	tsvDocs.each( ( doc, idx ) => {
+		println( "  #doc.metadata.name# (age #doc.metadata.age#) from #doc.metadata.city#" )
+	})
+
+	fileDelete( tsvFile )
+	println()
+
+	// Example 5: CSV to embeddings for semantic search
+	println( "Example 5: CSV to Vector Embeddings" )
+	println( "─".repeat( 50 ) )
+
+	// Create text representation of each product
+	productTexts = documents.map( doc => {
+		meta = doc.metadata
+		return "#meta.name# in #meta.category# category, priced at $#meta.price#, #meta.stock# in stock"
+	})
+
+	println( "Created #productTexts.len()# product descriptions" )
+	println( "Example: #productTexts[ 1 ]#" )
+	println()
+	println( "💡 These can be converted to embeddings for semantic product search:" )
+	println( "   embeddings = aiEmbeddings( text: productTexts )" )
+	println()
+
+	// Example 6: Aggregate data analysis
+	println( "Example 6: Data Analysis with AI" )
+	println( "─".repeat( 50 ) )
+
+	analysisPrompt = aiMessage()
+		.system( "Analyze this product inventory data and provide insights: ${context}" )
+		.user( "What is the average price by category? Which category has the most stock?" )
+		.setContext( jsonSerialize({ inventory: products }) )
+
+	println( "Analysis request: Average price by category and stock levels" )
+	println( aiChat( analysisPrompt ) )
+
+} catch ( any e ) {
+	println( "Error: #e.message#" )
+	println( e.detail ?: "" )
+} finally {
+	// Cleanup
+	if ( fileExists( csvFile ) ) {
+		fileDelete( csvFile )
+	}
+}
+
+println()
+println( "✅ CSV Loader example complete!" )
+println()
+println( "Key Takeaways:" )
+println( "  • CSVLoader converts each row into a Document" )
+println( "  • Column values become metadata for easy access" )
+println( "  • Perfect for product catalogs, user data, reports" )
+println( "  • Supports custom delimiters (TSV, pipe-delimited, etc.)" )
+println( "  • Row data can be used in AI context for queries" )
+println( "  • Combine with embeddings for semantic search" )

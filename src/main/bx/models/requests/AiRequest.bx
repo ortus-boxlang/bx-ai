@@ -1,0 +1,170 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * This models a chat request that will be sent to a provider
+ */
+import bxModules.bxai.models.util.SchemaBuilder;
+
+class extends="AiBaseRequest"{
+
+	/**
+	 * The chat message holder
+	 */
+	property name="messages" type="array" default=[];
+
+	/**
+	 * The original chat message object, in case we need to reference it
+	 */
+	property name="aiMessage" type="AiMessage";
+
+	/**
+	 * Whether to stream the response or not
+	 */
+	property name="stream" type="boolean" default=false;
+
+	/**
+	 * Structured output schema for the response (JSON schema format)
+	 */
+	property name="structuredOutput" type="struct" default={};
+
+	/**
+	 * The original returnFormat value (if it was a class/struct for structured output)
+	 */
+	property name="structuredOutputDefinition" type="any" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @aiMessage The messages to use for the chat request, or empty for none
+	 * @params A set of request params to pass to the provider, or empty for none
+	 * @options A set of request options to pass to the provider, or empty for none. Supports `context` for security/RAG injection via ${context} placeholder.
+	 */
+	function init(
+		aiMessage aiMessage = new bxModules.bxai.models.AiMessage(),
+		struct params = {},
+		struct options = {}
+	){
+		variables.aiMessage = arguments.aiMessage;
+		variables.params = params;
+		variables.provider = options.provider ?: "";
+		variables.apiKey = options.apiKey ?: "";
+		variables.logRequest = options.logRequest ?: false;
+		variables.logRequestToConsole = options.logRequestToConsole ?: false;
+		variables.logResponse = options.logResponse ?: false;
+		variables.logResponseToConsole = options.logResponseToConsole ?: false;
+		variables.model = options.params?.model ?: "";
+		variables.timeout = options.timeout ?: 30;
+		variables.stream = options.stream ?: false;
+		variables.maxInteractions = options.maxInteractions ?: 0;
+
+		// If context is provided in options, merge it into the message object
+		if( options.keyExists( "context" ) && isStruct( options.context ) ){
+			variables.aiMessage.mergeContext( options.context );
+		}
+
+		// Render the messages with bindings applied (including ${context} if present)
+		variables.messages = variables.aiMessage.render();
+
+		// Check for explicit schema first (from schema() method)
+		if( options.keyExists( "schema" ) ) {
+			variables.structuredOutputDefinition = options.schema;
+			variables.structuredOutput = SchemaBuilder::fromJSONSchema( options.schema );
+			variables.returnFormat = "structuredOutput";
+		} else {
+			// Default handling of returnFormat if no schema provided
+			var returnFormat = options.returnFormat ?: "raw";
+			// Check if returnFormat is a complex value (class instance, struct, or array)
+			if( !isSimpleValue( returnFormat ) ) {
+				setStructuredOutput( returnFormat );
+			} else {
+				// Simple value - use as-is
+				variables.returnFormat = returnFormat;
+			}
+		}
+		return this;
+	}
+
+	/**
+	 * Get a defined tool if any from the incoming params
+	 *
+	 * @name The name of the tool to get
+	 *
+	 * @return An attempt retrieval of the tools
+	 */
+	Attempt function getTool( required string name ){
+		if( !variables.params.keyExists( "tools" ) ){
+			return attempt();
+		}
+
+		var toolIndex = variables.params.tools.find( t => t.getName() == name );
+		if( toolIndex == 0 ){
+			return attempt();
+		}
+
+		return attempt( variables.params.tools[ toolIndex ] );
+	}
+
+	/**
+	 * Verify if you have messages
+	 */
+	boolean function hasMessages(){
+		return !variables.messages.isEmpty();
+	}
+
+	/**
+	 * Verify if you have a model defined
+	 */
+	boolean function hasModel(){
+		return !variables.model.isEmpty()
+	}
+
+	/**
+	 * Verify if you have an incoming API Key
+	 */
+	boolean function hasApiKey(){
+		return !variables.apiKey.isEmpty()
+	}
+
+	/**
+	 * Check if structured output is enabled
+	 *
+	 * @return True if structured output is configured
+	 */
+	boolean function isStructuredOutput(){
+		return !variables.structuredOutput.isEmpty();
+	}
+
+	/**
+	 * Set structured output schema for the response
+	 *
+	 * @schema A structured output definition (class instance, struct, or array)
+	 *
+	 * @return The AiRequest for chaining
+	 */
+	AiRequest function setStructuredOutput( any schema ){
+		variables.returnFormat = "structuredOutput";
+		variables.structuredOutputDefinition = schema;
+
+		// Check if this is already a schema (from merge())
+		if( !isObject( schema ) && isStruct( schema ) && schema.keyExists( "_isSchema" ) && schema._isSchema ) {
+			// Already a schema - use as-is
+			variables.structuredOutput = schema;
+		} else {
+			// Convert to schema
+			variables.structuredOutput = SchemaBuilder::fromObject( schema );
+		}
+		return this;
+	}
+
+}

@@ -1,0 +1,170 @@
+/**
+ * Web Crawler Loader Example
+ *
+ * Demonstrates crawling websites to extract content from multiple pages.
+ * Perfect for building documentation search, competitive analysis, and content aggregation.
+ *
+ * Learn more: https://boxlang.ortusbooks.com/bx-modules/bx-ai/loaders
+ */
+
+println( "=== Web Crawler Loader Example ===" )
+println()
+
+try {
+	// Example 1: Crawl single page with links
+	println( "Example 1: Basic Web Crawling" )
+	println( "─".repeat( 50 ) )
+
+	crawler = new src.main.bx.models.loaders.WebCrawlerLoader(
+		source: "https://en.wikipedia.org/wiki/BoxLang",
+		config: {
+			maxPages: 1
+		}
+	)
+
+	documents = crawler.load()
+
+	println( "Crawled #documents.len()# page(s)" )
+	println( "First page length: #len( documents[ 1 ].content )# characters" )
+	println( "Preview: #left( documents[ 1 ].content, 80 )#..." )
+	println()
+
+	// Example 2: Crawl multiple pages (limited)
+	println( "Example 2: Multi-Page Crawling (Max 3 Pages)" )
+	println( "─".repeat( 50 ) )
+
+	multiCrawler = new src.main.bx.models.loaders.WebCrawlerLoader(
+		source: "https://example.com",
+		config: {
+			maxPages: 3,
+			followLinks: true
+		}
+	)
+
+	multiDocs = multiCrawler.load()
+
+	println( "Crawled #multiDocs.len()# page(s)" )
+	multiDocs.each( ( doc, idx ) => {
+		println( "  Page ##idx#: #doc.metadata.url ?: 'unknown'#" )
+	})
+	println()
+
+	// Example 3: Domain-restricted crawling
+	println( "Example 3: Stay Within Domain" )
+	println( "─".repeat( 50 ) )
+
+	domainCrawler = new src.main.bx.models.loaders.WebCrawlerLoader(
+		source: "https://example.com",
+		config: {
+			maxPages: 5,
+			sameDomain: true  // Only crawl example.com
+		}
+	)
+
+	domainDocs = domainCrawler.load()
+
+	println( "Crawled #domainDocs.len()# page(s) within domain" )
+	println( "All pages are from: example.com" )
+	println()
+
+	// Example 4: Extract specific content
+	println( "Example 4: Extract Main Content Only" )
+	println( "─".repeat( 50 ) )
+
+	contentCrawler = new src.main.bx.models.loaders.WebCrawlerLoader(
+		source: "https://example.com",
+		config: {
+			maxPages: 2,
+			excludeSelectors: [ "nav", "footer", "script", "style" ]
+		}
+	)
+
+	contentDocs = contentCrawler.load()
+
+	println( "Crawled and cleaned #contentDocs.len()# page(s)" )
+	println( "Excluded: navigation, footer, scripts, styles" )
+	println( "Content preview: #left( contentDocs[ 1 ].content, 60 )#..." )
+	println()
+
+	// Example 5: Build documentation search
+	println( "Example 5: Index Documentation Site" )
+	println( "─".repeat( 50 ) )
+
+	docsCrawler = new src.main.bx.models.loaders.WebCrawlerLoader(
+		source: "https://docs.example.com",
+		config: {
+			maxPages: 10,
+			sameDomain: true,
+			urlPattern: "^https://docs\\.example\\.com/.*"
+		}
+	)
+
+	docPages = docsCrawler.load()
+
+	println( "Indexed #docPages.len()# documentation pages" )
+	println()
+	println( "💡 Next steps for searchable docs:" )
+	println( "   1. Generate embeddings for each page" )
+	println( "   2. Store in vector database" )
+	println( "   3. Enable semantic search" )
+	println()
+
+	// Example 6: AI-powered content analysis
+	println( "Example 6: Analyze Crawled Content with AI" )
+	println( "─".repeat( 50 ) )
+
+	// Simulate crawling results
+	pages = [
+		{ url: "https://example.com/page1", content: "Welcome to our company. We provide innovative software solutions." },
+		{ url: "https://example.com/page2", content: "Our products include AI tools, automation systems, and analytics platforms." },
+		{ url: "https://example.com/page3", content: "Contact us at support@example.com for more information." }
+	]
+
+	// Combine content
+	combinedContent = pages.map( p => "URL: #p.url#" & char( 10 ) & p.content ).toList( char( 10 ) & "---" & char( 10 ) )
+
+	message = aiMessage()
+		.system( "Analyze these web pages and identify the company's main offerings" )
+		.user( combinedContent )
+
+	println( "Crawled #pages.len()# pages" )
+	println( "AI Analysis: " & aiChat( message ) )
+	println()
+
+	// Example 7: Rate limiting and politeness
+	println( "Example 7: Respectful Crawling with Rate Limits" )
+	println( "─".repeat( 50 ) )
+
+	politeCrawler = new src.main.bx.models.loaders.WebCrawlerLoader(
+		source: "https://example.com",
+		config: {
+			maxPages: 5,
+			delay: 1000,  // 1 second between requests
+			userAgent: "BoxLang-AI-Bot/1.0 (Educational)"
+		}
+	)
+
+	println( "Configured crawler with:" )
+	println( "  • 1 second delay between requests" )
+	println( "  • Custom user agent identifying our bot" )
+	println( "  • Max 5 pages to avoid overloading server" )
+	println()
+	println( "✅ Always respect robots.txt and rate limits!" )
+
+} catch ( any e ) {
+	println( "Error: #e.message#" )
+	println( e.detail ?: "" )
+}
+
+println()
+println( "✅ Web Crawler Loader example complete!" )
+println()
+println( "Key Takeaways:" )
+println( "  • WebCrawlerLoader crawls multiple pages" )
+println( "  • Use maxPages to limit scope" )
+println( "  • sameDomain restricts to single domain" )
+println( "  • excludeSelectors removes navigation/footer" )
+println( "  • Perfect for documentation indexing" )
+println( "  • Combine with embeddings for search" )
+println( "  • Always respect rate limits and robots.txt" )
+println( "  • Use delay to be polite to servers" )

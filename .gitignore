@@ -1,6 +1,7 @@
 .gradle
 build/**
 !gradle/wrapper/gradle-wrapper.jar
+boxlang_modules/**
 
 ### IntelliJ IDEA ###
 .idea/
@@ -13,5 +14,13 @@ build/**
 /libs/
 src/test/resources/libs/*
 !src/test/resources/libs/.gitkeep
+src/test/resources/modules/**
 testbox/**
 tests/results
+derby.log
+
+### Runtime Web Content ###
+www/boxlang_modules/
+
+### Ollama Data ###
+.ollama/

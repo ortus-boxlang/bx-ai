@@ -1,0 +1,414 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MCP Server Statistics Tracker
+ *
+ * Tracks performance and usage metrics for MCP server instances.
+ * All stats are in-memory aggregates for real-time monitoring.
+ */
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
+class {
+
+	/**
+	 * Server creation timestamp
+	 */
+	property name="createdAt" type="date";
+
+	/**
+	 * Stats tracking enabled flag
+	 */
+	property name="enabled" type="boolean" default="true";
+
+	/**
+	 * Request statistics
+	 */
+	property name="requests" type="struct";
+
+	/**
+	 * Tool invocation statistics
+	 */
+	property name="tools" type="struct";
+
+	/**
+	 * Resource access statistics
+	 */
+	property name="resources" type="struct";
+
+	/**
+	 * Prompt generation statistics
+	 */
+	property name="prompts" type="struct";
+
+	/**
+	 * Error tracking
+	 */
+	property name="errors" type="struct";
+
+	/**
+	 * Stats Id
+	 * Used for logging and identification
+	 */
+	property name="statsId" type="string";
+
+	/**
+	 * Constructor
+	 *
+	 * @enabled Whether stats tracking is enabled
+	 */
+	function init( boolean enabled = true ) {
+		variables.enabled = arguments.enabled
+		variables.createdAt = now()
+		variables.statsId = createUUID()
+		reset()
+		return this
+	}
+
+	/**
+	 * Reset all statistics to initial state
+	 */
+	MCPServerStats function reset() {
+		variables.requests = {
+			"total": new AtomicInteger( 0 ),
+			"successful": new AtomicInteger( 0 ),
+			"failed": new AtomicInteger( 0 ),
+			"byMethod": {},
+			"responseTimes": [],
+			"avgResponseTime": 0,
+			"minResponseTime": 0,
+			"maxResponseTime": 0,
+			"lastRequestAt": new AtomicReference( "" )
+		}
+
+		variables.tools = {
+			"totalInvocations": new AtomicInteger( 0 ),
+			"byTool": {},
+			"executionTimes": [],
+			"avgExecutionTime": 0,
+			"minExecutionTime": 0,
+			"maxExecutionTime": 0
+		}
+
+		variables.resources = {
+			"totalReads": new AtomicInteger( 0 ),
+			"byUri": {}
+		}
+
+		variables.prompts = {
+			"totalGenerations": new AtomicInteger( 0 ),
+			"byName": {}
+		}
+
+		variables.errors = {
+			"total": new AtomicInteger( 0 ),
+			"byCode": {},
+			"lastError": {}
+		}
+
+		return this
+	}
+
+	/**
+	 * Record a request
+	 *
+	 * @method The JSON-RPC method name
+	 * @responseTime Response time in milliseconds
+	 * @success Whether the request was successful
+	 * @errorCode Error code if request failed
+	 * @errorMessage Error message if request failed
+	 */
+	MCPServerStats function recordRequest(
+		required string method,
+		required numeric responseTime,
+		boolean success = true,
+		numeric errorCode = 0,
+		string errorMessage = ""
+	) {
+		if ( !variables.enabled ) return this
+
+		variables.requests.total.incrementAndGet()
+		variables.requests.lastRequestAt.set( now() )
+
+		if ( arguments.success ) {
+			variables.requests.successful.incrementAndGet()
+		} else {
+			variables.requests.failed.incrementAndGet()
+			recordError( arguments.errorCode, arguments.errorMessage )
+		}
+
+		// Track by method
+		if ( !variables.requests.byMethod.keyExists( arguments.method ) ) {
+			variables.requests.byMethod[ arguments.method ] = 0
+		}
+		variables.requests.byMethod[ arguments.method ]++
+
+		// Track response times
+		variables.requests.responseTimes.append( arguments.responseTime )
+		updateResponseTimeStats( arguments.responseTime )
+
+		return this
+	}
+
+	/**
+	 * Record a tool invocation
+	 *
+	 * @toolName The name of the tool
+	 * @executionTime Execution time in milliseconds
+	 */
+	MCPServerStats	function recordToolInvocation(
+		required string toolName,
+		required numeric executionTime
+	) {
+		if ( !variables.enabled ) return this
+
+		variables.tools.totalInvocations.incrementAndGet()
+
+		// Track by tool
+		if ( !variables.tools.byTool.keyExists( arguments.toolName ) ) {
+			variables.tools.byTool[ arguments.toolName ] = {
+				"count": 0,
+				"totalTime": 0,
+				"avgTime": 0
+			}
+		}
+
+		var toolStats = variables.tools.byTool[ arguments.toolName ]
+		toolStats.count++
+		toolStats.totalTime += arguments.executionTime
+		toolStats.avgTime = toolStats.totalTime / toolStats.count
+
+		// Track overall execution times
+		variables.tools.executionTimes.append( arguments.executionTime )
+		updateToolExecutionStats( arguments.executionTime )
+
+		return this
+	}
+
+	/**
+	 * Record a resource read
+	 *
+	 * @uri The resource URI
+	 */
+	MCPServerStats function recordResourceRead( required string uri ) {
+		if ( !variables.enabled ) return this
+
+		variables.resources.totalReads.incrementAndGet()
+
+		// Track by URI
+		if ( !variables.resources.byUri.keyExists( arguments.uri ) ) {
+			variables.resources.byUri[ arguments.uri ] = 0
+		}
+		variables.resources.byUri[ arguments.uri ]++
+
+		return this
+	}
+
+	/**
+	 * Record a prompt generation
+	 *
+	 * @name The prompt name
+	 */
+	MCPServerStats function recordPromptGeneration( required string name ) {
+		if ( !variables.enabled ) return this
+
+		variables.prompts.totalGenerations.incrementAndGet()
+
+		// Track by name
+		if ( !variables.prompts.byName.keyExists( arguments.name ) ) {
+			variables.prompts.byName[ arguments.name ] = 0
+		}
+		variables.prompts.byName[ arguments.name ]++
+
+		return this
+	}
+
+	/**
+	 * Record an error
+	 *
+	 * @code Error code
+	 * @message Error message
+	 */
+	MCPServerStats function recordError(
+		required numeric code,
+		string message = ""
+	) {
+		if ( !variables.enabled ) return this
+
+		variables.errors.total.incrementAndGet()
+
+		// Track by code
+		var codeKey = toString( arguments.code )
+		if ( !variables.errors.byCode.keyExists( codeKey ) ) {
+			variables.errors.byCode[ codeKey ] = 0
+		}
+		variables.errors.byCode[ codeKey ]++
+
+		// Store last error
+		variables.errors.lastError = {
+			"code": arguments.code,
+			"message": arguments.message,
+			"timestamp": now()
+		}
+
+		return this
+	}
+
+	/**
+	 * Get all statistics as a struct
+	 *
+	 * @return Complete stats struct
+	 */
+	struct function getStats() {
+		// Extract atomic values for serialization
+		var requestsCopy = variables.requests.copy()
+		requestsCopy.total = requestsCopy.total.get()
+		requestsCopy.successful = requestsCopy.successful.get()
+		requestsCopy.failed = requestsCopy.failed.get()
+		requestsCopy.lastRequestAt = requestsCopy.lastRequestAt.get()
+
+		var toolsCopy = variables.tools.copy()
+		toolsCopy.totalInvocations = toolsCopy.totalInvocations.get()
+
+		var resourcesCopy = variables.resources.copy()
+		resourcesCopy.totalReads = resourcesCopy.totalReads.get()
+
+		var promptsCopy = variables.prompts.copy()
+		promptsCopy.totalGenerations = promptsCopy.totalGenerations.get()
+
+		var errorsCopy = variables.errors.copy()
+		errorsCopy.total = errorsCopy.total.get()
+
+		return {
+			"enabled": variables.enabled,
+			"createdAt": variables.createdAt,
+			"uptime": dateDiff( "s", variables.createdAt, now() ) * 1000, // milliseconds
+			"requests": requestsCopy,
+			"tools": toolsCopy,
+			"resources": resourcesCopy,
+			"prompts": promptsCopy,
+			"errors": errorsCopy
+		}
+	}
+
+	/**
+	 * Get summary statistics (lighter weight)
+	 *
+	 * @return Summary stats struct
+	 */
+	struct function getSummary() {
+		var total = variables.requests.total.get()
+		var successful = variables.requests.successful.get()
+
+		return {
+			"uptime": dateDiff( "s", variables.createdAt, now() ) * 1000,
+			"totalRequests": total,
+			"successRate": total > 0
+				? ( successful / total * 100 )
+				: 0,
+			"avgResponseTime": variables.requests.avgResponseTime,
+			"totalToolInvocations": variables.tools.totalInvocations.get(),
+			"totalResourceReads": variables.resources.totalReads.get(),
+			"totalPromptGenerations": variables.prompts.totalGenerations.get(),
+			"totalErrors": variables.errors.total.get(),
+			"lastRequestAt": variables.requests.lastRequestAt.get()
+		}
+	}
+
+	/**
+	 * Enable stats tracking
+	 */
+	MCPServerStats function enable() {
+		variables.enabled = true
+		return this
+	}
+
+	/**
+	 * Disable stats tracking
+	 */
+	MCPServerStats function disable() {
+		variables.enabled = false
+		return this
+	}
+
+	// ---------------------------------------------------------------------------------------------------------
+	// Private Helper Methods
+	// ---------------------------------------------------------------------------------------------------------
+
+	/**
+	 * Update response time statistics
+	 *
+	 * @responseTime The response time to process
+	 */
+	private function updateResponseTimeStats( required numeric responseTime ) {
+		var times = variables.requests.responseTimes
+		var timeCount = times.len()
+
+		lock
+			name="mcpserver-response-stats-#variables.statsId#"
+			type="exclusive"
+			timeout="5" {
+
+			// Calculate average
+			var total = times.reduce( ( sum, time ) => sum + time, 0 )
+			variables.requests.avgResponseTime = timeCount > 0 ? total / timeCount : 0
+
+			// Update min/max
+			if ( variables.requests.minResponseTime == 0 || arguments.responseTime < variables.requests.minResponseTime ) {
+				variables.requests.minResponseTime = arguments.responseTime
+			}
+			if ( arguments.responseTime > variables.requests.maxResponseTime ) {
+				variables.requests.maxResponseTime = arguments.responseTime
+			}
+
+			// Keep only last 1000 response times to prevent memory bloat
+			if ( timeCount > 1000 ) {
+				variables.requests.responseTimes = times.slice( -1000 )
+			}
+		}
+	}
+
+	/**
+	 * Update tool execution time statistics
+	 *
+	 * @executionTime The execution time to process
+	 */
+	private function updateToolExecutionStats( required numeric executionTime ) {
+		var times = variables.tools.executionTimes
+		var timeCount = times.len()
+
+		lock
+			name="mcpserver-execution-stats-#variables.statsId#"
+			type="exclusive"
+			timeout="5" {
+
+			// Calculate average
+			var total = times.reduce( ( sum, time ) => sum + time, 0 )
+			variables.tools.avgExecutionTime = timeCount > 0 ? total / timeCount : 0
+
+			// Update min/max
+			if ( variables.tools.minExecutionTime == 0 || arguments.executionTime < variables.tools.minExecutionTime ) {
+				variables.tools.minExecutionTime = arguments.executionTime
+			}
+			if ( arguments.executionTime > variables.tools.maxExecutionTime ) {
+				variables.tools.maxExecutionTime = arguments.executionTime
+			}
+
+			// Keep only last 1000 execution times to prevent memory bloat
+			if ( timeCount > 1000 ) {
+				variables.tools.executionTimes = times.slice( -1000 )
+			}
+		}
+	}
+}

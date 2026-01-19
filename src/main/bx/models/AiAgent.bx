@@ -1,0 +1,629 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * AI Agent - An autonomous entity that can reason, use tools, and maintain memory
+ *
+ * Inspired by LangChain agents but "Boxified" for simplicity and productivity.
+ * Agents can execute tasks, use tools, maintain conversation memory, and be chained in pipelines.
+ */
+import bxModules.bxai.models.runnables.*;
+
+class extends="AiBaseRunnable" {
+
+	/**
+	 * The agent's unique name
+	 */
+	property name="agentName" type="string" default="";
+
+	/**
+	 * The agent's description. This is used as the `role` in the system message.
+	 */
+	property name="description" type="string" default="";
+
+	/**
+	 * System instructions for the agent. These are used as the `content` in the system message.
+	 */
+	property name="instructions" type="string" default="";
+
+	/**
+	 * The AI model instance to use for this agent
+	 */
+	property name="aiModel" type="AiModel";
+
+	/**
+	 * Tools available to the agent to use.
+	 * It will also use any tools bound to the aiModel.
+	 */
+	property name="tools" type="array" default=[];
+
+	/**
+	 * Memory instances (array of IAiMemory)
+	 * You can add multiple memories for different purposes.
+	 */
+	property name="memories" type="array" default=[];
+
+	/**
+	 * Model parameters to use by default
+	 */
+	property name="params" type="struct" default={};
+
+	/**
+	 * Agent options to use by default
+	 */
+	property name="options" type="struct" default={};
+
+	/**
+	 * Sub-agents registered to this agent.
+	 * Each sub-agent is automatically wrapped as an internal tool for delegation.
+	 */
+	property name="subAgents" type="array" default=[];
+
+	/**
+	 * Tools created for sub-agents (tracked separately for cleanup)
+	 */
+	property name="subAgentTools" type="array" default=[];
+
+	/**
+	 * Default agent name constant
+	 */
+	static {
+		DEFAULT_AGENT_NAME = "BxAi"
+		DEFAULT_AGENT_DESCRIPTION = "Role: BoxLang AI Agent"
+		DEFAULT_AGENT_INSTRUCTIONS = "You are a helpful AI assistant. Use the available tools when needed to accomplish tasks."
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @name The agent's name
+	 * @description The agent's description
+	 * @instructions The agent's instructions
+	 * @model The AI model to use, defaults to the default BoxLang AI model
+	 * @memory The memory instance or array of memories, defaults to a simple in-memory store
+	 * @tools Array of tools for the agent
+	 * @subAgents Array of sub-agents to register as internal tools
+	 * @params Default model parameters
+	 * @options Default agent options
+	 */
+	function init(
+		string name = static.DEFAULT_AGENT_NAME,
+		string description = static.DEFAULT_AGENT_DESCRIPTION,
+		string instructions = static.DEFAULT_AGENT_INSTRUCTIONS,
+		AiModel model = aiModel(),
+		any memory = aiMemory(),
+		array tools = [],
+		array subAgents = [],
+		struct params = {},
+		struct options = {}
+	) {
+		// Set them up baby!
+		variables.description = arguments.description;
+		variables.instructions = arguments.instructions;
+		variables.aiModel = arguments.model.addTools( arguments.tools );
+		variables.tools = arguments.tools;
+		variables.subAgents = [];
+		variables.subAgentTools = [];
+		variables.params = arguments.params;
+		variables.options = arguments.options;
+
+		// param the options return format to "single"
+		// Agent's by default return just the assistant's content
+		param variables.options.returnFormat = "single";
+
+		// If the agent name is empty, use the default
+		if ( arguments.name.len() == 0 ) {
+			arguments.name = static.DEFAULT_AGENT_NAME;
+		}
+		// If the agent description is empty, use the default
+		if ( arguments.description.len() == 0 ) {
+			variables.description = static.DEFAULT_AGENT_DESCRIPTION;
+		}
+		// If the agent instructions is empty, use the default
+		if ( arguments.instructions.len() == 0 ) {
+			variables.instructions = static.DEFAULT_AGENT_INSTRUCTIONS;
+		}
+
+		// Set internal name
+		setName( arguments.name );
+
+		// Handle memory - can be single or array, or create default simple memory
+		if ( isArray( arguments.memory ) ) {
+			variables.memories = arguments.memory;
+		} else {
+			variables.memories = [ arguments.memory ];
+		}
+
+		// Handle sub-agents - register each as an internal tool
+		arguments.subAgents.each( subAgent => addSubAgent( subAgent ) );
+
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiRunnable Interface Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Execute the agent with a task/prompt
+	 *
+	 * @input The task or question for the agent
+	 * @params Runtime parameters to override
+	 * @options Runtime options to override. Supported options:
+	 *          - returnFormat: "single" (default), "all", or "raw"
+	 *            - single: Returns just the assistant's content string
+	 *            - all: Returns all messages (handled by service)
+	 *            - raw: Returns the full provider response structure
+	 *
+	 * @return The agent's response (format depends on returnFormat option)
+	 */
+	public any function run( any input = "", struct params = {}, struct options = {} ) {
+		// Create the user message
+		var userMessage = isStruct( arguments.input ) && arguments.input.keyExists( "content" )
+			? arguments.input
+			: { role: "user", content: toString( arguments.input ) };
+
+		// Build complete message set
+		var messages = [];
+		// Build system message from instructions and description
+		var systemMessage = buildSystemMessage();
+		if ( systemMessage.len() > 0 ) {
+			messages.append( { role: "system", content: systemMessage } );
+		}
+		// Load memory messages
+		messages.append( loadMemoryMessages(), true );
+		// Add user message
+		messages.append( userMessage );
+
+		// Merge parameters
+		var effectiveParams = variables.params.append( arguments.params );
+
+		// Merge options (including returnFormat)
+		var effectiveOptions = variables.options.append( arguments.options );
+
+		// Announce before execution
+		BoxAnnounce( "beforeAIAgentRun", {
+			agent: this,
+			input: arguments.input,
+			messages: messages,
+			params: effectiveParams,
+			options: effectiveOptions
+		} );
+
+		// Execute via model - service handles returnFormat and returns formatted result
+		var response = variables.aiModel.run( messages, effectiveParams, effectiveOptions );
+
+		// Store in memory (handles all response formats)
+		storeInMemory( userMessage, response );
+
+		// Announce after execution
+		BoxAnnounce( "afterAIAgentRun", {
+			agent: this,
+			response: response
+		} );
+
+		return response;
+	}
+
+	/**
+	 * Stream the agent's response
+	 *
+	 * @onChunk Callback for each chunk
+	 * @input The task or question
+	 * @params Runtime parameters
+	 * @options Runtime options
+	 */
+	public void function stream(
+		required function onChunk,
+		any input = "",
+		struct params = {},
+		struct options = {}
+	) {
+		// Build system message
+		var systemMessage = buildSystemMessage();
+
+		// Load memory
+		var memoryMessages = loadMemoryMessages();
+
+		// Create user message
+		var userMessage = isStruct( arguments.input ) && arguments.input.keyExists( "content" )
+			? arguments.input
+			: { role: "user", content: toString( arguments.input ) };
+
+		// Build messages
+		var messages = [];
+		if ( systemMessage.len() > 0 ) {
+			messages.append( { role: "system", content: systemMessage } );
+		}
+		messages.append( memoryMessages, true );
+		messages.append( userMessage );
+
+		// Merge parameters
+		var effectiveParams = variables.params.append( arguments.params );
+
+		// Merge options
+		var effectiveOptions = variables.options.append( arguments.options );
+
+		// Store accumulated response for memory
+		var accumulated = "";
+		var wrappedCallback = function( chunk ) {
+			// Accumulate content
+			var content = chunk.choices?.first()?.delta?.content ?: "";
+			accumulated &= content;
+
+			// Call user callback
+			arguments.onChunk( chunk );
+		};
+
+		// Stream via model (tools handled by model/service)
+		variables.aiModel.stream( wrappedCallback, messages, effectiveParams, effectiveOptions );
+
+		// Store in memory after streaming completes
+		var assistantMessage = { role: "assistant", content: accumulated };
+		storeInMemory( userMessage, assistantMessage );
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Memory Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	 /**
+	 * Add another memory to the agent
+	 *
+	 * @memory The memory instance to add
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function addMemory( required IAiMemory memory ) {
+		variables.memories.append( arguments.memory );
+		return this;
+	}
+
+	/**
+	 * Set a single memory (replaces existing) with a single one
+	 *
+	 * @memory The memory instance
+	 *
+	 * @return this for chaining
+	 */
+	function setMemory( required IAiMemory memory ) {
+		variables.memories = [ arguments.memory ];
+		return this;
+	}
+
+	/**
+	 * Clear all registered memories
+	 *
+	 * @return this for chaining
+	 */
+	function clearMemory() {
+		variables.memories.each( .clear() );
+		return this;
+	}
+
+	/**
+	 * Get all messages from all memories
+	 *
+	 * @return Array of all messages
+	 */
+	array function getMemoryMessages() {
+		return loadMemoryMessages();
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Configuration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	 /**
+	  * Set instructions
+	 * @instructions The agent's instructions
+	 * @return this for chaining
+	 */
+	AiAgent function withInstructions( required string instructions ) {
+		variables.instructions = arguments.instructions;
+		return this;
+	}
+
+	 /**
+	 * Set the agent's name
+	 *
+	 * @name The agent's name
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function setName( required string name ) {
+		variables.agentName = arguments.name;
+		variables.name = "AiAgent-" & arguments.name;
+		return this;
+	}
+
+	/**
+	 * Set the AI model for the agent
+	 *
+	 * @model The AI model to use
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function setModel( required AiModel model ) {
+		variables.aiModel = arguments.model.addTools( variables.tools );
+		return this;
+	}
+
+	/**
+	 * Set the tools for the agent (replaces existing tools)
+	 *
+	 * @tools Array of tools
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function setTools( required array tools ) {
+		variables.tools = arguments.tools;
+		variables.aiModel.bindTools( arguments.tools );
+		return this;
+	}
+
+	/**
+	 * Add a tool to the agent
+	 *
+	 * @tool The tool to add
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function addTool( required ITool tool ) {
+		variables.tools.append( arguments.tool );
+		return this;
+	}
+
+	/**
+	 * Set a single parameter
+	 *
+	 * @key Parameter name
+	 * @value Parameter value
+	 *
+	 * @return this for chaining
+	 */
+	function setParam( required string key, required any value ) {
+		variables.params[ arguments.key ] = arguments.value;
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Sub-Agent Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Add a sub-agent to this agent.
+	 * The sub-agent will be wrapped as an internal tool that can be invoked by the parent agent.
+	 *
+	 * @subAgent The sub-agent to add
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function addSubAgent( required AiAgent subAgent ) {
+		// Store the sub-agent
+		variables.subAgents.append( arguments.subAgent );
+
+		// Create an internal tool for the sub-agent
+		var subAgentTool = createSubAgentTool( arguments.subAgent );
+
+		// Track the sub-agent tool for potential cleanup
+		variables.subAgentTools.append( subAgentTool );
+
+		// Add the tool to this agent's model
+		variables.aiModel.addTools( [ subAgentTool ] );
+
+		return this;
+	}
+
+	/**
+	 * Set the sub-agents for the agent (replaces existing sub-agents)
+	 *
+	 * This method removes old sub-agent delegation tools and registers new ones.
+	 *
+	 * @subAgents Array of sub-agents to register
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function setSubAgents( required array subAgents ) {
+		// Remove old sub-agent tools from the model
+		if ( !variables.subAgentTools.isEmpty() ) {
+			variables.aiModel.removeTools( variables.subAgentTools );
+		}
+
+		// Clear existing sub-agents and their tools
+		variables.subAgents = [];
+		variables.subAgentTools = [];
+
+		// Add each sub-agent
+		arguments.subAgents.each( subAgent => addSubAgent( subAgent ) );
+
+		return this;
+	}
+
+	/**
+	 * Get a sub-agent by name
+	 *
+	 * @name The name of the sub-agent to find
+	 *
+	 * @return The sub-agent if found, or null
+	 */
+	AiAgent function getSubAgent( required string name ) {
+		for ( var subAgent in variables.subAgents ) {
+			if ( subAgent.getAgentName() == arguments.name ) {
+				return subAgent;
+			}
+		}
+		return null
+	}
+
+	/**
+	 * Check if a sub-agent exists by name
+	 *
+	 * @name The name of the sub-agent to check
+	 *
+	 * @return Boolean indicating if the sub-agent exists
+	 */
+	boolean function hasSubAgent( required string name ) {
+		return !isNull( getSubAgent( arguments.name ) );
+	}
+
+	/**
+	 * Get the names of all registered sub-agents
+	 *
+	 * @return Array of sub-agent names
+	 */
+	Array function getSubAgentNames() {
+		return variables.subAgents.map( agent => agent.getAgentName() );
+	}
+
+	/**
+	 * Get agent configuration as a struct
+	 *
+	 * @return Struct of agent configuration
+	 */
+	struct function getConfig() {
+		return {
+			"name": variables.agentName,
+			"description": variables.description,
+			"instructions": variables.instructions,
+			"model": variables.aiModel.getConfig(),
+			"toolCount": variables.tools.len(),
+			"memoryCount": variables.memories.len(),
+			"memories": variables.memories.map( mem => mem.getSummary() ),
+			"subAgentCount": variables.subAgents.len(),
+			"subAgents": variables.subAgents.map( agent => {
+				return {
+					"name": agent.getConfig().name,
+					"description": agent.getConfig().description
+				};
+			} ),
+			"params": variables.params,
+			"options": variables.options
+		};
+	}
+
+	// ==================== PRIVATE METHODS ====================
+
+	/**
+	 * Build the system message from instructions and description
+	 */
+	private string function buildSystemMessage() {
+		var parts = [];
+
+		if ( variables.description.len() > 0 ) {
+			parts.append( "Role: " & variables.description );
+		}
+
+		if ( variables.instructions.len() > 0 ) {
+			parts.append( variables.instructions );
+		}
+
+		return parts.toList( char( 10 ) & char( 10 ) );
+	}
+
+	/**
+	 * Load messages from all memories
+	 */
+	private array function loadMemoryMessages() {
+		var allMessages = [];
+
+		variables.memories.each( mem => {
+			allMessages.append( mem.getAll(), true );
+		} );
+
+		return allMessages;
+	}
+
+	/**
+	 * Store messages in all memories
+	 *
+	 * @userMessage The user message struct
+	 * @response The assistant response (string or struct)
+	 *
+	 * @return void
+	 */
+	private void function storeInMemory( required struct userMessage, required any response ) {
+		// No memories, nothing to do
+		if ( variables.memories.isEmpty() ) {
+			return;
+		}
+
+		// Add user message to all memories
+		variables.memories.each( .add( userMessage ) );
+
+		// Extract assistant message from response
+		var assistantContent = "";
+		if ( isStruct( arguments.response ) ) {
+			// Handle structured response
+			if ( arguments.response.keyExists( "choices" ) && !arguments.response.choices.isEmpty() ) {
+				assistantContent = arguments.response.choices[  1  ].message?.content ?: "";
+			} else if ( arguments.response.keyExists( "content" ) ) {
+				assistantContent = arguments.response.content;
+			}
+		} else {
+			assistantContent = toString( arguments.response );
+		}
+
+		// Add assistant message
+		if ( assistantContent.len() > 0 ) {
+			variables.memories.each( mem => mem.add({
+				role: "assistant",
+				content: assistantContent
+			}) );
+		}
+	}
+
+	/**
+	 * Create an internal tool wrapper for a sub-agent.
+	 * The tool delegates to the sub-agent's run method.
+	 *
+	 * @subAgent The sub-agent to wrap
+	 *
+	 * @return A Tool instance that delegates to the sub-agent
+	 */
+	private ITool function createSubAgentTool( required AiAgent subAgent ) {
+		var agentConfig = arguments.subAgent.getConfig();
+		var agentName = agentConfig.name;
+		var agentDescription = agentConfig.description;
+
+		// Build tool name: delegate_to_{agent_name}
+		// Regex only needs to match non-alphanumeric and non-underscore since we already lowercase
+		var toolName = "delegate_to_" & agentName.lCase().reReplace( "[^a-z0-9_]", "_", "all" );
+
+		// Build description for the tool
+		var toolDescription = "Delegate a task to the '#agentName#' sub-agent. "
+			& "Use this tool when the task matches the sub-agent's specialty: #agentDescription#";
+
+		// Capture the sub-agent reference for the closure
+		var targetSubAgent = arguments.subAgent;
+
+		// Create a tool that wraps the sub-agent
+		return aiTool(
+			name: toolName,
+			description: toolDescription,
+			callable: ( task ) => {
+				// Invoke the sub-agent with the task
+				return targetSubAgent.run( task );
+			}
+		).describeArg( "task", "The task or question to delegate to the sub-agent" );
+	}
+
+}

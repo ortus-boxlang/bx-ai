@@ -1,0 +1,448 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Fluent client for consuming Model Context Protocol (MCP) servers
+ */
+class {
+
+	/**
+	 * The base URL of the MCP server
+	 */
+	property name="baseURL" type="string";
+
+	/**
+	 * Request timeout in milliseconds
+	 */
+	property name="timeout" type="numeric" default=30000;
+
+	/**
+	 * Additional headers to include in requests
+	 */
+	property name="headers" type="struct" default={};
+
+	/**
+	 * Basic authentication username
+	 */
+	property name="authUser" type="string" default="";
+
+	/**
+	 * Basic authentication password
+	 */
+	property name="authPassword" type="string" default="";
+
+	/**
+	 * Bearer token for authentication
+	 */
+	property name="bearerToken" type="string" default="";
+
+	/**
+	 * Success callback function
+	 */
+	property name="successCallback" type="any";
+
+	/**
+	 * Error callback function
+	 */
+	property name="errorCallback" type="any";
+
+	static {
+		DEFAULT_TIMEOUT = 30000;
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @baseURL The base URL of the MCP server
+	 */
+	function init( required string baseURL ) {
+		variables.baseURL = arguments.baseURL.trim();
+		variables.headers = {};
+		variables.timeout = static.DEFAULT_TIMEOUT;
+		variables.authUser = "";
+		variables.authPassword = "";
+		variables.bearerToken = "";
+
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Configuration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Set the request timeout
+	 *
+	 * @ms Timeout in milliseconds
+	 * @return This client for chaining
+	 */
+	function withTimeout( required numeric ms ) {
+		variables.timeout = arguments.ms;
+		return this;
+	}
+
+	/**
+	 * Set custom headers for requests
+	 *
+	 * @headers Struct of header key-value pairs
+	 * @return This client for chaining
+	 */
+	function withHeaders( required struct headers ) {
+		variables.headers.append( arguments.headers, true );
+		return this;
+	}
+
+	/**
+	 * Set basic authentication credentials
+	 *
+	 * @user Username
+	 * @pass Password
+	 * @return This client for chaining
+	 */
+	function withAuth( required string user, required string pass ) {
+		variables.authUser = arguments.user;
+		variables.authPassword = arguments.pass;
+		return this;
+	}
+
+	/**
+	 * Set bearer token authentication
+	 *
+	 * @token Bearer token
+	 * @return This client for chaining
+	 */
+	function withBearerToken( required string token ) {
+		variables.bearerToken = arguments.token;
+		return this;
+	}
+
+	/**
+	 * Register a success callback function
+	 *
+	 * @callback Function to call on successful responses
+	 * @return This client for chaining
+	 */
+	function onSuccess( required function callback ) {
+		variables.successCallback = arguments.callback;
+		return this;
+	}
+
+	/**
+	 * Register an error callback function
+	 *
+	 * @callback Function to call on error responses
+	 * @return This client for chaining
+	 */
+	function onError( required function callback ) {
+		variables.errorCallback = arguments.callback;
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Discovery Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * List available tools from the MCP server
+	 *
+	 * @return MCPResponse with tools data
+	 */
+	function listTools() {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "tools/list",
+			"id": createUUID()
+		};
+		return makeRequest( "POST", "", body );
+	}
+
+	/**
+	 * List available resources from the MCP server
+	 *
+	 * @return MCPResponse with resources data
+	 */
+	function listResources() {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "resources/list",
+			"id": createUUID()
+		};
+		return makeRequest( "POST", "", body );
+	}
+
+	/**
+	 * List available prompts from the MCP server
+	 *
+	 * @return MCPResponse with prompts data
+	 */
+	function listPrompts() {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "prompts/list",
+			"id": createUUID()
+		};
+		return makeRequest( "POST", "", body );
+	}
+
+	/**
+	 * Get server capabilities
+	 *
+	 * @return MCPResponse with capabilities data
+	 */
+	function getCapabilities() {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "initialize",
+			"id": createUUID(),
+			"params": {
+				"capabilities": {}
+			}
+		};
+		return makeRequest( "POST", "", body );
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Execution Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Send a request to invoke a tool on the MCP server
+	 *
+	 * @tool Name of the tool to send to
+	 * @args Arguments to pass to the tool
+	 * @return MCPResponse with invocation result
+	 */
+	function send( required string tool, struct args = {} ) {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "tools/call",
+			"params": {
+				"name": arguments.tool,
+				"arguments": arguments.args
+			},
+			"id": createUUID()
+		};
+		return makeRequest( "POST", "", body );
+	}
+
+	/**
+	 * Read a resource from the MCP server
+	 *
+	 * @uri URI of the resource to read
+	 * @return MCPResponse with resource data
+	 */
+	function readResource( required string uri ) {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "resources/read",
+			"params": {
+				"uri": arguments.uri
+			},
+			"id": createUUID()
+		};
+		return makeRequest( "POST", "", body );
+	}
+
+	/**
+	 * Get a prompt from the MCP server
+	 *
+	 * @name Name of the prompt
+	 * @args Arguments for the prompt
+	 * @return MCPResponse with prompt data
+	 */
+	function getPrompt( required string name, struct args = {} ) {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "prompts/get",
+			"params": {
+				"name": arguments.name,
+				"arguments": arguments.args
+			},
+			"id": createUUID()
+		};
+		return makeRequest( "POST", "", body );
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Make an HTTP request to the MCP server
+	 *
+	 * @method HTTP method (GET, POST, etc.)
+	 * @path Path to append to base URL
+	 * @body Optional request body
+	 * @return MCPResponse with normalized response data
+	 */
+	private function makeRequest( required string method, required string path, any body ) {
+		var targetUrl = variables.baseURL & arguments.path;
+		var mcpResponse = null;
+
+		try {
+			// Build authentication credentials
+			var authHeader = "";
+			if( len( variables.bearerToken ) ){
+				authHeader = "Bearer #variables.bearerToken#";
+			} else if( len( variables.authUser ) ){
+				// Create Basic Auth header with Base64 encoding
+				var credentials = variables.authUser & ":" & variables.authPassword;
+				var encodedCredentials = toBase64( credentials );
+				authHeader = "Basic #encodedCredentials#";
+			}
+
+			// Make HTTP request using bx:http component
+			bx: http
+				url     = targetUrl
+				method  = arguments.method
+				result  = "httpResult"
+				charset = "utf-8"
+				timeout = variables.timeout
+			{
+				bx:httpParam type="header" name="content-type" value="application/json";
+				bx:httpParam type="header" name="accept" value="application/json, text/event-stream";
+
+				// Authentication header
+				if( len( authHeader ) ){
+					bx:httpParam type="header" name="Authorization" value="#authHeader#";
+				}
+
+				// Custom headers
+				for( var thisHeader in variables.headers ){
+					bx:httpParam
+						type="header"
+						name="#thisHeader#"
+						value="#variables.headers[ thisHeader ]#";
+				}
+
+				// Body for POST requests
+				if( !isNull( arguments.body ) ){
+					bx:httpParam type="body" value=jsonSerialize( arguments.body );
+				}
+			}
+
+			// Parse response
+			var statusCode = httpResult.status_code ?: 0;
+			var responseHeaders = {};
+
+			// Convert headers to struct
+			if( !isNull( httpResult.responseheader ) ) {
+				for( var headerName in httpResult.responseheader ) {
+					responseHeaders[ headerName ] = httpResult.responseheader[ headerName ];
+				}
+			}
+
+			// Determine success based on status code
+			var isSuccess = statusCode >= 200 && statusCode < 300;
+			var responseData = {};
+			var errorMessage = "";
+
+			// Parse response body (handles both SSE and plain JSON)
+			if( len( httpResult.filecontent ?: "" ) ) {
+				try {
+					var content = httpResult.filecontent;
+
+					// Check if this is an SSE response
+					if( content.startsWith( "event:" ) || content.contains( char(10) & "data:" ) ) {
+						// Parse SSE format: extract JSON from "data:" line
+						var lines = content.listToArray( char(10) );
+						for( var line in lines ) {
+							if( line.trim().startsWith( "data:" ) ) {
+								var jsonData = line.trim().replaceNoCase( "data:", "" ).trim();
+								responseData = jsonDeserialize( jsonData );
+
+								// Check for JSON-RPC error
+								if( isStruct( responseData ) && structKeyExists( responseData, "error" ) ) {
+									isSuccess = false;
+									errorMessage = isStruct( responseData.error )
+										? ( responseData.error.message ?: "Unknown error" )
+										: responseData.error;
+								}
+								// Extract result from JSON-RPC response
+								else if( isStruct( responseData ) && structKeyExists( responseData, "result" ) ) {
+									responseData = responseData.result;
+								}
+								break;
+							}
+						}
+					} else {
+						// Plain JSON response
+						responseData = jsonDeserialize( content );
+
+						// Check for JSON-RPC error
+						if( isStruct( responseData ) && structKeyExists( responseData, "error" ) ) {
+							isSuccess = false;
+							errorMessage = isStruct( responseData.error )
+								? ( responseData.error.message ?: "Unknown error" )
+								: responseData.error;
+						}
+						// Extract result from JSON-RPC response
+						else if( isStruct( responseData ) && structKeyExists( responseData, "result" ) ) {
+							responseData = responseData.result;
+						}
+					}
+				} catch( any e ) {
+					responseData = httpResult.filecontent;
+				}
+			}
+
+			// Set error message for failed requests
+			if( !isSuccess && !len( errorMessage ) ) {
+				errorMessage = "HTTP #statusCode#";
+				if( isStruct( responseData ) && structKeyExists( responseData, "error" ) ) {
+					errorMessage = responseData.error;
+				} else if( isSimpleValue( responseData ) ) {
+					errorMessage = responseData;
+				}
+			}
+
+			// Create normalized response
+			mcpResponse = new bxModules.bxai.models.mcp.MCPResponse(
+				success: isSuccess,
+				data: responseData,
+				error: errorMessage,
+				statusCode: statusCode,
+				headers: responseHeaders
+			);
+
+		} catch( any e ) {
+			// Handle network and other errors
+			mcpResponse = new bxModules.bxai.models.mcp.MCPResponse(
+				success: false,
+				data: {},
+				error: e.message,
+				statusCode: 0,
+				headers: {}
+			);
+		}
+
+		// Invoke callbacks
+		if( mcpResponse.getSuccess() && !isNull( variables.successCallback ) ) {
+			variables.successCallback( mcpResponse );
+		} else if( !mcpResponse.getSuccess() && !isNull( variables.errorCallback ) ) {
+			variables.errorCallback( mcpResponse );
+		}
+
+		return mcpResponse;
+	}
+
+
+}

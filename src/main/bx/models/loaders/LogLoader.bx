@@ -1,0 +1,372 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License")
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Loads log files and creates one Document per log line.
+ * Parses common log formats and extracts metadata (timestamp, level, logger, message).
+ */
+class extends="BaseDocumentLoader" {
+
+	/**
+	 * Static configuration
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			encoding           : "UTF-8",
+			includeMetadata    : true,
+			continueOnError    : true,
+			// Log parsing options
+			parseStructure     : true,
+			skipEmptyLines     : true,
+			timestampPattern   : "\[([^\]]+)\]",
+			levelPattern       : "(TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL)",
+			loggerPattern      : "\[([^\]]+)\]",
+			// Filtering
+			minLevel           : "",
+			startDate          : "",
+			endDate            : "",
+			includeLoggers     : [],
+			excludeLoggers     : []
+		}
+
+		// Log level hierarchy for filtering
+		LOG_LEVELS = {
+			"TRACE"   : 1,
+			"DEBUG"   : 2,
+			"INFO"    : 3,
+			"WARN"    : 4,
+			"WARNING" : 4,
+			"ERROR"   : 5,
+			"FATAL"   : 6
+		}
+	}
+
+	/**
+	 * Initialize the LogLoader
+	 *
+	 * @source Path to the log file
+	 * @config Configuration options
+	 *
+	 * @return LogLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		super.init( argumentCollection: arguments )
+		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true )
+		return this
+	}
+
+	/**
+	 * Load and parse the log file
+	 *
+	 * @return Array of Document objects (one per log line)
+	 */
+	array function doLoad() {
+		// Validate source exists
+		if ( !len( variables.source ) ) {
+			throw(
+				type    : "LogLoader.NoSource",
+				message : "No source file specified"
+			)
+		}
+
+		if ( !fileExists( variables.source ) ) {
+			throw(
+				type    : "LogLoader.FileNotFound",
+				message : "File not found: #variables.source#"
+			)
+		}
+
+		var documents = []
+		var content   = readFile( variables.source )
+		var lines     = listToArray( content, char( 10 ) )
+		var lineNum   = 0
+
+		for ( var line in lines ) {
+			lineNum++
+
+			// Skip empty lines if configured
+			if ( variables.config.skipEmptyLines && !len( trim( line ) ) ) {
+				continue
+			}
+
+			// Parse log line structure
+			var logEntry = variables.config.parseStructure ? parseLogLine( line ) : {
+				"message" : line,
+				"level"   : "",
+				"timestamp" : "",
+				"logger"  : ""
+			}
+
+			// Apply filters
+			if ( !shouldIncludeLine( logEntry ) ) {
+				continue
+			}
+
+			// Build metadata
+			var metadata = {
+				"lineNumber" : lineNum,
+				"level"      : logEntry.level,
+				"timestamp"  : logEntry.timestamp,
+				"logger"     : logEntry.logger,
+				"filePath"   : variables.source
+			}
+
+			// Add file info if configured
+			if ( variables.config.includeMetadata ) {
+				metadata.append( getSourceInfo(), true )
+			}
+
+			documents.append(
+				createDocument(
+					content            : logEntry.message,
+					additionalMetadata : metadata
+				)
+			)
+		}
+
+		return documents
+	}
+
+	/**
+	 * Parse a log line and extract structured information
+	 *
+	 * @line The log line to parse
+	 *
+	 * @return Struct with timestamp, level, logger, message
+	 */
+	private struct function parseLogLine( required string line ) {
+		var result = {
+			"timestamp" : "",
+			"level"     : "",
+			"logger"    : "",
+			"message"   : arguments.line
+		}
+
+		var workingLine = arguments.line
+
+		// Extract timestamp (first bracketed content)
+		if ( len( variables.config.timestampPattern ) ) {
+			var timestampMatch = reFind( variables.config.timestampPattern, workingLine, 1, true )
+			if ( timestampMatch.len.len() > 1 ) {
+				result.timestamp = mid( workingLine, timestampMatch.pos[ 2 ], timestampMatch.len[ 2 ] )
+				// Remove timestamp from working line
+				workingLine = reReplace( workingLine, variables.config.timestampPattern, "" )
+			}
+		}
+
+		// Extract log level
+		if ( len( variables.config.levelPattern ) ) {
+			var levelMatch = reFindNoCase( variables.config.levelPattern, workingLine, 1, true )
+			if ( levelMatch.len.len() > 1 ) {
+				result.level = mid( workingLine, levelMatch.pos[ 2 ], levelMatch.len[ 2 ] ).uCase()
+				// Remove level from working line
+				workingLine = reReplaceNoCase( workingLine, variables.config.levelPattern, "" )
+			}
+		}
+
+		// Extract logger name (second bracketed content after timestamp)
+		if ( len( variables.config.loggerPattern ) && result.timestamp != "" ) {
+			var loggerMatch = reFind( variables.config.loggerPattern, workingLine, 1, true )
+			if ( loggerMatch.len.len() > 1 ) {
+				result.logger = mid( workingLine, loggerMatch.pos[ 2 ], loggerMatch.len[ 2 ] )
+				// Remove logger from working line
+				workingLine = reReplace( workingLine, variables.config.loggerPattern, "", "one" )
+			}
+		}
+
+		// Clean up message (remaining content)
+		result.message = trim( workingLine )
+
+		return result
+	}
+
+	/**
+	 * Check if a log line should be included based on filters
+	 *
+	 * @logEntry Parsed log entry struct
+	 *
+	 * @return True if line should be included
+	 */
+	private boolean function shouldIncludeLine( required struct logEntry ) {
+		// Filter by log level
+		if ( len( variables.config.minLevel ) && len( arguments.logEntry.level ) ) {
+			var minLevelValue = static.LOG_LEVELS[ variables.config.minLevel.uCase() ] ?: 0
+			var entryLevelValue = static.LOG_LEVELS[ arguments.logEntry.level ] ?: 0
+			if ( entryLevelValue < minLevelValue ) {
+				return false
+			}
+		}
+
+		// Filter by logger inclusion list
+		if ( variables.config.includeLoggers.len() > 0 && len( arguments.logEntry.logger ) ) {
+			var found = false
+			for ( var logger in variables.config.includeLoggers ) {
+				if ( arguments.logEntry.logger.findNoCase( logger ) ) {
+					found = true
+					break
+				}
+			}
+			if ( !found ) {
+				return false
+			}
+		}
+
+		// Filter by logger exclusion list
+		if ( variables.config.excludeLoggers.len() > 0 && len( arguments.logEntry.logger ) ) {
+			for ( var logger in variables.config.excludeLoggers ) {
+				if ( arguments.logEntry.logger.findNoCase( logger ) ) {
+					return false
+				}
+			}
+		}
+
+		// Filter by date range (if timestamp can be parsed)
+		if ( ( len( variables.config.startDate ) || len( variables.config.endDate ) ) && len( arguments.logEntry.timestamp ) ) {
+			try {
+				var logDate = parseDateTime( arguments.logEntry.timestamp )
+
+				if ( len( variables.config.startDate ) ) {
+					var startDate = parseDateTime( variables.config.startDate )
+					if ( logDate < startDate ) {
+						return false
+					}
+				}
+
+				if ( len( variables.config.endDate ) ) {
+					var endDate = parseDateTime( variables.config.endDate )
+					if ( logDate > endDate ) {
+						return false
+					}
+				}
+			} catch ( any e ) {
+				// If date parsing fails, include the line
+			}
+		}
+
+		return true
+	}
+
+	// ==================== Fluent Configuration Methods ====================
+
+	/**
+	 * Enable or disable structure parsing
+	 *
+	 * @parse Boolean to enable/disable parsing
+	 *
+	 * @return LogLoader for chaining
+	 */
+	LogLoader function parseStructure( boolean parse = true ) {
+		variables.config.parseStructure = arguments.parse
+		return this
+	}
+
+	/**
+	 * Set minimum log level to include
+	 *
+	 * @level Minimum level (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)
+	 *
+	 * @return LogLoader for chaining
+	 */
+	LogLoader function minLevel( required string level ) {
+		variables.config.minLevel = arguments.level
+		return this
+	}
+
+	/**
+	 * Filter by start date
+	 *
+	 * @date Start date (inclusive)
+	 *
+	 * @return LogLoader for chaining
+	 */
+	LogLoader function startDate( required string date ) {
+		variables.config.startDate = arguments.date
+		return this
+	}
+
+	/**
+	 * Filter by end date
+	 *
+	 * @date End date (inclusive)
+	 *
+	 * @return LogLoader for chaining
+	 */
+	LogLoader function endDate( required string date ) {
+		variables.config.endDate = arguments.date
+		return this
+	}
+
+	/**
+	 * Include only specific loggers
+	 *
+	 * @loggers Array of logger names to include
+	 *
+	 * @return LogLoader for chaining
+	 */
+	LogLoader function includeLoggers( required array loggers ) {
+		variables.config.includeLoggers = arguments.loggers
+		return this
+	}
+
+	/**
+	 * Exclude specific loggers
+	 *
+	 * @loggers Array of logger names to exclude
+	 *
+	 * @return LogLoader for chaining
+	 */
+	LogLoader function excludeLoggers( required array loggers ) {
+		variables.config.excludeLoggers = arguments.loggers
+		return this
+	}
+
+	/**
+	 * Set custom timestamp pattern
+	 *
+	 * @pattern Regex pattern with capture group
+	 *
+	 * @return LogLoader for chaining
+	 */
+	LogLoader function timestampPattern( required string pattern ) {
+		variables.config.timestampPattern = arguments.pattern
+		return this
+	}
+
+	/**
+	 * Set custom log level pattern
+	 *
+	 * @pattern Regex pattern with capture group
+	 *
+	 * @return LogLoader for chaining
+	 */
+	LogLoader function levelPattern( required string pattern ) {
+		variables.config.levelPattern = arguments.pattern
+		return this
+	}
+
+	/**
+	 * Set custom logger name pattern
+	 *
+	 * @pattern Regex pattern with capture group
+	 *
+	 * @return LogLoader for chaining
+	 */
+	LogLoader function loggerPattern( required string pattern ) {
+		variables.config.loggerPattern = arguments.pattern
+		return this
+	}
+
+}

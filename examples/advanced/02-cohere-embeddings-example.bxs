@@ -1,0 +1,386 @@
+/**
+ * Cohere Embeddings Examples
+ *
+ * Demonstrates using Cohere's high-quality embeddings API with excellent multilingual support.
+ * Cohere specializes in embeddings and offers different models for various use cases.
+ *
+ * API Key: Set COHERE_API_KEY environment variable or pass via options
+ * Get your key from: https://dashboard.cohere.com/api-keys
+ *
+ * Models:
+ * - embed-english-v3.0 (1024 dims) - Latest English model, best quality
+ * - embed-multilingual-v3.0 (1024 dims) - Supports 100+ languages
+ * - embed-english-light-v3.0 (384 dims) - Faster, lighter version
+ *
+ * @see https://docs.cohere.com/reference/embed
+ * @see https://docs.cohere.com/docs/cohere-embed
+ */
+
+// ============================================================
+// Example 1: Basic Single Text Embedding
+// ============================================================
+embedding = aiEmbed(
+	input: "BoxLang is a modern dynamic JVM language",
+	options: { provider: "cohere" }
+)
+
+println( "=== Basic Embedding ===" )
+println( "Dimensions: #embedding.len()#" )
+println( "First 5 values: #embedding.slice( 1, 5 )#" )
+println()
+
+// ============================================================
+// Example 2: Batch Embeddings
+// ============================================================
+texts = [
+	"BoxLang compiles to Java bytecode",
+	"Python is great for machine learning",
+	"JavaScript runs in browsers"
+]
+
+embeddings = aiEmbed(
+	input: texts,
+	options: {
+		provider: "cohere",
+		returnFormat: "embeddings"  // Get array of arrays
+	}
+)
+
+println( "=== Batch Embeddings ===" )
+println( "Generated #embeddings.len()# embeddings" )
+embeddings.each( (emb, idx) => {
+	println( "Text #idx#: #texts[idx]# -> #emb.len()# dimensions" )
+} )
+println()
+
+// ============================================================
+// Example 3: Optimized for Search - Query vs Document
+// ============================================================
+// Cohere lets you optimize embeddings for queries vs documents
+// This improves semantic search accuracy
+
+// Embed a search query
+queryEmbedding = aiEmbed(
+	input: "What is BoxLang?",
+	params: {
+		model: "embed-english-v3.0",
+		input_type: "search_query"  // Optimized for queries
+	},
+	options: { provider: "cohere" }
+)
+
+// Embed documents
+documents = [
+	"BoxLang is a modern dynamic JVM language with full Java interop",
+	"Python is an interpreted high-level programming language",
+	"JavaScript is primarily used for web development"
+]
+
+docEmbeddings = aiEmbed(
+	input: documents,
+	params: {
+		model: "embed-english-v3.0",
+		input_type: "search_document"  // Optimized for documents
+	},
+	options: {
+		provider: "cohere",
+		returnFormat: "embeddings"
+	}
+)
+
+println( "=== Search Optimization ===" )
+println( "Query embedding: #queryEmbedding.len()# dimensions" )
+println( "Document embeddings: #docEmbeddings.len()# documents" )
+println()
+
+// ============================================================
+// Example 4: Multilingual Embeddings
+// ============================================================
+// Cohere supports 100+ languages with embed-multilingual-v3.0
+
+multilingualTexts = [
+	"Hello, how are you?",           // English
+	"Bonjour, comment allez-vous?",  // French
+	"Hola, ¿cómo estás?",            // Spanish
+	"こんにちは、元気ですか？",         // Japanese
+	"你好，你好吗？"                   // Chinese
+]
+
+multilingualEmbeddings = aiEmbed(
+	input: multilingualTexts,
+	params: {
+		model: "embed-multilingual-v3.0",
+		input_type: "search_document"
+	},
+	options: {
+		provider: "cohere",
+		returnFormat: "embeddings"
+	}
+)
+
+println( "=== Multilingual Embeddings ===" )
+multilingualTexts.each( (text, idx) => {
+	println( "#text# -> #multilingualEmbeddings[idx].len()# dimensions" )
+} )
+println()
+
+// ============================================================
+// Example 5: Lightweight Model for Speed
+// ============================================================
+// Use embed-english-light-v3.0 for faster processing (384 dims vs 1024)
+
+lightEmbedding = aiEmbed(
+	input: "Fast lightweight embedding",
+	params: {
+		model: "embed-english-light-v3.0",
+		input_type: "search_document"
+	},
+	options: { provider: "cohere" }
+)
+
+println( "=== Lightweight Model ===" )
+println( "Dimensions: #lightEmbedding.len()# (vs 1024 for standard model)" )
+println( "Use for: High-throughput applications, real-time search" )
+println()
+
+// ============================================================
+// Example 6: Semantic Similarity Search
+// ============================================================
+function cosineSimilarity( v1, v2 ) {
+	dot = 0
+	mag1 = 0
+	mag2 = 0
+
+	for ( var i = 1; i <= v1.len(); i++ ) {
+		dot += v1[ i ] * v2[ i ]
+		mag1 += v1[ i ] * v1[ i ]
+		mag2 += v2[ i ] * v2[ i ]
+	}
+
+	return dot / ( sqrt( mag1 ) * sqrt( mag2 ) )
+}
+
+// Knowledge base
+knowledgeBase = [
+	"BoxLang is a dynamic JVM language with Java interop",
+	"ColdFusion is a web application development platform",
+	"Python is popular for data science and machine learning",
+	"JavaScript is essential for web development"
+]
+
+// Embed knowledge base (optimized for documents)
+kbEmbeddings = aiEmbed(
+	input: knowledgeBase,
+	params: {
+		model: "embed-english-v3.0",
+		input_type: "search_document"
+	},
+	options: {
+		provider: "cohere",
+		returnFormat: "embeddings"
+	}
+)
+
+// User query
+query = "Tell me about BoxLang"
+queryEmb = aiEmbed(
+	input: query,
+	params: {
+		model: "embed-english-v3.0",
+		input_type: "search_query"
+	},
+	options: { provider: "cohere" }
+)
+
+// Calculate similarities
+results = kbEmbeddings.map( (docEmb, idx) => {
+	return {
+		index: idx,
+		text: knowledgeBase[ idx ],
+		similarity: cosineSimilarity( queryEmb, docEmb )
+	}
+} )
+
+// Sort by similarity
+results.sort( (a, b) => b.similarity - a.similarity )
+
+println( "=== Semantic Search Results ===" )
+println( "Query: #query#" )
+println()
+results.each( (result, idx) => {
+	println( "##idx#. [#numberFormat( result.similarity * 100, '0.00' )#%] #result.text#" )
+} )
+println()
+
+// ============================================================
+// Example 7: Clustering Similar Content
+// ============================================================
+articles = [
+	"Machine learning algorithms for classification",
+	"Deep learning neural networks",
+	"Making perfect Italian pasta",
+	"Traditional French cooking techniques",
+	"Natural language processing with transformers"
+]
+
+articleEmbeddings = aiEmbed(
+	input: articles,
+	params: {
+		model: "embed-english-v3.0",
+		input_type: "clustering"  // Optimized for clustering
+	},
+	options: {
+		provider: "cohere",
+		returnFormat: "embeddings"
+	}
+)
+
+// Find similar pairs
+println( "=== Content Clustering ===" )
+for ( var i = 1; i <= articles.len(); i++ ) {
+	for ( var j = i + 1; j <= articles.len(); j++ ) {
+		sim = cosineSimilarity( articleEmbeddings[ i ], articleEmbeddings[ j ] )
+		if ( sim > 0.5 ) {  // Threshold for similarity
+			println( "Similar articles (#numberFormat( sim * 100, '0.0' )#% match):" )
+			println( "  - #articles[ i ]#" )
+			println( "  - #articles[ j ]#" )
+			println()
+		}
+	}
+}
+
+// ============================================================
+// Example 8: RAG (Retrieval Augmented Generation)
+// ============================================================
+// Combine Cohere embeddings with chat for intelligent Q&A
+
+ragKnowledgeBase = [
+	"BoxLang is a modern dynamic JVM language that compiles to Java bytecode",
+	"BoxLang supports both functional and object-oriented programming paradigms",
+	"BoxLang modules can be installed and managed via CommandBox package manager",
+	"BoxLang has built-in AI integration through the bx-ai module",
+	"BoxLang offers seamless Java interoperability and can use any Java library"
+]
+
+// Embed knowledge base
+ragEmbeddings = aiEmbed(
+	input: ragKnowledgeBase,
+	params: {
+		model: "embed-english-v3.0",
+		input_type: "search_document"
+	},
+	options: {
+		provider: "cohere",
+		returnFormat: "embeddings"
+	}
+)
+
+function answerQuestion( question ) {
+	// Embed the question
+	questionEmb = aiEmbed(
+		input: question,
+		params: {
+			model: "embed-english-v3.0",
+			input_type: "search_query"
+		},
+		options: { provider: "cohere" }
+	)
+
+	// Find most relevant knowledge
+	relevantDocs = ragEmbeddings
+		.map( (emb, idx) => {
+			return {
+				text: ragKnowledgeBase[ idx ],
+				similarity: cosineSimilarity( questionEmb, emb )
+			}
+		} )
+		.sort( (a, b) => b.similarity - a.similarity )
+		.slice( 1, 2 )  // Top 2
+
+	// Build context
+	context = relevantDocs.map( d => d.text ).toList( chr(10) )
+
+	// Generate answer using Cohere chat
+	prompt = "
+		Context:
+		#context#
+
+		Question: #question#
+
+		Answer the question based only on the context above.
+	"
+
+	answer = aiChat( prompt, {}, { provider: "cohere" } )
+
+	return {
+		question: question,
+		answer: answer,
+		sources: relevantDocs
+	}
+}
+
+println( "=== RAG Example ===" )
+result = answerQuestion( "What programming paradigms does BoxLang support?" )
+println( "Q: #result.question#" )
+println( "A: #result.answer#" )
+println()
+println( "Sources used:" )
+result.sources.each( source => {
+	println( "  [#numberFormat( source.similarity * 100, '0.0' )#%] #source.text#" )
+} )
+println()
+
+// ============================================================
+// Example 9: Using Different Input Types
+// ============================================================
+println( "=== Cohere Input Types ===" )
+println( "Cohere supports different input_type optimizations:" )
+println()
+
+inputTypes = [
+	{
+		type: "search_query",
+		description: "Optimized for search queries",
+		example: "What is machine learning?"
+	},
+	{
+		type: "search_document",
+		description: "Optimized for documents to be searched",
+		example: "Machine learning is a subset of AI..."
+	},
+	{
+		type: "clustering",
+		description: "Optimized for clustering tasks",
+		example: "Article about technology trends"
+	},
+	{
+		type: "classification",
+		description: "Optimized for classification tasks",
+		example: "Positive review of a product"
+	}
+]
+
+inputTypes.each( type => {
+	println( "Type: #type.type#" )
+	println( "Use: #type.description#" )
+	println( "Example: #type.example#" )
+
+	embedding = aiEmbed(
+		input: type.example,
+		params: {
+			model: "embed-english-v3.0",
+			input_type: type.type
+		},
+		options: { provider: "cohere" }
+	)
+
+	println( "Dimensions: #embedding.len()#" )
+	println()
+} )
+
+println( "=== Summary ===" )
+println( "✅ Cohere provides high-quality embeddings with excellent multilingual support" )
+println( "✅ Use input_type to optimize for your specific use case" )
+println( "✅ Choose embed-english-v3.0 for best quality or embed-english-light-v3.0 for speed" )
+println( "✅ embed-multilingual-v3.0 supports 100+ languages" )
+println( "✅ Perfect for semantic search, RAG, clustering, and classification" )

@@ -1,0 +1,278 @@
+/**
+ * MCP Server - Resources and Prompts Example
+ *
+ * This example demonstrates:
+ * - Registering resources (documents, data)
+ * - Reading resources dynamically
+ * - Creating prompt templates
+ * - Getting prompts with arguments
+ */
+
+println( "🚀 BoxLang AI - MCP Resources and Prompts Example" )
+println( "=" repeat 50 )
+
+// Create an MCP server
+var mcpSrv = MCPServer( "resourcesDemo" )
+    .setDescription( "Resources and Prompts Demo Server" )
+
+println( "✅ Created MCP server: #mcpSrv.getServerName()#" )
+println( "" )
+
+// ============================================
+// RESOURCES
+// ============================================
+
+println( "📚 Registering Resources..." )
+
+// Register a static document resource
+mcpSrv.registerResource(
+    uri: "docs://readme",
+    name: "README",
+    description: "Project README documentation",
+    mimeType: "text/markdown",
+    handler: () => {
+        // In a real app, you'd read from a file
+        return "# My Project\n\nThis is the README file with project documentation."
+    }
+)
+
+// Register dynamic configuration data
+server.registerResource(
+    uri: "config://app",
+    name: "App Configuration",
+    description: "Current application settings",
+    mimeType: "application/json",
+    handler: () => {
+        // In a real app, this would come from application scope or config files
+        return {
+            "appName": "My Application",
+            "version": "2.0.0",
+            "features": [ "search", "analytics", "reporting" ]
+        }
+    }
+)
+
+// Register a database-style resource
+server.registerResource(
+    uri: "data://users",
+    name: "User Directory",
+    description: "List of application users",
+    mimeType: "application/json",
+    handler: () => {
+        // In a real app, this would query a database
+        return [
+            { "id": 1, "name": "Alice", "role": "admin" },
+            { "id": 2, "name": "Bob", "role": "user" },
+            { "id": 3, "name": "Charlie", "role": "user" }
+        ]
+    }
+)
+
+println( "✅ Registered 3 resources" )
+println( "" )
+
+// List available resources
+println( "📋 Available Resources:" )
+var resources = mcpSrv.listResources()
+resources.each( ( resource ) => {
+    println( "  - #resource.uri# (#resource.name#)" )
+    println( "    #resource.description#" )
+    println( "    MIME: #resource.mimeType#" )
+} )
+println( "" )
+
+// Read a resource
+println( "📖 Reading resource 'docs://readme':" )
+var readmeContent = mcpSrv.readResource( "docs://readme" )
+println( "  Content: #readmeContent.contents[ 1 ].text#" )
+println( "" )
+
+// Read JSON resource
+println( "📖 Reading resource 'config://app':" )
+var configContent = mcpSrv.readResource( "config://app" )
+println( "  Config: #configContent.contents[ 1 ].text#" )
+println( "" )
+
+// ============================================
+// PROMPTS
+// ============================================
+
+println( "💬 Registering Prompts..." )
+
+// Register a simple greeting prompt
+mcpSrv.registerPrompt(
+    name: "greeting",
+    description: "Generate a personalized greeting",
+    args: [
+        { name: "name", description: "Person's name", required: true },
+        { name: "language", description: "Language for greeting", required: false }
+    ],
+    handler: ( args ) => {
+        var language = args.language ?: "English"
+        return [
+            {
+                role: "system",
+                content: "You are a friendly assistant that greets people in #language#."
+            },
+            {
+                role: "user",
+                content: "Please greet #args.name# warmly."
+            }
+        ]
+    }
+)
+
+// Register a code review prompt
+server.registerPrompt(
+    name: "codeReview",
+    description: "Code review prompt template",
+    args: [
+        { name: "language", description: "Programming language", required: true },
+        { name: "code", description: "Code to review", required: true },
+        { name: "focus", description: "Review focus area", required: false }
+    ],
+    handler: ( args ) => {
+        var focus = args.focus ?: "general quality"
+        return [
+            {
+                role: "system",
+                content: "You are an expert code reviewer specializing in #args.language#. Focus on #focus#."
+            },
+            {
+                role: "user",
+                content: "Please review this #args.language# code:\n\n```#args.language#\n#args.code#\n```"
+            }
+        ]
+    }
+)
+
+// Register a summarization prompt
+server.registerPrompt(
+    name: "summarize",
+    description: "Summarize text in a specific style",
+    args: [
+        { name: "text", description: "Text to summarize", required: true },
+        { name: "style", description: "Summary style (brief, detailed, bullet)", required: false },
+        { name: "maxWords", description: "Maximum word count", required: false }
+    ],
+    handler: ( args ) => {
+        var style = args.style ?: "brief"
+        var maxWords = args.maxWords ?: 100
+        return [
+            {
+                role: "system",
+                content: "You are a professional summarizer. Create a #style# summary in no more than #maxWords# words."
+            },
+            {
+                role: "user",
+                content: "Summarize this text:\n\n#args.text#"
+            }
+        ]
+    }
+)
+
+println( "✅ Registered 3 prompts" )
+println( "" )
+
+// List available prompts
+println( "📋 Available Prompts:" )
+var prompts = mcpSrv.listPrompts()
+prompts.each( ( prompt ) => {
+    println( "  - #prompt.name#: #prompt.description#" )
+    if ( prompt.arguments.len() > 0 ) {
+        println( "    Arguments:" )
+        prompt.arguments.each( ( arg ) => {
+            var required = arg.required ? "(required)" : "(optional)"
+            println( "      * #arg.name# #required#: #arg.description#" )
+        } )
+    }
+} )
+println( "" )
+
+// Get a prompt with arguments
+println( "💬 Getting 'greeting' prompt with arguments:" )
+var greetingPrompt = mcpSrv.getPrompt( "greeting", {
+    name: "BoxLang Developer",
+    language: "Spanish"
+} )
+println( "  Prompt description: #greetingPrompt.description#" )
+println( "  Messages (#greetingPrompt.messages.len()#):" )
+greetingPrompt.messages.each( ( msg ) => {
+    println( "    [#msg.role#]: #msg.content.text#" )
+} )
+println( "" )
+
+// Get code review prompt
+println( "💬 Getting 'codeReview' prompt with arguments:" )
+var reviewPrompt = mcpSrv.getPrompt( "codeReview", {
+    language: "java",
+    code: "public void test() { System.out.println(""Hello""); }",
+    focus: "best practices"
+} )
+println( "  Messages (#reviewPrompt.messages.len()#):" )
+reviewPrompt.messages.each( ( msg ) => {
+    println( "    [#msg.role#]: #msg.content.text#" )
+} )
+println( "" )
+
+// ============================================
+// JSON-RPC EXAMPLES
+// ============================================
+
+println( "📡 JSON-RPC Examples:" )
+
+// List resources via JSON-RPC
+var resourcesListRequest = {
+    "jsonrpc": "2.0",
+    "method": "resources/list",
+    "id": "1"
+}
+var resourcesListResponse = mcpSrv.handleRequest( resourcesListRequest )
+println( "  resources/list response: #resourcesListResponse.result.resources.len()# resources" )
+
+// Read resource via JSON-RPC
+var readResourceRequest = {
+    "jsonrpc": "2.0",
+    "method": "resources/read",
+    "id": "2",
+    "params": {
+        "uri": "data://users"
+    }
+}
+var readResourceResponse = mcpSrv.handleRequest( readResourceRequest )
+println( "  resources/read response: #readResourceResponse.result.contents[ 1 ].uri#" )
+
+// List prompts via JSON-RPC
+var promptsListRequest = {
+    "jsonrpc": "2.0",
+    "method": "prompts/list",
+    "id": "3"
+}
+var promptsListResponse = mcpSrv.handleRequest( promptsListRequest )
+println( "  prompts/list response: #promptsListResponse.result.prompts.len()# prompts" )
+
+// Get prompt via JSON-RPC
+var getPromptRequest = {
+    "jsonrpc": "2.0",
+    "method": "prompts/get",
+    "id": "4",
+    "params": {
+        "name": "summarize",
+        "arguments": {
+            "text": "This is a long text that needs summarization.",
+            "style": "bullet",
+            "maxWords": 50
+        }
+    }
+}
+var getPromptResponse = mcpSrv.handleRequest( getPromptRequest )
+println( "  prompts/get response: #getPromptResponse.result.messages.len()# messages" )
+println( "" )
+
+println( "✨ Example complete!" )
+println( "" )
+println( "💡 Key Takeaways:" )
+println( "  - Resources provide dynamic access to documents and data" )
+println( "  - Prompts are reusable templates with variable arguments" )
+println( "  - Both can be accessed via JSON-RPC or directly" )
+println( "  - URIs should follow a scheme://path pattern" )

@@ -1,0 +1,10 @@
+// ejemplo-ollama.bxs
+// Usando Ollama (IA local gratuita)
+// Ejecutar con: boxlang ejemplo-ollama.bxs
+
+answer = aiChat(
+    "Write a haiku about programming",
+    { model: "llama3.2" },
+    { provider: "ollama" }
+)
+println( answer )

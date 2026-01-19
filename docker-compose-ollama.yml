@@ -1,0 +1,97 @@
+################################################################
+# Ollama LLM Server and Web UI - Production Configuration
+################################################################
+#
+# PRODUCTION SETUP NOTES:
+#
+# 1. SECURITY - Update these settings before deploying:
+#    - Change WEBUI_ADMIN_USER and WEBUI_ADMIN_PASS to strong credentials
+#    - Consider using Docker secrets or environment files for sensitive data
+#    - Use a reverse proxy (nginx/traefik) with SSL/TLS in front
+#    - Restrict port access using firewall rules (only expose what's needed)
+#
+# 2. MODELS - Customize for your use case:
+#    - Update the preloaded model in command section (default: qwen2.5:0.5b-instruct)
+#    - Add multiple models: ollama pull model1 && ollama pull model2
+#    - For GPU support, add deploy.resources.reservations.devices config
+#
+# 3. RESOURCE LIMITS - Add resource constraints:
+#    - Set memory limits (e.g., mem_limit: 8g)
+#    - Set CPU limits (e.g., cpus: '4.0')
+#    - Adjust OLLAMA_NUM_PARALLEL and OLLAMA_MAX_LOADED_MODELS based on hardware
+#
+# 4. DATA PERSISTENCE:
+#    - All data stored in ./.ollama directory
+#    - Ensure ./.ollama is backed up regularly
+#    - Add .ollama/ to .gitignore to avoid committing model data
+#
+# 5. NETWORKING:
+#    - Consider using a custom network for service isolation
+#    - For production, bind to specific IPs instead of 0.0.0.0
+#    - Update port mappings if needed (default: 11434 for Ollama, 3000 for WebUI)
+#
+# 6. MONITORING:
+#    - Health checks are configured but consider adding logging drivers
+#    - Integrate with monitoring solutions (Prometheus, Grafana, etc.)
+#    - Set up alerting for service failures
+#
+# 7. UPDATES:
+#    - Pin specific image versions instead of :latest for stability
+#    - Example: ollama/ollama:0.1.26 instead of ollama/ollama:latest
+#    - Test updates in staging before deploying to production
+#
+################################################################
+
+services:
+  ################################################################
+  # Ollama LLM Server
+  ###############################################################
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./.ollama/server:/root/.ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=4
+      - OLLAMA_MAX_LOADED_MODELS=3
+      - OLLAMA_HOST=0.0.0.0:11434
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "ollama serve &
+      sleep 10
+      # Preload a model
+      ollama pull qwen2.5:0.5b-instruct
+      ollama pull gemma3
+      wait"
+    restart: always
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  webui:
+    image: ghcr.io/ollama-webui/ollama-webui:main
+    container_name: ollama-webui
+    ports:
+      - "3000:8080"
+    volumes:
+      - ./.ollama/webui:/app/backend/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_API_BASE_URL=http://ollama:11434/api
+      - WEBUI_AUTH=True
+      - WEBUI_ADMIN_USER=boxlang
+      - WEBUI_ADMIN_PASS=rocks
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

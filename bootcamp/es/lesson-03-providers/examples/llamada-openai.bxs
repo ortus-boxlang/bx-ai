@@ -1,0 +1,10 @@
+// llamada-openai.bxs
+// Usando el proveedor OpenAI
+// Ejecutar con: boxlang llamada-openai.bxs
+
+answer = aiChat(
+    "What is 2 + 2?",
+    {},                        // params
+    { provider: "openai" }     // opciones
+)
+println( "OpenAI: " & answer )

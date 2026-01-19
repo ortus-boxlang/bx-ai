@@ -1,0 +1,221 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Main entry point for document loading in AI workflows.
+ * Returns a fluent document loader that can be configured and then executed.
+ *
+ * @example
+ * ```
+ * // Load documents from a source
+ * docs = aiDocuments( "/docs", { type: "markdown", chunkSize: 500 } ).load()
+ *
+ * // Advanced fluent configuration
+ * docs = aiDocuments( "/docs", { type: "markdown" } )
+ *     .recursive()
+ *     .chunkSize( 500 )
+ *     .filter( ( doc ) => doc.metadata.language == "en" )
+ *     .load()
+ *
+ * // One-shot to memory
+ * result = aiDocuments( "/docs", { type: "markdown", chunkSize: 500 } )
+ *     .toMemory( myMemory )
+ *
+ * // Process documents with progress tracking
+ * docs = aiDocuments( "/large-dataset" )
+ *     .onProgress( ( completed, total, doc ) => {
+ *         println( "Loading: ${completed}/${total}" )
+ *     } )
+ *     .load()
+ *
+ * // Stream processing for large datasets
+ * aiDocuments( "/huge-dataset" )
+ *     .each( ( doc ) => {
+ *         processDocument( doc )
+ *         myMemory.seed( [ doc ] )
+ *     } )
+ *
+ * // Load from RSS feed
+ * docs = aiDocuments( "https://example.com/feed.xml", { type: "feed" } ).load()
+ *
+ * // Load from database
+ * docs = aiDocuments( "SELECT * FROM articles", { type: "sql", datasource: "mydb" } ).load()
+ *
+ * // Crawl website
+ * docs = aiDocuments( "https://example.com", { type: "crawler", maxPages: 10 } ).load()
+ * ```
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Static loader type mappings
+	 */
+	static {
+		EXTENSION_MAP = {
+			"txt"      : "text",
+			"text"     : "text",
+			"md"       : "markdown",
+			"markdown" : "markdown",
+			"csv"      : "csv",
+			"json"     : "json",
+			"xml"      : "xml",
+			"rss"      : "feed",
+			"atom"     : "feed"
+		};
+	}
+
+	/**
+	 * Create a fluent document loader for the given source
+	 *
+	 * @source The source to load from (file path, directory, URL, or SQL query)
+	 * @config Configuration options:
+	 *         - type: Explicit loader type (text, markdown, csv, json, xml, directory, http, feed, sql, crawler)
+	 *         - recursive: Recurse into subdirectories (directory loader)
+	 *         - extensions: File extensions to include (directory loader)
+	 *         - chunkSize: Chunk size for splitting
+	 *         - overlap: Overlap between chunks
+	 *         - delimiter: CSV delimiter
+	 *         - encoding: File encoding
+	 *         - (loader-specific options...)
+	 *
+	 * @return IDocumentLoader instance for fluent chaining
+	 */
+	function invoke( required string source, struct config = {} ) {
+		param arguments.config.type = ""
+		var loaderType = arguments.config.type
+
+		// Auto-detect loader type if not specified
+		if ( !len( loaderType ) ) {
+			loaderType = detectLoaderType( arguments.source )
+		}
+
+		// Create the appropriate loader
+		var loaderClass = "";
+		switch ( loaderType ) {
+
+			case "crawler": case "webcrawler": case "scraper":
+				loaderClass = "bxmodules.bxai.models.loaders.WebCrawlerLoader"
+				break;
+
+			case "csv":
+				loaderClass = "bxmodules.bxai.models.loaders.CSVLoader"
+				break;
+
+			case "db": case "sql" :
+				loaderClass = "bxmodules.bxai.models.loaders.SQLLoader"
+				break;
+
+			case "directory": case "dir":
+				loaderClass = "bxmodules.bxai.models.loaders.DirectoryLoader"
+				break;
+
+			case "feed": case "rss": case "atom":
+				loaderClass = "bxmodules.bxai.models.loaders.FeedLoader"
+				break;
+
+			case "json":
+				loaderClass = "bxmodules.bxai.models.loaders.JSONLoader"
+				break;
+
+			case "http" : case "html" :
+				loaderClass = "bxmodules.bxai.models.loaders.HTTPLoader"
+				break;
+
+			case "log" :
+				loaderClass = "bxmodules.bxai.models.loaders.LogLoader"
+				break;
+
+			case "markdown": case "md":
+				loaderClass = "bxmodules.bxai.models.loaders.MarkdownLoader"
+				break;
+
+			case "text": case "txt":
+				loaderClass = "bxmodules.bxai.models.loaders.TextLoader"
+				break;
+
+			case "xml":
+				loaderClass = "bxmodules.bxai.models.loaders.XMLLoader"
+				break;
+
+			default:
+				// Check if it's a full class path
+				if ( loaderType.findNoCase( "." ) ) {
+					loaderClass = loaderType;
+				} else {
+					throw(
+						type    : "aiDocuments.UnknownLoaderType",
+						message : "Unknown loader type: #loaderType#. Supported types: text, markdown, csv, json, xml, directory, http, feed, sql, crawler"
+					)
+				}
+		}
+
+		// Announce loader creation
+		BoxAnnounce( "onAiLoaderCreate", {
+			loaderType: loaderType,
+			loaderClass: loaderClass,
+			loaderConfig: arguments.config
+		} )
+
+		// Create and configure the loader instance
+		return new "#loaderClass#"(
+			source: arguments.source,
+			config: arguments.config
+		).configure( arguments.config )
+	}
+
+	/**
+	 * Detect the loader type from the source
+	 * Poke it to determine if it's a directory, URL, SQL, or file extension
+	 *
+	 * @source The source path or URL
+	 *
+	 * @return The detected loader type
+	 */
+	private string function detectLoaderType( required string source ) {
+		// Check if it's a directory
+		if ( directoryExists( arguments.source ) ) {
+			return "directory"
+		}
+
+		// Check if it's a URL - use HTTP loader
+		if ( reFindNoCase( "^https?://", arguments.source ) ) {
+			// Check if it's a feed URL
+			if ( reFindNoCase( "\.(rss|atom|feed)(\.xml)?$", arguments.source ) ||
+				 reFindNoCase( "/feed/?$", arguments.source ) ||
+				 reFindNoCase( "/rss/?$", arguments.source ) ) {
+				return "feed"
+			}
+			return "http"
+		}
+
+		// Check if it looks like a SQL query
+		if ( reFindNoCase( "^\s*(SELECT|INSERT|UPDATE|DELETE|WITH)\s+", arguments.source ) ) {
+			return "sql"
+		}
+
+		// Check file extension
+		var extension = listLast( arguments.source, "." ).lcase()
+
+		if ( static.EXTENSION_MAP.keyExists( extension ) ) {
+			return static.EXTENSION_MAP[ extension ]
+		}
+
+		// Default to text
+		return "text"
+	}
+
+}

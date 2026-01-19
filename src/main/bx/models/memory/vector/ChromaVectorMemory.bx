@@ -1,0 +1,613 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * ChromaDB Vector Memory Implementation
+ * Provides vector storage and semantic search using ChromaDB REST API
+ * Designed for local development and testing environments
+ */
+class extends="BaseVectorMemory" {
+
+	/**
+	 * ChromaDB server configuration
+	 */
+	property name="host" type="string" default="localhost";
+	property name="port" type="numeric" default=8000;
+	property name="protocol" type="string" default="http";
+	property name="tenant" type="string" default="default_tenant";
+	property name="database" type="string" default="default_database";
+
+	/**
+	 * HTTP client timeout settings
+	 */
+	property name="timeout" type="numeric" default=30;
+
+	/**
+	 * Base URL for ChromaDB API (computed from host/port/protocol)
+	 */
+	property name="baseUrl" type="string" default="";
+
+	/**
+	 * Collection ID (UUID from ChromaDB after creation/retrieval)
+	 */
+	property name="collectionId" type="string" default="";
+
+	/**
+	 * Configure the ChromaDB vector memory instance
+	 *
+	 * @config Configuration struct with ChromaDB-specific options
+	 *
+	 * @return ChromaVectorMemory for chaining
+	 */
+	public any function configure( required struct config ) {
+		// Param config defaults
+		param arguments.config.host = "localhost";
+		param arguments.config.port = 8000;
+		param arguments.config.protocol = "http";
+		param arguments.config.tenant = "default_tenant";
+		param arguments.config.database = "default_database";
+		param arguments.config.timeout = 30;
+
+		// Extract ChromaDB specific config FIRST (before super.configure() calls ensureCollection())
+		variables.host = arguments.config.host;
+		variables.port = arguments.config.port;
+		variables.protocol = arguments.config.protocol;
+		variables.tenant = arguments.config.tenant;
+		variables.database = arguments.config.database;
+		variables.timeout = arguments.config.timeout;
+
+		// Build base URL (using v2 API with tenant/database structure) - MUST happen before super.configure()
+		variables.baseUrl = variables.protocol & "://" & variables.host & ":" & variables.port;
+		variables.collectionsPath = "/api/v2/tenants/" & variables.tenant & "/databases/" & variables.database & "/collections";
+
+		// Now call parent configure which will call ensureCollection()
+		super.configure( arguments.config );
+
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * ABSTRACT METHOD IMPLEMENTATIONS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure collection exists in ChromaDB
+	 */
+	IVectorMemory function ensureCollection() {
+		if ( !collectionExists( variables.collection ) ) {
+			createCollection( variables.collection );
+		}
+		return this;
+	}
+
+	/**
+	 * Store a document in ChromaDB
+	 *
+	 * @id Document ID
+	 * @text Document text
+	 * @embedding Vector embedding
+	 * @metadata Document metadata
+	 */
+	IVectorMemory function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	) {
+		var payload = {
+			ids: [ arguments.id ],
+			embeddings: [ arguments.embedding ],
+			documents: [ arguments.text ],
+			metadatas: [ arguments.metadata ]
+		};
+
+		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/upsert" )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
+			.send();
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type = "ChromaVectorMemory.StoreError",
+				message = "Failed to store document in ChromaDB: " & response.statusText,
+				detail = response.fileContent
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * Search by vector embedding in ChromaDB
+	 *
+	 * @embedding Vector to search with
+	 * @limit Max results
+	 * @filter Metadata filter
+	 *
+	 * @return Array of results with similarity scores
+	 */
+	array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		var payload = {
+			query_embeddings: [ arguments.embedding ],
+			n_results: arguments.limit,
+			include: [ "documents", "metadatas", "distances", "embeddings" ]
+		};
+
+		// Add metadata filter if provided
+		// ChromaDB requires $and operator for multiple conditions
+		if ( !arguments.filter.isEmpty() ) {
+			var filterKeys = arguments.filter.keyArray();
+			if ( filterKeys.len() == 1 ) {
+				// Single filter - direct format
+				payload.where = arguments.filter;
+			} else {
+				// Multiple filters - need $and operator
+				var conditions = [];
+				for ( var key in arguments.filter ) {
+					var condition = {};
+					condition[ key ] = arguments.filter[ key ];
+					conditions.append( condition );
+				}
+				payload.where = { "$and": conditions };
+			}
+		}
+
+		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/query" )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
+			.send();
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type = "ChromaVectorMemory.SearchError",
+				message = "Failed to search ChromaDB: " & response.statusText,
+				detail = response.fileContent
+			);
+		}
+
+		var result = jsonDeserialize( response.fileContent );
+		return transformChromaResults( result );
+	}
+
+	/**
+	 * Get all documents from ChromaDB collection
+	 *
+	 * @return Array of documents
+	 */
+	array function getAllDocuments() {
+		var payload = {
+			include: [ "documents", "metadatas", "embeddings" ]
+		};
+
+		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/get" )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
+			.send();
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type = "ChromaVectorMemory.GetAllError",
+				message = "Failed to get all documents from ChromaDB: " & response.statusText,
+				detail = response.fileContent
+			);
+		}
+
+		var result = jsonDeserialize( response.fileContent );
+		return transformChromaGetAllResults( result );
+	}
+
+	/**
+	 * Get document by ID from ChromaDB
+	 *
+	 * @id Document ID
+	 *
+	 * @return Struct document or empty struct
+	 */
+	struct function getDocumentById( required string id ) {
+		var payload = {
+			ids: [ arguments.id ],
+			include: [ "documents", "metadatas", "embeddings" ]
+		};
+
+		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/get" )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
+			.send();
+
+		if ( response.statusCode != 200 ) {
+			return {};
+		}
+
+		var result = jsonDeserialize( response.fileContent );
+		var documents = transformChromaGetAllResults( result );
+
+		return documents.len() > 0 ? documents[ 1 ] : {};
+	}
+
+	/**
+	 * Delete document by ID from ChromaDB
+	 *
+	 * @id Document ID
+	 *
+	 * @return Boolean success
+	 */
+	boolean function deleteDocument( required string id ) {
+		var payload = {
+			ids: [ arguments.id ]
+		};
+
+		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/delete" )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
+			.send();
+
+		return response.statusCode == 200;
+	}
+
+	/**
+	 * Delete documents by filter from ChromaDB
+	 *
+	 * @filter Metadata filter
+	 *
+	 * @return Numeric count deleted (ChromaDB doesn't return count, so we estimate)
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		// First, get documents matching filter to count them
+		var payload = {
+			where: arguments.filter,
+			include: [ "documents" ]
+		};
+
+		var getResponse = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/get" )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
+			.send();
+
+		if ( getResponse.statusCode != 200 ) {
+			return 0;
+		}
+
+		var getResult = jsonDeserialize( getResponse.fileContent );
+		var count = getResult.documents?.len() ?: 0;
+
+		// Now delete by filter
+		var deletePayload = {
+			where: arguments.filter
+		};
+
+			var deleteResponse = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/delete" )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( deletePayload ) }
+			])
+			.timeout( variables.timeout )
+			.send();
+
+		return deleteResponse.statusCode == 200 ? count : 0;
+	}
+
+	/**
+	 * Clear entire collection by deleting all documents
+	 * ChromaDB requires either specific IDs or a where filter - we get all IDs first then delete
+	 */
+	IVectorMemory function clearCollection() {
+		// First, get all document IDs
+		var getAllPayload = {
+			include: [ "documents" ]  // Minimal data needed
+		};
+
+		var getResponse = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/get" )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( getAllPayload ) }
+			])
+			.timeout( variables.timeout )
+			.send();
+
+		if ( getResponse.statusCode != 200 ) {
+			// Collection might not exist or be empty - that's ok
+			return this;
+		}
+
+		var allData = jsonDeserialize( getResponse.fileContent );
+
+		// If no documents, nothing to delete
+		if ( !allData.keyExists( "ids" ) || allData.ids.len() == 0 ) {
+			return this;
+		}
+
+		// Delete all documents by ID
+		var deletePayload = {
+			ids: allData.ids
+		};
+
+		var deleteResponse = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId & "/delete" )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( deletePayload ) }
+			])
+			.timeout( variables.timeout )
+			.send();
+
+		if ( deleteResponse.statusCode != 200 ) {
+			throw(
+				type = "ChromaVectorMemory.ClearCollectionError",
+				message = "Failed to clear collection in ChromaDB: " & deleteResponse.statusText,
+				detail = deleteResponse.fileContent
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * IVectorMemory COLLECTION MANAGEMENT METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Create a new collection in ChromaDB (provider-specific)
+	 *
+	 * @name Collection name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	any function createCollection( required string name ) {
+		var payload = {
+			name: arguments.name,
+			metadata: {
+				description: "AI Memory Collection: " & arguments.name,
+				created_by: "BoxLang AI Module"
+			}
+		};
+
+		// Add distance function if specified
+		if ( len( variables.metric ) ) {
+			var chromaMetric = mapDistanceMetric( variables.metric );
+			payload.metadata.hnsw_space = chromaMetric;
+		}
+
+		var response = http( variables.baseUrl & variables.collectionsPath )
+			.post()
+			.params( [
+				{ type : "header", name: "Content-Type", value: "application/json" },
+				{ type: "body", name: "", value: jsonSerialize( payload ) }
+			])
+			.timeout( variables.timeout )
+			.send();
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type = "ChromaVectorMemory.CreateCollectionError",
+				message = "Failed to create collection in ChromaDB: " & response.statusText,
+				detail = response.fileContent
+			);
+		}
+
+		// Extract and store the collection ID (CRN) from response
+		var result = jsonDeserialize( response.fileContent );
+		variables.collectionId = result.id;
+
+		return this;
+	}
+
+	/**
+	 * Check if collection exists in ChromaDB (provider-specific)
+	 * v2 API: Lists all collections from tenant/database path and searches by name
+	 *
+	 * @name Collection name
+	 *
+	 * @return Boolean exists
+	 */
+	boolean function collectionExists( required string name ) {
+		// List all collections from tenant/database path
+		var response = http( variables.baseUrl & variables.collectionsPath )
+			.get()
+			.timeout( variables.timeout )
+			.send();
+
+		if ( response.statusCode != 200 ) {
+			return false;
+		}
+
+		var collections = jsonDeserialize( response.fileContent );
+
+		// Search for collection by name
+		for ( var coll in collections ) {
+			if ( coll.name == arguments.name ) {
+				// Store the collection ID (CRN) for future operations
+				variables.collectionId = coll.id;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Delete a collection from ChromaDB (provider-specific)
+	 * v2 API: Requires collection ID in path
+	 *
+	 * @name Collection name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	any function deleteCollection( required string name ) {
+		// First, get the collection ID
+		if ( !collectionExists( arguments.name ) ) {
+			throw(
+				type = "ChromaVectorMemory.CollectionNotFound",
+				message = "Collection not found: " & arguments.name
+			);
+		}
+
+		// Use tenant/database/collection path for deletion
+		var response = http( variables.baseUrl & variables.collectionsPath & "/" & variables.collectionId )
+			.delete()
+			.timeout( variables.timeout )
+			.send();
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type = "ChromaVectorMemory.DeleteCollectionError",
+				message = "Failed to delete collection from ChromaDB: " & response.statusText,
+				detail = response.fileContent
+			);
+		}
+
+		// Clear the stored collection ID
+		variables.collectionId = "";
+
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * HELPER METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Transform ChromaDB query results to standard format
+	 *
+	 * @chromaResult Raw ChromaDB query response
+	 *
+	 * @return Array of standardized results
+	 */
+	private array function transformChromaResults( required struct chromaResult ) {
+		var results = [];
+
+		if ( !arguments.chromaResult.keyExists( "ids" ) || !arguments.chromaResult.ids.len() ) {
+			return results;
+		}
+
+		var ids = arguments.chromaResult.ids[ 1 ];  // ChromaDB returns nested arrays
+		var documents = arguments.chromaResult.documents[ 1 ];
+		var metadatas = arguments.chromaResult.metadatas[ 1 ];
+		var distances = arguments.chromaResult.distances[ 1 ];
+		var embeddings = arguments.chromaResult.embeddings[ 1 ];
+
+		ids.each( ( id, index ) => {
+			results.append({
+				id: id,
+				text: documents[ index ],
+				metadata: metadatas[ index ] ?: {},
+				score: convertDistanceToScore( distances[ index ] ),
+				distance: distances[ index ],
+				embedding: embeddings[ index ]
+			});
+		} );
+
+		return results;
+	}
+
+	/**
+	 * Transform ChromaDB get/getAll results to standard format
+	 *
+	 * @chromaResult Raw ChromaDB get response
+	 *
+	 * @return Array of standardized documents
+	 */
+	private array function transformChromaGetAllResults( required struct chromaResult ) {
+		var results = [];
+
+		if ( !arguments.chromaResult.keyExists( "ids" ) || !arguments.chromaResult.ids.len() ) {
+			return results;
+		}
+
+		var ids = arguments.chromaResult.ids;
+		var documents = arguments.chromaResult.documents;
+		var metadatas = arguments.chromaResult.metadatas;
+		var embeddings = arguments.chromaResult.embeddings;
+
+		ids.each( ( id, index ) => {
+			results.append({
+				id: id,
+				text: documents[ index ],
+				metadata: metadatas[ index ] ?: {},
+				embedding: embeddings[ index ]
+			});
+		} );
+
+		return results;
+	}
+
+	/**
+	 * Convert ChromaDB distance to similarity score (0.0-1.0)
+	 * ChromaDB returns L2 distance by default - convert to similarity
+	 *
+	 * @distance ChromaDB distance value
+	 *
+	 * @return Numeric similarity score
+	 */
+	private numeric function convertDistanceToScore( required numeric distance ) {
+		// For L2 distance, convert to similarity using: 1 / (1 + distance)
+		// This maps distance 0 -> score 1.0, larger distances -> scores closer to 0
+		return 1.0 / ( 1.0 + arguments.distance );
+	}
+
+	/**
+	 * Map our standard distance metrics to ChromaDB metrics
+	 *
+	 * @metric Our metric ("cosine", "euclidean", "dot_product")
+	 *
+	 * @return String ChromaDB metric
+	 */
+	private string function mapDistanceMetric( required string metric ) {
+		switch ( arguments.metric ) {
+			case "cosine":
+				return "cosine";
+			case "euclidean":
+				return "l2";
+			case "dot_product":
+				return "ip";  // inner product
+			default:
+				return "l2";  // default to L2
+		}
+	}
+
+}

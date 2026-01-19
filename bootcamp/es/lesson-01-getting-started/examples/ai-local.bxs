@@ -1,0 +1,10 @@
+// ai-local.bxs
+// Usando Ollama (IA local gratuita)
+// Ejecutar con: boxlang ai-local.bxs
+
+answer = aiChat(
+    "What is 2 + 2?",
+    { model: "llama3.2" },
+    { provider: "ollama" }
+)
+println( answer )

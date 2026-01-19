@@ -1,0 +1,224 @@
+services:
+  ################################################################
+  # Ollama LLM Server and Web UI
+  ###############################################################
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=4
+      - OLLAMA_MAX_LOADED_MODELS=3
+      - OLLAMA_HOST=0.0.0.0:11434
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "ollama serve &
+      sleep 10
+      ollama pull qwen2.5:0.5b-instruct
+      wait"
+    restart: unless-stopped
+
+  # webui:
+  #   image: ghcr.io/ollama-webui/ollama-webui:main
+  #   container_name: ollama-webui
+  #   ports:
+  #     - "3000:8080"
+  #   depends_on:
+  #     - ollama
+  #   environment:
+  #     - OLLAMA_API_BASE_URL=http://ollama:11434/api
+  #     - WEBUI_AUTH=True
+  #     - WEBUI_ADMIN_USER=boxlang
+  #     - WEBUI_ADMIN_PASS=rocks
+  #   restart: unless-stopped
+
+  ###############################################################
+  # Vector Databases
+  ###############################################################
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+      - ALLOW_RESET=TRUE
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: postgres-vector
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=vectordb
+      - POSTGRES_USER=boxlang
+      - POSTGRES_PASSWORD=boxlang
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # MySQL 9 with native vector support
+  # MySQL 9.0+ includes native VECTOR type for semantic search
+  # Docs: https://dev.mysql.com/doc/refman/9.0/en/vector-functions.html
+  mysql:
+    image: mysql:9.0
+    container_name: mysql-vector
+    ports:
+      - "3307:3306"
+    environment:
+      - MYSQL_DATABASE=vectordb
+      - MYSQL_USER=boxlang
+      - MYSQL_PASSWORD=boxlang
+      - MYSQL_ROOT_PASSWORD=boxlang
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+
+  # Pinecone Local Development Server
+  # Official local development server for testing
+  # Docs: https://docs.pinecone.io/guides/operations/local-development
+  pinecone:
+    image: ghcr.io/pinecone-io/pinecone-local:latest
+    container_name: pinecone-local
+    ports:
+      - "5080-5090:5080-5090"
+    environment:
+      - PORT=5080
+      - PINECONE_HOST=localhost
+    platform: linux/amd64
+    restart: unless-stopped
+
+  # Milvus Vector Database
+  # High-performance open-source vector database
+  # Docs: https://milvus.io/docs
+  milvus-etcd:
+    image: quay.io/coreos/etcd:v3.5.25
+    container_name: milvus-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - milvus_etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://milvus-etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  milvus-minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: milvus-minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9001:9001"
+      - "9000:9000"
+    volumes:
+      - milvus_minio_data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  milvus-standalone:
+    image: milvusdb/milvus:v2.6.7
+    container_name: milvus-standalone
+    depends_on:
+      - milvus-etcd
+      - milvus-minio
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    environment:
+      ETCD_ENDPOINTS: milvus-etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    command: ["milvus", "run", "standalone"]
+    restart: unless-stopped
+
+  weaviate:
+    image: semitechnologies/weaviate:1.27.1
+    container_name: weaviate
+    ports:
+      - "8080:8080" # HTTP/REST API
+      - "50051:50051" # gRPC
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      DEFAULT_VECTORIZER_MODULE: "none"
+      ENABLE_MODULES: ""
+      CLUSTER_HOSTNAME: "node1"
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333" # HTTP/REST API
+      - "6334:6334" # gRPC API (optional)
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__LOG_LEVEL: INFO
+
+  # TypeSense - Fast typo-tolerant search engine with vector support
+  # Docs: https://typesense.org/docs/
+  typesense:
+    image: typesense/typesense:29.0
+    container_name: typesense
+    ports:
+      - "8108:8108"
+    volumes:
+      - typesense_data:/data
+    environment:
+      - TYPESENSE_DATA_DIR=/data
+      - TYPESENSE_API_KEY=xyz
+      - TYPESENSE_ENABLE_CORS=true
+    command: "--data-dir /data --api-key=xyz --enable-cors"
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+    name: ollama_data
+  chromadb_data:
+    name: chromadb_data
+  postgres_data:
+    name: postgres_data
+  mysql_data:
+    name: mysql_data
+  milvus_etcd_data:
+    name: milvus_etcd_data
+  milvus_minio_data:
+    name: milvus_minio_data
+  milvus_data:
+    name: milvus_data
+  weaviate_data:
+    name: weaviate_data
+  qdrant_data:
+    name: qdrant_data
+  typesense_data:
+    name: typesense_data

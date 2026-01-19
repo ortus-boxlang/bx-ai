@@ -1,0 +1,130 @@
+/**
+ * Example: Pipeline Return Formats
+ *
+ * Demonstrates the five return format options for pipelines:
+ * - raw (default): Full API response with metadata
+ * - single: Just the content string
+ * - all: Array of message objects
+ * - json: Parsed JSON object from content
+ * - xml: Parsed XML document from content
+ */
+
+// Create a simple pipeline
+basePipeline = aiMessage()
+    .user( "What is the capital of France?" )
+    .toDefaultModel()
+
+// 1. Raw format (default) - Full API response
+println( "=== Raw Format (Default) ===" )
+rawResult = basePipeline.run()
+println( "Type: " & rawResult.getClass().getName() )
+println( "Model: " & rawResult.model )
+println( "Tokens used: " & rawResult.usage.total_tokens )
+println( "Content: " & rawResult.choices.first().message.content )
+println()
+
+// 2. Single message format - Just the content string
+println( "=== Single Message Format ===" )
+singleResult = basePipeline
+    .singleMessage()
+    .run()
+println( "Type: " & singleResult.getClass().getName() )
+println( "Content: " & singleResult )
+println()
+
+// 3. All messages format - Array of message objects
+println( "=== All Messages Format ===" )
+allResult = basePipeline
+    .allMessages()
+    .run()
+println( "Type: " & allResult.getClass().getName() )
+println( "Count: " & allResult.len() )
+allResult.each( ( msg, i ) => {
+    println( "Message #i#: " & msg.content )
+})
+println()
+
+// 4. Using withOptions() explicitly
+println( "=== Using withOptions() ===" )
+formatResult = basePipeline
+    .withOptions( { returnFormat: "single" } )
+    .run()
+println( "Content: " & formatResult )
+println()
+
+// 5. Runtime options override
+println( "=== Runtime Options Override ===" )
+runtimeResult = basePipeline.run(
+    {},                              // input bindings
+    {},                              // params
+    { returnFormat: "single" }       // runtime options
+)
+println( "Content: " & runtimeResult )
+println()
+
+// 6. JSON format - Parsed JSON object
+println( "=== JSON Format ===" )
+jsonPipeline = aiMessage()
+    .user( "Return JSON: {\"language\": \"BoxLang\", \"version\": \"2.0\", \"cool\": true}" )
+    .toDefaultModel()
+    .asJson()
+
+jsonResult = jsonPipeline.run()
+println( "Type: " & jsonResult.getClass().getName() )
+println( "Language: " & jsonResult.language )
+println( "Version: " & jsonResult.version )
+println( "Cool: " & jsonResult.cool )
+println()
+
+// 7. XML format - Parsed XML document
+println( "=== XML Format ===" )
+xmlPipeline = aiMessage()
+    .user( "Return XML: <project><name>bx-ai</name><type>module</type></project>" )
+    .toDefaultModel()
+    .asXml()
+
+xmlResult = xmlPipeline.run()
+println( "Type: " & xmlResult.getClass().getName() )
+println( "Project: " & xmlResult.project.name.xmlText )
+println( "Type: " & xmlResult.project.type.xmlText )
+println()
+
+// 8. Combining with transforms
+println( "=== Single + Transform ===" )
+transformed = basePipeline
+    .singleMessage()
+    .transform( content => content.ucase() )
+    .run()
+println( "Uppercase: " & transformed )
+println()
+
+// 9. Different use cases
+println( "=== Use Case Examples ===" )
+
+// For debugging - use raw
+debugPipeline = aiMessage()
+    .user( "Count to 3" )
+    .toDefaultModel()
+    .rawResponse()
+
+debugResult = debugPipeline.run()
+println( "Debug - Model used: " & debugResult.model )
+println( "Debug - Response time: " & debugResult.created )
+
+// For user-facing text - use single
+textPipeline = aiMessage()
+    .user( "Tell me a joke" )
+    .toDefaultModel()
+    .singleMessage()
+
+userText = textPipeline.run()
+println( "User sees: " & userText )
+
+// For processing choices - use all
+choicesPipeline = aiMessage()
+    .user( "Suggest 3 color names" )
+    .toDefaultModel()
+    .allMessages()
+
+choices = choicesPipeline.run()
+println( "Processing " & choices.len() & " choices" )

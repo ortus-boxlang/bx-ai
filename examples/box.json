@@ -1,0 +1,13 @@
+{
+	"dependencies": {
+		"bx-derby": "*",
+		"bx-ai": "*"
+	},
+	"installPaths": {
+		"bx-ai": "boxlang_modules/bx-ai/",
+		"bx-sqlite": "boxlang_modules/bx-sqlite/",
+		"bx-derby": "boxlang_modules/bx-derby/",
+		"bx-mysql": "boxlang_modules/bx-mysql/",
+		"bx-postgres": "boxlang_modules/bx-postgres/"
+	}
+}

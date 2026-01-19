@@ -1,0 +1,167 @@
+/**
+ * aiTokens() BIF Examples
+ * Demonstrates token counting for AI operations
+ */
+
+// ====================
+// BASIC TOKEN COUNTING
+// ====================
+
+// Simple text estimation
+tokens = aiTokens( "Hello, world!" )
+println( "Tokens: #tokens#" ) // ~4 tokens
+
+// Longer text
+text = "The quick brown fox jumps over the lazy dog. This is a test sentence."
+tokens = aiTokens( text )
+println( "Tokens for longer text: #tokens#" ) // ~18 tokens
+
+
+// ====================
+// ESTIMATION METHODS
+// ====================
+
+// Character-based (default) - fast, good for most cases
+charTokens = aiTokens( text, { method: "characters" } )
+println( "Character-based: #charTokens# tokens" )
+
+// Word-based - slightly more accurate for English text
+wordTokens = aiTokens( text, { method: "words" } )
+println( "Word-based: #wordTokens# tokens" )
+
+
+// ====================
+// ARRAY OF CHUNKS
+// ====================
+
+// Count tokens across multiple text chunks
+chunks = [
+    "First paragraph of content.",
+    "Second paragraph with more information.",
+    "Third paragraph concluding the document."
+]
+totalTokens = aiTokens( chunks )
+println( "Total tokens across all chunks: #totalTokens#" )
+
+
+// ====================
+// DETAILED STATISTICS
+// ====================
+
+// Get full breakdown
+stats = aiTokens( text, { detailed: true } )
+println( "Detailed stats:" )
+println( "  Tokens: #stats.tokens#" )
+println( "  Characters: #stats.characters#" )
+println( "  Words: #stats.words#" )
+println( "  Chunks: #stats.chunks#" )
+println( "  Method: #stats.method#" )
+
+
+// ====================
+// WITH aiChunk() - PRACTICAL USE CASE
+// ====================
+
+// Large document that needs to be split
+largeDoc = repeatString( "This is a test sentence. ", 50 ) // ~1250 chars
+
+// First, check total tokens
+totalTokens = aiTokens( largeDoc )
+println( "Original document: #totalTokens# tokens" )
+
+// If over limit, chunk it
+if ( totalTokens > 200 ) {
+    chunks = aiChunk( largeDoc, {
+        chunkSize: 500,
+        overlap: 50,
+        strategy: "recursive"
+    } )
+
+    println( "Split into #chunks.len()# chunks" )
+
+    // Check tokens per chunk
+    chunks.each( ( chunk, index ) => {
+        chunkTokens = aiTokens( chunk )
+        println( "Chunk #index#: #chunkTokens# tokens" )
+    } )
+
+    // Verify total tokens match
+    totalChunkTokens = aiTokens( chunks )
+    println( "Total tokens after chunking: #totalChunkTokens#" )
+}
+
+
+// ====================
+// BUDGET PLANNING
+// ====================
+
+// Estimate cost before API call
+prompt = "Write a detailed essay about artificial intelligence"
+systemMsg = "You are a helpful assistant"
+userMsg = "Please write 500 words"
+
+// Estimate input tokens
+inputTokens = aiTokens( [ systemMsg, prompt, userMsg ] )
+println( "Estimated input tokens: #inputTokens#" )
+
+// Estimate if response will fit in limit
+maxResponseTokens = 1000
+totalBudget = inputTokens + maxResponseTokens
+println( "Total token budget needed: #totalBudget#" )
+
+if ( totalBudget < 4096 ) {
+    println( "✓ Within GPT-3.5 limit (4K tokens)" )
+} else if ( totalBudget < 16384 ) {
+    println( "✓ Within GPT-3.5-16K limit (16K tokens)" )
+} else {
+    println( "⚠ Requires GPT-4 (32K+ tokens)" )
+}
+
+
+// ====================
+// DYNAMIC CHUNKING STRATEGY
+// ====================
+
+// Choose chunking strategy based on content size
+function smartChunk( text ) {
+    tokens = aiTokens( text )
+
+    if ( tokens <= 100 ) {
+        // Small enough, don't chunk
+        return [ text ]
+    } else if ( tokens <= 500 ) {
+        // Medium size, chunk by sentences
+        return aiChunk( text, {
+            chunkSize: 200,
+            strategy: "sentences"
+        } )
+    } else {
+        // Large content, use recursive
+        return aiChunk( text, {
+            chunkSize: 500,
+            overlap: 50,
+            strategy: "recursive"
+        } )
+    }
+}
+
+// Usage
+content = "Your large document here..."
+optimizedChunks = smartChunk( content )
+println( "Optimally split into #optimizedChunks.len()# chunks" )
+
+
+// ====================
+// MONITORING TOKEN USAGE
+// ====================
+
+// Track tokens across multiple operations
+totalUsage = 0
+
+[ "Query 1", "Query 2", "Query 3" ].each( ( query ) => {
+    tokens = aiTokens( query )
+    totalUsage += tokens
+    println( "Query tokens: #tokens#, Running total: #totalUsage#" )
+} )
+
+println( "Total token usage: #totalUsage#" )

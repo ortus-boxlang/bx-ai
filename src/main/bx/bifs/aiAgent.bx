@@ -1,0 +1,61 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Create an AI Agent that can reason, use tools, maintain memory, and execute tasks autonomously
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Create an AI Agent with optional configuration
+	 *
+	 * An AI Agent is an autonomous entity that can:
+	 * - Reason through complex problems
+	 * - Use tools to gather information or take actions
+	 * - Maintain conversation memory across interactions
+	 * - Execute multi-step tasks with planning
+	 * - Chain operations in pipelines
+	 * - Delegate tasks to sub-agents
+	 *
+	 * @name The agent's name (default: "BxAi")
+	 * @description The agent's role/purpose description
+	 * @instructions System instructions for the agent's behavior
+	 * @model The AI model provider to use. Defaults to configured default model
+	 * @memory Single IAiMemory instance or array of memory instances, defaults to WindowMemory
+	 * @tools Array of Tool objects the agent can use
+	 * @subAgents Array of sub-agents to register as internal tools for delegation
+	 * @params Additional provider parameters (model,temperature, max_tokens, etc.)
+	 * @options Additional options (timeout, logging, etc.)
+	 *
+	 * @return AiAgent instance for fluent chaining
+	 */
+	function invoke(
+		string name = "BxAi",
+		string description = "",
+		string instructions = "",
+		AiModel model = aiModel(),
+		any memory = aiMemory(),
+		array tools = [],
+		array subAgents = [],
+		struct params = {},
+		struct options = {}
+	) {
+		var agent = new bxModules.bxai.models.AiAgent( argumentCollection: arguments );
+
+		BoxAnnounce( "onAIAgentCreate", { agent: agent } );
+
+		return agent;
+	}
+
+}

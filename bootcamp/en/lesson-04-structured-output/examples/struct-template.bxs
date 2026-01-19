@@ -1,0 +1,22 @@
+// struct-template.bxs
+// Extract structured data using struct templates
+// Run with: boxlang struct-template.bxs
+
+// Define the structure you want
+template = {
+    "name": "",
+    "age": 0,
+    "email": ""
+}
+
+// Ask AI to extract into this structure
+result = aiChat( 
+    "Extract person info: John Doe is 30 years old, email john@example.com" 
+).structuredOutput( template )
+
+// Use the result as a normal struct!
+println( "Extracted Person Data:" )
+println( "─".repeat( 30 ) )
+println( "Name: " & result.name )
+println( "Age: " & result.age )
+println( "Email: " & result.email )

@@ -1,0 +1,5 @@
+class {
+	property name="name" type="string";
+	property name="price" type="numeric";
+	property name="category" type="string";
+}

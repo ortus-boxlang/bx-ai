@@ -1,4 +1,17 @@
 /**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
  * Creates a reference to a registered AI Service Provider.
  */
 @BoxBIF
@@ -13,11 +26,18 @@ class {
 	 */
 	static final CORE_PROVIDERS = [
 		"claude",
+        "cohere",
 		"deepseek",
 		"gemini",
 		"grok",
+		"groq",
+		"huggingface",
+		"mistral",
+		"ollama",
 		"openai",
-		"perplexity"
+		"openrouter",
+		"perplexity",
+        "voyage"
 	];
 
     /**
@@ -33,15 +53,26 @@ class {
 	 * @return The AI Service Provider
      */
     function invoke( string provider, any apiKey ) {
-
+        // Default the provider from the module settings if not provided
 		arguments.provider = arguments.provider ?: moduleRecord.settings.provider;
+
+        // By convention check if there is a <PROVIDER>_API_KEY setting override it
+        var conventionAPIKey = getSystemSetting( "#arguments.provider.ucase()#_API_KEY", "" );
+        if( isNull( arguments.apiKey ) && len( conventionAPIKey ) ){
+            arguments.apiKey = conventionAPIKey;
+        }
+        // Else use the module setting
 		arguments.apiKey = arguments.apiKey ?: moduleRecord.settings.apiKey;
 
+        // Build the target service
 		var oTargetService = null;
 		switch( arguments.provider ) {
 			case "claude":
 				oTargetService = new bxModules.bxai.models.providers.ClaudeService().configure( arguments.apiKey )
 				break
+            case "cohere":
+                oTargetService = new bxModules.bxai.models.providers.CohereService().configure( arguments.apiKey )
+                break
 			case "deepseek":
 				oTargetService = new bxModules.bxai.models.providers.DeepSeekService().configure( arguments.apiKey )
 				break
@@ -51,12 +82,30 @@ class {
 			case "grok":
 				oTargetService = new bxModules.bxai.models.providers.GrokService().configure( arguments.apiKey )
 				break
+			case "groq":
+				oTargetService = new bxModules.bxai.models.providers.GroqService().configure( arguments.apiKey )
+				break
+			case "huggingface":
+				oTargetService = new bxModules.bxai.models.providers.HuggingFaceService().configure( arguments.apiKey )
+				break
+			case "mistral":
+				oTargetService = new bxModules.bxai.models.providers.MistralService().configure( arguments.apiKey )
+				break
+			case "ollama":
+				oTargetService = new bxModules.bxai.models.providers.OllamaService().configure( arguments.apiKey )
+				break
 			case "openai" :
 				oTargetService = new bxModules.bxai.models.providers.OpenAIService().configure( arguments.apiKey )
+				break
+			case "openrouter":
+				oTargetService = new bxModules.bxai.models.providers.OpenRouterService().configure( arguments.apiKey )
 				break
 			case "perplexity":
 				oTargetService = new bxModules.bxai.models.providers.PerplexityService().configure( arguments.apiKey )
 				break
+            case "voyage":
+                oTargetService = new bxModules.bxai.models.providers.VoyageService().configure( arguments.apiKey )
+                break
 			default:
 				// Announce the provider request so contributors can listen and provide a service
 				// This is for our aiplus module

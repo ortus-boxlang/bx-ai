@@ -1,0 +1,785 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Weaviate Vector Memory Implementation
+ * Provides cloud-native vector storage and semantic search using Weaviate REST API
+ * Designed for production deployments with support for both cloud and self-hosted instances
+ */
+class extends="BaseVectorMemory" {
+
+	/**
+	 * Weaviate server configuration
+	 */
+	property name="host" type="string" default="localhost";
+	property name="port" type="numeric" default=8080;
+	property name="scheme" type="string" default="http";
+	property name="apiKey" type="string" default="";
+	property name="oidcToken" type="string" default="";
+	property name="timeout" type="numeric" default=30;
+
+	/**
+	 * Base URL for Weaviate API (computed from host/port/scheme)
+	 */
+	property name="baseUrl" type="string" default="";
+
+	/**
+	 * Batch configuration
+	 */
+	property name="batchSize" type="numeric" default=100;
+	property name="batchDynamic" type="boolean" default=true;
+
+	/**
+	 * Vectorizer configuration
+	 */
+	property name="vectorizer" type="string" default="none";  // none, text2vec-openai, text2vec-cohere, etc.
+	property name="vectorizeClassName" type="boolean" default=false;
+
+	/**
+	 * Class / Collection description
+	 */
+	property name="description" type="string" default="";
+
+	/**
+	 * Inverted index configuration
+	 * Example: { "indexTimestamps": true, "indexMetadata": true }
+	 */
+	property name="invertedIndexConfig" type="struct" default={};
+
+	/**
+	 * Weaviate module configuration
+	 */
+	property name="moduleConfig" type="struct" default={};
+
+	static {
+		// Default collection name (PascalCase for Weaviate)
+		DEFAULT_COLLECTION = "Bxaimemory"
+		// API version
+		API_VERSION = "v1"
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
+	 * @collection The collection/class name (will be converted to PascalCase)
+	 */
+	function init(
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = "",
+		string collection = static.DEFAULT_COLLECTION
+	) {
+		super.init(
+			key: arguments.key,
+			userId: arguments.userId,
+			conversationId: arguments.conversationId,
+			collection: pascalCase( arguments.collection )
+		);
+		return this;
+	}
+
+	/**
+	 * Configure the Weaviate vector memory instance
+	 *
+	 * @config Configuration struct with Weaviate-specific options
+	 *
+	 * @return WeaviateVectorMemory for chaining
+	 */
+	public any function configure( required struct config ) {
+		// Param config defaults
+		param arguments.config.host = "localhost";
+		param arguments.config.port = 8080;
+		param arguments.config.scheme = "http";
+		param arguments.config.apiKey = "";
+		param arguments.config.oidcToken = "";
+		param arguments.config.timeout = 30;
+		param arguments.config.batchSize = 100;
+		param arguments.config.batchDynamic = true;
+		param arguments.config.vectorizer = "none";
+		param arguments.config.vectorizeClassName = false;
+		param arguments.config.description = "";
+		param arguments.config.invertedIndexConfig = {};
+		param arguments.config.moduleConfig = {};
+
+		// Extract Weaviate specific config FIRST (before super.configure() calls ensureCollection())
+		variables.host = arguments.config.host;
+		variables.port = arguments.config.port;
+		variables.scheme = arguments.config.scheme;
+		variables.apiKey = arguments.config.apiKey;
+		variables.oidcToken = arguments.config.oidcToken;
+		variables.timeout = arguments.config.timeout;
+		variables.batchSize = arguments.config.batchSize;
+		variables.batchDynamic = arguments.config.batchDynamic;
+		variables.vectorizer = arguments.config.vectorizer;
+		variables.vectorizeClassName = arguments.config.vectorizeClassName;
+		variables.description = arguments.config.description;
+		variables.invertedIndexConfig = arguments.config.invertedIndexConfig;
+		variables.moduleConfig = arguments.config.moduleConfig;
+
+		// Build base URL
+		variables.baseUrl = variables.scheme & "://" & variables.host;
+		if (
+			( variables.scheme == "http" && variables.port != 80 ) ||
+			( variables.scheme == "https" && variables.port != 443 )
+		) {
+			variables.baseUrl &= ":" & variables.port;
+		}
+
+		// Transform collection name to PascalCase as Weaviate requires
+		if ( arguments.config?.collection?.len()  ) {
+			arguments.config.collection = pascalCase( arguments.config.collection );
+		}
+
+		// Now call parent configure which will set variables.collection and call ensureCollection()
+		super.configure( arguments.config );
+
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * ABSTRACT METHOD IMPLEMENTATIONS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure collection/class exists in Weaviate
+	 */
+	IVectorMemory function ensureCollection() {
+		if ( !collectionExists( variables.collection ) ) {
+			createCollection( variables.collection );
+		}
+		return this;
+	}
+
+	/**
+	 * Store a document in Weaviate
+	 *
+	 * @id Document ID
+	 * @text Document text
+	 * @embedding Vector embedding
+	 * @metadata Document metadata
+	 */
+	IVectorMemory function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	) {
+		// Normalize UUID format
+		var normalizedId = normalizeUUID( arguments.id );
+
+		// Build object payload
+		var payload = {
+			"class": variables.collection,
+			"id": normalizedId,
+			"properties": {
+				"text": arguments.text,
+				"metadata": jsonSerialize( arguments.metadata ),
+				"timestamp": now().getTime(),
+				"userId": variables.userId,
+				"conversationId": variables.conversationId
+			},
+			"vector": arguments.embedding
+		};
+
+		// Make request (POST for create/upsert)
+		var response = makeRequest(
+			method = "POST",
+			path = "/#static.API_VERSION#/objects",
+			body = payload
+		);
+
+		// Check for errors
+		if ( response.keyExists( "error" ) || response.keyExists( "errors" ) ) {
+			throw(
+				type = "WeaviateVectorMemory.StoreError",
+				message = "Failed to store document in Weaviate",
+				detail = response.toString()
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * Search by vector embedding in Weaviate
+	 *
+	 * @embedding Vector to search with
+	 * @limit Max results
+	 * @filter Metadata filter
+	 *
+	 * @return Array of results with similarity scores
+	 */
+	array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		// Build combined filter with userId/conversationId
+		var combinedFilter = arguments.filter.copy();
+		if ( len( variables.userId ) ) {
+			combinedFilter.userId = variables.userId;
+		}
+		if ( len( variables.conversationId ) ) {
+			combinedFilter.conversationId = variables.conversationId;
+		}
+
+		// Build GraphQL query
+		var graphqlQuery = {
+			"query": buildSearchQuery(
+				embedding = arguments.embedding,
+				limit = arguments.limit,
+				filter = combinedFilter
+			)
+		};
+
+		// Execute GraphQL query
+		var response = makeRequest(
+			method = "POST",
+			path = "/#static.API_VERSION#/graphql",
+			body = graphqlQuery
+		);
+
+		// Check for errors
+		if ( response.keyExists( "errors" ) || response.keyExists( "error" ) ) {
+			throw(
+				type = "WeaviateVectorMemory.SearchError",
+				message = "Failed to search Weaviate: #jsonSerialize( response )#",
+				detail = response.toString()
+			);
+		}
+
+		// Transform results
+		return transformWeaviateResults( response.data.Get[ variables.collection ] ?: [] );
+	}
+
+	/**
+	 * Get all documents from Weaviate collection
+	 *
+	 * @return Array of documents
+	 */
+	array function getAllDocuments() {
+		// Build where clause for userId/conversationId filtering
+		var whereClause = "";
+		var conditions = [];
+
+		if ( len( variables.userId ) ) {
+			conditions.append( '{ path: ["userId"], operator: Equal, valueText: "#variables.userId#" }' );
+		}
+		if ( len( variables.conversationId ) ) {
+			conditions.append( '{ path: ["conversationId"], operator: Equal, valueText: "#variables.conversationId#" }' );
+		}
+
+		if ( conditions.len() > 0 ) {
+			if ( conditions.len() == 1 ) {
+				whereClause = ", where: #conditions[1]#";
+			} else {
+				whereClause = ", where: { operator: And, operands: [#conditions.toList()#] }";
+			}
+		}
+
+		// Build GraphQL query to get all objects
+		var graphqlQuery = {
+			"query": "{ Get { #variables.collection#(limit: 100#whereClause#) { _additional { id vector } text metadata timestamp userId conversationId } } }"
+		};
+
+		// Execute query
+		var response = makeRequest(
+			method = "POST",
+			path = "/#static.API_VERSION#/graphql",
+			body = graphqlQuery
+		);
+
+		// Check for errors
+		if ( response.keyExists( "errors" ) || response.keyExists( "error" ) ) {
+			return [];
+		}
+
+		// Transform results
+		var results = [];
+		var objects = response.data.Get[ variables.collection ] ?: [];
+
+		objects.each( ( obj ) => {
+			results.append({
+				id: obj._additional.id,
+				text: obj.text,
+				metadata: isJSON( obj.metadata ) ? jsonDeserialize( obj.metadata ) : {},
+				embedding: obj._additional.vector ?: []
+			});
+		} );
+
+		return results;
+	}
+
+	/**
+	 * Get document by ID from Weaviate
+	 *
+	 * @id Document ID
+	 *
+	 * @return Struct document or empty struct
+	 */
+	struct function getDocumentById( required string id ) {
+		var normalizedId = normalizeUUID( arguments.id );
+		var response = makeRequest(
+			path = "/#static.API_VERSION#/objects/#variables.collection#/#normalizedId#?include=vector"
+		);
+
+		// Check if object exists
+		if ( response.keyExists( "error" ) || response.keyExists( "errors" ) || !response.keyExists( "id" ) ) {
+			return {};
+		}
+
+		// Transform to standard format
+		return {
+			id: response.id,
+			text: response.properties.text ?: "",
+			metadata: isJSON( response.properties.metadata ) ? jsonDeserialize( response.properties.metadata ) : {},
+			embedding: response.vector ?: []
+		};
+	}
+
+	/**
+	 * Delete document by ID from Weaviate
+	 *
+	 * @id Document ID
+	 *
+	 * @return Boolean success
+	 */
+	boolean function deleteDocument( required string id ) {
+		var normalizedId = normalizeUUID( arguments.id );
+		var response = makeRequest(
+			method = "DELETE",
+			path = "/#static.API_VERSION#/objects/#variables.collection#/#normalizedId#"
+		);
+
+		// Weaviate returns 204 No Content on successful deletion
+		// Our makeRequest will return empty struct for 204
+		return ( response?.statusCode == 204 ) ? true : false;
+	}
+
+	/**
+	 * Delete documents by filter from Weaviate
+	 *
+	 * @filter Metadata filter
+	 *
+	 * @return Numeric count deleted
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		// Build where filter for batch delete
+		var whereFilter = buildWhereFilter( arguments.filter );
+
+		// Build batch delete payload
+		var payload = {
+			"match": {
+				"class": variables.collection,
+				"where": whereFilter
+			},
+			"output": "verbose"  // Get count of deleted objects
+		};
+
+		var response = makeRequest(
+			method = "DELETE",
+			path = "/#static.API_VERSION#/batch/objects",
+			body = payload
+		);
+
+		// Extract deleted count from response
+		if ( response.keyExists( "results" ) && response.results.keyExists( "successful" ) ) {
+			return response.results.successful;
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Clear entire collection by deleting and recreating the class
+	 */
+	IVectorMemory function clearCollection() {
+		// Delete class
+		deleteCollection( variables.collection );
+		// Recreate it
+		createCollection( variables.collection );
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * IVectorMemory COLLECTION MANAGEMENT METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Create a new collection/class in Weaviate
+	 *
+	 * @name Collection name (will be converted to PascalCase)
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	any function createCollection( required string name ) {
+		// Build class schema
+		var classSchema = {
+			"class": arguments.name,
+			"description": variables.description.len() > 0
+				? variables.description
+				: "AI Memory Collection: #arguments.name#",
+			"vectorizer": variables.vectorizer,
+			"vectorIndexType": "hnsw",
+			"vectorIndexConfig": {
+				"distance": mapDistanceMetric( variables.metric )
+			},
+			"properties": [
+				{
+					"name": "text",
+					"dataType": [ "text" ],
+					"description": "Document text content"
+				},
+				{
+					"name": "metadata",
+					"dataType": [ "text" ],
+					"description": "Document metadata as JSON string"
+				},
+				{
+					"name": "timestamp",
+					"dataType": [ "number" ],
+					"description": "Document creation timestamp"
+				},
+				{
+					"name": "userId",
+					"dataType": [ "text" ],
+					"description": "User identifier for multi-tenant isolation"
+				},
+				{
+					"name": "conversationId",
+					"dataType": [ "text" ],
+					"description": "Conversation identifier for multi-conversation support"
+				}
+			]
+		};
+
+		// Add module config if provided
+		if ( !variables.moduleConfig.isEmpty() ) {
+			classSchema.moduleConfig = variables.moduleConfig;
+		}
+
+		// Add inverted index config if provided
+		if ( !variables.invertedIndexConfig.isEmpty() ) {
+			classSchema.invertedIndexConfig = variables.invertedIndexConfig;
+		}
+
+		// Create the collection
+		var response = makeRequest(
+			method = "POST",
+			path = "/#static.API_VERSION#/schema",
+			body = classSchema
+		);
+
+		// Check if it's the same as existing class
+		// We can ignore "already exists" errors
+		if (response?.error?.first()?.message?.contains( "already exists" ) ) {
+			return this;
+		}
+
+		// Check for errors
+		if ( response.keyExists( "error" ) || response.keyExists( "errors" ) ) {
+			throw(
+				type = "WeaviateVectorMemory.CreateCollectionError",
+				message = "Failed to create collection in Weaviate",
+				detail = response.toString()
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * Check if collection/class exists in Weaviate
+	 *
+	 * @name Collection name (will be converted to PascalCase)
+	 *
+	 * @return Boolean exists
+	 */
+	boolean function collectionExists( required string name ) {
+		// Name is already PascalCase (collection), use it directly
+		var response = makeRequest(
+			path = "/#static.API_VERSION#/schema/#arguments.name#"
+		);
+		// Class exists if we got a successful response
+		return !response.keyExists( "error" ) && !response.keyExists( "errors" );
+	}
+
+	/**
+	 * Delete a collection/class from Weaviate
+	 *
+	 * @name Collection name (will be converted to PascalCase)
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	any function deleteCollection( required string name ) {
+		// Name is already PascalCase (collection), use it directly
+
+		// Check if collection exists before trying to delete
+		if ( !collectionExists( arguments.name ) ) {
+			// Collection doesn't exist, nothing to delete
+			return this;
+		}
+
+		var response = makeRequest(
+			method = "DELETE",
+			path = "/#static.API_VERSION#/schema/#arguments.name#"
+		);
+
+		// DELETE returns 200/204 on success, 404 if already deleted
+		// makeRequest returns error struct for both 204 (no content) and error responses
+		// So we need to check the status code, not just the error key
+		var statusCode = response.statusCode ?: 0;
+
+		// Success codes (200, 204) or 404 (already deleted) are OK
+		if ( statusCode >= 200 && statusCode < 300 || statusCode == 404 ) {
+			return this;
+		}
+
+		// Any other response is an error
+		if ( response.keyExists( "error" ) || response.keyExists( "errors" ) ) {
+			throw(
+				type = "WeaviateVectorMemory.DeleteCollectionError",
+				message = "Failed to delete collection from Weaviate (Status: #statusCode#)",
+				detail = response.toString()
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * HELPER METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Make HTTP request to Weaviate REST API
+	 *
+	 * @method HTTP method (GET, POST, etc.)
+	 * @path API path
+	 * @body Request body (optional)
+	 * @debug Enable debugging output (optional)
+	 *
+	 * @return Parsed response struct if JSON, else the full response struct
+	 */
+	private struct function makeRequest(
+		required string path,
+		string method="GET",
+		struct body = {},
+		boolean debug = false
+	) {
+		// Build HTTP request
+		var httpService = http( variables.baseUrl & arguments.path )
+			.method( arguments.method )
+			.throwOnError( false )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "Content-Type", "application/json; charset=UTF-8" )
+			.header( "Accept", "application/json" );
+
+		// Add API key authentication if provided
+		if ( variables.apiKey.len() > 0 ) {
+			httpService.header( "Authorization", "Bearer #variables.apiKey#" );
+		}
+
+		// Add OIDC token authentication if provided (takes precedence)
+		if ( variables.oidcToken.len() > 0 ) {
+			httpService.header( "Authorization", "Bearer #variables.oidcToken#" );
+		}
+
+		// Add body for POST/PUT/DELETE requests
+		if ( ( arguments.method == "POST" || arguments.method == "PUT" || arguments.method == "DELETE" ) && !arguments.body.isEmpty() ) {
+			httpService.body( jsonSerialize( arguments.body ) );
+		}
+
+		// Execute request
+		var result = httpService.send();
+
+		// Debugging output
+		if ( arguments.debug ) {
+			println( isJson( result.fileContent ) ? jsonDeserialize( result.fileContent ) : result.fileContent );
+		}
+
+		// Parse response
+		if ( result.errorDetail.isEmpty() &&  result.filecontent.len() > 0 ) {
+			return jsonDeserialize( result.filecontent );
+		}
+
+		// Return empty struct for successful requests with no content (like 204)
+		return {
+			"statusCode": result.statusCode,
+			"error": [
+				{ "message" : "Status code: #result.statusCode#, Error Detail: #result.errorDetail#" },
+			 ]
+		};
+	}
+
+	/**
+	 * Build GraphQL search query for Weaviate
+	 *
+	 * @embedding Vector to search with
+	 * @limit Max results
+	 * @filter Metadata filter
+	 *
+	 * @return String GraphQL query
+	 */
+	private string function buildSearchQuery(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		var query = "{ Get { #variables.collection#";
+
+		// Add nearVector search
+		query &= "(nearVector: { vector: [#arguments.embedding.toList()#] }, limit: #arguments.limit#";
+
+		// Add where filter if provided
+		if ( !arguments.filter.isEmpty() ) {
+			query &= ", where: #buildWhereFilterGraphQL( arguments.filter )#";
+		}
+
+		query &= ") { _additional { id distance } text metadata timestamp } } }";
+
+		return query;
+	}
+
+	/**
+	 * Build Weaviate where filter from metadata filter (for REST API)
+	 *
+	 * @filter Metadata filter struct
+	 *
+	 * @return Struct Weaviate where filter
+	 */
+	private struct function buildWhereFilter( required struct filter ) {
+		// For simple equality filters
+		// More complex filters can be added as needed
+		if ( arguments.filter.isEmpty() ) {
+			return {};
+		}
+
+		var conditions = [];
+
+		arguments.filter.each( ( key, value ) => {
+			conditions.append({
+				"path": [ "metadata" ],
+				"operator": "Like",
+				"valueText": "*""#key#"":""#value#""*"
+			});
+		} );
+
+		// Return single condition or AND operator
+		if ( conditions.len() == 1 ) {
+			return conditions[ 1 ];
+		}
+
+		return {
+			"operator": "And",
+			"operands": conditions
+		};
+	}
+
+	/**
+	 * Build Weaviate where filter as GraphQL syntax string
+	 *
+	 * @filter Metadata filter struct
+	 *
+	 * @return String GraphQL where filter syntax
+	 */
+	private string function buildWhereFilterGraphQL( required struct filter ) {
+		if ( arguments.filter.isEmpty() ) {
+			return "";
+		}
+
+		var conditions = [];
+
+		arguments.filter.each( ( key, value ) => {
+			// userId and conversationId are stored at root level, others in metadata JSON
+			if ( key == "userId" || key == "conversationId" ) {
+				conditions.append( '{ path: ["#key#"], operator: Equal, valueText: "#value#" }' );
+			} else {
+				// GraphQL syntax - escape quotes with backslash for GraphQL string literals
+				// The pattern searches for the key:value pair within the metadata JSON string
+				// Use \" to escape quotes in GraphQL strings
+				var pattern = '*\"#key#\":\"#value#\"*';
+				conditions.append( '{ path: ["metadata"], operator: Like, valueText: "' & pattern & '" }' );
+			}
+		} );
+
+		// Return single condition or AND operator
+		if ( conditions.len() == 1 ) {
+			return conditions[ 1 ];
+		}
+
+		return '{ operator: And, operands: [#conditions.toList()#] }';
+	}
+
+	/**
+	 * Transform Weaviate query results to standard format
+	 *
+	 * @weaviateResults Raw Weaviate query response
+	 *
+	 * @return Array of standardized results
+	 */
+	private array function transformWeaviateResults( required array weaviateResults ) {
+		var results = [];
+
+		arguments.weaviateResults.each( ( obj ) => {
+			// Weaviate uses "certainty" (0-1) or "distance" depending on metric
+			var score = obj._additional.keyExists( "certainty" )
+				? obj._additional.certainty
+				: ( 1.0 - obj._additional.distance );
+
+			results.append({
+				id: obj._additional.id,
+				text: obj.text,
+				metadata: isJSON( obj.metadata ) ? jsonDeserialize( obj.metadata ) : {},
+				score: score,
+				distance: obj._additional.distance ?: ( 1.0 - score ),
+				embedding: []  // Weaviate doesn't return vectors by default in searches
+			});
+		} );
+
+		return results;
+	}
+
+	/**
+	 * Map our standard distance metrics to Weaviate metrics
+	 *
+	 * @metric Our metric ("cosine", "euclidean", "dot_product")
+	 *
+	 * @return String Weaviate metric
+	 */
+	private string function mapDistanceMetric( required string metric ) {
+		switch ( arguments.metric ) {
+			case "cosine":
+				return "cosine";
+			case "euclidean":
+				return "l2-squared";
+			case "dot_product":
+				return "dot";
+			default:
+				return "cosine";
+		}
+	}
+
+
+
+}

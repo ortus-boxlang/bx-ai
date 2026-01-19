@@ -1,0 +1,252 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Wraps an AI Service as a runnable model for use in pipelines
+ * Handles message extraction, request building, and response handling
+ */
+import bxModules.bxai.models.runnables.*;
+
+class extends="AiBaseRunnable" {
+
+	/**
+	 * The AI service provider we are linked to.
+	 */
+	property name="service" type="IAiService";
+
+	/**
+	 * The tools attached to this model for tool-augmented generation.
+	 */
+	property name="tools" type="array" default=[];
+
+	/**
+	 * Constructor
+	 *
+	 * @service The AI service provider to wrap
+	 * @tools An array of tools to bind to this model
+	 * @params A struct of parameters to bind to this model
+	 */
+	function init( required IAiService service, any tools =[], struct params = {} ) {
+		variables.name = "AiModel-" & arguments.service.getName()
+		variables.service = arguments.service
+
+		// Bind tools and params
+		bindTools( arguments.tools )
+		withParams( arguments.params )
+
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Config Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	 /**
+	  * Bind tools to this model
+	  *
+	  * @tools An array of tools to bind
+	  * @return This model with tools bound
+	  */
+	public AiModel function bindTools( any tools ) {
+		// If simple value, wrap as array
+		if( !isArray( arguments.tools ) ){
+			arguments.tools = [ arguments.tools ];
+		}
+		variables.tools.append( arguments.tools, true )
+		return this;
+	}
+
+	/**
+	 * This method adds additional tools to the existing set of tools
+	 * @tools One or more tools to add
+	 *
+	 * @return This model with tools added
+	 */
+	public AiModel function addTools( any tools ) {
+		// If simple value, wrap as array
+		if( !isArray( arguments.tools ) ){
+			arguments.tools = [ arguments.tools ];
+		}
+
+		// Append to existing tools
+		if( arguments.tools.len() ){
+			variables.tools.append( arguments.tools, true );
+		}
+
+		return this;
+	}
+
+	/**
+	 * Remove specific tools from this model
+	 *
+	 * @tools One or more tools to remove (matched by reference)
+	 *
+	 * @return This model with tools removed
+	 */
+	public AiModel function removeTools( any tools ) {
+		// If simple value, wrap as array
+		if( !isArray( arguments.tools ) ){
+			arguments.tools = [ arguments.tools ];
+		}
+
+		// Remove each tool from the current tools array
+		arguments.tools.each( toolToRemove => {
+			var index = variables.tools.findIndex( t => t == toolToRemove );
+			if ( index >= 1 ) {
+				variables.tools.deleteAt( index );
+			}
+		} );
+
+		return this;
+	}
+
+	/**
+	 * Get model configuration as a struct
+	 *
+	 * @return Struct of model configuration
+	 */
+	public struct function getConfig() {
+		return {
+			"name": variables.name,
+			"provider": variables.service.getName(),
+			"toolCount": variables.tools.len(),
+			"params": getMergedParams(),
+			"options": getMergedOptions()
+		};
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Runnable Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Run the model with messages as input
+	 *
+	 * @input Messages array, AiMessage, or struct with messages
+	 * @params Runtime parameters (model, temperature, tools, etc.)
+	 * @options Runtime options (returnFormat, timeout, logging, etc.)
+	 *
+	 * @return The LLM response
+	 */
+	public any function run( any input = {}, struct params = {}, struct options = {} ) {
+		var messages = extractMessages( arguments.input )
+		var effectiveParams = getMergedParams( arguments.params )
+		var effectiveOptions = getMergedOptions( arguments.options )
+
+		// If we have tools in the options, merge them with the model's tools
+		if( effectiveParams.keyExists( "tools" ) ){
+			// Make sure these are normalized to an array
+			if( !isArray( effectiveParams.tools ) ){
+				effectiveParams.tools = [ effectiveParams.tools ];
+			}
+			effectiveParams.tools.append( variables.tools, true );
+		}
+		// No tools in options, use model's tools
+		else {
+			effectiveParams.tools = variables.tools;
+		}
+
+
+		// Build the ai request
+		var aiRequest = new bxModules.bxai.models.requests.AiRequest(
+			aiMessage( messages ),
+			effectiveParams,
+			effectiveOptions
+		)
+
+        // beforeAIModelInvoke event
+        BoxAnnounce( "beforeAIModelInvoke", { model: this, aiRequest: aiRequest } )
+
+		// Invoke service
+		var results = variables.service.invoke( aiRequest )
+
+        // afterAIModelInvoke event
+        BoxAnnounce( "afterAIModelInvoke", { model: this, aiRequest: aiRequest, results: results } )
+
+        return results
+	}
+
+	/**
+	 * Stream through the model
+	 *
+	 * @onChunk The callback to invoke for each chunk
+	 * @input Messages array, AiMessage, or struct with messages
+	 * @params Runtime parameters
+	 * @options Runtime options (timeout, logging, etc.)
+	 */
+	public void function stream(
+		required function onChunk,
+		any input = {},
+		struct params = {},
+		struct options = {}
+	) {
+		var messages = extractMessages( arguments.input );
+		var effectiveParams = getMergedParams( arguments.params );
+		var effectiveOptions = getMergedOptions( arguments.options );
+		effectiveOptions.stream = true;
+
+		var request = new bxModules.bxai.models.requests.AiRequest(
+			aiMessage( messages ),
+			effectiveParams,
+			effectiveOptions
+		);
+
+		variables.service.invokeStream( request, arguments.onChunk );
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Extract messages from various input formats
+	 *
+	 * @input The input to extract messages from
+	 *
+	 * @return An array of messages
+	 */
+	private array function extractMessages( required any input ) {
+		// AiMessage or other runnable that returns messages
+        if( arguments.input instanceof "AiMessage" ){
+			return arguments.input.render();
+		}
+
+		// Array of messages
+		// Process each message
+		if( isArray( arguments.input ) ) {
+			return arguments.input.map( m => extractMessages( m ) );
+		}
+
+		// Struct message, this can be different per LLM, just pass it through
+		if( isStruct( arguments.input ) ) {
+			return [ arguments.input ];
+		}
+
+		// Simple string - convert to user message
+		if( isSimpleValue( arguments.input ) ) {
+			return [ { "role": "user", "content": arguments.input } ];
+		}
+
+		throw(
+			type: "InvalidInput",
+			message: "Input must be: AiMessage, array of messages, struct with 'messages' key, or string"
+		);
+	}
+
+}

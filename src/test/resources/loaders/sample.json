@@ -1,0 +1,10 @@
+{
+    "title": "Sample JSON Document",
+    "content": "This is the main content of the document.",
+    "author": "Test Author",
+    "tags": ["sample", "test", "json"],
+    "metadata": {
+        "created": "2024-01-01",
+        "version": "1.0"
+    }
+}

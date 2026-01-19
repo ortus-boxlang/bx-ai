@@ -1,0 +1,178 @@
+/**
+ * Vector Memory Comparison Example
+ *
+ * Demonstrates the differences between standard and vector memory
+ * for the same knowledge retrieval task.
+ *
+ * Prerequisites: OPENAI_API_KEY environment variable set
+ */
+
+println( "=== Vector Memory vs Standard Memory ===" )
+println( "Semantic search vs recency-based context\n" )
+
+// Sample knowledge base
+knowledgeBase = [
+    "BoxLang supports multiple AI providers including OpenAI, Claude, Gemini, and Ollama",
+    "Use aiAgent() to create autonomous agents with tool calling capabilities",
+    "Memory types include windowed, summary, session, file, cache, and JDBC",
+    "Vector memory enables semantic search across conversation history",
+    "Streaming responses use callbacks with onChunk parameter",
+    "Tool definitions require name, description, and parameters schema",
+    "Pipeline runnables can be chained with the to() method",
+    "Embeddings convert text into vector representations for similarity search",
+    "The aiMessage() BIF creates fluent message builders for conversations",
+    "ModuleConfig.bx defines module settings and interception points"
+]
+
+println( "Knowledge base: #knowledgeBase.len()# entries\n" )
+println( "=" .repeatString( 70 ) )
+
+// =============== WINDOWED MEMORY (Standard) ===============
+println( "\n1️⃣  WINDOWED MEMORY (Recency-based)" )
+println( "-" .repeatString( 70 ) )
+
+windowedMemory = aiMemory( "windowed", { maxMessages: 5 } )
+windowedAgent = aiAgent(
+    name: "WindowedBot",
+    description: "Agent with windowed memory",
+    memory: windowedMemory
+)
+
+// Add all knowledge
+println( "Adding knowledge to windowed memory..." )
+knowledgeBase.each( entry => windowedMemory.add( entry ) )
+
+// Only last 5 messages retained
+println( "✓ Knowledge added" )
+println( "Messages retained: #windowedMemory.getAll().len()# (window limit)\n" )
+
+println( "Query: What AI providers are available?" )
+response = windowedAgent.run( "What AI providers are available?" )
+println( "Agent: #response#\n" )
+
+println( "Analysis:" )
+hasProviders = response.findNoCase( "OpenAI" ) > 0 || response.findNoCase( "Claude" ) > 0
+if ( hasProviders ) {
+    println( "✓ Found provider info (in recent 5 messages)" )
+} else {
+    println( "❌ Missed provider info (outside window)" )
+    println( "   Info was in message #1, only keeping last 5" )
+}
+
+// =============== VECTOR MEMORY (Semantic) ===============
+println( "\n2️⃣  VECTOR MEMORY (Semantic search)" )
+println( "-" .repeatString( 70 ) )
+
+vectorMemory = aiMemory( "boxvector", {
+    collection: "knowledge_comparison",
+    embeddingProvider: "openai",
+    embeddingModel: "text-embedding-3-small",
+    dimensions: 1536,
+    metric: "cosine"
+} )
+
+vectorAgent = aiAgent(
+    name: "VectorBot",
+    description: "Agent with vector memory",
+    memory: vectorMemory
+)
+
+// Add same knowledge
+println( "Adding knowledge to vector memory..." )
+knowledgeBase.each( entry => vectorMemory.add( entry ) )
+println( "✓ Knowledge added" )
+println( "Vectors stored: #vectorMemory.count()#\n" )
+
+println( "Query: What AI providers are available?" )
+response = vectorAgent.run( "What AI providers are available?" )
+println( "Agent: #response#\n" )
+
+println( "Analysis:" )
+hasProviders = response.findNoCase( "OpenAI" ) > 0 && response.findNoCase( "Claude" ) > 0
+if ( hasProviders ) {
+    println( "✓ Found provider info via semantic search!" )
+    println( "   Retrieved relevant knowledge regardless of recency" )
+} else {
+    println( "⚠️  Check if embeddings are working correctly" )
+}
+
+// =============== DIRECT COMPARISON ===============
+println( "\n3️⃣  SIDE-BY-SIDE COMPARISON" )
+println( "-" .repeatString( 70 ) )
+
+testQueries = [
+    "How do I create agents?",
+    "What's the purpose of embeddings?",
+    "Tell me about streaming"
+]
+
+testQueries.each( ( query, idx ) => {
+    println( "\nTest #idx#: #query#\n" )
+
+    // Windowed
+    println( "Windowed Memory:" )
+    windowedResp = windowedAgent.run( query )
+    println( "  #left(windowedResp, 60)#..." )
+
+    // Vector
+    println( "Vector Memory:" )
+    vectorResp = vectorAgent.run( query )
+    println( "  #left(vectorResp, 60)#..." )
+} )
+
+// =============== USE CASE RECOMMENDATIONS ===============
+println( "\n4️⃣  WHEN TO USE EACH TYPE" )
+println( "-" .repeatString( 70 ) )
+
+println( "\n📌 Use WINDOWED MEMORY when:" )
+println( "  ✓ Only recent context matters" )
+println( "  ✓ Quick chats or simple Q&A" )
+println( "  ✓ Cost is a primary concern" )
+println( "  ✓ No knowledge base needed" )
+println( "\n  Examples:" )
+println( "  - Simple chatbots" )
+println( "  - Real-time customer service" )
+println( "  - Quick form assistance" )
+
+println( "\n📌 Use VECTOR MEMORY when:" )
+println( "  ✓ Large knowledge base" )
+println( "  ✓ Semantic search needed" )
+println( "  ✓ Historical context important" )
+println( "  ✓ Questions span many topics" )
+println( "\n  Examples:" )
+println( "  - Documentation assistants" )
+println( "  - Research tools" )
+println( "  - Long-term support systems" )
+
+println( "\n📌 Use HYBRID MEMORY when:" )
+println( "  ✓ Both recency AND relevance matter" )
+println( "  ✓ Conversational flow + knowledge lookup" )
+println( "  ✓ Optimal context mix desired" )
+println( "\n  Examples:" )
+println( "  - Customer support with ticket history" )
+println( "  - Educational tutoring" )
+println( "  - Complex problem solving" )
+
+// =============== PERFORMANCE COMPARISON ===============
+println( "\n5️⃣  PERFORMANCE CHARACTERISTICS" )
+println( "-" .repeatString( 70 ) )
+
+println( "\nMetric              | Windowed    | Vector       | Hybrid" )
+println( "-" .repeatString( 70 ) )
+println( "Context Quality     | Recent only | Semantic     | Best mix" )
+println( "Token Usage         | Very Low    | Moderate     | Moderate" )
+println( "Setup Complexity    | None        | Provider     | Provider" )
+println( "Search Performance  | N/A         | Fast         | Fast" )
+println( "Knowledge Retention | Low         | Excellent    | Excellent" )
+println( "Cost per Query      | Lowest      | Medium       | Medium" )
+println( "Best For            | Simple chat | Knowledge    | Support" )
+
+println( "\n📊 Summary:" )
+println( "- WINDOWED: Fast and cheap, limited context" )
+println( "- VECTOR: Semantic search, excellent retrieval" )
+println( "- HYBRID: Best of both worlds ✓" )
+
+println( "\n💡 Migration Path:" )
+println( "1. Start: Windowed (rapid prototyping)" )
+println( "2. Grow: Vector (add knowledge base)" )
+println( "3. Optimize: Hybrid (production quality)" )

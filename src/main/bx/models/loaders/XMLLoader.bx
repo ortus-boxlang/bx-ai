@@ -1,0 +1,364 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Loads and parses XML documents.
+ * Supports config files, legacy system data, and structured XML content.
+ * Can extract specific elements or convert entire document to text.
+ */
+class extends="BaseDocumentLoader" {
+
+	/**
+	 * Static configuration
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			encoding          : "UTF-8",
+			includeMetadata   : true,
+			// Element extraction options
+			elementPath       : "",
+			elementsAsDocuments : false,
+			contentElements   : [],
+			metadataElements  : [],
+			// Text extraction options
+			extractText       : true,
+			preserveWhitespace : false,
+			includeAttributes : true,
+			// Namespace handling
+			namespaceAware    : true,
+			namespaces        : {}
+		};
+	}
+
+	/**
+	 * Initialize the XMLLoader
+	 *
+	 * @source Path to the XML file or XML string
+	 * @config Configuration options
+	 *
+	 * @return XMLLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		super.init( argumentCollection: arguments )
+		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
+		return this;
+	}
+
+	/**
+	 * Load and parse the XML document
+	 *
+	 * @return Array of Document objects
+	 */
+	array function doLoad() {
+		// Validate source
+		if ( !len( variables.source ) ) {
+			throw(
+				type    : "XMLLoader.NoSource",
+				message : "No XML source specified"
+			)
+		}
+
+		var xmlContent = ""
+
+		// Determine if source is a file path or XML string
+		if ( fileExists( variables.source ) ) {
+			xmlContent = readFile( variables.source )
+		} else if ( variables.source.trim().startsWith( "<" ) ) {
+			// Assume it's raw XML content
+			xmlContent = variables.source
+		} else {
+			throw(
+				type    : "XMLLoader.InvalidSource",
+				message : "Source is neither a valid file path nor XML content: #variables.source#"
+			)
+		}
+
+		// Parse the XML
+		var xmlDoc = xmlParse( xmlContent )
+
+		// If extracting specific elements as documents
+		if ( variables.config.elementsAsDocuments && len( variables.config.elementPath ) ) {
+			return extractElementsAsDocuments( xmlDoc )
+		}
+
+		// Otherwise return single document with extracted content
+		return [ createDocumentFromXML( xmlDoc ) ]
+	}
+
+	/**
+	 * Extract specific elements as individual documents
+	 *
+	 * @xmlDoc The parsed XML document
+	 *
+	 * @return Array of Document objects
+	 */
+	private array function extractElementsAsDocuments( required any xmlDoc ) {
+		var documents = []
+		var elements = xmlSearch( arguments.xmlDoc, variables.config.elementPath )
+
+		for ( var i = 1; i <= elements.len(); i++ ) {
+			var element = elements[ i ]
+			var content = extractElementContent( element )
+			var metadata = extractElementMetadata( element, i )
+
+			documents.append(
+				createDocument(
+					content            : content,
+					additionalMetadata : variables.config.includeMetadata ? metadata : {}
+				)
+			)
+		}
+
+		return documents
+	}
+
+	/**
+	 * Create a document from the entire XML
+	 *
+	 * @xmlDoc The parsed XML document
+	 *
+	 * @return Document instance
+	 */
+	private Document function createDocumentFromXML( required any xmlDoc ) {
+		var content = ""
+		var metadata = {
+			"fileType"    : "xml",
+			"rootElement" : arguments.xmlDoc.xmlRoot.xmlName
+		}
+
+		// Extract content based on configuration
+		if ( variables.config.contentElements.len() > 0 ) {
+			// Extract specific elements
+			var contentParts = []
+			for ( var elementPath in variables.config.contentElements ) {
+				var elements = xmlSearch( arguments.xmlDoc, elementPath )
+				for ( var element in elements ) {
+					contentParts.append( extractElementContent( element ) )
+				}
+			}
+			content = contentParts.toList( char( 10 ) & char( 10 ) )
+		} else if ( variables.config.extractText ) {
+			// Extract all text content
+			content = extractAllText( arguments.xmlDoc.xmlRoot )
+		} else {
+			// Return raw XML
+			content = toString( arguments.xmlDoc )
+		}
+
+		// Extract metadata from specified elements
+		if ( variables.config.metadataElements.len() > 0 ) {
+			for ( var elementPath in variables.config.metadataElements ) {
+				var elements = xmlSearch( arguments.xmlDoc, elementPath )
+				if ( elements.len() > 0 ) {
+					var key = listLast( elementPath, "/" ).replace( "@", "" )
+					metadata[ key ] = extractElementContent( elements[ 1 ] )
+				}
+			}
+		}
+
+		// Add file metadata if loading from file
+		if ( fileExists( variables.source ) ) {
+			metadata.append(  getFileInfo( variables.source ) )
+		}
+
+		return createDocument(
+			content            : content,
+			additionalMetadata : variables.config.includeMetadata ? metadata : {}
+		);
+	}
+
+	/**
+	 * Extract text content from an element
+	 *
+	 * @element The XML element
+	 *
+	 * @return Extracted text content
+	 */
+	private string function extractElementContent( required any element ) {
+		// Handle text nodes
+		if ( isSimpleValue( arguments.element ) ) {
+			return arguments.element;
+		}
+
+		// Handle attribute nodes (from XPath like //@attr)
+		if ( structKeyExists( arguments.element, "xmlValue" ) && !structKeyExists( arguments.element, "xmlChildren" ) ) {
+			return arguments.element.xmlValue;
+		}
+
+		// Handle element nodes
+		if ( structKeyExists( arguments.element, "xmlText" ) ) {
+			var text = arguments.element.xmlText;
+
+			// Include child element text recursively
+			if ( structKeyExists( arguments.element, "xmlChildren" ) ) {
+				for ( var child in arguments.element.xmlChildren ) {
+					text &= " " & extractElementContent( child );
+				}
+			}
+
+			return variables.config.preserveWhitespace ? text : text.trim().reReplace( "\s+", " ", "all" );
+		}
+
+		return "";
+	}
+
+	/**
+	 * Extract all text from XML recursively
+	 *
+	 * @element The XML element
+	 *
+	 * @return All text content
+	 */
+	private string function extractAllText( required any element ) {
+		var textParts = [];
+
+		// Add element's direct text
+		if ( structKeyExists( arguments.element, "xmlText" ) && len( arguments.element.xmlText.trim() ) ) {
+			textParts.append( arguments.element.xmlText.trim() );
+		}
+
+		// Add attribute values if configured
+		if ( variables.config.includeAttributes && structKeyExists( arguments.element, "xmlAttributes" ) ) {
+			for ( var attrName in arguments.element.xmlAttributes ) {
+				var attrValue = arguments.element.xmlAttributes[ attrName ];
+				if ( len( attrValue.trim() ) ) {
+					textParts.append( attrValue.trim() );
+				}
+			}
+		}
+
+		// Recurse into children
+		if ( structKeyExists( arguments.element, "xmlChildren" ) ) {
+			for ( var child in arguments.element.xmlChildren ) {
+				var childText = extractAllText( child );
+				if ( len( childText ) ) {
+					textParts.append( childText );
+				}
+			}
+		}
+
+		return textParts.toList( " " );
+	}
+
+	/**
+	 * Extract metadata from an element
+	 *
+	 * @element The XML element
+	 * @index The element index in the collection
+	 *
+	 * @return Metadata struct
+	 */
+	private struct function extractElementMetadata( required any element, required numeric index ) {
+		var metadata = {
+			"elementIndex" : arguments.index,
+			"elementName"  : structKeyExists( arguments.element, "xmlName" ) ? arguments.element.xmlName : "unknown"
+		};
+
+		// Include attributes as metadata
+		if ( variables.config.includeAttributes && structKeyExists( arguments.element, "xmlAttributes" ) ) {
+			for ( var attrName in arguments.element.xmlAttributes ) {
+				metadata[ "attr_" & attrName ] = arguments.element.xmlAttributes[ attrName ];
+			}
+		}
+
+		return metadata;
+	}
+
+	// ==========================================
+	// Fluent Configuration Methods
+	// ==========================================
+
+	/**
+	 * Set the XPath to extract elements from
+	 *
+	 * @path XPath expression
+	 *
+	 * @return XMLLoader for chaining
+	 */
+	XMLLoader function elementPath( required string path ) {
+		variables.config.elementPath = arguments.path;
+		return this;
+	}
+
+	/**
+	 * Treat matching elements as separate documents
+	 *
+	 * @return XMLLoader for chaining
+	 */
+	XMLLoader function elementsAsDocuments() {
+		variables.config.elementsAsDocuments = true;
+		return this;
+	}
+
+	/**
+	 * Specify elements to extract as content
+	 *
+	 * @paths Array of XPath expressions for content elements
+	 *
+	 * @return XMLLoader for chaining
+	 */
+	XMLLoader function contentElements( required array paths ) {
+		variables.config.contentElements = arguments.paths;
+		return this;
+	}
+
+	/**
+	 * Specify elements to extract as metadata
+	 *
+	 * @paths Array of XPath expressions for metadata elements
+	 *
+	 * @return XMLLoader for chaining
+	 */
+	XMLLoader function metadataElements( required array paths ) {
+		variables.config.metadataElements = arguments.paths;
+		return this;
+	}
+
+	/**
+	 * Preserve whitespace in extracted text
+	 *
+	 * @return XMLLoader for chaining
+	 */
+	XMLLoader function preserveWhitespace() {
+		variables.config.preserveWhitespace = true;
+		return this;
+	}
+
+	/**
+	 * Include attribute values in text extraction
+	 *
+	 * @include Whether to include attributes
+	 *
+	 * @return XMLLoader for chaining
+	 */
+	XMLLoader function includeAttributes( boolean include = true ) {
+		variables.config.includeAttributes = arguments.include;
+		return this;
+	}
+
+	/**
+	 * Register XML namespaces for XPath queries
+	 *
+	 * @namespaces Struct of prefix -> URI mappings
+	 *
+	 * @return XMLLoader for chaining
+	 */
+	XMLLoader function namespaces( required struct namespaces ) {
+		variables.config.namespaces = arguments.namespaces;
+		return this;
+	}
+
+}

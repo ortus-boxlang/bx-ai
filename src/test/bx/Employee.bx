@@ -1,0 +1,4 @@
+class extends="Person" {
+	property name="employeeId" type="string";
+	property name="department" type="string";
+}

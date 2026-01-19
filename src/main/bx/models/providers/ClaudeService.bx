@@ -1,4 +1,35 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ */
 class extends="BaseService"{
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// according to the docs, this is the default model and tokens
+			// https://docs.anthropic.com/en/docs/about-claude/models/overview#model-aliases
+			"model" : "claude-sonnet-4-5",
+			"max_tokens": 1024
+		};
+		DEFAULT_HEADERS = {
+			// https://docs.anthropic.com/en/api/versioning
+			"anthropic-version" : "2023-06-01"
+		};
+	}
 
 	/**
 	 * Constructor
@@ -7,48 +38,177 @@ class extends="BaseService"{
 		variables.chatURL = "https://api.anthropic.com/v1/messages"
 		variables.name = "Claude"
 		// https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview
-		defaults( {
-			// according to the docs, this is the default model and tokens
-			// https://docs.anthropic.com/en/docs/about-claude/models/overview#model-aliases
-			"model" : "claude-sonnet-4-0",
-			"max_tokens": 1024,
-			// https://docs.anthropic.com/en/api/versioning
+		defaults( static.DEFAULT_CHAT_PARAMS )
+		addHeader( name: "anthropic-version", value: static.DEFAULT_HEADERS[ "anthropic-version" ] )
+	}
 
-		} )
-		addHeader( name: "anthropic-version", value: "2023-06-01" )
+	/**
+	 * Claude streaming chat request - overridden to use Claude-specific authentication
+	 *
+	 * @aiRequest The AiRequestobject to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream
+	 */
+	@override
+	public function chatStream( required AiRequest aiRequest, required function callback ){
+		// Capture callback and aiRequest in local variables for closure scope
+		var userCallback = arguments.callback;
+		var thisAiRequest = arguments.aiRequest;
+
+		// Build the packet according to Claude's API requirements with streaming
+		var dataPacket = {
+			"model"   : arguments.aiRequest.getModel(),
+			"messages": arguments.aiRequest.getAiMessage().getNonSystemMessages(),
+			"stream"  : true
+		}.append( arguments.aiRequest.getParams() )
+
+		// Do we have a system message? Claude supports it at the root
+		if( arguments.aiRequest.getAiMessage().hasSystemMessage() ){
+			dataPacket[ "system" ] = arguments.aiRequest.getAiMessage().getSystemMessage();
+		}
+
+		// Add tool support if tools are present
+		if( aiRequest.getParams()?.tools?.len() ) {
+			dataPacket[ "tools" ] = formatToolsForClaude( aiRequest.getParams().tools )
+		}
+
+		// Announce the request
+		BoxAnnounce(
+			"onAIRequest",
+			{
+				"dataPacket" : dataPacket,
+				"aiRequest": arguments.aiRequest,
+				"provider"   : this
+			}
+		);
+
+		// Log the request if enabled
+		if( arguments.aiRequest.getLogRequestToConsole() ){
+			println( "AI Request (Stream)" )
+			println( dataPacket )
+		}
+
+		// Build HTTP request with fluent API - Claude uses x-api-key instead of Bearer token
+		var httpRequest = http( getChatURL() )
+			.method( "POST" )
+			.charset( "utf-8" )
+			.timeout( arguments.aiRequest.getTimeout() )
+			.header( "content-type", "application/json" )
+			.header( "x-api-key", arguments.aiRequest.getApiKey() )
+			.header( "anthropic-version", getHeaders()[ "anthropic-version" ] )
+			.sse( true ); // Enable SSE mode for Claude streaming
+
+		// Add custom headers
+		for( var thisHeader in arguments.aiRequest.getHeaders() ){
+			httpRequest.header( thisHeader, arguments.aiRequest.getHeaders()[ thisHeader ] );
+		}
+
+		// Set request body and callbacks
+		httpRequest
+			.body( jsonSerialize( dataPacket ) )
+			.onChunk( ( chunk, lastEventId, httpResult, httpClient, response ) => {
+				// chunk is already parsed SSE data: { data, event, id, retry }
+				// For SSE streams, chunk.data contains the actual payload
+
+				// Check for stream end marker
+				if( chunk.data == "[DONE]" ){
+					return;
+				}
+
+				// Try to parse and send to callback
+				try {
+					var parsedChunk = jsonDeserialize( chunk.data );
+					userCallback( parsedChunk );
+				} catch( any e ){
+					writeLog(
+						text: "Error parsing stream chunk: #e.message# - Data: #chunk.data#",
+						type: "error",
+						log : "ai"
+					)
+				}
+			} )
+			.onError( ( error, httpResult ) => {
+				var errorMessage = "HTTP Error: #error.message#";
+
+				writeLog(
+					text: "Stream Request Error: #errorMessage#",
+					type: "error",
+					log : "ai"
+				)
+
+				// Announce the error
+				BoxAnnounce( "onAIError", {
+					error: error,
+					errorMessage: errorMessage,
+					provider: this,
+					operation: "stream",
+					aiRequest: thisAiRequest,
+					canRetry: true
+				} );
+
+				throw(
+					type   : "ProviderError",
+					message: errorMessage
+				);
+			} )
+			.onComplete( ( httpResult ) => {
+				// Log the response if enabled
+				if( thisAiRequest.getLogResponse() ){
+					writeLog(
+						text: "Stream completed successfully",
+						type: "info",
+						log : "ai"
+					)
+				}
+
+				BoxAnnounce(
+					"onAIResponse",
+					{
+						"aiRequest" : thisAiRequest,
+						"provider"    : this,
+						"streamComplete" : true
+					}
+				);
+			} )
+			.send();
 	}
 
 	/**
 	 * Claude chat request
 	 * Customized for Claude
 	 * https://docs.anthropic.com/en/api/messages-examples
+	 *
+	 * @aiRequest The AiRequest object to send to the provider
+	 * @interactionCount Current tool call interaction count (used internally)
+	 *
+	 * @throws ProviderError if the provider returns an error from the request
+	 * @throws MaxInteractionsExceeded if tool calls exceed the maximum allowed interactions
 	 */
 	@override
-	public function chat( required ChatRequest chatRequest ){
+	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ){
 		// No auth header, claude uses x-api-key
-		arguments.chatRequest
+		arguments.aiRequest
 			.setSendAuthHeader( false )
-			.addHeader( "x-api-key", chatRequest.getApiKey() )
+			.addHeader( "x-api-key", aiRequest.getApiKey() )
 
 		// Build the packet according to Claude's API requirements
 		// https://docs.anthropic.com/en/api/messages#body-messages
 		var dataPacket = {
-			"model"   : arguments.chatRequest.getModel(),
-			"messages": arguments.chatRequest.getChatMessage().getNonSystemMessages()
-		}.append( arguments.chatRequest.getParams() )
+			"model"   : arguments.aiRequest.getModel(),
+			"messages": arguments.aiRequest.getMessages()
+		}.append( arguments.aiRequest.getParams() )
 
 		// Do we have a system message? Claude supports it at the root
-		if( arguments.chatRequest.getChatMessage().hasSystemMessage() ){
-			dataPacket[ "system" ] = arguments.chatRequest.getChatMessage().getSystemMessage();
+		if( arguments.aiRequest.getAiMessage().hasSystemMessage() ){
+			dataPacket[ "system" ] = arguments.aiRequest.getAiMessage().getSystemMessage();
 		}
 
 		// Add tool support if tools are present
-		if( chatRequest.getParams()?.tools?.len() ) {
-			dataPacket[ "tools" ] = formatToolsForClaude( chatRequest.getParams().tools )
+		if( aiRequest.getParams()?.tools?.len() ) {
+			dataPacket[ "tools" ] = formatToolsForClaude( aiRequest.getParams().tools )
 		}
 
 		// Send it
-		var result = sendRequest( chatRequest, dataPacket )
+		var result = sendRequest( aiRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
@@ -75,10 +235,28 @@ class extends="BaseService"{
 
 		// If Claude wants to use tools, we need to handle that
 		if( usingTools ){
+			/**
+			 * ---------------------------------------------------------------------------------------------------------
+			 * Max Interactions Check
+			 * ---------------------------------------------------------------------------------------------------------
+			 */
+			var maxAllowed = aiRequest.getMaxInteractions() > 0 ? aiRequest.getMaxInteractions() : variables.maxInteractions;
+			if( arguments.interactionCount >= maxAllowed ){
+				writeLog(
+					text: "Max tool call interactions (#maxAllowed#) exceeded",
+					type: "error",
+					log : "ai"
+				)
+				throw(
+					type   : "MaxInteractionsExceeded",
+					message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
+				);
+			}
+
 			var toolCalls = result.content.filter( contentBlock -> contentBlock?.type == "tool_use" );
 
 			// Add the role assistant message with tool calls
-			chatRequest.getMessages().append({
+			aiRequest.getMessages().append({
 				"role"    : "assistant",
 				"content" : result.content
 			});
@@ -86,21 +264,28 @@ class extends="BaseService"{
 			// Create a new chat request for each tool call
 			for( var toolCall in toolCalls ) {
 				// Execute the tool call
-				executeClaudeTool( toolCall, chatRequest );
+				executeClaudeTool( toolCall, aiRequest );
 			}
 
-			// Recursively call chat with the updated chat request
-			return chat( chatRequest );
+			// Recursively call chat with the updated chat request and incremented interaction count
+			return chat( aiRequest, arguments.interactionCount + 1 );
 		}
 
 		// Determine return formats
-		switch( chatRequest.getReturnFormat() ){
+		var content = result.content.first().text
+		switch( aiRequest.getReturnFormat() ){
 			case "all":
 				return result.content;
 			case "raw":
 				return result;
+			case "json":
+				return JSONDeserialize( extractFromCodeBlock( content, "json" ) );
+			case "xml" :
+				return xmlParse( extractFromCodeBlock( content, "xml" ) );
+			case  "structuredOutput":
+				return populateStructuredOutput( content, aiRequest );
 			case "single": default:
-				return result.content.first().text;
+				return content;
 		}
 	}
 
@@ -136,13 +321,13 @@ class extends="BaseService"{
 	 * Execute Claude tool calls
 	 *
 	 * @toolCall The tool call object from Claude: { type:"tool_use", id: "", name: "toolName", input: {} }
-	 * @chatRequest The original chat request containing the tool
+	 * @aiRequest The original chat request containing the tool
 	 */
-	private function executeClaudeTool( required struct toolCall, required ChatRequest chatRequest ) {
-		var messages = arguments.chatRequest.getMessages();
+	private function executeClaudeTool( required struct toolCall, required AiRequest aiRequest ) {
+		var messages = arguments.aiRequest.getMessages();
 
 		// Get the tool from the chat request
-		arguments.chatRequest
+		arguments.aiRequest
 			.getTool( toolCall.name )
 			.ifPresentOrElse(
 				// Found, invoke the tool
