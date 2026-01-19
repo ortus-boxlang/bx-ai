@@ -10,7 +10,10 @@
 <blockquote>
 	Copyright Since 2023 by Ortus Solutions, Corp
 	<br>
-	<a href="https://www.boxlang.io">www.boxlang.io</a> |
+	<a href="https://ai.boxlang.io">ai.boxlang.io</a> |
+	<a href="https://www.boxlang.io">www.boxlang.io</a>
+	<br>
+	<a href="https://ai.ortussolutions.com">ai.ortussolutions.com</a> |
 	<a href="https://www.ortussolutions.com">www.ortussolutions.com</a>
 </blockquote>
 
@@ -20,41 +23,70 @@
 
 ![BoxLang AI Module](BoxLangAI.png)
 
-Welcome to the **BoxLang AI Module** 🚀 This module provides AI generation capabilities to your [BoxLang](www.boxlang.io) applications in an easy to use and abstracted API, so you can interact with ANY AI provider in a consistent manner. Our core focus is productivity, fluency and ease of use. ✨
+Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang that provides a unified, fluent API to orchestrate multi-model workflows, autonomous agents, RAG pipelines, and AI-powered applications. **One API → Unlimited AI Power!** ✨
 
-BoxLang AI eliminates the complexity of working with multiple AI providers by offering a unified interface. Whether you're using OpenAI, Claude, Gemini, Grok, DeepSeek, or Perplexity, your code remains the same—just change a configuration setting to switch providers. 🔄
+**BoxLang AI** eliminates vendor lock-in and simplifies AI integration by providing a single, consistent interface across **12+ AI providers**. Whether you're using OpenAI, Claude, Gemini, Grok, DeepSeek, Ollama, or Perplexity—your code stays the same. Switch providers, combine models, and orchestrate complex workflows with simple configuration changes. 🔄
 
-### ✨ Key Features
+## ✨ Key Features
 
-- 🔌 **Multi-Provider Support** - Seamlessly integrate with leading AI providers through a single API
+- 🔌 **12+ AI Providers** - Single API for OpenAI, Claude, Gemini, Grok, Ollama, DeepSeek, and more
+- 🤖 **AI Agents** - Autonomous agents with memory, tools, sub-agents, and multi-step reasoning
+- 🔒 **Multi-Tenant Memory** - Enterprise-grade isolation with 20+ memory types (standard + vector)
+- 🧬 **Vector Memory & RAG** - 10+ vector databases with semantic search (ChromaDB, Pinecone, PostgreSQL, etc.)
+- 📚 **Document Loaders** - 30+ file formats including PDF, Word, CSV, JSON, XML, web scraping, and databases
+- 🛠️ **Real-Time Tools** - Function calling for APIs, databases, and external system integration
+- 🌊 **Streaming Support** - Real-time token streaming through pipelines for responsive applications
+- 📦 **Structured Output** - Type-safe responses using BoxLang classes, structs, or JSON schemas
+- 🔗 **AI Pipelines** - Composable workflows with models, transformers, and custom logic
+- 📡 **MCP Protocol** - Build and consume Model Context Protocol servers for distributed AI
 - 💬 **Fluent Interface** - Chainable, expressive syntax that makes AI integration intuitive
-- 📝 **Flexible Messaging** - Send simple strings, structured messages, or complex conversation arrays
-- 🤖 **Flexible Agents** - Easily create autonomous and composable AI Agents
-- ⚡ **Async Support** - Built-in asynchronous capabilities with futures for non-blocking operations
-- 🔒 **Multi-Tenant Memory** - Enterprise-grade user and conversation isolation across all memory types
-- 📚 **Document Loaders** - 12+ built-in loaders for documents, files, web content, databases, and more
-- 🧬 **RAG Pipeline** - Complete Retrieval-Augmented Generation workflow from documents to context injection
-- 🎯 **Vector Memory** - Semantic search and retrieval using ChromaDB, PostgreSQL, MySQL, TypeSense, and Weaviate
-- ⚙️ **Configurable** - Global defaults, per-request overrides, and comprehensive logging options
-- 🎯 **Event-Driven** - Intercept and extend AI processing with lifecycle events
-- 🏭 **Production-Ready** - Timeout controls, error handling, and debugging tools
+- 🦙 **Local AI** - Full Ollama support for privacy, offline use, and zero API costs
+- ⚡ **Async Operations** - Non-blocking futures for concurrent AI requests
+- 🎯 **Event-Driven** - 25+ lifecycle events for logging, monitoring, and custom workflows
+- 🏭 **Production-Ready** - Timeout controls, error handling, rate limiting, and debugging tools
 
-## 📄 License
+## 📃 Table of Contents
+
+- [📄 License](#-license)
+- [🚀 Getting Started](#-getting-started)
+- [🤖 Supported Providers](#-supported-providers)
+  - [📊 Provider Support Matrix](#-provider-support-matrix)
+- [📤 Return Formats](#-return-formats)
+- [🥊 Quick Overview](#-quick-overview)
+  - [💬 Chats](#-chats)
+  - [🔗 Pipelines](#-pipelines)
+  - [🤖 AI Agents](#-ai-agents)
+  - [📦 Structured Output](#-structured-output)
+  - [🧠 Memory Systems](#-memory-systems)
+  - [📚 Document Loaders & RAG](#-document-loaders--rag)
+  - [🔌 MCP Client](#-mcp-client)
+  - [🖥️ MCP Server](#️-mcp-server)
+- [⚙️ Settings](#️-settings)
+- [🛠️ Global Functions (BIFs)](#️-global-functions-bifs)
+- [📢 Events](#-events)
+- [🌐 GitHub Repository and Reporting Issues](#-github-repository-and-reporting-issues)
+- [🧪 Testing](#-testing)
+- [💖 Ortus Sponsors](#-ortus-sponsors)
+
+## 📃 License
 
 BoxLang is open source and licensed under the [Apache 2](https://www.apache.org/licenses/LICENSE-2.0.html) license. 🎉 You can also get a professionally supported version with enterprise features and support via our BoxLang +/++ Plans (www.boxlang.io/plans). 💼
 
 ## 🚀 Getting Started
 
-You can easily get started with BoxLang AI by using the module installer:
+You can use BoxLang AI in both operating system applications, AWS Lambda, and web applications.  For OS applications, you can use the module installer to install the module globally.  For AWS Lambda and web applications, you can use the module installer to install it locally in your project or CommandBox as the package manager, which is our preferred method for web applications.
+
+**📚 New to AI concepts?** Check out our [Key Concepts Guide](https://ai.ortusbooks.com/getting-started/concepts) for terminology and fundamentals, or browse our [FAQ](https://ai.ortusbooks.com/readme/faq) for quick answers to common questions.  We also have a [Quick Start Guide](https://ai.ortusbooks.com/getting-started/quickstart) and our intense [AI BootCamp](https://github.com/ortus-boxlang/bx-ai/tree/development/bootcamp) available to you as well.
+
+### OS
+
+You can easily get started with BoxLang AI by using the module installer for building operating system applications:
 
 ```bash
 install-bx-module bx-ai
 ```
 
-> If you would like to leverage it in your CommandBox Based Web applications, make sure you add it to your `server.json` or use `box install bx-ai`.
-
-Once installed, make sure you setup any of the supported AI providers and their API keys in your `boxlang.json` configuration file.  After that
-you can leverage the global functions (BIFs) in your BoxLang code.  Here is a simple example:
+This will install the latest version of the BoxLang AI module in your BoxLang environment. Once installed, make sure you setup any of the supported AI providers and their API keys in your `boxlang.json` configuration file or environment variables.  After that you can leverage the global functions (BIFs) in your BoxLang code.  Here is a simple example:
 
 ```java
 // chat.bxs
@@ -62,9 +94,38 @@ answer = aiChat( "How amazing is BoxLang?" )
 println( answer )
 ```
 
-**📚 New to AI concepts?** Check out our [Key Concepts Guide](docs/getting-started/concepts.md) for terminology and fundamentals, or browse our [FAQ](docs/getting-started/faq.md) for quick answers to common questions.
+You can then run your BoxLang script like this:
 
-## 🤖 Providers
+```bash
+boxlang chat.bxs
+```
+
+### AWS Lambda
+
+In order to build AWS Lambda functions with Boxlang AI for serverless AI agents and applications, you can use the [Boxlang AWS Runtime](https://boxlang.ortusbooks.com/getting-started/running-boxlang/aws-lambda) and our [AWS Lambda Starter Template](https://github.com/ortus-boxlang/boxlang-starter-aws-lambda).   You will use the `install-bx-module` as well to install the module locally using the `--local` flag in the `resources` folder of your project:
+
+```bash
+cd src/resources
+install-bx-module bx-ai --local
+```
+
+Or you can use CommandBox as well and store your dependencies in the `box.json` descriptor.
+
+```bash
+box install bx-ai resources/modules/
+```
+
+### Web Applications
+
+To use BoxLang AI in your web applications, you can use CommandBox as the package manager to install the module locally in your project.  You can do this by running the following command in your project root:
+
+```bash
+box install bx-ai
+```
+
+Just make sure you have already a server setup with BoxLang.  You can check our [Getting Started with BoxLang Web Applications](https://boxlang.ortusbooks.com/getting-started/running-boxlang/commandbox) guide for more details on how to get started with BoxLang web applications.
+
+## 🤖 Supported Providers
 
 The following are the AI providers supported by this module. **Please note that in order to interact with these providers you will need to have an account with them and an API key.** 🔑
 
@@ -82,28 +143,7 @@ The following are the AI providers supported by this module. **Please note that 
 - 🔮 [Perplexity](https://docs.perplexity.ai/)
 - 🚢 [Voyage AI](https://www.voyageai.com/)
 
-## 🎯 Features
-
-Here are some of the features of this module:
-
-- 🔌 Integration with multiple AI providers
-- 📦 **Structured Output** - Type-safe AI responses using BoxLang classes, structs, or JSON schemas
-- 🤖 **AI Agents** - Autonomous agents with memory, tools, and sub-agent orchestration
-- 🔒 **Multi-Tenant Memory** - Built-in user and conversation isolation for enterprise applications
-- 📚 **Document Loaders** - Built-in loaders for Text, Markdown, CSV, JSON, XML, PDF, Log, HTTP, Feed, SQL, Directory, and WebCrawler
-- 🧬 **RAG (Retrieval-Augmented Generation)** - Complete workflow: load documents → chunk → embed → store → retrieve → inject into AI context
-- 🎯 **Vector Memory Systems** - Semantic search with ChromaDB, PostgreSQL pgvector, MySQL vector, TypeSense, and Weaviate
-- 📝 Compose raw chat requests
-- 💬 Build message objects
-- 🛠️ Create AI service objects
-- 🔧 Create AI tool objects
-- 🔍 Generate embeddings for semantic search
-- ⛓️ Fluent API
-- ⚡ Asynchronous chat requests
-- 🌐 Global defaults
-- ✨ And much more
-
-## 📊 Provider Support Matrix
+### 📊 Provider Support Matrix
 
 Here is a matrix of the providers and their feature support. Please keep checking as we will be adding more providers and features to this module. 🔄
 
@@ -123,16 +163,9 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | Perplexity   | ✅ | ❌ | ✅ |
 | Voyage       | ❌ | ✅ (Specialized) | ❌ |
 
-**Note:**
-
-- OpenAI provides native structured output support with strict schema validation. Other providers use JSON mode with schema constraints, which provides excellent results but may occasionally require prompt refinement.
-- Voyage AI is a specialized embeddings-only provider with state-of-the-art models optimized for semantic search, RAG applications, and clustering. It does not support chat completions or structured output.
-- Cohere provides high-quality embeddings with excellent multilingual support (100+ languages), chat capabilities, real-time tool calling, and structured output via JSON schema validation.
-
-
 ## 📤 Return Formats
 
-The AI module supports different return formats for the responses. You can specify the return format in the `options` struct when calling the `aiChat()` or `aiChatAsync()` functions, globally in the settings (as we saw above), or in the `ChatRequest` object. 🎯
+BoxLang not only makes it extremely easy to interact with multiple AI providers, but it also gives you the flexibility to choose how you want the responses returned to you. You can specify the return format using the `responseFormat` parameter in your AI calls. Here are the available formats:
 
 | Format | Description |
 |--------|-------------|
@@ -143,11 +176,15 @@ The AI module supports different return formats for the responses. You can speci
 | `raw` | Returns the full raw response from the AI provider. This is useful for debugging or when you need the full response structure with metadata. This is the default for pipelines. |
 | `structuredOutput` | Used internally when `.structuredOutput()` is called. Returns a populated class/struct based on the schema. |
 
-## 💬 Chats
+## 🥊 Quick Overview
+
+In the following sections, we provide a quick overview of the main components of BoxLang AI including Chats, Pipelines, Agents, Structured Output, Memory Systems, Document Loaders & RAG, and MCP Client/Server. Each section includes quick examples and links to more detailed documentation.  For further details, please refer to the [official documentation](https://ai.ortusbooks.com/), this is just a high-level overview to get you started quickly. 🚀
+
+### 💬 Chats
 
 Interact with AI models through **simple and powerful chat interfaces** 🎯 supporting both one-shot responses and streaming conversations. BoxLang AI provides fluent APIs for building everything from basic Q&A to complex multi-turn dialogues with system prompts, message history, and structured outputs. 💡
 
-### 🤔 Why Use Chats?
+#### 🤔 Why Use Chats?
 
 - ⚡ **Simple & Fast** - One-line chat interactions with `aiChat()`
 - 🔄 **Streaming Support** - Real-time token streaming with `aiChatStream()`
@@ -155,9 +192,10 @@ Interact with AI models through **simple and powerful chat interfaces** 🎯 sup
 - 🎨 **Flexible Messages** - Support for text, images, files, and structured data
 - 🌊 **Fluent API** - Chain message builders for readable, maintainable code
 
-### 💡 Quick Examples
+#### 💡 Quick Examples
 
 **Simple One-Shot Chat:**
+
 ```javascript
 // Quick question-answer
 response = aiChat( "What is BoxLang?" )
@@ -166,70 +204,70 @@ println( response )
 // With custom model and options
 response = aiChat(
     messages: "Explain quantum computing",
-    model: "gpt-4",
-    temperature: 0.7,
-    maxTokens: 500
+    params: { model: "gpt-4", temperature: 0.7, max_tokens: 500 }
 )
 ```
 
 **Multi-Turn Conversation with Memory:**
+
 ```javascript
-// Create conversation with memory
-memory = aiMemory( "windowed", maxMessages: 10 )
+// Create agent with memory
+agent = aiAgent(
+    name: "Assistant",
+    memory: aiMemory( "window", config: { maxMessages: 10 } )
+)
 
 // First turn
-response = aiChat(
-    messages: "My name is Luis",
-    memory: memory
-)
+response = agent.run( "My name is Luis" )
 
-// Second turn - AI remembers context
-response = aiChat(
-    messages: "What's my name?",
-    memory: memory
-)
+// Second turn - Agent remembers context
+response = agent.run( "What's my name?" )
 println( response ) // "Your name is Luis"
 ```
 
 **Streaming Chat:**
+
 ```javascript
 // Stream tokens as they arrive
 aiChatStream(
-    onChunk: ( chunk ) => {
-        writeOutput( chunk )
-        flush
-    },
     messages: "Write a short story about a robot",
-    model: "claude-3-5-sonnet-20241022"
+    callback: chunk => {
+        writeOutput( chunk.choices?.first()?.delta?.content ?: "" )
+		bx:flush;
+    },
+    params: { model: "claude-3-5-sonnet-20241022" }
 )
 ```
 
 **Fluent Message Builder:**
+
 ```javascript
 // Build complex message chains
-request = aiChatRequest()
-    .setModel( "gpt-4o" )
-    .addSystemMessage( "You are a helpful coding assistant" )
-    .addUserMessage( "How do I create a REST API in BoxLang?" )
-    .addImage( "diagram.png" )
-    .setTemperature( 0.7 )
+messages = aiMessage()
+    .system( "You are a helpful coding assistant" )
+    .user( "How do I create a REST API in BoxLang?" )
+    .image( "diagram.png" )
 
-response = request.send()
+response = aiChat(
+    messages: messages,
+    params: { model: "gpt-4o", temperature: 0.7 }
+)
 ```
 
-### 📚 Learn More
+#### 📚 Learn More
 
-- 🚀 **Quick Start**: [Getting Started Guide](docs/getting-started/quickstart.md)
-- 📖 **Full Guide**: [Chatting Documentation](docs/chatting/)
-- 🌊 **Streaming**: [Streaming Guide](docs/chatting/streaming.md)
-- 🎨 **Message Formats**: [Message Builder Guide](docs/chatting/messages.md)
-- 💻 **Examples**: Check `examples/chats/` for complete examples
+- 🚀 **Quick Start**: [Getting Started Guide](https://ai.ortusbooks.com/getting-started/quickstart.md)
+- 📖 **Full Guide**: [Chatting Documentation](https://ai.ortusbooks.com/chatting/)
+- 🌊 **Streaming**: [Streaming Guide](https://ai.ortusbooks.com/chatting/streaming.md)
+- 🎨 **Message Formats**: [Message Builder Guide](https://ai.ortusbooks.com/chatting/messages.md)
 
-## 🔗 Pipelines
+----
+
+### 🔗 Pipelines
 
 Build **composable AI workflows** 🎯 using BoxLang AI's powerful runnable pipeline system. Chain models, transformers, tools, and custom logic into reusable, testable components that flow data through processing stages. Perfect for complex AI workflows, data transformations, and multi-step reasoning. 💡
 
-### 🤔 Why Use Pipelines?
+#### 🤔 Why Use Pipelines?
 
 - 🔄 **Composable** - Chain any runnable components together with `.to()`
 - 🧪 **Testable** - Each pipeline stage is independently testable
@@ -237,9 +275,10 @@ Build **composable AI workflows** 🎯 using BoxLang AI's powerful runnable pipe
 - 🌊 **Streaming** - Full streaming support through entire pipeline
 - 🎯 **Type-Safe** - Input/output contracts ensure data flows correctly
 
-### 💡 Quick Examples
+#### 💡 Quick Examples
 
 **Simple Transformation Pipeline:**
+
 ```javascript
 // Chain model with transformers
 pipeline = aiModel( "gpt-4o" )
@@ -310,7 +349,7 @@ customStage = new CustomRunnable()
 pipeline = aiModel( "gpt-4o" ).to( customStage )
 ```
 
-### 📚 Learn More
+#### 📚 Learn More
 
 - 📖 **Full Guide**: [Runnables & Pipelines](docs/main-components/runnables.md)
 - 🎯 **Overview**: [Main Components](docs/main-components/overview.md)
@@ -318,11 +357,11 @@ pipeline = aiModel( "gpt-4o" ).to( customStage )
 - 💻 **Examples**: Check `examples/pipelines/` for complete examples
 
 
-## 🤖 AI Agents
+### 🤖 AI Agents
 
 Build **autonomous AI agents** 🎯 that can use tools, maintain memory, and orchestrate complex workflows. BoxLang AI agents combine LLMs with function calling, memory systems, and orchestration patterns to create intelligent assistants that can interact with external systems and solve complex tasks. 💡
 
-### 🤔 Why Use Agents?
+#### 🤔 Why Use Agents?
 
 - 🛠️ **Tool Integration** - Agents can execute functions, call APIs, and interact with external systems
 - 🧠 **Stateful Intelligence** - Built-in memory keeps context across multi-turn interactions
@@ -330,24 +369,26 @@ Build **autonomous AI agents** 🎯 that can use tools, maintain memory, and orc
 - 🎯 **Goal-Oriented** - Give high-level instructions, agents figure out the steps
 - 🤝 **Human-in-the-Loop** - Optional approval workflows for sensitive operations
 
-### 💡 Quick Examples
+#### 💡 Quick Examples
 
 **Simple Agent with Tools:**
 ```javascript
 // Define tools the agent can use
-weatherTool = aiTool()
-    .setName( "get_weather" )
-    .setDescription( "Get current weather for a location" )
-    .setFunction( ( location ) => {
+weatherTool = aiTool(
+    name: "get_weather",
+    description: "Get current weather for a location",
+    callable: ( location ) => {
         return { temp: 72, condition: "sunny", location: location };
-    } )
+    }
+)
 
 // Create agent with memory
-agent = aiAgent()
-    .setName( "Weather Assistant" )
-    .setDescription( "Helpful weather assistant" )
-    .setTools( [ weatherTool ] )
-    .setMemory( aiMemory( "windowed" ) )
+agent = aiAgent(
+    name: "Weather Assistant",
+    description: "Helpful weather assistant",
+    tools: [ weatherTool ],
+    memory: aiMemory( "window" )
+)
 
 // Agent decides when to call tools
 response = agent.run( "What's the weather in Miami?" )
@@ -355,34 +396,36 @@ println( response ) // Agent calls get_weather tool and responds
 ```
 
 **Autonomous Agent with Multiple Tools:**
+
 ```javascript
 // Agent with database and email tools
-agent = aiAgent()
-    .setName( "Customer Support Agent" )
-    .setTools( [
-        aiTool( "query_orders", orderQueryFunction ),
-        aiTool( "send_email", emailFunction ),
-        aiTool( "create_ticket", ticketFunction )
-    ] )
-    .setMemory( aiMemory( "session" ) )
-    .setMaxIterations( 5 ) // Prevent infinite loops
+agent = aiAgent(
+    name: "Customer Support Agent",
+    tools: [
+        aiTool( name: "query_orders", description: "Query customer orders", callable: orderQueryFunction ),
+        aiTool( name: "send_email", description: "Send email to customer", callable: emailFunction ),
+        aiTool( name: "create_ticket", description: "Create support ticket", callable: ticketFunction )
+    ],
+    memory: aiMemory( "session" ),
+    params: { max_iterations: 5 }
+)
 
 // Agent orchestrates multiple tool calls
 agent.run( "Find order #12345, email the customer with status, and create a ticket if there's an issue" )
 ```
 
-### 📚 Learn More
+#### 📚 Learn More
 
 - 📖 **Full Guide**: [AI Agents Documentation](docs/main-components/agents.md)
 - 🎓 **Interactive Course**: [Lesson 6 - Building AI Agents](course/lesson-06-agents/)
 - 🔧 **Advanced Patterns**: [Agent Orchestration](docs/advanced/agent-orchestration.md)
 - 💻 **Examples**: Check `examples/agents/` for complete working examples
 
-## 📦 Structured Output
+### 📦 Structured Output
 
 Get **type-safe, validated responses** ✅ from AI providers by defining expected output schemas using BoxLang classes, structs, or JSON schemas. The module automatically converts AI responses into properly typed objects, eliminating manual parsing and validation. 🎯
 
-### 🤔 Why Use Structured Output?
+#### 🤔 Why Use Structured Output?
 
 - ✅ **Type Safety** - Get validated objects instead of parsing JSON strings
 - 🔒 **Automatic Validation** - Schema constraints ensure correct data types and required fields
@@ -390,7 +433,7 @@ Get **type-safe, validated responses** ✅ from AI providers by defining expecte
 - 💻 **Developer Experience** - Work with native BoxLang objects immediately
 - 🧪 **Testing & Caching** - Use `aiPopulate()` to create objects from JSON for tests or cached responses
 
-### 💡 Quick Examples
+#### 💡 Quick Examples
 
 **Using a Class:**
 
@@ -453,7 +496,7 @@ writeOutput( "Person: #result.person.getName()#<br>" );
 writeOutput( "Company: #result.company.getName()#<br>" );
 ```
 
-### 🔧 Manual Population with aiPopulate()
+#### 🔧 Manual Population with aiPopulate()
 
 Convert JSON responses or cached data into typed objects without making AI calls:
 
@@ -478,22 +521,22 @@ tasks = aiPopulate( [ new Task() ], tasksJson );
 - 🔄 Converting existing JSON data to typed objects
 - ✅ Validating data structures
 
-### ✅ Provider Support
+#### ✅ Provider Support
 
 All providers support structured output! 🎉 OpenAI offers native structured output with strict validation, while others use JSON mode with schema guidance (which works excellently in practice). 💪
 
-### 📚 Learn More
+#### 📚 Learn More
 
 - 🚀 **Quick Start**: [Simple Interactions Guide](docs/chatting/structured-output.md)
 - 🔧 **Advanced Pipelines**: [Pipeline Integration Guide](docs/main-components/structured-output.md)
 - 🎓 **Interactive Course**: [Lesson 12 - Structured Output](course/lesson-12-structured-output/)
 - 💻 **Examples**: Check `examples/structured/` for complete working examples
 
-## 🧠 Memory Systems
+### 🧠 Memory Systems
 
 Build **stateful, context-aware AI applications** 🎯 with flexible memory systems that maintain conversation history, enable semantic search, and preserve context across interactions. BoxLang AI provides both traditional conversation memory and advanced vector-based memory for semantic understanding. 💡
 
-### 🤔 Why Use Memory?
+#### 🤔 Why Use Memory?
 
 - 💭 **Context Retention** - AI remembers previous messages and maintains coherent conversations
 - 💬 **Stateful Applications** - Build chat interfaces that remember user preferences and conversation history
@@ -501,7 +544,7 @@ Build **stateful, context-aware AI applications** 🎯 with flexible memory syst
 - 💾 **Flexible Storage** - Choose from in-memory, file-based, database, session, or vector storage
 - ⚙️ **Automatic Management** - Memory handles message limits, summarization, and context windows
 
-### 📋 Memory Types
+#### 📋 Memory Types
 
 **Standard Memory** 💬 (Conversation History):
 
@@ -529,13 +572,14 @@ Build **stateful, context-aware AI applications** 🎯 with flexible memory syst
 | **Weaviate** | GraphQL vector database | Complex queries, knowledge graphs |
 | **Milvus** | Enterprise vector DB | Massive datasets, high throughput |
 
-### 💡 Quick Examples
+#### 💡 Quick Examples
 
 **Windowed Memory (Multi-Tenant):**
 
 ```java
 // Automatic per-user isolation
-memory = aiMemory( "windowed",
+memory = aiMemory(
+    memory: "window",
     key: createUUID(),
     userId: "user123",
     config: { maxMessages: 10 }
@@ -549,7 +593,7 @@ agent.run( "What's my name?" )  // "Your name is John"
 **Summary Memory (Preserves Full Context):**
 
 ```java
-memory = aiMemory( "summary", {
+memory = aiMemory( "summary", config: {
     maxMessages: 30,
     summaryThreshold: 15,
     summaryModel: "gpt-4o-mini"
@@ -561,7 +605,8 @@ agent = aiAgent( name: "Support", memory: memory )
 **Vector Memory (Semantic Search + Multi-Tenant):**
 
 ```java
-memory = aiMemory( "chroma",
+memory = aiMemory(
+    memory: "chroma",
     key: createUUID(),
     userId: "user123",
     conversationId: "support",
@@ -578,7 +623,7 @@ memory = aiMemory( "chroma",
 **Hybrid Memory (Recent + Semantic):**
 
 ```java
-memory = aiMemory( "hybrid", {
+memory = aiMemory( "hybrid", config: {
     recentLimit: 5,       // Keep last 5 messages
     semanticLimit: 5,     // Add 5 semantic matches
     vectorProvider: "chroma"
@@ -586,7 +631,7 @@ memory = aiMemory( "hybrid", {
 // Combines recency with relevance
 ```
 
-### 📚 Learn More
+#### 📚 Learn More
 
 - 💬 **Standard Memory**: [Memory Systems Guide](docs/main-components/memory.md)
 - 🔍 **Vector Memory**: [Vector Memory Guide](docs/main-components/vector-memory.md)
@@ -594,13 +639,13 @@ memory = aiMemory( "hybrid", {
 - 🎓 **Interactive Course**: [Lesson 7 - Memory Systems](course/lesson-07-memory/)
 - 💻 **Examples**: Check `examples/advanced/` and `examples/vector-memory/` for complete examples
 
----
+----
 
-## 📚 Document Loaders & RAG
+### 📚 Document Loaders & RAG
 
 BoxLang AI provides **12+ built-in document loaders** for ingesting content from files, databases, web sources, and more. These loaders integrate seamlessly with vector memory systems to enable **Retrieval-Augmented Generation (RAG)** workflows.
 
-### 🔄 RAG Workflow
+#### 🔄 RAG Workflow
 
 ```mermaid
 graph LR
@@ -619,7 +664,7 @@ graph LR
     style AI fill:#7ED321
 ```
 
-### 📄 Available Loaders
+#### 📄 Available Loaders
 
 | Loader | Type | Use Case | Example |
 |--------|------|----------|---------|
@@ -636,26 +681,29 @@ graph LR
 | 📁 **DirectoryLoader** | `directory` | File directories | Batch processing |
 | 🕷️ **WebCrawlerLoader** | `webcrawler` | Website crawling | Multi-page docs |
 
-### ✨ Quick Examples
+#### ✨ Quick Examples
 
 **Load a Single Document:**
 
 ```javascript
 // Load a PDF document
-docs = aiDocuments( "/path/to/document.pdf", "pdf" )
+docs = aiDocuments(
+    source: "/path/to/document.pdf",
+    config: { type: "pdf" }
+).load()
 println( "#docs.len()# documents loaded" )
 
 // Load with configuration
 docs = aiDocuments(
-    source = "/path/to/document.pdf",
-    type   = "pdf",
-    config = {
+    source: "/path/to/document.pdf",
+    config: {
+        type: "pdf",
         sortByPosition: true,
         addMoreFormatting: true,
         startPage: 1,
         endPage: 10
     }
-)
+).load()
 ```
 
 **Load Multiple Documents:**
@@ -663,33 +711,37 @@ docs = aiDocuments(
 ```javascript
 // Load all markdown files from a directory
 docs = aiDocuments(
-    source = "/knowledge-base",
-    type   = "directory",
-    config = {
+    source: "/knowledge-base",
+    config: {
+        type: "directory",
         recursive: true,
         extensions: ["md", "txt"],
         excludePatterns: ["node_modules", ".git"]
     }
-)
+).load()
 ```
 
 **Ingest into Vector Memory:**
 
 ```javascript
 // Create vector memory
-vectorMemory = aiMemory( "chroma", {
+vectorMemory = aiMemory( "chroma", config: {
     collection: "docs",
     embeddingProvider: "openai",
     embeddingModel: "text-embedding-3-small"
 } )
 
 // Ingest documents with chunking and embedding
-result = aiMemoryIngest(
-    memory        = vectorMemory,
-    source        = "/knowledge-base",
-    type          = "directory",
-    loaderConfig  = { recursive: true, extensions: ["md", "txt", "pdf"] },
-    ingestOptions = { chunkSize: 1000, overlap: 200 }
+result = aiDocuments(
+    source: "/knowledge-base",
+    config: {
+        type: "directory",
+        recursive: true,
+        extensions: ["md", "txt", "pdf"]
+    }
+).toMemory(
+    memory: vectorMemory,
+    options: { chunkSize: 1000, overlap: 200 }
 )
 
 println( "✅ Loaded #result.documentsIn# docs as #result.chunksOut# chunks" )
@@ -711,22 +763,20 @@ response = agent.run( "What is BoxLang?" )
 println( response )
 ```
 
-### 📚 Learn More
+#### 📚 Learn More
 
 - 📖 **Full Guide**: [Document Loaders Guide](docs/main-components/document-loaders.md)
 - 🧬 **RAG Workflow**: [RAG Implementation Guide](docs/main-components/rag.md)
 - 🔧 **Custom Loaders**: [Building Custom Loaders](docs/advanced/custom-loader.md)
 - 💻 **Examples**: Check `examples/loaders/` and `examples/rag/` for complete examples
 
+----
 
-
-
-
-## 🔌 MCP Client
+### 🔌 MCP Client
 
 Connect to **Model Context Protocol (MCP) servers** 🎯 and use their tools, prompts, and resources in your AI applications. BoxLang AI's MCP client provides seamless integration with the growing MCP ecosystem, allowing your agents to access databases, APIs, filesystems, and more through standardized interfaces. 💡
 
-### 🤔 Why Use MCP Client?
+#### 🤔 Why Use MCP Client?
 
 - 🌍 **Ecosystem Access** - Use any MCP server (filesystems, databases, APIs, tools)
 - 🔒 **Secure Integration** - Standardized permissions and authentication
@@ -734,45 +784,42 @@ Connect to **Model Context Protocol (MCP) servers** 🎯 and use their tools, pr
 - 🔄 **Dynamic Resources** - Access changing data sources (files, DB records, etc.)
 - 🤖 **Agent Integration** - Seamlessly add MCP tools to your AI agents
 
-### 💡 Quick Examples
+#### 💡 Quick Examples
 
 **Connect to MCP Server:**
+
 ```javascript
-// Connect to filesystem MCP server
-mcpClient = aiMcpClient( "filesystem" )
-    .setCommand( "npx" )
-    .setArgs( [ "-y", "@modelcontextprotocol/server-filesystem", "/path/to/docs" ] )
-    .connect()
+// Connect to MCP server via HTTP
+mcpClient = MCP( "http://localhost:3000" )
+    .withTimeout( 5000 )
 
 // List available tools
 tools = mcpClient.listTools()
-println( tools ) // read_file, write_file, list_directory, etc.
+println( tools ) // Returns available MCP tools
 ```
 
 **Use MCP Tools in Agent:**
+
 ```javascript
-// Connect to multiple MCP servers
-filesystemMcp = aiMcpClient( "filesystem" )
-    .setCommand( "npx" )
-    .setArgs( [ "-y", "@modelcontextprotocol/server-filesystem", "/data" ] )
-    .connect()
+// Connect to MCP servers
+filesystemMcp = MCP( "http://localhost:3001" ).withTimeout( 5000 )
+databaseMcp = MCP( "http://localhost:3002" ).withTimeout( 5000 )
 
-databaseMcp = aiMcpClient( "postgres" )
-    .setCommand( "npx" )
-    .setArgs( [ "-y", "@modelcontextprotocol/server-postgres", "postgresql://..." ] )
-    .connect()
+// Create agent (MCP integration depends on agent implementation)
+agent = aiAgent(
+    name: "Data Assistant",
+    description: "Assistant with MCP tool access"
+)
 
-// Agent can use all MCP tools
-agent = aiAgent()
-    .setName( "Data Assistant" )
-    .addMcpClient( filesystemMcp )
-    .addMcpClient( databaseMcp )
+// Agent automatically discovers and uses MCP tools
+response = agent.run( "Read config.json and update the database with its contents" )
 
 // Agent automatically uses MCP tools
 agent.run( "Read config.json and update the database with its contents" )
 ```
 
 **Access MCP Resources:**
+
 ```javascript
 // List available resources
 resources = mcpClient.listResources()
@@ -793,11 +840,11 @@ prompt = mcpClient.getPrompt( "code-review", { language: "BoxLang" } )
 - 🔧 **Available Servers**: [MCP Servers List](https://github.com/modelcontextprotocol/servers)
 - 💻 **Examples**: Check `examples/mcp/` for complete examples
 
-## 🖥️ MCP Server
+### 🖥️ MCP Server
 
 Expose your **BoxLang functions and data as MCP tools** 🎯 for use by AI agents and applications. Build custom MCP servers that provide tools, prompts, and resources through the standardized Model Context Protocol, making your functionality accessible to any MCP client. 💡
 
-### 🤔 Why Build MCP Servers?
+#### 🤔 Why Build MCP Servers?
 
 - 🔌 **Universal Access** - Any MCP client can use your tools
 - 🎯 **Standardized Interface** - No custom integration code needed
@@ -805,25 +852,25 @@ Expose your **BoxLang functions and data as MCP tools** 🎯 for use by AI agent
 - 📊 **Share Resources** - Provide data sources, templates, and prompts
 - 🏢 **Enterprise Integration** - Connect AI to internal systems safely
 
-### 💡 Quick Examples
+#### 💡 Quick Examples
 
 **Simple MCP Server:**
 ```javascript
 // Create server with tools
-server = aiMcpServer( "my-tools" )
-    .setDescription( "Custom BoxLang tools" )
+server = mcpServer(
+    name: "my-tools",
+    description: "Custom BoxLang tools"
+)
 
 // Register tool
 server.registerTool(
-    name: "calculate_tax",
-    description: "Calculate tax for a given amount",
-    function: ( amount, rate = 0.08 ) => {
-        return amount * rate;
-    },
-    parameters: {
-        amount: { type: "number", description: "Amount to calculate tax on" },
-        rate: { type: "number", description: "Tax rate as decimal" }
-    }
+    aiTool(
+        name: "calculate_tax",
+        description: "Calculate tax for a given amount",
+        callable: ( amount, rate = 0.08 ) => {
+            return amount * rate;
+        }
+    )
 )
 
 // Start server
@@ -833,13 +880,27 @@ server.start() // Listens on stdio by default
 **Advanced Server with Resources:**
 ```javascript
 // Create server with tools, prompts, and resources
-server = aiMcpServer( "enterprise-api" )
-    .setDescription( "Internal enterprise tools" )
+server = mcpServer(
+    name: "enterprise-api",
+    description: "Internal enterprise tools"
+)
 
 // Register multiple tools
-server.registerTool( "query_orders", queryOrdersFunction, orderSchema )
-server.registerTool( "create_invoice", createInvoiceFunction, invoiceSchema )
-server.registerTool( "send_notification", notifyFunction, notifySchema )
+server.registerTool( aiTool(
+    name: "query_orders",
+    description: "Query customer orders",
+    callable: queryOrdersFunction
+) )
+server.registerTool( aiTool(
+    name: "create_invoice",
+    description: "Create customer invoice",
+    callable: createInvoiceFunction
+) )
+server.registerTool( aiTool(
+    name: "send_notification",
+    description: "Send customer notification",
+    callable: notifyFunction
+) )
 
 // Provide templates as prompts
 server.registerPrompt(
@@ -881,7 +942,7 @@ component {
 }
 ```
 
-### 📚 Learn More
+#### 📚 Learn More
 
 - 📖 **Full Guide**: [MCP Server Documentation](docs/advanced/mcp-server.md)
 - 🌍 **MCP Protocol**: [Model Context Protocol Specification](https://spec.modelcontextprotocol.io)
@@ -936,7 +997,7 @@ Here are the settings you can place in your `boxlang.json` file:
 2. ⬇️ **Pull a model**: `ollama pull llama3.2` (or any supported model)
 3. ▶️ **Start service**: Ollama runs on `http://localhost:11434` by default
 
-#### 📝 Configuration
+### 📝 Configuration
 
 ```json
 {
@@ -955,7 +1016,7 @@ Here are the settings you can place in your `boxlang.json` file:
 }
 ```
 
-#### 🌟 Popular Ollama Models
+### 🌟 Popular Ollama Models
 
 - 🦙 `llama3.2` - Latest Llama model (recommended)
 - ⚡ `llama3.2:1b` - Smaller, faster model
@@ -967,7 +1028,7 @@ Here are the settings you can place in your `boxlang.json` file:
 
 | Function | Purpose | Parameters | Return Type | Async Support |
 |----------|---------|------------|-------------|---------------|
-| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `params`, `options` | AiAgent Object | ❌ |
+| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options` | AiAgent Object | ❌ |
 | `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
 | `aiChatRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | AiRequestObject | N/A |
@@ -975,16 +1036,16 @@ Here are the settings you can place in your `boxlang.json` file:
 | `aiChunk()` | Split text into chunks | `text`, `options={}` | Array of Strings | N/A |
 | `aiDocuments()` | Create fluent document loader | `source`, `config={}` | IDocumentLoader Object | N/A |
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
-| `aiMemory()` | Create memory instance | `type`, `config={}` | IAiMemory Object | N/A |
+| `aiMemory()` | Create memory instance | `memory`, `key`, `userId`, `conversationId`, `config={}` | IAiMemory Object | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
-| `aiModel()` | Create AI model wrapper | `provider`, `apiKey` | AiModel Object | N/A |
+| `aiModel()` | Create AI model wrapper | `provider`, `apiKey`, `tools` | AiModel Object | N/A |
 | `aiPopulate()` | Populate class/struct from JSON | `target`, `data` | Populated Object | N/A |
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
 | `aiTokens()` | Estimate token count | `text`, `options={}` | Numeric | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
-| `aiTransform()` | Create data transformer | `transformer` | Transformer Runnable | N/A |
+| `aiTransform()` | Create data transformer | `transformer`, `config={}` | Transformer Runnable | N/A |
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
-| `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors` | MCPServer Object | N/A |
+| `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors`, `statsEnabled`, `force` | MCPServer Object | N/A |
 
 > **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](docs/main-components/overview.md#return-formats) documentation for details.
 
@@ -1006,50 +1067,60 @@ response = agent.run( "What is BoxLang?" )
 future = aiChatAsync( "Hello!" ).then( r -> println(r) )
 
 // Stream chat responses
-aiChatStream( "Tell me a story", ( chunk ) => {
-    print( chunk.choices?.first()?.delta?.content ?: "" )
-} )
+aiChatStream(
+    messages: "Tell me a story",
+    callback: ( chunk ) => {
+        print( chunk.choices?.first()?.delta?.content ?: "" )
+    }
+)
 
 // Build complex request
-request = aiChatRequest( messages, { model: "gpt-4" }, { provider: "openai" } )
+request = aiChatRequest(
+    messages: messages,
+    params: { model: "gpt-4" },
+    options: { provider: "openai" }
+)
 
 // Fluent message building
 msg = aiMessage().system( "Be helpful" ).user( "Hello" )
 
 // AI Model wrapper
-model = aiModel( "openai" ).bindTools( [tool1, tool2] )
+model = aiModel( provider: "openai", tools: [tool1, tool2] )
 
 // Service with custom settings
-service = aiService( "openai", "my-key" ).defaults( { temperature: 0.7 } )
+service = aiService( provider: "openai", apiKey: "my-key" )
+service.defaults( { temperature: 0.7 } )
 
 // Tool for function calling
-tool = aiTool( "weather", "Get weather data", location => getWeather(location) )
+tool = aiTool(
+    name: "weather",
+    description: "Get weather data",
+    callable: location => getWeather(location)
+)
 
 // Load documents from files or directories
-docs = aiDocuments( "/path/to/document.txt" )
-docs = aiDocuments( "/path/to/folder", "directory", { recursive: true } )
-
-// Create a loader for advanced configuration
-loader = aiDocumentLoader( "/docs", "markdown" )
-    .splitByHeaders( 2 )
-    .removeCodeBlocks()
-docs = loader.load()
+docs = aiDocuments( source: "/path/to/document.txt" ).load()
+docs = aiDocuments(
+    source: "/path/to/folder",
+    config: { type: "directory", recursive: true }
+).load()
 
 // Ingest documents into memory with detailed reporting
-result = aiMemoryIngest(
-    memory = myVectorMemory,
-    source = "/knowledge-base",
-    type   = "directory",
-    loaderConfig  = { recursive: true, extensions: ["md", "txt"] },
-    ingestOptions = { chunkSize: 500, overlap: 50 }
+result = aiDocuments(
+    source: "/knowledge-base",
+    config: { type: "directory", recursive: true, extensions: ["md", "txt"] }
+).toMemory(
+    memory: myVectorMemory,
+    options: { chunkSize: 500, overlap: 50 }
 )
 println( "Ingested #result.documentsIn# docs as #result.chunksOut# chunks" )
 
 // Multi-memory fan-out
-result = aiMemoryIngest(
-    memory = [ chromaMemory, pgVectorMemory ],
-    source = "/docs",
-    type   = "markdown"
+result = aiDocuments(
+    source: "/docs",
+    config: { type: "markdown" }
+).toMemory(
+    memory: [ chromaMemory, pgVectorMemory ]
 )
 
 // MCP client for Model Context Protocol servers
@@ -1060,8 +1131,16 @@ result = client.send( "searchDocs", { query: "syntax" } )
 
 // MCP server for exposing tools to AI clients
 mcpServer( "myApp" )
-    .registerTool( aiTool( "search", "Search docs", ( query ) => searchDocs( query ) ) )
-    .registerResource( uri: "docs://readme", name: "README", handler: () => fileRead( "/readme.md" ) )
+    .registerTool( aiTool(
+        name: "search",
+        description: "Search docs",
+        callable: ( query ) => searchDocs( query )
+    ) )
+    .registerResource(
+        uri: "docs://readme",
+        name: "README",
+        handler: () => fileRead( "/readme.md" )
+    )
 ```
 
 This module exposes the following BoxLang global functions (BIFs) for you to interact with the AI providers:
@@ -1076,7 +1155,7 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 ### 🔢 Embedding Functions
 
 - `aiEmbed( input, struct params={}, struct options={} )` : Generate embeddings for text input. Input can be a single string or an array of strings. Returns numerical vectors that capture semantic meaning, useful for semantic search, clustering, and recommendations.
-- `aiDocuments( source, type="", struct config={} )` : Load documents from various sources (files, directories, web, databases) using built-in loaders. Supports configuration options for each loader type.
+- `aiDocuments( source, struct config={} )` : Load documents from various sources (files, directories, web, databases) using built-in loaders. Returns a fluent IDocumentLoader that can be configured and then executed with `.load()` or `.toMemory()`.
 
 ### ✂️ Text Processing Functions
 
@@ -1085,9 +1164,9 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 
 ### 🤖 Agent Functions
 
-- `aiAgent( name, description, instructions, model, memory, tools, params, options )` - Creates an autonomous AI agent that can maintain conversation memory, use tools, and execute tasks. Agents simplify complex AI workflows by managing state and context automatically.
-- `aiMemory( type, config )` - Creates a memory instance for agents and pipelines. Available types:
-  - **`window`** - Windowed memory keeping last N messages (default, configurable via `maxMessages`)
+- `aiAgent( name, description, instructions, model, memory, tools, subAgents, params, options )` - Creates an autonomous AI agent that can maintain conversation memory, use tools, and execute tasks. Agents simplify complex AI workflows by managing state and context automatically. Use `subAgents` to delegate tasks to specialized agents.
+- `aiMemory( memory, key, userId, conversationId, config )` - Creates a memory instance for agents and pipelines. Available types:
+  - **`window`** - Windowed memory keeping last N messages (default, configurable via `config.maxMessages`)
   - **`summary`** - Intelligently compresses old messages while preserving context
   - **`session`** - Web session-persisted memory
   - **`file`** - File-based persistent storage
@@ -1100,12 +1179,13 @@ This module exposes the following BoxLang global functions (BIFs) for you to int
 
 ### 🧰 Helper Functions
 
-- `aiMessage( message )` - Allows you to build a message object that you can then use to send to the `aiChat()` or `aiAiRequest()` functions.  It allows you to fluently build up messages as well.
-- `aiModel( provider, apiKey )` - Creates an AI model wrapper that can be configured with tools and used in agents or pipelines. Provides a fluent API for model configuration.
-- `aiService( provider, apiKey )` - Creates a reference to an AI Service provider that you can then use to interact with the AI service.  This is useful if you want to create a service object and then use it multiple times.  You can pass in optional `provider` and `apiKey` to override the global settings.
-- `aiTool( name, description, callable)` - Creates a tool object that you can use to add to a chat request for real-time system processing.  This is useful if you want to create a tool that can be used in multiple chat requests against localized resources.  You can then pass in the tool to the `aiChat()` or `aiAiRequest()` functions.
+- `aiMessage( message )` - Allows you to build a message object that you can then use to send to the `aiChat()` functions. It allows you to fluently build up messages with `.system()`, `.user()`, `.assistant()`, `.image()`, etc.
+- `aiModel( provider, apiKey, tools )` - Creates an AI model wrapper that can be configured with tools and used in agents or pipelines. Provides a fluent API for model configuration. Use `tools` parameter to bind tools directly during creation.
+- `aiService( provider, apiKey )` - Creates a reference to an AI Service provider that you can then use to interact with the AI service. This is useful if you want to create a service object and then use it multiple times. You can pass in optional `provider` and `apiKey` to override the global settings.
+- `aiTool( name, description, callable)` - Creates a tool object that you can use to add to a chat request for real-time system processing. This is useful if you want to create a tool that can be used in multiple chat requests against localized resources. You can then pass tools to agents or models.
+- `aiTransform( transformer, config )` - Creates a data transformer runnable for use in pipelines. The `transformer` can be a closure, a string shortcut ("code", "json", "text", "xml"), or a class path. Use `config` for transformer-specific options.
 - `MCP( baseURL )` - Creates a fluent client for consuming Model Context Protocol (MCP) servers. MCP provides standardized access to external tools, resources, and prompts that AI models can use.
-- `mcpServer( name, description, version, cors )` - Gets or creates an MCP server instance for registering tools, resources, and prompts that can be exposed to AI clients. Servers are singletons by name, stored globally for access across requests. The `description` and `version` parameters allow you to provide additional metadata for the server instance. The `cors` parameter sets the allowed CORS origin (empty string by default for secure-by-default behavior).
+- `mcpServer( name, description, version, cors, statsEnabled, force )` - Gets or creates an MCP server instance for registering tools, resources, and prompts that can be exposed to AI clients. Servers are singletons by name, stored globally for access across requests. Use `force: true` to rebuild an existing server.
 
 ## 📢 Events
 
