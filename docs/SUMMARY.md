@@ -1,6 +1,6 @@
 # Table of contents
 
-* [🏠 Introduction](README.md)
+* [Introduction](README.md)
   * [Release History](readme/release-history/README.md)
     * [2.0.0](readme/release-history/2.0.0.md)
     * [1.0.0](readme/release-history/1.0.0.md)
