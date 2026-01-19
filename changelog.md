@@ -9,110 +9,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-01-19
+
 One of our biggest library updates yet! This release introduces a powerful new document loading system, comprehensive security features for MCP servers, and full support for several major AI providers including Mistral, HuggingFace, Groq, OpenRouter, and Ollama. Additionally, we have implemented complete embeddings functionality and made numerous enhancements and fixes across the board.
 
 ### Added
 
 - **Document Loaders**: New document loading system for importing content from various sources
-    - New `aiDocuments()` BIF for loading documents with automatic type detection
-    - New `aiDocumentLoader()` BIF for creating loader instances with advanced configuration
-    - New `aiDocumentLoaders()` BIF for retrieving all registered loaders with metadata
-    - New `aiMemoryIngest()` BIF for ingesting documents into memory with comprehensive reporting:
-        - Single memory or multi-memory fan-out support
-        - Async processing for parallel ingestion
-        - Automatic chunking with `aiChunk()` integration
-        - Token counting with `aiTokens()` integration
-        - Cost estimation for embedding operations
-        - Detailed ingestion report (documentsIn, chunksOut, stored, skipped, deduped, tokenCount, embeddingCalls, estimatedCost, errors, memorySummary, duration)
-    - New `Document` class for standardized document representation with content and metadata
-    - New `IDocumentLoader` interface and `BaseDocumentLoader` abstract class for custom loaders
-    - **Built-in Loaders**:
-        - `TextLoader`: Plain text files (.txt, .text)
-        - `MarkdownLoader`: Markdown files with header splitting, code block removal
-        - `HTMLLoader`: HTML files and URLs with script/style removal, tag extraction
-        - `CSVLoader`: CSV files with row-as-document mode, column filtering
-        - `JSONLoader`: JSON files with field extraction, array-as-documents mode
-        - `DirectoryLoader`: Batch loading from directories with recursive scanning
-    - Fluent API for loader configuration
-    - Integration with memory systems via `loadTo()` method and `aiMemoryIngest()` BIF
-    - Automatic document chunking support for vector memory
-    - Comprehensive documentation in `docs/main-components/document-loaders.md`
+  - New `aiDocuments()` BIF for loading documents with automatic type detection
+  - New `aiDocumentLoader()` BIF for creating loader instances with advanced configuration
+  - New `aiDocumentLoaders()` BIF for retrieving all registered loaders with metadata
+  - New `aiMemoryIngest()` BIF for ingesting documents into memory with comprehensive reporting:
+    - Single memory or multi-memory fan-out support
+    - Async processing for parallel ingestion
+    - Automatic chunking with `aiChunk()` integration
+    - Token counting with `aiTokens()` integration
+    - Cost estimation for embedding operations
+    - Detailed ingestion report (documentsIn, chunksOut, stored, skipped, deduped, tokenCount, embeddingCalls, estimatedCost, errors, memorySummary, duration)
+  - New `Document` class for standardized document representation with content and metadata
+  - New `IDocumentLoader` interface and `BaseDocumentLoader` abstract class for custom loaders
+  - **Built-in Loaders**:
+    - `TextLoader`: Plain text files (.txt, .text)
+    - `MarkdownLoader`: Markdown files with header splitting, code block removal
+    - `HTMLLoader`: HTML files and URLs with script/style removal, tag extraction
+    - `CSVLoader`: CSV files with row-as-document mode, column filtering
+    - `JSONLoader`: JSON files with field extraction, array-as-documents mode
+    - `DirectoryLoader`: Batch loading from directories with recursive scanning
+  - Fluent API for loader configuration
+  - Integration with memory systems via `loadTo()` method and `aiMemoryIngest()` BIF
+  - Automatic document chunking support for vector memory
+  - Comprehensive documentation in `docs/main-components/document-loaders.md`
 - **MCP Server Enterprise Security Features**: Comprehensive security enhancements for MCP servers
-    - **CORS Configuration**:
-        - `withCors(origins)` - Configure allowed origins (string or array)
-        - `addCorsOrigin(origin)` - Add origin dynamically
-        - `getCorsAllowedOrigins()` - Get configured origins array
-        - `isCorsAllowed(origin)` - Check if origin is allowed with wildcard matching
-        - Support for wildcard patterns (`*.example.com`)
-        - Support for allowing all origins (`*`)
-        - Dynamic `Access-Control-Allow-Origin` header in responses
-        - CORS headers included in OPTIONS preflight responses
-    - **Request Body Size Limits**:
-        - `withBodyLimit(maxBytes)` - Set maximum request body size in bytes
-        - `getMaxRequestBodySize()` - Get current limit (0 = unlimited)
-        - Returns 413 Payload Too Large error when exceeded
-        - Protects against DoS attacks with oversized payloads
-    - **Custom API Key Validation**:
-        - `withApiKeyProvider(provider)` - Set custom API key validation callback
-        - `hasApiKeyProvider()` - Check if provider is configured
-        - `verifyApiKey(apiKey, requestData)` - Manual key validation
-        - Supports `X-API-Key` header and `Authorization: Bearer` token
-        - Provider receives API key and request context for flexible validation
-        - Returns 401 Unauthorized for invalid keys
-    - **Security Headers**: Automatic inclusion of industry-standard security headers in all responses
-        - `X-Content-Type-Options: nosniff`
-        - `X-Frame-Options: DENY`
-        - `X-XSS-Protection: 1; mode=block`
-        - `Referrer-Policy: strict-origin-when-cross-origin`
-        - `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`
-        - `Strict-Transport-Security: max-age=31536000; includeSubDomains`
-        - `Permissions-Policy: geolocation=(), microphone=(), camera=()`
-    - **Security Processing Order**: Body size → CORS → Basic Auth → API Key → Request processing
-    - Comprehensive documentation in `docs/advanced/mcp-server.md` with examples
-    - Security configuration examples in main README.md
-    - 9 new integration tests covering all security features
+  - **CORS Configuration**:
+    - `withCors(origins)` - Configure allowed origins (string or array)
+    - `addCorsOrigin(origin)` - Add origin dynamically
+    - `getCorsAllowedOrigins()` - Get configured origins array
+    - `isCorsAllowed(origin)` - Check if origin is allowed with wildcard matching
+    - Support for wildcard patterns (`*.example.com`)
+    - Support for allowing all origins (`*`)
+    - Dynamic `Access-Control-Allow-Origin` header in responses
+    - CORS headers included in OPTIONS preflight responses
+  - **Request Body Size Limits**:
+    - `withBodyLimit(maxBytes)` - Set maximum request body size in bytes
+    - `getMaxRequestBodySize()` - Get current limit (0 = unlimited)
+    - Returns 413 Payload Too Large error when exceeded
+    - Protects against DoS attacks with oversized payloads
+  - **Custom API Key Validation**:
+    - `withApiKeyProvider(provider)` - Set custom API key validation callback
+    - `hasApiKeyProvider()` - Check if provider is configured
+    - `verifyApiKey(apiKey, requestData)` - Manual key validation
+    - Supports `X-API-Key` header and `Authorization: Bearer` token
+    - Provider receives API key and request context for flexible validation
+    - Returns 401 Unauthorized for invalid keys
+  - **Security Headers**: Automatic inclusion of industry-standard security headers in all responses
+    - `X-Content-Type-Options: nosniff`
+    - `X-Frame-Options: DENY`
+    - `X-XSS-Protection: 1; mode=block`
+    - `Referrer-Policy: strict-origin-when-cross-origin`
+    - `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`
+    - `Strict-Transport-Security: max-age=31536000; includeSubDomains`
+    - `Permissions-Policy: geolocation=(), microphone=(), camera=()`
+  - **Security Processing Order**: Body size → CORS → Basic Auth → API Key → Request processing
+  - Comprehensive documentation in `docs/advanced/mcp-server.md` with examples
+  - Security configuration examples in main README.md
+  - 9 new integration tests covering all security features
 - **Mistral AI Provider Support**: Full integration with Mistral AI services
-    - New `MistralService` provider class with OpenAI-compatible API
-    - Chat completions with streaming support
-    - Embeddings support with `mistral-embed` model
-    - Tool/function calling support
-    - Default model: `mistral-small-latest`
-    - API key detection via `MISTRAL_API_KEY` environment variable
-    - Comprehensive integration tests
+  - New `MistralService` provider class with OpenAI-compatible API
+  - Chat completions with streaming support
+  - Embeddings support with `mistral-embed` model
+  - Tool/function calling support
+  - Default model: `mistral-small-latest`
+  - API key detection via `MISTRAL_API_KEY` environment variable
+  - Comprehensive integration tests
 - **HuggingFace Provider Support**: Full integration with HuggingFace Inference API
-    - New `HuggingFaceService` provider class extending BaseService
-    - OpenAI-compatible API endpoint at `router.huggingface.co/v1`
-    - Default model: `Qwen/Qwen2.5-72B-Instruct`
-    - Support for chat completions and embeddings
-    - Integration tests for HuggingFace provider
-    - API key pattern: `HUGGINGFACE_API_KEY`
+  - New `HuggingFaceService` provider class extending BaseService
+  - OpenAI-compatible API endpoint at `router.huggingface.co/v1`
+  - Default model: `Qwen/Qwen2.5-72B-Instruct`
+  - Support for chat completions and embeddings
+  - Integration tests for HuggingFace provider
+  - API key pattern: `HUGGINGFACE_API_KEY`
 - **Groq Provider Support**: Full integration with Groq AI services for fast inference
-    - Uses OpenAI-compatible API at `api.groq.com`
-    - Default model: `llama-3.3-70b-versatile`
-    - Support for chat completions, streaming, and embeddings
-    - Environment variable: `GROQ_API_KEY`
+  - Uses OpenAI-compatible API at `api.groq.com`
+  - Default model: `llama-3.3-70b-versatile`
+  - Support for chat completions, streaming, and embeddings
+  - Environment variable: `GROQ_API_KEY`
 - **Embeddings Support**: Complete embeddings functionality for semantic search, clustering, and recommendations
-    - New `aiEmbedding()` BIF for generating text embeddings
-    - New `AiEmbeddingRequest` class to model embedding requests
-    - New `embeddings()` method in `IAiService` interface
-    - Support for single text and batch text embedding generation
-    - Multiple return formats: raw, embeddings, first
-    - **Provider Support**:
-        - OpenAI: `text-embedding-3-small` and `text-embedding-3-large` models
-        - Ollama: Local embeddings for privacy-sensitive use cases
-        - DeepSeek: OpenAI-compatible embeddings API
-        - Grok: OpenAI-compatible embeddings API
-        - OpenRouter: Aggregated embeddings via multiple models
-        - Gemini: Custom implementation with `text-embedding-004` model
-    - New embedding-specific events: `onAIEmbeddingRequest`, `onAIEmbeddingResponse`, `beforeAIEmbedding`, `afterAIEmbedding`
-    - Comprehensive embeddings documentation in README with examples
-    - New `examples/embeddings-example.bx` demonstrating practical use cases
-    - Integration tests for embeddings functionality
+  - New `aiEmbedding()` BIF for generating text embeddings
+  - New `AiEmbeddingRequest` class to model embedding requests
+  - New `embeddings()` method in `IAiService` interface
+  - Support for single text and batch text embedding generation
+  - Multiple return formats: raw, embeddings, first
+  - **Provider Support**:
+    - OpenAI: `text-embedding-3-small` and `text-embedding-3-large` models
+    - Ollama: Local embeddings for privacy-sensitive use cases
+    - DeepSeek: OpenAI-compatible embeddings API
+    - Grok: OpenAI-compatible embeddings API
+    - OpenRouter: Aggregated embeddings via multiple models
+    - Gemini: Custom implementation with `text-embedding-004` model
+  - New embedding-specific events: `onAIEmbeddingRequest`, `onAIEmbeddingResponse`, `beforeAIEmbedding`, `afterAIEmbedding`
+  - Comprehensive embeddings documentation in README with examples
+  - New `examples/embeddings-example.bx` demonstrating practical use cases
+  - Integration tests for embeddings functionality
 - ChatMessage now has the following new methods:
-    - `format(bindings)` - Formats messages with provided bindings.
-    - `render()` - Renders messages using stored bindings.
-    - `bind( bindings )` - Binds variables to be used in message formatting.
-    - `getBindings(), setBindings( bindings )` - Getters and setters for bindings.
+  - `format(bindings)` - Formats messages with provided bindings.
+  - `render()` - Renders messages using stored bindings.
+  - `bind( bindings )` - Binds variables to be used in message formatting.
+  - `getBindings(), setBindings( bindings )` - Getters and setters for bindings.
 - Detect API Keys by convention in `AIService()` BIF: `<PROVIDER>_API_KEY` from system settings
 - **OpenRouter Provider Support**: Full integration with OpenRouter AI services
 - Automatic JSON serialization for tool calls that don't return strings
@@ -176,12 +178,9 @@ One of our biggest library updates yet! This release introduces a powerful new d
 
 - First iteration of this module
 
-[Unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v1.2.0...HEAD
-
+[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/ortus-boxlang/bx-ai/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/ortus-boxlang/bx-ai/compare/v1.1.0...v1.2.0
-
 [1.1.0]: https://github.com/ortus-boxlang/bx-ai/compare/v1.0.1...v1.1.0
-
 [1.0.1]: https://github.com/ortus-boxlang/bx-ai/compare/v1.0.0...v1.0.1
-
 [1.0.0]: https://github.com/ortus-boxlang/bx-ai/compare/75d7de99df83fbf553920bec4c601f825506820a...v1.0.0
