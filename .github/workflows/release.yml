@@ -43,16 +43,18 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
-      - name: Setup CommandBox
-        uses: Ortus-Solutions/setup-commandbox@v2.0.1
-        with:
-          forgeboxAPIKey: ${{ secrets.FORGEBOX_API_TOKEN }}
-
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: "temurin"
           java-version: ${{ env.JDK }}
+
+      - name: Setup BoxLang & CommandBox
+        uses: ortus-boxlang/setup-boxlang@1.2.0
+        with:
+          modules: bx-docbox
+          with-commandbox: true
+          forgeboxAPIKey: ${{ secrets.FORGEBOX_API_TOKEN }}
 
       - name: Setup Environment Variables For Build Process
         id: current_version
