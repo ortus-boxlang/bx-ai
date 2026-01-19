@@ -45,15 +45,23 @@ class {
 	 * @provider The provider to use (openai, claude, etc.). If not provided, uses default from module settings.
 	 * @apiKey Optional API key override. If not provided, uses default from module settings.
 	 * @tools Optional ITool or an array of Tool instances to attach to the model for tool-augmented generation.
+	 * @param params Additional parameters to bind the model with
 	 *
 	 * @return An AiModel runnable
 	 */
-	function invoke( string provider, any apiKey, any tools=[] ) {
+	function invoke(
+		string provider,
+		any apiKey,
+		any tools=[],
+		struct params={}
+	) {
 		// Get the underlying service
 		var service = aiService( argumentCollection: arguments );
 
 		// Wrap it as a model
-		var model = new bxModules.bxai.models.AiModel( service ).bindTools( arguments.tools );
+		var model = new bxModules.bxai.models.AiModel( service )
+			.bindTools( arguments.tools )
+			.bindParams( arguments.params );
 
 		// Notify of model creation
 		BoxAnnounce( "onAIModelCreate", { model: model, service: service } );

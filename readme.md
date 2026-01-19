@@ -280,43 +280,38 @@ Build **composable AI workflows** 🎯 using BoxLang AI's powerful runnable pipe
 **Simple Transformation Pipeline:**
 
 ```javascript
-// Chain model with transformers
+// Create a pipeline Chain model with transformers
 pipeline = aiModel( "gpt-4o" )
-    .to( aiTransform( data => data.toUpperCase() ) )
-    .to( aiTransform( data => data.trim() ) )
-
+    .transform( data => data.toUpperCase() )
+    .transform( data => data.trim() )
+// Run input through the pipeline
 result = pipeline.run( "hello world" )
 println( result ) // "HELLO WORLD"
 ```
 
 **Multi-Stage AI Pipeline:**
+
 ```javascript
-// Create reusable stages
-summarizer = aiModel( "gpt-4o-mini" )
-    .setSystemMessage( "Summarize in one sentence" )
+// Create reusable pipeline stages
+pipeline = aiModel( "gpt-4o" )
+    .to( aiModel( "gpt-4o" ) )
+    .transform( text => { summary: text, timestamp: now() } )
 
-translator = aiModel( "gpt-4o" )
-    .setSystemMessage( "Translate to Spanish" )
-
-formatter = aiTransform( text => {
-    return { summary: text, timestamp: now() }
-} )
-
-// Compose full pipeline
-pipeline = summarizer
-    .to( translator )
-    .to( formatter )
-
-// Run through all stages
-result = pipeline.run( "Long article text here..." )
-println( result.summary ) // Spanish summary
+// Run input through all stages
+result = pipeline.run(
+    input: aiMessage()
+        .system( "First summarize in one sentence, then translate to Spanish" )
+        .user( "Long article text here..." )
+)
+println( result.summary ) // Spanish summary with timestamp
 ```
 
 **Streaming Pipeline:**
+
 ```javascript
 // Stream through entire pipeline
 pipeline = aiModel( "claude-3-5-sonnet-20241022" )
-    .to( aiTransform( chunk => chunk.toUpperCase() ) )
+    .transform( chunk => chunk.toUpperCase() )
 
 pipeline.stream(
     onChunk: ( chunk ) => writeOutput( chunk ),

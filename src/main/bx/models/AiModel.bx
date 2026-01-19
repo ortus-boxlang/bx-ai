@@ -34,11 +34,15 @@ class extends="AiBaseRunnable" {
 	 *
 	 * @service The AI service provider to wrap
 	 * @tools An array of tools to bind to this model
+	 * @params A struct of parameters to bind to this model
 	 */
-	function init( required IAiService service, any tools =[] ) {
+	function init( required IAiService service, any tools =[], struct params = {} ) {
 		variables.name = "AiModel-" & arguments.service.getName()
 		variables.service = arguments.service
+
+		// Bind tools and params
 		bindTools( arguments.tools )
+		withParams( arguments.params )
 
 		return this
 	}

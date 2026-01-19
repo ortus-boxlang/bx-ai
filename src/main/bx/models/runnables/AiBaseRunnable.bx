@@ -105,7 +105,17 @@ abstract class implements="IAiRunnable" {
 		}
 
 		return sequence;
-	}	/**
+	}
+
+	/**
+	 * Alias to to()
+	 * Langchain style method name
+	 */
+	public IAiRunnable function pipe( required IAiRunnable next ) {
+		return this.to( arguments.next );
+	}
+
+	/**
 	 * Connect this runnable to a specific AI model
 	 * Uses the specified provider and apiKey
 	 * This is a convenience method
