@@ -134,7 +134,12 @@ abstract class implements="IAiRunnable" {
 	 *
 	 * @return A new runnable sequence connected to the specified model
 	 */
-	public IAiRunnable function toModel( required string provider, string apiKey ) {
+	public IAiRunnable function toModel(
+		required string provider,
+		string apiKey,
+		any tools=[],
+		struct params={}
+		) {
 		return this.to( aiModel( argumentCollection: arguments ) )
 	}
 

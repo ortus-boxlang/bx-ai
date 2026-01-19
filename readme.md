@@ -280,10 +280,11 @@ Build **composable AI workflows** 🎯 using BoxLang AI's powerful runnable pipe
 **Simple Transformation Pipeline:**
 
 ```javascript
-// Create a pipeline Chain model with transformers
-pipeline = aiModel( "gpt-4o" )
+// Create a pipeline with model and transformers
+pipeline = aiModel( provider: "openai" )
     .transform( data => data.toUpperCase() )
     .transform( data => data.trim() )
+
 // Run input through the pipeline
 result = pipeline.run( "hello world" )
 println( result ) // "HELLO WORLD"
@@ -292,37 +293,55 @@ println( result ) // "HELLO WORLD"
 **Multi-Stage AI Pipeline:**
 
 ```javascript
-// Create reusable pipeline stages
-pipeline = aiModel( "gpt-4o" )
-    .to( aiModel( "gpt-4o" ) )
-    .transform( text => { summary: text, timestamp: now() } )
+// Define transformation stages as closures
+summarizer = ( text ) => {
+    return aiChatAsync(
+        aiMessage().system( "Summarize in one sentence" ).user( text ),
+        { model: "gpt-4o-mini" }
+    )
+}
 
-// Run input through all stages
-result = pipeline.run(
-    input: aiMessage()
-        .system( "First summarize in one sentence, then translate to Spanish" )
-        .user( "Long article text here..." )
-)
-println( result.summary ) // Spanish summary with timestamp
+translator = ( summary ) => {
+    return aiChatAsync(
+        aiMessage().system( "Translate to Spanish" ).user( summary ),
+        { model: "gpt-4o" }
+    )
+}
+
+formatter = ( translatedText ) => {
+    return {
+        summary: translatedText,
+        timestamp: now()
+    }
+}
+
+// Compose pipeline using async futures
+result = summarizer( "Long article text here..." )
+    .then( summary => translator( summary ) )
+    .then( translated => formatter( translated ) )
+    .get()
+
+println( result.summary ) // Spanish summary
 ```
 
 **Streaming Pipeline:**
 
 ```javascript
 // Stream through entire pipeline
-pipeline = aiModel( "claude-3-5-sonnet-20241022" )
+pipeline = aiModel( provider: "claude", params: { model: "claude-3-5-sonnet-20241022" } )
     .transform( chunk => chunk.toUpperCase() )
-
-pipeline.stream(
-    onChunk: ( chunk ) => writeOutput( chunk ),
-    input: "Tell me a story"
-)
+	.stream(
+		onChunk: ( chunk ) => writeOutput( chunk ),
+		input: "Tell me a story"
+	)
 ```
 
-**Custom Runnable Component:**
+**Custom Runnable Class:**
+
 ```javascript
 // Implement IAiRunnable for custom logic
-component implements="IAiRunnable" {
+class implements="IAiRunnable" {
+
     function run( input, params = {} ) {
         // Custom processing
         return processedData;
@@ -341,16 +360,18 @@ component implements="IAiRunnable" {
 
 // Use in pipeline
 customStage = new CustomRunnable()
-pipeline = aiModel( "gpt-4o" ).to( customStage )
+pipeline = aiModel( provider: "openai", params: { model: "gpt-4o" } )
+	.to( customStage )
 ```
 
 #### 📚 Learn More
 
-- 📖 **Full Guide**: [Runnables & Pipelines](docs/main-components/runnables.md)
-- 🎯 **Overview**: [Main Components](docs/main-components/overview.md)
-- 🔧 **Custom Runnables**: [Building Custom Components](docs/advanced/custom-runnables.md)
+- 📖 **Full Guide**: [Runnables & Pipelines](https://ai.ortusbooks.com/main-components/runnables.md)
+- 🎯 **Overview**: [Main Components](https://ai.ortusbooks.com/main-components/overview.md)
+- 🔧 **Custom Runnables**: [Building Custom Components](https://ai.ortusbooks.com/advanced/custom-runnables.md)
 - 💻 **Examples**: Check `examples/pipelines/` for complete examples
 
+----
 
 ### 🤖 AI Agents
 
@@ -367,6 +388,7 @@ Build **autonomous AI agents** 🎯 that can use tools, maintain memory, and orc
 #### 💡 Quick Examples
 
 **Simple Agent with Tools:**
+
 ```javascript
 // Define tools the agent can use
 weatherTool = aiTool(
@@ -411,10 +433,12 @@ agent.run( "Find order #12345, email the customer with status, and create a tick
 
 #### 📚 Learn More
 
-- 📖 **Full Guide**: [AI Agents Documentation](docs/main-components/agents.md)
+- 📖 **Full Guide**: [AI Agents Documentation](https://ai.ortusbooks.com/main-components/agents.md)
 - 🎓 **Interactive Course**: [Lesson 6 - Building AI Agents](course/lesson-06-agents/)
-- 🔧 **Advanced Patterns**: [Agent Orchestration](docs/advanced/agent-orchestration.md)
+- 🔧 **Advanced Patterns**: [Agent Orchestration](https://ai.ortusbooks.com/advanced/agent-orchestration.md)
 - 💻 **Examples**: Check `examples/agents/` for complete working examples
+
+----
 
 ### 📦 Structured Output
 
@@ -439,8 +463,10 @@ class Person {
     property name="email" type="string";
 }
 
-result = aiChat( "Extract person info: John Doe, 30, john@example.com" )
-    .structuredOutput( new Person() );
+result = aiChat(
+    messages: "Extract person info: John Doe, 30, john@example.com",
+    options: { returnFormat: new Person() }
+)
 
 writeOutput( "Name: #result.getName()#, Age: #result.getAge()#" );
 ```
@@ -455,8 +481,10 @@ template = {
     "sentiment": ""
 };
 
-result = aiChat( "Analyze this article: [long text]" )
-    .structuredOutput( template );
+result = aiChat(
+    messages: "Analyze this article: [long text]",
+    options: { returnFormat: template }
+)
 
 writeOutput( "Tags: #result.tags.toList()#" );
 ```
@@ -470,8 +498,10 @@ class Task {
     property name="dueDate" type="string";
 }
 
-tasks = aiChat( "Extract tasks from: Finish report by Friday (high priority), Review code tomorrow" )
-    .structuredOutput( [ new Task() ] );
+tasks = aiChat(
+    messages: "Extract tasks from: Finish report by Friday (high priority), Review code tomorrow",
+    options: { returnFormat: [ new Task() ] }
+)
 
 for( task in tasks ) {
     writeOutput( "#task.getTitle()# - Priority: #task.getPriority()#<br>" );
@@ -481,11 +511,15 @@ for( task in tasks ) {
 **Multiple Schemas (Extract Different Types Simultaneously):**
 
 ```java
-result = aiChat( "Extract person and company: John Doe, 30 works at Acme Corp, founded 2020" )
-    .structuredOutputs( {
-        "person": new Person(),
-        "company": new Company()
-    } );
+result = aiChat(
+    messages: "Extract person and company: John Doe, 30 works at Acme Corp, founded 2020",
+    options: {
+        returnFormat: {
+            "person": new Person(),
+            "company": new Company()
+        }
+    }
+)
 
 writeOutput( "Person: #result.person.getName()#<br>" );
 writeOutput( "Company: #result.company.getName()#<br>" );
@@ -522,8 +556,8 @@ All providers support structured output! 🎉 OpenAI offers native structured ou
 
 #### 📚 Learn More
 
-- 🚀 **Quick Start**: [Simple Interactions Guide](docs/chatting/structured-output.md)
-- 🔧 **Advanced Pipelines**: [Pipeline Integration Guide](docs/main-components/structured-output.md)
+- 🚀 **Quick Start**: [Simple Interactions Guide](https://ai.ortusbooks.com/chatting/structured-output.md)
+- 🔧 **Advanced Pipelines**: [Pipeline Integration Guide](https://ai.ortusbooks.com/main-components/structured-output.md)
 - 🎓 **Interactive Course**: [Lesson 12 - Structured Output](course/lesson-12-structured-output/)
 - 💻 **Examples**: Check `examples/structured/` for complete working examples
 
@@ -628,9 +662,9 @@ memory = aiMemory( "hybrid", config: {
 
 #### 📚 Learn More
 
-- 💬 **Standard Memory**: [Memory Systems Guide](docs/main-components/memory.md)
-- 🔍 **Vector Memory**: [Vector Memory Guide](docs/main-components/vector-memory.md)
-- 🔧 **Custom Memory**: [Building Custom Memory](docs/advanced/custom-memory.md)
+- 💬 **Standard Memory**: [Memory Systems Guide](https://ai.ortusbooks.com/main-components/memory.md)
+- 🔍 **Vector Memory**: [Vector Memory Guide](https://ai.ortusbooks.com/main-components/vector-memory.md)
+- 🔧 **Custom Memory**: [Building Custom Memory](https://ai.ortusbooks.com/advanced/custom-memory.md)
 - 🎓 **Interactive Course**: [Lesson 7 - Memory Systems](course/lesson-07-memory/)
 - 💻 **Examples**: Check `examples/advanced/` and `examples/vector-memory/` for complete examples
 
@@ -760,9 +794,9 @@ println( response )
 
 #### 📚 Learn More
 
-- 📖 **Full Guide**: [Document Loaders Guide](docs/main-components/document-loaders.md)
-- 🧬 **RAG Workflow**: [RAG Implementation Guide](docs/main-components/rag.md)
-- 🔧 **Custom Loaders**: [Building Custom Loaders](docs/advanced/custom-loader.md)
+- 📖 **Full Guide**: [Document Loaders Guide](https://ai.ortusbooks.com/main-components/document-loaders.md)
+- 🧬 **RAG Workflow**: [RAG Implementation Guide](https://ai.ortusbooks.com/main-components/rag.md)
+- 🔧 **Custom Loaders**: [Building Custom Loaders](https://ai.ortusbooks.com/advanced/custom-loader.md)
 - 💻 **Examples**: Check `examples/loaders/` and `examples/rag/` for complete examples
 
 ----
@@ -830,7 +864,7 @@ prompt = mcpClient.getPrompt( "code-review", { language: "BoxLang" } )
 
 ### 📚 Learn More
 
-- 📖 **Full Guide**: [MCP Client Documentation](docs/advanced/mcp-client.md)
+- 📖 **Full Guide**: [MCP Client Documentation](https://ai.ortusbooks.com/advanced/mcp-client.md)
 - 🌍 **MCP Ecosystem**: [Model Context Protocol](https://modelcontextprotocol.io)
 - 🔧 **Available Servers**: [MCP Servers List](https://github.com/modelcontextprotocol/servers)
 - 💻 **Examples**: Check `examples/mcp/` for complete examples
@@ -850,6 +884,7 @@ Expose your **BoxLang functions and data as MCP tools** 🎯 for use by AI agent
 #### 💡 Quick Examples
 
 **Simple MCP Server:**
+
 ```javascript
 // Create server with tools
 server = mcpServer(
@@ -873,6 +908,7 @@ server.start() // Listens on stdio by default
 ```
 
 **Advanced Server with Resources:**
+
 ```javascript
 // Create server with tools, prompts, and resources
 server = mcpServer(
@@ -920,6 +956,7 @@ server.start( transport: "http", port: 3000 )
 ```
 
 **Integration with BoxLang Web App:**
+
 ```javascript
 // In your BoxLang app's Application.bx
 component {
@@ -939,9 +976,9 @@ component {
 
 #### 📚 Learn More
 
-- 📖 **Full Guide**: [MCP Server Documentation](docs/advanced/mcp-server.md)
+- 📖 **Full Guide**: [MCP Server Documentation](https://ai.ortusbooks.com/advanced/mcp-server.md)
 - 🌍 **MCP Protocol**: [Model Context Protocol Specification](https://spec.modelcontextprotocol.io)
-- 🔧 **Advanced Features**: [Custom Transports & Authentication](docs/advanced/mcp-server-advanced.md)
+- 🔧 **Advanced Features**: [Custom Transports & Authentication](https://ai.ortusbooks.com/advanced/mcp-server-advanced.md)
 - 💻 **Examples**: Check `examples/mcp/server/` for complete examples
 
 ---
@@ -1042,149 +1079,13 @@ Here are the settings you can place in your `boxlang.json` file:
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
 | `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors`, `statsEnabled`, `force` | MCPServer Object | N/A |
 
-> **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](docs/main-components/overview.md#return-formats) documentation for details.
-
-### 💡 Quick Usage Examples
-
-```java
-// Simple chat
-result = aiChat( "Hello, world!" )
-
-// Create an autonomous AI agent
-agent = aiAgent(
-    name: "MyAgent",
-    description: "A helpful assistant",
-    instructions: "Be concise and friendly"
-)
-response = agent.run( "What is BoxLang?" )
-
-// Async chat with callback
-future = aiChatAsync( "Hello!" ).then( r -> println(r) )
-
-// Stream chat responses
-aiChatStream(
-    messages: "Tell me a story",
-    callback: ( chunk ) => {
-        print( chunk.choices?.first()?.delta?.content ?: "" )
-    }
-)
-
-// Build complex request
-request = aiChatRequest(
-    messages: messages,
-    params: { model: "gpt-4" },
-    options: { provider: "openai" }
-)
-
-// Fluent message building
-msg = aiMessage().system( "Be helpful" ).user( "Hello" )
-
-// AI Model wrapper
-model = aiModel( provider: "openai", tools: [tool1, tool2] )
-
-// Service with custom settings
-service = aiService( provider: "openai", apiKey: "my-key" )
-service.defaults( { temperature: 0.7 } )
-
-// Tool for function calling
-tool = aiTool(
-    name: "weather",
-    description: "Get weather data",
-    callable: location => getWeather(location)
-)
-
-// Load documents from files or directories
-docs = aiDocuments( source: "/path/to/document.txt" ).load()
-docs = aiDocuments(
-    source: "/path/to/folder",
-    config: { type: "directory", recursive: true }
-).load()
-
-// Ingest documents into memory with detailed reporting
-result = aiDocuments(
-    source: "/knowledge-base",
-    config: { type: "directory", recursive: true, extensions: ["md", "txt"] }
-).toMemory(
-    memory: myVectorMemory,
-    options: { chunkSize: 500, overlap: 50 }
-)
-println( "Ingested #result.documentsIn# docs as #result.chunksOut# chunks" )
-
-// Multi-memory fan-out
-result = aiDocuments(
-    source: "/docs",
-    config: { type: "markdown" }
-).toMemory(
-    memory: [ chromaMemory, pgVectorMemory ]
-)
-
-// MCP client for Model Context Protocol servers
-client = MCP( "http://localhost:3000" )
-    .withTimeout( 5000 )
-    .withBearerToken( "token" )
-result = client.send( "searchDocs", { query: "syntax" } )
-
-// MCP server for exposing tools to AI clients
-mcpServer( "myApp" )
-    .registerTool( aiTool(
-        name: "search",
-        description: "Search docs",
-        callable: ( query ) => searchDocs( query )
-    ) )
-    .registerResource(
-        uri: "docs://readme",
-        name: "README",
-        handler: () => fileRead( "/readme.md" )
-    )
-```
-
-This module exposes the following BoxLang global functions (BIFs) for you to interact with the AI providers:
-
-### 💬 Chat Functions
-
-- `aiChat( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get responses back.  This is the easiest way to interact with the AI providers.
-- `aiChatAsync( messages, struct params={}, struct options={} )` : This function will allow you to chat with the AI provider and get a BoxLang future back so you can build fluent asynchronous code pipelines.
-- `aiChatStream( messages, callback, struct params={}, struct options={} )` : This function will allow you to stream responses from the AI provider in real-time. A callback function is invoked for each chunk of data received.
-- `aiChatRequest( messages, struct params, struct options, struct headers)` - This allows you to compose a raw chat request that you can then later send to an AI service.  The return is a `ChatRequest` object that you can then send to the AI service.
-
-### 🔢 Embedding Functions
-
-- `aiEmbed( input, struct params={}, struct options={} )` : Generate embeddings for text input. Input can be a single string or an array of strings. Returns numerical vectors that capture semantic meaning, useful for semantic search, clustering, and recommendations.
-- `aiDocuments( source, struct config={} )` : Load documents from various sources (files, directories, web, databases) using built-in loaders. Returns a fluent IDocumentLoader that can be configured and then executed with `.load()` or `.toMemory()`.
-
-### ✂️ Text Processing Functions
-
-- `aiChunk( text, struct options={} )` : Split text into chunks for processing within AI token limits. Supports multiple chunking strategies (recursive, characters, words, sentences, paragraphs) with configurable chunk size and overlap.
-- `aiTokens( text, struct options={} )` : Estimate token count for text using character-based or word-based methods. Useful for planning API usage and managing token budgets.
-
-### 🤖 Agent Functions
-
-- `aiAgent( name, description, instructions, model, memory, tools, subAgents, params, options )` - Creates an autonomous AI agent that can maintain conversation memory, use tools, and execute tasks. Agents simplify complex AI workflows by managing state and context automatically. Use `subAgents` to delegate tasks to specialized agents.
-- `aiMemory( memory, key, userId, conversationId, config )` - Creates a memory instance for agents and pipelines. Available types:
-  - **`window`** - Windowed memory keeping last N messages (default, configurable via `config.maxMessages`)
-  - **`summary`** - Intelligently compresses old messages while preserving context
-  - **`session`** - Web session-persisted memory
-  - **`file`** - File-based persistent storage
-  - **`cache`** - CacheBox-backed storage
-  - **`jdbc`** - Database-backed storage
-  - **`chroma`** - Vector memory with semantic search (ChromaDB)
-  - **`mysql`** - MySQL 9 native vector support
-  - **`typesense`** - TypeSense fast typo-tolerant search
-  - **`hybrid`** - Combines recent + semantic memory
-
-### 🧰 Helper Functions
-
-- `aiMessage( message )` - Allows you to build a message object that you can then use to send to the `aiChat()` functions. It allows you to fluently build up messages with `.system()`, `.user()`, `.assistant()`, `.image()`, etc.
-- `aiModel( provider, apiKey, tools )` - Creates an AI model wrapper that can be configured with tools and used in agents or pipelines. Provides a fluent API for model configuration. Use `tools` parameter to bind tools directly during creation.
-- `aiService( provider, apiKey )` - Creates a reference to an AI Service provider that you can then use to interact with the AI service. This is useful if you want to create a service object and then use it multiple times. You can pass in optional `provider` and `apiKey` to override the global settings.
-- `aiTool( name, description, callable)` - Creates a tool object that you can use to add to a chat request for real-time system processing. This is useful if you want to create a tool that can be used in multiple chat requests against localized resources. You can then pass tools to agents or models.
-- `aiTransform( transformer, config )` - Creates a data transformer runnable for use in pipelines. The `transformer` can be a closure, a string shortcut ("code", "json", "text", "xml"), or a class path. Use `config` for transformer-specific options.
-- `MCP( baseURL )` - Creates a fluent client for consuming Model Context Protocol (MCP) servers. MCP provides standardized access to external tools, resources, and prompts that AI models can use.
-- `mcpServer( name, description, version, cors, statsEnabled, force )` - Gets or creates an MCP server instance for registering tools, resources, and prompts that can be exposed to AI clients. Servers are singletons by name, stored globally for access across requests. Use `force: true` to rebuild an existing server.
+> **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](https://ai.ortusbooks.com/main-components/overview.md#return-formats) documentation for details.
 
 ## 📢 Events
 
 The BoxLang AI module emits several events throughout the AI processing lifecycle that allow you to intercept, modify, or extend functionality. These events are useful for logging, debugging, custom providers, and response processing.
+
+Read more about [Events in BoxLang AI](https://ai.ortusbooks.com/advanced/events).
 
 ### Event Reference Table
 
@@ -1217,20 +1118,9 @@ The BoxLang AI module emits several events throughout the AI processing lifecycl
 | `onAIToolCreate` | When tool is created | `tool`, `name`, `description` | Tool registration, validation |
 | `onAITransformerCreate` | When transformer is created | `transform` | Transform configuration, tracking |
 
-### Event Registration
-
-Leverage the `BoxRegisterListener()` BIF, or if you are developing a module, you can use the `interceptors` structure.
-
-```java
-boxRegisterInterceptor( "onAIRequest", myRequestHandler );
-boxRegisterInterceptor( "onAIResponse", myResponseHandler );
-```
-
 ## 🌐 GitHub Repository and Reporting Issues
 
-Visit the [GitHub repository](https://github.com/ortus-boxlang/bx-ai) for release notes. You can also file a bug report or improvement suggestion  via [Jira](https://ortussolutions.atlassian.net/secure/CreateIssueDetails!init.jspa?pid=13359&components=27149&issuetype=1).
-
----
+Visit the [GitHub repository](https://github.com/ortus-boxlang/bx-ai) for release notes. You can also file a bug report or improvement suggestion  via [GitHub Issues](https://github.com/ortus-boxlang/bx-ai/issues).
 
 ## 🧪 Testing
 
@@ -1270,7 +1160,7 @@ This will start the service, verify it's working, and run a basic test.
 
 ## 💖 Ortus Sponsors
 
-BoxLang is a professional open-source project and it is completely funded by the [community](https://patreon.com/ortussolutions) and [Ortus Solutions, Corp](https://www.ortussolutions.com). Ortus Patreons get many benefits like a cfcasts account, a FORGEBOX Pro account and so much more. If you are interested in becoming a sponsor, please visit our patronage page: [https://patreon.com/ortussolutions](https://patreon.com/ortussolutions)
+BoxLang is a professional open-source project and it is completely funded by the [community](https://patreon.com/ortussolutions) and [Ortus Solutions, Corp](https://ai.ortussolutions.com). Ortus Patreons get many benefits like a cfcasts account, a FORGEBOX Pro account and so much more. If you are interested in becoming a sponsor, please visit our patronage page: [https://patreon.com/ortussolutions](https://patreon.com/ortussolutions)
 
 ### THE DAILY BREAD
 
