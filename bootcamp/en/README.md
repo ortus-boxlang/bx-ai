@@ -278,7 +278,7 @@ This bootcamp is designed to build skills progressively:
 
 1. **Explore the full course** - [12-lesson course](../../course/) goes deeper
 2. **Check examples** - The [examples folder](../../examples/) has more code
-3. **Read the docs** - [Documentation](../../docs/) covers everything
+3. **Read the docs** - [Documentation](https://ai.ortusbooks.com/) covers everything
 4. **Build something!** - Best way to learn is by doing
 
 ---
@@ -289,7 +289,7 @@ Stuck? Here's where to get help:
 
 | Resource | Link |
 |----------|------|
-| Full Documentation | [docs/](../../docs/README.md) |
+| Full Documentation | [docs/](https://ai.ortusbooks.com/) |
 | Code Examples | [examples/](../../examples/README.md) |
 | GitHub Issues | [Report a bug](https://github.com/ortus-boxlang/bx-ai/issues) |
 | Community | [BoxLang Community](https://boxlang.io/community) |

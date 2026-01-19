@@ -287,7 +287,7 @@ Este bootcamp está diseñado para desarrollar habilidades progresivamente:
 
 1. **Explora el curso completo** - El [curso de 12 lecciones](../../course/) profundiza más
 2. **Revisa los ejemplos** - La [carpeta de ejemplos](../../examples/) tiene más código
-3. **Lee la documentación** - La [documentación](../../docs/) cubre todo
+3. **Lee la documentación** - La [documentación](https://ai.ortusbooks.com/) cubre todo
 4. **¡Construye algo!** - La mejor manera de aprender es haciendo
 
 ---
@@ -298,7 +298,7 @@ Este bootcamp está diseñado para desarrollar habilidades progresivamente:
 
 | Recurso | Enlace |
 |---------|--------|
-| Documentación Completa | [docs/](../../docs/README.md) |
+| Documentación Completa | [docs/](https://ai.ortusbooks.com/) |
 | Ejemplos de Código | [examples/](../../examples/README.md) |
 | Issues de GitHub | [Reportar un bug](https://github.com/ortus-boxlang/bx-ai/issues) |
 | Comunidad | [Comunidad BoxLang](https://boxlang.io/community) |

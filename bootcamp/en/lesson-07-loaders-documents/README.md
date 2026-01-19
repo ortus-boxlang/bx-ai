@@ -572,9 +572,9 @@ Now that you can load and process documents, you're ready for:
 
 ## 📝 Resources
 
-- [Document Loaders Documentation](../../../docs/main-components/document-loaders.md)
-- [Vector Memory Documentation](../../../docs/main-components/vector-memory.md)
-- [RAG Documentation](../../../docs/main-components/rag.md)
+- [Document Loaders Documentation](https://ai.ortusbooks.com/rag/document-loaders)
+- [Vector Memory Documentation](https://ai.ortusbooks.com/main-components/vector-memory)
+- [RAG Documentation](https://ai.ortusbooks.com/main-components/rag)
 
 ---
 

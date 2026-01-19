@@ -630,10 +630,10 @@ println( "\n" & agent.run( "Tell me about user 12345 - their info, orders, and s
 
 ## 📝 Resources
 
-- [MCP Client Documentation](../../../docs/advanced/mcp-client.md)
-- [MCP Server Documentation](../../../docs/advanced/mcp-server.md)
+- [MCP Client Documentation](https://ai.ortusbooks.com/advanced/mcp-client)
+- [MCP Server Documentation](https://ai.ortusbooks.com/advanced/mcp-server)
 - [Official MCP Specification](https://modelcontextprotocol.io/)
-- [BoxLang AI Full Documentation](../../../docs/README.md)
+- [BoxLang AI Full Documentation](https://ai.ortusbooks.com/)
 
 ---
 

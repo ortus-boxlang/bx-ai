@@ -1134,8 +1134,6 @@ function chat( event, rc, prc ) {
 - 📊 **Scalability**: Works across distributed servers (with cache/jdbc memory)
 - 🎯 **Enterprise Ready**: Production-grade multi-tenancy
 
-> **Learn More**: See the [Multi-Tenant Memory Guide](../../../docs/advanced/multi-tenant-memory.md) for enterprise patterns!
-
 ---
 
 ## 🎉 Congratulations!

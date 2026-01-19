@@ -630,10 +630,10 @@ println( "\n" & agente.run( "Cuéntame sobre el usuario 12345 - su información,
 
 ## 📝 Recursos
 
-- [Documentación Cliente MCP](../../../docs/advanced/mcp-client.md)
-- [Documentación Servidor MCP](../../../docs/advanced/mcp-server.md)
+- [Documentación Cliente MCP](https://ai.ortusbooks.com/advanced/mcp-client)
+- [Documentación Servidor MCP](https://ai.ortusbooks.com/advanced/mcp-server)
 - [Especificación Oficial MCP](https://modelcontextprotocol.io/)
-- [Documentación Completa BoxLang AI](../../../docs/README.md)
+- [Documentación Completa BoxLang AI](https://ai.ortusbooks.com/)
 
 ---
 

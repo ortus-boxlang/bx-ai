@@ -473,26 +473,25 @@ ollama serve
 
 ### Getting Started
 
-- [Installation Guide](../docs/getting-started/installation.md)
-- [Quick Start](../docs/getting-started/quickstart.md)
-- [Agent Quick Start](../docs/getting-started/agent-quickstart.md)
+- [Installation Guide](https://ai.ortusbooks.com/getting-started/installation)
+- [Quick Start](https://ai.ortusbooks.com/getting-started/quickstart)
 
 ### Core Concepts
 
-- [Basic Chatting](../docs/chatting/basic-chatting.md)
-- [Advanced Chatting](../docs/chatting/advanced-chatting.md)
-- [Pipeline Overview](../docs/main-components/overview.md)
+- [Basic Chatting](https://ai.ortusbooks.com/chatting/basic-chatting)
+- [Advanced Chatting](https://ai.ortusbooks.com/chatting/advanced-chatting)
+- [Pipeline Overview](https://ai.ortusbooks.com/main-components/overview)
 
 ### Deep Dives
 
-- [AI Agents](../docs/main-components/agents.md)
-- [Working with Models](../docs/main-components/models.md)
-- [Message Templates](../docs/main-components/messages.md)
-- [Memory Systems](../docs/main-components/memory.md) 🆕
-- [Vector Memory](../docs/main-components/vector-memory.md) 🆕
-- [Custom Memory](../docs/advanced/custom-memory.md) 🆕
-- [Document Loaders](../docs/main-components/document-loaders.md) 🆕
-- [Transformers](../docs/main-components/transformers.md) 🆕
+- [AI Agents](https://ai.ortusbooks.com/main-components/agents)
+- [Working with Models](https://ai.ortusbooks.com/main-components/models)
+- [Message Templates](https://ai.ortusbooks.com/main-components/messages)
+- [Memory Systems](https://ai.ortusbooks.com/main-components/memory)
+- [Vector Memory](https://ai.ortusbooks.com/main-components/vector-memory)
+- [Custom Memory](https://ai.ortusbooks.com/advanced/custom-memory)
+- [Document Loaders](https://ai.ortusbooks.com/main-components/document-loaders)
+- [Transformers](https://ai.ortusbooks.com/main-components/transformers)
 
 ## 🤝 Contributing Examples
 
@@ -532,7 +531,7 @@ println( "✅ Example complete!" )
 ## ❓ Getting Help
 
 - **Issues**: [GitHub Issues](https://github.com/ortus-boxlang/bx-ai/issues)
-- **Docs**: [Full Documentation](../docs/README.md)
+- **Docs**: [Full Documentation](https://ai.ortusbooks.com/)
 - **Community**: [BoxLang Community](https://boxlang.io/community)
 
 ## 📝 License
