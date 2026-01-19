@@ -56,17 +56,17 @@ class {
 		struct params={}
 	) {
 		// Get the underlying service
-		var service = aiService( argumentCollection: arguments );
+		var service = aiService( argumentCollection: arguments )
 
 		// Wrap it as a model
 		var model = new bxModules.bxai.models.AiModel( service )
 			.bindTools( arguments.tools )
-			.bindParams( arguments.params );
+			.withParams( arguments.params )
 
 		// Notify of model creation
-		BoxAnnounce( "onAIModelCreate", { model: model, service: service } );
+		BoxAnnounce( "onAIModelCreate", { model: model, service: service } )
 
-		return model;
+		return model
 	}
 
 }
