@@ -524,10 +524,9 @@ result = aiDocuments( "kb" )
 println( "Knowledge base ready: #result.stored# chunks indexed" )
 
 // Create AI agent with RAG
-supportAgent = aiAgent()
-    .withInstructions( "You are a helpful customer support agent. Use the knowledge base to answer questions accurately." )
-    .withMemory( memory )
-    .build()
+supportAgent = aiAgent(
+    memory: memory
+).withInstructions( "You are a helpful customer support agent. Use the knowledge base to answer questions accurately." )
 
 // Handle customer questions
 questions = [

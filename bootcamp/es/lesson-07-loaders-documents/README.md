@@ -524,10 +524,9 @@ result = aiDocuments( "bc" )
 println( "Base de conocimiento lista: #result.stored# fragmentos indexados" )
 
 // Crear agente de IA con RAG
-agentesoporte = aiAgent()
-    .withInstructions( "Eres un agente de soporte al cliente útil. Usa la base de conocimiento para responder preguntas con precisión." )
-    .withMemory( memory )
-    .build()
+agentesoporte = aiAgent(
+    memory: memory
+).withInstructions( "Eres un agente de soporte al cliente útil. Usa la base de conocimiento para responder preguntas con precisión." )
 
 // Manejar preguntas de clientes
 preguntas = [
