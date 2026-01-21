@@ -116,6 +116,10 @@ class {
 			case "QdrantVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.QdrantVectorMemory";
 				break;
+			case "opensearch":
+			case "OpenSearchVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.OpenSearchVectorMemory";
+				break;
 			case "weaviate":
 			case "WeaviateVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.WeaviateVectorMemory";
@@ -127,7 +131,7 @@ class {
 				} else {
 					throw(
 						type: "InvalidMemoryType",
-						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, MilvusVectorMemory, MysqlVectorMemory, TypesenseVectorMemory, HybridMemory"
+						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, MilvusVectorMemory, MysqlVectorMemory, TypesenseVectorMemory, OpenSearchVectorMemory, HybridMemory"
 					);
 				}
 		}
