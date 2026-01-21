@@ -26,7 +26,7 @@ abstract class
 	property name="collection" default="";
 
 	/**
-	 * Embedding provider (e.g., "openai", "ollama")
+	 * Embedding provider (e.g., "openai", "ollama", "openai-compatible")
 	 */
 	property name="embeddingProvider" default="";
 
@@ -34,6 +34,11 @@ abstract class
 	 * Embedding model name
 	 */
 	property name="embeddingModel" default="";
+
+	/**
+	 * Base URL for embedding service (used with openai-compatible provider)
+	 */
+	property name="embeddingBaseUrl" default="";
 
 	/**
 	 * Vector dimensions (auto-detected from first embedding if not specified)
@@ -109,6 +114,9 @@ abstract class
 		}
 		if ( arguments.config.keyExists( "embeddingModel" ) ) {
 			variables.embeddingModel = arguments.config.embeddingModel;
+		}
+		if ( arguments.config.keyExists( "embeddingBaseUrl" ) ) {
+			variables.embeddingBaseUrl = arguments.config.embeddingBaseUrl;
 		}
 		if ( arguments.config.keyExists( "dimensions" ) ) {
 			variables.dimensions = arguments.config.dimensions;
@@ -542,6 +550,9 @@ abstract class
 		if ( len( variables.embeddingProvider ) ) {
 			options.provider = variables.embeddingProvider;
 		}
+		if ( len( variables.embeddingBaseUrl ) ) {
+			options.baseURL = variables.embeddingBaseUrl;
+		}
 
 		// Generate embedding
 		var embedding = aiEmbed(
@@ -591,6 +602,9 @@ abstract class
 		};
 		if ( len( variables.embeddingProvider ) ) {
 			options.provider = variables.embeddingProvider;
+		}
+		if ( len( variables.embeddingBaseUrl ) ) {
+			options.baseURL = variables.embeddingBaseUrl;
 		}
 
 		// Generate batch embeddings
