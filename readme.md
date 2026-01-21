@@ -595,6 +595,7 @@ Build **stateful, context-aware AI applications** 🎯 with flexible memory syst
 | **Chroma** | ChromaDB integration | Python-based infrastructure |
 | **Postgres** | PostgreSQL pgvector | Existing PostgreSQL deployments |
 | **MySQL** | MySQL 9 native vectors | Existing MySQL infrastructure |
+| **OpenSearch** | OpenSearch k-NN vectors | AWS OpenSearch, self-hosted search |
 | **TypeSense** | Fast typo-tolerant search | Low-latency search, autocomplete |
 | **Pinecone** | Cloud vector database | Production, scalable semantic search |
 | **Qdrant** | High-performance vectors | Large-scale deployments |
