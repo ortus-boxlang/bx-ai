@@ -558,10 +558,10 @@ class extends="BaseVectorMemory" {
 		required string path,
 		struct body = {}
 	) {
-		var url = "#variables.scheme#://#variables.host#:#variables.port##arguments.path#"
+		var requestUrl = "#variables.scheme#://#variables.host#:#variables.port##arguments.path#"
 
 		// Build HTTP request using fluent builder pattern
-		var httpService = http( url )
+		var httpService = http( url = requestUrl )
 			.method( arguments.method )
 			.throwOnError( false )
 			.charset( "UTF-8" )
