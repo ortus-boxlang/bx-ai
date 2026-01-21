@@ -104,11 +104,14 @@ class extends = "OpenAICompatibleService"{
 		} catch ( ProviderError e ) {
 			// Check if this is a "model loading" error (503)
 			if ( e.message.findNoCase( "Loading model" ) > 0 || e.message.findNoCase( "503" ) > 0 ) {
-				// Retry up to 3 times with exponential backoff
-				if ( arguments.retryCount < 3 ) {
-					var waitTime = ( 2 ^ arguments.retryCount ) * 1000; // 1s, 2s, 4s
+				// Retry up to 10 times with longer delays for model loading
+				// Large models can take 30-60+ seconds to load
+				var maxRetries = 10;
+				if ( arguments.retryCount < maxRetries ) {
+					// Use 5 second intervals for consistent, longer waits during model load
+					var waitTime = 5000; // 5 seconds between retries
 					writeLog(
-						text: "Docker Model Runner: Model loading, retrying in #waitTime / 1000#s (attempt #arguments.retryCount + 1#/3)",
+						text: "Docker Model Runner: Model loading, retrying in #waitTime / 1000#s (attempt #arguments.retryCount + 1#/#maxRetries#)",
 						type: "info",
 						log : "ai"
 					);
