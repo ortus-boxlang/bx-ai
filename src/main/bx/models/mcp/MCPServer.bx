@@ -905,7 +905,7 @@ class {
 			return {
 				"name": prompt.name,
 				"description": prompt.description,
-				"args": prompt.args
+				"arguments": prompt.args
 			}
 		} ).valueArray()
 	}
