@@ -174,6 +174,24 @@ class extends = "BaseService"{
 	}
 
 	/**
+	 * Get the Bedrock streaming endpoint URL for the configured region and model
+	 *
+	 * @modelId The model ID to invoke
+	 *
+	 * @return The full streaming endpoint URL
+	 */
+	private string function getBedrockStreamEndpoint( required string modelId ){
+		return "https://bedrock-runtime.#variables.region#.amazonaws.com/model/#arguments.modelId#/invoke-with-response-stream";
+	}
+
+	/**
+	 * Get the request path for a streaming model invocation
+	 */
+	private string function getBedrockStreamPath( required string modelId ){
+		return "/model/#arguments.modelId#/invoke-with-response-stream";
+	}
+
+	/**
 	 * Detect the model family from the model ID
 	 *
 	 * @modelId The Bedrock model ID
@@ -650,30 +668,28 @@ class extends = "BaseService"{
 			sessionToken    = variables.awsSessionToken
 		);
 
-		// Make the HTTP request
-		var httpResult= "";
-		bx:http
-			url    =endpoint
-			method ="POST"
-			result ="httpResult"
-			charset="utf-8"
-			timeout=arguments.aiRequest.getTimeout() {
-			bx:httpParam type="header" name="content-type" value="application/json";
-			bx:httpParam type="header" name="accept" value="application/json";
-			bx:httpParam type="header" name="host" value=host;
+		// Make the HTTP request using fluent API
+		var httpService = http( url = endpoint )
+			.method( "POST" )
+			.charset( "UTF-8" )
+			.timeout( arguments.aiRequest.getTimeout() )
+			.throwOnError( false )
+			.header( "Content-Type", "application/json" )
+			.header( "Accept", "application/json" )
+			.header( "Host", host );
 
-			// Add signed headers
-			for ( var headerName in signedHeaders ) {
-				bx:httpParam type="header" name=headerName value=signedHeaders[ headerName ];
-			}
-
-			bx:httpParam type="body" value=payload;
+		// Add signed headers
+		for ( var headerName in signedHeaders ) {
+			httpService.header( headerName, signedHeaders[ headerName ] );
 		}
+
+		// Add body and send
+		var httpResult = httpService.body( payload ).send();
 
 		// Log response if enabled
 		if ( arguments.aiRequest.getLogResponse() ) {
 			writeLog(
-				text: "Bedrock Response: #httpResult.filecontent#",
+				text: "Bedrock Response: #httpResult.fileContent#",
 				type: "info",
 				log : "ai"
 			);
@@ -681,7 +697,7 @@ class extends = "BaseService"{
 
 		if ( arguments.aiRequest.getLogResponseToConsole() ) {
 			println( "Bedrock Response" );
-			println( httpResult.filecontent );
+			println( httpResult.fileContent );
 		}
 
 		// Check for HTTP errors
@@ -689,9 +705,9 @@ class extends = "BaseService"{
 		if ( statusCode != 200 ) {
 			var errorResponse = {
 				"error" : {
-					"message"    : "Bedrock request failed with status #statusCode#: #httpResult.filecontent#",
+					"message"    : "Bedrock request failed with status #statusCode#: #httpResult.fileContent#",
 					"statusCode" : statusCode,
-					"response"   : httpResult.filecontent
+					"response"   : httpResult.fileContent
 				}
 			};
 
@@ -711,7 +727,7 @@ class extends = "BaseService"{
 		}
 
 		// Parse and return response
-		var response = jsonDeserialize( httpResult.filecontent );
+		var response = jsonDeserialize( httpResult.fileContent );
 
 		boxAnnounce(
 			"onAIResponse",
@@ -727,15 +743,445 @@ class extends = "BaseService"{
 	}
 
 	/**
-	 * Streaming is not yet implemented for Bedrock
-	 * Bedrock supports streaming via InvokeModelWithResponseStream but requires different handling
+	 * Stream chat responses from Bedrock using InvokeModelWithResponseStream
+	 *
+	 * Bedrock streaming uses AWS event-stream format which is different from SSE.
+	 * Each event contains headers and a payload with the streaming chunk.
+	 *
+	 * @aiRequest The AiRequest object
+	 * @callback  A callback function to be called with each chunk: function( chunk )
 	 */
-		@override
+	@override
 	public function chatStream( required AiRequest aiRequest, required function callback ){
-		throw(
-			type   : "NotImplemented",
-			message: "Streaming is not yet implemented for Bedrock. Use the non-streaming chat() method."
+		// Get the model to use
+		var modelId = len( variables.modelId ) ? variables.modelId : arguments.aiRequest.getModel();
+		if ( !len( modelId ) ) {
+			modelId = variables.params.model;
+		}
+
+		// Detect model family for request/response transformation
+		var modelFamily = detectModelFamily( modelId );
+
+		// Build the request body for the specific model
+		var dataPacket = transformRequestForModel(
+			messages    = arguments.aiRequest.getMessages(),
+			params      = arguments.aiRequest.getParams(),
+			modelFamily = modelFamily
 		);
+
+		// Send the streaming request
+		sendBedrockStreamRequest(
+			modelId     = modelId,
+			dataPacket  = dataPacket,
+			aiRequest   = arguments.aiRequest,
+			modelFamily = modelFamily,
+			callback    = arguments.callback
+		);
+	}
+
+	/**
+	 * Send a signed streaming request to AWS Bedrock
+	 *
+	 * AWS Bedrock streaming uses binary event-stream format (application/vnd.amazon.eventstream)
+	 * which is different from SSE. Since BoxLang's HTTP streaming is designed for SSE,
+	 * we make a synchronous request and parse the binary event-stream response.
+	 *
+	 * @modelId     The model ID to invoke
+	 * @dataPacket  The request payload
+	 * @aiRequest   The AiRequest for logging settings
+	 * @modelFamily The detected model family for response transformation
+	 * @callback    The callback function for streaming chunks
+	 */
+	private function sendBedrockStreamRequest(
+		required string modelId,
+		required struct dataPacket,
+		required AiRequest aiRequest,
+		required string modelFamily,
+		required function callback
+	){
+		var host     = getBedrockHost();
+		var path     = getBedrockStreamPath( arguments.modelId );
+		var endpoint = getBedrockStreamEndpoint( arguments.modelId );
+		var payload  = jsonSerialize( arguments.dataPacket );
+
+		// Announce the request
+		boxAnnounce(
+			"onAIRequest",
+			{
+				"dataPacket" : arguments.dataPacket,
+				"aiRequest"  : arguments.aiRequest,
+				"provider"   : this
+			}
+		);
+
+		// Log the request if enabled
+		if ( arguments.aiRequest.getLogRequest() ) {
+			writeLog(
+				text: "Bedrock Stream Request to #endpoint#: #payload#",
+				type: "info",
+				log : "ai"
+			);
+			// Debug: Log credential status
+			writeLog(
+				text: "Bedrock Stream Credentials - Region: #variables.region#, HasAccessKey: #len( variables.awsAccessKeyId ) > 0#, HasSecretKey: #len( variables.awsSecretAccessKey ) > 0#, HasSessionToken: #len( variables.awsSessionToken ) > 0#, SessionTokenLen: #len( variables.awsSessionToken )#",
+				type: "info",
+				log : "ai"
+			);
+		}
+
+		if ( arguments.aiRequest.getLogRequestToConsole() ) {
+			println( "Bedrock Stream Request" );
+			println( arguments.dataPacket );
+		}
+
+		// Sign the request using AWS Signature V4
+		var signer        = new AwsSignatureV4();
+		var signedHeaders = signer.signRequest(
+			method      = "POST",
+			host        = host,
+			path        = path,
+			queryString = "",
+			headers     = {
+				"content-type" : "application/json",
+				"accept"       : "application/vnd.amazon.eventstream"
+			},
+			payload         = payload,
+			region          = variables.region,
+			service         = static.AWS_SERVICE,
+			accessKeyId     = variables.awsAccessKeyId,
+			secretAccessKey = variables.awsSecretAccessKey,
+			sessionToken    = variables.awsSessionToken
+		);
+
+		// Build HTTP request - use synchronous request and process binary response
+		var httpService = http( url = endpoint )
+			.method( "POST" )
+			.charset( "UTF-8" )
+			.timeout( arguments.aiRequest.getTimeout() )
+			.throwOnError( false )
+			.header( "Content-Type", "application/json" )
+			.header( "Accept", "application/vnd.amazon.eventstream" )
+			.header( "Host", host );
+
+		// Add signed headers
+		for ( var headerName in signedHeaders ) {
+			httpService.header( headerName, signedHeaders[ headerName ] );
+		}
+
+		// Send request and get response
+		var httpResult = httpService.body( payload ).send();
+
+		// Check for HTTP errors
+		var statusCode = val( listFirst( httpResult.statusCode, " " ) );
+		if ( statusCode != 200 ) {
+			var errorMessage = "Bedrock stream request failed with status #statusCode#: #httpResult.fileContent#";
+			writeLog( text: errorMessage, type: "error", log: "ai" );
+
+			boxAnnounce(
+				"onAIError",
+				{
+					error        : { "message" : errorMessage, "statusCode" : statusCode },
+					errorMessage : errorMessage,
+					provider     : this,
+					operation    : "stream",
+					aiRequest    : arguments.aiRequest,
+					canRetry     : statusCode >= 500
+				}
+			);
+
+			throw( type: "ProviderError", message: errorMessage );
+		}
+
+		// Parse the AWS event-stream binary response
+		// The response contains multiple events, each with a binary header and JSON payload
+		parseBedrockEventStream(
+			httpResult.fileContent,
+			arguments.modelFamily,
+			arguments.modelId,
+			arguments.callback
+		);
+
+		// Log completion
+		if ( arguments.aiRequest.getLogResponse() ) {
+			writeLog(
+				text: "Bedrock stream completed successfully",
+				type: "info",
+				log : "ai"
+			);
+		}
+
+		boxAnnounce(
+			"onAIResponse",
+			{
+				"aiRequest"      : arguments.aiRequest,
+				"provider"       : this,
+				"streamComplete" : true
+			}
+		);
+	}
+
+	/**
+	 * Parse AWS event-stream binary format from Bedrock response
+	 *
+	 * AWS event-stream format:
+	 * - Each event has: prelude (8 bytes) + headers + payload + CRC (4 bytes)
+	 * - Prelude: total_length (4 bytes) + headers_length (4 bytes)
+	 * - The payload is typically JSON with a "bytes" field containing base64-encoded data
+	 *
+	 * @responseData  The raw response data from Bedrock
+	 * @modelFamily   The model family for response transformation
+	 * @modelId       The model ID
+	 * @callback      The callback function for streaming chunks
+	 */
+	private function parseBedrockEventStream(
+		required any responseData,
+		required string modelFamily,
+		required string modelId,
+		required function callback
+	){
+		var data = arguments.responseData;
+
+		// Debug: Log raw response info
+		writeLog(
+			text: "parseBedrockEventStream - Raw data type: #( isBinary( data ) ? 'binary' : 'string' )#, length: #( isBinary( data ) ? arrayLen( data ) : len( data ) )#",
+			type: "info",
+			log : "ai"
+		);
+
+		// AWS event-stream is a binary protocol. We need to parse it properly.
+		// Format: Each event consists of:
+		// - Prelude (8 bytes): total_length (4 bytes, big-endian) + headers_length (4 bytes, big-endian)
+		// - Prelude CRC (4 bytes)
+		// - Headers (variable length)
+		// - Payload (variable length) - contains JSON with "bytes" field holding base64 data
+		// - Message CRC (4 bytes)
+
+		if ( !isBinary( data ) ) {
+			// If somehow we got a string, try to find JSON in it
+			var jsonMatches = reMatchNoCase( '\{"bytes":"[^"]+"\}', data );
+			for ( var match in jsonMatches ) {
+				processBedrockEvent( match, arguments.modelFamily, arguments.modelId, arguments.callback );
+			}
+			return;
+		}
+
+		// Parse binary event-stream
+		var bytes      = data;
+		var dataLength = arrayLen( bytes );
+		var position   = 1; // BoxLang arrays are 1-indexed
+		var eventCount = 0;
+
+		writeLog(
+			text: "parseBedrockEventStream - Parsing binary stream, total bytes: #dataLength#",
+			type: "info",
+			log : "ai"
+		);
+
+		while ( position + 12 <= dataLength ) {
+			// Read prelude: total_length (4 bytes) + headers_length (4 bytes)
+			var totalLength = readBigEndianInt( bytes, position );
+			var headersLength = readBigEndianInt( bytes, position + 4 );
+
+			// Sanity check
+			if ( totalLength < 16 || totalLength > 1000000 || headersLength < 0 || headersLength > totalLength ) {
+				writeLog(
+					text: "parseBedrockEventStream - Invalid event at position #position#: totalLength=#totalLength#, headersLength=#headersLength#",
+					type: "warning",
+					log : "ai"
+				);
+				break;
+			}
+
+			// Calculate payload position and length
+			// Event structure: prelude(8) + preludeCRC(4) + headers(headersLength) + payload + messageCRC(4)
+			var payloadStart  = position + 8 + 4 + headersLength; // After prelude + preludeCRC + headers
+			var payloadLength = totalLength - 8 - 4 - headersLength - 4; // Subtract prelude, preludeCRC, headers, messageCRC
+
+			if ( payloadLength > 0 && payloadStart + payloadLength - 1 <= dataLength ) {
+				// Extract payload bytes
+				var payloadBytes = [];
+				for ( var i = payloadStart; i < payloadStart + payloadLength; i++ ) {
+					arrayAppend( payloadBytes, bytes[ i ] );
+				}
+
+				// Convert payload to string and parse
+				try {
+					var payloadStr = toString( javaCast( "byte[]", payloadBytes ), "UTF-8" );
+
+					// Debug first event payload
+					if ( eventCount == 0 ) {
+						writeLog(
+							text: "parseBedrockEventStream - First event payload (#payloadLength# bytes): #left( payloadStr, 300 )#",
+							type: "info",
+							log : "ai"
+						);
+					}
+
+					processBedrockEvent( payloadStr, arguments.modelFamily, arguments.modelId, arguments.callback );
+					eventCount++;
+				} catch ( any e ) {
+					writeLog(
+						text: "parseBedrockEventStream - Error processing event at position #position#: #e.message#",
+						type: "warning",
+						log : "ai"
+					);
+				}
+			}
+
+			// Move to next event
+			position += totalLength;
+		}
+
+		writeLog(
+			text: "parseBedrockEventStream - Processed #eventCount# events",
+			type: "info",
+			log : "ai"
+		);
+	}
+
+	/**
+	 * Read a 4-byte big-endian integer from a byte array
+	 */
+	private numeric function readBigEndianInt( required array bytes, required numeric position ){
+		// Convert signed bytes to unsigned and combine
+		var b1 = arguments.bytes[ arguments.position ] < 0 ? arguments.bytes[ arguments.position ] + 256 : arguments.bytes[ arguments.position ];
+		var b2 = arguments.bytes[ arguments.position + 1 ] < 0 ? arguments.bytes[ arguments.position + 1 ] + 256 : arguments.bytes[ arguments.position + 1 ];
+		var b3 = arguments.bytes[ arguments.position + 2 ] < 0 ? arguments.bytes[ arguments.position + 2 ] + 256 : arguments.bytes[ arguments.position + 2 ];
+		var b4 = arguments.bytes[ arguments.position + 3 ] < 0 ? arguments.bytes[ arguments.position + 3 ] + 256 : arguments.bytes[ arguments.position + 3 ];
+
+		return ( b1 * 16777216 ) + ( b2 * 65536 ) + ( b3 * 256 ) + b4;
+	}
+
+	/**
+	 * Process a single Bedrock event payload
+	 */
+	private function processBedrockEvent(
+		required string payloadStr,
+		required string modelFamily,
+		required string modelId,
+		required function callback
+	){
+		// The payload should be JSON. It may contain a "bytes" field with base64 data
+		// or be direct JSON from the model.
+		try {
+			var payloadJson = jsonDeserialize( arguments.payloadStr );
+
+			// Check if this is a wrapper with base64 "bytes" field
+			if ( payloadJson.keyExists( "bytes" ) ) {
+				var decodedPayload = toString( binaryDecode( payloadJson.bytes, "base64" ), "UTF-8" );
+				payloadJson = jsonDeserialize( decodedPayload );
+			}
+
+			// Transform and send to callback
+			var streamChunk = transformStreamChunk( payloadJson, arguments.modelFamily, arguments.modelId );
+			if ( !isNull( streamChunk ) ) {
+				arguments.callback( streamChunk );
+			}
+		} catch ( any e ) {
+			// Not valid JSON or processing error - may be a control message
+			writeLog(
+				text: "processBedrockEvent - Could not process: #left( arguments.payloadStr, 100 )# - Error: #e.message#",
+				type: "debug",
+				log : "ai"
+			);
+		}
+	}
+
+	/**
+	 * Transform a streaming chunk from Bedrock model-specific format to OpenAI-compatible format
+	 *
+	 * @chunk       The raw chunk from Bedrock
+	 * @modelFamily The model family
+	 * @modelId     The model ID
+	 *
+	 * @return OpenAI-compatible streaming chunk or null if no content
+	 */
+	private function transformStreamChunk(
+		required struct chunk,
+		required string modelFamily,
+		required string modelId
+	){
+		var content = "";
+		var finishReason = "";
+
+		switch ( arguments.modelFamily ) {
+			case "claude":
+				// Claude streaming format
+				if ( arguments.chunk.keyExists( "type" ) ) {
+					switch ( arguments.chunk.type ) {
+						case "content_block_delta":
+							if ( arguments.chunk.keyExists( "delta" ) && arguments.chunk.delta.keyExists( "text" ) ) {
+								content = arguments.chunk.delta.text;
+							}
+							break;
+						case "message_stop":
+							finishReason = "stop";
+							break;
+						case "message_delta":
+							if ( arguments.chunk.keyExists( "delta" ) && arguments.chunk.delta.keyExists( "stop_reason" ) ) {
+								finishReason = arguments.chunk.delta.stop_reason ?: "stop";
+							}
+							break;
+						default:
+							// Skip other event types like message_start, content_block_start
+							return javacast( "null", "" );
+					}
+				}
+				break;
+
+			case "titan":
+				// Titan streaming format
+				if ( arguments.chunk.keyExists( "outputText" ) ) {
+					content = arguments.chunk.outputText;
+				}
+				if ( arguments.chunk.keyExists( "completionReason" ) && len( arguments.chunk.completionReason ) ) {
+					finishReason = arguments.chunk.completionReason == "FINISH" ? "stop" : arguments.chunk.completionReason.lcase();
+				}
+				break;
+
+			case "llama":
+				// Llama streaming format
+				if ( arguments.chunk.keyExists( "generation" ) ) {
+					content = arguments.chunk.generation;
+				}
+				if ( arguments.chunk.keyExists( "stop_reason" ) && len( arguments.chunk.stop_reason ?: "" ) ) {
+					finishReason = arguments.chunk.stop_reason;
+				}
+				break;
+
+			case "mistral":
+				// Mistral streaming format
+				if ( arguments.chunk.keyExists( "outputs" ) && isArray( arguments.chunk.outputs ) && arguments.chunk.outputs.len() > 0 ) {
+					content = arguments.chunk.outputs[ 1 ].text ?: "";
+					if ( arguments.chunk.outputs[ 1 ].keyExists( "stop_reason" ) ) {
+						finishReason = arguments.chunk.outputs[ 1 ].stop_reason ?: "";
+					}
+				}
+				break;
+
+			default:
+				// Default to Claude format
+				if ( arguments.chunk.keyExists( "delta" ) && arguments.chunk.delta.keyExists( "text" ) ) {
+					content = arguments.chunk.delta.text;
+				}
+		}
+
+		// Only return if we have content or a finish reason
+		if ( !len( content ) && !len( finishReason ) ) {
+			return javacast( "null", "" );
+		}
+
+		// Return OpenAI-compatible streaming format
+		return {
+			"choices" : [
+				{
+					"delta" : len( content ) ? { "content" : content } : {},
+					"index" : 0,
+					"finish_reason" : len( finishReason ) ? finishReason : javacast( "null", "" )
+				}
+			],
+			"model" : arguments.modelId
+		};
 	}
 
 	/**
@@ -826,35 +1272,34 @@ class extends = "BaseService"{
 			sessionToken    = variables.awsSessionToken
 		);
 
-		// Make the request
-		var httpResult= "";
-		bx:http
-			url    =endpoint
-			method ="POST"
-			result ="httpResult"
-			charset="utf-8"
-			timeout=arguments.embeddingRequest.getTimeout() {
-			bx:httpParam type="header" name="content-type" value="application/json";
-			bx:httpParam type="header" name="accept" value="application/json";
-			bx:httpParam type="header" name="host" value=host;
+		// Make the request using fluent API
+		var httpService = http( url = endpoint )
+			.method( "POST" )
+			.charset( "UTF-8" )
+			.timeout( arguments.embeddingRequest.getTimeout() )
+			.throwOnError( false )
+			.header( "Content-Type", "application/json" )
+			.header( "Accept", "application/json" )
+			.header( "Host", host );
 
-			for ( var headerName in signedHeaders ) {
-				bx:httpParam type="header" name=headerName value=signedHeaders[ headerName ];
-			}
-
-			bx:httpParam type="body" value=payload;
+		// Add signed headers
+		for ( var headerName in signedHeaders ) {
+			httpService.header( headerName, signedHeaders[ headerName ] );
 		}
+
+		// Add body and send
+		var httpResult = httpService.body( payload ).send();
 
 		var statusCode = val( listFirst( httpResult.statusCode, " " ) );
 		if ( statusCode != 200 ) {
 			return {
 				"error" : {
-					"message"    : "Bedrock embedding request failed: #httpResult.filecontent#",
+					"message"    : "Bedrock embedding request failed: #httpResult.fileContent#",
 					"statusCode" : statusCode
 				}
 			};
 		}
 
-		return jsonDeserialize( httpResult.filecontent );
+		return jsonDeserialize( httpResult.fileContent );
 	}
 }

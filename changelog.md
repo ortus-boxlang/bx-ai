@@ -54,6 +54,11 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
   - New `embeddingBaseUrl` configuration option in `BaseVectorMemory`
   - Allows using self-hosted or alternative OpenAI-compatible embedding services
   - Works with providers like Ollama, LM Studio, and other compatible APIs
+- **AWS Bedrock Streaming Support**: Full streaming support for Bedrock provider
+  - Streaming via `InvokeModelWithResponseStream` API endpoint
+  - Support for all model families: Claude, Titan, Llama, Mistral
+  - AWS event-stream format parsing with base64 payload decoding
+  - OpenAI-compatible streaming response format for consistent callback handling
 
 ### Changed
 
