@@ -198,7 +198,7 @@ class extends="BaseTransport" {
 	 */
 	string function formatSSE( required any data ) {
 		var jsonData = isSimpleValue( arguments.data ) ? arguments.data : jsonSerialize( arguments.data );
-		return "event: message" & chr( 10 ) & "data: " & jsonData & chr( 10 ) & chr( 10 );
+		return "event: message" & char( 10 ) & "data: " & jsonData & char( 10 ) & char( 10 );
 	}
 
 	/**

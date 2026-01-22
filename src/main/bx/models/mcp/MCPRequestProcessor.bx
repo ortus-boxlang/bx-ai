@@ -413,7 +413,7 @@ class {
 				arguments.response.contentType = "text/event-stream";
 				arguments.response.headers[ "Cache-Control" ] = "no-cache";
 				arguments.response.headers[ "Connection" ] = "keep-alive";
-				arguments.response.content = "event: message" & chr( 10 ) & "data: " & jsonSerialize( mcpResponse ) & chr( 10 ) & chr( 10 );
+				arguments.response.content = "event: message" & char( 10 ) & "data: " & jsonSerialize( mcpResponse ) & char( 10 ) & char( 10 );
 			} else {
 				arguments.response.content = jsonSerialize( mcpResponse );
 			}
