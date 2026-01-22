@@ -652,15 +652,15 @@ class extends = "BaseService"{
 
 		// Make the HTTP request
 		var httpResult= "";
-		bx            :http
+		bx:http
 			url    =endpoint
 			method ="POST"
 			result ="httpResult"
 			charset="utf-8"
 			timeout=arguments.aiRequest.getTimeout() {
-			bx     :httpParam type="header" name="content-type" value="application/json";
-			bx     :httpParam type="header" name="accept" value="application/json";
-			bx     :httpParam type="header" name="host" value=host;
+			bx:httpParam type="header" name="content-type" value="application/json";
+			bx:httpParam type="header" name="accept" value="application/json";
+			bx:httpParam type="header" name="host" value=host;
 
 			// Add signed headers
 			for ( var headerName in signedHeaders ) {
@@ -828,15 +828,15 @@ class extends = "BaseService"{
 
 		// Make the request
 		var httpResult= "";
-		bx            :http
+		bx:http
 			url    =endpoint
 			method ="POST"
 			result ="httpResult"
 			charset="utf-8"
 			timeout=arguments.embeddingRequest.getTimeout() {
-			bx     :httpParam type="header" name="content-type" value="application/json";
-			bx     :httpParam type="header" name="accept" value="application/json";
-			bx     :httpParam type="header" name="host" value=host;
+			bx:httpParam type="header" name="content-type" value="application/json";
+			bx:httpParam type="header" name="accept" value="application/json";
+			bx:httpParam type="header" name="host" value=host;
 
 			for ( var headerName in signedHeaders ) {
 				bx:httpParam type="header" name=headerName value=signedHeaders[ headerName ];
