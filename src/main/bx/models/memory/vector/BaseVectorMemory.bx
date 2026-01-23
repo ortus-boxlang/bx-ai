@@ -103,6 +103,14 @@ abstract class
 		if ( arguments.config.keyExists( "embeddingService" ) ) {
 			variables.embeddingService = arguments.config.embeddingService;
 		}
+		// Backward compatibility: if original properties are passed, create service automatically
+		else if ( arguments.config.keyExists( "embeddingProvider" ) ) {
+			var serviceConfig = {};
+			if ( arguments.config.keyExists( "embeddingModel" ) ) {
+				serviceConfig.model = arguments.config.embeddingModel;
+			}
+			variables.embeddingService = aiService( arguments.config.embeddingProvider ).configure( serviceConfig );
+		}
 		if ( arguments.config.keyExists( "dimensions" ) ) {
 			variables.dimensions = arguments.config.dimensions;
 		}
