@@ -54,6 +54,21 @@ class extends="BaseVectorMemory" {
 	property name="awsRegion" type="string";
 
 	/**
+	 * AWS Access Key ID (optional, uses credential chain if not provided)
+	 */
+	property name="awsAccessKeyId" type="string";
+
+	/**
+	 * AWS Secret Access Key (optional, uses credential chain if not provided)
+	 */
+	property name="awsSecretAccessKey" type="string";
+
+	/**
+	 * AWS Session Token (optional, for temporary credentials)
+	 */
+	property name="awsSessionToken" type="string";
+
+	/**
 	 * HTTP request timeout in seconds
 	 */
 	property name="timeout" type="numeric";
@@ -138,6 +153,9 @@ class extends="BaseVectorMemory" {
 		param arguments.config.username = ""
 		param arguments.config.password = ""
 		param arguments.config.awsRegion = ""
+		param arguments.config.awsAccessKeyId = ""
+		param arguments.config.awsSecretAccessKey = ""
+		param arguments.config.awsSessionToken = ""
 		param arguments.config.timeout = static.DEFAULT_TIMEOUT
 		param arguments.config.engine = static.DEFAULT_ENGINE
 		param arguments.config.spaceType = static.DEFAULT_SPACE_TYPE
@@ -153,6 +171,9 @@ class extends="BaseVectorMemory" {
 		variables.username = arguments.config.username
 		variables.password = arguments.config.password
 		variables.awsRegion = arguments.config.awsRegion
+		variables.awsAccessKeyId = arguments.config.awsAccessKeyId
+		variables.awsSecretAccessKey = arguments.config.awsSecretAccessKey
+		variables.awsSessionToken = arguments.config.awsSessionToken
 		variables.timeout = arguments.config.timeout
 		variables.engine = arguments.config.engine.lcase()
 		variables.spaceType = arguments.config.spaceType.lcase()
@@ -587,6 +608,7 @@ class extends="BaseVectorMemory" {
 	/**
 	 * Execute HTTP request to OpenSearch
 	 * Uses the BoxLang http() BIF with fluent builder pattern
+	 * Supports both Basic Auth and AWS SigV4 authentication
 	 *
 	 * @method HTTP method (GET, POST, PUT, DELETE, HEAD)
 	 * @path API path (e.g., /my-index/_search)
@@ -600,6 +622,9 @@ class extends="BaseVectorMemory" {
 		struct body = {}
 	) {
 		var requestUrl = "#variables.scheme#://#variables.host#:#variables.port##arguments.path#"
+		var payload = !arguments.body.isEmpty() && ( arguments.method == "POST" || arguments.method == "PUT" )
+			? jsonSerialize( arguments.body )
+			: ""
 
 		// Build HTTP request using fluent builder pattern
 		var httpService = http( url = requestUrl )
@@ -610,14 +635,25 @@ class extends="BaseVectorMemory" {
 			.header( "Content-Type", "application/json" )
 			.header( "Accept", "application/json" )
 
-		// Add basic auth if configured
-		if ( len( variables.username ) && len( variables.password ) ) {
+		// Use SigV4 authentication for AWS OpenSearch Service
+		if ( len( variables.awsRegion ) ) {
+			var signedHeaders = getAwsSignedHeaders(
+				method = arguments.method,
+				path = arguments.path,
+				payload = payload
+			)
+			for ( var headerName in signedHeaders ) {
+				httpService.header( headerName, signedHeaders[ headerName ] )
+			}
+		}
+		// Use basic auth if configured (for self-managed OpenSearch)
+		else if ( len( variables.username ) && len( variables.password ) ) {
 			httpService.header( "Authorization", "Basic " & toBase64( "#variables.username#:#variables.password#" ) )
 		}
 
 		// Add body for POST/PUT requests
-		if ( !arguments.body.isEmpty() && ( arguments.method == "POST" || arguments.method == "PUT" ) ) {
-			httpService.body( jsonSerialize( arguments.body ) )
+		if ( len( payload ) ) {
+			httpService.body( payload )
 		}
 
 		// Execute request
@@ -644,6 +680,56 @@ class extends="BaseVectorMemory" {
 			statusCode: statusCode,
 			data: responseData
 		}
+	}
+
+	/**
+	 * Get AWS SigV4 signed headers for a request
+	 * Uses the AWS credential chain (explicit, env vars, credentials file, ECS, EC2 metadata)
+	 *
+	 * @method HTTP method
+	 * @path Request path
+	 * @payload Request body (empty string for GET/DELETE/HEAD)
+	 *
+	 * @return Struct of headers to add to the request
+	 */
+	private struct function getAwsSignedHeaders(
+		required string method,
+		required string path,
+		required string payload
+	) {
+		// Get AWS credentials using the credential chain
+		var credentialProvider = new bxModules.bxai.models.util.AwsCredentialProvider()
+		var credentials = credentialProvider.getCredentials( {
+			awsAccessKeyId: variables.awsAccessKeyId,
+			awsSecretAccessKey: variables.awsSecretAccessKey,
+			awsSessionToken: variables.awsSessionToken
+		} )
+
+		// Validate credentials were found
+		if ( !len( credentials.awsAccessKeyId ) || !len( credentials.awsSecretAccessKey ) ) {
+			throw(
+				type = "OpenSearchVectorMemory.CredentialsError",
+				message = "AWS credentials not found. Provide awsAccessKeyId/awsSecretAccessKey in config or configure AWS environment credentials."
+			)
+		}
+
+		// Sign the request using AWS Signature V4
+		var signer = new bxModules.bxai.models.util.AwsSignatureV4()
+		var hostWithPort = variables.port == 443 ? variables.host : "#variables.host#:#variables.port#"
+
+		return signer.signRequest(
+			method = arguments.method,
+			host = hostWithPort,
+			path = arguments.path,
+			queryString = "",
+			headers = { "Content-Type": "application/json" },
+			payload = arguments.payload,
+			region = variables.awsRegion,
+			service = "es",
+			accessKeyId = credentials.awsAccessKeyId,
+			secretAccessKey = credentials.awsSecretAccessKey,
+			sessionToken = credentials.awsSessionToken
+		)
 	}
 
 	/**
