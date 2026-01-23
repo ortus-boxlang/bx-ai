@@ -26,24 +26,10 @@ abstract class
 	property name="collection" default="";
 
 	/**
-	 * Embedding provider (e.g., "openai", "ollama", "openai-compatible")
+	 * Configured embedding service instance (IAiService)
+	 * The service should be pre-configured with model, baseURL, etc.
 	 */
-	property name="embeddingProvider" default="";
-
-	/**
-	 * Embedding model name
-	 */
-	property name="embeddingModel" default="";
-
-	/**
-	 * Base URL for embedding service (used with openai-compatible provider)
-	 */
-	property name="embeddingBaseUrl" default="";
-
-	/**
-	 * Timeout in seconds for embedding API calls (default: 120 for Lambda cold starts)
-	 */
-	property name="embeddingTimeout" type="numeric" default=120;
+	property name="embeddingService" type="any";
 
 	/**
 	 * Vector dimensions (auto-detected from first embedding if not specified)
@@ -114,17 +100,8 @@ abstract class
 		if ( arguments.config.keyExists( "collection" ) ) {
 			variables.collection = arguments.config.collection;
 		}
-		if ( arguments.config.keyExists( "embeddingProvider" ) ) {
-			variables.embeddingProvider = arguments.config.embeddingProvider;
-		}
-		if ( arguments.config.keyExists( "embeddingModel" ) ) {
-			variables.embeddingModel = arguments.config.embeddingModel;
-		}
-		if ( arguments.config.keyExists( "embeddingBaseUrl" ) ) {
-			variables.embeddingBaseUrl = arguments.config.embeddingBaseUrl;
-		}
-		if ( arguments.config.keyExists( "embeddingTimeout" ) ) {
-			variables.embeddingTimeout = arguments.config.embeddingTimeout;
+		if ( arguments.config.keyExists( "embeddingService" ) ) {
+			variables.embeddingService = arguments.config.embeddingService;
 		}
 		if ( arguments.config.keyExists( "dimensions" ) ) {
 			variables.dimensions = arguments.config.dimensions;
@@ -547,29 +524,22 @@ abstract class
 	 * @return Array embedding vector
 	 */
 	private array function _generateEmbedding( required string text ) {
-		// Prep request params
-		var params = {};
-		if ( len( variables.embeddingModel ) ) {
-			params.model = variables.embeddingModel;
+		// Validate embedding service is configured
+		if ( isNull( variables.embeddingService ) ) {
+			throw(
+				type: "ConfigurationException",
+				message: "Embedding service not configured. Call configure({ embeddingService: aiService('provider') }) first."
+			);
 		}
 
-		// Prep request options - include timeout for Lambda cold starts
-		var options = {
-			timeout: variables.embeddingTimeout
-		};
-		if ( len( variables.embeddingProvider ) ) {
-			options.provider = variables.embeddingProvider;
-		}
-		if ( len( variables.embeddingBaseUrl ) ) {
-			options.baseURL = variables.embeddingBaseUrl;
-		}
-
-		// Generate embedding
-		var embedding = aiEmbed(
-			input : arguments.text,
-			params : params,
-			options : options
+		// Create embedding request
+		var embeddingRequest = new bxModules.bxai.models.requests.AiEmbeddingRequest(
+			input: arguments.text,
+			options: { returnFormat: "first" }
 		);
+
+		// Generate embedding using the configured service
+		var embedding = variables.embeddingService.embeddings( embeddingRequest );
 
 		// Auto-detect dimensions from first embedding
 		if ( variables.dimensions == 0 ) {
@@ -587,9 +557,10 @@ abstract class
 	 * @return String cache key
 	 */
 	private string function getCacheKey( required string text ) {
+		// Use service name for cache key differentiation
+		var serviceName = isNull( variables.embeddingService ) ? "unknown" : variables.embeddingService.getName();
 		return static.CACHE_EMBEDDINGS_PREFIX &
-			variables.embeddingProvider & ":" &
-			variables.embeddingModel & ":" &
+			serviceName & ":" &
 			hash( arguments.text, static.HASH_ALGORITHM );
 	}
 
@@ -601,29 +572,22 @@ abstract class
 	 * @return Array of embedding vectors
 	 */
 	private array function generateEmbeddingBatch( required array texts ) {
-		// Build params
-		var params = {};
-		if ( len( variables.embeddingModel ) ) {
-			params.model = variables.embeddingModel;
+		// Validate embedding service is configured
+		if ( isNull( variables.embeddingService ) ) {
+			throw(
+				type: "ConfigurationException",
+				message: "Embedding service not configured. Call configure({ embeddingService: aiService('provider') }) first."
+			);
 		}
 
-		var options = {
-			returnFormat: "embeddings",  // Get array of vectors
-			timeout: variables.embeddingTimeout  // Include timeout for Lambda cold starts
-		};
-		if ( len( variables.embeddingProvider ) ) {
-			options.provider = variables.embeddingProvider;
-		}
-		if ( len( variables.embeddingBaseUrl ) ) {
-			options.baseURL = variables.embeddingBaseUrl;
-		}
-
-		// Generate batch embeddings
-		var embeddings = aiEmbed(
-			input = arguments.texts,
-			params = params,
-			options = options
+		// Create embedding request for batch
+		var embeddingRequest = new bxModules.bxai.models.requests.AiEmbeddingRequest(
+			input: arguments.texts,
+			options: { returnFormat: "embeddings" }
 		);
+
+		// Generate batch embeddings using the configured service
+		var embeddings = variables.embeddingService.embeddings( embeddingRequest );
 
 		// Cache each embedding if enabled
 		if ( variables.useCache ) {

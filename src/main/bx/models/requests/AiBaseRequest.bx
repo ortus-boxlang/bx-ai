@@ -69,6 +69,12 @@ abstract class{
 	property name="timeout" type="numeric" default=30;
 
 	/**
+	 * Base URL for the provider API (optional override for the service's default)
+	 * Used by OpenAI-compatible services for custom endpoints
+	 */
+	property name="baseURL" type="string" default="";
+
+	/**
 	 * Send an auth header or not with the API Key
 	 * This is usually determined by the provider
 	 */
@@ -98,10 +104,11 @@ abstract class{
 	property name="usageMetadata" type="struct" default={};
 
 	/**
-	 * AWS Inference Profile ARN (optional, for Bedrock cost attribution)
-	 * When set, Bedrock requests will use this inference profile for AWS-native cost tracking
+	 * Provider-specific options that don't fit the common interface
+	 * Each provider can define and read its own keys from this struct
+	 * Examples: inferenceProfileArn (Bedrock), customHeaders (OpenAI-compatible)
 	 */
-	property name="inferenceProfileArn" type="string" default="";
+	property name="providerOptions" type="struct" default={};
 
 	/**
 	 * Add a header to the request
@@ -186,39 +193,15 @@ abstract class{
 	}
 
 	/**
-	 * Set the tenant identifier for multi-tenant usage tracking
+	 * Get a provider option by key with an optional default value
 	 *
-	 * @tenantId The tenant identifier
+	 * @key The option key to retrieve
+	 * @defaultValue The default value if the key doesn't exist
 	 *
-	 * @return The request for chaining
+	 * @return The option value or the default
 	 */
-	function setTenantId( required string tenantId ){
-		variables.tenantId = arguments.tenantId;
-		return this;
-	}
-
-	/**
-	 * Set the usage metadata for tracking purposes
-	 *
-	 * @usageMetadata A struct containing custom tracking data (cost center, project, etc.)
-	 *
-	 * @return The request for chaining
-	 */
-	function setUsageMetadata( required struct usageMetadata ){
-		variables.usageMetadata = arguments.usageMetadata;
-		return this;
-	}
-
-	/**
-	 * Set the AWS Inference Profile ARN for Bedrock cost attribution
-	 *
-	 * @inferenceProfileArn The AWS Inference Profile ARN
-	 *
-	 * @return The request for chaining
-	 */
-	function setInferenceProfileArn( required string inferenceProfileArn ){
-		variables.inferenceProfileArn = arguments.inferenceProfileArn;
-		return this;
+	function getProviderOption( required string key, any defaultValue = "" ){
+		return variables.providerOptions[ arguments.key ] ?: arguments.defaultValue;
 	}
 
 }

@@ -639,7 +639,7 @@ class extends = "BaseService"{
 		}
 
 		// Determine the endpoint identifier (use inference profile ARN if provided)
-		var inferenceProfileArn = arguments.aiRequest.getInferenceProfileArn();
+		var inferenceProfileArn = arguments.aiRequest.getProviderOption( "inferenceProfileArn" );
 		var endpointId = len( inferenceProfileArn ) ? inferenceProfileArn : modelId;
 
 		// Detect model family for request/response transformation (always use modelId for this)
@@ -697,7 +697,7 @@ class extends = "BaseService"{
 					// Multi-tenant tracking fields
 					tenantId            : arguments.aiRequest.getTenantId(),
 					usageMetadata       : arguments.aiRequest.getUsageMetadata(),
-					inferenceProfileArn : arguments.aiRequest.getInferenceProfileArn(),
+					inferenceProfileArn : arguments.aiRequest.getProviderOption( "inferenceProfileArn" ),
 					timestamp           : now()
 				}
 			);
@@ -877,7 +877,7 @@ class extends = "BaseService"{
 		}
 
 		// Determine the endpoint identifier (use inference profile ARN if provided)
-		var inferenceProfileArn = arguments.aiRequest.getInferenceProfileArn();
+		var inferenceProfileArn = arguments.aiRequest.getProviderOption( "inferenceProfileArn" );
 		var endpointId = len( inferenceProfileArn ) ? inferenceProfileArn : modelId;
 
 		// Detect model family for request/response transformation (always use modelId for this)

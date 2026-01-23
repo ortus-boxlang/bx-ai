@@ -74,11 +74,6 @@ class {
 		// Get the service
 		var service = aiService( arguments.options?.provider, arguments.options );
 
-		// Configure baseURL for openai-compatible provider if specified
-		if ( len( arguments.options?.baseURL ?: "" ) && service.getName() == "OpenAICompatible" ) {
-			service.setBaseURL( arguments.options.baseURL );
-		}
-
 		// Announce the embedding request
 		BoxAnnounce( "beforeAIEmbed", { embeddingRequest: embeddingRequest, service: service } );
 
