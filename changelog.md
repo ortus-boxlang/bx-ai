@@ -13,6 +13,7 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
 
 ### Fixed
 
+- According to the MCP spec prompts should return a key named "arguments" not "args".
 - AiRequest was not setting the model correctly from params.
 - API key was not being passed to the service in `aiChat(), aiChatStream()` BIF.
 - Typo of `chr()` --> `char()` in SSE formatting in MCPRequestProcessor and HTTPTransport.
