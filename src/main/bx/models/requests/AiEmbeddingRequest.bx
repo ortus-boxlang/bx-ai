@@ -42,7 +42,7 @@ class extends="AiBaseRequest"{
 		variables.logResponse = options.logResponse ?: false;
 		variables.logResponseToConsole = options.logResponseToConsole ?: false;
 		variables.returnFormat = options.returnFormat ?: "first";
-		variables.model = options.params?.model ?: "";
+		variables.model = params.model ?: "";
 		variables.timeout = options.timeout ?: 30;
 		return this;
 	}
