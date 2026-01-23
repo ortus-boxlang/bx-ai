@@ -59,12 +59,8 @@ class extends="BaseService" {
 	static {
 		DEFAULT_BASE_URL = "http://localhost:8080/v1";
 
-		DEFAULT_CHAT_PARAMS = {
-			"model" : "default"
-		};
-		DEFAULT_EMBED_PARAMS = {
-			"model" : "default"
-		};
+		DEFAULT_CHAT_PARAMS = {};
+		DEFAULT_EMBED_PARAMS = {};
 	}
 
 	/**

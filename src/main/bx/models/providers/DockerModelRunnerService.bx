@@ -35,11 +35,8 @@ class extends = "OpenAICompatibleService"{
 		// Alternative for host machine access
 		HOST_BASE_URL    = "http://localhost:12434/v1";
 
-		DEFAULT_CHAT_PARAMS = {
-			// Default to a common local model - users can override
-			"model" : "ai/gpt-oss:latest"
-		};
-		DEFAULT_EMBED_PARAMS = { "model" : "ai/gpt-oss:latest" };
+		DEFAULT_CHAT_PARAMS = {};
+		DEFAULT_EMBED_PARAMS = {};
 	}
 
 	/**
