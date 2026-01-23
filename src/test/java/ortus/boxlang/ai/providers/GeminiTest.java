@@ -43,9 +43,9 @@ public class GeminiTest extends BaseIntegrationTest {
 				result = aiChat( "what is boxlang?" )
 				println( result )
 			} catch( any e ) {
-				// Handle 503 errors gracefully (model overloaded or no credits)
-				if( e.message contains "503" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" ) {
-					println( "⚠️ Gemini API unavailable (503/overloaded), skipping test: " & e.message )
+				// Handle 503/429 errors gracefully (model overloaded, no credits, or quota exceeded)
+				if( e.message contains "503" || e.message contains "429" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" || e.message contains "RESOURCE_EXHAUSTED" ) {
+					println( "⚠️ Gemini API unavailable (503/429/quota exceeded), skipping test: " & e.message )
 					testSkipped = true
 				} else {
 					rethrow
@@ -69,9 +69,9 @@ public class GeminiTest extends BaseIntegrationTest {
 				result = aiChat( { role:"user", content:"what is boxlang?" } )
 				println( result )
 			} catch( any e ) {
-				// Handle 503 errors gracefully (model overloaded or no credits)
-				if( e.message contains "503" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" ) {
-					println( "⚠️ Gemini API unavailable (503/overloaded), skipping test: " & e.message )
+				// Handle 503/429 errors gracefully (model overloaded, no credits, or quota exceeded)
+				if( e.message contains "503" || e.message contains "429" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" || e.message contains "RESOURCE_EXHAUSTED" ) {
+					println( "⚠️ Gemini API unavailable (503/429/quota exceeded), skipping test: " & e.message )
 					testSkipped = true
 				} else {
 					rethrow
@@ -98,9 +98,9 @@ public class GeminiTest extends BaseIntegrationTest {
 				])
 				println( result )
 			} catch( any e ) {
-				// Handle 503 errors gracefully (model overloaded or no credits)
-				if( e.message contains "503" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" ) {
-					println( "⚠️ Gemini API unavailable (503/overloaded), skipping test: " & e.message )
+				// Handle 503/429 errors gracefully (model overloaded, no credits, or quota exceeded)
+				if( e.message contains "503" || e.message contains "429" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" || e.message contains "RESOURCE_EXHAUSTED" ) {
+					println( "⚠️ Gemini API unavailable (503/429/quota exceeded), skipping test: " & e.message )
 					testSkipped = true
 				} else {
 					rethrow
@@ -130,9 +130,9 @@ public class GeminiTest extends BaseIntegrationTest {
 				} )
 				println( result )
 			} catch( any e ) {
-				// Handle 503 errors gracefully (model overloaded or no credits)
-				if( e.message contains "503" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" ) {
-					println( "⚠️ Gemini API unavailable (503/overloaded), skipping test: " & e.message )
+				// Handle 503/429 errors gracefully (model overloaded, no credits, or quota exceeded)
+				if( e.message contains "503" || e.message contains "429" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" || e.message contains "RESOURCE_EXHAUSTED" ) {
+					println( "⚠️ Gemini API unavailable (503/429/quota exceeded), skipping test: " & e.message )
 					testSkipped = true
 				} else {
 					rethrow
@@ -167,9 +167,9 @@ public class GeminiTest extends BaseIntegrationTest {
 				println( "Received " & chunks.len() & " chunks" )
 				println( "Full response: " & fullResponse )
 			} catch( any e ) {
-				// Handle 503 errors gracefully (model overloaded or no credits)
-				if( e.message contains "503" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" ) {
-					println( "⚠️ Gemini API unavailable (503/overloaded), skipping test: " & e.message )
+				// Handle 503/429 errors gracefully (model overloaded, no credits, or quota exceeded)
+				if( e.message contains "503" || e.message contains "429" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" || e.message contains "RESOURCE_EXHAUSTED" ) {
+					println( "⚠️ Gemini API unavailable (503/429/quota exceeded), skipping test: " & e.message )
 					testSkipped = true
 				} else {
 					rethrow
@@ -211,9 +211,9 @@ public class GeminiTest extends BaseIntegrationTest {
 				println( "Total chunks received: " & chunkCount )
 				println( "Full text: " & fullText )
 			} catch( any e ) {
-				// Handle 503 errors gracefully (model overloaded or no credits)
-				if( e.message contains "503" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" ) {
-					println( "⚠️ Gemini API unavailable (503/overloaded), skipping test: " & e.message )
+				// Handle 503/429 errors gracefully (model overloaded, no credits, or quota exceeded)
+				if( e.message contains "503" || e.message contains "429" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" || e.message contains "RESOURCE_EXHAUSTED" ) {
+					println( "⚠️ Gemini API unavailable (503/429/quota exceeded), skipping test: " & e.message )
 					testSkipped = true
 				} else {
 					rethrow
