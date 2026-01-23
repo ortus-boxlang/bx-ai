@@ -175,9 +175,9 @@ class extends="BaseService" {
 	 */
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ) {
-		// Set default embedding model if not specified
-		if ( embeddingRequest.getModel().isEmpty() ) {
-			embeddingRequest.setModelIfEmpty( static.DEFAULT_EMBED_PARAMS.model );
+		// Set default embedding model if not specified (only if default is configured)
+		if ( embeddingRequest.getModel().isEmpty() && !static.DEFAULT_EMBED_PARAMS.isEmpty() ) {
+			embeddingRequest.setModelIfEmpty( static.DEFAULT_EMBED_PARAMS.model ?: "" );
 		}
 
 		// If no API key is set, disable auth header
