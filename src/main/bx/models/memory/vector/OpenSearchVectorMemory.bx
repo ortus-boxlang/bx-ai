@@ -84,9 +84,14 @@ class extends="BaseVectorMemory" {
 	property name="hnswEfSearch" type="numeric";
 
 	/**
-	 * Detected OpenSearch major version (2 or 3)
+	 * Detected OpenSearch major version (2 or 3), -1 means not yet detected (lazy detection)
 	 */
-	property name="openSearchVersion" type="numeric";
+	property name="openSearchVersion" type="numeric" default="-1";
+
+	/**
+	 * Flag to track if collection/index has been ensured (for lazy initialization)
+	 */
+	property name="collectionEnsured" type="boolean" default="false";
 
 	static {
 		// Default configurations
@@ -184,8 +189,8 @@ class extends="BaseVectorMemory" {
 			variables.index = arguments.config.collection.lcase()
 		}
 
-		// Detect OpenSearch version for compatibility
-		variables.openSearchVersion = detectOpenSearchVersion()
+		// Version detection is now lazy - will be detected on first use
+		// This allows configuration to succeed even if OpenSearch isn't available yet
 
 		// Now call parent configure which will call ensureCollection()
 		super.configure( arguments.config )
@@ -201,14 +206,29 @@ class extends="BaseVectorMemory" {
 
 	/**
 	 * Ensure OpenSearch index exists with k-NN mapping
+	 * This is called by the parent configure() but we defer actual work to first use
+	 * to avoid connection attempts before a valid endpoint is configured
 	 */
 	IVectorMemory function ensureCollection() {
-		// Check if index exists
+		// Lazy initialization - don't connect during configure()
+		// The actual index creation happens on first operation via ensureCollectionExists()
+		return this
+	}
+
+	/**
+	 * Actually ensure the collection exists - called lazily before operations
+	 */
+	private void function ensureCollectionExists() {
+		if ( variables.collectionEnsured ) {
+			return
+		}
+
+		// Check if index exists, create if not
 		if ( !indexExists( variables.index ) ) {
 			createIndex( variables.index )
 		}
 
-		return this
+		variables.collectionEnsured = true
 	}
 
 	/**
@@ -225,6 +245,9 @@ class extends="BaseVectorMemory" {
 		required array embedding,
 		required struct metadata
 	) {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
 		var document = {
 			"id": arguments.id,
 			"text": arguments.text,
@@ -269,6 +292,9 @@ class extends="BaseVectorMemory" {
 		required numeric limit,
 		required struct filter
 	) {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
 		// Build filter clauses
 		var filterClauses = []
 
@@ -347,6 +373,9 @@ class extends="BaseVectorMemory" {
 	 * @return Array of documents
 	 */
 	array function getAllDocuments() {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
 		// Build filter for collection and tenant isolation
 		var filterClauses = [
 			{ "term": { "collection": variables.collection } }
@@ -400,6 +429,9 @@ class extends="BaseVectorMemory" {
 	 * @return Struct document or empty struct
 	 */
 	struct function getDocumentById( required string id ) {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
 		var response = executeRequest(
 			method = "GET",
 			path = "/#variables.index#/_doc/#arguments.id#"
@@ -426,6 +458,9 @@ class extends="BaseVectorMemory" {
 	 * @return Boolean success
 	 */
 	boolean function deleteDocument( required string id ) {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
 		var response = executeRequest(
 			method = "DELETE",
 			path = "/#variables.index#/_doc/#arguments.id#"
@@ -442,6 +477,9 @@ class extends="BaseVectorMemory" {
 	 * @return Numeric count deleted
 	 */
 	numeric function deleteDocumentsByFilter( required struct filter ) {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
 		var filterClauses = [
 			{ "term": { "collection": variables.collection } }
 		]
@@ -476,6 +514,9 @@ class extends="BaseVectorMemory" {
 	 * Clear entire collection (delete all documents matching collection filter)
 	 */
 	IVectorMemory function clearCollection() {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
 		var query = {
 			"query": {
 				"term": {
@@ -694,12 +735,33 @@ class extends="BaseVectorMemory" {
 				return
 			}
 
+			// Build a meaningful error message
+			var errorMessage = "Failed to create index '#arguments.indexName#': "
+			if ( response.statusCode == 0 || ( response.data.keyExists( "raw" ) && response.data.raw == "Connection Failure" ) ) {
+				errorMessage &= "Connection failed to #variables.scheme#://#variables.host#:#variables.port#. Check network connectivity, security groups, and OpenSearch endpoint configuration."
+			} else {
+				errorMessage &= response.data.error.reason ?: "Unknown error (status: #response.statusCode#)"
+			}
+
 			throw(
 				type = "OpenSearchVectorMemory.IndexCreationError",
-				message = "Failed to create index: #response.data.error.reason ?: 'Unknown error'#",
+				message = errorMessage,
 				detail = jsonSerialize( response.data )
 			)
 		}
+	}
+
+	/**
+	 * Get the OpenSearch version, detecting lazily on first use
+	 *
+	 * @return Numeric major version (2 or 3)
+	 */
+	private numeric function getDetectedVersion() {
+		// Lazy detection: only detect if not already detected
+		if ( variables.openSearchVersion < 0 ) {
+			variables.openSearchVersion = detectOpenSearchVersion()
+		}
+		return variables.openSearchVersion
 	}
 
 	/**
@@ -730,8 +792,9 @@ class extends="BaseVectorMemory" {
 	 * @return String space_type value
 	 */
 	private string function getVersionCompatibleSpaceType() {
+		var version = getDetectedVersion()
 		// OpenSearch 2.x uses "cosinesimil", OpenSearch 3.x uses "cosinesimilarity"
-		if ( variables.openSearchVersion >= 3 ) {
+		if ( version >= 3 ) {
 			return static.SPACE_TYPES_V3[ variables.spaceType ] ?: variables.spaceType
 		} else {
 			return static.SPACE_TYPES_V2[ variables.spaceType ] ?: variables.spaceType
@@ -751,10 +814,11 @@ class extends="BaseVectorMemory" {
 	 */
 	private numeric function convertScoreToSimilarity( required numeric score ) {
 		var normalizedScore = arguments.score
+		var version = getDetectedVersion()
 
 		// Handle cosine similarity scoring differences between versions
 		if ( variables.spaceType == "cosinesimilarity" ) {
-			if ( variables.openSearchVersion < 3 ) {
+			if ( version < 3 ) {
 				// OpenSearch 2.x uses "cosinesimil" which returns scores in 0-2 range
 				// (adds 1 to shift cosine similarity from -1,1 to 0,2)
 				if ( arguments.score > 1 ) {

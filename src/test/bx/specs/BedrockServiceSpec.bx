@@ -456,14 +456,9 @@ class extends = "testbox.system.BaseSpec"{
 			} )
 
 			describe( "Streaming", () => {
-				it( "throws NotImplemented for chatStream", () => {
-					expect( () => {
-						bedrockService.chatStream(
-							aiRequest = createMock( "src.main.bx.models.AiRequest" ),
-							callback  = () => {
-							}
-						);
-					} ).toThrow( "NotImplemented" );
+				it( "has chatStream method implemented", () => {
+					// Verify chatStream method exists and is callable
+					expect( bedrockService ).toHaveKey( "chatStream" );
 				} )
 			} )
 		} )

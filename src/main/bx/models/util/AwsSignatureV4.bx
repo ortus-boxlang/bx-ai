@@ -288,7 +288,7 @@ class {
 				// Percent encode
 				var bytes = charsetDecode( char, "UTF-8" );
 				for( var i = 1; i <= arrayLen( bytes ); i++ ) {
-					result &= "%" & formatBaseN( bitAnd( bytes[i], 255 ), 16 ).ucase();
+					result &= "%" & right( "0" & formatBaseN( bitAnd( bytes[i], 255 ), 16 ).ucase(), 2 );
 				}
 			}
 		}

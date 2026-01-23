@@ -175,7 +175,7 @@ class extends = "BaseService"{
 	private string function getBedrockPath( required string modelIdOrArn ){
 		// Check if this is an inference profile ARN
 		if ( isInferenceProfileArn( arguments.modelIdOrArn ) ) {
-			return "/application-inference-profile/#encodeForURL( arguments.modelIdOrArn )#/invoke";
+			return "/application-inference-profile/#arguments.modelIdOrArn#/invoke";
 		}
 		return "/model/#arguments.modelIdOrArn#/invoke";
 	}
@@ -200,7 +200,7 @@ class extends = "BaseService"{
 	private string function getBedrockStreamPath( required string modelIdOrArn ){
 		// Check if this is an inference profile ARN
 		if ( isInferenceProfileArn( arguments.modelIdOrArn ) ) {
-			return "/application-inference-profile/#encodeForURL( arguments.modelIdOrArn )#/invoke-with-response-stream";
+			return "/application-inference-profile/#arguments.modelIdOrArn#/invoke-with-response-stream";
 		}
 		return "/model/#arguments.modelIdOrArn#/invoke-with-response-stream";
 	}
@@ -222,7 +222,7 @@ class extends = "BaseService"{
 	 *
 	 * @modelId The Bedrock model ID
 	 *
-	 * @return The model family: "claude", "titan", "llama", "cohere", "ai21", "mistral", or "unknown"
+	 * @return The model family: "claude", "titan", "llama", "cohere", "ai21", "mistral", "openai", or "unknown"
 	 */
 	private string function detectModelFamily( required string modelId ){
 		var id = arguments.modelId.lcase();
@@ -239,6 +239,9 @@ class extends = "BaseService"{
 			return "ai21";
 		} else if ( id.findNoCase( "mistral" ) ) {
 			return "mistral";
+		} else if ( id.findNoCase( "openai" ) || id.findNoCase( "gpt" ) ) {
+			// OpenAI-compatible models on Bedrock (cross-region inference profiles)
+			return "openai";
 		}
 
 		return "unknown";
@@ -267,6 +270,8 @@ class extends = "BaseService"{
 				return transformRequestForLlama( arguments.messages, arguments.params );
 			case "mistral":
 				return transformRequestForMistral( arguments.messages, arguments.params );
+			case "openai":
+				return transformRequestForOpenAI( arguments.messages, arguments.params );
 			default:
 				// Default to Claude-style format as it's most common on Bedrock
 				return transformRequestForClaude( arguments.messages, arguments.params );
@@ -395,6 +400,30 @@ class extends = "BaseService"{
 	}
 
 	/**
+	 * Transform request for OpenAI-compatible models on Bedrock (cross-region inference profiles)
+	 * These models use the standard OpenAI API format
+	 */
+	private struct function transformRequestForOpenAI( required array messages, required struct params ){
+		// OpenAI-compatible models use the standard chat completions format
+		var result = {
+			"messages" : arguments.messages,
+			"max_tokens" : arguments.params.max_tokens ?: 4096
+		};
+
+		// Handle temperature if provided
+		if ( arguments.params.keyExists( "temperature" ) ) {
+			result[ "temperature" ] = arguments.params.temperature;
+		}
+
+		// Handle top_p if provided
+		if ( arguments.params.keyExists( "top_p" ) ) {
+			result[ "top_p" ] = arguments.params.top_p;
+		}
+
+		return result;
+	}
+
+	/**
 	 * Transform Bedrock response to OpenAI-compatible format
 	 *
 	 * @response    The raw response from Bedrock
@@ -417,6 +446,8 @@ class extends = "BaseService"{
 				return transformResponseFromLlama( arguments.response, arguments.modelId );
 			case "mistral":
 				return transformResponseFromMistral( arguments.response, arguments.modelId );
+			case "openai":
+				return transformResponseFromOpenAI( arguments.response, arguments.modelId );
 			default:
 				return transformResponseFromClaude( arguments.response, arguments.modelId );
 		}
@@ -537,6 +568,57 @@ class extends = "BaseService"{
 				"prompt_tokens"     : 0,
 				"completion_tokens" : 0,
 				"total_tokens"      : 0
+			},
+			"model" : arguments.modelId
+		};
+	}
+
+	/**
+	 * Transform OpenAI-compatible response from Bedrock
+	 * These models already return OpenAI-format responses, so minimal transformation needed
+	 */
+	private struct function transformResponseFromOpenAI( required struct response, required string modelId ){
+		// OpenAI-compatible models already return the standard format
+		// Just ensure all expected fields exist
+		var content = "";
+
+		// Try standard OpenAI response format first
+		if (
+			arguments.response.keyExists( "choices" ) && isArray( arguments.response.choices ) && arguments.response.choices.len() > 0
+		) {
+			// Already in OpenAI format, just return it with model ID override
+			var result = duplicate( arguments.response );
+			result[ "model" ] = arguments.modelId;
+			return result;
+		}
+
+		// Fallback: check for message content directly (some variations)
+		if ( arguments.response.keyExists( "message" ) && arguments.response.message.keyExists( "content" ) ) {
+			content = arguments.response.message.content;
+		} else if ( arguments.response.keyExists( "content" ) ) {
+			// Direct content field
+			if ( isArray( arguments.response.content ) && arguments.response.content.len() > 0 ) {
+				var contentBlock = arguments.response.content[ 1 ];
+				if ( isStruct( contentBlock ) && contentBlock.keyExists( "text" ) ) {
+					content = contentBlock.text;
+				}
+			} else if ( isSimpleValue( arguments.response.content ) ) {
+				content = arguments.response.content;
+			}
+		}
+
+		return {
+			"choices" : [
+				{
+					"message"       : { "role" : "assistant", "content" : content },
+					"finish_reason" : arguments.response.finish_reason ?: arguments.response.stop_reason ?: "stop",
+					"index"         : 0
+				}
+			],
+			"usage" : {
+				"prompt_tokens"     : arguments.response.usage?.prompt_tokens ?: arguments.response.usage?.input_tokens ?: 0,
+				"completion_tokens" : arguments.response.usage?.completion_tokens ?: arguments.response.usage?.output_tokens ?: 0,
+				"total_tokens"      : arguments.response.usage?.total_tokens ?: 0
 			},
 			"model" : arguments.modelId
 		};
@@ -1194,6 +1276,19 @@ class extends = "BaseService"{
 					content = arguments.chunk.outputs[ 1 ].text ?: "";
 					if ( arguments.chunk.outputs[ 1 ].keyExists( "stop_reason" ) ) {
 						finishReason = arguments.chunk.outputs[ 1 ].stop_reason ?: "";
+					}
+				}
+				break;
+
+			case "openai":
+				// OpenAI-compatible streaming format - already in standard format
+				if ( arguments.chunk.keyExists( "choices" ) && isArray( arguments.chunk.choices ) && arguments.chunk.choices.len() > 0 ) {
+					var delta = arguments.chunk.choices[ 1 ].delta ?: {};
+					if ( delta.keyExists( "content" ) ) {
+						content = delta.content;
+					}
+					if ( arguments.chunk.choices[ 1 ].keyExists( "finish_reason" ) && !isNull( arguments.chunk.choices[ 1 ].finish_reason ) ) {
+						finishReason = arguments.chunk.choices[ 1 ].finish_reason;
 					}
 				}
 				break;

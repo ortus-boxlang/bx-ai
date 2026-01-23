@@ -39,10 +39,25 @@ import ortus.boxlang.runtime.scopes.Key;
 public class OpenSearchVectorMemoryTest extends BaseIntegrationTest {
 
 	static String	OPENSEARCH_HOST		= System.getenv( "OPENSEARCH_HOST" ) != null ? System.getenv( "OPENSEARCH_HOST" ) : "localhost";
-	static int		OPENSEARCH_PORT		= System.getenv( "OPENSEARCH_PORT" ) != null ? Integer.parseInt( System.getenv( "OPENSEARCH_PORT" ) ) : 9200;
+	static int		OPENSEARCH_PORT		= parsePort( System.getenv( "OPENSEARCH_PORT" ), 9200 );
 	static String	OPENSEARCH_SCHEME	= System.getenv( "OPENSEARCH_SCHEME" ) != null ? System.getenv( "OPENSEARCH_SCHEME" ) : "https";
 
 	static boolean	openSearchAvailable	= false;
+
+	private static int parsePort( String value, int defaultPort ) {
+		if ( value == null ) {
+			return defaultPort;
+		}
+		String trimmed = value.trim();
+		if ( trimmed.isEmpty() ) {
+			return defaultPort;
+		}
+		try {
+			return Integer.parseInt( trimmed );
+		} catch ( NumberFormatException e ) {
+			return defaultPort;
+		}
+	}
 
 	@BeforeAll
 	static void checkOpenSearchAvailability() {

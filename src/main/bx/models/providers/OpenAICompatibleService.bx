@@ -95,9 +95,16 @@ class extends="BaseService" {
 		// Delegate to parent for standard configuration
 		super.configure( arguments.config );
 
-		// Store baseURL for reference if provided
+		// Store baseURL for reference if provided, applying same /v1 normalization as setBaseURL()
 		if ( isStruct( arguments.config ) && arguments.config.keyExists( "baseURL" ) && len( arguments.config.baseURL ) ) {
-			variables.baseURL = arguments.config.baseURL.reReplace( "/$", "" );
+			var normalizedURL = arguments.config.baseURL.reReplace( "/$", "" );
+			// Add /v1 suffix if not present (consistent with setBaseURL behavior)
+			if ( !normalizedURL.endsWith( "/v1" ) ) {
+				normalizedURL = normalizedURL & "/v1";
+			}
+			variables.baseURL = normalizedURL;
+			variables.chatURL = variables.baseURL & "/chat/completions";
+			variables.embeddingsURL = variables.baseURL & "/embeddings";
 		}
 
 		return this;

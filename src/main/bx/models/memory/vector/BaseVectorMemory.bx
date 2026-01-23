@@ -41,6 +41,11 @@ abstract class
 	property name="embeddingBaseUrl" default="";
 
 	/**
+	 * Timeout in seconds for embedding API calls (default: 120 for Lambda cold starts)
+	 */
+	property name="embeddingTimeout" type="numeric" default=120;
+
+	/**
 	 * Vector dimensions (auto-detected from first embedding if not specified)
 	 */
 	property name="dimensions" type="numeric" default=0;
@@ -117,6 +122,9 @@ abstract class
 		}
 		if ( arguments.config.keyExists( "embeddingBaseUrl" ) ) {
 			variables.embeddingBaseUrl = arguments.config.embeddingBaseUrl;
+		}
+		if ( arguments.config.keyExists( "embeddingTimeout" ) ) {
+			variables.embeddingTimeout = arguments.config.embeddingTimeout;
 		}
 		if ( arguments.config.keyExists( "dimensions" ) ) {
 			variables.dimensions = arguments.config.dimensions;
@@ -545,8 +553,10 @@ abstract class
 			params.model = variables.embeddingModel;
 		}
 
-		// Prep request options
-		var options = {};
+		// Prep request options - include timeout for Lambda cold starts
+		var options = {
+			timeout: variables.embeddingTimeout
+		};
 		if ( len( variables.embeddingProvider ) ) {
 			options.provider = variables.embeddingProvider;
 		}
@@ -598,7 +608,8 @@ abstract class
 		}
 
 		var options = {
-			returnFormat: "embeddings"  // Get array of vectors
+			returnFormat: "embeddings",  // Get array of vectors
+			timeout: variables.embeddingTimeout  // Include timeout for Lambda cold starts
 		};
 		if ( len( variables.embeddingProvider ) ) {
 			options.provider = variables.embeddingProvider;
