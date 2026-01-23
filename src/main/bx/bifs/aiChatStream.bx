@@ -77,7 +77,10 @@ class {
 		);
 
 		// Get the provider and chat stream with it
-		aiService( provider: arguments.options?.provider ).invokeStream( oAiRequest, arguments.callback );
+		aiService(
+			provider: arguments.options?.provider,
+			apiKey: arguments.options?.apiKey
+		).invokeStream( oAiRequest, arguments.callback );
 	}
 
 }
