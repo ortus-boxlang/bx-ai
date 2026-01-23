@@ -364,7 +364,7 @@ class extends = "testbox.system.BaseSpec"{
 					var endpoint = invokePrivateMethod(
 						bedrockService,
 						"getBedrockEndpoint",
-						{ modelId : "anthropic.claude-3-sonnet-20240229-v1:0" }
+						{ modelIdOrArn : "anthropic.claude-3-sonnet-20240229-v1:0" }
 					);
 
 					expect( endpoint ).toBe( "https://bedrock-runtime.eu-west-2.amazonaws.com/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke" );
@@ -382,10 +382,76 @@ class extends = "testbox.system.BaseSpec"{
 					var path = invokePrivateMethod(
 						bedrockService,
 						"getBedrockPath",
-						{ modelId : "amazon.titan-text-express-v1" }
+						{ modelIdOrArn : "amazon.titan-text-express-v1" }
 					);
 
 					expect( path ).toBe( "/model/amazon.titan-text-express-v1/invoke" );
+				} )
+			} )
+
+			describe( "Inference Profile ARN Support", () => {
+				it( "detects inference profile ARNs correctly", () => {
+					var testArn = "arn:aws:bedrock:us-east-1:123456789012:inference-profile/my-profile";
+					var result  = invokePrivateMethod(
+						bedrockService,
+						"isInferenceProfileArn",
+						{ arnOrId : testArn }
+					);
+					expect( result ).toBeTrue();
+				} )
+
+				it( "returns false for regular model IDs", () => {
+					var testCases = [
+						"anthropic.claude-3-sonnet-20240229-v1:0",
+						"amazon.titan-text-express-v1",
+						"meta.llama3-70b-instruct-v1:0"
+					];
+
+					for ( var modelId in testCases ) {
+						var result = invokePrivateMethod(
+							bedrockService,
+							"isInferenceProfileArn",
+							{ arnOrId : modelId }
+						);
+						expect( result ).toBeFalse( "Should return false for: #modelId#" );
+					}
+				} )
+
+				it( "generates correct path for inference profile ARN", () => {
+					var testArn = "arn:aws:bedrock:us-east-1:123456789012:inference-profile/my-profile";
+					var path    = invokePrivateMethod(
+						bedrockService,
+						"getBedrockPath",
+						{ modelIdOrArn : testArn }
+					);
+
+					expect( path ).toContain( "/application-inference-profile/" );
+					expect( path ).toContain( "/invoke" );
+					expect( path ).notToContain( "/model/" );
+				} )
+
+				it( "generates correct streaming path for inference profile ARN", () => {
+					var testArn = "arn:aws:bedrock:us-east-1:123456789012:inference-profile/my-profile";
+					var path    = invokePrivateMethod(
+						bedrockService,
+						"getBedrockStreamPath",
+						{ modelIdOrArn : testArn }
+					);
+
+					expect( path ).toContain( "/application-inference-profile/" );
+					expect( path ).toContain( "/invoke-with-response-stream" );
+					expect( path ).notToContain( "/model/" );
+				} )
+
+				it( "preserves standard model path when not using inference profile", () => {
+					var modelId = "anthropic.claude-3-sonnet-20240229-v1:0";
+					var path    = invokePrivateMethod(
+						bedrockService,
+						"getBedrockPath",
+						{ modelIdOrArn : modelId }
+					);
+
+					expect( path ).toBe( "/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke" );
 				} )
 			} )
 

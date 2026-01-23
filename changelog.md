@@ -42,6 +42,16 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
 - `AiBaseRequest.mergeServiceParams()` and `AiBaseRequest.mergeServiceHeaders()` methods now accept an `override` boolean argument to control whether existing values should be overwritten when merging.
 - Local Ollama docker setup instructions updated to include the `nomic-embed-text` model for embeddings support.
 - Ollama Service now supports embedding generation using the `nomic-embed-text` model.
+- **Multi-Tenant Usage Tracking**: Provider-agnostic request tagging for per-tenant billing
+  - New `tenantId` option for attributing AI usage to specific tenants
+  - New `usageMetadata` option for custom tracking data (cost center, project, userId, etc.)
+  - Enhanced `onAITokenCount` events with tenant context for interceptor-based billing
+  - Works with all providers: OpenAI, Bedrock, Ollama, DeepSeek, etc.
+  - Fully backward compatible - existing code works unchanged
+- **AWS Application Inference Profile Support**: Native AWS cost attribution for Bedrock
+  - New `inferenceProfileArn` option for AWS-native cost tracking
+  - Automatic routing to inference profile endpoints when ARN is provided
+  - Enables AWS Cost Explorer and cost allocation tag integration
 - **OpenSearch Vector Memory Provider**: Full integration with OpenSearch k-NN for semantic search
   - Support for OpenSearch 2.x and 3.x with automatic version detection and space type mapping
   - HNSW index configuration options (M, ef_construction, ef_search parameters)

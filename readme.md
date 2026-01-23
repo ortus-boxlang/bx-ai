@@ -1115,7 +1115,7 @@ Read more about [Events in BoxLang AI](https://ai.ortusbooks.com/advanced/events
 | `onAIRequest` | Before sending HTTP request | `dataPacket`, `aiRequest`, `provider` | Request logging, modification, authentication |
 | `onAIRequestCreate` | When request object is created | `aiRequest` | Request validation, modification |
 | `onAIResponse` | After receiving HTTP response | `aiRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
-| `onAITokenCount` | When token usage data is available | `provider`, `model`, `promptTokens`, `completionTokens`, `totalTokens` | Cost tracking, budget enforcement |
+| `onAITokenCount` | When token usage data is available | `provider`, `model`, `promptTokens`, `completionTokens`, `totalTokens`, `tenantId`, `usageMetadata`, `inferenceProfileArn`, `timestamp` | Cost tracking, budget enforcement, multi-tenant billing |
 | `onAIToolCreate` | When tool is created | `tool`, `name`, `description` | Tool registration, validation |
 | `onAITransformerCreate` | When transformer is created | `transform` | Transform configuration, tracking |
 

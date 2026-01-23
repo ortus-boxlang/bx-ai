@@ -279,7 +279,12 @@ abstract class implements="IAiService" {
 				completionTokens: result.usage.keyExists( "completion_tokens" ) ? result.usage.completion_tokens : 0,
 				totalTokens: result.usage.keyExists( "total_tokens" ) ? result.usage.total_tokens : 0,
 				aiRequest: arguments.chatRequest,
-				usage: result.usage
+				usage: result.usage,
+				// Multi-tenant tracking fields
+				tenantId: arguments.chatRequest.getTenantId(),
+				usageMetadata: arguments.chatRequest.getUsageMetadata(),
+				inferenceProfileArn: arguments.chatRequest.getInferenceProfileArn(),
+				timestamp: now()
 			} );
 		}
 

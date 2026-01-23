@@ -151,12 +151,12 @@ class extends = "BaseService"{
 	/**
 	 * Get the Bedrock endpoint URL for the configured region and model
 	 *
-	 * @modelId The model ID to invoke
+	 * @modelIdOrArn The model ID or inference profile ARN to invoke
 	 *
 	 * @return The full endpoint URL
 	 */
-	private string function getBedrockEndpoint( required string modelId ){
-		return "https://bedrock-runtime.#variables.region#.amazonaws.com/model/#arguments.modelId#/invoke";
+	private string function getBedrockEndpoint( required string modelIdOrArn ){
+		return "https://bedrock-runtime.#variables.region#.amazonaws.com#getBedrockPath( arguments.modelIdOrArn )#";
 	}
 
 	/**
@@ -168,27 +168,53 @@ class extends = "BaseService"{
 
 	/**
 	 * Get the request path for a model invocation
+	 * Supports both model IDs and inference profile ARNs
+	 *
+	 * @modelIdOrArn The model ID or inference profile ARN to invoke
 	 */
-	private string function getBedrockPath( required string modelId ){
-		return "/model/#arguments.modelId#/invoke";
+	private string function getBedrockPath( required string modelIdOrArn ){
+		// Check if this is an inference profile ARN
+		if ( isInferenceProfileArn( arguments.modelIdOrArn ) ) {
+			return "/application-inference-profile/#encodeForURL( arguments.modelIdOrArn )#/invoke";
+		}
+		return "/model/#arguments.modelIdOrArn#/invoke";
 	}
 
 	/**
 	 * Get the Bedrock streaming endpoint URL for the configured region and model
 	 *
-	 * @modelId The model ID to invoke
+	 * @modelIdOrArn The model ID or inference profile ARN to invoke
 	 *
 	 * @return The full streaming endpoint URL
 	 */
-	private string function getBedrockStreamEndpoint( required string modelId ){
-		return "https://bedrock-runtime.#variables.region#.amazonaws.com/model/#arguments.modelId#/invoke-with-response-stream";
+	private string function getBedrockStreamEndpoint( required string modelIdOrArn ){
+		return "https://bedrock-runtime.#variables.region#.amazonaws.com#getBedrockStreamPath( arguments.modelIdOrArn )#";
 	}
 
 	/**
 	 * Get the request path for a streaming model invocation
+	 * Supports both model IDs and inference profile ARNs
+	 *
+	 * @modelIdOrArn The model ID or inference profile ARN to invoke
 	 */
-	private string function getBedrockStreamPath( required string modelId ){
-		return "/model/#arguments.modelId#/invoke-with-response-stream";
+	private string function getBedrockStreamPath( required string modelIdOrArn ){
+		// Check if this is an inference profile ARN
+		if ( isInferenceProfileArn( arguments.modelIdOrArn ) ) {
+			return "/application-inference-profile/#encodeForURL( arguments.modelIdOrArn )#/invoke-with-response-stream";
+		}
+		return "/model/#arguments.modelIdOrArn#/invoke-with-response-stream";
+	}
+
+	/**
+	 * Check if the given string is an AWS Bedrock inference profile ARN
+	 *
+	 * @arnOrId The string to check
+	 *
+	 * @return True if this is an inference profile ARN
+	 */
+	private boolean function isInferenceProfileArn( required string arnOrId ){
+		return arguments.arnOrId.findNoCase( "arn:aws:bedrock" ) > 0
+			&& arguments.arnOrId.findNoCase( "inference-profile" ) > 0;
 	}
 
 	/**
@@ -530,7 +556,11 @@ class extends = "BaseService"{
 			modelId = variables.params.model;
 		}
 
-		// Detect model family for request/response transformation
+		// Determine the endpoint identifier (use inference profile ARN if provided)
+		var inferenceProfileArn = arguments.aiRequest.getInferenceProfileArn();
+		var endpointId = len( inferenceProfileArn ) ? inferenceProfileArn : modelId;
+
+		// Detect model family for request/response transformation (always use modelId for this)
 		var modelFamily = detectModelFamily( modelId );
 
 		// Build the request body for the specific model
@@ -540,8 +570,8 @@ class extends = "BaseService"{
 			modelFamily = modelFamily
 		);
 
-		// Send the request to Bedrock
-		var result = sendBedrockRequest( modelId, dataPacket, arguments.aiRequest );
+		// Send the request to Bedrock (use endpointId which may be an inference profile ARN)
+		var result = sendBedrockRequest( endpointId, dataPacket, arguments.aiRequest );
 
 		// Check for errors
 		if ( result.keyExists( "error" ) ) {
@@ -574,14 +604,19 @@ class extends = "BaseService"{
 			boxAnnounce(
 				"onAITokenCount",
 				{
-					provider         : this,
-					operation        : "chat",
-					model            : modelId,
-					promptTokens     : openAIResponse.usage.prompt_tokens,
-					completionTokens : openAIResponse.usage.completion_tokens,
-					totalTokens      : openAIResponse.usage.total_tokens,
-					aiRequest        : arguments.aiRequest,
-					usage            : openAIResponse.usage
+					provider            : this,
+					operation           : "chat",
+					model               : modelId,
+					promptTokens        : openAIResponse.usage.prompt_tokens,
+					completionTokens    : openAIResponse.usage.completion_tokens,
+					totalTokens         : openAIResponse.usage.total_tokens,
+					aiRequest           : arguments.aiRequest,
+					usage               : openAIResponse.usage,
+					// Multi-tenant tracking fields
+					tenantId            : arguments.aiRequest.getTenantId(),
+					usageMetadata       : arguments.aiRequest.getUsageMetadata(),
+					inferenceProfileArn : arguments.aiRequest.getInferenceProfileArn(),
+					timestamp           : now()
 				}
 			);
 		}
@@ -609,7 +644,7 @@ class extends = "BaseService"{
 	/**
 	 * Send a signed request to AWS Bedrock
 	 *
-	 * @modelId    The model ID to invoke
+	 * @modelId    The model ID or inference profile ARN to invoke
 	 * @dataPacket The request payload
 	 * @aiRequest  The AiRequest for logging settings
 	 *
@@ -759,7 +794,11 @@ class extends = "BaseService"{
 			modelId = variables.params.model;
 		}
 
-		// Detect model family for request/response transformation
+		// Determine the endpoint identifier (use inference profile ARN if provided)
+		var inferenceProfileArn = arguments.aiRequest.getInferenceProfileArn();
+		var endpointId = len( inferenceProfileArn ) ? inferenceProfileArn : modelId;
+
+		// Detect model family for request/response transformation (always use modelId for this)
 		var modelFamily = detectModelFamily( modelId );
 
 		// Build the request body for the specific model
@@ -769,9 +808,9 @@ class extends = "BaseService"{
 			modelFamily = modelFamily
 		);
 
-		// Send the streaming request
+		// Send the streaming request (use endpointId which may be an inference profile ARN)
 		sendBedrockStreamRequest(
-			modelId     = modelId,
+			modelId     = endpointId,
 			dataPacket  = dataPacket,
 			aiRequest   = arguments.aiRequest,
 			modelFamily = modelFamily,
@@ -786,7 +825,7 @@ class extends = "BaseService"{
 	 * which is different from SSE. Since BoxLang's HTTP streaming is designed for SSE,
 	 * we make a synchronous request and parse the binary event-stream response.
 	 *
-	 * @modelId     The model ID to invoke
+	 * @modelId     The model ID or inference profile ARN to invoke
 	 * @dataPacket  The request payload
 	 * @aiRequest   The AiRequest for logging settings
 	 * @modelFamily The detected model family for response transformation

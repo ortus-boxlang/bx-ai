@@ -68,6 +68,11 @@ class extends="AiBaseRequest"{
 		variables.stream = options.stream ?: false;
 		variables.maxInteractions = options.maxInteractions ?: 0;
 
+		// Multi-tenant usage tracking options
+		variables.tenantId = options.tenantId ?: "";
+		variables.usageMetadata = options.usageMetadata ?: {};
+		variables.inferenceProfileArn = options.inferenceProfileArn ?: "";
+
 		// If context is provided in options, merge it into the message object
 		if( options.keyExists( "context" ) && isStruct( options.context ) ){
 			variables.aiMessage.mergeContext( options.context );
