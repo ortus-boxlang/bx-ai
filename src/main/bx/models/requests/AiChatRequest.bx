@@ -74,10 +74,6 @@ class extends="AiBaseRequest"{
 
 		// Provider-specific options
 		variables.providerOptions = options.providerOptions ?: {};
-		// Backward compatibility: if inferenceProfileArn is passed directly, add to providerOptions
-		if ( options.keyExists( "inferenceProfileArn" ) && len( options.inferenceProfileArn ) ) {
-			variables.providerOptions.inferenceProfileArn = options.inferenceProfileArn;
-		}
 
 		// If context is provided in options, merge it into the message object
 		if( options.keyExists( "context" ) && isStruct( options.context ) ){
