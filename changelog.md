@@ -13,6 +13,7 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
 
 ### Fixed
 
+- API key was not being passed to the service in `aiChat()` BIF.
 - Typo of `chr()` --> `char()` in SSE formatting in MCPRequestProcessor and HTTPTransport.
 
 ## [2.0.0] - 2026-01-19

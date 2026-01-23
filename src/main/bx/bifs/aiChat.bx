@@ -85,7 +85,10 @@ class {
 		);
 
 		// Get the provider and chat with it
-		return aiService( provider: arguments.options?.provider ).invoke( oRequest );
+		return aiService(
+			provider: arguments.options?.provider,
+			apiKey: arguments.options?.apiKey
+		).invoke( oRequest );
 	}
 
 }
