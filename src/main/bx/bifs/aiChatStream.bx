@@ -55,13 +55,15 @@ class {
 	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
 	 * @params A struct of request params to pass to the provider for the model request: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
 	 * @options A struct of request options to pass to the provider for the model request. Available options are: { provider:string, apiKey:string, timeout:numeric, logResponse:boolean, logRequest:boolean }
+	 * @headers A struct of headers to pass to the provider for the model request.
 	 *
      */
     function invoke(
 		required any messages,
 		required function callback,
 		struct params = {},
-		struct options = {}
+		struct options = {},
+		struct headers = {}
 	) {
 		// Incorporate default params with no override
 		arguments.params.append( moduleRecord.settings.defaultParams, false );
@@ -70,17 +72,18 @@ class {
 		arguments.options.stream = true;
 
 		// Build out a chat request
-		var oAiRequest = new bxModules.bxai.models.requests.AiRequest(
-			aiMessage( arguments.messages ),
+		var chatRequest = aiChatRequest(
+			arguments.messages,
 			arguments.params,
-			arguments.options
-		);
+			arguments.options,
+			arguments.headers
+		 );
 
 		// Get the provider and chat stream with it
 		aiService(
 			provider: arguments.options?.provider,
 			apiKey: arguments.options?.apiKey
-		).invokeStream( oAiRequest, arguments.callback );
+		).invokeStream( chatRequest, arguments.callback );
 	}
 
 }

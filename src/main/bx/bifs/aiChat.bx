@@ -55,13 +55,15 @@ class {
 	 * @messages The messages to pass into the required model. This depends on the provider. It can be a simple string, a struct representing a message or an array of messages or an actual AiMessage object
 	 * @params A struct of request params to pass to the provider for the model request: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
 	 * @options A struct of request options to pass to the provider for the model request. Available options are: { provider:string, apiKey:string, returnFormat:string timeout:numeric, logResponse:boolean, logRequest:boolean }
+	 * @headers A struct of headers to pass to the provider for the model request.
 	 *
 	 * @throw InvalidArgument if the return format is not valid
      */
     function invoke(
 		required any messages,
 		struct params = {},
-		struct options = {}
+		struct options = {},
+		struct headers = {}
 	) {
 		// Incorporate default params with no override
 		arguments.params.append( moduleRecord.settings.defaultParams, false );
@@ -78,17 +80,18 @@ class {
 		}
 
 		// Build out a chat request
-		var oRequest = new bxModules.bxai.models.requests.AiRequest(
-			aiMessage( arguments.messages ),
+		var chatRequest = aiChatRequest(
+			arguments.messages,
 			arguments.params,
-			arguments.options
-		);
+			arguments.options,
+			arguments.headers
+		 );
 
 		// Get the provider and chat with it
 		return aiService(
 			provider: arguments.options?.provider,
 			apiKey: arguments.options?.apiKey
-		).invoke( oRequest );
+		).invoke( chatRequest );
 	}
 
 }
