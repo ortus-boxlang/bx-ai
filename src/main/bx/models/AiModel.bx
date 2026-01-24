@@ -162,20 +162,20 @@ class extends="AiBaseRunnable" {
 
 
 		// Build the ai request
-		var aiRequest = new bxModules.bxai.models.requests.AiRequest(
+		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
 			aiMessage( messages ),
 			effectiveParams,
 			effectiveOptions
 		)
 
         // beforeAIModelInvoke event
-        BoxAnnounce( "beforeAIModelInvoke", { model: this, aiRequest: aiRequest } )
+        BoxAnnounce( "beforeAIModelInvoke", { model: this, chatRequest: chatRequest } )
 
 		// Invoke service
-		var results = variables.service.invoke( aiRequest )
+		var results = variables.service.invoke( chatRequest )
 
         // afterAIModelInvoke event
-        BoxAnnounce( "afterAIModelInvoke", { model: this, aiRequest: aiRequest, results: results } )
+        BoxAnnounce( "afterAIModelInvoke", { model: this, chatRequest: chatRequest, results: results } )
 
         return results
 	}
@@ -199,7 +199,7 @@ class extends="AiBaseRunnable" {
 		var effectiveOptions = getMergedOptions( arguments.options );
 		effectiveOptions.stream = true;
 
-		var request = new bxModules.bxai.models.requests.AiRequest(
+		var request = new bxModules.bxai.models.requests.AiChatRequest(
 			aiMessage( messages ),
 			effectiveParams,
 			effectiveOptions

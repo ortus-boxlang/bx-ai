@@ -150,9 +150,9 @@ class extends="AiBaseRequest"{
 	 *
 	 * @schema A structured output definition (class instance, struct, or array)
 	 *
-	 * @return The AiRequest for chaining
+	 * @return The AiChatRequest for chaining
 	 */
-	AiRequest function setStructuredOutput( any schema ){
+	AiChatRequest function setStructuredOutput( any schema ){
 		variables.returnFormat = "structuredOutput";
 		variables.structuredOutputDefinition = schema;
 

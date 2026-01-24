@@ -24,7 +24,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
-import ortus.boxlang.runtime.scopes.Key;
 
 /**
  * Integration tests for structured output functionality with OpenAI
@@ -196,12 +195,12 @@ public class StructuredOutputTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			aiRequest = aiChatRequest(
+			chatRequest = aiChatRequest(
 				messages = "Extract event: Tech Conference on March 15, 2024 in Seattle"
 			)
 				.setStructuredOutput( new src.test.bx.Event() );
 
-			result = aiService().invoke( aiRequest );
+			result = aiService().invoke( chatRequest );
 
 			eventName = result.getName();
 			eventDate = result.getDate();

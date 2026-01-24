@@ -123,13 +123,13 @@ abstract class implements="IAiService" {
 	/**
 	 * Invoke a request to the provider
 	 *
-	 * @aiRequest The AI request to send to the provider
+	 * @chatRequest The AI request to send to the provider
 	 *
 	 * @return The response from the provider according to the return format in the AI request
 	 */
-	function invoke( required AiRequest aiRequest ){
+	function invoke( required AiChatRequest chatRequest ){
 		// Model Selection if not set, use the default in the service, which should always be set
-		aiRequest
+		chatRequest
 			.setModelIfEmpty( variables.params.model )
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceParams( variables.params )
@@ -142,14 +142,14 @@ abstract class implements="IAiService" {
 	/**
 	 * Invoke a request to the provider in streaming mode
 	 *
-	 * @aiRequest The Chat request to send to the provider
+	 * @chatRequest The Chat request to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
 	 *
 	 * @return void
 	 */
-	function invokeStream( required AiRequest aiRequest, required function callback ){
+	function invokeStream( required AiChatRequest chatRequest, required function callback ){
 		// Model Selection if not set, use the default in the service, which should always be set
-		aiRequest
+		chatRequest
 			.setModelIfEmpty( variables.params.model )
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceParams( variables.params )
@@ -170,7 +170,7 @@ abstract class implements="IAiService" {
 	 * This method in this base class is based of OpenAI's standard.
 	 * If the provider does not support this standard, it should override this method.
 	 *
-	 * @aiRequest The AIRequest object to send to the provider
+	 * @chatRequest The AiChatRequest object to send to the provider
 	 * @interactionCount Current tool call interaction count (used internally)
 	 *
 	 * @throws ProviderError if the provider returns an error from the request
@@ -178,12 +178,12 @@ abstract class implements="IAiService" {
 	 *
 	 * @return The response from the provider according to the return format in the AI request
 	 */
-	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ){
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
 		// Build the packet according to the OpenAI standard
 		var dataPacket = {
-			"model"   : arguments.aiRequest.getModel(),
-			"messages": arguments.aiRequest.getMessages()
-		}.append( arguments.aiRequest.getParams() )
+			"model"   : arguments.chatRequest.getModel(),
+			"messages": arguments.chatRequest.getMessages()
+		}.append( arguments.chatRequest.getParams() )
 
 		// Tooling support
 		if( dataPacket.keyExists( "tools" ) ){
@@ -191,9 +191,9 @@ abstract class implements="IAiService" {
 		}
 
 		// Structured output support (OpenAI format)
-		if( arguments.aiRequest.isStructuredOutput() ){
+		if( arguments.chatRequest.isStructuredOutput() ){
 			// Clean internal metadata before sending to provider
-			var cleanSchema = SchemaBuilder::cleanSchema( arguments.aiRequest.getStructuredOutput() );
+			var cleanSchema = SchemaBuilder::cleanSchema( arguments.chatRequest.getStructuredOutput() );
 			dataPacket.response_format = {
 				"type": "json_schema",
 				"json_schema": {
@@ -205,7 +205,7 @@ abstract class implements="IAiService" {
 		}
 
 		// Send it
-		var result = sendRequest( aiRequest, dataPacket )
+		var result = sendRequest( arguments.chatRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
@@ -221,7 +221,7 @@ abstract class implements="IAiService" {
 				errorMessage: result.error.toString(),
 				provider: this,
 				operation: "chat",
-				aiRequest: arguments.aiRequest,
+				aiRequest: arguments.chatRequest,
 				canRetry: true
 			} );
 
@@ -236,11 +236,11 @@ abstract class implements="IAiService" {
 			BoxAnnounce( "onAITokenCount", {
 				provider: this,
 				operation: "chat",
-				model: aiRequest.getModel(),
+				model: arguments.chatRequest.getModel(),
 				promptTokens: result.usage.keyExists( "prompt_tokens" ) ? result.usage.prompt_tokens : 0,
 				completionTokens: result.usage.keyExists( "completion_tokens" ) ? result.usage.completion_tokens : 0,
 				totalTokens: result.usage.keyExists( "total_tokens" ) ? result.usage.total_tokens : 0,
-				aiRequest: arguments.aiRequest,
+				aiRequest: arguments.chatRequest,
 				usage: result.usage
 			} );
 		}
@@ -251,7 +251,7 @@ abstract class implements="IAiService" {
 			var content = result.choices.first().message.content;
 
 			// Determine return formats
-			switch( aiRequest.getReturnFormat() ){
+			switch( arguments.chatRequest.getReturnFormat() ){
 				case "all":
 					return result.choices;
 				case "raw":
@@ -261,7 +261,7 @@ abstract class implements="IAiService" {
 				case "xml":
 					return xmlParse( extractFromCodeBlock( content, "xml" ) );
 				case "structuredOutput":
-					return populateStructuredOutput( content, aiRequest );
+					return populateStructuredOutput( content, arguments.chatRequest );
 				case "single": default:
 					return content;
 			}
@@ -273,7 +273,7 @@ abstract class implements="IAiService" {
 		 * ---------------------------------------------------------------------------------------------------------
 		 */
 
-		var maxAllowed = aiRequest.getMaxInteractions() > 0 ? aiRequest.getMaxInteractions() : variables.maxInteractions;
+		var maxAllowed = arguments.chatRequest.getMaxInteractions() > 0 ? arguments.chatRequest.getMaxInteractions() : variables.maxInteractions;
 		if( arguments.interactionCount >= maxAllowed ){
 			writeLog(
 				text: "Max tool call interactions (#maxAllowed#) exceeded",
@@ -292,7 +292,7 @@ abstract class implements="IAiService" {
 		 * ---------------------------------------------------------------------------------------------------------
 		 */
 
-		var newMessages = aiRequest.getMessages().map( message -> message );
+		var newMessages = arguments.chatRequest.getMessages().map( message -> message );
 		result.choices.each( ( choice, index ) => {
 
 			// add the tool call into our message history
@@ -300,7 +300,7 @@ abstract class implements="IAiService" {
 
 			// find the tool, invoke it, append the result to the chat history
 			choice.message.tool_calls.each( ( toolCall, i ) => {
-				aiRequest.getTool( toolCall.function.name )
+				arguments.chatRequest.getTool( toolCall.function.name )
 					.ifPresentOrElse(
 						tool => {
 							newMessages.append({
@@ -325,9 +325,9 @@ abstract class implements="IAiService" {
 			});
 		});
 
-		aiRequest.setMessages( newMessages )
+		arguments.chatRequest.setMessages( newMessages )
 
-		return chat( aiRequest, arguments.interactionCount + 1 )
+		return chat( arguments.chatRequest, arguments.interactionCount + 1 )
 	}
 
 	/**
@@ -335,20 +335,20 @@ abstract class implements="IAiService" {
 	 * This method in this base class is based of OpenAI's standard.
 	 * If the provider does not support this standard, it should override this method.
 	 *
-	 * @aiRequest The aiRequest object to send to the provider
+	 * @chatRequest The chatRequest object to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
 	 *
 	 * @throws ProviderError if the provider returns an error from the request
 	 *
 	 * @return void
 	 */
-	public function chatStream( required AiRequest aiRequest, required function callback ){
+	public function chatStream( required AiChatRequest chatRequest, required function callback ){
 		// Build the packet according to the OpenAI standard
 		var dataPacket = {
-			"model"   : arguments.aiRequest.getModel(),
-			"messages": arguments.aiRequest.getMessages(),
+			"model"   : arguments.chatRequest.getModel(),
+			"messages": arguments.chatRequest.getMessages(),
 			"stream"  : true
-		}.append( arguments.aiRequest.getParams() )
+		}.append( arguments.chatRequest.getParams() )
 
 		// Tooling support
 		if( dataPacket.keyExists( "tools" ) ){
@@ -356,7 +356,7 @@ abstract class implements="IAiService" {
 		}
 
 		// Send it with streaming
-		sendStreamRequest( aiRequest, dataPacket, callback )
+		sendStreamRequest( chatRequest, dataPacket, callback )
 	}
 
 	/**
@@ -455,24 +455,24 @@ abstract class implements="IAiService" {
 	/**
 	 * A generic HTTP proxy to send requests to the provider
 	 *
-	 * @aiRequest The aiRequest object to use in the request
+	 * @chatRequest The chatRequest object to use in the request
 	 * @dataPacket The data packet to send to the provider
 	 *
 	 * @return The response from the provider as a struct
 	 */
-	private function sendRequest( required AiRequest aiRequest, required struct dataPacket ){
+	private function sendRequest( required AiChatRequest chatRequest, required struct dataPacket ){
 		// Announce the request
 		BoxAnnounce(
-			"onAIRequest",
+			"onAIChatRequest",
 			{
 				"dataPacket" : arguments.dataPacket,
-				"aiRequest": arguments.aiRequest,
+				"chatRequest": arguments.chatRequest,
 				"provider"   : this
 			}
 		);
 
 		// Log the request
-		if( arguments.aiRequest.getLogRequest() ){
+		if( arguments.chatRequest.getLogRequest() ){
 			writeLog(
 				text: "Request to AI Provider: #arguments.dataPacket.toString()#",
 				type: "info",
@@ -481,7 +481,7 @@ abstract class implements="IAiService" {
 		}
 
 		// Log the request to the console if enabled
-		if( arguments.aiRequest.getLogRequestToConsole() ){
+		if( arguments.chatRequest.getLogRequestToConsole() ){
 			println( "AI Request" )
 			println( arguments.dataPacket )
 		}
@@ -491,23 +491,23 @@ abstract class implements="IAiService" {
 			method  = "post"
 			result  = "chatResult"
 			charset = "utf-8"
-			timeout = arguments.aiRequest.getTimeout()
+			timeout = arguments.chatRequest.getTimeout()
 		{
 			bx:httpParam type="header" name="content-type" value="application/json";
 
 			// Auth Header ONLY if the provider requires it
 			// This is the default for OpenAI
 			// If the provider does not require it, set it to false
-			if( arguments.aiRequest.getSendAuthHeader() ){
-				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.aiRequest.getApiKey()#";
+			if( arguments.chatRequest.getSendAuthHeader() ){
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.chatRequest.getApiKey()#";
 			}
 
 			// Custom Headers
-			for( var thisHeader in arguments.aiRequest.getHeaders() ){
+			for( var thisHeader in arguments.chatRequest.getHeaders() ){
 				bx:httpParam
 					type="header"
 					name="#thisHeader#"
-					value="#arguments.aiRequest.getHeaders()[ thisHeader ]#";
+					value="#arguments.chatRequest.getHeaders()[ thisHeader ]#";
 			}
 
 			// Body Packet
@@ -529,13 +529,13 @@ abstract class implements="IAiService" {
 				operation: "chat",
 				statusCode: chatResult.statusCode,
 				errorData: errorData,
-				aiRequest: arguments.aiRequest,
+				chatRequest: arguments.chatRequest,
 				retryAfter: chatResult.responseheader.keyExists( "retry-after" ) ? chatResult.responseheader[ "retry-after" ] : ""
 			} );
 		}
 
 		// Final logging if the provider supports it
-		if( arguments.aiRequest.getLogResponse() ){
+		if( arguments.chatRequest.getLogResponse() ){
 			writeLog(
 				text: "Response from AI Provider: #chatResult.toString()#",
 				type: "info",
@@ -544,7 +544,7 @@ abstract class implements="IAiService" {
 		}
 
 		// Log the response to the console if enabled
-		if( arguments.aiRequest.getLogResponseToConsole() ){
+		if( arguments.chatRequest.getLogResponseToConsole() ){
 			println( "AI Response" )
 			println( chatResult )
 			println( "AI Deserialized Response" )
@@ -552,13 +552,13 @@ abstract class implements="IAiService" {
 		}
 
 		var iData = {
-			"aiRequest" = arguments.aiRequest,
+			"chatRequest" = arguments.chatRequest,
 			"response" = jsonDeserialize( chatResult.filecontent ),
 			"rawResponse"	: chatResult,
 			"provider" = this
 		}
 
-		BoxAnnounce( "onAIResponse", iData );
+		BoxAnnounce( "onAIChatResponse", iData );
 
 		return iData.response;
 	}
@@ -566,33 +566,33 @@ abstract class implements="IAiService" {
 	/**
 	 * A generic HTTP proxy to send streaming requests to the provider
 	 *
-	 * @aiRequest The aiRequest object to use in the request
+	 * @chatRequest The chatRequest object to use in the request
 	 * @dataPacket The data packet to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
 	 *
 	 * @return void
 	 */
 	private function sendStreamRequest(
-		required AiRequest aiRequest,
+		required AiChatRequest chatRequest,
 		required struct dataPacket,
 		required function callback
 	 ){
-		// Capture callback and aiRequest in local variables for closure scope
+		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback;
-		var thisAiRequest = arguments.aiRequest;
+		var thisChatRequest = arguments.chatRequest;
 
 		// Announce the request
 		BoxAnnounce(
-			"onAIRequest",
+			"onAIChatRequest",
 			{
 				"dataPacket" : arguments.dataPacket,
-				"aiRequest": arguments.aiRequest,
+				"chatRequest": arguments.chatRequest,
 				"provider"   : this
 			}
 		);
 
 		// Log the request
-		if( arguments.aiRequest.getLogRequest() ){
+		if( arguments.chatRequest.getLogRequest() ){
 			writeLog(
 				text: "Request to AI Provider: #arguments.dataPacket.toString()#",
 				type: "info",
@@ -601,7 +601,7 @@ abstract class implements="IAiService" {
 		}
 
 		// Log the request to the console if enabled
-		if( arguments.aiRequest.getLogRequestToConsole() ){
+		if( arguments.chatRequest.getLogRequestToConsole() ){
 			println( "AI Request (Stream)" )
 			println( arguments.dataPacket )
 		}
@@ -610,18 +610,18 @@ abstract class implements="IAiService" {
 		var httpRequest = http( getChatURL() )
 			.method( "POST" )
 			.charset( "utf-8" )
-			.timeout( arguments.aiRequest.getTimeout() )
+			.timeout( arguments.chatRequest.getTimeout() )
 			.header( "content-type", "application/json" )
 			.sse( true ); // Enable SSE mode for Server-Sent Events
 
 		// Auth Header ONLY if the provider requires it
-		if( arguments.aiRequest.getSendAuthHeader() ){
-			httpRequest.header( "Authorization", "Bearer #arguments.aiRequest.getApiKey()#" );
+		if( arguments.chatRequest.getSendAuthHeader() ){
+			httpRequest.header( "Authorization", "Bearer #arguments.chatRequest.getApiKey()#" );
 		}
 
 		// Add custom headers
-		for( var thisHeader in arguments.aiRequest.getHeaders() ){
-			httpRequest.header( thisHeader, arguments.aiRequest.getHeaders()[ thisHeader ] );
+		for( var thisHeader in arguments.chatRequest.getHeaders() ){
+			httpRequest.header( thisHeader, arguments.chatRequest.getHeaders()[ thisHeader ] );
 		}
 
 		// Set request body and setup callbacks
@@ -663,7 +663,7 @@ abstract class implements="IAiService" {
 					errorMessage: errorMessage,
 					provider: this,
 					operation: "stream",
-					aiRequest: thisAiRequest,
+					aiRequest: thisChatRequest,
 					canRetry: true
 				} );
 
@@ -674,7 +674,7 @@ abstract class implements="IAiService" {
 			} )
 			.onComplete( ( httpResult ) => {
 				// Log the response if enabled
-				if( thisAiRequest.getLogResponse() ){
+				if( thisChatRequest.getLogResponse() ){
 					writeLog(
 						text: "Stream completed successfully",
 						type: "info",
@@ -683,9 +683,9 @@ abstract class implements="IAiService" {
 				}
 
 				BoxAnnounce(
-					"onAIResponse",
+					"onAIChatResponse",
 					{
-						"aiRequest" : thisAiRequest,
+						"chatRequest" : thisChatRequest,
 						"provider"    : this,
 						"streamComplete" : true
 					}
@@ -829,20 +829,20 @@ abstract class implements="IAiService" {
 	 * Handles classes, structs, and arrays based on the original definition
 	 *
 	 * @content The JSON content from the LLM
-	 * @aiRequest The request containing the structured output definition
+	 * @chatRequest The request containing the structured output definition
 	 *
 	 * @return Populated class instance, struct, or array
 	 */
-	private any function populateStructuredOutput( required string content, required AiRequest aiRequest ){
+	private any function populateStructuredOutput( required string content, required AiChatRequest chatRequest ){
 
 		// println( "Populating structured output..." )
 		// println( "Content: #arguments.content#" )
-		// println( "Definition: #arguments.aiRequest.getStructuredOutput().toString()#" )
+		// println( "Definition: #arguments.chatRequest.getStructuredOutput().toString()#" )
 
 		// Extract from code block if needed
 		var jsonContent = extractFromCodeBlock( arguments.content, "json" );
 		// The structured output definition: class, struct, or array
-		var outputDefinition = arguments.aiRequest.getStructuredOutputDefinition();
+		var outputDefinition = arguments.chatRequest.getStructuredOutputDefinition();
 
 		// Class instance - populate and return
 		if( isObject( outputDefinition ) ){

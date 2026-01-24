@@ -429,7 +429,7 @@ abstract class implements="IAiRunnable" {
 	 */
 	public IAiRunnable function structuredOutputs( required array schemas ) {
 		// Merge the schemas into a single struct-based schema
-		// Mark it so AiRequest knows it's already a schema (not data to infer from)
+		// Mark it so the chat request knows it's already a schema (not data to infer from)
 		var mergedSchema = SchemaBuilder::merge( arguments.schemas );
 		mergedSchema._isSchema = true;  // Flag to prevent re-processing
 		return this.withOptions( { returnFormat: mergedSchema } );

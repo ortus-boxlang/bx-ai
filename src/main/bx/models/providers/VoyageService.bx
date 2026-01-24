@@ -43,7 +43,7 @@ class extends="BaseService"{
 	 * Override chat to throw error since Voyage doesn't support chat
 	 */
 	@override
-	private function chat( required AiRequest aiRequest ){
+	private function chat( required AiChatRequest chatRequest ){
 		throw(
 			type: "UnsupportedOperation",
 			message: "Voyage AI only supports embeddings, not chat completions. Use aiEmbed() or aiEmbedding() instead."
@@ -54,7 +54,7 @@ class extends="BaseService"{
 	 * Override chatStream to throw error since Voyage doesn't support chat
 	 */
 	@override
-	private function chatStream( required AiRequest aiRequest, required function callback ){
+	private function chatStream( required AiChatRequest chatRequest, required function callback ){
 		throw(
 			type: "UnsupportedOperation",
 			message: "Voyage AI only supports embeddings, not chat completions. Use aiEmbed() or aiEmbedding() instead."

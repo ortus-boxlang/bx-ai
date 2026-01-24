@@ -38,23 +38,23 @@ interface{
 	IAiService function configure( required any apiKey );
 
 	/**
-	 * Invoke the provider service with a AiRequestobject
+	 * Invoke the provider service with a AiChatRequest object
 	 *
-	 * @aiRequest The AiRequestobject to send to the provider
+	 * @chatRequest The AiChatRequest object to send to the provider
 	 *
 	 * @return The response from the service, which can be anything according to their specs: string, or struct, or whatever
 	 */
-	function invoke( required AiRequest aiRequest );
+	function invoke( required AiChatRequest chatRequest );
 
 	/**
-	 * Invoke the provider service with a AiRequestobject in streaming mode
+	 * Invoke the provider service with a AiChatRequest object in streaming mode
 	 *
-	 * @aiRequest The AiRequestobject to send to the provider
+	 * @chatRequest The AiChatRequest object to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream: `( chunk ) => { ... }`
 	 *
 	 * @return void
 	 */
-	function invokeStream( required AiRequest aiRequest, required function callback );
+	function invokeStream( required AiChatRequest chatRequest, required function callback );
 
 	/**
 	 * Generate embeddings for the given input text(s)

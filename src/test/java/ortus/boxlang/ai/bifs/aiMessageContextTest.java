@@ -24,7 +24,7 @@ import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
 
-public class aiRequestContextTest extends BaseIntegrationTest {
+public class aiMessageContextTest extends BaseIntegrationTest {
 
 	@DisplayName( "Can create an AiMessage with context" )
 	@Test
@@ -316,9 +316,9 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		assertThat( messageContent ).doesNotContain( "${context}" );
 	}
 
-	@DisplayName( "AiRequest constructor merges context from options and renders messages" )
+	@DisplayName( "AiChatRequest constructor merges context from options and renders messages" )
 	@Test
-	public void testAiRequestContextFromOptions() {
+	public void testAiChatRequestContextFromOptions() {
 
 		// @formatter:off
 		runtime.executeSource(
@@ -330,12 +330,12 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 
 				message = aiMessage( "Context: ${context}. Help me." )
 
-				aiRequest = aiChatRequest(
+				chatRequest = aiChatRequest(
 					messages: message,
 					options: { context: contextData }
 				)
 
-				messages = aiRequest.getMessages()
+				messages = chatRequest.getMessages()
 				messageContent = messages[1].content
 		    """,
 		    context
@@ -348,9 +348,9 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		assertThat( messageContent ).doesNotContain( "${context}" );
 	}
 
-	@DisplayName( "AiRequest renders messages even without context" )
+	@DisplayName( "AiChatRequest renders messages even without context" )
 	@Test
-	public void testAiRequestRendersWithoutContext() {
+	public void testAiChatRequestRendersWithoutContext() {
 
 		// @formatter:off
 		runtime.executeSource(
@@ -358,9 +358,9 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 				message = aiMessage( "Hello ${name}" )
 					.bind( { name: "World" } )
 
-				aiRequest = aiChatRequest( message )
+				chatRequest = aiChatRequest( message )
 
-				messages = aiRequest.getMessages()
+				messages = chatRequest.getMessages()
 				messageContent = messages[1].content
 		    """,
 		    context
@@ -371,9 +371,9 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 		assertThat( messageContent ).isEqualTo( "Hello World" );
 	}
 
-	@DisplayName( "AiRequest context merges with existing message context" )
+	@DisplayName( "AiChatRequest context merges with existing message context" )
 	@Test
-	public void testAiRequestContextMergesWithMessageContext() {
+	public void testAiChatRequestContextMergesWithMessageContext() {
 
 		// @formatter:off
 		runtime.executeSource(
@@ -381,12 +381,12 @@ public class aiRequestContextTest extends BaseIntegrationTest {
 				message = aiMessage( "Context: ${context}" )
 					.setContext( { existingKey: "existing-value" } )
 
-				aiRequest = aiChatRequest(
+				chatRequest = aiChatRequest(
 					messages: message,
 					options: { context: { newKey: "new-value" } }
 				)
 
-				messages = aiRequest.getMessages()
+				messages = chatRequest.getMessages()
 				messageContent = messages[1].content
 		    """,
 		    context
