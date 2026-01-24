@@ -62,6 +62,7 @@ services:
       "ollama serve &
       sleep 10
       # Preload a model
+      ollama pull nomic-embed-text
       ollama pull qwen2.5:0.5b-instruct
       ollama pull gemma3
       wait"

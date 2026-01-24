@@ -56,6 +56,11 @@ abstract class implements="IAiService" {
 	property name = "params" type = "struct" default = {};
 
 	/**
+	 * The default params to use with the provider
+	 */
+	property name = "embedParams" type = "struct" default = {};
+
+	/**
 	 * The default headers to use with the provider
 	 */
 	property name = "headers" type = "struct" default = {};
@@ -86,8 +91,9 @@ abstract class implements="IAiService" {
 	 *
 	 * @return The service instance
 	 */
-	IAiService function defaults( required params ){
+	IAiService function defaults( required params, embedParams = {} ){
 		variables.params.append( arguments.params, true );
+		variables.embedParams.append( arguments.embedParams, true );
 		return this;
 	}
 
