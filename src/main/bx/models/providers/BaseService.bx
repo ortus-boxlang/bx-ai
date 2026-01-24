@@ -292,7 +292,8 @@ abstract class implements="IAiService" {
 		 * ---------------------------------------------------------------------------------------------------------
 		 */
 
-		var newMessages = arguments.chatRequest.getMessages().map( message -> message );
+		// Capture chatRequest in local scope for use in nested closures
+		var newMessages = arguments.chatRequest.getMessages().map( message -> message )
 		result.choices.each( ( choice, index ) => {
 
 			// add the tool call into our message history
@@ -300,7 +301,7 @@ abstract class implements="IAiService" {
 
 			// find the tool, invoke it, append the result to the chat history
 			choice.message.tool_calls.each( ( toolCall, i ) => {
-				arguments.chatRequest.getTool( toolCall.function.name )
+				chatRequest.getTool( toolCall.function.name )
 					.ifPresentOrElse(
 						tool => {
 							newMessages.append({

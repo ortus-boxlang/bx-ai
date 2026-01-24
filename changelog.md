@@ -11,8 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
 
+### Added
+
+- `aiModel()` BIF now accepts an additional `options` struct for model creation options.
+
+### Changed
+
+- `AiRequest` class renamed to `AiChatRequest` for clarity, and multi-modality support.
+
 ### Fixed
 
+- Events for chat requests were incorrectly named in the ModuleConfig.bx file. Corrected to `onAIChatRequest`, `onAIChatRequestCreate`, and `onAIChatResponse`.
+- `aiChat, aiChatStream` BIF was not passing headers to the AiChatRequest.
+- `aiChat, aiChatStream, aiChatAsync` BIF was not using `aiChatRequest()` to build the request, but was building it manually.
 - According to the MCP spec prompts should return a key named "arguments" not "args".
 - AiRequest was not setting the model correctly from params.
 - API key was not being passed to the service in `aiChat(), aiChatStream()` BIF.
