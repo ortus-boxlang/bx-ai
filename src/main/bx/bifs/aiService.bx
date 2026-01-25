@@ -46,71 +46,78 @@ class {
 	 * You can pass an optional API key to use with the AI Service Provider to override the default API key from the configuration.
 	 *
 	 * @provider The provider to use. If not provided, the provider will use the default provider from the configuration.
-	 * @apiKey The API key to use with the provider, if not provided the provider will use the default key from the configuration.
+	 * @options A struct of options to configure the provider instance, or a simple API key value.
 	 *
 	 * @throws ProviderNotSupported if the provider is not supported
 	 *
-	 * @return The AI Service Provider
+	 * @return The AI Service Provider instance
      */
-    function invoke( string provider, any apiKey ) {
-        // Default the provider from the module settings if not provided
-		arguments.provider = arguments.provider ?: moduleRecord.settings.provider;
+    function invoke( string provider, any options = {} ) {
+        // Choose the provider in the following order:
+		// 1. Argument provider
+		// 2. Module setting provider
+		arguments.provider = arguments.provider ?: moduleRecord.settings.provider
+
+		// In case an `arguments.apiKey` is passed as a simple value, convert to options struct
+		if( arguments.keyExists( "apiKey" ) ){
+			arguments.options.apiKey = arguments.apiKey
+		}
 
         // By convention check if there is a <PROVIDER>_API_KEY setting override it
-        var conventionAPIKey = getSystemSetting( "#arguments.provider.ucase()#_API_KEY", "" );
+        var conventionAPIKey = getSystemSetting( "#arguments.provider.ucase()#_API_KEY", "" )
         if( isNull( arguments.apiKey ) && len( conventionAPIKey ) ){
-            arguments.apiKey = conventionAPIKey;
+            arguments.options.apiKey = conventionAPIKey
         }
         // Else use the module setting
-		arguments.apiKey = arguments.apiKey ?: moduleRecord.settings.apiKey;
+		arguments.options.apiKey = 	arguments.options.apiKey ?: moduleRecord.settings.apiKey
 
         // Build the target service
-		var oTargetService = null;
+		var targetClass = ""
 		switch( arguments.provider ) {
 			case "claude":
-				oTargetService = new bxModules.bxai.models.providers.ClaudeService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.ClaudeService"
 				break
             case "cohere":
-                oTargetService = new bxModules.bxai.models.providers.CohereService().configure( arguments.apiKey )
+                targetClass = "bxModules.bxai.models.providers.CohereService"
                 break
 			case "deepseek":
-				oTargetService = new bxModules.bxai.models.providers.DeepSeekService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.DeepSeekService"
 				break
 			case "gemini":
-				oTargetService = new bxModules.bxai.models.providers.GeminiService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.GeminiService"
 				break
 			case "grok":
-				oTargetService = new bxModules.bxai.models.providers.GrokService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.GrokService"
 				break
 			case "groq":
-				oTargetService = new bxModules.bxai.models.providers.GroqService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.GroqService"
 				break
 			case "huggingface":
-				oTargetService = new bxModules.bxai.models.providers.HuggingFaceService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.HuggingFaceService"
 				break
 			case "mistral":
-				oTargetService = new bxModules.bxai.models.providers.MistralService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.MistralService"
 				break
 			case "ollama":
-				oTargetService = new bxModules.bxai.models.providers.OllamaService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.OllamaService"
 				break
 			case "openai" :
-				oTargetService = new bxModules.bxai.models.providers.OpenAIService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.OpenAIService"
 				break
 			case "openrouter":
-				oTargetService = new bxModules.bxai.models.providers.OpenRouterService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.OpenRouterService"
 				break
 			case "perplexity":
-				oTargetService = new bxModules.bxai.models.providers.PerplexityService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.PerplexityService"
 				break
             case "voyage":
-                oTargetService = new bxModules.bxai.models.providers.VoyageService().configure( arguments.apiKey )
+                targetClass = "bxModules.bxai.models.providers.VoyageService"
                 break
 			default:
 				// Announce the provider request so contributors can listen and provide a service
 				// This is for our aiplus module
-				var iData = { provider: arguments.provider, apiKey: arguments.apiKey, service : null };
-				BoxAnnounce( "onAIProviderRequest", iData );
+				var iData = { provider: arguments.provider, options: arguments.options };
+				BoxAnnounce( "onMissingAiProvider", iData );
 
 				if( iData.service == null ){
 					throw(
@@ -118,9 +125,13 @@ class {
 						message: "Provider [#arguments.provider#] is not supported.  Valid Providers are: [#static.CORE_PROVIDERS.toList()#]"
 					);
 				}
-				oTargetService = iData.service;
+				return iData.service;
 		}
 
+		// Create the service instance
+		var oTargetService = new "#targetClass#"().configure( arguments.options )
+
+		// Announce
 		BoxAnnounce( "onAIProviderCreate", { provider: oTargetService } );
 
 		return oTargetService;

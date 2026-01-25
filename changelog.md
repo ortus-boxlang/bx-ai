@@ -13,10 +13,14 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
 
 ### Added
 
+- New event: `onMissingAiProvider` to handle cases where a requested provider is not found.
 - `aiModel()` BIF now accepts an additional `options` struct for model creation options.
+- New configuration: `providers` so you can predefine multiple providers in the module config, with default `params` and `options`.
+- OllamaService now supports custom base URLs for both chat and embeddings endpoints via the `options.baseUrl` parameter.
 
 ### Changed
 
+- `IAiService.configure()` method now accepts a generic `options` argument instead of `apiKey`, to better reflect its purpose and support more configuration options.
 - `AiRequest` class renamed to `AiChatRequest` for clarity, and multi-modality support.
 
 ### Fixed

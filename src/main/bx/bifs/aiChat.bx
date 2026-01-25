@@ -90,7 +90,7 @@ class {
 		// Get the provider and chat with it
 		return aiService(
 			provider: arguments.options?.provider,
-			apiKey: arguments.options?.apiKey
+			options: arguments.options
 		).invoke( chatRequest );
 	}
 

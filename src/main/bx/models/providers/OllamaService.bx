@@ -23,10 +23,12 @@ class extends="BaseService"{
 			// Popular local models - users can override with any Ollama model
 			"model" : "qwen2.5:0.5b-instruct",
 			"stream": false  // Ollama supports both streaming and non-streaming
-		};
+		}
 		DEFAULT_EMBED_PARAMS = {
 			"model" : "nomic-embed-text"
-		};
+		}
+		DEFAULT_CHAT_ENDPOINT = "api/chat"
+		DEFAULT_EMBED_ENDPOINT = "api/embeddings"
 	}
 
 	/**
@@ -34,14 +36,41 @@ class extends="BaseService"{
 	 */
 	function init(){
 		// Default to local Ollama instance
-		variables.chatURL = "http://localhost:11434/api/chat"
-		variables.embeddingsURL = "http://localhost:11434/api/embeddings"
+		variables.chatURL = "http://localhost:11434/#static.DEFAULT_CHAT_ENDPOINT#"
+		variables.embeddingsURL = "http://localhost:11434/#static.DEFAULT_EMBED_ENDPOINT#"
 		variables.name = "Ollama"
 
 		defaults( static.DEFAULT_CHAT_PARAMS )
 
 		// Ollama typically doesn't require auth headers for local instances
 		// But supports basic auth for remote/secured instances
+	}
+
+	/**
+	 * Configure the service with the API key
+	 *
+	 * @apiKey - The API key to use with the provider
+	 *
+	 * @throws InvalidConfiguration if the options are not valid
+	 *
+	 * @return The configured service instance
+	 */
+	IAiService function configure( required any options ){
+		super.configure( arguments.options )
+
+		// Check if we have an options.baseUrl for all the endpoints
+		if( variables.options.keyExists( "baseUrl" ) ){
+			var baseUrl = variables.options.baseUrl
+			// If it doesn't end with a slash, add it
+			if( !baseUrl.endsWith( "/" ) ){
+				baseUrl &= "/"
+			}
+			// Set the endpoints
+			variables.chatURL = baseUrl & static.DEFAULT_CHAT_ENDPOINT
+			variables.embeddingsURL = baseUrl & static.DEFAULT_EMBED_ENDPOINT
+		}
+
+		return this
 	}
 
 	/**
@@ -353,26 +382,6 @@ class extends="BaseService"{
 					});
 				}
 			);
-	}
-
-	/**
-	 * Override the chat URL setter to support custom Ollama hosts
-	 *
-	 * @url The base URL for the Ollama instance
-	 * @return This service instance for chaining
-	 */
-	public function setChatURL( required string url ){
-		// Ensure URL ends with the correct endpoint
-		if( !arguments.url.endsWith( "/api/chat" ) ){
-			if( arguments.url.endsWith( "/" ) ){
-				arguments.url &= "api/chat";
-			} else {
-				arguments.url &= "/api/chat";
-			}
-		}
-
-		variables.chatURL = arguments.url;
-		return this;
 	}
 
 }

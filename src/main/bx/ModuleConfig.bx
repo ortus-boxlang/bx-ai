@@ -112,7 +112,7 @@ class {
 			// Ex: { temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
 			defaultParams : {
 			},
-			// The default memory to use
+			// The default memory to use when calling aiMemory()
 			memory : {
 				provider : "window",
 				config : {}
@@ -160,7 +160,7 @@ class {
 			"afterAIModelInvoke",
 			"onAIModelCreate",
 			"onAIProviderCreate",
-			"onAIProviderRequest",
+			"onMissingAiProvider",
 
 			// Request & Response Events
 			"onAIChatRequest",

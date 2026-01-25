@@ -72,7 +72,7 @@ class {
 		);
 
 		// Get the service
-		var service = aiService( arguments.options?.provider, arguments.options?.apiKey );
+		var service = aiService( arguments.options?.provider, arguments.options );
 
 		// Announce the embedding request
 		BoxAnnounce( "beforeAIEmbed", { embeddingRequest: embeddingRequest, service: service } );

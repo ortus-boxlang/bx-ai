@@ -82,7 +82,7 @@ class {
 		// Get the provider and chat stream with it
 		aiService(
 			provider: arguments.options?.provider,
-			apiKey: arguments.options?.apiKey
+			options: arguments.options
 		).invokeStream( chatRequest, arguments.callback );
 	}
 

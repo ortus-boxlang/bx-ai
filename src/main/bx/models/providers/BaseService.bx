@@ -31,7 +31,7 @@ import bxModules.bxai.models.util.SchemaBuilder;
 abstract class implements="IAiService" {
 
 	/**
-	 * The name of the LLM
+	 * The name of the LLM service provider
 	 */
 	property name="name" default="";
 
@@ -51,12 +51,12 @@ abstract class implements="IAiService" {
 	property name = "embeddingsURL" default = "";
 
 	/**
-	 * The default params to use with the provider
+	 * The default params to send to the provider
 	 */
 	property name = "params" type = "struct" default = {};
 
 	/**
-	 * The default headers to use with the provider
+	 * The default headers to send to the provider
 	 */
 	property name = "headers" type = "struct" default = {};
 
@@ -65,6 +65,12 @@ abstract class implements="IAiService" {
 	 * Default: 10
 	 */
 	property name = "maxInteractions" type = "numeric" default = 10;
+
+	/**
+	 * Configuration options for a service provider.
+	 * This can include API keys, endpoints, and other settings.
+	 */
+	property name="options" type="struct" default={};
 
 	/**
 	 * Constants
@@ -113,10 +119,29 @@ abstract class implements="IAiService" {
 	 *
 	 * @apiKey - The API key to use with the provider
 	 *
-	 * @return The service instance
+	 * @throws InvalidConfiguration if the options are not valid
+	 *
+	 * @return The configured service instance
 	 */
-	IAiService function configure( required any apiKey ){
-		variables.apiKey = arguments.apiKey;
+	IAiService function configure( required any options ){
+		// If it's a simple value, assume it's an API key
+		if( isSimpleValue( arguments.options ) ){
+			variables.apiKey = arguments.options
+			return this
+		}
+
+		// If it's not a struct, throw an error
+		if( !isStruct( arguments.options ) ){
+			throw(
+				type   : "InvalidConfiguration",
+				message: "The configure() method expects either a simple API key string or a struct of options."
+			);
+		}
+
+		// Otherwise, it's a struct of options
+		variables.options = arguments.options
+		variables.apiKey = arguments.options?.apiKey ?: ""
+
 		return this;
 	}
 

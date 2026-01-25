@@ -46,9 +46,9 @@ public class OllamaTest extends BaseIntegrationTest {
 		// Execute aiChat BIF with a simple question
 		runtime.executeSource(
 		    """
-		       result = aiChat( "What is 2+2? Answer with just the number." )
+		    result = aiChat( "What is 2+2? Answer with just the number." )
 		    println( result )
-		       """,
+		    """,
 		    context
 		);
 
