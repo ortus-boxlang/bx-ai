@@ -21,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
+import ortus.boxlang.runtime.scopes.Key;
 
 /**
  * Integration tests for Ollama AI provider
@@ -240,5 +241,33 @@ public class OllamaTest extends BaseIntegrationTest {
 		var result = ( ortus.boxlang.runtime.types.IStruct ) variables.get( "result" );
 		assertThat( result.containsKey( "name" ) || result.containsKey( "NAME" ) ).isTrue();
 		assertThat( result.containsKey( "version" ) || result.containsKey( "VERSION" ) ).isTrue();
+	}
+
+	@DisplayName( "Test Ollama embedding with single text" )
+	@Test
+	public void testOllamaEmbeddingSingle() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiEmbed(
+				input: "BoxLang is a modern dynamic JVM language",
+				options: { provider: "ollama" }
+			)
+			println( "Ollama Embedding result type: " & result.getClass().getName() )
+			isArray = isArray( result )
+			embeddingLength = result.len()
+			println( "Embedding dimensions: " & embeddingLength )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var	isArray			= variables.getAsBoolean( Key.of( "isArray" ) );
+		var	embeddingLength	= variables.getAsInteger( Key.of( "embeddingLength" ) );
+
+		assertThat( isArray ).isTrue();
+		// embed-english-v3.0 produces 1024-dimensional vectors
+		// nomic-embed-text produces 768-dimensional vectors
+		assertThat( embeddingLength ).isAtLeast( 768 );
 	}
 }

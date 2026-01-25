@@ -41,6 +41,7 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
 - OllamaService now supports custom base URLs for both chat and embeddings endpoints via the `options.baseUrl` parameter.
 - `AiBaseRequest.mergeServiceParams()` and `AiBaseRequest.mergeServiceHeaders()` methods now accept an `override` boolean argument to control whether existing values should be overwritten when merging.
 - Local Ollama docker setup instructions updated to include the `nomic-embed-text` model for embeddings support.
+- Ollama Service now supports embedding generation using the `nomic-embed-text` model.
 
 ### Changed
 

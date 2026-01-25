@@ -28,7 +28,7 @@ class extends="BaseService"{
 			"model" : "nomic-embed-text"
 		}
 		DEFAULT_CHAT_ENDPOINT = "api/chat"
-		DEFAULT_EMBED_ENDPOINT = "api/embeddings"
+		DEFAULT_EMBED_ENDPOINT = "api/embed"
 	}
 
 	/**
@@ -340,6 +340,91 @@ class extends="BaseService"{
 				);
 			} )
 			.send();
+	}
+
+	/**
+	 * Generate embeddings for the given input text(s)
+	 *
+	 * @embeddingRequest The embedding request object containing input and parameters
+	 *
+	 * @return The embeddings response from the provider
+	 */
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		// Seed the embedding request with defaults
+		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
+		// Model Selection if not set, use the default in the service
+		embeddingRequest
+			.setModelIfEmpty( variables.params.model ?: "" )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers )
+
+		// Build the packet according to the OpenAI embeddings API standard
+		var dataPacket = {
+			"input": arguments.embeddingRequest.getInput(),
+			"model": arguments.embeddingRequest.getModel()
+		}.append( arguments.embeddingRequest.getParams() )
+
+		// Send it
+		var result = sendEmbeddingRequest( embeddingRequest, dataPacket )
+
+		// If an error is returned, throw it
+		if( result.keyExists( "error" ) ){
+			writeLog(
+				text: result.error.toString(),
+				type: "error",
+				log : "ai"
+			)
+
+			// Announce the error
+			BoxAnnounce( "onAIError", {
+				error: result.error,
+				errorMessage: result.error.toString(),
+				provider: this,
+				operation: "embeddings",
+				embeddingRequest: arguments.embeddingRequest,
+				canRetry: true
+			} );
+
+			throw(
+				type   : "ProviderError",
+				message: result.error.toString()
+			);
+		}
+
+        // Verify that data key exists, else throw an exception with the raw response
+        if( !result.keyExists( "embeddings" ) ){
+            writeLog(
+                text: "Invalid embedding response: #result.toString()#",
+                type: "error",
+                log : "ai"
+            )
+
+            // Announce the error
+            BoxAnnounce( "onAIError", {
+                error: "Invalid embedding response",
+                errorMessage: "Invalid embedding response from provider. Response: #result.toString()#",
+                provider: this,
+                operation: "embeddings",
+                embeddingRequest: arguments.embeddingRequest,
+                canRetry: false
+            } );
+
+            throw(
+                type   : "ProviderError",
+                message: "Invalid embedding response from provider. Response: #result.toString()#"
+            );
+        }
+
+		// Determine return formats
+		switch( embeddingRequest.getReturnFormat() ){
+			case "embeddings":
+				return result.embeddings.map( item => item );
+			case "raw":
+				return result;
+			case "first": default:
+				return result.embeddings.first();
+		}
 	}
 
 	/**

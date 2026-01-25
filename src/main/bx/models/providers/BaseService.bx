@@ -51,12 +51,12 @@ abstract class implements="IAiService" {
 	property name = "embeddingsURL" default = "";
 
 	/**
-	 * The default params to send to the provider
+	 * The default params to send to the provider on ANY request (chat, embeddings, etc.)
 	 */
 	property name = "params" type = "struct" default = {};
 
 	/**
-	 * The default headers to send to the provider
+	 * The default headers to send to the provider on ANY request (chat, embeddings, etc.)
 	 */
 	property name = "headers" type = "struct" default = {};
 
