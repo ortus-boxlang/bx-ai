@@ -412,7 +412,6 @@ abstract class implements="IAiService" {
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
 		// Model Selection if not set, use the default in the service
 		arguments.embeddingRequest
-			.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceParams( variables.params )
 			.mergeServiceHeaders( variables.headers )
