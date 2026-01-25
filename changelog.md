@@ -39,9 +39,11 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
 ```
 
 - OllamaService now supports custom base URLs for both chat and embeddings endpoints via the `options.baseUrl` parameter.
+- `AiBaseRequest.mergeServiceParams()` and `AiBaseRequest.mergeServiceHeaders()` methods now accept an `override` boolean argument to control whether existing values should be overwritten when merging.
 
 ### Changed
 
+- All AI provider services now inherit default chat and embedding parameters from the `IAiService` interface, ensuring consistent behavior across providers.
 - `IAiService.configure()` method now accepts a generic `options` argument instead of `apiKey`, to better reflect its purpose and support more configuration options.
 - `AiRequest` class renamed to `AiChatRequest` for clarity, and multi-modality support.
 

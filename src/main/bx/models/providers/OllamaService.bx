@@ -39,9 +39,6 @@ class extends="BaseService"{
 		variables.chatURL = "http://localhost:11434/#static.DEFAULT_CHAT_ENDPOINT#"
 		variables.embeddingsURL = "http://localhost:11434/#static.DEFAULT_EMBED_ENDPOINT#"
 		variables.name = "Ollama"
-
-		defaults( static.DEFAULT_CHAT_PARAMS )
-
 		// Ollama typically doesn't require auth headers for local instances
 		// But supports basic auth for remote/secured instances
 	}
@@ -71,6 +68,33 @@ class extends="BaseService"{
 		}
 
 		return this
+	}
+
+	/**
+	 * Invoke a request to the provider
+	 *
+	 * @chatRequest The AI request to send to the provider
+	 *
+	 * @return The response from the provider according to the return format in the AI request
+	 */
+	function invoke( required AiChatRequest chatRequest ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.invoke( arguments.chatRequest )
+	}
+
+	/**
+	 * Invoke a request to the provider in streaming mode
+	 *
+	 * @chatRequest The Chat request to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
+	 *
+	 * @return void
+	 */
+	function invokeStream( required AiChatRequest chatRequest, required function callback ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.invokeStream( arguments.chatRequest, arguments.callback )
 	}
 
 	/**
