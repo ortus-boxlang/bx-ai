@@ -78,7 +78,7 @@ class {
 		var targetClass = ""
 		switch( arguments.provider ) {
 			case "bedrock":
-				oTargetService = new bxModules.bxai.models.providers.BedrockService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.BedrockService"
 				break
 			case "claude":
 				targetClass = "bxModules.bxai.models.providers.ClaudeService"
@@ -90,7 +90,7 @@ class {
 				targetClass = "bxModules.bxai.models.providers.DeepSeekService"
 				break
 			case "docker":
-				oTargetService = new bxModules.bxai.models.providers.DockerModelRunnerService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.DockerModelRunnerService"
 				break
 			case "gemini":
 				targetClass = "bxModules.bxai.models.providers.GeminiService"
@@ -114,7 +114,7 @@ class {
 				targetClass = "bxModules.bxai.models.providers.OpenAIService"
 				break
 			case "openai-compatible":
-				oTargetService = new bxModules.bxai.models.providers.OpenAICompatibleService().configure( arguments.apiKey )
+				targetClass = "bxModules.bxai.models.providers.OpenAICompatibleService"
 				break
 			case "openrouter":
 				targetClass = "bxModules.bxai.models.providers.OpenRouterService"

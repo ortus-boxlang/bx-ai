@@ -92,7 +92,7 @@ class extends="BaseService" {
 	 */
 	@override
 	IAiService function configure( required any config ) {
-		// Delegate to parent for standard configuration
+		// Delegate to parent for standard configuration (handles apiKey, model extraction to params)
 		super.configure( arguments.config );
 
 		// Store baseURL for reference if provided, applying same /v1 normalization as setBaseURL()
@@ -143,32 +143,32 @@ class extends="BaseService" {
 	/**
 	 * Override chat to disable auth header when no API key is set
 	 *
-	 * @aiRequest The AiRequest object to send to the provider
+	 * @chatRequest The AiChatRequest object to send to the provider
 	 * @interactionCount Current tool call interaction count (used internally)
 	 *
 	 * @return The response from the provider according to the return format
 	 */
 	@override
-	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ) {
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ) {
 		// If no API key is set, disable auth header
 		if ( variables.apiKey.isEmpty() || !len( variables.apiKey ) ) {
-			arguments.aiRequest.setSendAuthHeader( false );
+			arguments.chatRequest.setSendAuthHeader( false );
 		}
 
-		return super.chat( aiRequest = arguments.aiRequest, interactionCount = arguments.interactionCount );
+		return super.chat( chatRequest = arguments.chatRequest, interactionCount = arguments.interactionCount );
 	}
 
 	/**
 	 * Override chatStream to disable auth header when no API key is set
 	 *
-	 * @aiRequest The AiRequest object to send to the provider
+	 * @chatRequest The AiChatRequest object to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream
 	 */
 	@override
-	public function chatStream( required AiRequest aiRequest, required function callback ) {
+	public function chatStream( required AiChatRequest chatRequest, required function callback ) {
 		// If no API key is set, disable auth header
 		if ( variables.apiKey.isEmpty() || !len( variables.apiKey ) ) {
-			arguments.aiRequest.setSendAuthHeader( false );
+			arguments.chatRequest.setSendAuthHeader( false );
 		}
 
 		return super.chatStream( argumentCollection = arguments );
@@ -182,16 +182,12 @@ class extends="BaseService" {
 	 */
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ) {
-		// Set default embedding model if not specified (only if default is configured)
-		if ( embeddingRequest.getModel().isEmpty() && !static.DEFAULT_EMBED_PARAMS.isEmpty() ) {
-			embeddingRequest.setModelIfEmpty( static.DEFAULT_EMBED_PARAMS.model ?: "" );
-		}
-
 		// If no API key is set, disable auth header
 		if ( variables.apiKey.isEmpty() || !len( variables.apiKey ) ) {
 			arguments.embeddingRequest.setSendAuthHeader( false );
 		}
 
+		// Parent class handles model from params via mergeServiceParams()
 		return super.embeddings( embeddingRequest );
 	}
 

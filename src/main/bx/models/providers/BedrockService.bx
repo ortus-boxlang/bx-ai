@@ -627,19 +627,19 @@ class extends = "BaseService"{
 	/**
 	 * Override chat to handle Bedrock-specific request signing and model transformation
 	 *
-	 * @aiRequest        The AiRequest object
+	 * @chatRequest      The AiChatRequest object
 	 * @interactionCount Current tool call interaction count
 	 */
 		@override
-	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ){
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
 		// Get the model to use
-		var modelId = len( variables.modelId ) ? variables.modelId : arguments.aiRequest.getModel();
+		var modelId = len( variables.modelId ) ? variables.modelId : arguments.chatRequest.getModel();
 		if ( !len( modelId ) ) {
 			modelId = variables.params.model;
 		}
 
 		// Determine the endpoint identifier (use inference profile ARN if provided)
-		var inferenceProfileArn = arguments.aiRequest.getProviderOption( "inferenceProfileArn" );
+		var inferenceProfileArn = arguments.chatRequest.getProviderOption( "inferenceProfileArn" );
 		var endpointId = len( inferenceProfileArn ) ? inferenceProfileArn : modelId;
 
 		// Detect model family for request/response transformation (always use modelId for this)
@@ -647,13 +647,13 @@ class extends = "BaseService"{
 
 		// Build the request body for the specific model
 		var dataPacket = transformRequestForModel(
-			messages    = arguments.aiRequest.getMessages(),
-			params      = arguments.aiRequest.getParams(),
+			messages    = arguments.chatRequest.getMessages(),
+			params      = arguments.chatRequest.getParams(),
 			modelFamily = modelFamily
 		);
 
 		// Send the request to Bedrock (use endpointId which may be an inference profile ARN)
-		var result = sendBedrockRequest( endpointId, dataPacket, arguments.aiRequest );
+		var result = sendBedrockRequest( endpointId, dataPacket, arguments.chatRequest );
 
 		// Check for errors
 		if ( result.keyExists( "error" ) ) {
@@ -670,7 +670,7 @@ class extends = "BaseService"{
 					errorMessage : result.error.toString(),
 					provider     : this,
 					operation    : "chat",
-					aiRequest    : arguments.aiRequest,
+					chatRequest  : arguments.chatRequest,
 					canRetry     : true
 				}
 			);
@@ -692,12 +692,12 @@ class extends = "BaseService"{
 					promptTokens        : openAIResponse.usage.prompt_tokens,
 					completionTokens    : openAIResponse.usage.completion_tokens,
 					totalTokens         : openAIResponse.usage.total_tokens,
-					aiRequest           : arguments.aiRequest,
+					chatRequest         : arguments.chatRequest,
 					usage               : openAIResponse.usage,
 					// Multi-tenant tracking fields
-					tenantId            : arguments.aiRequest.getTenantId(),
-					usageMetadata       : arguments.aiRequest.getUsageMetadata(),
-					inferenceProfileArn : arguments.aiRequest.getProviderOption( "inferenceProfileArn" ),
+					tenantId            : arguments.chatRequest.getTenantId(),
+					usageMetadata       : arguments.chatRequest.getUsageMetadata(),
+					inferenceProfileArn : arguments.chatRequest.getProviderOption( "inferenceProfileArn" ),
 					timestamp           : now()
 				}
 			);
@@ -706,7 +706,7 @@ class extends = "BaseService"{
 		// Handle response based on return format
 		var content = openAIResponse.choices[ 1 ].message.content;
 
-		switch ( arguments.aiRequest.getReturnFormat() ) {
+		switch ( arguments.chatRequest.getReturnFormat() ) {
 			case "all":
 				return openAIResponse.choices;
 			case "raw":
@@ -716,7 +716,7 @@ class extends = "BaseService"{
 			case "xml":
 				return xmlParse( extractFromCodeBlock( content, "xml" ) );
 			case "structuredOutput":
-				return populateStructuredOutput( content, arguments.aiRequest );
+				return populateStructuredOutput( content, arguments.chatRequest );
 			case "single":
 			default:
 				return content;
@@ -735,7 +735,7 @@ class extends = "BaseService"{
 	private struct function sendBedrockRequest(
 		required string modelId,
 		required struct dataPacket,
-		required AiRequest aiRequest
+		required AiBaseRequest aiRequest
 	){
 		var host     = getBedrockHost();
 		var path     = getBedrockPath( arguments.modelId );
@@ -865,19 +865,19 @@ class extends = "BaseService"{
 	 * Bedrock streaming uses AWS event-stream format which is different from SSE.
 	 * Each event contains headers and a payload with the streaming chunk.
 	 *
-	 * @aiRequest The AiRequest object
-	 * @callback  A callback function to be called with each chunk: function( chunk )
+	 * @chatRequest The AiChatRequest object
+	 * @callback    A callback function to be called with each chunk: function( chunk )
 	 */
 	@override
-	public function chatStream( required AiRequest aiRequest, required function callback ){
+	public function chatStream( required AiChatRequest chatRequest, required function callback ){
 		// Get the model to use
-		var modelId = len( variables.modelId ) ? variables.modelId : arguments.aiRequest.getModel();
+		var modelId = len( variables.modelId ) ? variables.modelId : arguments.chatRequest.getModel();
 		if ( !len( modelId ) ) {
 			modelId = variables.params.model;
 		}
 
 		// Determine the endpoint identifier (use inference profile ARN if provided)
-		var inferenceProfileArn = arguments.aiRequest.getProviderOption( "inferenceProfileArn" );
+		var inferenceProfileArn = arguments.chatRequest.getProviderOption( "inferenceProfileArn" );
 		var endpointId = len( inferenceProfileArn ) ? inferenceProfileArn : modelId;
 
 		// Detect model family for request/response transformation (always use modelId for this)
@@ -885,8 +885,8 @@ class extends = "BaseService"{
 
 		// Build the request body for the specific model
 		var dataPacket = transformRequestForModel(
-			messages    = arguments.aiRequest.getMessages(),
-			params      = arguments.aiRequest.getParams(),
+			messages    = arguments.chatRequest.getMessages(),
+			params      = arguments.chatRequest.getParams(),
 			modelFamily = modelFamily
 		);
 
@@ -894,7 +894,7 @@ class extends = "BaseService"{
 		sendBedrockStreamRequest(
 			modelId     = endpointId,
 			dataPacket  = dataPacket,
-			aiRequest   = arguments.aiRequest,
+			aiRequest   = arguments.chatRequest,
 			modelFamily = modelFamily,
 			callback    = arguments.callback
 		);

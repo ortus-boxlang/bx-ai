@@ -83,7 +83,7 @@ class extends = "OpenAICompatibleService"{
 	 * Override chat to handle Docker Model Runner specifics
 	 * Adds automatic retry for model loading (503) errors.
 	 *
-	 * @aiRequest        The AiRequest object to send to the provider
+	 * @chatRequest      The AiChatRequest object to send to the provider
 	 * @interactionCount Current tool call interaction count (used internally)
 	 * @retryCount       Current retry attempt for model loading (used internally)
 	 *
@@ -91,13 +91,13 @@ class extends = "OpenAICompatibleService"{
 	 */
 		@override
 	public function chat(
-		required AiRequest aiRequest,
+		required AiChatRequest chatRequest,
 		numeric interactionCount = 0,
 		numeric retryCount       = 0
 	){
 		// Use the parent implementation with retry for model loading
 		try {
-			return super.chat( aiRequest = arguments.aiRequest, interactionCount = arguments.interactionCount );
+			return super.chat( chatRequest = arguments.chatRequest, interactionCount = arguments.interactionCount );
 		} catch ( ProviderError e ) {
 			// Check if this is a "model loading" error (503)
 			if ( e.message.findNoCase( "Loading model" ) > 0 || e.message.findNoCase( "503" ) > 0 ) {
@@ -114,8 +114,52 @@ class extends = "OpenAICompatibleService"{
 					);
 					sleep( waitTime );
 					return chat(
-						arguments.aiRequest,
+						arguments.chatRequest,
 						arguments.interactionCount,
+						arguments.retryCount + 1
+					);
+				}
+			}
+			// Re-throw if not a loading error or max retries exceeded
+			rethrow;
+		}
+	}
+
+	/**
+	 * Override chatStream to handle Docker Model Runner specifics
+	 * Adds automatic retry for model loading (503) errors.
+	 *
+	 * @chatRequest The AiChatRequest object to send to the provider
+	 * @callback    A callback function to be called with each chunk of the stream
+	 * @retryCount  Current retry attempt for model loading (used internally)
+	 */
+		@override
+	public function chatStream(
+		required AiChatRequest chatRequest,
+		required function callback,
+		numeric retryCount = 0
+	){
+		// Use the parent implementation with retry for model loading
+		try {
+			return super.chatStream( chatRequest = arguments.chatRequest, callback = arguments.callback );
+		} catch ( ProviderError e ) {
+			// Check if this is a "model loading" error (503)
+			if ( e.message.findNoCase( "Loading model" ) > 0 || e.message.findNoCase( "503" ) > 0 ) {
+				// Retry up to 10 times with longer delays for model loading
+				// Large models can take 30-60+ seconds to load
+				var maxRetries = 10;
+				if ( arguments.retryCount < maxRetries ) {
+					// Use 5 second intervals for consistent, longer waits during model load
+					var waitTime = 5000; // 5 seconds between retries
+					writeLog(
+						text: "Docker Model Runner: Model loading for stream, retrying in #waitTime / 1000#s (attempt #arguments.retryCount + 1#/#maxRetries#)",
+						type: "info",
+						log : "ai"
+					);
+					sleep( waitTime );
+					return chatStream(
+						arguments.chatRequest,
+						arguments.callback,
 						arguments.retryCount + 1
 					);
 				}
