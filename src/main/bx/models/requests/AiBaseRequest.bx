@@ -113,6 +113,21 @@ abstract class{
 	}
 
 	/**
+	 * Get Model if set or looks up from params
+	 *
+	 * @return The model to use
+	 */
+	function getModel(){
+		if( !variables.model.isEmpty() ){
+			return variables.model;
+		}
+		if( variables.params.keyExists( "model" ) ){
+			return variables.params.model;
+		}
+		return "";
+	}
+
+	/**
 	 * Set the API key if it's empty
 	 *
 	 * @apiKey The API key to use if the current API key is empty

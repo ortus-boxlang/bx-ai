@@ -58,6 +58,7 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
 - AiRequest was not setting the model correctly from params.
 - API key was not being passed to the service in `aiChat(), aiChatStream()` BIF.
 - Typo of `chr()` --> `char()` in SSE formatting in MCPRequestProcessor and HTTPTransport.
+- `AiModel.getModel()` was not returning the model name correctly when using predefined providers from config.
 
 ## [2.0.0] - 2026-01-19
 

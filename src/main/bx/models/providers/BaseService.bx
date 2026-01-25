@@ -552,6 +552,10 @@ abstract class implements="IAiService" {
 			bx:httpParam type="body" value=jsonSerialize( arguments.dataPacket );
 		}
 
+		println( "=============================" )
+		println( chatResult )
+		println( "=============================" )
+
 		// Check for rate limiting (429 status code)
 		if( chatResult.statusCode == "429" || chatResult.statusCode == 429 ){
 			var errorData = {};
