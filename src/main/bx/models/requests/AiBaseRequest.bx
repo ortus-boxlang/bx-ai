@@ -124,11 +124,14 @@ abstract class{
 	 * Merge service params into the request params
 	 *
 	 * @serviceParams The service params to merge
+	 * @override If true, override existing params with service params
+	 *
+	 * @return This request
 	 */
-	function mergeServiceParams( required struct serviceParams ){
+	AiBaseRequest function mergeServiceParams( required struct serviceParams, boolean override = false ){
 		// Filter out model as it's handled separately in some implementations
-		var paramsToMerge = arguments.serviceParams.filter( ( key, value ) => key != "model" );
-		variables.params.append( paramsToMerge, false );
+		//var paramsToMerge = arguments.serviceParams.filter( ( key, value ) => key != "model" );
+		variables.params.append( arguments.serviceParams, arguments.override );
 		return this;
 	}
 
@@ -136,9 +139,12 @@ abstract class{
 	 * Merge service headers into the request headers
 	 *
 	 * @serviceHeaders The service headers to merge
+	 * @override If true, override existing headers with service headers
+	 *
+	 * @return This request
 	 */
-	function mergeServiceHeaders( required struct serviceHeaders ){
-		variables.headers.append( arguments.serviceHeaders, false );
+	AiBaseRequest function mergeServiceHeaders( required struct serviceHeaders, boolean override = false ){
+		variables.headers.append( arguments.serviceHeaders, arguments.override );
 		return this;
 	}
 
