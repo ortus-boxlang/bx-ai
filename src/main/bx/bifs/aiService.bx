@@ -67,11 +67,12 @@ class {
 		}
 
         // By convention check if there is a <PROVIDER>_API_KEY setting override it
+		// Only apply convention key if options.apiKey is not already set (could be a struct for providers like Bedrock)
         var conventionAPIKey = getSystemSetting( "#arguments.provider.ucase()#_API_KEY", "" )
-        if( isNull( arguments.apiKey ) && len( conventionAPIKey ) ){
+        if( isNull( arguments.apiKey ) && !arguments.options.keyExists( "apiKey" ) && len( conventionAPIKey ) ){
             arguments.options.apiKey = conventionAPIKey
         }
-        // Else use the module setting
+        // Else use the module setting (only if apiKey not already set)
 		arguments.options.apiKey = 	arguments.options.apiKey ?: moduleRecord.settings.apiKey
 
         // Build the target service
