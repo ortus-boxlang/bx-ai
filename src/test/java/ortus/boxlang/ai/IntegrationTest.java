@@ -84,7 +84,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 						}
 					}
 				},
-				"onAIProviderRequest"
+				"onMissingAiProvider"
 			)
 			provider = aiService( "myCustomLLM" )
 			println( provider.getName() )

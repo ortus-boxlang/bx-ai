@@ -116,7 +116,7 @@ class {
 			default:
 				// Announce the provider request so contributors can listen and provide a service
 				// This is for our aiplus module
-				var iData = { provider: arguments.provider, options: arguments.options };
+				var iData = { provider: arguments.provider, options: arguments.options, service: null };
 				BoxAnnounce( "onMissingAiProvider", iData );
 
 				if( iData.service == null ){
