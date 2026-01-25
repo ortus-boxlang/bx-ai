@@ -471,9 +471,14 @@ class extends="BaseService"{
 			.ifPresentOrElse(
 				// Found, invoke the tool
 				tool => {
+					// Deserialize arguments if they're a JSON string, otherwise use as-is
+					var toolArgs = isSimpleValue( toolCall.function.arguments ) 
+						? JSONDeserialize( toolCall.function.arguments )
+						: toolCall.function.arguments;
+					
 					messages.append({
 						"role" : "tool",
-						"content" : tool.invoke( args : toolCall.function.arguments )
+						"content" : tool.invoke( toolArgs )
 					});
 				},
 				// Not found
