@@ -93,9 +93,7 @@ class extends="BaseService"{
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
 		// Set default embedding model if not specified
-		if( embeddingRequest.getModel().isEmpty() ){
-			embeddingRequest.setModelIfEmpty( static.DEFAULT_EMBED_PARAMS.model )
-		}
+		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
 		return super.embeddings( embeddingRequest )
 	}
 

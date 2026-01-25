@@ -102,6 +102,10 @@ abstract class{
 	 * @model The model to use if the current model is empty
 	 */
 	function setModelIfEmpty( required string model ){
+		if( isNull( arguments.model ) || arguments.model.isEmpty() ){
+			return this;
+		}
+
 		if( variables.model.isEmpty() ){
 			variables.model = arguments.model;
 		}

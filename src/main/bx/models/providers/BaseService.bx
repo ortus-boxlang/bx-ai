@@ -168,7 +168,7 @@ abstract class implements="IAiService" {
 	function invoke( required AiChatRequest chatRequest ){
 		// Model Selection if not set, use the default in the service, which should always be set
 		chatRequest
-			.setModelIfEmpty( variables.params.model )
+			.setModelIfEmpty( variables.params.model ?: "" )
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceParams( variables.params )
 			.mergeServiceHeaders( variables.headers )
@@ -188,7 +188,7 @@ abstract class implements="IAiService" {
 	function invokeStream( required AiChatRequest chatRequest, required function callback ){
 		// Model Selection if not set, use the default in the service, which should always be set
 		chatRequest
-			.setModelIfEmpty( variables.params.model )
+			.setModelIfEmpty( variables.params.model ?: "" )
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceParams( variables.params )
 			.mergeServiceHeaders( variables.headers )
@@ -411,8 +411,8 @@ abstract class implements="IAiService" {
 	 */
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
 		// Model Selection if not set, use the default in the service
-		embeddingRequest
-			.setModelIfEmpty( variables.params.model ?: "" )
+		arguments.embeddingRequest
+			.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceParams( variables.params )
 			.mergeServiceHeaders( variables.headers )
