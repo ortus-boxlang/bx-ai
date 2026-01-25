@@ -14,8 +14,30 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
 ### Added
 
 - New event: `onMissingAiProvider` to handle cases where a requested provider is not found.
-- `aiModel()` BIF now accepts an additional `options` struct for model creation options.
+- `aiModel()` BIF now accepts an additional `options` struct to seed services.
 - New configuration: `providers` so you can predefine multiple providers in the module config, with default `params` and `options`.
+
+```js
+"providers" : {
+	"openai" : {
+		"params" : {
+			"model" : "gpt-4"
+		},
+		"options" : {
+			"apiKey" : "my-openai-api-key"
+		}
+	},
+	"ollama" : {
+		"params" : {
+			"model" : "qwen2.5:0.5b-instruct"
+		},
+		"options" : {
+			"baseUrl" : "http://my-ollama-server:11434/"
+		}
+	}
+}
+```
+
 - OllamaService now supports custom base URLs for both chat and embeddings endpoints via the `options.baseUrl` parameter.
 
 ### Changed

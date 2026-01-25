@@ -76,7 +76,7 @@ abstract class implements="IAiService" {
 	 * Constants
 	 */
 	static {
-		final settings = getModuleInfo( "bxai" ).settings
+		final MODULE_SETTINGS = getModuleInfo( "bxai" ).settings
 	}
 
 	/**
@@ -115,9 +115,9 @@ abstract class implements="IAiService" {
 	 */
 
 	 /**
-	 * Configure the service with the API key
+	 * Configure the service provider with the given options
 	 *
-	 * @apiKey - The API key to use with the provider
+	 * @options - The configuration options or API key string
 	 *
 	 * @throws InvalidConfiguration if the options are not valid
 	 *
@@ -141,6 +141,19 @@ abstract class implements="IAiService" {
 		// Otherwise, it's a struct of options
 		variables.options = arguments.options
 		variables.apiKey = arguments.options?.apiKey ?: ""
+
+		// Verify if the MODULE_SETTINGS has default provider settings and params
+		if( static.MODULE_SETTINGS.keyExists( "providers" ) && static.MODULE_SETTINGS.providers.keyExists( variables.name ) ){
+			var providerSettings = static.MODULE_SETTINGS.providers[ variables.name ]
+			// Merge params
+			if( providerSettings.keyExists( "params" ) ){
+				variables.params.append( providerSettings.params, false )
+			}
+			// Merge options
+			if( providerSettings.keyExists( "options" ) ){
+				variables.options.append( providerSettings.options, false )
+			}
+		}
 
 		return this;
 	}
