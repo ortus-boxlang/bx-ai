@@ -103,19 +103,26 @@ class extends = "BaseService"{
 			// If a simple string is passed, treat it as model ID for compatibility
 			variables.modelId = arguments.config;
 		} else if ( isStruct( arguments.config ) ) {
-			// Configure with struct of settings
-			if ( arguments.config.keyExists( "region" ) ) {
-				variables.region = arguments.config.region;
+			// Check if credentials are nested inside apiKey (from aiChat/aiService flow)
+			var credSource = arguments.config;
+			if ( arguments.config.keyExists( "apiKey" ) && isStruct( arguments.config.apiKey ) ) {
+				credSource = arguments.config.apiKey;
 			}
-			if ( arguments.config.keyExists( "awsAccessKeyId" ) ) {
-				variables.awsAccessKeyId = arguments.config.awsAccessKeyId;
+
+			// Configure with struct of settings - check both top-level and apiKey nested
+			if ( credSource.keyExists( "region" ) ) {
+				variables.region = credSource.region;
 			}
-			if ( arguments.config.keyExists( "awsSecretAccessKey" ) ) {
-				variables.awsSecretAccessKey = arguments.config.awsSecretAccessKey;
+			if ( credSource.keyExists( "awsAccessKeyId" ) ) {
+				variables.awsAccessKeyId = credSource.awsAccessKeyId;
 			}
-			if ( arguments.config.keyExists( "awsSessionToken" ) ) {
-				variables.awsSessionToken = arguments.config.awsSessionToken;
+			if ( credSource.keyExists( "awsSecretAccessKey" ) ) {
+				variables.awsSecretAccessKey = credSource.awsSecretAccessKey;
 			}
+			if ( credSource.keyExists( "awsSessionToken" ) ) {
+				variables.awsSessionToken = credSource.awsSessionToken;
+			}
+			// These remain at top level
 			if ( arguments.config.keyExists( "modelId" ) ) {
 				variables.modelId = arguments.config.modelId;
 			}
