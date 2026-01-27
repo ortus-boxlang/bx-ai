@@ -25,11 +25,11 @@
 
 Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang that provides a unified, fluent API to orchestrate multi-model workflows, autonomous agents, RAG pipelines, and AI-powered applications. **One API → Unlimited AI Power!** ✨
 
-**BoxLang AI** eliminates vendor lock-in and simplifies AI integration by providing a single, consistent interface across **12+ AI providers**. Whether you're using OpenAI, Claude, Gemini, Grok, DeepSeek, Ollama, or Perplexity—your code stays the same. Switch providers, combine models, and orchestrate complex workflows with simple configuration changes. 🔄
+**BoxLang AI** eliminates vendor lock-in and simplifies AI integration by providing a single, consistent interface across **15+ AI providers**. Whether you're using OpenAI, Claude, Gemini, Grok, DeepSeek, Ollama, or Perplexity—your code stays the same. Switch providers, combine models, and orchestrate complex workflows with simple configuration changes. 🔄
 
 ## ✨ Key Features
 
-- 🔌 **12+ AI Providers** - Single API for OpenAI, Claude, Gemini, Grok, Ollama, DeepSeek, and more
+- 🔌 **15+ AI Providers** - Single API for OpenAI, Claude, AWS Bedrock, Gemini, Grok, Ollama, DeepSeek, and more
 - 🤖 **AI Agents** - Autonomous agents with memory, tools, sub-agents, and multi-step reasoning
 - 🔒 **Multi-Tenant Memory** - Enterprise-grade isolation with 20+ memory types (standard + vector)
 - 🧬 **Vector Memory & RAG** - 10+ vector databases with semantic search (ChromaDB, Pinecone, PostgreSQL, etc.)
@@ -129,9 +129,11 @@ Just make sure you have already a server setup with BoxLang.  You can check our 
 
 The following are the AI providers supported by this module. **Please note that in order to interact with these providers you will need to have an account with them and an API key.** 🔑
 
+- ☁️ [AWS Bedrock](https://aws.amazon.com/bedrock/) - Claude, Titan, Llama, Mistral via AWS
 - 🧠 [Claude Anthropic](https://www.anthropic.com/claude)
 - 🧬 [Cohere](https://cohere.com/)
 - 🔍 [DeepSeek](https://www.deepseek.com/)
+- 🐳 [Docker Model Runner](https://docs.docker.com/ai/model-runner/) - Local models via Docker Desktop
 - 💎 [Gemini](https://gemini.google.com/)
 - ⚡ [Grok](https://grok.com/)
 - 🚀 [Groq](https://groq.com/)
@@ -139,6 +141,7 @@ The following are the AI providers supported by this module. **Please note that 
 - 🌀 [Mistral](https://mistral.ai/)
 - 🦙 [Ollama](https://ollama.ai/)
 - 🟢 [OpenAI](https://www.openai.com/)
+- 🔌 [OpenAI-Compatible](https://platform.openai.com/docs/api-reference) - Any OpenAI-compatible API
 - 🔀 [OpenRouter](https://openrouter.ai/)
 - 🔮 [Perplexity](https://docs.perplexity.ai/)
 - 🚢 [Voyage AI](https://www.voyageai.com/)
@@ -149,9 +152,11 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 
 | Provider   | Real-time Tools | Embeddings | Structured Output |
 |------------|-----------------|------------|-------------------|
+| AWS Bedrock  | ✅ | ✅ | ✅ |
 | Claude    	| ✅ | ❌ | ✅ |
 | Cohere       | ✅ | ✅ | ✅ |
 | DeepSeek  | ✅ | ✅ | ✅ |
+| Docker Model Runner | ✅ | ✅ | ✅ |
 | Gemini    	| [Coming Soon]   | ✅ | ✅ |
 | Grok      	 | ✅ | ✅ | ✅ |
 | Groq         | ✅ | ✅ | ✅ |
@@ -159,6 +164,7 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | Mistral      | ✅ | ✅ | ✅ |
 | Ollama       | ✅ | ✅ | ✅ |
 | OpenAI       | ✅ | ✅ | ✅ (Native) |
+| OpenAI-Compatible | ✅ | ✅ | ✅ |
 | OpenRouter   | ✅ | ✅ | ✅ |
 | Perplexity   | ✅ | ❌ | ✅ |
 | Voyage       | ❌ | ✅ (Specialized) | ❌ |
@@ -1115,7 +1121,7 @@ Read more about [Events in BoxLang AI](https://ai.ortusbooks.com/advanced/events
 | `onAIRequest` | Before sending HTTP request | `dataPacket`, `aiRequest`, `provider` | Request logging, modification, authentication |
 | `onAIRequestCreate` | When request object is created | `aiRequest` | Request validation, modification |
 | `onAIResponse` | After receiving HTTP response | `aiRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
-| `onAITokenCount` | When token usage data is available | `provider`, `model`, `promptTokens`, `completionTokens`, `totalTokens`, `tenantId`, `usageMetadata`, `inferenceProfileArn`, `timestamp` | Cost tracking, budget enforcement, multi-tenant billing |
+| `onAITokenCount` | When token usage data is available | `provider`, `model`, `promptTokens`, `completionTokens`, `totalTokens`, `tenantId`, `usageMetadata`, `providerOptions`, `timestamp` | Cost tracking, budget enforcement, multi-tenant billing |
 | `onAIToolCreate` | When tool is created | `tool`, `name`, `description` | Tool registration, validation |
 | `onAITransformerCreate` | When transformer is created | `transform` | Transform configuration, tracking |
 
