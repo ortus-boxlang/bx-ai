@@ -42,6 +42,34 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
 - `AiBaseRequest.mergeServiceParams()` and `AiBaseRequest.mergeServiceHeaders()` methods now accept an `override` boolean argument to control whether existing values should be overwritten when merging.
 - Local Ollama docker setup instructions updated to include the `nomic-embed-text` model for embeddings support.
 - Ollama Service now supports embedding generation using the `nomic-embed-text` model.
+- **Multi-Tenant Usage Tracking**: Provider-agnostic request tagging for per-tenant billing
+  - New `tenantId` option for attributing AI usage to specific tenants
+  - New `usageMetadata` option for custom tracking data (cost center, project, userId, etc.)
+  - Enhanced `onAITokenCount` events with tenant context for interceptor-based billing
+  - Works with all providers: OpenAI, Bedrock, Ollama, DeepSeek, etc.
+  - Fully backward compatible - existing code works unchanged
+- **Provider-Specific Options Support**: Generic `providerOptions` struct for provider-specific settings
+  - New `providerOptions` option for passing provider-specific configuration (e.g., `inferenceProfileArn` for Bedrock)
+  - New `getProviderOption(key, defaultValue)` method on requests for retrieving provider options
+  - Enables extensibility for any provider-specific features without polluting the common interface
+- **OpenSearch Vector Memory Provider**: Full integration with OpenSearch k-NN for semantic search
+  - Support for OpenSearch 2.x and 3.x with automatic version detection and space type mapping
+  - HNSW index configuration options (M, ef_construction, ef_search parameters)
+  - Space type options: cosinesimilarity, l2, innerproduct
+  - Basic authentication support (username/password)
+  - AWS region configuration for SigV4 authentication with AWS OpenSearch Service
+  - Multi-tenant isolation with userId and conversationId filtering
+  - Comprehensive test coverage for configuration, validation, and operations
+- **OpenAI-Compatible Embedding Support**: Vector memory providers now support custom embedding endpoints
+  - New `embeddingOptions` configuration in `BaseVectorMemory` for passing options to embedding provider
+  - Use `embeddingOptions.baseURL` for custom OpenAI-compatible embedding service URLs
+  - Allows using self-hosted or alternative OpenAI-compatible embedding services
+  - Works with providers like Ollama, LM Studio, and other compatible APIs
+- **AWS Bedrock Streaming Support**: Full streaming support for Bedrock provider
+  - Streaming via `InvokeModelWithResponseStream` API endpoint
+  - Support for all model families: Claude, Titan, Llama, Mistral
+  - AWS event-stream format parsing with base64 payload decoding
+  - OpenAI-compatible streaming response format for consistent callback handling
 
 ### Changed
 
@@ -59,6 +87,8 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
 - API key was not being passed to the service in `aiChat(), aiChatStream()` BIF.
 - Typo of `chr()` --> `char()` in SSE formatting in MCPRequestProcessor and HTTPTransport.
 - `AiModel.getModel()` was not returning the model name correctly when using predefined providers from config.
+- Increased Docker Model Runner retry time to 5 seconds with 10 max retries to accommodate large model loading times
+- Fixed `url` parameter conflict in OpenSearchVectorMemory by using `requestUrl` for HTTP requests
 
 ## [2.0.0] - 2026-01-19
 

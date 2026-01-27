@@ -41,9 +41,12 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @options Struct of configuration options (not needed for in-memory, but here for interface consistency)
 	 */
-	function configure( struct options = {} ) {
-		// could accept dimension in options later:
-		// if ( options.keyExists( "dimension" ) ) variables.dimension = options.dimension;
+	function configure( struct config = {} ) {
+		// Call parent configure to handle common settings (embeddingProvider, embeddingModel, embeddingOptions, etc.)
+		super.configure( arguments.config );
+
+		// could accept dimension in config later:
+		// if ( config.keyExists( "dimension" ) ) variables.dimension = config.dimension;
 		variables.configured = true;
 		return this;
 	}

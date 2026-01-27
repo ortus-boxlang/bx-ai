@@ -25,9 +25,11 @@ class {
 	 * - log : A logger for the module config itself
 	 */
 	static final CORE_PROVIDERS = [
+		"bedrock",
 		"claude",
         "cohere",
 		"deepseek",
+		"docker",
 		"gemini",
 		"grok",
 		"groq",
@@ -35,6 +37,7 @@ class {
 		"mistral",
 		"ollama",
 		"openai",
+		"openai-compatible",
 		"openrouter",
 		"perplexity",
         "voyage"
@@ -64,16 +67,20 @@ class {
 		}
 
         // By convention check if there is a <PROVIDER>_API_KEY setting override it
+		// Only apply convention key if options.apiKey is not already set (could be a struct for providers like Bedrock)
         var conventionAPIKey = getSystemSetting( "#arguments.provider.ucase()#_API_KEY", "" )
-        if( isNull( arguments.apiKey ) && len( conventionAPIKey ) ){
+        if( !arguments.options.keyExists( "apiKey" ) && len( conventionAPIKey ) ){
             arguments.options.apiKey = conventionAPIKey
         }
-        // Else use the module setting
+        // Else use the module setting (only if apiKey not already set)
 		arguments.options.apiKey = 	arguments.options.apiKey ?: moduleRecord.settings.apiKey
 
         // Build the target service
 		var targetClass = ""
 		switch( arguments.provider ) {
+			case "bedrock":
+				targetClass = "bxModules.bxai.models.providers.BedrockService"
+				break
 			case "claude":
 				targetClass = "bxModules.bxai.models.providers.ClaudeService"
 				break
@@ -82,6 +89,9 @@ class {
                 break
 			case "deepseek":
 				targetClass = "bxModules.bxai.models.providers.DeepSeekService"
+				break
+			case "docker":
+				targetClass = "bxModules.bxai.models.providers.DockerModelRunnerService"
 				break
 			case "gemini":
 				targetClass = "bxModules.bxai.models.providers.GeminiService"
@@ -103,6 +113,9 @@ class {
 				break
 			case "openai" :
 				targetClass = "bxModules.bxai.models.providers.OpenAIService"
+				break
+			case "openai-compatible":
+				targetClass = "bxModules.bxai.models.providers.OpenAICompatibleService"
 				break
 			case "openrouter":
 				targetClass = "bxModules.bxai.models.providers.OpenRouterService"

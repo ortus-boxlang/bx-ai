@@ -46,6 +46,12 @@ abstract class
 	property name="metric" type="string" default="#static.DEFAULT_METRIC#";
 
 	/**
+	 * Additional options to pass to the embedding provider
+	 * (e.g., baseURL for openai-compatible provider)
+	 */
+	property name="embeddingOptions" type="struct" default={};
+
+	/**
 	 * Cache configuration for embeddings and query results
 	 */
 	property name="useCache" type="boolean" default=false;
@@ -115,6 +121,9 @@ abstract class
 		}
 		if ( arguments.config.keyExists( "metric" ) ) {
 			variables.metric = arguments.config.metric;
+		}
+		if ( arguments.config.keyExists( "embeddingOptions" ) ) {
+			variables.embeddingOptions = arguments.config.embeddingOptions;
 		}
 
 		// Cache configuration
@@ -537,8 +546,8 @@ abstract class
 			params.model = variables.embeddingModel;
 		}
 
-		// Prep request options
-		var options = {};
+		// Start with embeddingOptions (e.g., baseURL for openai-compatible provider)
+		var options = variables.embeddingOptions.duplicate();
 		if ( len( variables.embeddingProvider ) ) {
 			options.provider = variables.embeddingProvider;
 		}
@@ -586,9 +595,9 @@ abstract class
 			params.model = variables.embeddingModel;
 		}
 
-		var options = {
-			returnFormat: "embeddings"  // Get array of vectors
-		};
+		// Start with embeddingOptions (e.g., baseURL for openai-compatible provider)
+		var options = variables.embeddingOptions.duplicate();
+		options.returnFormat = "embeddings";  // Get array of vectors
 		if ( len( variables.embeddingProvider ) ) {
 			options.provider = variables.embeddingProvider;
 		}

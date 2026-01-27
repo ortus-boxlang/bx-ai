@@ -536,4 +536,38 @@ public class BoxVectorMemoryTest extends BaseIntegrationTest {
 		assertEquals( "chat1", testResult.getAsString( Key.of( "bobChat1ConvId" ) ) );
 	}
 
+	@Test
+	@Order( 14 )
+	@DisplayName( "Test embeddingOptions configuration for openai-compatible provider" )
+	void testEmbeddingOptionsConfiguration() throws Exception {
+
+		runtime.executeSource(
+		    """
+		    // Create memory with embeddingOptions for openai-compatible provider
+		    memory = aiMemory( memory: "boxvector", key: createUUID(), config: {
+		        embeddingProvider: "openai-compatible",
+		        embeddingModel: "text-embedding-model",
+		        embeddingOptions: {
+		            baseURL: "http://custom-embedding-service:8080/v1"
+		        }
+		    } );
+
+		    // Verify embeddingOptions is properly configured
+		    options = memory.getEmbeddingOptions();
+
+		    result = {
+		        hasOptions: !isNull( options ),
+		        hasBaseURL: options.keyExists( "baseURL" ),
+		        baseURL: options.keyExists( "baseURL" ) ? options.baseURL : ""
+		    };
+		    """,
+		    context );
+
+		IStruct testResult = variables.getAsStruct( result );
+
+		assertTrue( testResult.getAsBoolean( Key.of( "hasOptions" ) ) );
+		assertTrue( testResult.getAsBoolean( Key.of( "hasBaseURL" ) ) );
+		assertEquals( "http://custom-embedding-service:8080/v1", testResult.getAsString( Key.of( "baseURL" ) ) );
+	}
+
 }
