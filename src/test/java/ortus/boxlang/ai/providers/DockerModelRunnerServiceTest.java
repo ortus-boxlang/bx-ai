@@ -19,14 +19,62 @@ package ortus.boxlang.ai.providers;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
+
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
 
 public class DockerModelRunnerServiceTest extends BaseIntegrationTest {
+
+	private static final String	DOCKER_BASE_URL	= "http://localhost:12434";
+	private static final String	DOCKER_MODEL	= "ai/gemma3:latest";
+
+	@BeforeEach
+	public void beforeEach() {
+		moduleRecord.settings.put( "provider", "docker" );
+		// Clear any apiKey from previous tests (e.g., Bedrock uses struct-based apiKey)
+		moduleRecord.settings.put( "apiKey", "" );
+	}
+
+	/**
+	 * Check if Docker Model Runner is available and has the required model
+	 */
+	private boolean isDockerModelAvailable() {
+		try {
+			URL					url			= URI.create( DOCKER_BASE_URL + "/v1/models" ).toURL();
+			HttpURLConnection	connection	= ( HttpURLConnection ) url.openConnection();
+			connection.setRequestMethod( "GET" );
+			connection.setConnectTimeout( 2000 );
+			connection.setReadTimeout( 2000 );
+
+			if ( connection.getResponseCode() != 200 ) {
+				connection.disconnect();
+				return false;
+			}
+
+			// Read response and check for model
+			BufferedReader	reader		= new BufferedReader( new InputStreamReader( connection.getInputStream() ) );
+			StringBuilder	response	= new StringBuilder();
+			String			line;
+			while ( ( line = reader.readLine() ) != null ) {
+				response.append( line );
+			}
+			reader.close();
+			connection.disconnect();
+
+			return response.toString().contains( DOCKER_MODEL );
+		} catch ( Exception e ) {
+			return false;
+		}
+	}
 
 	@Test
 	@DisplayName( "Can instantiate Docker Model Runner service via aiService BIF" )
@@ -37,7 +85,7 @@ public class DockerModelRunnerServiceTest extends BaseIntegrationTest {
 				service = aiService(
 					"docker",
 					{
-						baseURL: "http://localhost:11435"
+						baseURL: "http://localhost:12434"
 					}
 				)
 				serviceName = service.getName()
@@ -50,7 +98,7 @@ public class DockerModelRunnerServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Docker service can be configured" )
+	@DisplayName( "Docker service can be configured with model" )
 	public void testConfiguration() {
 		// @formatter:off
 		runtime.executeSource(
@@ -62,39 +110,47 @@ public class DockerModelRunnerServiceTest extends BaseIntegrationTest {
 						model: "test-model"
 					}
 				)
-				
-				hasService = !isNull( service )
+
+				configuredModel = service.getParams().model
 			""",
 			context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( Key.of( "hasService" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "configuredModel" ) ) ).isEqualTo( "test-model" );
 	}
 
 	@Test
-	@EnabledIfSystemProperty( named = "docker.test", matches = "true" )
-	@DisplayName( "Docker service can make a simple chat request" )
-	public void testSimpleChatRequest() {
+	@DisplayName( "Docker Model Runner can make real API call with ai/gemma3 model" )
+	public void testRealDockerModelCall() {
+		if ( !isDockerModelAvailable() ) {
+			System.out.println( "Skipping testRealDockerModelCall - Docker Model Runner not available or model " + DOCKER_MODEL + " not found" );
+			return;
+		}
+
 		// @formatter:off
 		runtime.executeSource(
 			"""
 				response = aiChat(
-					"docker",
+					aiMessage().user( "Say 'Docker test successful' and nothing else" ),
 					{
-						model: "qwen2.5:0.5b-instruct",
-						useHostURL: true,
+						model: "%s",
 						max_tokens: 50
 					},
-					aiMessage().user( "Say 'Docker test successful' and nothing else" )
+					{
+						provider: "docker",
+						baseURL: "%s",
+						returnFormat: "single"
+					}
 				)
-				
-				hasContent = !isNull( response.content )
-			""",
+
+				hasContent = !isNull( response ) && len( response ) > 0
+			""".formatted( DOCKER_MODEL, DOCKER_BASE_URL ),
 			context
 		);
 		// @formatter:on
 
 		assertThat( variables.get( Key.of( "hasContent" ) ) ).isEqualTo( true );
 	}
+
 }
