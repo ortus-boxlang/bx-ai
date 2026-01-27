@@ -97,8 +97,7 @@ class extends="BaseService" {
 
 		// Store baseURL for reference if provided
 		if ( isStruct( arguments.config ) && arguments.config.keyExists( "baseURL" ) && len( arguments.config.baseURL ) ) {
-			var normalizedURL = normalizeBaseURL( arguments.config.baseURL );
-			variables.baseURL = normalizedURL;
+			variables.baseURL = arguments.config.baseURL.trim();
 			variables.chatURL = variables.baseURL & "/chat/completions";
 			variables.embeddingsURL = variables.baseURL & "/embeddings";
 		}
@@ -123,43 +122,11 @@ class extends="BaseService" {
 	 * @return This service instance for chaining
 	 */
 	public OpenAICompatibleService function setBaseURL( required string url ) {
-		variables.baseURL = normalizeBaseURL( arguments.url );
+		variables.baseURL = arguments.url.trim();
 		variables.chatURL = variables.baseURL & "/chat/completions";
 		variables.embeddingsURL = variables.baseURL & "/embeddings";
 
 		return this;
-	}
-
-	/**
-	 * Normalize a base URL to ensure it ends with a versioned path
-	 * Supports multiple OpenAI-compatible API patterns:
-	 * - Standard: /v1
-	 * - Docker Model Runner: /engines/v1, /engines/{engine}/v1
-	 * - AWS Lambda/Custom: /prod/v1, /stage/v1
-	 * - Direct endpoint URLs: /embeddings, /chat/completions
-	 *
-	 * @url The URL to normalize
-	 * @return The normalized URL
-	 */
-	private string function normalizeBaseURL( required string url ) {
-		var normalizedURL = arguments.url.trim().reReplace( "/$", "" );
-
-		// If URL already ends with a complete endpoint path, extract the base
-		if ( normalizedURL.endsWith( "/embeddings" ) ) {
-			return normalizedURL.reReplace( "/embeddings$", "" );
-		}
-		if ( normalizedURL.endsWith( "/chat/completions" ) ) {
-			return normalizedURL.reReplace( "/chat/completions$", "" );
-		}
-
-		// If URL already ends with /v1 (standard or engine-prefixed), use as-is
-		// Matches: /v1, /engines/v1, /engines/llama.cpp/v1, /prod/v1, etc.
-		if ( normalizedURL.reFindNoCase( "/v1$" ) ) {
-			return normalizedURL;
-		}
-
-		// Otherwise, append /v1 for standard OpenAI-compatible endpoints
-		return normalizedURL & "/v1";
 	}
 
 	/**
