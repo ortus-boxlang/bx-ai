@@ -34,13 +34,13 @@ import ortus.boxlang.runtime.scopes.Key;
  * Requires a running OpenSearch instance. Set the following environment variables:
  * - OPENSEARCH_HOST (default: localhost)
  * - OPENSEARCH_PORT (default: 9200)
- * - OPENSEARCH_SCHEME (default: https)
+ * - OPENSEARCH_SCHEME (default: http)
  */
 public class OpenSearchVectorMemoryTest extends BaseIntegrationTest {
 
 	static String	OPENSEARCH_HOST		= System.getenv( "OPENSEARCH_HOST" ) != null ? System.getenv( "OPENSEARCH_HOST" ) : "localhost";
 	static int		OPENSEARCH_PORT		= parsePort( System.getenv( "OPENSEARCH_PORT" ), 9200 );
-	static String	OPENSEARCH_SCHEME	= System.getenv( "OPENSEARCH_SCHEME" ) != null ? System.getenv( "OPENSEARCH_SCHEME" ) : "https";
+	static String	OPENSEARCH_SCHEME	= System.getenv( "OPENSEARCH_SCHEME" ) != null ? System.getenv( "OPENSEARCH_SCHEME" ) : "http";
 
 	static boolean	openSearchAvailable	= false;
 
