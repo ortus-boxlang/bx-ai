@@ -186,4 +186,42 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( Key.of( "isConfigured" ) ) ).isEqualTo( true );
 	}
+
+	@Test
+	@DisplayName( "AiChatRequest supports providerOptions for provider-specific settings" )
+	public void testProviderOptions() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				// Test getProviderOption with default when no options set
+				request = new src.main.bx.models.requests.AiChatRequest(
+					aiMessage().user( "test" ),
+					{ model: "test-model" },
+					{}
+				);
+				defaultResult = request.getProviderOption( "someKey", "defaultValue" );
+
+				// Test that providerOptions works when passed in constructor options
+				requestWithOptions = new src.main.bx.models.requests.AiChatRequest(
+					aiMessage().user( "test" ),
+					{ model: "test-model" },
+					{
+						provider: "bedrock",
+						providerOptions: {
+							inferenceProfileArn: "arn:aws:test:123",
+							customKey: "customValue"
+						}
+					}
+				);
+				profileArn = requestWithOptions.getProviderOption( "inferenceProfileArn" );
+				customVal = requestWithOptions.getProviderOption( "customKey" );
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "defaultResult" ) ) ).isEqualTo( "defaultValue" );
+		assertThat( variables.get( Key.of( "profileArn" ) ) ).isEqualTo( "arn:aws:test:123" );
+		assertThat( variables.get( Key.of( "customVal" ) ) ).isEqualTo( "customValue" );
+	}
 }

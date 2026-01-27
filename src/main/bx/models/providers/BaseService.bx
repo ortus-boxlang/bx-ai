@@ -145,11 +145,6 @@ abstract class implements="IAiService" {
 			variables.apiKey = arguments.options.apiKey;
 		}
 
-		// Extract model from options into params for use as default in requests
-		if ( arguments.options.keyExists( "model" ) && len( arguments.options.model ) ) {
-			variables.params[ "model" ] = arguments.options.model;
-		}
-
 		// Verify if the MODULE_SETTINGS has default provider settings and params
 		if( static.MODULE_SETTINGS.keyExists( "providers" ) && static.MODULE_SETTINGS.providers.keyExists( variables.name ) ){
 			var providerSettings = static.MODULE_SETTINGS.providers[ variables.name ]
@@ -291,7 +286,7 @@ abstract class implements="IAiService" {
 				// Multi-tenant tracking fields
 				tenantId: arguments.chatRequest.getTenantId(),
 				usageMetadata: arguments.chatRequest.getUsageMetadata(),
-				inferenceProfileArn: arguments.chatRequest.getProviderOption( "inferenceProfileArn" ),
+				providerOptions: arguments.chatRequest.getProviderOptions(),
 				timestamp: now()
 			} );
 		}
