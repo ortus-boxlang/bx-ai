@@ -279,16 +279,17 @@ class {
 	 */
 	private string function uriEncodeComponent( required string component ) {
 		var result = "";
-		var chars = arguments.component.toCharArray();
+		var componentLen = len( arguments.component );
 
-		for( var char in chars ) {
+		for( var i = 1; i <= componentLen; i++ ) {
+			var char = mid( arguments.component, i, 1 );
 			if( isUnreservedChar( char ) ) {
 				result &= char;
 			} else {
 				// Percent encode
 				var bytes = charsetDecode( char, "UTF-8" );
-				for( var i = 1; i <= arrayLen( bytes ); i++ ) {
-					result &= "%" & right( "0" & formatBaseN( bitAnd( bytes[i], 255 ), 16 ).ucase(), 2 );
+				for( var j = 1; j <= arrayLen( bytes ); j++ ) {
+					result &= "%" & right( "0" & formatBaseN( bitAnd( bytes[j], 255 ), 16 ).ucase(), 2 );
 				}
 			}
 		}
