@@ -560,10 +560,6 @@ abstract class implements="IAiService" {
 			bx:httpParam type="body" value=jsonSerialize( arguments.dataPacket );
 		}
 
-		println( "=============================" )
-		println( chatResult )
-		println( "=============================" )
-
 		// Check for rate limiting (429 status code)
 		if( chatResult.statusCode == "429" || chatResult.statusCode == 429 ){
 			var errorData = {};
@@ -778,19 +774,8 @@ abstract class implements="IAiService" {
 			println( arguments.dataPacket )
 		}
 
-		// Determine the embeddings URL - request baseURL takes precedence over service default
-		var targetURL = getEmbeddingsURL();
-		if ( len( arguments.embeddingRequest.getBaseURL() ) ) {
-			var requestBaseURL = arguments.embeddingRequest.getBaseURL().reReplace( "/$", "" );
-			// Add /v1 suffix if not present
-			if ( !requestBaseURL.endsWith( "/v1" ) ) {
-				requestBaseURL = requestBaseURL & "/v1";
-			}
-			targetURL = requestBaseURL & "/embeddings";
-		}
-
 		bx: http
-			url     = targetURL
+			url     = getEmbeddingsURL()
 			method  = "post"
 			result  = "embeddingResult"
 			charset = "utf-8"
