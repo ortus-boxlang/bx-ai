@@ -140,7 +140,10 @@ abstract class implements="IAiService" {
 
 		// Otherwise, it's a struct of options
 		variables.options = arguments.options
-		variables.apiKey = arguments.options?.apiKey ?: ""
+		// Only set apiKey if provided in options (preserve existing apiKey otherwise)
+		if ( arguments.options.keyExists( "apiKey" ) ) {
+			variables.apiKey = arguments.options.apiKey;
+		}
 
 		// Extract model from options into params for use as default in requests
 		if ( arguments.options.keyExists( "model" ) && len( arguments.options.model ) ) {
