@@ -148,7 +148,7 @@ class extends="BaseService" {
 	@override
 	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ) {
 		// If no API key is set, disable auth header
-		if ( variables.apiKey.isEmpty() || !len( variables.apiKey ) ) {
+		if ( !len( variables.apiKey ) ) {
 			arguments.chatRequest.setSendAuthHeader( false );
 		}
 
@@ -164,7 +164,7 @@ class extends="BaseService" {
 	@override
 	public function chatStream( required AiChatRequest chatRequest, required function callback ) {
 		// If no API key is set, disable auth header
-		if ( variables.apiKey.isEmpty() || !len( variables.apiKey ) ) {
+		if ( !len( variables.apiKey ) ) {
 			arguments.chatRequest.setSendAuthHeader( false );
 		}
 
@@ -180,7 +180,7 @@ class extends="BaseService" {
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ) {
 		// If no API key is set, disable auth header
-		if ( variables.apiKey.isEmpty() || !len( variables.apiKey ) ) {
+		if ( !len( variables.apiKey ) ) {
 			arguments.embeddingRequest.setSendAuthHeader( false );
 		}
 
@@ -206,6 +206,11 @@ class extends="BaseService" {
 
 			return checkResult.statusCode == 200 || checkResult.statusCode == "200 OK";
 		} catch ( any e ) {
+			writeLog(
+				text : "OpenAI-compatible service availability check failed (#variables.baseURL#): #e.message#",
+				type : "warning",
+				log  : "ai"
+			);
 			return false;
 		}
 	}

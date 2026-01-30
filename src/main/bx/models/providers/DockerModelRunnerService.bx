@@ -272,6 +272,11 @@ class extends = "OpenAICompatibleService"{
 				"statusCode": pullResult.statusCode
 			};
 		} catch ( any e ) {
+			writeLog(
+				text : "Error pulling model '#arguments.model#' from Docker Model Runner: #e.message#",
+				type : "error",
+				log  : "ai"
+			);
 			return {
 				"success": false,
 				"model": arguments.model,
@@ -336,6 +341,11 @@ class extends = "OpenAICompatibleService"{
 
 			return checkResult.statusCode == 200 || checkResult.statusCode == "200 OK";
 		} catch ( any e ) {
+			writeLog(
+				text : "Docker Model Runner availability check failed: #e.message#",
+				type : "warning",
+				log  : "ai"
+			);
 			return false;
 		}
 	}
