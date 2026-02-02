@@ -59,8 +59,8 @@ public class AwsSignatureV4Test extends BaseIntegrationTest {
 				payload = '{"message":"test"}',
 				region = "us-east-1",
 				service = "bedrock",
-				accessKeyId = "AKIAIOSFODNN7EXAMPLE",
-				secretAccessKey = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+				accessKeyId = "AKIAEXAMPLE",
+				secretAccessKey = "secretkey123"
 			);
 
 			isStruct = isStruct( result );
@@ -134,7 +134,7 @@ public class AwsSignatureV4Test extends BaseIntegrationTest {
 				service = "bedrock",
 				accessKeyId = "ASIATEMP123",
 				secretAccessKey = "tempsecret",
-				sessionToken = "FwoGZXIvYXdzEBYaDKtest123sessiontoken=="
+				sessionToken = "tempsessiontoken=="
 			);
 
 			hasSecurityToken = result.keyExists( "x-amz-security-token" );

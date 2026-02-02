@@ -29,10 +29,15 @@ import ortus.boxlang.runtime.types.Struct;
 
 public class BedrockServiceTest extends BaseIntegrationTest {
 
-	private String	awsAccessKeyId;
-	private String	awsSecretAccessKey;
-	private String	awsSessionToken;
-	private String	awsRegion;
+	// Dummy AWS credentials for tests that don't make real API calls
+	private static final String	DUMMY_AWS_ACCESS_KEY_ID		= "AKIAIOSFODNN7EXAMPLE";
+	private static final String	DUMMY_AWS_SECRET_ACCESS_KEY	= "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+	private static final String	DUMMY_AWS_REGION			= "us-east-1";
+
+	private String				awsAccessKeyId;
+	private String				awsSecretAccessKey;
+	private String				awsSessionToken;
+	private String				awsRegion;
 
 	@BeforeEach
 	public void beforeEach() {
@@ -68,13 +73,13 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 				service = aiService(
 					"bedrock",
 					{
-						awsAccessKeyId: "test-key",
-						awsSecretAccessKey: "test-secret",
-						region: "us-east-1"
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
 					}
 				)
 				serviceName = service.getName()
-			""",
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
 			context
 		);
 		// @formatter:on
@@ -91,15 +96,15 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 				service = aiService(
 					"bedrock",
 					{
-						awsAccessKeyId: "AKIAIOSFODNN7EXAMPLE",
-						awsSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
 						region: "us-west-2",
 						model: "anthropic.claude-3-sonnet-20240229-v1:0"
 					}
 				)
 
 				hasName = !isNull( service.getName() )
-			""",
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY ),
 			context
 		);
 		// @formatter:on
@@ -172,14 +177,14 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 				service = aiService(
 					"bedrock",
 					{
-						awsAccessKeyId: "key",
-						awsSecretAccessKey: "secret",
-						region: "us-east-1"
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
 					}
 				)
 
 				isConfigured = !isNull( service )
-			""",
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
 			context
 		);
 		// @formatter:on
