@@ -68,7 +68,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	@DisplayName( "Can instantiate Bedrock service via aiService BIF" )
 	public void testInstantiateBedrock() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 				service = aiService(
 					"bedrock",
@@ -91,7 +91,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	@DisplayName( "Bedrock service can be configured with AWS credentials" )
 	public void testConfiguration() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 				service = aiService(
 					"bedrock",
@@ -121,7 +121,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		}
 
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 				// aiChat signature: invoke(messages, params, options, headers)
 				response = aiChat(
@@ -154,7 +154,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		}
 
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 				// Should load from module settings (configured in beforeEach from .env)
 				service = aiService( "bedrock", {} )
@@ -172,7 +172,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	@DisplayName( "Bedrock service can be created with minimum configuration" )
 	public void testMinimalConfiguration() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 				service = aiService(
 					"bedrock",
@@ -196,7 +196,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	@DisplayName( "AiChatRequest supports providerOptions for provider-specific settings" )
 	public void testProviderOptions() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 				// Test getProviderOption with default when no options set
 				request = new src.main.bx.models.requests.AiChatRequest(

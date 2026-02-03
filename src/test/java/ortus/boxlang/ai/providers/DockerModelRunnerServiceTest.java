@@ -82,7 +82,7 @@ public class DockerModelRunnerServiceTest extends BaseIntegrationTest {
 	@DisplayName( "Can instantiate Docker Model Runner service via aiService BIF" )
 	public void testInstantiateDocker() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 				service = aiService(
 					"docker",
@@ -103,7 +103,7 @@ public class DockerModelRunnerServiceTest extends BaseIntegrationTest {
 	@DisplayName( "Docker service can be configured with model" )
 	public void testConfiguration() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 				service = aiService(
 					"docker",
@@ -131,7 +131,7 @@ public class DockerModelRunnerServiceTest extends BaseIntegrationTest {
 		}
 
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 				response = aiChat(
 					aiMessage().user( "Say 'Docker test successful' and nothing else" ),

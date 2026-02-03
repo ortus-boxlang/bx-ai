@@ -37,7 +37,7 @@ public class DeepSeekTest extends BaseIntegrationTest {
 	@Test
 	public void testDeepSeek() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiChat( "what is a servlet?" )
 			println( result )
@@ -53,7 +53,7 @@ public class DeepSeekTest extends BaseIntegrationTest {
 	@Test
 	public void testChatStream() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			chunks = []
 			fullResponse = ""
@@ -81,7 +81,7 @@ public class DeepSeekTest extends BaseIntegrationTest {
 	@Test
 	public void testStreamingCallback() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			chunkCount = 0
 			aiChatStream(

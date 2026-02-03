@@ -45,7 +45,7 @@ public class OllamaTest extends BaseIntegrationTest {
 	@DisplayName( "Should respond to basic AI chat using Ollama" )
 	public void testBasicOllamaChat() {
 		// Execute aiChat BIF with a simple question
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 		    """
 		    result = aiChat( "What is 2+2? Answer with just the number." )
 		    println( result )
@@ -63,7 +63,7 @@ public class OllamaTest extends BaseIntegrationTest {
 	@DisplayName( "Should handle custom model parameter for Ollama" )
 	public void testOllamaWithCustomModel() {
 		// Test with the lightweight model
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 		    """
 		    result = aiChat(
 		        messages = "What is 2 + 2? Answer with just the number.",
@@ -85,7 +85,7 @@ public class OllamaTest extends BaseIntegrationTest {
 	@DisplayName( "Should handle streaming chat with Ollama" )
 	public void testOllamaStreamingChat() {
 		// Test streaming functionality
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 		    """
 		    chunks = []
 		    fullResponse = ""
@@ -116,7 +116,7 @@ public class OllamaTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "logRequestToConsole", false );
 
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			tool = aiTool(
 				"get_weather",
@@ -124,7 +124,7 @@ public class OllamaTest extends BaseIntegrationTest {
 				location => {
 					// Ensure location is a string (handle if passed as struct)
 					var loc = isSimpleValue( location ) ? location : ( location.location ?: location.toString() );
-					
+
 					if( loc contains "Kansas City" ) {
 						return "85"
 					}
@@ -159,7 +159,7 @@ public class OllamaTest extends BaseIntegrationTest {
 	@Test
 	public void testJsonResponse() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiChat(
 				messages = "Return a JSON object with name 'BoxLang' and version '1.0'. Return ONLY valid JSON, nothing else.",
@@ -183,7 +183,7 @@ public class OllamaTest extends BaseIntegrationTest {
 	@Test
 	public void testXmlResponse() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			try {
 				result = aiChat(
@@ -218,7 +218,7 @@ public class OllamaTest extends BaseIntegrationTest {
 	@Test
 	public void testStructuredOutput() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			// Define structured schema using a struct
 			languageSchema = {
@@ -250,7 +250,7 @@ public class OllamaTest extends BaseIntegrationTest {
 	@Test
 	public void testOllamaEmbeddingSingle() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiEmbed(
 				input: "BoxLang is a modern dynamic JVM language",
