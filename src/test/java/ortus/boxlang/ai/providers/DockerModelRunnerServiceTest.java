@@ -26,12 +26,14 @@ import java.net.URI;
 import java.net.URL;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
 
+@Disabled( "Run manually when Docker Model Runner is available" )
 public class DockerModelRunnerServiceTest extends BaseIntegrationTest {
 
 	private static final String	DOCKER_BASE_URL	= "http://localhost:12434";
