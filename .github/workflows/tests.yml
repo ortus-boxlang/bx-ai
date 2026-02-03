@@ -59,8 +59,21 @@ jobs:
       - name: Wait for Ollama Models
         run: |
           echo "Waiting for Ollama service to be ready..."
-          timeout 180 bash -c 'until curl -f http://localhost:11434/api/tags 2>/dev/null | grep -q "nomic-embed-text"; do echo "Waiting for nomic-embed-text model..."; sleep 5; done'
+          sleep 5
+          echo "Checking Ollama service health..."
+          curl -f http://localhost:11434/api/tags || echo "Ollama not responding yet"
+          echo ""
+          echo "Checking container logs..."
+          docker logs ollama || true
+          echo ""
+          echo "Waiting for models to be pulled (timeout: 300s)..."
+          timeout 300 bash -c 'until curl -s http://localhost:11434/api/tags 2>/dev/null | grep -q "nomic-embed-text"; do
+            echo "Current models:";
+            curl -s http://localhost:11434/api/tags 2>/dev/null || echo "API not ready";
+            sleep 10;
+          done'
           echo "Ollama models ready!"
+          curl -s http://localhost:11434/api/tags | grep name || true
 
       - name: Test Module
         run: |
