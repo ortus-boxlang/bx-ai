@@ -26,6 +26,8 @@ env:
   JDK: 21
   BUILD_ID: ${{ github.run_number }}
   SNAPSHOT: ${{ inputs.snapshot || false }}
+  # Set BoxLang home to workspace to avoid permission issues with GitHub Actions runner v2.331.0+
+  BOXLANG_HOME: ${{ github.workspace }}/.boxlang
 
 jobs:
   #############################################
@@ -48,13 +50,6 @@ jobs:
         with:
           distribution: "temurin"
           java-version: ${{ env.JDK }}
-
-      - name: Setup BoxLang Directories
-        run: |
-          # Pre-create BoxLang home directory to avoid permission issues
-          # GitHub Actions runner v2.331.0+ changed /home/runner ownership handling
-          mkdir -p $HOME/.boxlang/classes
-          chmod -R u+w $HOME/.boxlang
 
       - name: Setup BoxLang & CommandBox
         uses: ortus-boxlang/setup-boxlang@1.2.0

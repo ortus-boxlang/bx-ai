@@ -18,7 +18,7 @@ src/test/resources/modules/**
 testbox/**
 tests/results
 derby.log
-build/boxlang-classes/
+.boxlang/
 
 ### Runtime Web Content ###
 www/boxlang_modules/
