@@ -56,9 +56,24 @@ jobs:
         with:
           compose-file: "./docker-compose.yml"
 
-      - name: Wait for Ollama
+      - name: Wait for Ollama and Load Models
         run: |
-          sleep 30
+          echo "Waiting for Ollama to be ready..."
+          sleep 20
+          echo "Making initial chat request to load qwen2.5:0.5b-instruct..."
+          curl -s http://localhost:11434/api/chat -d '{
+            "model": "qwen2.5:0.5b-instruct",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "stream": false
+          }' || echo "Chat model warming up..."
+          echo ""
+          echo "Making initial embedding request to load nomic-embed-text..."
+          curl -s http://localhost:11434/api/embeddings -d '{
+            "model": "nomic-embed-text",
+            "prompt": "test"
+          }' || echo "Embedding model warming up..."
+          echo ""
+          echo "Models loaded and ready!"
 
       - name: Test Module
         run: |
