@@ -56,7 +56,7 @@ jobs:
         with:
           compose-file: "./docker-compose.yml"
 
-      - name: Wait for Ollama Models
+      - name: Wait for Ollama
         run: |
           echo "Waiting for Ollama service to be ready..."
           sleep 5
