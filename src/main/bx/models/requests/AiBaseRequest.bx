@@ -69,6 +69,12 @@ abstract class{
 	property name="timeout" type="numeric" default=30;
 
 	/**
+	 * Base URL for the provider API (optional override for the service's default)
+	 * Used by OpenAI-compatible services for custom endpoints
+	 */
+	property name="baseURL" type="string" default="";
+
+	/**
 	 * Send an auth header or not with the API Key
 	 * This is usually determined by the provider
 	 */
@@ -84,6 +90,25 @@ abstract class{
 	 * If not set, will use the service default (10)
 	 */
 	property name="maxInteractions" type="numeric" default=0;
+
+	/**
+	 * Tenant identifier for multi-tenant usage tracking
+	 * Used to attribute AI usage to specific tenants for billing purposes
+	 */
+	property name="tenantId" type="string" default="";
+
+	/**
+	 * Additional metadata for usage tracking (cost center, project, etc.)
+	 * This data will be included in onAITokenCount events for custom billing logic
+	 */
+	property name="usageMetadata" type="struct" default={};
+
+	/**
+	 * Provider-specific options that don't fit the common interface
+	 * Each provider can define and read its own keys from this struct
+	 * Examples: inferenceProfileArn (Bedrock), customHeaders (OpenAI-compatible)
+	 */
+	property name="providerOptions" type="struct" default={};
 
 	/**
 	 * Add a header to the request
@@ -165,6 +190,18 @@ abstract class{
 	AiBaseRequest function mergeServiceHeaders( required struct serviceHeaders, boolean override = false ){
 		variables.headers.append( arguments.serviceHeaders, arguments.override );
 		return this;
+	}
+
+	/**
+	 * Get a provider option by key with an optional default value
+	 *
+	 * @key The option key to retrieve
+	 * @defaultValue The default value if the key doesn't exist
+	 *
+	 * @return The option value or the default
+	 */
+	function getProviderOption( required string key, any defaultValue = "" ){
+		return variables.providerOptions[ arguments.key ] ?: arguments.defaultValue;
 	}
 
 }

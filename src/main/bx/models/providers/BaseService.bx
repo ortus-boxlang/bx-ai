@@ -114,7 +114,7 @@ abstract class implements="IAiService" {
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
 
-	 /**
+	/**
 	 * Configure the service provider with the given options
 	 *
 	 * @options - The configuration options or API key string
@@ -140,7 +140,10 @@ abstract class implements="IAiService" {
 
 		// Otherwise, it's a struct of options
 		variables.options = arguments.options
-		variables.apiKey = arguments.options?.apiKey ?: ""
+		// Only set apiKey if provided in options (preserve existing apiKey otherwise)
+		if ( arguments.options.keyExists( "apiKey" ) ) {
+			variables.apiKey = arguments.options.apiKey;
+		}
 
 		// Verify if the MODULE_SETTINGS has default provider settings and params
 		if( static.MODULE_SETTINGS.keyExists( "providers" ) && static.MODULE_SETTINGS.providers.keyExists( variables.name ) ){
@@ -279,7 +282,12 @@ abstract class implements="IAiService" {
 				completionTokens: result.usage.keyExists( "completion_tokens" ) ? result.usage.completion_tokens : 0,
 				totalTokens: result.usage.keyExists( "total_tokens" ) ? result.usage.total_tokens : 0,
 				aiRequest: arguments.chatRequest,
-				usage: result.usage
+				usage: result.usage,
+				// Multi-tenant tracking fields
+				tenantId: arguments.chatRequest.getTenantId(),
+				usageMetadata: arguments.chatRequest.getUsageMetadata(),
+				providerOptions: arguments.chatRequest.getProviderOptions(),
+				timestamp: now()
 			} );
 		}
 
@@ -551,10 +559,6 @@ abstract class implements="IAiService" {
 			// Body Packet
 			bx:httpParam type="body" value=jsonSerialize( arguments.dataPacket );
 		}
-
-		println( "=============================" )
-		println( chatResult )
-		println( "=============================" )
 
 		// Check for rate limiting (429 status code)
 		if( chatResult.statusCode == "429" || chatResult.statusCode == 429 ){
