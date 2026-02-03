@@ -56,6 +56,12 @@ jobs:
         with:
           compose-file: "./docker-compose.yml"
 
+      - name: Wait for Ollama Models
+        run: |
+          echo "Waiting for Ollama service to be ready..."
+          timeout 180 bash -c 'until curl -f http://localhost:11434/api/tags 2>/dev/null | grep -q "nomic-embed-text"; do echo "Waiting for nomic-embed-text model..."; sleep 5; done'
+          echo "Ollama models ready!"
+
       - name: Test Module
         run: |
           # Download BoxLang and other dependencies
