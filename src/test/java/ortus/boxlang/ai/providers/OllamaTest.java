@@ -122,11 +122,14 @@ public class OllamaTest extends BaseIntegrationTest {
 				"get_weather",
 				"Get current temperature for a given location.",
 				location => {
-					if( location contains "Kansas City" ) {
+					// Ensure location is a string (handle if passed as struct)
+					var loc = isSimpleValue( location ) ? location : ( location.location ?: location.toString() );
+					
+					if( loc contains "Kansas City" ) {
 						return "85"
 					}
 
-					if( location contains "San Salvador" ){
+					if( loc contains "San Salvador" ){
 						return "90"
 					}
 
