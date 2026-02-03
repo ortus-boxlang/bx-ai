@@ -2,6 +2,7 @@
 	"modulesDirectory": [
 		"src/test/resources/modules"
 	],
+	"classGenerationDirectory": "build/boxlang-classes",
 	"modules": {},
 	"datasources": {
 		"bxai_test": {
