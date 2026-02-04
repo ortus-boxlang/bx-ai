@@ -26,6 +26,8 @@ env:
   JDK: 21
   BUILD_ID: ${{ github.run_number }}
   SNAPSHOT: ${{ inputs.snapshot || false }}
+  # Set BoxLang home to workspace to avoid permission issues with GitHub Actions runner v2.331.0+
+  BOXLANG_HOME: ${{ github.workspace }}/.boxlang
 
 jobs:
   #############################################

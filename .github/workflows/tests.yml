@@ -9,6 +9,8 @@ on:
 
 env:
   MODULE_ID: ${{ github.event.repository.name }}
+  # Set BoxLang home to workspace to avoid permission issues with GitHub Actions runner v2.331.0+
+  BOXLANG_HOME: ${{ github.workspace }}/.boxlang
 
 jobs:
   tests:
