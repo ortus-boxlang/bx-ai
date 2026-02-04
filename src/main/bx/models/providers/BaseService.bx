@@ -597,11 +597,31 @@ abstract class implements="IAiService" {
 			println( jsonDeserialize( chatResult.filecontent ) )
 		}
 
-		var iData = {
-			"chatRequest" = arguments.chatRequest,
-			"response" = jsonDeserialize( chatResult.filecontent ),
-			"rawResponse"	: chatResult,
-			"provider" = this
+		// Try to deserialize the response
+		try{
+			var iData = {
+				"chatRequest" = arguments.chatRequest,
+				"response" = jsonDeserialize( chatResult.filecontent ),
+				"rawResponse"	: chatResult,
+				"provider" = this
+			}
+		}
+		catch( Any e ){
+			// Announce the error
+			BoxAnnounce( "onAIError", {
+				error: e,
+				errorMessage: "Error deserializing response: #chatResult.filecontent#",
+				provider: this,
+				operation: "sendRequest",
+				aiRequest: arguments.chatRequest,
+				canRetry: true
+			} );
+
+			throw(
+				type   : "JsonDeserializationError",
+				message: "Error deserializing response from provider: #e.message & e.detail#",
+				detail: "Response: #chatResult.filecontent#"
+			);
 		}
 
 		BoxAnnounce( "onAIChatResponse", iData );
@@ -817,11 +837,29 @@ abstract class implements="IAiService" {
 			println( jsonDeserialize( embeddingResult.filecontent ) )
 		}
 
-		var iData = {
-			"embeddingRequest" = arguments.embeddingRequest,
-			"response" = jsonDeserialize( embeddingResult.filecontent ),
-			"rawResponse"	: embeddingResult,
-			"provider" = this
+		try{
+			var iData = {
+				"embeddingRequest" = arguments.embeddingRequest,
+				"response" = jsonDeserialize( embeddingResult.filecontent ),
+				"rawResponse"	: embeddingResult,
+				"provider" = this
+			}
+		} catch( Any e ){
+			// Announce the error
+			BoxAnnounce( "onAIError", {
+				error: e,
+				errorMessage: "Error deserializing response: #embeddingResult.filecontent#",
+				provider: this,
+				operation: "sendEmbeddingRequest",
+				aiRequest: arguments.embeddingRequest,
+				canRetry: true
+			} );
+
+			throw(
+				type   : "JsonDeserializationError",
+				message: "Error deserializing response from provider: #e.message & e.detail#",
+				detail: "Response: #embeddingResult.filecontent#"
+			);
 		}
 
 		BoxAnnounce( "onAIEmbedResponse", iData );
