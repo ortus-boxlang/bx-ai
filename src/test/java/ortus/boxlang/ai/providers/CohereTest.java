@@ -56,7 +56,7 @@ public class CohereTest extends BaseIntegrationTest {
 	@Test
 	public void testCohereEmbeddingSingle() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiEmbed(
 				input: "BoxLang is a modern dynamic JVM language",
@@ -83,7 +83,7 @@ public class CohereTest extends BaseIntegrationTest {
 	@Test
 	public void testCohereEmbeddingBatch() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			// Use returnFormat: "embeddings" to get array of arrays for batch
 			result = aiEmbed(
@@ -119,7 +119,7 @@ public class CohereTest extends BaseIntegrationTest {
 	@Test
 	public void testCohereEmbeddingWithModel() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiEmbed(
 				input: "BoxLang and AI integration",
@@ -140,7 +140,7 @@ public class CohereTest extends BaseIntegrationTest {
 	@Test
 	public void testCohereEmbeddingInputType() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			// Cohere supports input_type: "search_query" or "search_document"
 			// "search_query" for queries, "search_document" for documents
@@ -165,7 +165,7 @@ public class CohereTest extends BaseIntegrationTest {
 	@Test
 	public void testCohereChat() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiChat(
 				"What is 2+2?",
@@ -191,7 +191,7 @@ public class CohereTest extends BaseIntegrationTest {
 	@Test
 	public void testCohereChatWithTools() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			// Define a simple calculator tool
 			calculatorTool = aiTool(
@@ -237,7 +237,7 @@ public class CohereTest extends BaseIntegrationTest {
 	@Test
 	public void testCohereChatStructuredOutput() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			// Use existing Person class from test/bx
 			result = aiChat(
@@ -266,7 +266,7 @@ public class CohereTest extends BaseIntegrationTest {
 	@Test
 	public void testCohereStreamingChat() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			// Track chunks and build full response
 			chunks = [];
@@ -310,7 +310,7 @@ public class CohereTest extends BaseIntegrationTest {
 	@Test
 	public void testCohereStreamingSimpleMath() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			fullResponse = "";
 			chunkCount = 0;

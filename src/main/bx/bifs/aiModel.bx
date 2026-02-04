@@ -46,6 +46,7 @@ class {
 	 * @apiKey Optional API key override. If not provided, uses default from module settings.
 	 * @tools Optional ITool or an array of Tool instances to attach to the model for tool-augmented generation.
 	 * @param params Additional parameters to bind the model with
+	 * @param options Additional options for model creation (e.g., timeout, logResponse, logResponseToConsole, logRequest, logRequestToConsole)
 	 *
 	 * @return An AiModel runnable
 	 */
@@ -53,7 +54,8 @@ class {
 		string provider,
 		any apiKey,
 		any tools=[],
-		struct params={}
+		struct params={},
+		struct options={}
 	) {
 		// Get the underlying service
 		var service = aiService( argumentCollection: arguments )
@@ -62,6 +64,7 @@ class {
 		var model = new bxModules.bxai.models.AiModel( service )
 			.bindTools( arguments.tools )
 			.withParams( arguments.params )
+			.withOptions( arguments.options )
 
 		// Notify of model creation
 		BoxAnnounce( "onAIModelCreate", { model: model, service: service } )

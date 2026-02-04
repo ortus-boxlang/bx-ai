@@ -105,30 +105,38 @@ class {
 	function configure(){
 		settings = {
 			// The default provider LLM AI: openai, deepseek, etc
-			provider = "openai",
+			provider : "openai",
 			// The default API Key for the provider
-			apiKey = "",
-			// The default request params to use when calling a provider
+			apiKey : "",
+			// The default request params to use when calling a provider, any provider
 			// Ex: { temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
-			defaultParams = {
+			defaultParams : {
 			},
-			// The default memory to use
+			// The default memory to use when calling aiMemory()
 			memory : {
-				provider = "window",
-				config = {}
+				provider : "window",
+				config : {}
+			},
+			// This is used to configure default options and parameters for a specific provider
+			// The name of the key is the provider name, each provider can have its own params and options
+			providers : {
+				// openai : {
+				// 	params : {},
+				// 	options: {}
+				// }
 			},
 			// The default timeout of the ai requests
-			timeout = 30,
+			timeout : 30,
 			// If true, the AI request will be logged into the ai.log
-			logRequest = false,
+			logRequest : false,
 			// If true, the AI request will be logged to the console
-			logRequestToConsole = false,
+			logRequestToConsole : false,
 			// If true, the AI response will be logged into the ai.log
-			logResponse = false,
+			logResponse : false,
 			// If true, the AI response will be logged to the console
-			logResponseToConsole = false,
+			logResponseToConsole : false,
 			// The default return format of the AI response: single, all, raw
-			returnFormat = "single"
+			returnFormat : "single"
 		}
 
 		/**
@@ -152,12 +160,12 @@ class {
 			"afterAIModelInvoke",
 			"onAIModelCreate",
 			"onAIProviderCreate",
-			"onAIProviderRequest",
+			"onMissingAiProvider",
 
 			// Request & Response Events
-			"onAIRequest",
-			"onAIRequestCreate",
-			"onAIResponse",
+			"onAIChatRequest",
+			"onAIChatRequestCreate",
+			"onAIChatResponse",
 			"onAIRateLimitHit",
 			"onAIError",
 

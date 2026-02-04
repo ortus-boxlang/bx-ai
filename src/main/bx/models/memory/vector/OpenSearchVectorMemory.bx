@@ -1,0 +1,926 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * OpenSearch Vector Memory Implementation with k-NN plugin
+ * Provides vector storage and semantic search using OpenSearch's k-NN capabilities
+ * Supports both self-managed OpenSearch and AWS OpenSearch Service
+ */
+class extends="BaseVectorMemory" {
+
+	/**
+	 * OpenSearch host (without scheme)
+	 */
+	property name="host" type="string";
+
+	/**
+	 * OpenSearch port
+	 */
+	property name="port" type="numeric";
+
+	/**
+	 * HTTP scheme (http or https)
+	 */
+	property name="scheme" type="string";
+
+	/**
+	 * Index name for vector storage
+	 */
+	property name="index" type="string";
+
+	/**
+	 * Basic auth username (optional)
+	 */
+	property name="username" type="string";
+
+	/**
+	 * Basic auth password (optional)
+	 */
+	property name="password" type="string";
+
+	/**
+	 * AWS region for SigV4 authentication (optional, for AWS OpenSearch Service)
+	 */
+	property name="awsRegion" type="string";
+
+	/**
+	 * AWS Access Key ID (optional, uses credential chain if not provided)
+	 */
+	property name="awsAccessKeyId" type="string";
+
+	/**
+	 * AWS Secret Access Key (optional, uses credential chain if not provided)
+	 */
+	property name="awsSecretAccessKey" type="string";
+
+	/**
+	 * AWS Session Token (optional, for temporary credentials)
+	 */
+	property name="awsSessionToken" type="string";
+
+	/**
+	 * HTTP request timeout in seconds
+	 */
+	property name="timeout" type="numeric";
+
+	/**
+	 * k-NN engine: "lucene" or "nmslib"
+	 */
+	property name="engine" type="string";
+
+	/**
+	 * Space type for similarity: "cosinesimilarity", "l2", "innerproduct"
+	 */
+	property name="spaceType" type="string";
+
+	/**
+	 * HNSW M parameter (connections per node)
+	 */
+	property name="hnswM" type="numeric";
+
+	/**
+	 * HNSW ef_construction parameter (build-time quality)
+	 */
+	property name="hnswEfConstruction" type="numeric";
+
+	/**
+	 * HNSW ef_search parameter (search-time quality)
+	 */
+	property name="hnswEfSearch" type="numeric";
+
+	/**
+	 * Detected OpenSearch major version (2 or 3), -1 means not yet detected (lazy detection)
+	 */
+	property name="openSearchVersion" type="numeric" default="-1";
+
+	/**
+	 * Flag to track if collection/index has been ensured (for lazy initialization)
+	 */
+	property name="collectionEnsured" type="boolean" default="false";
+
+	static {
+		// Default configurations
+		DEFAULT_HOST = "localhost"
+		DEFAULT_PORT = 9200
+		DEFAULT_SCHEME = "https"
+		DEFAULT_INDEX = "bx_ai_vectors"
+		DEFAULT_TIMEOUT = 30
+		DEFAULT_ENGINE = "lucene"
+		DEFAULT_SPACE_TYPE = "cosinesimilarity"
+		DEFAULT_HNSW_M = 16
+		DEFAULT_HNSW_EF_CONSTRUCTION = 256
+		DEFAULT_HNSW_EF_SEARCH = 100
+
+		// Space type mappings for OpenSearch version compatibility
+		// OpenSearch 2.x: uses "cosinesimil" for cosine similarity
+		// OpenSearch 3.x with lucene/faiss: "cosinesimilarity" NOT supported, use "innerproduct" instead
+		// Note: innerproduct gives equivalent results to cosinesimilarity for normalized vectors (which embeddings typically are)
+		SPACE_TYPES_V2 = {
+			"cosinesimilarity": "cosinesimil",
+			"l2": "l2",
+			"innerproduct": "innerproduct"
+		}
+		SPACE_TYPES_V3 = {
+			"cosinesimilarity": "innerproduct",
+			"l2": "l2",
+			"innerproduct": "innerproduct"
+		}
+	}
+
+	/**
+	 * Configure the OpenSearch vector memory instance
+	 *
+	 * @config Configuration struct with OpenSearch-specific options
+	 *
+	 * @return OpenSearchVectorMemory for chaining
+	 */
+	public any function configure( required struct config ) {
+		// Extract OpenSearch-specific config FIRST
+		param arguments.config.host = static.DEFAULT_HOST
+		param arguments.config.port = static.DEFAULT_PORT
+		param arguments.config.scheme = static.DEFAULT_SCHEME
+		param arguments.config.index = static.DEFAULT_INDEX
+		param arguments.config.username = ""
+		param arguments.config.password = ""
+		param arguments.config.awsRegion = ""
+		param arguments.config.awsAccessKeyId = ""
+		param arguments.config.awsSecretAccessKey = ""
+		param arguments.config.awsSessionToken = ""
+		param arguments.config.timeout = static.DEFAULT_TIMEOUT
+		param arguments.config.engine = static.DEFAULT_ENGINE
+		param arguments.config.spaceType = static.DEFAULT_SPACE_TYPE
+		param arguments.config.hnswM = static.DEFAULT_HNSW_M
+		param arguments.config.hnswEfConstruction = static.DEFAULT_HNSW_EF_CONSTRUCTION
+		param arguments.config.hnswEfSearch = static.DEFAULT_HNSW_EF_SEARCH
+
+		// Set instance variables
+		variables.host = arguments.config.host
+		variables.port = arguments.config.port
+		variables.scheme = arguments.config.scheme.lcase()
+		variables.index = arguments.config.index.lcase()
+		variables.username = arguments.config.username
+		variables.password = arguments.config.password
+		variables.awsRegion = arguments.config.awsRegion
+		variables.awsAccessKeyId = arguments.config.awsAccessKeyId
+		variables.awsSecretAccessKey = arguments.config.awsSecretAccessKey
+		variables.awsSessionToken = arguments.config.awsSessionToken
+		variables.timeout = arguments.config.timeout
+		variables.engine = arguments.config.engine.lcase()
+		variables.spaceType = arguments.config.spaceType.lcase()
+		variables.hnswM = arguments.config.hnswM
+		variables.hnswEfConstruction = arguments.config.hnswEfConstruction
+		variables.hnswEfSearch = arguments.config.hnswEfSearch
+
+		// Validate scheme
+		if ( !["http", "https"].find( variables.scheme ) ) {
+			throw(
+				type = "OpenSearchVectorMemory.InvalidScheme",
+				message = "Invalid scheme: #variables.scheme#. Must be 'http' or 'https'."
+			)
+		}
+
+		// Validate engine
+		if ( !["lucene", "nmslib"].find( variables.engine ) ) {
+			throw(
+				type = "OpenSearchVectorMemory.InvalidEngine",
+				message = "Invalid k-NN engine: #variables.engine#. Must be 'lucene' or 'nmslib'."
+			)
+		}
+
+		// Validate space type
+		if ( !["cosinesimilarity", "l2", "innerproduct"].find( variables.spaceType ) ) {
+			throw(
+				type = "OpenSearchVectorMemory.InvalidSpaceType",
+				message = "Invalid space type: #variables.spaceType#. Must be 'cosinesimilarity', 'l2', or 'innerproduct'."
+			)
+		}
+
+		// Map collection to index if provided
+		if ( arguments.config.keyExists( "collection" ) && len( arguments.config.collection ) ) {
+			variables.index = arguments.config.collection.lcase()
+		}
+
+		// Version detection is now lazy - will be detected on first use
+		// This allows configuration to succeed even if OpenSearch isn't available yet
+
+		// Now call parent configure which will call ensureCollection()
+		super.configure( arguments.config )
+
+		return this
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * ABSTRACT METHOD IMPLEMENTATIONS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure OpenSearch index exists with k-NN mapping
+	 * This is called by the parent configure() but we defer actual work to first use
+	 * to avoid connection attempts before a valid endpoint is configured
+	 */
+	IVectorMemory function ensureCollection() {
+		// Lazy initialization - don't connect during configure()
+		// The actual index creation happens on first operation via ensureCollectionExists()
+		return this
+	}
+
+	/**
+	 * Actually ensure the collection exists - called lazily before operations
+	 */
+	private void function ensureCollectionExists() {
+		if ( variables.collectionEnsured ) {
+			return
+		}
+
+		// Check if index exists, create if not
+		if ( !indexExists( variables.index ) ) {
+			createIndex( variables.index )
+		}
+
+		variables.collectionEnsured = true
+	}
+
+	/**
+	 * Store a document in OpenSearch with its embedding
+	 *
+	 * @id Document ID
+	 * @text Document text
+	 * @embedding Vector embedding
+	 * @metadata Document metadata
+	 */
+	IVectorMemory function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	) {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
+		var document = {
+			"id": arguments.id,
+			"text": arguments.text,
+			"embedding": arguments.embedding,
+			"metadata": arguments.metadata,
+			"collection": variables.collection,
+			"userId": variables.userId,
+			"conversationId": variables.conversationId,
+			"created_at": now().toISOString(),
+			"updated_at": now().toISOString()
+		}
+
+		// Use index API with explicit ID (upsert behavior)
+		var response = executeRequest(
+			method = "PUT",
+			path = "/#variables.index#/_doc/#arguments.id#",
+			body = document
+		)
+
+		if ( response.statusCode != 200 && response.statusCode != 201 ) {
+			throw(
+				type = "OpenSearchVectorMemory.StoreError",
+				message = "Failed to store document: #response.data.error.reason ?: 'Unknown error'#",
+				detail = jsonSerialize( response.data )
+			)
+		}
+
+		return this
+	}
+
+	/**
+	 * Search by vector embedding using k-NN
+	 *
+	 * @embedding Vector to search with
+	 * @limit Max results
+	 * @filter Metadata filter
+	 *
+	 * @return Array of results with similarity scores
+	 */
+	array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
+		// Build filter clauses
+		var filterClauses = []
+
+		// Always filter by collection
+		filterClauses.append({ "term": { "collection": variables.collection } })
+
+		// Add userId filter if set
+		if ( len( variables.userId ) ) {
+			filterClauses.append({ "term": { "userId": variables.userId } })
+		}
+
+		// Add conversationId filter if set
+		if ( len( variables.conversationId ) ) {
+			filterClauses.append({ "term": { "conversationId": variables.conversationId } })
+		}
+
+		// Add metadata filters
+		for ( var key in arguments.filter ) {
+			if ( key != "userId" && key != "conversationId" ) {
+				filterClauses.append({ "term": { "metadata.#key#": arguments.filter[ key ] } })
+			}
+		}
+
+		// Build k-NN query
+		var query = {
+			"size": arguments.limit,
+			"query": {
+				"knn": {
+					"embedding": {
+						"vector": arguments.embedding,
+						"k": arguments.limit
+					}
+				}
+			}
+		}
+
+		// Add post_filter for metadata filtering (applied after k-NN scoring)
+		if ( !filterClauses.isEmpty() ) {
+			query[ "post_filter" ] = {
+				"bool": {
+					"must": filterClauses
+				}
+			}
+		}
+
+		// Execute search
+		var response = executeRequest(
+			method = "POST",
+			path = "/#variables.index#/_search",
+			body = query
+		)
+
+		if ( response.statusCode != 200 ) {
+			throw(
+				type = "OpenSearchVectorMemory.SearchError",
+				message = "Search failed: #response.data.error.reason ?: 'Unknown error'#",
+				detail = jsonSerialize( response.data )
+			)
+		}
+
+		// Transform results to standard format
+		return ( response.data.hits.hits ?: [] ).map( ( hit ) => {
+			return {
+				id: hit._source.id,
+				text: hit._source.text,
+				score: convertScoreToSimilarity( hit._score ?: 0 ),
+				metadata: hit._source.metadata ?: {},
+				embedding: hit._source.embedding ?: []
+			}
+		} )
+	}
+
+	/**
+	 * Get all documents from OpenSearch collection
+	 *
+	 * @return Array of documents
+	 */
+	array function getAllDocuments() {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
+		// Build filter for collection and tenant isolation
+		var filterClauses = [
+			{ "term": { "collection": variables.collection } }
+		]
+
+		if ( len( variables.userId ) ) {
+			filterClauses.append({ "term": { "userId": variables.userId } })
+		}
+
+		if ( len( variables.conversationId ) ) {
+			filterClauses.append({ "term": { "conversationId": variables.conversationId } })
+		}
+
+		var query = {
+			"size": 10000,  // OpenSearch default max
+			"query": {
+				"bool": {
+					"must": filterClauses
+				}
+			},
+			"sort": [
+				{ "created_at": { "order": "desc" } }
+			]
+		}
+
+		var response = executeRequest(
+			method = "POST",
+			path = "/#variables.index#/_search",
+			body = query
+		)
+
+		if ( response.statusCode != 200 ) {
+			return []
+		}
+
+		return ( response.data.hits.hits ?: [] ).map( ( hit ) => {
+			return {
+				id: hit._source.id,
+				text: hit._source.text,
+				metadata: hit._source.metadata ?: {},
+				embedding: hit._source.embedding ?: []
+			}
+		} )
+	}
+
+	/**
+	 * Get document by ID from OpenSearch
+	 *
+	 * @id Document ID
+	 *
+	 * @return Struct document or empty struct
+	 */
+	struct function getDocumentById( required string id ) {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
+		var response = executeRequest(
+			method = "GET",
+			path = "/#variables.index#/_doc/#arguments.id#"
+		)
+
+		if ( response.statusCode != 200 || !response.data.found ) {
+			return {}
+		}
+
+		var source = response.data._source
+		return {
+			id: source.id,
+			text: source.text,
+			metadata: source.metadata ?: {},
+			embedding: source.embedding ?: []
+		}
+	}
+
+	/**
+	 * Delete document by ID from OpenSearch
+	 *
+	 * @id Document ID
+	 *
+	 * @return Boolean success
+	 */
+	boolean function deleteDocument( required string id ) {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
+		var response = executeRequest(
+			method = "DELETE",
+			path = "/#variables.index#/_doc/#arguments.id#"
+		)
+
+		return response.statusCode == 200 && ( response.data.result ?: "" ) == "deleted"
+	}
+
+	/**
+	 * Delete documents by filter from OpenSearch
+	 *
+	 * @filter Metadata filter
+	 *
+	 * @return Numeric count deleted
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
+		var filterClauses = [
+			{ "term": { "collection": variables.collection } }
+		]
+
+		// Add metadata filters
+		for ( var key in arguments.filter ) {
+			filterClauses.append({ "term": { "metadata.#key#": arguments.filter[ key ] } })
+		}
+
+		var query = {
+			"query": {
+				"bool": {
+					"must": filterClauses
+				}
+			}
+		}
+
+		var response = executeRequest(
+			method = "POST",
+			path = "/#variables.index#/_delete_by_query",
+			body = query
+		)
+
+		if ( response.statusCode != 200 ) {
+			return 0
+		}
+
+		return response.data.deleted ?: 0
+	}
+
+	/**
+	 * Clear entire collection (delete all documents matching collection filter)
+	 */
+	IVectorMemory function clearCollection() {
+		// Ensure index exists on first operation
+		ensureCollectionExists()
+
+		var query = {
+			"query": {
+				"term": {
+					"collection": variables.collection
+				}
+			}
+		}
+
+		executeRequest(
+			method = "POST",
+			path = "/#variables.index#/_delete_by_query",
+			body = query
+		)
+
+		return this
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * COLLECTION MANAGEMENT
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Create a new index with k-NN mapping
+	 *
+	 * @name The index name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function createCollection( required string name ) {
+		createIndex( arguments.name )
+		return this
+	}
+
+	/**
+	 * Check if an index exists
+	 *
+	 * @name The index name
+	 *
+	 * @return Boolean
+	 */
+	boolean function collectionExists( required string name ) {
+		return indexExists( arguments.name )
+	}
+
+	/**
+	 * Delete an index and all its documents
+	 *
+	 * @name The index name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function deleteCollection( required string name ) {
+		executeRequest(
+			method = "DELETE",
+			path = "/#arguments.name#"
+		)
+		return this
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * PRIVATE HELPER METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Execute HTTP request to OpenSearch
+	 * Uses the BoxLang http() BIF with fluent builder pattern
+	 * Supports both Basic Auth and AWS SigV4 authentication
+	 *
+	 * @method HTTP method (GET, POST, PUT, DELETE, HEAD)
+	 * @path API path (e.g., /my-index/_search)
+	 * @body Request body struct (optional)
+	 *
+	 * @return Struct with statusCode and data
+	 */
+	private struct function executeRequest(
+		required string method,
+		required string path,
+		struct body = {}
+	) {
+		var requestUrl = "#variables.scheme#://#variables.host#:#variables.port##arguments.path#"
+		var payload = !arguments.body.isEmpty() && ( arguments.method == "POST" || arguments.method == "PUT" )
+			? jsonSerialize( arguments.body )
+			: ""
+
+		// Build HTTP request using fluent builder pattern
+		var httpService = http( url = requestUrl )
+			.method( arguments.method )
+			.throwOnError( false )
+			.charset( "UTF-8" )
+			.timeout( variables.timeout )
+			.header( "Content-Type", "application/json" )
+			.header( "Accept", "application/json" )
+
+		// Use SigV4 authentication for AWS OpenSearch Service
+		if ( len( variables.awsRegion ) ) {
+			var signedHeaders = getAwsSignedHeaders(
+				method = arguments.method,
+				path = arguments.path,
+				payload = payload
+			)
+			for ( var headerName in signedHeaders ) {
+				httpService.header( headerName, signedHeaders[ headerName ] )
+			}
+		}
+		// Use basic auth if configured (for self-managed OpenSearch)
+		else if ( len( variables.username ) && len( variables.password ) ) {
+			httpService.header( "Authorization", "Basic " & toBase64( "#variables.username#:#variables.password#" ) )
+		}
+
+		// Add body for POST/PUT requests
+		if ( len( payload ) ) {
+			httpService.body( payload )
+		}
+
+		// Execute request
+		var httpResponse = httpService.send()
+
+		// Parse response
+		var statusCode = 0
+		try {
+			statusCode = val( httpResponse.statusCode.listFirst( " " ) )
+		} catch ( any e ) {
+			statusCode = 0
+		}
+
+		var responseData = {}
+		try {
+			if ( !isNull( httpResponse.fileContent ) && len( httpResponse.fileContent ) ) {
+				responseData = jsonDeserialize( httpResponse.fileContent )
+			}
+		} catch ( any e ) {
+			responseData = { "raw": httpResponse.fileContent ?: "" }
+		}
+
+		return {
+			statusCode: statusCode,
+			data: responseData
+		}
+	}
+
+	/**
+	 * Get AWS SigV4 signed headers for a request
+	 * Uses the AWS credential chain (explicit, env vars, credentials file, ECS, EC2 metadata)
+	 *
+	 * @method HTTP method
+	 * @path Request path
+	 * @payload Request body (empty string for GET/DELETE/HEAD)
+	 *
+	 * @return Struct of headers to add to the request
+	 */
+	private struct function getAwsSignedHeaders(
+		required string method,
+		required string path,
+		required string payload
+	) {
+		// Get AWS credentials using the credential chain
+		var credentialProvider = new bxModules.bxai.models.util.AwsCredentialProvider()
+		var credentials = credentialProvider.getCredentials( {
+			awsAccessKeyId: variables.awsAccessKeyId,
+			awsSecretAccessKey: variables.awsSecretAccessKey,
+			awsSessionToken: variables.awsSessionToken
+		} )
+
+		// Validate credentials were found
+		if ( !len( credentials.awsAccessKeyId ) || !len( credentials.awsSecretAccessKey ) ) {
+			throw(
+				type = "OpenSearchVectorMemory.CredentialsError",
+				message = "AWS credentials not found. Provide awsAccessKeyId/awsSecretAccessKey in config or configure AWS environment credentials."
+			)
+		}
+
+		// Sign the request using AWS Signature V4
+		var signer = new bxModules.bxai.models.util.AwsSignatureV4()
+		var hostWithPort = variables.port == 443 ? variables.host : "#variables.host#:#variables.port#"
+
+		return signer.signRequest(
+			method = arguments.method,
+			host = hostWithPort,
+			path = arguments.path,
+			queryString = "",
+			headers = { "Content-Type": "application/json" },
+			payload = arguments.payload,
+			region = variables.awsRegion,
+			service = "es",
+			accessKeyId = credentials.awsAccessKeyId,
+			secretAccessKey = credentials.awsSecretAccessKey,
+			sessionToken = credentials.awsSessionToken
+		)
+	}
+
+	/**
+	 * Check if an index exists in OpenSearch
+	 *
+	 * @indexName The index name to check
+	 *
+	 * @return Boolean
+	 */
+	private boolean function indexExists( required string indexName ) {
+		var response = executeRequest(
+			method = "HEAD",
+			path = "/#arguments.indexName#"
+		)
+
+		return response.statusCode == 200
+	}
+
+	/**
+	 * Create a new index with k-NN mapping
+	 * Handles compatibility between OpenSearch 2.x and 3.x
+	 *
+	 * @indexName The index name to create
+	 */
+	private void function createIndex( required string indexName ) {
+		// Determine dimensions (must be set or use default)
+		var dims = variables.dimensions > 0 ? variables.dimensions : 1536
+
+		// Get the correct space_type value for the OpenSearch version
+		// OpenSearch 2.x: "cosinesimil" | OpenSearch 3.x: "cosinesimilarity"
+		var spaceTypeValue = getVersionCompatibleSpaceType()
+
+		// Build index settings - different for 2.x vs 3.x
+		var indexSettings = {
+			"index.knn": true,
+			"number_of_shards": 1,
+			"number_of_replicas": 0
+		}
+
+		// ef_search setting location differs by version
+		// OpenSearch 2.x: index.knn.algo_param.ef_search
+		// OpenSearch 3.x: removed from index settings, set at query time
+		if ( variables.openSearchVersion < 3 ) {
+			indexSettings[ "index.knn.algo_param.ef_search" ] = variables.hnswEfSearch
+		}
+
+		// Build index config with mappings
+		var indexConfig = {
+			"settings": indexSettings,
+			"mappings": {
+				"properties": {
+					"id": { "type": "keyword" },
+					"text": { "type": "text" },
+					"embedding": {
+						"type": "knn_vector",
+						"dimension": dims,
+						"method": {
+							"name": "hnsw",
+							"space_type": spaceTypeValue,
+							"engine": variables.engine,
+							"parameters": {
+								"ef_construction": variables.hnswEfConstruction,
+								"m": variables.hnswM
+							}
+						}
+					},
+					"metadata": {
+						"type": "object",
+						"enabled": true
+					},
+					"collection": { "type": "keyword" },
+					"userId": { "type": "keyword" },
+					"conversationId": { "type": "keyword" },
+					"created_at": { "type": "date" },
+					"updated_at": { "type": "date" }
+				}
+			}
+		}
+
+		var response = executeRequest(
+			method = "PUT",
+			path = "/#arguments.indexName#",
+			body = indexConfig
+		)
+
+		if ( response.statusCode != 200 && response.statusCode != 201 ) {
+			// Check if it's just an "index already exists" error
+			if ( response.data.error.type ?: "" == "resource_already_exists_exception" ) {
+				return
+			}
+
+			// Build a meaningful error message
+			var errorMessage = "Failed to create index '#arguments.indexName#': "
+			if ( response.statusCode == 0 || ( response.data.keyExists( "raw" ) && response.data.raw == "Connection Failure" ) ) {
+				errorMessage &= "Connection failed to #variables.scheme#://#variables.host#:#variables.port#. Check network connectivity, security groups, and OpenSearch endpoint configuration."
+			} else {
+				errorMessage &= response.data.error.reason ?: "Unknown error (status: #response.statusCode#)"
+			}
+
+			throw(
+				type = "OpenSearchVectorMemory.IndexCreationError",
+				message = errorMessage,
+				detail = jsonSerialize( response.data )
+			)
+		}
+	}
+
+	/**
+	 * Get the OpenSearch version, detecting lazily on first use
+	 *
+	 * @return Numeric major version (2 or 3)
+	 */
+	private numeric function getDetectedVersion() {
+		// Lazy detection: only detect if not already detected
+		if ( variables.openSearchVersion < 0 ) {
+			variables.openSearchVersion = detectOpenSearchVersion()
+		}
+		return variables.openSearchVersion
+	}
+
+	/**
+	 * Detect OpenSearch version from cluster info
+	 *
+	 * @return Numeric major version (2 or 3)
+	 */
+	private numeric function detectOpenSearchVersion() {
+		try {
+			var response = executeRequest( method = "GET", path = "/" )
+
+			if ( response.statusCode == 200 && response.data.keyExists( "version" ) ) {
+				var versionString = response.data.version.number ?: "2.0.0"
+				// Extract major version (e.g., "2.11.0" -> 2, "3.0.0" -> 3)
+				var majorVersion = val( versionString.listFirst( "." ) )
+				return majorVersion > 0 ? majorVersion : 2
+			}
+		} catch ( any e ) {
+			// If we can't detect, assume version 2 for backward compatibility
+		}
+
+		return 2
+	}
+
+	/**
+	 * Get the space_type value compatible with the detected OpenSearch version
+	 *
+	 * @return String space_type value
+	 */
+	private string function getVersionCompatibleSpaceType() {
+		var version = getDetectedVersion()
+		// OpenSearch 2.x uses "cosinesimil", OpenSearch 3.x uses "cosinesimilarity"
+		if ( version >= 3 ) {
+			return static.SPACE_TYPES_V3[ variables.spaceType ] ?: variables.spaceType
+		} else {
+			return static.SPACE_TYPES_V2[ variables.spaceType ] ?: variables.spaceType
+		}
+	}
+
+	/**
+	 * Convert OpenSearch score to similarity score (0-1, higher is better)
+	 * OpenSearch k-NN scores vary based on space_type and version
+	 *
+	 * OpenSearch 2.x (< 2.19): cosinesimil returns 0-2 range (adds 1 to shift from -1 to 1)
+	 * OpenSearch 2.19+/3.x with innerproduct: For normalized vectors, returns 0-1 range
+	 *
+	 * @score The raw score from OpenSearch
+	 *
+	 * @return Numeric score between 0 and 1
+	 */
+	private numeric function convertScoreToSimilarity( required numeric score ) {
+		var normalizedScore = arguments.score
+		var version = getDetectedVersion()
+
+		// Handle cosine similarity scoring differences between versions
+		if ( variables.spaceType == "cosinesimilarity" ) {
+			if ( version < 3 ) {
+				// OpenSearch 2.x uses "cosinesimil" which returns scores in 0-2 range
+				// (adds 1 to shift cosine similarity from -1,1 to 0,2)
+				if ( arguments.score > 1 ) {
+					normalizedScore = arguments.score / 2
+				}
+			}
+			// OpenSearch 3.x uses "innerproduct" for cosinesimilarity
+			// For normalized vectors (typical for embeddings), innerproduct = cosine similarity
+			// Score is already in 0-1 range for normalized vectors
+		}
+
+		// For l2: OpenSearch returns 1/(1+distance) so already 0-1
+		// For innerproduct: For normalized vectors, returns dot product (0-1 for unit vectors)
+
+		// Ensure score is in valid range
+		return max( 0, min( 1, normalizedScore ) )
+	}
+
+}

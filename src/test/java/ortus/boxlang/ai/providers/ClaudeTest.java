@@ -37,7 +37,7 @@ public class ClaudeTest extends BaseIntegrationTest {
 	@Test
 	public void testClaude() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiChat( "what is boxlang?" )
 			println( result )
@@ -56,7 +56,7 @@ public class ClaudeTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "logRequestToConsole", false );
 
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			tool = aiTool(
 				"get_weather",
@@ -94,7 +94,7 @@ public class ClaudeTest extends BaseIntegrationTest {
 	@Test
 	public void testJsonResponse() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiChat(
 				messages = "Return a JSON object with name 'BoxLang' and version '1.0'. Return ONLY valid JSON, nothing else.",
@@ -118,7 +118,7 @@ public class ClaudeTest extends BaseIntegrationTest {
 	@Test
 	public void testXmlResponse() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiChat(
 				messages = "Return an XML document with a root element 'language' containing a child element 'name' with value 'BoxLang'. Return ONLY valid XML, nothing else.",
@@ -140,7 +140,7 @@ public class ClaudeTest extends BaseIntegrationTest {
 	@Test
 	public void testStructuredOutput() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			// Define structured schema using a struct
 			languageSchema = {
@@ -172,7 +172,7 @@ public class ClaudeTest extends BaseIntegrationTest {
 	@Test
 	public void testChatStream() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			chunks = []
 			fullResponse = ""
@@ -200,7 +200,7 @@ public class ClaudeTest extends BaseIntegrationTest {
 	@Test
 	public void testStreamingCallback() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			chunkCount = 0
 			aiChatStream(

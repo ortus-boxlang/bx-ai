@@ -9,7 +9,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
+
+### Added
+
+- New event: `onMissingAiProvider` to handle cases where a requested provider is not found.
+- `aiModel()` BIF now accepts an additional `options` struct to seed services.
+- New configuration: `providers` so you can predefine multiple providers in the module config, with default `params` and `options`.
+
+```js
+"providers" : {
+	"openai" : {
+		"params" : {
+			"model" : "gpt-4"
+		},
+		"options" : {
+			"apiKey" : "my-openai-api-key"
+		}
+	},
+	"ollama" : {
+		"params" : {
+			"model" : "qwen2.5:0.5b-instruct"
+		},
+		"options" : {
+			"baseUrl" : "http://my-ollama-server:11434/"
+		}
+	}
+}
+```
+
+- OllamaService now supports custom base URLs for both chat and embeddings endpoints via the `options.baseUrl` parameter.
+- `AiBaseRequest.mergeServiceParams()` and `AiBaseRequest.mergeServiceHeaders()` methods now accept an `override` boolean argument to control whether existing values should be overwritten when merging.
+- Local Ollama docker setup instructions updated to include the `nomic-embed-text` model for embeddings support.
+- Ollama Service now supports embedding generation using the `nomic-embed-text` model.
+- **Multi-Tenant Usage Tracking**: Provider-agnostic request tagging for per-tenant billing
+  - New `tenantId` option for attributing AI usage to specific tenants
+  - New `usageMetadata` option for custom tracking data (cost center, project, userId, etc.)
+  - Enhanced `onAITokenCount` events with tenant context for interceptor-based billing
+  - Works with all providers: OpenAI, Bedrock, Ollama, DeepSeek, etc.
+  - Fully backward compatible - existing code works unchanged
+- **Provider-Specific Options Support**: Generic `providerOptions` struct for provider-specific settings
+  - New `providerOptions` option for passing provider-specific configuration (e.g., `inferenceProfileArn` for Bedrock)
+  - New `getProviderOption(key, defaultValue)` method on requests for retrieving provider options
+  - Enables extensibility for any provider-specific features without polluting the common interface
+- **OpenSearch Vector Memory Provider**: Full integration with OpenSearch k-NN for semantic search
+  - Support for OpenSearch 2.x and 3.x with automatic version detection and space type mapping
+  - HNSW index configuration options (M, ef_construction, ef_search parameters)
+  - Space type options: cosinesimilarity, l2, innerproduct
+  - Basic authentication support (username/password)
+  - AWS region configuration for SigV4 authentication with AWS OpenSearch Service
+  - Multi-tenant isolation with userId and conversationId filtering
+  - Comprehensive test coverage for configuration, validation, and operations
+- **OpenAI-Compatible Embedding Support**: Vector memory providers now support custom embedding endpoints
+  - New `embeddingOptions` configuration in `BaseVectorMemory` for passing options to embedding provider
+  - Use `embeddingOptions.baseURL` for custom OpenAI-compatible embedding service URLs
+  - Allows using self-hosted or alternative OpenAI-compatible embedding services
+  - Works with providers like Ollama, LM Studio, and other compatible APIs
+- **AWS Bedrock Streaming Support**: Full streaming support for Bedrock provider
+  - Streaming via `InvokeModelWithResponseStream` API endpoint
+  - Support for all model families: Claude, Titan, Llama, Mistral
+  - AWS event-stream format parsing with base64 payload decoding
+  - OpenAI-compatible streaming response format for consistent callback handling
+  - Added more AiError exception handling for service json errors.
+
+### Changed
+
+- All AI provider services now inherit default chat and embedding parameters from the `IAiService` interface, ensuring consistent behavior across providers.
+- `IAiService.configure()` method now accepts a generic `options` argument instead of `apiKey`, to better reflect its purpose and support more configuration options.
+- `AiRequest` class renamed to `AiChatRequest` for clarity, and multi-modality support.
+
+### Fixed
+
+- Events for chat requests were incorrectly named in the ModuleConfig.bx file. Corrected to `onAIChatRequest`, `onAIChatRequestCreate`, and `onAIChatResponse`.
+- `aiChat, aiChatStream` BIF was not passing headers to the AiChatRequest.
+- `aiChat, aiChatStream, aiChatAsync` BIF was not using `aiChatRequest()` to build the request, but was building it manually.
+- According to the MCP spec prompts should return a key named "arguments" not "args".
+- AiRequest was not setting the model correctly from params.
+- API key was not being passed to the service in `aiChat(), aiChatStream()` BIF.
+- Typo of `chr()` --> `char()` in SSE formatting in MCPRequestProcessor and HTTPTransport.
+- `AiModel.getModel()` was not returning the model name correctly when using predefined providers from config.
+- Increased Docker Model Runner retry time to 5 seconds with 10 max retries to accommodate large model loading times
+- Fixed `url` parameter conflict in OpenSearchVectorMemory by using `requestUrl` for HTTP requests
+
 ## [2.0.0] - 2026-01-19
+
+What's New: https://ai.ortusbooks.com/readme/release-history/2.0.0
 
 One of our biggest library updates yet! This release introduces a powerful new document loading system, comprehensive security features for MCP servers, and full support for several major AI providers including Mistral, HuggingFace, Groq, OpenRouter, and Ollama. Additionally, we have implemented complete embeddings functionality and made numerous enhancements and fixes across the board.
 

@@ -38,51 +38,77 @@ class extends="BaseService"{
 		variables.chatURL = "https://api.anthropic.com/v1/messages"
 		variables.name = "Claude"
 		// https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview
-		defaults( static.DEFAULT_CHAT_PARAMS )
 		addHeader( name: "anthropic-version", value: static.DEFAULT_HEADERS[ "anthropic-version" ] )
+	}
+
+	/**
+	 * Invoke a request to the provider
+	 *
+	 * @chatRequest The AI request to send to the provider
+	 *
+	 * @return The response from the provider according to the return format in the AI request
+	 */
+	function invoke( required AiChatRequest chatRequest ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.invoke( arguments.chatRequest )
+	}
+
+	/**
+	 * Invoke a request to the provider in streaming mode
+	 *
+	 * @chatRequest The Chat request to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
+	 *
+	 * @return void
+	 */
+	function invokeStream( required AiChatRequest chatRequest, required function callback ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.invokeStream( arguments.chatRequest, arguments.callback )
 	}
 
 	/**
 	 * Claude streaming chat request - overridden to use Claude-specific authentication
 	 *
-	 * @aiRequest The AiRequestobject to send to the provider
+	 * @chatRequest The AiChatRequest object to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream
 	 */
 	@override
-	public function chatStream( required AiRequest aiRequest, required function callback ){
-		// Capture callback and aiRequest in local variables for closure scope
+	public function chatStream( required AiChatRequest chatRequest, required function callback ){
+		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback;
-		var thisAiRequest = arguments.aiRequest;
+		var thisChatRequest = arguments.chatRequest;
 
 		// Build the packet according to Claude's API requirements with streaming
 		var dataPacket = {
-			"model"   : arguments.aiRequest.getModel(),
-			"messages": arguments.aiRequest.getAiMessage().getNonSystemMessages(),
+			"model"   : arguments.chatRequest.getModel(),
+			"messages": arguments.chatRequest.getAiMessage().getNonSystemMessages(),
 			"stream"  : true
-		}.append( arguments.aiRequest.getParams() )
+		}.append( arguments.chatRequest.getParams() )
 
 		// Do we have a system message? Claude supports it at the root
-		if( arguments.aiRequest.getAiMessage().hasSystemMessage() ){
-			dataPacket[ "system" ] = arguments.aiRequest.getAiMessage().getSystemMessage();
+		if( arguments.chatRequest.getAiMessage().hasSystemMessage() ){
+			dataPacket[ "system" ] = arguments.chatRequest.getAiMessage().getSystemMessage();
 		}
 
 		// Add tool support if tools are present
-		if( aiRequest.getParams()?.tools?.len() ) {
-			dataPacket[ "tools" ] = formatToolsForClaude( aiRequest.getParams().tools )
+		if( arguments.chatRequest.getParams()?.tools?.len() ) {
+			dataPacket[ "tools" ] = formatToolsForClaude( arguments.chatRequest.getParams().tools )
 		}
 
 		// Announce the request
 		BoxAnnounce(
-			"onAIRequest",
+			"onAIChatRequest",
 			{
 				"dataPacket" : dataPacket,
-				"aiRequest": arguments.aiRequest,
+				"chatRequest": arguments.chatRequest,
 				"provider"   : this
 			}
 		);
 
 		// Log the request if enabled
-		if( arguments.aiRequest.getLogRequestToConsole() ){
+		if( arguments.chatRequest.getLogRequestToConsole() ){
 			println( "AI Request (Stream)" )
 			println( dataPacket )
 		}
@@ -91,15 +117,15 @@ class extends="BaseService"{
 		var httpRequest = http( getChatURL() )
 			.method( "POST" )
 			.charset( "utf-8" )
-			.timeout( arguments.aiRequest.getTimeout() )
+			.timeout( arguments.chatRequest.getTimeout() )
 			.header( "content-type", "application/json" )
-			.header( "x-api-key", arguments.aiRequest.getApiKey() )
+			.header( "x-api-key", arguments.chatRequest.getApiKey() )
 			.header( "anthropic-version", getHeaders()[ "anthropic-version" ] )
 			.sse( true ); // Enable SSE mode for Claude streaming
 
 		// Add custom headers
-		for( var thisHeader in arguments.aiRequest.getHeaders() ){
-			httpRequest.header( thisHeader, arguments.aiRequest.getHeaders()[ thisHeader ] );
+		for( var thisHeader in arguments.chatRequest.getHeaders() ){
+			httpRequest.header( thisHeader, arguments.chatRequest.getHeaders()[ thisHeader ] );
 		}
 
 		// Set request body and callbacks
@@ -141,7 +167,7 @@ class extends="BaseService"{
 					errorMessage: errorMessage,
 					provider: this,
 					operation: "stream",
-					aiRequest: thisAiRequest,
+					aiRequest: thisChatRequest,
 					canRetry: true
 				} );
 
@@ -152,7 +178,7 @@ class extends="BaseService"{
 			} )
 			.onComplete( ( httpResult ) => {
 				// Log the response if enabled
-				if( thisAiRequest.getLogResponse() ){
+				if( thisChatRequest.getLogResponse() ){
 					writeLog(
 						text: "Stream completed successfully",
 						type: "info",
@@ -161,9 +187,9 @@ class extends="BaseService"{
 				}
 
 				BoxAnnounce(
-					"onAIResponse",
+					"onAIChatResponse",
 					{
-						"aiRequest" : thisAiRequest,
+						"chatRequest" : thisChatRequest,
 						"provider"    : this,
 						"streamComplete" : true
 					}
@@ -177,38 +203,38 @@ class extends="BaseService"{
 	 * Customized for Claude
 	 * https://docs.anthropic.com/en/api/messages-examples
 	 *
-	 * @aiRequest The AiRequest object to send to the provider
+	 * @chatRequest The AIChatRequest object to send to the provider
 	 * @interactionCount Current tool call interaction count (used internally)
 	 *
 	 * @throws ProviderError if the provider returns an error from the request
 	 * @throws MaxInteractionsExceeded if tool calls exceed the maximum allowed interactions
 	 */
 	@override
-	public function chat( required AiRequest aiRequest, numeric interactionCount = 0 ){
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
 		// No auth header, claude uses x-api-key
-		arguments.aiRequest
+		arguments.chatRequest
 			.setSendAuthHeader( false )
-			.addHeader( "x-api-key", aiRequest.getApiKey() )
+			.addHeader( "x-api-key", arguments.chatRequest.getApiKey() )
 
 		// Build the packet according to Claude's API requirements
 		// https://docs.anthropic.com/en/api/messages#body-messages
 		var dataPacket = {
-			"model"   : arguments.aiRequest.getModel(),
-			"messages": arguments.aiRequest.getMessages()
-		}.append( arguments.aiRequest.getParams() )
+			"model"   : arguments.chatRequest.getModel(),
+			"messages": arguments.chatRequest.getMessages()
+		}.append( arguments.chatRequest.getParams() )
 
 		// Do we have a system message? Claude supports it at the root
-		if( arguments.aiRequest.getAiMessage().hasSystemMessage() ){
-			dataPacket[ "system" ] = arguments.aiRequest.getAiMessage().getSystemMessage();
+		if( arguments.chatRequest.getAiMessage().hasSystemMessage() ){
+			dataPacket[ "system" ] = arguments.chatRequest.getAiMessage().getSystemMessage();
 		}
 
 		// Add tool support if tools are present
-		if( aiRequest.getParams()?.tools?.len() ) {
-			dataPacket[ "tools" ] = formatToolsForClaude( aiRequest.getParams().tools )
+		if( arguments.chatRequest.getParams()?.tools?.len() ) {
+			dataPacket[ "tools" ] = formatToolsForClaude( arguments.chatRequest.getParams().tools )
 		}
 
 		// Send it
-		var result = sendRequest( aiRequest, dataPacket )
+		var result = sendRequest( arguments.chatRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
@@ -240,7 +266,7 @@ class extends="BaseService"{
 			 * Max Interactions Check
 			 * ---------------------------------------------------------------------------------------------------------
 			 */
-			var maxAllowed = aiRequest.getMaxInteractions() > 0 ? aiRequest.getMaxInteractions() : variables.maxInteractions;
+			var maxAllowed = arguments.chatRequest.getMaxInteractions() > 0 ? arguments.chatRequest.getMaxInteractions() : variables.maxInteractions;
 			if( arguments.interactionCount >= maxAllowed ){
 				writeLog(
 					text: "Max tool call interactions (#maxAllowed#) exceeded",
@@ -256,7 +282,7 @@ class extends="BaseService"{
 			var toolCalls = result.content.filter( contentBlock -> contentBlock?.type == "tool_use" );
 
 			// Add the role assistant message with tool calls
-			aiRequest.getMessages().append({
+			arguments.chatRequest.getMessages().append({
 				"role"    : "assistant",
 				"content" : result.content
 			});
@@ -264,16 +290,16 @@ class extends="BaseService"{
 			// Create a new chat request for each tool call
 			for( var toolCall in toolCalls ) {
 				// Execute the tool call
-				executeClaudeTool( toolCall, aiRequest );
+				executeClaudeTool( toolCall, arguments.chatRequest );
 			}
 
 			// Recursively call chat with the updated chat request and incremented interaction count
-			return chat( aiRequest, arguments.interactionCount + 1 );
+			return chat( arguments.chatRequest, arguments.interactionCount + 1 );
 		}
 
 		// Determine return formats
 		var content = result.content.first().text
-		switch( aiRequest.getReturnFormat() ){
+		switch( arguments.chatRequest.getReturnFormat() ){
 			case "all":
 				return result.content;
 			case "raw":
@@ -283,7 +309,7 @@ class extends="BaseService"{
 			case "xml" :
 				return xmlParse( extractFromCodeBlock( content, "xml" ) );
 			case  "structuredOutput":
-				return populateStructuredOutput( content, aiRequest );
+				return populateStructuredOutput( content, arguments.chatRequest );
 			case "single": default:
 				return content;
 		}
@@ -321,13 +347,13 @@ class extends="BaseService"{
 	 * Execute Claude tool calls
 	 *
 	 * @toolCall The tool call object from Claude: { type:"tool_use", id: "", name: "toolName", input: {} }
-	 * @aiRequest The original chat request containing the tool
+	 * @chatRequest The original chat request containing the tool
 	 */
-	private function executeClaudeTool( required struct toolCall, required AiRequest aiRequest ) {
-		var messages = arguments.aiRequest.getMessages();
+	private function executeClaudeTool( required struct toolCall, required AiChatRequest chatRequest ) {
+		var messages = arguments.chatRequest.getMessages();
 
 		// Get the tool from the chat request
-		arguments.aiRequest
+		arguments.chatRequest
 			.getTool( toolCall.name )
 			.ifPresentOrElse(
 				// Found, invoke the tool

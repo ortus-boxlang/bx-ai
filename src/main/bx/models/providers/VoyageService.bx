@@ -36,14 +36,40 @@ class extends="BaseService"{
 		variables.name = "Voyage"
 		// Voyage only does embeddings, no chat support
 		variables.chatURL = ""
-		defaults( static.DEFAULT_EMBED_PARAMS )
+	}
+
+	/**
+	 * Invoke a request to the provider
+	 *
+	 * @chatRequest The AI request to send to the provider
+	 *
+	 * @return The response from the provider according to the return format in the AI request
+	 */
+	function invoke( required AiChatRequest chatRequest ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.invoke( arguments.chatRequest )
+	}
+
+	/**
+	 * Invoke a request to the provider in streaming mode
+	 *
+	 * @chatRequest The Chat request to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
+	 *
+	 * @return void
+	 */
+	function invokeStream( required AiChatRequest chatRequest, required function callback ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.invokeStream( arguments.chatRequest, arguments.callback )
 	}
 
 	/**
 	 * Override chat to throw error since Voyage doesn't support chat
 	 */
 	@override
-	private function chat( required AiRequest aiRequest ){
+	private function chat( required AiChatRequest chatRequest ){
 		throw(
 			type: "UnsupportedOperation",
 			message: "Voyage AI only supports embeddings, not chat completions. Use aiEmbed() or aiEmbedding() instead."
@@ -54,7 +80,7 @@ class extends="BaseService"{
 	 * Override chatStream to throw error since Voyage doesn't support chat
 	 */
 	@override
-	private function chatStream( required AiRequest aiRequest, required function callback ){
+	private function chatStream( required AiChatRequest chatRequest, required function callback ){
 		throw(
 			type: "UnsupportedOperation",
 			message: "Voyage AI only supports embeddings, not chat completions. Use aiEmbed() or aiEmbedding() instead."
@@ -67,9 +93,7 @@ class extends="BaseService"{
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
 		// Set default embedding model if not specified
-		if( embeddingRequest.getModel().isEmpty() ){
-			embeddingRequest.setModelIfEmpty( static.DEFAULT_EMBED_PARAMS.model )
-		}
+		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
 		return super.embeddings( embeddingRequest )
 	}
 

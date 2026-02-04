@@ -61,9 +61,10 @@ services:
     command: |
       "ollama serve &
       sleep 10
-      # Preload a model
+      # Preload models
       ollama pull qwen2.5:0.5b-instruct
       ollama pull gemma3
+      ollama pull nomic-embed-text
       wait"
     restart: always
     healthcheck:

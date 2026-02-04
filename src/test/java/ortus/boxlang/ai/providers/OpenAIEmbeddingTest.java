@@ -41,7 +41,7 @@ public class OpenAIEmbeddingTest extends BaseIntegrationTest {
 	@Test
 	public void testOpenAIEmbeddingSingle() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiEmbedding(
 				input: "BoxLang is awesome",
@@ -73,7 +73,7 @@ public class OpenAIEmbeddingTest extends BaseIntegrationTest {
 	@Test
 	public void testOpenAIEmbeddingBatch() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiEmbedding(
 				input: ["Hello", "World", "BoxLang"],
@@ -98,7 +98,7 @@ public class OpenAIEmbeddingTest extends BaseIntegrationTest {
 	@Test
 	public void testOpenAIEmbeddingWithModel() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiEmbedding(
 				input: "BoxLang is awesome",
@@ -125,7 +125,7 @@ public class OpenAIEmbeddingTest extends BaseIntegrationTest {
 	@Test
 	public void testOpenAIEmbeddingFirstFormat() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiEmbedding(
 				input: "BoxLang",

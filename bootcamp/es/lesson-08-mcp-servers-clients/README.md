@@ -417,7 +417,7 @@ Las herramientas MCP pueden usarse con agentes de IA igual que las herramientas 
 agente = aiAgent()
     .withInstructions( "Eres un asistente útil" )
     .withMCPServer( "http://localhost:3000" )
-    .build()
+
 
 // Opción 2: Agregar manualmente herramientas MCP específicas
 clienteMCP = MCP( "http://localhost:3000" )

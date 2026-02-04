@@ -1,0 +1,352 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Docker Model Runner Service
+ *
+ * This service provides integration with Docker Model Runner (DMR), which exposes
+ * multiple API formats for running local AI models with GPU acceleration.
+ *
+ * Supported APIs:
+ * - OpenAI API: /engines/v1/chat/completions, /engines/v1/embeddings (this service)
+ * - Anthropic API: /engines/v1/messages (use ClaudeService with baseURL override)
+ * - Ollama API: /api/chat, /api/embed (use OllamaService with baseUrl override)
+ * - Image Generation: /engines/v1/images/generations (not yet supported)
+ * - Native DMR API: /models (model management, supported via helper methods)
+ *
+ * URL Patterns (all equivalent for OpenAI API):
+ * - http://model-runner.docker.internal/engines/v1 (from containers)
+ * - http://localhost:12434/engines/v1 (from host)
+ * - http://localhost:12434/engines/llama.cpp/v1 (engine-specific)
+ *
+ * Note: DMR ignores the Authorization header - no API key required.
+ *
+ * @see https://docs.docker.com/ai/model-runner/
+ * @see https://docs.docker.com/ai/model-runner/api-reference/
+ */
+class extends = "OpenAICompatibleService"{
+	/**
+	 * Static defaults
+	 *
+	 * Docker Model Runner supports multiple URL patterns:
+	 * - /v1/* - Direct API access
+	 * - /engines/v1/* - OpenAI-compatible endpoint (recommended for third-party tools)
+	 * - /engines/{engine}/v1/* - Engine-specific endpoint (e.g., /engines/llama.cpp/v1)
+	 */
+	static {
+		// Default endpoint for Docker Model Runner (accessible from Docker containers)
+		// Using /engines/v1 for better OpenAI compatibility
+		DEFAULT_BASE_URL = "http://model-runner.docker.internal/engines/v1";
+		// Alternative for host machine access
+		HOST_BASE_URL    = "http://localhost:12434/engines/v1";
+		// Native DMR API base (for model management)
+		DMR_API_BASE     = "http://localhost:12434";
+
+		DEFAULT_CHAT_PARAMS = {};
+		DEFAULT_EMBED_PARAMS = {};
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		// Call parent constructor first
+		super.init();
+
+		// Override with Docker Model Runner specific defaults
+		variables.baseURL       = static.DEFAULT_BASE_URL;
+		variables.chatURL       = variables.baseURL & "/chat/completions";
+		variables.embeddingsURL = variables.baseURL & "/embeddings";
+		variables.name          = "DockerModelRunner";
+
+		defaults( static.DEFAULT_CHAT_PARAMS );
+	}
+
+	/**
+	 * Configure the service with options
+	 *
+	 *   - String: API key (optional, empty string for no auth)
+	 *   - Struct: Configuration options (see OpenAICompatibleService.configure) plus:
+	 *     - useHostURL: Boolean to use localhost URL instead of Docker internal
+	 *
+	 * @config Can be:
+	 *
+	 * @return The service instance for chaining
+	 */
+		@override
+	IAiService function configure( required any config ){
+		// Handle Docker-specific useHostURL option before calling parent
+		if (
+			isStruct( arguments.config ) && arguments.config.keyExists( "useHostURL" ) && arguments.config.useHostURL
+		) {
+			arguments.config.baseURL = static.HOST_BASE_URL;
+		}
+
+		// Delegate to parent for standard configuration
+		return super.configure( arguments.config );
+	}
+
+	/**
+	 * Override chat to handle Docker Model Runner specifics
+	 * Adds automatic retry for model loading (503) errors.
+	 *
+	 * @chatRequest      The AiChatRequest object to send to the provider
+	 * @interactionCount Current tool call interaction count (used internally)
+	 * @retryCount       Current retry attempt for model loading (used internally)
+	 *
+	 * @return The response from the provider according to the return format
+	 */
+		@override
+	public function chat(
+		required AiChatRequest chatRequest,
+		numeric interactionCount = 0,
+		numeric retryCount       = 0
+	){
+		// Use the parent implementation with retry for model loading
+		try {
+			return super.chat( chatRequest = arguments.chatRequest, interactionCount = arguments.interactionCount );
+		} catch ( ProviderError e ) {
+			// Check if this is a "model loading" error (503)
+			if ( e.message.findNoCase( "Loading model" ) > 0 || e.message.findNoCase( "503" ) > 0 ) {
+				// Retry up to 10 times with longer delays for model loading
+				// Large models can take 30-60+ seconds to load
+				var maxRetries = 10;
+				if ( arguments.retryCount < maxRetries ) {
+					// Use 5 second intervals for consistent, longer waits during model load
+					var waitTime = 5000; // 5 seconds between retries
+					writeLog(
+						text: "Docker Model Runner: Model loading, retrying in #waitTime / 1000#s (attempt #arguments.retryCount + 1#/#maxRetries#)",
+						type: "info",
+						log : "ai"
+					);
+					sleep( waitTime );
+					return chat(
+						arguments.chatRequest,
+						arguments.interactionCount,
+						arguments.retryCount + 1
+					);
+				}
+			}
+			// Re-throw if not a loading error or max retries exceeded
+			rethrow;
+		}
+	}
+
+	/**
+	 * Override chatStream to handle Docker Model Runner specifics
+	 * Adds automatic retry for model loading (503) errors.
+	 *
+	 * @chatRequest The AiChatRequest object to send to the provider
+	 * @callback    A callback function to be called with each chunk of the stream
+	 * @retryCount  Current retry attempt for model loading (used internally)
+	 */
+		@override
+	public function chatStream(
+		required AiChatRequest chatRequest,
+		required function callback,
+		numeric retryCount = 0
+	){
+		// Use the parent implementation with retry for model loading
+		try {
+			return super.chatStream( chatRequest = arguments.chatRequest, callback = arguments.callback );
+		} catch ( ProviderError e ) {
+			// Check if this is a "model loading" error (503)
+			if ( e.message.findNoCase( "Loading model" ) > 0 || e.message.findNoCase( "503" ) > 0 ) {
+				// Retry up to 10 times with longer delays for model loading
+				// Large models can take 30-60+ seconds to load
+				var maxRetries = 10;
+				if ( arguments.retryCount < maxRetries ) {
+					// Use 5 second intervals for consistent, longer waits during model load
+					var waitTime = 5000; // 5 seconds between retries
+					writeLog(
+						text: "Docker Model Runner: Model loading for stream, retrying in #waitTime / 1000#s (attempt #arguments.retryCount + 1#/#maxRetries#)",
+						type: "info",
+						log : "ai"
+					);
+					sleep( waitTime );
+					return chatStream(
+						arguments.chatRequest,
+						arguments.callback,
+						arguments.retryCount + 1
+					);
+				}
+			}
+			// Re-throw if not a loading error or max retries exceeded
+			rethrow;
+		}
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Native DMR API Methods (Model Management)
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * List available models from Docker Model Runner
+	 * Uses the native DMR /models endpoint
+	 *
+	 * @return Array of model info structs or empty array on error
+	 */
+	@override
+	public array function listModels() {
+		try {
+			var apiBase = variables.options.keyExists( "useHostURL" ) && variables.options.useHostURL
+				? static.HOST_BASE_URL.replace( "/engines/v1", "" )
+				: static.DMR_API_BASE;
+
+			bx:http
+				url     = apiBase & "/models"
+				method  = "get"
+				result  = "modelsResult"
+				charset = "utf-8"
+				timeout = 10
+			{}
+
+			if ( ( modelsResult.statusCode == 200 || modelsResult.statusCode == "200 OK" ) && modelsResult.keyExists( "filecontent" ) && len( modelsResult.filecontent ) ) {
+				var response = jsonDeserialize( modelsResult.filecontent );
+				// DMR returns array of model objects directly or wrapped in data
+				if ( isArray( response ) ) {
+					return response;
+				} else if ( response.keyExists( "data" ) && isArray( response.data ) ) {
+					return response.data;
+				}
+			}
+			return [];
+		} catch ( any e ) {
+			writeLog(
+				text : "Error listing models from Docker Model Runner: #e.message#",
+				type : "error",
+				log  : "ai"
+			);
+			return [];
+		}
+	}
+
+	/**
+	 * Pull/download a model to Docker Model Runner
+	 * Uses the native DMR /models/pull endpoint
+	 *
+	 * @model The model identifier to pull (e.g., "ai/llama3.2:1B-Q8_0")
+	 * @return Struct with success status and message
+	 */
+	public struct function pullModel( required string model ) {
+		try {
+			var apiBase = variables.options.keyExists( "useHostURL" ) && variables.options.useHostURL
+				? static.HOST_BASE_URL.replace( "/engines/v1", "" )
+				: static.DMR_API_BASE;
+
+			bx:http
+				url     = apiBase & "/models/pull"
+				method  = "post"
+				result  = "pullResult"
+				charset = "utf-8"
+				timeout = 300  // 5 minutes for model download
+			{
+				bx:httpParam type="header" name="content-type" value="application/json";
+				bx:httpParam type="body" value=jsonSerialize({ "model": arguments.model });
+			}
+
+			if ( ( pullResult.statusCode == 200 || pullResult.statusCode == "200 OK" ) && pullResult.keyExists( "filecontent" ) ) {
+				return {
+					"success": true,
+					"model": arguments.model,
+					"message": "Model pulled successfully"
+				};
+			}
+
+			return {
+				"success": false,
+				"model": arguments.model,
+				"message": pullResult.filecontent ?: "Failed to pull model",
+				"statusCode": pullResult.statusCode
+			};
+		} catch ( any e ) {
+			writeLog(
+				text : "Error pulling model '#arguments.model#' from Docker Model Runner: #e.message#",
+				type : "error",
+				log  : "ai"
+			);
+			return {
+				"success": false,
+				"model": arguments.model,
+				"message": e.message
+			};
+		}
+	}
+
+	/**
+	 * Get detailed information about a specific model
+	 *
+	 * @model The model identifier
+	 * @return Struct with model details or empty struct on error
+	 */
+	public struct function getModelInfo( required string model ) {
+		try {
+			var apiBase = variables.options.keyExists( "useHostURL" ) && variables.options.useHostURL
+				? static.HOST_BASE_URL.replace( "/engines/v1", "" )
+				: static.DMR_API_BASE;
+
+			bx:http
+				url     = apiBase & "/models/" & urlEncode( arguments.model )
+				method  = "get"
+				result  = "modelResult"
+				charset = "utf-8"
+				timeout = 10
+			{}
+
+			if ( ( modelResult.statusCode == 200 || modelResult.statusCode == "200 OK" ) && modelResult.keyExists( "filecontent" ) && len( modelResult.filecontent ) ) {
+				return jsonDeserialize( modelResult.filecontent );
+			}
+			return {};
+		} catch ( any e ) {
+			writeLog(
+				text : "Error getting model info from Docker Model Runner: #e.message#",
+				type : "error",
+				log  : "ai"
+			);
+			return {};
+		}
+	}
+
+	/**
+	 * Check if Docker Model Runner is available and responding
+	 *
+	 * @return Boolean indicating if DMR is reachable
+	 */
+	@override
+	public boolean function isAvailable() {
+		try {
+			var apiBase = variables.options.keyExists( "useHostURL" ) && variables.options.useHostURL
+				? static.HOST_BASE_URL.replace( "/engines/v1", "" )
+				: static.DMR_API_BASE;
+
+			bx:http
+				url     = apiBase & "/models"
+				method  = "get"
+				result  = "checkResult"
+				charset = "utf-8"
+				timeout = 5
+			{}
+
+			return checkResult.statusCode == 200 || checkResult.statusCode == "200 OK";
+		} catch ( any e ) {
+			writeLog(
+				text : "Docker Model Runner availability check failed: #e.message#",
+				type : "warning",
+				log  : "ai"
+			);
+			return false;
+		}
+	}
+}

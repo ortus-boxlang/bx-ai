@@ -52,9 +52,28 @@ jobs:
           touch .env
 
       - name: Start Test Services
-        uses: hoverkraft-tech/compose-action@v2.4.2
+        uses: hoverkraft-tech/compose-action@v2.4.3
         with:
           compose-file: "./docker-compose.yml"
+
+      - name: Wait for Ollama and Load Models
+        run: |
+          echo "Waiting for Ollama to be ready..."
+          sleep 20
+          echo "Making initial chat request to load qwen2.5:0.5b-instruct..."
+          curl -s http://localhost:11434/api/chat -d '{
+            "model": "qwen2.5:0.5b-instruct",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "stream": false
+          }' || echo "Chat model warming up..."
+          echo ""
+          echo "Making initial embedding request to load nomic-embed-text..."
+          curl -s http://localhost:11434/api/embeddings -d '{
+            "model": "nomic-embed-text",
+            "prompt": "test"
+          }' || echo "Embedding model warming up..."
+          echo ""
+          echo "Models loaded and ready!"
 
       - name: Test Module
         run: |

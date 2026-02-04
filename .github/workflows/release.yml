@@ -50,7 +50,7 @@ jobs:
           java-version: ${{ env.JDK }}
 
       - name: Setup BoxLang & CommandBox
-        uses: ortus-boxlang/setup-boxlang@1.2.0
+        uses: ortus-boxlang/setup-boxlang@1.3.0
         with:
           modules: bx-docbox
           with-commandbox: true
@@ -148,7 +148,7 @@ jobs:
           cd $GITHUB_WORKSPACE
 
       - name: Create Github Release
-        uses: taiki-e/create-gh-release-action@v1.9.1
+        uses: taiki-e/create-gh-release-action@v1.9.2
         continue-on-error: true
         if: env.SNAPSHOT == 'false'
         id: create_release

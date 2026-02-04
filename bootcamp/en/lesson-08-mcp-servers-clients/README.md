@@ -417,7 +417,6 @@ MCP tools can be used with AI agents just like regular tools:
 agent = aiAgent()
     .withInstructions( "You are a helpful assistant" )
     .withMCPServer( "http://localhost:3000" )
-    .build()
 
 // Option 2: Manually add specific MCP tools
 mcpClient = MCP( "http://localhost:3000" )
@@ -426,7 +425,6 @@ tools = mcpClient.listTools().getData()
 agent = aiAgent()
     .withInstructions( "You are a helpful assistant" )
     .withTools( tools )
-    .build()
 ```
 
 ### Example 5: Agent with MCP Server
@@ -458,7 +456,6 @@ tools = mcpSrv.getTools()
 agent = aiAgent()
     .withInstructions( "You are a helpful utility assistant. Use the available tools when needed." )
     .withTools( tools )
-    .build()
 
 // Test the agent
 println( agent.run( "What time is it?" ) )
@@ -576,7 +573,6 @@ println( "Registered #arrayLen( mcpSrv.getTools() )# tools" )
 agent = aiAgent()
     .withInstructions( "You are a customer service agent. Use the available tools to help customers." )
     .withTools( mcpSrv.getTools() )
-    .build()
 
 // Customer inquiry
 println( "\n" & agent.run( "Tell me about user 12345 - their info, orders, and statistics" ) )

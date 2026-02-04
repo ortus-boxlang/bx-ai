@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
+import ortus.boxlang.runtime.types.Struct;
 
 public class mcpServerTest extends BaseIntegrationTest {
 
@@ -348,6 +349,35 @@ public class mcpServerTest extends BaseIntegrationTest {
 
 		var messages = variables.getAsArray( Key.of( "messages" ) );
 		assertThat( messages.size() ).isEqualTo( 1 );
+	}
+
+	@SuppressWarnings( "null" )
+	@Test
+	@DisplayName( "The prompt is correctly formatted" )
+	public void testGetPromptFormat() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "getPromptTest" )
+					.registerPrompt(
+						name: "summarize",
+						description: "Summarize text",
+						handler: ( args ) => [
+							{ role: "user", content: "Summarize: " & ( args.text ?: "nothing" ) }
+						]
+					)
+
+				prompts = myServer.listPrompts()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var prompt = ( Struct ) variables.getAsArray( Key.of( "prompts" ) ).get( 0 );
+
+		assertThat( prompt.get( Key.of( "name" ) ) ).isEqualTo( "summarize" );
+		assertThat( prompt.get( Key.of( "description" ) ) ).isEqualTo( "Summarize text" );
+		assertThat( prompt.get( Key.of( "arguments" ) ) ).isNotNull();
 	}
 
 	@Test

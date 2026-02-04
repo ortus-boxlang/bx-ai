@@ -20,7 +20,9 @@ class {
 	static final DEFAULT_OPTIONS = {
 		timeout : 30,
 		logResponse : false,
-		logRequest : false
+		logResponseToConsole : false,
+		logRequest : false,
+		logRequestToConsole : false
 	}
 	static MODULE_SETTINGS = getModuleInfo( "bxai" ).settings;
 
@@ -48,20 +50,24 @@ class {
 	 * <li>apiKey:string - The API Key for the provider. If not passed, we will use the default from the configuration.</li>
 	 * <li>timeout:numeric - The timeout in seconds for the request. The default is 30 seconds</li>
 	 * <li>logResponse:boolean - Log the response into the ai.log. The default is false</li>
+	 * <li>logResponseToConsole:boolean - Log the response to the console. The default is false</li>
 	 * <li>logRequest:boolean - Log the request into the ai.log. The default is false</li>
+	 * <li>logRequestToConsole:boolean - Log the request to the console. The default is false</li>
 	 * </ul>
 	 *
 	 * @messages The messages to pass into the required model. This depends on the provider. It can be a simple string, a struct representing a message or an array of messages or an actual AiMessage object
 	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
 	 * @params A struct of request params to pass to the provider for the model request: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
-	 * @options A struct of request options to pass to the provider for the model request. Available options are: { provider:string, apiKey:string, timeout:numeric, logResponse:boolean, logRequest:boolean }
+	 * @options A struct of request options to pass to the provider for the model request. Available options are: { provider:string, apiKey:string, timeout:numeric, logResponse:boolean, logResponseToConsole:boolean, logRequest:boolean, logRequestToConsole:boolean }
+	 * @headers A struct of headers to pass to the provider for the model request.
 	 *
      */
     function invoke(
 		required any messages,
 		required function callback,
 		struct params = {},
-		struct options = {}
+		struct options = {},
+		struct headers = {}
 	) {
 		// Incorporate default params with no override
 		arguments.params.append( moduleRecord.settings.defaultParams, false );
@@ -70,14 +76,18 @@ class {
 		arguments.options.stream = true;
 
 		// Build out a chat request
-		var oAiRequest = new bxModules.bxai.models.requests.AiRequest(
-			aiMessage( arguments.messages ),
+		var chatRequest = aiChatRequest(
+			arguments.messages,
 			arguments.params,
-			arguments.options
-		);
+			arguments.options,
+			arguments.headers
+		 );
 
 		// Get the provider and chat stream with it
-		aiService( provider: arguments.options?.provider ).invokeStream( oAiRequest, arguments.callback );
+		aiService(
+			provider: arguments.options?.provider,
+			options: arguments.options
+		).invokeStream( chatRequest, arguments.callback );
 	}
 
 }

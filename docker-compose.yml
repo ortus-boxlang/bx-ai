@@ -1,3 +1,13 @@
+################################################################
+# Docker AI Model Runner Configuration
+# Models are served via Docker Desktop's Model Runner at localhost:12434
+# Docs: https://docs.docker.com/ai/compose/models-and-compose/
+# https://docs.docker.com/desktop/
+################################################################
+models:
+  llm:
+    model: ai/gemma3:latest
+
 services:
   ################################################################
   # Ollama LLM Server and Web UI
@@ -18,6 +28,7 @@ services:
       "ollama serve &
       sleep 10
       ollama pull qwen2.5:0.5b-instruct
+      ollama pull nomic-embed-text
       wait"
     restart: unless-stopped
 
@@ -201,6 +212,23 @@ services:
     command: "--data-dir /data --api-key=xyz --enable-cors"
     restart: unless-stopped
 
+  # OpenSearch - Search and analytics engine with k-NN vector support
+  # Docs: https://opensearch.org/docs/latest/
+  opensearch:
+    image: opensearchproject/opensearch:3
+    container_name: opensearch
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=boxlang
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    restart: unless-stopped
+
 volumes:
   ollama_data:
     name: ollama_data
@@ -222,3 +250,5 @@ volumes:
     name: qdrant_data
   typesense_data:
     name: typesense_data
+  opensearch_data:
+    name: opensearch_data
