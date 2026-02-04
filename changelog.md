@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
+## [2.1.0] - 2026-02-04
+
+What's New: <https://ai.ortusbooks.com/readme/release-history/2.1.0>
 
 ### Added
 
@@ -93,7 +95,7 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
 
 ## [2.0.0] - 2026-01-19
 
-What's New: https://ai.ortusbooks.com/readme/release-history/2.0.0
+What's New: <https://ai.ortusbooks.com/readme/release-history/2.0.0>
 
 One of our biggest library updates yet! This release introduces a powerful new document loading system, comprehensive security features for MCP servers, and full support for several major AI providers including Mistral, HuggingFace, Groq, OpenRouter, and Ollama. Additionally, we have implemented complete embeddings functionality and made numerous enhancements and fixes across the board.
 
@@ -262,7 +264,8 @@ One of our biggest library updates yet! This release introduces a powerful new d
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v2.0.0...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/ortus-boxlang/bx-ai/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/ortus-boxlang/bx-ai/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/ortus-boxlang/bx-ai/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/ortus-boxlang/bx-ai/compare/v1.0.1...v1.1.0
