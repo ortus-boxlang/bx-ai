@@ -2,6 +2,7 @@
 # Docker AI Model Runner Configuration
 # Models are served via Docker Desktop's Model Runner at localhost:12434
 # Docs: https://docs.docker.com/ai/compose/models-and-compose/
+# https://docs.docker.com/desktop/
 ################################################################
 models:
   llm:

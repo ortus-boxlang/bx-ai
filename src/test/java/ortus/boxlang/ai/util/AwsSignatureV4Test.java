@@ -145,7 +145,7 @@ public class AwsSignatureV4Test extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.getAsBoolean( Key.of( "hasSecurityToken" ) ) ).isTrue();
-		assertThat( variables.get( Key.of( "tokenValue" ) ) ).isEqualTo( "FwoGZXIvYXdzEBYaDKtest123sessiontoken==" );
+		assertThat( variables.get( Key.of( "tokenValue" ) ) ).isEqualTo( "tempsessiontoken==" );
 	}
 
 	@Test

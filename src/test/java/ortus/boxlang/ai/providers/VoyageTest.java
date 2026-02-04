@@ -57,7 +57,7 @@ public class VoyageTest extends BaseIntegrationTest {
 	@Test
 	public void testVoyageEmbeddingSingle() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiEmbed(
 				input: "BoxLang is a modern dynamic JVM language",
@@ -77,7 +77,7 @@ public class VoyageTest extends BaseIntegrationTest {
 	@Test
 	public void testVoyageEmbeddingBatch() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			// Use returnFormat: "embeddings" to get array of arrays for batch
 			result = aiEmbed(
@@ -113,7 +113,7 @@ public class VoyageTest extends BaseIntegrationTest {
 	@Test
 	public void testVoyageEmbeddingWithModel() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiEmbed(
 				input: "BoxLang and AI integration",
@@ -140,7 +140,7 @@ public class VoyageTest extends BaseIntegrationTest {
 	@Test
 	public void testVoyageEmbeddingFirstFormat() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			// Default returnFormat is "first" - returns single embedding array
 			result = aiEmbed(
@@ -166,7 +166,7 @@ public class VoyageTest extends BaseIntegrationTest {
 	@Test
 	public void testVoyageEmbeddingInputType() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			// Voyage supports input_type: "query" or "document"
 			// "query" for search queries, "document" for documents being searched
@@ -191,7 +191,7 @@ public class VoyageTest extends BaseIntegrationTest {
 	@Test
 	public void testVoyageChatThrowsError() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			try {
 				result = aiChat(

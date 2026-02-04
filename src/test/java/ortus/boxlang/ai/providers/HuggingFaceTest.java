@@ -40,7 +40,7 @@ public class HuggingFaceTest extends BaseIntegrationTest {
 	@Test
 	public void testHuggingFace() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiChat( "what is boxlang?" )
 			println( result )
@@ -56,7 +56,7 @@ public class HuggingFaceTest extends BaseIntegrationTest {
 	@Test
 	public void testChatStream() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			chunks = []
 			fullResponse = ""
@@ -84,7 +84,7 @@ public class HuggingFaceTest extends BaseIntegrationTest {
 	@Test
 	public void testStreamingCallback() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			chunkCount = 0
 			aiChatStream(

@@ -37,7 +37,7 @@ public class PerplexityTest extends BaseIntegrationTest {
 	@Test
 	public void testPerplexity() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			result = aiChat( "what is boxlang?" )
 			println( result )
@@ -53,7 +53,7 @@ public class PerplexityTest extends BaseIntegrationTest {
 	@Test
 	public void testChatStream() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			chunks = []
 			fullResponse = ""
@@ -81,7 +81,7 @@ public class PerplexityTest extends BaseIntegrationTest {
 	@Test
 	public void testStreamingCallback() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			chunkCount = 0
 			aiChatStream(

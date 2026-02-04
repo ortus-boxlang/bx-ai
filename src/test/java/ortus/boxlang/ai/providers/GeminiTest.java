@@ -37,7 +37,7 @@ public class GeminiTest extends BaseIntegrationTest {
 	@Test
 	public void testGemini() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			try {
 				result = aiChat( "what is boxlang?" )
@@ -63,7 +63,7 @@ public class GeminiTest extends BaseIntegrationTest {
 	@Test
 	public void testGeminiStruct() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			try {
 				result = aiChat( { role:"user", content:"what is boxlang?" } )
@@ -89,7 +89,7 @@ public class GeminiTest extends BaseIntegrationTest {
 	@Test
 	public void testGeminiArray() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			try {
 				result = aiChat( [
@@ -118,7 +118,7 @@ public class GeminiTest extends BaseIntegrationTest {
 	@Test
 	public void testGeminiSystemInstruction() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			try {
 				result = aiChat( "what is boxlang?", {
@@ -150,7 +150,7 @@ public class GeminiTest extends BaseIntegrationTest {
 	@Test
 	public void testChatStream() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			try {
 				chunks = []
@@ -192,7 +192,7 @@ public class GeminiTest extends BaseIntegrationTest {
 	@Test
 	public void testStreamingCallback() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			try {
 				chunkCount = 0

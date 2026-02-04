@@ -46,7 +46,7 @@ class {
 	 * @apiKey Optional API key override. If not provided, uses default from module settings.
 	 * @tools Optional ITool or an array of Tool instances to attach to the model for tool-augmented generation.
 	 * @param params Additional parameters to bind the model with
-	 * @param options Additional options for model creation
+	 * @param options Additional options for model creation (e.g., timeout, logResponse, logResponseToConsole, logRequest, logRequestToConsole)
 	 *
 	 * @return An AiModel runnable
 	 */

@@ -70,6 +70,7 @@ What's New: https://ai.ortusbooks.com/readme/release-history/2.1.0
   - Support for all model families: Claude, Titan, Llama, Mistral
   - AWS event-stream format parsing with base64 payload decoding
   - OpenAI-compatible streaming response format for consistent callback handling
+  - Added more AiError exception handling for service json errors.
 
 ### Changed
 

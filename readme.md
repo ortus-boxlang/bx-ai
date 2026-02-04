@@ -32,7 +32,7 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - 🔌 **15+ AI Providers** - Single API for OpenAI, Claude, AWS Bedrock, Gemini, Grok, Ollama, DeepSeek, and more
 - 🤖 **AI Agents** - Autonomous agents with memory, tools, sub-agents, and multi-step reasoning
 - 🔒 **Multi-Tenant Memory** - Enterprise-grade isolation with 20+ memory types (standard + vector)
-- 🧬 **Vector Memory & RAG** - 10+ vector databases with semantic search (ChromaDB, Pinecone, PostgreSQL, etc.)
+- 🧬 **Vector Memory & RAG** - 12 vector databases with semantic search (ChromaDB, Pinecone, PostgreSQL, OpenSearch, etc.)
 - 📚 **Document Loaders** - 30+ file formats including PDF, Word, CSV, JSON, XML, web scraping, and databases
 - 🛠️ **Real-Time Tools** - Function calling for APIs, databases, and external system integration
 - 🌊 **Streaming Support** - Real-time token streaming through pipelines for responsive applications

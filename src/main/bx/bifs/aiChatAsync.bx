@@ -39,13 +39,15 @@ class extends="aiChat"{
 	 * <li>apiKey:string - The API Key for the provider. If not passed, we will use the default from the configuration.</li>
 	 * <li>timeout:numeric - The timeout in seconds for the request. The default is 30 seconds</li>
 	 * <li>logResponse:boolean - Log the response into the ai.log. The default is false</li>
+	 * <li>logResponseToConsole:boolean - Log the response to the console. The default is false</li>
 	 * <li>logRequest:boolean - Log the request into the ai.log. The default is false</li>
+	 * <li>logRequestToConsole:boolean - Log the request to the console. The default is false</li>
 	 * <li>returnFormat:string - The return format of the response. The default is "single" message. Valid formats are: "single", "all", "raw", "json", "xml"</li>
 	 * </ul>
 	 *
 	 * @messages The messages to pass into the required model. This depends on the provider. It can be a simple string, a struct representing a message or an array of messages or an actual AiMessage object
 	 * @params A struct of request params to pass to the provider for the model request: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
-	 * @options A struct of request options to pass to the provider for the model request. Available options are: { provider:string, apiKey:string, returnFormat:string timeout:numeric, logResponse:boolean, logRequest:boolean }
+	 * @options A struct of request options to pass to the provider for the model request. Available options are: { provider:string, apiKey:string, returnFormat:string timeout:numeric, logResponse:boolean, logResponseToConsole:boolean, logRequest:boolean, logRequestToConsole:boolean }
 	 * @headers A struct of headers to pass to the provider for the model request.
 	 *
 	 * @throw InvalidArgument if the return format is not valid
