@@ -136,7 +136,10 @@ class {
 		variables.defaultContextMetadata = {};
 
 		if ( variables.enabled ) {
-			initializeStore();
+			// Store initialization is deferred until first use (lazy).
+			// This allows datasources created dynamically at application startup
+			// (after module activation) to be available when the JDBC store needs them.
+			// The lazy path in getContext() calls initializeStore() with double-checked locking.
 
 			// Warn at startup if fallback is enabled - default is disabled for production safety
 			if ( isStoreFallbackAllowed() ) {
@@ -232,43 +235,56 @@ class {
 			}
 
 			// Store type from merged settings (module defaults + env var overrides from configure)
+			// Also check application scope for runtime-configured settings (e.g. datasource created at app start)
 			var storeType = variables.auditSettings.store ?: "memory";
-			var storeConfig = variables.auditSettings.storeConfig ?: {};
+			var storeConfig = duplicate( variables.auditSettings.storeConfig ?: {} );
+
+			// Merge runtime application scope settings (highest priority)
+			// This allows apps to set audit.storeConfig.datasource dynamically after module activation
+			if ( isDefined( "application" )
+				&& structKeyExists( application, "modules" )
+				&& structKeyExists( application.modules, "bxai" )
+				&& structKeyExists( application.modules.bxai, "settings" )
+				&& structKeyExists( application.modules.bxai.settings, "audit" ) ) {
+				var runtimeAudit = application.modules.bxai.settings.audit;
+				if ( structKeyExists( runtimeAudit, "store" ) && len( runtimeAudit.store ) ) {
+					storeType = runtimeAudit.store;
+				}
+				if ( structKeyExists( runtimeAudit, "storeConfig" ) && isStruct( runtimeAudit.storeConfig ) ) {
+					storeConfig.append( runtimeAudit.storeConfig, true );
+				}
+			}
 
 			try {
 				variables.sharedStore = bxModules.bxai.models.audit.AuditStoreFactory::create( storeType, storeConfig );
 				variables.storeInitializationFailed = false;
 			} catch ( any e ) {
-				// CRITICAL: Log the failure prominently - audit data may be lost
+				// Store not ready yet (e.g. datasource created dynamically at app start).
+				// Leave sharedStore null so the next getContext() call retries.
+				// The AuditContext works without a store — events still broadcast via BoxAnnounce.
 				writeLog(
-					text : "CRITICAL: Audit store initialization failed for type '#storeType#'. Error: #e.message#",
-					type : "fatal",
+					text : "Audit store '#storeType#' not yet available, will retry on next request. Error: #e.message#",
+					type : "warning",
 					log  : "ai"
 				);
 
 				// Check if fallback is allowed (default: false for production safety)
 				var allowFallback = isStoreFallbackAllowed();
 
-				if ( !allowFallback ) {
-					throw(
-						type    : "AuditStoreInitializationFailed",
-						message : "Audit store '#storeType#' failed to initialize and fallback is disabled. Error: #e.message#",
-						detail  : "Set audit.allowStoreFallback=true or BOXLANG_MODULES_BXAI_AUDIT_ALLOW_STORE_FALLBACK=true to enable memory fallback (not recommended for production)."
+				if ( allowFallback ) {
+					// Fallback allowed - use memory store until the configured store is available
+					writeLog(
+						text : "WARNING: Falling back to memory store. Audit data will NOT be persisted across restarts!",
+						type : "warning",
+						log  : "ai"
 					);
+					variables.sharedStore = bxModules.bxai.models.audit.AuditStoreFactory::create( "memory", {} );
+					variables.storeInitializationFailed = true;
+					variables.storeInitializationError = e.message;
+					variables.configuredStoreType = storeType;
 				}
-
-				// Fallback allowed - log warning and use memory store
-				writeLog(
-					text : "WARNING: Falling back to memory store. Audit data will NOT be persisted across restarts!",
-					type : "warning",
-					log  : "ai"
-				);
-
-				// Fallback to memory store but mark system as degraded
-				variables.sharedStore = bxModules.bxai.models.audit.AuditStoreFactory::create( "memory", {} );
-				variables.storeInitializationFailed = true;
-				variables.storeInitializationError = e.message;
-				variables.configuredStoreType = storeType;
+				// When fallback is disabled: sharedStore stays null, context works without store,
+				// and the next getContext() call will retry initialization.
 			}
 		}
 	}
@@ -424,6 +440,10 @@ class {
 	 * @return IAuditStore instance or null
 	 */
 	any function getStore() {
+		// Lazy initialize if store not yet created (datasource may now be available)
+		if ( isNull( variables.sharedStore ) && variables.enabled && isInternalStorageEnabled() ) {
+			initializeStore();
+		}
 		if ( !isNull( variables.sharedStore ) ) {
 			return variables.sharedStore;
 		}
