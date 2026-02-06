@@ -1,0 +1,73 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Get the current audit configuration status.
+ * Returns computed runtime values, not just configuration.
+ *
+ * This BIF provides a single source of truth for audit configuration state,
+ * computing values from environment variables and runtime settings using the
+ * same priority logic as AuditInterceptor.
+ *
+ * @return Struct with audit status information
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Get current audit status
+	 *
+	 * @return Struct containing:
+	 *   - enabled: Boolean - Is auditing enabled?
+	 *   - internalStorage: Boolean - Is bx-ai storing internally?
+	 *   - store: String - Store type (memory, file, jdbc)
+	 *   - storeConfig: Struct - Store configuration
+	 */
+	function invoke() {
+		var auditSettings = moduleRecord.settings.audit ?: {};
+
+		// Calculate enabled status (same logic as AuditInterceptor.shouldAudit())
+		var enabled = auditSettings.enabled ?: false;
+		var envEnabled = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_ENABLED" ] ?: "";
+		if ( envEnabled == "true" || envEnabled == "1" ) {
+			enabled = true;
+		} else if ( envEnabled == "false" || envEnabled == "0" ) {
+			enabled = false;
+		}
+
+		// Calculate internal storage status (same logic as AuditInterceptor.isInternalStorageEnabled())
+		var internalStorage = auditSettings.internalStorage ?: true;
+		var envInternalStorage = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_INTERNAL_STORAGE" ] ?: "";
+		if ( envInternalStorage == "false" || envInternalStorage == "0" ) {
+			internalStorage = false;
+		} else if ( envInternalStorage == "true" || envInternalStorage == "1" ) {
+			internalStorage = true;
+		} else if ( isDefined( "application" )
+			&& structKeyExists( application, "modules" )
+			&& structKeyExists( application.modules, "bxai" )
+			&& structKeyExists( application.modules.bxai, "settings" )
+			&& structKeyExists( application.modules.bxai.settings, "audit" )
+			&& structKeyExists( application.modules.bxai.settings.audit, "internalStorage" ) ) {
+			internalStorage = application.modules.bxai.settings.audit.internalStorage;
+		}
+
+		return {
+			"enabled"         : enabled,
+			"internalStorage" : internalStorage,
+			"store"           : auditSettings.store ?: "memory",
+			"storeConfig"     : auditSettings.storeConfig ?: {}
+		};
+	}
+
+}
