@@ -105,6 +105,9 @@ class {
 		any store,
 		struct config = {}
 	) {
+		if ( !len( trim( arguments.traceId ) ) ) {
+			throw( type: "InvalidAuditContext", message: "traceId is required and cannot be empty" );
+		}
 		variables.traceId = arguments.traceId;
 		variables.entries = [];
 		variables.spanStack = [];

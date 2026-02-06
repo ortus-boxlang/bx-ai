@@ -75,7 +75,7 @@ class {
 		var service = aiService( arguments.options?.provider, arguments.options );
 
 		// Announce the embedding request
-		BoxAnnounce( "beforeAIEmbed", { embeddingRequest: embeddingRequest, service: service } );
+		BoxAnnounce( "beforeAIEmbed", { embeddingRequest: embeddingRequest, service: service, auditMetadata: embeddingRequest.getAuditMetadata() } );
 
 		// Generate embeddings
 		var result = service.embeddings( embeddingRequest );

@@ -102,7 +102,14 @@ class extends="BaseAuditStore" {
 		}
 
 		if ( arguments.config.keyExists( "format" ) ) {
-			variables.format = arguments.config.format.lcase();
+			var normalizedFormat = arguments.config.format.lcase();
+			if ( normalizedFormat != "ndjson" && normalizedFormat != "json" ) {
+				throw(
+					type    : "FileAuditStore.InvalidFormat",
+					message : "Format '#arguments.config.format#' is not supported. Valid formats: ndjson, json."
+				);
+			}
+			variables.format = normalizedFormat;
 		}
 
 		if ( arguments.config.keyExists( "maxFileSize" ) ) {
@@ -150,13 +157,22 @@ class extends="BaseAuditStore" {
 
 		// Write outside the buffer lock to minimize lock hold time
 		if ( !entriesToFlush.isEmpty() ) {
-			lock name="bxai_file_audit_write_#variables.instanceId#" type="exclusive" timeout="10" throwontimeout="true" {
-				checkRotation();
-				if ( variables.format == "ndjson" ) {
-					writeNDJSON( entriesToFlush );
-				} else {
-					writeJSON( entriesToFlush );
+			try {
+				lock name="bxai_file_audit_write_#variables.instanceId#" type="exclusive" timeout="10" throwontimeout="true" {
+					checkRotation();
+					if ( variables.format == "ndjson" ) {
+						writeNDJSON( entriesToFlush );
+					} else {
+						writeJSON( entriesToFlush );
+					}
 				}
+			} catch ( any e ) {
+				// Restore failed entries to buffer to prevent data loss
+				lock name="bxai_file_audit_buffer_#variables.instanceId#" type="exclusive" timeout="5" throwontimeout="true" {
+					entriesToFlush.append( variables.writeBuffer, true );
+					variables.writeBuffer = entriesToFlush;
+				}
+				rethrow;
 			}
 		}
 
@@ -181,13 +197,22 @@ class extends="BaseAuditStore" {
 		}
 
 		// Write outside the buffer lock
-		lock name="bxai_file_audit_write_#variables.instanceId#" type="exclusive" timeout="10" throwontimeout="true" {
-			checkRotation();
-			if ( variables.format == "ndjson" ) {
-				writeNDJSON( entriesToWrite );
-			} else {
-				writeJSON( entriesToWrite );
+		try {
+			lock name="bxai_file_audit_write_#variables.instanceId#" type="exclusive" timeout="10" throwontimeout="true" {
+				checkRotation();
+				if ( variables.format == "ndjson" ) {
+					writeNDJSON( entriesToWrite );
+				} else {
+					writeJSON( entriesToWrite );
+				}
 			}
+		} catch ( any e ) {
+			// Restore failed entries to buffer to prevent data loss
+			lock name="bxai_file_audit_buffer_#variables.instanceId#" type="exclusive" timeout="5" throwontimeout="true" {
+				entriesToWrite.append( variables.writeBuffer, true );
+				variables.writeBuffer = entriesToWrite;
+			}
+			rethrow;
 		}
 
 		return this;

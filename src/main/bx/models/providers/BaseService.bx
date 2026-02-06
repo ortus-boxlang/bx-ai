@@ -511,9 +511,10 @@ abstract class implements="IAiService" {
 		BoxAnnounce(
 			"onAIChatRequest",
 			{
-				"dataPacket" : arguments.dataPacket,
-				"chatRequest": arguments.chatRequest,
-				"provider"   : this
+				"dataPacket"    : arguments.dataPacket,
+				"chatRequest"   : arguments.chatRequest,
+				"provider"      : this,
+				"auditMetadata" : arguments.chatRequest.getAuditMetadata()
 			}
 		);
 
@@ -651,9 +652,10 @@ abstract class implements="IAiService" {
 		BoxAnnounce(
 			"onAIChatRequest",
 			{
-				"dataPacket" : arguments.dataPacket,
-				"chatRequest": arguments.chatRequest,
-				"provider"   : this
+				"dataPacket"    : arguments.dataPacket,
+				"chatRequest"   : arguments.chatRequest,
+				"provider"      : this,
+				"auditMetadata" : arguments.chatRequest.getAuditMetadata()
 			}
 		);
 

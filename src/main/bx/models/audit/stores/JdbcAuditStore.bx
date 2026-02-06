@@ -35,6 +35,11 @@ class extends="BaseAuditStore" {
 	 */
 	property name="tableValidated" type="boolean" default="false";
 
+	/**
+	 * Cached database product name to avoid repeated bx:dbinfo calls
+	 */
+	property name="dbProductName" type="string" default="";
+
 	static {
 		final DEFAULT_TABLE = "bx_ai_audit"
 	}
@@ -47,6 +52,7 @@ class extends="BaseAuditStore" {
 		variables.datasource = "";
 		variables.table = static.DEFAULT_TABLE;
 		variables.tableValidated = false;
+		variables.dbProductName = "";
 		return this;
 	}
 
@@ -201,12 +207,7 @@ class extends="BaseAuditStore" {
 	 * Uses database-specific syntax for handling duplicates
 	 */
 	private string function buildInsertSQL() {
-		bx:dbinfo
-			name   = "dbVersion"
-			type   = "version"
-			datasource = "#variables.datasource#" {}
-
-		var dbType = dbVersion.database_productname ?: "";
+		var dbType = getDbProductName();
 
 		// MySQL/MariaDB: INSERT IGNORE
 		if ( dbType.findNoCase( "mysql" ) || dbType.findNoCase( "mariadb" ) ) {
@@ -543,6 +544,26 @@ class extends="BaseAuditStore" {
 	// ========================================
 
 	/**
+	 * Get the database product name, caching after first lookup.
+	 * Avoids repeated bx:dbinfo calls on every store/query operation.
+	 *
+	 * @return String database product name
+	 */
+	private string function getDbProductName() {
+		if ( len( variables.dbProductName ) ) {
+			return variables.dbProductName;
+		}
+
+		bx:dbinfo
+			name   = "dbVersion"
+			type   = "version"
+			datasource = "#variables.datasource#" {}
+
+		variables.dbProductName = dbVersion.database_productname ?: "";
+		return variables.dbProductName;
+	}
+
+	/**
 	 * Assert that configure() has been called and table name validated.
 	 * This prevents SQL injection if table name is somehow modified after configure().
 	 *
@@ -583,12 +604,7 @@ class extends="BaseAuditStore" {
 	 * Create the audit table with database-agnostic SQL
 	 */
 	private void function createTable() {
-		bx:dbinfo
-			name   = "dbVersion"
-			type   = "version"
-			datasource = "#variables.datasource#" {}
-
-		var dbType = dbVersion.database_productname ?: "";
+		var dbType = getDbProductName();
 
 		var sql = "
 			CREATE TABLE #variables.table# (
@@ -686,12 +702,7 @@ class extends="BaseAuditStore" {
 	 * Build SELECT SQL with database-specific CLOB conversion
 	 */
 	private string function buildSelectSQL() {
-		bx:dbinfo
-			name   = "dbVersion"
-			type   = "version"
-			datasource = "#variables.datasource#" {}
-
-		var dbType = dbVersion.database_productname.toLowerCase();
+		var dbType = getDbProductName().toLowerCase();
 
 		if ( dbType.findNoCase( "mysql" ) || dbType.findNoCase( "mariadb" ) ) {
 			return "SELECT

@@ -43,6 +43,14 @@ class {
 	 */
 	property name="spanDepthHolder" type="any";
 
+	/**
+	 * Default context metadata to apply to all new audit contexts.
+	 * Set by consuming applications via setDefaultContextMetadata() at startup.
+	 * This is arbitrary data — bx-ai does not interpret it. It merges into
+	 * every entry's metadata via AuditContext.setContextMetadata().
+	 * Applications can put whatever they need here (tenantId, environment, etc.).
+	 */
+	property name="defaultContextMetadata" type="struct";
 
 	/**
 	 * Cached audit settings to avoid repeated lookups on hot paths
@@ -112,12 +120,12 @@ class {
 		// Cache pricing settings separately (pricing is at module root, not under audit)
 		variables.pricingSettings = modSettings.pricing ?: {};
 
-		// Check module settings first, then fall back to environment variable
+		// Apply environment variable overrides to cached settings
+		// Env vars take precedence over module defaults (e.g. BOXLANG_MODULES_BXAI_AUDIT_STORE=file)
+		applyEnvVarOverrides();
+
+		// Enabled flag from merged settings (module defaults + env var overrides)
 		variables.enabled = variables.auditSettings.enabled ?: false;
-		if ( !variables.enabled ) {
-			var envEnabled = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_ENABLED" ] ?: "";
-			variables.enabled = ( envEnabled == "true" || envEnabled == "1" );
-		}
 
 		variables.contextHolder = createObject( "java", "java.lang.ThreadLocal" ).init();
 		variables.spanDepthHolder = createObject( "java", "java.lang.ThreadLocal" ).init();
@@ -125,6 +133,7 @@ class {
 		variables.storeInitializationFailed = false;
 		variables.storeInitializationError = "";
 		variables.configuredStoreType = "";
+		variables.defaultContextMetadata = {};
 
 		if ( variables.enabled ) {
 			initializeStore();
@@ -138,6 +147,7 @@ class {
 				);
 			}
 		}
+
 	}
 
 	/**
@@ -161,22 +171,37 @@ class {
 		var traceId = "";
 
 		try {
-			var ctx = variables.contextHolder.get();
-			if ( !isNull( ctx ) ) {
-				traceId = ctx.getTraceId();
-				ctx.complete();
+			try {
+				var ctx = variables.contextHolder.get();
+				if ( !isNull( ctx ) ) {
+					traceId = ctx.getTraceId();
+					ctx.complete();
+				}
+			} catch ( any e ) {
+				writeLog(
+					text : "Audit cleanup error for traceId=#traceId#: #e.message#",
+					type : "warning",
+					log  : "ai"
+				);
 			}
-		} catch ( any e ) {
-			writeLog(
-				text : "Audit cleanup error for traceId=#traceId#: #e.message#",
-				type : "warning",
-				log  : "ai"
-			);
-		}
 
-		// Always remove ThreadLocal entries to prevent memory leaks
-		variables.contextHolder.remove();
-		variables.spanDepthHolder.remove();
+			// Flush the store to ensure buffered entries are persisted to disk/DB.
+			try {
+				if ( !isNull( variables.sharedStore ) ) {
+					variables.sharedStore.flush();
+				}
+			} catch ( any e ) {
+				writeLog(
+					text : "Audit store flush error during cleanup for traceId=#traceId#: #e.message#",
+					type : "warning",
+					log  : "ai"
+				);
+			}
+		} finally {
+			// Always remove ThreadLocal entries to prevent memory leaks
+			variables.contextHolder.remove();
+			variables.spanDepthHolder.remove();
+		}
 	}
 
 	/**
@@ -206,8 +231,8 @@ class {
 				return;
 			}
 
-			// Check env var for store type: BOXLANG_MODULES_BXAI_AUDIT_STORE
-			var storeType = variables.auditSettings.store ?: ( server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_STORE" ] ?: "memory" );
+			// Store type from merged settings (module defaults + env var overrides from configure)
+			var storeType = variables.auditSettings.store ?: "memory";
 			var storeConfig = variables.auditSettings.storeConfig ?: {};
 
 			try {
@@ -285,10 +310,47 @@ class {
 					config : variables.auditSettings
 				);
 			}
+
+			// Apply default context metadata set by the consuming application at startup.
+			// This merges into every entry's metadata via AuditContext.setContextMetadata().
+			// Also maps well-known keys to AuditContext's top-level setters so they flow
+			// to the dedicated entry fields (tenantId, userId, conversationId) which the
+			// store can filter on and the JDBC store uses as columns.
+			// Use duplicate() for thread-safe snapshot - setDefaultContextMetadata() may be called from another thread.
+			var defaultMeta = duplicate( variables.defaultContextMetadata );
+			if ( !defaultMeta.isEmpty() ) {
+				ctx.setContextMetadata( defaultMeta );
+				applyKnownContextFields( ctx, defaultMeta );
+			}
+
 			variables.contextHolder.set( ctx );
 		}
 
 		return ctx;
+	}
+
+	/**
+	 * Set default context metadata to apply to all new audit contexts.
+	 * Call at application startup. This metadata merges into every entry's
+	 * metadata via AuditContext.setContextMetadata() — bx-ai does not
+	 * interpret it. Applications decide what data to attach and how to
+	 * filter on it later.
+	 *
+	 * Example: setDefaultContextMetadata({ tenantId: "myapp_prod", environment: "production" })
+	 *
+	 * @metadata Struct of default metadata to apply to new contexts
+	 */
+	void function setDefaultContextMetadata( required struct metadata ) {
+		variables.defaultContextMetadata = arguments.metadata;
+	}
+
+	/**
+	 * Get the current default context metadata
+	 *
+	 * @return Struct of default metadata
+	 */
+	struct function getDefaultContextMetadata() {
+		return duplicate( variables.defaultContextMetadata );
 	}
 
 	/**
@@ -315,11 +377,17 @@ class {
 	 * Set application-level metadata on the current thread's audit context.
 	 * This metadata flows to ALL spans in the current trace via contextMetadata.
 	 *
-	 * Call this BEFORE aiChat()/aiAgent()/aiChatStream() to associate application
-	 * context (feature name, user ID, survey ID, etc.) with the audit trail.
+	 * There are two ways to attach application metadata to audit entries:
 	 *
-	 * The metadata is namespaced under the provided key to avoid collisions.
-	 * Common usage: setApplicationMetadata( "app", { feature: "chat", userId: 123 } )
+	 * 1. Pass options.audit in the BIF call (preferred for per-call context):
+	 *    aiChat( messages, params, { audit: { feature: "analyze", entityId: 123 } } )
+	 *    The AuditInterceptor picks this up automatically from the request object.
+	 *
+	 * 2. Call this method directly (for framework-level auto-context):
+	 *    auditInterceptor.setApplicationMetadata( "app", { handler: "system", feature: "llmsearch" } )
+	 *
+	 * Both approaches merge into the same "app" namespace. When used together,
+	 * options.audit merges ON TOP of whatever was set via setApplicationMetadata().
 	 *
 	 * If no audit context exists yet on the current thread, one is created automatically.
 	 *
@@ -331,10 +399,51 @@ class {
 
 		try {
 			var ctx = getContext();
-			ctx.setContextMetadata( { "#arguments.key#" : arguments.metadata } );
+
+			// Merge into existing namespace struct (if any) so repeated calls and per-call
+			// auditMetadata can coexist without overwriting.
+			var currentMeta = ctx.getContextMetadata();
+			var existingNs = {};
+			if ( currentMeta.keyExists( arguments.key ) && isStruct( currentMeta[ arguments.key ] ) ) {
+				existingNs = currentMeta[ arguments.key ];
+			}
+			var mergedNs = duplicate( existingNs ).append( arguments.metadata, true );
+			ctx.setContextMetadata( { "#arguments.key#" : mergedNs } );
 		} catch ( any e ) {
 			logAuditError( "setApplicationMetadata", e );
 		}
+	}
+
+	/**
+	 * Get the shared audit store instance.
+	 * Returns null if internal storage is disabled or not yet initialized.
+	 *
+	 * This allows consuming applications to query audit data directly from bx-ai's
+	 * internal store without maintaining a separate store instance.
+	 *
+	 * @return IAuditStore instance or null
+	 */
+	any function getStore() {
+		if ( !isNull( variables.sharedStore ) ) {
+			return variables.sharedStore;
+		}
+		return javacast( "null", "" );
+	}
+
+	/**
+	 * Get the current store type name.
+	 *
+	 * @return String store type: "memory", "file", "jdbc", or "none"
+	 */
+	string function getStoreType() {
+		if ( isNull( variables.sharedStore ) ) {
+			return "none";
+		}
+		var storeName = getMetadata( variables.sharedStore ).name ?: "";
+		if ( findNoCase( "Jdbc", storeName ) ) return "jdbc";
+		if ( findNoCase( "File", storeName ) ) return "file";
+		if ( findNoCase( "Memory", storeName ) ) return "memory";
+		return "unknown";
 	}
 
 	/**
@@ -423,6 +532,78 @@ class {
 	}
 
 	/**
+	 * Apply environment variable overrides to cached audit settings.
+	 * Environment variables take precedence over module defaults, allowing
+	 * container-level configuration without modifying module settings.
+	 *
+	 * Supported env vars:
+	 * - BOXLANG_MODULES_BXAI_AUDIT_ENABLED: "true"/"false" → auditSettings.enabled
+	 * - BOXLANG_MODULES_BXAI_AUDIT_STORE: "memory"/"file"/"jdbc" → auditSettings.store
+	 * - BOXLANG_MODULES_BXAI_AUDIT_INTERNAL_STORAGE: "true"/"false" → auditSettings.internalStorage
+	 *
+	 * Store-specific env vars (mapped into storeConfig):
+	 * - BOXLANG_MODULES_BXAI_AUDIT_STORE_PATH: absolute path for file store output directory
+	 * - BOXLANG_MODULES_BXAI_AUDIT_STORE_DATASOURCE: JDBC datasource name for jdbc store
+	 * - BOXLANG_MODULES_BXAI_AUDIT_STORE_TABLE: table name for jdbc store (default: bx_ai_audit)
+	 */
+	private void function applyEnvVarOverrides() {
+		var envStore = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_STORE" ] ?: "";
+		if ( len( envStore ) ) {
+			variables.auditSettings.store = envStore;
+		}
+
+		var envEnabled = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_ENABLED" ] ?: "";
+		if ( envEnabled == "true" || envEnabled == "1" ) {
+			variables.auditSettings.enabled = true;
+		} else if ( envEnabled == "false" || envEnabled == "0" ) {
+			variables.auditSettings.enabled = false;
+		}
+
+		var envInternalStorage = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_INTERNAL_STORAGE" ] ?: "";
+		if ( envInternalStorage == "true" || envInternalStorage == "1" ) {
+			variables.auditSettings.internalStorage = true;
+		} else if ( envInternalStorage == "false" || envInternalStorage == "0" ) {
+			variables.auditSettings.internalStorage = false;
+		}
+
+		// Store-specific configuration overrides via env vars
+		// These map into storeConfig which is passed to the store's configure() method
+		applyStoreConfigEnvVarOverrides();
+	}
+
+	/**
+	 * Apply store-specific env var overrides into storeConfig.
+	 * Each store type reads different keys from storeConfig:
+	 * - FileAuditStore: path, format, maxFileSize, rotateDaily, batchSize
+	 * - JdbcAuditStore: datasource, table
+	 * - MemoryAuditStore: maxEntries, evictionPercent
+	 */
+	private void function applyStoreConfigEnvVarOverrides() {
+		// Ensure storeConfig exists
+		if ( !structKeyExists( variables.auditSettings, "storeConfig" ) || !isStruct( variables.auditSettings.storeConfig ) ) {
+			variables.auditSettings.storeConfig = {};
+		}
+
+		// File store: path
+		var envStorePath = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_STORE_PATH" ] ?: "";
+		if ( len( envStorePath ) ) {
+			variables.auditSettings.storeConfig.path = envStorePath;
+		}
+
+		// JDBC store: datasource
+		var envDatasource = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_STORE_DATASOURCE" ] ?: "";
+		if ( len( envDatasource ) ) {
+			variables.auditSettings.storeConfig.datasource = envDatasource;
+		}
+
+		// JDBC store: table
+		var envTable = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_STORE_TABLE" ] ?: "";
+		if ( len( envTable ) ) {
+			variables.auditSettings.storeConfig.table = envTable;
+		}
+	}
+
+	/**
 	 * Check if internal storage is enabled.
 	 * When false, bx-ai will NOT store entries but WILL broadcast events.
 	 * This allows applications to handle storage themselves via onAuditEntry listener.
@@ -454,6 +635,63 @@ class {
 
 		// Fall back to configured value (default true)
 		return variables.auditSettings.internalStorage ?: true;
+	}
+
+	/**
+	 * Map well-known keys from a metadata struct to AuditContext's top-level setters.
+	 * AuditContext has dedicated tenantId, userId, conversationId fields that flow to
+	 * AuditEntry top-level fields (used by store filters and JDBC columns).
+	 * The defaultContextMetadata API is generic — this internal helper bridges the gap
+	 * so applications don't need to call both setDefaultContextMetadata() AND individual setters.
+	 *
+	 * @ctx The AuditContext to apply fields to
+	 * @metadata The metadata struct to extract known keys from
+	 */
+	private void function applyKnownContextFields( required any ctx, required struct metadata ) {
+		if ( arguments.metadata.keyExists( "tenantId" ) && len( arguments.metadata.tenantId ) ) {
+			arguments.ctx.setTenantId( arguments.metadata.tenantId );
+		}
+		if ( arguments.metadata.keyExists( "userId" ) && len( arguments.metadata.userId ) ) {
+			arguments.ctx.setUserId( arguments.metadata.userId );
+		}
+		if ( arguments.metadata.keyExists( "conversationId" ) && len( arguments.metadata.conversationId ) ) {
+			arguments.ctx.setConversationId( arguments.metadata.conversationId );
+		}
+	}
+
+	/**
+	 * Apply audit metadata from event data to the current audit context.
+	 * Sets it as application metadata under the "app" namespace.
+	 *
+	 * This allows callers to pass audit context directly in their AI BIF calls:
+	 *   aiChat( messages, params, { audit: { feature: "analyze", entityId: 123 } } )
+	 *
+	 * The audit metadata flows through the standard bx-ai event pipeline:
+	 *   options.audit → request.auditMetadata → provider/BIF event data → interceptor
+	 *
+	 * Providers and BIFs extract auditMetadata from the request and include it
+	 * in the event data struct, just like tenantId and usageMetadata.
+	 *
+	 * The metadata merges with any existing context metadata (e.g., from a framework
+	 * auto-audit layer), so both approaches can coexist.
+	 *
+	 * @ctx The current AuditContext
+	 * @auditMetadata The audit metadata struct from event data
+	 */
+	private void function applyAuditMetadata( required any ctx, required struct auditMetadata ) {
+		if ( arguments.auditMetadata.isEmpty() ) {
+			return;
+		}
+
+		// Merge per-call audit metadata into the existing "app" namespace without
+		// clobbering framework-level metadata that may already be present.
+		var currentMeta = arguments.ctx.getContextMetadata();
+		var existingApp = {};
+		if ( currentMeta.keyExists( "app" ) && isStruct( currentMeta.app ) ) {
+			existingApp = currentMeta.app;
+		}
+		var mergedApp = duplicate( existingApp ).append( arguments.auditMetadata, true );
+		arguments.ctx.setContextMetadata( { "app" : mergedApp } );
 	}
 
 	/**
@@ -513,6 +751,12 @@ class {
 		try {
 			incrementSpanDepth();
 			var ctx = getContext();
+
+			// Apply audit metadata from event data (set by AiAgent from options.audit)
+			if ( !isNull( data.auditMetadata ) && isStruct( data.auditMetadata ) ) {
+				applyAuditMetadata( ctx, data.auditMetadata );
+			}
+
 			var captureMessages = variables.auditSettings.captureMessages ?: true;
 
 			// Null-safe agent name extraction
@@ -608,6 +852,11 @@ class {
 		try {
 			incrementSpanDepth();
 			var ctx = getContext();
+
+			// Apply audit metadata from event data (set by provider from request.auditMetadata)
+			if ( !isNull( data.auditMetadata ) && isStruct( data.auditMetadata ) ) {
+				applyAuditMetadata( ctx, data.auditMetadata );
+			}
 
 			// Null-safe provider/model extraction
 			var providerName = "unknown";
@@ -779,7 +1028,6 @@ class {
 					model           : data.model ?: "unknown"
 				},
 				metadata  : {
-					tenantId  : data.tenantId ?: "",
 					timestamp : data.timestamp ?: now()
 				}
 			);
@@ -902,6 +1150,11 @@ class {
 		try {
 			incrementSpanDepth();
 			var ctx = getContext();
+
+			// Apply audit metadata from event data (set by aiEmbed BIF from request.auditMetadata)
+			if ( !isNull( data.auditMetadata ) && isStruct( data.auditMetadata ) ) {
+				applyAuditMetadata( ctx, data.auditMetadata );
+			}
 
 			ctx.startSpan(
 				spanType  : "embed",

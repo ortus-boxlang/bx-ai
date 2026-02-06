@@ -135,34 +135,11 @@ class extends="BaseAuditStore" {
 				variables.spanIndex[ entryData.spanId ] = entryIndex;
 			}
 		} catch ( "LockException" e ) {
-			// Lock timeout - log error and announce failure for monitoring
 			writeLog(
 				text : "ERROR: MemoryAuditStore lock timeout after 5s during store(). Entry spanId=#entryData.spanId# was NOT stored.",
 				type : "error",
 				log  : "ai"
 			);
-
-			// Announce failure so monitoring systems can detect data loss
-			try {
-				BoxAnnounce( "onAuditStoreFailed", {
-					storeType : "memory",
-					operation : "store",
-					reason    : "Lock timeout after 5s",
-					spanId    : entryData.spanId,
-					traceId   : entryData.traceId
-				} );
-			} catch ( any announceErr ) {
-				// Fallback to stderr if announcement fails
-				try {
-					createObject( "java", "java.lang.System" ).err.println(
-						"[bx-ai] MemoryAuditStore lock timeout - entry spanId=#entryData.spanId# was NOT stored. Announce failed: #announceErr.message#"
-					);
-				} catch ( any stderrErr ) {
-					// All notification methods failed - nothing more we can do
-				}
-			}
-
-			// Throw to indicate storage failure - caller must handle this
 			throw(
 				type    : "AuditStoreLockTimeout",
 				message : "MemoryAuditStore lock timeout after 5s. Entry spanId=#entryData.spanId# was NOT stored.",
@@ -367,9 +344,14 @@ class extends="BaseAuditStore" {
 			}
 		} catch ( "LockException" e ) {
 			writeLog(
-				text : "WARNING: MemoryAuditStore lock timeout during purge(). No entries were purged.",
-				type : "warning",
+				text : "ERROR: MemoryAuditStore lock timeout during purge(). No entries were purged.",
+				type : "error",
 				log  : "ai"
+			);
+			throw(
+				type    : "AuditStoreLockTimeout",
+				message : "MemoryAuditStore lock timeout during purge(). No entries were purged.",
+				detail  : "This may indicate high contention on the audit store."
 			);
 		}
 
@@ -404,9 +386,14 @@ class extends="BaseAuditStore" {
 			}
 		} catch ( "LockException" e ) {
 			writeLog(
-				text : "WARNING: MemoryAuditStore lock timeout during deleteTrace(). Trace traceId=#localTraceId# was not deleted.",
-				type : "warning",
+				text : "ERROR: MemoryAuditStore lock timeout during deleteTrace(). Trace traceId=#localTraceId# was not deleted.",
+				type : "error",
 				log  : "ai"
+			);
+			throw(
+				type    : "AuditStoreLockTimeout",
+				message : "MemoryAuditStore lock timeout during deleteTrace(). Trace traceId=#localTraceId# was not deleted.",
+				detail  : "This may indicate high contention on the audit store."
 			);
 		}
 
@@ -490,9 +477,14 @@ class extends="BaseAuditStore" {
 			}
 		} catch ( "LockException" e ) {
 			writeLog(
-				text : "WARNING: MemoryAuditStore lock timeout during clear(). Store may not be fully cleared.",
-				type : "warning",
+				text : "ERROR: MemoryAuditStore lock timeout during clear(). Store may not be fully cleared.",
+				type : "error",
 				log  : "ai"
+			);
+			throw(
+				type    : "AuditStoreLockTimeout",
+				message : "MemoryAuditStore lock timeout during clear(). Store may not be fully cleared.",
+				detail  : "This may indicate high contention on the audit store."
 			);
 		}
 		return this;
