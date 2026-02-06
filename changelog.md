@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fixed a bug where the `aiService()` BIF was not correctly applying convention-based API key detection when `options.apiKey` was already set but empty. Now it checks if `options.apiKey` is empty before applying the convention key, allowing for proper fallback to environment variables or module settings.
+- **Audit JDBC Store Lazy Initialization**: `AuditInterceptor` now defers store initialization until first use, allowing dynamically created datasources (e.g., from AWS Secrets Manager at app startup) to be available when the JDBC store needs them. Previously, `configure()` eagerly initialized the store at module activation, which failed when the datasource didn't exist yet.
+  - `initializeStore()` now retries on failure instead of throwing, leaving the store null for the next request to retry
+  - `getStore()` now triggers lazy initialization so consuming applications can query the store on demand
+
+### Added
+
+- **Runtime Configuration API**: New setter methods on `AuditInterceptor` for applications to push runtime config directly, replacing application scope reads:
+  - `setEnabled(boolean)` — toggle auditing at runtime
+  - `setInternalStorage(boolean)` — toggle internal storage at runtime
+  - `setStoreType(string)` — set store type before first use (e.g., "jdbc")
+  - `setStoreConfig(struct)` — merge store config before first use (e.g., `{ datasource: "mydb" }`)
+  - `setPricingConfig(struct)` — set pricing config at runtime
+  - `setRuntimeSettings(struct)` — convenience bulk setter for all of the above
+  - `getAuditStatus()` — computed status struct for `aiAuditStatus()` BIF
+
+### Changed
+
+- **Removed application scope dependency**: `AuditInterceptor` no longer reads `application.modules.bxai.settings.*`. As a library module, bx-ai should not reach into application scope. Consuming applications push config via the new setter methods instead. Env var overrides remain the highest priority.
 
 ## [2.1.0] - 2026-02-04
 
