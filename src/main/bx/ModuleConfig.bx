@@ -136,14 +136,86 @@ class {
 			// If true, the AI response will be logged to the console
 			logResponseToConsole : false,
 			// The default return format of the AI response: single, all, raw
-			returnFormat : "single"
+			returnFormat : "single",
+
+			// Pricing Configuration for cost calculation (per 1K tokens in USD)
+			// Configure model-specific pricing or use "default" for fallback
+			// If empty, no cost calculation is performed
+			pricing : {
+				// Example configuration:
+				// currency : "USD",
+				// default  : { inputPer1K : 0.001, outputPer1K : 0.002 },
+				// "gpt-4"  : { inputPer1K : 0.03, outputPer1K : 0.06 },
+				// "claude" : { inputPer1K : 0.003, outputPer1K : 0.015 }
+			},
+
+			// Audit/Tracing Configuration
+			audit : {
+				// Enable audit functionality (tracing, storage, and event broadcasting)
+				enabled : false,
+
+				// Storage backend: "memory", "file", "jdbc", or fully-qualified class path
+				store : "memory",
+
+				// Enable internal storage within bx-ai. When false, bx-ai will NOT store
+				// entries internally but WILL still broadcast onAuditEntry events.
+				// Set to false when your application handles storage via event listener.
+				// Can also be controlled via env var: BOXLANG_MODULES_BXAI_AUDIT_INTERNAL_STORAGE
+				internalStorage : true,
+
+				// Configuration for the selected store
+				storeConfig : {
+					// For file store:
+					// path: "/var/log/bxai/audit",
+					// format: "ndjson",
+					// maxFileSize: 104857600,
+					// rotateDaily: true
+
+					// For jdbc store:
+					// datasource: "bxai_audit",
+					// table: "bx_ai_audit"
+				},
+
+				// Data capture settings
+				captureInput    : true,
+				captureOutput   : true,
+				captureMessages : true,
+				captureToolArgs : true,
+
+				// Sanitization settings
+				sanitizePatterns : [
+					"password",
+					"apiKey",
+					"api_key",
+					"token",
+					"secret",
+					"credential",
+					"authorization"
+				],
+				redactValue : "[REDACTED]",
+
+				// Size limits
+				maxInputSize  : 10000,
+				maxOutputSize : 10000,
+
+				// Performance settings
+				// Sync writes by default for simplicity; enable async for high-throughput scenarios
+				asyncWrite : false,
+				batchSize  : 100,
+
+				// Store fallback behavior - when the configured store (jdbc, file) fails to initialize,
+				// should bx-ai fall back to memory store? Default is false for production safety.
+				// When false, store initialization failure throws AuditStoreInitializationFailed.
+				// Set to true only for development/testing where audit data loss is acceptable.
+				allowStoreFallback : false
+			}
 		}
 
 		/**
 		 * The module interceptors to register into the runtime
 		 */
 		interceptors = [
-			// { class="path.to.Interceptor", properties={} }
+			{ class : "bxModules.bxai.interceptors.AuditInterceptor", properties : {} }
 		]
 
 		/**
@@ -198,7 +270,16 @@ class {
 			"onMCPServerRemove",
 			"onMCPRequest",
 			"onMCPResponse",
-			"onMCPError"
+			"onMCPError",
+
+			// Audit Events
+			"onAuditEntry",
+			"onAuditTraceComplete",
+			"onAuditExport",
+			"onAuditContextCreate",
+			"onAuditStoreFailed",
+			"onAuditStoreFailure",
+			"onAuditStoreWarning"
 		 ]
 	}
 
