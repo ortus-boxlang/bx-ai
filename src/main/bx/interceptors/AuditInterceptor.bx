@@ -78,6 +78,49 @@ class {
 	property name="configuredStoreType" type="string" default="";
 
 	/**
+	 * Retry counter for store initialization attempts.
+	 * After MAX_STORE_INIT_RETRIES, initialization stops retrying to prevent
+	 * lock contention and log spam under load.
+	 */
+	property name="storeInitRetryCount" type="numeric" default="0";
+
+	/**
+	 * Runtime override for enabled flag.
+	 * Set by consuming applications via setEnabled(). Null = not set.
+	 * Priority: env var > this > module settings
+	 */
+	property name="runtimeEnabled" type="any";
+
+	/**
+	 * Runtime override for internal storage flag.
+	 * Set by consuming applications via setInternalStorage(). Null = not set.
+	 * Priority: env var > this > module settings
+	 */
+	property name="runtimeInternalStorage" type="any";
+
+	/**
+	 * Runtime store type override (only effective before store initialization).
+	 * Set by consuming applications via setStoreType(). Empty = not set.
+	 */
+	property name="runtimeStoreType" type="string" default="";
+
+	/**
+	 * Runtime store config to merge (only effective before store initialization).
+	 * Set by consuming applications via setStoreConfig(). Merges on top of module defaults.
+	 */
+	property name="runtimeStoreConfig" type="struct";
+
+	/**
+	 * Runtime pricing configuration override.
+	 * Set by consuming applications via setPricingConfig(). Null = not set.
+	 */
+	property name="runtimePricingConfig" type="any";
+
+	static {
+		final MAX_STORE_INIT_RETRIES = 5
+	}
+
+	/**
 	 * Configure the interceptor
 	 *
 	 * Settings:
@@ -133,7 +176,13 @@ class {
 		variables.storeInitializationFailed = false;
 		variables.storeInitializationError = "";
 		variables.configuredStoreType = "";
+		variables.storeInitRetryCount = 0;
 		variables.defaultContextMetadata = {};
+		variables.runtimeEnabled = javacast( "null", "" );
+		variables.runtimeInternalStorage = javacast( "null", "" );
+		variables.runtimeStoreType = "";
+		variables.runtimeStoreConfig = {};
+		variables.runtimePricingConfig = javacast( "null", "" );
 
 		if ( variables.enabled ) {
 			// Store initialization is deferred until first use (lazy).
@@ -222,69 +271,88 @@ class {
 			return;
 		}
 
-		// First check (unlocked) - avoids lock overhead on hot path after initialization
+		// Short-circuit if already initialized
 		if ( !isNull( variables.sharedStore ) ) {
 			return;
 		}
 
+		// Short-circuit if retries exhausted — prevents lock contention and log spam under load
+		if ( variables.storeInitializationFailed && variables.storeInitRetryCount >= static.MAX_STORE_INIT_RETRIES ) {
+			return;
+		}
+
+		// Get runtime overrides (set by consuming application via setStoreType/setStoreConfig)
+		var runtimeStoreType = variables.runtimeStoreType;
+		var runtimeStoreConfig = duplicate( variables.runtimeStoreConfig );
+
 		// Synchronize to prevent race condition where multiple threads initialize simultaneously
-		lock name="bxai_audit_store_init" type="exclusive" timeout="5" throwontimeout="true" {
+		// 30s timeout allows for JDBC connection pool init + table creation under concurrent load
+		lock name="bxai_audit_store_init" type="exclusive" timeout="30" throwontimeout="true" {
 			// Second check (locked) - critical for thread safety
 			if ( !isNull( variables.sharedStore ) ) {
 				return;
 			}
 
-			// Store type from merged settings (module defaults + env var overrides from configure)
-			// Also check application scope for runtime-configured settings (e.g. datasource created at app start)
+			// Merge settings: module defaults + env var overrides + runtime setters (highest priority)
 			var storeType = variables.auditSettings.store ?: "memory";
 			var storeConfig = duplicate( variables.auditSettings.storeConfig ?: {} );
-
-			// Merge runtime application scope settings (highest priority)
-			// This allows apps to set audit.storeConfig.datasource dynamically after module activation
-			if ( isDefined( "application" )
-				&& structKeyExists( application, "modules" )
-				&& structKeyExists( application.modules, "bxai" )
-				&& structKeyExists( application.modules.bxai, "settings" )
-				&& structKeyExists( application.modules.bxai.settings, "audit" ) ) {
-				var runtimeAudit = application.modules.bxai.settings.audit;
-				if ( structKeyExists( runtimeAudit, "store" ) && len( runtimeAudit.store ) ) {
-					storeType = runtimeAudit.store;
-				}
-				if ( structKeyExists( runtimeAudit, "storeConfig" ) && isStruct( runtimeAudit.storeConfig ) ) {
-					storeConfig.append( runtimeAudit.storeConfig, true );
-				}
+			if ( len( runtimeStoreType ) ) {
+				storeType = runtimeStoreType;
 			}
+			storeConfig.append( runtimeStoreConfig, true );
 
 			try {
 				variables.sharedStore = bxModules.bxai.models.audit.AuditStoreFactory::create( storeType, storeConfig );
 				variables.storeInitializationFailed = false;
-			} catch ( any e ) {
-				// Store not ready yet (e.g. datasource created dynamically at app start).
-				// Leave sharedStore null so the next getContext() call retries.
-				// The AuditContext works without a store — events still broadcast via BoxAnnounce.
+				variables.storeInitRetryCount = 0;
+			} catch ( "InvalidAuditStore" e ) {
+				// Permanent failure — bad store type name, no point retrying
+				variables.storeInitializationFailed = true;
+				variables.storeInitializationError = e.message;
+				variables.configuredStoreType = storeType;
+				variables.storeInitRetryCount = static.MAX_STORE_INIT_RETRIES;
 				writeLog(
-					text : "Audit store '#storeType#' not yet available, will retry on next request. Error: #e.message#",
-					type : "warning",
+					text : "FATAL: Invalid audit store type '#storeType#': #e.message#. Audit data will NOT be stored.",
+					type : "fatal",
 					log  : "ai"
 				);
+			} catch ( any e ) {
+				// Transient failure (e.g. datasource not yet available at app start).
+				// Track retries and escalate severity when exhausted.
+				variables.storeInitRetryCount++;
+				variables.storeInitializationError = e.message;
+				variables.configuredStoreType = storeType;
 
-				// Check if fallback is allowed (default: false for production safety)
 				var allowFallback = isStoreFallbackAllowed();
 
+				if ( variables.storeInitRetryCount >= static.MAX_STORE_INIT_RETRIES ) {
+					// Retries exhausted — mark as permanently failed
+					variables.storeInitializationFailed = true;
+					writeLog(
+						text : "FATAL: Audit store '#storeType#' failed after #variables.storeInitRetryCount# attempts. Audit data will NOT be stored. Error: #e.message#",
+						type : "fatal",
+						log  : "ai"
+					);
+				} else {
+					// Still retrying — log at warning
+					variables.storeInitializationFailed = true;
+					writeLog(
+						text : "Audit store '#storeType#' not yet available (attempt #variables.storeInitRetryCount#/#static.MAX_STORE_INIT_RETRIES#), will retry. Error: #e.message#",
+						type : "warning",
+						log  : "ai"
+					);
+				}
+
 				if ( allowFallback ) {
-					// Fallback allowed - use memory store until the configured store is available
 					writeLog(
 						text : "WARNING: Falling back to memory store. Audit data will NOT be persisted across restarts!",
 						type : "warning",
 						log  : "ai"
 					);
 					variables.sharedStore = bxModules.bxai.models.audit.AuditStoreFactory::create( "memory", {} );
-					variables.storeInitializationFailed = true;
-					variables.storeInitializationError = e.message;
-					variables.configuredStoreType = storeType;
 				}
 				// When fallback is disabled: sharedStore stays null, context works without store,
-				// and the next getContext() call will retry initialization.
+				// and the next getContext() call will retry until MAX_STORE_INIT_RETRIES.
 			}
 		}
 	}
@@ -367,6 +435,169 @@ class {
 	 */
 	struct function getDefaultContextMetadata() {
 		return duplicate( variables.defaultContextMetadata );
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * Runtime Configuration Setters
+	 * --------------------------------------------------------------------------
+	 * These methods allow consuming applications to push configuration into
+	 * the AuditInterceptor at runtime, after module activation. This is the
+	 * proper pattern for library modules — the application pushes config in
+	 * via method calls rather than the module reaching into application scope.
+	 *
+	 * Priority: env var > runtime setter > module settings (configure() defaults)
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Set whether auditing is enabled at runtime.
+	 * Priority: env var > this setter > module settings
+	 *
+	 * @enabled Boolean to enable/disable auditing
+	 *
+	 * @return AuditInterceptor for chaining
+	 */
+	AuditInterceptor function setEnabled( required boolean enabled ) {
+		variables.runtimeEnabled = arguments.enabled;
+		return this;
+	}
+
+	/**
+	 * Get the current enabled status (computed from all config sources)
+	 *
+	 * @return Boolean enabled status
+	 */
+	boolean function isEnabled() {
+		return shouldAudit();
+	}
+
+	/**
+	 * Set whether internal storage is enabled at runtime.
+	 * When false, events are still broadcast but entries are not stored by bx-ai.
+	 * Priority: env var > this setter > module settings
+	 *
+	 * @enabled Boolean to enable/disable internal storage
+	 *
+	 * @return AuditInterceptor for chaining
+	 */
+	AuditInterceptor function setInternalStorage( required boolean enabled ) {
+		variables.runtimeInternalStorage = arguments.enabled;
+		return this;
+	}
+
+	/**
+	 * Set the store type at runtime.
+	 * Only effective before first AI operation triggers store initialization.
+	 * If called after store init, logs a warning and returns without effect.
+	 *
+	 * @storeType The store type: "memory", "file", "jdbc"
+	 *
+	 * @return AuditInterceptor for chaining
+	 */
+	AuditInterceptor function setStoreType( required string storeType ) {
+		if ( !isNull( variables.sharedStore ) ) {
+			writeLog(
+				text : "WARNING: setStoreType() called after store already initialized. Store type '#arguments.storeType#' ignored. Current store: #getStoreType()#",
+				type : "warning",
+				log  : "ai"
+			);
+			return this;
+		}
+		variables.runtimeStoreType = arguments.storeType;
+		return this;
+	}
+
+	/**
+	 * Merge runtime store configuration (e.g., datasource name not known at module activation).
+	 * Only effective before first AI operation triggers store initialization.
+	 * If called after store init, logs a warning and returns without effect.
+	 *
+	 * @config Struct to merge into storeConfig (e.g., { datasource: "mydb" })
+	 *
+	 * @return AuditInterceptor for chaining
+	 */
+	AuditInterceptor function setStoreConfig( required struct config ) {
+		if ( !isNull( variables.sharedStore ) ) {
+			writeLog(
+				text : "WARNING: setStoreConfig() called after store already initialized. Config ignored.",
+				type : "warning",
+				log  : "ai"
+			);
+			return this;
+		}
+		lock name="bxai_audit_runtime_config" type="exclusive" timeout="5" throwontimeout="true" {
+			variables.runtimeStoreConfig.append( arguments.config, true );
+		}
+		return this;
+	}
+
+	/**
+	 * Set pricing configuration at runtime.
+	 *
+	 * @pricing Struct of pricing configuration
+	 *
+	 * @return AuditInterceptor for chaining
+	 */
+	AuditInterceptor function setPricingConfig( required struct pricing ) {
+		variables.runtimePricingConfig = arguments.pricing;
+		return this;
+	}
+
+	/**
+	 * Set multiple runtime settings at once.
+	 * Convenience method that delegates to individual setters.
+	 *
+	 * @settings Struct with optional keys: enabled, internalStorage, storeType, storeConfig, pricing, contextMetadata
+	 *
+	 * @return AuditInterceptor for chaining
+	 */
+	AuditInterceptor function setRuntimeSettings( required struct settings ) {
+		if ( arguments.settings.keyExists( "enabled" ) ) {
+			setEnabled( arguments.settings.enabled );
+		}
+		if ( arguments.settings.keyExists( "internalStorage" ) ) {
+			setInternalStorage( arguments.settings.internalStorage );
+		}
+		if ( arguments.settings.keyExists( "storeType" ) ) {
+			setStoreType( arguments.settings.storeType );
+		}
+		if ( arguments.settings.keyExists( "storeConfig" ) ) {
+			setStoreConfig( arguments.settings.storeConfig );
+		}
+		if ( arguments.settings.keyExists( "pricing" ) ) {
+			setPricingConfig( arguments.settings.pricing );
+		}
+		if ( arguments.settings.keyExists( "contextMetadata" ) ) {
+			setDefaultContextMetadata( arguments.settings.contextMetadata );
+		}
+		return this;
+	}
+
+	/**
+	 * Get computed audit status reflecting all configuration sources.
+	 * Used by the aiAuditStatus() BIF to report live runtime state.
+	 *
+	 * Returns the *configured* store type (what would be used on init),
+	 * not the live store type — so callers see "memory"/"jdbc"/"file"
+	 * even before the store is lazily initialized.
+	 *
+	 * @return Struct with audit status information
+	 */
+	struct function getAuditStatus() {
+		// Compute configured store type: runtime setter > auditSettings (includes env var overrides from configure)
+		var configuredStore = len( variables.runtimeStoreType )
+			? variables.runtimeStoreType
+			: ( variables.auditSettings.store ?: "memory" );
+
+		return {
+			"enabled"         : shouldAudit(),
+			"internalStorage" : isInternalStorageEnabled(),
+			"store"           : configuredStore,
+			"storeConfig"     : duplicate( variables.auditSettings.storeConfig ?: {} ).append( duplicate( variables.runtimeStoreConfig ), true ),
+			"degradedMode"    : isInDegradedMode(),
+			"degradedDetails" : getDegradedModeDetails()
+		};
 	}
 
 	/**
@@ -470,32 +701,25 @@ class {
 	 * Check if auditing should be performed.
 	 *
 	 * Priority order:
-	 * 1. Module runtime settings (application.modules.bxai.settings.audit.enabled) - highest priority
-	 * 2. Environment variable (BOXLANG_MODULES_BXAI_AUDIT_ENABLED) - allows external control
+	 * 1. Environment variable (BOXLANG_MODULES_BXAI_AUDIT_ENABLED) - highest priority (container config)
+	 * 2. Runtime setter (setEnabled()) - application pushes config at startup
 	 * 3. Module settings (configured at initialization) - default behavior
 	 *
 	 * This allows dynamic runtime toggling without restarting the application.
-	 * Uses standard Ortus module settings pattern with proper namespacing.
 	 */
 	private boolean function shouldAudit() {
-		// Check application scope for runtime toggle using standard module settings pattern
-		// Note: isDefined() is used to safely check if application scope exists (may not exist in test contexts)
-		if ( isDefined( "application" )
-			&& structKeyExists( application, "modules" )
-			&& structKeyExists( application.modules, "bxai" )
-			&& structKeyExists( application.modules.bxai, "settings" )
-			&& structKeyExists( application.modules.bxai.settings, "audit" )
-			&& structKeyExists( application.modules.bxai.settings.audit, "enabled" ) ) {
-			return application.modules.bxai.settings.audit.enabled;
-		}
-
-		// Check environment variable for dynamic control
+		// Check environment variable first (highest priority for container config)
 		var envEnabled = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_ENABLED" ] ?: "";
 		if ( envEnabled == "false" || envEnabled == "0" ) {
-			return false;  // Explicitly disabled via env var
+			return false;
 		}
 		if ( envEnabled == "true" || envEnabled == "1" ) {
-			return true;  // Explicitly enabled via env var
+			return true;
+		}
+
+		// Check runtime setter (set via setEnabled())
+		if ( !isNull( variables.runtimeEnabled ) ) {
+			return variables.runtimeEnabled;
 		}
 
 		// Fall back to configured value from module settings
@@ -630,7 +854,7 @@ class {
 	 *
 	 * Priority order:
 	 * 1. Environment variable (BOXLANG_MODULES_BXAI_AUDIT_INTERNAL_STORAGE) - highest priority
-	 * 2. Runtime application settings (application.modules.bxai.settings.audit.internalStorage)
+	 * 2. Runtime setter (setInternalStorage()) - application pushes config at startup
 	 * 3. Module settings (configured at initialization) - default: true
 	 */
 	private boolean function isInternalStorageEnabled() {
@@ -643,14 +867,9 @@ class {
 			return true;
 		}
 
-		// Check application scope for runtime toggle
-		if ( isDefined( "application" )
-			&& structKeyExists( application, "modules" )
-			&& structKeyExists( application.modules, "bxai" )
-			&& structKeyExists( application.modules.bxai, "settings" )
-			&& structKeyExists( application.modules.bxai.settings, "audit" )
-			&& structKeyExists( application.modules.bxai.settings.audit, "internalStorage" ) ) {
-			return application.modules.bxai.settings.audit.internalStorage;
+		// Check runtime setter (set via setInternalStorage())
+		if ( !isNull( variables.runtimeInternalStorage ) ) {
+			return variables.runtimeInternalStorage;
 		}
 
 		// Fall back to configured value (default true)
@@ -967,16 +1186,11 @@ class {
 		required numeric promptTokens,
 		required numeric completionTokens
 	) {
-		// Get pricing config - check runtime application scope first (allows runtime configuration)
+		// Get pricing config - check runtime setter first (set via setPricingConfig())
 		var pricing = {};
 
-		// Check application scope for runtime-configured pricing (standard Ortus pattern)
-		if ( isDefined( "application" )
-			&& structKeyExists( application, "modules" )
-			&& structKeyExists( application.modules, "bxai" )
-			&& structKeyExists( application.modules.bxai, "settings" )
-			&& structKeyExists( application.modules.bxai.settings, "pricing" ) ) {
-			pricing = application.modules.bxai.settings.pricing;
+		if ( !isNull( variables.runtimePricingConfig ) && !variables.runtimePricingConfig.isEmpty() ) {
+			pricing = variables.runtimePricingConfig;
 		}
 		// Fall back to cached pricing settings (from module configuration)
 		else if ( structKeyExists( variables, "pricingSettings" ) && !variables.pricingSettings.isEmpty() ) {
