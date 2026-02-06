@@ -1,0 +1,747 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Main audit context implementation.
+ * Maintains trace hierarchy and manages span lifecycle.
+ */
+class {
+
+	/**
+	 * The trace ID for this context
+	 */
+	property name="traceId" type="string" default="";
+
+	/**
+	 * Array of completed entries
+	 */
+	property name="entries" type="array";
+
+	/**
+	 * Stack of active span IDs
+	 */
+	property name="spanStack" type="array";
+
+	/**
+	 * Map of spanId -> AuditEntry
+	 */
+	property name="spanMap" type="struct";
+
+	/**
+	 * The audit store for persistence
+	 */
+	property name="store" type="any";
+
+	/**
+	 * Configuration
+	 */
+	property name="config" type="struct";
+
+	/**
+	 * Context-level metadata applied to all entries
+	 */
+	property name="contextMetadata" type="struct";
+
+	/**
+	 * Whether recording is enabled
+	 */
+	property name="recording" type="boolean" default="true";
+
+	/**
+	 * The sanitizer instance
+	 */
+	property name="sanitizer" type="any";
+
+	/**
+	 * Whether this context has been completed
+	 */
+	property name="completed" type="boolean" default="false";
+
+	/**
+	 * Whether flush errors occurred during complete()
+	 */
+	property name="flushErrors" type="boolean" default="false";
+
+	/**
+	 * Details of the last flush error if any
+	 */
+	property name="lastFlushError" type="string" default="";
+
+	/**
+	 * User ID for multi-tenant tracking
+	 */
+	property name="userId" type="string" default="";
+
+	/**
+	 * Conversation ID for multi-tenant tracking
+	 */
+	property name="conversationId" type="string" default="";
+
+	/**
+	 * Tenant ID for enterprise multi-tenancy
+	 */
+	property name="tenantId" type="string" default="";
+
+	/**
+	 * Constructor
+	 *
+	 * @traceId Unique trace identifier (auto-generated if not provided)
+	 * @store Optional IAuditStore instance for persistence
+	 * @config Configuration struct
+	 */
+	function init(
+		string traceId = createUUID(),
+		any store,
+		struct config = {}
+	) {
+		variables.traceId = arguments.traceId;
+		variables.entries = [];
+		variables.spanStack = [];
+		variables.spanMap = {};
+		variables.store = isNull( arguments.store ) ? javacast( "null", "" ) : arguments.store;
+		variables.config = arguments.config;
+		variables.contextMetadata = {};
+		variables.recording = true;
+		variables.completed = false;
+		variables.userId = "";
+		variables.conversationId = "";
+		variables.tenantId = "";
+		variables.flushErrors = false;
+		variables.lastFlushError = "";
+
+		// Create sanitizer
+		variables.sanitizer = new AuditSanitizer( variables.config );
+
+		return this;
+	}
+
+	/**
+	 * Get the trace ID
+	 *
+	 * @return String trace identifier
+	 */
+	string function getTraceId() {
+		return variables.traceId;
+	}
+
+	/**
+	 * Get the current active span ID
+	 *
+	 * @return String span identifier or empty if no active span
+	 */
+	string function getCurrentSpanId() {
+		return variables.spanStack.isEmpty() ? "" : variables.spanStack.last();
+	}
+
+	/**
+	 * Start a new span within this trace
+	 *
+	 * @spanType The type of span
+	 * @operation The operation name
+	 * @input Optional input data to capture
+	 * @metadata Optional metadata struct
+	 *
+	 * @return String the new spanId
+	 */
+	string function startSpan(
+		required string spanType,
+		required string operation,
+		any input        = "",
+		struct metadata  = {}
+	) {
+		if ( !variables.recording ) {
+			return "";
+		}
+
+		// Guard against starting spans after trace completion
+		if ( variables.completed ) {
+			writeLog(
+				text : "WARNING: Attempted to start span on completed trace traceId=#variables.traceId# spanType=#arguments.spanType# operation=#arguments.operation#. This may indicate a programming error.",
+				type : "warning",
+				log  : "ai"
+			);
+			return "";
+		}
+
+		var parentSpanId = getCurrentSpanId();
+
+		// Create new entry
+		var entry = new AuditEntry(
+			traceId      : variables.traceId,
+			parentSpanId : parentSpanId,
+			spanType     : arguments.spanType,
+			operation    : arguments.operation
+		);
+
+		// Sanitize and capture input
+		if ( variables.config.captureInput ?: true ) {
+			entry.setInput( sanitizeData( arguments.input, false ) );
+		}
+
+		// Set metadata
+		entry.setMetadata( arguments.metadata );
+		entry.setMetadata( variables.contextMetadata, false );
+
+		// Set multi-tenant fields
+		if ( len( variables.userId ) ) {
+			entry.setUserId( variables.userId );
+		}
+		if ( len( variables.conversationId ) ) {
+			entry.setConversationId( variables.conversationId );
+		}
+		if ( len( variables.tenantId ) ) {
+			entry.setTenantId( variables.tenantId );
+		}
+
+		// Track the span
+		variables.spanMap[ entry.getSpanId() ] = entry;
+		variables.spanStack.append( entry.getSpanId() );
+
+		return entry.getSpanId();
+	}
+
+	/**
+	 * End the current span
+	 *
+	 * @output Optional output/result data
+	 * @error Optional error information
+	 * @tokens Optional token usage struct
+	 * @cost Optional cost struct
+	 *
+	 * @return IAuditContext for chaining
+	 */
+	AuditContext function endSpan(
+		any output      = "",
+		any error       = "",
+		struct tokens   = {},
+		struct cost     = {}
+	) {
+		if ( !variables.recording || variables.spanStack.isEmpty() ) {
+			return this;
+		}
+
+		var spanId = variables.spanStack.last();
+		variables.spanStack.deleteAt( variables.spanStack.len() );
+
+		if ( variables.spanMap.keyExists( spanId ) ) {
+			var entry = variables.spanMap[ spanId ];
+
+			// Sanitize and capture output
+			if ( variables.config.captureOutput ?: true ) {
+				entry.complete( sanitizeData( arguments.output, true ), arguments.error );
+			} else {
+				entry.complete( "", arguments.error );
+			}
+
+			// Set tokens and cost
+			if ( !arguments.tokens.isEmpty() ) {
+				entry.setTokens( arguments.tokens );
+			}
+			if ( !arguments.cost.isEmpty() ) {
+				entry.setCost( arguments.cost );
+			}
+
+			// Add to entries list
+			variables.entries.append( entry );
+
+			// Store if configured
+			storeEntry( entry );
+
+			// Remove from spanMap to prevent memory leak
+			variables.spanMap.delete( spanId );
+
+			// Announce - wrapped in try-catch to prevent listener failures from affecting audit storage
+			try {
+				BoxAnnounce( "onAuditEntry", { entry : entry.toStruct(), context : this } );
+			} catch ( any e ) {
+				writeLog(
+					text : "WARNING: Failed to announce onAuditEntry for spanId=#entry.getSpanId()#: #e.message#",
+					type : "warning",
+					log  : "ai"
+				);
+			}
+		}
+
+		return this;
+	}
+
+	/**
+	 * Add a standalone entry
+	 *
+	 * @spanType The type of entry
+	 * @operation The operation name
+	 * @data The data to record
+	 * @metadata Optional metadata
+	 * @error Optional error information (sets status to "error" when provided)
+	 *
+	 * @return IAuditContext for chaining
+	 */
+	AuditContext function addEntry(
+		required string spanType,
+		required string operation,
+		any data         = {},
+		struct metadata  = {},
+		any error        = ""
+	) {
+		if ( !variables.recording ) {
+			return this;
+		}
+
+		// Guard against adding entries after trace completion
+		if ( variables.completed ) {
+			writeLog(
+				text : "WARNING: Attempted to add entry on completed trace traceId=#variables.traceId# spanType=#arguments.spanType# operation=#arguments.operation#. This may indicate a programming error.",
+				type : "warning",
+				log  : "ai"
+			);
+			return this;
+		}
+
+		var entry = new AuditEntry(
+			traceId      : variables.traceId,
+			parentSpanId : getCurrentSpanId(),
+			spanType     : arguments.spanType,
+			operation    : arguments.operation
+		);
+
+		entry.setInput( sanitizeData( arguments.data, false ) );
+		entry.setMetadata( arguments.metadata );
+		entry.setMetadata( variables.contextMetadata, false );
+
+		// Set multi-tenant fields
+		if ( len( variables.userId ) ) {
+			entry.setUserId( variables.userId );
+		}
+		if ( len( variables.conversationId ) ) {
+			entry.setConversationId( variables.conversationId );
+		}
+		if ( len( variables.tenantId ) ) {
+			entry.setTenantId( variables.tenantId );
+		}
+
+		// Complete with error if provided (sets status to "error")
+		entry.complete( "", arguments.error );
+
+		variables.entries.append( entry );
+
+		// Store if configured
+		storeEntry( entry );
+
+		// Announce - wrapped in try-catch to prevent listener failures from affecting audit storage
+		try {
+			BoxAnnounce( "onAuditEntry", { entry : entry.toStruct(), context : this } );
+		} catch ( any e ) {
+			writeLog(
+				text : "WARNING: Failed to announce onAuditEntry for spanId=#entry.getSpanId()#: #e.message#",
+				type : "warning",
+				log  : "ai"
+			);
+		}
+
+		return this;
+	}
+
+	/**
+	 * Get all entries as structs
+	 *
+	 * @return Array of entry structs
+	 */
+	array function getEntries() {
+		return variables.entries.map( e => e.toStruct() );
+	}
+
+	/**
+	 * Get the full trace as a hierarchical structure
+	 *
+	 * @return Struct with trace data including nested spans
+	 */
+	struct function getFullTrace() {
+		var entriesData = getEntries();
+		var rootEntries = [];
+		var childrenMap = {};
+
+		// Group children by parent
+		for ( var entry in entriesData ) {
+			if ( len( entry.parentSpanId ) ) {
+				if ( !childrenMap.keyExists( entry.parentSpanId ) ) {
+					childrenMap[ entry.parentSpanId ] = [];
+				}
+				childrenMap[ entry.parentSpanId ].append( entry );
+			} else {
+				rootEntries.append( entry );
+			}
+		}
+
+		// Recursively attach children
+		var attachChildren = ( entry ) => {
+			if ( childrenMap.keyExists( entry.spanId ) ) {
+				entry.children = childrenMap[ entry.spanId ].map( attachChildren );
+			} else {
+				entry.children = [];
+			}
+			return entry;
+		};
+
+		return {
+			traceId : variables.traceId,
+			entries : rootEntries.map( attachChildren ),
+			summary : getSummary()
+		};
+	}
+
+	/**
+	 * Get a summary of this trace
+	 *
+	 * @return Struct with summary data
+	 */
+	struct function getSummary() {
+		var totalTokens = { prompt : 0, completion : 0, total : 0 };
+		var totalCost = 0;
+		var errorCount = 0;
+		var totalDuration = 0;
+
+		for ( var entry in variables.entries ) {
+			var entryData = entry.toStruct();
+
+			// Aggregate tokens
+			if ( entryData.tokens.keyExists( "prompt" ) ) {
+				totalTokens.prompt += entryData.tokens.prompt ?: 0;
+			}
+			if ( entryData.tokens.keyExists( "completion" ) ) {
+				totalTokens.completion += entryData.tokens.completion ?: 0;
+			}
+			if ( entryData.tokens.keyExists( "total" ) ) {
+				totalTokens.total += entryData.tokens.total ?: 0;
+			}
+
+			// Aggregate cost
+			if ( entryData.cost.keyExists( "amount" ) ) {
+				totalCost += entryData.cost.amount;
+			}
+
+			// Count errors
+			if ( entryData.status == "error" ) {
+				errorCount++;
+			}
+
+			// Sum duration
+			totalDuration += entryData.durationMs ?: 0;
+		}
+
+		return {
+			traceId         : variables.traceId,
+			spanCount       : variables.entries.len(),
+			totalDurationMs : totalDuration,
+			tokens          : totalTokens,
+			totalCost       : totalCost,
+			errorCount      : errorCount,
+			completed       : variables.completed
+		};
+	}
+
+	/**
+	 * Check if recording is enabled
+	 *
+	 * @return Boolean
+	 */
+	boolean function isRecording() {
+		return variables.recording;
+	}
+
+	/**
+	 * Check if this context has been completed
+	 *
+	 * @return Boolean true if complete() has been called
+	 */
+	boolean function isCompleted() {
+		return variables.completed;
+	}
+
+	/**
+	 * Check if flush errors occurred during complete()
+	 *
+	 * @return Boolean true if flush failed
+	 */
+	boolean function hasFlushErrors() {
+		return variables.flushErrors;
+	}
+
+	/**
+	 * Get the last flush error message if any
+	 *
+	 * @return String error message or empty string
+	 */
+	string function getLastFlushError() {
+		return variables.lastFlushError;
+	}
+
+	/**
+	 * Enable or disable recording
+	 *
+	 * @enabled Boolean to enable/disable
+	 *
+	 * @return IAuditContext for chaining
+	 */
+	AuditContext function setRecording( required boolean enabled ) {
+		variables.recording = arguments.enabled;
+		return this;
+	}
+
+	/**
+	 * Set context-level metadata
+	 *
+	 * @metadata Struct of metadata
+	 *
+	 * @return IAuditContext for chaining
+	 */
+	AuditContext function setContextMetadata( required struct metadata ) {
+		variables.contextMetadata.append( arguments.metadata, true );
+		return this;
+	}
+
+	/**
+	 * Get context-level metadata (defensive copy to prevent external mutation)
+	 *
+	 * @return Struct of metadata
+	 */
+	struct function getContextMetadata() {
+		return duplicate( variables.contextMetadata );
+	}
+
+	/**
+	 * Set user ID
+	 *
+	 * @userId The user identifier
+	 *
+	 * @return IAuditContext for chaining
+	 */
+	AuditContext function setUserId( required string userId ) {
+		variables.userId = arguments.userId;
+		return this;
+	}
+
+	/**
+	 * Get user ID
+	 *
+	 * @return String user identifier
+	 */
+	string function getUserId() {
+		return variables.userId;
+	}
+
+	/**
+	 * Set conversation ID
+	 *
+	 * @conversationId The conversation identifier
+	 *
+	 * @return IAuditContext for chaining
+	 */
+	AuditContext function setConversationId( required string conversationId ) {
+		variables.conversationId = arguments.conversationId;
+		return this;
+	}
+
+	/**
+	 * Get conversation ID
+	 *
+	 * @return String conversation identifier
+	 */
+	string function getConversationId() {
+		return variables.conversationId;
+	}
+
+	/**
+	 * Set tenant ID
+	 *
+	 * @tenantId The tenant identifier
+	 *
+	 * @return IAuditContext for chaining
+	 */
+	AuditContext function setTenantId( required string tenantId ) {
+		variables.tenantId = arguments.tenantId;
+		return this;
+	}
+
+	/**
+	 * Get tenant ID
+	 *
+	 * @return String tenant identifier
+	 */
+	string function getTenantId() {
+		return variables.tenantId;
+	}
+
+	/**
+	 * Add multiple standalone entries at once (batch operation)
+	 *
+	 * @entries Array of entry structs with { spanType, operation, data, metadata, error }
+	 *
+	 * @return IAuditContext for chaining
+	 */
+	AuditContext function addEntries( required array entries ) {
+		for ( var entry in arguments.entries ) {
+			addEntry(
+				spanType  : entry.spanType ?: "custom",
+				operation : entry.operation ?: "batch",
+				data      : entry.data ?: {},
+				metadata  : entry.metadata ?: {},
+				error     : entry.error ?: ""
+			);
+		}
+		return this;
+	}
+
+	/**
+	 * Export the trace as JSON
+	 *
+	 * @return JSON string of the trace
+	 */
+	string function export() {
+		return jsonSerialize( getFullTrace() );
+	}
+
+	/**
+	 * Complete this trace and flush to storage.
+	 * Idempotent - safe to call multiple times; subsequent calls return immediately.
+	 * Closes any unclosed spans with warning logs.
+	 *
+	 * @return IAuditContext for chaining
+	 */
+	AuditContext function complete() {
+		if ( variables.completed ) {
+			return this;
+		}
+
+		variables.completed = true;
+
+		// Close any unclosed spans with warnings
+		var unclosedCount = 0;
+		while ( !variables.spanStack.isEmpty() ) {
+			unclosedCount++;
+			var unclosedSpanId = variables.spanStack.last();
+			var unclosedSpan = variables.spanMap[ unclosedSpanId ] ?: {};
+			var spanType = isObject( unclosedSpan ) && structKeyExists( unclosedSpan, "getSpanType" )
+				? unclosedSpan.getSpanType()
+				: ( unclosedSpan.spanType ?: "unknown" );
+			var operation = isObject( unclosedSpan ) && structKeyExists( unclosedSpan, "getOperation" )
+				? unclosedSpan.getOperation()
+				: ( unclosedSpan.operation ?: "unknown" );
+
+			// Log warning for unclosed spans - may indicate programming error
+			writeLog(
+				text : "WARNING: Unclosed span detected during trace completion. traceId=#variables.traceId# spanId=#unclosedSpanId# spanType=#spanType# operation=#operation#. This may indicate a programming error where startSpan() was called without matching endSpan().",
+				type : "warning",
+				log  : "ai"
+			);
+
+			endSpan( "", "Trace completed with unclosed span (spanId=#unclosedSpanId#)" );
+		}
+
+		// Clean up any orphaned spanMap entries to prevent memory leaks
+		// This handles edge cases where spans were added to spanMap but not properly tracked
+		if ( !variables.spanMap.isEmpty() ) {
+			writeLog(
+				text : "WARNING: Cleaning up #variables.spanMap.count()# orphaned spanMap entries during trace completion. traceId=#variables.traceId#",
+				type : "warning",
+				log  : "ai"
+			);
+			variables.spanMap.clear();
+		}
+
+		// Flush store if configured - wrap in try-catch to ensure completion continues
+		if ( !isNull( variables.store ) ) {
+			try {
+				variables.store.flush();
+			} catch ( any e ) {
+				// Track flush failure for caller to check via hasFlushErrors()
+				variables.flushErrors = true;
+				variables.lastFlushError = e.message;
+
+				writeLog(
+					text : "WARNING: Failed to flush audit store for traceId=#variables.traceId#: #e.message#",
+					type : "warning",
+					log  : "ai"
+				);
+			}
+		}
+
+		// Announce trace complete - wrapped in try-catch to prevent listener failures from affecting completion
+		try {
+			BoxAnnounce( "onAuditTraceComplete", { trace : getFullTrace(), context : this } );
+		} catch ( any e ) {
+			writeLog(
+				text : "WARNING: Failed to announce onAuditTraceComplete for traceId=#variables.traceId#: #e.message#. Trace was completed but listeners may not have received it.",
+				type : "warning",
+				log  : "ai"
+			);
+		}
+
+		return this;
+	}
+
+	// ========================================
+	// Private Helper Methods
+	// ========================================
+
+	/**
+	 * Sanitize data
+	 *
+	 * @data The data to sanitize
+	 * @isOutput Whether this is output data
+	 *
+	 * @return Sanitized data
+	 */
+	private any function sanitizeData( required any data, required boolean isOutput ) {
+		return variables.sanitizer.sanitize( arguments.data, variables.config, arguments.isOutput );
+	}
+
+	/**
+	 * Store an entry with proper error handling.
+	 * Errors are logged but not propagated to avoid disrupting the main application flow.
+	 * For async storage, errors are caught via the future's exceptionally() handler.
+	 *
+	 * @entry The entry to store
+	 */
+	private void function storeEntry( required AuditEntry entry ) {
+		if ( isNull( variables.store ) ) {
+			return;
+		}
+
+		try {
+			if ( variables.config.asyncWrite ?: false ) {
+				var entrySpanId = arguments.entry.getSpanId();
+				var entryTraceId = arguments.entry.getTraceId();
+
+				variables.store.storeAsync( [ arguments.entry ] )
+					.exceptionally( ( error ) => {
+						writeLog(
+							text : "ERROR: Async audit storage failed for spanId=#entrySpanId# traceId=#entryTraceId#: #error.message ?: error.toString()#",
+							type : "error",
+							log  : "ai"
+						);
+						return javacast( "null", "" );
+					} );
+			} else {
+				variables.store.store( arguments.entry );
+			}
+		} catch ( any e ) {
+			writeLog(
+				text : "ERROR: Failed to store audit entry spanId=#arguments.entry.getSpanId()# traceId=#arguments.entry.getTraceId()#: #e.message#",
+				type : "error",
+				log  : "ai"
+			);
+		}
+	}
+
+}
