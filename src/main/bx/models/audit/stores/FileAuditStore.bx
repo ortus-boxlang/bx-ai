@@ -1,0 +1,655 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * File-based audit store for persistent logging.
+ * Supports JSON and NDJSON (newline-delimited JSON) formats.
+ */
+import bxModules.bxai.models.audit.BaseAuditStore;
+
+class extends="BaseAuditStore" {
+
+	/**
+	 * Path to the audit log directory
+	 */
+	property name="path" type="string";
+
+	/**
+	 * File format: "json" or "ndjson"
+	 */
+	property name="format" type="string" default="ndjson";
+
+	/**
+	 * Maximum file size in bytes before rotation
+	 */
+	property name="maxFileSize" type="numeric" default=104857600;
+
+	/**
+	 * Whether to rotate files daily
+	 */
+	property name="rotateDaily" type="boolean" default=true;
+
+	/**
+	 * Current file handle
+	 */
+	property name="currentFile" type="string";
+
+	/**
+	 * Buffer for batched writes
+	 */
+	property name="writeBuffer" type="array";
+
+	/**
+	 * Batch size for buffer flush
+	 */
+	property name="batchSize" type="numeric" default=100;
+
+	/**
+	 * Unique instance identifier for lock names to prevent cross-instance contention
+	 */
+	property name="instanceId" type="string";
+
+	static {
+		final DEFAULT_PATH = expandPath( "/logs/bxai/audit" )
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		super.init();
+		variables.path = static.DEFAULT_PATH;
+		variables.format = "ndjson";
+		variables.maxFileSize = 104857600; // 100MB
+		variables.rotateDaily = true;
+		variables.currentFile = "";
+		variables.writeBuffer = [];
+		variables.batchSize = 100;
+		variables.instanceId = createUUID();
+		return this;
+	}
+
+	/**
+	 * Configure the store
+	 *
+	 * @config Configuration struct with: path, format, maxFileSize, rotateDaily, batchSize
+	 *
+	 * @return IAuditStore for chaining
+	 */
+	IAuditStore function configure( required struct config ) {
+		super.configure( arguments.config );
+
+		if ( arguments.config.keyExists( "path" ) ) {
+			// Validate path does not contain traversal sequences
+			if ( arguments.config.path.findNoCase( ".." ) > 0 ) {
+				throw(
+					type    : "FileAuditStore.InvalidPath",
+					message : "Path '#arguments.config.path#' contains invalid path traversal characters."
+				);
+			}
+			variables.path = arguments.config.path;
+		}
+
+		if ( arguments.config.keyExists( "format" ) ) {
+			variables.format = arguments.config.format.lcase();
+		}
+
+		if ( arguments.config.keyExists( "maxFileSize" ) ) {
+			variables.maxFileSize = arguments.config.maxFileSize;
+		}
+
+		if ( arguments.config.keyExists( "rotateDaily" ) ) {
+			variables.rotateDaily = arguments.config.rotateDaily;
+		}
+
+		if ( arguments.config.keyExists( "batchSize" ) ) {
+			variables.batchSize = arguments.config.batchSize;
+		}
+
+		// Ensure directory exists
+		ensureDirectory();
+
+		// Set current file
+		variables.currentFile = getCurrentFilePath();
+
+		return this;
+	}
+
+	/**
+	 * Store a single audit entry (thread-safe)
+	 *
+	 * @entry The AuditEntry to store
+	 *
+	 * @return IAuditStore for chaining
+	 */
+	IAuditStore function store( required any entry ) {
+		var entryData = entryToStruct( arguments.entry );
+		var entriesToFlush = [];
+
+		// Thread-safe buffer operations
+		lock name="bxai_file_audit_buffer_#variables.instanceId#" type="exclusive" timeout="5" throwontimeout="true" {
+			variables.writeBuffer.append( entryData );
+
+			// If buffer is full, swap it atomically
+			if ( variables.writeBuffer.len() >= variables.batchSize ) {
+				entriesToFlush = variables.writeBuffer;
+				variables.writeBuffer = [];
+			}
+		}
+
+		// Write outside the buffer lock to minimize lock hold time
+		if ( !entriesToFlush.isEmpty() ) {
+			lock name="bxai_file_audit_write_#variables.instanceId#" type="exclusive" timeout="10" throwontimeout="true" {
+				checkRotation();
+				if ( variables.format == "ndjson" ) {
+					writeNDJSON( entriesToFlush );
+				} else {
+					writeJSON( entriesToFlush );
+				}
+			}
+		}
+
+		return this;
+	}
+
+	/**
+	 * Flush buffer to file (thread-safe)
+	 *
+	 * @return IAuditStore for chaining
+	 */
+	IAuditStore function flush() {
+		var entriesToWrite = [];
+
+		// Thread-safe buffer swap
+		lock name="bxai_file_audit_buffer_#variables.instanceId#" type="exclusive" timeout="5" throwontimeout="true" {
+			if ( variables.writeBuffer.isEmpty() ) {
+				return this;
+			}
+			entriesToWrite = variables.writeBuffer;
+			variables.writeBuffer = [];
+		}
+
+		// Write outside the buffer lock
+		lock name="bxai_file_audit_write_#variables.instanceId#" type="exclusive" timeout="10" throwontimeout="true" {
+			checkRotation();
+			if ( variables.format == "ndjson" ) {
+				writeNDJSON( entriesToWrite );
+			} else {
+				writeJSON( entriesToWrite );
+			}
+		}
+
+		return this;
+	}
+
+	/**
+	 * Query audit entries with filters
+	 *
+	 * @filters Query filters struct
+	 * @limit Maximum results to return
+	 * @offset Pagination offset
+	 * @orderBy Sort field
+	 * @orderDir Sort direction
+	 *
+	 * @return Array of entry structs (struct representations, not AuditEntry objects)
+	 */
+	array function query(
+		struct filters   = {},
+		numeric limit    = 100,
+		numeric offset   = 0,
+		string orderBy   = "startTime",
+		string orderDir  = "desc"
+	) {
+		// Read all entries from files
+		var allEntries = readAllEntries( arguments.filters );
+
+		// Sort using base class helper
+		allEntries = sortEntries( allEntries, arguments.orderBy, arguments.orderDir );
+
+		// Paginate
+		var startIdx = arguments.offset + 1;
+		var endIdx = min( startIdx + arguments.limit - 1, allEntries.len() );
+
+		if ( startIdx > allEntries.len() ) {
+			return [];
+		}
+
+		return allEntries.slice( startIdx, endIdx - startIdx + 1 );
+	}
+
+	/**
+	 * Get a complete trace by traceId
+	 *
+	 * @traceId The trace identifier
+	 *
+	 * @return Struct with trace data
+	 */
+	struct function getTrace( required string traceId ) {
+		var traceEntries = readAllEntries( { traceId : arguments.traceId } );
+
+		return {
+			traceId : arguments.traceId,
+			entries : traceEntries,
+			summary : calculateTraceSummary( traceEntries )
+		};
+	}
+
+	/**
+	 * Get a single entry by spanId
+	 *
+	 * @spanId The span identifier
+	 *
+	 * @return AuditEntry struct or empty struct
+	 */
+	struct function getById( required string spanId ) {
+		var allEntries = readAllEntries( {} );
+		var localSpanId = arguments.spanId;
+
+		var found = allEntries.filter( e => e.spanId == localSpanId );
+		return found.isEmpty() ? {} : found.first();
+	}
+
+	/**
+	 * Delete log FILES with dates older than specified date.
+	 * Note: This operates at file granularity, not individual entry level.
+	 * Files are dated based on filename (e.g., audit-2024-01-15.ndjson).
+	 *
+	 * @olderThan Delete files dated before this date
+	 *
+	 * @return Numeric count of deleted files (not individual entries)
+	 */
+	numeric function purge( required date olderThan ) {
+		var deletedCount = 0;
+		var files = getLogFiles();
+
+		for ( var file in files ) {
+			// Check file date from filename
+			var fileDate = extractDateFromFilename( file );
+			if ( !isNull( fileDate ) && fileDate < arguments.olderThan ) {
+				fileDelete( file );
+				deletedCount++;
+			}
+		}
+
+		return deletedCount;
+	}
+
+	/**
+	 * Delete a specific trace
+	 *
+	 * @traceId The trace to delete
+	 *
+	 * @return Boolean success
+	 */
+	boolean function deleteTrace( required string traceId ) {
+		// This is expensive for file-based storage
+		// We need to rewrite all files without the trace entries
+		var files = getLogFiles();
+		var deleted = false;
+		var localTraceId = arguments.traceId;
+
+		for ( var file in files ) {
+			var entries = readEntriesFromFile( file );
+			var filtered = entries.filter( e => e.traceId != localTraceId );
+
+			if ( filtered.len() < entries.len() ) {
+				deleted = true;
+				// Rewrite the file
+				if ( filtered.isEmpty() ) {
+					fileDelete( file );
+				} else {
+					rewriteFile( file, filtered );
+				}
+			}
+		}
+
+		return deleted;
+	}
+
+	/**
+	 * Get summary statistics
+	 *
+	 * @filters Optional filters
+	 *
+	 * @return Struct with stats
+	 */
+	struct function getStats( struct filters = {} ) {
+		var allEntries = readAllEntries( arguments.filters );
+
+		var bySpanType = {};
+		var byOperation = {};
+		var totalDuration = 0;
+		var traceIds = {};
+
+		for ( var entry in allEntries ) {
+			bySpanType[ entry.spanType ] = ( bySpanType[ entry.spanType ] ?: 0 ) + 1;
+			byOperation[ entry.operation ] = ( byOperation[ entry.operation ] ?: 0 ) + 1;
+			totalDuration += entry.durationMs ?: 0;
+			traceIds[ entry.traceId ] = true;
+		}
+
+		return {
+			totalEntries  : allEntries.len(),
+			totalTraces   : traceIds.count(),
+			bySpanType    : bySpanType,
+			byOperation   : byOperation,
+			avgDurationMs : allEntries.len() > 0 ? totalDuration / allEntries.len() : 0,
+			fileCount     : getLogFiles().len()
+		};
+	}
+
+	/**
+	 * Close the store.
+	 * Attempts to flush any buffered data before closing.
+	 * Safe to call multiple times.
+	 *
+	 * @return IAuditStore for chaining
+	 */
+	IAuditStore function close() {
+		try {
+			flush();
+		} catch ( any e ) {
+			// Log but don't throw - close() should be safe to call
+			writeLog(
+				text : "Error flushing audit store during close: #e.message#",
+				type : "error",
+				log  : "ai"
+			);
+		}
+		return this;
+	}
+
+	// ========================================
+	// Private Helper Methods
+	// ========================================
+
+	/**
+	 * Ensure the log directory exists
+	 */
+	private void function ensureDirectory() {
+		if ( !directoryExists( variables.path ) ) {
+			directoryCreate( variables.path, true );
+		}
+	}
+
+	/**
+	 * Get the current log file path
+	 */
+	private string function getCurrentFilePath() {
+		var filename = "audit";
+
+		if ( variables.rotateDaily ) {
+			filename &= "-" & dateFormat( now(), "yyyy-mm-dd" );
+		}
+
+		filename &= "." & variables.format;
+
+		return variables.path & "/" & filename;
+	}
+
+	/**
+	 * Check if rotation is needed and rotate if necessary
+	 */
+	private void function checkRotation() {
+		var currentPath = getCurrentFilePath();
+
+		// Check if date changed (for daily rotation)
+		if ( variables.rotateDaily && currentPath != variables.currentFile ) {
+			variables.currentFile = currentPath;
+			return;
+		}
+
+		// Check file size
+		if ( fileExists( variables.currentFile ) ) {
+			var fileInfo = getFileInfo( variables.currentFile );
+			if ( fileInfo.size >= variables.maxFileSize ) {
+				// Rotate: add timestamp suffix
+				var newName = variables.currentFile.replace( "." & variables.format, "-" & dateTimeFormat( now(), "HHmmss" ) & "." & variables.format );
+				fileMove( variables.currentFile, newName );
+			}
+		}
+	}
+
+	/**
+	 * Write entries in NDJSON format
+	 */
+	private void function writeNDJSON( required array entries ) {
+		var lines = arguments.entries.map( e => jsonSerialize( e ) ).toList( char( 10 ) );
+
+		fileAppend( variables.currentFile, lines & char( 10 ) );
+	}
+
+	/**
+	 * Write entries in JSON array format
+	 */
+	private void function writeJSON( required array entries ) {
+		var existing = [];
+
+		// Read existing entries if file exists
+		if ( fileExists( variables.currentFile ) ) {
+			try {
+				var content = fileRead( variables.currentFile );
+				if ( len( trim( content ) ) ) {
+					existing = jsonDeserialize( content );
+				}
+			} catch ( "JSONException" e ) {
+				// JSON parse error - file is corrupt. Backup for forensic analysis before overwriting
+				var backupPath = variables.currentFile & ".corrupt." & dateTimeFormat( now(), "yyyymmdd_HHmmss" );
+				try {
+					fileCopy( variables.currentFile, backupPath );
+					writeLog(
+						text : "CRITICAL: Audit file corrupted (JSON parse error): #variables.currentFile#. Backed up to #backupPath#. Error: #e.message#",
+						type : "error",
+						log  : "ai"
+					);
+				} catch ( any copyErr ) {
+					writeLog(
+						text : "CRITICAL: Audit file corrupted (#variables.currentFile#) and backup failed (#copyErr.message#). Original error: #e.message#",
+						type : "error",
+						log  : "ai"
+					);
+				}
+				existing = [];
+			} catch ( any e ) {
+				// Non-parse errors (permission, disk, encoding) should propagate - something else is wrong
+				writeLog(
+					text : "ERROR: Failed to read audit file #variables.currentFile#: #e.message#. This may indicate permission or disk issues.",
+					type : "error",
+					log  : "ai"
+				);
+				rethrow;
+			}
+		}
+
+		// Append new entries
+		existing.append( arguments.entries, true );
+
+		// Write back
+		fileWrite( variables.currentFile, jsonSerialize( existing ) );
+	}
+
+	/**
+	 * Get all log files
+	 */
+	private array function getLogFiles() {
+		if ( !directoryExists( variables.path ) ) {
+			return [];
+		}
+
+		var files = directoryList( variables.path, false, "path", "*.#variables.format#" );
+		return files;
+	}
+
+	/**
+	 * Read entries from a single file
+	 */
+	private array function readEntriesFromFile( required string filePath ) {
+		if ( !fileExists( arguments.filePath ) ) {
+			return [];
+		}
+
+		var content = fileRead( arguments.filePath );
+		if ( !len( trim( content ) ) ) {
+			return [];
+		}
+
+		if ( variables.format == "ndjson" ) {
+			// Parse NDJSON with error tracking
+			var lines = content.listToArray( char( 10 ) );
+			var parseErrors = 0;
+			var localFilePath = arguments.filePath;
+			var results = lines
+				.filter( line => len( trim( line ) ) )
+				.map( ( line, lineNum ) => {
+					try {
+						return jsonDeserialize( line );
+					} catch ( any e ) {
+						parseErrors++;
+						// Log individual parse failures for debugging (first 5 only to avoid log spam)
+						if ( parseErrors <= 5 ) {
+							writeLog(
+								text : "Warning: Failed to parse NDJSON line #lineNum# in #localFilePath#: #e.message#",
+								type : "warning",
+								log  : "ai"
+							);
+						}
+						return {};
+					}
+				} )
+				.filter( e => !e.isEmpty() );
+
+			// Log summary if there were errors
+			if ( parseErrors > 0 ) {
+				writeLog(
+					text : "Warning: #parseErrors# audit entries could not be parsed from #localFilePath# (NDJSON format). These entries are lost.",
+					type : "warning",
+					log  : "ai"
+				);
+			}
+
+			return results;
+		} else {
+			// Parse JSON array
+			try {
+				return jsonDeserialize( content );
+			} catch ( any e ) {
+				// CRITICAL: Log JSON parse failure - data in this file is lost
+				writeLog(
+					text : "CRITICAL: Failed to parse JSON audit file #arguments.filePath#. All entries in this file are inaccessible. Error: #e.message#",
+					type : "error",
+					log  : "ai"
+				);
+
+				// Announce data loss event for monitoring systems to detect
+				try {
+					BoxAnnounce( "onAuditDataLoss", {
+						storeType : "file",
+						reason    : "JSON parse failure",
+						file      : arguments.filePath,
+						error     : e.message
+					} );
+				} catch ( any announceErr ) {
+					// Log announcement failure - the main error is already logged above
+					writeLog(
+						text : "DEBUG: onAuditDataLoss announcement failed for file #arguments.filePath#: #announceErr.message#",
+						type : "debug",
+						log  : "ai"
+					);
+				}
+
+				return [];
+			}
+		}
+	}
+
+	/**
+	 * Read all entries from all files with optional filtering
+	 * Thread-safe: acquires lock when reading from the write buffer
+	 */
+	private array function readAllEntries( struct filters = {} ) {
+		var allEntries = [];
+		var files = getLogFiles();
+		var bufferCopy = [];
+
+		// Thread-safe copy of current buffer to avoid race condition
+		try {
+			lock name="bxai_file_audit_buffer_#variables.instanceId#" type="readonly" timeout="5" throwontimeout="true" {
+				bufferCopy = duplicate( variables.writeBuffer );
+			}
+		} catch ( "LockException" e ) {
+			// Lock timeout on read - log warning and continue without buffer entries
+			writeLog(
+				text : "WARNING: Audit store buffer lock timeout during read. Buffered entries may not be included in query results.",
+				type : "warning",
+				log  : "ai"
+			);
+		}
+
+		// Include filtered buffered entries (apply same filtering as file entries)
+		for ( var entry in bufferCopy ) {
+			if ( arguments.filters.isEmpty() || matchesFilters( entry, arguments.filters ) ) {
+				allEntries.append( entry );
+			}
+		}
+
+		for ( var file in files ) {
+			var entries = readEntriesFromFile( file );
+			for ( var entry in entries ) {
+				if ( arguments.filters.isEmpty() || matchesFilters( entry, arguments.filters ) ) {
+					allEntries.append( entry );
+				}
+			}
+		}
+
+		return allEntries;
+	}
+
+	/**
+	 * Rewrite a file with new entries
+	 */
+	private void function rewriteFile( required string filePath, required array entries ) {
+		if ( variables.format == "ndjson" ) {
+			var lines = arguments.entries.map( e => jsonSerialize( e ) ).toList( char( 10 ) );
+			fileWrite( arguments.filePath, lines & char( 10 ) );
+		} else {
+			fileWrite( arguments.filePath, jsonSerialize( arguments.entries ) );
+		}
+	}
+
+	/**
+	 * Extract date from filename for purge operations
+	 */
+	private any function extractDateFromFilename( required string filePath ) {
+		// Extract date from filename like "audit-2024-01-15.ndjson"
+		var filename = getFileFromPath( arguments.filePath );
+		var dateMatch = reMatch( "\d{4}-\d{2}-\d{2}", filename );
+
+		if ( !dateMatch.isEmpty() ) {
+			try {
+				return parseDateTime( dateMatch.first() );
+			} catch ( any e ) {
+				// Log parse failure for debugging - file will be skipped during purge
+				writeLog(
+					text : "Debug: Could not parse date from audit filename '#arguments.filePath#'. File will be skipped during purge. Error: #e.message#",
+					type : "debug",
+					log  : "ai"
+				);
+				return javacast( "null", "" );
+			}
+		}
+
+		return javacast( "null", "" );
+	}
+
+}
