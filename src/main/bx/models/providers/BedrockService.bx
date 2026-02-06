@@ -670,7 +670,7 @@ class extends = "BaseService"{
 				log : "ai"
 			);
 
-			boxAnnounce(
+			BoxAnnounce(
 				"onAIError",
 				{
 					error        : result.error,
@@ -690,7 +690,7 @@ class extends = "BaseService"{
 
 		// Announce token usage
 		if ( openAIResponse.keyExists( "usage" ) ) {
-			boxAnnounce(
+			BoxAnnounce(
 				"onAITokenCount",
 				{
 					provider            : this,
@@ -749,13 +749,14 @@ class extends = "BaseService"{
 		var endpoint = getBedrockEndpoint( arguments.modelId );
 		var payload  = jsonSerialize( arguments.dataPacket );
 
-		// Announce the request
-		boxAnnounce(
-			"onAIRequest",
+		// Announce the request (aligned with BaseService event contract)
+		BoxAnnounce(
+			"onAIChatRequest",
 			{
-				"dataPacket" : arguments.dataPacket,
-				"aiRequest"  : arguments.aiRequest,
-				"provider"   : this
+				"dataPacket"    : arguments.dataPacket,
+				"chatRequest"   : arguments.aiRequest,
+				"provider"      : this,
+				"auditMetadata" : arguments.aiRequest.getAuditMetadata()
 			}
 		);
 
@@ -835,14 +836,14 @@ class extends = "BaseService"{
 				}
 			};
 
-			boxAnnounce(
+			BoxAnnounce(
 				"onAIError",
 				{
 					error        : errorResponse.error,
 					errorMessage : errorResponse.error.message,
 					provider     : this,
 					operation    : "chat",
-					aiRequest    : arguments.aiRequest,
+					chatRequest  : arguments.aiRequest,
 					canRetry     : statusCode >= 500
 				}
 			);
@@ -853,10 +854,10 @@ class extends = "BaseService"{
 		// Parse and return response
 		var response = jsonDeserialize( httpResult.fileContent );
 
-		boxAnnounce(
-			"onAIResponse",
+		BoxAnnounce(
+			"onAIChatResponse",
 			{
-				"aiRequest"   : arguments.aiRequest,
+				"chatRequest" : arguments.aiRequest,
 				"response"    : response,
 				"rawResponse" : httpResult,
 				"provider"    : this
@@ -932,13 +933,14 @@ class extends = "BaseService"{
 		var endpoint = getBedrockStreamEndpoint( arguments.modelId );
 		var payload  = jsonSerialize( arguments.dataPacket );
 
-		// Announce the request
-		boxAnnounce(
-			"onAIRequest",
+		// Announce the request (aligned with BaseService event contract)
+		BoxAnnounce(
+			"onAIChatRequest",
 			{
-				"dataPacket" : arguments.dataPacket,
-				"aiRequest"  : arguments.aiRequest,
-				"provider"   : this
+				"dataPacket"    : arguments.dataPacket,
+				"chatRequest"   : arguments.aiRequest,
+				"provider"      : this,
+				"auditMetadata" : arguments.aiRequest.getAuditMetadata()
 			}
 		);
 
@@ -1005,14 +1007,14 @@ class extends = "BaseService"{
 			var errorMessage = "Bedrock stream request failed with status #statusCode#: #httpResult.fileContent#";
 			writeLog( text: errorMessage, type: "error", log: "ai" );
 
-			boxAnnounce(
+			BoxAnnounce(
 				"onAIError",
 				{
 					error        : { "message" : errorMessage, "statusCode" : statusCode },
 					errorMessage : errorMessage,
 					provider     : this,
 					operation    : "stream",
-					aiRequest    : arguments.aiRequest,
+					chatRequest  : arguments.aiRequest,
 					canRetry     : statusCode >= 500
 				}
 			);
@@ -1038,10 +1040,10 @@ class extends = "BaseService"{
 			);
 		}
 
-		boxAnnounce(
-			"onAIResponse",
+		BoxAnnounce(
+			"onAIChatResponse",
 			{
-				"aiRequest"      : arguments.aiRequest,
+				"chatRequest"    : arguments.aiRequest,
 				"provider"       : this,
 				"streamComplete" : true
 			}

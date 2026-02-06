@@ -75,6 +75,9 @@ class extends="AiBaseRequest"{
 		// Provider-specific options
 		variables.providerOptions = options.providerOptions ?: {};
 
+		// Application-level audit metadata (flows to AuditInterceptor)
+		variables.auditMetadata = options.audit ?: {};
+
 		// If context is provided in options, merge it into the message object
 		if( options.keyExists( "context" ) && isStruct( options.context ) ){
 			variables.aiMessage.mergeContext( options.context );

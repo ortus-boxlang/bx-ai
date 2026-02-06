@@ -17,12 +17,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 What's New: <https://ai.ortusbooks.com/readme/release-history/2.1.0>
 
+### Fixed
+
+- **BUG FIX**: `JdbcAuditStore` - Fixed property declaration ordering issue where `dbProductName` property was declared after the `static` block, causing compilation errors. All property declarations must come before static blocks and functions in BoxLang classes.
+
+### Changed
+
+- **Audit Module Enhancements**:
+  - Added application-level audit metadata flow via `options.audit` parameter in AI BIFs (aiChat, aiAgent, aiEmbed, etc.)
+    - New `auditMetadata` property on all AI request objects for per-call audit context
+    - Providers now include `auditMetadata` in event announcements for AuditInterceptor pickup
+    - Metadata flows through interceptor into stored audit entries under "app" namespace
+  - Added `setDefaultContextMetadata()` method on `AuditInterceptor` for application-wide audit context
+    - Allows frameworks to set default metadata at startup that merges into every trace
+    - Supports well-known fields (tenantId, userId, conversationId) with automatic mapping to entry fields
+  - Added `getStore()` method on `AuditInterceptor` for direct store access from consuming applications
+  - Added `getStoreType()` method on `AuditInterceptor` to identify current store backend
+  - Enhanced `AuditContext` with empty traceId validation (throws InvalidAuditContext if traceId is empty)
+  - Added `flush()` method to all audit stores for explicit buffer persistence
+  - Enhanced `cleanupThread()` in AuditInterceptor to call store.flush() before ThreadLocal cleanup
+  - Added environment variable support for audit configuration:
+    - `BOXLANG_MODULES_BXAI_AUDIT_ENABLED` - enable/disable auditing
+    - `BOXLANG_MODULES_BXAI_AUDIT_STORE` - store type (memory/file/jdbc)
+    - `BOXLANG_MODULES_BXAI_AUDIT_INTERNAL_STORAGE` - internal storage flag
+    - `BOXLANG_MODULES_BXAI_AUDIT_STORE_PATH` - file store output directory
+    - `BOXLANG_MODULES_BXAI_AUDIT_STORE_DATASOURCE` - JDBC datasource name
+    - `BOXLANG_MODULES_BXAI_AUDIT_STORE_TABLE` - JDBC table name
+- **Audit Store Improvements**:
+  - `JdbcAuditStore`: Added database product name caching to avoid repeated bx:dbinfo calls
+  - `FileAuditStore`: Added buffer restoration on write failure to prevent data loss
+  - `FileAuditStore`: Added format validation (only ndjson/json allowed) with error message
+  - `MemoryAuditStore`: Enhanced lock timeout error handling (now throws AuditStoreLockTimeout exception)
+  - `BaseAuditStore`: Fixed numeric sorting in sortEntries() (was treating numbers as strings)
+- **Provider Event Alignment**:
+  - `BedrockService`: Aligned event names to use `onAIChatRequest`/`onAIChatResponse` (was using generic onAIRequest/onAIResponse)
+  - All provider event announcements now include `auditMetadata` field from request object
+  - `BedrockService`: Fixed event data structure to use `chatRequest` (was using `aiRequest`)
+- **Security Enhancements**:
+  - `aiAuditExport` BIF: Added path traversal validation (rejects ".." in destination paths)
+- **New Tests**:
+  - Added `AuditMetadataFlowTest.java` with 5 tests covering full audit metadata pipeline
+
 ### Added
 
 - **Audit & Traceability Module**: Comprehensive audit system for full AI operation traceability
   - New `aiAudit()` BIF for creating audit contexts with trace hierarchy support
   - New `aiAuditQuery()` BIF for querying audit logs with filtering, pagination, and sorting
-  - New `aiAuditExport()` BIF for exporting traces to JSON, OTLP, and Jaeger formats
+  - New `aiAuditExport()` BIF for exporting traces to JSON
   - New `AuditContext` class for managing trace hierarchy with parent/child spans
   - New `AuditEntry` class for individual audit records with timing, I/O, tokens, and metadata
   - New `AuditSanitizer` class for automatic redaction of sensitive data (passwords, API keys, tokens)
@@ -33,7 +74,7 @@ What's New: <https://ai.ortusbooks.com/readme/release-history/2.1.0>
     - `JdbcAuditStore`: Database storage for production multi-user systems
   - New audit events: `onAuditEntry`, `onAuditTraceComplete`, `onAuditExport`
   - Configurable audit settings: `enabled`, `store`, `captureInput`, `captureOutput`, `sanitizePatterns`, `retentionDays`, `asyncWrite`, `batchSize`
-  - Full test suite with 102 unit tests covering all audit components
+  - Full test suite covering all audit components
 - New event: `onMissingAiProvider` to handle cases where a requested provider is not found.
 - `aiModel()` BIF now accepts an additional `options` struct to seed services.
 - New configuration: `providers` so you can predefine multiple providers in the module config, with default `params` and `options`.

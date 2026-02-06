@@ -402,19 +402,22 @@ class implements="IAuditStore" {
 		required string orderDir
 	) {
 		var localOrderBy = arguments.orderBy;
-
-		if ( arguments.orderDir == "desc" ) {
-			return arguments.entries.sort( ( a, b ) => {
-				var aVal = a[ localOrderBy ] ?: "";
-				var bVal = b[ localOrderBy ] ?: "";
-				return compare( toString( bVal ), toString( aVal ) );
-			} );
-		}
+		var isDesc = arguments.orderDir == "desc";
 
 		return arguments.entries.sort( ( a, b ) => {
 			var aVal = a[ localOrderBy ] ?: "";
 			var bVal = b[ localOrderBy ] ?: "";
-			return compare( toString( aVal ), toString( bVal ) );
+
+			// Use numeric comparison for numeric values (fixes durationMs, token counts, etc.)
+			if ( isNumeric( aVal ) && isNumeric( bVal ) ) {
+				var diff = aVal - bVal;
+				return isDesc ? -diff : diff;
+			}
+
+			// String comparison for everything else
+			return isDesc
+				? compare( toString( bVal ), toString( aVal ) )
+				: compare( toString( aVal ), toString( bVal ) );
 		} );
 	}
 

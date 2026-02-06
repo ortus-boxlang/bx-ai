@@ -46,6 +46,7 @@ class extends="AiBaseRequest"{
 		variables.timeout = options.timeout ?: 30;
 		variables.baseURL = options.baseURL ?: "";
 		variables.providerOptions = options.providerOptions ?: {};
+		variables.auditMetadata = options.audit ?: {};
 		return this;
 	}
 
