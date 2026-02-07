@@ -83,10 +83,11 @@ class extends="BaseAuditStore" {
 		}
 
 		// Validate datasource name to prevent injection via bx:dbinfo tags
-		if ( reMatch( "^[a-zA-Z][a-zA-Z0-9_]*$", variables.datasource ).isEmpty() ) {
+		// Datasource names are lookup keys (not SQL identifiers) so hyphens and dots are valid
+		if ( reMatch( "^[a-zA-Z][a-zA-Z0-9_\-\.]*$", variables.datasource ).isEmpty() ) {
 			throw(
 				type    : "JdbcAuditStore.InvalidDatasource",
-				message : "Datasource name '#variables.datasource#' contains invalid characters. Only alphanumeric characters and underscores are allowed, and it must start with a letter."
+				message : "Datasource name '#variables.datasource#' contains invalid characters. Only alphanumeric characters, underscores, hyphens, and dots are allowed, and it must start with a letter."
 			);
 		}
 
