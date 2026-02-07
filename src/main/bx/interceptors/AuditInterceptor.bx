@@ -698,6 +698,47 @@ class {
 	}
 
 	/**
+	 * Reset the audit store so it will be re-initialized on next use.
+	 * Clears the current store reference and resets failure/retry counters.
+	 *
+	 * Use this when the runtime environment has changed since the store was
+	 * first initialized (e.g., application restart within a warm-started
+	 * container where a datasource is now available that wasn't before).
+	 *
+	 * Safe to call at any time. The next getStore() or getContext() call
+	 * will trigger lazy re-initialization with current settings.
+	 *
+	 * @return this for chaining
+	 */
+	AuditInterceptor function resetStore() {
+		lock name="bxai_audit_store_init" type="exclusive" timeout="30" throwontimeout="true" {
+			// Close the existing store to flush buffered entries and release resources
+			if ( !isNull( variables.sharedStore ) ) {
+				try {
+					variables.sharedStore.close();
+				} catch ( any e ) {
+					writeLog(
+						text : "Audit store close error during reset: #e.message#",
+						type : "warning",
+						log  : "ai"
+					);
+				}
+			}
+			variables.sharedStore = javacast( "null", "" );
+			variables.storeInitializationFailed = false;
+			variables.storeInitializationError = "";
+			variables.storeInitRetryCount = 0;
+			variables.configuredStoreType = "";
+		}
+		writeLog(
+			text : "Audit store reset. Will re-initialize on next use.",
+			type : "info",
+			log  : "ai"
+		);
+		return this;
+	}
+
+	/**
 	 * Check if auditing should be performed.
 	 *
 	 * Priority order:
