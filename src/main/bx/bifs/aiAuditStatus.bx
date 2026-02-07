@@ -1,0 +1,106 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Get the current audit configuration status.
+ * Returns computed runtime values, not just configuration.
+ *
+ * Delegates to AuditInterceptor.getAuditStatus() when available for live
+ * runtime state (including runtime setter overrides and degraded mode info).
+ * Falls back to env var + module settings if interceptor not reachable.
+ *
+ * @return Struct with audit status information
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Get current audit status
+	 *
+	 * @return Struct containing:
+	 *   - enabled: Boolean - Is auditing enabled?
+	 *   - internalStorage: Boolean - Is bx-ai storing internally?
+	 *   - store: String - Store type (memory, file, jdbc)
+	 *   - storeConfig: Struct - Store configuration
+	 *   - degradedMode: Boolean - Is the store in degraded mode?
+	 *   - degradedDetails: Struct - Degraded mode details (if applicable)
+	 */
+	function invoke() {
+		// Try to delegate to the AuditInterceptor for live runtime state
+		var interceptor = getAuditInterceptor();
+		if ( !isNull( interceptor ) ) {
+			return interceptor.getAuditStatus();
+		}
+
+		// Fallback: compute from module settings + env vars only
+		var auditSettings = moduleRecord.settings.audit ?: {};
+
+		// Calculate enabled status
+		var enabled = auditSettings.enabled ?: false;
+		var envEnabled = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_ENABLED" ] ?: "";
+		if ( envEnabled == "true" || envEnabled == "1" ) {
+			enabled = true;
+		} else if ( envEnabled == "false" || envEnabled == "0" ) {
+			enabled = false;
+		}
+
+		// Calculate internal storage status
+		var internalStorage = auditSettings.internalStorage ?: true;
+		var envInternalStorage = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_INTERNAL_STORAGE" ] ?: "";
+		if ( envInternalStorage == "false" || envInternalStorage == "0" ) {
+			internalStorage = false;
+		} else if ( envInternalStorage == "true" || envInternalStorage == "1" ) {
+			internalStorage = true;
+		}
+
+		return {
+			"enabled"         : enabled,
+			"internalStorage" : internalStorage,
+			"store"           : auditSettings.store ?: "memory",
+			"storeConfig"     : auditSettings.storeConfig ?: {},
+			"degradedMode"    : false,
+			"degradedDetails" : {}
+		};
+	}
+
+	/**
+	 * Get the AuditInterceptor from the module's interceptors via moduleRecord.
+	 * Returns null if not found or not yet activated.
+	 */
+	private any function getAuditInterceptor() {
+		try {
+			var Key = createObject( "java", "ortus.boxlang.runtime.scopes.Key" );
+			var interceptorKey = Key.of( "interceptor" );
+			var classKey = Key.of( "class" );
+
+			for ( var record in moduleRecord.interceptors ) {
+				var className = record.get( classKey );
+				if ( !isNull( className ) && findNoCase( "AuditInterceptor", className ) ) {
+					var interceptor = record.get( interceptorKey );
+					if ( !isNull( interceptor ) ) {
+						return interceptor;
+					}
+				}
+			}
+		} catch ( any e ) {
+			writeLog(
+				text : "aiAuditStatus: Could not get AuditInterceptor, using fallback - #e.message#",
+				type : "debug",
+				log  : "ai"
+			);
+		}
+		return javacast( "null", "" );
+	}
+
+}

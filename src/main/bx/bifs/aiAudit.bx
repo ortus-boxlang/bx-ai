@@ -1,0 +1,75 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Create an AI Audit Context for tracing AI operations.
+ *
+ * @param traceId Optional trace ID (auto-generated if not provided)
+ * @param store Optional store type or instance
+ * @param config Configuration overrides
+ *
+ * @return AuditContext instance
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Create an AI audit context
+	 *
+	 * @traceId Unique trace identifier (auto-generated if not provided)
+	 * @store The store type ("memory", "file", "jdbc") or IAuditStore instance
+	 * @config Configuration struct for the audit context
+	 *
+	 * @return AuditContext instance
+	 */
+	function invoke(
+		string traceId = createUUID(),
+		any store,
+		struct config = {}
+	) {
+		// Merge with module settings
+		var auditConfig = moduleRecord.settings.audit ?: {};
+		auditConfig.append( arguments.config, true );
+
+		// Determine store
+		var auditStore = javacast( "null", "" );
+		var storeConfig = auditConfig.storeConfig ?: {};
+
+		if ( !isNull( arguments.store ) ) {
+			auditStore = bxModules.bxai.models.audit.AuditStoreFactory::resolve( arguments.store, "memory", storeConfig );
+		} else if ( auditConfig.keyExists( "store" ) && len( auditConfig.store ) ) {
+			auditStore = bxModules.bxai.models.audit.AuditStoreFactory::create( auditConfig.store, storeConfig );
+		}
+
+		var context = new bxModules.bxai.models.audit.AuditContext(
+			traceId : arguments.traceId,
+			store   : auditStore,
+			config  : auditConfig
+		);
+
+		// Announce context creation
+		try {
+			BoxAnnounce( "onAuditContextCreate", { context : context } );
+		} catch ( any e ) {
+			writeLog(
+				text : "WARNING: onAuditContextCreate listener failed: #e.message#",
+				type : "warning",
+				log  : "ai"
+			);
+		}
+
+		return context;
+	}
+
+}

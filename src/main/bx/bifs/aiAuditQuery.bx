@@ -1,0 +1,73 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Query audit logs with filters.
+ *
+ * @param store The audit store to query (type string or IAuditStore instance)
+ * @param filters Query filters struct
+ * @param limit Maximum results (default: 100)
+ * @param offset Pagination offset (default: 0)
+ * @param orderBy Sort field (default: "startTime")
+ * @param orderDir Sort direction (default: "desc")
+ *
+ * @return Array of audit entries
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Query audit logs
+	 *
+	 * @store The store type ("memory", "file", "jdbc") or IAuditStore instance
+	 * @filters Query filters:
+	 *   - traceId: Filter by trace ID
+	 *   - spanType: Filter by span type (agent, model, tool, etc.)
+	 *   - operation: Filter by operation name
+	 *   - startTime: Filter entries after this time
+	 *   - endTime: Filter entries before this time
+	 *   - userId: Filter by user ID
+	 *   - tenantId: Filter by tenant ID
+	 *   - status: Filter by status (ok, error)
+	 * @limit Maximum results to return
+	 * @offset Pagination offset
+	 * @orderBy Sort field
+	 * @orderDir Sort direction: "asc" or "desc"
+	 *
+	 * @return Array of audit entry structs
+	 */
+	function invoke(
+		any store,
+		struct filters   = {},
+		numeric limit    = 100,
+		numeric offset   = 0,
+		string orderBy   = "startTime",
+		string orderDir  = "desc"
+	) {
+		var auditConfig = moduleRecord.settings.audit ?: {};
+		var storeConfig = auditConfig.storeConfig ?: {};
+		var defaultType = auditConfig.store ?: "memory";
+
+		var auditStore = bxModules.bxai.models.audit.AuditStoreFactory::resolve( arguments.store, defaultType, storeConfig );
+
+		return auditStore.query(
+			filters  : arguments.filters,
+			limit    : arguments.limit,
+			offset   : arguments.offset,
+			orderBy  : arguments.orderBy,
+			orderDir : arguments.orderDir
+		);
+	}
+
+}

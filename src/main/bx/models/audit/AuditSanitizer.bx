@@ -1,0 +1,374 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Sanitizes sensitive data from audit entries.
+ * Redacts values matching configured patterns and truncates large data.
+ */
+class {
+
+	/**
+	 * Patterns to look for in keys (case-insensitive)
+	 */
+	property name="patterns" type="array";
+
+	/**
+	 * The value to use for redacted data
+	 */
+	property name="redactValue" type="string" default="[REDACTED]";
+
+	/**
+	 * Maximum size for input data
+	 */
+	property name="maxInputSize" type="numeric" default=10000;
+
+	/**
+	 * Maximum size for output data
+	 */
+	property name="maxOutputSize" type="numeric" default=10000;
+
+	/**
+	 * Maximum recursion depth to prevent stack overflow
+	 */
+	property name="maxDepth" type="numeric" default=50;
+
+	/**
+	 * Default patterns to sanitize
+	 */
+	static {
+		final DEFAULT_MAX_DEPTH = 50
+		final DEFAULT_PATTERNS = [
+			"password",
+			"passwd",
+			"apiKey",
+			"api_key",
+			"apikey",
+			"secret",
+			"credential",
+			"authorization",
+			"bearer",
+			"access_token",
+			"refresh_token",
+			"auth_token",
+			"id_token",
+			"session_token",
+			"private_key",
+			"privateKey",
+			"client_secret",
+			"clientSecret",
+			"ssn",
+			"social_security"
+		]
+
+		/**
+		 * Safe keys that should never be redacted even if they match patterns.
+		 * These are standard LLM API response fields for usage metrics.
+		 */
+		final SAFE_KEYS = [
+			// OpenAI standard
+			"prompt_tokens",
+			"completion_tokens",
+			"total_tokens",
+			"prompt_tokens_details",
+			"completion_tokens_details",
+			"cached_tokens",
+			"audio_tokens",
+			"reasoning_tokens",
+			"accepted_prediction_tokens",
+			"rejected_prediction_tokens",
+			// Anthropic Claude
+			"input_tokens",
+			"output_tokens",
+			// Ollama/llama.cpp
+			"tokens_evaluated",
+			"tokens_predicted",
+			"prompt_eval_count",
+			"eval_count",
+			// Common metrics
+			"context_tokens",
+			"max_tokens",
+			"tokens_per_second",
+			"predicted_per_token_ms",
+			"prompt_per_token_ms"
+		]
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @config Configuration struct with optional: sanitizePatterns, redactValue, maxInputSize, maxOutputSize, maxDepth
+	 */
+	function init( struct config = {} ) {
+		// Make a copy of patterns to avoid modifying the static DEFAULT_PATTERNS
+		var sourcePatterns = arguments.config.sanitizePatterns ?: static.DEFAULT_PATTERNS;
+		variables.patterns = duplicate( sourcePatterns );
+		variables.redactValue = arguments.config.redactValue ?: "[REDACTED]";
+		variables.maxInputSize = arguments.config.maxInputSize ?: 10000;
+		variables.maxOutputSize = arguments.config.maxOutputSize ?: 10000;
+		variables.maxDepth = arguments.config.maxDepth ?: static.DEFAULT_MAX_DEPTH;
+		return this;
+	}
+
+	/**
+	 * Sanitize data by redacting sensitive keys and truncating large values
+	 *
+	 * @data The data to sanitize (any type)
+	 * @config Optional config to override instance settings
+	 * @isOutput If true, use maxOutputSize; otherwise use maxInputSize
+	 *
+	 * @return Sanitized data
+	 */
+	any function sanitize( required any data, struct config = {}, boolean isOutput = false ) {
+		var maxSize = arguments.isOutput
+			? ( arguments.config.maxOutputSize ?: variables.maxOutputSize )
+			: ( arguments.config.maxInputSize ?: variables.maxInputSize );
+
+		var maxDepthLimit = arguments.config.maxDepth ?: variables.maxDepth;
+
+		return sanitizeValue( arguments.data, maxSize, arguments.config, 0, maxDepthLimit );
+	}
+
+	/**
+	 * Recursively sanitize a value with depth limiting to prevent stack overflow
+	 *
+	 * @value The value to sanitize
+	 * @maxSize Maximum string size
+	 * @config Config overrides
+	 * @currentDepth Current recursion depth (internal use)
+	 * @maxDepthLimit Maximum allowed depth (internal use)
+	 *
+	 * @return Sanitized value
+	 */
+	private any function sanitizeValue(
+		required any value,
+		required numeric maxSize,
+		struct config        = {},
+		numeric currentDepth = 0,
+		numeric maxDepthLimit = 50
+	) {
+		if ( isNull( arguments.value ) ) {
+			return "";
+		}
+
+		// Check recursion depth to prevent stack overflow
+		if ( arguments.currentDepth >= arguments.maxDepthLimit ) {
+			return "[MAX_DEPTH_EXCEEDED]";
+		}
+
+		// Handle structs - sanitize keys and recurse
+		if ( isStruct( arguments.value ) ) {
+			return sanitizeStruct( arguments.value, arguments.maxSize, arguments.config, arguments.currentDepth + 1, arguments.maxDepthLimit );
+		}
+
+		// Handle arrays - recurse into each element
+		if ( isArray( arguments.value ) ) {
+			return sanitizeArray( arguments.value, arguments.maxSize, arguments.config, arguments.currentDepth + 1, arguments.maxDepthLimit );
+		}
+
+		// Handle simple values - only truncate strings, preserve other types
+		if ( isSimpleValue( arguments.value ) ) {
+			// Only truncate actual strings, preserve numbers and booleans
+			if ( isNumeric( arguments.value ) || isBoolean( arguments.value ) ) {
+				return arguments.value;
+			}
+			return truncateString( toString( arguments.value ), arguments.maxSize );
+		}
+
+		// For complex objects, try to serialize and truncate
+		try {
+			var serialized = jsonSerialize( arguments.value );
+			return truncateString( serialized, arguments.maxSize );
+		} catch ( any e ) {
+			// Get object type for better placeholder and logging
+			var objectType = "Unknown";
+			try {
+				objectType = getMetadata( arguments.value ).name ?: "Unknown";
+			} catch ( any metaErr ) {
+				// Could not get metadata - use Unknown
+			}
+
+			// Log serialization failure at warning level - audit data is being lost
+			writeLog(
+				text : "Warning: Failed to serialize #objectType# during audit. Data will be replaced with placeholder. Error: #e.message#",
+				type : "warning",
+				log  : "ai"
+			);
+			return "[COMPLEX_OBJECT: #objectType#]";
+		}
+	}
+
+	/**
+	 * Sanitize a struct by checking keys against patterns
+	 *
+	 * @data The struct to sanitize
+	 * @maxSize Maximum string size for values
+	 * @config Config overrides
+	 * @currentDepth Current recursion depth
+	 * @maxDepthLimit Maximum allowed depth
+	 *
+	 * @return Sanitized struct
+	 */
+	private struct function sanitizeStruct(
+		required struct data,
+		required numeric maxSize,
+		struct config         = {},
+		numeric currentDepth  = 0,
+		numeric maxDepthLimit = 50
+	) {
+		var result = {};
+		var patternsToCheck = arguments.config.keyExists( "sanitizePatterns" ) ? arguments.config.sanitizePatterns : variables.patterns;
+		var redact = arguments.config.keyExists( "redactValue" ) ? arguments.config.redactValue : variables.redactValue;
+
+		for ( var key in arguments.data ) {
+			var value = arguments.data[ key ];
+
+			// Check if key matches any sensitive pattern
+			if ( isSensitiveKey( key, patternsToCheck ) ) {
+				result[ key ] = redact;
+			} else {
+				result[ key ] = sanitizeValue( value, arguments.maxSize, arguments.config, arguments.currentDepth, arguments.maxDepthLimit );
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Sanitize an array by recursing into each element
+	 *
+	 * @data The array to sanitize
+	 * @maxSize Maximum string size for values
+	 * @config Config overrides
+	 * @currentDepth Current recursion depth
+	 * @maxDepthLimit Maximum allowed depth
+	 *
+	 * @return Sanitized array
+	 */
+	private array function sanitizeArray(
+		required array data,
+		required numeric maxSize,
+		struct config         = {},
+		numeric currentDepth  = 0,
+		numeric maxDepthLimit = 50
+	) {
+		var localMaxSize = arguments.maxSize;
+		var localConfig = arguments.config;
+		var localDepth = arguments.currentDepth;
+		var localMaxDepth = arguments.maxDepthLimit;
+		return arguments.data.map( item => sanitizeValue( item, localMaxSize, localConfig, localDepth, localMaxDepth ) );
+	}
+
+	/**
+	 * Check if a key matches any sensitive pattern
+	 *
+	 * @key The key to check
+	 * @patterns Array of patterns to match against
+	 *
+	 * @return Boolean true if key is sensitive
+	 */
+	private boolean function isSensitiveKey( required string key, required array patterns ) {
+		var lowerKey = arguments.key.lcase();
+
+		// Check if key is in safe list (exact match) - these are standard LLM metrics
+		for ( var safeKey in static.SAFE_KEYS ) {
+			if ( lowerKey == safeKey.lcase() ) {
+				return false;
+			}
+		}
+
+		for ( var pattern in arguments.patterns ) {
+			if ( lowerKey.findNoCase( pattern ) > 0 ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Truncate a string if it exceeds maxSize
+	 *
+	 * @value The string to truncate
+	 * @maxSize Maximum allowed length
+	 *
+	 * @return Truncated string with indicator if truncated
+	 */
+	private string function truncateString( required string value, required numeric maxSize ) {
+		if ( arguments.value.len() <= arguments.maxSize ) {
+			return arguments.value;
+		}
+
+		return arguments.value.left( arguments.maxSize ) & "... [TRUNCATED]";
+	}
+
+	/**
+	 * Add a pattern to the sanitization list
+	 *
+	 * @pattern The pattern to add
+	 *
+	 * @return AuditSanitizer for chaining
+	 */
+	AuditSanitizer function addPattern( required string pattern ) {
+		if ( !variables.patterns.findNoCase( arguments.pattern ) ) {
+			variables.patterns.append( arguments.pattern );
+		}
+		return this;
+	}
+
+	/**
+	 * Remove a pattern from the sanitization list
+	 *
+	 * @pattern The pattern to remove
+	 *
+	 * @return AuditSanitizer for chaining
+	 */
+	AuditSanitizer function removePattern( required string pattern ) {
+		var index = variables.patterns.findNoCase( arguments.pattern );
+		if ( index > 0 ) {
+			variables.patterns.deleteAt( index );
+		}
+		return this;
+	}
+
+	/**
+	 * Get current patterns (defensive copy to prevent external mutation)
+	 *
+	 * @return Array of patterns
+	 */
+	array function getPatterns() {
+		return duplicate( variables.patterns );
+	}
+
+	/**
+	 * Set the redaction value
+	 *
+	 * @value The value to use for redacted data
+	 *
+	 * @return AuditSanitizer for chaining
+	 */
+	AuditSanitizer function setRedactValue( required string value ) {
+		variables.redactValue = arguments.value;
+		return this;
+	}
+
+	/**
+	 * Get the redaction value
+	 *
+	 * @return String redaction value
+	 */
+	string function getRedactValue() {
+		return variables.redactValue;
+	}
+
+}

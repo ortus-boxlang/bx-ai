@@ -1,0 +1,424 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Base class for audit store implementations.
+ * Provides common functionality for all storage backends.
+ */
+class implements="IAuditStore" {
+
+	/**
+	 * Configuration struct
+	 */
+	property name="config" type="struct";
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		variables.config = {};
+		return this;
+	}
+
+	/**
+	 * Configure the store instance
+	 *
+	 * @config Configuration struct (defensive copy is made to prevent external mutation)
+	 *
+	 * @return IAuditStore for chaining
+	 */
+	IAuditStore function configure( required struct config ) {
+		// Make a defensive copy to prevent external mutation of internal config
+		variables.config = duplicate( arguments.config );
+		return this;
+	}
+
+	/**
+	 * Get configuration (defensive copy to prevent external mutation)
+	 *
+	 * @return Struct configuration
+	 */
+	struct function getConfig() {
+		return duplicate( variables.config );
+	}
+
+	/**
+	 * Store a single audit entry (to be implemented by subclasses)
+	 *
+	 * @entry The AuditEntry to store
+	 *
+	 * @return IAuditStore for chaining
+	 */
+	IAuditStore function store( required any entry ) {
+		throw(
+			type    : "AbstractMethod",
+			message : "store() must be implemented by subclass"
+		);
+	}
+
+	/**
+	 * Store multiple audit entries in batch
+	 *
+	 * @entries Array of AuditEntry objects or structs
+	 *
+	 * @return Struct with results: { stored: numeric, failed: numeric, errors: array }
+	 */
+	struct function storeBatch( required array entries ) {
+		var results = { stored : 0, failed : 0, errors : [] };
+
+		for ( var entry in arguments.entries ) {
+			try {
+				this.store( entry );
+				results.stored++;
+			} catch ( any e ) {
+				results.failed++;
+				// Include entry identification for debugging
+				var entryData = isStruct( entry ) ? entry : ( isObject( entry ) && structKeyExists( entry, "toStruct" ) ? entry.toStruct() : {} );
+				results.errors.append( {
+					message : e.message,
+					spanId  : entryData.spanId ?: "unknown",
+					traceId : entryData.traceId ?: "unknown",
+					detail  : e.detail ?: ""
+				} );
+			}
+		}
+
+		return results;
+	}
+
+	/**
+	 * Store entries asynchronously in a background thread.
+	 *
+	 * This method includes a default error handler that logs failures. Callers can
+	 * still add their own .exceptionally() handler for additional error processing,
+	 * or call .get() to wait for completion and handle errors synchronously.
+	 *
+	 * For critical audit data, consider:
+	 * 1. Calling .get() on the returned future to wait for completion
+	 * 2. Using storeBatch() directly if synchronous storage is acceptable
+	 * 3. Adding additional error callbacks using future.exceptionally()
+	 *
+	 * @entries Array of AuditEntry objects or structs
+	 *
+	 * @return BoxFuture with results: { stored: numeric, failed: numeric, errors: array }
+	 */
+	BoxFuture function storeAsync( required array entries ) {
+		var entryCount = arguments.entries.len();
+		return runAsync( () => this.storeBatch( entries ) )
+			.exceptionally( ( error ) => {
+				// Default error handler ensures async failures are logged
+				writeLog(
+					text : "CRITICAL: Async audit storage failed for #entryCount# entries. Error: #error.message ?: error.toString()#",
+					type : "error",
+					log  : "ai"
+				);
+				// Return error result so the future chain completes
+				return { stored : 0, failed : entryCount, errors : [ error.message ?: error.toString() ] };
+			} );
+	}
+
+	/**
+	 * Query audit entries (to be implemented by subclasses)
+	 *
+	 * @filters Query filters struct
+	 * @limit Maximum results to return
+	 * @offset Pagination offset
+	 * @orderBy Sort field
+	 * @orderDir Sort direction
+	 *
+	 * @return Array of entry structs (struct representations, not AuditEntry objects)
+	 */
+	array function query(
+		struct filters   = {},
+		numeric limit    = 100,
+		numeric offset   = 0,
+		string orderBy   = "startTime",
+		string orderDir  = "desc"
+	) {
+		throw(
+			type    : "AbstractMethod",
+			message : "query() must be implemented by subclass"
+		);
+	}
+
+	/**
+	 * Get a complete trace by traceId (to be implemented by subclasses)
+	 *
+	 * @traceId The trace identifier
+	 *
+	 * @return Struct with trace data
+	 */
+	struct function getTrace( required string traceId ) {
+		throw(
+			type    : "AbstractMethod",
+			message : "getTrace() must be implemented by subclass"
+		);
+	}
+
+	/**
+	 * Get a single entry by spanId (to be implemented by subclasses)
+	 *
+	 * @spanId The span identifier
+	 *
+	 * @return AuditEntry struct or empty struct
+	 */
+	struct function getById( required string spanId ) {
+		throw(
+			type    : "AbstractMethod",
+			message : "getById() must be implemented by subclass"
+		);
+	}
+
+	/**
+	 * Delete audit data older than specified date (to be implemented by subclasses).
+	 *
+	 * Note: Behavior varies by implementation:
+	 * - MemoryAuditStore: Deletes individual entries, returns entry count
+	 * - FileAuditStore: Deletes entire files by date, returns file count
+	 * - JdbcAuditStore: Deletes individual entries, returns entry count
+	 *
+	 * @olderThan Delete data older than this date
+	 *
+	 * @return Numeric count of deleted items (entries or files depending on store)
+	 */
+	numeric function purge( required date olderThan ) {
+		throw(
+			type    : "AbstractMethod",
+			message : "purge() must be implemented by subclass"
+		);
+	}
+
+	/**
+	 * Delete a specific trace (to be implemented by subclasses)
+	 *
+	 * @traceId The trace to delete
+	 *
+	 * @return Boolean success
+	 */
+	boolean function deleteTrace( required string traceId ) {
+		throw(
+			type    : "AbstractMethod",
+			message : "deleteTrace() must be implemented by subclass"
+		);
+	}
+
+	/**
+	 * Get summary statistics (to be implemented by subclasses)
+	 *
+	 * @filters Optional filters
+	 *
+	 * @return Struct with stats
+	 */
+	struct function getStats( struct filters = {} ) {
+		throw(
+			type    : "AbstractMethod",
+			message : "getStats() must be implemented by subclass"
+		);
+	}
+
+	/**
+	 * Flush any pending writes (default: no-op)
+	 *
+	 * @return IAuditStore for chaining
+	 */
+	IAuditStore function flush() {
+		return this;
+	}
+
+	/**
+	 * Close the store (default: no-op)
+	 *
+	 * @return IAuditStore for chaining
+	 */
+	IAuditStore function close() {
+		// Override in subclasses if needed
+		return this;
+	}
+
+	// ========================================
+	// Protected Helper Methods
+	// ========================================
+
+	/**
+	 * Convert entry to struct if it's an AuditEntry object
+	 *
+	 * @entry The entry (object or struct)
+	 *
+	 * @return Struct representation
+	 */
+	struct function entryToStruct( required any entry ) {
+		// Check for object with toStruct() first, since BoxLang classes may also satisfy isStruct()
+		if ( isObject( arguments.entry ) && structKeyExists( arguments.entry, "toStruct" ) ) {
+			return arguments.entry.toStruct();
+		}
+
+		if ( isStruct( arguments.entry ) ) {
+			return arguments.entry;
+		}
+
+		throw(
+			type    : "InvalidAuditEntry",
+			message : "Entry must be a struct or an object with toStruct() method"
+		);
+	}
+
+	/**
+	 * Calculate trace summary from entries
+	 *
+	 * @entries Array of entry structs
+	 *
+	 * @return Struct with summary data
+	 */
+	struct function calculateTraceSummary( required array entries ) {
+		var totalTokens = { prompt : 0, completion : 0, total : 0 };
+		var totalCost = 0;
+		var errorCount = 0;
+		var totalDuration = 0;
+		var minStartTime = "";
+		var maxEndTime = "";
+
+		for ( var entry in arguments.entries ) {
+			// Aggregate tokens
+			if ( isStruct( entry.tokens ) ) {
+				totalTokens.prompt += entry.tokens.prompt ?: 0;
+				totalTokens.completion += entry.tokens.completion ?: 0;
+				totalTokens.total += entry.tokens.total ?: 0;
+			}
+
+			// Aggregate cost
+			if ( isStruct( entry.cost ) && entry.cost.keyExists( "amount" ) ) {
+				totalCost += entry.cost.amount;
+			}
+
+			// Count errors
+			if ( entry.status == "error" ) {
+				errorCount++;
+			}
+
+			// Sum duration
+			totalDuration += entry.durationMs ?: 0;
+
+			// Track time range
+			if ( !len( minStartTime ) || entry.startTime < minStartTime ) {
+				minStartTime = entry.startTime;
+			}
+			if ( len( entry.endTime ?: "" ) && ( !len( maxEndTime ) || entry.endTime > maxEndTime ) ) {
+				maxEndTime = entry.endTime;
+			}
+		}
+
+		return {
+			spanCount       : arguments.entries.len(),
+			totalDurationMs : totalDuration,
+			tokens          : totalTokens,
+			totalCost       : totalCost,
+			errorCount      : errorCount,
+			startTime       : minStartTime,
+			endTime         : maxEndTime
+		};
+	}
+
+	/**
+	 * Check if an entry matches the given filters
+	 *
+	 * @entry The entry struct to check
+	 * @filters The filters to apply
+	 *
+	 * @return Boolean true if matches
+	 */
+	boolean function matchesFilters( required struct entry, required struct filters ) {
+		// Filter by traceId
+		if ( arguments.filters.keyExists( "traceId" ) && arguments.entry.traceId != arguments.filters.traceId ) {
+			return false;
+		}
+
+		// Filter by spanType
+		if ( arguments.filters.keyExists( "spanType" ) && arguments.entry.spanType != arguments.filters.spanType ) {
+			return false;
+		}
+
+		// Filter by operation
+		if ( arguments.filters.keyExists( "operation" ) && arguments.entry.operation != arguments.filters.operation ) {
+			return false;
+		}
+
+		// Filter by startTime (after)
+		if ( arguments.filters.keyExists( "startTime" ) && arguments.entry.startTime < arguments.filters.startTime ) {
+			return false;
+		}
+
+		// Filter by endTime (before)
+		if ( arguments.filters.keyExists( "endTime" ) && arguments.entry.startTime > arguments.filters.endTime ) {
+			return false;
+		}
+
+		// Filter by userId
+		if ( arguments.filters.keyExists( "userId" ) && ( arguments.entry.userId ?: "" ) != arguments.filters.userId ) {
+			return false;
+		}
+
+		// Filter by tenantId
+		if ( arguments.filters.keyExists( "tenantId" ) && ( arguments.entry.tenantId ?: "" ) != arguments.filters.tenantId ) {
+			return false;
+		}
+
+		// Filter by conversationId
+		if ( arguments.filters.keyExists( "conversationId" ) && ( arguments.entry.conversationId ?: "" ) != arguments.filters.conversationId ) {
+			return false;
+		}
+
+		// Filter by status
+		if ( arguments.filters.keyExists( "status" ) && arguments.entry.status != arguments.filters.status ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Sort entries by a field in ascending or descending order.
+	 * Helper method for subclass query implementations.
+	 *
+	 * @entries Array of entry structs to sort
+	 * @orderBy Field name to sort by
+	 * @orderDir Sort direction: "asc" or "desc"
+	 *
+	 * @return Sorted array of entries
+	 */
+	array function sortEntries(
+		required array entries,
+		required string orderBy,
+		required string orderDir
+	) {
+		var localOrderBy = arguments.orderBy;
+		var isDesc = arguments.orderDir == "desc";
+
+		return arguments.entries.sort( ( a, b ) => {
+			var aVal = a[ localOrderBy ] ?: "";
+			var bVal = b[ localOrderBy ] ?: "";
+
+			// Use numeric comparison for numeric values (fixes durationMs, token counts, etc.)
+			if ( isNumeric( aVal ) && isNumeric( bVal ) ) {
+				var diff = aVal - bVal;
+				return isDesc ? -diff : diff;
+			}
+
+			// String comparison for everything else
+			return isDesc
+				? compare( toString( bVal ), toString( aVal ) )
+				: compare( toString( aVal ), toString( bVal ) );
+		} );
+	}
+
+}

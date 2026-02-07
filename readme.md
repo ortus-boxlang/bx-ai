@@ -42,7 +42,8 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - 💬 **Fluent Interface** - Chainable, expressive syntax that makes AI integration intuitive
 - 🦙 **Local AI** - Full Ollama support for privacy, offline use, and zero API costs
 - ⚡ **Async Operations** - Non-blocking futures for concurrent AI requests
-- 🎯 **Event-Driven** - 25+ lifecycle events for logging, monitoring, and custom workflows
+- 🎯 **Event-Driven** - 38+ lifecycle events for logging, monitoring, and custom workflows
+- 🔍 **Audit & Traceability** - Full tracing of AI decisions, tool calls, and model invocations with automatic sanitization
 - 🏭 **Production-Ready** - Timeout controls, error handling, rate limiting, and debugging tools
 
 ## 📃 Table of Contents
@@ -64,6 +65,7 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - [⚙️ Settings](#️-settings)
 - [🛠️ Global Functions (BIFs)](#️-global-functions-bifs)
 - [📢 Events](#-events)
+- [🔍 Audit & Traceability](#-audit--traceability)
 - [🌐 GitHub Repository and Reporting Issues](#-github-repository-and-reporting-issues)
 - [🧪 Testing](#-testing)
 - [💖 Ortus Sponsors](#-ortus-sponsors)
@@ -1068,6 +1070,10 @@ Here are the settings you can place in your `boxlang.json` file:
 | Function | Purpose | Parameters | Return Type | Async Support |
 |----------|---------|------------|-------------|---------------|
 | `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options` | AiAgent Object | ❌ |
+| `aiAudit()` | Create audit context for tracing | `traceId`, `store`, `config` | AuditContext Object | N/A |
+| `aiAuditExport()` | Export trace data | `traceId`, `store`, `format`, `destination` | String/Struct | N/A |
+| `aiAuditQuery()` | Query audit logs | `store`, `filters`, `limit`, `offset`, `orderBy`, `orderDir` | Array | N/A |
+| `aiAuditStatus()` | Get audit configuration status | (none) | Struct | N/A |
 | `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
 | `aiChatRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | AiRequestObject | N/A |
@@ -1124,6 +1130,232 @@ Read more about [Events in BoxLang AI](https://ai.ortusbooks.com/advanced/events
 | `onAITokenCount` | When token usage data is available | `provider`, `model`, `promptTokens`, `completionTokens`, `totalTokens`, `tenantId`, `usageMetadata`, `providerOptions`, `timestamp` | Cost tracking, budget enforcement, multi-tenant billing |
 | `onAIToolCreate` | When tool is created | `tool`, `name`, `description` | Tool registration, validation |
 | `onAITransformerCreate` | When transformer is created | `transform` | Transform configuration, tracking |
+| `onAuditEntry` | When audit entry is recorded | `entry`, `context` | Audit logging, custom processing |
+| `onAuditTraceComplete` | When trace completes | `traceId`, `summary`, `entries` | Trace analysis, reporting |
+| `onAuditExport` | When trace is exported | `traceId`, `format`, `destination` | Export notifications, archival |
+
+## 🔍 Audit & Traceability
+
+BoxLang AI includes a comprehensive **audit module** 📊 for full traceability of AI agent decisions, tool invocations, model calls, and MCP operations. The module supports both **automatic tracing** via interceptors and **explicit audit contexts** for custom workflows.
+
+### 🤔 Why Use Audit?
+
+- 📊 **Full Traceability** - Track every AI decision, tool call, and model invocation
+- 🔒 **Compliance Ready** - Meet regulatory requirements for AI transparency
+- 🐛 **Debugging** - Understand exactly what happened during complex agent workflows
+- 💰 **Cost Tracking** - Monitor token usage and estimated costs per trace
+- 🔐 **Security** - Automatic sanitization of sensitive data (passwords, API keys, tokens)
+- 📈 **Analytics** - Query and analyze AI usage patterns across your application
+
+### 📋 Audit Components
+
+| Component | Description |
+|-----------|-------------|
+| **AuditContext** | Manages trace hierarchy with parent/child spans |
+| **AuditEntry** | Individual audit record with timing, I/O, tokens, and metadata |
+| **AuditSanitizer** | Redacts sensitive data from audit logs |
+| **AuditInterceptor** | Automatic tracing via bx-ai events |
+
+### 💾 Audit Stores
+
+| Store | Description | Best For |
+|-------|-------------|----------|
+| **Memory** | In-memory storage | Development, testing |
+| **File** | JSON/NDJSON file storage | Audit trails, debugging |
+| **JDBC** | Database storage | Production, multi-user systems |
+
+### 💡 Quick Examples
+
+**Automatic Tracing (Enable in Settings):**
+
+```javascript
+// All AI operations automatically traced when enabled
+agent = aiAgent(
+    name: "SupportAgent",
+    tools: [ weatherTool, databaseTool ]
+)
+response = agent.run( "What's the weather in Miami?" )
+
+// Query audit logs
+entries = aiAuditQuery(
+    filters: { spanType: "agent" },
+    limit: 10
+)
+for( entry in entries ) {
+    println( "#entry.operation# - #entry.totalTokens# tokens" )
+}
+```
+
+**Explicit Audit Context:**
+
+```javascript
+// Create audit context with custom configuration
+ctx = aiAudit(
+    config: {
+        store: "jdbc",
+        storeConfig: { datasource: "myDS" }
+    }
+)
+
+// Manual span tracking for custom workflows
+ctx.startSpan( spanType: "workflow", operation: "orderProcessing" )
+
+// Your AI operations here
+agent.run( "Process order #12345" )
+
+ctx.endSpan( output: { result: "success" }, tokens: { total: 250 } )
+
+// Get complete trace
+trace = ctx.getFullTrace()
+println( "Trace ID: #ctx.getTraceId()#" )
+println( "Total entries: #trace.entries.len()#" )
+```
+
+**Export Traces:**
+
+```javascript
+// Export trace to JSON file
+aiAuditExport(
+    traceId: ctx.getTraceId(),
+    format: "json",
+    destination: "/logs/trace-#ctx.getTraceId()#.json"
+)
+
+// Export to OTLP format for observability platforms
+aiAuditExport(
+    traceId: ctx.getTraceId(),
+    format: "otlp"
+)
+```
+
+**Query with Filters:**
+
+```javascript
+// Find all tool executions in the last hour
+entries = aiAuditQuery(
+    filters: {
+        spanType: "tool",
+        startTime: dateAdd( "h", -1, now() )
+    },
+    orderBy: "startTime",
+    orderDir: "desc"
+)
+
+// Find expensive operations (high token usage)
+entries = aiAuditQuery(
+    filters: {
+        minTokens: 1000
+    }
+)
+```
+
+### ⚙️ Audit Settings
+
+#### Static Configuration
+
+Add to your `boxlang.json` configuration:
+
+```json
+{
+    "modules": {
+        "bxai": {
+            "settings": {
+                "audit": {
+                    "enabled": false,
+                    "store": "memory",
+                    "storeConfig": {},
+                    "captureInput": true,
+                    "captureOutput": true,
+                    "captureMessages": true,
+                    "captureToolArgs": true,
+                    "sanitizePatterns": ["password", "apiKey", "token", "secret"],
+                    "redactValue": "[REDACTED]",
+                    "maxInputSize": 10000,
+                    "maxOutputSize": 10000,
+                    "retentionDays": 30,
+                    "asyncWrite": true,
+                    "batchSize": 100
+                }
+            }
+        }
+    }
+}
+```
+
+#### Dynamic Runtime Toggle
+
+You can enable/disable audit at runtime without restarting the application using multiple methods:
+
+**Method 1: Application Scope (Highest Priority)**
+
+Uses standard Ortus module settings pattern for namespaced configuration:
+
+```bx
+// Ensure structure exists
+if ( !structKeyExists( application, "modules" ) ) {
+    application.modules = {};
+}
+if ( !structKeyExists( application.modules, "bxai" ) ) {
+    application.modules.bxai = {};
+}
+if ( !structKeyExists( application.modules.bxai, "settings" ) ) {
+    application.modules.bxai.settings = {};
+}
+if ( !structKeyExists( application.modules.bxai.settings, "audit" ) ) {
+    application.modules.bxai.settings.audit = {};
+}
+
+// Enable audit dynamically
+application.modules.bxai.settings.audit.enabled = true;
+
+// Disable audit dynamically
+application.modules.bxai.settings.audit.enabled = false;
+
+// Check current status
+if ( structKeyExists( application, "modules" )
+    && structKeyExists( application.modules, "bxai" )
+    && structKeyExists( application.modules.bxai, "settings" )
+    && structKeyExists( application.modules.bxai.settings, "audit" )
+    && structKeyExists( application.modules.bxai.settings.audit, "enabled" ) ) {
+    println( "Audit is: " & ( application.modules.bxai.settings.audit.enabled ? "enabled" : "disabled" ) );
+}
+```
+
+**Method 2: Environment Variable**
+```bash
+# Set environment variable (can be changed in task definition/docker-compose)
+export BOXLANG_MODULES_BXAI_AUDIT_ENABLED=true   # Enable
+export BOXLANG_MODULES_BXAI_AUDIT_ENABLED=false  # Disable
+```
+
+**Priority Order:**
+1. `application.modules.bxai.settings.audit.enabled` (runtime toggle using standard Ortus pattern) - **highest priority**
+2. `BOXLANG_MODULES_BXAI_AUDIT_ENABLED` environment variable - allows external control
+3. Module settings from `boxlang.json` - **default behavior**
+
+This allows you to:
+- Toggle audit on/off for debugging without restarting
+- Control audit per environment via environment variables
+- Use application-level controls for multi-tenant scenarios
+
+### 🛠️ Audit BIFs
+
+| Function | Purpose | Parameters |
+|----------|---------|------------|
+| `aiAudit()` | Create audit context | `traceId`, `store`, `config` |
+| `aiAuditQuery()` | Query audit logs | `store`, `filters`, `limit`, `offset`, `orderBy`, `orderDir` |
+| `aiAuditExport()` | Export trace data | `traceId`, `store`, `format`, `destination` |
+| `aiAuditStatus()` | Get audit runtime status | (none) |
+
+### 📢 Audit Events
+
+| Event | When Fired | Data Emitted |
+|-------|------------|--------------|
+| `onAuditEntry` | When audit entry is recorded | `entry`, `context` |
+| `onAuditTraceComplete` | When trace completes | `traceId`, `summary`, `entries` |
+| `onAuditExport` | When trace is exported | `traceId`, `format`, `destination` |
+
+---
 
 ## 🌐 GitHub Repository and Reporting Issues
 
