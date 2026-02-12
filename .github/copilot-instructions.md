@@ -508,7 +508,7 @@ var result = client.callTool( "search", { query: "BoxLang" } );
     - Callbacks: `onRequest`, `onResponse`, `onError`
     - Resources: `tools`, `resources`, `prompts` (registration maps)
     - Monitoring: `stats` (MCPServerStats with request counts, errors, latency)
-  
+
   - **Registration Methods**:
     - `registerTool(tool)` - Add AI tool for invocation
     - `registerResource(uri, definition)` - Add accessible resource
@@ -516,12 +516,12 @@ var result = client.callTool( "search", { query: "BoxLang" } );
     - `enableCORS(origins)` - Configure CORS headers
     - `requireAuth(user, pass)` - Enable HTTP Basic Auth
     - `requireApiKey(provider)` - Custom API key validation
-  
+
   - **Request Handling**:
     - `handleRequest(requestBody)` - JSON-RPC 2.0 processor
     - `processRequest(normalized)` - Internal routing to methods
     - Methods: `tools/list`, `resources/list`, `prompts/list`, `tools/call`, `resources/read`, `prompts/get`
-  
+
   - **JSON-RPC Error Codes** (static):
     - `INVALID_REQUEST: -32600` - Malformed JSON-RPC
     - `METHOD_NOT_FOUND: -32601` - Unknown method
@@ -576,19 +576,19 @@ var response = mcpSrv.handleRequest( requestBody );
     - Memory: `memories` (array of IAiMemory - multi-memory support!)
     - Delegation: `subAgents` (array of AiAgent - auto-wrapped as tools)
     - Config: `params`, `options`
-  
+
   - **Key Features**:
     - **Multi-memory support**: Can use multiple memory sources (e.g., vector + cache)
     - **Tool delegation**: Automatically registers tools for execution
     - **Sub-agent composition**: Child agents become callable tools
     - **System message auto-generation**: Combines description + instructions
     - **Memory integration**: Auto-loads context before execution, saves after
-  
+
   - **Execution**:
     - `run(input, params, options)` - Execute with memory loading/saving
     - `stream(callback, input, params, options)` - Streaming execution
     - Implements `IAiRunnable` - can be used in pipelines via `.to()`
-  
+
   - **Return Formats**: `single` (default), `all`, `raw`, `structuredOutput`
 
 ```javascript
@@ -631,7 +631,7 @@ var result = coordinatorAgent.run( "Write an article about BoxLang AI" );
 ### Transformer Interface
 - **Interface**: `ITransformer` ([models/transformers/ITransformer.bx](src/main/bx/models/transformers/ITransformer.bx))
   - Methods: `configure(config)`, `transform(input)` (abstract)
-  
+
 - **Base Class**: `BaseTransformer` ([models/transformers/BaseTransformer.bx](src/main/bx/models/transformers/BaseTransformer.bx))
   - Config management: `setConfigValue()`, `getConfigValue()`, `hasConfigValue()`
   - Validation and defaults handling
@@ -889,11 +889,11 @@ function chatStream( required chatRequest, required callback ) {
         .onChunk( function( chunk ) {
             // Filter SSE events: "data: {...}"
             if ( !chunk.startsWith( "data: " ) ) return;
-            
+
             try {
                 var jsonData = jsonDeserialize( chunk.mid( 7 ) );
                 var delta = jsonData.choices[1].delta.content ?: "";
-                
+
                 if ( !isNull( delta ) && delta != "" ) {
                     callback( delta );  // User callback with incremental text
                 }
@@ -968,23 +968,23 @@ function chatStream( required chatRequest, required callback ) {
 // Simplified flow
 function chat( chatRequest ) {
     var response = sendRequest( chatRequest );
-    
+
     // Check for tool calls
     if ( response.tool_calls.len() > 0 && chatRequest.maxInteractions > 0 ) {
         // Execute each tool
         response.tool_calls.each( toolCall => {
             var tool = chatRequest.getTool( toolCall.name );
             var result = tool.invoke( jsonDeserialize( toolCall.arguments ) );
-            
+
             // Append tool result as new message
             chatRequest.addMessage( role: "tool", content: result, tool_call_id: toolCall.id );
         });
-        
+
         // Recurse with updated messages, decrement interactions
         chatRequest.maxInteractions--;
         return chat( chatRequest );  // RECURSIVE CALL
     }
-    
+
     return response;
 }
 ```
@@ -1095,7 +1095,7 @@ class OllamaService extends="BaseService" {
         // BaseService handles everything else!
         return this;
     }
-    
+
     // Only override if provider differs from OpenAI standard
     function chatStream( chatRequest, callback ) {
         // Custom SSE handling for Ollama format
@@ -1189,13 +1189,13 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    ```javascript
    // ✅ Correct - at top of class
    import bxModules.bxai.models.util.TextChunker;
-   
+
    class {
        function myMethod() {
            var chunks = TextChunker::chunk( text );  // Works!
        }
    }
-   
+
    // ❌ Wrong - inline import (only works in .bxs/.bxm scripts)
    class {
        function myMethod() {
@@ -1209,7 +1209,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    static {
        DEFAULT_MODEL = "gpt-4";
    }
-   
+
    function getModel() {
        return static.DEFAULT_MODEL;  // ✅ Correct
        // return variables.DEFAULT_MODEL;  // ❌ Wrong - undefined!
@@ -1226,7 +1226,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
        { role: "system", content: "You are helpful" },
        { role: "system", content: "Be concise" }  // ERROR!
    ]
-   
+
    // ✅ Correct - combine into one
    messages: [
        { role: "system", content: "You are helpful. Be concise." }
@@ -1239,11 +1239,11 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    ```javascript
    class User {
        property name="firstName" type="string";
-       
+
        // ❌ Wrong - don't define getters/setters for properties
        // function getFirstName() { return variables.firstName; }
    }
-   
+
    var user = new User();
    user.setFirstName( "John" );  // ✅ Auto-generated setter
    systemOutput( user.getFirstName() );  // ✅ Auto-generated getter
@@ -1254,7 +1254,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    // ✅ Correct
    var floatValue = config.temperature castAs "float";
    var floatValue = config.temperature castAs float;
-   
+
    // ❌ Deprecated
    var floatValue = javaCast( "float", config.temperature );
    ```
@@ -1263,7 +1263,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    ```javascript
    // ❌ Wrong - conflicts with BoxLang scope
    var server = MCPServer( "my-server" );
-   
+
    // ✅ Correct - use alternative name
    var mcpSrv = MCPServer( "my-server" );
    ```
@@ -1272,7 +1272,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    ```javascript
    // ✅ Correct
    BoxAnnounce( "onAITokenCount", eventData );
-   
+
    // ❌ Wrong - not a valid BIF
    announce( "onAITokenCount", eventData );
    ```
@@ -1281,7 +1281,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    ```javascript
    // ✅ Correct
    params: { model: "qwen2.5:0.5b-instruct" }
-   
+
    // ❌ Wrong - missing version tag
    params: { model: "qwen2.5" }  // ERROR: model not found
    ```
@@ -1299,7 +1299,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
     ```javascript
     // Explicit
     aiService( "openai", "sk-..." )
-    
+
     // Auto-detected from OPENAI_API_KEY env var
     aiService( "openai" )
     ```
