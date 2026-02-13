@@ -69,7 +69,7 @@ class {
         // By convention check if there is a <PROVIDER>_API_KEY setting override it
 		// Only apply convention key if options.apiKey is not already set (could be a struct for providers like Bedrock)
         var conventionAPIKey = getSystemSetting( "#arguments.provider.ucase()#_API_KEY", "" )
-        if( !arguments.options.keyExists( "apiKey" ) && len( conventionAPIKey ) ){
+        if( arguments.options.apiKey.isEmpty() && len( conventionAPIKey ) ){
             arguments.options.apiKey = conventionAPIKey
         }
         // Else use the module setting (only if apiKey not already set)
