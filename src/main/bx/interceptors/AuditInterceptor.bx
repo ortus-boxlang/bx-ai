@@ -223,32 +223,20 @@ class {
 		var traceId = "";
 
 		try {
-			try {
-				var ctx = variables.contextHolder.get();
-				if ( !isNull( ctx ) ) {
-					traceId = ctx.getTraceId();
-					ctx.complete();
-				}
-			} catch ( any e ) {
-				writeLog(
-					text : "Audit cleanup error for traceId=#traceId#: #e.message#",
-					type : "warning",
-					log  : "ai"
-				);
+			var ctx = variables.contextHolder.get();
+			if ( !isNull( ctx ) ) {
+				traceId = ctx.getTraceId();
+				ctx.complete();
 			}
-
-			// Flush the store to ensure buffered entries are persisted to disk/DB.
-			try {
-				if ( !isNull( variables.sharedStore ) ) {
-					variables.sharedStore.flush();
-				}
-			} catch ( any e ) {
-				writeLog(
-					text : "Audit store flush error during cleanup for traceId=#traceId#: #e.message#",
-					type : "warning",
-					log  : "ai"
-				);
+			if ( !isNull( variables.sharedStore ) ) {
+				variables.sharedStore.flush();
 			}
+		} catch ( any e ) {
+			writeLog(
+				text : "Audit cleanup error for traceId=#traceId#: #e.message#",
+				type : "warning",
+				log  : "ai"
+			);
 		} finally {
 			// Always remove ThreadLocal entries to prevent memory leaks
 			variables.contextHolder.remove();
@@ -276,7 +264,7 @@ class {
 			return;
 		}
 
-		// Short-circuit if retries exhausted — prevents lock contention and log spam under load
+		// Best-effort short-circuit if retries exhausted — reduces (but doesn't eliminate) lock contention
 		if ( variables.storeInitializationFailed && variables.storeInitRetryCount >= static.MAX_STORE_INIT_RETRIES ) {
 			return;
 		}

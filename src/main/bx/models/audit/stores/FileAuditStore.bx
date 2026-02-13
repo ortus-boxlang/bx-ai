@@ -98,7 +98,15 @@ class extends="BaseAuditStore" {
 					message : "Path '#arguments.config.path#' contains invalid path traversal characters."
 				);
 			}
-			variables.path = arguments.config.path;
+			// Resolve to canonical path and verify traversal didn't sneak through encoding
+			var resolvedPath = createObject( "java", "java.io.File" ).init( arguments.config.path ).getCanonicalPath();
+			if ( resolvedPath.findNoCase( ".." ) > 0 ) {
+				throw(
+					type    : "FileAuditStore.InvalidPath",
+					message : "Path '#arguments.config.path#' resolves to a path containing traversal sequences."
+				);
+			}
+			variables.path = resolvedPath;
 		}
 
 		if ( arguments.config.keyExists( "format" ) ) {

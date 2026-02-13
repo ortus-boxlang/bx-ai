@@ -101,7 +101,8 @@ class extends="BaseAuditStore" {
 			);
 		}
 
-		// Mark table as validated - this flag is checked before SQL execution
+		// Freeze the validated table name — assertConfigured() checks this hasn't been mutated
+		variables.validatedTable = variables.table;
 		variables.tableValidated = true;
 
 		// Ensure table exists
@@ -349,10 +350,15 @@ class extends="BaseAuditStore" {
 
 		sql &= " ORDER BY #orderColumn# #safeOrderDir#";
 
-		// Use parameterized LIMIT/OFFSET for security
-		sql &= " LIMIT :queryLimit OFFSET :queryOffset";
+		// Use parameterized pagination — syntax varies by database
 		params.queryLimit = { value : max( 1, min( 10000, val( arguments.limit ) ) ), sqltype : "integer" };
 		params.queryOffset = { value : max( 0, val( arguments.offset ) ), sqltype : "integer" };
+		var dbType = getDbProductName();
+		if ( dbType.findNoCase( "microsoft" ) || dbType.findNoCase( "sql server" ) ) {
+			sql &= " OFFSET :queryOffset ROWS FETCH NEXT :queryLimit ROWS ONLY";
+		} else {
+			sql &= " LIMIT :queryLimit OFFSET :queryOffset";
+		}
 
 		var result = queryExecute(
 			sql,
@@ -575,6 +581,12 @@ class extends="BaseAuditStore" {
 			throw(
 				type    : "JdbcAuditStore.NotConfigured",
 				message : "JdbcAuditStore must be configured before use. Call configure() first."
+			);
+		}
+		if ( variables.table != variables.validatedTable ) {
+			throw(
+				type    : "JdbcAuditStore.TableNameTampered",
+				message : "Table name was modified after validation. Expected '#variables.validatedTable#', found '#variables.table#'."
 			);
 		}
 	}

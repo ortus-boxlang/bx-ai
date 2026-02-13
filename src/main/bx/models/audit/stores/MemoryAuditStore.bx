@@ -249,7 +249,14 @@ class extends="BaseAuditStore" {
 
 		try {
 			lock name="MemoryAuditStore_#variables.instanceId#" type="readonly" timeout="5" throwontimeout="true" {
-				traceEntries = variables.entries.filter( e => e.traceId == localTraceId );
+				if ( variables.traceIndex.keyExists( localTraceId ) ) {
+					var indexes = variables.traceIndex[ localTraceId ];
+					for ( var idx in indexes ) {
+						if ( idx <= variables.entries.len() ) {
+							traceEntries.append( variables.entries[ idx ] );
+						}
+					}
+				}
 			}
 		} catch ( "LockException" e ) {
 			writeLog(

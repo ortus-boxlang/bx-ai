@@ -40,7 +40,16 @@ class {
 				// Check if it's a full class path
 				if ( arguments.storeType.findNoCase( "." ) ) {
 					try {
-						return new "#arguments.storeType#"().configure( arguments.config );
+						var instance = new "#arguments.storeType#"().configure( arguments.config );
+						if ( !isInstanceOf( instance, "IAuditStore" ) ) {
+							throw(
+								type    : "InvalidAuditStore",
+								message : "Custom store '#arguments.storeType#' does not implement IAuditStore"
+							);
+						}
+						return instance;
+					} catch ( "InvalidAuditStore" e ) {
+						rethrow;
 					} catch ( any e ) {
 						throw(
 							type    : "InvalidAuditStore",

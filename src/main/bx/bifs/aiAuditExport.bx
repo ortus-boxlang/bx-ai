@@ -62,7 +62,14 @@ class {
 					message : "Destination path '#arguments.destination#' contains invalid path traversal characters."
 				);
 			}
-			fileWrite( arguments.destination, exported );
+			var resolvedDest = createObject( "java", "java.io.File" ).init( arguments.destination ).getCanonicalPath();
+			if ( findNoCase( "..", resolvedDest ) > 0 ) {
+				throw(
+					type    : "InvalidDestination",
+					message : "Destination path '#arguments.destination#' resolves to a path containing traversal sequences."
+				);
+			}
+			fileWrite( resolvedDest, exported );
 		}
 
 		return exported;
