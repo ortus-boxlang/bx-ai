@@ -735,14 +735,14 @@ class extends = "BaseService"{
 	 *
 	 * @modelId    The model ID or inference profile ARN to invoke
 	 * @dataPacket The request payload
-	 * @aiRequest  The AiRequest for logging settings
+	 * @aiRequest  The AiChatRequest for logging settings
 	 *
 	 * @return The parsed response from Bedrock
 	 */
 	private struct function sendBedrockRequest(
 		required string modelId,
 		required struct dataPacket,
-		required AiBaseRequest aiRequest
+		required AiChatRequest aiRequest
 	){
 		var host     = getBedrockHost();
 		var path     = getBedrockPath( arguments.modelId );
@@ -917,14 +917,14 @@ class extends = "BaseService"{
 	 *
 	 * @modelId     The model ID or inference profile ARN to invoke
 	 * @dataPacket  The request payload
-	 * @aiRequest   The AiRequest for logging settings
+	 * @aiRequest   The AiChatRequest for logging settings
 	 * @modelFamily The detected model family for response transformation
 	 * @callback    The callback function for streaming chunks
 	 */
 	private function sendBedrockStreamRequest(
 		required string modelId,
 		required struct dataPacket,
-		required AiRequest aiRequest,
+		required AiChatRequest aiRequest,
 		required string modelFamily,
 		required function callback
 	){
