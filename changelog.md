@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Consolidated AI request/response logging with execution time metrics for better performance insights.
+- Improved AI request/response to include other metrics in order to provide better insights into performance and potential bottlenecks.
+
 ### Fixed
 
 - Fixed a bug where provider options in the configuration file were not being merged into the request options when creating a service instance.

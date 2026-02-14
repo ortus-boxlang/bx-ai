@@ -525,7 +525,7 @@ abstract class implements="IAiService" {
 		// Log the request
 		if( arguments.chatRequest.getLogRequest() ){
 			writeLog(
-				text: "Request to AI Provider: #arguments.dataPacket.toString()#",
+				text: buildRequestLog( arguments.chatRequest, arguments.dataPacket ),
 				type: "info",
 				log : "ai"
 			)
@@ -533,8 +533,7 @@ abstract class implements="IAiService" {
 
 		// Log the request to the console if enabled
 		if( arguments.chatRequest.getLogRequestToConsole() ){
-			println( "AI Request" )
-			println( arguments.dataPacket )
+			println( buildRequestLog( arguments.chatRequest, arguments.dataPacket ) )
 		}
 
 		bx: http
@@ -588,7 +587,7 @@ abstract class implements="IAiService" {
 		// Final logging if the provider supports it
 		if( arguments.chatRequest.getLogResponse() ){
 			writeLog(
-				text: "Response from AI Provider: #chatResult.toString()#",
+				text: buildResponseLog( arguments.chatRequest, chatResult ),
 				type: "info",
 				log : "ai"
 			)
@@ -596,10 +595,7 @@ abstract class implements="IAiService" {
 
 		// Log the response to the console if enabled
 		if( arguments.chatRequest.getLogResponseToConsole() ){
-			println( "AI Response" )
-			println( chatResult )
-			println( "AI Deserialized Response" )
-			println( jsonDeserialize( chatResult.filecontent ) )
+			println( buildResponseLog( arguments.chatRequest, chatResult ) )
 		}
 
 		// Try to deserialize the response
@@ -787,7 +783,7 @@ abstract class implements="IAiService" {
 		// Log the request
 		if( arguments.embeddingRequest.getLogRequest() ){
 			writeLog(
-				text: "Embedding Request to AI Provider: #arguments.dataPacket.toString()#",
+				text: buildEmbeddingRequestLog( arguments.embeddingRequest, arguments.dataPacket ),
 				type: "info",
 				log : "ai"
 			)
@@ -795,8 +791,7 @@ abstract class implements="IAiService" {
 
 		// Log the request to the console if enabled
 		if( arguments.embeddingRequest.getLogRequestToConsole() ){
-			println( "AI Embedding Request" )
-			println( arguments.dataPacket )
+			println( buildEmbeddingRequestLog( arguments.embeddingRequest, arguments.dataPacket ) )
 		}
 
 		bx: http
@@ -828,7 +823,7 @@ abstract class implements="IAiService" {
 		// Final logging if the provider supports it
 		if( arguments.embeddingRequest.getLogResponse() ){
 			writeLog(
-				text: "Embedding Response from AI Provider: #embeddingResult.toString()#",
+				text: buildEmbeddingResponseLog( arguments.embeddingRequest, embeddingResult ),
 				type: "info",
 				log : "ai"
 			)
@@ -836,10 +831,7 @@ abstract class implements="IAiService" {
 
 		// Log the response to the console if enabled
 		if( arguments.embeddingRequest.getLogResponseToConsole() ){
-			println( "AI Embedding Response" )
-			println( embeddingResult )
-			println( "AI Embedding Deserialized Response" )
-			println( jsonDeserialize( embeddingResult.filecontent ) )
+			println( buildEmbeddingResponseLog( arguments.embeddingRequest, embeddingResult ) )
 		}
 
 		try{
@@ -985,6 +977,211 @@ abstract class implements="IAiService" {
 
 		// Raw JSON schema - just deserialize
 		return jsonDeserialize( jsonContent );
+	}
+
+	/**
+	 * Build a detailed request log message for debugging
+	 *
+	 * @chatRequest The chat request object
+	 * @dataPacket The data packet being sent to the provider
+	 *
+	 * @return Formatted log message with request details
+	 */
+	private string function buildRequestLog( required AiChatRequest chatRequest, required struct dataPacket ){
+		var logLines = [];
+
+		logLines.append( "========================================" );
+		logLines.append( "** AI Request (#now()#)**" );
+		logLines.append( "Provider: #this.name# / Model: #arguments.chatRequest.getModel()#" );
+		logLines.append( "Endpoint: #getChatURL()#" );
+		logLines.append( "Timeout: #arguments.chatRequest.getTimeout()#s" );
+		logLines.append( "Message Count: #arguments.chatRequest.getMessages().len()#" );
+
+		// Show tools if present
+		if( arguments.dataPacket.keyExists( "tools" ) && arguments.dataPacket.tools.len() ){
+			logLines.append( "Tools: #arguments.dataPacket.tools.len()# registered (#arguments.dataPacket.tools.map( t => t.function.name ).toList( ", " )#)" );
+		}
+
+		// Show structured output if present
+		if( arguments.chatRequest.isStructuredOutput() ){
+			logLines.append( "Structured Output: YES" );
+		}
+
+		// Show multi-tenant tracking if present
+		if( !isNull( arguments.chatRequest.getTenantId() ) && arguments.chatRequest.getTenantId().len() ){
+			logLines.append( "Tenant ID: #arguments.chatRequest.getTenantId()#" );
+		}
+
+		// Show custom headers if present
+		if( !arguments.chatRequest.getHeaders().isEmpty() ){
+			logLines.append( "Custom Headers: #arguments.chatRequest.getHeaders().keyArray().toList( ", " )#" );
+		}
+
+		logLines.append( "Request Body:" );
+		logLines.append( jsonSerialize( arguments.dataPacket, true ) );  // Pretty print JSON
+		logLines.append( "========================================" );
+
+		return logLines.toList( char(10) );
+	}
+
+	/**
+	 * Build a detailed response log message for debugging
+	 *
+	 * @chatRequest The chat request object
+	 * @chatResult The HTTP response result from the provider
+	 *
+	 * @return Formatted log message with response details
+	 */
+	private string function buildResponseLog( required AiChatRequest chatRequest, required struct chatResult ){
+		var logLines = [];
+
+		logLines.append( "========================================" );
+		logLines.append( "** AI Response (#now()#)**" );
+		logLines.append( "Provider: #this.name# / Model: #arguments.chatRequest.getModel()#" );
+		logLines.append( "Status: #arguments.chatResult.statusCode#" );
+		logLines.append( "Execution Time: #arguments.chatResult?.executionTime#ms" );
+
+		// Show response headers if present
+		if( arguments.chatResult.keyExists( "responseheader" ) && !arguments.chatResult.responseheader.isEmpty() ){
+			var headerKeys = arguments.chatResult.responseheader.keyArray();
+			logLines.append( "Response Headers: #headerKeys.toList( ", " )#" );
+		}
+
+		// Try to parse and pretty-print the response
+		try {
+			var parsedResponse = jsonDeserialize( arguments.chatResult.filecontent );
+
+			// Show token usage if available
+			if( parsedResponse.keyExists( "usage" ) ){
+				var usage = parsedResponse.usage;
+				logLines.append( "Token Usage: Prompt=#usage.keyExists( "prompt_tokens" ) ? usage.prompt_tokens : 0# | Completion=#usage.keyExists( "completion_tokens" ) ? usage.completion_tokens : 0# | Total=#usage.keyExists( "total_tokens" ) ? usage.total_tokens : 0#" );
+			}
+
+			logLines.append( "Deserialized Response:" );
+			logLines.append( jsonSerialize( parsedResponse, true ) );  // Pretty print
+		} catch( any e ){
+			// If parsing fails, show raw response
+			logLines.append( "Raw Response (JSON parsing failed):" );
+			logLines.append( arguments.chatResult.filecontent );
+		}
+
+		logLines.append( "========================================" );
+
+		return logLines.toList( char(10) );
+	}
+
+	/**
+	 * Build a detailed embedding request log message for debugging
+	 *
+	 * @embeddingRequest The embedding request object
+	 * @dataPacket The data packet being sent to the provider
+	 *
+	 * @return Formatted log message with request details
+	 */
+	private string function buildEmbeddingRequestLog( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
+		var logLines = [];
+		
+		logLines.append( "========================================" );
+		logLines.append( "** AI Embedding Request (#now()#)**" );
+		logLines.append( "Provider: #this.name# / Model: #arguments.embeddingRequest.getModel()#" );
+		logLines.append( "Endpoint: #getEmbeddingsURL()#" );
+		logLines.append( "Timeout: #arguments.embeddingRequest.getTimeout()#s" );
+		
+		// Show input details
+		var input = arguments.dataPacket.keyExists( "input" ) ? arguments.dataPacket.input : "";
+		if( isArray( input ) ){
+			logLines.append( "Input Count: #input.len()# items" );
+			// Show preview of first item
+			if( input.len() > 0 ){
+				var preview = isSimpleValue( input[1] ) ? input[1] : input[1].toString();
+				if( preview.len() > 100 ){
+					preview = preview.left( 100 ) & "...";
+				}
+				logLines.append( "First Item Preview: #preview#" );
+			}
+		} else if( isSimpleValue( input ) ){
+			var preview = input.len() > 100 ? input.left( 100 ) & "..." : input;
+			logLines.append( "Input: #preview#" );
+		}
+		
+		// Show dimensions if available
+		if( arguments.dataPacket.keyExists( "dimensions" ) ){
+			logLines.append( "Dimensions: #arguments.dataPacket.dimensions#" );
+		}
+		
+		// Show multi-tenant tracking if present
+		if( !isNull( arguments.embeddingRequest.getTenantId() ) && arguments.embeddingRequest.getTenantId().len() ){
+			logLines.append( "Tenant ID: #arguments.embeddingRequest.getTenantId()#" );
+		}
+		
+		// Show custom headers if present
+		if( !arguments.embeddingRequest.getHeaders().isEmpty() ){
+			logLines.append( "Custom Headers: #arguments.embeddingRequest.getHeaders().keyArray().toList( ", " )#" );
+		}
+		
+		logLines.append( "Request Body:" );
+		logLines.append( jsonSerialize( arguments.dataPacket, true ) );  // Pretty print JSON
+		logLines.append( "========================================" );
+		
+		return logLines.toList( char(10) );
+	}
+
+	/**
+	 * Build a detailed embedding response log message for debugging
+	 *
+	 * @embeddingRequest The embedding request object
+	 * @embeddingResult The HTTP response result from the provider
+	 *
+	 * @return Formatted log message with response details
+	 */
+	private string function buildEmbeddingResponseLog( required AiEmbeddingRequest embeddingRequest, required struct embeddingResult ){
+		var logLines = [];
+		
+		logLines.append( "========================================" );
+		logLines.append( "** AI Embedding Response (#now()#)**" );
+		logLines.append( "Provider: #this.name# / Model: #arguments.embeddingRequest.getModel()#" );
+		logLines.append( "Status: #arguments.embeddingResult.statusCode#" );
+		
+		// Show execution time if available
+		if( arguments.embeddingResult.keyExists( "executionTime" ) ){
+			logLines.append( "Execution Time: #arguments.embeddingResult.executionTime#ms" );
+		}
+		
+		// Show response headers if present
+		if( arguments.embeddingResult.keyExists( "responseheader" ) && !arguments.embeddingResult.responseheader.isEmpty() ){
+			var headerKeys = arguments.embeddingResult.responseheader.keyArray();
+			logLines.append( "Response Headers: #headerKeys.toList( ", " )#" );
+		}
+		
+		// Try to parse and show embedding details
+		try {
+			var parsedResponse = jsonDeserialize( arguments.embeddingResult.filecontent );
+			
+			// Show embedding count and dimensions
+			if( parsedResponse.keyExists( "data" ) && isArray( parsedResponse.data ) ){
+				logLines.append( "Embeddings Count: #parsedResponse.data.len()#" );
+				if( parsedResponse.data.len() > 0 && parsedResponse.data[1].keyExists( "embedding" ) && isArray( parsedResponse.data[1].embedding ) ){
+					logLines.append( "Vector Dimensions: #parsedResponse.data[1].embedding.len()#" );
+				}
+			}
+			
+			// Show token usage if available
+			if( parsedResponse.keyExists( "usage" ) ){
+				var usage = parsedResponse.usage;
+				logLines.append( "Token Usage: Prompt=#usage.keyExists( "prompt_tokens" ) ? usage.prompt_tokens : 0# | Total=#usage.keyExists( "total_tokens" ) ? usage.total_tokens : 0#" );
+			}
+			
+			logLines.append( "Deserialized Response:" );
+			logLines.append( jsonSerialize( parsedResponse, true ) );  // Pretty print
+		} catch( any e ){
+			// If parsing fails, show raw response
+			logLines.append( "Raw Response (JSON parsing failed):" );
+			logLines.append( arguments.embeddingResult.filecontent );
+		}
+		
+		logLines.append( "========================================" );
+		
+		return logLines.toList( char(10) );
 	}
 
 }
