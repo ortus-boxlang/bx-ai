@@ -916,14 +916,17 @@ abstract class implements="IAiService" {
 	 */
 	private any function populateStructuredOutput( required string content, required AiChatRequest chatRequest ){
 
-		// println( "Populating structured output..." )
-		// println( "Content: #arguments.content#" )
-		// println( "Definition: #arguments.chatRequest.getStructuredOutput().toString()#" )
-
 		// Extract from code block if needed
 		var jsonContent = extractFromCodeBlock( arguments.content, "json" );
 		// The structured output definition: class, struct, or array
 		var outputDefinition = arguments.chatRequest.getStructuredOutputDefinition();
+
+		// if chat request output response to log
+		if( arguments.chatRequest.getLogStructuredOutputToConsole() ){
+			println( "Populating structured output..." )
+			println( "Content: #arguments.content#" )
+			println( "Definition: #arguments.chatRequest.getStructuredOutput().toString()#" )
+		}
 
 		// Class instance - populate and return
 		if( isObject( outputDefinition ) ){
@@ -1080,13 +1083,13 @@ abstract class implements="IAiService" {
 	 */
 	private string function buildEmbeddingRequestLog( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
 		var logLines = [];
-		
+
 		logLines.append( "========================================" );
 		logLines.append( "** AI Embedding Request (#now()#)**" );
 		logLines.append( "Provider: #this.name# / Model: #arguments.embeddingRequest.getModel()#" );
 		logLines.append( "Endpoint: #getEmbeddingsURL()#" );
 		logLines.append( "Timeout: #arguments.embeddingRequest.getTimeout()#s" );
-		
+
 		// Show input details
 		var input = arguments.dataPacket.keyExists( "input" ) ? arguments.dataPacket.input : "";
 		if( isArray( input ) ){
@@ -1103,26 +1106,26 @@ abstract class implements="IAiService" {
 			var preview = input.len() > 100 ? input.left( 100 ) & "..." : input;
 			logLines.append( "Input: #preview#" );
 		}
-		
+
 		// Show dimensions if available
 		if( arguments.dataPacket.keyExists( "dimensions" ) ){
 			logLines.append( "Dimensions: #arguments.dataPacket.dimensions#" );
 		}
-		
+
 		// Show multi-tenant tracking if present
 		if( !isNull( arguments.embeddingRequest.getTenantId() ) && arguments.embeddingRequest.getTenantId().len() ){
 			logLines.append( "Tenant ID: #arguments.embeddingRequest.getTenantId()#" );
 		}
-		
+
 		// Show custom headers if present
 		if( !arguments.embeddingRequest.getHeaders().isEmpty() ){
 			logLines.append( "Custom Headers: #arguments.embeddingRequest.getHeaders().keyArray().toList( ", " )#" );
 		}
-		
+
 		logLines.append( "Request Body:" );
 		logLines.append( jsonSerialize( arguments.dataPacket, true ) );  // Pretty print JSON
 		logLines.append( "========================================" );
-		
+
 		return logLines.toList( char(10) );
 	}
 
@@ -1136,27 +1139,27 @@ abstract class implements="IAiService" {
 	 */
 	private string function buildEmbeddingResponseLog( required AiEmbeddingRequest embeddingRequest, required struct embeddingResult ){
 		var logLines = [];
-		
+
 		logLines.append( "========================================" );
 		logLines.append( "** AI Embedding Response (#now()#)**" );
 		logLines.append( "Provider: #this.name# / Model: #arguments.embeddingRequest.getModel()#" );
 		logLines.append( "Status: #arguments.embeddingResult.statusCode#" );
-		
+
 		// Show execution time if available
 		if( arguments.embeddingResult.keyExists( "executionTime" ) ){
 			logLines.append( "Execution Time: #arguments.embeddingResult.executionTime#ms" );
 		}
-		
+
 		// Show response headers if present
 		if( arguments.embeddingResult.keyExists( "responseheader" ) && !arguments.embeddingResult.responseheader.isEmpty() ){
 			var headerKeys = arguments.embeddingResult.responseheader.keyArray();
 			logLines.append( "Response Headers: #headerKeys.toList( ", " )#" );
 		}
-		
+
 		// Try to parse and show embedding details
 		try {
 			var parsedResponse = jsonDeserialize( arguments.embeddingResult.filecontent );
-			
+
 			// Show embedding count and dimensions
 			if( parsedResponse.keyExists( "data" ) && isArray( parsedResponse.data ) ){
 				logLines.append( "Embeddings Count: #parsedResponse.data.len()#" );
@@ -1164,13 +1167,13 @@ abstract class implements="IAiService" {
 					logLines.append( "Vector Dimensions: #parsedResponse.data[1].embedding.len()#" );
 				}
 			}
-			
+
 			// Show token usage if available
 			if( parsedResponse.keyExists( "usage" ) ){
 				var usage = parsedResponse.usage;
 				logLines.append( "Token Usage: Prompt=#usage.keyExists( "prompt_tokens" ) ? usage.prompt_tokens : 0# | Total=#usage.keyExists( "total_tokens" ) ? usage.total_tokens : 0#" );
 			}
-			
+
 			logLines.append( "Deserialized Response:" );
 			logLines.append( jsonSerialize( parsedResponse, true ) );  // Pretty print
 		} catch( any e ){
@@ -1178,9 +1181,9 @@ abstract class implements="IAiService" {
 			logLines.append( "Raw Response (JSON parsing failed):" );
 			logLines.append( arguments.embeddingResult.filecontent );
 		}
-		
+
 		logLines.append( "========================================" );
-		
+
 		return logLines.toList( char(10) );
 	}
 

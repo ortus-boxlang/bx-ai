@@ -109,7 +109,7 @@ class extends="BaseService"{
 		// Log the request
 		if( arguments.embeddingRequest.getLogRequest() ){
 			writeLog(
-				text: "Embedding Request to Cohere: #dataPacket.toString()#",
+				text: buildCohereEmbeddingRequestLog( arguments.embeddingRequest, dataPacket ),
 				type: "info",
 				log : "ai"
 			)
@@ -117,8 +117,7 @@ class extends="BaseService"{
 
 		// Log the request to the console if enabled
 		if( arguments.embeddingRequest.getLogRequestToConsole() ){
-			println( "Cohere Embedding Request" )
-			println( dataPacket )
+			println( buildCohereEmbeddingRequestLog( arguments.embeddingRequest, dataPacket ) )
 		}
 
 		bx: http
@@ -146,7 +145,7 @@ class extends="BaseService"{
 		// Final logging if enabled
 		if( arguments.embeddingRequest.getLogResponse() ){
 			writeLog(
-				text: "Embedding Response from Cohere: #embeddingResult.toString()#",
+				text: buildCohereEmbeddingResponseLog( arguments.embeddingRequest, embeddingResult ),
 				type: "info",
 				log : "ai"
 			)
@@ -154,10 +153,7 @@ class extends="BaseService"{
 
 		// Log the response to the console if enabled
 		if( arguments.embeddingRequest.getLogResponseToConsole() ){
-			println( "Cohere Embedding Response" )
-			println( embeddingResult )
-			println( "Cohere Embedding Deserialized Response" )
-			println( jsonDeserialize( embeddingResult.filecontent ) )
+			println( buildCohereEmbeddingResponseLog( arguments.embeddingRequest, embeddingResult ) )
 		}
 
 		var result = jsonDeserialize( embeddingResult.filecontent )
@@ -582,6 +578,126 @@ class extends="BaseService"{
 				);
 			} )
 			.send();
+	}
+
+	/**
+	 * Build a detailed Cohere embedding request log message for debugging
+	 *
+	 * @embeddingRequest The embedding request object
+	 * @dataPacket The data packet being sent
+	 *
+	 * @return Formatted log message with request details
+	 */
+	private string function buildCohereEmbeddingRequestLog(
+		required AiEmbeddingRequest embeddingRequest,
+		required struct dataPacket
+	){
+		var logLines = [];
+		
+		logLines.append( "========================================" );
+		logLines.append( "** Cohere Embedding Request (#now()#)**" );
+		logLines.append( "Provider: Cohere / Model: #arguments.embeddingRequest.getModel()#" );
+		logLines.append( "Endpoint: #getEmbeddingsURL()#" );
+		logLines.append( "Timeout: #arguments.embeddingRequest.getTimeout()#s" );
+		
+		// Show input details
+		if( arguments.dataPacket.keyExists( "texts" ) && isArray( arguments.dataPacket.texts ) ){
+			logLines.append( "Input Count: #arguments.dataPacket.texts.len()# items" );
+			if( arguments.dataPacket.texts.len() > 0 ){
+				var preview = arguments.dataPacket.texts[1];
+				if( preview.len() > 100 ){
+					preview = preview.left( 100 ) & "...";
+				}
+				logLines.append( "First Item Preview: #preview#" );
+			}
+		}
+		
+		// Show input type
+		if( arguments.dataPacket.keyExists( "input_type" ) ){
+			logLines.append( "Input Type: #arguments.dataPacket.input_type#" );
+		}
+		
+		// Show embedding types if specified
+		if( arguments.dataPacket.keyExists( "embedding_types" ) ){
+			logLines.append( "Embedding Types: #arguments.dataPacket.embedding_types.toList( ", " )#" );
+		}
+		
+		// Show multi-tenant tracking if present
+		if( !isNull( arguments.embeddingRequest.getTenantId() ) && arguments.embeddingRequest.getTenantId().len() ){
+			logLines.append( "Tenant ID: #arguments.embeddingRequest.getTenantId()#" );
+		}
+		
+		// Show custom headers if present
+		if( !arguments.embeddingRequest.getHeaders().isEmpty() ){
+			logLines.append( "Custom Headers: #arguments.embeddingRequest.getHeaders().keyArray().toList( ", " )#" );
+		}
+		
+		logLines.append( "Request Body:" );
+		logLines.append( jsonSerialize( arguments.dataPacket, true ) );
+		logLines.append( "========================================" );
+		
+		return logLines.toList( char(10) );
+	}
+
+	/**
+	 * Build a detailed Cohere embedding response log message for debugging
+	 *
+	 * @embeddingRequest The embedding request object
+	 * @embeddingResult The HTTP response result
+	 *
+	 * @return Formatted log message with response details
+	 */
+	private string function buildCohereEmbeddingResponseLog(
+		required AiEmbeddingRequest embeddingRequest,
+		required struct embeddingResult
+	){
+		var logLines = [];
+		
+		logLines.append( "========================================" );
+		logLines.append( "** Cohere Embedding Response (#now()#)**" );
+		logLines.append( "Provider: Cohere / Model: #arguments.embeddingRequest.getModel()#" );
+		logLines.append( "Status: #arguments.embeddingResult.statusCode#" );
+		
+		// Show execution time if available
+		if( arguments.embeddingResult.keyExists( "executionTime" ) ){
+			logLines.append( "Execution Time: #arguments.embeddingResult.executionTime#ms" );
+		}
+		
+		// Show response headers if present
+		if( arguments.embeddingResult.keyExists( "responseheader" ) && !arguments.embeddingResult.responseheader.isEmpty() ){
+			var headerKeys = arguments.embeddingResult.responseheader.keyArray();
+			logLines.append( "Response Headers: #headerKeys.toList( ", " )#" );
+		}
+		
+		// Try to parse and show embedding details
+		try {
+			var parsedResponse = jsonDeserialize( arguments.embeddingResult.filecontent );
+			
+			// Show embedding count and dimensions
+			if( parsedResponse.keyExists( "embeddings" ) && isArray( parsedResponse.embeddings ) ){
+				logLines.append( "Embeddings Count: #parsedResponse.embeddings.len()#" );
+				if( parsedResponse.embeddings.len() > 0 && isArray( parsedResponse.embeddings[1] ) ){
+					logLines.append( "Vector Dimensions: #parsedResponse.embeddings[1].len()#" );
+				}
+			}
+			
+			// Show token usage if available (Cohere meta.billed_units)
+			if( parsedResponse.keyExists( "meta" ) && parsedResponse.meta.keyExists( "billed_units" ) ){
+				var billedUnits = parsedResponse.meta.billed_units;
+				logLines.append( "Token Usage: Prompt=#billedUnits.keyExists( "input_tokens" ) ? billedUnits.input_tokens : 0#" );
+			}
+			
+			logLines.append( "Deserialized Response:" );
+			logLines.append( jsonSerialize( parsedResponse, true ) );
+		} catch( any e ){
+			// If parsing fails, show raw response
+			logLines.append( "Raw Response (JSON parsing failed):" );
+			logLines.append( arguments.embeddingResult.filecontent );
+		}
+		
+		logLines.append( "========================================" );
+		
+		return logLines.toList( char(10) );
 	}
 
 }

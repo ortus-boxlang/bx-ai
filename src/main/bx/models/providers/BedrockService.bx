@@ -1612,14 +1612,14 @@ class extends = "BaseService"{
 		required string endpoint
 	){
 		var logLines = [];
-		
+
 		logLines.append( "========================================" );
 		logLines.append( "** Bedrock Embedding Request (#now()#)**" );
 		logLines.append( "Provider: Bedrock / Region: #variables.region#" );
 		logLines.append( "Model: #arguments.embeddingRequest.getModel()#" );
 		logLines.append( "Endpoint: #arguments.endpoint#" );
 		logLines.append( "Timeout: #arguments.embeddingRequest.getTimeout()#s" );
-		
+
 		// Show input details
 		var input = arguments.dataPacket.keyExists( "inputText" ) ? arguments.dataPacket.inputText : ( arguments.dataPacket.keyExists( "texts" ) ? arguments.dataPacket.texts : "" );
 		if( isArray( input ) ){
@@ -1635,19 +1635,19 @@ class extends = "BaseService"{
 			var preview = input.len() > 100 ? input.left( 100 ) & "..." : input;
 			logLines.append( "Input: #preview#" );
 		}
-		
+
 		// Show AWS credentials status
 		logLines.append( "AWS Auth: AccessKey=#len( variables.awsAccessKeyId ) > 0 ? 'SET' : 'MISSING'# | SecretKey=#len( variables.awsSecretAccessKey ) > 0 ? 'SET' : 'MISSING'# | SessionToken=#len( variables.awsSessionToken ) > 0 ? 'SET' : 'NONE'#" );
-		
+
 		// Show multi-tenant tracking if present
 		if( !isNull( arguments.embeddingRequest.getTenantId() ) && arguments.embeddingRequest.getTenantId().len() ){
 			logLines.append( "Tenant ID: #arguments.embeddingRequest.getTenantId()#" );
 		}
-		
+
 		logLines.append( "Request Body:" );
 		logLines.append( jsonSerialize( arguments.dataPacket, true ) );
 		logLines.append( "========================================" );
-		
+
 		return logLines.toList( char(10) );
 	}
 
@@ -1666,21 +1666,21 @@ class extends = "BaseService"{
 		required string modelId
 	){
 		var logLines = [];
-		
+
 		logLines.append( "========================================" );
 		logLines.append( "** Bedrock Embedding Response (#now()#)**" );
 		logLines.append( "Provider: Bedrock / Model: #arguments.modelId#" );
 		logLines.append( "Status: #arguments.httpResult.statusCode#" );
-		
+
 		// Show execution time if available
 		if( arguments.httpResult.keyExists( "executionTime" ) ){
 			logLines.append( "Execution Time: #arguments.httpResult.executionTime#ms" );
 		}
-		
+
 		// Try to parse and show embedding details
 		try {
 			var parsedResponse = jsonDeserialize( arguments.httpResult.fileContent );
-			
+
 			// Bedrock embedding response format varies by model
 			if( parsedResponse.keyExists( "embeddings" ) && isArray( parsedResponse.embeddings ) ){
 				logLines.append( "Embeddings Count: #parsedResponse.embeddings.len()#" );
@@ -1691,12 +1691,12 @@ class extends = "BaseService"{
 				logLines.append( "Embeddings Count: 1" );
 				logLines.append( "Vector Dimensions: #parsedResponse.embedding.len()#" );
 			}
-			
+
 			// Show token usage if available
 			if( parsedResponse.keyExists( "inputTextTokenCount" ) ){
 				logLines.append( "Token Usage: Prompt=#parsedResponse.inputTextTokenCount#" );
 			}
-			
+
 			logLines.append( "Deserialized Response:" );
 			logLines.append( jsonSerialize( parsedResponse, true ) );
 		} catch( any e ){
@@ -1704,9 +1704,9 @@ class extends = "BaseService"{
 			logLines.append( "Raw Response (JSON parsing failed):" );
 			logLines.append( arguments.httpResult.fileContent );
 		}
-		
+
 		logLines.append( "========================================" );
-		
+
 		return logLines.toList( char(10) );
 	}
 }
