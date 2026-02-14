@@ -922,9 +922,9 @@ abstract class implements="IAiService" {
 		var outputDefinition = arguments.chatRequest.getStructuredOutputDefinition();
 
 		// if chat request output response to log
-		if( arguments.chatRequest.getLogStructuredOutputToConsole() ){
+		if( arguments.chatRequest.getLogResponseToConsole() ){
 			println( "Populating structured output..." )
-			println( "Content: #arguments.content#" )
+			println( jsonContent )
 			println( "Definition: #arguments.chatRequest.getStructuredOutput().toString()#" )
 		}
 

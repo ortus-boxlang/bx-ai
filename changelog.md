@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Error invoking population in schema builder, the third argument needs to be an array or struct, not a single value.
 - Fixed a bug where provider options in the configuration file were not being merged into the request options when creating a service instance.
 - Fixed a bug where the `aiService()` BIF was not correctly applying convention-based API key detection when `options.apiKey` was already set but empty. Now it checks if `options.apiKey` is empty before applying the convention key, allowing for proper fallback to environment variables or module settings.
 
