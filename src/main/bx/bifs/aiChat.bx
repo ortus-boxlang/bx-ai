@@ -69,8 +69,7 @@ class {
 		struct options = {},
 		struct headers = {}
 	) {
-		// Incorporate default params with no override
-		arguments.params.append( moduleRecord.settings.defaultParams, false );
+		// Merge options
 		arguments.options.append( static.DEFAULT_OPTIONS, false );
 		arguments.options.append( static.MODULE_SETTINGS, false );
 

@@ -145,16 +145,21 @@ abstract class implements="IAiService" {
 			variables.apiKey = arguments.options.apiKey;
 		}
 
-		// Verify if the MODULE_SETTINGS has default provider settings and params
+		// Merge default params first (lowest priority)
+		if( static.MODULE_SETTINGS.keyExists( "defaultParams" ) ){
+			variables.params.append( static.MODULE_SETTINGS.defaultParams, false );
+		}
+
+		// Merge provider-specific settings (higher priority - overrides defaults)
 		if( static.MODULE_SETTINGS.keyExists( "providers" ) && static.MODULE_SETTINGS.providers.keyExists( variables.name ) ){
 			var providerSettings = static.MODULE_SETTINGS.providers[ variables.name ]
-			// Merge params
+			// Merge params with OVERRIDE to let provider-specific params win over defaults
 			if( providerSettings.keyExists( "params" ) ){
-				variables.params.append( providerSettings.params, false )
+				variables.params.append( providerSettings.params, true )
 			}
 			// Merge options
 			if( providerSettings.keyExists( "options" ) ){
-				variables.options.append( providerSettings.options, false )
+				variables.options.append( providerSettings.options, true )
 			}
 		}
 
