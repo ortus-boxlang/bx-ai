@@ -316,7 +316,7 @@ class {
 				invoke(
 					arguments.classInstance,
 					"set#thisKey#",
-					memento[ thisKey ]
+					[ memento[ thisKey ] ]
 				)
 			}
 		}

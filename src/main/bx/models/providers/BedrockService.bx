@@ -763,15 +763,14 @@ class extends = "BaseService"{
 		// Log the request if enabled
 		if ( arguments.aiRequest.getLogRequest() ) {
 			writeLog(
-				text: "Bedrock Request to #endpoint#: #payload#",
+				text: buildBedrockRequestLog( arguments.aiRequest, arguments.dataPacket, endpoint ),
 				type: "info",
 				log : "ai"
 			);
 		}
 
 		if ( arguments.aiRequest.getLogRequestToConsole() ) {
-			println( "Bedrock Request" );
-			println( arguments.dataPacket );
+			println( buildBedrockRequestLog( arguments.aiRequest, arguments.dataPacket, endpoint ) );
 		}
 
 		// Sign the request using AWS Signature V4
@@ -814,15 +813,14 @@ class extends = "BaseService"{
 		// Log response if enabled
 		if ( arguments.aiRequest.getLogResponse() ) {
 			writeLog(
-				text: "Bedrock Response: #httpResult.fileContent#",
+				text: buildBedrockResponseLog( arguments.aiRequest, httpResult, arguments.modelId ),
 				type: "info",
 				log : "ai"
 			);
 		}
 
 		if ( arguments.aiRequest.getLogResponseToConsole() ) {
-			println( "Bedrock Response" );
-			println( httpResult.fileContent );
+			println( buildBedrockResponseLog( arguments.aiRequest, httpResult, arguments.modelId ) );
 		}
 
 		// Check for HTTP errors
@@ -947,21 +945,14 @@ class extends = "BaseService"{
 		// Log the request if enabled
 		if ( arguments.aiRequest.getLogRequest() ) {
 			writeLog(
-				text: "Bedrock Stream Request to #endpoint#: #payload#",
-				type: "info",
-				log : "ai"
-			);
-			// Debug: Log credential status
-			writeLog(
-				text: "Bedrock Stream Credentials - Region: #variables.region#, HasAccessKey: #len( variables.awsAccessKeyId ) > 0#, HasSecretKey: #len( variables.awsSecretAccessKey ) > 0#, HasSessionToken: #len( variables.awsSessionToken ) > 0#, SessionTokenLen: #len( variables.awsSessionToken )#",
+				text: buildBedrockRequestLog( arguments.aiRequest, arguments.dataPacket, endpoint, true ),
 				type: "info",
 				log : "ai"
 			);
 		}
 
 		if ( arguments.aiRequest.getLogRequestToConsole() ) {
-			println( "Bedrock Stream Request" );
-			println( arguments.dataPacket );
+			println( buildBedrockRequestLog( arguments.aiRequest, arguments.dataPacket, endpoint, true ) );
 		}
 
 		// Sign the request using AWS Signature V4
@@ -1396,6 +1387,29 @@ class extends = "BaseService"{
 		var endpoint = getBedrockEndpoint( arguments.modelId );
 		var payload  = jsonSerialize( arguments.dataPacket );
 
+		// Announce the request
+		boxAnnounce(
+			"onAIEmbedRequest",
+			{
+				"dataPacket" : arguments.dataPacket,
+				"embeddingRequest" : arguments.embeddingRequest,
+				"provider"   : this
+			}
+		);
+
+		// Log the request if enabled
+		if ( arguments.embeddingRequest.getLogRequest() ) {
+			writeLog(
+				text: buildBedrockEmbeddingRequestLog( arguments.embeddingRequest, arguments.dataPacket, endpoint ),
+				type: "info",
+				log : "ai"
+			);
+		}
+
+		if ( arguments.embeddingRequest.getLogRequestToConsole() ) {
+			println( buildBedrockEmbeddingRequestLog( arguments.embeddingRequest, arguments.dataPacket, endpoint ) );
+		}
+
 		// Sign the request
 		var signer        = new AwsSignatureV4();
 		var signedHeaders = signer.signRequest(
@@ -1433,16 +1447,268 @@ class extends = "BaseService"{
 		// Add body and send
 		var httpResult = httpService.body( payload ).send();
 
+		// Log response if enabled
+		if ( arguments.embeddingRequest.getLogResponse() ) {
+			writeLog(
+				text: buildBedrockEmbeddingResponseLog( arguments.embeddingRequest, httpResult, arguments.modelId ),
+				type: "info",
+				log : "ai"
+			);
+		}
+
+		if ( arguments.embeddingRequest.getLogResponseToConsole() ) {
+			println( buildBedrockEmbeddingResponseLog( arguments.embeddingRequest, httpResult, arguments.modelId ) );
+		}
+
 		var statusCode = val( listFirst( httpResult.statusCode, " " ) );
 		if ( statusCode != 200 ) {
-			return {
+			var errorResponse = {
 				"error" : {
 					"message"    : "Bedrock embedding request failed: #httpResult.fileContent#",
 					"statusCode" : statusCode
 				}
 			};
+
+			boxAnnounce(
+				"onAIError",
+				{
+					error        : errorResponse.error,
+					errorMessage : errorResponse.error.message,
+					provider     : this,
+					operation    : "embeddings",
+					embeddingRequest : arguments.embeddingRequest,
+					canRetry     : statusCode >= 500
+				}
+			);
+
+			return errorResponse;
 		}
 
-		return jsonDeserialize( httpResult.fileContent );
+		var parsedResponse = jsonDeserialize( httpResult.fileContent );
+
+		boxAnnounce(
+			"onAIEmbedResponse",
+			{
+				"embeddingRequest" : arguments.embeddingRequest,
+				"response"  : parsedResponse,
+				"provider"  : this
+			}
+		);
+
+		return parsedResponse;
+	}
+
+	/**
+	 * Build a detailed Bedrock request log message for debugging
+	 *
+	 * @aiRequest The AI request object
+	 * @dataPacket The data packet being sent
+	 * @endpoint The Bedrock endpoint URL
+	 * @isStream Whether this is a streaming request
+	 *
+	 * @return Formatted log message with request details
+	 */
+	private string function buildBedrockRequestLog(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required string endpoint,
+		boolean isStream = false
+	){
+		var logLines = [];
+
+		logLines.append( "========================================" );
+		logLines.append( "** Bedrock #arguments.isStream ? 'Stream' : ''# Request (#now()#)**" );
+		logLines.append( "Provider: Bedrock / Region: #variables.region#" );
+		logLines.append( "Endpoint: #arguments.endpoint#" );
+		logLines.append( "Timeout: #arguments.aiRequest.getTimeout()#s" );
+
+		// Show model/family if available
+		if( arguments.dataPacket.keyExists( "model" ) ){
+			logLines.append( "Model: #arguments.dataPacket.model#" );
+		}
+
+		// Show message count for chat requests
+		if( arguments.dataPacket.keyExists( "messages" ) && isArray( arguments.dataPacket.messages ) ){
+			logLines.append( "Message Count: #arguments.dataPacket.messages.len()#" );
+		}
+
+		// Show AWS credentials status (without exposing keys)
+		logLines.append( "AWS Auth: AccessKey=#len( variables.awsAccessKeyId ) > 0 ? 'SET' : 'MISSING'# | SecretKey=#len( variables.awsSecretAccessKey ) > 0 ? 'SET' : 'MISSING'# | SessionToken=#len( variables.awsSessionToken ) > 0 ? 'SET' : 'NONE'#" );
+
+		// Show multi-tenant tracking if present
+		if( !isNull( arguments.aiRequest.getTenantId() ) && arguments.aiRequest.getTenantId().len() ){
+			logLines.append( "Tenant ID: #arguments.aiRequest.getTenantId()#" );
+		}
+
+		logLines.append( "Request Body:" );
+		logLines.append( jsonSerialize( arguments.dataPacket, true ) );  // Pretty print JSON
+		logLines.append( "========================================" );
+
+		return logLines.toList( char(10) );
+	}
+
+	/**
+	 * Build a detailed Bedrock response log message for debugging
+	 *
+	 * @aiRequest The AI request object
+	 * @httpResult The HTTP response result
+	 * @modelId The model ID used
+	 *
+	 * @return Formatted log message with response details
+	 */
+	private string function buildBedrockResponseLog(
+		required AiBaseRequest aiRequest,
+		required struct httpResult,
+		required string modelId
+	){
+		var logLines = [];
+
+		logLines.append( "========================================" );
+		logLines.append( "** Bedrock Response (#now()#)**" );
+		logLines.append( "Provider: Bedrock / Model: #arguments.modelId#" );
+		logLines.append( "Status: #arguments.httpResult.statusCode#" );
+
+		// Show execution time if available
+		if( arguments.httpResult.keyExists( "executionTime" ) ){
+			logLines.append( "Execution Time: #arguments.httpResult.executionTime#ms" );
+		}
+
+		// Try to parse and show token usage
+		try {
+			var parsedResponse = jsonDeserialize( arguments.httpResult.fileContent );
+
+			// Bedrock response format varies by model family
+			if( parsedResponse.keyExists( "usage" ) ){
+				var usage = parsedResponse.usage;
+				var promptTokens = usage.keyExists( "prompt_tokens" ) ? usage.prompt_tokens : ( usage.keyExists( "input_tokens" ) ? usage.input_tokens : 0 );
+				var completionTokens = usage.keyExists( "completion_tokens" ) ? usage.completion_tokens : ( usage.keyExists( "output_tokens" ) ? usage.output_tokens : 0 );
+				var totalTokens = usage.keyExists( "total_tokens" ) ? usage.total_tokens : ( promptTokens + completionTokens );
+				logLines.append( "Token Usage: Prompt=#promptTokens# | Completion=#completionTokens# | Total=#totalTokens#" );
+			}
+
+			logLines.append( "Deserialized Response:" );
+			logLines.append( jsonSerialize( parsedResponse, true ) );  // Pretty print
+		} catch( any e ){
+			// If parsing fails, show raw response
+			logLines.append( "Raw Response (JSON parsing failed):" );
+			logLines.append( arguments.httpResult.fileContent );
+		}
+
+		logLines.append( "========================================" );
+
+		return logLines.toList( char(10) );
+	}
+
+	/**
+	 * Build a detailed Bedrock embedding request log message for debugging
+	 *
+	 * @embeddingRequest The embedding request object
+	 * @dataPacket The data packet being sent
+	 * @endpoint The Bedrock endpoint URL
+	 *
+	 * @return Formatted log message with request details
+	 */
+	private string function buildBedrockEmbeddingRequestLog(
+		required AiEmbeddingRequest embeddingRequest,
+		required struct dataPacket,
+		required string endpoint
+	){
+		var logLines = [];
+
+		logLines.append( "========================================" );
+		logLines.append( "** Bedrock Embedding Request (#now()#)**" );
+		logLines.append( "Provider: Bedrock / Region: #variables.region#" );
+		logLines.append( "Model: #arguments.embeddingRequest.getModel()#" );
+		logLines.append( "Endpoint: #arguments.endpoint#" );
+		logLines.append( "Timeout: #arguments.embeddingRequest.getTimeout()#s" );
+
+		// Show input details
+		var input = arguments.dataPacket.keyExists( "inputText" ) ? arguments.dataPacket.inputText : ( arguments.dataPacket.keyExists( "texts" ) ? arguments.dataPacket.texts : "" );
+		if( isArray( input ) ){
+			logLines.append( "Input Count: #input.len()# items" );
+			if( input.len() > 0 ){
+				var preview = isSimpleValue( input[1] ) ? input[1] : input[1].toString();
+				if( preview.len() > 100 ){
+					preview = preview.left( 100 ) & "...";
+				}
+				logLines.append( "First Item Preview: #preview#" );
+			}
+		} else if( isSimpleValue( input ) ){
+			var preview = input.len() > 100 ? input.left( 100 ) & "..." : input;
+			logLines.append( "Input: #preview#" );
+		}
+
+		// Show AWS credentials status
+		logLines.append( "AWS Auth: AccessKey=#len( variables.awsAccessKeyId ) > 0 ? 'SET' : 'MISSING'# | SecretKey=#len( variables.awsSecretAccessKey ) > 0 ? 'SET' : 'MISSING'# | SessionToken=#len( variables.awsSessionToken ) > 0 ? 'SET' : 'NONE'#" );
+
+		// Show multi-tenant tracking if present
+		if( !isNull( arguments.embeddingRequest.getTenantId() ) && arguments.embeddingRequest.getTenantId().len() ){
+			logLines.append( "Tenant ID: #arguments.embeddingRequest.getTenantId()#" );
+		}
+
+		logLines.append( "Request Body:" );
+		logLines.append( jsonSerialize( arguments.dataPacket, true ) );
+		logLines.append( "========================================" );
+
+		return logLines.toList( char(10) );
+	}
+
+	/**
+	 * Build a detailed Bedrock embedding response log message for debugging
+	 *
+	 * @embeddingRequest The embedding request object
+	 * @httpResult The HTTP response result
+	 * @modelId The model ID used
+	 *
+	 * @return Formatted log message with response details
+	 */
+	private string function buildBedrockEmbeddingResponseLog(
+		required AiEmbeddingRequest embeddingRequest,
+		required struct httpResult,
+		required string modelId
+	){
+		var logLines = [];
+
+		logLines.append( "========================================" );
+		logLines.append( "** Bedrock Embedding Response (#now()#)**" );
+		logLines.append( "Provider: Bedrock / Model: #arguments.modelId#" );
+		logLines.append( "Status: #arguments.httpResult.statusCode#" );
+
+		// Show execution time if available
+		if( arguments.httpResult.keyExists( "executionTime" ) ){
+			logLines.append( "Execution Time: #arguments.httpResult.executionTime#ms" );
+		}
+
+		// Try to parse and show embedding details
+		try {
+			var parsedResponse = jsonDeserialize( arguments.httpResult.fileContent );
+
+			// Bedrock embedding response format varies by model
+			if( parsedResponse.keyExists( "embeddings" ) && isArray( parsedResponse.embeddings ) ){
+				logLines.append( "Embeddings Count: #parsedResponse.embeddings.len()#" );
+				if( parsedResponse.embeddings.len() > 0 && isArray( parsedResponse.embeddings[1] ) ){
+					logLines.append( "Vector Dimensions: #parsedResponse.embeddings[1].len()#" );
+				}
+			} else if( parsedResponse.keyExists( "embedding" ) && isArray( parsedResponse.embedding ) ){
+				logLines.append( "Embeddings Count: 1" );
+				logLines.append( "Vector Dimensions: #parsedResponse.embedding.len()#" );
+			}
+
+			// Show token usage if available
+			if( parsedResponse.keyExists( "inputTextTokenCount" ) ){
+				logLines.append( "Token Usage: Prompt=#parsedResponse.inputTextTokenCount#" );
+			}
+
+			logLines.append( "Deserialized Response:" );
+			logLines.append( jsonSerialize( parsedResponse, true ) );
+		} catch( any e ){
+			// If parsing fails, show raw response
+			logLines.append( "Raw Response (JSON parsing failed):" );
+			logLines.append( arguments.httpResult.fileContent );
+		}
+
+		logLines.append( "========================================" );
+
+		return logLines.toList( char(10) );
 	}
 }
