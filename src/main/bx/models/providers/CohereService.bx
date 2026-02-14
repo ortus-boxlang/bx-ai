@@ -593,13 +593,13 @@ class extends="BaseService"{
 		required struct dataPacket
 	){
 		var logLines = [];
-		
+
 		logLines.append( "========================================" );
 		logLines.append( "** Cohere Embedding Request (#now()#)**" );
 		logLines.append( "Provider: Cohere / Model: #arguments.embeddingRequest.getModel()#" );
 		logLines.append( "Endpoint: #getEmbeddingsURL()#" );
 		logLines.append( "Timeout: #arguments.embeddingRequest.getTimeout()#s" );
-		
+
 		// Show input details
 		if( arguments.dataPacket.keyExists( "texts" ) && isArray( arguments.dataPacket.texts ) ){
 			logLines.append( "Input Count: #arguments.dataPacket.texts.len()# items" );
@@ -611,31 +611,31 @@ class extends="BaseService"{
 				logLines.append( "First Item Preview: #preview#" );
 			}
 		}
-		
+
 		// Show input type
 		if( arguments.dataPacket.keyExists( "input_type" ) ){
 			logLines.append( "Input Type: #arguments.dataPacket.input_type#" );
 		}
-		
+
 		// Show embedding types if specified
 		if( arguments.dataPacket.keyExists( "embedding_types" ) ){
 			logLines.append( "Embedding Types: #arguments.dataPacket.embedding_types.toList( ", " )#" );
 		}
-		
+
 		// Show multi-tenant tracking if present
 		if( !isNull( arguments.embeddingRequest.getTenantId() ) && arguments.embeddingRequest.getTenantId().len() ){
 			logLines.append( "Tenant ID: #arguments.embeddingRequest.getTenantId()#" );
 		}
-		
+
 		// Show custom headers if present
 		if( !arguments.embeddingRequest.getHeaders().isEmpty() ){
 			logLines.append( "Custom Headers: #arguments.embeddingRequest.getHeaders().keyArray().toList( ", " )#" );
 		}
-		
+
 		logLines.append( "Request Body:" );
 		logLines.append( jsonSerialize( arguments.dataPacket, true ) );
 		logLines.append( "========================================" );
-		
+
 		return logLines.toList( char(10) );
 	}
 
@@ -652,27 +652,27 @@ class extends="BaseService"{
 		required struct embeddingResult
 	){
 		var logLines = [];
-		
+
 		logLines.append( "========================================" );
 		logLines.append( "** Cohere Embedding Response (#now()#)**" );
 		logLines.append( "Provider: Cohere / Model: #arguments.embeddingRequest.getModel()#" );
 		logLines.append( "Status: #arguments.embeddingResult.statusCode#" );
-		
+
 		// Show execution time if available
 		if( arguments.embeddingResult.keyExists( "executionTime" ) ){
 			logLines.append( "Execution Time: #arguments.embeddingResult.executionTime#ms" );
 		}
-		
+
 		// Show response headers if present
 		if( arguments.embeddingResult.keyExists( "responseheader" ) && !arguments.embeddingResult.responseheader.isEmpty() ){
 			var headerKeys = arguments.embeddingResult.responseheader.keyArray();
 			logLines.append( "Response Headers: #headerKeys.toList( ", " )#" );
 		}
-		
+
 		// Try to parse and show embedding details
 		try {
 			var parsedResponse = jsonDeserialize( arguments.embeddingResult.filecontent );
-			
+
 			// Show embedding count and dimensions
 			if( parsedResponse.keyExists( "embeddings" ) && isArray( parsedResponse.embeddings ) ){
 				logLines.append( "Embeddings Count: #parsedResponse.embeddings.len()#" );
@@ -680,13 +680,13 @@ class extends="BaseService"{
 					logLines.append( "Vector Dimensions: #parsedResponse.embeddings[1].len()#" );
 				}
 			}
-			
+
 			// Show token usage if available (Cohere meta.billed_units)
 			if( parsedResponse.keyExists( "meta" ) && parsedResponse.meta.keyExists( "billed_units" ) ){
 				var billedUnits = parsedResponse.meta.billed_units;
 				logLines.append( "Token Usage: Prompt=#billedUnits.keyExists( "input_tokens" ) ? billedUnits.input_tokens : 0#" );
 			}
-			
+
 			logLines.append( "Deserialized Response:" );
 			logLines.append( jsonSerialize( parsedResponse, true ) );
 		} catch( any e ){
@@ -694,9 +694,9 @@ class extends="BaseService"{
 			logLines.append( "Raw Response (JSON parsing failed):" );
 			logLines.append( arguments.embeddingResult.filecontent );
 		}
-		
+
 		logLines.append( "========================================" );
-		
+
 		return logLines.toList( char(10) );
 	}
 
