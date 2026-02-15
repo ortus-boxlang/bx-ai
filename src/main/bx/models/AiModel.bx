@@ -230,7 +230,7 @@ class extends="AiBaseRunnable" {
 		// Array of messages
 		// Process each message
 		if( isArray( arguments.input ) ) {
-			return arguments.input.map( m => extractMessages( m ) );
+			return arguments.input.flatMap( m => extractMessages( m ) )
 		}
 
 		// Struct message, this can be different per LLM, just pass it through
