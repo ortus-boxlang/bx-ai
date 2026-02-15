@@ -1,0 +1,84 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Factory for creating audit store instances.
+ */
+class {
+
+	/**
+	 * Create an audit store instance from a type string.
+	 *
+	 * @storeType The store type: "memory", "file", "jdbc", "database", "db", or a fully-qualified class path
+	 * @config Store configuration struct
+	 *
+	 * @return IAuditStore instance
+	 * @throws InvalidAuditStore when store type is unknown or instantiation fails
+	 */
+	static IAuditStore function create( required string storeType, struct config = {} ) {
+		switch ( arguments.storeType.lcase() ) {
+			case "memory":
+				return new bxModules.bxai.models.audit.stores.MemoryAuditStore().configure( arguments.config );
+			case "file":
+				return new bxModules.bxai.models.audit.stores.FileAuditStore().configure( arguments.config );
+			case "jdbc":
+			case "database":
+			case "db":
+				return new bxModules.bxai.models.audit.stores.JdbcAuditStore().configure( arguments.config );
+			default:
+				// Check if it's a full class path
+				if ( arguments.storeType.findNoCase( "." ) ) {
+					try {
+						var instance = new "#arguments.storeType#"().configure( arguments.config );
+						if ( !isInstanceOf( instance, "IAuditStore" ) ) {
+							throw(
+								type    : "InvalidAuditStore",
+								message : "Custom store '#arguments.storeType#' does not implement IAuditStore"
+							);
+						}
+						return instance;
+					} catch ( "InvalidAuditStore" e ) {
+						rethrow;
+					} catch ( any e ) {
+						throw(
+							type    : "InvalidAuditStore",
+							message : "Failed to instantiate custom audit store '#arguments.storeType#': #e.message#"
+						);
+					}
+				}
+				throw(
+					type    : "InvalidAuditStore",
+					message : "Unknown audit store type: #arguments.storeType#. Valid types: memory, file, jdbc"
+				);
+		}
+	}
+
+	/**
+	 * Resolve a store from either a type string or an existing instance.
+	 *
+	 * @store The store type string or IAuditStore instance
+	 * @defaultType Default store type if store is empty
+	 * @config Store configuration struct
+	 *
+	 * @return IAuditStore instance
+	 */
+	static IAuditStore function resolve( required any store, string defaultType = "memory", struct config = {} ) {
+		if ( !isSimpleValue( arguments.store ) ) {
+			return arguments.store;
+		}
+		var storeType = len( arguments.store ) ? arguments.store : arguments.defaultType;
+		return create( storeType, arguments.config );
+	}
+
+}

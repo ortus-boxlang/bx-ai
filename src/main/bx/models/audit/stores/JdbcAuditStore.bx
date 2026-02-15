@@ -1,0 +1,884 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * JDBC-based audit store for production persistence.
+ * Works with any JDBC-compatible database.
+ */
+import bxModules.bxai.models.audit.BaseAuditStore;
+
+class extends="BaseAuditStore" {
+
+	/**
+	 * The datasource name to use for database operations
+	 */
+	property name="datasource" type="string";
+
+	/**
+	 * The table name to use for storing audit data
+	 */
+	property name="table" type="string";
+
+	/**
+	 * Whether the table name has been validated (prevents runtime manipulation)
+	 */
+	property name="tableValidated" type="boolean" default="false";
+
+	/**
+	 * Cached database product name to avoid repeated bx:dbinfo calls
+	 */
+	property name="dbProductName" type="string" default="";
+
+	static {
+		final DEFAULT_TABLE = "bx_ai_audit"
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		super.init();
+		variables.datasource = "";
+		variables.table = static.DEFAULT_TABLE;
+		variables.tableValidated = false;
+		variables.dbProductName = "";
+		return this;
+	}
+
+	/**
+	 * Configure the store
+	 *
+	 * @config Configuration struct with: datasource, table
+	 *
+	 * @return IAuditStore for chaining
+	 */
+	IAuditStore function configure( required struct config ) {
+		super.configure( arguments.config );
+
+		if ( arguments.config.keyExists( "datasource" ) ) {
+			variables.datasource = arguments.config.datasource;
+		}
+
+		if ( arguments.config.keyExists( "table" ) ) {
+			variables.table = arguments.config.table;
+		}
+
+		// Ensure we have a datasource
+		if ( !len( variables.datasource ) ) {
+			throw(
+				type    : "JdbcAuditStore.MissingDatasource",
+				message : "Datasource is required for JdbcAuditStore. Provide it via configure()."
+			);
+		}
+
+		// Validate datasource name to prevent injection via bx:dbinfo tags
+		// Datasource names are lookup keys (not SQL identifiers) so hyphens and dots are valid
+		if ( reMatch( "^[a-zA-Z][a-zA-Z0-9_\-\.]*$", variables.datasource ).isEmpty() ) {
+			throw(
+				type    : "JdbcAuditStore.InvalidDatasource",
+				message : "Datasource name '#variables.datasource#' contains invalid characters. Only alphanumeric characters, underscores, hyphens, and dots are allowed, and it must start with a letter."
+			);
+		}
+
+		// Validate table name to prevent SQL injection attacks
+		// Only allow alphanumeric characters and underscores, must start with letter
+		// Anchored regex (^...$) ensures the ENTIRE string must match - if isEmpty(), it didn't match
+		if ( reMatch( "^[a-zA-Z][a-zA-Z0-9_]*$", variables.table ).isEmpty() ) {
+			throw(
+				type    : "JdbcAuditStore.InvalidTableName",
+				message : "Table name '#variables.table#' contains invalid characters. Only alphanumeric characters and underscores are allowed, and it must start with a letter."
+			);
+		}
+
+		// Freeze the validated table name — assertConfigured() checks this hasn't been mutated
+		variables.validatedTable = variables.table;
+		variables.tableValidated = true;
+
+		// Ensure table exists
+		ensureTable();
+
+		return this;
+	}
+
+	/**
+	 * Store a single audit entry
+	 *
+	 * @entry The AuditEntry to store
+	 *
+	 * @return IAuditStore for chaining
+	 */
+	IAuditStore function store( required any entry ) {
+		// Runtime assertion: ensure configure() was called and table name was validated
+		assertConfigured();
+
+		var entryData = entryToStruct( arguments.entry );
+
+		// Build database-agnostic INSERT with duplicate handling
+		// Different databases have different syntax for "insert if not exists"
+		var sql = buildInsertSQL();
+
+		try {
+			queryExecute(
+				sql,
+				{
+					spanId         : entryData.spanId,
+					traceId        : entryData.traceId,
+					parentSpanId   : entryData.parentSpanId ?: "",
+					spanType       : entryData.spanType,
+					operation      : entryData.operation,
+					startTime      : entryData.startTime,
+					endTime        : len( entryData.endTime ?: "" ) ? entryData.endTime : javacast( "null", "" ),
+					durationMs     : entryData.durationMs ?: 0,
+					status         : entryData.status ?: "ok",
+					input          : serializeField( entryData.input ?: "" ),
+					output         : serializeField( entryData.output ?: "" ),
+					error          : serializeField( entryData.error ?: "" ),
+					reasoning      : entryData.reasoning ?: "",
+					tokens         : jsonSerialize( entryData.tokens ?: {} ),
+					cost           : jsonSerialize( entryData.cost ?: {} ),
+					metadata       : jsonSerialize( entryData.metadata ?: {} ),
+					userId         : entryData.userId ?: "",
+					conversationId : entryData.conversationId ?: "",
+					tenantId       : entryData.tenantId ?: ""
+				},
+				{ datasource : variables.datasource }
+			);
+		} catch ( any e ) {
+			// Handle duplicate key errors gracefully (entry already exists)
+			// Use SQLSTATE codes for reliable cross-database detection:
+			// - SQLSTATE 23000 = Integrity constraint violation (standard SQL)
+			// - SQLSTATE 23505 = Unique violation (PostgreSQL)
+			// MySQL error 1062 = Duplicate entry
+			// SQL Server error 2627 = Violation of PRIMARY KEY constraint
+			var sqlState = e.SQLState ?: "";
+			var errorCode = e.ErrorCode ?: 0;
+
+			if ( sqlState == "23000"
+				|| sqlState == "23505"
+				|| errorCode == 1062
+				|| errorCode == 2627 ) {
+				// Entry already stored - this is expected when both interceptor and listener store same entry
+				return this;
+			}
+
+			// Fallback to string matching for databases that don't provide proper SQLSTATE
+			// Use more specific patterns to avoid false positives
+			var errorMsg = e.message.lcase();
+			var tableName = variables.table.lcase();
+			var isDuplicateError = false;
+
+			// Check for duplicate key patterns that include table/key context
+			if ( ( errorMsg.findNoCase( "duplicate" ) > 0 && errorMsg.findNoCase( "key" ) > 0 )
+				|| ( errorMsg.findNoCase( "unique constraint" ) > 0 && errorMsg.findNoCase( "violated" ) > 0 )
+				|| ( errorMsg.findNoCase( "primary key" ) > 0 && errorMsg.findNoCase( "violation" ) > 0 )
+				|| ( errorMsg.findNoCase( "duplicate entry" ) > 0 )
+				|| ( errorMsg.findNoCase( "already exists" ) > 0 && errorMsg.findNoCase( tableName ) > 0 ) ) {
+				isDuplicateError = true;
+			}
+
+			if ( isDuplicateError ) {
+				// Log that we fell back to string matching for investigation
+				writeLog(
+					text : "Warning: Duplicate key detected via string matching (SQLSTATE=#sqlState#, ErrorCode=#errorCode#, message=#left(e.message, 200)#). Consider adding explicit support for this database.",
+					type : "debug",
+					log  : "ai"
+				);
+				return this;
+			}
+
+			// Re-throw non-duplicate errors
+			rethrow;
+		}
+
+		return this;
+	}
+
+	/**
+	 * Build database-agnostic INSERT SQL
+	 * Uses database-specific syntax for handling duplicates
+	 */
+	private string function buildInsertSQL() {
+		var dbType = getDbProductName();
+
+		// MySQL/MariaDB: INSERT IGNORE
+		if ( dbType.findNoCase( "mysql" ) || dbType.findNoCase( "mariadb" ) ) {
+			return "INSERT IGNORE INTO #variables.table# (
+				span_id, trace_id, parent_span_id, span_type, operation,
+				start_time, end_time, duration_ms, status,
+				input_data, output_data, error_data, reasoning,
+				tokens_data, cost_data, metadata_data,
+				user_id, conversation_id, tenant_id
+			) VALUES (
+				:spanId, :traceId, :parentSpanId, :spanType, :operation,
+				:startTime, :endTime, :durationMs, :status,
+				:input, :output, :error, :reasoning,
+				:tokens, :cost, :metadata,
+				:userId, :conversationId, :tenantId
+			)";
+		}
+
+		// PostgreSQL: INSERT ... ON CONFLICT DO NOTHING
+		if ( dbType.findNoCase( "postgres" ) ) {
+			return "INSERT INTO #variables.table# (
+				span_id, trace_id, parent_span_id, span_type, operation,
+				start_time, end_time, duration_ms, status,
+				input_data, output_data, error_data, reasoning,
+				tokens_data, cost_data, metadata_data,
+				user_id, conversation_id, tenant_id
+			) VALUES (
+				:spanId, :traceId, :parentSpanId, :spanType, :operation,
+				:startTime, :endTime, :durationMs, :status,
+				:input, :output, :error, :reasoning,
+				:tokens, :cost, :metadata,
+				:userId, :conversationId, :tenantId
+			) ON CONFLICT (span_id) DO NOTHING";
+		}
+
+		// SQL Server, Oracle, H2, Derby, etc.: Standard INSERT
+		// Duplicate key errors are caught and handled gracefully in store()
+		// See SQLSTATE/ErrorCode handling in the catch block above
+		return "INSERT INTO #variables.table# (
+			span_id, trace_id, parent_span_id, span_type, operation,
+			start_time, end_time, duration_ms, status,
+			input_data, output_data, error_data, reasoning,
+			tokens_data, cost_data, metadata_data,
+			user_id, conversation_id, tenant_id
+		) VALUES (
+			:spanId, :traceId, :parentSpanId, :spanType, :operation,
+			:startTime, :endTime, :durationMs, :status,
+			:input, :output, :error, :reasoning,
+			:tokens, :cost, :metadata,
+			:userId, :conversationId, :tenantId
+		)";
+	}
+
+	/**
+	 * Query audit entries with filters
+	 *
+	 * @filters Query filters struct
+	 * @limit Maximum results to return
+	 * @offset Pagination offset
+	 * @orderBy Sort field
+	 * @orderDir Sort direction
+	 *
+	 * @return Array of entry structs (struct representations, not AuditEntry objects)
+	 */
+	array function query(
+		struct filters   = {},
+		numeric limit    = 100,
+		numeric offset   = 0,
+		string orderBy   = "startTime",
+		string orderDir  = "desc"
+	) {
+		// Runtime assertion: ensure configure() was called and table name was validated
+		assertConfigured();
+
+		var sql = buildSelectSQL();
+		var params = {};
+		var whereClauses = [];
+
+		// Build WHERE clauses from filters
+		if ( arguments.filters.keyExists( "traceId" ) ) {
+			whereClauses.append( "trace_id = :traceId" );
+			params.traceId = arguments.filters.traceId;
+		}
+
+		if ( arguments.filters.keyExists( "spanType" ) ) {
+			whereClauses.append( "span_type = :spanType" );
+			params.spanType = arguments.filters.spanType;
+		}
+
+		if ( arguments.filters.keyExists( "operation" ) ) {
+			whereClauses.append( "operation = :operation" );
+			params.operation = arguments.filters.operation;
+		}
+
+		if ( arguments.filters.keyExists( "startTime" ) ) {
+			whereClauses.append( "start_time >= :filterStartTime" );
+			params.filterStartTime = arguments.filters.startTime;
+		}
+
+		if ( arguments.filters.keyExists( "endTime" ) ) {
+			whereClauses.append( "start_time <= :filterEndTime" );
+			params.filterEndTime = arguments.filters.endTime;
+		}
+
+		if ( arguments.filters.keyExists( "userId" ) ) {
+			whereClauses.append( "user_id = :userId" );
+			params.userId = arguments.filters.userId;
+		}
+
+		if ( arguments.filters.keyExists( "tenantId" ) ) {
+			whereClauses.append( "tenant_id = :tenantId" );
+			params.tenantId = arguments.filters.tenantId;
+		}
+
+		if ( arguments.filters.keyExists( "conversationId" ) ) {
+			whereClauses.append( "conversation_id = :conversationId" );
+			params.conversationId = arguments.filters.conversationId;
+		}
+
+		if ( arguments.filters.keyExists( "status" ) ) {
+			whereClauses.append( "status = :status" );
+			params.status = arguments.filters.status;
+		}
+
+		// Add WHERE clause if we have filters
+		if ( !whereClauses.isEmpty() ) {
+			sql &= " WHERE " & whereClauses.toList( " AND " );
+		}
+
+		// Map orderBy field names to column names (validates against whitelist)
+		var orderColumn = mapFieldToColumn( arguments.orderBy );
+
+		// Validate orderDir to prevent SQL injection (only allow ASC or DESC)
+		var safeOrderDir = "DESC";
+		if ( listFindNoCase( "asc,desc", arguments.orderDir ) ) {
+			safeOrderDir = arguments.orderDir.ucase();
+		}
+
+		sql &= " ORDER BY #orderColumn# #safeOrderDir#";
+
+		// Use parameterized pagination — syntax varies by database
+		params.queryLimit = { value : max( 1, min( 10000, val( arguments.limit ) ) ), sqltype : "integer" };
+		params.queryOffset = { value : max( 0, val( arguments.offset ) ), sqltype : "integer" };
+		var dbType = getDbProductName();
+		if ( dbType.findNoCase( "microsoft" ) || dbType.findNoCase( "sql server" ) ) {
+			sql &= " OFFSET :queryOffset ROWS FETCH NEXT :queryLimit ROWS ONLY";
+		} else {
+			sql &= " LIMIT :queryLimit OFFSET :queryOffset";
+		}
+
+		var result = queryExecute(
+			sql,
+			params,
+			{ datasource : variables.datasource }
+		);
+
+		return queryToArray( result );
+	}
+
+	/**
+	 * Get a complete trace by traceId
+	 *
+	 * @traceId The trace identifier
+	 *
+	 * @return Struct with trace data
+	 */
+	struct function getTrace( required string traceId ) {
+		assertConfigured();
+		var sql = buildSelectSQL() & " WHERE trace_id = :traceId ORDER BY start_time ASC";
+
+		var result = queryExecute(
+			sql,
+			{ traceId : arguments.traceId },
+			{ datasource : variables.datasource }
+		);
+
+		var entries = queryToArray( result );
+
+		return {
+			traceId : arguments.traceId,
+			entries : entries,
+			summary : calculateTraceSummary( entries )
+		};
+	}
+
+	/**
+	 * Get a single entry by spanId
+	 *
+	 * @spanId The span identifier
+	 *
+	 * @return AuditEntry struct or empty struct
+	 */
+	struct function getById( required string spanId ) {
+		assertConfigured();
+		var sql = buildSelectSQL() & " WHERE span_id = :spanId";
+
+		var result = queryExecute(
+			sql,
+			{ spanId : arguments.spanId },
+			{ datasource : variables.datasource }
+		);
+
+		var entries = queryToArray( result );
+		return entries.isEmpty() ? {} : entries.first();
+	}
+
+	/**
+	 * Delete entries older than specified date
+	 *
+	 * @olderThan Delete entries before this date
+	 *
+	 * @return Numeric count of deleted entries
+	 */
+	numeric function purge( required date olderThan ) {
+		assertConfigured();
+		// First count entries to delete
+		var countResult = queryExecute(
+			"SELECT COUNT(*) as cnt FROM #variables.table# WHERE start_time < :olderThan",
+			{ olderThan : arguments.olderThan },
+			{ datasource : variables.datasource }
+		);
+
+		var count = countResult.cnt[ 1 ];
+
+		// Delete entries
+		queryExecute(
+			"DELETE FROM #variables.table# WHERE start_time < :olderThan",
+			{ olderThan : arguments.olderThan },
+			{ datasource : variables.datasource }
+		);
+
+		return count;
+	}
+
+	/**
+	 * Delete a specific trace
+	 *
+	 * @traceId The trace to delete
+	 *
+	 * @return Boolean true if trace existed and was deleted, false if trace did not exist
+	 */
+	boolean function deleteTrace( required string traceId ) {
+		assertConfigured();
+
+		// First check if trace exists to determine return value
+		var countResult = queryExecute(
+			"SELECT COUNT(*) as cnt FROM #variables.table# WHERE trace_id = :traceId",
+			{ traceId : arguments.traceId },
+			{ datasource : variables.datasource }
+		);
+
+		var existedBefore = countResult.cnt[ 1 ] > 0;
+
+		// Delete the trace entries
+		queryExecute(
+			"DELETE FROM #variables.table# WHERE trace_id = :traceId",
+			{ traceId : arguments.traceId },
+			{ datasource : variables.datasource }
+		);
+
+		return existedBefore;
+	}
+
+	/**
+	 * Get summary statistics
+	 *
+	 * @filters Optional filters
+	 *
+	 * @return Struct with stats
+	 */
+	struct function getStats( struct filters = {} ) {
+		assertConfigured();
+		var whereClauses = [];
+		var params = {};
+
+		// Build WHERE clauses from filters
+		if ( arguments.filters.keyExists( "traceId" ) ) {
+			whereClauses.append( "trace_id = :traceId" );
+			params.traceId = arguments.filters.traceId;
+		}
+		if ( arguments.filters.keyExists( "spanType" ) ) {
+			whereClauses.append( "span_type = :spanType" );
+			params.spanType = arguments.filters.spanType;
+		}
+		if ( arguments.filters.keyExists( "userId" ) ) {
+			whereClauses.append( "user_id = :userId" );
+			params.userId = arguments.filters.userId;
+		}
+		if ( arguments.filters.keyExists( "tenantId" ) ) {
+			whereClauses.append( "tenant_id = :tenantId" );
+			params.tenantId = arguments.filters.tenantId;
+		}
+
+		var whereClause = whereClauses.isEmpty() ? "" : " WHERE " & whereClauses.toList( " AND " );
+
+		// Get total counts
+		var totalResult = queryExecute(
+			"SELECT COUNT(*) as total_entries, COUNT(DISTINCT trace_id) as total_traces, AVG(duration_ms) as avg_duration
+			 FROM #variables.table##whereClause#",
+			params,
+			{ datasource : variables.datasource }
+		);
+
+		// Get counts by span type
+		var bySpanTypeResult = queryExecute(
+			"SELECT span_type, COUNT(*) as cnt FROM #variables.table##whereClause# GROUP BY span_type",
+			params,
+			{ datasource : variables.datasource }
+		);
+
+		var bySpanType = {};
+		for ( var row in bySpanTypeResult ) {
+			bySpanType[ row.span_type ] = row.cnt;
+		}
+
+		// Get counts by operation
+		var byOperationResult = queryExecute(
+			"SELECT operation, COUNT(*) as cnt FROM #variables.table##whereClause# GROUP BY operation",
+			params,
+			{ datasource : variables.datasource }
+		);
+
+		var byOperation = {};
+		for ( var row in byOperationResult ) {
+			byOperation[ row.operation ] = row.cnt;
+		}
+
+		return {
+			totalEntries  : totalResult.total_entries[ 1 ],
+			totalTraces   : totalResult.total_traces[ 1 ],
+			avgDurationMs : totalResult.avg_duration[ 1 ] ?: 0,
+			bySpanType    : bySpanType,
+			byOperation   : byOperation
+		};
+	}
+
+	// ========================================
+	// Private Helper Methods
+	// ========================================
+
+	/**
+	 * Get the database product name, caching after first lookup.
+	 * Avoids repeated bx:dbinfo calls on every store/query operation.
+	 *
+	 * @return String database product name
+	 */
+	private string function getDbProductName() {
+		if ( len( variables.dbProductName ) ) {
+			return variables.dbProductName;
+		}
+
+		bx:dbinfo
+			name   = "dbVersion"
+			type   = "version"
+			datasource = "#variables.datasource#" {}
+
+		variables.dbProductName = dbVersion.database_productname ?: "";
+		return variables.dbProductName;
+	}
+
+	/**
+	 * Assert that configure() has been called and table name validated.
+	 * This prevents SQL injection if table name is somehow modified after configure().
+	 *
+	 * @throws JdbcAuditStore.NotConfigured when store is used before configure()
+	 */
+	private void function assertConfigured() {
+		if ( !variables.tableValidated ) {
+			throw(
+				type    : "JdbcAuditStore.NotConfigured",
+				message : "JdbcAuditStore must be configured before use. Call configure() first."
+			);
+		}
+		if ( variables.table != variables.validatedTable ) {
+			throw(
+				type    : "JdbcAuditStore.TableNameTampered",
+				message : "Table name was modified after validation. Expected '#variables.validatedTable#', found '#variables.table#'."
+			);
+		}
+	}
+
+	/**
+	 * Ensure the database table exists, create if necessary
+	 */
+	private void function ensureTable() {
+		bx:dbinfo
+			name   = "tables"
+			type   = "tables"
+			datasource = "#variables.datasource#" {}
+
+		var tableExists = false;
+		for ( var tableInfo in tables ) {
+			if ( tableInfo.table_name.toLowerCase() == variables.table.toLowerCase() ) {
+				tableExists = true;
+				break;
+			}
+		}
+
+		if ( !tableExists ) {
+			createTable();
+		}
+	}
+
+	/**
+	 * Create the audit table with database-agnostic SQL
+	 */
+	private void function createTable() {
+		var dbType = getDbProductName();
+
+		var sql = "
+			CREATE TABLE #variables.table# (
+				span_id VARCHAR(255) PRIMARY KEY,
+				trace_id VARCHAR(255) NOT NULL,
+				parent_span_id VARCHAR(255),
+				span_type VARCHAR(50) NOT NULL,
+				operation VARCHAR(255) NOT NULL,
+				start_time TIMESTAMP NOT NULL,
+				end_time TIMESTAMP,
+				duration_ms INTEGER DEFAULT 0,
+				status VARCHAR(20) DEFAULT 'ok',
+				input_data CLOB,
+				output_data CLOB,
+				error_data CLOB,
+				reasoning CLOB,
+				tokens_data CLOB,
+				cost_data CLOB,
+				metadata_data CLOB,
+				user_id VARCHAR(255),
+				conversation_id VARCHAR(255),
+				tenant_id VARCHAR(255),
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			)
+		";
+
+		// Adjust for database-specific types (use findNoCase for reliable case-insensitive matching)
+		// Use reReplaceNoCase with "all" flag to ensure ALL occurrences are replaced
+		if ( dbType.findNoCase( "mysql" ) || dbType.findNoCase( "mariadb" ) ) {
+			sql = reReplaceNoCase( sql, "CLOB", "LONGTEXT", "all" );
+		} else if ( dbType.findNoCase( "postgres" ) ) {
+			sql = reReplaceNoCase( sql, "CLOB", "TEXT", "all" );
+		} else if ( dbType.findNoCase( "sqlserver" ) || dbType.findNoCase( "microsoft" ) ) {
+			sql = reReplaceNoCase( sql, "CLOB", "NVARCHAR(MAX)", "all" );
+		}
+
+		queryExecute( sql, {}, { datasource : variables.datasource } );
+
+		// Create indexes - each in its own try/catch to continue on "already exists" errors
+		var indexes = [
+			{ name : "trace_id", sql : "CREATE INDEX idx_#variables.table#_trace_id ON #variables.table# (trace_id)" },
+			{ name : "start_time", sql : "CREATE INDEX idx_#variables.table#_start_time ON #variables.table# (start_time)" },
+			{ name : "span_type", sql : "CREATE INDEX idx_#variables.table#_span_type ON #variables.table# (span_type)" },
+			{ name : "user_id", sql : "CREATE INDEX idx_#variables.table#_user_id ON #variables.table# (user_id)" },
+			{ name : "tenant_id", sql : "CREATE INDEX idx_#variables.table#_tenant_id ON #variables.table# (tenant_id)" }
+		];
+
+		var indexFailures = [];
+
+		for ( var idx in indexes ) {
+			try {
+				queryExecute( idx.sql, {}, { datasource : variables.datasource } );
+			} catch ( any e ) {
+				// Check for index-specific "already exists" patterns
+				// The error must contain "index" AND one of the existence indicators
+				var errorMsg = e.message.lcase();
+				var isIndexExistsError = errorMsg.findNoCase( "index" ) > 0 &&
+					( errorMsg.findNoCase( "already exists" ) > 0 ||
+					  errorMsg.findNoCase( "already an index" ) > 0 ||
+					  errorMsg.findNoCase( "duplicate key name" ) > 0 );
+
+				if ( !isIndexExistsError ) {
+					indexFailures.append( { name : idx.name, error : e.message } );
+				}
+			}
+		}
+
+		// Report index creation failures prominently - missing indexes cause severe performance degradation
+		if ( !indexFailures.isEmpty() ) {
+			writeLog(
+				text : "WARNING: Failed to create #indexFailures.len()# audit indexes. Query performance will be degraded. Failures: #jsonSerialize( indexFailures )#",
+				type : "warning",
+				log  : "ai"
+			);
+
+			// Announce for monitoring systems
+			try {
+				BoxAnnounce( "onAuditStoreWarning", {
+					storeType : "jdbc",
+					warning   : "Index creation failed",
+					details   : indexFailures
+				} );
+			} catch ( any announceErr ) {
+				// Log the announcement failure - monitoring systems won't know about index issues
+				writeLog(
+					text : "WARNING: Failed to announce index creation failures: #announceErr.message#. Original failures: #jsonSerialize( indexFailures )#",
+					type : "warning",
+					log  : "ai"
+				);
+			}
+		}
+	}
+
+	/**
+	 * Build SELECT SQL with database-specific CLOB conversion
+	 */
+	private string function buildSelectSQL() {
+		var dbType = getDbProductName().toLowerCase();
+
+		if ( dbType.findNoCase( "mysql" ) || dbType.findNoCase( "mariadb" ) ) {
+			return "SELECT
+				span_id, trace_id, parent_span_id, span_type, operation,
+				start_time, end_time, duration_ms, status,
+				CAST(input_data AS CHAR) as input_data,
+				CAST(output_data AS CHAR) as output_data,
+				CAST(error_data AS CHAR) as error_data,
+				CAST(reasoning AS CHAR) as reasoning,
+				CAST(tokens_data AS CHAR) as tokens_data,
+				CAST(cost_data AS CHAR) as cost_data,
+				CAST(metadata_data AS CHAR) as metadata_data,
+				user_id, conversation_id, tenant_id, created_at
+			FROM #variables.table#";
+		} else if ( dbType.findNoCase( "postgresql" ) || dbType.findNoCase( "postgres" ) ) {
+			return "SELECT
+				span_id, trace_id, parent_span_id, span_type, operation,
+				start_time, end_time, duration_ms, status,
+				input_data::text as input_data,
+				output_data::text as output_data,
+				error_data::text as error_data,
+				reasoning::text as reasoning,
+				tokens_data::text as tokens_data,
+				cost_data::text as cost_data,
+				metadata_data::text as metadata_data,
+				user_id, conversation_id, tenant_id, created_at
+			FROM #variables.table#";
+		} else if ( dbType.findNoCase( "microsoft" ) || dbType.findNoCase( "sql server" ) ) {
+			return "SELECT
+				span_id, trace_id, parent_span_id, span_type, operation,
+				start_time, end_time, duration_ms, status,
+				CAST(input_data AS VARCHAR(MAX)) as input_data,
+				CAST(output_data AS VARCHAR(MAX)) as output_data,
+				CAST(error_data AS VARCHAR(MAX)) as error_data,
+				CAST(reasoning AS VARCHAR(MAX)) as reasoning,
+				CAST(tokens_data AS VARCHAR(MAX)) as tokens_data,
+				CAST(cost_data AS VARCHAR(MAX)) as cost_data,
+				CAST(metadata_data AS VARCHAR(MAX)) as metadata_data,
+				user_id, conversation_id, tenant_id, created_at
+			FROM #variables.table#";
+		} else {
+			// Default (Derby, etc.)
+			return "SELECT
+				span_id, trace_id, parent_span_id, span_type, operation,
+				start_time, end_time, duration_ms, status,
+				CAST(input_data AS VARCHAR(32672)) as input_data,
+				CAST(output_data AS VARCHAR(32672)) as output_data,
+				CAST(error_data AS VARCHAR(32672)) as error_data,
+				CAST(reasoning AS VARCHAR(32672)) as reasoning,
+				CAST(tokens_data AS VARCHAR(32672)) as tokens_data,
+				CAST(cost_data AS VARCHAR(32672)) as cost_data,
+				CAST(metadata_data AS VARCHAR(32672)) as metadata_data,
+				user_id, conversation_id, tenant_id, created_at
+			FROM #variables.table#";
+		}
+	}
+
+	/**
+	 * Map field name to column name with whitelist validation.
+	 * Returns a safe column name or defaults to start_time for invalid inputs.
+	 */
+	private string function mapFieldToColumn( required string field ) {
+		switch ( arguments.field ) {
+			case "spanId":
+				return "span_id";
+			case "traceId":
+				return "trace_id";
+			case "parentSpanId":
+				return "parent_span_id";
+			case "spanType":
+				return "span_type";
+			case "startTime":
+				return "start_time";
+			case "endTime":
+				return "end_time";
+			case "durationMs":
+				return "duration_ms";
+			case "userId":
+				return "user_id";
+			case "conversationId":
+				return "conversation_id";
+			case "tenantId":
+				return "tenant_id";
+			case "createdAt":
+				return "created_at";
+			case "operation":
+				return "operation";
+			case "status":
+				return "status";
+			default:
+				// Default to start_time for safety - prevents SQL injection
+				return "start_time";
+		}
+	}
+
+	/**
+	 * Convert query result to array of structs
+	 */
+	private array function queryToArray( required query result ) {
+		var entries = [];
+
+		for ( var row in arguments.result ) {
+			entries.append( {
+				spanId         : row.span_id,
+				traceId        : row.trace_id,
+				parentSpanId   : row.parent_span_id ?: "",
+				spanType       : row.span_type,
+				operation      : row.operation,
+				startTime      : row.start_time,
+				endTime        : row.end_time ?: "",
+				durationMs     : row.duration_ms ?: 0,
+				status         : row.status ?: "ok",
+				input          : deserializeField( row.input_data ?: "" ),
+				output         : deserializeField( row.output_data ?: "" ),
+				error          : deserializeField( row.error_data ?: "" ),
+				reasoning      : row.reasoning ?: "",
+				tokens         : deserializeField( row.tokens_data ?: "{}" ),
+				cost           : deserializeField( row.cost_data ?: "{}" ),
+				metadata       : deserializeField( row.metadata_data ?: "{}" ),
+				userId         : row.user_id ?: "",
+				conversationId : row.conversation_id ?: "",
+				tenantId       : row.tenant_id ?: ""
+			} );
+		}
+
+		return entries;
+	}
+
+	/**
+	 * Serialize a field for storage
+	 */
+	private string function serializeField( required any value ) {
+		if ( isSimpleValue( arguments.value ) ) {
+			return arguments.value;
+		}
+		return jsonSerialize( arguments.value );
+	}
+
+	/**
+	 * Deserialize a field from storage
+	 */
+	private any function deserializeField( required string value ) {
+		if ( !len( trim( arguments.value ) ) ) {
+			return "";
+		}
+
+		// Check if it looks like JSON
+		if ( arguments.value.startsWith( "{" ) || arguments.value.startsWith( "[" ) ) {
+			try {
+				return jsonDeserialize( arguments.value );
+			} catch ( any e ) {
+				// Log deserialization failure - data appears to be JSON but couldn't be parsed
+				// This may indicate truncated data or database encoding issues
+				writeLog(
+					text : "Warning: Failed to deserialize JSON field from audit store. Value starts with JSON delimiter but parse failed: #e.message#. Returning as string.",
+					type : "warning",
+					log  : "ai"
+				);
+				return arguments.value;
+			}
+		}
+
+		return arguments.value;
+	}
+
+}

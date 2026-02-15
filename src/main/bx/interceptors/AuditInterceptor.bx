@@ -1,0 +1,1579 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Interceptor that automatically captures AI events into audit traces.
+ * Listens to existing bx-ai events and creates audit entries.
+ */
+class {
+
+	/**
+	 * Module record injection
+	 */
+	property name="moduleRecord";
+
+	/**
+	 * Whether audit is enabled
+	 */
+	property name="enabled" type="boolean" default="false";
+
+	/**
+	 * Thread-local context tracking using Java ThreadLocal
+	 */
+	property name="contextHolder" type="any";
+
+	/**
+	 * Shared store instance for auto-tracing
+	 */
+	property name="sharedStore" type="any";
+
+	/**
+	 * Thread-local span depth counter for lifecycle management
+	 */
+	property name="spanDepthHolder" type="any";
+
+	/**
+	 * Default context metadata to apply to all new audit contexts.
+	 * Set by consuming applications via setDefaultContextMetadata() at startup.
+	 * This is arbitrary data — bx-ai does not interpret it. It merges into
+	 * every entry's metadata via AuditContext.setContextMetadata().
+	 * Applications can put whatever they need here (tenantId, environment, etc.).
+	 */
+	property name="defaultContextMetadata" type="struct";
+
+	/**
+	 * Cached audit settings to avoid repeated lookups on hot paths
+	 */
+	property name="auditSettings" type="struct";
+
+	/**
+	 * Cached pricing settings for cost calculation
+	 */
+	property name="pricingSettings" type="struct";
+
+	/**
+	 * Whether store initialization failed (degraded mode)
+	 */
+	property name="storeInitializationFailed" type="boolean" default="false";
+
+	/**
+	 * Error message if store initialization failed
+	 */
+	property name="storeInitializationError" type="string" default="";
+
+	/**
+	 * The store type that was configured (useful when in degraded mode)
+	 */
+	property name="configuredStoreType" type="string" default="";
+
+	/**
+	 * Retry counter for store initialization attempts.
+	 * After MAX_STORE_INIT_RETRIES, initialization stops retrying to prevent
+	 * lock contention and log spam under load.
+	 */
+	property name="storeInitRetryCount" type="numeric" default="0";
+
+	/**
+	 * Runtime override for enabled flag.
+	 * Set by consuming applications via setEnabled(). Null = not set.
+	 * Priority: env var > this > module settings
+	 */
+	property name="runtimeEnabled" type="any";
+
+	/**
+	 * Runtime override for internal storage flag.
+	 * Set by consuming applications via setInternalStorage(). Null = not set.
+	 * Priority: env var > this > module settings
+	 */
+	property name="runtimeInternalStorage" type="any";
+
+	/**
+	 * Runtime store type override (only effective before store initialization).
+	 * Set by consuming applications via setStoreType(). Empty = not set.
+	 */
+	property name="runtimeStoreType" type="string" default="";
+
+	/**
+	 * Runtime store config to merge (only effective before store initialization).
+	 * Set by consuming applications via setStoreConfig(). Merges on top of module defaults.
+	 */
+	property name="runtimeStoreConfig" type="struct";
+
+	/**
+	 * Runtime pricing configuration override.
+	 * Set by consuming applications via setPricingConfig(). Null = not set.
+	 */
+	property name="runtimePricingConfig" type="any";
+
+	static {
+		final MAX_STORE_INIT_RETRIES = 5
+	}
+
+	/**
+	 * Configure the interceptor
+	 *
+	 * Settings:
+	 * - enabled: Controls whether auditing is active (default: false)
+	 *
+	 * When enabled=true:
+	 * - AI operations are automatically traced
+	 * - Entries are stored in the configured store
+	 * - onAuditEntry events are broadcast for external listeners
+	 *
+	 * Can also be enabled via environment variable: BOXLANG_MODULES_BXAI_AUDIT_ENABLED=true
+	 */
+	function configure() {
+		// Get module settings - try moduleRecord first, then getModuleInfo()
+		var modSettings = {};
+		if ( !isNull( moduleRecord ) && !isNull( moduleRecord.settings ) ) {
+			modSettings = moduleRecord.settings;
+		} else {
+			try {
+				modSettings = getModuleInfo( "bxai" ).settings ?: {};
+			} catch ( "ModuleNotFoundException" e ) {
+				// Expected during early initialization - module not yet loaded
+				writeLog(
+					text : "Audit interceptor: Module info not yet available during configure(), using defaults. This is normal during early initialization.",
+					type : "debug",
+					log  : "ai"
+				);
+			} catch ( any e ) {
+				// Unexpected error - log at warning level with exception type and continue with defaults
+				writeLog(
+					text : "WARNING: Unexpected error [#e.type ?: 'unknown'#] getting module settings during configure(): #e.message#. Using defaults.",
+					type : "warning",
+					log  : "ai"
+				);
+			}
+		}
+
+		// Cache audit settings once during configure to avoid repeated lookups
+		variables.auditSettings = modSettings.audit ?: {};
+		// Cache pricing settings separately (pricing is at module root, not under audit)
+		variables.pricingSettings = modSettings.pricing ?: {};
+
+		// Apply environment variable overrides to cached settings
+		// Env vars take precedence over module defaults (e.g. BOXLANG_MODULES_BXAI_AUDIT_STORE=file)
+		applyEnvVarOverrides();
+
+		// Enabled flag from merged settings (module defaults + env var overrides)
+		variables.enabled = variables.auditSettings.enabled ?: false;
+
+		variables.contextHolder = createObject( "java", "java.lang.ThreadLocal" ).init();
+		variables.spanDepthHolder = createObject( "java", "java.lang.ThreadLocal" ).init();
+		variables.sharedStore = javacast( "null", "" );
+		variables.storeInitializationFailed = false;
+		variables.storeInitializationError = "";
+		variables.configuredStoreType = "";
+		variables.storeInitRetryCount = 0;
+		variables.defaultContextMetadata = {};
+		variables.runtimeEnabled = javacast( "null", "" );
+		variables.runtimeInternalStorage = javacast( "null", "" );
+		variables.runtimeStoreType = "";
+		variables.runtimeStoreConfig = {};
+		variables.runtimePricingConfig = javacast( "null", "" );
+
+		if ( variables.enabled ) {
+			// Store initialization is deferred until first use (lazy).
+			// This allows datasources created dynamically at application startup
+			// (after module activation) to be available when the JDBC store needs them.
+			// The lazy path in getContext() calls initializeStore() with double-checked locking.
+
+			// Warn at startup if fallback is enabled - default is disabled for production safety
+			if ( isStoreFallbackAllowed() ) {
+				writeLog(
+					text : "NOTICE: Audit store fallback is ENABLED. If the configured store fails, audit data will be stored in memory and NOT persisted. Set audit.allowStoreFallback=false or BOXLANG_MODULES_BXAI_AUDIT_ALLOW_STORE_FALLBACK=false for production.",
+					type : "warning",
+					log  : "ai"
+				);
+			}
+		}
+
+	}
+
+	/**
+	 * Clean up ThreadLocal storage for the current thread.
+	 *
+	 * IMPORTANT: This method is called automatically for web requests via onRequestEnd.
+	 * However, for CLI scripts, scheduled tasks, and async operations, you MUST call
+	 * this method explicitly to prevent memory leaks when using thread pools.
+	 *
+	 * Usage in CLI/scheduled tasks:
+	 * ```
+	 * try {
+	 *     // Your AI operations here
+	 * } finally {
+	 *     // Get the interceptor and clean up
+	 *     getInterceptorService().getInterceptor( "AuditInterceptor" ).cleanupThread();
+	 * }
+	 * ```
+	 */
+	void function cleanupThread() {
+		var traceId = "";
+
+		try {
+			var ctx = variables.contextHolder.get();
+			if ( !isNull( ctx ) ) {
+				traceId = ctx.getTraceId();
+				ctx.complete();
+			}
+			if ( !isNull( variables.sharedStore ) ) {
+				variables.sharedStore.flush();
+			}
+		} catch ( any e ) {
+			writeLog(
+				text : "Audit cleanup error for traceId=#traceId#: #e.message#",
+				type : "warning",
+				log  : "ai"
+			);
+		} finally {
+			// Always remove ThreadLocal entries to prevent memory leaks
+			variables.contextHolder.remove();
+			variables.spanDepthHolder.remove();
+		}
+	}
+
+	/**
+	 * Initialize the shared store using the factory.
+	 * Uses double-checked locking for thread-safe lazy initialization.
+	 *
+	 * When internalStorage is disabled, sets sharedStore to null - events will still broadcast
+	 * but entries will not be stored within bx-ai (application handles storage via listener).
+	 */
+	private void function initializeStore() {
+		// Check if internal storage is disabled
+		if ( !isInternalStorageEnabled() ) {
+			// Internal storage disabled - events will still be broadcast via BoxAnnounce
+			variables.sharedStore = javacast( "null", "" );
+			return;
+		}
+
+		// Short-circuit if already initialized
+		if ( !isNull( variables.sharedStore ) ) {
+			return;
+		}
+
+		// Best-effort short-circuit if retries exhausted — reduces (but doesn't eliminate) lock contention
+		if ( variables.storeInitializationFailed && variables.storeInitRetryCount >= static.MAX_STORE_INIT_RETRIES ) {
+			return;
+		}
+
+		// Get runtime overrides (set by consuming application via setStoreType/setStoreConfig)
+		var runtimeStoreType = variables.runtimeStoreType;
+		var runtimeStoreConfig = duplicate( variables.runtimeStoreConfig );
+
+		// Synchronize to prevent race condition where multiple threads initialize simultaneously
+		// 30s timeout allows for JDBC connection pool init + table creation under concurrent load
+		lock name="bxai_audit_store_init" type="exclusive" timeout="30" throwontimeout="true" {
+			// Second check (locked) - critical for thread safety
+			if ( !isNull( variables.sharedStore ) ) {
+				return;
+			}
+
+			// Merge settings: module defaults + env var overrides + runtime setters (highest priority)
+			var storeType = variables.auditSettings.store ?: "memory";
+			var storeConfig = duplicate( variables.auditSettings.storeConfig ?: {} );
+			if ( len( runtimeStoreType ) ) {
+				storeType = runtimeStoreType;
+			}
+			storeConfig.append( runtimeStoreConfig, true );
+
+			try {
+				variables.sharedStore = bxModules.bxai.models.audit.AuditStoreFactory::create( storeType, storeConfig );
+				variables.storeInitializationFailed = false;
+				variables.storeInitRetryCount = 0;
+			} catch ( "InvalidAuditStore" e ) {
+				// Permanent failure — bad store type name, no point retrying
+				variables.storeInitializationFailed = true;
+				variables.storeInitializationError = e.message;
+				variables.configuredStoreType = storeType;
+				variables.storeInitRetryCount = static.MAX_STORE_INIT_RETRIES;
+				writeLog(
+					text : "FATAL: Invalid audit store type '#storeType#': #e.message#. Audit data will NOT be stored.",
+					type : "fatal",
+					log  : "ai"
+				);
+			} catch ( any e ) {
+				// Transient failure (e.g. datasource not yet available at app start).
+				// Track retries and escalate severity when exhausted.
+				variables.storeInitRetryCount++;
+				variables.storeInitializationError = e.message;
+				variables.configuredStoreType = storeType;
+
+				var allowFallback = isStoreFallbackAllowed();
+
+				if ( variables.storeInitRetryCount >= static.MAX_STORE_INIT_RETRIES ) {
+					// Retries exhausted — mark as permanently failed
+					variables.storeInitializationFailed = true;
+					writeLog(
+						text : "FATAL: Audit store '#storeType#' failed after #variables.storeInitRetryCount# attempts. Audit data will NOT be stored. Error: #e.message#",
+						type : "fatal",
+						log  : "ai"
+					);
+				} else {
+					// Still retrying — log at warning
+					variables.storeInitializationFailed = true;
+					writeLog(
+						text : "Audit store '#storeType#' not yet available (attempt #variables.storeInitRetryCount#/#static.MAX_STORE_INIT_RETRIES#), will retry. Error: #e.message#",
+						type : "warning",
+						log  : "ai"
+					);
+				}
+
+				if ( allowFallback ) {
+					writeLog(
+						text : "WARNING: Falling back to memory store. Audit data will NOT be persisted across restarts!",
+						type : "warning",
+						log  : "ai"
+					);
+					variables.sharedStore = bxModules.bxai.models.audit.AuditStoreFactory::create( "memory", {} );
+				}
+				// When fallback is disabled: sharedStore stays null, context works without store,
+				// and the next getContext() call will retry until MAX_STORE_INIT_RETRIES.
+			}
+		}
+	}
+
+	/**
+	 * Get or create audit context for current thread.
+	 * Supports lazy store initialization when auditing is enabled at runtime
+	 * (e.g., via environment variable set after container startup).
+	 *
+	 * When internalStorage is disabled, the context is created with a null store.
+	 * Events will still be broadcast via BoxAnnounce, but entries won't be stored
+	 * within bx-ai - the application handles storage via onAuditEntry listener.
+	 *
+	 * @return AuditContext instance
+	 */
+	any function getContext() {
+		var internalStorageEnabled = isInternalStorageEnabled();
+
+		// Lazy initialize store if not yet done but auditing is now enabled at runtime
+		// This handles the case where BOXLANG_MODULES_BXAI_AUDIT_ENABLED is set after container build
+		// Only initialize if internal storage is enabled
+		if ( internalStorageEnabled && isNull( variables.sharedStore ) ) {
+			initializeStore();
+		}
+
+		var ctx = variables.contextHolder.get();
+
+		if ( isNull( ctx ) ) {
+			// Use if/else instead of ternary to properly handle null store in BoxLang
+			// (ternary with javacast("null","") can cause undefined variable issues)
+			if ( internalStorageEnabled ) {
+				ctx = new bxModules.bxai.models.audit.AuditContext(
+					store  : variables.sharedStore,
+					config : variables.auditSettings
+				);
+			} else {
+				// Internal storage disabled - omit store argument (AuditContext.init handles null)
+				ctx = new bxModules.bxai.models.audit.AuditContext(
+					config : variables.auditSettings
+				);
+			}
+
+			// Apply default context metadata set by the consuming application at startup.
+			// This merges into every entry's metadata via AuditContext.setContextMetadata().
+			// Also maps well-known keys to AuditContext's top-level setters so they flow
+			// to the dedicated entry fields (tenantId, userId, conversationId) which the
+			// store can filter on and the JDBC store uses as columns.
+			// Use duplicate() for thread-safe snapshot - setDefaultContextMetadata() may be called from another thread.
+			var defaultMeta = duplicate( variables.defaultContextMetadata );
+			if ( !defaultMeta.isEmpty() ) {
+				ctx.setContextMetadata( defaultMeta );
+				applyKnownContextFields( ctx, defaultMeta );
+			}
+
+			variables.contextHolder.set( ctx );
+		}
+
+		return ctx;
+	}
+
+	/**
+	 * Set default context metadata to apply to all new audit contexts.
+	 * Call at application startup. This metadata merges into every entry's
+	 * metadata via AuditContext.setContextMetadata() — bx-ai does not
+	 * interpret it. Applications decide what data to attach and how to
+	 * filter on it later.
+	 *
+	 * Example: setDefaultContextMetadata({ tenantId: "myapp_prod", environment: "production" })
+	 *
+	 * @metadata Struct of default metadata to apply to new contexts
+	 */
+	void function setDefaultContextMetadata( required struct metadata ) {
+		variables.defaultContextMetadata = arguments.metadata;
+	}
+
+	/**
+	 * Get the current default context metadata
+	 *
+	 * @return Struct of default metadata
+	 */
+	struct function getDefaultContextMetadata() {
+		return duplicate( variables.defaultContextMetadata );
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * Runtime Configuration Setters
+	 * --------------------------------------------------------------------------
+	 * These methods allow consuming applications to push configuration into
+	 * the AuditInterceptor at runtime, after module activation. This is the
+	 * proper pattern for library modules — the application pushes config in
+	 * via method calls rather than the module reaching into application scope.
+	 *
+	 * Priority: env var > runtime setter > module settings (configure() defaults)
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Set whether auditing is enabled at runtime.
+	 * Priority: env var > this setter > module settings
+	 *
+	 * @enabled Boolean to enable/disable auditing
+	 *
+	 * @return AuditInterceptor for chaining
+	 */
+	AuditInterceptor function setEnabled( required boolean enabled ) {
+		variables.runtimeEnabled = arguments.enabled;
+		return this;
+	}
+
+	/**
+	 * Get the current enabled status (computed from all config sources)
+	 *
+	 * @return Boolean enabled status
+	 */
+	boolean function isEnabled() {
+		return shouldAudit();
+	}
+
+	/**
+	 * Set whether internal storage is enabled at runtime.
+	 * When false, events are still broadcast but entries are not stored by bx-ai.
+	 * Priority: env var > this setter > module settings
+	 *
+	 * @enabled Boolean to enable/disable internal storage
+	 *
+	 * @return AuditInterceptor for chaining
+	 */
+	AuditInterceptor function setInternalStorage( required boolean enabled ) {
+		variables.runtimeInternalStorage = arguments.enabled;
+		return this;
+	}
+
+	/**
+	 * Set the store type at runtime.
+	 * Only effective before first AI operation triggers store initialization.
+	 * If called after store init, logs a warning and returns without effect.
+	 *
+	 * @storeType The store type: "memory", "file", "jdbc"
+	 *
+	 * @return AuditInterceptor for chaining
+	 */
+	AuditInterceptor function setStoreType( required string storeType ) {
+		if ( !isNull( variables.sharedStore ) ) {
+			writeLog(
+				text : "WARNING: setStoreType() called after store already initialized. Store type '#arguments.storeType#' ignored. Current store: #getStoreType()#",
+				type : "warning",
+				log  : "ai"
+			);
+			return this;
+		}
+		variables.runtimeStoreType = arguments.storeType;
+		return this;
+	}
+
+	/**
+	 * Merge runtime store configuration (e.g., datasource name not known at module activation).
+	 * Only effective before first AI operation triggers store initialization.
+	 * If called after store init, logs a warning and returns without effect.
+	 *
+	 * @config Struct to merge into storeConfig (e.g., { datasource: "mydb" })
+	 *
+	 * @return AuditInterceptor for chaining
+	 */
+	AuditInterceptor function setStoreConfig( required struct config ) {
+		if ( !isNull( variables.sharedStore ) ) {
+			writeLog(
+				text : "WARNING: setStoreConfig() called after store already initialized. Config ignored.",
+				type : "warning",
+				log  : "ai"
+			);
+			return this;
+		}
+		lock name="bxai_audit_runtime_config" type="exclusive" timeout="5" throwontimeout="true" {
+			variables.runtimeStoreConfig.append( arguments.config, true );
+		}
+		return this;
+	}
+
+	/**
+	 * Set pricing configuration at runtime.
+	 *
+	 * @pricing Struct of pricing configuration
+	 *
+	 * @return AuditInterceptor for chaining
+	 */
+	AuditInterceptor function setPricingConfig( required struct pricing ) {
+		variables.runtimePricingConfig = arguments.pricing;
+		return this;
+	}
+
+	/**
+	 * Set multiple runtime settings at once.
+	 * Convenience method that delegates to individual setters.
+	 *
+	 * @settings Struct with optional keys: enabled, internalStorage, storeType, storeConfig, pricing, contextMetadata
+	 *
+	 * @return AuditInterceptor for chaining
+	 */
+	AuditInterceptor function setRuntimeSettings( required struct settings ) {
+		if ( arguments.settings.keyExists( "enabled" ) ) {
+			setEnabled( arguments.settings.enabled );
+		}
+		if ( arguments.settings.keyExists( "internalStorage" ) ) {
+			setInternalStorage( arguments.settings.internalStorage );
+		}
+		if ( arguments.settings.keyExists( "storeType" ) ) {
+			setStoreType( arguments.settings.storeType );
+		}
+		if ( arguments.settings.keyExists( "storeConfig" ) ) {
+			setStoreConfig( arguments.settings.storeConfig );
+		}
+		if ( arguments.settings.keyExists( "pricing" ) ) {
+			setPricingConfig( arguments.settings.pricing );
+		}
+		if ( arguments.settings.keyExists( "contextMetadata" ) ) {
+			setDefaultContextMetadata( arguments.settings.contextMetadata );
+		}
+		return this;
+	}
+
+	/**
+	 * Get computed audit status reflecting all configuration sources.
+	 * Used by the aiAuditStatus() BIF to report live runtime state.
+	 *
+	 * Returns the *configured* store type (what would be used on init),
+	 * not the live store type — so callers see "memory"/"jdbc"/"file"
+	 * even before the store is lazily initialized.
+	 *
+	 * @return Struct with audit status information
+	 */
+	struct function getAuditStatus() {
+		// Compute configured store type: runtime setter > auditSettings (includes env var overrides from configure)
+		var configuredStore = len( variables.runtimeStoreType )
+			? variables.runtimeStoreType
+			: ( variables.auditSettings.store ?: "memory" );
+
+		return {
+			"enabled"         : shouldAudit(),
+			"internalStorage" : isInternalStorageEnabled(),
+			"store"           : configuredStore,
+			"storeConfig"     : duplicate( variables.auditSettings.storeConfig ?: {} ).append( duplicate( variables.runtimeStoreConfig ), true ),
+			"degradedMode"    : isInDegradedMode(),
+			"degradedDetails" : getDegradedModeDetails()
+		};
+	}
+
+	/**
+	 * Set audit context for current thread (for explicit context passing)
+	 *
+	 * @context The audit context to set
+	 */
+	void function setContext( required any context ) {
+		variables.contextHolder.set( arguments.context );
+	}
+
+	/**
+	 * Clear context for current thread
+	 */
+	void function clearContext() {
+		var ctx = variables.contextHolder.get();
+		if ( !isNull( ctx ) ) {
+			ctx.complete();
+		}
+		variables.contextHolder.remove();
+	}
+
+	/**
+	 * Set application-level metadata on the current thread's audit context.
+	 * This metadata flows to ALL spans in the current trace via contextMetadata.
+	 *
+	 * There are two ways to attach application metadata to audit entries:
+	 *
+	 * 1. Pass options.audit in the BIF call (preferred for per-call context):
+	 *    aiChat( messages, params, { audit: { feature: "analyze", entityId: 123 } } )
+	 *    The AuditInterceptor picks this up automatically from the request object.
+	 *
+	 * 2. Call this method directly (for framework-level auto-context):
+	 *    auditInterceptor.setApplicationMetadata( "app", { handler: "system", feature: "llmsearch" } )
+	 *
+	 * Both approaches merge into the same "app" namespace. When used together,
+	 * options.audit merges ON TOP of whatever was set via setApplicationMetadata().
+	 *
+	 * If no audit context exists yet on the current thread, one is created automatically.
+	 *
+	 * @key The namespace key for the metadata (e.g., "app")
+	 * @metadata Struct of application metadata to attach to the audit trail
+	 */
+	void function setApplicationMetadata( required string key, required struct metadata ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			var ctx = getContext();
+
+			// Merge into existing namespace struct (if any) so repeated calls and per-call
+			// auditMetadata can coexist without overwriting.
+			var currentMeta = ctx.getContextMetadata();
+			var existingNs = {};
+			if ( currentMeta.keyExists( arguments.key ) && isStruct( currentMeta[ arguments.key ] ) ) {
+				existingNs = currentMeta[ arguments.key ];
+			}
+			var mergedNs = duplicate( existingNs ).append( arguments.metadata, true );
+			ctx.setContextMetadata( { "#arguments.key#" : mergedNs } );
+		} catch ( any e ) {
+			logAuditError( "setApplicationMetadata", e );
+		}
+	}
+
+	/**
+	 * Get the shared audit store instance.
+	 * Returns null if internal storage is disabled or not yet initialized.
+	 *
+	 * This allows consuming applications to query audit data directly from bx-ai's
+	 * internal store without maintaining a separate store instance.
+	 *
+	 * @return IAuditStore instance or null
+	 */
+	any function getStore() {
+		// Lazy initialize if store not yet created (datasource may now be available)
+		if ( isNull( variables.sharedStore ) && variables.enabled && isInternalStorageEnabled() ) {
+			initializeStore();
+		}
+		if ( !isNull( variables.sharedStore ) ) {
+			return variables.sharedStore;
+		}
+		return javacast( "null", "" );
+	}
+
+	/**
+	 * Get the current store type name.
+	 *
+	 * @return String store type: "memory", "file", "jdbc", or "none"
+	 */
+	string function getStoreType() {
+		if ( isNull( variables.sharedStore ) ) {
+			return "none";
+		}
+		var storeName = getMetadata( variables.sharedStore ).name ?: "";
+		if ( findNoCase( "Jdbc", storeName ) ) return "jdbc";
+		if ( findNoCase( "File", storeName ) ) return "file";
+		if ( findNoCase( "Memory", storeName ) ) return "memory";
+		return "unknown";
+	}
+
+	/**
+	 * Reset the audit store so it will be re-initialized on next use.
+	 * Clears the current store reference and resets failure/retry counters.
+	 *
+	 * Use this when the runtime environment has changed since the store was
+	 * first initialized (e.g., application restart within a warm-started
+	 * container where a datasource is now available that wasn't before).
+	 *
+	 * Safe to call at any time. The next getStore() or getContext() call
+	 * will trigger lazy re-initialization with current settings.
+	 *
+	 * @return this for chaining
+	 */
+	AuditInterceptor function resetStore() {
+		lock name="bxai_audit_store_init" type="exclusive" timeout="30" throwontimeout="true" {
+			// Close the existing store to flush buffered entries and release resources
+			if ( !isNull( variables.sharedStore ) ) {
+				try {
+					variables.sharedStore.close();
+				} catch ( any e ) {
+					writeLog(
+						text : "Audit store close error during reset: #e.message#",
+						type : "warning",
+						log  : "ai"
+					);
+				}
+			}
+			variables.sharedStore = javacast( "null", "" );
+			variables.storeInitializationFailed = false;
+			variables.storeInitializationError = "";
+			variables.storeInitRetryCount = 0;
+			variables.configuredStoreType = "";
+		}
+		writeLog(
+			text : "Audit store reset. Will re-initialize on next use.",
+			type : "info",
+			log  : "ai"
+		);
+		return this;
+	}
+
+	/**
+	 * Check if auditing should be performed.
+	 *
+	 * Priority order:
+	 * 1. Environment variable (BOXLANG_MODULES_BXAI_AUDIT_ENABLED) - highest priority (container config)
+	 * 2. Runtime setter (setEnabled()) - application pushes config at startup
+	 * 3. Module settings (configured at initialization) - default behavior
+	 *
+	 * This allows dynamic runtime toggling without restarting the application.
+	 */
+	private boolean function shouldAudit() {
+		// Check environment variable first (highest priority for container config)
+		var envEnabled = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_ENABLED" ] ?: "";
+		if ( envEnabled == "false" || envEnabled == "0" ) {
+			return false;
+		}
+		if ( envEnabled == "true" || envEnabled == "1" ) {
+			return true;
+		}
+
+		// Check runtime setter (set via setEnabled())
+		if ( !isNull( variables.runtimeEnabled ) ) {
+			return variables.runtimeEnabled;
+		}
+
+		// Fall back to configured value from module settings
+		return variables.enabled;
+	}
+
+	/**
+	 * Check if store fallback is allowed.
+	 * Consolidates environment variable and config checking logic.
+	 *
+	 * Priority order:
+	 * 1. Environment variable (BOXLANG_MODULES_BXAI_AUDIT_ALLOW_STORE_FALLBACK) - highest priority
+	 * 2. Module settings (audit.allowStoreFallback) - default: false
+	 *
+	 * @return Boolean whether fallback to memory store is allowed on initialization failure
+	 */
+	private boolean function isStoreFallbackAllowed() {
+		// Check environment variable first (highest priority for container config)
+		var envAllowFallback = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_ALLOW_STORE_FALLBACK" ] ?: "";
+		if ( envAllowFallback == "false" || envAllowFallback == "0" ) {
+			return false;
+		}
+		if ( envAllowFallback == "true" || envAllowFallback == "1" ) {
+			return true;
+		}
+
+		// Fall back to module settings (default: false for production safety)
+		return variables.auditSettings.allowStoreFallback ?: false;
+	}
+
+	/**
+	 * Check if the audit store is in degraded mode (failed to initialize, using fallback).
+	 *
+	 * @return Boolean true if store initialization failed and fallback is being used
+	 */
+	boolean function isInDegradedMode() {
+		return variables.storeInitializationFailed ?: false;
+	}
+
+	/**
+	 * Get degraded mode details if the store is in degraded mode.
+	 *
+	 * @return Struct with degraded mode details or empty struct if not in degraded mode
+	 */
+	struct function getDegradedModeDetails() {
+		if ( !isInDegradedMode() ) {
+			return {};
+		}
+		return {
+			configuredStoreType : variables.configuredStoreType ?: "",
+			error               : variables.storeInitializationError ?: "",
+			fallbackStore       : "memory"
+		};
+	}
+
+	/**
+	 * Apply environment variable overrides to cached audit settings.
+	 * Environment variables take precedence over module defaults, allowing
+	 * container-level configuration without modifying module settings.
+	 *
+	 * Supported env vars:
+	 * - BOXLANG_MODULES_BXAI_AUDIT_ENABLED: "true"/"false" → auditSettings.enabled
+	 * - BOXLANG_MODULES_BXAI_AUDIT_STORE: "memory"/"file"/"jdbc" → auditSettings.store
+	 * - BOXLANG_MODULES_BXAI_AUDIT_INTERNAL_STORAGE: "true"/"false" → auditSettings.internalStorage
+	 *
+	 * Store-specific env vars (mapped into storeConfig):
+	 * - BOXLANG_MODULES_BXAI_AUDIT_STORE_PATH: absolute path for file store output directory
+	 * - BOXLANG_MODULES_BXAI_AUDIT_STORE_DATASOURCE: JDBC datasource name for jdbc store
+	 * - BOXLANG_MODULES_BXAI_AUDIT_STORE_TABLE: table name for jdbc store (default: bx_ai_audit)
+	 */
+	private void function applyEnvVarOverrides() {
+		var envStore = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_STORE" ] ?: "";
+		if ( len( envStore ) ) {
+			variables.auditSettings.store = envStore;
+		}
+
+		var envEnabled = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_ENABLED" ] ?: "";
+		if ( envEnabled == "true" || envEnabled == "1" ) {
+			variables.auditSettings.enabled = true;
+		} else if ( envEnabled == "false" || envEnabled == "0" ) {
+			variables.auditSettings.enabled = false;
+		}
+
+		var envInternalStorage = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_INTERNAL_STORAGE" ] ?: "";
+		if ( envInternalStorage == "true" || envInternalStorage == "1" ) {
+			variables.auditSettings.internalStorage = true;
+		} else if ( envInternalStorage == "false" || envInternalStorage == "0" ) {
+			variables.auditSettings.internalStorage = false;
+		}
+
+		// Store-specific configuration overrides via env vars
+		// These map into storeConfig which is passed to the store's configure() method
+		applyStoreConfigEnvVarOverrides();
+	}
+
+	/**
+	 * Apply store-specific env var overrides into storeConfig.
+	 * Each store type reads different keys from storeConfig:
+	 * - FileAuditStore: path, format, maxFileSize, rotateDaily, batchSize
+	 * - JdbcAuditStore: datasource, table
+	 * - MemoryAuditStore: maxEntries, evictionPercent
+	 */
+	private void function applyStoreConfigEnvVarOverrides() {
+		// Ensure storeConfig exists
+		if ( !structKeyExists( variables.auditSettings, "storeConfig" ) || !isStruct( variables.auditSettings.storeConfig ) ) {
+			variables.auditSettings.storeConfig = {};
+		}
+
+		// File store: path
+		var envStorePath = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_STORE_PATH" ] ?: "";
+		if ( len( envStorePath ) ) {
+			variables.auditSettings.storeConfig.path = envStorePath;
+		}
+
+		// JDBC store: datasource
+		var envDatasource = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_STORE_DATASOURCE" ] ?: "";
+		if ( len( envDatasource ) ) {
+			variables.auditSettings.storeConfig.datasource = envDatasource;
+		}
+
+		// JDBC store: table
+		var envTable = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_STORE_TABLE" ] ?: "";
+		if ( len( envTable ) ) {
+			variables.auditSettings.storeConfig.table = envTable;
+		}
+	}
+
+	/**
+	 * Check if internal storage is enabled.
+	 * When false, bx-ai will NOT store entries but WILL broadcast events.
+	 * This allows applications to handle storage themselves via onAuditEntry listener.
+	 *
+	 * Priority order:
+	 * 1. Environment variable (BOXLANG_MODULES_BXAI_AUDIT_INTERNAL_STORAGE) - highest priority
+	 * 2. Runtime setter (setInternalStorage()) - application pushes config at startup
+	 * 3. Module settings (configured at initialization) - default: true
+	 */
+	private boolean function isInternalStorageEnabled() {
+		// Check environment variable first (highest priority for container config)
+		var envInternalStorage = server.system.environment[ "BOXLANG_MODULES_BXAI_AUDIT_INTERNAL_STORAGE" ] ?: "";
+		if ( envInternalStorage == "false" || envInternalStorage == "0" ) {
+			return false;
+		}
+		if ( envInternalStorage == "true" || envInternalStorage == "1" ) {
+			return true;
+		}
+
+		// Check runtime setter (set via setInternalStorage())
+		if ( !isNull( variables.runtimeInternalStorage ) ) {
+			return variables.runtimeInternalStorage;
+		}
+
+		// Fall back to configured value (default true)
+		return variables.auditSettings.internalStorage ?: true;
+	}
+
+	/**
+	 * Map well-known keys from a metadata struct to AuditContext's top-level setters.
+	 * AuditContext has dedicated tenantId, userId, conversationId fields that flow to
+	 * AuditEntry top-level fields (used by store filters and JDBC columns).
+	 * The defaultContextMetadata API is generic — this internal helper bridges the gap
+	 * so applications don't need to call both setDefaultContextMetadata() AND individual setters.
+	 *
+	 * @ctx The AuditContext to apply fields to
+	 * @metadata The metadata struct to extract known keys from
+	 */
+	private void function applyKnownContextFields( required any ctx, required struct metadata ) {
+		if ( arguments.metadata.keyExists( "tenantId" ) && len( arguments.metadata.tenantId ) ) {
+			arguments.ctx.setTenantId( arguments.metadata.tenantId );
+		}
+		if ( arguments.metadata.keyExists( "userId" ) && len( arguments.metadata.userId ) ) {
+			arguments.ctx.setUserId( arguments.metadata.userId );
+		}
+		if ( arguments.metadata.keyExists( "conversationId" ) && len( arguments.metadata.conversationId ) ) {
+			arguments.ctx.setConversationId( arguments.metadata.conversationId );
+		}
+	}
+
+	/**
+	 * Apply audit metadata from event data to the current audit context.
+	 * Sets it as application metadata under the "app" namespace.
+	 *
+	 * This allows callers to pass audit context directly in their AI BIF calls:
+	 *   aiChat( messages, params, { audit: { feature: "analyze", entityId: 123 } } )
+	 *
+	 * The audit metadata flows through the standard bx-ai event pipeline:
+	 *   options.audit → request.auditMetadata → provider/BIF event data → interceptor
+	 *
+	 * Providers and BIFs extract auditMetadata from the request and include it
+	 * in the event data struct, just like tenantId and usageMetadata.
+	 *
+	 * The metadata merges with any existing context metadata (e.g., from a framework
+	 * auto-audit layer), so both approaches can coexist.
+	 *
+	 * @ctx The current AuditContext
+	 * @auditMetadata The audit metadata struct from event data
+	 */
+	private void function applyAuditMetadata( required any ctx, required struct auditMetadata ) {
+		if ( arguments.auditMetadata.isEmpty() ) {
+			return;
+		}
+
+		// Merge per-call audit metadata into the existing "app" namespace without
+		// clobbering framework-level metadata that may already be present.
+		var currentMeta = arguments.ctx.getContextMetadata();
+		var existingApp = {};
+		if ( currentMeta.keyExists( "app" ) && isStruct( currentMeta.app ) ) {
+			existingApp = currentMeta.app;
+		}
+		var mergedApp = duplicate( existingApp ).append( arguments.auditMetadata, true );
+		arguments.ctx.setContextMetadata( { "app" : mergedApp } );
+	}
+
+	/**
+	 * Increment span depth and return new depth
+	 */
+	private numeric function incrementSpanDepth() {
+		var depth = variables.spanDepthHolder.get() ?: 0;
+		depth++;
+		variables.spanDepthHolder.set( depth );
+		return depth;
+	}
+
+	/**
+	 * Decrement span depth and clear context if returning to 0
+	 */
+	private numeric function decrementSpanDepth() {
+		var depth = variables.spanDepthHolder.get() ?: 1;
+		depth--;
+		if ( depth <= 0 ) {
+			// Clear context when returning to root level
+			clearContext();
+			variables.spanDepthHolder.remove();
+			return 0;
+		}
+		variables.spanDepthHolder.set( depth );
+		return depth;
+	}
+
+	/**
+	 * Log audit-related errors without affecting main application flow.
+	 * Errors are logged to the unified "ai" log for debugging while keeping the main flow running.
+	 *
+	 * @eventName The event handler name where the error occurred
+	 * @error The exception object
+	 */
+	private void function logAuditError( required string eventName, required any error ) {
+		var errorMsg = arguments.error.message ?: "Unknown error";
+		var errorDetail = arguments.error.detail ?: "";
+		var errorLocation = "";
+
+		if ( structKeyExists( arguments.error, "tagContext" ) && isArray( arguments.error.tagContext ) && arguments.error.tagContext.len() ) {
+			errorLocation = " at " & ( arguments.error.tagContext[ 1 ].template ?: "" ) & ":" & ( arguments.error.tagContext[ 1 ].line ?: "" );
+		}
+
+		writeLog(
+			text : "Audit error in #arguments.eventName#: #errorMsg##errorLocation# #errorDetail#",
+			type : "error",
+			log  : "ai"
+		);
+	}
+
+	// ============ Agent Events ============
+
+	function beforeAIAgentRun( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			incrementSpanDepth();
+			var ctx = getContext();
+
+			// Apply audit metadata from event data (set by AiAgent from options.audit)
+			if ( !isNull( data.auditMetadata ) && isStruct( data.auditMetadata ) ) {
+				applyAuditMetadata( ctx, data.auditMetadata );
+			}
+
+			var captureMessages = variables.auditSettings.captureMessages ?: true;
+
+			// Null-safe agent name extraction
+			var agentName = "unknown";
+			if ( !isNull( data.agent ) && structKeyExists( data.agent, "getAgentName" ) ) {
+				agentName = data.agent.getAgentName() ?: "unknown";
+			}
+
+			ctx.startSpan(
+				spanType  : "agent",
+				operation : "run",
+				input     : {
+					agentName : agentName,
+					input     : captureMessages ? ( data.input ?: "" ) : "[messages not captured]"
+				},
+				metadata  : {}
+			);
+		} catch ( any e ) {
+			logAuditError( "beforeAIAgentRun", e );
+			decrementSpanDepth();
+		}
+	}
+
+	function afterAIAgentRun( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			var ctx = getContext();
+			ctx.endSpan( output : data.response ?: "" );
+		} catch ( any e ) {
+			// Log audit error but don't propagate - the AI operation succeeded
+			logAuditError( "afterAIAgentRun", e );
+		} finally {
+			decrementSpanDepth();
+		}
+	}
+
+	// ============ Model Events ============
+
+	function beforeAIModelInvoke( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			incrementSpanDepth();
+			var ctx = getContext();
+			var captureMessages = variables.auditSettings.captureMessages ?: true;
+
+			// Null-safe model name extraction
+			var modelName = "unknown";
+			if ( !isNull( data.model ) && structKeyExists( data.model, "getName" ) ) {
+				modelName = data.model.getName() ?: "unknown";
+			}
+
+			var messages = [];
+			if ( captureMessages && !isNull( data.chatRequest ) && structKeyExists( data.chatRequest, "getMessages" ) ) {
+				messages = data.chatRequest.getMessages() ?: [];
+			}
+
+			ctx.startSpan(
+				spanType  : "model",
+				operation : "invoke",
+				input     : captureMessages ? {
+					model    : modelName,
+					messages : messages
+				} : { model : modelName },
+				metadata  : {}
+			);
+		} catch ( any e ) {
+			logAuditError( "beforeAIModelInvoke", e );
+			decrementSpanDepth();
+		}
+	}
+
+	function afterAIModelInvoke( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			var ctx = getContext();
+			ctx.endSpan( output : data.results ?: "" );
+		} catch ( any e ) {
+			// Log audit error but don't propagate - the AI operation succeeded
+			logAuditError( "afterAIModelInvoke", e );
+		} finally {
+			decrementSpanDepth();
+		}
+	}
+
+	// ============ Chat Events ============
+
+	function onAIChatRequest( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			incrementSpanDepth();
+			var ctx = getContext();
+
+			// Apply audit metadata from event data (set by provider from request.auditMetadata)
+			if ( !isNull( data.auditMetadata ) && isStruct( data.auditMetadata ) ) {
+				applyAuditMetadata( ctx, data.auditMetadata );
+			}
+
+			// Null-safe provider/model extraction
+			var providerName = "unknown";
+			if ( !isNull( data.provider ) && structKeyExists( data.provider, "getName" ) ) {
+				providerName = data.provider.getName() ?: "unknown";
+			}
+
+			var modelName = "unknown";
+			var timeout = 30;
+			if ( !isNull( data.chatRequest ) ) {
+				if ( structKeyExists( data.chatRequest, "getModel" ) ) {
+					modelName = data.chatRequest.getModel() ?: "unknown";
+				}
+				if ( structKeyExists( data.chatRequest, "getTimeout" ) ) {
+					timeout = data.chatRequest.getTimeout() ?: 30;
+				}
+			}
+
+			ctx.startSpan(
+				spanType  : "provider",
+				operation : "chatRequest",
+				input     : {
+					provider : providerName,
+					model    : modelName
+				},
+				metadata  : {
+					timeout : timeout
+				}
+			);
+		} catch ( any e ) {
+			logAuditError( "onAIChatRequest", e );
+			decrementSpanDepth();
+		}
+	}
+
+	function onAIChatResponse( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			var ctx    = getContext();
+			var output = data.response ?: {};
+			var tokens = {};
+			var cost   = {};
+
+			// Extract token usage from provider response if available
+			if ( isStruct( output ) && output.keyExists( "usage" ) && isStruct( output.usage ) ) {
+				var promptTokens     = output.usage.prompt_tokens ?: 0;
+				var completionTokens = output.usage.completion_tokens ?: 0;
+
+				tokens = {
+					prompt     : promptTokens,
+					completion : completionTokens,
+					total      : output.usage.total_tokens ?: 0
+				};
+
+				// Calculate cost if pricing is configured
+				if ( promptTokens > 0 || completionTokens > 0 ) {
+					var modelName = "";
+					if ( !isNull( data.chatRequest ) && structKeyExists( data.chatRequest, "getModel" ) ) {
+						modelName = data.chatRequest.getModel() ?: "";
+					}
+					cost = calculateCost( modelName, promptTokens, completionTokens );
+				}
+			}
+
+			ctx.endSpan( output : output, tokens : tokens, cost : cost );
+		} catch ( any e ) {
+			// Log audit error but don't propagate - the AI operation succeeded
+			logAuditError( "onAIChatResponse", e );
+		} finally {
+			decrementSpanDepth();
+		}
+	}
+
+	/**
+	 * Calculate cost based on configured pricing
+	 * Only calculates if pricing is configured in module settings
+	 * Checks runtime application scope first, then falls back to cached module settings
+	 *
+	 * @modelName The model name
+	 * @promptTokens Number of prompt/input tokens
+	 * @completionTokens Number of completion/output tokens
+	 *
+	 * @return Struct with cost data, or empty struct if no pricing configured
+	 */
+	private struct function calculateCost(
+		required string modelName,
+		required numeric promptTokens,
+		required numeric completionTokens
+	) {
+		// Get pricing config - check runtime setter first (set via setPricingConfig())
+		var pricing = {};
+
+		if ( !isNull( variables.runtimePricingConfig ) && !variables.runtimePricingConfig.isEmpty() ) {
+			pricing = variables.runtimePricingConfig;
+		}
+		// Fall back to cached pricing settings (from module configuration)
+		else if ( structKeyExists( variables, "pricingSettings" ) && !variables.pricingSettings.isEmpty() ) {
+			pricing = variables.pricingSettings;
+		}
+
+		// If no pricing configured, return empty struct
+		if ( pricing.isEmpty() ) {
+			return {};
+		}
+
+		// Look up model-specific pricing, fall back to default
+		var modelPricing = {};
+		var model        = arguments.modelName.lCase();
+
+		// Check for exact model match first
+		if ( pricing.keyExists( model ) ) {
+			modelPricing = pricing[ model ];
+		}
+		// Check for pattern matches (e.g., "gpt-4" matches "gpt-4o-mini")
+		else {
+			for ( var pattern in pricing ) {
+				if ( pattern != "default" && model.findNoCase( pattern ) ) {
+					modelPricing = pricing[ pattern ];
+					break;
+				}
+			}
+		}
+
+		// Fall back to default pricing if configured
+		if ( modelPricing.isEmpty() && pricing.keyExists( "default" ) ) {
+			modelPricing = pricing[ "default" ];
+		}
+
+		// If still no pricing found, return empty struct
+		if ( modelPricing.isEmpty() ) {
+			return {};
+		}
+
+		var inputPricePer1K  = modelPricing.inputPer1K ?: 0;
+		var outputPricePer1K = modelPricing.outputPer1K ?: 0;
+		var currency         = modelPricing.currency ?: pricing.currency ?: "USD";
+
+		var inputCost  = ( arguments.promptTokens / 1000 ) * inputPricePer1K;
+		var outputCost = ( arguments.completionTokens / 1000 ) * outputPricePer1K;
+
+		return {
+			amount     : inputCost + outputCost,
+			currency   : currency,
+			inputCost  : inputCost,
+			outputCost : outputCost,
+			model      : arguments.modelName
+		};
+	}
+
+	function onAITokenCount( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			var ctx = getContext();
+
+			ctx.addEntry(
+				spanType  : "metrics",
+				operation : "tokenCount",
+				data      : {
+					promptCount     : data.promptTokens ?: 0,
+					completionCount : data.completionTokens ?: 0,
+					totalCount      : data.totalTokens ?: 0,
+					model           : data.model ?: "unknown"
+				},
+				metadata  : {
+					timestamp : data.timestamp ?: now()
+				}
+			);
+		} catch ( any e ) {
+			logAuditError( "onAITokenCount", e );
+		}
+	}
+
+	function onAIError( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			var ctx = getContext();
+			var errorMsg = data.errorMessage ?: data.error ?: "Error";
+
+			// End the active span with error status (if one was started by before* handler)
+			ctx.endSpan( error : errorMsg );
+
+			// Null-safe provider name extraction
+			var providerName = "unknown";
+			if ( !isNull( data.provider ) && structKeyExists( data.provider, "getName" ) ) {
+				providerName = data.provider.getName() ?: "unknown";
+			}
+
+			// Also add a standalone error entry for queryability
+			ctx.addEntry(
+				spanType  : "error",
+				operation : data.operation ?: "unknown",
+				data      : {
+					error        : data.error ?: "",
+					errorMessage : data.errorMessage ?: "",
+					canRetry     : data.canRetry ?: false
+				},
+				metadata  : {
+					provider : providerName
+				},
+				error     : errorMsg
+			);
+		} catch ( any e ) {
+			// Log audit error but don't propagate - the error event itself should still be visible
+			logAuditError( "onAIError", e );
+		} finally {
+			// Clean up span depth since the normal after* handler won't be called
+			decrementSpanDepth();
+		}
+	}
+
+	function onAIRateLimitHit( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			var ctx = getContext();
+
+			// Null-safe provider name extraction
+			var providerName = "unknown";
+			if ( !isNull( data.provider ) && structKeyExists( data.provider, "getName" ) ) {
+				providerName = data.provider.getName() ?: "unknown";
+			}
+
+			ctx.addEntry(
+				spanType  : "rateLimit",
+				operation : data.operation ?: "unknown",
+				data      : {
+					statusCode : data.statusCode ?: 429,
+					retryAfter : data.retryAfter ?: ""
+				},
+				metadata  : {
+					provider : providerName
+				}
+			);
+		} catch ( any e ) {
+			logAuditError( "onAIRateLimitHit", e );
+		}
+	}
+
+	// ============ Tool Events ============
+
+	function beforeAIToolExecute( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			incrementSpanDepth();
+			var ctx = getContext();
+			var captureToolArgs = variables.auditSettings.captureToolArgs ?: true;
+
+			ctx.startSpan(
+				spanType  : "tool",
+				operation : "execute",
+				input     : captureToolArgs ? {
+					toolName  : data.name ?: "unknown",
+					arguments : data.arguments ?: {}
+				} : { toolName : data.name ?: "unknown" },
+				metadata  : {}
+			);
+		} catch ( any e ) {
+			logAuditError( "beforeAIToolExecute", e );
+			decrementSpanDepth();
+		}
+	}
+
+	function afterAIToolExecute( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			var ctx = getContext();
+			ctx.endSpan( output : data.results ?: "" );
+		} catch ( any e ) {
+			// Log audit error but don't propagate - the AI operation succeeded
+			logAuditError( "afterAIToolExecute", e );
+		} finally {
+			decrementSpanDepth();
+		}
+	}
+
+	// ============ Embedding Events ============
+
+	function beforeAIEmbed( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			incrementSpanDepth();
+			var ctx = getContext();
+
+			// Apply audit metadata from event data (set by aiEmbed BIF from request.auditMetadata)
+			if ( !isNull( data.auditMetadata ) && isStruct( data.auditMetadata ) ) {
+				applyAuditMetadata( ctx, data.auditMetadata );
+			}
+
+			ctx.startSpan(
+				spanType  : "embed",
+				operation : "embed",
+				input     : {
+					inputCount : isArray( data.input ?: "" ) ? data.input.len() : 1
+				},
+				metadata  : {}
+			);
+		} catch ( any e ) {
+			logAuditError( "beforeAIEmbed", e );
+			decrementSpanDepth();
+		}
+	}
+
+	function afterAIEmbed( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			var ctx = getContext();
+
+			// Extract embeddings from result - could be in result.data or result itself
+			var embeddings = [];
+			if ( !isNull( data.result ) ) {
+				if ( isArray( data.result ) ) {
+					embeddings = data.result;
+				} else if ( isStruct( data.result ) && isArray( data.result.data ?: "" ) ) {
+					embeddings = data.result.data;
+				}
+			}
+
+			ctx.endSpan(
+				output : {
+					embeddingCount : embeddings.len()
+				}
+			);
+		} catch ( any e ) {
+			// Log audit error but don't propagate - the AI operation succeeded
+			logAuditError( "afterAIEmbed", e );
+		} finally {
+			decrementSpanDepth();
+		}
+	}
+
+	// ============ Pipeline Events ============
+
+	function beforeAIPipelineRun( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			incrementSpanDepth();
+			var ctx = getContext();
+
+			ctx.startSpan(
+				spanType  : "pipeline",
+				operation : "run",
+				input     : {
+					pipelineName : data.name ?: "unknown",
+					stepCount    : data.stepCount ?: 0
+				},
+				metadata  : {}
+			);
+		} catch ( any e ) {
+			logAuditError( "beforeAIPipelineRun", e );
+			decrementSpanDepth();
+		}
+	}
+
+	function afterAIPipelineRun( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			var ctx = getContext();
+			ctx.endSpan( output : data.result ?: "" );
+		} catch ( any e ) {
+			// Log audit error but don't propagate - the AI operation succeeded
+			logAuditError( "afterAIPipelineRun", e );
+		} finally {
+			decrementSpanDepth();
+		}
+	}
+
+	// ============ MCP Events ============
+
+	function onMCPRequest( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			incrementSpanDepth();
+			var ctx = getContext();
+
+			// Null-safe requestData extraction
+			var method = "";
+			if ( !isNull( data.requestData ) && structKeyExists( data.requestData, "method" ) ) {
+				method = data.requestData.method ?: "";
+			}
+
+			ctx.startSpan(
+				spanType  : "mcp",
+				operation : "request",
+				input     : {
+					method     : method,
+					serverName : data.serverName ?: ""
+				},
+				metadata  : {}
+			);
+		} catch ( any e ) {
+			logAuditError( "onMCPRequest", e );
+			decrementSpanDepth();
+		}
+	}
+
+	function onMCPResponse( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			var ctx = getContext();
+			ctx.endSpan( output : data.response ?: "" );
+		} catch ( any e ) {
+			// Log audit error but don't propagate - the MCP operation succeeded
+			logAuditError( "onMCPResponse", e );
+		} finally {
+			decrementSpanDepth();
+		}
+	}
+
+	function onMCPError( data ) {
+		if ( !shouldAudit() ) return;
+
+		try {
+			var ctx = getContext();
+			ctx.endSpan( error : data.error ?: "MCP Error" );
+		} catch ( any e ) {
+			// Log audit error but don't propagate
+			logAuditError( "onMCPError", e );
+		} finally {
+			decrementSpanDepth();
+		}
+	}
+
+	// ============ Request Lifecycle Events ============
+
+	/**
+	 * Clean up ThreadLocal storage at the end of each request.
+	 * This prevents memory leaks when using thread pools (web servers).
+	 * The interceptor listens to onRequestEnd to automatically clean up.
+	 */
+	function onRequestEnd( data ) {
+		cleanupThread();
+	}
+
+	/**
+	 * Also clean up on application end to be thorough
+	 */
+	function onApplicationEnd( data ) {
+		cleanupThread();
+	}
+
+}

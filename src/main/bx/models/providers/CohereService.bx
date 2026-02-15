@@ -484,9 +484,10 @@ class extends="BaseService"{
 		BoxAnnounce(
 			"onAIChatRequest",
 			{
-				"dataPacket" : dataPacket,
-				"chatRequest": arguments.chatRequest,
-				"provider"   : this
+				"dataPacket"    : dataPacket,
+				"chatRequest"   : arguments.chatRequest,
+				"provider"      : this,
+				"auditMetadata" : arguments.chatRequest.getAuditMetadata()
 			}
 		);
 

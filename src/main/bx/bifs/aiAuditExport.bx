@@ -1,0 +1,78 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Export an audit trace as JSON.
+ *
+ * @param traceId The trace ID to export
+ * @param store The audit store to query
+ * @param destination Optional file path to write export
+ *
+ * @return Exported trace data as JSON string
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Export an audit trace as JSON
+	 *
+	 * @traceId The trace ID to export
+	 * @store The store type ("memory", "file", "jdbc") or IAuditStore instance
+	 * @destination Optional file path to write the export
+	 *
+	 * @return JSON string of the exported trace
+	 */
+	function invoke(
+		required string traceId,
+		any store,
+		string destination = ""
+	) {
+		var auditConfig = moduleRecord.settings.audit ?: {};
+		var storeConfig = auditConfig.storeConfig ?: {};
+		var defaultType = auditConfig.store ?: "memory";
+
+		var auditStore = bxModules.bxai.models.audit.AuditStoreFactory::resolve( arguments.store, defaultType, storeConfig );
+		var trace = auditStore.getTrace( arguments.traceId );
+
+		if ( trace.entries.isEmpty() ) {
+			throw(
+				type    : "TraceNotFound",
+				message : "No audit trace found with ID: #arguments.traceId#"
+			);
+		}
+
+		var exported = jsonSerialize( trace );
+
+		// Write to file if destination provided
+		if ( len( arguments.destination ) ) {
+			if ( findNoCase( "..", arguments.destination ) > 0 ) {
+				throw(
+					type    : "InvalidDestination",
+					message : "Destination path '#arguments.destination#' contains invalid path traversal characters."
+				);
+			}
+			var resolvedDest = createObject( "java", "java.io.File" ).init( arguments.destination ).getCanonicalPath();
+			if ( findNoCase( "..", resolvedDest ) > 0 ) {
+				throw(
+					type    : "InvalidDestination",
+					message : "Destination path '#arguments.destination#' resolves to a path containing traversal sequences."
+				);
+			}
+			fileWrite( resolvedDest, exported );
+		}
+
+		return exported;
+	}
+
+}

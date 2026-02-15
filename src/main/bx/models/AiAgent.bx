@@ -199,7 +199,8 @@ class extends="AiBaseRunnable" {
 			input: arguments.input,
 			messages: messages,
 			params: effectiveParams,
-			options: effectiveOptions
+			options: effectiveOptions,
+			auditMetadata: effectiveOptions.audit ?: {}
 		} );
 
 		// Execute via model - service handles returnFormat and returns formatted result

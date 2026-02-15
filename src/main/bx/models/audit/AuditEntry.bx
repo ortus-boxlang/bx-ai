@@ -1,0 +1,606 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Represents a single audit entry/span in a trace.
+ * This is the core data model for capturing AI operation details.
+ */
+class {
+
+	/**
+	 * Unique identifier for this span
+	 */
+	property name="spanId" type="string" default="";
+
+	/**
+	 * The trace ID that groups related spans together
+	 */
+	property name="traceId" type="string" default="";
+
+	/**
+	 * The parent span ID for hierarchical tracing
+	 */
+	property name="parentSpanId" type="string" default="";
+
+	/**
+	 * The type of span. Standard types are:
+	 * - agent: Agent orchestration operations
+	 * - model: Model inference calls
+	 * - tool: Tool/function calls
+	 * - provider: Provider-level operations (chat, completion)
+	 * - mcp: Model Context Protocol operations
+	 * - embed: Embedding operations
+	 * - pipeline: Pipeline/workflow operations
+	 * - metrics: Metrics collection spans
+	 * - error: Error tracking spans
+	 * - rateLimit: Rate limiting events
+	 * - custom: Placeholder for user-defined types
+	 *
+	 * Note: Any non-standard spanType value is allowed but will log a debug
+	 * warning. This allows custom span types while helping catch typos.
+	 */
+	property name="spanType" type="string" default="";
+
+	/**
+	 * The operation name (e.g., "run", "chat", "embed", "execute")
+	 */
+	property name="operation" type="string" default="";
+
+	/**
+	 * When this span started
+	 */
+	property name="startTime" type="any";
+
+	/**
+	 * When this span ended
+	 */
+	property name="endTime" type="any";
+
+	/**
+	 * Duration in milliseconds
+	 */
+	property name="durationMs" type="numeric" default=0;
+
+	/**
+	 * Status: "ok" or "error"
+	 */
+	property name="status" type="string" default="ok";
+
+	/**
+	 * Input data for this operation
+	 */
+	property name="input" type="any";
+
+	/**
+	 * Output/result data for this operation
+	 */
+	property name="output" type="any";
+
+	/**
+	 * Error information if the span failed
+	 */
+	property name="error" type="any";
+
+	/**
+	 * Reasoning information for agent decisions
+	 */
+	property name="reasoning" type="string" default="";
+
+	/**
+	 * Token usage: { prompt, completion, total }
+	 */
+	property name="tokens" type="struct";
+
+	/**
+	 * Cost information: { amount, currency }
+	 */
+	property name="cost" type="struct";
+
+	/**
+	 * Additional metadata
+	 */
+	property name="metadata" type="struct";
+
+	/**
+	 * User identifier for multi-tenant tracking
+	 */
+	property name="userId" type="string" default="";
+
+	/**
+	 * Conversation identifier for multi-tenant tracking
+	 */
+	property name="conversationId" type="string" default="";
+
+	/**
+	 * Tenant identifier for enterprise multi-tenancy
+	 */
+	property name="tenantId" type="string" default="";
+
+	/**
+	 * Constructor
+	 *
+	 * @spanId Unique identifier for this span (auto-generated if not provided)
+	 * @traceId The trace ID this span belongs to
+	 * @parentSpanId The parent span ID for hierarchy
+	 * @spanType The type of span (agent, model, tool, etc.)
+	 * @operation The operation name
+	 */
+	function init(
+		string spanId = createUUID(),
+		required string traceId,
+		string parentSpanId = "",
+		required string spanType,
+		required string operation
+	) {
+		// Validate required fields are non-empty
+		if ( !len( trim( arguments.traceId ) ) ) {
+			throw(
+				type    : "InvalidAuditEntry",
+				message : "traceId is required and cannot be empty"
+			);
+		}
+		if ( !len( trim( arguments.spanType ) ) ) {
+			throw(
+				type    : "InvalidAuditEntry",
+				message : "spanType is required and cannot be empty"
+			);
+		}
+		// Warn about non-standard spanType values (allows custom types but helps catch typos)
+		var validSpanTypes = "agent,model,tool,provider,mcp,embed,pipeline,metrics,error,rateLimit,custom";
+		if ( !listFindNoCase( validSpanTypes, arguments.spanType ) ) {
+			writeLog(
+				text : "DEBUG: Non-standard spanType '#arguments.spanType#' used in audit entry. Standard types: #validSpanTypes#",
+				type : "debug",
+				log  : "ai"
+			);
+		}
+		if ( !len( trim( arguments.operation ) ) ) {
+			throw(
+				type    : "InvalidAuditEntry",
+				message : "operation is required and cannot be empty"
+			);
+		}
+
+		variables.spanId = arguments.spanId;
+		variables.traceId = arguments.traceId;
+		variables.parentSpanId = arguments.parentSpanId;
+		variables.spanType = arguments.spanType;
+		variables.operation = arguments.operation;
+		variables.startTime = now();
+		variables.tokens = {};
+		variables.cost = {};
+		variables.metadata = {};
+		return this;
+	}
+
+	/**
+	 * Mark the entry as complete.
+	 * Safe to call multiple times - subsequent calls are ignored.
+	 *
+	 * @output The output/result data
+	 * @error Optional error information
+	 *
+	 * @return AuditEntry for chaining
+	 */
+	AuditEntry function complete( any output = "", any error = "" ) {
+		// Guard against double-completion
+		if ( len( variables.endTime ?: "" ) ) {
+			return this;
+		}
+
+		variables.endTime = now();
+		variables.durationMs = dateDiff( "l", variables.startTime, variables.endTime );
+		variables.output = arguments.output;
+
+		if ( !isSimpleValue( arguments.error ) || len( arguments.error ) ) {
+			variables.error = arguments.error;
+			variables.status = "error";
+		}
+
+		return this;
+	}
+
+	/**
+	 * Set token usage information
+	 *
+	 * @tokens Token usage struct: { prompt, completion, total }
+	 *
+	 * @return AuditEntry for chaining
+	 */
+	AuditEntry function setTokens( required struct tokens ) {
+		variables.tokens = arguments.tokens;
+		return this;
+	}
+
+	/**
+	 * Get token usage information
+	 *
+	 * @return Struct with token counts (defensive copy)
+	 */
+	struct function getTokens() {
+		return duplicate( variables.tokens );
+	}
+
+	/**
+	 * Set cost information
+	 *
+	 * @cost Cost struct: { amount, currency }
+	 *
+	 * @return AuditEntry for chaining
+	 */
+	AuditEntry function setCost( required struct cost ) {
+		variables.cost = arguments.cost;
+		return this;
+	}
+
+	/**
+	 * Get cost information
+	 *
+	 * @return Struct with cost data (defensive copy)
+	 */
+	struct function getCost() {
+		return duplicate( variables.cost );
+	}
+
+	/**
+	 * Set or merge metadata
+	 *
+	 * @metadata Metadata struct
+	 * @overwrite If true, overwrites existing keys (default: true)
+	 *
+	 * @return AuditEntry for chaining
+	 */
+	AuditEntry function setMetadata( required struct metadata, boolean overwrite = true ) {
+		if ( arguments.overwrite ) {
+			variables.metadata.append( arguments.metadata, true );
+		} else {
+			variables.metadata.append( arguments.metadata, false );
+		}
+		return this;
+	}
+
+	/**
+	 * Get metadata
+	 *
+	 * @return Struct with metadata (defensive copy)
+	 */
+	struct function getMetadata() {
+		return duplicate( variables.metadata );
+	}
+
+	/**
+	 * Set input data
+	 *
+	 * @input The input data
+	 *
+	 * @return AuditEntry for chaining
+	 */
+	AuditEntry function setInput( any input ) {
+		variables.input = arguments.input;
+		return this;
+	}
+
+	/**
+	 * Get input data
+	 *
+	 * @return Input data
+	 */
+	any function getInput() {
+		return variables.input ?: "";
+	}
+
+	/**
+	 * Set output data
+	 *
+	 * @output The output data
+	 *
+	 * @return AuditEntry for chaining
+	 */
+	AuditEntry function setOutput( any output ) {
+		variables.output = arguments.output;
+		return this;
+	}
+
+	/**
+	 * Get output data
+	 *
+	 * @return Output data
+	 */
+	any function getOutput() {
+		return variables.output ?: "";
+	}
+
+	/**
+	 * Set reasoning information
+	 *
+	 * @reasoning The reasoning text
+	 *
+	 * @return AuditEntry for chaining
+	 */
+	AuditEntry function setReasoning( required string reasoning ) {
+		variables.reasoning = arguments.reasoning;
+		return this;
+	}
+
+	/**
+	 * Get reasoning information
+	 *
+	 * @return String reasoning text
+	 */
+	string function getReasoning() {
+		return variables.reasoning;
+	}
+
+	/**
+	 * Set user ID
+	 *
+	 * @userId The user identifier
+	 *
+	 * @return AuditEntry for chaining
+	 */
+	AuditEntry function setUserId( required string userId ) {
+		variables.userId = arguments.userId;
+		return this;
+	}
+
+	/**
+	 * Get user ID
+	 *
+	 * @return String user identifier
+	 */
+	string function getUserId() {
+		return variables.userId;
+	}
+
+	/**
+	 * Set conversation ID
+	 *
+	 * @conversationId The conversation identifier
+	 *
+	 * @return AuditEntry for chaining
+	 */
+	AuditEntry function setConversationId( required string conversationId ) {
+		variables.conversationId = arguments.conversationId;
+		return this;
+	}
+
+	/**
+	 * Get conversation ID
+	 *
+	 * @return String conversation identifier
+	 */
+	string function getConversationId() {
+		return variables.conversationId;
+	}
+
+	/**
+	 * Set tenant ID
+	 *
+	 * @tenantId The tenant identifier
+	 *
+	 * @return AuditEntry for chaining
+	 */
+	AuditEntry function setTenantId( required string tenantId ) {
+		variables.tenantId = arguments.tenantId;
+		return this;
+	}
+
+	/**
+	 * Get tenant ID
+	 *
+	 * @return String tenant identifier
+	 */
+	string function getTenantId() {
+		return variables.tenantId;
+	}
+
+	// ========================================
+	// Read-Only Getters (Immutable Fields)
+	// ========================================
+
+	/**
+	 * Get the span ID
+	 *
+	 * @return String span identifier
+	 */
+	string function getSpanId() {
+		return variables.spanId;
+	}
+
+	/**
+	 * Get the trace ID
+	 *
+	 * @return String trace identifier
+	 */
+	string function getTraceId() {
+		return variables.traceId;
+	}
+
+	/**
+	 * Get the parent span ID
+	 *
+	 * @return String parent span identifier
+	 */
+	string function getParentSpanId() {
+		return variables.parentSpanId;
+	}
+
+	/**
+	 * Get the span type
+	 *
+	 * @return String span type
+	 */
+	string function getSpanType() {
+		return variables.spanType;
+	}
+
+	/**
+	 * Get the operation name
+	 *
+	 * @return String operation name
+	 */
+	string function getOperation() {
+		return variables.operation;
+	}
+
+	/**
+	 * Get the duration in milliseconds
+	 *
+	 * @return Numeric duration
+	 */
+	numeric function getDurationMs() {
+		return variables.durationMs;
+	}
+
+	/**
+	 * Get the status
+	 *
+	 * @return String status (ok or error)
+	 */
+	string function getStatus() {
+		return variables.status;
+	}
+
+	/**
+	 * Export to struct for serialization
+	 *
+	 * @return Struct representation of this entry
+	 */
+	struct function toStruct() {
+		return {
+			spanId         : variables.spanId,
+			traceId        : variables.traceId,
+			parentSpanId   : variables.parentSpanId,
+			spanType       : variables.spanType,
+			operation      : variables.operation,
+			startTime      : variables.startTime,
+			endTime        : variables.endTime ?: "",
+			durationMs     : variables.durationMs,
+			status         : variables.status,
+			input          : variables.input ?: "",
+			output         : variables.output ?: "",
+			error          : variables.error ?: "",
+			reasoning      : variables.reasoning,
+			tokens         : duplicate( variables.tokens ),
+			cost           : duplicate( variables.cost ),
+			metadata       : duplicate( variables.metadata ),
+			userId         : variables.userId,
+			conversationId : variables.conversationId,
+			tenantId       : variables.tenantId
+		};
+	}
+
+	/**
+	 * Create an AuditEntry from a struct.
+	 * Validates required fields and uses public setters where appropriate
+	 * to maintain encapsulation. Completion state fields (startTime, endTime,
+	 * durationMs, status, error) are set via direct variable access since
+	 * they are normally computed by complete() and shouldn't have public setters.
+	 *
+	 * @data The struct data containing audit entry fields
+	 *
+	 * @return AuditEntry instance
+	 * @throws InvalidAuditEntry when required fields (traceId, spanType, operation)
+	 *         are missing or empty, or when status has an invalid value
+	 */
+	static function fromStruct( required struct data ) {
+		// Validate required fields
+		if ( !arguments.data.keyExists( "traceId" ) || !len( arguments.data.traceId ?: "" ) ) {
+			throw(
+				type    : "InvalidAuditEntry",
+				message : "traceId is required when creating AuditEntry from struct"
+			);
+		}
+		if ( !arguments.data.keyExists( "spanType" ) || !len( arguments.data.spanType ?: "" ) ) {
+			throw(
+				type    : "InvalidAuditEntry",
+				message : "spanType is required when creating AuditEntry from struct"
+			);
+		}
+		if ( !arguments.data.keyExists( "operation" ) || !len( arguments.data.operation ?: "" ) ) {
+			throw(
+				type    : "InvalidAuditEntry",
+				message : "operation is required when creating AuditEntry from struct"
+			);
+		}
+
+		var entry = new AuditEntry(
+			spanId       : arguments.data.spanId ?: createUUID(),
+			traceId      : arguments.data.traceId,
+			parentSpanId : arguments.data.parentSpanId ?: "",
+			spanType     : arguments.data.spanType,
+			operation    : arguments.data.operation
+		);
+
+		// Use setters where available for mutable fields
+		if ( arguments.data.keyExists( "input" ) ) {
+			entry.setInput( arguments.data.input );
+		}
+		if ( arguments.data.keyExists( "output" ) ) {
+			entry.setOutput( arguments.data.output );
+		}
+		if ( arguments.data.keyExists( "reasoning" ) ) {
+			entry.setReasoning( arguments.data.reasoning );
+		}
+		if ( arguments.data.keyExists( "tokens" ) && isStruct( arguments.data.tokens ) ) {
+			entry.setTokens( arguments.data.tokens );
+		}
+		if ( arguments.data.keyExists( "cost" ) && isStruct( arguments.data.cost ) ) {
+			entry.setCost( arguments.data.cost );
+		}
+		if ( arguments.data.keyExists( "metadata" ) && isStruct( arguments.data.metadata ) ) {
+			entry.setMetadata( arguments.data.metadata );
+		}
+		if ( arguments.data.keyExists( "userId" ) ) {
+			entry.setUserId( arguments.data.userId );
+		}
+		if ( arguments.data.keyExists( "conversationId" ) ) {
+			entry.setConversationId( arguments.data.conversationId );
+		}
+		if ( arguments.data.keyExists( "tenantId" ) ) {
+			entry.setTenantId( arguments.data.tenantId );
+		}
+
+		// These fields are normally set internally by complete(), but we need to set them
+		// directly for reconstruction from stored data. We use direct variable access
+		// since this is a static factory method reconstructing an entry from persistence.
+		if ( arguments.data.keyExists( "startTime" ) ) {
+			entry.variables.startTime = arguments.data.startTime;
+		}
+		if ( arguments.data.keyExists( "endTime" ) && len( arguments.data.endTime ?: "" ) ) {
+			entry.variables.endTime = arguments.data.endTime;
+		}
+		if ( arguments.data.keyExists( "durationMs" ) ) {
+			entry.variables.durationMs = arguments.data.durationMs;
+		}
+		// Validate status against allowed values - throw if invalid to prevent data corruption
+		if ( arguments.data.keyExists( "status" ) ) {
+			if ( listFindNoCase( "ok,error", arguments.data.status ) ) {
+				entry.variables.status = arguments.data.status;
+			} else {
+				// Invalid status - throw to alert caller of data corruption
+				throw(
+					type    : "InvalidAuditEntry",
+					message : "Invalid status value '#arguments.data.status#' in audit entry spanId=#arguments.data.spanId ?: 'unknown'#. Valid values are: ok, error"
+				);
+			}
+		}
+		if ( arguments.data.keyExists( "error" ) ) {
+			entry.variables.error = arguments.data.error;
+		}
+
+		return entry;
+	}
+
+}

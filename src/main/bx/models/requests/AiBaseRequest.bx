@@ -111,6 +111,16 @@ abstract class{
 	property name="providerOptions" type="struct" default={};
 
 	/**
+	 * Application-level audit metadata to attach to the audit trail.
+	 * Passed via options.audit in aiChat()/aiChatStream()/aiEmbed() etc.
+	 * The AuditInterceptor picks this up and sets it as application metadata
+	 * on the current thread's AuditContext, so it flows to all spans in the trace.
+	 *
+	 * Example: { feature: "contentAnalysis", entityId: 123, analysisType: "themes" }
+	 */
+	property name="auditMetadata" type="struct" default={};
+
+	/**
 	 * Add a header to the request
 	 *
 	 * @name The name of the header

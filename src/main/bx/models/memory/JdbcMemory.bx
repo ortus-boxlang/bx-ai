@@ -235,14 +235,15 @@ class extends="BaseMemory" {
 			)
 		"
 
-		// Adjust for database-specific types
-		if ( dbType.contains( "mysql" ) || dbType.contains( "mariadb" ) ) {
-			sql = sql.replace( "CLOB", "LONGTEXT" )
-		} else if ( dbType.contains( "postgres" ) ) {
-			sql = sql.replace( "CLOB", "TEXT" )
-		} else if ( dbType.contains( "sqlserver" ) || dbType.contains( "microsoft" ) ) {
-			sql = sql.replace( "CLOB", "NVARCHAR(MAX)" )
-		} else if ( dbType.contains( "oracle" ) ) {
+		// Adjust for database-specific types (use findNoCase for reliable case-insensitive matching)
+		// Use replaceNoCase with "all" to replace ALL occurrences, not just the first
+		if ( dbType.findNoCase( "mysql" ) || dbType.findNoCase( "mariadb" ) ) {
+			sql = replaceNoCase( sql, "CLOB", "LONGTEXT", "all" )
+		} else if ( dbType.findNoCase( "postgres" ) ) {
+			sql = replaceNoCase( sql, "CLOB", "TEXT", "all" )
+		} else if ( dbType.findNoCase( "sqlserver" ) || dbType.findNoCase( "microsoft" ) ) {
+			sql = replaceNoCase( sql, "CLOB", "NVARCHAR(MAX)", "all" )
+		} else if ( dbType.findNoCase( "oracle" ) ) {
 			// Oracle uses CLOB
 		}
 

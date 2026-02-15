@@ -26,13 +26,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error invoking population in schema builder, the third argument needs to be an array or struct, not a single value.
 - Fixed a bug where provider options in the configuration file were not being merged into the request options when creating a service instance.
 - Fixed a bug where the `aiService()` BIF was not correctly applying convention-based API key detection when `options.apiKey` was already set but empty. Now it checks if `options.apiKey` is empty before applying the convention key, allowing for proper fallback to environment variables or module settings.
+- **Audit JDBC Store Lazy Initialization**: `AuditInterceptor` now defers store initialization until first use, allowing dynamically created datasources (e.g., from AWS Secrets Manager at app startup) to be available when the JDBC store needs them. Previously, `configure()` eagerly initialized the store at module activation, which failed when the datasource didn't exist yet.
+  - `initializeStore()` now retries on failure instead of throwing, leaving the store null for the next request to retry
+  - `getStore()` now triggers lazy initialization so consuming applications can query the store on demand
+
+### Added
+
+- **Runtime Configuration API**: New setter methods on `AuditInterceptor` for applications to push runtime config directly, replacing application scope reads:
+  - `setEnabled(boolean)` — toggle auditing at runtime
+  - `setInternalStorage(boolean)` — toggle internal storage at runtime
+  - `setStoreType(string)` — set store type before first use (e.g., "jdbc")
+  - `setStoreConfig(struct)` — merge store config before first use (e.g., `{ datasource: "mydb" }`)
+  - `setPricingConfig(struct)` — set pricing config at runtime
+  - `setRuntimeSettings(struct)` — convenience bulk setter for all of the above
+  - `getAuditStatus()` — computed status struct for `aiAuditStatus()` BIF
+
+### Changed
+
+- **Removed application scope dependency**: `AuditInterceptor` no longer reads `application.modules.bxai.settings.*`. As a library module, bx-ai should not reach into application scope. Consuming applications push config via the new setter methods instead. Env var overrides remain the highest priority.
 
 ## [2.1.0] - 2026-02-04
 
 What's New: <https://ai.ortusbooks.com/readme/release-history/2.1.0>
 
+### Fixed
+
+- **BUG FIX**: `JdbcAuditStore` - Fixed property declaration ordering issue where `dbProductName` property was declared after the `static` block, causing compilation errors. All property declarations must come before static blocks and functions in BoxLang classes.
+
+### Changed
+
+- **Audit Module Enhancements**:
+  - Added application-level audit metadata flow via `options.audit` parameter in AI BIFs (aiChat, aiAgent, aiEmbed, etc.)
+    - New `auditMetadata` property on all AI request objects for per-call audit context
+    - Providers now include `auditMetadata` in event announcements for AuditInterceptor pickup
+    - Metadata flows through interceptor into stored audit entries under "app" namespace
+  - Added `setDefaultContextMetadata()` method on `AuditInterceptor` for application-wide audit context
+    - Allows frameworks to set default metadata at startup that merges into every trace
+    - Supports well-known fields (tenantId, userId, conversationId) with automatic mapping to entry fields
+  - Added `getStore()` method on `AuditInterceptor` for direct store access from consuming applications
+  - Added `getStoreType()` method on `AuditInterceptor` to identify current store backend
+  - Enhanced `AuditContext` with empty traceId validation (throws InvalidAuditContext if traceId is empty)
+  - Added `flush()` method to all audit stores for explicit buffer persistence
+  - Enhanced `cleanupThread()` in AuditInterceptor to call store.flush() before ThreadLocal cleanup
+  - Added environment variable support for audit configuration:
+    - `BOXLANG_MODULES_BXAI_AUDIT_ENABLED` - enable/disable auditing
+    - `BOXLANG_MODULES_BXAI_AUDIT_STORE` - store type (memory/file/jdbc)
+    - `BOXLANG_MODULES_BXAI_AUDIT_INTERNAL_STORAGE` - internal storage flag
+    - `BOXLANG_MODULES_BXAI_AUDIT_STORE_PATH` - file store output directory
+    - `BOXLANG_MODULES_BXAI_AUDIT_STORE_DATASOURCE` - JDBC datasource name
+    - `BOXLANG_MODULES_BXAI_AUDIT_STORE_TABLE` - JDBC table name
+- **Audit Store Improvements**:
+  - `JdbcAuditStore`: Added database product name caching to avoid repeated bx:dbinfo calls
+  - `FileAuditStore`: Added buffer restoration on write failure to prevent data loss
+  - `FileAuditStore`: Added format validation (only ndjson/json allowed) with error message
+  - `MemoryAuditStore`: Enhanced lock timeout error handling (now throws AuditStoreLockTimeout exception)
+  - `BaseAuditStore`: Fixed numeric sorting in sortEntries() (was treating numbers as strings)
+- **Provider Event Alignment**:
+  - `BedrockService`: Aligned event names to use `onAIChatRequest`/`onAIChatResponse` (was using generic onAIRequest/onAIResponse)
+  - All provider event announcements now include `auditMetadata` field from request object
+  - `BedrockService`: Fixed event data structure to use `chatRequest` (was using `aiRequest`)
+- **Security Enhancements**:
+  - `aiAuditExport` BIF: Added path traversal validation (rejects ".." in destination paths)
+- **New Tests**:
+  - Added `AuditMetadataFlowTest.java` with 5 tests covering full audit metadata pipeline
+
 ### Added
 
+- **Audit & Traceability Module**: Comprehensive audit system for full AI operation traceability
+  - New `aiAudit()` BIF for creating audit contexts with trace hierarchy support
+  - New `aiAuditQuery()` BIF for querying audit logs with filtering, pagination, and sorting
+  - New `aiAuditExport()` BIF for exporting traces to JSON
+  - New `AuditContext` class for managing trace hierarchy with parent/child spans
+  - New `AuditEntry` class for individual audit records with timing, I/O, tokens, and metadata
+  - New `AuditSanitizer` class for automatic redaction of sensitive data (passwords, API keys, tokens)
+  - New `AuditInterceptor` for automatic tracing via bx-ai events
+  - **Audit Stores**:
+    - `MemoryAuditStore`: In-memory storage for development and testing
+    - `FileAuditStore`: JSON/NDJSON file storage with rotation support
+    - `JdbcAuditStore`: Database storage for production multi-user systems
+  - New audit events: `onAuditEntry`, `onAuditTraceComplete`, `onAuditExport`
+  - Configurable audit settings: `enabled`, `store`, `captureInput`, `captureOutput`, `sanitizePatterns`, `retentionDays`, `asyncWrite`, `batchSize`
+  - Full test suite covering all audit components
 - New event: `onMissingAiProvider` to handle cases where a requested provider is not found.
 - `aiModel()` BIF now accepts an additional `options` struct to seed services.
 - New configuration: `providers` so you can predefine multiple providers in the module config, with default `params` and `options`.
@@ -94,12 +168,28 @@ What's New: <https://ai.ortusbooks.com/readme/release-history/2.1.0>
 
 ### Changed
 
+- **BREAKING**: `audit.allowStoreFallback` now defaults to `false` for production safety. When false, store initialization failures throw `AuditStoreInitializationFailed` instead of silently falling back to memory store. Set `allowStoreFallback: true` or `BOXLANG_MODULES_BXAI_AUDIT_ALLOW_STORE_FALLBACK=true` for development/testing scenarios where audit data loss is acceptable.
 - All AI provider services now inherit default chat and embedding parameters from the `IAiService` interface, ensuring consistent behavior across providers.
 - `IAiService.configure()` method now accepts a generic `options` argument instead of `apiKey`, to better reflect its purpose and support more configuration options.
 - `AiRequest` class renamed to `AiChatRequest` for clarity, and multi-modality support.
 
 ### Fixed
 
+- **Audit Module Hardening**:
+  - `aiAudit()` BIF now wraps `BoxAnnounce("onAuditContextCreate")` in try-catch to prevent listener bugs from breaking context creation, with exception type included in log message
+  - `AuditEntry` constructor now validates required fields (traceId, spanType, operation) are non-empty, throwing `InvalidAuditEntry` if validation fails
+  - `AuditEntry.fromStruct()` now throws `InvalidAuditEntry` for invalid status values instead of silently accepting them
+  - `JdbcAuditStore` duplicate key detection via string matching is now more specific (requires "duplicate" + "key", "unique constraint" + "violated", etc.) to avoid false positives
+  - **BUG FIX**: `JdbcAuditStore` string-matching fallback now correctly references `variables.table` instead of undefined `variables.tableName`
+  - All locks in `MemoryAuditStore` and `FileAuditStore` now use `throwontimeout="true"` with try-catch recovery to log warnings/errors instead of crashing the application on lock timeout
+  - `FileAuditStore` now uses instance-scoped lock names to prevent cross-instance contention
+  - `FileAuditStore` now has bounded `storedSpanIds` tracking with LRU eviction (max 10,000 entries) to prevent unbounded memory growth
+  - `AuditInterceptor` now includes exception type in error log messages for better debugging
+  - `AuditInterceptor` environment variable parsing for `allowStoreFallback` is now consolidated into `isStoreFallbackAllowed()` helper method
+  - `AuditInterceptor` now exposes `getLastNotificationFailure()`, `getLastLoggingFailure()`, `isInDegradedMode()`, and `getDegradedModeDetails()` for diagnostics
+  - Documentation: Added `aiAuditStatus()` to BIF tables in readme.md
+  - Documentation: Fixed `trace.spans.len()` to `trace.entries.len()` in readme.md example
+  - Documentation: Clarified `query()` return type as "entry structs" (not AuditEntry objects) in IAuditStore, IAuditContext, BaseAuditStore, and all store implementations
 - Events for chat requests were incorrectly named in the ModuleConfig.bx file. Corrected to `onAIChatRequest`, `onAIChatRequestCreate`, and `onAIChatResponse`.
 - `aiChat, aiChatStream` BIF was not passing headers to the AiChatRequest.
 - `aiChat, aiChatStream, aiChatAsync` BIF was not using `aiChatRequest()` to build the request, but was building it manually.
@@ -110,6 +200,26 @@ What's New: <https://ai.ortusbooks.com/readme/release-history/2.1.0>
 - `AiModel.getModel()` was not returning the model name correctly when using predefined providers from config.
 - Increased Docker Model Runner retry time to 5 seconds with 10 max retries to accommodate large model loading times
 - Fixed `url` parameter conflict in OpenSearchVectorMemory by using `requestUrl` for HTTP requests
+- **AuditStoreFactory shared store**: `AuditStoreFactory` now uses static storage so BIFs (like `aiAuditQuery()`) and the `AuditInterceptor` share the same store instance. Previously, each component created its own factory instance, resulting in empty queries.
+- `AuditInterceptor.initializeStore()` now uses `storeFactory.getShared()` instead of `storeFactory.create()` to ensure store sharing.
+- `AuditInterceptor.onAIError()` now properly passes error information to `addEntry()`
+- `AuditInterceptor.afterAIEmbed()` now correctly accesses `data.result` instead of `data.embeddings`
+- `AuditInterceptor.onAITokenCount()` uses renamed keys (`promptCount`, `completionCount`, `totalCount`)
+- **Audit Module Error Handling & Stability Fixes**:
+  - `AuditInterceptor`: Silent memory fallback now logs CRITICAL error, announces `onAuditStoreFailure` event, and sets degraded mode flags when configured store (JDBC/file) fails to initialize
+  - `AuditContext.storeEntry()`: Added try-catch with logging and `onAuditStoreFailed` event announcement to prevent silent data loss
+  - `FileAuditStore`: Now backs up corrupt JSON files before overwriting and logs CRITICAL error; NDJSON parse failures now log warnings with line numbers
+  - `FileAuditStore.readAllEntries()`: Fixed race condition where buffered entries were not filtered consistently with file entries
+  - `JdbcAuditStore`: Made cross-database compatible using `INSERT IGNORE` for MySQL/MariaDB, `ON CONFLICT DO NOTHING` for PostgreSQL, and catch-based duplicate handling for other databases
+  - `JdbcAuditStore`: Index creation now logs warnings for non-"already exists" errors instead of silently swallowing all errors
+  - `AuditStoreFactory.closeShared()/closeAll()`: Now log warnings about potential data loss when close errors occur
+  - `AuditInterceptor.cleanupThread()`: Now logs cleanup errors instead of silently ignoring them
+  - `AuditInterceptor.logAuditError()`: Added stderr fallback as last resort when logging fails
+  - `BaseAuditStore.storeBatch()`: Now includes spanId, traceId, and detail in error objects for better debugging
+  - `AuditEntry`: Getters (`getTokens()`, `getCost()`, `getMetadata()`) now return defensive copies to prevent external mutation
+  - `AuditEntry.fromStruct()`: Added validation for required fields (traceId, spanType, operation) and uses setters where available
+  - `IAuditContext.getSummary()`: Fixed documentation to match actual return value `{ traceId, spanCount, totalDurationMs, tokens, totalCost, errorCount, completed }`
+  - `IAuditStore.getStats()`: Fixed documentation to use `avgDurationMs` instead of `avgDuration`
 
 ## [2.0.0] - 2026-01-19
 
