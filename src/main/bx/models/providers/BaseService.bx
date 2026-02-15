@@ -1025,7 +1025,7 @@ abstract class implements="IAiService" {
 		}
 
 		logLines.append( "Request Body:" );
-		logLines.append( jsonSerialize( arguments.dataPacket, true ) );  // Pretty print JSON
+		logLines.append( jsonSerialize( data: arguments.dataPacket, pretty: true ) );  // Pretty print JSON
 		logLines.append( "========================================" );
 
 		return logLines.toList( char(10) );
@@ -1065,7 +1065,7 @@ abstract class implements="IAiService" {
 			}
 
 			logLines.append( "Deserialized Response:" );
-			logLines.append( jsonSerialize( parsedResponse, true ) );  // Pretty print
+			logLines.append( jsonSerialize( data: parsedResponse, pretty: true ) );  // Pretty print
 		} catch( any e ){
 			// If parsing fails, show raw response
 			logLines.append( "Raw Response (JSON parsing failed):" );
