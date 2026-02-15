@@ -661,7 +661,7 @@ abstract class implements="IAiService" {
 		// Log the request
 		if( arguments.chatRequest.getLogRequest() ){
 			writeLog(
-				text: "Request to AI Provider: #arguments.dataPacket.toString()#",
+				text: buildRequestLog( arguments.chatRequest, arguments.dataPacket ),
 				type: "info",
 				log : "ai"
 			)
@@ -669,8 +669,7 @@ abstract class implements="IAiService" {
 
 		// Log the request to the console if enabled
 		if( arguments.chatRequest.getLogRequestToConsole() ){
-			println( "AI Request (Stream)" )
-			println( arguments.dataPacket )
+			println( buildRequestLog( arguments.chatRequest, arguments.dataPacket ) )
 		}
 
 		// Build HTTP request with fluent API
@@ -714,17 +713,17 @@ abstract class implements="IAiService" {
 					userCallback( parsedChunk );
 				} catch( any e ){
 					writeLog(
-						text: "Error parsing stream chunk: #e.message# - Data: #chunk.data#",
+						text: "Error parsing stream chunk: [#e.message#] - Data: [#chunk.data#]",
 						type: "error",
 						log : "ai"
 					)
 				}
 			} )
 			.onError( ( error, httpResult ) => {
-				var errorMessage = "HTTP Error: #error.message#";
+				var errorMessage = "HTTP Error: [#error.message#]";
 
 				writeLog(
-					text: "Stream Request Error: #errorMessage#",
+					text: "Stream Request Error: [#errorMessage#]",
 					type: "error",
 					log : "ai"
 				)
