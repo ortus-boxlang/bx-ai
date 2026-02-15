@@ -20,11 +20,6 @@ class {
 	static final VALID_RESPONSE_FORMATS = [ "single", "all", "raw", "json", "xml" ]
 	static final DEFAULT_OPTIONS = {
 		returnFormat : "single",  // aiChat() defaults to single for convenience
-		timeout : 30,
-		logResponse : false,
-		logResponseToConsole : false,
-		logRequest : false,
-		logRequestToConsole : false
 	}
 	static MODULE_SETTINGS = getModuleInfo( "bxai" ).settings;
 
@@ -69,25 +64,22 @@ class {
 		struct options = {},
 		struct headers = {}
 	) {
-		// Merge options: MODULE_SETTINGS first, then DEFAULT_OPTIONS fills in gaps
-		arguments.options.append( static.MODULE_SETTINGS, false );
-		arguments.options.append( static.DEFAULT_OPTIONS, false );
-
 		// Validate returnFormat only if it's a simple string value
 		// Complex values (class instances, structs, arrays) are for structured output
-		if( isSimpleValue( arguments.options.returnFormat ) && !static.VALID_RESPONSE_FORMATS.contains( arguments.options.returnFormat ) ){
+		if( isSimpleValue( arguments.options?.returnFormat ) && !static.VALID_RESPONSE_FORMATS.contains( arguments.options.returnFormat ) ){
 			throw(
 				type : "InvalidArgument",
 				message : "Invalid return format [#arguments.options.returnFormat#]. Valid formats are: #static.VALID_RESPONSE_FORMATS.toList()# or a class/struct/array for structured output"
 			);
 		}
 
-		// Build out a chat request
+		// Build out a chat request with aiChat method defaults
 		var chatRequest = aiChatRequest(
 			arguments.messages,
 			arguments.params,
 			arguments.options,
-			arguments.headers
+			arguments.headers,
+			static.DEFAULT_OPTIONS  // Pass method defaults separately
 		 );
 
 		// Get the provider and chat with it

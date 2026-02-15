@@ -111,6 +111,32 @@ abstract class{
 	property name="providerOptions" type="struct" default={};
 
 	/**
+	 * Module settings - centralized access point
+	 */
+	static {
+		final MODULE_SETTINGS = getModuleInfo( "bxai" ).settings
+	}
+
+	/**
+	 * Prepare options by merging module settings with method-specific defaults and user options
+	 * Merge order (lowest to highest priority): module settings → method defaults → user options
+	 *
+	 * @options User-provided options struct
+	 * @methodDefaults Optional method-specific defaults (e.g., aiChat uses returnFormat="single")
+	 *
+	 * @return Merged options struct with all defaults applied
+	 */
+	struct function prepareOptions( struct options = {}, struct methodDefaults = {} ) {
+		return {}
+			// Start with module settings (lowest priority)
+			.append( static.MODULE_SETTINGS, true )
+			// Apply method-specific defaults (middle priority)
+			.append( arguments.methodDefaults, true )
+			// Apply user options (highest priority)
+			.append( arguments.options, true )
+	}
+
+	/**
 	 * Add a header to the request
 	 *
 	 * @name The name of the header
