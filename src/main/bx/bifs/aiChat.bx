@@ -69,9 +69,9 @@ class {
 		struct options = {},
 		struct headers = {}
 	) {
-		// Merge options
-		arguments.options.append( static.DEFAULT_OPTIONS, false );
+		// Merge options: MODULE_SETTINGS first, then DEFAULT_OPTIONS fills in gaps
 		arguments.options.append( static.MODULE_SETTINGS, false );
+		arguments.options.append( static.DEFAULT_OPTIONS, false );
 
 		// Validate returnFormat only if it's a simple string value
 		// Complex values (class instances, structs, arrays) are for structured output
