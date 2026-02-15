@@ -199,13 +199,13 @@ class extends="AiBaseRunnable" {
 		var effectiveOptions = getMergedOptions( arguments.options );
 		effectiveOptions.stream = true;
 
-		var request = new bxModules.bxai.models.requests.AiChatRequest(
+		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
 			aiMessage( messages ),
 			effectiveParams,
 			effectiveOptions
 		);
 
-		variables.service.invokeStream( request, arguments.onChunk );
+		variables.service.invokeStream( chatRequest, arguments.onChunk );
 	}
 
 	/**
