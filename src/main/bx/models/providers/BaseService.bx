@@ -698,6 +698,11 @@ abstract class implements="IAiService" {
 				// chunk is already parsed SSE data: { data, event, id, retry }
 				// For SSE streams, chunk.data contains the actual payload
 
+				// If the chunk is empty, skip it (keep-alive or heartbeat)
+				if( !chunk.data || chunk.data.trim() == "" ){
+					return;
+				}
+
 				// Check for stream end marker
 				if( chunk.data == "[DONE]" ){
 					return;

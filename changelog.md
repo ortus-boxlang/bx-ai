@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidated AI request/response logging with execution time metrics for better performance insights.
 - Improved AI request/response to include other metrics in order to provide better insights into performance and potential bottlenecks.
 
+### Improved
+
+- If the chunk is empty, skip it (keep-alive or heartbeat) when doing chat streams. This prevents unnecessary processing of empty chunks and potential errors when parsing.
+
 ### Fixed
 
 - Error invoking population in schema builder, the third argument needs to be an array or struct, not a single value.
