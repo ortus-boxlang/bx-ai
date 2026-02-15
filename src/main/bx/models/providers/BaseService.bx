@@ -698,7 +698,7 @@ abstract class implements="IAiService" {
 				// For SSE streams, chunk.data contains the actual payload
 
 				// If the chunk is empty, skip it (keep-alive or heartbeat)
-				if( !chunk.data || chunk.data.trim() == "" ){
+				if( chunk?.data?.trim()?.isEmpty() ){
 					return;
 				}
 
