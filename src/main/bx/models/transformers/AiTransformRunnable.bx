@@ -15,7 +15,9 @@
  * A runnable that applies a transformation function to the input.
  * Useful for data transformation and mapping operations in a pipeline.
  */
-class extends="src.main.bx.models.runnables.AiBaseRunnable" {
+import bxModules.bxai.models.runnables.*;
+
+class extends="AiBaseRunnable" {
 
 	/**
 	 * The transformation function or class to apply
