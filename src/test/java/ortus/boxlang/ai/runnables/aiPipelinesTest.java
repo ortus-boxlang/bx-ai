@@ -19,6 +19,7 @@ package ortus.boxlang.ai.runnables;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -28,6 +29,12 @@ import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.XML;
 
 public class aiPipelinesTest extends BaseIntegrationTest {
+
+	@BeforeEach
+	public void beforeEach() {
+		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
+		moduleRecord.settings.put( "provider", "openai" );
+	}
 
 	@Test
 	public void testMessageToDefaultModel() {
@@ -43,8 +50,11 @@ public class aiPipelinesTest extends BaseIntegrationTest {
 				result = {
 					pipelineCreated: !isNull( pipeline ),
 					stepCount: pipeline.count(),
-					hasRun: structKeyExists( pipeline, "run" )
+					hasRun: structKeyExists( pipeline, "run" ),
+					ai : pipeline.run()
 				}
+
+				println( result )
 			""",
 			context
 		);

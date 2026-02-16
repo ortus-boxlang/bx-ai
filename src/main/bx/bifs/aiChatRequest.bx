@@ -38,6 +38,7 @@ class {
 	 * @params A struct of request params to pass to the provider for the model request: Ex	{ temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
 	 * @options A struct of request options to pass to the provider for the model request. Available options are: { provider:string, apiKey:string, returnFormat:string (single|all|raw|json|xml), timeout:numeric, logResponse:boolean, logRequest:boolean }
 	 * @headers A struct of headers to pass to the provider for the model request.
+	 * @methodDefaults Optional method-specific defaults (used by BIFs like aiChat) that layer between module settings and user options
 	 *
 	 * @return The AI Chat Request Object
      */
@@ -45,7 +46,8 @@ class {
 		any messages,
 		struct params = {},
 		struct options = {},
-		struct headers = {}
+		struct headers = {},
+		struct methodDefaults = {}
 	 ) {
 		if( !isNull( arguments.messages ) ){
 			arguments.messages = aiMessage( arguments.messages );
@@ -54,7 +56,8 @@ class {
 		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
 			arguments.messages,
 			arguments.params,
-			arguments.options
+			arguments.options,
+			arguments.methodDefaults
 		 ).setHeaders( arguments.headers )
 
 		 BoxAnnounce( "onAIChatRequestCreate", { chatRequest: chatRequest } );
