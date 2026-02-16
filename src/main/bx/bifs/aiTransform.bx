@@ -101,7 +101,10 @@ class {
 
 		}
 		else {
-			throw BoxException( "Invalid transformer argument. Must be a closure or string classpath." )
+			throw(
+				type: "InvalidTransformerArgument",
+				message: "Invalid transformer argument. Must be a closure or string classpath"
+			)
 		}
 
 		// Announce creation
