@@ -9,8 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `aiTransform()` needd to process instances of `AiTransformRunnable` and `BaseTransformer` classes, allowing for more flexible and reusable transformation logic.
+
 ### Fixed
 
+- BaseTransformer was missing it's internal constructor
+- Default for `config` on all `BaseTransformer` classes was missing.
 - Fixed a bug where if the `aiTransform()` BIF was called with a non-string or closure, the `throw()` was invalid.
 
 ## [2.2.0] - 2026-02-16
