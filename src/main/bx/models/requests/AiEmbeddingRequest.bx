@@ -27,12 +27,17 @@ class extends="AiBaseRequest"{
 	 * @input The input text or array of texts to generate embeddings for
 	 * @params A set of request params to pass to the provider
 	 * @options A set of request options
+	 * @methodDefaults Optional method-specific defaults to layer between module settings and user options
 	 */
 	function init(
 		any input = "",
 		struct params = {},
-		struct options = {}
+		struct options = {},
+		struct methodDefaults = { returnFormat: "first" }
 	){
+		// Merge module settings → method defaults (first) → user options
+		arguments.options = prepareOptions( arguments.options, arguments.methodDefaults );
+
 		variables.input = arguments.input;
 		variables.params = params;
 		variables.provider = options.provider ?: "";
