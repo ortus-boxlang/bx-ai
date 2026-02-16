@@ -199,13 +199,13 @@ class extends="AiBaseRunnable" {
 		var effectiveOptions = getMergedOptions( arguments.options );
 		effectiveOptions.stream = true;
 
-		var request = new bxModules.bxai.models.requests.AiChatRequest(
+		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
 			aiMessage( messages ),
 			effectiveParams,
 			effectiveOptions
 		);
 
-		variables.service.invokeStream( request, arguments.onChunk );
+		variables.service.invokeStream( chatRequest, arguments.onChunk );
 	}
 
 	/**
@@ -230,7 +230,7 @@ class extends="AiBaseRunnable" {
 		// Array of messages
 		// Process each message
 		if( isArray( arguments.input ) ) {
-			return arguments.input.map( m => extractMessages( m ) );
+			return arguments.input.flatMap( m => extractMessages( m ) )
 		}
 
 		// Struct message, this can be different per LLM, just pass it through

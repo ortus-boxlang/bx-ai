@@ -14,8 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidated AI request/response logging with execution time metrics for better performance insights.
 - Improved AI request/response to include other metrics in order to provide better insights into performance and potential bottlenecks.
 
+### Improved
+
+- Consolidation of options and settings, to have a single source of truth for configuration and to allow for better overrides and defaults.
+- Stream request logging to include execution time metrics for better performance monitoring and debugging insights.
+- If the chunk is empty, skip it (keep-alive or heartbeat) when doing chat streams. This prevents unnecessary processing of empty chunks and potential errors when parsing.
+
 ### Fixed
 
+- Invalid use of `request` in the `aiChatStream()` BIF, which should have been `chatRequest`.
+- Extends for AiTransformRunnable was wrong.
+- AiModel extractMessages() was not flattening the messages correctly when the response had multiple choices with multiple messages. Now it properly flattens all messages from all choices into a single array.
+- Order of settings merging in `aiChat()` and `aiChatStream()` BIFs was incorrect, causing default options to override user-provided options. Now it merges in the correct order: user options → module settings → default options, allowing for proper overrides.
 - Error invoking population in schema builder, the third argument needs to be an array or struct, not a single value.
 - Fixed a bug where provider options in the configuration file were not being merged into the request options when creating a service instance.
 - Fixed a bug where the `aiService()` BIF was not correctly applying convention-based API key detection when `options.apiKey` was already set but empty. Now it checks if `options.apiKey` is empty before applying the convention key, allowing for proper fallback to environment variables or module settings.

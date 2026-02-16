@@ -663,7 +663,7 @@ abstract class implements="IAiService" {
 		// Log the request
 		if( arguments.chatRequest.getLogRequest() ){
 			writeLog(
-				text: "Request to AI Provider: #arguments.dataPacket.toString()#",
+				text: buildRequestLog( arguments.chatRequest, arguments.dataPacket ),
 				type: "info",
 				log : "ai"
 			)
@@ -671,8 +671,7 @@ abstract class implements="IAiService" {
 
 		// Log the request to the console if enabled
 		if( arguments.chatRequest.getLogRequestToConsole() ){
-			println( "AI Request (Stream)" )
-			println( arguments.dataPacket )
+			println( buildRequestLog( arguments.chatRequest, arguments.dataPacket ) )
 		}
 
 		// Build HTTP request with fluent API
@@ -700,6 +699,11 @@ abstract class implements="IAiService" {
 				// chunk is already parsed SSE data: { data, event, id, retry }
 				// For SSE streams, chunk.data contains the actual payload
 
+				// If the chunk is empty, skip it (keep-alive or heartbeat)
+				if( chunk?.data?.trim()?.isEmpty() ){
+					return;
+				}
+
 				// Check for stream end marker
 				if( chunk.data == "[DONE]" ){
 					return;
@@ -711,17 +715,17 @@ abstract class implements="IAiService" {
 					userCallback( parsedChunk );
 				} catch( any e ){
 					writeLog(
-						text: "Error parsing stream chunk: #e.message# - Data: #chunk.data#",
+						text: "Error parsing stream chunk: [#e.message#] - Data: [#chunk.data#]",
 						type: "error",
 						log : "ai"
 					)
 				}
 			} )
 			.onError( ( error, httpResult ) => {
-				var errorMessage = "HTTP Error: #error.message#";
+				var errorMessage = "HTTP Error: [#error.message#]";
 
 				writeLog(
-					text: "Stream Request Error: #errorMessage#",
+					text: "Stream Request Error: [#errorMessage#]",
 					type: "error",
 					log : "ai"
 				)
@@ -1023,7 +1027,7 @@ abstract class implements="IAiService" {
 		}
 
 		logLines.append( "Request Body:" );
-		logLines.append( jsonSerialize( arguments.dataPacket, true ) );  // Pretty print JSON
+		logLines.append( jsonSerialize( data: arguments.dataPacket, pretty: true ) );  // Pretty print JSON
 		logLines.append( "========================================" );
 
 		return logLines.toList( char(10) );
@@ -1063,7 +1067,7 @@ abstract class implements="IAiService" {
 			}
 
 			logLines.append( "Deserialized Response:" );
-			logLines.append( jsonSerialize( parsedResponse, true ) );  // Pretty print
+			logLines.append( jsonSerialize( data: parsedResponse, pretty: true ) );  // Pretty print
 		} catch( any e ){
 			// If parsing fails, show raw response
 			logLines.append( "Raw Response (JSON parsing failed):" );
