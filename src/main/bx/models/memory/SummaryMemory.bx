@@ -183,34 +183,34 @@ class extends="WindowMemory" {
 		var summary = variables.summaryModelInstance.run( aiMessage().user( summaryPrompt ) );
 
 		// Rebuild memory structure
-			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
+		var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
 
-			clear();
+		clear();
 
-			// Re-add system message
-			if ( systemMsg.len() ) {
-				setSystemMessage( systemMsg );
-			}
+		// Re-add system message
+		if ( systemMsg.len() ) {
+			setSystemMessage( systemMsg );
+		}
 
-			// Add summary as special assistant message
-			super.add( {
-				role: "assistant",
-				content: "[Previous conversation summary]: #summary#",
-				isSummary: true,
-				timestamp: now()
-			} );
+		// Add summary as special assistant message
+		super.add( {
+			role: "assistant",
+			content: "[Previous conversation summary]: #summary#",
+			isSummary: true,
+			timestamp: now()
+		} );
 
 		variables.currentSummary = summary;
 		variables.hasSummary = true;
 
 		// Add back recent messages
-			for( var msg in toKeep ){
-				super.add( msg );
-			}
+		for( var msg in toKeep ){
+			super.add( msg );
+		}
 
 	} catch ( any e ) {
-		// If summarization fails, fall back to simple truncation
-		writeLog(
+			// If summarization fails, fall back to simple truncation
+			writeLog(
 				text: "SummaryMemory: Failed to generate summary - #e.message#. Falling back to truncation.",
 				type: "error",
 				log: "ai"
@@ -227,7 +227,6 @@ class extends="WindowMemory" {
 			for( var msg in toKeep ){
 				super.add( msg );
 			}
-
 		}
 	}
 
