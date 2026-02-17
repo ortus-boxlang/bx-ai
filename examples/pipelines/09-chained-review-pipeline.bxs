@@ -1,0 +1,138 @@
+/**
+ * Chained Review Pipeline Example
+ *
+ * Demonstrates using the _input system variable to chain AI stages seamlessly.
+ * Each stage receives the previous stage's output automatically via ${_input}.
+ *
+ * For struct outputs, individual fields are flattened to ${_input_fieldName}.
+ *
+ * This example shows a code generation → review workflow where:
+ * 1. First model generates code
+ * 2. Second model reviews the generated code automatically
+ *
+ * The _input variable makes it intuitive to reference the previous stage's output
+ * without manual transformation steps.
+ */
+
+println( "=== Code Generation and Review Pipeline ===" )
+println( "" )
+
+// Create a pipeline: coder → reviewer
+// The reviewer automatically receives the coder's output via ${_input}
+pipeline = aiMessage( "Write BoxLang code to ${task}" )
+    .system( "You are an expert BoxLang developer. Write clean, well-documented code." )
+    .toDefaultModel()
+    .withName( "coder" )
+    .pipe(
+        aiMessage( "Review this code and suggest improvements:\n\n${_input}" )
+            .system( "You are a code reviewer. Provide constructive feedback." )
+            .toModel( "openai" )
+            .withName( "reviewer" )
+    )
+
+// Run the pipeline
+println( "Task: Sort an array of numbers in BoxLang" )
+println( "" )
+
+result = pipeline.run({ task: "sort an array of numbers using a custom comparator" })
+
+println( "Review Result:" )
+println( result )
+println( "" )
+
+// ===================================
+// Example 2: Structured Output Chain
+// ===================================
+println( "=== Structured Output Chaining ===" )
+println( "" )
+
+// Extract structured data, then generate content using that data
+extractAndGenerate = aiMessage( "Extract person details from: ${text}" )
+    .toDefaultModel()
+    .withStructuredOutput({ name: "string", age: "numeric", occupation: "string" })
+    .pipe(
+        // The structured output fields are available as ${_input_name}, ${_input_age}, etc.
+        aiMessage( "Write a professional bio for ${_input_name}, a ${_input_age}-year-old ${_input_occupation}" )
+            .toModel( "openai" )
+    )
+
+bioResult = extractAndGenerate.run({
+    text: "John Doe is a 35-year-old software engineer specializing in cloud architecture"
+})
+
+println( "Generated Bio:" )
+println( bioResult )
+println( "" )
+
+// ===================================
+// Example 3: Multi-Stage Translation
+// ===================================
+println( "=== Multi-Stage Translation Pipeline ===" )
+println( "" )
+
+// Simplify → Translate → Formalize
+translationPipeline = aiMessage( "Simplify this text for easy translation: ${originalText}" )
+    .toDefaultModel()
+    .pipe(
+        // ${_input} contains the simplified text
+        aiMessage( "Translate to ${targetLang}: ${_input}" )
+            .toModel( "openai" )
+    )
+    .pipe(
+        // ${_input} contains the translation
+        aiMessage( "Make this more formal: ${_input}" )
+            .toModel( "openai" )
+    )
+
+translatedResult = translationPipeline.run({
+    originalText: "Hey! The servers are down and users can't log in. Need this fixed ASAP!",
+    targetLang: "Spanish"
+})
+
+println( "Final Translation:" )
+println( translatedResult )
+println( "" )
+
+// ===================================
+// Example 4: Data Analysis Chain
+// ===================================
+println( "=== Data Analysis and Recommendation ===" )
+println( "" )
+
+// Analyze data → Generate recommendations
+analysisPipeline = aiMessage( "Analyze this sales data and identify trends: ${data}" )
+    .toDefaultModel()
+    .withStructuredOutput({
+        topProduct: "string",
+        growthRate: "string",
+        trend: "string"
+    })
+    .pipe(
+        // Use the structured analysis fields to generate recommendations
+        aiMessage(
+            "Based on this analysis:\n" &
+            "- Top Product: ${_input_topProduct}\n" &
+            "- Growth Rate: ${_input_growthRate}\n" &
+            "- Trend: ${_input_trend}\n\n" &
+            "Generate 3 actionable business recommendations."
+        )
+        .toModel( "openai" )
+    )
+
+recommendations = analysisPipeline.run({
+    data: "Q1: Laptop sales 1200 units, Q2: 1500 units, Q3: 1900 units. " &
+          "Desktop sales steady at 800 units per quarter. " &
+          "Accessories growing 15% per quarter."
+})
+
+println( "Business Recommendations:" )
+println( recommendations )
+println( "" )
+
+println( "=== Examples Complete ===" )
+println( "" )
+println( "Key Takeaways:" )
+println( "1. Use ${_input} to reference the previous stage's output" )
+println( "2. Works with strings, structs (structured output), JSON, and any return format" )  
+println( "3. For structs, fields are available as ${_input_fieldName}" )
+println( "4. Stages remain encapsulated - only connected through input/output" )

@@ -189,17 +189,60 @@ class extends="AiBaseRunnable"{
 	 */
 
 	/**
+	 * Prepare bindings from incoming input, wrapping with _input system variable
+	 * This allows pipeline stages to reference previous stage output via ${_input}
+	 * For struct inputs, keys are also flattened to ${_input_keyName} for template access
+	 *
+	 * @input The incoming input from the previous stage or initial context
+	 *
+	 * @return A struct with bindings including the _input system variable
+	 */
+	private struct function prepareBindings( any input ) {
+		// Handle null or missing input
+		if ( isNull( arguments.input ) ) {
+			return {};
+		}
+
+		// If input is a struct, merge it and add _input reference plus flattened keys
+		if ( isStruct( arguments.input ) ) {
+			// Create a new struct with all input keys
+			var bindings = {}.append( arguments.input, true )
+
+			// Add _input as full struct reference
+			if ( !structKeyExists( bindings, "_input" ) ) {
+				bindings._input = arguments.input;
+			}
+
+			// Flatten struct keys to _input_keyName for template access
+			// This allows ${_input_name} syntax since stringBind() doesn't support ${_input.name}
+			for ( var key in arguments.input ) {
+				var flatKey = "_input_" & key;
+				if ( !structKeyExists( bindings, flatKey ) ) {
+					bindings[ flatKey ] = arguments.input[ key ];
+				}
+			}
+
+			return bindings;
+		}
+
+		// For non-struct input (string, array, etc.), wrap it as _input
+		return { _input: arguments.input };
+	}
+
+	/**
 	 * Run the message as a runnable - returns the formatted messages
 	 * If input is provided and is a struct with bindings, it will be used for formatting
+	 * The input is automatically made available as ${_input} in templates for pipeline chaining
 	 *
-	 * @input Optional input, which is considered the bindings struct
+	 * @input Optional input from previous pipeline stage or initial context
 	 * @params Optional parameters (ignored in this implementation)
 	 * @options Optional runtime options (ignored in this implementation)
 	 *
 	 * @return An array of formatted messages
 	 */
 	public any function run( any input = {}, struct params = {}, struct options = {} ) {
-        var incomingBindings = isStruct( arguments.input ) ? arguments.input : {}
+		// Prepare bindings with _input system variable
+		var incomingBindings = prepareBindings( arguments.input );
 		// Delegate to render with incoming bindings
 		return render( incomingBindings );
 	}

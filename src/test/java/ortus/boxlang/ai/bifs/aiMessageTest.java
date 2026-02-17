@@ -1302,4 +1302,155 @@ public class aiMessageTest extends BaseIntegrationTest {
 		String	txtUrl		= ( ( IStruct ) txtPart.get( Key.of( "source" ) ) ).getAsString( Key.of( "url" ) );
 		assertThat( txtUrl ).startsWith( "data:text/plain;base64," );
 	}
+
+	@DisplayName( "Can use _input system variable with string input" )
+	@Test
+	public void testInputSystemVariableWithString() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage( "Review this code: ${_input}" )
+				result = message.run( "function sortArray(arr) { return arr.sort(); }" )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array messages = ( Array ) variables.get( "result" );
+		assertThat( messages.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) messages.get( 0 );
+		String content = firstMessage.getAsString( Key.of( "content" ) );
+		assertThat( content ).contains( "Review this code:" );
+		assertThat( content ).contains( "function sortArray" );
+		assertThat( content ).contains( "arr.sort()" );
+	}
+
+	@DisplayName( "Can use _input system variable with struct input" )
+	@Test
+	public void testInputSystemVariableWithStruct() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage( "Write bio for ${_input_name} who is ${_input_age}" )
+				result = message.run( { name: "John", age: 30 } )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array messages = ( Array ) variables.get( "result" );
+		assertThat( messages.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) messages.get( 0 );
+		String content = firstMessage.getAsString( Key.of( "content" ) );
+		assertThat( content ).contains( "Write bio for John" );
+		assertThat( content ).contains( "who is 30" );
+	}
+
+	@DisplayName( "Can access struct fields directly and via _input" )
+	@Test
+	public void testInputSystemVariableStructBothAccessPatterns() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Both ${name} and ${_input_name} should work for struct fields
+				message = aiMessage( "Name: ${name}, Full: ${_input_name}, Age: ${_input_age}" )
+				result = message.run( { name: "Jane", age: 25 } )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array messages = ( Array ) variables.get( "result" );
+		assertThat( messages.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) messages.get( 0 );
+		String content = firstMessage.getAsString( Key.of( "content" ) );
+		assertThat( content ).contains( "Name: Jane" );
+		assertThat( content ).contains( "Full: Jane" );
+		assertThat( content ).contains( "Age: 25" );
+	}
+
+	@DisplayName( "Pipeline stages pass output via _input" )
+	@Test
+	public void testInputSystemVariableInPipeline() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// Create a simple pipeline that passes data through stages
+				stage1 = aiMessage( "Generate code for: ${task}" )
+				stage2 = aiMessage( "Review this code: ${_input}" )
+				
+				// Stage 1 output (simulated)
+				stage1Result = stage1.run( { task: "sort array" } )
+				
+				// Stage 2 receives stage 1's output
+				// In real pipeline, this would be the AI's response, but we'll simulate with a struct
+				fakeAiOutput = "function sortArray(arr) { return arr.sort(); }"
+				stage2Result = stage2.run( fakeAiOutput )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		// Verify stage 2 received the code
+		Array stage2Messages = ( Array ) variables.get( "stage2Result" );
+		assertThat( stage2Messages.size() ).isEqualTo( 1 );
+
+		IStruct message = ( IStruct ) stage2Messages.get( 0 );
+		String content = message.getAsString( Key.of( "content" ) );
+		assertThat( content ).contains( "Review this code:" );
+		assertThat( content ).contains( "function sortArray" );
+	}
+
+	@DisplayName( "Explicit _input in user context is not overridden" )
+	@Test
+	public void testInputSystemVariableExplicitNotOverridden() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				// User explicitly provides _input in the context
+				message = aiMessage( "The input is: ${_input}" )
+				result = message.run( { _input: "explicit value", other: "data" } )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array messages = ( Array ) variables.get( "result" );
+		assertThat( messages.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) messages.get( 0 );
+		String content = firstMessage.getAsString( Key.of( "content" ) );
+		// Should use the explicit value, not auto-generate
+		assertThat( content ).contains( "The input is: explicit value" );
+	}
+
+	@DisplayName( "Handles null input gracefully" )
+	@Test
+	public void testInputSystemVariableWithNullInput() {
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+				message = aiMessage( "Static message without any variables" )
+				result = message.run()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		Array messages = ( Array ) variables.get( "result" );
+		assertThat( messages.size() ).isEqualTo( 1 );
+
+		IStruct firstMessage = ( IStruct ) messages.get( 0 );
+		String content = firstMessage.getAsString( Key.of( "content" ) );
+		assertThat( content ).isEqualTo( "Static message without any variables" );
+	}
 }
