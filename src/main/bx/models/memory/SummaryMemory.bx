@@ -144,11 +144,11 @@ class extends="WindowMemory" {
 	 */
 	private function summarizeOldMessages() {
 		var messages = getNonSystemMessages();
-		systemOutput( "summarizeOldMessages: messages.len()=#messages.len()#, summaryThreshold=#variables.summaryThreshold#", true );
+		// println( "summarizeOldMessages: messages.len()=#messages.len()#, summaryThreshold=#variables.summaryThreshold#", true );
 
 		// Don't summarize if we don't have enough messages
 		if ( messages.len() <= variables.summaryThreshold ) {
-			systemOutput( "summarizeOldMessages: Skipping - not enough messages", true );
+			//println( "summarizeOldMessages: Skipping - not enough messages", true );
 			return;
 		}
 
@@ -170,7 +170,7 @@ class extends="WindowMemory" {
 		}
 
 		// Add messages to summarize
-		toSummarize.each( function( msg ) {
+		toSummarize.each( msg => {
 			// Skip if it's already a summary
 			if ( msg.keyExists( "isSummary" ) && msg.isSummary ) {
 				return;
