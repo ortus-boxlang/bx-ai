@@ -1320,8 +1320,8 @@ public class aiMessageTest extends BaseIntegrationTest {
 		Array messages = ( Array ) variables.get( "result" );
 		assertThat( messages.size() ).isEqualTo( 1 );
 
-		IStruct firstMessage = ( IStruct ) messages.get( 0 );
-		String content = firstMessage.getAsString( Key.of( "content" ) );
+		IStruct	firstMessage	= ( IStruct ) messages.get( 0 );
+		String	content			= firstMessage.getAsString( Key.of( "content" ) );
 		assertThat( content ).contains( "Review this code:" );
 		assertThat( content ).contains( "function sortArray" );
 		assertThat( content ).contains( "arr.sort()" );
@@ -1344,8 +1344,8 @@ public class aiMessageTest extends BaseIntegrationTest {
 		Array messages = ( Array ) variables.get( "result" );
 		assertThat( messages.size() ).isEqualTo( 1 );
 
-		IStruct firstMessage = ( IStruct ) messages.get( 0 );
-		String content = firstMessage.getAsString( Key.of( "content" ) );
+		IStruct	firstMessage	= ( IStruct ) messages.get( 0 );
+		String	content			= firstMessage.getAsString( Key.of( "content" ) );
 		assertThat( content ).contains( "Write bio for John" );
 		assertThat( content ).contains( "who is 30" );
 	}
@@ -1368,8 +1368,8 @@ public class aiMessageTest extends BaseIntegrationTest {
 		Array messages = ( Array ) variables.get( "result" );
 		assertThat( messages.size() ).isEqualTo( 1 );
 
-		IStruct firstMessage = ( IStruct ) messages.get( 0 );
-		String content = firstMessage.getAsString( Key.of( "content" ) );
+		IStruct	firstMessage	= ( IStruct ) messages.get( 0 );
+		String	content			= firstMessage.getAsString( Key.of( "content" ) );
 		assertThat( content ).contains( "Name: Jane" );
 		assertThat( content ).contains( "Full: Jane" );
 		assertThat( content ).contains( "Age: 25" );
@@ -1385,10 +1385,10 @@ public class aiMessageTest extends BaseIntegrationTest {
 				// Create a simple pipeline that passes data through stages
 				stage1 = aiMessage( "Generate code for: ${task}" )
 				stage2 = aiMessage( "Review this code: ${_input}" )
-				
+
 				// Stage 1 output (simulated)
 				stage1Result = stage1.run( { task: "sort array" } )
-				
+
 				// Stage 2 receives stage 1's output
 				// In real pipeline, this would be the AI's response, but we'll simulate with a struct
 				fakeAiOutput = "function sortArray(arr) { return arr.sort(); }"
@@ -1402,8 +1402,8 @@ public class aiMessageTest extends BaseIntegrationTest {
 		Array stage2Messages = ( Array ) variables.get( "stage2Result" );
 		assertThat( stage2Messages.size() ).isEqualTo( 1 );
 
-		IStruct message = ( IStruct ) stage2Messages.get( 0 );
-		String content = message.getAsString( Key.of( "content" ) );
+		IStruct	message	= ( IStruct ) stage2Messages.get( 0 );
+		String	content	= message.getAsString( Key.of( "content" ) );
 		assertThat( content ).contains( "Review this code:" );
 		assertThat( content ).contains( "function sortArray" );
 	}
@@ -1426,8 +1426,8 @@ public class aiMessageTest extends BaseIntegrationTest {
 		Array messages = ( Array ) variables.get( "result" );
 		assertThat( messages.size() ).isEqualTo( 1 );
 
-		IStruct firstMessage = ( IStruct ) messages.get( 0 );
-		String content = firstMessage.getAsString( Key.of( "content" ) );
+		IStruct	firstMessage	= ( IStruct ) messages.get( 0 );
+		String	content			= firstMessage.getAsString( Key.of( "content" ) );
 		// Should use the explicit value, not auto-generate
 		assertThat( content ).contains( "The input is: explicit value" );
 	}
@@ -1449,8 +1449,8 @@ public class aiMessageTest extends BaseIntegrationTest {
 		Array messages = ( Array ) variables.get( "result" );
 		assertThat( messages.size() ).isEqualTo( 1 );
 
-		IStruct firstMessage = ( IStruct ) messages.get( 0 );
-		String content = firstMessage.getAsString( Key.of( "content" ) );
+		IStruct	firstMessage	= ( IStruct ) messages.get( 0 );
+		String	content			= firstMessage.getAsString( Key.of( "content" ) );
 		assertThat( content ).isEqualTo( "Static message without any variables" );
 	}
 }
