@@ -126,12 +126,17 @@ class extends="WindowMemory" {
 	public IAiMemory function trim() {
 		var nonSystemMessages = getNonSystemMessages()
 
-		// If we're under the summary threshold, no trimming needed
-		if ( nonSystemMessages.len() <= variables.summaryThreshold ) {
+		// Calculate how many messages we would summarize
+		var totalMessages = nonSystemMessages.len()
+		var messagesToSummarize = totalMessages - variables.summaryThreshold
+
+		// Only summarize if we have accumulated at least threshold worth of messages
+		// This batches summarization and makes it more efficient
+		if ( messagesToSummarize < variables.summaryThreshold ) {
 			return this
 		}
 
-		// We're over threshold → run summarization instead of raw trimming
+		// We have enough messages to summarize → run summarization
     	summarizeOldMessages()
 
 		return this
