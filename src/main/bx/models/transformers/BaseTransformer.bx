@@ -28,7 +28,16 @@ abstract class implements="ITransformer" {
 	/**
 	 * Current configuration
 	 */
-	property name="config" type="struct";
+	property name="config" type="struct" default="{}";
+
+	/**
+	 * Constructor
+	 * Initializes the configuration struct and returns the instance for chaining
+	 */
+	function init(){
+		variables.config = {}
+		return this;
+	}
 
 	/**
 	 * Configure the transformer with settings

@@ -88,10 +88,15 @@ jobs:
 
       - name: Build it!
         run: |
+         # Lint the changelog to ensure it is well formatted
           npm install -g markdownlint-cli
           markdownlint changelog.md --fix
+          # Download BoxLang dependencies before building to speed up the process and avoid timeouts on CI
           ./gradlew downloadBoxLang
+          # Build the module, skipping tests to speed up the process. Tests should be run in a separate workflow.
           ./gradlew build -x test --stacktrace --console=plain
+          # Build the API Docs
+          ./build.docs.sh
 
       - name: Commit Changelog [unreleased] with latest version
         uses: EndBug/add-and-commit@v9.1.4
@@ -130,7 +135,7 @@ jobs:
           SOURCE_DIR: "build/distributions"
           DEST_DIR: "ortussolutions/boxlang-modules/${{ env.MODULE_ID }}/${{ env.VERSION }}"
 
-      - name: Upload API Docs to S3
+      - name: Upload Java API Docs to S3
         uses: jakejarvis/s3-sync-action@master
         with:
           args: --acl public-read
@@ -139,7 +144,18 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_ACCESS_SECRET }}
           SOURCE_DIR: "build/docs/javadoc"
-          DEST_DIR: "boxlang-modules/${{ env.MODULE_ID }}/${{ env.VERSION }}"
+          DEST_DIR: "boxlang-modules/${{ env.MODULE_ID }}/${{ env.VERSION }}/javadoc"
+
+      - name: Upload BoxLang API Docs to S3
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read
+        env:
+          AWS_S3_BUCKET: "apidocs.ortussolutions.com"
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_ACCESS_SECRET }}
+          SOURCE_DIR: "build/apidocs"
+          DEST_DIR: "boxlang-modules/${{ env.MODULE_ID }}/${{ env.VERSION }}/boxlang"
 
       - name: Publish to ForgeBox
         run: |
