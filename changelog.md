@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- SummaryMemory was not trimming messages when the summary threshold  was exceeded, but was using the maxMessages limit instead, which caused it to never summarize and just trim to the maxMessages limit.
+- SummaryMemory was not trimming messages when the summary threshold  was exceeded, and it was recursing forever on summary. Now it properly trims messages until it gets under the threshold, then summarizes and adds the summary message back in.
 - BaseTransformer was missing it's internal constructor
 - Default for `config` on all `BaseTransformer` classes was missing.
 - Fixed a bug where if the `aiTransform()` BIF was called with a non-string or closure, the `throw()` was invalid.

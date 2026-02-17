@@ -183,37 +183,41 @@ class extends="WindowMemory" {
 			summaryPrompt &= "#msg.role#: #msg.content#\n";
 		} );
 
-	// Call AI to generate summary
-	try {
-		var summary = variables.summaryModelInstance.run( aiMessage().user( summaryPrompt ) );
+		// Call AI to generate summary
+		try {
+			var summary = variables.summaryModelInstance.run( aiMessage().user( summaryPrompt ) );
 
-		// Rebuild memory structure
-		var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
+			// Rebuild memory structure WITHOUT triggering trim() recursion
+			// We directly manipulate variables.messages to avoid add() → trim() → summarizeOldMessages() recursion
+			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
 
-		clear();
+			// Clear messages array directly
+			variables.messages = [];
 
-		// Re-add system message
-		if ( systemMsg.len() ) {
-			setSystemMessage( systemMsg );
-		}
+			// Re-add system message directly (avoid setSystemMessage which calls trim)
+			if ( systemMsg.len() ) {
+				variables.messages.append( {
+					role: "system",
+					content: systemMsg,
+					timestamp: now()
+				} );
+			}
 
-		// Add summary as special assistant message
-		super.add( {
-			role: "assistant",
-			content: "[Previous conversation summary]: #summary#",
-			isSummary: true,
-			timestamp: now()
-		} );
+			// Add summary as special assistant message (directly, no super.add())
+			variables.messages.append( {
+				role: "assistant",
+				content: "[Previous conversation summary]: #summary#",
+				isSummary: true,
+				timestamp: now()
+			} );
 
-		variables.currentSummary = summary;
-		variables.hasSummary = true;
+			variables.currentSummary = summary;
+			variables.hasSummary = true;
 
-		// Add back recent messages
-		for( var msg in toKeep ){
-			super.add( msg );
-		}
+			// Add back recent messages (directly, no super.add() to avoid trim recursion)
+			variables.messages.append( toKeep, true )
 
-	} catch ( any e ) {
+		} catch ( any e ) {
 			// If summarization fails, fall back to simple truncation
 			writeLog(
 				text: "SummaryMemory: Failed to generate summary - #e.message#. Falling back to truncation.",
