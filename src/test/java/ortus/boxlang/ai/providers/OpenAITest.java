@@ -188,15 +188,16 @@ public class OpenAITest extends BaseIntegrationTest {
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
-			// Test 1: Raw response (default)
+			// Test 1: Raw response
 			rawResult = aiMessage()
 				.user( "Say hello" )
 				.toModel( "openai" )
 				.withParams( { model: "gpt-3.5-turbo" } )
+				.rawResponse() // Explicitly specify raw response
 				.run()
 			println( "Raw has choices: " & rawResult.keyExists( "choices" ) )
 
-			// Test 3: allMessages() convenience
+			// Test 2: allMessages() convenience
 			allResult = aiMessage()
 				.user( "Say hi" )
 				.toModel( "openai" )
@@ -204,7 +205,7 @@ public class OpenAITest extends BaseIntegrationTest {
 				.run()
 			println( "All messages count: " & allResult.len() )
 
-			// Test 4: Using withOptions() explicitly
+			// Test 3: Using withOptions() explicitly
 			optionsResult = aiMessage()
 				.user( "Count to 3" )
 				.toModel( "openai" )
@@ -212,7 +213,7 @@ public class OpenAITest extends BaseIntegrationTest {
 				.run()
 			println( "Options result type: " & optionsResult.getClass().getName() )
 
-			// Test 5: Passing options at runtime
+			// Test 4: Passing options at runtime
 			runtimeResult = aiMessage()
 				.user( "Hello" )
 				.toModel( "openai" )
