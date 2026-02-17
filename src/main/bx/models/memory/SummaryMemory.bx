@@ -126,12 +126,12 @@ class extends="WindowMemory" {
 	public IAiMemory function trim() {
 		var nonSystemMessages = getNonSystemMessages()
 
-		// If we're under the normal window limit, just use the base trim
-		if ( nonSystemMessages.len() <= variables.maxMessages ) {
-			return super.trim()
+		// If we're under the summary threshold, no trimming needed
+		if ( nonSystemMessages.len() <= variables.summaryThreshold ) {
+			return this
 		}
 
-		// We're over limit → run summarization instead of raw trimming
+		// We're over threshold → run summarization instead of raw trimming
     	summarizeOldMessages()
 
 		return this
