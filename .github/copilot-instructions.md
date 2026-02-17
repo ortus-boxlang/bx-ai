@@ -492,7 +492,7 @@ loader.ingest( vectorMemory, {
 var client = MCP( "http://localhost:3000" )
     .withTimeout( 5000 )
     .withBearerToken( "secret" )
-    .onError( error => systemOutput( error, true ) );
+    .onError( error => println( error, true ) );
 
 var tools = client.listTools();
 var result = client.callTool( "search", { query: "BoxLang" } );
@@ -1042,7 +1042,7 @@ var docs = future.get();  // Wait for completion
 
 // Non-blocking memory seeding
 memory.seedAsync( documents ).then( result => {
-    systemOutput( "Seeded #result.count# documents" );
+    println( "Seeded #result.count# documents" );
 });
 
 // Custom async operations
@@ -1118,9 +1118,9 @@ var product = aiChat(
     returnFormat: new Product()
 );
 
-systemOutput( product.title );   // "Wireless Mouse"
-systemOutput( product.price );   // 29.99 (numeric!)
-systemOutput( product.inStock ); // true (boolean!)
+println( product.title );   // "Wireless Mouse"
+println( product.price );   // 29.99 (numeric!)
+println( product.inStock ); // true (boolean!)
 ```
 
 ## File Organization Logic
@@ -1246,7 +1246,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
 
    var user = new User();
    user.setFirstName( "John" );  // ✅ Auto-generated setter
-   systemOutput( user.getFirstName() );  // ✅ Auto-generated getter
+   println( user.getFirstName() );  // ✅ Auto-generated getter
    ```
 
 6. **Type casting**: Use `castAs` operator, NOT `javaCast()` function
