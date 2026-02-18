@@ -212,6 +212,9 @@ class extends="BaseService"{
 	 */
 	@override
 	public function chatStream( required AiChatRequest chatRequest, required function callback ){
+		var userCallback = arguments.callback;
+		var requestedModel = arguments.chatRequest.getModel();
+
 		// We need to pre-process the messages to conform to the Gemini API
 		var dataPacket = {
 			"contents": arguments.chatRequest
@@ -242,9 +245,30 @@ class extends="BaseService"{
 
 		// No auth header for Gemini
 		arguments.chatRequest.setSendAuthHeader( false );
+		var normalizedCallback = ( chunk ) => {
+			var content = chunk.candidates?.first()?.content?.parts?.first()?.text ?: "";
+			var finishReason = chunk.candidates?.first()?.finishReason ?: "";
+
+			userCallback({
+				"provider": "Gemini",
+				"model": requestedModel,
+				"object": "chat.completion.chunk",
+				"choices": [
+					{
+						"index": 0,
+						"delta": {
+							"role": "assistant",
+							"content": content
+						},
+						"finish_reason": finishReason
+					}
+				],
+				"raw": chunk
+			});
+		};
 
 		// Send it with streaming
-		sendStreamRequest( chatRequest, dataPacket, callback )
+		sendStreamRequest( chatRequest, dataPacket, normalizedCallback )
 	}
 
 }
