@@ -352,28 +352,27 @@ abstract class implements="IAiService" {
 
 			// find the tool, invoke it, append the result to the chat history
 			choice.message.tool_calls.each( ( toolCall, i ) => {
-				chatRequest.getTool( toolCall.function.name )
-					.ifPresentOrElse(
-						tool => {
-							newMessages.append({
-								"role"        : "tool",
-								"tool_call_id": toolCall.id,
-								"content"     : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
-							});
-						},
-						() => {
-							writeLog(
-								text: "Unable to find tool named: #toolCall.function.name#",
-								type: "warning",
-								log : "ai"
-							)
-							newMessages.append({
-								"role"        : "tool",
-								"tool_call_id": toolCall.id,
-								"content"     : "Tool ['#toolCall.function.name#'] not found in chat request"
-							});
-						}
+				var toolAttempt = chatRequest.getTool( toolCall.function.name );
+
+				if( toolAttempt.isPresent() ){
+					var tool = toolAttempt.get();
+					newMessages.append({
+						"role"        : "tool",
+						"tool_call_id": toolCall.id,
+						"content"     : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
+					});
+				} else {
+					writeLog(
+						text: "Unable to find tool named: #toolCall.function.name#",
+						type: "warning",
+						log : "ai"
 					)
+					newMessages.append({
+						"role"        : "tool",
+						"tool_call_id": toolCall.id,
+						"content"     : "Tool ['#toolCall.function.name#'] not found in chat request"
+					});
+				}
 			});
 		});
 
@@ -1006,7 +1005,7 @@ abstract class implements="IAiService" {
 
 		// Show tools if present
 		if( arguments.dataPacket.keyExists( "tools" ) && arguments.dataPacket.tools.len() ){
-			logLines.append( "Tools: #arguments.dataPacket.tools.len()# registered (#arguments.dataPacket.tools.map( t => t.name ).toList( ", " )#)" );
+			logLines.append( "Tools: #arguments.dataPacket.tools.len()#" )
 		}
 
 		// Show structured output if present

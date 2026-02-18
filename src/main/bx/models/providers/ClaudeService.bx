@@ -353,37 +353,33 @@ class extends="BaseService"{
 		var messages = arguments.chatRequest.getMessages();
 
 		// Get the tool from the chat request
-		arguments.chatRequest
-			.getTool( toolCall.name )
-			.ifPresentOrElse(
-				// Found, invoke the tool
-				tool => {
-					messages.append({
-						"role" : "user",
-						"content" : [{
-							"type"        : "tool_result",
-							"tool_use_id" : toolCall.id,
-							"content"     : tool.invoke( args : toolCall.input )
-						}]
-					});
-				},
-				// Not found
-				() => {
-					writeLog(
-						text: "Unable to find tool named: [#toolCall.name#]",
-						type: "warning",
-						log : "ai"
-					)
-					messages.append({
-						"role" : "user",
-						"content" : [{
-							"type"        : "tool_result",
-							"tool_use_id" : toolCall.id,
-							"content"     : "Tool ['#toolCall.name#'] not found in chat request"
-						}]
-					});
-				}
-			);
+		var toolAttempt = arguments.chatRequest.getTool( toolCall.name );
+
+		if( toolAttempt.isPresent() ){
+			var tool = toolAttempt.get();
+			messages.append({
+				"role" : "user",
+				"content" : [{
+					"type"        : "tool_result",
+					"tool_use_id" : toolCall.id,
+					"content"     : tool.invoke( args : toolCall.input )
+				}]
+			});
+		} else {
+			writeLog(
+				text: "Unable to find tool named: [#toolCall.name#]",
+				type: "warning",
+				log : "ai"
+			)
+			messages.append({
+				"role" : "user",
+				"content" : [{
+					"type"        : "tool_result",
+					"tool_use_id" : toolCall.id,
+					"content"     : "Tool ['#toolCall.name#'] not found in chat request"
+				}]
+			});
+		}
 	}
 
 }
