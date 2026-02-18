@@ -162,7 +162,8 @@ class extends="WindowMemory" {
 
 		// Split: messages to summarize vs recent to keep
 		var toSummarize = messages.slice( 1, messagesToSummarize );
-		var toKeep = messages.slice( messagesToSummarize + 1, messages.len() );
+		var keepLength = messages.len() - messagesToSummarize;
+		var toKeep = messages.slice( messagesToSummarize + 1, keepLength );
 
 		// Build summarization prompt
 		var summaryPrompt = static.SUMMARY_PROMPT;
