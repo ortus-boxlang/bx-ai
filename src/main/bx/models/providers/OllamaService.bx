@@ -247,6 +247,28 @@ class extends="BaseService"{
 		// Capture callback in local variable for closure
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
+		var requestedModel = arguments.chatRequest.getModel();
+		var emitNormalizedChunk = ( parsedChunk ) => {
+			var content = parsedChunk.message?.content ?: "";
+			var finishReason = parsedChunk.done ? "stop" : "";
+
+			userCallback( {
+				"provider": "Ollama",
+				"model": parsedChunk.model ?: requestedModel,
+				"object": "chat.completion.chunk",
+				"choices": [
+					{
+						"index": 0,
+						"delta": {
+							"role": "assistant",
+							"content": content
+						},
+						"finish_reason": finishReason
+					}
+				],
+				"raw": parsedChunk
+			} )
+		}
 
 		// Build HTTP request with fluent API
 		// Note: Ollama uses newline-delimited JSON, NOT SSE format
@@ -295,7 +317,7 @@ class extends="BaseService"{
 					// Each line is a complete JSON object
 					try {
 						var parsedChunk = jsonDeserialize( line );
-						userCallback( parsedChunk );
+						emitNormalizedChunk( parsedChunk );
 					} catch( any e ){
 						writeLog(
 							text: "Error parsing Ollama stream chunk: #e.message# - Data: #line#",
@@ -324,7 +346,7 @@ class extends="BaseService"{
 				if( !buffer.isEmpty() ){
 					try {
 						var parsedChunk = jsonDeserialize( buffer.trim() );
-						userCallback( parsedChunk );
+						emitNormalizedChunk( parsedChunk );
 					} catch( any e ){
 						// Ignore parsing errors for final buffer
 					}
