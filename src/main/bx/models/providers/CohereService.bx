@@ -406,6 +406,32 @@ class extends="BaseService"{
 		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
+		var requestedModel = arguments.chatRequest.getModel();
+		var emitNormalizedChunk = ( parsedChunk ) => {
+			var content = parsedChunk.text ?: ""
+			var finishReason = ""
+
+			if( parsedChunk.event_type == "stream-end" ){
+				finishReason = "stop"
+			}
+
+			userCallback( {
+				"provider": "Cohere",
+				"model": requestedModel,
+				"object": "chat.completion.chunk",
+				"choices": [
+					{
+						"index": 0,
+						"delta": {
+							"role": "assistant",
+							"content": content
+						},
+						"finish_reason": finishReason
+					}
+				],
+				"raw": parsedChunk
+			} );
+		};
 
 		// Cohere has a different message format
 		// Extract the last message as the main message
@@ -525,7 +551,7 @@ class extends="BaseService"{
 				// Try to parse and send to callback
 				try {
 					var parsedChunk = jsonDeserialize( chunk.data );
-					userCallback( parsedChunk );
+					emitNormalizedChunk( parsedChunk );
 				} catch( any e ){
 					writeLog(
 						text: "Error parsing Cohere stream chunk: #e.message# - Data: #chunk.data#",
