@@ -261,7 +261,7 @@ class extends="BaseVectorMemory" {
 		// Pinecone doesn't support retrieving all documents efficiently
 		// This is a limitation of managed vector databases
 		// We'll return an empty array and log a warning
-		systemOutput( "WARNING: PineconeVectorMemory.getAllDocuments() is not efficiently supported. Use searchByVector() or getDocumentById() instead.", true )
+		//systemOutput( "WARNING: PineconeVectorMemory.getAllDocuments() is not efficiently supported. Use searchByVector() or getDocumentById() instead.", true )
 		return []
 	}
 
