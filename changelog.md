@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tool calling with streaming was not working because the tools were being executed in a different context that didn't have access to the request. Now the request is properly passed to the tool execution context, allowing tools to be called and executed correctly during streaming.
 - Agent stream() was not passing tools the correct request, now it does.
 - scoping issue on Agent streaming
 - fixed BaseMemory getRecent() where limit was not being used
