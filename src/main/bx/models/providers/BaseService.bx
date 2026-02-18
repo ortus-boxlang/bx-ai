@@ -1006,7 +1006,7 @@ abstract class implements="IAiService" {
 
 		// Show tools if present
 		if( arguments.dataPacket.keyExists( "tools" ) && arguments.dataPacket.tools.len() ){
-			logLines.append( "Tools: #arguments.dataPacket.tools.len()# registered (#arguments.dataPacket.tools.map( t => t.function.name ).toList( ", " )#)" );
+			logLines.append( "Tools: #arguments.dataPacket.tools.len()# registered (#arguments.dataPacket.tools.map( t => t.name ).toList( ", " )#)" );
 		}
 
 		// Show structured output if present
