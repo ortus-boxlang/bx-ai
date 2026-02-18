@@ -199,6 +199,19 @@ class extends="AiBaseRunnable" {
 		var effectiveOptions = getMergedOptions( arguments.options );
 		effectiveOptions.stream = true;
 
+		// If we have tools in params, merge them with the model's tools
+		if( effectiveParams.keyExists( "tools" ) ) {
+			// Make sure these are normalized to an array
+			if( !isArray( effectiveParams.tools ) ) {
+				effectiveParams.tools = [ effectiveParams.tools ];
+			}
+			effectiveParams.tools.append( variables.tools, true );
+		}
+		// No tools in params, use model's tools
+		else {
+			effectiveParams.tools = variables.tools;
+		}
+
 		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
 			aiMessage( messages ),
 			effectiveParams,

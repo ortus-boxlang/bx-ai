@@ -256,6 +256,7 @@ class extends="AiBaseRunnable" {
 
 		// Merge options
 		var effectiveOptions = variables.options.append( arguments.options );
+		var userOnChunk = arguments.onChunk;
 
 		// Store accumulated response for memory
 		var accumulated = "";
@@ -265,7 +266,7 @@ class extends="AiBaseRunnable" {
 			accumulated &= content;
 
 			// Call user callback
-			arguments.onChunk( chunk );
+			userOnChunk( chunk );
 		};
 
 		// Stream via model (tools handled by model/service)

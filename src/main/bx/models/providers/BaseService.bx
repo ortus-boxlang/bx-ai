@@ -352,28 +352,27 @@ abstract class implements="IAiService" {
 
 			// find the tool, invoke it, append the result to the chat history
 			choice.message.tool_calls.each( ( toolCall, i ) => {
-				chatRequest.getTool( toolCall.function.name )
-					.ifPresentOrElse(
-						tool => {
-							newMessages.append({
-								"role"        : "tool",
-								"tool_call_id": toolCall.id,
-								"content"     : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
-							});
-						},
-						() => {
-							writeLog(
-								text: "Unable to find tool named: #toolCall.function.name#",
-								type: "warning",
-								log : "ai"
-							)
-							newMessages.append({
-								"role"        : "tool",
-								"tool_call_id": toolCall.id,
-								"content"     : "Tool ['#toolCall.function.name#'] not found in chat request"
-							});
-						}
+				var toolAttempt = chatRequest.getTool( toolCall.function.name );
+
+				if( toolAttempt.isPresent() ){
+					var tool = toolAttempt.get();
+					newMessages.append({
+						"role"        : "tool",
+						"tool_call_id": toolCall.id,
+						"content"     : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
+					});
+				} else {
+					writeLog(
+						text: "Unable to find tool named: #toolCall.function.name#",
+						type: "warning",
+						log : "ai"
 					)
+					newMessages.append({
+						"role"        : "tool",
+						"tool_call_id": toolCall.id,
+						"content"     : "Tool ['#toolCall.function.name#'] not found in chat request"
+					});
+				}
 			});
 		});
 
@@ -394,7 +393,7 @@ abstract class implements="IAiService" {
 	 *
 	 * @return void
 	 */
-	public function chatStream( required AiChatRequest chatRequest, required function callback ){
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
 		// Build the packet according to the OpenAI standard
 		var dataPacket = {
 			"model"   : arguments.chatRequest.getModel(),
@@ -408,7 +407,86 @@ abstract class implements="IAiService" {
 		}
 
 		// Send it with streaming
-		sendStreamRequest( chatRequest, dataPacket, callback )
+		var streamState = sendStreamRequest( chatRequest, dataPacket, callback )
+
+		// If no tool calls were requested, we are done
+		if( !streamState.toolCalls.len() ){
+			return;
+		}
+
+		/**
+		 * ---------------------------------------------------------------------------------------------------------
+		 * Max Interactions Check
+		 * ---------------------------------------------------------------------------------------------------------
+		 */
+
+		var maxAllowed = arguments.chatRequest.getMaxInteractions() > 0 ? arguments.chatRequest.getMaxInteractions() : variables.maxInteractions;
+		if( arguments.interactionCount >= maxAllowed ){
+			writeLog(
+				text: "Max tool call interactions (#maxAllowed#) exceeded during streaming",
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "MaxInteractionsExceeded",
+				message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#) during streaming. This may indicate an infinite loop."
+			);
+		}
+
+		/**
+		 * ---------------------------------------------------------------------------------------------------------
+		 * Tool Chains (Streaming)
+		 * ---------------------------------------------------------------------------------------------------------
+		 */
+
+		var newMessages = arguments.chatRequest.getMessages().map( message -> message )
+		var assistantMessage = {
+			"role": "assistant",
+			"content": streamState.content
+		};
+
+		assistantMessage.tool_calls = streamState.toolCalls;
+		newMessages.append( assistantMessage );
+
+		streamState.toolCalls.each( toolCall => {
+			var toolAttempt = chatRequest.getTool( toolCall.function.name ?: "" );
+			var toolArguments = {};
+
+			try {
+				toolArguments = JSONDeserialize( toolCall.function.arguments ?: "{}" );
+			} catch( any e ){
+				writeLog(
+					text: "Unable to deserialize tool call arguments for '#toolCall.function.name ?: "unknown"#': #e.message#",
+					type: "warning",
+					log : "ai"
+				)
+			}
+
+			if( toolAttempt.isPresent() ){
+				var tool = toolAttempt.get();
+				newMessages.append({
+					"role"        : "tool",
+					"tool_call_id": toolCall.id ?: "",
+					"content"     : tool.invoke( toolArguments )
+				});
+			} else {
+				writeLog(
+					text: "Unable to find tool named during streaming: #toolCall.function.name ?: "unknown"#",
+					type: "warning",
+					log : "ai"
+				)
+				newMessages.append({
+					"role"        : "tool",
+					"tool_call_id": toolCall.id ?: "",
+					"content"     : "Tool ['#toolCall.function.name ?: "unknown"#'] not found in chat request"
+				});
+			}
+		} );
+
+		arguments.chatRequest.setMessages( newMessages );
+
+		// Continue streaming the final answer after tool execution
+		chatStream( arguments.chatRequest, arguments.callback, arguments.interactionCount + 1 );
 	}
 
 	/**
@@ -640,7 +718,7 @@ abstract class implements="IAiService" {
 	 *
 	 * @return void
 	 */
-	private function sendStreamRequest(
+	private struct function sendStreamRequest(
 		required AiChatRequest chatRequest,
 		required struct dataPacket,
 		required function callback
@@ -648,6 +726,11 @@ abstract class implements="IAiService" {
 		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
+		var streamState = {
+			"content": "",
+			"finishReason": "",
+			"toolCalls": []
+		};
 
 		// Announce the request
 		BoxAnnounce(
@@ -712,6 +795,7 @@ abstract class implements="IAiService" {
 				// Try to parse and send to callback
 				try {
 					var parsedChunk = jsonDeserialize( chunk.data );
+					updateStreamState( streamState, parsedChunk );
 					userCallback( parsedChunk );
 				} catch( any e ){
 					writeLog(
@@ -765,6 +849,92 @@ abstract class implements="IAiService" {
 				);
 			} )
 			.send();
+
+		return streamState;
+	}
+
+	/**
+	 * Update stream state from a parsed chunk
+	 *
+	 * @streamState The mutable stream state accumulator
+	 * @parsedChunk The parsed JSON chunk
+	 *
+	 * @return void
+	 */
+	private void function updateStreamState( required struct streamState, required struct parsedChunk ){
+		var firstChoice = arguments.parsedChunk.choices?.first();
+		if( isNull( firstChoice ) ){
+			return;
+		}
+
+		// Accumulate streamed content
+		var content = firstChoice.delta?.content ?: "";
+		if( !isNull( content ) && isSimpleValue( content ) ){
+			arguments.streamState.content &= toString( content );
+		}
+
+		// Track finish reason if available
+		var finishReason = firstChoice.finish_reason ?: "";
+		if( !isNull( finishReason ) && isSimpleValue( finishReason ) && toString( finishReason ).len() ){
+			arguments.streamState.finishReason = toString( finishReason );
+		}
+
+		// Merge tool call deltas
+		var toolCallDeltas = firstChoice.delta?.tool_calls ?: [];
+		if( isArray( toolCallDeltas ) && toolCallDeltas.len() ){
+			mergeToolCallDeltas( arguments.streamState.toolCalls, toolCallDeltas );
+		}
+	}
+
+	/**
+	 * Merge partial tool-call deltas into complete tool call objects
+	 *
+	 * @toolCalls Accumulated tool calls array (mutated)
+	 * @toolCallDeltas Tool-call deltas from a single stream chunk
+	 *
+	 * @return void
+	 */
+	private void function mergeToolCallDeltas( required array toolCalls, required array toolCallDeltas ){
+		var accumulatedToolCalls = arguments.toolCalls;
+		var incomingDeltas = arguments.toolCallDeltas;
+
+		incomingDeltas.each( delta => {
+			var zeroBasedIndex = delta.keyExists( "index" ) ? val( delta.index ) : ( accumulatedToolCalls.len() );
+			var arrayIndex = zeroBasedIndex + 1;
+
+			while( accumulatedToolCalls.len() < arrayIndex ){
+				accumulatedToolCalls.append({
+					"id": "",
+					"type": "function",
+					"function": {
+						"name": "",
+						"arguments": ""
+					}
+				});
+			}
+
+			var current = accumulatedToolCalls[ arrayIndex ];
+
+			if( delta.keyExists( "id" ) && !isNull( delta.id ) && toString( delta.id ).len() ){
+				current.id = toString( delta.id );
+			}
+
+			if( delta.keyExists( "type" ) && !isNull( delta.type ) && toString( delta.type ).len() ){
+				current.type = toString( delta.type );
+			}
+
+			if( delta.keyExists( "function" ) && isStruct( delta.function ) ){
+				if( delta.function.keyExists( "name" ) && !isNull( delta.function.name ) && toString( delta.function.name ).len() ){
+					current.function.name = toString( delta.function.name );
+				}
+
+				if( delta.function.keyExists( "arguments" ) && !isNull( delta.function.arguments ) ){
+					current.function.arguments &= toString( delta.function.arguments );
+				}
+			}
+
+			accumulatedToolCalls[ arrayIndex ] = current;
+		} );
 	}
 
 	/**
@@ -1008,7 +1178,7 @@ abstract class implements="IAiService" {
 
 		// Show tools if present
 		if( arguments.dataPacket.keyExists( "tools" ) && arguments.dataPacket.tools.len() ){
-			logLines.append( "Tools: #arguments.dataPacket.tools.len()# registered (#arguments.dataPacket.tools.map( t => t.function.name ).toList( ", " )#)" );
+			logLines.append( "Tools: #arguments.dataPacket.tools.len()#" )
 		}
 
 		// Show structured output if present

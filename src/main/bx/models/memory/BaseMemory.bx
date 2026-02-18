@@ -209,7 +209,7 @@ abstract class implements="IAiMemory" {
 		}
 
 		var start = total - arguments.limit + 1
-		return allMessages.slice( start, total )
+		return allMessages.slice( start, arguments.limit )
 	}
 
 	/**

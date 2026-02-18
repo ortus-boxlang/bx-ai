@@ -248,6 +248,28 @@ class extends="BaseService"{
 		// Capture callback in local variable for closure
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
+		var requestedModel = arguments.chatRequest.getModel();
+		var emitNormalizedChunk = ( parsedChunk ) => {
+			var content = parsedChunk.message?.content ?: "";
+			var finishReason = parsedChunk.done ? "stop" : "";
+
+			userCallback( {
+				"provider": "Ollama",
+				"model": parsedChunk.model ?: requestedModel,
+				"object": "chat.completion.chunk",
+				"choices": [
+					{
+						"index": 0,
+						"delta": {
+							"role": "assistant",
+							"content": content
+						},
+						"finish_reason": finishReason
+					}
+				],
+				"raw": parsedChunk
+			} )
+		}
 
 		// Build HTTP request with fluent API
 		// Note: Ollama uses newline-delimited JSON, NOT SSE format
@@ -296,7 +318,7 @@ class extends="BaseService"{
 					// Each line is a complete JSON object
 					try {
 						var parsedChunk = jsonDeserialize( line );
-						userCallback( parsedChunk );
+						emitNormalizedChunk( parsedChunk );
 					} catch( any e ){
 						writeLog(
 							text: "Error parsing Ollama stream chunk: #e.message# - Data: #line#",
@@ -325,7 +347,7 @@ class extends="BaseService"{
 				if( !buffer.isEmpty() ){
 					try {
 						var parsedChunk = jsonDeserialize( buffer.trim() );
-						userCallback( parsedChunk );
+						emitNormalizedChunk( parsedChunk );
 					} catch( any e ){
 						// Ignore parsing errors for final buffer
 					}
@@ -467,34 +489,30 @@ class extends="BaseService"{
 		var messages = arguments.chatRequest.getMessages();
 
 		// Get the tool from the chat request
-		arguments.chatRequest
-			.getTool( toolCall.function.name )
-			.ifPresentOrElse(
-				// Found, invoke the tool
-				tool => {
-					// Deserialize arguments if they're a JSON string, otherwise use as-is
-					var toolArgs = isSimpleValue( toolCall.function.arguments ) 
-						? JSONDeserialize( toolCall.function.arguments )
-						: toolCall.function.arguments;
-					
-					messages.append({
-						"role" : "tool",
-						"content" : tool.invoke( toolArgs )
-					});
-				},
-				// Not found
-				() => {
-					writeLog(
-						text: "Unable to find tool named: [#toolCall.function.name#]",
-						type: "warning",
-						log : "ai"
-					)
-					messages.append({
-						"role" : "tool",
-						"content" : "Tool ['#toolCall.function.name#'] not found in chat request"
-					});
-				}
-			);
+		var toolAttempt = arguments.chatRequest.getTool( toolCall.function.name );
+
+		if( toolAttempt.isPresent() ){
+			var tool = toolAttempt.get();
+			// Deserialize arguments if they're a JSON string, otherwise use as-is
+			var toolArgs = isSimpleValue( toolCall.function.arguments )
+				? JSONDeserialize( toolCall.function.arguments )
+				: toolCall.function.arguments;
+
+			messages.append({
+				"role" : "tool",
+				"content" : tool.invoke( toolArgs )
+			});
+		} else {
+			writeLog(
+				text: "Unable to find tool named: [#toolCall.function.name#]",
+				type: "warning",
+				log : "ai"
+			)
+			messages.append({
+				"role" : "tool",
+				"content" : "Tool ['#toolCall.function.name#'] not found in chat request"
+			});
+		}
 	}
 
 }
