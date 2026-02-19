@@ -25,7 +25,7 @@ class extends="BaseService"{
 			"model" : "gemini-2.5-flash"
 		};
 		DEFAULT_EMBED_PARAMS = {
-			"model" : "text-embedding-004"
+			"model" : "gemini-embedding-001"
 		};
 	}
 
