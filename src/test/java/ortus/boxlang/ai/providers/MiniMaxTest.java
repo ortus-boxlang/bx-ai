@@ -17,6 +17,7 @@ package ortus.boxlang.ai.providers;
 import static com.google.common.truth.Truth.assertThat;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -106,6 +107,7 @@ public class MiniMaxTest extends BaseIntegrationTest {
 
 	@DisplayName( "Test MiniMax embeddings" )
 	@Test
+	@Disabled( "Too many Rate limit exceptions during testing" )
 	public void testEmbeddings() {
 		// @formatter:off
 		executeWithTimeoutHandling(

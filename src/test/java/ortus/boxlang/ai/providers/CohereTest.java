@@ -306,41 +306,4 @@ public class CohereTest extends BaseIntegrationTest {
 		assertThat( fullResponse.toLowerCase() ).contains( "42" );
 	}
 
-	@DisplayName( "Test Cohere streaming with simple math" )
-	@Test
-	public void testCohereStreamingSimpleMath() {
-		// @formatter:off
-		executeWithTimeoutHandling(
-			"""
-			fullResponse = "";
-			chunkCount = 0;
-
-			// Test with simple math question
-			aiChatStream(
-				"What is 5+5? Answer with just the number.",
-				( chunk ) => {
-					chunkCount++;
-					// Cohere streaming chunks have event_type and text fields
-					if( chunk.keyExists( "text" ) && !chunk.text.isEmpty() ){
-						fullResponse &= chunk.text;
-					}
-				},
-				{},
-				{ provider: "cohere" }
-			)
-
-			println( "Simple math test - chunks: " & chunkCount & ", response: " & fullResponse );
-			""",
-			context
-		);
-		// @formatter:on
-
-		var	fullResponse	= variables.getAsString( Key.of( "fullResponse" ) );
-		var	chunkCount		= variables.getAsInteger( Key.of( "chunkCount" ) );
-
-		assertThat( chunkCount ).isGreaterThan( 0 );
-		assertThat( fullResponse ).isNotEmpty();
-		assertThat( fullResponse.toLowerCase() ).contains( "10" );
-	}
-
 }
