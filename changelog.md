@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Updated `getConfig()` to not show sensitive info.
 
+### Fixed
+
+- BoxLang static constructs instead of inline to avoid issues with never versions.
+
 ## [2.3.0] - 2026-02-18
 
 ### Added

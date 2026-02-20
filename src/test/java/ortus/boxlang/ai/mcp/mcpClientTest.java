@@ -429,9 +429,7 @@ public class mcpClientTest extends BaseIntegrationTest {
 				println( "Error: " & response.getError() )
 				println( "Status Code: " & response.getStatusCode() )
 				println( "Has data: " & hasData )
-				if( hasData ) {
-					println( "Response keys: " & structKeyList( response.getData() ) )
-				}
+				println( response.getData() )
 			""",
 			context
 		);
