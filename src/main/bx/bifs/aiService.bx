@@ -35,6 +35,7 @@ class {
 			"grok",
 			"groq",
 			"huggingface",
+			"minimax",
 			"mistral",
 			"ollama",
 			"openai",
@@ -109,6 +110,9 @@ class {
 				break
 			case "mistral":
 				targetClass = "bxModules.bxai.models.providers.MistralService"
+				break
+			case "minimax":
+				targetClass = "bxModules.bxai.models.providers.MiniMaxService"
 				break
 			case "ollama":
 				targetClass = "bxModules.bxai.models.providers.OllamaService"
