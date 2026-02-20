@@ -102,6 +102,7 @@ public abstract class BaseIntegrationTest {
 		try {
 			runtime.executeSource( source, context );
 		} catch ( Exception e ) {
+			System.out.println( "Exception during execution: " + e.getMessage() );
 			if ( isTimeoutException( e ) ) {
 				System.out.println( "⚠️  Test passed with timeout - LLM request timed out (acceptable in CI): " + e.getMessage() );
 				// Test passes - timeout is acceptable in CI environments
