@@ -17,11 +17,13 @@
 @BoxBIF
 class {
 
-	static final VALID_RESPONSE_FORMATS = [ "single", "all", "raw", "json", "xml" ]
-	static final DEFAULT_OPTIONS = {
-		returnFormat : "single",  // aiChat() defaults to single for convenience
+	static {
+		final VALID_RESPONSE_FORMATS = [ "single", "all", "raw", "json", "xml" ]
+		final DEFAULT_OPTIONS = {
+			returnFormat : "single",  // aiChat() defaults to single for convenience
+		}
+		MODULE_SETTINGS = getModuleInfo( "bxai" ).settings;
 	}
-	static MODULE_SETTINGS = getModuleInfo( "bxai" ).settings;
 
 	/**
 	 * Inject the following references into the class

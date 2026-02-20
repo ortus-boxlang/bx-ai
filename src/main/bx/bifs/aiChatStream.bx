@@ -17,14 +17,16 @@
 @BoxBIF
 class {
 
-	static final DEFAULT_OPTIONS = {
-		timeout : 30,
-		logResponse : false,
-		logResponseToConsole : false,
-		logRequest : false,
-		logRequestToConsole : false
+	static {
+		final DEFAULT_OPTIONS = {
+			timeout : 30,
+			logResponse : false,
+			logResponseToConsole : false,
+			logRequest : false,
+			logRequestToConsole : false
+		}
+		MODULE_SETTINGS = getModuleInfo( "bxai" ).settings;
 	}
-	static MODULE_SETTINGS = getModuleInfo( "bxai" ).settings;
 
 	/**
 	 * Inject the following references into the class
