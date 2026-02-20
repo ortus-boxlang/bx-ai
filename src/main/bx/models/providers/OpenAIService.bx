@@ -24,10 +24,10 @@ class extends="BaseService"{
 			// according to the docs, this is the default model
 			// https://platform.openai.com/docs/models/gpt-5-nano
 			"model" : "gpt-5-nano"
-		};
+		}
 		DEFAULT_EMBED_PARAMS = {
 			"model" : "text-embedding-3-small"
-		};
+		}
 	}
 
 	/**

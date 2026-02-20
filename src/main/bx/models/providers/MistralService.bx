@@ -25,11 +25,11 @@ class extends="BaseService"{
 			// https://docs.mistral.ai/getting-started/models/models_overview/
 			// mistral-small-latest is the default model for cost-effective tasks
 			"model" : "mistral-small-latest"
-		};
+		}
 		DEFAULT_EMBED_PARAMS = {
 			// https://docs.mistral.ai/capabilities/embeddings/
 			"model" : "mistral-embed"
-		};
+		}
 	}
 
 	/**
