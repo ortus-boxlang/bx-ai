@@ -277,9 +277,10 @@ public class CohereTest extends BaseIntegrationTest {
 				"Tell me a short fact about the number 42 in one sentence.",
 				( chunk ) => {
 					chunks.append( chunk );
-					// Cohere returns text in event_type: "text-generation" chunks
-					if( chunk.keyExists( "text" ) && !chunk.text.isEmpty() ){
-						fullResponse &= chunk.text;
+					// Normalized chunk structure: chunk.choices[1].delta.content
+					var deltaContent = chunk?.choices[1]?.delta?.content ?: "";
+					if( deltaContent.len() > 0 ){
+						fullResponse &= deltaContent;
 					}
 				},
 				{},
