@@ -25,11 +25,11 @@
 
 Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang that provides a unified, fluent API to orchestrate multi-model workflows, autonomous agents, RAG pipelines, and AI-powered applications. **One API → Unlimited AI Power!** ✨
 
-**BoxLang AI** eliminates vendor lock-in and simplifies AI integration by providing a single, consistent interface across **15+ AI providers**. Whether you're using OpenAI, Claude, Gemini, Grok, DeepSeek, Ollama, or Perplexity—your code stays the same. Switch providers, combine models, and orchestrate complex workflows with simple configuration changes. 🔄
+**BoxLang AI** eliminates vendor lock-in and simplifies AI integration by providing a single, consistent interface across **16+ AI providers**. Whether you're using OpenAI, Claude, Gemini, Grok, DeepSeek, MiniMax, Ollama, or Perplexity—your code stays the same. Switch providers, combine models, and orchestrate complex workflows with simple configuration changes. 🔄
 
 ## ✨ Key Features
 
-- 🔌 **15+ AI Providers** - Single API for OpenAI, Claude, AWS Bedrock, Gemini, Grok, Ollama, DeepSeek, and more
+- 🔌 **16+ AI Providers** - Single API for OpenAI, Claude, AWS Bedrock, Gemini, Grok, MiniMax, Ollama, DeepSeek, and more
 - 🤖 **AI Agents** - Autonomous agents with memory, tools, sub-agents, and multi-step reasoning
 - 🔒 **Multi-Tenant Memory** - Enterprise-grade isolation with 20+ memory types (standard + vector)
 - 🧬 **Vector Memory & RAG** - 12 vector databases with semantic search (ChromaDB, Pinecone, PostgreSQL, OpenSearch, etc.)
@@ -139,6 +139,7 @@ The following are the AI providers supported by this module. **Please note that 
 - 🚀 [Groq](https://groq.com/)
 - 🤗 [HuggingFace](https://huggingface.co/)
 - 🌀 [Mistral](https://mistral.ai/)
+- 🌟 [MiniMax](https://platform.minimax.io/)
 - 🦙 [Ollama](https://ollama.ai/)
 - 🟢 [OpenAI](https://www.openai.com/)
 - 🔌 [OpenAI-Compatible](https://platform.openai.com/docs/api-reference) - Any OpenAI-compatible API
@@ -162,6 +163,7 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | Groq         | ✅ | ✅ | ✅ |
 | HuggingFace | ✅ | ✅ | ✅ |
 | Mistral      | ✅ | ✅ | ✅ |
+| MiniMax      | ✅ | ✅ | ✅ |
 | Ollama       | ✅ | ✅ | ✅ |
 | OpenAI       | ✅ | ✅ | ✅ (Native) |
 | OpenAI-Compatible | ✅ | ✅ | ✅ |
