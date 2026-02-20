@@ -518,7 +518,13 @@ class extends="AiBaseRunnable" {
 				};
 			} ),
 			"params": variables.params,
-			"options": variables.options
+			"options": variables.options.map( ( key, value ) => {
+				// Mask sensitive options (e.g. API keys) in the config output
+				var maskedValue = ( listFindNoCase( "apikey,token,secret", key ) > 0 )
+					? "****"
+					: value
+				return maskedValue
+			} )
 		};
 	}
 

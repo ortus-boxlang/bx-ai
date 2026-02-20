@@ -17,31 +17,34 @@
 @BoxBIF
 class {
 
-	/**
-	 * Inject the following references into the class
-	 * - moduleRecord : The ModuleRecord instance
-	 * - boxRuntime : The BoxRuntime instance
-	 * - interceptorService : The BoxLang InterceptorService
-	 * - log : A logger for the module config itself
-	 */
-	static final CORE_PROVIDERS = [
-		"bedrock",
-		"claude",
-        "cohere",
-		"deepseek",
-		"docker",
-		"gemini",
-		"grok",
-		"groq",
-		"huggingface",
-		"mistral",
-		"ollama",
-		"openai",
-		"openai-compatible",
-		"openrouter",
-		"perplexity",
-        "voyage"
-	];
+	static {
+		/**
+		 * Inject the following references into the class
+		 * - moduleRecord : The ModuleRecord instance
+		 * - boxRuntime : The BoxRuntime instance
+		 * - interceptorService : The BoxLang InterceptorService
+		 * - log : A logger for the module config itself
+		 */
+		final CORE_PROVIDERS = [
+			"bedrock",
+			"claude",
+			"cohere",
+			"deepseek",
+			"docker",
+			"gemini",
+			"grok",
+			"groq",
+			"huggingface",
+			"minimax",
+			"mistral",
+			"ollama",
+			"openai",
+			"openai-compatible",
+			"openrouter",
+			"perplexity",
+			"voyage"
+		];
+	}
 
     /**
      * Creates a reference to a registered AI Service Provider this module supports
@@ -107,6 +110,9 @@ class {
 				break
 			case "mistral":
 				targetClass = "bxModules.bxai.models.providers.MistralService"
+				break
+			case "minimax":
+				targetClass = "bxModules.bxai.models.providers.MiniMaxService"
 				break
 			case "ollama":
 				targetClass = "bxModules.bxai.models.providers.OllamaService"
