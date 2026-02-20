@@ -17,7 +17,6 @@ package ortus.boxlang.ai.providers;
 import static com.google.common.truth.Truth.assertThat;
 
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +25,6 @@ import ortus.boxlang.ai.BaseIntegrationTest;
 /**
  * Integration tests for MiniMax AI provider
  */
-@Disabled( "Requires MINIMAX_API_KEY environment variable" )
 public class MiniMaxTest extends BaseIntegrationTest {
 
 	@BeforeEach
@@ -41,7 +39,8 @@ public class MiniMaxTest extends BaseIntegrationTest {
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
-			result = aiChat( "what is boxlang?" )
+			result = aiChat( messages:"what is boxlang?", options: {
+			} )
 			println( result )
 			""",
 			context
@@ -111,7 +110,10 @@ public class MiniMaxTest extends BaseIntegrationTest {
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
-			result = aiEmbed( "BoxLang is a modern JVM language", { provider: "minimax" } )
+			result = aiEmbed( input: "BoxLang is a modern JVM language", options: { provider: "minimax",
+				logRequestToConsole: true,
+				logResponseToConsole: true
+			} )
 			println( "Embedding dimensions: " & result.len() )
 			""",
 			context
