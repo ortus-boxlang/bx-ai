@@ -250,7 +250,8 @@ abstract class implements="IAiService" {
 			};
 		}
 
-		// Send it
+		// Send HTTP request to the provider and get the response
+		// The result is a struct with normalized keys
 		var result = sendRequest( arguments.chatRequest, dataPacket )
 
 		// If an error is returned, throw it
@@ -288,10 +289,6 @@ abstract class implements="IAiService" {
 				totalTokens: result.usage.keyExists( "total_tokens" ) ? result.usage.total_tokens : 0,
 				aiRequest: arguments.chatRequest,
 				usage: result.usage,
-				// Multi-tenant tracking fields
-				tenantId: arguments.chatRequest.getTenantId(),
-				usageMetadata: arguments.chatRequest.getUsageMetadata(),
-				providerOptions: arguments.chatRequest.getProviderOptions(),
 				timestamp: now()
 			} );
 		}
