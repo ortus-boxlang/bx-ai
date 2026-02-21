@@ -296,7 +296,7 @@ class extends="BaseService"{
 		}
 
 		// Send it
-		var result = sendRequest( arguments.chatRequest, dataPacket )
+		var result = sendChatRequest( arguments.chatRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "message" ) && !result.keyExists( "text" ) ){
@@ -367,7 +367,7 @@ class extends="BaseService"{
 
 			// Send follow-up request with tool results
 			// Cohere typically needs only one follow-up; additional tool calls would require another interaction
-			result = sendRequest( arguments.chatRequest, followUpPacket );
+			result = sendChatRequest( arguments.chatRequest, followUpPacket );
 
 			// Check if Cohere is requesting MORE tool calls (multi-step reasoning)
 			if( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ){

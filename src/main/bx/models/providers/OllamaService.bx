@@ -130,7 +130,7 @@ class extends="BaseService"{
 		}
 
 		// Send it
-		var result = sendRequest( arguments.chatRequest, dataPacket )
+		var result = sendChatRequest( arguments.chatRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improvements
 
+- Internally refactored the `sendRequest()` method in the `BaseService` to be `sendChatRequest()` so we can be specific about the type of request being sent, and to allow for better handling of different request types in the future (e.g. embedding requests).
 - Removed unecessary data elements to `onAITokenCount` that are already inside the chat request object.
 
 ### Fixed

@@ -252,7 +252,7 @@ abstract class implements="IAiService" {
 
 		// Send HTTP request to the provider and get the response
 		// The result is a struct with normalized keys
-		var result = sendRequest( arguments.chatRequest, dataPacket )
+		var result = sendChatRequest( arguments.chatRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
@@ -297,7 +297,6 @@ abstract class implements="IAiService" {
 		var toolCalls = result.choices.first().message?.tool_calls ?: arrayNew()
 		if( !toolCalls.len() ){
 			var content = result.choices.first().message.content;
-
 			// Determine return formats
 			switch( arguments.chatRequest.getReturnFormat() ){
 				case "all":
@@ -586,7 +585,7 @@ abstract class implements="IAiService" {
 	 *
 	 * @return The response from the provider as a struct
 	 */
-	private function sendRequest( required AiChatRequest chatRequest, required struct dataPacket ){
+	private function sendChatRequest( required AiChatRequest chatRequest, required struct dataPacket ){
 		// Announce the request
 		BoxAnnounce(
 			"onAIChatRequest",
@@ -597,7 +596,7 @@ abstract class implements="IAiService" {
 			}
 		);
 
-		// Log the request
+		// Log the request to the logs if enabled
 		if( arguments.chatRequest.getLogRequest() ){
 			writeLog(
 				text: buildRequestLog( arguments.chatRequest, arguments.dataPacket ),
@@ -676,10 +675,10 @@ abstract class implements="IAiService" {
 		// Try to deserialize the response
 		try{
 			var iData = {
-				"chatRequest" = arguments.chatRequest,
-				"response" = jsonDeserialize( chatResult.filecontent ),
+				"chatRequest" 	: arguments.chatRequest,
+				"response" 		: jsonDeserialize( chatResult.filecontent ),
 				"rawResponse"	: chatResult,
-				"provider" = this
+				"provider" 		: this
 			}
 		}
 		catch( Any e ){
@@ -688,7 +687,7 @@ abstract class implements="IAiService" {
 				error: e,
 				errorMessage: "Error deserializing response: #chatResult.filecontent#",
 				provider: this,
-				operation: "sendRequest",
+				operation: "sendChatRequest",
 				aiRequest: arguments.chatRequest,
 				canRetry: true
 			} );

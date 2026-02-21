@@ -172,7 +172,7 @@ class extends="BaseService"{
 		arguments.chatRequest.setSendAuthHeader( false );
 
 		// Send it
-		var result = sendRequest( chatRequest, dataPacket )
+		var result = sendChatRequest( chatRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
