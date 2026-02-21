@@ -66,7 +66,7 @@ Un proveedor es una empresa (o software) que ejecuta modelos de IA:
 | **Voyage** | voyage-3, voyage-code-3 | RAG, búsqueda de código | $$ |
 | **Cohere** | embed-english-v3.0, multilingual | Apps multilingües | $ |
 | **Ollama** | nomic-embed-text, mxbai-embed | Local, privado | Gratis |
-| **Gemini** | text-embedding-004 | Integración con Google | $ |
+| **Gemini** | gemini-embedding-001 | Integración con Google | $ |
 
 ### ¿Por Qué Cambiar de Proveedor?
 
@@ -205,7 +205,7 @@ aiEmbeddings(
 aiEmbeddings(
     text: "texto a codificar",
     provider: "gemini",
-    model: "text-embedding-004"
+    model: "gemini-embedding-001"
 )
 ```
 
