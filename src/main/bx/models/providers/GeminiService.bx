@@ -66,80 +66,61 @@ class extends="BaseService"{
 	}
 
 	/**
-	 * Override embeddings to handle Gemini's specific API format
-	 * Gemini uses embedContent endpoint with model in URL and key as query param
+	 * Seed defaults, resolve the per-request URL (Gemini embeds model name + API key in the URL),
+	 * disable the Bearer auth header, then delegates to base.
 	 * @see https://ai.google.dev/api/embeddings
 	 */
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
-		// Set default embedding model if not specified
-		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
-
-		// Model Selection
-		embeddingRequest
+		arguments.embeddingRequest
+			.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
 			.setApiKeyIfEmpty( getAPIKey() )
-			.mergeServiceParams( variables.params )
-			.mergeServiceHeaders( variables.headers )
 
-		// Build Gemini-specific data packet
+		// Bake model + key into the URL for this request (Gemini uses query-param auth)
+		variables.embeddingsURL = getEmbeddingsURL()
+			.replace( '%MODEL%', arguments.embeddingRequest.getModel() )
+			& '?key=#arguments.embeddingRequest.getApiKey()#';
+
+		// No Authorization header — key is already in the URL
+		arguments.embeddingRequest.setSendAuthHeader( false );
+
+		return super.embeddings( arguments.embeddingRequest );
+	}
+
+	/**
+	 * Reshape the embedding packet to Gemini's format:
+	 * { content: { parts: [{ text: "..." }] } }
+	 * @see https://ai.google.dev/api/embeddings
+	 */
+	private struct function preEmbeddingRequest( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
 		var input = arguments.embeddingRequest.getInput();
-		var dataPacket = {
+		return {
 			"content": {
 				"parts": [ {
 					"text": isArray( input ) ? input.toList( " " ) : input
 				} ]
 			}
-		}.append( arguments.embeddingRequest.getParams() )
+		};
+	}
 
-		// Update URL with model and API key
-		var requestURL = getEmbeddingsURL()
-			.replace( '%MODEL%', embeddingRequest.getModel() )
-			& '?key=#embeddingRequest.getApiKey()#';
-
-		// Temporarily store the URL
-		var originalURL = variables.embeddingsURL;
-		variables.embeddingsURL = requestURL;
-
-		// No auth header for Gemini
-		embeddingRequest.setSendAuthHeader( false );
-
-		// Send it
-		var result = sendEmbeddingRequest( embeddingRequest, dataPacket )
-
-		// Restore original URL
-		variables.embeddingsURL = originalURL;
-
-		// If an error is returned, throw it
-		if( result.keyExists( "error" ) ){
-			writeLog(
-				text: result.error.toString(),
-				type: "error",
-				log : "ai"
-			)
-			throw(
-				type   : "ProviderError",
-				message: result.error.toString()
-			);
+	/**
+	 * Normalize Gemini's embedding response to the standard OpenAI format.
+	 * Gemini returns: { embedding: { values: [...] } }
+	 * Standard format: { data: [{ embedding, index, object }], model }
+	 * @see https://ai.google.dev/api/embeddings
+	 */
+	private struct function postEmbeddingResponse( required AiEmbeddingRequest embeddingRequest, required struct dataPacket, required struct result ){
+		if( !arguments.result.keyExists( "embedding" ) ){
+			return { "error": "Invalid Gemini embedding response — 'embedding' key missing. Response: #arguments.result.toString()#" };
 		}
-
-		// Convert Gemini response format to standard format
-		var standardResponse = {
-			"data": [ {
-				"embedding": result.embedding.values,
-				"index": 0
+		return {
+			"data" : [ {
+				"embedding": arguments.result.embedding.values,
+				"index"    : 0,
+				"object"   : "embedding"
 			} ],
-			"model": embeddingRequest.getModel()
-		}
-
-		// Determine return formats
-		switch( embeddingRequest.getReturnFormat() ){
-			case "embeddings":
-				return [ standardResponse.data.first().embedding ];
-			case "first":
-				return standardResponse.data.first().embedding;
-			case "raw": default:
-				return standardResponse;
-		}
+			"model": arguments.embeddingRequest.getModel()
+		};
 	}
 
 	/**

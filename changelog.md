@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Provider Hook System**: Added six template-method hooks to `BaseService` — `preChatRequest`, `postChatResponse`, `preStreamRequest`, `postStreamResponse`, `preEmbeddingRequest`, `postEmbeddingResponse` — allowing concrete providers to normalize request packets and responses without overriding full methods. Refactored `MiniMaxService`, `GeminiService`, `OpenAICompatibleService`, `OllamaService`, and `CohereService` to use these hooks, removing significant boilerplate. Also fixed a bug where MiniMax chat errors (`base_resp.status_code != 0`) were silently ignored by the base error handler.
+
 ### Improvements
 
 - Internally refactored the `sendRequest()` method in the `BaseService` to be `sendChatRequest()` so we can be specific about the type of request being sent, and to allow for better handling of different request types in the future (e.g. embedding requests).
