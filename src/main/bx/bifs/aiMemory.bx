@@ -124,6 +124,10 @@ class {
 			case "WeaviateVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.WeaviateVectorMemory";
 				break;
+						case "cassandra":
+			case "CassandraVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.CassandraVectorMemory";
+				break;
 			default:
 				// Check if it's a full class path
 				if ( memoryType.findNoCase( "." ) ) {

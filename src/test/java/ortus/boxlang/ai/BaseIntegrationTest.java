@@ -36,7 +36,9 @@ import ortus.boxlang.runtime.services.ModuleService;
  */
 public abstract class BaseIntegrationTest {
 
-	protected static Dotenv					dotenv		= Dotenv.load();
+	protected static Dotenv					dotenv		= Dotenv.configure()
+	    .ignoreIfMissing()
+	    .load();
 	protected static BoxRuntime				runtime;
 	protected static ModuleService			moduleService;
 	protected static ModuleRecord			moduleRecord;

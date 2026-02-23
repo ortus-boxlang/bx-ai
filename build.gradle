@@ -237,13 +237,34 @@ createModuleStructure.finalizedBy( zipModuleStructure )
 shadowJar.finalizedBy( createModuleStructure )
 
 test {
+
+	// Skip OpenAI-dependent tests if no API key is provided
+    def openAiKey = System.getenv("OPENAI_API_KEY")
+    if (openAiKey == null || openAiKey.trim().isEmpty()) {
+        exclude "**/OpenAITest*"
+        exclude "**/StructuredOutputTest*"
+        exclude "**/aiPipelinesTest*"
+    }
+
+	// Skip OpenRouter-dependent tests if no API key is provided
+    def openRouterKey = System.getenv("OPENROUTER_API_KEY")
+    if (openRouterKey == null || openRouterKey.trim().isEmpty()) {
+        exclude "**/OpenRouterTest*"
+    }
+
+    // Skip Perplexity-dependent tests if no API key is provided
+    def perplexityKey = System.getenv("PERPLEXITY_API_KEY")
+    if (perplexityKey == null || perplexityKey.trim().isEmpty()) {
+        exclude "**/PerplexityTest*"
+    }
+
     useJUnitPlatform()
     testLogging {
 		showStandardStreams = true
-        events "passed", "skipped", "failed"
-        exceptionFormat "full"
-        showExceptions true
-        showCauses true
+        events = ["passed", "skipped", "failed"]
+        exceptionFormat = "full"
+        showExceptions = true
+        showCauses = true
 	}
 	classpath = classpath.filter { !it.path.contains( "build${File.separator}resources" ) }
 }

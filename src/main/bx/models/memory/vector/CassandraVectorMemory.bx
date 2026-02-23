@@ -1,0 +1,207 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Cassandra Vector Memory Implementation (skeleton)
+ * Provides vector storage and semantic search using Cassandra-compatible vector indexing.
+ *
+ * NOTE: This is a provider scaffold. It validates config and wires into BaseVectorMemory,
+ * but persistence/search is intentionally not implemented yet.
+ */
+class extends="BaseVectorMemory" {
+
+	/**
+	 * Cassandra contact points, e.g. "127.0.0.1:9042"
+	 * Could also be a list/array later, but keep it simple for now.
+	 */
+	property name="contactPoints" type="string";
+
+	/**
+	 * Keyspace name
+	 */
+	property name="keyspace" type="string";
+
+	/**
+	 * Table name for vector storage
+	 */
+	property name="table" type="string";
+
+	/**
+	 * Optional: username/password for auth (if your cluster requires it)
+	 */
+	property name="username" type="string";
+	property name="password" type="string";
+
+	static {
+		DEFAULT_TABLE = "bx_ai_vectors"
+	}
+
+	/**
+	 * Configure the Cassandra vector memory instance
+	 *
+	 * @config Configuration struct with Cassandra-specific options
+	 *
+	 * @return CassandraVectorMemory for chaining
+	 */
+	public any function configure( required struct config ) {
+		// Defaults
+		param arguments.config.contactPoints = ""
+		param arguments.config.keyspace = ""
+		param arguments.config.table = static.DEFAULT_TABLE
+		param arguments.config.username = ""
+		param arguments.config.password = ""
+
+		// Validate required config
+		if ( !len( arguments.config.contactPoints ) ) {
+			throw(
+				type = "CassandraVectorMemory.MissingContactPoints",
+				message = "contactPoints is required for CassandraVectorMemory. Provide it in the config."
+			)
+		}
+		if ( !len( arguments.config.keyspace ) ) {
+			throw(
+				type = "CassandraVectorMemory.MissingKeyspace",
+				message = "keyspace is required for CassandraVectorMemory. Provide it in the config."
+			)
+		}
+
+		// Save provider config
+		variables.contactPoints = arguments.config.contactPoints
+		variables.keyspace = arguments.config.keyspace
+		variables.table = arguments.config.table
+		variables.username = arguments.config.username
+		variables.password = arguments.config.password
+
+		// Call parent configure (this will call ensureCollection())
+		super.configure( arguments.config )
+
+		return this
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * ABSTRACT METHOD IMPLEMENTATIONS
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure keyspace/table/index exist
+	 */
+	IVectorMemory function ensureCollection() {
+		// For now: do nothing (skeleton). Later we'll ensure schema exists.
+		// If you want to force schema creation later, it will go here.
+
+		return this
+	}
+
+	/**
+	 * Store a document
+	 */
+	IVectorMemory function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	) {
+		notImplemented( "storeDocument" )
+		return this
+	}
+
+	/**
+	 * Search by vector embedding
+	 */
+	array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		notImplemented( "searchByVector" )
+		return []
+	}
+
+	/**
+	 * Get all documents
+	 */
+	array function getAllDocuments() {
+		notImplemented( "getAllDocuments" )
+		return []
+	}
+
+	/**
+	 * Get document by id
+	 */
+	struct function getDocumentById( required string id ) {
+		notImplemented( "getDocumentById" )
+		return {}
+	}
+
+	/**
+	 * Delete document by id
+	 */
+	boolean function deleteDocument( required string id ) {
+		notImplemented( "deleteDocument" )
+		return false
+	}
+
+	/**
+	 * Delete documents by metadata filter
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		notImplemented( "deleteDocumentsByFilter" )
+		return 0
+	}
+
+	/**
+	 * Clear the current collection
+	 */
+	IVectorMemory function clearCollection() {
+		notImplemented( "clearCollection" )
+		return this
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * COLLECTION MANAGEMENT
+	 * --------------------------------------------------------------------------
+	 */
+
+	IVectorMemory function createCollection( required string name ) {
+		// Cassandra might use "collection" as a column like Postgres OR separate tables.
+		// We’ll decide later. For now, just accept and return.
+		return this
+	}
+
+	boolean function collectionExists( required string name ) {
+		// Stubbed: later we’ll query system_schema tables
+		return true
+	}
+
+	IVectorMemory function deleteCollection( required string name ) {
+		// Stubbed: later we’ll delete rows in that collection
+		return this
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * PRIVATE HELPERS
+	 * --------------------------------------------------------------------------
+	 */
+
+	private void function notImplemented( required string methodName ) {
+		throw(
+			type = "CassandraVectorMemory.NotImplemented",
+			message = "CassandraVectorMemory.#arguments.methodName#() is not implemented yet."
+		)
+	}
+
+}
