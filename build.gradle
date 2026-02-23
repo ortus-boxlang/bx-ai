@@ -238,35 +238,62 @@ shadowJar.finalizedBy( createModuleStructure )
 
 test {
 
-	// Skip OpenAI-dependent tests if no API key is provided
-    def openAiKey = System.getenv("OPENAI_API_KEY")
-    if (openAiKey == null || openAiKey.trim().isEmpty()) {
-        exclude "**/OpenAITest*"
-        exclude "**/StructuredOutputTest*"
-        exclude "**/aiPipelinesTest*"
-    }
-
-	// Skip OpenRouter-dependent tests if no API key is provided
-    def openRouterKey = System.getenv("OPENROUTER_API_KEY")
-    if (openRouterKey == null || openRouterKey.trim().isEmpty()) {
-        exclude "**/OpenRouterTest*"
-    }
-
-    // Skip Perplexity-dependent tests if no API key is provided
-    def perplexityKey = System.getenv("PERPLEXITY_API_KEY")
-    if (perplexityKey == null || perplexityKey.trim().isEmpty()) {
-        exclude "**/PerplexityTest*"
-    }
-
     useJUnitPlatform()
+
     testLogging {
-		showStandardStreams = true
+        showStandardStreams = true
         events = ["passed", "skipped", "failed"]
         exceptionFormat = "full"
         showExceptions = true
         showCauses = true
-	}
-	classpath = classpath.filter { !it.path.contains( "build${File.separator}resources" ) }
+    }
+
+    classpath = classpath.filter { !it.path.contains("build${File.separator}resources") }
+
+    def env = System.getenv()
+    def norm = { s -> s == null ? "" : s.toString().trim() }
+    def isNonEmpty = { s -> norm(s).length() > 0 }
+
+    // Accept common "true-ish" values for toggles
+    def isTrueish = { s ->
+        def v = norm(s).toLowerCase()
+        return v in ["true", "1", "yes", "y", "on"]
+    }
+
+    // Treat common placeholders as not-real
+    def isRealKey = { s ->
+        if (!isNonEmpty(s)) return false
+        def v = norm(s).toLowerCase()
+        return !(v in ["dummy", "changeme", "your_key_here", "test", "null", "false", "0"])
+    }
+
+    // Opt-in switches
+    def runProviderTests = isTrueish(env.get("RUN_PROVIDER_TESTS"))
+    def runVectorDbTests = isTrueish(env.get("RUN_VECTOR_DB_TESTS"))
+
+    // Default: don't run provider tests unless explicitly enabled
+    if (!runProviderTests) {
+        exclude "**/ortus/boxlang/ai/providers/**"
+    }
+
+    // Default: don't run vector DB tests unless explicitly enabled
+    if (!runVectorDbTests) {
+        exclude "**/ortus/boxlang/ai/memory/vector/**"
+    }
+
+    // OpenAI gating (dummy/blank = treat as missing)
+    def openAiKey = env.get("OPENAI_API_KEY")
+    def hasOpenAI = isRealKey(openAiKey)
+
+    if (!hasOpenAI) {
+        exclude "**/ortus/boxlang/ai/bifs/aiEmbedTest*"
+        exclude "**/ortus/boxlang/ai/bifs/aiAgentTest*"
+        exclude "**/ortus/boxlang/ai/memory/HybridMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/SummaryMemoryTest*"
+        exclude "**/ortus/boxlang/ai/runnables/StructuredOutputTest*"
+        exclude "**/ortus/boxlang/ai/bifs/StructuredOutputTest*"
+        exclude "**/ortus/boxlang/ai/**/aiPipelinesTest*"
+    }
 }
 
 /**
