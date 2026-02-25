@@ -82,6 +82,9 @@ class extends="AiBaseRunnable" {
 			arguments.tools = [ arguments.tools ];
 		}
 
+		// Resolve any string tool keys to ITool instances
+		arguments.tools = bxModules.bxai.models.registry.AIToolRegistry::resolveTools( arguments.tools );
+
 		// Append to existing tools
 		if( arguments.tools.len() ){
 			variables.tools.append( arguments.tools, true );

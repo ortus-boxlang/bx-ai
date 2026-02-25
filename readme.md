@@ -56,6 +56,7 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
   - [💬 Chats](#-chats)
   - [🔗 Pipelines](#-pipelines)
   - [🤖 AI Agents](#-ai-agents)
+  - [🗂️ Tool Registry](#️-tool-registry)
   - [📦 Structured Output](#-structured-output)
   - [🧠 Memory Systems](#-memory-systems)
   - [📚 Document Loaders & RAG](#-document-loaders--rag)
@@ -445,6 +446,125 @@ agent.run( "Find order #12345, email the customer with status, and create a tick
 - 🎓 **Interactive Course**: [Lesson 6 - Building AI Agents](course/lesson-06-agents/)
 - 🔧 **Advanced Patterns**: [Agent Orchestration](https://ai.ortusbooks.com/advanced/agent-orchestration.md)
 - 💻 **Examples**: Check `examples/agents/` for complete working examples
+
+----
+
+### 🗂️ Tool Registry
+
+The **AIToolRegistry** is a global, singleton tool registry that lets modules and applications register, discover, and resolve AI tools centrally. BoxLang AI is the **first AI framework to ship a built-in auto-registered tool** — `now@bx-ai` — a "batteries included" differentiator consistent with BoxLang's standard library philosophy. 🚀
+
+#### 🔑 Key Convention: `name@module`
+
+Tools registered with a module use namespaced keys: `toolName@moduleName`. Tools without a module use plain keys: `toolName`.
+
+#### 💡 Quick Examples
+
+**Register and use tools:**
+
+```javascript
+// Register a tool under a module namespace
+aiToolRegistry().register(
+    aiTool( "getWeather", "Gets weather for a city", ( city ) => "Sunny, 72°F in #city#" ),
+    module: "my-app"
+)
+
+// Use by string key — resolved lazily before the LLM request
+aiChat( "What's the weather in Kansas City?", { tools: [ "getWeather@my-app" ] } )
+
+// Use in an agent
+agent = aiAgent(
+    instructions: "Help with weather questions",
+    tools       : [ "getWeather@my-app" ]
+)
+```
+
+**Shorthand registration (no `aiTool()` needed):**
+
+```javascript
+aiToolRegistry().register(
+    name        : "searchDocs",
+    description : "Searches documentation",
+    callback    : ( query ) => searchIndex( query ),
+    module      : "my-app"
+)
+```
+
+**`@AITool` annotation scanning:**
+
+```javascript
+class MyTools {
+    @AITool( "Gets the latest stock price for a ticker symbol" )
+    function getStockPrice( required string ticker ) {
+        return fetchPrice( ticker );
+    }
+
+    @AITool( { name: "forecast", description: "Gets weather forecast for next 7 days" } )
+    function getWeatherForecast( required string city ) {
+        return fetchForecast( city );
+    }
+}
+
+// Scan and register all @AITool methods
+aiToolRegistry().scan( new MyTools(), module: "my-app" )
+
+// Or scan a directory
+aiToolRegistry().scan( "/models/tools/", module: "my-app" )
+```
+
+**Module lifecycle pattern:**
+
+```javascript
+// ModuleConfig.bx
+function onLoad( moduleRecord ) {
+    aiToolRegistry().scan( new models.tools.MyTools(), module: moduleRecord.name )
+}
+
+function onUnLoad( moduleRecord ) {
+    aiToolRegistry().unregisterByModule( moduleRecord.name )
+}
+```
+
+#### 🔋 Core Tool: `now@bx-ai`
+
+BoxLang AI automatically registers `now@bx-ai` on module load. LLMs universally hallucinate current date/time — this tool gives them accurate temporal grounding. ⏰
+
+```javascript
+// Auto-registered — available immediately
+agent = aiAgent(
+    instructions : "You are a scheduling assistant.",
+    tools        : [ "now@bx-ai" ]
+)
+response = agent.run( "What day is today?" )
+```
+
+**Opt-in tool** (not auto-registered for security): `http.get` is available in `CoreTools.bx` but must be explicitly registered:
+
+```javascript
+// Must opt in due to network security implications
+aiToolRegistry().register(
+    name        : "http.get",
+    description : "Fetches URL contents via HTTP GET",
+    callback    : ( url ) => httpRequest( url ).send().fileContent,
+    module      : "bx-ai"
+)
+```
+
+#### 📋 Registry API Reference
+
+| Method | Description |
+|--------|-------------|
+| `aiToolRegistry()` | Get the singleton registry |
+| `.register( tool [, module] )` | Register an ITool instance |
+| `.register( name, description, callback [, module] )` | Shorthand registration |
+| `.scan( source, module )` | Scan class instance or path for `@AITool` methods |
+| `.get( key )` | Retrieve tool (supports `name` or `name@module`) |
+| `.has( key )` | Check if tool exists |
+| `.getAll()` | All registered tools |
+| `.getByModule( module )` | Tools for a module |
+| `.unregister( key )` | Remove a tool |
+| `.unregisterByModule( module )` | Remove all module tools |
+| `.clear()` | Clear all tools |
+| `AIToolRegistry::resolveTools( tools[] )` | Resolve mixed ITool/string array |
 
 ----
 
@@ -1084,6 +1204,7 @@ Here are the settings you can place in your `boxlang.json` file:
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
 | `aiTokens()` | Estimate token count | `text`, `options={}` | Numeric | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
+| `aiToolRegistry()` | Get the global AIToolRegistry singleton | none | AIToolRegistry Object | N/A |
 | `aiTransform()` | Create data transformer | `transformer`, `config={}` | Transformer Runnable | N/A |
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
 | `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors`, `statsEnabled`, `force` | MCPServer Object | N/A |

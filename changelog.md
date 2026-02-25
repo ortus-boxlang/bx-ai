@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **AI Tool Registry**: Added `AIToolRegistry` singleton — a global registry for discovering, registering, and resolving AI tools by `name@module` namespaced keys
+- `aiToolRegistry()` BIF — convenient singleton access to the global registry
+- `BaseRegistry` abstract class — reusable registry foundation with two-step key lookup (`AmbiguousKeyException` / `RegistryItemNotFoundException`)
+- `@AITool` annotation support — declare tools on class methods (mirrors `@mcpTool` pattern)
+- `AIToolRegistry.scan()` — auto-discover `@AITool` annotated methods on a class instance or directory path
+- Key convention `name@module` for namespaced tool registration and unambiguous resolution
+- Lazy tool resolution — pass string keys in `tools` arrays anywhere tools are accepted (`aiChat()`, `aiAgent()`, `aiModel()`)
+- `AIToolRegistry::resolveTools()` — resolve mixed `ITool`/string arrays to `ITool` instances
+- Module lifecycle pattern — `unregisterByModule()` for clean module unload
+- **Core tool `now@bx-ai`** — auto-registered on module load; returns current ISO 8601 datetime (LLMs universally hallucinate date/time — this is the first AI framework to ship a built-in auto-registered tool)
+- Opt-in tool `httpGet` — defined in `CoreTools.bx` but NOT auto-registered for security
+- `models/tools/ITool.bx` and `models/tools/Tool.bx` — copies at organized path for clean imports
+
 - **Provider Hook System**: Added six template-method hooks to `BaseService` — `preChatRequest`, `postChatResponse`, `preStreamRequest`, `postStreamResponse`, `preEmbeddingRequest`, `postEmbeddingResponse` — allowing concrete providers to normalize request packets and responses without overriding full methods. Refactored `MiniMaxService`, `GeminiService`, `OpenAICompatibleService`, `OllamaService`, and `CohereService` to use these hooks, removing significant boilerplate. Also fixed a bug where MiniMax chat errors (`base_resp.status_code != 0`) were silently ignored by the base error handler.
 
 ### Improvements
