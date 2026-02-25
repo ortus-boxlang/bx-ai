@@ -1,0 +1,43 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Built-in AI tools shipped with bx-ai.
+ *
+ * Auto-registered tools are scanned on module load.
+ * Opt-in tools (e.g. httpGet) are defined here but NOT auto-registered for security reasons.
+ */
+class {
+
+	/**
+	 * Returns the current date and time in ISO 8601 format.
+	 * Auto-registered as now@bx-ai on module load.
+	 *
+	 * @AITool( { name: "now", description: "Returns the current date and time. Use this whenever you need to know what time or date it is right now." } )
+	 */
+	@AITool( { name: "now", description: "Returns the current date and time. Use this whenever you need to know what time or date it is right now." } )
+	function currentDateTime() {
+		return dateTimeFormat( now(), "iso" );
+	}
+
+	/**
+	 * Fetches the contents of a URL via HTTP GET.
+	 * NOT auto-registered — opt in via aiToolRegistry().register() due to security implications.
+	 *
+	 * @url The URL to fetch
+	 */
+	function httpGet( required string url ) {
+		return httpRequest( arguments.url ).send().fileContent;
+	}
+
+}

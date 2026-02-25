@@ -1,0 +1,231 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Abstract base registry providing common key-building and lookup logic.
+ * Subclasses define what they store and how.
+ */
+class {
+
+	/**
+	 * Internal item storage: key → item
+	 */
+	property name="items" type="struct" default={};
+
+	/**
+	 * Constructor — initializes the storage map.
+	 */
+	function init() {
+		variables.items = {};
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Key Helpers (Protected)
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Build a registry key. If module is provided the key is `name@module`, otherwise just `name`.
+	 *
+	 * @name   The item name
+	 * @module Optional module namespace
+	 */
+	private string function buildKey( required string name, string module = "" ) {
+		return len( trim( arguments.module ) ) ? "#arguments.name#@#arguments.module#" : arguments.name;
+	}
+
+	/**
+	 * Extract the name part from a registry key.
+	 *
+	 * @key The full key (e.g. `now@bx-ai` or `now`)
+	 */
+	private string function extractName( required string key ) {
+		var atIndex = arguments.key.find( "@" );
+		return atIndex > 0 ? left( arguments.key, atIndex - 1 ) : arguments.key;
+	}
+
+	/**
+	 * Extract the module part from a registry key.
+	 *
+	 * @key The full key (e.g. `now@bx-ai`)
+	 *
+	 * @return The module name or empty string if none
+	 */
+	private string function extractModule( required string key ) {
+		var atIndex = arguments.key.find( "@" );
+		return atIndex > 0 ? mid( arguments.key, atIndex + 1, len( arguments.key ) ) : "";
+	}
+
+	/**
+	 * Resolve a key using two-step lookup:
+	 * 1. Exact match
+	 * 2. If no exact match, find by name across all modules
+	 *    - One match  → return it
+	 *    - Multiple   → throw AmbiguousKeyException
+	 *    - None       → throw RegistryItemNotFoundException
+	 *
+	 * @key The key to resolve (may be a plain name or `name@module`)
+	 */
+	private string function resolveKey( required string key ) {
+		// 1. Exact match
+		if ( variables.items.keyExists( arguments.key ) ) {
+			return arguments.key;
+		}
+
+		// 2. Search by name across modules
+		var targetName = extractName( arguments.key );
+		var matches = variables.items.keyArray().filter( k => extractName( k ) == targetName );
+
+		if ( matches.len() == 1 ) {
+			return matches[ 1 ];
+		}
+
+		if ( matches.len() > 1 ) {
+			throw(
+				type    : "AmbiguousKeyException",
+				message : "Ambiguous registry key [#arguments.key#]. Multiple matches found: #matches.toList()#. Use the full key (name@module) to disambiguate."
+			);
+		}
+
+		throw(
+			type    : "RegistryItemNotFoundException",
+			message : "Registry item [#arguments.key#] not found."
+		);
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Core Registry Operations
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Store an item under the given key.
+	 *
+	 * @key  The registry key
+	 * @item The item to store
+	 */
+	function put( required string key, required any item ) {
+		variables.items[ arguments.key ] = arguments.item;
+		return this;
+	}
+
+	/**
+	 * Remove an item by exact key.
+	 *
+	 * @key The registry key
+	 */
+	function remove( required string key ) {
+		variables.items.delete( arguments.key );
+		return this;
+	}
+
+	/**
+	 * Remove all items belonging to a module (all keys ending in `@module`).
+	 *
+	 * @module The module name
+	 */
+	function removeByModule( required string module ) {
+		var targetModule = arguments.module;
+		variables.items
+			.keyArray()
+			.filter( k => extractModule( k ) == targetModule )
+			.each( k => variables.items.delete( k ) );
+		return this;
+	}
+
+	/**
+	 * Clear all items from the registry.
+	 */
+	function clear() {
+		variables.items = {};
+		return this;
+	}
+
+	/**
+	 * Retrieve an item by key (uses two-step lookup).
+	 *
+	 * @key The registry key
+	 */
+	function get( required string key ) {
+		return variables.items[ resolveKey( arguments.key ) ];
+	}
+
+	/**
+	 * Check if an item exists (uses two-step lookup, returns false instead of throwing).
+	 *
+	 * @key The registry key
+	 */
+	boolean function has( required string key ) {
+		try {
+			resolveKey( arguments.key );
+			return true;
+		} catch ( any e ) {
+			return false;
+		}
+	}
+
+	/**
+	 * Return all registered items as a struct keyed by registry key.
+	 */
+	struct function getAll() {
+		return duplicate( variables.items );
+	}
+
+	/**
+	 * Return all items belonging to a module as an array.
+	 *
+	 * @module The module name
+	 */
+	array function getByModule( required string module ) {
+		var targetModule = arguments.module;
+		return variables.items
+			.filter( ( k, v ) => extractModule( k ) == targetModule )
+			.valueArray();
+	}
+
+	/**
+	 * Return all registered keys.
+	 */
+	array function getKeys() {
+		return variables.items.keyArray();
+	}
+
+	/**
+	 * Return all unique module names that have items registered.
+	 */
+	array function getModules() {
+		return variables.items
+			.keyArray()
+			.filter( k => extractModule( k ).len() > 0 )
+			.map( k => extractModule( k ) )
+			.unique();
+	}
+
+	/**
+	 * Return the number of registered items.
+	 */
+	numeric function size() {
+		return variables.items.count();
+	}
+
+	/**
+	 * Return true if the registry has no items.
+	 */
+	boolean function isEmpty() {
+		return variables.items.isEmpty();
+	}
+
+}

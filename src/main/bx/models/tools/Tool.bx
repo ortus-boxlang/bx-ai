@@ -1,0 +1,246 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Basic tool implementation that allows you to pass in a function for the AI to use.
+ * In addition to providing a funciton you must also provide a name and descriptions.
+ *
+ * You can specify the function and argument descriptions using the fluent syntax `.describeArgName( "This argument is for numbers" )`
+ * or you can use the `setSchema( required struct schema )` method to provide a schema object.
+ *
+ */
+class implements="ITool" {
+
+	/**
+	 * The name of the function
+	 */
+    property name="name" default="";
+
+	/**
+	 * The description of the function
+	 */
+    property name="description" default="";
+
+	/**
+	 * The callable that the AI will use
+	 */
+    property name="callable";
+
+	/**
+	 * The schema for the function
+	 */
+    property name="schema";
+
+	/**
+	 * The descriptions of the arguments
+	 */
+    property name="argDescriptions" default={};
+
+    /**
+     * Describe the function. This is used by the AI to communicate the purpose of the function.
+     *
+     * @description The description of the function
+     */
+    Tool function describeFunction( required string description ){
+        variables.description = description
+        return this;
+    }
+
+    /**
+     * Describe an argument. This is used by the AI to communicate the purpose of the argument.
+     *
+     * @name The name of the argument
+     * @description The description of the argument
+     */
+    Tool function describeArg( required string name, required string description ){
+        variables.argDescriptions[ name ] = description;
+        return this;
+    }
+
+    /**
+     * Set the function that the AI will use. This can be used to return
+     * data to the AI to influence further answers or to allow the AI to take actions
+     * within the system.
+     *
+     * Your function must return a value that can be cast to a string.
+     *
+     * @func The function that the AI will use
+     */
+    function call( required any callable ){
+        variables.callable = arguments.callable;
+        return this;
+    }
+
+    /**
+     * Set the schema for the function. This is used to provide a more detailed schema
+     * for the function that the AI can use to validate the arguments.
+     *
+	 * This is the Open AI schema format for functions:
+	 * https://platform.openai.com/docs/guides/function-calling?api-mode=responses
+	 *
+     * ```
+     * {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get current temperature for a given location.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "City and country e.g. Bogotá, Colombia"
+                        }
+                    },
+                    "required": [
+                        "location"
+                    ],
+                    "additionalProperties": false
+                },
+                "strict": true
+            }
+        }
+     * ```
+     *
+     * @schema The schema for the function
+     */
+    function setSchema( required struct schema ){
+        variables.schema = schema;
+
+        return this;
+    }
+
+    /**
+     * Get the schema for the function.
+     *
+     * If you did not provide a schema, one will be generated based on the function and argument descriptions.
+     */
+    public struct function getSchema(){
+        if( variables?.schema == null ){
+            return generateSchema()
+        }
+
+        return variables.schema
+    }
+
+    /**
+     * Invoke the function with the provided arguments.
+	 *  If the result is a simple value, returns the string representation of the value.
+	 * If the result is a complex value, returns the JSON representation of the value.
+     *
+     * @args The arguments to pass to the function
+	 *
+	 * @return The result of the function as a string. If the result is null, returns "null".
+     */
+    public string function invoke( required struct args ){
+		// Announce before tool execution
+		BoxAnnounce( "beforeAIToolExecute", {
+			tool: this,
+			name: variables.name,
+			arguments: arguments.args
+		} );
+
+		var startTime = getTickCount();
+        var results = variables.callable( argumentCollection = args );
+		var executionTime = getTickCount() - startTime;
+
+		// Announce after tool execution
+		BoxAnnounce( "afterAIToolExecute", {
+			tool: this,
+			name: variables.name,
+			arguments: arguments.args,
+			results: results,
+			executionTime: executionTime
+		} );
+
+		// If null or empty, return empty string
+		if( results == null ){
+			return "null"
+		}
+
+		// If it's a simple value return it as a string
+		if( isSimpleValue( results ) ){
+			return toString( results )
+		}
+
+		// Otherwise, return the JSON representation
+		return jsonSerialize( results )
+    }
+
+	/**
+	 * Get the callable's properties schema
+	 *
+	 * @return The properties schema for the callable function: { properties:{}, required:[] }
+	 */
+	public struct function getArgumentsSchema(){
+		if( variables.callable == null ){
+			throw( "No callable function has been set for this tool." );
+		}
+		var results = {
+			"properties": {},
+			"required": []
+		}
+		// Discover the parameters from the callable function metadata
+        variables.callable.$bx.meta.parameters.each( param => {
+            results.required.append( param.name )
+            results.properties[ param.name ] = {
+                "type": "string",
+                "description": variables.argDescriptions[ param.name ] ?: param.name
+            };
+        });
+
+		return results;
+	}
+
+    /**
+     * Generate a schema based on the function and argument descriptions.
+	 * This is based  on the OpenAI function schema format.
+	 * https://platform.openai.com/docs/guides/function-calling?api-mode=responses
+     */
+    private struct function generateSchema(){
+        var argumentsSchema = getArgumentsSchema();
+
+		// https://platform.openai.com/docs/guides/function-calling#defining-functions
+        return {
+            "type": "function",
+            "function": {
+                "name": variables.name,
+                "description": variables.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": argumentsSchema.properties,
+                    "required": argumentsSchema.required,
+                    "additionalProperties": False
+                },
+                "strict": True
+            }
+        };
+    }
+
+    /**
+     * This is used to provide a fluent interface for describing the function and arguments.
+     *
+     * If your argument is named `location` you can use `describeLocation( "City and country e.g. Bogotá, Colombia" )`
+     */
+    function onMissingMethod( missingMethodName, missingMethodArguments ){
+
+        if( missingMethodName == "describe" ){
+            return this.describeFunction( missingMethodArguments[ 1 ] );
+        }
+        else if( missingMethodName.startsWith( "describe" ) ){
+            return this.describeArg( missingMethodName.replace( "describe", "" ), missingMethodArguments[ 1 ] );
+        }
+
+        throw( "Method #missingMethodName# was not found" );
+    }
+}

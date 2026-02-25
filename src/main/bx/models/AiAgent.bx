@@ -107,6 +107,8 @@ class extends="AiBaseRunnable" {
 		struct params = {},
 		struct options = {}
 	) {
+		// Resolve any string tool keys to ITool instances
+		arguments.tools = bxModules.bxai.models.registry.AIToolRegistry::resolveTools( arguments.tools );
 		// Set them up baby!
 		variables.description = arguments.description;
 		variables.instructions = arguments.instructions;

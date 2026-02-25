@@ -84,6 +84,11 @@ class {
 			static.DEFAULT_OPTIONS  // Pass method defaults separately
 		 );
 
+		// Resolve any string tool keys to ITool instances
+		if( isStruct( arguments.params ) && arguments.params.keyExists( "tools" ) && isArray( arguments.params.tools ) ){
+			arguments.params.tools = bxModules.bxai.models.registry.AIToolRegistry::resolveTools( arguments.params.tools );
+		}
+
 		// Get the provider and chat with it
 		return aiService(
 			provider: arguments.options?.provider,

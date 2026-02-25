@@ -1,0 +1,19 @@
+/**
+ * Basic AIToolRegistry example
+ */
+
+// Register a tool
+aiToolRegistry().register(
+    aiTool( "getWeather", "Gets current weather for a city", ( city ) => {
+        // Simulated weather data
+        return "Sunny, 72°F in #city#";
+    } ),
+    module: "my-app"
+)
+
+// Use by string key in aiChat
+// aiChat( "What's the weather in Kansas City?", { tools: [ "getWeather@my-app" ] } )
+
+// Use directly
+weather = aiToolRegistry().get( "getWeather@my-app" ).invoke( { city: "Kansas City" } )
+println( "Weather: " & weather )

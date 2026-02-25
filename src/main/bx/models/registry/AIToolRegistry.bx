@@ -1,0 +1,347 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Global singleton registry for AI tools.
+ *
+ * Tools can be registered under a namespaced key `toolName@moduleName` or a plain `toolName`.
+ * Supports annotation-based discovery via @AITool on class methods.
+ */
+class extends="BaseRegistry" {
+
+	/**
+	 * Singleton instance holder
+	 */
+	static {
+		INSTANCE = javacast( "null", "" )
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		super.init();
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Singleton Access
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get or create the singleton instance.
+	 *
+	 * @return The AIToolRegistry instance
+	 */
+	static AIToolRegistry function getInstance() {
+		if ( isNull( static.INSTANCE ) ) {
+			static.INSTANCE = new bxModules.bxai.models.registry.AIToolRegistry();
+		}
+		return static.INSTANCE;
+	}
+
+	/**
+	 * Reset the singleton (used on module unload and in tests).
+	 */
+	static void function reset() {
+		static.INSTANCE = javacast( "null", "" );
+	}
+
+	/**
+	 * Resolve a mixed array of ITool instances and/or string registry keys into an ITool array.
+	 *
+	 * @tools Array of ITool instances and/or string registry keys
+	 *
+	 * @return Array of resolved ITool instances
+	 */
+	static array function resolveTools( required array tools ) {
+		// Access static.INSTANCE directly to avoid class-resolution differences
+		// between qualified (bxModules.bxai...) and unqualified (AIToolRegistry) references
+		if ( isNull( static.INSTANCE ) ) {
+			static.INSTANCE = new bxModules.bxai.models.registry.AIToolRegistry();
+		}
+		var registry = static.INSTANCE;
+		return arguments.tools.map( t => {
+			if ( isSimpleValue( t ) ) {
+				return registry.get( t );
+			}
+			return t;
+		} );
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Registration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Register an ITool instance, optionally namespaced to a module.
+	 *
+	 * Overloaded:
+	 * 1. register( tool [, module] )              — ITool instance
+	 * 2. register( name, description, callback [, module] ) — shorthand; creates Tool internally
+	 *
+	 * @tool        An ITool instance (use this OR name/description/callback)
+	 * @name        Tool name  (use this with description + callback instead of tool)
+	 * @description Tool description
+	 * @callback    The callable for the tool
+	 * @module      Optional module namespace (produces key `name@module`)
+	 *
+	 * @return This registry for chaining
+	 */
+	AIToolRegistry function register(
+		any tool,
+		string name,
+		string description = "",
+		any callback,
+		string module = ""
+	) {
+		// Shorthand registration: name + description + callback provided
+		if ( isNull( arguments.tool ) && !isNull( arguments.name ) ) {
+			arguments.tool = new bxModules.bxai.models.tools.Tool()
+				.setName( arguments.name )
+				.describeFunction( arguments.description );
+			if ( !isNull( arguments.callback ) ) {
+				arguments.tool.call( arguments.callback );
+			}
+		}
+
+		var key = buildKey( arguments.tool.getName(), arguments.module );
+		put( key, arguments.tool );
+		return this;
+	}
+
+	/**
+	 * Remove a tool by its name or `name@module` key.
+	 *
+	 * @key The tool name or namespaced key
+	 *
+	 * @return This registry for chaining
+	 */
+	AIToolRegistry function unregister( required string key ) {
+		remove( resolveKey( arguments.key ) );
+		return this;
+	}
+
+	/**
+	 * Remove all tools belonging to a module.
+	 *
+	 * @module The module name
+	 *
+	 * @return This registry for chaining
+	 */
+	AIToolRegistry function unregisterByModule( required string module ) {
+		removeByModule( arguments.module );
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Annotation-Based Discovery
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Scan a class instance or a file/directory path for methods annotated with @AITool
+	 * and register each as a tool in this registry.
+	 *
+	 * Annotation formats:
+	 * - @AITool                           — name from method, description from @hint
+	 * - @AITool( "Description string" )   — name from method, custom description
+	 * - @AITool( { name: "...", description: "..." } ) — fully explicit
+	 *
+	 * @source  A class instance OR a string file/directory path to scan
+	 * @module  Module namespace for the registered keys
+	 *
+	 * @return This registry for chaining
+	 */
+	AIToolRegistry function scan( required any source, string module = "" ) {
+		// Dispatch on type
+		if ( isSimpleValue( arguments.source ) ) {
+			// String path: file or directory
+			var targetPath = expandPath( arguments.source );
+
+			if ( !fileExists( targetPath ) && !directoryExists( targetPath ) ) {
+				throw(
+					type    : "AIToolRegistry.PathNotFound",
+					message : "Path not found: #arguments.source#"
+				);
+			}
+
+			if ( directoryExists( targetPath ) ) {
+				var files = directoryList( targetPath, true, "path", "*.bx" );
+				files.each( filePath => scanFile( filePath, arguments.module ) );
+			} else {
+				scanFile( targetPath, arguments.module );
+			}
+		} else {
+			// Object instance: scan its metadata
+			var sourceInstance = arguments.source;
+			var sourceModule   = arguments.module;
+			scanInstance( sourceInstance, sourceModule );
+		}
+
+		return this;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Helpers
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Scan a single .bx file for @AITool annotations.
+	 *
+	 * @filePath Absolute path to the .bx file
+	 * @module   Module namespace
+	 */
+	private void function scanFile( required string filePath, string module = "" ) {
+		try {
+			var metadata = getClassMetadata( arguments.filePath );
+			if ( isNull( metadata ) || !isStruct( metadata ) ) {
+				return;
+			}
+			var functions = metadata.functions ?: [];
+			functions.each( fn => {
+				var annotations = fn.annotations ?: {};
+				if ( annotations.keyExists( "AITool" ) ) {
+					registerAnnotatedMethod( arguments.filePath, fn, annotations.AITool, arguments.module );
+				}
+			} );
+		} catch ( any e ) {
+			// Skip files that cannot be parsed
+		}
+	}
+
+	/**
+	 * Scan an already-instantiated object for @AITool annotations.
+	 *
+	 * @instance The object to scan
+	 * @module   Module namespace
+	 */
+	private void function scanInstance( required any instance, string module = "" ) {
+		var instanceRef  = arguments.instance;
+		var moduleRef    = arguments.module;
+		var metadata = getMetadata( instanceRef );
+		if ( isNull( metadata ) || !isStruct( metadata ) ) {
+			return;
+		}
+		var functions = metadata.functions ?: [];
+		functions.each( fn => {
+			var annotations = fn.annotations ?: {};
+			if ( annotations.keyExists( "AITool" ) ) {
+				registerAnnotatedMethodFromInstance( instanceRef, fn, annotations.AITool, moduleRef );
+			}
+		} );
+	}
+
+	/**
+	 * Register a tool from a method on a file path (lazy instantiation).
+	 *
+	 * @filePath           Path for lazy class creation
+	 * @functionMetadata   Function metadata struct
+	 * @annotation         The @AITool annotation value
+	 * @module             Module namespace
+	 */
+	private void function registerAnnotatedMethod(
+		required string filePath,
+		required struct functionMetadata,
+		required any annotation,
+		string module = ""
+	) {
+		var methodName      = arguments.functionMetadata.name;
+		var toolName        = methodName;
+		var toolDescription = arguments.functionMetadata?.documentation?.hint ?: "";
+
+		if ( isStruct( arguments.annotation ) ) {
+			toolName        = arguments.annotation.name ?: methodName;
+			toolDescription = arguments.annotation.description ?: toolDescription;
+		} else if ( isSimpleValue( arguments.annotation ) && len( trim( arguments.annotation ) ) > 0 && arguments.annotation != true ) {
+			toolDescription = arguments.annotation;
+		}
+
+		var argDescriptions = {};
+		var parameters      = arguments.functionMetadata.parameters ?: [];
+		parameters.each( param => {
+			argDescriptions[ param.name ] = param.hint ?: param.name;
+		} );
+
+		var targetFilePath = arguments.filePath;
+		var callable = ( args ) => {
+			var targetInstance = createObject( targetFilePath );
+			return invoke( targetInstance, methodName, args );
+		};
+
+		var tool = new bxModules.bxai.models.tools.Tool()
+			.setName( toolName )
+			.describeFunction( toolDescription )
+			.call( callable );
+
+		argDescriptions.each( ( argName, argDesc ) => tool.describeArg( argName, argDesc ) );
+
+		var key = buildKey( toolName, arguments.module );
+		put( key, tool );
+	}
+
+	/**
+	 * Register a tool from a method on an existing instance.
+	 *
+	 * @instance           The object instance
+	 * @functionMetadata   Function metadata struct
+	 * @annotation         The @AITool annotation value
+	 * @module             Module namespace
+	 */
+	private void function registerAnnotatedMethodFromInstance(
+		required any instance,
+		required struct functionMetadata,
+		required any annotation,
+		string module = ""
+	) {
+		var methodName      = arguments.functionMetadata.name;
+		var toolName        = methodName;
+		var toolDescription = arguments.functionMetadata?.documentation?.hint ?: "";
+
+		if ( isStruct( arguments.annotation ) ) {
+			toolName        = arguments.annotation.name ?: methodName;
+			toolDescription = arguments.annotation.description ?: toolDescription;
+		} else if ( isSimpleValue( arguments.annotation ) && len( trim( arguments.annotation ) ) > 0 && arguments.annotation != true ) {
+			toolDescription = arguments.annotation;
+		}
+
+		var argDescriptions = {};
+		var parameters      = arguments.functionMetadata.parameters ?: [];
+		parameters.each( param => {
+			argDescriptions[ param.name ] = param.hint ?: param.name;
+		} );
+
+		var targetInstance = arguments.instance;
+		var callable = ( args ) => {
+			return invoke( targetInstance, methodName, args );
+		};
+
+		var tool = new bxModules.bxai.models.tools.Tool()
+			.setName( toolName )
+			.describeFunction( toolDescription )
+			.call( callable );
+
+		argDescriptions.each( ( argName, argDesc ) => tool.describeArg( argName, argDesc ) );
+
+		var key = buildKey( toolName, arguments.module );
+		put( key, tool );
+	}
+
+}

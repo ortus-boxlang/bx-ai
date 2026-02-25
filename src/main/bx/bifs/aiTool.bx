@@ -61,7 +61,7 @@ class {
 		string description,
 		any callable
 	) {
-		var tool = new bxmodules.bxai.models.Tool()
+		var tool = new bxmodules.bxai.models.tools.Tool()
 			.setName( arguments.name )
 			.describeFunction( arguments.description )
 			.call( arguments.callable );

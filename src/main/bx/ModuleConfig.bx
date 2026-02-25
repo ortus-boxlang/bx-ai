@@ -206,14 +206,15 @@ class {
 	 * Called by the ModuleService on module activation
 	 */
 	function onLoad(){
-
+		bxModules.bxai.models.registry.AIToolRegistry::getInstance()
+			.scan( source: new bxModules.bxai.models.tools.CoreTools(), module: "bx-ai" );
 	}
 
 	/**
 	 * Called by the ModuleService on module deactivation
 	 */
 	function onUnload(){
-
+		bxModules.bxai.models.registry.AIToolRegistry::reset();
 	}
 
 	/**

@@ -1,0 +1,16 @@
+/**
+ * Core tools example - using the built-in now@bx-ai tool
+ */
+
+// now@bx-ai is auto-registered on module load
+nowTool = aiToolRegistry().get( "now@bx-ai" )
+currentTime = nowTool.invoke( {} )
+println( "Current time: " & currentTime )
+
+// Use with an agent
+// agent = aiAgent(
+//     instructions : "You are a scheduling assistant.",
+//     tools        : [ "now@bx-ai" ]
+// )
+// response = agent.run( "What day is today?" )
+// println( response )
