@@ -250,8 +250,15 @@ abstract class implements="IAiService" {
 			};
 		}
 
-		// Send it
-		var result = sendRequest( arguments.chatRequest, dataPacket )
+		// Allow concrete providers to normalize the request packet before sending
+		dataPacket = preChatRequest( arguments.chatRequest, dataPacket )
+
+		// Send HTTP request to the provider and get the response
+		// The result is a struct with normalized keys
+		var result = sendChatRequest( arguments.chatRequest, dataPacket )
+
+		// Allow concrete providers to normalize the response before error checking and returnFormat processing
+		result = postChatResponse( arguments.chatRequest, dataPacket, result )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
@@ -288,10 +295,6 @@ abstract class implements="IAiService" {
 				totalTokens: result.usage.keyExists( "total_tokens" ) ? result.usage.total_tokens : 0,
 				aiRequest: arguments.chatRequest,
 				usage: result.usage,
-				// Multi-tenant tracking fields
-				tenantId: arguments.chatRequest.getTenantId(),
-				usageMetadata: arguments.chatRequest.getUsageMetadata(),
-				providerOptions: arguments.chatRequest.getProviderOptions(),
 				timestamp: now()
 			} );
 		}
@@ -300,7 +303,6 @@ abstract class implements="IAiService" {
 		var toolCalls = result.choices.first().message?.tool_calls ?: arrayNew()
 		if( !toolCalls.len() ){
 			var content = result.choices.first().message.content;
-
 			// Determine return formats
 			switch( arguments.chatRequest.getReturnFormat() ){
 				case "all":
@@ -406,8 +408,14 @@ abstract class implements="IAiService" {
 			dataPacket.tools = dataPacket.tools.map( .getSchema )
 		}
 
+		// Allow concrete providers to normalize the request packet before streaming
+		dataPacket = preStreamRequest( arguments.chatRequest, dataPacket )
+
 		// Send it with streaming
 		var streamState = sendStreamRequest( chatRequest, dataPacket, callback )
+
+		// Allow concrete providers to normalize the stream state after completion
+		streamState = postStreamResponse( arguments.chatRequest, dataPacket, streamState )
 
 		// If no tool calls were requested, we are done
 		if( !streamState.toolCalls.len() ){
@@ -513,8 +521,14 @@ abstract class implements="IAiService" {
 			"model": arguments.embeddingRequest.getModel()
 		}.append( arguments.embeddingRequest.getParams() )
 
+		// Allow concrete providers to normalize the embedding request packet before sending
+		dataPacket = preEmbeddingRequest( arguments.embeddingRequest, dataPacket )
+
 		// Send it
 		var result = sendEmbeddingRequest( embeddingRequest, dataPacket )
+
+		// Allow concrete providers to normalize the embedding response before error checking and returnFormat processing
+		result = postEmbeddingResponse( arguments.embeddingRequest, dataPacket, result )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
@@ -577,6 +591,103 @@ abstract class implements="IAiService" {
 
 	/**
 	 * ---------------------------------------------------------------------------------------------------------
+	 * Pre/Post Hooks
+	 * Override in concrete providers to normalize requests/responses without needing to override
+	 * the full chat(), chatStream(), or embeddings() methods.
+	 *
+	 * Each hook is a no-op by default and returns its input unchanged.
+	 * - Pre hooks  : receive and return the dataPacket struct (modify before sending)
+	 * - Post hooks : receive and return the result/streamState struct (normalize after receiving)
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Called after the chat dataPacket is assembled but before it is sent to the provider.
+	 * Override to reshape the packet for provider-specific formats
+	 * (e.g., restructure messages, reformat tools, inject extra fields).
+	 *
+	 * @chatRequest The AiChatRequest object
+	 * @dataPacket  The assembled data packet struct
+	 *
+	 * @return The (possibly modified) dataPacket struct
+	 */
+	private struct function preChatRequest( required AiChatRequest chatRequest, required struct dataPacket ){
+		return arguments.dataPacket;
+	}
+
+	/**
+	 * Called after the raw chat response is received but before error checking and returnFormat processing.
+	 * Override to normalize provider-specific response shapes into the standard OpenAI format
+	 * (e.g., remap base_resp errors to { error: "..." }, remap choices to the standard structure).
+	 *
+	 * @chatRequest The AiChatRequest object
+	 * @dataPacket  The data packet that was sent
+	 * @result      The deserialized response struct from the provider
+	 *
+	 * @return The (possibly modified) result struct
+	 */
+	private struct function postChatResponse( required AiChatRequest chatRequest, required struct dataPacket, required struct result ){
+		return arguments.result;
+	}
+
+	/**
+	 * Called after the streaming dataPacket is assembled but before it is sent to the provider.
+	 * Override to reshape the packet for provider-specific streaming formats.
+	 *
+	 * @chatRequest The AiChatRequest object
+	 * @dataPacket  The assembled data packet struct
+	 *
+	 * @return The (possibly modified) dataPacket struct
+	 */
+	private struct function preStreamRequest( required AiChatRequest chatRequest, required struct dataPacket ){
+		return arguments.dataPacket;
+	}
+
+	/**
+	 * Called after streaming completes but before tool-call detection.
+	 * Override to normalize the accumulated stream state if the provider emits non-standard chunks.
+	 *
+	 * @chatRequest The AiChatRequest object
+	 * @dataPacket  The data packet that was sent
+	 * @streamState The accumulated stream state struct: { content, finishReason, toolCalls }
+	 *
+	 * @return The (possibly modified) streamState struct
+	 */
+	private struct function postStreamResponse( required AiChatRequest chatRequest, required struct dataPacket, required struct streamState ){
+		return arguments.streamState;
+	}
+
+	/**
+	 * Called after the embedding dataPacket is assembled but before it is sent to the provider.
+	 * Override to reshape the packet for provider-specific embedding formats
+	 * (e.g., rename `input` to `texts`, wrap content differently, inject required fields).
+	 *
+	 * @embeddingRequest The AiEmbeddingRequest object
+	 * @dataPacket       The assembled data packet struct
+	 *
+	 * @return The (possibly modified) dataPacket struct
+	 */
+	private struct function preEmbeddingRequest( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
+		return arguments.dataPacket;
+	}
+
+	/**
+	 * Called after the raw embedding response is received but before error checking and returnFormat processing.
+	 * Override to normalize provider-specific response structures into the standard format
+	 * ({ data: [{ embedding, index }], model, usage }).
+	 *
+	 * @embeddingRequest The AiEmbeddingRequest object
+	 * @dataPacket       The data packet that was sent
+	 * @result           The deserialized response struct from the provider
+	 *
+	 * @return The (possibly modified) result struct
+	 */
+	private struct function postEmbeddingResponse( required AiEmbeddingRequest embeddingRequest, required struct dataPacket, required struct result ){
+		return arguments.result;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
 	 * Private Methods
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
@@ -589,7 +700,7 @@ abstract class implements="IAiService" {
 	 *
 	 * @return The response from the provider as a struct
 	 */
-	private function sendRequest( required AiChatRequest chatRequest, required struct dataPacket ){
+	private function sendChatRequest( required AiChatRequest chatRequest, required struct dataPacket ){
 		// Announce the request
 		BoxAnnounce(
 			"onAIChatRequest",
@@ -600,7 +711,7 @@ abstract class implements="IAiService" {
 			}
 		);
 
-		// Log the request
+		// Log the request to the logs if enabled
 		if( arguments.chatRequest.getLogRequest() ){
 			writeLog(
 				text: buildRequestLog( arguments.chatRequest, arguments.dataPacket ),
@@ -679,10 +790,10 @@ abstract class implements="IAiService" {
 		// Try to deserialize the response
 		try{
 			var iData = {
-				"chatRequest" = arguments.chatRequest,
-				"response" = jsonDeserialize( chatResult.filecontent ),
+				"chatRequest" 	: arguments.chatRequest,
+				"response" 		: jsonDeserialize( chatResult.filecontent ),
 				"rawResponse"	: chatResult,
-				"provider" = this
+				"provider" 		: this
 			}
 		}
 		catch( Any e ){
@@ -691,7 +802,7 @@ abstract class implements="IAiService" {
 				error: e,
 				errorMessage: "Error deserializing response: #chatResult.filecontent#",
 				provider: this,
-				operation: "sendRequest",
+				operation: "sendChatRequest",
 				aiRequest: arguments.chatRequest,
 				canRetry: true
 			} );

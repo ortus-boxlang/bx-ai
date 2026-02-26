@@ -66,7 +66,7 @@ A provider is a company (or software) that runs AI models:
 | **Voyage** | voyage-2, voyage-code-2 | 1024/1536 | RAG, semantic search |
 | **Cohere** | embed-english-v3.0 | 1024 | Multilingual |
 | **Ollama** | nomic-embed-text, mxbai-embed | 768 | Local/private |
-| **Gemini** | text-embedding-004 | 768 | Google ecosystem |
+| **Gemini** | gemini-embedding-001 | 3072 | Google ecosystem |
 
 ### Why Switch Providers?
 
