@@ -31,6 +31,12 @@
  *
  * Note: DMR ignores the Authorization header - no API key required.
  *
+ * IMPORTANT: This service uses Java HttpURLConnection for HTTP calls instead of
+ * bx:http/cfhttp. Docker Model Runner's reverse proxy to the vLLM engine does not
+ * correctly forward the request body when bx:http is used (likely due to
+ * Expect: 100-continue or Transfer-Encoding: chunked handling). Java's
+ * HttpURLConnection works correctly with both llama.cpp and vLLM backends.
+ *
  * @see https://docs.docker.com/ai/model-runner/
  * @see https://docs.docker.com/ai/model-runner/api-reference/
  */
@@ -184,6 +190,457 @@ class extends = "OpenAICompatibleService"{
 			// Re-throw if not a loading error or max retries exceeded
 			rethrow;
 		}
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * HTTP Methods (Java HttpURLConnection)
+	 *
+	 * Docker Model Runner's reverse proxy drops the POST body when routing to vLLM
+	 * backends if the request uses certain HTTP client behaviors (Expect: 100-continue,
+	 * Transfer-Encoding: chunked) that bx:http/cfhttp triggers. Java's HttpURLConnection
+	 * sends the body inline and works with both llama.cpp and vLLM engines.
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Send a chat request using Java HttpURLConnection.
+	 * Overrides BaseService.sendChatRequest to bypass bx:http.
+	 *
+	 * @chatRequest The AiChatRequest object
+	 * @dataPacket  The data packet struct to serialize and send
+	 *
+	 * @return The deserialized response struct
+	 */
+	@override
+	private function sendChatRequest( required AiChatRequest chatRequest, required struct dataPacket ) {
+		// Announce the request
+		BoxAnnounce(
+			"onAIChatRequest",
+			{
+				"dataPacket" : arguments.dataPacket,
+				"chatRequest": arguments.chatRequest,
+				"provider"   : this
+			}
+		);
+
+		// Log the request
+		if ( arguments.chatRequest.getLogRequest() ) {
+			writeLog(
+				text: buildRequestLog( arguments.chatRequest, arguments.dataPacket ),
+				type: "info",
+				log : "ai"
+			);
+		}
+		if ( arguments.chatRequest.getLogRequestToConsole() ) {
+			println( buildRequestLog( arguments.chatRequest, arguments.dataPacket ) );
+		}
+
+		// Execute via Java HTTP
+		var jsonBody = jsonSerialize( arguments.dataPacket );
+		var javaResult = javaHttpPost( getChatURL(), jsonBody, arguments.chatRequest );
+
+		// Build a chatResult-like struct for logging compatibility
+		var chatResult = {
+			"statusCode"     : javaResult.statusCode,
+			"filecontent"    : javaResult.body,
+			"responseheader" : javaResult.headers
+		};
+
+		// Rate limit detection
+		if ( javaResult.statusCode == 429 ) {
+			var errorData = {};
+			try {
+				errorData = jsonDeserialize( javaResult.body );
+			} catch ( any e ) {
+				errorData = { "message": javaResult.body };
+			}
+			BoxAnnounce( "onAIRateLimitHit", {
+				"provider"    : this,
+				"operation"   : "chat",
+				"statusCode"  : 429,
+				"errorData"   : errorData,
+				"chatRequest" : arguments.chatRequest,
+				"retryAfter"  : javaResult.headers[ "retry-after" ] ?: ""
+			} );
+		}
+
+		// Response logging
+		if ( arguments.chatRequest.getLogResponse() ) {
+			writeLog(
+				text: buildResponseLog( arguments.chatRequest, chatResult ),
+				type: "info",
+				log : "ai"
+			);
+		}
+		if ( arguments.chatRequest.getLogResponseToConsole() ) {
+			println( buildResponseLog( arguments.chatRequest, chatResult ) );
+		}
+
+		// Deserialize response
+		try {
+			var iData = {
+				"chatRequest" : arguments.chatRequest,
+				"response"    : jsonDeserialize( javaResult.body ),
+				"rawResponse" : chatResult,
+				"provider"    : this
+			};
+		} catch ( any e ) {
+			BoxAnnounce( "onAIError", {
+				"error"        : e,
+				"errorMessage" : "Error deserializing response: #javaResult.body#",
+				"provider"     : this,
+				"operation"    : "sendChatRequest",
+				"aiRequest"    : arguments.chatRequest,
+				"canRetry"     : true
+			} );
+			throw(
+				type    : "JsonDeserializationError",
+				message : "Error deserializing response from provider: #e.message & e.detail#",
+				detail  : "Response: #javaResult.body#"
+			);
+		}
+
+		BoxAnnounce( "onAIChatResponse", iData );
+		return iData.response;
+	}
+
+	/**
+	 * Send a streaming chat request using Java HttpURLConnection.
+	 * Overrides BaseService.sendStreamRequest to bypass bx:http SSE mode.
+	 * Reads the SSE stream line-by-line and invokes the callback for each chunk.
+	 *
+	 * @chatRequest The AiChatRequest object
+	 * @dataPacket  The data packet struct to serialize and send
+	 * @callback    Function called with each parsed SSE chunk
+	 *
+	 * @return Stream state struct with accumulated content and finish reason
+	 */
+	@override
+	private struct function sendStreamRequest(
+		required AiChatRequest chatRequest,
+		required struct dataPacket,
+		required function callback
+	) {
+		var userCallback = arguments.callback;
+		var thisChatRequest = arguments.chatRequest;
+		var streamState = {
+			"content"      : "",
+			"finishReason" : "",
+			"toolCalls"    : []
+		};
+
+		// Announce the request
+		BoxAnnounce(
+			"onAIChatRequest",
+			{
+				"dataPacket" : arguments.dataPacket,
+				"chatRequest": arguments.chatRequest,
+				"provider"   : this
+			}
+		);
+
+		// Log the request
+		if ( arguments.chatRequest.getLogRequest() ) {
+			writeLog(
+				text: buildRequestLog( arguments.chatRequest, arguments.dataPacket ),
+				type: "info",
+				log : "ai"
+			);
+		}
+		if ( arguments.chatRequest.getLogRequestToConsole() ) {
+			println( buildRequestLog( arguments.chatRequest, arguments.dataPacket ) );
+		}
+
+		var jsonBody = jsonSerialize( arguments.dataPacket );
+		var conn = javacast( "null", "" );
+
+		try {
+			var javaUrl = createObject( "java", "java.net.URL" ).init( getChatURL() );
+			conn = javaUrl.openConnection();
+			conn.setRequestMethod( "POST" );
+			conn.setDoOutput( true );
+			conn.setConnectTimeout( arguments.chatRequest.getTimeout() * 1000 );
+			conn.setReadTimeout( arguments.chatRequest.getTimeout() * 1000 );
+			conn.setRequestProperty( "Content-Type", "application/json" );
+			conn.setRequestProperty( "Accept", "text/event-stream" );
+
+			// Auth header
+			if ( arguments.chatRequest.getSendAuthHeader() && len( arguments.chatRequest.getApiKey() ) ) {
+				conn.setRequestProperty( "Authorization", "Bearer #arguments.chatRequest.getApiKey()#" );
+			}
+
+			// Custom headers
+			for ( var headerName in arguments.chatRequest.getHeaders() ) {
+				conn.setRequestProperty( headerName, arguments.chatRequest.getHeaders()[ headerName ] );
+			}
+
+			// Write body
+			var outputStream = conn.getOutputStream();
+			outputStream.write( jsonBody.getBytes( "UTF-8" ) );
+			outputStream.flush();
+			outputStream.close();
+
+			var responseCode = conn.getResponseCode();
+			if ( responseCode < 200 || responseCode >= 300 ) {
+				// Read error body (getErrorStream() can return null for empty error responses)
+				var errorStream = conn.getErrorStream();
+				var errorBody = !isNull( errorStream ) ? readStream( errorStream ) : "(empty response body)";
+				conn.disconnect();
+
+				var errorMessage = "HTTP Error #responseCode#: #errorBody#";
+				writeLog( text: "Stream Request Error: #errorMessage#", type: "error", log: "ai" );
+
+				BoxAnnounce( "onAIError", {
+					"error"        : { "message": errorMessage },
+					"errorMessage" : errorMessage,
+					"provider"     : this,
+					"operation"    : "stream",
+					"aiRequest"    : thisChatRequest,
+					"canRetry"     : true
+				} );
+
+				throw( type: "ProviderError", message: errorMessage );
+			}
+
+			// Read SSE stream line by line
+			var reader = createObject( "java", "java.io.BufferedReader" ).init(
+				createObject( "java", "java.io.InputStreamReader" ).init( conn.getInputStream(), "UTF-8" )
+			);
+
+			var foundSSE = false;
+			var nonSSEBuffer = createObject( "java", "java.lang.StringBuilder" ).init();
+
+			var line = reader.readLine();
+			while ( !isNull( line ) ) {
+				// SSE lines starting with "data: " contain the payload
+				if ( line.startsWith( "data: " ) || line.startsWith( "data:" ) ) {
+					foundSSE = true;
+					var data = line.startsWith( "data: " ) ? line.substring( 6 ) : line.substring( 5 );
+					data = data.trim();
+
+					// Skip empty data and stream end marker
+					if ( !len( data ) || data == "[DONE]" ) {
+						line = reader.readLine();
+						continue;
+					}
+
+					try {
+						var parsedChunk = jsonDeserialize( data );
+						updateStreamState( streamState, parsedChunk );
+						userCallback( parsedChunk );
+					} catch ( any parseErr ) {
+						writeLog(
+							text: "Error parsing stream chunk: [#parseErr.message#] - Data: [#data#]",
+							type: "error",
+							log : "ai"
+						);
+					}
+				} else if ( !foundSSE && len( line.trim() ) ) {
+					// Accumulate non-SSE lines (could be a plain JSON response)
+					if ( nonSSEBuffer.length() > 0 ) {
+						nonSSEBuffer.append( chr( 10 ) );
+					}
+					nonSSEBuffer.append( line );
+				}
+				line = reader.readLine();
+			}
+
+			reader.close();
+			conn.disconnect();
+
+			// Fallback: vLLM through DMR may return a non-streaming JSON response
+			// even when stream=true is requested. Convert it to a single synthetic chunk.
+			if ( !foundSSE && nonSSEBuffer.length() > 0 ) {
+				var rawBody = nonSSEBuffer.toString().trim();
+				if ( rawBody.startsWith( "{" ) ) {
+					try {
+						var fullResponse = jsonDeserialize( rawBody );
+						// Convert message format to delta format for the callback
+						if ( fullResponse.keyExists( "choices" ) && isArray( fullResponse.choices ) && fullResponse.choices.len() > 0 ) {
+							var choice = fullResponse.choices[ 1 ];
+							var syntheticDelta = {};
+
+							if ( choice.keyExists( "message" ) && choice.message.keyExists( "content" ) && len( choice.message.content ) ) {
+								syntheticDelta[ "content" ] = choice.message.content;
+							}
+							if ( choice.keyExists( "message" ) && choice.message.keyExists( "tool_calls" ) && isArray( choice.message.tool_calls ) ) {
+								syntheticDelta[ "tool_calls" ] = choice.message.tool_calls;
+							}
+
+							if ( !syntheticDelta.isEmpty() ) {
+								// Build a synthetic streaming chunk with delta format
+								var syntheticChunk = {
+									"id"      : fullResponse.id ?: "fallback",
+									"object"  : "chat.completion.chunk",
+									"choices" : [ {
+										"index"         : 0,
+										"delta"         : syntheticDelta,
+										"finish_reason" : choice.finish_reason ?: "stop"
+									} ]
+								};
+								updateStreamState( streamState, syntheticChunk );
+								userCallback( syntheticChunk );
+								writeLog(
+									text: "Docker Model Runner: vLLM returned non-streaming response, converted to single chunk",
+									type: "info",
+									log : "ai"
+								);
+							}
+						}
+					} catch ( any fallbackErr ) {
+						writeLog(
+							text: "Error parsing non-streaming fallback response: #fallbackErr.message#",
+							type: "error",
+							log : "ai"
+						);
+					}
+				}
+			}
+
+			// Log completion
+			if ( thisChatRequest.getLogResponse() ) {
+				writeLog( text: "Stream completed successfully", type: "info", log: "ai" );
+			}
+
+			BoxAnnounce(
+				"onAIChatResponse",
+				{
+					"chatRequest"    : thisChatRequest,
+					"provider"       : this,
+					"streamComplete" : true
+				}
+			);
+
+		} catch ( ProviderError e ) {
+			rethrow;
+		} catch ( any e ) {
+			if ( !isNull( conn ) ) { try { conn.disconnect(); } catch ( any ignored ) {} }
+
+			writeLog( text: "Stream Request Error: #e.message#", type: "error", log: "ai" );
+
+			BoxAnnounce( "onAIError", {
+				"error"        : e,
+				"errorMessage" : "Stream error: #e.message#",
+				"provider"     : this,
+				"operation"    : "stream",
+				"aiRequest"    : thisChatRequest,
+				"canRetry"     : true
+			} );
+
+			throw( type: "ProviderError", message: "HTTP Error: [#e.message#]" );
+		}
+
+		return streamState;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Java HTTP Helpers
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Execute an HTTP POST using Java HttpURLConnection.
+	 * Bypasses bx:http to avoid body-dropping issues with Docker Model Runner's vLLM proxy.
+	 *
+	 * @url         The URL to POST to
+	 * @jsonBody    The JSON string body
+	 * @chatRequest The chat request (for auth/headers/timeout)
+	 *
+	 * @return Struct with statusCode, body, and headers
+	 */
+	private struct function javaHttpPost(
+		required string url,
+		required string jsonBody,
+		required AiChatRequest chatRequest
+	) {
+		var conn = javacast( "null", "" );
+		try {
+			var javaUrl = createObject( "java", "java.net.URL" ).init( arguments.url );
+			conn = javaUrl.openConnection();
+			conn.setRequestMethod( "POST" );
+			conn.setDoOutput( true );
+			conn.setConnectTimeout( arguments.chatRequest.getTimeout() * 1000 );
+			conn.setReadTimeout( arguments.chatRequest.getTimeout() * 1000 );
+			conn.setRequestProperty( "Content-Type", "application/json" );
+			conn.setRequestProperty( "Accept", "application/json" );
+
+			// Auth header
+			if ( arguments.chatRequest.getSendAuthHeader() && len( arguments.chatRequest.getApiKey() ) ) {
+				conn.setRequestProperty( "Authorization", "Bearer #arguments.chatRequest.getApiKey()#" );
+			}
+
+			// Custom headers
+			for ( var headerName in arguments.chatRequest.getHeaders() ) {
+				conn.setRequestProperty( headerName, arguments.chatRequest.getHeaders()[ headerName ] );
+			}
+
+			// Write body
+			var outputStream = conn.getOutputStream();
+			var bodyBytes = arguments.jsonBody.getBytes( "UTF-8" );
+			outputStream.write( bodyBytes );
+			outputStream.flush();
+			outputStream.close();
+
+			var responseCode = conn.getResponseCode();
+			var inputStream = ( responseCode >= 200 && responseCode < 300 )
+				? conn.getInputStream()
+				: conn.getErrorStream();
+
+			// getErrorStream() can return null for empty error responses
+			var responseBody = !isNull( inputStream ) ? readStream( inputStream ) : "";
+
+			// Extract response headers
+			var responseHeaders = {};
+			var headerFields = conn.getHeaderFields();
+			if ( !isNull( headerFields ) ) {
+				for ( var key in headerFields.keySet() ) {
+					if ( !isNull( key ) ) {
+						var values = headerFields.get( key );
+						responseHeaders[ key ] = values.size() > 0 ? values.get( 0 ) : "";
+					}
+				}
+			}
+
+			conn.disconnect();
+
+			return {
+				"statusCode" : responseCode,
+				"body"       : responseBody,
+				"headers"    : responseHeaders
+			};
+		} catch ( any e ) {
+			if ( !isNull( conn ) ) { try { conn.disconnect(); } catch ( any ignored ) {} }
+			throw(
+				type    : "ProviderError",
+				message : "HTTP request to Docker Model Runner failed: #e.message#"
+			);
+		}
+	}
+
+	/**
+	 * Read an InputStream fully into a string.
+	 *
+	 * @inputStream The Java InputStream to read
+	 *
+	 * @return The full content as a string
+	 */
+	private string function readStream( required any inputStream ) {
+		var reader = createObject( "java", "java.io.BufferedReader" ).init(
+			createObject( "java", "java.io.InputStreamReader" ).init( arguments.inputStream, "UTF-8" )
+		);
+		var sb = createObject( "java", "java.lang.StringBuilder" ).init();
+		var line = reader.readLine();
+		while ( !isNull( line ) ) {
+			sb.append( line );
+			line = reader.readLine();
+			if ( !isNull( line ) ) {
+				sb.append( chr( 10 ) );
+			}
+		}
+		reader.close();
+		return sb.toString();
 	}
 
 	/**
