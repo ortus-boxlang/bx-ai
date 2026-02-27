@@ -921,7 +921,7 @@ class extends = "BaseService"{
 	private function sendBedrockStreamRequest(
 		required string modelId,
 		required struct dataPacket,
-		required AiRequest aiRequest,
+		required AiChatRequest aiRequest,
 		required string modelFamily,
 		required function callback
 	){
