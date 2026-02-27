@@ -31,11 +31,12 @@
  *
  * Note: DMR ignores the Authorization header - no API key required.
  *
- * IMPORTANT: This service uses Java HttpURLConnection for HTTP calls instead of
- * bx:http/cfhttp. Docker Model Runner's reverse proxy to the vLLM engine does not
- * correctly forward the request body when bx:http is used (likely due to
- * Expect: 100-continue or Transfer-Encoding: chunked handling). Java's
- * HttpURLConnection works correctly with both llama.cpp and vLLM backends.
+ * IMPORTANT: This service forces HTTP/1.1 for all HTTP calls. Docker Model Runner's
+ * reverse proxy drops the POST body when Java's HttpClient attempts an HTTP/2
+ * upgrade (h2c) over plain HTTP. The proxy accepts the upgrade but loses the body
+ * during protocol translation to the vLLM backend. Forcing HTTP/1.1 avoids the
+ * h2c negotiation entirely. The llama.cpp backend is unaffected but HTTP/1.1 works
+ * for both.
  *
  * @see https://docs.docker.com/ai/model-runner/
  * @see https://docs.docker.com/ai/model-runner/api-reference/
@@ -81,11 +82,9 @@ class extends = "OpenAICompatibleService"{
 	/**
 	 * Configure the service with options
 	 *
-	 *   - String: API key (optional, empty string for no auth)
-	 *   - Struct: Configuration options (see OpenAICompatibleService.configure) plus:
-	 *     - useHostURL: Boolean to use localhost URL instead of Docker internal
-	 *
-	 * @config Can be:
+	 * @config Can be a String (API key, or empty string for no auth) or a Struct of
+	 *         configuration options (see OpenAICompatibleService.configure) plus:
+	 *         - useHostURL: Boolean to use localhost URL instead of Docker internal
 	 *
 	 * @return The service instance for chaining
 	 */
@@ -194,18 +193,18 @@ class extends = "OpenAICompatibleService"{
 
 	/**
 	 * ---------------------------------------------------------------------------------------------------------
-	 * HTTP Methods (Java HttpURLConnection)
+	 * HTTP Overrides (HTTP/1.1 forced)
 	 *
-	 * Docker Model Runner's reverse proxy drops the POST body when routing to vLLM
-	 * backends if the request uses certain HTTP client behaviors (Expect: 100-continue,
-	 * Transfer-Encoding: chunked) that bx:http/cfhttp triggers. Java's HttpURLConnection
-	 * sends the body inline and works with both llama.cpp and vLLM engines.
+	 * Docker Model Runner's reverse proxy drops the POST body when Java's HttpClient
+	 * attempts an HTTP/2 upgrade (h2c) over plain HTTP. The proxy accepts the upgrade
+	 * but loses the body during protocol translation to the vLLM backend.
+	 * Forcing HTTP/1.1 avoids the h2c negotiation entirely.
+	 * The llama.cpp backend is unaffected but HTTP/1.1 works for both.
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
 
 	/**
-	 * Send a chat request using Java HttpURLConnection.
-	 * Overrides BaseService.sendChatRequest to bypass bx:http.
+	 * Override sendChatRequest to force HTTP/1.1 for Docker Model Runner.
 	 *
 	 * @chatRequest The AiChatRequest object
 	 * @dataPacket  The data packet struct to serialize and send
@@ -213,7 +212,10 @@ class extends = "OpenAICompatibleService"{
 	 * @return The deserialized response struct
 	 */
 	@override
-	private function sendChatRequest( required AiChatRequest chatRequest, required struct dataPacket ) {
+	private function sendChatRequest( required AiChatRequest chatRequest, required struct dataPacket ){
+		// SYNC NOTE: This method mirrors BaseService.sendChatRequest() with httpVersion="HTTP/1.1" added.
+		// If BaseService.sendChatRequest() changes, update this method to match.
+
 		// Announce the request
 		BoxAnnounce(
 			"onAIChatRequest",
@@ -225,79 +227,93 @@ class extends = "OpenAICompatibleService"{
 		);
 
 		// Log the request
-		if ( arguments.chatRequest.getLogRequest() ) {
+		if( arguments.chatRequest.getLogRequest() ){
 			writeLog(
 				text: buildRequestLog( arguments.chatRequest, arguments.dataPacket ),
 				type: "info",
 				log : "ai"
-			);
+			)
 		}
-		if ( arguments.chatRequest.getLogRequestToConsole() ) {
-			println( buildRequestLog( arguments.chatRequest, arguments.dataPacket ) );
+		if( arguments.chatRequest.getLogRequestToConsole() ){
+			println( buildRequestLog( arguments.chatRequest, arguments.dataPacket ) )
 		}
 
-		// Execute via Java HTTP
-		var jsonBody = jsonSerialize( arguments.dataPacket );
-		var javaResult = javaHttpPost( getChatURL(), jsonBody, arguments.chatRequest );
+		// Force HTTP/1.1 to avoid h2c body-dropping issue with DMR's vLLM proxy
+		bx: http
+			url         = getChatURL()
+			method      = "post"
+			result      = "chatResult"
+			charset     = "utf-8"
+			timeout     = arguments.chatRequest.getTimeout()
+			httpVersion = "HTTP/1.1"
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
 
-		// Build a chatResult-like struct for logging compatibility
-		var chatResult = {
-			"statusCode"     : javaResult.statusCode,
-			"filecontent"    : javaResult.body,
-			"responseheader" : javaResult.headers
-		};
+			if( arguments.chatRequest.getSendAuthHeader() ){
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.chatRequest.getApiKey()#";
+			}
+
+			for( var thisHeader in arguments.chatRequest.getHeaders() ){
+				bx:httpParam
+					type="header"
+					name="#thisHeader#"
+					value="#arguments.chatRequest.getHeaders()[ thisHeader ]#";
+			}
+
+			bx:httpParam type="body" value=jsonSerialize( arguments.dataPacket );
+		}
 
 		// Rate limit detection
-		if ( javaResult.statusCode == 429 ) {
+		if( chatResult.statusCode == "429" || chatResult.statusCode == 429 ){
 			var errorData = {};
 			try {
-				errorData = jsonDeserialize( javaResult.body );
-			} catch ( any e ) {
-				errorData = { "message": javaResult.body };
+				errorData = jsonDeserialize( chatResult.filecontent );
+			} catch( any e ){
+				errorData = { message: chatResult.filecontent };
 			}
 			BoxAnnounce( "onAIRateLimitHit", {
-				"provider"    : this,
-				"operation"   : "chat",
-				"statusCode"  : 429,
-				"errorData"   : errorData,
-				"chatRequest" : arguments.chatRequest,
-				"retryAfter"  : javaResult.headers[ "retry-after" ] ?: ""
+				provider    : this,
+				operation   : "chat",
+				statusCode  : chatResult.statusCode,
+				errorData   : errorData,
+				chatRequest : arguments.chatRequest,
+				retryAfter  : chatResult.responseheader.keyExists( "retry-after" ) ? chatResult.responseheader[ "retry-after" ] : ""
 			} );
 		}
 
 		// Response logging
-		if ( arguments.chatRequest.getLogResponse() ) {
+		if( arguments.chatRequest.getLogResponse() ){
 			writeLog(
 				text: buildResponseLog( arguments.chatRequest, chatResult ),
 				type: "info",
 				log : "ai"
-			);
+			)
 		}
-		if ( arguments.chatRequest.getLogResponseToConsole() ) {
-			println( buildResponseLog( arguments.chatRequest, chatResult ) );
+		if( arguments.chatRequest.getLogResponseToConsole() ){
+			println( buildResponseLog( arguments.chatRequest, chatResult ) )
 		}
 
 		// Deserialize response
 		try {
 			var iData = {
 				"chatRequest" : arguments.chatRequest,
-				"response"    : jsonDeserialize( javaResult.body ),
+				"response"    : jsonDeserialize( chatResult.filecontent ),
 				"rawResponse" : chatResult,
 				"provider"    : this
-			};
-		} catch ( any e ) {
+			}
+		} catch( any e ){
 			BoxAnnounce( "onAIError", {
-				"error"        : e,
-				"errorMessage" : "Error deserializing response: #javaResult.body#",
-				"provider"     : this,
-				"operation"    : "sendChatRequest",
-				"aiRequest"    : arguments.chatRequest,
-				"canRetry"     : true
+				error        : e,
+				errorMessage : "Error deserializing response: #chatResult.filecontent#",
+				provider     : this,
+				operation    : "sendChatRequest",
+				aiRequest    : arguments.chatRequest,
+				canRetry     : true
 			} );
 			throw(
 				type    : "JsonDeserializationError",
 				message : "Error deserializing response from provider: #e.message & e.detail#",
-				detail  : "Response: #javaResult.body#"
+				detail  : "Response: #chatResult.filecontent#"
 			);
 		}
 
@@ -306,9 +322,11 @@ class extends = "OpenAICompatibleService"{
 	}
 
 	/**
-	 * Send a streaming chat request using Java HttpURLConnection.
-	 * Overrides BaseService.sendStreamRequest to bypass bx:http SSE mode.
-	 * Reads the SSE stream line-by-line and invokes the callback for each chunk.
+	 * Override sendStreamRequest to force HTTP/1.1 for Docker Model Runner.
+	 *
+	 * Also handles vLLM backends that ignore stream=true and return a plain
+	 * JSON response. When SSE mode yields zero chunks, falls back to a
+	 * non-streaming request and synthesizes a streaming chunk for the callback.
 	 *
 	 * @chatRequest The AiChatRequest object
 	 * @dataPacket  The data packet struct to serialize and send
@@ -321,7 +339,11 @@ class extends = "OpenAICompatibleService"{
 		required AiChatRequest chatRequest,
 		required struct dataPacket,
 		required function callback
-	) {
+	){
+		// SYNC NOTE: This method mirrors BaseService.sendStreamRequest() with .http1() added
+		// and vLLM non-streaming fallback appended. If BaseService.sendStreamRequest() changes,
+		// update this method to match.
+
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
 		var streamState = {
@@ -341,306 +363,189 @@ class extends = "OpenAICompatibleService"{
 		);
 
 		// Log the request
-		if ( arguments.chatRequest.getLogRequest() ) {
+		if( arguments.chatRequest.getLogRequest() ){
 			writeLog(
 				text: buildRequestLog( arguments.chatRequest, arguments.dataPacket ),
 				type: "info",
 				log : "ai"
-			);
+			)
 		}
-		if ( arguments.chatRequest.getLogRequestToConsole() ) {
-			println( buildRequestLog( arguments.chatRequest, arguments.dataPacket ) );
+		if( arguments.chatRequest.getLogRequestToConsole() ){
+			println( buildRequestLog( arguments.chatRequest, arguments.dataPacket ) )
 		}
 
-		var jsonBody = jsonSerialize( arguments.dataPacket );
-		var conn = javacast( "null", "" );
+		// Force HTTP/1.1 to avoid h2c body-dropping issue with DMR's vLLM proxy
+		var httpRequest = http( getChatURL() )
+			.method( "POST" )
+			.charset( "utf-8" )
+			.timeout( arguments.chatRequest.getTimeout() )
+			.header( "content-type", "application/json" )
+			.http1()
+			.sse( true );
 
-		try {
-			var javaUrl = createObject( "java", "java.net.URL" ).init( getChatURL() );
-			conn = javaUrl.openConnection();
-			conn.setRequestMethod( "POST" );
-			conn.setDoOutput( true );
-			conn.setConnectTimeout( arguments.chatRequest.getTimeout() * 1000 );
-			conn.setReadTimeout( arguments.chatRequest.getTimeout() * 1000 );
-			conn.setRequestProperty( "Content-Type", "application/json" );
-			conn.setRequestProperty( "Accept", "text/event-stream" );
+		if( arguments.chatRequest.getSendAuthHeader() ){
+			httpRequest.header( "Authorization", "Bearer #arguments.chatRequest.getApiKey()#" );
+		}
 
-			// Auth header
-			if ( arguments.chatRequest.getSendAuthHeader() && len( arguments.chatRequest.getApiKey() ) ) {
-				conn.setRequestProperty( "Authorization", "Bearer #arguments.chatRequest.getApiKey()#" );
-			}
+		for( var thisHeader in arguments.chatRequest.getHeaders() ){
+			httpRequest.header( thisHeader, arguments.chatRequest.getHeaders()[ thisHeader ] );
+		}
 
-			// Custom headers
-			for ( var headerName in arguments.chatRequest.getHeaders() ) {
-				conn.setRequestProperty( headerName, arguments.chatRequest.getHeaders()[ headerName ] );
-			}
-
-			// Write body
-			var outputStream = conn.getOutputStream();
-			outputStream.write( jsonBody.getBytes( "UTF-8" ) );
-			outputStream.flush();
-			outputStream.close();
-
-			var responseCode = conn.getResponseCode();
-			if ( responseCode < 200 || responseCode >= 300 ) {
-				// Read error body (getErrorStream() can return null for empty error responses)
-				var errorStream = conn.getErrorStream();
-				var errorBody = !isNull( errorStream ) ? readStream( errorStream ) : "(empty response body)";
-				conn.disconnect();
-
-				var errorMessage = "HTTP Error #responseCode#: #errorBody#";
-				writeLog( text: "Stream Request Error: #errorMessage#", type: "error", log: "ai" );
-
+		httpRequest
+			.body( jsonSerialize( arguments.dataPacket ) )
+			.onChunk( ( chunk, lastEventId, httpResult, httpClient, response ) => {
+				if( chunk?.data?.trim()?.isEmpty() ){
+					return;
+				}
+				if( chunk.data == "[DONE]" ){
+					return;
+				}
+				// Parse JSON separately from callback so callback errors propagate to caller
+				var parsedChunk = javacast( "null", "" );
+				try {
+					parsedChunk = jsonDeserialize( chunk.data );
+				} catch( any e ){
+					writeLog(
+						text: "Error parsing stream chunk: [#e.message#] - Data: [#chunk.data#]",
+						type: "error",
+						log : "ai"
+					);
+					return;
+				}
+				updateStreamState( streamState, parsedChunk );
+				userCallback( parsedChunk );
+			} )
+			.onError( ( error, httpResult ) => {
+				var errorMessage = "HTTP Error: [#error.message#]";
+				writeLog(
+					text: "Stream Request Error: [#errorMessage#]",
+					type: "error",
+					log : "ai"
+				)
 				BoxAnnounce( "onAIError", {
-					"error"        : { "message": errorMessage },
-					"errorMessage" : errorMessage,
-					"provider"     : this,
-					"operation"    : "stream",
-					"aiRequest"    : thisChatRequest,
-					"canRetry"     : true
+					error        : error,
+					errorMessage : errorMessage,
+					provider     : this,
+					operation    : "stream",
+					aiRequest    : thisChatRequest,
+					canRetry     : true
 				} );
-
-				throw( type: "ProviderError", message: errorMessage );
-			}
-
-			// Read SSE stream line by line
-			var reader = createObject( "java", "java.io.BufferedReader" ).init(
-				createObject( "java", "java.io.InputStreamReader" ).init( conn.getInputStream(), "UTF-8" )
-			);
-
-			var foundSSE = false;
-			var nonSSEBuffer = createObject( "java", "java.lang.StringBuilder" ).init();
-
-			var line = reader.readLine();
-			while ( !isNull( line ) ) {
-				// SSE lines starting with "data: " contain the payload
-				if ( line.startsWith( "data: " ) || line.startsWith( "data:" ) ) {
-					foundSSE = true;
-					var data = line.startsWith( "data: " ) ? line.substring( 6 ) : line.substring( 5 );
-					data = data.trim();
-
-					// Skip empty data and stream end marker
-					if ( !len( data ) || data == "[DONE]" ) {
-						line = reader.readLine();
-						continue;
-					}
-
-					try {
-						var parsedChunk = jsonDeserialize( data );
-						updateStreamState( streamState, parsedChunk );
-						userCallback( parsedChunk );
-					} catch ( any parseErr ) {
-						writeLog(
-							text: "Error parsing stream chunk: [#parseErr.message#] - Data: [#data#]",
-							type: "error",
-							log : "ai"
-						);
-					}
-				} else if ( !foundSSE && len( line.trim() ) ) {
-					// Accumulate non-SSE lines (could be a plain JSON response)
-					if ( nonSSEBuffer.length() > 0 ) {
-						nonSSEBuffer.append( chr( 10 ) );
-					}
-					nonSSEBuffer.append( line );
+				throw(
+					type    : "ProviderError",
+					message : errorMessage
+				);
+			} )
+			.onComplete( ( httpResult ) => {
+				if( thisChatRequest.getLogResponse() ){
+					writeLog(
+						text: "Stream completed successfully",
+						type: "info",
+						log : "ai"
+					)
 				}
-				line = reader.readLine();
-			}
-
-			reader.close();
-			conn.disconnect();
-
-			// Fallback: vLLM through DMR may return a non-streaming JSON response
-			// even when stream=true is requested. Convert it to a single synthetic chunk.
-			if ( !foundSSE && nonSSEBuffer.length() > 0 ) {
-				var rawBody = nonSSEBuffer.toString().trim();
-				if ( rawBody.startsWith( "{" ) ) {
-					try {
-						var fullResponse = jsonDeserialize( rawBody );
-						// Convert message format to delta format for the callback
-						if ( fullResponse.keyExists( "choices" ) && isArray( fullResponse.choices ) && fullResponse.choices.len() > 0 ) {
-							var choice = fullResponse.choices[ 1 ];
-							var syntheticDelta = {};
-
-							if ( choice.keyExists( "message" ) && choice.message.keyExists( "content" ) && len( choice.message.content ) ) {
-								syntheticDelta[ "content" ] = choice.message.content;
-							}
-							if ( choice.keyExists( "message" ) && choice.message.keyExists( "tool_calls" ) && isArray( choice.message.tool_calls ) ) {
-								syntheticDelta[ "tool_calls" ] = choice.message.tool_calls;
-							}
-
-							if ( !syntheticDelta.isEmpty() ) {
-								// Build a synthetic streaming chunk with delta format
-								var syntheticChunk = {
-									"id"      : fullResponse.id ?: "fallback",
-									"object"  : "chat.completion.chunk",
-									"choices" : [ {
-										"index"         : 0,
-										"delta"         : syntheticDelta,
-										"finish_reason" : choice.finish_reason ?: "stop"
-									} ]
-								};
-								updateStreamState( streamState, syntheticChunk );
-								userCallback( syntheticChunk );
-								writeLog(
-									text: "Docker Model Runner: vLLM returned non-streaming response, converted to single chunk",
-									type: "info",
-									log : "ai"
-								);
-							}
-						}
-					} catch ( any fallbackErr ) {
-						writeLog(
-							text: "Error parsing non-streaming fallback response: #fallbackErr.message#",
-							type: "error",
-							log : "ai"
-						);
+				BoxAnnounce(
+					"onAIChatResponse",
+					{
+						"chatRequest"    : thisChatRequest,
+						"provider"       : this,
+						"streamComplete" : true
 					}
-				}
-			}
+				);
+			} )
+			.send();
 
-			// Log completion
-			if ( thisChatRequest.getLogResponse() ) {
-				writeLog( text: "Stream completed successfully", type: "info", log: "ai" );
-			}
-
-			BoxAnnounce(
-				"onAIChatResponse",
-				{
-					"chatRequest"    : thisChatRequest,
-					"provider"       : this,
-					"streamComplete" : true
-				}
-			);
-
-		} catch ( ProviderError e ) {
-			rethrow;
-		} catch ( any e ) {
-			if ( !isNull( conn ) ) { try { conn.disconnect(); } catch ( any ignored ) {} }
-
-			writeLog( text: "Stream Request Error: #e.message#", type: "error", log: "ai" );
-
-			BoxAnnounce( "onAIError", {
-				"error"        : e,
-				"errorMessage" : "Stream error: #e.message#",
-				"provider"     : this,
-				"operation"    : "stream",
-				"aiRequest"    : thisChatRequest,
-				"canRetry"     : true
-			} );
-
-			throw( type: "ProviderError", message: "HTTP Error: [#e.message#]" );
+		// vLLM fallback: if no SSE data was processed at all (no content, no tool calls,
+		// no finish reason), the backend likely returned a plain JSON response ignoring
+		// stream=true. Re-send as non-streaming and convert to a synthetic streaming chunk.
+		if( !len( streamState.content ) && streamState.toolCalls.isEmpty() && !len( streamState.finishReason ) ){
+			streamState = sendNonStreamingFallback( arguments.chatRequest, arguments.dataPacket, userCallback );
 		}
 
 		return streamState;
 	}
 
 	/**
-	 * ---------------------------------------------------------------------------------------------------------
-	 * Java HTTP Helpers
-	 * ---------------------------------------------------------------------------------------------------------
-	 */
-
-	/**
-	 * Execute an HTTP POST using Java HttpURLConnection.
-	 * Bypasses bx:http to avoid body-dropping issues with Docker Model Runner's vLLM proxy.
+	 * Fallback for vLLM backends that ignore stream=true.
+	 * Sends a non-streaming request and converts the response to a synthetic
+	 * streaming chunk, invoking the callback as if it were a single-chunk stream.
 	 *
-	 * @url         The URL to POST to
-	 * @jsonBody    The JSON string body
-	 * @chatRequest The chat request (for auth/headers/timeout)
+	 * @chatRequest The AiChatRequest object
+	 * @dataPacket  The data packet (stream=true will be removed)
+	 * @callback    The user callback to invoke with the synthetic chunk
 	 *
-	 * @return Struct with statusCode, body, and headers
+	 * @return Stream state struct
 	 */
-	private struct function javaHttpPost(
-		required string url,
-		required string jsonBody,
-		required AiChatRequest chatRequest
-	) {
-		var conn = javacast( "null", "" );
-		try {
-			var javaUrl = createObject( "java", "java.net.URL" ).init( arguments.url );
-			conn = javaUrl.openConnection();
-			conn.setRequestMethod( "POST" );
-			conn.setDoOutput( true );
-			conn.setConnectTimeout( arguments.chatRequest.getTimeout() * 1000 );
-			conn.setReadTimeout( arguments.chatRequest.getTimeout() * 1000 );
-			conn.setRequestProperty( "Content-Type", "application/json" );
-			conn.setRequestProperty( "Accept", "application/json" );
+	private struct function sendNonStreamingFallback(
+		required AiChatRequest chatRequest,
+		required struct dataPacket,
+		required function callback
+	){
+		var streamState = {
+			"content"      : "",
+			"finishReason" : "",
+			"toolCalls"    : []
+		};
 
-			// Auth header
-			if ( arguments.chatRequest.getSendAuthHeader() && len( arguments.chatRequest.getApiKey() ) ) {
-				conn.setRequestProperty( "Authorization", "Bearer #arguments.chatRequest.getApiKey()#" );
+		// Remove stream flag for the fallback request
+		var fallbackPacket = duplicate( arguments.dataPacket );
+		fallbackPacket.delete( "stream" );
+
+		// Use the non-streaming sendChatRequest (which also forces HTTP/1.1)
+		var fullResponse = sendChatRequest( arguments.chatRequest, fallbackPacket );
+
+		// Convert the non-streaming response to a synthetic streaming chunk
+		if( fullResponse.keyExists( "choices" ) && isArray( fullResponse.choices ) && fullResponse.choices.len() > 0 ){
+			var choice = fullResponse.choices[ 1 ];
+			var syntheticDelta = {};
+
+			if( choice.keyExists( "message" ) && choice.message.keyExists( "content" ) && len( choice.message.content ) ){
+				syntheticDelta[ "content" ] = choice.message.content;
+			}
+			if( choice.keyExists( "message" ) && choice.message.keyExists( "tool_calls" ) && isArray( choice.message.tool_calls ) ){
+				syntheticDelta[ "tool_calls" ] = choice.message.tool_calls;
 			}
 
-			// Custom headers
-			for ( var headerName in arguments.chatRequest.getHeaders() ) {
-				conn.setRequestProperty( headerName, arguments.chatRequest.getHeaders()[ headerName ] );
+			if( !syntheticDelta.isEmpty() ){
+				var syntheticChunk = {
+					"id"      : fullResponse.id ?: "fallback",
+					"object"  : "chat.completion.chunk",
+					"choices" : [ {
+						"index"         : 0,
+						"delta"         : syntheticDelta,
+						"finish_reason" : choice.finish_reason ?: "stop"
+					} ]
+				};
+				updateStreamState( streamState, syntheticChunk );
+				arguments.callback( syntheticChunk );
+
+				writeLog(
+					text: "Docker Model Runner: vLLM returned non-streaming response, converted to single chunk",
+					type: "warning",
+					log : "ai"
+				);
 			}
-
-			// Write body
-			var outputStream = conn.getOutputStream();
-			var bodyBytes = arguments.jsonBody.getBytes( "UTF-8" );
-			outputStream.write( bodyBytes );
-			outputStream.flush();
-			outputStream.close();
-
-			var responseCode = conn.getResponseCode();
-			var inputStream = ( responseCode >= 200 && responseCode < 300 )
-				? conn.getInputStream()
-				: conn.getErrorStream();
-
-			// getErrorStream() can return null for empty error responses
-			var responseBody = !isNull( inputStream ) ? readStream( inputStream ) : "";
-
-			// Extract response headers
-			var responseHeaders = {};
-			var headerFields = conn.getHeaderFields();
-			if ( !isNull( headerFields ) ) {
-				for ( var key in headerFields.keySet() ) {
-					if ( !isNull( key ) ) {
-						var values = headerFields.get( key );
-						responseHeaders[ key ] = values.size() > 0 ? values.get( 0 ) : "";
-					}
-				}
-			}
-
-			conn.disconnect();
-
-			return {
-				"statusCode" : responseCode,
-				"body"       : responseBody,
-				"headers"    : responseHeaders
-			};
-		} catch ( any e ) {
-			if ( !isNull( conn ) ) { try { conn.disconnect(); } catch ( any ignored ) {} }
-			throw(
-				type    : "ProviderError",
-				message : "HTTP request to Docker Model Runner failed: #e.message#"
+		} else {
+			writeLog(
+				text: "Docker Model Runner: Non-streaming fallback returned no usable choices",
+				type: "warning",
+				log : "ai"
 			);
 		}
+
+		return streamState;
 	}
 
 	/**
-	 * Read an InputStream fully into a string.
+	 * Get the base URL for the native DMR API (/models, /models/pull, etc.).
+	 * This differs from variables.baseURL which points to the OpenAI-compatible
+	 * /engines/v1 path used for chat completions and embeddings.
 	 *
-	 * @inputStream The Java InputStream to read
-	 *
-	 * @return The full content as a string
+	 * @return The DMR API base URL (e.g., "http://localhost:12434")
 	 */
-	private string function readStream( required any inputStream ) {
-		var reader = createObject( "java", "java.io.BufferedReader" ).init(
-			createObject( "java", "java.io.InputStreamReader" ).init( arguments.inputStream, "UTF-8" )
-		);
-		var sb = createObject( "java", "java.lang.StringBuilder" ).init();
-		var line = reader.readLine();
-		while ( !isNull( line ) ) {
-			sb.append( line );
-			line = reader.readLine();
-			if ( !isNull( line ) ) {
-				sb.append( chr( 10 ) );
-			}
-		}
-		reader.close();
-		return sb.toString();
+	private string function getDmrApiBase(){
+		return variables.options.keyExists( "useHostURL" ) && variables.options.useHostURL
+			? static.HOST_BASE_URL.replace( "/engines/v1", "" )
+			: static.DMR_API_BASE;
 	}
 
 	/**
@@ -658,16 +563,15 @@ class extends = "OpenAICompatibleService"{
 	@override
 	public array function listModels() {
 		try {
-			var apiBase = variables.options.keyExists( "useHostURL" ) && variables.options.useHostURL
-				? static.HOST_BASE_URL.replace( "/engines/v1", "" )
-				: static.DMR_API_BASE;
+			var apiBase = getDmrApiBase();
 
 			bx:http
-				url     = apiBase & "/models"
-				method  = "get"
-				result  = "modelsResult"
-				charset = "utf-8"
-				timeout = 10
+				url         = apiBase & "/models"
+				method      = "get"
+				result      = "modelsResult"
+				charset     = "utf-8"
+				timeout     = 10
+				httpVersion = "HTTP/1.1"
 			{}
 
 			if ( ( modelsResult.statusCode == 200 || modelsResult.statusCode == "200 OK" ) && modelsResult.keyExists( "filecontent" ) && len( modelsResult.filecontent ) ) {
@@ -699,16 +603,15 @@ class extends = "OpenAICompatibleService"{
 	 */
 	public struct function pullModel( required string model ) {
 		try {
-			var apiBase = variables.options.keyExists( "useHostURL" ) && variables.options.useHostURL
-				? static.HOST_BASE_URL.replace( "/engines/v1", "" )
-				: static.DMR_API_BASE;
+			var apiBase = getDmrApiBase();
 
 			bx:http
-				url     = apiBase & "/models/pull"
-				method  = "post"
-				result  = "pullResult"
-				charset = "utf-8"
-				timeout = 300  // 5 minutes for model download
+				url         = apiBase & "/models/pull"
+				method      = "post"
+				result      = "pullResult"
+				charset     = "utf-8"
+				timeout     = 300  // 5 minutes for model download
+				httpVersion = "HTTP/1.1"
 			{
 				bx:httpParam type="header" name="content-type" value="application/json";
 				bx:httpParam type="body" value=jsonSerialize({ "model": arguments.model });
@@ -750,16 +653,15 @@ class extends = "OpenAICompatibleService"{
 	 */
 	public struct function getModelInfo( required string model ) {
 		try {
-			var apiBase = variables.options.keyExists( "useHostURL" ) && variables.options.useHostURL
-				? static.HOST_BASE_URL.replace( "/engines/v1", "" )
-				: static.DMR_API_BASE;
+			var apiBase = getDmrApiBase();
 
 			bx:http
-				url     = apiBase & "/models/" & urlEncode( arguments.model )
-				method  = "get"
-				result  = "modelResult"
-				charset = "utf-8"
-				timeout = 10
+				url         = apiBase & "/models/" & urlEncode( arguments.model )
+				method      = "get"
+				result      = "modelResult"
+				charset     = "utf-8"
+				timeout     = 10
+				httpVersion = "HTTP/1.1"
 			{}
 
 			if ( ( modelResult.statusCode == 200 || modelResult.statusCode == "200 OK" ) && modelResult.keyExists( "filecontent" ) && len( modelResult.filecontent ) ) {
@@ -784,16 +686,15 @@ class extends = "OpenAICompatibleService"{
 	@override
 	public boolean function isAvailable() {
 		try {
-			var apiBase = variables.options.keyExists( "useHostURL" ) && variables.options.useHostURL
-				? static.HOST_BASE_URL.replace( "/engines/v1", "" )
-				: static.DMR_API_BASE;
+			var apiBase = getDmrApiBase();
 
 			bx:http
-				url     = apiBase & "/models"
-				method  = "get"
-				result  = "checkResult"
-				charset = "utf-8"
-				timeout = 5
+				url         = apiBase & "/models"
+				method      = "get"
+				result      = "checkResult"
+				charset     = "utf-8"
+				timeout     = 5
+				httpVersion = "HTTP/1.1"
 			{}
 
 			return checkResult.statusCode == 200 || checkResult.statusCode == "200 OK";
