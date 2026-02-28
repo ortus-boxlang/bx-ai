@@ -17,13 +17,13 @@ plugins {
 ext {
 	buildID = System.getenv( 'BUILD_ID' ) ?: '0'
 	branch = System.getenv( 'BRANCH' ) ?: 'development'
+	resolvedBoxlangVersion = boxlangVersion.endsWith( '-snapshot' ) ? boxlangVersion.replaceFirst( /-snapshot$/, '' ) : boxlangVersion
 }
 
 if ( branch == 'development' ) {
     // If the branch is 'development', ensure the version ends with '-snapshot'
     // This replaces any existing prerelease identifier with '-snapshot'
     version = version.contains('-') ? version.replaceAll(/-.*/, '-snapshot') : "${version}-snapshot"
-	boxlangVersion = boxlangVersion.contains('-') ? boxlangVersion.replaceAll(/-.*/, '-snapshot') : "${boxlangVersion}-snapshot"
 }
 
 repositories {
@@ -35,13 +35,20 @@ dependencies {
 	// Until BoxLang is published to Maven Central
 	// Look for it in the local build directory
 	// You must run `./gradle build -x test` in the BoxLang project
-	if ( file( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' ).exists() ) {
-		compileOnly files( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
-		testImplementation files( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
-	} else {
-		compileOnly files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
-		testImplementation files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
-	}
+		def localBuildJar = file( "../../boxlang/build/libs/boxlang-${boxlangVersion}.jar" )
+		def bundledJar = file( "src/test/resources/libs/boxlang-${boxlangVersion}.jar" )
+		if ( !localBuildJar.exists() && !bundledJar.exists() && resolvedBoxlangVersion != boxlangVersion ) {
+			localBuildJar = file( "../../boxlang/build/libs/boxlang-${resolvedBoxlangVersion}.jar" )
+			bundledJar = file( "src/test/resources/libs/boxlang-${resolvedBoxlangVersion}.jar" )
+		}
+
+		if ( localBuildJar.exists() ) {
+			compileOnly files( localBuildJar )
+			testImplementation files( localBuildJar )
+		} else {
+			compileOnly files( bundledJar )
+			testImplementation files( bundledJar )
+		}
 
 	// PDF Extraction
 	implementation 'org.apache.pdfbox:pdfbox:3.0.6'
@@ -88,11 +95,28 @@ compileJava {
 	options.debugOptions.debugLevel = "source,lines,vars"
 }
 
+def localRuntimeJar = file( "../../boxlang/build/libs/boxlang-${boxlangVersion}.jar" )
+def bundledRuntimeJar = file( "src/test/resources/libs/boxlang-${boxlangVersion}.jar" )
+if ( !localRuntimeJar.exists() && !bundledRuntimeJar.exists() && resolvedBoxlangVersion != boxlangVersion ) {
+	localRuntimeJar = file( "../../boxlang/build/libs/boxlang-${resolvedBoxlangVersion}.jar" )
+	bundledRuntimeJar = file( "src/test/resources/libs/boxlang-${resolvedBoxlangVersion}.jar" )
+}
+if ( !localRuntimeJar.exists() && !bundledRuntimeJar.exists() ) {
+	compileJava.dependsOn "downloadBoxLang"
+	compileTestJava.dependsOn "downloadBoxLang"
+}
+
 compileTestJava{
 	// Make sure the service loaders are created before testing
 	dependsOn compileJava, serviceLoaderBuild
 }
 compileTestJava.finalizedBy( shadowJar )
+
+// Test resources include downloaded runtime/modules under src/test/resources,
+// so declare explicit task ordering for Gradle 9 validation.
+processTestResources {
+	dependsOn "downloadBoxLang", "extractBoxLangModules"
+}
 
 /**
  * Clean up
@@ -331,9 +355,10 @@ task downloadBoxLang( type: Download ) {
 		file( "src/test/resources/libs" ).mkdirs()
 	}
     // Configure the URL of the file to download
-    src "https://downloads.ortussolutions.com/ortussolutions/boxlang/${boxlangVersion}/boxlang-${boxlangVersion}.jar"
+	    def downloadVersion = resolvedBoxlangVersion
+    src "https://downloads.ortussolutions.com/ortussolutions/boxlang/${downloadVersion}/boxlang-${downloadVersion}.jar"
     // Specify the destination directory for the downloaded file
-    dest "src/test/resources/libs/boxlang-${boxlangVersion}.jar"
+    dest "src/test/resources/libs/boxlang-${downloadVersion}.jar"
     overwrite true
     onlyIfModified false
 }
@@ -386,8 +411,8 @@ task extractBoxLangModules( type: Copy ) {
 	destinationDir = file( "src/test/resources/modules" )
 }
 
-// Make sure test depends on Derby module extraction
-downloadBoxLang.finalizedBy( extractBoxLangModules )
+// Make sure module extraction occurs before test execution when needed
+test.dependsOn "extractBoxLangModules"
 
 /**
  * Project Wide Helper function
