@@ -17,13 +17,13 @@ plugins {
 ext {
 	buildID = System.getenv( 'BUILD_ID' ) ?: '0'
 	branch = System.getenv( 'BRANCH' ) ?: 'development'
+	resolvedBoxlangVersion = boxlangVersion.endsWith( '-snapshot' ) ? boxlangVersion.replaceFirst( /-snapshot$/, '' ) : boxlangVersion
 }
 
 if ( branch == 'development' ) {
     // If the branch is 'development', ensure the version ends with '-snapshot'
     // This replaces any existing prerelease identifier with '-snapshot'
     version = version.contains('-') ? version.replaceAll(/-.*/, '-snapshot') : "${version}-snapshot"
-	boxlangVersion = boxlangVersion.contains('-') ? boxlangVersion.replaceAll(/-.*/, '-snapshot') : "${boxlangVersion}-snapshot"
 }
 
 repositories {
@@ -35,13 +35,20 @@ dependencies {
 	// Until BoxLang is published to Maven Central
 	// Look for it in the local build directory
 	// You must run `./gradle build -x test` in the BoxLang project
-	if ( file( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' ).exists() ) {
-		compileOnly files( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
-		testImplementation files( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
-	} else {
-		compileOnly files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
-		testImplementation files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
-	}
+		def localBuildJar = file( "../../boxlang/build/libs/boxlang-${boxlangVersion}.jar" )
+		def bundledJar = file( "src/test/resources/libs/boxlang-${boxlangVersion}.jar" )
+		if ( !localBuildJar.exists() && !bundledJar.exists() && resolvedBoxlangVersion != boxlangVersion ) {
+			localBuildJar = file( "../../boxlang/build/libs/boxlang-${resolvedBoxlangVersion}.jar" )
+			bundledJar = file( "src/test/resources/libs/boxlang-${resolvedBoxlangVersion}.jar" )
+		}
+
+		if ( localBuildJar.exists() ) {
+			compileOnly files( localBuildJar )
+			testImplementation files( localBuildJar )
+		} else {
+			compileOnly files( bundledJar )
+			testImplementation files( bundledJar )
+		}
 
 	// PDF Extraction
 	implementation 'org.apache.pdfbox:pdfbox:3.0.6'
@@ -86,6 +93,17 @@ compileJava {
 	options.incremental = true
 	options.encoding = 'UTF-8'
 	options.debugOptions.debugLevel = "source,lines,vars"
+}
+
+def localRuntimeJar = file( "../../boxlang/build/libs/boxlang-${boxlangVersion}.jar" )
+def bundledRuntimeJar = file( "src/test/resources/libs/boxlang-${boxlangVersion}.jar" )
+if ( !localRuntimeJar.exists() && !bundledRuntimeJar.exists() && resolvedBoxlangVersion != boxlangVersion ) {
+	localRuntimeJar = file( "../../boxlang/build/libs/boxlang-${resolvedBoxlangVersion}.jar" )
+	bundledRuntimeJar = file( "src/test/resources/libs/boxlang-${resolvedBoxlangVersion}.jar" )
+}
+if ( !localRuntimeJar.exists() && !bundledRuntimeJar.exists() ) {
+	compileJava.dependsOn "downloadBoxLang"
+	compileTestJava.dependsOn "downloadBoxLang"
 }
 
 compileTestJava{
@@ -267,18 +285,44 @@ test {
         return !(v in ["dummy", "changeme", "your_key_here", "test", "null", "false", "0"])
     }
 
-    // Opt-in switches
-    def runProviderTests = isTrueish(env.get("RUN_PROVIDER_TESTS"))
-    def runVectorDbTests = isTrueish(env.get("RUN_VECTOR_DB_TESTS"))
+	    // Opt-in switches
+	    def runProviderTests = isTrueish(env.get("RUN_PROVIDER_TESTS"))
+	    def runVectorDbTests = isTrueish(env.get("RUN_VECTOR_DB_TESTS"))
 
-    // Default: don't run provider tests unless explicitly enabled
-    if (!runProviderTests) {
-        exclude "**/ortus/boxlang/ai/providers/**"
-    }
+	    // Provider/API key detection (used to avoid requiring external credentials by default)
+	    def providerKeys = [
+	        env.get("OPENAI_API_KEY"),
+	        env.get("ANTHROPIC_API_KEY"),
+	        env.get("GOOGLE_API_KEY"),
+	        env.get("GEMINI_API_KEY"),
+	        env.get("GROQ_API_KEY"),
+	        env.get("COHERE_API_KEY"),
+	        env.get("MISTRAL_API_KEY"),
+	        env.get("VOYAGE_API_KEY"),
+	        env.get("PERPLEXITY_API_KEY"),
+	        env.get("DEEPSEEK_API_KEY"),
+	        env.get("XAI_API_KEY"),
+	        env.get("HUGGINGFACE_API_KEY")
+	    ]
+	    def hasAnyProviderKey = providerKeys.any { isRealKey(it) }
 
-    // Default: don't run vector DB tests unless explicitly enabled
+	    // Default: don't run provider tests unless explicitly enabled
+	    if (!runProviderTests || !hasAnyProviderKey) {
+	        exclude "**/ortus/boxlang/ai/providers/**"
+	    }
+    // Default: don't run vector DB integration tests unless explicitly enabled
     if (!runVectorDbTests) {
-        exclude "**/ortus/boxlang/ai/memory/vector/**"
+        exclude "**/ortus/boxlang/ai/memory/vector/BoxVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/ChromaVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/MilvusVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/MysqlVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/OpenSearchVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/PineconeVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/PostgresVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/QdrantVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/TypesenseVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/WeaviateVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/CassandraVectorMemoryIntegrationTest*"
     }
 
     // OpenAI gating (dummy/blank = treat as missing)
@@ -305,9 +349,10 @@ task downloadBoxLang( type: Download ) {
 		file( "src/test/resources/libs" ).mkdirs()
 	}
     // Configure the URL of the file to download
-    src "https://downloads.ortussolutions.com/ortussolutions/boxlang/${boxlangVersion}/boxlang-${boxlangVersion}.jar"
+	    def downloadVersion = resolvedBoxlangVersion
+    src "https://downloads.ortussolutions.com/ortussolutions/boxlang/${downloadVersion}/boxlang-${downloadVersion}.jar"
     // Specify the destination directory for the downloaded file
-    dest "src/test/resources/libs/boxlang-${boxlangVersion}.jar"
+    dest "src/test/resources/libs/boxlang-${downloadVersion}.jar"
     overwrite true
     onlyIfModified false
 }
