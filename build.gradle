@@ -267,18 +267,44 @@ test {
         return !(v in ["dummy", "changeme", "your_key_here", "test", "null", "false", "0"])
     }
 
-    // Opt-in switches
-    def runProviderTests = isTrueish(env.get("RUN_PROVIDER_TESTS"))
-    def runVectorDbTests = isTrueish(env.get("RUN_VECTOR_DB_TESTS"))
+	    // Opt-in switches
+	    def runProviderTests = isTrueish(env.get("RUN_PROVIDER_TESTS"))
+	    def runVectorDbTests = isTrueish(env.get("RUN_VECTOR_DB_TESTS"))
 
-    // Default: don't run provider tests unless explicitly enabled
-    if (!runProviderTests) {
-        exclude "**/ortus/boxlang/ai/providers/**"
-    }
+	    // Provider/API key detection (used to avoid requiring external credentials by default)
+	    def providerKeys = [
+	        env.get("OPENAI_API_KEY"),
+	        env.get("ANTHROPIC_API_KEY"),
+	        env.get("GOOGLE_API_KEY"),
+	        env.get("GEMINI_API_KEY"),
+	        env.get("GROQ_API_KEY"),
+	        env.get("COHERE_API_KEY"),
+	        env.get("MISTRAL_API_KEY"),
+	        env.get("VOYAGE_API_KEY"),
+	        env.get("PERPLEXITY_API_KEY"),
+	        env.get("DEEPSEEK_API_KEY"),
+	        env.get("XAI_API_KEY"),
+	        env.get("HUGGINGFACE_API_KEY")
+	    ]
+	    def hasAnyProviderKey = providerKeys.any { isRealKey(it) }
 
-    // Default: don't run vector DB tests unless explicitly enabled
+	    // Default: don't run provider tests unless explicitly enabled
+	    if (!runProviderTests || !hasAnyProviderKey) {
+	        exclude "**/ortus/boxlang/ai/providers/**"
+	    }
+    // Default: don't run vector DB integration tests unless explicitly enabled
     if (!runVectorDbTests) {
-        exclude "**/ortus/boxlang/ai/memory/vector/**"
+        exclude "**/ortus/boxlang/ai/memory/vector/BoxVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/ChromaVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/MilvusVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/MysqlVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/OpenSearchVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/PineconeVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/PostgresVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/QdrantVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/TypesenseVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/WeaviateVectorMemoryTest*"
+        exclude "**/ortus/boxlang/ai/memory/vector/CassandraVectorMemoryIntegrationTest*"
     }
 
     // OpenAI gating (dummy/blank = treat as missing)
