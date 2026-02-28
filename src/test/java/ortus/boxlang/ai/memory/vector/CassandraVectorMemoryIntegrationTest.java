@@ -38,7 +38,7 @@ public class CassandraVectorMemoryIntegrationTest extends BaseIntegrationTest {
 	private String collection;
 
 	@BeforeEach
-	void setup() {
+	void setupIntegration() {
 		assumeTrue( "true".equalsIgnoreCase( System.getenv( "RUN_VECTOR_DB_TESTS" ) ),
 		    "Skipping Cassandra integration tests: set RUN_VECTOR_DB_TESTS=true to enable." );
 
