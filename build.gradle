@@ -112,6 +112,12 @@ compileTestJava{
 }
 compileTestJava.finalizedBy( shadowJar )
 
+// Test resources include downloaded runtime/modules under src/test/resources,
+// so declare explicit task ordering for Gradle 9 validation.
+processTestResources {
+	dependsOn "downloadBoxLang", "extractBoxLangModules"
+}
+
 /**
  * Clean up
  */
@@ -405,8 +411,8 @@ task extractBoxLangModules( type: Copy ) {
 	destinationDir = file( "src/test/resources/modules" )
 }
 
-// Make sure test depends on Derby module extraction
-downloadBoxLang.finalizedBy( extractBoxLangModules )
+// Make sure module extraction occurs before test execution when needed
+test.dependsOn "extractBoxLangModules"
 
 /**
  * Project Wide Helper function
