@@ -93,6 +93,22 @@ services:
       - mysql_data:/var/lib/mysql
     restart: unless-stopped
 
+  # Cassandra 5 with native VECTOR type support
+  # Apache Cassandra 5.0+ includes native VECTOR type for ANN search
+  # Docs: https://cassandra.apache.org/doc/latest/cassandra/vector-search/vector-search-overview.html
+  cassandra:
+    image: cassandra:5.0
+    container_name: cassandra-vector
+    ports:
+      - "9042:9042"
+    environment:
+      - CASSANDRA_CLUSTER_NAME=bxai
+      - CASSANDRA_DC=dc1
+      - CASSANDRA_RACK=rack1
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    restart: unless-stopped
+
   # Pinecone Local Development Server
   # Official local development server for testing
   # Docs: https://docs.pinecone.io/guides/operations/local-development
@@ -252,3 +268,5 @@ volumes:
     name: typesense_data
   opensearch_data:
     name: opensearch_data
+  cassandra_data:
+    name: cassandra_data
