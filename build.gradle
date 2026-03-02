@@ -6,9 +6,9 @@ plugins {
 	// https://github.com/harbby/gradle-serviceloader
     id "com.github.harbby.gradle.serviceloader" version "1.1.9"
 	// Shadow
-	id "com.gradleup.shadow" version "9.3.1"
+	id "com.gradleup.shadow" version "9.3.2"
     // Download task
-    id "de.undercouch.download" version "5.6.0"
+    id "de.undercouch.download" version "5.7.0"
 }
 
 /**
@@ -17,13 +17,13 @@ plugins {
 ext {
 	buildID = System.getenv( 'BUILD_ID' ) ?: '0'
 	branch = System.getenv( 'BRANCH' ) ?: 'development'
-	resolvedBoxlangVersion = boxlangVersion.endsWith( '-snapshot' ) ? boxlangVersion.replaceFirst( /-snapshot$/, '' ) : boxlangVersion
 }
 
 if ( branch == 'development' ) {
     // If the branch is 'development', ensure the version ends with '-snapshot'
     // This replaces any existing prerelease identifier with '-snapshot'
     version = version.contains('-') ? version.replaceAll(/-.*/, '-snapshot') : "${version}-snapshot"
+	boxlangVersion = boxlangVersion.contains('-') ? boxlangVersion.replaceAll(/-.*/, '-snapshot') : "${boxlangVersion}-snapshot"
 }
 
 repositories {
@@ -35,20 +35,13 @@ dependencies {
 	// Until BoxLang is published to Maven Central
 	// Look for it in the local build directory
 	// You must run `./gradle build -x test` in the BoxLang project
-		def localBuildJar = file( "../../boxlang/build/libs/boxlang-${boxlangVersion}.jar" )
-		def bundledJar = file( "src/test/resources/libs/boxlang-${boxlangVersion}.jar" )
-		if ( !localBuildJar.exists() && !bundledJar.exists() && resolvedBoxlangVersion != boxlangVersion ) {
-			localBuildJar = file( "../../boxlang/build/libs/boxlang-${resolvedBoxlangVersion}.jar" )
-			bundledJar = file( "src/test/resources/libs/boxlang-${resolvedBoxlangVersion}.jar" )
-		}
-
-		if ( localBuildJar.exists() ) {
-			compileOnly files( localBuildJar )
-			testImplementation files( localBuildJar )
-		} else {
-			compileOnly files( bundledJar )
-			testImplementation files( bundledJar )
-		}
+	if ( file( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' ).exists() ) {
+		compileOnly files( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
+		testImplementation files( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
+	} else {
+		compileOnly files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
+		testImplementation files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
+	}
 
 	// PDF Extraction
 	implementation 'org.apache.pdfbox:pdfbox:3.0.6'
@@ -95,28 +88,11 @@ compileJava {
 	options.debugOptions.debugLevel = "source,lines,vars"
 }
 
-def localRuntimeJar = file( "../../boxlang/build/libs/boxlang-${boxlangVersion}.jar" )
-def bundledRuntimeJar = file( "src/test/resources/libs/boxlang-${boxlangVersion}.jar" )
-if ( !localRuntimeJar.exists() && !bundledRuntimeJar.exists() && resolvedBoxlangVersion != boxlangVersion ) {
-	localRuntimeJar = file( "../../boxlang/build/libs/boxlang-${resolvedBoxlangVersion}.jar" )
-	bundledRuntimeJar = file( "src/test/resources/libs/boxlang-${resolvedBoxlangVersion}.jar" )
-}
-if ( !localRuntimeJar.exists() && !bundledRuntimeJar.exists() ) {
-	compileJava.dependsOn "downloadBoxLang"
-	compileTestJava.dependsOn "downloadBoxLang"
-}
-
 compileTestJava{
 	// Make sure the service loaders are created before testing
 	dependsOn compileJava, serviceLoaderBuild
 }
 compileTestJava.finalizedBy( shadowJar )
-
-// Test resources include downloaded runtime/modules under src/test/resources,
-// so declare explicit task ordering for Gradle 9 validation.
-processTestResources {
-	dependsOn "downloadBoxLang", "extractBoxLangModules"
-}
 
 /**
  * Clean up
@@ -261,89 +237,15 @@ createModuleStructure.finalizedBy( zipModuleStructure )
 shadowJar.finalizedBy( createModuleStructure )
 
 test {
-
     useJUnitPlatform()
-
     testLogging {
-        showStandardStreams = true
-        events = ["passed", "skipped", "failed"]
-        exceptionFormat = "full"
-        showExceptions = true
-        showCauses = true
-    }
-
-    classpath = classpath.filter { !it.path.contains("build${File.separator}resources") }
-
-    def env = System.getenv()
-    def norm = { s -> s == null ? "" : s.toString().trim() }
-    def isNonEmpty = { s -> norm(s).length() > 0 }
-
-    // Accept common "true-ish" values for toggles
-    def isTrueish = { s ->
-        def v = norm(s).toLowerCase()
-        return v in ["true", "1", "yes", "y", "on"]
-    }
-
-    // Treat common placeholders as not-real
-    def isRealKey = { s ->
-        if (!isNonEmpty(s)) return false
-        def v = norm(s).toLowerCase()
-        return !(v in ["dummy", "changeme", "your_key_here", "test", "null", "false", "0"])
-    }
-
-	    // Opt-in switches
-	    def runProviderTests = isTrueish(env.get("RUN_PROVIDER_TESTS"))
-	    def runVectorDbTests = isTrueish(env.get("RUN_VECTOR_DB_TESTS"))
-
-	    // Provider/API key detection (used to avoid requiring external credentials by default)
-	    def providerKeys = [
-	        env.get("OPENAI_API_KEY"),
-	        env.get("ANTHROPIC_API_KEY"),
-	        env.get("GOOGLE_API_KEY"),
-	        env.get("GEMINI_API_KEY"),
-	        env.get("GROQ_API_KEY"),
-	        env.get("COHERE_API_KEY"),
-	        env.get("MISTRAL_API_KEY"),
-	        env.get("VOYAGE_API_KEY"),
-	        env.get("PERPLEXITY_API_KEY"),
-	        env.get("DEEPSEEK_API_KEY"),
-	        env.get("XAI_API_KEY"),
-	        env.get("HUGGINGFACE_API_KEY")
-	    ]
-	    def hasAnyProviderKey = providerKeys.any { isRealKey(it) }
-
-	    // Default: don't run provider tests unless explicitly enabled
-	    if (!runProviderTests || !hasAnyProviderKey) {
-	        exclude "**/ortus/boxlang/ai/providers/**"
-	    }
-    // Default: don't run vector DB integration tests unless explicitly enabled
-    if (!runVectorDbTests) {
-        exclude "**/ortus/boxlang/ai/memory/vector/BoxVectorMemoryTest*"
-        exclude "**/ortus/boxlang/ai/memory/vector/ChromaVectorMemoryTest*"
-        exclude "**/ortus/boxlang/ai/memory/vector/MilvusVectorMemoryTest*"
-        exclude "**/ortus/boxlang/ai/memory/vector/MysqlVectorMemoryTest*"
-        exclude "**/ortus/boxlang/ai/memory/vector/OpenSearchVectorMemoryTest*"
-        exclude "**/ortus/boxlang/ai/memory/vector/PineconeVectorMemoryTest*"
-        exclude "**/ortus/boxlang/ai/memory/vector/PostgresVectorMemoryTest*"
-        exclude "**/ortus/boxlang/ai/memory/vector/QdrantVectorMemoryTest*"
-        exclude "**/ortus/boxlang/ai/memory/vector/TypesenseVectorMemoryTest*"
-        exclude "**/ortus/boxlang/ai/memory/vector/WeaviateVectorMemoryTest*"
-        exclude "**/ortus/boxlang/ai/memory/vector/CassandraVectorMemoryIntegrationTest*"
-    }
-
-    // OpenAI gating (dummy/blank = treat as missing)
-    def openAiKey = env.get("OPENAI_API_KEY")
-    def hasOpenAI = isRealKey(openAiKey)
-
-    if (!hasOpenAI) {
-        exclude "**/ortus/boxlang/ai/bifs/aiEmbedTest*"
-        exclude "**/ortus/boxlang/ai/bifs/aiAgentTest*"
-        exclude "**/ortus/boxlang/ai/memory/HybridMemoryTest*"
-        exclude "**/ortus/boxlang/ai/memory/SummaryMemoryTest*"
-        exclude "**/ortus/boxlang/ai/runnables/StructuredOutputTest*"
-        exclude "**/ortus/boxlang/ai/bifs/StructuredOutputTest*"
-        exclude "**/ortus/boxlang/ai/**/aiPipelinesTest*"
-    }
+		showStandardStreams = true
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+        showExceptions true
+        showCauses true
+	}
+	classpath = classpath.filter { !it.path.contains( "build${File.separator}resources" ) }
 }
 
 /**
@@ -355,10 +257,9 @@ task downloadBoxLang( type: Download ) {
 		file( "src/test/resources/libs" ).mkdirs()
 	}
     // Configure the URL of the file to download
-	    def downloadVersion = resolvedBoxlangVersion
-    src "https://downloads.ortussolutions.com/ortussolutions/boxlang/${downloadVersion}/boxlang-${downloadVersion}.jar"
+    src "https://downloads.ortussolutions.com/ortussolutions/boxlang/${boxlangVersion}/boxlang-${boxlangVersion}.jar"
     // Specify the destination directory for the downloaded file
-    dest "src/test/resources/libs/boxlang-${downloadVersion}.jar"
+    dest "src/test/resources/libs/boxlang-${boxlangVersion}.jar"
     overwrite true
     onlyIfModified false
 }
@@ -411,8 +312,8 @@ task extractBoxLangModules( type: Copy ) {
 	destinationDir = file( "src/test/resources/modules" )
 }
 
-// Make sure module extraction occurs before test execution when needed
-test.dependsOn "extractBoxLangModules"
+// Make sure test depends on Derby module extraction
+downloadBoxLang.finalizedBy( extractBoxLangModules )
 
 /**
  * Project Wide Helper function
