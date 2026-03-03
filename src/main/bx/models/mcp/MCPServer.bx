@@ -1283,7 +1283,7 @@ class {
 		var thisRequest = isStruct( arguments.requestBody )
 			? arguments.requestBody
 			: jsonDeserialize( arguments.requestBody )
-		var requestId = thisRequest.id ?: javacast( "null", "" )
+		var requestId = structKeyExists( thisRequest, "id" ) ? thisRequest.id : ""
 		var method = thisRequest.method ?: ""
 		var params = thisRequest.params ?: {}
 
@@ -1500,13 +1500,13 @@ class {
 	 *
 	 * @return The JSON-RPC response struct
 	 */
-	private struct function buildSuccessResponse( any id, struct result = {} ) {
+	private struct function buildSuccessResponse( any id = "", struct result = {} ) {
 		var response = {
 			"jsonrpc": "2.0",
 			"result": arguments.result
 		}
 
-		if ( !isNull( arguments.id ) ) {
+		if ( len( arguments.id ) ) {
 			response[ "id" ] = arguments.id
 		}
 
@@ -1522,7 +1522,7 @@ class {
 	 *
 	 * @return The JSON-RPC error response struct
 	 */
-	private struct function buildErrorResponse( any id, required numeric code, required string message ) {
+	private struct function buildErrorResponse( any id = "", required numeric code, required string message ) {
 		var response = {
 			"jsonrpc": "2.0",
 			"error": {
@@ -1531,7 +1531,7 @@ class {
 			}
 		}
 
-		if ( !isNull( arguments.id ) ) {
+		if ( len( arguments.id ) ) {
 			response[ "id" ] = arguments.id
 		}
 
