@@ -94,19 +94,19 @@ class extends = "BaseService"{
 	 *
 	 *         OR a simple string for backward compatibility (treated as modelId)
 	 *
-	 * @config A struct containing: region, awsAccessKeyId, awsSecretAccessKey, awsSessionToken (optional), modelId (optional)
+	 * @options A struct containing: region, awsAccessKeyId, awsSecretAccessKey, awsSessionToken (optional), modelId (optional)
 	 *
 	 * @return The service instance
 	 */
-	IAiService function configure( required any config ){
-		if ( isSimpleValue( arguments.config ) ) {
+	IAiService function configure( required any options ){
+		if ( isSimpleValue( arguments.options ) ) {
 			// If a simple string is passed, treat it as model ID for compatibility
-			variables.modelId = arguments.config;
-		} else if ( isStruct( arguments.config ) ) {
+			variables.modelId = arguments.options;
+		} else if ( isStruct( arguments.options ) ) {
 			// Check if credentials are nested inside apiKey (from aiChat/aiService flow)
-			var credSource = arguments.config;
-			if ( arguments.config.keyExists( "apiKey" ) && isStruct( arguments.config.apiKey ) ) {
-				credSource = arguments.config.apiKey;
+			var credSource = arguments.options;
+			if ( arguments.options.keyExists( "apiKey" ) && isStruct( arguments.options.apiKey ) ) {
+				credSource = arguments.options.apiKey;
 			}
 
 			// Configure with struct of settings - check both top-level and apiKey nested
@@ -123,11 +123,11 @@ class extends = "BaseService"{
 				variables.awsSessionToken = credSource.awsSessionToken;
 			}
 			// These remain at top level
-			if ( arguments.config.keyExists( "modelId" ) ) {
-				variables.modelId = arguments.config.modelId;
+			if ( arguments.options.keyExists( "modelId" ) ) {
+				variables.modelId = arguments.options.modelId;
 			}
-			if ( arguments.config.keyExists( "model" ) ) {
-				variables.params.model = arguments.config.model;
+			if ( arguments.options.keyExists( "model" ) ) {
+				variables.params.model = arguments.options.model;
 			}
 		}
 
