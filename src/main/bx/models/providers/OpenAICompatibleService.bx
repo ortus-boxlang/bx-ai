@@ -77,7 +77,7 @@ class extends="BaseService" {
 	/**
 	 * Configure the service with options
 	 *
-	 * @config Can be:
+	 * @options Can be:
 	 *   - String: API key (optional, empty string for no auth)
 	 *   - Struct: Configuration options including:
 	 *     - apiKey: API key for authenticated endpoints (optional)
@@ -90,24 +90,24 @@ class extends="BaseService" {
 	 * @return The service instance for chaining
 	 */
 	@override
-	IAiService function configure( required any config ) {
+	IAiService function configure( required any options ) {
 		// Delegate to parent for standard configuration (handles apiKey, model extraction to params)
-		super.configure( arguments.config )
+		super.configure( arguments.options )
 
 		// Store baseURL for reference if provided
-		if ( isStruct( arguments.config ) && arguments.config.keyExists( "baseURL" ) && len( arguments.config.baseURL ) ) {
-			variables.baseURL = arguments.config.baseURL.trim()
+		if ( isStruct( arguments.options ) && arguments.options.keyExists( "baseURL" ) && len( arguments.options.baseURL ) ) {
+			variables.baseURL = arguments.options.baseURL.trim()
 			variables.chatURL = variables.baseURL & "/chat/completions"
 			variables.embeddingsURL = variables.baseURL & "/embeddings"
 		}
 
 		// Allow direct URL overrides
-		if ( isStruct( arguments.config ) ) {
-			if ( arguments.config.keyExists( "chatURL" ) && len( arguments.config.chatURL ) ) {
-				variables.chatURL = arguments.config.chatURL.trim()
+		if ( isStruct( arguments.options ) ) {
+			if ( arguments.options.keyExists( "chatURL" ) && len( arguments.options.chatURL ) ) {
+				variables.chatURL = arguments.options.chatURL.trim()
 			}
-			if ( arguments.config.keyExists( "embeddingsURL" ) && len( arguments.config.embeddingsURL ) ) {
-				variables.embeddingsURL = arguments.config.embeddingsURL.trim()
+			if ( arguments.options.keyExists( "embeddingsURL" ) && len( arguments.options.embeddingsURL ) ) {
+				variables.embeddingsURL = arguments.options.embeddingsURL.trim()
 			}
 		}
 
