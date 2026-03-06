@@ -1,0 +1,32 @@
+/**
+ * Example: Convert text to speech and save as an MP3 file.
+ *
+ * Run:
+ *   boxlang examples/audio-tts.bxs
+ */
+
+apiKey = getSystemSetting( "OPENAI_API_KEY", "" );
+if( !len( apiKey ) ){
+	throw(
+		type: "InvalidConfiguration",
+		message: "OPENAI_API_KEY is not set in your environment."
+	);
+}
+
+audioBinary = aiSpeak(
+	input: "hello my name is cornelius",
+	params: {
+		model: "tts-1",
+		voice: "alloy",
+		response_format: "mp3"
+	},
+	options: {
+		provider: "openai",
+		apiKey: apiKey,
+		returnFormat: "binary"
+	}
+);
+
+outputPath = expandPath( "./cornelius.mp3" );
+fileWriteBinary( outputPath, audioBinary );
+println( "Wrote audio file: #outputPath#" );

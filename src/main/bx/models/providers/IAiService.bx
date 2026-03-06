@@ -65,4 +65,40 @@ interface{
 	 */
 	function embeddings( required AiEmbeddingRequest embeddingRequest );
 
+	/**
+	 * Transcribe an audio file into text.
+	 *
+	 * @transcriptionRequest The transcription request object
+	 *
+	 * @return The transcription response from the provider
+	 */
+	function transcription( required AiTranscriptionRequest transcriptionRequest );
+
+	/**
+	 * Generate speech audio from input text.
+	 *
+	 * @speechRequest The speech request object
+	 *
+	 * @return The speech response from the provider
+	 */
+	function speech( required AiSpeechRequest speechRequest );
+
+	/**
+	 * Transcribe an audio file into text.
+	 *
+	 * @audioRequest The audio request object containing file path and options
+	 *
+	 * @return The transcription response from the provider
+	 */
+	function transcribe( required AudioRequest audioRequest );
+
+	/**
+	 * Generate speech audio from input text.
+	 *
+	 * @audioRequest The audio request object containing text and options
+	 *
+	 * @return The speech response from the provider
+	 */
+	function speak( required AudioRequest audioRequest );
+
 }

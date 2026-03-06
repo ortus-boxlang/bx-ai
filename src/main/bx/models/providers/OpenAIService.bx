@@ -28,6 +28,14 @@ class extends="BaseService"{
 		DEFAULT_EMBED_PARAMS = {
 			"model" : "text-embedding-3-small"
 		};
+		DEFAULT_TRANSCRIPTION_PARAMS = {
+			"model" : "whisper-1"
+		};
+		DEFAULT_SPEECH_PARAMS = {
+			"model" : "tts-1",
+			"voice" : "alloy",
+			"response_format" : "mp3"
+		};
 	}
 
 	/**
@@ -36,6 +44,8 @@ class extends="BaseService"{
 	function init(){
 		variables.chatURL = "https://api.openai.com/v1/chat/completions"
 		variables.embeddingsURL = "https://api.openai.com/v1/embeddings"
+		variables.transcriptionsURL = "https://api.openai.com/v1/audio/transcriptions"
+		variables.speechURL = "https://api.openai.com/v1/audio/speech"
 		variables.name = "OpenAI"
 	}
 
@@ -74,6 +84,256 @@ class extends="BaseService"{
 		// Set default embedding model if not specified
 		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
 		return super.embeddings( embeddingRequest )
+	}
+
+	/**
+	 * Transcribe audio using OpenAI Whisper.
+	 *
+	 * @transcriptionRequest The audio transcription request
+	 *
+	 * @return Transcribed text by default, or raw response when returnFormat = "raw"
+	 */
+	@override
+	public function transcription( required AiTranscriptionRequest transcriptionRequest ){
+		arguments.transcriptionRequest.setType( "transcription" );
+		arguments.transcriptionRequest
+			.validate()
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( static.DEFAULT_TRANSCRIPTION_PARAMS )
+			.mergeServiceHeaders( variables.headers );
+
+		if( arguments.transcriptionRequest.getLogRequest() ){
+			writeLog(
+				text: "Audio transcription request to OpenAI with file: #arguments.transcriptionRequest.getFilePath()#",
+				type: "info",
+				log : "ai"
+			);
+		}
+
+		bx: http
+			url     = variables.transcriptionsURL
+			method  = "post"
+			result  = "transcriptionResult"
+			charset = "utf-8"
+			timeout = arguments.transcriptionRequest.getTimeout()
+		{
+			// Auth Header
+			if( arguments.transcriptionRequest.getSendAuthHeader() ){
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.transcriptionRequest.getApiKey()#";
+			}
+
+			// Custom Headers
+			for( var thisHeader in arguments.transcriptionRequest.getHeaders() ){
+				bx:httpParam
+					type="header"
+					name="#thisHeader#"
+					value="#arguments.transcriptionRequest.getHeaders()[ thisHeader ]#";
+			}
+
+			// Multipart file + params
+			bx:httpParam
+				type="file"
+				name="file"
+				file="#arguments.transcriptionRequest.getFilePath()#"
+				mimetype="#arguments.transcriptionRequest.getFileMimeType()#";
+
+			for( var paramKey in arguments.transcriptionRequest.getParams() ){
+				bx:httpParam
+					type="formfield"
+					name="#paramKey#"
+					value="#arguments.transcriptionRequest.getParams()[ paramKey ]#";
+			}
+		}
+
+		if( arguments.transcriptionRequest.getLogResponse() ){
+			writeLog(
+				text: "Audio transcription response from OpenAI: #transcriptionResult.toString()#",
+				type: "info",
+				log : "ai"
+			);
+		}
+
+		// Handle error status codes
+		var statusCode = val( listFirst( transcriptionResult.statusCode, " " ) );
+		if( statusCode >= 400 ){
+			throw(
+				type: "ProviderError",
+				message: "OpenAI transcription failed with status #transcriptionResult.statusCode#: #transcriptionResult.filecontent#"
+			);
+		}
+
+		var responsePayload = {};
+		var transcriptionText = "";
+
+		try {
+			responsePayload = jsonDeserialize( transcriptionResult.filecontent );
+			transcriptionText = responsePayload.text ?: "";
+		} catch( any e ){
+			transcriptionText = toString( transcriptionResult.filecontent ?: "" );
+			responsePayload = { text: transcriptionText };
+		}
+
+		var audioResponse = new bxModules.bxai.models.responses.AudioResponse(
+			type = "transcription",
+			text = transcriptionText,
+			model = arguments.transcriptionRequest.getModel(),
+			contentType = transcriptionResult.mimeType ?: "",
+			raw = responsePayload
+		);
+
+		switch( arguments.transcriptionRequest.getReturnFormat() ){
+			case "raw":
+				return responsePayload;
+			case "response":
+				return audioResponse;
+			case "single":
+			case "text":
+			default:
+				return transcriptionText;
+		}
+	}
+
+	/**
+	 * Generate speech audio from text using OpenAI tts-1.
+	 *
+	 * @speechRequest The speech generation request
+	 *
+	 * @return Binary audio by default, or alternate format based on returnFormat
+	 */
+	@override
+	public function speech( required AiSpeechRequest speechRequest ){
+		arguments.speechRequest.setType( "speech" );
+		arguments.speechRequest
+			.validate()
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
+			.mergeServiceHeaders( variables.headers );
+
+		var dataPacket = {
+			"model": arguments.speechRequest.getModel(),
+			"input": arguments.speechRequest.getInput()
+		}.append( arguments.speechRequest.getParams() );
+
+		if( arguments.speechRequest.getLogRequest() ){
+			writeLog(
+				text: "Audio speech request to OpenAI: #dataPacket.toString()#",
+				type: "info",
+				log : "ai"
+			);
+		}
+
+		bx: http
+			url     = variables.speechURL
+			method  = "post"
+			result  = "speechResult"
+			charset = "utf-8"
+			timeout = arguments.speechRequest.getTimeout()
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+
+			// Auth Header
+			if( arguments.speechRequest.getSendAuthHeader() ){
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.speechRequest.getApiKey()#";
+			}
+
+			// Custom Headers
+			for( var thisHeader in arguments.speechRequest.getHeaders() ){
+				bx:httpParam
+					type="header"
+					name="#thisHeader#"
+					value="#arguments.speechRequest.getHeaders()[ thisHeader ]#";
+			}
+
+			bx:httpParam type="body" value=jsonSerialize( dataPacket );
+		}
+
+		if( arguments.speechRequest.getLogResponse() ){
+			writeLog(
+				text: "Audio speech response from OpenAI: #speechResult.statusCode#",
+				type: "info",
+				log : "ai"
+			);
+		}
+
+		// Handle error status codes
+		var statusCode = val( listFirst( speechResult.statusCode, " " ) );
+		if( statusCode >= 400 ){
+			throw(
+				type: "ProviderError",
+				message: "OpenAI speech failed with status #speechResult.statusCode#: #speechResult.filecontent#"
+			);
+		}
+
+		var audioBinary = speechResult.filecontent;
+		var audioResponse = new bxModules.bxai.models.responses.AudioResponse(
+			type = "speech",
+			audio = audioBinary,
+			model = arguments.speechRequest.getModel(),
+			contentType = speechResult.mimeType ?: "",
+			raw = speechResult
+		);
+
+		switch( arguments.speechRequest.getReturnFormat() ){
+			case "raw":
+				return speechResult;
+			case "base64":
+				return toBase64( audioBinary );
+			case "response":
+				return audioResponse;
+			case "binary":
+			default:
+				return audioBinary;
+		}
+	}
+
+	/**
+	 * Compatibility alias to support transcribe(request) naming.
+	 */
+	@override
+	public function transcribe( required AudioRequest audioRequest ){
+		return transcription(
+			new bxModules.bxai.models.requests.AiTranscriptionRequest(
+				filePath = arguments.audioRequest.getFilePath(),
+				params = arguments.audioRequest.getParams(),
+				options = {
+					provider: arguments.audioRequest.getProvider(),
+					apiKey: arguments.audioRequest.getApiKey(),
+					logRequest: arguments.audioRequest.getLogRequest(),
+					logRequestToConsole: arguments.audioRequest.getLogRequestToConsole(),
+					logResponse: arguments.audioRequest.getLogResponse(),
+					logResponseToConsole: arguments.audioRequest.getLogResponseToConsole(),
+					returnFormat: arguments.audioRequest.getReturnFormat(),
+					timeout: arguments.audioRequest.getTimeout(),
+					headers: arguments.audioRequest.getHeaders(),
+					providerOptions: arguments.audioRequest.getProviderOptions()
+				}
+			)
+		);
+	}
+
+	/**
+	 * Compatibility alias to support speak(request) naming.
+	 */
+	@override
+	public function speak( required AudioRequest audioRequest ){
+		return speech(
+			new bxModules.bxai.models.requests.AiSpeechRequest(
+				input = arguments.audioRequest.getInput(),
+				params = arguments.audioRequest.getParams(),
+				options = {
+					provider: arguments.audioRequest.getProvider(),
+					apiKey: arguments.audioRequest.getApiKey(),
+					logRequest: arguments.audioRequest.getLogRequest(),
+					logRequestToConsole: arguments.audioRequest.getLogRequestToConsole(),
+					logResponse: arguments.audioRequest.getLogResponse(),
+					logResponseToConsole: arguments.audioRequest.getLogResponseToConsole(),
+					returnFormat: arguments.audioRequest.getReturnFormat(),
+					timeout: arguments.audioRequest.getTimeout(),
+					headers: arguments.audioRequest.getHeaders(),
+					providerOptions: arguments.audioRequest.getProviderOptions()
+				}
+			)
+		);
 	}
 
 }

@@ -493,6 +493,98 @@ abstract class implements="IAiService" {
 	}
 
 	/**
+	 * Transcribe audio into text.
+	 * Providers without audio support should rely on this default implementation.
+	 *
+	 * @transcriptionRequest The transcription request to process
+	 *
+	 * @throws ProviderNotSupported when provider does not support transcription
+	 */
+	public function transcription( required AiTranscriptionRequest transcriptionRequest ){
+		throw(
+			type: "ProviderNotSupported",
+			message: "Provider [#variables.name#] does not support audio transcription."
+		);
+	}
+
+	/**
+	 * Generate speech audio from text.
+	 * Providers without audio support should rely on this default implementation.
+	 *
+	 * @speechRequest The speech request to process
+	 *
+	 * @throws ProviderNotSupported when provider does not support text-to-speech
+	 */
+	public function speech( required AiSpeechRequest speechRequest ){
+		throw(
+			type: "ProviderNotSupported",
+			message: "Provider [#variables.name#] does not support text-to-speech."
+		);
+	}
+
+	/**
+	 * Transcribe audio into text.
+	 * Providers without audio support should rely on this default implementation.
+	 *
+	 * @audioRequest The audio request to process
+	 *
+	 * @throws ProviderNotSupported when provider does not support transcription
+	 */
+	public function transcribe( required AudioRequest audioRequest ){
+		return transcription(
+			new bxModules.bxai.models.requests.AiTranscriptionRequest(
+				filePath = arguments.audioRequest.getFilePath(),
+				params = arguments.audioRequest.getParams(),
+				options = {
+					provider: arguments.audioRequest.getProvider(),
+					apiKey: arguments.audioRequest.getApiKey(),
+					logRequest: arguments.audioRequest.getLogRequest(),
+					logRequestToConsole: arguments.audioRequest.getLogRequestToConsole(),
+					logResponse: arguments.audioRequest.getLogResponse(),
+					logResponseToConsole: arguments.audioRequest.getLogResponseToConsole(),
+					returnFormat: arguments.audioRequest.getReturnFormat(),
+					timeout: arguments.audioRequest.getTimeout(),
+					baseURL: arguments.audioRequest.getBaseURL(),
+					sendAuthHeader: arguments.audioRequest.getSendAuthHeader(),
+					headers: arguments.audioRequest.getHeaders(),
+					providerOptions: arguments.audioRequest.getProviderOptions()
+				}
+			)
+		);
+	}
+
+	/**
+	 * Generate speech audio from text.
+	 * Providers without audio support should rely on this default implementation.
+	 *
+	 * @audioRequest The audio request to process
+	 *
+	 * @throws ProviderNotSupported when provider does not support text-to-speech
+	 */
+	public function speak( required AudioRequest audioRequest ){
+		return speech(
+			new bxModules.bxai.models.requests.AiSpeechRequest(
+				input = arguments.audioRequest.getInput(),
+				params = arguments.audioRequest.getParams(),
+				options = {
+					provider: arguments.audioRequest.getProvider(),
+					apiKey: arguments.audioRequest.getApiKey(),
+					logRequest: arguments.audioRequest.getLogRequest(),
+					logRequestToConsole: arguments.audioRequest.getLogRequestToConsole(),
+					logResponse: arguments.audioRequest.getLogResponse(),
+					logResponseToConsole: arguments.audioRequest.getLogResponseToConsole(),
+					returnFormat: arguments.audioRequest.getReturnFormat(),
+					timeout: arguments.audioRequest.getTimeout(),
+					baseURL: arguments.audioRequest.getBaseURL(),
+					sendAuthHeader: arguments.audioRequest.getSendAuthHeader(),
+					headers: arguments.audioRequest.getHeaders(),
+					providerOptions: arguments.audioRequest.getProviderOptions()
+				}
+			)
+		);
+	}
+
+	/**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Private Methods
 	 * ---------------------------------------------------------------------------------------------------------
