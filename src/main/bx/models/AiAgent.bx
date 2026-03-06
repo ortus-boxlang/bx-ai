@@ -255,6 +255,7 @@ class extends="AiBaseRunnable" {
 
 		// Merge options
 		var effectiveOptions = variables.options.append( arguments.options );
+		var userOnChunk = arguments.onChunk;
 
 		// Store accumulated response for memory
 		var accumulated = "";
@@ -264,7 +265,7 @@ class extends="AiBaseRunnable" {
 			accumulated &= content;
 
 			// Call user callback
-			arguments.onChunk( chunk );
+			userOnChunk( chunk );
 		};
 
 		// Stream via model (tools handled by model/service)
@@ -516,7 +517,13 @@ class extends="AiBaseRunnable" {
 				};
 			} ),
 			"params": variables.params,
-			"options": variables.options
+			"options": variables.options.map( ( key, value ) => {
+				// Mask sensitive options (e.g. API keys) in the config output
+				var maskedValue = ( listFindNoCase( "apikey,token,secret", key ) > 0 )
+					? "****"
+					: value
+				return maskedValue
+			} )
 		};
 	}
 

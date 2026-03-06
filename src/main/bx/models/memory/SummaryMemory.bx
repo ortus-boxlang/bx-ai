@@ -126,12 +126,17 @@ class extends="WindowMemory" {
 	public IAiMemory function trim() {
 		var nonSystemMessages = getNonSystemMessages()
 
-		// If we're under the normal window limit, just use the base trim
-		if ( nonSystemMessages.len() <= variables.maxMessages ) {
-			return super.trim()
+		// Calculate how many messages we would summarize
+		var totalMessages = nonSystemMessages.len()
+		var messagesToSummarize = totalMessages - variables.summaryThreshold
+
+		// Only summarize if we have accumulated at least threshold worth of messages
+		// This batches summarization and makes it more efficient
+		if ( messagesToSummarize < variables.summaryThreshold ) {
+			return this
 		}
 
-		// We're over limit → run summarization instead of raw trimming
+		// We have enough messages to summarize → run summarization
     	summarizeOldMessages()
 
 		return this
@@ -144,11 +149,11 @@ class extends="WindowMemory" {
 	 */
 	private function summarizeOldMessages() {
 		var messages = getNonSystemMessages();
-		systemOutput( "summarizeOldMessages: messages.len()=#messages.len()#, summaryThreshold=#variables.summaryThreshold#", true );
+		// println( "summarizeOldMessages: messages.len()=#messages.len()#, summaryThreshold=#variables.summaryThreshold#", true );
 
 		// Don't summarize if we don't have enough messages
 		if ( messages.len() <= variables.summaryThreshold ) {
-			systemOutput( "summarizeOldMessages: Skipping - not enough messages", true );
+			//println( "summarizeOldMessages: Skipping - not enough messages", true );
 			return;
 		}
 
@@ -157,7 +162,8 @@ class extends="WindowMemory" {
 
 		// Split: messages to summarize vs recent to keep
 		var toSummarize = messages.slice( 1, messagesToSummarize );
-		var toKeep = messages.slice( messagesToSummarize + 1, messages.len() );
+		var keepLength = messages.len() - messagesToSummarize;
+		var toKeep = messages.slice( messagesToSummarize + 1, keepLength );
 
 		// Build summarization prompt
 		var summaryPrompt = static.SUMMARY_PROMPT;
@@ -170,7 +176,7 @@ class extends="WindowMemory" {
 		}
 
 		// Add messages to summarize
-		toSummarize.each( function( msg ) {
+		toSummarize.each( msg => {
 			// Skip if it's already a summary
 			if ( msg.keyExists( "isSummary" ) && msg.isSummary ) {
 				return;
@@ -178,39 +184,43 @@ class extends="WindowMemory" {
 			summaryPrompt &= "#msg.role#: #msg.content#\n";
 		} );
 
-	// Call AI to generate summary
-	try {
-		var summary = variables.summaryModelInstance.run( aiMessage().user( summaryPrompt ) );
+		// Call AI to generate summary
+		try {
+			var summary = variables.summaryModelInstance.run( aiMessage().user( summaryPrompt ) );
 
-		// Rebuild memory structure
+			// Rebuild memory structure WITHOUT triggering trim() recursion
+			// We directly manipulate variables.messages to avoid add() → trim() → summarizeOldMessages() recursion
 			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
 
-			clear();
+			// Clear messages array directly
+			variables.messages = [];
 
-			// Re-add system message
+			// Re-add system message directly (avoid setSystemMessage which calls trim)
 			if ( systemMsg.len() ) {
-				setSystemMessage( systemMsg );
+				variables.messages.append( {
+					role: "system",
+					content: systemMsg,
+					timestamp: now()
+				} );
 			}
 
-			// Add summary as special assistant message
-			super.add( {
+			// Add summary as special assistant message (directly, no super.add())
+			variables.messages.append( {
 				role: "assistant",
 				content: "[Previous conversation summary]: #summary#",
 				isSummary: true,
 				timestamp: now()
 			} );
 
-		variables.currentSummary = summary;
-		variables.hasSummary = true;
+			variables.currentSummary = summary;
+			variables.hasSummary = true;
 
-		// Add back recent messages
-			for( var msg in toKeep ){
-				super.add( msg );
-			}
+			// Add back recent messages (directly, no super.add() to avoid trim recursion)
+			variables.messages.append( toKeep, true )
 
-	} catch ( any e ) {
-		// If summarization fails, fall back to simple truncation
-		writeLog(
+		} catch ( any e ) {
+			// If summarization fails, fall back to simple truncation
+			writeLog(
 				text: "SummaryMemory: Failed to generate summary - #e.message#. Falling back to truncation.",
 				type: "error",
 				log: "ai"
@@ -227,7 +237,6 @@ class extends="WindowMemory" {
 			for( var msg in toKeep ){
 				super.add( msg );
 			}
-
 		}
 	}
 

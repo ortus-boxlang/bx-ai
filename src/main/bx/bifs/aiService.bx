@@ -17,31 +17,34 @@
 @BoxBIF
 class {
 
-	/**
-	 * Inject the following references into the class
-	 * - moduleRecord : The ModuleRecord instance
-	 * - boxRuntime : The BoxRuntime instance
-	 * - interceptorService : The BoxLang InterceptorService
-	 * - log : A logger for the module config itself
-	 */
-	static final CORE_PROVIDERS = [
-		"bedrock",
-		"claude",
-        "cohere",
-		"deepseek",
-		"docker",
-		"gemini",
-		"grok",
-		"groq",
-		"huggingface",
-		"mistral",
-		"ollama",
-		"openai",
-		"openai-compatible",
-		"openrouter",
-		"perplexity",
-        "voyage"
-	];
+	static {
+		/**
+		 * Inject the following references into the class
+		 * - moduleRecord : The ModuleRecord instance
+		 * - boxRuntime : The BoxRuntime instance
+		 * - interceptorService : The BoxLang InterceptorService
+		 * - log : A logger for the module config itself
+		 */
+		final CORE_PROVIDERS = [
+			"bedrock",
+			"claude",
+			"cohere",
+			"deepseek",
+			"docker",
+			"gemini",
+			"grok",
+			"groq",
+			"huggingface",
+			"minimax",
+			"mistral",
+			"ollama",
+			"openai",
+			"openai-compatible",
+			"openrouter",
+			"perplexity",
+			"voyage"
+		];
+	}
 
     /**
      * Creates a reference to a registered AI Service Provider this module supports
@@ -69,7 +72,7 @@ class {
         // By convention check if there is a <PROVIDER>_API_KEY setting override it
 		// Only apply convention key if options.apiKey is not already set (could be a struct for providers like Bedrock)
         var conventionAPIKey = getSystemSetting( "#arguments.provider.ucase()#_API_KEY", "" )
-        if( !arguments.options.keyExists( "apiKey" ) && len( conventionAPIKey ) ){
+        if( !len( arguments.options.apiKey ?: "" ) && len( conventionAPIKey ) ){
             arguments.options.apiKey = conventionAPIKey
         }
         // Else use the module setting (only if apiKey not already set)
@@ -107,6 +110,9 @@ class {
 				break
 			case "mistral":
 				targetClass = "bxModules.bxai.models.providers.MistralService"
+				break
+			case "minimax":
+				targetClass = "bxModules.bxai.models.providers.MiniMaxService"
 				break
 			case "ollama":
 				targetClass = "bxModules.bxai.models.providers.OllamaService"

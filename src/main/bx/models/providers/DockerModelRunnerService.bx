@@ -79,21 +79,21 @@ class extends = "OpenAICompatibleService"{
 	 *   - Struct: Configuration options (see OpenAICompatibleService.configure) plus:
 	 *     - useHostURL: Boolean to use localhost URL instead of Docker internal
 	 *
-	 * @config Can be:
+	 * @options Can be:
 	 *
 	 * @return The service instance for chaining
 	 */
 		@override
-	IAiService function configure( required any config ){
+	IAiService function configure( required any options ){
 		// Handle Docker-specific useHostURL option before calling parent
 		if (
-			isStruct( arguments.config ) && arguments.config.keyExists( "useHostURL" ) && arguments.config.useHostURL
+			isStruct( arguments.options ) && arguments.options.keyExists( "useHostURL" ) && arguments.options.useHostURL
 		) {
-			arguments.config.baseURL = static.HOST_BASE_URL;
+			arguments.options.baseURL = static.HOST_BASE_URL;
 		}
 
 		// Delegate to parent for standard configuration
-		return super.configure( arguments.config );
+		return super.configure( arguments.options );
 	}
 
 	/**

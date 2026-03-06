@@ -17,14 +17,16 @@
 @BoxBIF
 class {
 
-	static final DEFAULT_OPTIONS = {
-		timeout : 30,
-		logResponse : false,
-		logResponseToConsole : false,
-		logRequest : false,
-		logRequestToConsole : false
+	static {
+		final DEFAULT_OPTIONS = {
+			timeout : 30,
+			logResponse : false,
+			logResponseToConsole : false,
+			logRequest : false,
+			logRequestToConsole : false
+		}
+		MODULE_SETTINGS = getModuleInfo( "bxai" ).settings;
 	}
-	static MODULE_SETTINGS = getModuleInfo( "bxai" ).settings;
 
 	/**
 	 * Inject the following references into the class
@@ -69,10 +71,9 @@ class {
 		struct options = {},
 		struct headers = {}
 	) {
-		// Incorporate default params with no override
-		arguments.params.append( moduleRecord.settings.defaultParams, false );
-		arguments.options.append( static.DEFAULT_OPTIONS, false );
+		// Merge options: MODULE_SETTINGS first, then DEFAULT_OPTIONS fills in gaps
 		arguments.options.append( static.MODULE_SETTINGS, false );
+		arguments.options.append( static.DEFAULT_OPTIONS, false );
 		arguments.options.stream = true;
 
 		// Build out a chat request

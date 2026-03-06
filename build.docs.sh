@@ -9,13 +9,13 @@ VERSION=${1:-"latest"}
 # Remove any existing documentation
 rm -rf build/apidocs
 
-# Create the default output directory: build/apidocs/$VERSION
-mkdir -p build/apidocs/$VERSION
+# Create the default output directory: build/apidocs
+mkdir -p build/apidocs/
 
 # Generate the documentation
 boxlang module:docbox \
 	--source="./src/main/bx" \
 	--mapping="bxModules.bxai" \
-	--output-dir="build/apidocs/$VERSION" \
+	--output-dir="build/apidocs" \
 	--project-title="BoxLang AI v$VERSION" \
 	--project-description="BoxLang AI Documentation" \

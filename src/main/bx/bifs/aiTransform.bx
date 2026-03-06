@@ -100,8 +100,17 @@ class {
 			}
 
 		}
+		// Valid transformer: wrap it
+		else if( isObject( arguments.transformer ) && arguments.transformer instanceof "ITransformer" ){
+			oTransform = new bxModules.bxai.models.transformers.AiTransformRunnable(
+				arguments.transformer.configure( arguments.config )
+			)
+		}
 		else {
-			throw BoxException( "Invalid transformer argument. Must be a closure or string classpath." )
+			throw(
+				type: "InvalidTransformerArgument",
+				message: "Invalid transformer argument. Must be a closure or string classpath"
+			)
 		}
 
 		// Announce creation

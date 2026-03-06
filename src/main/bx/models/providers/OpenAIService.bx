@@ -24,18 +24,10 @@ class extends="BaseService"{
 			// according to the docs, this is the default model
 			// https://platform.openai.com/docs/models/gpt-5-nano
 			"model" : "gpt-5-nano"
-		};
+		}
 		DEFAULT_EMBED_PARAMS = {
 			"model" : "text-embedding-3-small"
-		};
-		DEFAULT_TRANSCRIPTION_PARAMS = {
-			"model" : "whisper-1"
-		};
-		DEFAULT_SPEECH_PARAMS = {
-			"model" : "tts-1",
-			"voice" : "alloy",
-			"response_format" : "mp3"
-		};
+		}
 	}
 
 	/**

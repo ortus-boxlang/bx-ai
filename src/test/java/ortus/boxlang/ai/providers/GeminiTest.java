@@ -21,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
+import ortus.boxlang.runtime.scopes.Key;
 
 /**
  * Integration tests for Gemini AI provider
@@ -229,6 +230,38 @@ public class GeminiTest extends BaseIntegrationTest {
 			// Verify callback was invoked
 			assertThat( variables.get( "chunkCount" ) ).isNotNull();
 			assertThat( variables.get( "fullText" ) ).isNotNull();
+		}
+	}
+
+	@DisplayName( "Test Gemini AI Embeddings" )
+	@Test
+	public void testGeminiEmbeddings() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+			try {
+				result  = aiEmbed( "BoxLang is a modern dynamic JVM language." )
+				isArray = isArray( result )
+				vecLen  = result.len()
+				println( "Embedding dimensions: " & vecLen )
+				println( "First value: " & result[ 1 ] )
+			} catch( any e ) {
+				if( e.message contains "503" || e.message contains "429" || e.message contains "overloaded" || e.message contains "UNAVAILABLE" || e.message contains "RESOURCE_EXHAUSTED" ) {
+					println( "⚠️ Gemini API unavailable (503/429/quota exceeded), skipping test: " & e.message )
+					testSkipped = true
+				} else {
+					rethrow
+				}
+			}
+			""",
+			context
+		);
+		// @formatter:on
+
+		if ( variables.get( "testSkipped" ) == null ) {
+			assertThat( variables.getAsBoolean( Key.of( "isArray" ) ) ).isTrue();
+			// gemini-embedding-001 produces 3072-dimensional vectors
+			assertThat( variables.getAsInteger( Key.of( "vecLen" ) ) ).isGreaterThan( 0 );
 		}
 	}
 }

@@ -76,28 +76,31 @@ class extends="BaseService"{
 	 */
 	@override
 	public function chatStream( required AiChatRequest chatRequest, required function callback ){
-		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
 
-		// Build the packet according to Claude's API requirements with streaming
+		var allMessages = arguments.chatRequest.getMessages();
+		var apiMessages = allMessages.filter( m => ( m.role ?: "" ) != "system" );
+		var systemMessages = allMessages
+			.filter( m => ( m.role ?: "" ) == "system" )
+			.map( m => toString( m.content ?: "" ) )
+			.filter( msg => msg.len() );
+		var systemPrompt = systemMessages.toList( char( 10 ) & char( 10 ) );
+
 		var dataPacket = {
 			"model"   : arguments.chatRequest.getModel(),
-			"messages": arguments.chatRequest.getAiMessage().getNonSystemMessages(),
+			"messages": apiMessages,
 			"stream"  : true
-		}.append( arguments.chatRequest.getParams() )
+		}.append( arguments.chatRequest.getParams() );
 
-		// Do we have a system message? Claude supports it at the root
-		if( arguments.chatRequest.getAiMessage().hasSystemMessage() ){
-			dataPacket[ "system" ] = arguments.chatRequest.getAiMessage().getSystemMessage();
+		if( systemPrompt.len() ){
+			dataPacket[ "system" ] = systemPrompt;
 		}
 
-		// Add tool support if tools are present
 		if( arguments.chatRequest.getParams()?.tools?.len() ) {
-			dataPacket[ "tools" ] = formatToolsForClaude( arguments.chatRequest.getParams().tools )
+			dataPacket[ "tools" ] = formatToolsForClaude( arguments.chatRequest.getParams().tools );
 		}
 
-		// Announce the request
 		BoxAnnounce(
 			"onAIChatRequest",
 			{
@@ -107,13 +110,21 @@ class extends="BaseService"{
 			}
 		);
 
-		// Log the request if enabled
 		if( arguments.chatRequest.getLogRequestToConsole() ){
-			println( "AI Request (Stream)" )
-			println( dataPacket )
+			println( "AI Request (Stream)" );
+			println( dataPacket );
 		}
 
-		// Build HTTP request with fluent API - Claude uses x-api-key instead of Bearer token
+		var streamState = {
+			"messageId": "",
+			"model": arguments.chatRequest.getModel(),
+			"toolCalls": [],
+			"toolInputBuffers": {},
+			"toolCallIndexMap": {},
+			"stopReason": "",
+			"emittedAnyText": false
+		};
+
 		var httpRequest = http( getChatURL() )
 			.method( "POST" )
 			.charset( "utf-8" )
@@ -121,29 +132,79 @@ class extends="BaseService"{
 			.header( "content-type", "application/json" )
 			.header( "x-api-key", arguments.chatRequest.getApiKey() )
 			.header( "anthropic-version", getHeaders()[ "anthropic-version" ] )
-			.sse( true ); // Enable SSE mode for Claude streaming
+			.sse( true );
 
-		// Add custom headers
 		for( var thisHeader in arguments.chatRequest.getHeaders() ){
 			httpRequest.header( thisHeader, arguments.chatRequest.getHeaders()[ thisHeader ] );
 		}
 
-		// Set request body and callbacks
 		httpRequest
 			.body( jsonSerialize( dataPacket ) )
 			.onChunk( ( chunk, lastEventId, httpResult, httpClient, response ) => {
-				// chunk is already parsed SSE data: { data, event, id, retry }
-				// For SSE streams, chunk.data contains the actual payload
-
-				// Check for stream end marker
-				if( chunk.data == "[DONE]" ){
+				if( chunk.data == "[DONE]" || chunk?.data?.trim()?.isEmpty() ){
 					return;
 				}
 
-				// Try to parse and send to callback
 				try {
 					var parsedChunk = jsonDeserialize( chunk.data );
-					userCallback( parsedChunk );
+
+					if( parsedChunk.type == "message_start" ){
+						streamState.model = parsedChunk.message?.model ?: streamState.model;
+						streamState.messageId = parsedChunk.message?.id ?: streamState.messageId;
+						return;
+					}
+
+					if( parsedChunk.type == "content_block_start" && parsedChunk.content_block?.type == "tool_use" ){
+						var contentBlockIndex = parsedChunk.index ?: 0;
+						var newToolCall = {
+							"type": "tool_use",
+							"id": parsedChunk.content_block.id ?: "",
+							"name": parsedChunk.content_block.name ?: "",
+							"input": parsedChunk.content_block.input ?: {},
+							"contentIndex": contentBlockIndex
+						};
+
+						streamState.toolCalls.append( newToolCall );
+						streamState.toolCallIndexMap[ toString( contentBlockIndex ) ] = streamState.toolCalls.len();
+						streamState.toolInputBuffers[ toString( contentBlockIndex ) ] = "";
+						return;
+					}
+
+					if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "input_json_delta" ){
+						var bufferKey = toString( parsedChunk.index ?: 0 );
+						if( !streamState.toolInputBuffers.keyExists( bufferKey ) ){
+							streamState.toolInputBuffers[ bufferKey ] = "";
+						}
+						streamState.toolInputBuffers[ bufferKey ] &= parsedChunk.delta.partial_json ?: "";
+						return;
+					}
+
+					if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "text_delta" ){
+						var textChunk = parsedChunk.delta.text ?: "";
+						streamState.emittedAnyText = streamState.emittedAnyText || textChunk.len();
+
+						userCallback({
+							"id": streamState.messageId,
+							"provider": "Claude",
+							"model": streamState.model,
+							"object": "chat.completion.chunk",
+							"choices": [
+								{
+									"index": 0,
+									"delta": {
+										"role": "assistant",
+										"content": textChunk
+									}
+								}
+							]
+						});
+						return;
+					}
+
+					if( parsedChunk.type == "message_delta" ){
+						streamState.stopReason = parsedChunk.delta?.stop_reason ?: streamState.stopReason;
+						return;
+					}
 				} catch( any e ){
 					writeLog(
 						text: "Error parsing stream chunk: #e.message# - Data: #chunk.data#",
@@ -161,7 +222,6 @@ class extends="BaseService"{
 					log : "ai"
 				)
 
-				// Announce the error
 				BoxAnnounce( "onAIError", {
 					error: error,
 					errorMessage: errorMessage,
@@ -177,7 +237,6 @@ class extends="BaseService"{
 				);
 			} )
 			.onComplete( ( httpResult ) => {
-				// Log the response if enabled
 				if( thisChatRequest.getLogResponse() ){
 					writeLog(
 						text: "Stream completed successfully",
@@ -196,6 +255,104 @@ class extends="BaseService"{
 				);
 			} )
 			.send();
+
+		if( streamState.stopReason == "tool_use" && streamState.toolCalls.len() ){
+			var runtimeChatRequest = arguments.chatRequest;
+
+			streamState.toolCalls.each( toolCall => {
+				var bufferKey = toString( toolCall.contentIndex ?: 0 );
+				var inputBuffer = streamState.toolInputBuffers[ bufferKey ] ?: "";
+				if( inputBuffer.len() ){
+					try {
+						toolCall.input = jsonDeserialize( inputBuffer );
+					} catch( any e ){}
+				}
+			} );
+
+			var sanitizedToolCalls = streamState.toolCalls
+				.filter( toolCall => ( toolCall.name ?: "" ).len() && ( toolCall.id ?: "" ).len() )
+				.map( toolCall => {
+					return {
+						"type" : "tool_use",
+						"id"   : toolCall.id,
+						"name" : toolCall.name,
+						"input": toolCall.input ?: {}
+					};
+				} );
+
+			if( !sanitizedToolCalls.len() ){
+				var fallbackFromToolUse = chat( runtimeChatRequest );
+				var fallbackToolText = isSimpleValue( fallbackFromToolUse ) ? toString( fallbackFromToolUse ) : "";
+				if( fallbackToolText.len() ){
+					userCallback({
+						"id": streamState.messageId,
+						"provider": "Claude",
+						"model": streamState.model,
+						"object": "chat.completion.chunk",
+						"choices": [
+							{
+								"index": 0,
+								"delta": {
+									"role": "assistant",
+									"content": fallbackToolText
+								}
+							}
+						]
+					});
+				}
+				return;
+			}
+
+			runtimeChatRequest.getMessages().append({
+				"role"    : "assistant",
+				"content" : sanitizedToolCalls
+			});
+
+			sanitizedToolCalls.each( toolCall => executeClaudeTool( toolCall, runtimeChatRequest ) );
+
+			var finalResponse = chat( runtimeChatRequest );
+			var finalText = isSimpleValue( finalResponse ) ? toString( finalResponse ) : "";
+
+			if( finalText.len() ){
+				userCallback({
+					"id": streamState.messageId,
+					"provider": "Claude",
+					"model": streamState.model,
+					"object": "chat.completion.chunk",
+					"choices": [
+						{
+							"index": 0,
+							"delta": {
+								"role": "assistant",
+								"content": finalText
+							}
+						}
+					]
+				});
+			}
+		}
+
+		if( !streamState.emittedAnyText && streamState.stopReason != "tool_use" ){
+			var fallbackResponse = chat( arguments.chatRequest );
+			var fallbackText = isSimpleValue( fallbackResponse ) ? toString( fallbackResponse ) : "";
+			if( fallbackText.len() ){
+				userCallback({
+					"id": streamState.messageId,
+					"provider": "Claude",
+					"model": streamState.model,
+					"object": "chat.completion.chunk",
+					"choices": [
+						{
+							"index": 0,
+							"delta": {
+								"role": "assistant",
+								"content": fallbackText
+							}
+						}
+					]
+				});
+			}
+		}
 	}
 
 	/**
@@ -218,14 +375,21 @@ class extends="BaseService"{
 
 		// Build the packet according to Claude's API requirements
 		// https://docs.anthropic.com/en/api/messages#body-messages
+		var allMessages = arguments.chatRequest.getMessages();
+		var apiMessages = allMessages.filter( m => ( m.role ?: "" ) != "system" );
+		var systemMessages = allMessages
+			.filter( m => ( m.role ?: "" ) == "system" )
+			.map( m => toString( m.content ?: "" ) )
+			.filter( msg => msg.len() );
+		var systemPrompt = systemMessages.toList( char( 10 ) & char( 10 ) );
+
 		var dataPacket = {
 			"model"   : arguments.chatRequest.getModel(),
-			"messages": arguments.chatRequest.getMessages()
-		}.append( arguments.chatRequest.getParams() )
+			"messages": apiMessages
+		}.append( arguments.chatRequest.getParams() );
 
-		// Do we have a system message? Claude supports it at the root
-		if( arguments.chatRequest.getAiMessage().hasSystemMessage() ){
-			dataPacket[ "system" ] = arguments.chatRequest.getAiMessage().getSystemMessage();
+		if( systemPrompt.len() ){
+			dataPacket[ "system" ] = systemPrompt;
 		}
 
 		// Add tool support if tools are present
@@ -234,7 +398,7 @@ class extends="BaseService"{
 		}
 
 		// Send it
-		var result = sendRequest( arguments.chatRequest, dataPacket )
+		var result = sendChatRequest( arguments.chatRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
@@ -353,37 +517,33 @@ class extends="BaseService"{
 		var messages = arguments.chatRequest.getMessages();
 
 		// Get the tool from the chat request
-		arguments.chatRequest
-			.getTool( toolCall.name )
-			.ifPresentOrElse(
-				// Found, invoke the tool
-				tool => {
-					messages.append({
-						"role" : "user",
-						"content" : [{
-							"type"        : "tool_result",
-							"tool_use_id" : toolCall.id,
-							"content"     : tool.invoke( args : toolCall.input )
-						}]
-					});
-				},
-				// Not found
-				() => {
-					writeLog(
-						text: "Unable to find tool named: [#toolCall.name#]",
-						type: "warning",
-						log : "ai"
-					)
-					messages.append({
-						"role" : "user",
-						"content" : [{
-							"type"        : "tool_result",
-							"tool_use_id" : toolCall.id,
-							"content"     : "Tool ['#toolCall.name#'] not found in chat request"
-						}]
-					});
-				}
-			);
+		var toolAttempt = arguments.chatRequest.getTool( toolCall.name );
+
+		if( toolAttempt.isPresent() ){
+			var tool = toolAttempt.get();
+			messages.append({
+				"role" : "user",
+				"content" : [{
+					"type"        : "tool_result",
+					"tool_use_id" : toolCall.id,
+					"content"     : tool.invoke( args : toolCall.input )
+				}]
+			});
+		} else {
+			writeLog(
+				text: "Unable to find tool named: [#toolCall.name#]",
+				type: "warning",
+				log : "ai"
+			)
+			messages.append({
+				"role" : "user",
+				"content" : [{
+					"type"        : "tool_result",
+					"tool_use_id" : toolCall.id,
+					"content"     : "Tool ['#toolCall.name#'] not found in chat request"
+				}]
+			});
+		}
 	}
 
 }

@@ -9,6 +9,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Provider Hook System**: Added six template-method hooks to `BaseService` — `preChatRequest`, `postChatResponse`, `preStreamRequest`, `postStreamResponse`, `preEmbeddingRequest`, `postEmbeddingResponse` — allowing concrete providers to normalize request packets and responses without overriding full methods. Refactored `MiniMaxService`, `GeminiService`, `OpenAICompatibleService`, `OllamaService`, and `CohereService` to use these hooks, removing significant boilerplate. Also fixed a bug where MiniMax chat errors (`base_resp.status_code != 0`) were silently ignored by the base error handler.
+
+### Improvements
+
+- Internally refactored the `sendRequest()` method in the `BaseService` to be `sendChatRequest()` so we can be specific about the type of request being sent, and to allow for better handling of different request types in the future (e.g. embedding requests).
+- Removed unecessary data elements to `onAITokenCount` that are already inside the chat request object.
+
+### Fixed
+
+- Changelog corruption due to merge conflict.
+- MCP requestId null scope crash on JSON-RPC notifications for MCP servers
+
+## [2.4.0] - 2026-02-20
+
+### Added
+
+- **MiniMax AI Provider**: Added support for [MiniMax](https://platform.minimax.io/) AI service with chat, streaming, and embeddings support. Use the `minimax` provider name and set your API key via the `MINIMAX_API_KEY` environment variable.
+- Updated `getConfig()` to not show sensitive info.
+
+### Fixed
+
+- BoxLang static constructs instead of inline to avoid issues with never versions.
+
+## [2.3.0] - 2026-02-18
+
+### Added
+
+- **Pipeline `_input` System Variable**: Auto-inject previous stage output into message templates via `${_input}`. For struct outputs, individual fields are flattened as `${_input_fieldName}` for template access. Enables clean, composable multi-stage AI pipelines without manual transformation steps.
+- `aiTransform()` needd to process instances of `AiTransformRunnable` and `BaseTransformer` classes, allowing for more flexible and reusable transformation logic.
+- Stricter and more defensive code when doing tool calling, to prevent errors when tools are called with invalid arguments or when the tool execution fails.
+
+### Fixed
+
+- Tool calling with streaming was not working because the tools were being executed in a different context that didn't have access to the request. Now the request is properly passed to the tool execution context, allowing tools to be called and executed correctly during streaming.
+- Agent stream() was not passing tools the correct request, now it does.
+- scoping issue on Agent streaming
+- fixed BaseMemory getRecent() where limit was not being used
+- SummaryMemory was not trimming messages when the summary threshold  was exceeded, and it was recursing forever on summary. Now it properly trims messages until it gets under the threshold, then summarizes and adds the summary message back in.
+- BaseTransformer was missing it's internal constructor
+- Default for `config` on all `BaseTransformer` classes was missing.
+- Fixed a bug where if the `aiTransform()` BIF was called with a non-string or closure, the `throw()` was invalid.
+
+## [2.2.0] - 2026-02-16
+
+### Added
+
+- Consolidated AI request/response logging with execution time metrics for better performance insights.
+- Improved AI request/response to include other metrics in order to provide better insights into performance and potential bottlenecks.
+
+### Improved
+
+- Consolidation of options and settings, to have a single source of truth for configuration and to allow for better overrides and defaults.
+- Stream request logging to include execution time metrics for better performance monitoring and debugging insights.
+- If the chunk is empty, skip it (keep-alive or heartbeat) when doing chat streams. This prevents unnecessary processing of empty chunks and potential errors when parsing.
+
+### Fixed
+
+- Invalid use of `request` in the `aiChatStream()` BIF, which should have been `chatRequest`.
+- Extends for AiTransformRunnable was wrong.
+- AiModel extractMessages() was not flattening the messages correctly when the response had multiple choices with multiple messages. Now it properly flattens all messages from all choices into a single array.
+- Order of settings merging in `aiChat()` and `aiChatStream()` BIFs was incorrect, causing default options to override user-provided options. Now it merges in the correct order: user options → module settings → default options, allowing for proper overrides.
+- Error invoking population in schema builder, the third argument needs to be an array or struct, not a single value.
+- Fixed a bug where provider options in the configuration file were not being merged into the request options when creating a service instance.
+- Fixed a bug where the `aiService()` BIF was not correctly applying convention-based API key detection when `options.apiKey` was already set but empty. Now it checks if `options.apiKey` is empty before applying the convention key, allowing for proper fallback to environment variables or module settings.
+
 ## [2.1.0] - 2026-02-04
 
 What's New: <https://ai.ortusbooks.com/readme/release-history/2.1.0>
@@ -264,7 +331,10 @@ One of our biggest library updates yet! This release introduces a powerful new d
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v2.1.0...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/ortus-boxlang/bx-ai/compare/v2.3.0...v2.4.0
+[2.3.0]: https://github.com/ortus-boxlang/bx-ai/compare/v2.2.0...v2.3.0
+[2.2.0]: https://github.com/ortus-boxlang/bx-ai/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/ortus-boxlang/bx-ai/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/ortus-boxlang/bx-ai/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/ortus-boxlang/bx-ai/compare/v1.1.0...v1.2.0

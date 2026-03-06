@@ -73,144 +73,58 @@ class extends="BaseService"{
 	}
 
 	/**
-	 * Override embeddings to handle Cohere's specific API format
-	 * Cohere uses different request/response structure than OpenAI standard
-	 * @see https://docs.cohere.com/reference/embed
+	 * Seed the default embedding model before delegating to base.
 	 */
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
-		// Set default embedding model if not specified
 		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
+		return super.embeddings( arguments.embeddingRequest )
+	}
 
-		// Model Selection
-		embeddingRequest
-			.setApiKeyIfEmpty( getAPIKey() )
-			.mergeServiceParams( variables.params )
-			.mergeServiceHeaders( variables.headers )
+	/**
+	 * Build Cohere-specific embedding request format:
+	 * - Renames `input` → `texts` array (Cohere requires an array)
+	 * - Injects required `input_type` field
+	 * - Passes through optional `embedding_types` and `truncate` params
+	 * @see https://docs.cohere.com/reference/embed
+	 */
+	private struct function preEmbeddingRequest( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
+		var input  = arguments.embeddingRequest.getInput();
+		var params = arguments.embeddingRequest.getParams();
+		var packet = {
+			"texts"     : isArray( input ) ? input : [ input ],
+			"model"     : arguments.dataPacket.model ?: arguments.embeddingRequest.getModel(),
+			"input_type": params.input_type ?: static.DEFAULT_EMBED_PARAMS.input_type
+		};
+		if( params.keyExists( "embedding_types" ) ){ packet.embedding_types = params.embedding_types; }
+		if( params.keyExists( "truncate" ) )        { packet.truncate         = params.truncate; }
+		return packet;
+	}
 
-		// Build Cohere-specific data packet
-		var input = arguments.embeddingRequest.getInput();
-		var dataPacket = {
-			"texts": isArray( input ) ? input : [ input ],
-			"model": embeddingRequest.getModel(),
-			"input_type": embeddingRequest.getParams().input_type ?: static.DEFAULT_EMBED_PARAMS.input_type
+	/**
+	 * Normalize Cohere's embedding response to the standard OpenAI format.
+	 * Cohere returns: { embeddings: [[...]], meta: { billed_units: { input_tokens } } }
+	 * On error Cohere returns: { message: "..." }
+	 *
+	 * Missing `embeddings` key is remapped to { error: "..." } so BaseService's
+	 * centralized error handler, logging, and onAIError announcement fire correctly.
+	 * @see https://docs.cohere.com/reference/embed
+	 */
+	private struct function postEmbeddingResponse( required AiEmbeddingRequest embeddingRequest, required struct dataPacket, required struct result ){
+		if( !arguments.result.keyExists( "embeddings" ) ){
+			return { "error": arguments.result.message ?: "Unknown Cohere embedding error" };
 		}
-
-		// Add optional embedding_types parameter if specified
-		if( embeddingRequest.getParams().keyExists( "embedding_types" ) ){
-			dataPacket.embedding_types = embeddingRequest.getParams().embedding_types
-		}
-
-		// Add optional truncate parameter if specified
-		if( embeddingRequest.getParams().keyExists( "truncate" ) ){
-			dataPacket.truncate = embeddingRequest.getParams().truncate
-		}
-
-		// Log the request
-		if( arguments.embeddingRequest.getLogRequest() ){
-			writeLog(
-				text: "Embedding Request to Cohere: #dataPacket.toString()#",
-				type: "info",
-				log : "ai"
-			)
-		}
-
-		// Log the request to the console if enabled
-		if( arguments.embeddingRequest.getLogRequestToConsole() ){
-			println( "Cohere Embedding Request" )
-			println( dataPacket )
-		}
-
-		bx: http
-			url     = getEmbeddingsURL()
-			method  = "post"
-			result  = "embeddingResult"
-			charset = "utf-8"
-			timeout = arguments.embeddingRequest.getTimeout()
-		{
-			bx:httpParam type="header" name="content-type" value="application/json";
-			bx:httpParam type="header" name="Authorization" value="Bearer #embeddingRequest.getApiKey()#";
-
-			// Custom Headers
-			for( var thisHeader in arguments.embeddingRequest.getHeaders() ){
-				bx:httpParam
-					type="header"
-					name="#thisHeader#"
-					value="#arguments.embeddingRequest.getHeaders()[ thisHeader ]#";
-			}
-
-			// Body Packet
-			bx:httpParam type="body" value=jsonSerialize( dataPacket );
-		}
-
-		// Final logging if enabled
-		if( arguments.embeddingRequest.getLogResponse() ){
-			writeLog(
-				text: "Embedding Response from Cohere: #embeddingResult.toString()#",
-				type: "info",
-				log : "ai"
-			)
-		}
-
-		// Log the response to the console if enabled
-		if( arguments.embeddingRequest.getLogResponseToConsole() ){
-			println( "Cohere Embedding Response" )
-			println( embeddingResult )
-			println( "Cohere Embedding Deserialized Response" )
-			println( jsonDeserialize( embeddingResult.filecontent ) )
-		}
-
-		var result = jsonDeserialize( embeddingResult.filecontent )
-
-		var iData = {
-			"embeddingRequest" = arguments.embeddingRequest,
-			"response" = result,
-			"rawResponse"	: embeddingResult,
-			"provider" = this
-		}
-
-		BoxAnnounce( "onAIEmbedResponse", iData );
-
-		// If an error is returned, throw it
-		if( result.keyExists( "message" ) && embeddingResult.statusCode != "200" ){
-			writeLog(
-				text: result.message.toString(),
-				type: "error",
-				log : "ai"
-			)
-			throw(
-				type   : "ProviderError",
-				message: result.message.toString()
-			);
-		}
-
-		// Convert Cohere response format to standard OpenAI format
-		// Cohere returns: { id, texts, embeddings, meta }
-		var standardResponse = {
-			"data": result.embeddings.map( (embedding, index) => {
-				return {
-					"embedding": embedding,
-					"index": index - 1,
-					"object": "embedding"
-				}
+		return {
+			"data"  : arguments.result.embeddings.map( (embedding, index) => {
+				return { "embedding": embedding, "index": index - 1, "object": "embedding" }
 			} ),
-			"model": embeddingRequest.getModel(),
+			"model" : arguments.embeddingRequest.getModel(),
 			"object": "list",
-			"usage": result.keyExists( "meta" ) && result.meta.keyExists( "billed_units" ) ? {
-				"prompt_tokens": result.meta.billed_units.input_tokens ?: 0,
-				"total_tokens": result.meta.billed_units.input_tokens ?: 0
+			"usage" : arguments.result.keyExists( "meta" ) && arguments.result.meta.keyExists( "billed_units" ) ? {
+				"prompt_tokens": arguments.result.meta.billed_units.input_tokens ?: 0,
+				"total_tokens" : arguments.result.meta.billed_units.input_tokens ?: 0
 			} : {}
-		}
-
-		// Determine return formats
-		switch( embeddingRequest.getReturnFormat() ){
-			case "embeddings":
-				return standardResponse.data.map( item => item.embedding );
-			case "raw":
-				return standardResponse;
-			case "first": default:
-				return standardResponse.data.first().embedding;
-		}
+		};
 	}
 
 	/**
@@ -300,7 +214,7 @@ class extends="BaseService"{
 		}
 
 		// Send it
-		var result = sendRequest( arguments.chatRequest, dataPacket )
+		var result = sendChatRequest( arguments.chatRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "message" ) && !result.keyExists( "text" ) ){
@@ -371,7 +285,7 @@ class extends="BaseService"{
 
 			// Send follow-up request with tool results
 			// Cohere typically needs only one follow-up; additional tool calls would require another interaction
-			result = sendRequest( arguments.chatRequest, followUpPacket );
+			result = sendChatRequest( arguments.chatRequest, followUpPacket );
 
 			// Check if Cohere is requesting MORE tool calls (multi-step reasoning)
 			if( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ){
@@ -410,6 +324,32 @@ class extends="BaseService"{
 		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
+		var requestedModel = arguments.chatRequest.getModel();
+		var emitNormalizedChunk = ( parsedChunk ) => {
+			var content = parsedChunk.text ?: ""
+			var finishReason = ""
+
+			if( parsedChunk.event_type == "stream-end" ){
+				finishReason = "stop"
+			}
+
+			userCallback( {
+				"provider": "Cohere",
+				"model": requestedModel,
+				"object": "chat.completion.chunk",
+				"choices": [
+					{
+						"index": 0,
+						"delta": {
+							"role": "assistant",
+							"content": content
+						},
+						"finish_reason": finishReason
+					}
+				],
+				"raw": parsedChunk
+			} );
+		};
 
 		// Cohere has a different message format
 		// Extract the last message as the main message
@@ -529,7 +469,7 @@ class extends="BaseService"{
 				// Try to parse and send to callback
 				try {
 					var parsedChunk = jsonDeserialize( chunk.data );
-					userCallback( parsedChunk );
+					emitNormalizedChunk( parsedChunk );
 				} catch( any e ){
 					writeLog(
 						text: "Error parsing Cohere stream chunk: #e.message# - Data: #chunk.data#",
@@ -583,5 +523,6 @@ class extends="BaseService"{
 			} )
 			.send();
 	}
+
 
 }
