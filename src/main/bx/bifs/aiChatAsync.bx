@@ -42,7 +42,8 @@ class extends="aiChat"{
 	 * <li>logResponseToConsole:boolean - Log the response to the console. The default is false</li>
 	 * <li>logRequest:boolean - Log the request into the ai.log. The default is false</li>
 	 * <li>logRequestToConsole:boolean - Log the request to the console. The default is false</li>
-	 * <li>returnFormat:string - The return format of the response. The default is "single" message. Valid formats are: "single", "all", "raw", "json", "xml"</li>
+	* <li>returnFormat:string - The return format of the response. The default is "single" message. Valid formats are: "single", "all", "raw", "json", "xml", "image"</li>
+	 * <li>images:array - Optional base64-encoded images to include in the request (OpenAI Response API mode).</li>
 	 * </ul>
 	 *
 	 * @messages The messages to pass into the required model. This depends on the provider. It can be a simple string, a struct representing a message or an array of messages or an actual AiMessage object
