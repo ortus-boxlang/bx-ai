@@ -239,4 +239,49 @@ public class OpenAITest extends BaseIntegrationTest {
 		assertThat( variables.get( "runtimeResult" ) ).isInstanceOf( String.class );
 	}
 
+	@DisplayName( "Test image generation return format" )
+	@Test
+	public void testImageReturnFormat() {
+		// This test requires a valid OpenAI API key and will invoke the Responses API.
+		// It should return a base64-encoded image string.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+			imageBase64 = aiChat( "An icon of a red apple on a white background", {}, { returnFormat: "image" } )
+			println( "Image base64 length: " & imageBase64.len() )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var imageBase64 = variables.get( "imageBase64" );
+		assertThat( imageBase64 ).isNotNull();
+		assertThat( imageBase64.toString().len() ).isGreaterThan( 0 );
+	}
+
+	@DisplayName( "Test aiImage helper and image input" )
+	@Test
+	public void testAiImageHelperAndInput() {
+		// Use aiImage() helper
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+			imageBase64 = aiImage( "A single blue circle on a white background" )
+			println( "Generated image base64 length: " & imageBase64.len() )
+
+			// Use an existing base64 image as input to the model
+			// This is a 1x1 PNG white pixel
+			base64Input = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
+			desc = aiChat( "Describe the given image", {}, { images: [ base64Input ] } )
+			println( "Image description: " & desc )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "imageBase64" ) ).isNotNull();
+		assertThat( variables.get( "imageBase64" ).toString().len() ).isGreaterThan( 0 );
+		assertThat( variables.get( "desc" ) ).isNotNull();
+	}
+
 }
