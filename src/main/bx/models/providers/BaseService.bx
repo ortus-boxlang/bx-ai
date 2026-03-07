@@ -46,6 +46,11 @@ abstract class implements="IAiService" {
 	property name = "chatURL" default = "";
 
 	/**
+	 * The responses URL of the provider API (OpenAI Response API)
+	 */
+	property name = "responsesURL" default = "";
+
+	/**
 	 * The embeddings URL of the provider API
 	 */
 	property name = "embeddingsURL" default = "";
@@ -236,6 +241,13 @@ abstract class implements="IAiService" {
 			dataPacket.tools = dataPacket.tools.map( .getSchema )
 		}
 
+		// If we are using the OpenAI Responses API (for image generation / image input), transform the packet
+		// to the newer Responses API format (input array, tool-based image generation, etc.)
+		var useResponsesApi = shouldUseResponsesApi( arguments.chatRequest, dataPacket );
+		if( useResponsesApi ){
+			dataPacket = buildResponsesApiPacket( arguments.chatRequest, dataPacket );
+		}
+
 		// Structured output support (OpenAI format)
 		if( arguments.chatRequest.isStructuredOutput() ){
 			// Clean internal metadata before sending to provider
@@ -297,6 +309,21 @@ abstract class implements="IAiService" {
 				usage: result.usage,
 				timestamp: now()
 			} );
+		}
+
+		// If we used the Responses API, handle response types accordingly (Responses API does not use choices/tool_calls)
+		if( useResponsesApi ){
+			switch( arguments.chatRequest.getReturnFormat() ){
+				case "image":
+					return extractImageFromResponses( result );
+				case "raw":
+					return result;
+				case "all":
+					return result.output ?: result;
+				case "single": default:
+					var extractedText = extractTextFromResponses( result );
+					return extractedText.len() ? extractedText : result;
+			}
 		}
 
 		// Result returns, only if we are not using tool calls
@@ -612,7 +639,151 @@ abstract class implements="IAiService" {
 	 * @return The (possibly modified) dataPacket struct
 	 */
 	private struct function preChatRequest( required AiChatRequest chatRequest, required struct dataPacket ){
+		// If we are using the OpenAI Responses API for image generation or image input, reshape the packet accordingly
+		if( shouldUseResponsesApi( arguments.chatRequest, arguments.dataPacket ) ){
+			return buildResponsesApiPacket( arguments.chatRequest, arguments.dataPacket );
+		}
 		return arguments.dataPacket;
+	}
+
+	/**
+	 * Determine if the request should be routed through the OpenAI Responses API.
+	 *
+	 * This is true for:
+	 * - returnFormat == "image" (image generation)
+	 * - explicit tools with type "image_generation"
+	 * - image inputs provided via chatRequest.images
+	 */
+	private boolean function shouldUseResponsesApi( required AiChatRequest chatRequest, required struct dataPacket ){
+		if( chatRequest.getReturnFormat() == "image" ){
+			return true;
+		}
+
+		if( chatRequest.images.len() ){
+			return true;
+		}
+
+		if( dataPacket.keyExists( "tools" ) && isArray( dataPacket.tools ) ){
+			return dataPacket.tools.any( tool -> isStruct( tool ) && tool.keyExists( "type" ) && toString( tool.type ) == "image_generation" );
+		}
+
+		return false;
+	}
+
+	/**
+	 * Build a Responses API payload from a standard Chat Completions-style packet.
+	 */
+	private struct function buildResponsesApiPacket( required AiChatRequest chatRequest, required struct dataPacket ){
+		// Ensure image generation tool is present when returnFormat is image
+		var tools = ( dataPacket.keyExists( "tools" ) && isArray( dataPacket.tools ) ) ? dataPacket.tools : [];
+		if( chatRequest.getReturnFormat() == "image" ){
+			var hasImageTool = tools.any( tool -> isStruct( tool ) && tool.keyExists( "type" ) && toString( tool.type ) == "image_generation" );
+			if( !hasImageTool ){
+				tools.append( { "type": "image_generation" } );
+			}
+		}
+
+		// Build the input array (text + image inputs)
+		var input = [];
+		var textFragments = [];
+		chatRequest.getMessages().each( msg -> {
+			if( isSimpleValue( msg ) ){
+				textFragments.append( toString( msg ) );
+			} else if( isStruct( msg ) && msg.keyExists( "content" ) ){
+				textFragments.append( toString( msg.content ) );
+			}
+		} );
+		var joinedText = textFragments.filter( v -> v.len() ).join( "\n" );
+		if( joinedText.len() ){
+			input.append( {
+				"type" : "text",
+				"text" : joinedText
+			} );
+		}
+
+		// Add any image inputs
+		if( chatRequest.images.len() ){
+			chatRequest.images.each( imageValue -> {
+				input.append( {
+					"type"      : "input_image",
+					"image_url" : toString( imageValue )
+				} );
+			} );
+		}
+
+		// Build the new packet
+		var newPacket = {
+			"model" : dataPacket.model,
+			"input" : input
+		};
+
+		// Preserve other params (excluding messages)
+		for( var key in dataPacket ){ 
+			if( key != "model" && key != "messages" && key != "input" ){
+				newPacket[ key ] = dataPacket[ key ];
+			}
+		}
+
+		// Ensure tools is updated
+		if( tools.len() ){
+			newPacket.tools = tools;
+		}
+
+		return newPacket;
+	}
+
+	/**
+	 * Extract an image base64 string from a Responses API response.
+	 */
+	private string function extractImageFromResponses( required struct result ){
+		var outputItems = result.output ?: [];
+		if( !isArray( outputItems ) ){
+			return "";
+		}
+
+		var imageItem = outputItems.find( item -> isStruct( item ) && item.keyExists( "type" ) && toString( item.type ) == "ImageGenerationCall" );
+		if( imageItem == null ){
+			imageItem = outputItems.find( item -> isStruct( item ) && item.keyExists( "type" ) && toString( item.type ) == "image_generation" );
+		}
+
+		if( imageItem == null ){
+			return "";
+		}
+
+		// Common field names for base64 payloads
+		return imageItem.image_b64 ?: imageItem.image_base64 ?: imageItem.base64 ?: "";
+	}
+
+	/**
+	 * Extract the first available text output from a Responses API response.
+	 */
+	private string function extractTextFromResponses( required struct result ){
+		var outputItems = result.output ?: [];
+		if( !isArray( outputItems ) ){
+			return "";
+		}
+
+		for( var item in outputItems ){
+			if( !isStruct( item ) ){
+				continue;
+			}
+
+			// Common text output forms
+			if( item.keyExists( "text" ) && isSimpleValue( item.text ) ){
+				return toString( item.text );
+			}
+			if( item.keyExists( "content" ) && isSimpleValue( item.content ) ){
+				return toString( item.content );
+			}
+			if( item.keyExists( "output" ) && isArray( item.output ) ){
+				var nested = item.output.first();
+				if( isStruct( nested ) && nested.keyExists( "text" ) ){
+					return toString( nested.text );
+				}
+			}
+		}
+
+		return "";
 	}
 
 	/**
@@ -725,8 +896,13 @@ abstract class implements="IAiService" {
 			println( buildRequestLog( arguments.chatRequest, arguments.dataPacket ) )
 		}
 
+		var requestUrl = getChatURL();
+		if( shouldUseResponsesApi( arguments.chatRequest, arguments.dataPacket ) ){
+			requestUrl = variables.responsesURL ?: requestUrl;
+		}
+
 		bx: http
-			url     = getChatURL()
+			url     = requestUrl
 			method  = "post"
 			result  = "chatResult"
 			charset = "utf-8"

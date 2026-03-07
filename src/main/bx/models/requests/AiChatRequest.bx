@@ -44,6 +44,11 @@ class extends="AiBaseRequest"{
 	property name="structuredOutputDefinition" type="any" default={};
 
 	/**
+	 * Optional images to send as input (base64 strings or data URIs)
+	 */
+	property name="images" type="array" default=[];
+
+	/**
 	 * Constructor
 	 *
 	 * @aiMessage The messages to use for the chat request, or empty for none
@@ -72,6 +77,17 @@ class extends="AiBaseRequest"{
 		variables.timeout = options.timeout ?: 30;
 		variables.stream = options.stream ?: false;
 		variables.maxInteractions = options.maxInteractions ?: 0;
+
+		// Optional image input support (base64 strings or data URIs)
+		var images = [];
+		if( options.keyExists( "images" ) ){
+			if( isArray( options.images ) ){
+				images = options.images;
+			} else if( isSimpleValue( options.images ) ){
+				images = [ arguments.options.images ];
+			}
+		}
+		variables.images = images;
 
 		// Multi-tenant usage tracking options
 		variables.tenantId = options.tenantId ?: "";
