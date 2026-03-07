@@ -256,7 +256,7 @@ public class OpenAITest extends BaseIntegrationTest {
 
 		var imageBase64 = variables.get( "imageBase64" );
 		assertThat( imageBase64 ).isNotNull();
-		assertThat( imageBase64.toString().len() ).isGreaterThan( 0 );
+		assertThat( imageBase64.toString().length() ).isGreaterThan( 0 );
 	}
 
 	@DisplayName( "Test aiImage helper and image input" )
@@ -280,7 +280,7 @@ public class OpenAITest extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.get( "imageBase64" ) ).isNotNull();
-		assertThat( variables.get( "imageBase64" ).toString().len() ).isGreaterThan( 0 );
+		assertThat( variables.get( "imageBase64" ).toString().length() ).isGreaterThan( 0 );
 		assertThat( variables.get( "desc" ) ).isNotNull();
 	}
 
