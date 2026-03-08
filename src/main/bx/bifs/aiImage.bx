@@ -53,7 +53,7 @@ class {
 			}
 
 			var bytes = toBinary( payload );
-			fileWriteBinary( arguments.outputPath, bytes );
+			fileWrite( arguments.outputPath, bytes );
 		}
 
 		return base64;
