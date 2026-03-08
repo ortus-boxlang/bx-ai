@@ -21,14 +21,14 @@ class {
 	/**
 	 * Generate an image and return the base64 payload.
 	 *
-	 * @prompt The prompt or message to send to the model
+	 * @messages The prompt or message to send to the model
 	 * @params Provider-specific parameters (model, temperature, etc.)
 	 * @options Request options (timeout, logging, etc.)
 	 * @outputPath Optional file path to write the decoded image bytes
 	 * @format Optional output format (jpeg, png, svg). Only used when writing to disk.
 	 */
 	function invoke(
-		required any prompt,
+		required any messages,
 		struct params = {},
 		struct options = {},
 		string outputPath = "",
@@ -39,7 +39,7 @@ class {
 		effectiveOptions.returnFormat = "image";
 
 		// Request the base64 image
-		var base64 = aiChat( arguments.prompt, arguments.params, effectiveOptions );
+		var base64 = aiChat( arguments.messages, arguments.params, effectiveOptions );
 
 		// Optionally write to disk
 		if( arguments.outputPath.len() ){
