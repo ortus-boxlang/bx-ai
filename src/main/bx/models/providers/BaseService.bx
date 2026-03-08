@@ -747,21 +747,17 @@ abstract class implements="IAiService" {
 	 */
 	private string function extractImageFromResponses( required struct result ){
 		var outputItems = result.output ?: [];
-		if( !isArray( outputItems ) ){
-			return "";
+		for( var item in outputItems ){
+			if( !isStruct( item ) ){
+				continue;
+			}
+			if(item.keyExists("type")) {
+				if(item.type == "image_generation_call") {
+					return item.result
+				}
+			}
 		}
-
-		var imageItem = outputItems.find( item -> isStruct( item ) && item.keyExists( "type" ) && toString( item.type ) == "ImageGenerationCall" );
-		if( imageItem == null ){
-			imageItem = outputItems.find( item -> isStruct( item ) && item.keyExists( "type" ) && toString( item.type ) == "image_generation" );
-		}
-
-		if( imageItem == null ){
-			return "";
-		}
-
-		// Common field names for base64 payloads
-		return imageItem.image_b64 ?: imageItem.image_base64 ?: imageItem.base64 ?: "";
+		return ""
 	}
 
 	/**
@@ -769,31 +765,19 @@ abstract class implements="IAiService" {
 	 */
 	private string function extractTextFromResponses( required struct result ){
 		var outputItems = result.output ?: [];
-		if( !isArray( outputItems ) ){
-			return "";
-		}
-
+		var finalText = ""
 		for( var item in outputItems ){
 			if( !isStruct( item ) ){
 				continue;
 			}
-
-			// Common text output forms
-			if( item.keyExists( "text" ) && isSimpleValue( item.text ) ){
-				return toString( item.text );
-			}
-			if( item.keyExists( "content" ) && isSimpleValue( item.content ) ){
-				return toString( item.content );
-			}
-			if( item.keyExists( "output" ) && isArray( item.output ) ){
-				var nested = item.output.first();
-				if( isStruct( nested ) && nested.keyExists( "text" ) ){
-					return toString( nested.text );
+			if(item.keyExists("type")) {
+				if(item.type == "message") {
+					for(var messageObject in item.content)
+					finalText &= messageObject.text
 				}
 			}
 		}
-
-		return "";
+		return finalText;
 	}
 
 	/**
