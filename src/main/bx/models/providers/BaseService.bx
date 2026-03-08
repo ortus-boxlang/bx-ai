@@ -679,8 +679,14 @@ abstract class implements="IAiService" {
 		// Ensure image generation tool is present when returnFormat is image
 		var tools = ( dataPacket.keyExists( "tools" ) && isArray( dataPacket.tools ) ) ? dataPacket.tools : [];
 		if( chatRequest.getReturnFormat() == "image" ){
-			var hasImageTool = tools.any( tool -> isStruct( tool ) && tool.keyExists( "type" ) && toString( tool.type ) == "image_generation" );
-			if( !hasImageTool ){
+			var hasImageTool = false;
+			for(var tool in tools) {
+				if(isStruct(tool) && tool.keyExists("type") && toString(tool.type) == "image_generation") {
+					hasImageTool = true;
+					break;
+				}
+			}
+			if(!hasImageTool) {
 				tools.append( { "type": "image_generation" } );
 			}
 		}
