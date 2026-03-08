@@ -274,26 +274,28 @@ abstract class implements="IAiService" {
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
-			writeLog(
-				text: result.error.toString(),
-				type: "error",
-				log : "ai"
-			)
+			if( !isNull(result.error)){
+				writeLog(
+					text: result.error.toString(),
+					type: "error",
+					log : "ai"
+				)
 
-			// Announce the error
-			BoxAnnounce( "onAIError", {
-				error: result.error,
-				errorMessage: result.error.toString(),
-				provider: this,
-				operation: "chat",
-				aiRequest: arguments.chatRequest,
-				canRetry: true
-			} );
+				// Announce the error
+				BoxAnnounce( "onAIError", {
+					error: result.error,
+					errorMessage: result.error.toString(),
+					provider: this,
+					operation: "chat",
+					aiRequest: arguments.chatRequest,
+					canRetry: true
+				} );
 
-			throw(
-				type   : "ProviderError",
-				message: result.error.toString()
-			);
+				throw(
+					type   : "ProviderError",
+					message: result.error.toString()
+				);
+			}
 		}
 
 		// Announce token usage if available
