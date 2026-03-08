@@ -685,31 +685,33 @@ abstract class implements="IAiService" {
 
 		// Build the input array (text + image inputs)
 		var input = [];
+		var message = {type: "message", role: "user", content: []}
 		var textFragments = [];
-		chatRequest.getMessages().each( msg -> {
+		for( var msg in chatRequest.getMessages() ){
 			if( isSimpleValue( msg ) ){
 				textFragments.append( toString( msg ) );
 			} else if( isStruct( msg ) && msg.keyExists( "content" ) ){
 				textFragments.append( toString( msg.content ) );
 			}
-		} );
+		}
 		var joinedText = textFragments.filter( v -> v.len() ).join( "\n" );
 		if( joinedText.len() ){
-			input.append( {
-				"type" : "text",
+			message.content.append( {
+				"type" : "input_text",
 				"text" : joinedText
 			} );
 		}
 
 		// Add any image inputs
 		if( chatRequest.images.len() ){
-			chatRequest.images.each( imageValue -> {
-				input.append( {
+			for( var imageValue in chatRequest.images ){
+				message.content.append( {
 					"type"      : "input_image",
 					"image_url" : toString( imageValue )
 				} );
-			} );
+			}
 		}
+		input.append(message)
 
 		// Build the new packet
 		var newPacket = {
