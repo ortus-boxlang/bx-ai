@@ -33,6 +33,7 @@ class {
 		struct options = {},
 		string outputPath = "",
 		string format = "png"
+		
 	) {
 		// Ensure we request image output
 		var effectiveOptions = arguments.options;
@@ -43,16 +44,7 @@ class {
 
 		// Optionally write to disk
 		if( arguments.outputPath.len() ){
-			var payload = toString( base64 );
-			// Strip data URI prefix if present
-			if( payload.startsWith( "data:" ) ){
-				var parts = payload.listToArray( "," );
-				if( parts.len() > 1 ){
-					payload = parts[ 1 ];
-				}
-			}
-
-			var bytes = toBinary( payload );
+			var bytes = toBinary( toString(base64) );
 			fileWrite( arguments.outputPath, bytes );
 		}
 
