@@ -1,0 +1,346 @@
+
+// RetryMiddleware - Automatically retry failed LLM calls and tool executions
+
+component extends="models.middleware.BaseAiMiddleware" accessors="true" {
+
+// properties
+
+ //Maximum number of retry attempts
+
+property name="maxRetries" type="numeric" default=3;
+
+// Backoff multiplier for exponential delay
+
+property name="backoffFactor" type="numeric" default=1.5;
+
+/**
+ * Array of exception types to retry on
+ *
+ * Examples:
+ * - [] (empty): Retry on ALL exceptions
+ * - ["NetworkException"]: Only retry network errors
+ * - ["TimeoutException", "RateLimitException"]: Only retry these types
+ *
+ * Exception types are matched case-insensitively and can be partial matches
+ */
+property name="retryOn" type="array" default=[];
+
+
+ // Whether to retry LLM (AI model) calls
+
+property name="retryLLM" type="boolean" default=true;
+
+
+ // Whether to retry tool executions
+
+property name="retryTools" type="boolean" default=true;
+
+
+
+// constructor
+
+
+/**
+ * Initialize RetryMiddleware
+ *
+ * @maxRetries Maximum retry attempts (default: 3)
+ * @backoffFactor Exponential backoff multiplier (default: 1.5)
+ * @retryOn Exception types to retry (empty = retry all)
+ * @retryLLM Enable LLM call retries (default: true)
+ * @retryTools Enable tool call retries (default: true)
+ */
+function init(
+        numeric maxRetries = 3,
+        numeric backoffFactor = 1.5,
+        array retryOn = [],
+        boolean retryLLM = true,
+        boolean retryTools = true
+) {
+    // Validate maxRetries
+    if ( arguments.maxRetries < 0 ) {
+        throw(
+                type = "InvalidArgumentException",
+        message = "maxRetries must be >= 0, got: #arguments.maxRetries#"
+            );
+    }
+
+    // Validate backoffFactor
+    if ( arguments.backoffFactor < 1 ) {
+        throw(
+                type = "InvalidArgumentException",
+        message = "backoffFactor must be >= 1, got: #arguments.backoffFactor#"
+            );
+    }
+
+    variables.maxRetries = arguments.maxRetries;
+    variables.backoffFactor = arguments.backoffFactor;
+    variables.retryOn = arguments.retryOn;
+    variables.retryLLM = arguments.retryLLM;
+    variables.retryTools = arguments.retryTools;
+
+    return this;
+}
+
+
+//wrap hook implementations
+
+/**
+ * Wrap LLM calls with retry logic
+ *
+ * Intercepts LLM API calls and retries on failure with exponential backoff.
+ * Only retries if retryLLM is enabled and exception type matches retryOn filter.
+ *
+ * @context LLM call context (model, chatRequest, messages)
+ * @handler Function that executes the actual LLM call
+ * @return LLM response (or rethrows if all retries fail)
+ */
+function wrapLLMCall( required struct context, required function handler ) {
+    // If LLM retry disabled, just call handler
+    if ( !variables.retryLLM ) {
+        return handler();
+    }
+
+    return executeWithRetry(
+            handler: handler,
+            operationName: "LLM call",
+            operationType: "llm",
+            context: context
+        );
+}
+
+
+/**
+ * Wrap tool calls with retry logic
+ *
+ * Intercepts tool executions and retries on failure with exponential backoff.
+ * Only retries if retryTools is enabled and exception type matches retryOn filter.
+ *
+ * @context Tool call context (tool, toolName, toolArgs, toolCallId)
+ * @handler Function that executes the actual tool
+ * @return Tool result (or rethrows if all retries fail)
+ */
+function wrapToolCall( required struct context, required function handler ) {
+    // If tool retry disabled, just call handler
+    if ( !variables.retryTools ) {
+        return handler();
+    }
+
+    var operationName = "Tool '#context.toolName#'";
+
+    return executeWithRetry(
+            handler: handler,
+            operationName: operationName,
+            operationType: "tool",
+            context: context
+        );
+}
+
+
+// private helper methods
+
+/**
+ * Core retry logic with exponential backoff
+ *
+ * Attempts to execute handler, retrying on failure up to maxRetries times.
+ * Implements exponential backoff between attempts.
+ *
+ * @handler Function to execute
+ * @operationName Human-readable operation name for logging
+ * @operationType Type of operation ("llm" or "tool")
+ * @context Operation context (for logging)
+ * @return Handler result (or rethrows final exception)
+ */
+private function executeWithRetry(
+        required function handler,
+        required string operationName,
+        required string operationType,
+        required struct context
+) {
+    var attemptNumber = 0;
+    var lastException = "";
+
+    // Loop: initial attempt + retries
+    while ( attemptNumber <= variables.maxRetries ) {
+        try {
+            // Attempt execution
+            if ( attemptNumber > 0 ) {
+                logRetryAttempt(
+                        arguments.operationName,
+                        attemptNumber,
+                        lastException
+                );
+            }
+
+            var result = arguments.handler();
+
+            // Success, Log if this was a retry
+            if ( attemptNumber > 0 ) {
+                logRetrySuccess( arguments.operationName, attemptNumber );
+            }
+
+            return result;
+
+        } catch ( any e ) {
+            lastException = e;
+            attemptNumber++;
+
+            // Check if we should retry this exception
+            if ( !shouldRetryException( e ) ) {
+                // Exception type not in retry list, don't retry
+                logNonRetryableException( arguments.operationName, e );
+                throw( e );
+            }
+
+            // Check if we've exhausted retries
+            if ( attemptNumber > variables.maxRetries ) {
+                // Out of retries, give up
+                logRetryExhausted( arguments.operationName, attemptNumber - 1, e );
+                throw( e );
+            }
+
+            // Calculate backoff wait time
+            var waitSeconds = variables.backoffFactor ^ attemptNumber;
+
+            logRetryWait( arguments.operationName, attemptNumber, waitSeconds, e );
+
+            // Wait before retry (convert seconds to milliseconds)
+            sleep( waitSeconds * 1000 );
+        }
+    }
+
+    // Should never reach here, but just in case
+    throw( lastException );
+}
+
+
+/**
+ * Check if exception type should be retried
+ *
+ * If retryOn is empty, retry all exceptions.
+ * Otherwise, check if exception type matches any in retryOn array.
+ *
+ * @exception The exception object
+ * @return True if should retry, false otherwise
+ */
+private function shouldRetryException( required any exception ) {
+    // Empty retryOn array = retry everything
+    if ( arrayLen( variables.retryOn ) == 0 ) {
+        return true;
+    }
+
+    // Get exception type
+    var exceptionType = structKeyExists( arguments.exception, "type" ) ?
+            arguments.exception.type :
+            "Unknown";
+
+    // Check if exception type matches any in retryOn array
+    for ( var retryType in variables.retryOn ) {
+        // Case-insensitive partial match
+        if ( findNoCase( retryType, exceptionType ) > 0 ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+/**
+ * Calculate total time spent on retries
+ *
+ * @attempts Number of retry attempts made
+ * @return Total wait time in seconds
+ */
+private function calculateTotalWaitTime( required numeric attempts ) {
+    var total = 0;
+
+    for ( var i = 1; i <= arguments.attempts; i++ ) {
+        total += variables.backoffFactor ^ i;
+    }
+
+    return total;
+}
+
+
+
+/**
+ * Log retry attempt
+ */
+private function logRetryAttempt(
+        required string operation,
+        required numeric attempt,
+        required any exception
+) {
+    writeLog(
+            text: "[RetryMiddleware] Retry attempt ##arguments.attempt# for #arguments.operation# after error: #arguments.exception.message#",
+            type: "warning",
+            file: "ai-retry"
+        );
+}
+
+
+/**
+ * Log retry success
+ */
+private function logRetrySuccess(
+        required string operation,
+        required numeric attempts
+) {
+    writeLog(
+            text: "[RetryMiddleware] #arguments.operation# succeeded after #arguments.attempts# retry attempt(s)",
+            type: "information",
+            file: "ai-retry"
+        );
+}
+
+
+/**
+ * Log retry exhausted
+ */
+private function logRetryExhausted(
+        required string operation,
+        required numeric attempts,
+        required any exception
+) {
+    var totalWait = calculateTotalWaitTime( arguments.attempts );
+
+    writeLog(
+            text: "[RetryMiddleware] #arguments.operation# failed after #arguments.attempts# retry attempt(s) and #numberFormat(totalWait, '0.00')#s total wait. Final error: #arguments.exception.message#",
+            type: "error",
+            file: "ai-retry"
+        );
+}
+
+
+/**
+ * Log non-retryable exception
+ */
+private function logNonRetryableException(
+        required string operation,
+        required any exception
+) {
+    writeLog(
+            text: "[RetryMiddleware] #arguments.operation# failed with non-retryable exception: #arguments.exception.type# - #arguments.exception.message#",
+            type: "error",
+            file: "ai-retry"
+        );
+}
+
+
+/**
+ * Log wait before retry
+ */
+private function logRetryWait(
+        required string operation,
+        required numeric attempt,
+        required numeric waitSeconds,
+        required any exception
+) {
+    writeLog(
+            text: "[RetryMiddleware] #arguments.operation# attempt ##arguments.attempt# failed: #arguments.exception.message#. Waiting #numberFormat(arguments.waitSeconds, '0.00')#s before retry...",
+            type: "warning",
+            file: "ai-retry"
+        );
+}
+
+}
