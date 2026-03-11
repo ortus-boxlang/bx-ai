@@ -45,7 +45,7 @@ class {
 		// Optionally write to disk
 		if( arguments.outputPath.len() ){
 			var bytes = toBinary( toString(base64) );
-			fileWrite( arguments.outputPath, bytes );
+			fileWrite( expandPath( arguments.outputPath ), bytes );
 		}
 
 		return base64;
