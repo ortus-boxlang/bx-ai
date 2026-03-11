@@ -14,6 +14,11 @@
  * ----------------------------------------------------------------------------------
  */
 class extends="BaseService"{
+/**
+	 * The responses URL of the provider API (OpenAI Response API)
+	 */
+	property name = "responsesURL" default = "";
+
 
 	/**
 	 * Static defaults
@@ -67,24 +72,36 @@ class extends="BaseService"{
 		return super.invokeStream( arguments.chatRequest, arguments.callback )
 	}
 
+	/**
+	 * Override to set default embedding model if not specified
+	 */
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		// Set default embedding model if not specified
+		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
+		return super.embeddings( embeddingRequest )
+	}
+
+	/**
+	 * Override since OpenAI does support image generation
+	 */
 	@override
 	private boolean function supportsImageGeneration(){
 		return true;
 	}
 
+	/**
+	 * Override since OpenAI does support image input
+	 */
 	@override
 	private boolean function supportsImageInput(){
 		return true;
 	}
 
-	/**
-	 * OpenAI uses the Responses API for image generation, image input, and image_generation tools.
-	 * This override enables that routing exclusively for OpenAI-compatible providers.
-	 *
-	 * @chatRequest The AI request being processed
-	 * @dataPacket  The assembled data packet
+	/*	 *
+	 * OpenAI uses the Responses API for image generation, image input, and image_generation tools
+	 * This enables that routing
 	 */
-	@override
 	private boolean function shouldUseResponsesApi( required AiChatRequest chatRequest, required struct dataPacket ){
 		if( arguments.chatRequest.getReturnFormat() == "image" ){
 			return true;
@@ -101,14 +118,145 @@ class extends="BaseService"{
 		return false;
 	}
 
-	/**
-	 * Override to set default embedding model if not specified
+/**
+	 * Override to check if Response API should be utilized
 	 */
 	@override
-	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
-		// Set default embedding model if not specified
-		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
-		return super.embeddings( embeddingRequest )
+	private struct function preChatRequest( required AiChatRequest chatRequest, required struct dataPacket ){
+		// If we are using the OpenAI Responses API for image generation or image input, reshape the packet accordingly
+		if( shouldUseResponsesApi( arguments.chatRequest, arguments.dataPacket ) ){
+			return buildResponsesApiPacket( arguments.chatRequest, arguments.dataPacket );
+		}
+		return arguments.dataPacket;
 	}
 
+	/**
+	 * Overrides chatURL routing when using Response API
+	 	 */
+	@override 
+	private function sendChatRequest( required AiChatRequest chatRequest, required struct dataPacket ){
+		if(!shouldUseResponsesApi(arguments.chatRequest, arguments.dataPacket)){
+			super.sendChatRequest(arguments.chatRequest, arguments.dataPacket)
+		}
+		else {
+			// Announce the request
+			BoxAnnounce(
+				"onAIChatRequest",
+				{
+					"dataPacket" : arguments.dataPacket,
+					"chatRequest": arguments.chatRequest,
+					"provider"   : this
+				}
+			);
+
+			// Log the request to the logs if enabled
+			if( arguments.chatRequest.getLogRequest() ){
+				writeLog(
+					text: buildRequestLog( arguments.chatRequest, arguments.dataPacket ),
+					type: "info",
+					log : "ai"
+				)
+			}
+
+			// Log the request to the console if enabled
+			if( arguments.chatRequest.getLogRequestToConsole() ){
+				println( buildRequestLog( arguments.chatRequest, arguments.dataPacket ) )
+			}
+
+			var requestUrl = variables.responsesURL ?: requestUrl;
+
+			bx: http
+				url     = requestUrl
+				method  = "post"
+				result  = "chatResult"
+				charset = "utf-8"
+				timeout = arguments.chatRequest.getTimeout()
+			{
+				bx:httpParam type="header" name="content-type" value="application/json";
+
+				// Auth Header ONLY if the provider requires it
+				// This is the default for OpenAI
+				// If the provider does not require it, set it to false
+				if( arguments.chatRequest.getSendAuthHeader() ){
+					bx:httpParam type="header" name="Authorization" value="Bearer #arguments.chatRequest.getApiKey()#";
+				}
+
+				// Custom Headers
+				for( var thisHeader in arguments.chatRequest.getHeaders() ){
+					bx:httpParam
+						type="header"
+						name="#thisHeader#"
+						value="#arguments.chatRequest.getHeaders()[ thisHeader ]#";
+				}
+
+				// Body Packet
+				bx:httpParam type="body" value=jsonSerialize( arguments.dataPacket );
+			}
+
+			// Check for rate limiting (429 status code)
+			if( chatResult.statusCode == "429" || chatResult.statusCode == 429 ){
+				var errorData = {};
+				try {
+					errorData = jsonDeserialize( chatResult.filecontent );
+				} catch( any e ){
+					errorData = { message: chatResult.filecontent };
+				}
+
+				// Announce rate limit hit
+				BoxAnnounce( "onAIRateLimitHit", {
+					provider: this,
+					operation: "chat",
+					statusCode: chatResult.statusCode,
+					errorData: errorData,
+					chatRequest: arguments.chatRequest,
+					retryAfter: chatResult.responseheader.keyExists( "retry-after" ) ? chatResult.responseheader[ "retry-after" ] : ""
+				} );
+			}
+
+			// Final logging if the provider supports it
+			if( arguments.chatRequest.getLogResponse() ){
+				writeLog(
+					text: buildResponseLog( arguments.chatRequest, chatResult ),
+					type: "info",
+					log : "ai"
+				)
+			}
+
+			// Log the response to the console if enabled
+			if( arguments.chatRequest.getLogResponseToConsole() ){
+				println( buildResponseLog( arguments.chatRequest, chatResult ) )
+			}
+
+			// Try to deserialize the response
+			try{
+				var iData = {
+					"chatRequest" 	: arguments.chatRequest,
+					"response" 		: jsonDeserialize( chatResult.filecontent ),
+					"rawResponse"	: chatResult,
+					"provider" 		: this
+				}
+			}
+			catch( Any e ){
+				// Announce the error
+				BoxAnnounce( "onAIError", {
+					error: e,
+					errorMessage: "Error deserializing response: #chatResult.filecontent#",
+					provider: this,
+					operation: "sendChatRequest",
+					aiRequest: arguments.chatRequest,
+					canRetry: true
+				} );
+
+				throw(
+					type   : "JsonDeserializationError",
+					message: "Error deserializing response from provider: #e.message & e.detail#",
+					detail: "Response: #chatResult.filecontent#"
+				);
+			}
+
+			BoxAnnounce( "onAIChatResponse", iData );
+
+			return iData.response;
+		}
+	}
 }

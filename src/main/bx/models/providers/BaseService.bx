@@ -46,11 +46,6 @@ abstract class implements="IAiService" {
 	property name = "chatURL" default = "";
 
 	/**
-	 * The responses URL of the provider API (OpenAI Response API)
-	 */
-	property name = "responsesURL" default = "";
-
-	/**
 	 * The embeddings URL of the provider API
 	 */
 	property name = "embeddingsURL" default = "";
@@ -322,8 +317,10 @@ abstract class implements="IAiService" {
 			} );
 		}
 
-		// If we used the Responses API, handle response types accordingly (Responses API does not use choices/tool_calls)
-		if( useResponsesApi ){
+		// For OpenAI, if image input or output is used, the Response API is utilized and is parsed here.
+		if( arguments.chatRequest.getReturnFormat() == "image" ||
+		 arguments.chatRequest.images.len() ||
+		(arguments.dataPacket.keyExists( "tools" ) && isArray( arguments.dataPacket.tools) )){
 			switch( arguments.chatRequest.getReturnFormat() ){
 				case "image":
 					return extractImageFromResponses( result );
@@ -650,22 +647,7 @@ abstract class implements="IAiService" {
 	 * @return The (possibly modified) dataPacket struct
 	 */
 	private struct function preChatRequest( required AiChatRequest chatRequest, required struct dataPacket ){
-		// If we are using the OpenAI Responses API for image generation or image input, reshape the packet accordingly
-		if( shouldUseResponsesApi( arguments.chatRequest, arguments.dataPacket ) ){
-			return buildResponsesApiPacket( arguments.chatRequest, arguments.dataPacket );
-		}
 		return arguments.dataPacket;
-	}
-
-	/**
-	 * Determine if the request should be routed through the OpenAI Responses API.
-	 *
-	 * Returns false by default. Override in OpenAI-compatible providers only.
-	 * Non-OpenAI providers (Claude, Gemini, etc.) must NOT route through the
-	 * Responses API regardless of returnFormat or images options.
-	 */
-	private boolean function shouldUseResponsesApi(){
-		return false;
 	}
 
 	/**
@@ -903,9 +885,6 @@ abstract class implements="IAiService" {
 		}
 
 		var requestUrl = getChatURL();
-		if( shouldUseResponsesApi( arguments.chatRequest, arguments.dataPacket ) ){
-			requestUrl = variables.responsesURL ?: requestUrl;
-		}
 
 		bx: http
 			url     = requestUrl
