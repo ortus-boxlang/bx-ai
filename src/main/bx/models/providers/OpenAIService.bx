@@ -152,4 +152,67 @@ class extends="BaseService"{
 		variables.chatURL = originalChatUrl;
 		return response;
 	}
+
+	/**
+	 * Build a Responses API payload from a standard Chat Completions-style packet.
+	 */
+	private struct function buildResponsesApiPacket( required AiChatRequest chatRequest, required struct dataPacket ){
+		// Ensure image generation tool is present when returnFormat is image
+		var tools = (dataPacket.keyExists( "tools" )) ? dataPacket.tools : [];
+		if( chatRequest.getReturnFormat() == "image" && isArray( tools ) ){
+			if(!imageToolExists(dataPacket)) {
+				tools.append( { "type": "image_generation" } );
+			}
+		}
+
+		// Build the input array (text + image inputs)
+		var input = [];
+		var message = {type: "message", role: "user", content: []}
+		var textFragments = [];
+		for( var msg in chatRequest.getMessages() ){
+			if( isSimpleValue( msg ) ){
+				textFragments.append( toString( msg ) );
+			} else if( isStruct( msg ) && msg.keyExists( "content" ) ){
+				textFragments.append( toString( msg.content ) );
+			}
+		}
+		var joinedText = textFragments.filter( v -> v.len() ).join( "\n" );
+		if( joinedText.len() ){
+			message.content.append( {
+				"type" : "input_text",
+				"text" : joinedText
+			} );
+		}
+
+		// Add any image inputs
+		if( chatRequest.images.len() ){
+			for( var imageValue in chatRequest.images ){
+				message.content.append( {
+					"type"      : "input_image",
+					"image_url" : toString( imageValue )
+				} );
+			}
+		}
+		input.append(message)
+
+		// Build the new packet
+		var newPacket = {
+			"model" : dataPacket.model,
+			"input" : input
+		};
+
+		// Preserve other params (excluding messages)
+		for( var key in dataPacket ){ 
+			if( key != "model" && key != "messages" && key != "input" ){
+				newPacket[ key ] = dataPacket[ key ];
+			}
+		}
+
+		// Ensure tools is updated
+		if( tools.len() ){
+			newPacket.tools = tools;
+		}
+
+		return newPacket;
+	}
 }

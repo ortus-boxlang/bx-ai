@@ -247,7 +247,7 @@ public class OpenAITest extends BaseIntegrationTest {
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
-			imageBase64 = aiChat( "An icon of a red apple on a white background", {}, { returnFormat: "image" } )
+			imageBase64 = aiChat( "An icon of a red apple on a white background", {}, { returnFormat: "image", timeout:300 } )
 			println( "Image base64 length: " & imageBase64.len() )
 			""",
 			context
@@ -266,13 +266,13 @@ public class OpenAITest extends BaseIntegrationTest {
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
-			imageBase64 = aiImage( "A single blue circle on a white background" )
+			imageBase64 = aiImage( "A single blue circle on a white background", {}, {timeout:300} )
 			println( "Generated image base64 length: " & imageBase64.len() )
 
 			// Use an existing base64 image as input to the model
 			// This is a 1x1 PNG white pixel
 			base64Input = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY/j///9/AAn7A/0FQ0XKAAAAAElFTkSuQmCC"
-			desc = aiChat( "Describe the given image", {}, { images: [ base64Input ] } )
+			desc = aiChat( "Describe the given image", {}, { images: [ base64Input ], timeout:300 } )
 			println( "Image description: " & desc )
 			""",
 			context
