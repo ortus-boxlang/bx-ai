@@ -320,7 +320,7 @@ abstract class implements="IAiService" {
 		// For OpenAI, if image input or output is used, the Response API is utilized and is parsed here.
 		if( arguments.chatRequest.getReturnFormat() == "image" ||
 		 arguments.chatRequest.images.len() ||
-		(arguments.dataPacket.keyExists( "tools" ) && isArray( arguments.dataPacket.tools) )){
+		(dataPacket.keyExists( "tools" ) && isArray(dataPacket.tools) )){
 			switch( arguments.chatRequest.getReturnFormat() ){
 				case "image":
 					return extractImageFromResponses( result );

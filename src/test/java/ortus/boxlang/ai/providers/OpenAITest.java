@@ -271,7 +271,7 @@ public class OpenAITest extends BaseIntegrationTest {
 
 			// Use an existing base64 image as input to the model
 			// This is a 1x1 PNG white pixel
-			base64Input = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
+			base64Input = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY/j///9/AAn7A/0FQ0XKAAAAAElFTkSuQmCC"
 			desc = aiChat( "Describe the given image", {}, { images: [ base64Input ] } )
 			println( "Image description: " & desc )
 			""",

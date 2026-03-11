@@ -111,7 +111,13 @@ class extends="BaseService"{
 		}
 
 		if( arguments.dataPacket.keyExists( "tools" ) && isArray( arguments.dataPacket.tools ) ){
-			return arguments.dataPacket.tools.any( tool -> isStruct( tool ) && tool.keyExists( "type" ) && toString( tool.type ) == "image_generation" );
+			for(tool in arguments.dataPacket.tools) {
+				if(tool.keyExists("type")) {
+					if (toString(tool.type) == "image_generation") {
+						return true;
+					}
+				}
+			}
 		}
 
 		return false;
