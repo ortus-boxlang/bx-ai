@@ -25,14 +25,12 @@ class {
 	 * @params Provider-specific parameters (model, temperature, etc.)
 	 * @options Request options (timeout, logging, etc.)
 	 * @outputPath Optional file path to write the decoded image bytes
-	 * @format Optional output format (jpeg, png, svg). Only used when writing to disk.
 	 */
 	function invoke(
 		required any messages,
 		struct params = {},
 		struct options = {},
 		string outputPath = "",
-		string format = "png"
 		
 	) {
 		// Ensure we request image output
