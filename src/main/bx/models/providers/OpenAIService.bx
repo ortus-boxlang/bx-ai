@@ -67,6 +67,40 @@ class extends="BaseService"{
 		return super.invokeStream( arguments.chatRequest, arguments.callback )
 	}
 
+	@override
+	private boolean function supportsImageGeneration(){
+		return true;
+	}
+
+	@override
+	private boolean function supportsImageInput(){
+		return true;
+	}
+
+	/**
+	 * OpenAI uses the Responses API for image generation, image input, and image_generation tools.
+	 * This override enables that routing exclusively for OpenAI-compatible providers.
+	 *
+	 * @chatRequest The AI request being processed
+	 * @dataPacket  The assembled data packet
+	 */
+	@override
+	private boolean function shouldUseResponsesApi( required AiChatRequest chatRequest, required struct dataPacket ){
+		if( arguments.chatRequest.getReturnFormat() == "image" ){
+			return true;
+		}
+
+		if( arguments.chatRequest.images.len() ){
+			return true;
+		}
+
+		if( arguments.dataPacket.keyExists( "tools" ) && isArray( arguments.dataPacket.tools ) ){
+			return arguments.dataPacket.tools.any( tool -> isStruct( tool ) && tool.keyExists( "type" ) && toString( tool.type ) == "image_generation" );
+		}
+
+		return false;
+	}
+
 	/**
 	 * Override to set default embedding model if not specified
 	 */

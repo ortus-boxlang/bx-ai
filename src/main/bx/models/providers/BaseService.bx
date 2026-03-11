@@ -179,6 +179,22 @@ abstract class implements="IAiService" {
 	 * @return The response from the provider according to the return format in the AI request
 	 */
 	function invoke( required AiChatRequest chatRequest ){
+		// Guard: image generation is provider-specific — fail fast with a clear message
+		if( arguments.chatRequest.getReturnFormat() == "image" && !supportsImageGeneration() ){
+			throw(
+				type   : "UnsupportedFeature",
+				message: "The '#variables.name#' provider does not support image generation (returnFormat=""image""). Use the OpenAI provider instead."
+			);
+		}
+
+		// Guard: image input is provider-specific — fail fast with a clear message
+		if( arguments.chatRequest.images.len() && !supportsImageInput() ){
+			throw(
+				type   : "UnsupportedFeature",
+				message: "The '#variables.name#' provider does not support image input (options.images). Use the OpenAI provider instead."
+			);
+		}
+
 		// Model Selection if not set, use the default in the service, which should always be set
 		chatRequest
 			.setModelIfEmpty( variables.params.model ?: "" )
@@ -651,24 +667,27 @@ abstract class implements="IAiService" {
 	/**
 	 * Determine if the request should be routed through the OpenAI Responses API.
 	 *
-	 * This is true for:
-	 * - returnFormat == "image" (image generation)
-	 * - explicit tools with type "image_generation"
-	 * - image inputs provided via chatRequest.images
+	 * Returns false by default. Override in OpenAI-compatible providers only.
+	 * Non-OpenAI providers (Claude, Gemini, etc.) must NOT route through the
+	 * Responses API regardless of returnFormat or images options.
 	 */
-	private boolean function shouldUseResponsesApi( required AiChatRequest chatRequest, required struct dataPacket ){
-		if( chatRequest.getReturnFormat() == "image" ){
-			return true;
-		}
+	private boolean function shouldUseResponsesApi(){
+		return false;
+	}
 
-		if( chatRequest.images.len() ){
-			return true;
-		}
+	/**
+	 * Whether this provider supports image generation (returnFormat="image").
+	 * Returns false by default. Override to return true in providers that support it.
+	 */
+	private boolean function supportsImageGeneration(){
+		return false;
+	}
 
-		if( dataPacket.keyExists( "tools" ) && isArray( dataPacket.tools ) ){
-			return dataPacket.tools.any( tool -> isStruct( tool ) && tool.keyExists( "type" ) && toString( tool.type ) == "image_generation" );
-		}
-
+	/**
+	 * Whether this provider supports image input (options.images).
+	 * Returns false by default. Override to return true in providers that support it.
+	 */
+	private boolean function supportsImageInput(){
 		return false;
 	}
 
