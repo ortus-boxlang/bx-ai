@@ -257,13 +257,6 @@ abstract class implements="IAiService" {
 			dataPacket.tools = dataPacket.tools.map( .getSchema )
 		}
 
-		// If we are using the OpenAI Responses API (for image generation / image input), transform the packet
-		// to the newer Responses API format (input array, tool-based image generation, etc.)
-		var useResponsesApi = shouldUseResponsesApi( arguments.chatRequest, dataPacket );
-		if( useResponsesApi ){
-			dataPacket = buildResponsesApiPacket( arguments.chatRequest, dataPacket );
-		}
-
 		// Structured output support (OpenAI format)
 		if( arguments.chatRequest.isStructuredOutput() ){
 			// Clean internal metadata before sending to provider
