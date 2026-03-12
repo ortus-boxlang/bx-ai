@@ -1,1 +1,136 @@
+/**
+ * HumanInTheLoopMiddleware - Production HITL for safe AI agents - PHASE 5 COMPLETE
+ * Pauses execution for human approval/edit/rejection before sensitive tool calls
+ * Works with Phase 4 checkpointing for seamless resume workflows
+ */
+component extends="models.middleware.BaseAiMiddleware" accessors="true" {
 
+    /**
+     * Suspension mode
+     * - "always": Suspend ALL tool calls
+     * - "dangerous": Only dangerous tools (delete, exec, rm, etc.)
+     * - "never": Never suspend (disabled)
+     * - "regex": Custom regex patterns
+     */
+    property name="mode" type="string" default="dangerous";
+
+    /**
+     * List of dangerous tool names (used in "dangerous" mode)
+     */
+    property name="dangerousTools" type="array" default=[
+        "delete","remove","rm","drop","truncate","exec","shell","bash","cmd",
+        "write","save","create","send_email","transfer","withdraw","purchase"
+    ];
+
+    /**
+     * Custom regex patterns for "regex" mode
+     */
+    property name="regexPatterns" type="array" default=[];
+
+    /**
+     * Custom prompt for human reviewer
+     */
+    property name="reviewPrompt" type="string" default="Review this tool call:";
+
+    /**
+     * Whether to include full tool args in suspension data
+     */
+    property name="includeArgs" type="boolean" default=true;
+
+    /**
+     * Initialize HITL middleware
+     */
+    function init(
+        string mode = "dangerous",
+        array dangerousTools = [],
+        array regexPatterns = [],
+        string reviewPrompt = "",
+        boolean includeArgs = true
+    ) {
+        variables.mode = arguments.mode;
+        variables.dangerousTools = len( arguments.dangerousTools ) 
+            ? arguments.dangerousTools 
+            : variables.dangerousTools;
+        variables.regexPatterns = arguments.regexPatterns;
+        variables.reviewPrompt = len( arguments.reviewPrompt ) 
+            ? arguments.reviewPrompt 
+            : variables.reviewPrompt;
+        variables.includeArgs = arguments.includeArgs;
+
+        log( "HumanInTheLoopMiddleware: mode=#variables.mode#" );
+        return this;
+    }
+
+    /**
+     * MAIN HOOK: Intercept tool calls for human review
+     */
+    function beforeToolCall( required struct context ) {
+        var toolName = context.toolName ?: "";
+        var shouldSuspend = false;
+
+        // Determine if this tool call needs human review
+        switch( variables.mode ) {
+            case "always":
+                shouldSuspend = true;
+                break;
+                
+            case "dangerous":
+                shouldSuspend = arrayContainsNoCase( variables.dangerousTools, toolName );
+                break;
+                
+            case "regex":
+                shouldSuspend = variables.regexPatterns.any( pattern => 
+                    reFindNoCase( pattern, toolName )
+                );
+                break;
+                
+            case "never":
+                return AiMiddlewareResult.continue();
+        }
+
+        if ( !shouldSuspend ) {
+            return AiMiddlewareResult.continue();
+        }
+
+        // 🔥 BUILD SUSPENSION PAYLOAD
+        var suspendData = {
+            "toolName": toolName,
+            "toolCallId": context.toolCallId ?: "",
+            "toolArgs": variables.includeArgs ? ( context.toolArgs ?: {} ) : {},
+            "timestamp": now(),
+            "reviewPrompt": variables.reviewPrompt
+        };
+
+        var reason = "Human review required for tool '#toolName#'";
+        
+        log( "⏸️ HITL SUSPENSION: #toolName# | Args: #serializeJSON(suspendData.toolArgs).left(100)#..." );
+
+        // 🔥 PHASE 4 INTEGRATION: Return structured suspension
+        return AiMiddlewareResult.suspend(
+            data = suspendData,
+            reason = reason
+        );
+    }
+
+    /**
+     * Log suspension events for observability
+     */
+    function afterAgentRun( required struct context ) {
+        if ( structKeyExists( context, "suspensions" ) && arrayLen( context.suspensions ) ) {
+            log( "Agent run ended with #arrayLen(context.suspensions)# suspensions" );
+        }
+        return AiMiddlewareResult.continue();
+    }
+
+    /**
+     * Private logging utility
+     */
+    private function log( required string message ) {
+        writeLog(
+            text="[bx-ai][HITL] #arguments.message#",
+            type="warning",
+            file="ai"
+        );
+    }
+
+}
