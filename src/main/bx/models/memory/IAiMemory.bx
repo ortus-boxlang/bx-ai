@@ -225,25 +225,54 @@ interface {
     /**
      * Get summary of memory instance
      *
-     * @return Struct with memory information
+     * @return Struct with memory informationf
      */
     struct function getSummary();
 
-	/**
-	 * ------------------------------------------------------------------------------
-	 * IMPORT/EXPORT METHODS
-	 * ------------------------------------------------------------------------------
-	 */
+			/**
+        	 * ------------------------------------------------------------------------------
+        	 * IMPORT/EXPORT METHODS
+        	 * ------------------------------------------------------------------------------
+        	 */
 
+        	IAiMemory function saveState( required string stateName, struct state );
 
+        	struct function loadState( required string stateName );
 
-	/**
-     * Export memory to a serializable format
-     *
-     * @return Struct containing all memory data
-     */
-    struct function export();
+        	IAiMemory function clearState( required string stateName );
 
+        	/**
+             * Export memory to a serializable format
+             *
+             * @return Struct containing all memory data
+             */
+            struct function export();
+
+        	/**
+             * Import memory from exported format
+             *
+             * @data The exported memory data
+             *
+             * @return IAiMemory for chaining
+             */
+            IAiMemory function import( required struct data );
+
+        	/**
+        	 * Create a deep copy of this memory instance
+        	 *
+        	 * @return A new IAiMemory instance with the same data
+        	 */
+        	IAiMemory function clone();
+
+        	/**
+        	 * Merge messages from another memory instance into this one
+        	 *
+        	 * @otherMemory The memory instance to merge from
+        	 * @skipDuplicates Whether to skip duplicate messages (default: false)
+        	 *
+        	 * @return IAiMemory for chaining
+        	 */
+        	IAiMemory function merge( required IAiMemory otherMemory, boolean skipDuplicates = false );
 	/**
      * Import memory from exported format
      *
