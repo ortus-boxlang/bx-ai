@@ -1,5 +1,5 @@
 /**
- * LoggingMiddleware - Logs all agent lifecycle events - PHASE 5 COMPLETE
+ * LoggingMiddleware - Logs all agent lifecycle events
  */
 component extends="models.middleware.BaseAiMiddleware" accessors="true" {
 
