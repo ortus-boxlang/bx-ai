@@ -1,7 +1,3 @@
-Complete AiMiddlewareResult.bx - Phase 7 Streaming Support ✅
-REPLACE your current file with this Phase 7 complete version:
-
-text
 /**
  * AiMiddlewareResult - PHASE 7 COMPLETE: Streaming + Terminal States
  * Standardized middleware responses with full streaming suspension support
