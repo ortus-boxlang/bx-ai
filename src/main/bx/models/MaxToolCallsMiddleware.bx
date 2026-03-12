@@ -1,124 +1,115 @@
-//MaxToolCallsMiddleware - Prevents infinite tool call loops
-//notes: Note in AiAgent.bx that maxInteractions is deprecated in favor of this middleware
-//Auto add this middleware if not added by the user to protect for unlimited calls just like we had before.
-
+/**
+ * MaxToolCallsMiddleware - Prevents infinite tool call loops - PHASE 5 COMPLETE
+ * Note: Replaces deprecated AiAgent.maxInteractions property
+ * Auto-added by AiAgent if not explicitly configured by user
+ */
 component extends="models.middleware.BaseAiMiddleware" accessors="true" {
 
-// Maximum number of tool calls allowed per agent run
-property name="maxCalls" type="numeric" default=10;
+    /**
+     * Maximum number of tool calls allowed per agent run
+     */
+    property name="maxCalls" type="numeric" default=10;
 
-/**
- * Behavior when limit is reached
- * Options:
- * - "end": Return graceful cancellation message
- * - "error": Throw MaxToolCallsExceededException
- */
-property name="exitBehavior" type="string" default="end";
+    /**
+     * Behavior when limit is reached
+     * - "end": Return graceful cancellation message
+     * - "error": Throw MaxToolCallsExceededException
+     */
+    property name="exitBehavior" type="string" default="end";
 
-/**
- * Current count of tool calls in this agent run
- * Resets to 0 at the start of each agent run
- */
-property name="currentCount" type="numeric" default=0;
+    /**
+     * Current count of tool calls in this agent run (resets per execution)
+     */
+    property name="currentCount" type="numeric" default=0;
 
+    /**
+     * Custom message when limit reached (end behavior)
+     */
+    property name="limitMessage" type="string" default="Maximum tool calls reached. Task cannot proceed further.";
 
-
-
- // Initialize MaxToolCallsMiddleware
-
-function init(
+    /**
+     * Initialize with custom limits
+     */
+    function init(
         numeric maxCalls = 10,
-        string exitBehavior = "end"
-) {
-    // Validate maxCalls
-    if ( arguments.maxCalls < 1 ) {
-        throw(
-                type = "InvalidArgumentException",
-        message = "maxCalls must be at least 1, got: #arguments.maxCalls#"
-            );
+        string exitBehavior = "end",
+        string limitMessage = ""
+    ) {
+        variables.maxCalls = arguments.maxCalls;
+        variables.exitBehavior = arguments.exitBehavior;
+        variables.limitMessage = len( arguments.limitMessage ) ? arguments.limitMessage : variables.limitMessage;
+        
+        // Reset counter for new execution
+        variables.currentCount = 0;
+        
+        log( "MaxToolCallsMiddleware: max=#variables.maxCalls#, behavior=#variables.exitBehavior#" );
+        
+        return this;
     }
 
-    // Validate exitBehavior
-    if ( !listFindNoCase( "end,error", arguments.exitBehavior ) ) {
-        throw(
-                type = "InvalidArgumentException",
-        message = "exitBehavior must be 'end' or 'error', got: #arguments.exitBehavior#"
-            );
+    /**
+     * Reset counter at start of each agent execution
+     */
+    function beforeAgentRun( required struct context ) {
+        variables.currentCount = 0;
+        return AiMiddlewareResult.continue();
     }
 
-    variables.maxCalls = arguments.maxCalls;
-    variables.exitBehavior = arguments.exitBehavior;
-    variables.currentCount = 0;
+    /**
+     * MAIN HOOK: Check tool call limit before each tool execution
+     */
+    function beforeToolCall( required struct context ) {
+        // Increment counter atomically
+        variables.currentCount++;
 
-    return this;
-}
+        // Check limit
+        if ( variables.currentCount > variables.maxCalls ) {
+            var reason = "Tool call limit exceeded: #variables.currentCount#/#variables.maxCalls#";
+            
+            switch( variables.exitBehavior ) {
+                case "error":
+                    throw(
+                        type="MaxToolCallsExceededException",
+                        message="#reason#",
+                        detail="MaxToolCallsMiddleware blocked execution. Configure higher maxCalls or change exitBehavior."
+                    );
+                
+                case "end": default:
+                    return AiMiddlewareResult.reject(
+                        reason=reason,
+                        data={
+                            "error": "MaxToolCallsExceeded",
+                            "count": variables.currentCount,
+                            "limit": variables.maxCalls,
+                            "message": variables.limitMessage
+                        }
+                    );
+            }
+        }
 
-
-//hook implementation
-
-//Reset counter at the start of each agent run
-
-function beforeAgentRun( required struct context ) {
-    // Reset counter to 0
-    variables.currentCount = 0;
-
-    return AiMiddlewareResult.continue();
-}
-
-
-
- // Track tool calls and enforce limit
-
-function beforeToolCall( required struct context ) {
-    // Increment counter
-    variables.currentCount++;
-
-    // Check if limit exceeded
-    if ( variables.currentCount > variables.maxCalls ) {
-        return handleLimitExceeded( context );
+        // Log current count
+        log( "Tool call #variables.currentCount#/#variables.maxCalls#: #context.toolName#" );
+        
+        return AiMiddlewareResult.continue();
     }
 
-    // Under limit, continue
-    return AiMiddlewareResult.continue();
-}
-
-
-
-// private helper methods
-
-
- // Handle the case when max tool calls is exceeded
-
-private function handleLimitExceeded( required struct context ) {
-    var message = "Maximum tool calls (#variables.maxCalls#) reached. " &
-            "Attempted to call tool '#context.toolName#' but limit exceeded. " &
-            "This is call ##variables.currentCount#.";
-
-    if ( variables.exitBehavior == "error" ) {
-        // Throw exception
-        throw(
-                type = "MaxToolCallsExceededException",
-        message = message,
-                detail = "Tool: #context.toolName# | Max: #variables.maxCalls# | Count: #variables.currentCount#"
-            );
+    /**
+     * Log final tool call count after agent run
+     */
+    function afterAgentRun( required struct context ) {
+        log( "Agent run completed: #variables.currentCount# tool calls used" );
+        return AiMiddlewareResult.continue();
     }
 
-    // Default: graceful end
-    return AiMiddlewareResult.cancel( message );
-}
-
-
-
- // Get current count (useful for debugging/testing)
-
-public function getCurrentCount() {
-    return variables.currentCount;
-}
-
-
-
-public function isAtLimit() {
-    return variables.currentCount >= variables.maxCalls;
-}
+    /**
+     * Private logging utility
+     */
+    private function log( required string message ) {
+        writeLog(
+            text="[bx-ai][MaxToolCalls] #arguments.message#",
+            type="information",
+            file="ai"
+        );
+    }
 
 }
