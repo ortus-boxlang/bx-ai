@@ -1,22 +1,34 @@
-component {
+Complete AiMiddlewareResult.bx - Phase 7 Streaming Support ✅
+REPLACE your current file with this Phase 7 complete version:
+
+text
+/**
+ * AiMiddlewareResult - PHASE 7 COMPLETE: Streaming + Terminal States
+ * Standardized middleware responses with full streaming suspension support
+ */
+component accessors="true" {
+
     property name="type" type="string";
     property name="reason" type="string" default="";
     property name="data" type="struct" default="{}";
 
+    /**
+     * Constructor
+     */
     function init( string type, string reason="", struct data={} ) {
         variables.type = arguments.type;
         variables.reason = arguments.reason;
-        variables.data = arguments.data;
+        variables.data = arguments.data ?: {};
         return this;
     }
 
-    // Static factories
+    // 🔥 STATIC FACTORIES
     static AiMiddlewareResult function continue() {
         return new AiMiddlewareResult( "continue" );
     }
 
     static AiMiddlewareResult function cancel( string reason="" ) {
-        return new AiMiddlewareResult( "cancel", reason );
+        return new AiMiddlewareResult( "cancel", arguments.reason );
     }
 
     static AiMiddlewareResult function approve() {
@@ -24,25 +36,75 @@ component {
     }
 
     static AiMiddlewareResult function reject( string reason="" ) {
-        return new AiMiddlewareResult( "reject", reason );
+        return new AiMiddlewareResult( "reject", arguments.reason );
     }
 
     static AiMiddlewareResult function edit( required struct args ) {
-        return new AiMiddlewareResult( "edit", "", args );
+        return new AiMiddlewareResult( "edit", "", arguments.args );
     }
 
-    static AiMiddlewareResult function suspend( required struct pending ) {
-        return new AiMiddlewareResult( "suspend", "", pending );
+    static AiMiddlewareResult function suspend( string reason="Human review required", struct pending={} ) {
+        return new AiMiddlewareResult( "suspend", arguments.reason, arguments.pending );
     }
 
-    // Predicates
+    // 🔥 PHASE 7: STREAMING SUPPORT
+    static AiMiddlewareResult function streamSuspend( string reason="Streaming suspension", struct data={} ) {
+        return new AiMiddlewareResult( "stream_suspend", arguments.reason, arguments.data );
+    }
+
+    // 🔥 TERMINAL STATE FACTORIES
+    static AiMiddlewareResult function timeout() {
+        return new AiMiddlewareResult( "timeout", "Operation timed out" );
+    }
+
+    static AiMiddlewareResult function rateLimit() {
+        return new AiMiddlewareResult( "rate_limit", "Rate limit exceeded" );
+    }
+
+    // 🔥 PREDICATES
     boolean function isContinue() { return variables.type == "continue"; }
     boolean function isCancelled() { return variables.type == "cancel"; }
     boolean function isApproved() { return variables.type == "approve"; }
     boolean function isRejected() { return variables.type == "reject"; }
     boolean function isEdit() { return variables.type == "edit"; }
     boolean function isSuspended() { return variables.type == "suspend"; }
+    boolean function isStreamSuspended() { return variables.type == "stream_suspend"; }
+    boolean function isTimeout() { return variables.type == "timeout"; }
+    boolean function isRateLimited() { return variables.type == "rate_limit"; }
+    
     boolean function isTerminal() {
-        return isCancelled() || isRejected() || isSuspended();
+        return isCancelled() || 
+               isRejected() || 
+               isSuspended() || 
+               isTimeout() || 
+               isRateLimited();
     }
+
+    // 🔥 PHASE 7: STREAMING CHUNK CONVERSION
+    struct function toStreamChunk() {
+        return {
+            "type": variables.type,
+            "status": variables.type,
+            "reason": variables.reason,
+            "data": variables.data,
+            "timestamp": dateTimeNow(),
+            "threadId": getThreadId() ?: "",
+            "terminal": isTerminal()
+        };
+    }
+
+    // 🔥 ACCESSOR HELPERS
+    string function getStatus() { return variables.type; }
+    string function getReason() { return variables.reason; }
+    struct function getData() { return variables.data; }
+    boolean function isSuccess() { return isContinue() || isApproved(); }
+
+    // 🔥 PRIVATE: Thread ID helper (for streaming context)
+    private string function getThreadId() {
+        if ( structKeyExists( variables.data, "threadId" ) && len( variables.data.threadId ) ) {
+            return variables.data.threadId;
+        }
+        return createUUID();
+    }
+
 }
