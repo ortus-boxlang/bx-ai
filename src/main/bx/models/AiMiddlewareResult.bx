@@ -1,0 +1,48 @@
+component {
+    property name="type" type="string";
+    property name="reason" type="string" default="";
+    property name="data" type="struct" default="{}";
+
+    function init( string type, string reason="", struct data={} ) {
+        variables.type = arguments.type;
+        variables.reason = arguments.reason;
+        variables.data = arguments.data;
+        return this;
+    }
+
+    // Static factories
+    static AiMiddlewareResult function continue() {
+        return new AiMiddlewareResult( "continue" );
+    }
+
+    static AiMiddlewareResult function cancel( string reason="" ) {
+        return new AiMiddlewareResult( "cancel", reason );
+    }
+
+    static AiMiddlewareResult function approve() {
+        return new AiMiddlewareResult( "approve" );
+    }
+
+    static AiMiddlewareResult function reject( string reason="" ) {
+        return new AiMiddlewareResult( "reject", reason );
+    }
+
+    static AiMiddlewareResult function edit( required struct args ) {
+        return new AiMiddlewareResult( "edit", "", args );
+    }
+
+    static AiMiddlewareResult function suspend( required struct pending ) {
+        return new AiMiddlewareResult( "suspend", "", pending );
+    }
+
+    // Predicates
+    boolean function isContinue() { return variables.type == "continue"; }
+    boolean function isCancelled() { return variables.type == "cancel"; }
+    boolean function isApproved() { return variables.type == "approve"; }
+    boolean function isRejected() { return variables.type == "reject"; }
+    boolean function isEdit() { return variables.type == "edit"; }
+    boolean function isSuspended() { return variables.type == "suspend"; }
+    boolean function isTerminal() {
+        return isCancelled() || isRejected() || isSuspended();
+    }
+}
