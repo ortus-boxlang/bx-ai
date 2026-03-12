@@ -250,18 +250,46 @@ abstract class implements="IAiService" {
 			};
 		}
 
-		// Allow concrete providers to normalize the request packet before sending
-		dataPacket = preChatRequest( arguments.chatRequest, dataPacket )
+				// Allow concrete providers to normalize the request packet before sending
+        		dataPacket = preChatRequest( arguments.chatRequest, dataPacket )
 
-		// Send HTTP request to the provider and get the response
-		// The result is a struct with normalized keys
-		var result = sendChatRequest( arguments.chatRequest, dataPacket )
+        		var beforeLLMResult = arguments.chatRequest.fireMiddleware(
+        			"beforeLLMCall",
+        			{
+        				"model"      : this,
+        				"chatRequest": arguments.chatRequest,
+        				"messages"   : arguments.chatRequest.getMessages()
+        			}
+        		);
 
-		// Allow concrete providers to normalize the response before error checking and returnFormat processing
-		result = postChatResponse( arguments.chatRequest, dataPacket, result )
+        		if( beforeLLMResult.isTerminal() ){
+        			return beforeLLMResult;
+        		}
 
-		// If an error is returned, throw it
-		if( result.keyExists( "error" ) ){
+        		// Send HTTP request to the provider and get the response
+        		// The result is a struct with normalized keys
+        		var result = sendChatRequest( arguments.chatRequest, dataPacket )
+
+				// Allow concrete providers to normalize the response before error checking and returnFormat processing
+        		result = postChatResponse( arguments.chatRequest, dataPacket, result )
+
+        		var afterLLMResult = arguments.chatRequest.fireMiddleware(
+        			"afterLLMCall",
+        			{
+        				"model"      : this,
+        				"chatRequest": arguments.chatRequest,
+        				"messages"   : arguments.chatRequest.getMessages(),
+        				"response"   : result
+        			},
+        			true
+        		);
+
+        		if( afterLLMResult.isTerminal() ){
+        			return afterLLMResult;
+        		}
+
+        		// If an error is returned, throw it
+        		if( result.keyExists( "error" ) ){
 			writeLog(
 				text: result.error.toString(),
 				type: "error",
@@ -355,13 +383,58 @@ abstract class implements="IAiService" {
 			// find the tool, invoke it, append the result to the chat history
 			choice.message.tool_calls.each( ( toolCall, i ) => {
 				var toolAttempt = chatRequest.getTool( toolCall.function.name );
+				var toolArguments = JSONDeserialize( toolCall.function.arguments );
 
-				if( toolAttempt.isPresent() ){
-					var tool = toolAttempt.get();
+				var beforeToolResult = arguments.chatRequest.fireMiddleware(
+					"beforeToolCall",
+					{
+						"model"      : this,
+						"chatRequest": arguments.chatRequest,
+						"toolCall"   : toolCall,
+						"toolName"   : toolCall.function.name,
+						"arguments"  : toolArguments
+					}
+				);
+
+				if( beforeToolResult.isTerminal() ){
 					newMessages.append({
 						"role"        : "tool",
 						"tool_call_id": toolCall.id,
-						"content"     : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
+						"content"     : beforeToolResult.getContent()
+					});
+					return;
+				}
+
+				if( toolAttempt.isPresent() ){
+					var tool = toolAttempt.get();
+					var toolResponse = tool.invoke( toolArguments );
+
+					var afterToolResult = arguments.chatRequest.fireMiddleware(
+						"afterToolCall",
+						{
+							"model"        : this,
+							"chatRequest"  : arguments.chatRequest,
+							"toolCall"     : toolCall,
+							"toolName"     : toolCall.function.name,
+							"arguments"    : toolArguments,
+							"toolResponse" : toolResponse
+						},
+						true
+					);
+
+					if( afterToolResult.isTerminal() ){
+						newMessages.append({
+							"role"        : "tool",
+							"tool_call_id": toolCall.id,
+							"content"     : afterToolResult.getContent()
+						});
+						return;
+					}
+
+					newMessages.append({
+						"role"        : "tool",
+						"tool_call_id": toolCall.id,
+						"content"     : toolResponse
 					});
 				} else {
 					writeLog(
@@ -411,11 +484,39 @@ abstract class implements="IAiService" {
 		// Allow concrete providers to normalize the request packet before streaming
 		dataPacket = preStreamRequest( arguments.chatRequest, dataPacket )
 
+		var beforeLLMResult = arguments.chatRequest.fireMiddleware(
+			"beforeLLMCall",
+			{
+				"model"      : this,
+				"chatRequest": arguments.chatRequest,
+				"messages"   : arguments.chatRequest.getMessages()
+			}
+		);
+
+		if( beforeLLMResult.isTerminal() ){
+			return beforeLLMResult;
+		}
+
 		// Send it with streaming
 		var streamState = sendStreamRequest( chatRequest, dataPacket, callback )
 
 		// Allow concrete providers to normalize the stream state after completion
 		streamState = postStreamResponse( arguments.chatRequest, dataPacket, streamState )
+
+		var afterLLMResult = arguments.chatRequest.fireMiddleware(
+			"afterLLMCall",
+			{
+				"model"      : this,
+				"chatRequest": arguments.chatRequest,
+				"messages"   : arguments.chatRequest.getMessages(),
+				"response"   : streamState
+			},
+			true
+		);
+
+		if( afterLLMResult.isTerminal() ){
+			return afterLLMResult;
+		}
 
 		// If no tool calls were requested, we are done
 		if( !streamState.toolCalls.len() ){
@@ -456,40 +557,84 @@ abstract class implements="IAiService" {
 		assistantMessage.tool_calls = streamState.toolCalls;
 		newMessages.append( assistantMessage );
 
-		streamState.toolCalls.each( toolCall => {
-			var toolAttempt = chatRequest.getTool( toolCall.function.name ?: "" );
-			var toolArguments = {};
+				streamState.toolCalls.each( toolCall => {
+        			var toolAttempt = chatRequest.getTool( toolCall.function.name ?: "" );
+        			var toolArguments = {};
 
-			try {
-				toolArguments = JSONDeserialize( toolCall.function.arguments ?: "{}" );
-			} catch( any e ){
-				writeLog(
-					text: "Unable to deserialize tool call arguments for '#toolCall.function.name ?: "unknown"#': #e.message#",
-					type: "warning",
-					log : "ai"
-				)
-			}
+        			try {
+        				toolArguments = JSONDeserialize( toolCall.function.arguments ?: "{}" );
+        			} catch( any e ){
+        				writeLog(
+        					text: "Unable to deserialize tool call arguments for '#toolCall.function.name ?: "unknown"#': #e.message#",
+        					type: "warning",
+        					log : "ai"
+        				)
+        			}
 
-			if( toolAttempt.isPresent() ){
-				var tool = toolAttempt.get();
-				newMessages.append({
-					"role"        : "tool",
-					"tool_call_id": toolCall.id ?: "",
-					"content"     : tool.invoke( toolArguments )
-				});
-			} else {
-				writeLog(
-					text: "Unable to find tool named during streaming: #toolCall.function.name ?: "unknown"#",
-					type: "warning",
-					log : "ai"
-				)
-				newMessages.append({
-					"role"        : "tool",
-					"tool_call_id": toolCall.id ?: "",
-					"content"     : "Tool ['#toolCall.function.name ?: "unknown"#'] not found in chat request"
-				});
-			}
-		} );
+        			var beforeToolResult = arguments.chatRequest.fireMiddleware(
+        				"beforeToolCall",
+        				{
+        					"model"      : this,
+        					"chatRequest": arguments.chatRequest,
+        					"toolCall"   : toolCall,
+        					"toolName"   : toolCall.function.name ?: "",
+        					"arguments"  : toolArguments
+        				}
+        			);
+
+        			if( beforeToolResult.isTerminal() ){
+        				newMessages.append({
+        					"role"        : "tool",
+        					"tool_call_id": toolCall.id ?: "",
+        					"content"     : beforeToolResult.getContent()
+        				});
+        				return;
+        			}
+
+        			if( toolAttempt.isPresent() ){
+        				var tool = toolAttempt.get();
+        				var toolResponse = tool.invoke( toolArguments );
+
+        				var afterToolResult = arguments.chatRequest.fireMiddleware(
+        					"afterToolCall",
+        					{
+        						"model"        : this,
+        						"chatRequest"  : arguments.chatRequest,
+        						"toolCall"     : toolCall,
+        						"toolName"     : toolCall.function.name ?: "",
+        						"arguments"    : toolArguments,
+        						"toolResponse" : toolResponse
+        					},
+        					true
+        				);
+
+        				if( afterToolResult.isTerminal() ){
+        					newMessages.append({
+        						"role"        : "tool",
+        						"tool_call_id": toolCall.id ?: "",
+        						"content"     : afterToolResult.getContent()
+        					});
+        					return;
+        				}
+
+        				newMessages.append({
+        					"role"        : "tool",
+        					"tool_call_id": toolCall.id ?: "",
+        					"content"     : toolResponse
+        				});
+        			} else {
+        				writeLog(
+        					text: "Unable to find tool named during streaming: #toolCall.function.name ?: "unknown"#",
+        					type: "warning",
+        					log : "ai"
+        				)
+        				newMessages.append({
+        					"role"        : "tool",
+        					"tool_call_id": toolCall.id ?: "",
+        					"content"     : "Tool ['#toolCall.function.name ?: "unknown"#'] not found in chat request"
+        				});
+        			}
+        		} );
 
 		arguments.chatRequest.setMessages( newMessages );
 
