@@ -18,7 +18,7 @@
 @BoxBIF
 class {
 
-	/**
+	/** 
 	 * Create AI Model with full Phase 3-6 fluent DSL support
 	 *
 	 * @provider Required provider name: "openai", "anthropic", "azure", "ollama", "claude", "gpt"
