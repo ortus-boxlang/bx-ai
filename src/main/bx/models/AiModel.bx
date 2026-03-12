@@ -18,7 +18,8 @@
 import bxModules.bxai.models.runnables.*;
 
 class extends="AiBaseRunnable" {
-
+	// add middleware property 
+	property name="middleware" type="array" default=[];
 	/**
 	 * The AI service provider we are linked to.
 	 */
@@ -45,6 +46,15 @@ class extends="AiBaseRunnable" {
 		withParams( arguments.params )
 
 		return this
+	}
+//add withMiddleware()
+	AiModel function withMiddleware( required any middleware) {
+
+		if( !isArray(middleware)) {
+			middleware = [middleware]; 
+	}
+	variables.middleware.append( middlewar, true)
+	return this;
 	}
 
 	/**
@@ -217,14 +227,30 @@ class extends="AiBaseRunnable" {
 		else {
 			effectiveParams.tools = variables.tools;
 		}
-
+		//modifying run and stream
 		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
 			aiMessage( messages ),
 			effectiveParams,
 			effectiveOptions
 		);
 
+		if ( variables.middleware.len() ) {
+   		 var existingMiddleware = chatRequest.getMiddleware();
+    	chatRequest.setMiddleware( existingMiddleware.append( variables.middleware, true ) );
+		}	
+
+		BoxAnnounce( "beforeAIModelInvoke", { model: this, chatRequest: chatRequest } )
+
+		injectModelMiddleware( chatRequest );
+
+		var results = variables.service.invoke( chatRequest )
+
 		variables.service.invokeStream( chatRequest, arguments.onChunk );
+
+
+
+		variables.service.invokeStream( chatRequest, arguments.onChunk );
+
 	}
 
 	/**
