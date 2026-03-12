@@ -1,0 +1,43 @@
+interface {
+
+    /**
+     * beforeAgentRun / afterAgentRun context:
+     * {
+     *   agent,
+     *   input,
+     *   messages,
+     *   params,
+     *   options,
+     *   response?,        // after only
+     *   parentTraceId?,   // optional
+     *   parentSpanId?     // optional
+     * }
+     */
+    AiMiddlewareResult function beforeAgentRun( required struct context );
+    AiMiddlewareResult function afterAgentRun( required struct context );
+
+    /**
+     * beforeLLMCall / afterLLMCall context:
+     * { model, chatRequest, messages, response? }
+     */
+    AiMiddlewareResult function beforeLLMCall( required struct context );
+    AiMiddlewareResult function afterLLMCall( required struct context );
+
+    /**
+     * beforeToolCall / afterToolCall context:
+     * { tool, toolName, toolArgs, toolCallId, result? }
+     */
+    AiMiddlewareResult function beforeToolCall( required struct context );
+    AiMiddlewareResult function afterToolCall( required struct context );
+
+    /**
+     * onError context:
+     * { error, phase, context }
+     */
+    AiMiddlewareResult function onError( required struct context );
+
+    // Wrap-style hooks
+    any function wrapLLMCall( required struct context, required function handler );
+    any function wrapToolCall( required struct context, required function handler );
+
+}
