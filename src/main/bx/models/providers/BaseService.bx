@@ -453,45 +453,49 @@ abstract class implements="IAiService" {
 			"content": streamState.content
 		};
 
-		assistantMessage.tool_calls = streamState.toolCalls;
-		newMessages.append( assistantMessage );
 
-		streamState.toolCalls.each( toolCall => {
-			var toolAttempt = chatRequest.getTool( toolCall.function.name ?: "" );
-			var toolArguments = {};
+assistantMessage.tool_calls = streamState.toolCalls;
+newMessages.append( assistantMessage );
 
-			try {
-				toolArguments = JSONDeserialize( toolCall.function.arguments ?: "{}" );
-			} catch( any e ){
-				writeLog(
-					text: "Unable to deserialize tool call arguments for '#toolCall.function.name ?: "unknown"#': #e.message#",
-					type: "warning",
-					log : "ai"
-				)
-			}
+streamState.toolCalls.each( toolCall => {
+    var toolContext = {
+        "tool"      : chatRequest.getTool( toolCall.function.name ?: "" ).getOrDefault(),
+        "toolName"  : toolCall.function.name ?: "",
+        "toolArgs"  : deserializeJSON( toolCall.function.arguments ?: "{}" ),
+        "toolCallId": toolCall.id ?: ""
+    };
 
-			if( toolAttempt.isPresent() ){
-				var tool = toolAttempt.get();
-				newMessages.append({
-					"role"        : "tool",
-					"tool_call_id": toolCall.id ?: "",
-					"content"     : tool.invoke( toolArguments )
-				});
-			} else {
-				writeLog(
-					text: "Unable to find tool named during streaming: #toolCall.function.name ?: "unknown"#",
-					type: "warning",
-					log : "ai"
-				)
-				newMessages.append({
-					"role"        : "tool",
-					"tool_call_id": toolCall.id ?: "",
-					"content"     : "Tool ['#toolCall.function.name ?: "unknown"#'] not found in chat request"
-				});
-			}
-		} );
+    // 🔥 PHASE 7: CHECK MIDDLEWARE BEFORE TOOL CALL
+    var beforeToolResult = chatRequest.fireMiddleware( "beforeToolCall", toolContext );
+    if ( beforeToolResult.isTerminal() ) {
+        arguments.callback( beforeToolResult );  // EMIT SUSPEND CHUNK
+        return beforeToolResult;  // STOP STREAMING
+    }
 
-		arguments.chatRequest.setMessages( newMessages );
+    // 🔥 FIXED: DECLARE MISSING VARIABLES
+    var toolAttempt = chatRequest.getTool( toolCall.function.name ?: "" );
+    var toolArguments = deserializeJSON( toolCall.function.arguments ?: "{}" );
+    
+    if( toolAttempt.isPresent() ){
+        var tool = toolAttempt.get();
+        newMessages.append({
+            "role"        : "tool",
+            "tool_call_id": toolCall.id ?: "",
+            "content"     : tool.invoke( toolArguments )
+        });
+    } else {
+        writeLog(
+            text: "Unable to find tool named during streaming: #toolCall.function.name ?: ""unknown"#",
+            type: "warning",
+            log : "ai"
+        );
+        newMessages.append({
+            "role"        : "tool",
+            "tool_call_id": toolCall.id ?: "",
+            "content"     : "Tool ['#toolCall.function.name ?: ""unknown"#'] not found in chat request"
+        });
+    }
+});
 
 		// Continue streaming the final answer after tool execution
 		chatStream( arguments.chatRequest, arguments.callback, arguments.interactionCount + 1 );
