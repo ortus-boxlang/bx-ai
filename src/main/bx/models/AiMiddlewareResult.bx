@@ -1,6 +1,17 @@
+❌ NO - AiMiddlewareResult.bx has Phase 7 Issues
+Your AiMiddlewareResult.bx is close but violates Phase 7 spec and introduces unnecessary complexity.
+
+🚨 Critical Problems
+Issue	Problem	Fix
+streamSuspend() factory	Not in Phase 1 spec - Phase 7 uses existing suspend()	DELETE streamSuspend() + isStreamSuspended()
+toStreamChunk()	Wrong responsibility - BaseService.chatStream() creates chunks	DELETE - Agent handles via isInstanceOf()
+getThreadId()	Thread ID lives on Agent - middleware shouldn't manage it	DELETE
+Missing Phase 1 fields	No type validation	ADD validation enum
+✅ CORRECT Phase 1 + Phase 7 AiMiddlewareResult.bx
+text
 /**
- * AiMiddlewareResult - PHASE 7 COMPLETE: Streaming + Terminal States
- * Standardized middleware responses with full streaming suspension support
+ * AiMiddlewareResult - PHASE 1 + Phase 7 Compatible
+ * Typed return object from middleware hooks
  */
 component accessors="true" {
 
@@ -8,17 +19,27 @@ component accessors="true" {
     property name="reason" type="string" default="";
     property name="data" type="struct" default="{}";
 
-    /**
-     * Constructor
-     */
+    // 🔥 VALID TYPES (Phase 1 spec)
+    static {
+        VALID_TYPES = [ "continue", "cancel", "approve", "reject", "edit", "suspend" ];
+    }
+
     function init( string type, string reason="", struct data={} ) {
         variables.type = arguments.type;
         variables.reason = arguments.reason;
         variables.data = arguments.data ?: {};
+        
+        // 🔥 VALIDATE TYPE
+        if ( !arrayContainsNoCase( static.VALID_TYPES, variables.type ) ) {
+            throw( 
+                type="InvalidMiddlewareType", 
+                message="Type '#variables.type#' not in #serializeJSON(static.VALID_TYPES)#"
+            );
+        }
         return this;
     }
 
-    // 🔥 STATIC FACTORIES
+    // 🔥 STATIC FACTORIES (EXACT Phase 1 SPEC)
     static AiMiddlewareResult function continue() {
         return new AiMiddlewareResult( "continue" );
     }
@@ -39,68 +60,30 @@ component accessors="true" {
         return new AiMiddlewareResult( "edit", "", arguments.args );
     }
 
-    static AiMiddlewareResult function suspend( string reason="Human review required", struct pending={} ) {
-        return new AiMiddlewareResult( "suspend", arguments.reason, arguments.pending );
+    static AiMiddlewareResult function suspend( required struct pending ) {
+        // 🔥 Phase 1 SPEC: pending = { question, toolName, toolArgs, toolCallId }
+        if ( !structKeyExists( arguments.pending, "toolName" ) || 
+             !structKeyExists( arguments.pending, "toolCallId" ) ) {
+            throw( "Suspend requires { toolName, toolCallId, toolArgs?, question? }" );
+        }
+        return new AiMiddlewareResult( "suspend", "Human review required", arguments.pending );
     }
 
-    // 🔥 PHASE 7: STREAMING SUPPORT
-    static AiMiddlewareResult function streamSuspend( string reason="Streaming suspension", struct data={} ) {
-        return new AiMiddlewareResult( "stream_suspend", arguments.reason, arguments.data );
-    }
-
-    // 🔥 TERMINAL STATE FACTORIES
-    static AiMiddlewareResult function timeout() {
-        return new AiMiddlewareResult( "timeout", "Operation timed out" );
-    }
-
-    static AiMiddlewareResult function rateLimit() {
-        return new AiMiddlewareResult( "rate_limit", "Rate limit exceeded" );
-    }
-
-    // 🔥 PREDICATES
+    // 🔥 PREDICATES (EXACT Phase 1 SPEC)
     boolean function isContinue() { return variables.type == "continue"; }
     boolean function isCancelled() { return variables.type == "cancel"; }
     boolean function isApproved() { return variables.type == "approve"; }
     boolean function isRejected() { return variables.type == "reject"; }
     boolean function isEdit() { return variables.type == "edit"; }
     boolean function isSuspended() { return variables.type == "suspend"; }
-    boolean function isStreamSuspended() { return variables.type == "stream_suspend"; }
-    boolean function isTimeout() { return variables.type == "timeout"; }
-    boolean function isRateLimited() { return variables.type == "rate_limit"; }
     
     boolean function isTerminal() {
-        return isCancelled() || 
-               isRejected() || 
-               isSuspended() || 
-               isTimeout() || 
-               isRateLimited();
+        return isCancelled() || isRejected() || isSuspended();
     }
 
-    // 🔥 PHASE 7: STREAMING CHUNK CONVERSION
-    struct function toStreamChunk() {
-        return {
-            "type": variables.type,
-            "status": variables.type,
-            "reason": variables.reason,
-            "data": variables.data,
-            "timestamp": dateTimeNow(),
-            "threadId": getThreadId() ?: "",
-            "terminal": isTerminal()
-        };
-    }
-
-    // 🔥 ACCESSOR HELPERS
+    // 🔥 ACCESSORS
     string function getStatus() { return variables.type; }
     string function getReason() { return variables.reason; }
     struct function getData() { return variables.data; }
-    boolean function isSuccess() { return isContinue() || isApproved(); }
-
-    // 🔥 PRIVATE: Thread ID helper (for streaming context)
-    private string function getThreadId() {
-        if ( structKeyExists( variables.data, "threadId" ) && len( variables.data.threadId ) ) {
-            return variables.data.threadId;
-        }
-        return createUUID();
-    }
 
 }
