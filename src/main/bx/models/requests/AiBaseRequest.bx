@@ -1,10 +1,12 @@
+Complete Phase 2 Code for AiBaseRequest.bx
+text
 /**
  * [BoxLang]
  *
  * Copyright [2023] [Ortus Solutions, Corp]
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
- * License. You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -14,7 +16,7 @@
  * ----------------------------------------------------------------------------------
  * Base class for AI request models that provides common properties and methods
  */
-abstract class{
+abstract class AiBaseRequest {
 
 	/**
 	 * The params struct to pass to the provider in the request
@@ -37,8 +39,7 @@ abstract class{
 	property name="logRequest" type="boolean" default=false;
 
 	/**
-	 * Log request to console
-	 * This is usually used for debugging purposes
+	 * Log request to console - debugging purposes
 	 */
 	property name="logRequestToConsole" type="boolean" default=false;
 
@@ -48,8 +49,7 @@ abstract class{
 	property name="logResponse" type="boolean" default=false;
 
 	/**
-	 * Log response to console
-	 * This is usually used for debugging purposes
+	 * Log response to console - debugging purposes
 	 */
 	property name="logResponseToConsole" type="boolean" default=false;
 
@@ -69,14 +69,12 @@ abstract class{
 	property name="timeout" type="numeric" default=30;
 
 	/**
-	 * Base URL for the provider API (optional override for the service's default)
-	 * Used by OpenAI-compatible services for custom endpoints
+	 * Base URL for the provider API (optional override)
 	 */
 	property name="baseURL" type="string" default="";
 
 	/**
 	 * Send an auth header or not with the API Key
-	 * This is usually determined by the provider
 	 */
 	property name="sendAuthHeader" type="boolean" default=true;
 
@@ -86,377 +84,211 @@ abstract class{
 	property name="headers" type="struct" default={};
 
 	/**
-	 * Maximum number of tool call interactions allowed
-	 * If not set, will use the service default (10)
+	 * Maximum number of tool call interactions allowed (deprecated - use middleware)
 	 */
 	property name="maxInteractions" type="numeric" default=0;
 
 	/**
 	 * Tenant identifier for multi-tenant usage tracking
-	 * Used to attribute AI usage to specific tenants for billing purposes
 	 */
 	property name="tenantId" type="string" default="";
 
 	/**
-	 * Additional metadata for usage tracking (cost center, project, etc.)
-	 * This data will be included in onAITokenCount events for custom billing logic
+	 * Additional metadata for usage tracking
 	 */
 	property name="usageMetadata" type="struct" default={};
 
 	/**
 	 * Provider-specific options that don't fit the common interface
-	 * Each provider can define and read its own keys from this struct
-	 * Examples: inferenceProfileArn (Bedrock), customHeaders (OpenAI-compatible)
 	 */
 	property name="providerOptions" type="struct" default={};
 
 	/**
-         * Middleware stack for this request
-         */
-        property name="middleware" type="array" default=[];
-
+	 * Middleware stack for this request
+	 */
+	property name="middleware" type="array" default=[];
 
 	/**
 	 * Module settings - centralized access point
 	 */
 	static {
-		final MODULE_SETTINGS = getModuleInfo( "bxai" ).settings
+	   final MODULE_SETTINGS = getModuleInfo( "bxai" ).settings
 	}
 
 	/**
 	 * Prepare options by merging module settings with method-specific defaults and user options
-	 * Merge order (lowest to highest priority): module settings → method defaults → user options
-	 *
-	 * @options User-provided options struct
-	 * @methodDefaults Optional method-specific defaults (e.g., aiChat uses returnFormat="single")
-	 *
-	 * @return Merged options struct with all defaults applied
+	 * Merge order: module settings → method defaults → user options
 	 */
 	struct function prepareOptions( struct options = {}, struct methodDefaults = {} ) {
-		return {}
-			// Start with module settings (lowest priority)
-			.append( static.MODULE_SETTINGS, true )
-			// Apply method-specific defaults (middle priority)
-			.append( arguments.methodDefaults, true )
-			// Apply user options (highest priority)
-			.append( arguments.options, true )
+	   return {}
+		  .append( static.MODULE_SETTINGS, true )
+		  .append( arguments.methodDefaults, true )
+		  .append( arguments.options, true )
 	}
 
 	/**
 	 * Add a header to the request
-	 *
-	 * @name The name of the header
-	 * @value The value of the header
 	 */
 	function addHeader( required string name, required string value ){
-		variables.headers[ arguments.name ] = arguments.value;
-		return this;
+	   variables.headers[ arguments.name ] = arguments.value;
+	   return this;
 	}
 
 	/**
 	 * Set the model if it's empty
-	 *
-	 * @model The model to use if the current model is empty
 	 */
 	function setModelIfEmpty( required string model ){
-		if( isNull( arguments.model ) || arguments.model.isEmpty() ){
-			return this;
-		}
-
-		if( variables.model.isEmpty() ){
-			variables.model = arguments.model;
-		}
-		return this;
+	   if( isNull( arguments.model ) || arguments.model.isEmpty() ){
+		  return this;
+	   }
+	   if( variables.model.isEmpty() ){
+		  variables.model = arguments.model;
+	   }
+	   return this;
 	}
 
 	/**
 	 * Get Model if set or looks up from params
-	 *
-	 * @return The model to use
 	 */
 	function getModel(){
-		if( !variables.model.isEmpty() ){
-			return variables.model;
-		}
-		if( variables.params.keyExists( "model" ) ){
-			return variables.params.model;
-		}
-		return "";
+	   if( !variables.model.isEmpty() ){
+		  return variables.model;
+	   }
+	   if( variables.params.keyExists( "model" ) ){
+		  return variables.params.model;
+	   }
+	   return "";
 	}
 
 	/**
 	 * Set the API key if it's empty
-	 *
-	 * @apiKey The API key to use if the current API key is empty
 	 */
 	function setApiKeyIfEmpty( required string apiKey ){
-		if( variables.apiKey.isEmpty() ){
-			variables.apiKey = arguments.apiKey;
-		}
-		return this;
+	   if( variables.apiKey.isEmpty() ){
+		  variables.apiKey = arguments.apiKey;
+	   }
+	   return this;
 	}
 
 	/**
 	 * Merge service params into the request params
-	 *
-	 * @serviceParams The service params to merge
-	 * @override If true, override existing params with service params
-	 *
-	 * @return This request
 	 */
 	AiBaseRequest function mergeServiceParams( required struct serviceParams, boolean override = false ){
-
-		// Filter out model as it's handled separately in some implementations
-		//var paramsToMerge = arguments.serviceParams.filter( ( key, value ) => key != "model" );
-		variables.params.append( arguments.serviceParams, arguments.override );
-		return this;
+	   variables.params.append( arguments.serviceParams, arguments.override );
+	   return this;
 	}
 
 	/**
 	 * Merge service headers into the request headers
-	 *
-	 * @serviceHeaders The service headers to merge
-	 * @override If true, override existing headers with service headers
-	 *
-	 * @return This request
 	 */
 	AiBaseRequest function mergeServiceHeaders( required struct serviceHeaders, boolean override = false ){
-		variables.headers.append( arguments.serviceHeaders, arguments.override );
-		return this;
+	   variables.headers.append( arguments.serviceHeaders, arguments.override );
+	   return this;
 	}
-
-	/**
-         * Add middleware to this request.
-         * Accepts a single instance, a struct-of-closures, or an array of either.
-         */
-        AiBaseRequest function addMiddleware( required any middleware ) {
-            var mw = arguments.middleware;
-
-
-            var newMessages = arguments.chatRequest.getMessages().duplicate();
-
-            // If an array, add each item recursively
-                if ( isArray( mw ) ) {
-                    for ( var item in mw ) {
-                        addMiddleware( item );
-                    }
-                    return this;
-                }
-
-                // If a struct, wrap in StructMiddlewareAdapter
-                if ( isStruct( mw ) ) {
-                    mw = new models.middleware.StructMiddlewareAdapter( hooks: mw );
-                }
-
-                // Otherwise, assume it's a middleware instance
-                arrayAppend( variables.middleware, mw );
-                return this;
-            }
-
-
-
-                // Append assistant message
-                newMessages.append(choice.message);
-
-                // 2. Execute each tool call with wrapToolCall
-                choice.message.tool_calls.each( (toolCall) => {
-                    var toolAttempt = arguments.chatRequest.getTool(toolCall.function.name);
-                    if( toolAttempt.isPresent() ) {
-                        var tool = toolAttempt.get();
-                        var toolArgs = {};
-                        try { toolArgs = JSONParse(toolCall.function.arguments); }
-                        catch(any e) { toolArgs = {}; }
-
-                        // WRAP: wrapToolCall around actual tool execution
-                        var toolExecContext = {
-                            "service"    = this,
-                            "chatRequest"= arguments.chatRequest,
-                            "tool"       = tool,
-                            "toolName"   = toolCall.function.name,
-                            "toolArgs"   = toolArgs,
-                            "toolCallId" = toolCall.id
-                        };
-                        var toolFn = () => tool.invoke(toolArgs);
-                        var toolResult = arguments.chatRequest.fireWrapMiddleware(
-                            "wrapToolCall", toolExecContext, toolFn
-                        );
-
-                        newMessages.append({
-                            "role"        : "tool",
-                            "tool_call_id": toolCall.id,
-                            "content"     : toolResult
-                        });
-                    } else {
-                        newMessages.append({
-                            "role"        : "tool",
-                            "tool_call_id": toolCall.id,
-                            "content"     : "Tool '#toolCall.function.name#' not found"
-                        });
-                    }
-                });
-
-                // 3. afterToolCall
-                toolContext.result = "Tools executed";
-                arguments.chatRequest.fireMiddleware("afterToolCall", toolContext, true);
-            });
-
-            arguments.chatRequest.setMessages(newMessages);
-            return chat(arguments.chatRequest, arguments.interactionCount + 1);
-
-
-            // If an array, add each item
-            if ( isArray( mw ) ) {
-                for ( var item in mw ) {
-                    addMiddleware( item );
-                }
-                return this;
-            }
-
-            // If a struct, wrap in StructMiddlewareAdapter
-            if ( isStruct( mw ) ) {
-                mw = new models.middleware.StructMiddlewareAdapter( hooks: mw );
-            }
-
-            // Otherwise, assume it's a middleware instance
-            arrayAppend( variables.middleware, mw );
-            return this;
-        }
-
-         /**
-             * Fire a sequential middleware hook.
-             *
-             * @hook    The hook name (e.g. "beforeToolCall")
-             * @context The context struct for this hook
-             * @reverse If true, iterate stack in reverse order (for "after" hooks)
-             */
-            AiMiddlewareResult function fireMiddleware(
-                required string hook,
-                required struct context,
-                boolean reverse = false
-            ) {
-                var stack = variables.middleware;
-
-                if ( arguments.reverse ) {
-                    // Make a shallow copy so we don't mutate the original array
-                    stack = duplicate( stack );
-                    arrayReverse( stack );
-                }
-
-                for ( var mw in stack ) {
-                    // Skip if this middleware doesn't implement the hook
-                    if ( !objectHasMethod( mw, arguments.hook ) ) {
-                        continue;
-                    }
-
-                    var result = mw[ arguments.hook ]( context );
-
-                    if ( isInstanceOf( result, "AiMiddlewareResult" ) && result.isTerminal() ) {
-                        return result;
-                    }
-                }
-
-                return AiMiddlewareResult.continue();
-            }
 
 	/**
 	 * Get a provider option by key with an optional default value
-	 *
-	 * @key The option key to retrieve
-	 * @defaultValue The default value if the key doesn't exist
-	 *
-	 * @return The option value or the default
 	 */
 	function getProviderOption( required string key, any defaultValue = "" ){
-		return variables.providerOptions[ arguments.key ] ?: arguments.defaultValue;
+	   return variables.providerOptions[ arguments.key ] ?: arguments.defaultValue;
 	}
 
 	/**
-     * Fire wrap-style middleware (e.g. wrapLLMCall, wrapToolCall).
-     * Creates nested handler chain: outer→inner→actual→inner→outer
-     */
-    any function fireWrapMiddleware(
-        required string hook,
-        required struct context,
-        required function innerFn
-    ) {
-        var stack = variables.middleware.duplicate();
-        var currentHandler = arguments.innerFn;
+	 * Add middleware to this request.
+	 * Accepts a single instance, a struct-of-closures, or an array of either.
+	 * Auto-wraps structs in StructMiddlewareAdapter.
+	 */
+	AiBaseRequest function addMiddleware( required any middleware ) {
+	   var mw = arguments.middleware;
 
-        // Build nested wrappers (outermost first)
-        for( var i = arrayLen(stack); i >= 1; i-- ) {
-            var mw = stack[i];
-            if( !objectHasMethod(mw, arguments.hook) ) continue;
+	   // If an array, add each item recursively
+	   if ( isArray( mw ) ) {
+		  for ( var item in mw ) {
+			 addMiddleware( item );
+		  }
+		  return this;
+	   }
 
-            var nextHandler = currentHandler;
-            currentHandler = function(ctx) {
-                return mw[arguments.hook](ctx, nextHandler);
-            };
-        }
-        return currentHandler(arguments.context);
-    }
+	   // If a struct, wrap in StructMiddlewareAdapter
+	   if ( isStruct( mw ) ) {
+		  mw = new models.middleware.StructMiddlewareAdapter( hooks: mw );
+	   }
 
-
+	   // Otherwise, assume it's a middleware instance
+	   arrayAppend( variables.middleware, mw );
+	   return this;
+	}
 
 	/**
-     * Fire wrap-style middleware (e.g. wrapLLMCall, wrapToolCall).
-     * Creates nested handler chain: outer→inner→actual→inner→outer
-     */
-    any function fireWrapMiddleware(
-        required string hook,
-        required struct context,
-        required function innerFn
-    ) {
-        var stack = variables.middleware.duplicate();
-        var currentHandler = arguments.innerFn;
+	 * Fire a sequential middleware hook.
+	 * @hook    The hook name (e.g. "beforeToolCall")
+	 * @context The context struct for this hook
+	 * @reverse If true, iterate stack in reverse order (for "after" hooks)
+	 * Returns first non-continue result, or continue if all pass
+	 */
+	AiMiddlewareResult function fireMiddleware(
+	   required string hook,
+	   required struct context,
+	   boolean reverse = false
+	) {
+	   var stack = variables.middleware;
 
-        // Build nested wrappers (outermost first)
-        for( var i = arrayLen(stack); i >= 1; i-- ) {
-            var mw = stack[i];
-            if( !objectHasMethod(mw, arguments.hook) ) continue;
+	   if ( arguments.reverse ) {
+		  // Make a shallow copy so we don't mutate the original array
+		  stack = duplicate( stack );
+		  arrayReverse( stack );
+	   }
 
-            var nextHandler = currentHandler;
-            currentHandler = function(ctx) {
-                return mw[arguments.hook](ctx, nextHandler);
-            };
-        }
-        return currentHandler(arguments.context);
+	   for ( var mw in stack ) {
+		  // Skip if this middleware doesn't implement the hook
+		  if ( !objectHasMethod( mw, arguments.hook ) ) {
+			 continue;
+		  }
 
-        // In chatStream() tool loop, replace tool execution with:
-        streamState.toolCalls.each( toolCall => {
-            var toolContext = {
-                "service"    = this,
-                "chatRequest"= arguments.chatRequest,
-                "toolName"   = toolCall.function.name,
-                "toolArgs"   = JSONParse(toolCall.function.arguments ?: "{}"),
-                "toolCallId" = toolCall.id
-            };
+		  try {
+			 var result = mw[ arguments.hook ]( context );
 
-            // beforeToolCall
-            var beforeResult = arguments.chatRequest.fireMiddleware("beforeToolCall", toolContext);
-            if( beforeResult.isTerminal() && beforeResult.isSuspended() ) {
-                // Flush stream buffer then emit suspension chunk
-                arguments.callback({ type: "suspend", data: beforeResult.getData() });
-                return beforeResult;
-            }
+			 if ( isInstanceOf( result, "AiMiddlewareResult" ) && result.isTerminal() ) {
+				return result;
+			 }
+		  } catch( any e ) {
+			 // If middleware throws exception → fire onError hook, then rethrow
+			 var errorContext = {
+				"error"  : e,
+				"phase"  : arguments.hook,
+				"context": context
+			 };
+			 fireMiddleware( "onError", errorContext );
+			 rethrow;
+		  }
+	   }
 
-            var toolFn = () => {
-                var tool = arguments.chatRequest.getTool(toolCall.function.name).get();
-                return tool.invoke(toolContext.toolArgs);
-            };
+	   return AiMiddlewareResult.continue();
+	}
 
-            // wrapToolCall
-            var toolResult = arguments.chatRequest.fireWrapMiddleware("wrapToolCall", toolContext, toolFn);
+	/**
+	 * Fire wrap-style middleware (e.g. wrapLLMCall, wrapToolCall).
+	 * Creates nested handler chain: outer→inner→actual→inner→outer
+	 */
+	any function fireWrapMiddleware(
+	   required string hook,
+	   required struct context,
+	   required function innerFn
+	) {
+	   var stack = variables.middleware.duplicate();
+	   var currentHandler = arguments.innerFn;
 
-            // afterToolCall
-            toolContext.result = toolResult;
-            arguments.chatRequest.fireMiddleware("afterToolCall", toolContext, true);
+	   // Build nested wrappers (outermost first)
+	   for( var i = arrayLen(stack); i >= 1; i-- ) {
+		  var mw = stack[i];
+		  if( !objectHasMethod( mw, arguments.hook ) ) continue;
 
-            newMessages.append({
-                "role"        : "tool",
-                "tool_call_id": toolCall.id,
-                "content"     : toolResult
-            });
-        });
-
+		  var nextHandler = currentHandler;
+		  currentHandler = function( ctx ) {
+			 return mw[ arguments.hook ]( ctx, nextHandler );
+		  };
+	   }
+	   return currentHandler( arguments.context );
+	}
 
 }
