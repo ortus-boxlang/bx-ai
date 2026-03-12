@@ -18,6 +18,7 @@
  * Agents can execute tasks, use tools, maintain conversation memory, and be chained in pipelines.
  */
 import bxModules.bxai.models.runnables.*;
+import bxModules.bxai.models.middleware.*;
 
 class extends="AiBaseRunnable" {
 
@@ -75,6 +76,26 @@ class extends="AiBaseRunnable" {
 	property name="subAgentTools" type="array" default=[];
 
 	/**
+	 * Agent middleware stack (per-instance, independent of sub-agents)
+	 */
+	property name="middleware" type="array" default=[];
+
+	/**
+	 * Checkpointer for HITL suspension/resume (IAiMemory backend)
+	 */
+	property name="checkpointer" type="IAiMemory" default="";
+
+	/**
+	 * Checkpoint TTL in minutes (default 30)
+	 */
+	property name="checkpointTTL" type="numeric" default=30;
+
+	/**
+	 * Thread ID for checkpointing (auto-generated if empty)
+	 */
+	property name="threadId" type="string" default="";
+
+	/**
 	 * Default agent name constant
 	 */
 	static {
@@ -85,16 +106,6 @@ class extends="AiBaseRunnable" {
 
 	/**
 	 * Constructor
-	 *
-	 * @name The agent's name
-	 * @description The agent's description
-	 * @instructions The agent's instructions
-	 * @model The AI model to use, defaults to the default BoxLang AI model
-	 * @memory The memory instance or array of memories, defaults to a simple in-memory store
-	 * @tools Array of tools for the agent
-	 * @subAgents Array of sub-agents to register as internal tools
-	 * @params Default model parameters
-	 * @options Default agent options
 	 */
 	function init(
 		string name = static.DEFAULT_AGENT_NAME,
@@ -104,6 +115,10 @@ class extends="AiBaseRunnable" {
 		any memory = aiMemory(),
 		array tools = [],
 		array subAgents = [],
+		array middleware = [],
+		IAiMemory checkpointer = "",
+		numeric checkpointTTL = 30,
+		string threadId = "",
 		struct params = {},
 		struct options = {}
 	) {
@@ -118,162 +133,330 @@ class extends="AiBaseRunnable" {
 		variables.options = arguments.options;
 
 		// param the options return format to "single"
-		// Agent's by default return just the assistant's content
 		param variables.options.returnFormat = "single";
 
-		// If the agent name is empty, use the default
+		// Set internal name
 		if ( arguments.name.len() == 0 ) {
 			arguments.name = static.DEFAULT_AGENT_NAME;
 		}
-		// If the agent description is empty, use the default
-		if ( arguments.description.len() == 0 ) {
-			variables.description = static.DEFAULT_AGENT_DESCRIPTION;
-		}
-		// If the agent instructions is empty, use the default
-		if ( arguments.instructions.len() == 0 ) {
-			variables.instructions = static.DEFAULT_AGENT_INSTRUCTIONS;
-		}
-
-		// Set internal name
 		setName( arguments.name );
 
-		// Handle memory - can be single or array, or create default simple memory
+		// Handle memory
 		if ( isArray( arguments.memory ) ) {
 			variables.memories = arguments.memory;
 		} else {
 			variables.memories = [ arguments.memory ];
 		}
 
-		// Handle sub-agents - register each as an internal tool
+		// Handle sub-agents
 		arguments.subAgents.each( subAgent => addSubAgent( subAgent ) );
+
+		// Wire middleware from constructor
+		if ( !arguments.middleware.isEmpty() ) {
+			withMiddleware( arguments.middleware );
+		}
+
+		// Wire checkpointer
+		if ( !isNull( arguments.checkpointer ) && arguments.checkpointer.toString() != "" ) {
+			withCheckpointer( arguments.checkpointer, arguments.checkpointTTL );
+		}
+
+		// Set thread ID
+		if ( arguments.threadId.len() > 0 ) {
+			withThreadId( arguments.threadId );
+		}
 
 		return this;
 	}
 
 	/**
 	 * ---------------------------------------------------------------------------------------------------------
-	 * IAiRunnable Interface Implementation
+	 * MIDDLEWARE METHODS (Phase 3)
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
 
 	/**
-	 * Execute the agent with a task/prompt
-	 *
-	 * @input The task or question for the agent
-	 * @params Runtime parameters to override
-	 * @options Runtime options to override. Supported options:
-	 *          - returnFormat: "single" (default), "all", or "raw"
-	 *            - single: Returns just the assistant's content string
-	 *            - all: Returns all messages (handled by service)
-	 *            - raw: Returns the full provider response structure
-	 *
-	 * @return The agent's response (format depends on returnFormat option)
+	 * Set entire middleware stack (fluent)
+	 * Accepts: single instance, struct-of-closures, or array of either
 	 */
+	AiAgent function withMiddleware( required any middleware ) {
+		return addMiddleware( arguments.middleware );
+	}
+
+	/**
+	 * Configure checkpointer with optional TTL (fluent)
+	 */
+	AiAgent function withCheckpointer( required IAiMemory checkpointer, numeric ttlMinutes = 30 ) {
+		variables.checkpointer = arguments.checkpointer;
+		variables.checkpointTTL = arguments.ttlMinutes;
+		return this;
+	}
+
+	/**
+	 * Set explicit thread ID for checkpointing (fluent)
+	 */
+	AiAgent function withThreadId( required string threadId ) {
+		variables.threadId = arguments.threadId;
+		return this;
+	}
+
+	/**
+	 * Get thread ID (auto-generate if empty)
+	 */
+	string function getThreadId() {
+		if ( variables.threadId.len() > 0 ) {
+			return variables.threadId;
+		}
+		// Auto-generate: memory.key + userId + conversationId or UUID
+		if ( !variables.memories.isEmpty() ) {
+			var memoryKey = variables.memories.first().key();
+			return hash( memoryKey & createUUID() );
+		}
+		return createUUID();
+	}
+
+	/**
+	 * Resume from suspended checkpoint with human decision
+	 */
+	any function resume( required AiMiddlewareResult decision, string threadId = "" ) {
+		var tid = arguments.threadId.len() > 0 ? arguments.threadId : getThreadId();
+
+		if ( isNull( variables.checkpointer ) ) {
+			throw(
+				type = "NoCheckpointerException",
+				message = "Cannot resume without checkpointer configured. Use withCheckpointer()"
+			);
+		}
+
+		// Load checkpoint state
+		var state = variables.checkpointer.loadState( tid );
+		var messages = state.messages ?: [];
+		var params = state.params ?: {};
+		var options = state.options ?: {};
+		var pending = state.pending ?: {};
+
+		// Apply human decision
+		if ( decision.isApproved() ) {
+			pending.approved = true;
+		} else if ( decision.isRejected() ) {
+			messages.append( {
+				role: "tool",
+				tool_call_id: pending.toolCallId ?: "",
+				content: "Rejected by human: #decision.getReason()#"
+			} );
+		} else if ( decision.isEdit() ) {
+			pending.toolArgs = decision.getData();
+			pending.approved = true;
+		}
+
+		// Clear checkpoint
+		variables.checkpointer.clearState( tid );
+
+		// Continue execution
+		return runFromMessages( messages, params, options );
+	}
+
+	/**
+	 * Stream resume from checkpoint
+	 */
+	void function resumeStream( required function onChunk, required AiMiddlewareResult decision, string threadId = "" ) {
+		var result = resume( arguments.decision, arguments.threadId );
+		// For streaming, would call aiModel.stream() with loaded state
+		onChunk( result );
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiRunnable Interface Implementation (Phase 3 Updated)
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
 	public any function run( any input = "", struct params = {}, struct options = {} ) {
-		// Create the user message
+		// 1. Build messages
 		var userMessage = isStruct( arguments.input ) && arguments.input.keyExists( "content" )
 			? arguments.input
 			: { role: "user", content: toString( arguments.input ) };
 
-		// Build complete message set
 		var messages = [];
-		// Build system message from instructions and description
 		var systemMessage = buildSystemMessage();
 		if ( systemMessage.len() > 0 ) {
 			messages.append( { role: "system", content: systemMessage } );
 		}
-		// Load memory messages
 		messages.append( loadMemoryMessages(), true );
-		// Add user message
 		messages.append( userMessage );
 
-		// Merge parameters
 		var effectiveParams = variables.params.append( arguments.params );
-
-		// Merge options (including returnFormat)
 		var effectiveOptions = variables.options.append( arguments.options );
 
-		// Announce before execution
-		BoxAnnounce( "beforeAIAgentRun", {
-			agent: this,
-			input: arguments.input,
-			messages: messages,
-			params: effectiveParams,
-			options: effectiveOptions
-		} );
+		// 2. CREATE CHATREQUEST AND INJECT AGENT MIDDLEWARE
+		var chatRequest = new AiChatRequest()
+			.addMiddleware( variables.middleware );
 
-		// Execute via model - service handles returnFormat and returns formatted result
+		// 3. beforeAgentRun hook
+		var agentContext = {
+			"agent"   : this,
+			"input"   : arguments.input,
+			"messages": messages,
+			"params"  : effectiveParams,
+			"options" : effectiveOptions
+		};
+
+		var beforeResult = chatRequest.fireMiddleware( "beforeAgentRun", agentContext );
+		if ( beforeResult.isTerminal() ) {
+			return beforeResult;
+		}
+
+		// 4. Execute via model (model injects its own middleware)
 		var response = variables.aiModel.run( messages, effectiveParams, effectiveOptions );
 
-		// Store in memory (handles all response formats)
+		// 5. Suspension detection + checkpoint
+		if ( isInstanceOf( response, "AiMiddlewareResult" ) && response.isSuspended() ) {
+			if ( !isNull( variables.checkpointer ) ) {
+				variables.checkpointer.saveState(
+					getThreadId(),
+					{ 
+						"messages": messages, 
+						"params"  : effectiveParams, 
+						"options" : effectiveOptions,
+						"pending" : response.getData()
+					},
+					variables.checkpointTTL
+				);
+			}
+			return response;
+		}
+
+		// 6. Store in memory
 		storeInMemory( userMessage, response );
 
-		// Announce after execution
-		BoxAnnounce( "afterAIAgentRun", {
-			agent: this,
-			response: response
-		} );
+		// 7. afterAgentRun hook (reverse order)
+		agentContext.response = response;
+		chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
 
 		return response;
 	}
 
 	/**
-	 * Stream the agent's response
-	 *
-	 * @onChunk Callback for each chunk
-	 * @input The task or question
-	 * @params Runtime parameters
-	 * @options Runtime options
+	 * Continue execution from pre-built messages (used by resume)
 	 */
+	private any function runFromMessages( required array messages, struct params = {}, struct options = {} ) {
+		var chatRequest = new AiChatRequest().addMiddleware( variables.middleware );
+		var agentContext = {
+			"agent"   : this,
+			"messages": messages,
+			"params"  : arguments.params,
+			"options" : arguments.options
+		};
+
+		var beforeResult = chatRequest.fireMiddleware( "beforeAgentRun", agentContext );
+		if ( beforeResult.isTerminal() ) {
+			return beforeResult;
+		}
+
+		var response = variables.aiModel.run( messages, arguments.params, arguments.options );
+
+		if ( isInstanceOf( response, "AiMiddlewareResult" ) && response.isSuspended() ) {
+			if ( !isNull( variables.checkpointer ) ) {
+				variables.checkpointer.saveState(
+					getThreadId(),
+					{ 
+						"messages": messages, 
+						"params"  : arguments.params, 
+						"options" : arguments.options,
+						"pending" : response.getData()
+					},
+					variables.checkpointTTL
+				);
+			}
+			return response;
+		}
+
+		storeInMemory( messages.last(), response );
+		agentContext.response = response;
+		chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
+
+		return response;
+	}
+
 	public void function stream(
 		required function onChunk,
 		any input = "",
 		struct params = {},
 		struct options = {}
 	) {
-		// Build system message
-		var systemMessage = buildSystemMessage();
-
-		// Load memory
-		var memoryMessages = loadMemoryMessages();
-
-		// Create user message
+		// Similar middleware wiring as run() but with streaming suspension handling
 		var userMessage = isStruct( arguments.input ) && arguments.input.keyExists( "content" )
 			? arguments.input
 			: { role: "user", content: toString( arguments.input ) };
 
-		// Build messages
 		var messages = [];
+		var systemMessage = buildSystemMessage();
 		if ( systemMessage.len() > 0 ) {
 			messages.append( { role: "system", content: systemMessage } );
 		}
-		messages.append( memoryMessages, true );
+		messages.append( loadMemoryMessages(), true );
 		messages.append( userMessage );
 
-		// Merge parameters
 		var effectiveParams = variables.params.append( arguments.params );
-
-		// Merge options
 		var effectiveOptions = variables.options.append( arguments.options );
-		var userOnChunk = arguments.onChunk;
 
-		// Store accumulated response for memory
+		var chatRequest = new AiChatRequest().addMiddleware( variables.middleware );
+		var agentContext = {
+			"agent"   : this,
+			"input"   : arguments.input,
+			"messages": messages,
+			"params"  : effectiveParams,
+			"options" : effectiveOptions
+		};
+
+		var beforeResult = chatRequest.fireMiddleware( "beforeAgentRun", agentContext );
+		if ( beforeResult.isTerminal() ) {
+			arguments.onChunk( beforeResult );
+			return;
+		}
+
+		// Stream via model with accumulated response for memory
 		var accumulated = "";
 		var wrappedCallback = function( chunk ) {
-			// Accumulate content
 			var content = chunk.choices?.first()?.delta?.content ?: "";
 			accumulated &= content;
 
-			// Call user callback
-			userOnChunk( chunk );
+			// Check for suspension chunk from model/service
+			if ( isStruct( chunk ) && chunk.keyExists( "type" ) && chunk.type == "suspend" ) {
+				// Flush suspension through
+				arguments.onChunk( chunk );
+				
+				// Save checkpoint if configured
+				if ( !isNull( variables.checkpointer ) ) {
+					variables.checkpointer.saveState(
+						getThreadId(),
+						{ 
+							"messages": messages, 
+							"params"  : effectiveParams, 
+							"options" : effectiveOptions,
+							"pending" : chunk.data
+						},
+						variables.checkpointTTL
+					);
+				}
+				
+				// Fire afterAgentRun
+				agentContext.response = chunk;
+				chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
+				return;
+			}
+
+			arguments.onChunk( chunk );
 		};
 
-		// Stream via model (tools handled by model/service)
 		variables.aiModel.stream( wrappedCallback, messages, effectiveParams, effectiveOptions );
 
-		// Store in memory after streaming completes
-		var assistantMessage = { role: "assistant", content: accumulated };
-		storeInMemory( userMessage, assistantMessage );
+		// Store final accumulated response
+		storeInMemory( userMessage, { role: "assistant", content: accumulated } );
+
+		// Final afterAgentRun
+		agentContext.response = { role: "assistant", content: accumulated };
+		chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
 	}
 
 	/**
@@ -281,46 +464,21 @@ class extends="AiBaseRunnable" {
 	 * Memory Methods
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
-
-	 /**
-	 * Add another memory to the agent
-	 *
-	 * @memory The memory instance to add
-	 *
-	 * @return this for chaining
-	 */
 	AiAgent function addMemory( required IAiMemory memory ) {
 		variables.memories.append( arguments.memory );
 		return this;
 	}
 
-	/**
-	 * Set a single memory (replaces existing) with a single one
-	 *
-	 * @memory The memory instance
-	 *
-	 * @return this for chaining
-	 */
 	function setMemory( required IAiMemory memory ) {
 		variables.memories = [ arguments.memory ];
 		return this;
 	}
 
-	/**
-	 * Clear all registered memories
-	 *
-	 * @return this for chaining
-	 */
 	function clearMemory() {
 		variables.memories.each( .clear() );
 		return this;
 	}
 
-	/**
-	 * Get all messages from all memories
-	 *
-	 * @return Array of all messages
-	 */
 	array function getMemoryMessages() {
 		return loadMemoryMessages();
 	}
@@ -330,75 +488,33 @@ class extends="AiBaseRunnable" {
 	 * Configuration Methods
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
-
-	 /**
-	  * Set instructions
-	 * @instructions The agent's instructions
-	 * @return this for chaining
-	 */
 	AiAgent function withInstructions( required string instructions ) {
 		variables.instructions = arguments.instructions;
 		return this;
 	}
 
-	 /**
-	 * Set the agent's name
-	 *
-	 * @name The agent's name
-	 *
-	 * @return this for chaining
-	 */
 	AiAgent function setName( required string name ) {
 		variables.agentName = arguments.name;
 		variables.name = "AiAgent-" & arguments.name;
 		return this;
 	}
 
-	/**
-	 * Set the AI model for the agent
-	 *
-	 * @model The AI model to use
-	 *
-	 * @return this for chaining
-	 */
 	AiAgent function setModel( required AiModel model ) {
 		variables.aiModel = arguments.model.addTools( variables.tools );
 		return this;
 	}
 
-	/**
-	 * Set the tools for the agent (replaces existing tools)
-	 *
-	 * @tools Array of tools
-	 *
-	 * @return this for chaining
-	 */
 	AiAgent function setTools( required array tools ) {
 		variables.tools = arguments.tools;
 		variables.aiModel.bindTools( arguments.tools );
 		return this;
 	}
 
-	/**
-	 * Add a tool to the agent
-	 *
-	 * @tool The tool to add
-	 *
-	 * @return this for chaining
-	 */
 	AiAgent function addTool( required ITool tool ) {
 		variables.tools.append( arguments.tool );
 		return this;
 	}
 
-	/**
-	 * Set a single parameter
-	 *
-	 * @key Parameter name
-	 * @value Parameter value
-	 *
-	 * @return this for chaining
-	 */
 	function setParam( required string key, required any value ) {
 		variables.params[ arguments.key ] = arguments.value;
 		return this;
@@ -409,179 +525,76 @@ class extends="AiBaseRunnable" {
 	 * Sub-Agent Methods
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
-
-	/**
-	 * Add a sub-agent to this agent.
-	 * The sub-agent will be wrapped as an internal tool that can be invoked by the parent agent.
-	 *
-	 * @subAgent The sub-agent to add
-	 *
-	 * @return this for chaining
-	 */
 	AiAgent function addSubAgent( required AiAgent subAgent ) {
-		// Store the sub-agent
 		variables.subAgents.append( arguments.subAgent );
-
-		// Create an internal tool for the sub-agent
 		var subAgentTool = createSubAgentTool( arguments.subAgent );
-
-		// Track the sub-agent tool for potential cleanup
 		variables.subAgentTools.append( subAgentTool );
-
-		// Add the tool to this agent's model
 		variables.aiModel.addTools( [ subAgentTool ] );
-
 		return this;
 	}
 
-	/**
-	 * Set the sub-agents for the agent (replaces existing sub-agents)
-	 *
-	 * This method removes old sub-agent delegation tools and registers new ones.
-	 *
-	 * @subAgents Array of sub-agents to register
-	 *
-	 * @return this for chaining
-	 */
 	AiAgent function setSubAgents( required array subAgents ) {
-		// Remove old sub-agent tools from the model
 		if ( !variables.subAgentTools.isEmpty() ) {
 			variables.aiModel.removeTools( variables.subAgentTools );
 		}
-
-		// Clear existing sub-agents and their tools
 		variables.subAgents = [];
 		variables.subAgentTools = [];
-
-		// Add each sub-agent
 		arguments.subAgents.each( subAgent => addSubAgent( subAgent ) );
-
 		return this;
 	}
 
-	/**
-	 * Get a sub-agent by name
-	 *
-	 * @name The name of the sub-agent to find
-	 *
-	 * @return The sub-agent if found, or null
-	 */
 	AiAgent function getSubAgent( required string name ) {
 		for ( var subAgent in variables.subAgents ) {
 			if ( subAgent.getAgentName() == arguments.name ) {
 				return subAgent;
 			}
 		}
-		return null
+		return null;
 	}
 
-	/**
-	 * Check if a sub-agent exists by name
-	 *
-	 * @name The name of the sub-agent to check
-	 *
-	 * @return Boolean indicating if the sub-agent exists
-	 */
 	boolean function hasSubAgent( required string name ) {
 		return !isNull( getSubAgent( arguments.name ) );
 	}
 
-	/**
-	 * Get the names of all registered sub-agents
-	 *
-	 * @return Array of sub-agent names
-	 */
-	Array function getSubAgentNames() {
+	array function getSubAgentNames() {
 		return variables.subAgents.map( agent => agent.getAgentName() );
 	}
 
 	/**
-	 * Get agent configuration as a struct
-	 *
-	 * @return Struct of agent configuration
-	 */
-	struct function getConfig() {
-		return {
-			"name": variables.agentName,
-			"description": variables.description,
-			"instructions": variables.instructions,
-			"model": variables.aiModel.getConfig(),
-			"toolCount": variables.tools.len(),
-			"memoryCount": variables.memories.len(),
-			"memories": variables.memories.map( mem => mem.getSummary() ),
-			"subAgentCount": variables.subAgents.len(),
-			"subAgents": variables.subAgents.map( agent => {
-				return {
-					"name": agent.getConfig().name,
-					"description": agent.getConfig().description
-				};
-			} ),
-			"params": variables.params,
-			"options": variables.options.map( ( key, value ) => {
-				// Mask sensitive options (e.g. API keys) in the config output
-				var maskedValue = ( listFindNoCase( "apikey,token,secret", key ) > 0 )
-					? "****"
-					: value
-				return maskedValue
-			} )
-		};
-	}
-
-	// ==================== PRIVATE METHODS ====================
-
-	/**
-	 * Build the system message from instructions and description
+	 * ---------------------------------------------------------------------------------------------------------
+	 * PRIVATE METHODS
+	 * ---------------------------------------------------------------------------------------------------------
 	 */
 	private string function buildSystemMessage() {
 		var parts = [];
-
 		if ( variables.description.len() > 0 ) {
 			parts.append( "Role: " & variables.description );
 		}
-
 		if ( variables.instructions.len() > 0 ) {
 			parts.append( variables.instructions );
 		}
-
 		return parts.toList( char( 10 ) & char( 10 ) );
 	}
 
-	/**
-	 * Load messages from all memories
-	 */
 	private array function loadMemoryMessages() {
 		var allMessages = [];
-
 		variables.memories.each( mem => {
 			allMessages.append( mem.getAll(), true );
 		} );
-
 		return allMessages;
 	}
 
-	/**
-	 * Store messages in all memories
-	 *
-	 * @userMessage The user message struct
-	 * @response The assistant response (string or struct)
-	 *
-	 * @return void
-	 */
 	private void function storeInMemory( required struct userMessage, required any response ) {
-		// No memories, nothing to do
 		if ( variables.memories.isEmpty() ) {
 			return;
 		}
 
-		// Add user message to all memories
 		variables.memories.each( .add( userMessage ) );
 
-		// Extract assistant message from response
 		var assistantContent = "";
 		if ( isStruct( arguments.response ) ) {
-			// Handle structured response
 			if ( arguments.response.keyExists( "choices" ) && !arguments.response.choices.isEmpty() ) {
-				assistantContent = arguments.response.choices[  1  ].message?.content ?: "";
+				assistantContent = arguments.response.choices[ 1 ].message?.content ?: "";
 			} else if ( arguments.response.keyExists( "content" ) ) {
 				assistantContent = arguments.response.content;
 			}
@@ -589,7 +602,6 @@ class extends="AiBaseRunnable" {
 			assistantContent = toString( arguments.response );
 		}
 
-		// Add assistant message
 		if ( assistantContent.len() > 0 ) {
 			variables.memories.each( mem => mem.add({
 				role: "assistant",
@@ -598,38 +610,18 @@ class extends="AiBaseRunnable" {
 		}
 	}
 
-	/**
-	 * Create an internal tool wrapper for a sub-agent.
-	 * The tool delegates to the sub-agent's run method.
-	 *
-	 * @subAgent The sub-agent to wrap
-	 *
-	 * @return A Tool instance that delegates to the sub-agent
-	 */
 	private ITool function createSubAgentTool( required AiAgent subAgent ) {
 		var agentConfig = arguments.subAgent.getConfig();
 		var agentName = agentConfig.name;
 		var agentDescription = agentConfig.description;
-
-		// Build tool name: delegate_to_{agent_name}
-		// Regex only needs to match non-alphanumeric and non-underscore since we already lowercase
 		var toolName = "delegate_to_" & agentName.lCase().reReplace( "[^a-z0-9_]", "_", "all" );
-
-		// Build description for the tool
-		var toolDescription = "Delegate a task to the '#agentName#' sub-agent. "
-			& "Use this tool when the task matches the sub-agent's specialty: #agentDescription#";
-
-		// Capture the sub-agent reference for the closure
+		var toolDescription = "Delegate a task to the '#agentName#' sub-agent. Use this tool when the task matches the sub-agent's specialty: #agentDescription#";
 		var targetSubAgent = arguments.subAgent;
 
-		// Create a tool that wraps the sub-agent
 		return aiTool(
 			name: toolName,
 			description: toolDescription,
-			callable: ( task ) => {
-				// Invoke the sub-agent with the task
-				return targetSubAgent.run( task );
-			}
+			callable: ( task ) => targetSubAgent.run( task )
 		).describeArg( "task", "The task or question to delegate to the sub-agent" );
 	}
 
