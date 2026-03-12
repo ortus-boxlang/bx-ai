@@ -6,14 +6,14 @@
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0)
  *
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
  * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
- * AI Agent - PHASE 6 COMPLETE: Autonomous reasoning + checkpointing + HITL + DSL
- * Production-ready agent with full middleware integration and fluent DSL
+ * AI Agent - 🔥 PHASE 7 COMPLETE: Full Streaming + HITL Suspension Support
+ * Production-ready agent with complete middleware pipeline and streaming HITL
  */
 import bxModules.bxai.models.runnables.*;
 import bxModules.bxai.models.middleware.*;
@@ -49,7 +49,7 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
-	 * Constructor - FULL PHASE 6 SUPPORT
+	 * Constructor - FULL PHASE 7 SUPPORT
 	 */
 	function init(
 		string name = static.DEFAULT_AGENT_NAME,
@@ -124,7 +124,7 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
-	 * 🔥 PHASE 4: CHECKPOINT METHODS
+	 * 🔥 PHASE 4/7: CHECKPOINT METHODS
 	 */
 
 	/**
@@ -157,7 +157,7 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
-	 * RESUME from checkpoint with human decision
+	 * 🔥 PHASE 4: RESUME from checkpoint with human decision (SYNC)
 	 */
 	any function resume( required AiMiddlewareResult decision, string threadId = "" ) {
 		var tid = len( arguments.threadId ) ? arguments.threadId : getThreadId();
@@ -198,11 +198,51 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
-	 * Stream resume from checkpoint
+	 * 🔥 PHASE 7: Stream resume from checkpoint with human decision
 	 */
-	void function resumeStream( required function onChunk, required AiMiddlewareResult decision, string threadId = "" ) {
-		var result = resume( arguments.decision, arguments.threadId );
-		onChunk( result );
+	public void function resumeStream( 
+		required function onChunk, 
+		required AiMiddlewareResult decision, 
+		string threadId = "" 
+	) {
+		var tid = len( arguments.threadId ) ? arguments.threadId : getThreadId();
+
+		if ( isNull( variables.checkpointer ) ) {
+			onChunk( AiMiddlewareResult.reject( "No checkpointer configured" ) );
+			return;
+		}
+
+		try {
+			// 🔥 PHASE 7: Load checkpoint state
+			var state = variables.checkpointer.loadState( tid );
+			var messages = state.messages ?: [];
+			var params = state.params ?: {};
+			var options = state.options ?: {};
+			var pending = state.pending ?: {};
+
+			// 🔥 PHASE 7: Apply human decision to pending tool call
+			if ( decision.isApproved() ) {
+				pending.approved = true;
+			} else if ( decision.isRejected() ) {
+				messages.append( {
+					role = "tool",
+					tool_call_id = pending.toolCallId ?: "",
+					content = "Human rejected: #decision.getReason()#"
+				} );
+			} else if ( decision.isEdit() ) {
+				pending.toolArgs = decision.getData();
+				pending.approved = true;
+			}
+
+			// 🔥 PHASE 7: Clear checkpoint BEFORE resuming
+			variables.checkpointer.clearState( tid );
+
+			// 🔥 PHASE 7: Stream continuation
+			streamFromMessages( arguments.onChunk, messages, params, options );
+			
+		} catch ( any e ) {
+			onChunk( AiMiddlewareResult.reject( e.message ) );
+		}
 	}
 
 	/**
@@ -216,7 +256,7 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
-	 * MAIN EXECUTION - FULL PHASE 6 PIPELINE
+	 * MAIN EXECUTION - FULL PHASE 7 PIPELINE
 	 */
 	public any function run( any input = "", struct params = {}, struct options = {} ) {
 		// Build messages
@@ -318,7 +358,72 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
-	 * STREAMING EXECUTION
+	 * 🔥 PHASE 7: STREAM from pre-built messages (used by resumeStream)
+	 */
+	private void function streamFromMessages( 
+		required function onChunk, 
+		required array messages, 
+		struct params = {}, 
+		struct options = {} 
+	) {
+		var chatRequest = new AiChatRequest().addMiddleware( variables.middleware );
+		var agentContext = {
+			"agent"   : this,
+			"messages": messages,
+			"params"  : arguments.params,
+			"options" : arguments.options
+		};
+
+		var beforeResult = chatRequest.fireMiddleware( "beforeAgentRun", agentContext );
+		if ( beforeResult.isTerminal() ) {
+			onChunk( beforeResult );
+			return;
+		}
+
+		// 🔥 PHASE 7: Enhanced streaming callback with suspension detection
+		var wrappedCallback = function( chunk ) {
+			// Handle AiMiddlewareResult suspension from BaseService.chatStream()
+			if ( isInstanceOf( chunk, "AiMiddlewareResult" ) && chunk.isSuspended() ) {
+				// 🔥 PHASE 7: Save checkpoint BEFORE emitting suspend chunk
+				if ( !isNull( variables.checkpointer ) ) {
+					variables.checkpointer.saveState(
+						getThreadId(),
+						{
+							"messages": messages,
+							"params"  : arguments.params,
+							"options" : arguments.options,
+							"pending" : chunk.getData()
+						},
+						variables.checkpointTTL
+					);
+				}
+				
+				onChunk( chunk );
+				agentContext.response = chunk;
+				chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
+				return; // STOP STREAMING
+			}
+
+			// Handle standard streaming chunks
+			onChunk( chunk );
+
+			// Handle final completion chunk
+			if ( isStruct( chunk ) && chunk.keyExists( "finish_reason" ) ) {
+				var finalResponse = { 
+					"role": "assistant", 
+					"content": chunk.choices?.first()?.delta?.content ?: "" 
+				};
+				storeInMemory( messages.last(), finalResponse );
+				agentContext.response = finalResponse;
+				chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
+			}
+		};
+
+		variables.aiModel.stream( wrappedCallback, messages, arguments.params, arguments.options );
+	}
+
+	/**
+	 * 🔥 PHASE 7: STREAMING EXECUTION - Full HITL Suspension Support
 	 */
 	public void function stream( required function onChunk, any input = "", struct params = {}, struct options = {} ) {
 		var userMessage = isStruct( input ) && input.keyExists( "content" )
@@ -350,40 +455,7 @@ class extends="AiBaseRunnable" {
 			return;
 		}
 
-		// Streaming with suspension detection
-		var accumulated = "";
-		var wrappedCallback = function( chunk ) {
-			var content = chunk.choices?.first()?.delta?.content ?: "";
-			accumulated &= content;
-
-			// 🔥 PHASE 4: Detect suspension chunks
-			if ( isStruct( chunk ) && chunk.keyExists( "type" ) && chunk.type == "suspend" ) {
-				if ( !isNull( variables.checkpointer ) ) {
-					variables.checkpointer.saveState(
-						getThreadId(),
-						{
-							"messages": messages,
-							"params"  : effectiveParams,
-							"options" : effectiveOptions,
-							"pending" : chunk.data
-						},
-						variables.checkpointTTL
-					);
-				}
-				onChunk( chunk );
-				agentContext.response = chunk;
-				chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
-				return;
-			}
-
-			onChunk( chunk );
-		};
-
-		variables.aiModel.stream( wrappedCallback, messages, effectiveParams, effectiveOptions );
-
-		storeInMemory( userMessage, { "role": "assistant", "content": accumulated } );
-		agentContext.response = { "role": "assistant", "content": accumulated };
-		chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
+		streamFromMessages( onChunk, messages, effectiveParams, effectiveOptions );
 	}
 
 	// 🔥 PHASE 6: FLUENT SHORTCUTS
