@@ -19,8 +19,8 @@ component singleton {
 
     function buildAgent() {
         return aiAgent(
-            name         : "WebAgent",
-            middleware   : [
+            name          : "WebAgent",
+            middleware    : [
                 new LoggingMiddleware(),
                 new HumanInTheLoopMiddleware(
                     interruptOn : {
@@ -34,11 +34,11 @@ component singleton {
                         }
                     },
                     autoApprove : [ "readRecord", "listRecords" ],
-                    mode        : "suspend"   // always suspend in web mode
+                    mode        : "suspend"
                 )
             ],
-            checkpointer : aiMemory( "cache" ),
-            checkpointTTL: 30   // minutes before abandoned checkpoint expires
+            checkpointer  : aiMemory( "cache" ),
+            checkpointTTL : 30
         );
     }
 
@@ -57,7 +57,7 @@ component {
      * Body: { "input": "Delete order 42" }
      *
      * Response (suspended):
-     *   { "status": "pending_approval", "question": "...", "threadId": "..." }
+     *   { "status": "pending_approval", "question": "...", "toolName": "...", "toolArgs": {}, "threadId": "..." }
      *
      * Response (complete):
      *   { "status": "complete", "response": "..." }
@@ -69,12 +69,13 @@ component {
         var result = agent.run( rc.input );
 
         if ( isInstanceOf( result, "AiMiddlewareResult" ) && result.isSuspended() ) {
+            var pending = result.getData();
             return event.renderData( type: "json", data: {
-                "status"  : "pending_approval",
-                "question": result.getData().question,
-                "toolName": result.getData().toolName,
-                "toolArgs": result.getData().toolArgs,
-                "threadId": agent.getThreadId()
+                "status"   : "pending_approval",
+                "question" : pending.keyExists( "question" ) ? pending.question : "",
+                "toolName" : pending.keyExists( "toolName" ) ? pending.toolName : "",
+                "toolArgs" : pending.keyExists( "toolArgs" ) ? pending.toolArgs : {},
+                "threadId" : agent.getThreadId()
             } );
         }
 
@@ -85,7 +86,7 @@ component {
     }
 
     /**
-     * Approve a suspended tool call.
+     * Apply a human decision to a suspended checkpoint and continue execution.
      * POST /api/agent/approve
      * Body: { "threadId": "...", "decision": "approve" | "reject" | "edit",
      *         "reason": "optional rejection reason",
@@ -95,40 +96,57 @@ component {
      * another tool needs approval.
      */
     function approve( event, rc, prc ) {
-        param rc.decision   = "approve";
+        param rc.threadId   = "";
+        param rc.decision   = "";
         param rc.reason     = "";
         param rc.editedArgs = {};
 
-        var agent = agentService.buildAgent();
+        // Validate required fields
+        if ( !len( trim( rc.threadId ) ) ) {
+            return event.renderData( type: "json", statusCode: 400, data: {
+                "error": "threadId is required"
+            } );
+        }
 
+        if ( !listFindNoCase( "approve,reject,edit", rc.decision ) ) {
+            return event.renderData( type: "json", statusCode: 400, data: {
+                "error": "decision must be one of: approve, reject, edit"
+            } );
+        }
+
+        // Build the AiMiddlewareResult decision object
         var decision = "";
         switch ( rc.decision ) {
             case "approve":
                 decision = AiMiddlewareResult.approve();
                 break;
+
             case "reject":
-                decision = AiMiddlewareResult.reject( rc.reason );
+                decision = AiMiddlewareResult.reject(
+                    len( trim( rc.reason ) ) ? rc.reason : "Rejected by human operator"
+                );
                 break;
+
             case "edit":
-                var args = isStruct( rc.editedArgs ) ? rc.editedArgs : deserializeJSON( rc.editedArgs );
+                var args = isStruct( rc.editedArgs )
+                    ? rc.editedArgs
+                    : deserializeJSON( rc.editedArgs );
                 decision = AiMiddlewareResult.edit( args );
                 break;
-            default:
-                return event.renderData( type: "json", statusCode: 400, data: {
-                    "error": "Invalid decision. Must be approve, reject, or edit."
-                } );
         }
 
+        var agent  = agentService.buildAgent();
         var result = agent.resume( decision, rc.threadId );
 
         // May suspend again — another tool in the same run needs approval
         if ( isInstanceOf( result, "AiMiddlewareResult" ) && result.isSuspended() ) {
+            var pending = result.getData();
             return event.renderData( type: "json", data: {
-                "status"  : "pending_approval",
-                "question": result.getData().question,
-                "toolName": result.getData().toolName,
-                "toolArgs": result.getData().toolArgs,
-                "threadId": agent.getThreadId()
+                "status"   : "pending_approval",
+                "question" : pending.keyExists( "question" ) ? pending.question : "",
+                "toolName" : pending.keyExists( "toolName" ) ? pending.toolName : "",
+                "toolArgs" : pending.keyExists( "toolArgs" ) ? pending.toolArgs : {},
+                "threadId" : agent.getThreadId()
             } );
         }
 
@@ -137,4 +155,5 @@ component {
             "response": result
         } );
     }
+
 }
