@@ -1,9 +1,0 @@
-component {
-    function run() {
-        printLine( "=== 01 - LoggingMiddleware ===" );
-        var agent = new AiAgent()
-            .addMiddleware( new LoggingMiddleware() );
-        agent.ask( "What is 2+2?" );
-        printLine( "✅ Logging complete" );
-    }
-}
