@@ -1,146 +1,307 @@
 /**
  * LoggingMiddleware - Logs all agent lifecycle events to the configured log.
+ *
+ * Fires at every hook point in the middleware pipeline and records what is
+ * happening. Purely observational — never interrupts the chain.
+ *
+ * Valid BoxLang writeLog() type values: information | warning | error | fatal
+ * Note: "debug" is NOT a valid BoxLang writeLog type — use "information" instead.
+ *
+ * Usage:
+ *   new LoggingMiddleware()
+ *   new LoggingMiddleware( logLevel: "information", logArgs: false, logTokens: true )
  */
-component extends="models.middleware.BaseAiMiddleware" accessors="true" {
+component
+    extends   = "models.middleware.BaseAiMiddleware"
+    accessors = "true"
+    {
 
-	/**
-	 * Name of the log file (creates {logName}.log)
-	 */
-	property name="logName" type="string" default="ai";
+    // =========================================================================
+    // PROPERTIES
+    // =========================================================================
 
-	/**
-	 * Log level for all hook messages.
-	 * BoxLang writeLog() options: debug | information | warning | error
-	 */
-	property name="logLevel" type="string" default="debug";
+    /**
+     * Name of the log target — creates {logName}.log in the logs directory.
+     */
+    property name="logName" type="string" default="ai";
 
-	/**
-	 * Whether to log to console as well (for debugging)
-	 */
-	property name="logToConsole" type="boolean" default=false;
+    /**
+     * Log level for all hook messages (except onError which is always "error").
+     * Valid BoxLang writeLog() types: information | warning | error | fatal
+     * Default is "information" — "debug" is not a valid BoxLang writeLog type.
+     */
+    property name="logLevel" type="string" default="information";
 
-	/**
-	 * Whether to include tool arguments in logs (may be security-sensitive)
-	 */
-	property name="logArgs" type="boolean" default=true;
+    /**
+     * Whether to mirror log output to the console via systemOutput().
+     * Useful during development. Off by default.
+     */
+    property name="logToConsole" type="boolean" default=false;
 
-	/**
-	 * Whether to include token usage in logs (if available in afterLLMCall response)
-	 */
-	property name="logTokens" type="boolean" default=false;
+    /**
+     * Whether to include serialised tool arguments in log entries.
+     * Disable if tool args may contain sensitive data (passwords, tokens, PII).
+     */
+    property name="logArgs" type="boolean" default=true;
 
-	/**
-	 * Initialize logging middleware with options.
-	 */
-	function init(
-		string  logName      = "ai",
-		string  logLevel     = "debug",
-		boolean logToConsole = false,
-		boolean logArgs      = true,
-		boolean logTokens    = false
-	){
-		variables.logName      = arguments.logName;
-		variables.logLevel     = arguments.logLevel;
-		variables.logToConsole = arguments.logToConsole;
-		variables.logArgs      = arguments.logArgs;
-		variables.logTokens    = arguments.logTokens;
-		return this;
-	}
+    /**
+     * Whether to include LLM token usage counts in afterLLMCall log entries.
+     * Only has effect when the response struct contains a "usage" key.
+     */
+    property name="logTokens" type="boolean" default=false;
 
-	// =========================================================================
-	// Sequential Hooks
-	// =========================================================================
+    // =========================================================================
+    // CONSTRUCTOR
+    // =========================================================================
 
-	function beforeAgentRun( required struct context ){
-		var detail = "Agent starting";
-		if( context.keyExists( "input" ) && len( toString( context.input ) ) ){
-			detail &= " | Input: #left( toString( context.input ), 100 )##( len( toString( context.input ) ) > 100 ? '...' : '' )#";
-		}
-		writeEntry( "beforeAgentRun", detail );
-		return AiMiddlewareResult.continue();
-	}
+    /**
+     * @logName      Log target name (default: "ai")
+     * @logLevel     BoxLang writeLog type: information | warning | error | fatal (default: "information")
+     * @logToConsole Mirror output to console via systemOutput() (default: false)
+     * @logArgs      Include tool args in log entries (default: true)
+     * @logTokens    Include token counts in afterLLMCall entries (default: false)
+     */
+    function init(
+        string  logName      = "ai",
+        string  logLevel     = "information",
+        boolean logToConsole = false,
+        boolean logArgs      = true,
+        boolean logTokens    = false
+    ) {
+        variables.logName      = arguments.logName;
+        variables.logLevel     = normalizeLogLevel( arguments.logLevel );
+        variables.logToConsole = arguments.logToConsole;
+        variables.logArgs      = arguments.logArgs;
+        variables.logTokens    = arguments.logTokens;
+        return this;
+    }
 
-	function afterAgentRun( required struct context ){
-		var detail = "Agent completed";
-		if( context.keyExists( "response" ) ){
-			var preview = left( toString( context.response ), 100 );
-			if( len( toString( context.response ) ) > 100 ) preview &= "...";
-			detail &= " | Response: #preview#";
-		}
-		writeEntry( "afterAgentRun", detail );
-		return AiMiddlewareResult.continue();
-	}
+    // =========================================================================
+    // SEQUENTIAL HOOKS
+    // =========================================================================
 
-	function beforeLLMCall( required struct context ){
-		var detail = "LLM call starting";
-		if( context.keyExists( "messages" ) && isArray( context.messages ) ){
-			detail &= " | Messages: #arrayLen( context.messages )#";
-		}
-		writeEntry( "beforeLLMCall", detail );
-		return AiMiddlewareResult.continue();
-	}
+    /**
+     * Fires before the agent begins its run cycle.
+     * Logs the first 100 characters of the input if present.
+     */
+    AiMiddlewareResult function beforeAgentRun( required struct context ) {
+        var detail = "Agent starting";
 
-	function afterLLMCall( required struct context ){
-		var detail = "LLM call completed";
-		if( variables.logTokens && context.keyExists( "response" ) && isStruct( context.response ) && context.response.keyExists( "usage" ) ){
-			var usage            = context.response.usage;
-			var promptTokens     = usage.keyExists( "prompt_tokens" )     ? usage.prompt_tokens     : 0;
-			var completionTokens = usage.keyExists( "completion_tokens" ) ? usage.completion_tokens : 0;
-			var totalTokens      = usage.keyExists( "total_tokens" )      ? usage.total_tokens      : promptTokens + completionTokens;
-			detail &= " | Tokens: #promptTokens#in/#completionTokens#out/#totalTokens#total";
-		}
-		writeEntry( "afterLLMCall", detail );
-		return AiMiddlewareResult.continue();
-	}
+        if ( context.keyExists( "input" ) && len( toString( context.input ) ) ) {
+            var inputStr = toString( context.input );
+            detail &= " | Input: #left( inputStr, 100 )##( len( inputStr ) > 100 ? "..." : "" )#";
+        }
 
-	function beforeToolCall( required struct context ){
-		var detail = "Tool '#context.toolName#' starting";
-		if( context.keyExists( "toolCallId" ) && len( context.toolCallId ) ){
-			detail &= " | ID: #context.toolCallId#";
-		}
-		if( variables.logArgs && context.keyExists( "toolArgs" ) && isStruct( context.toolArgs ) ){
-			var argsJson = serializeJSON( context.toolArgs );
-			if( len( argsJson ) > 200 ) argsJson = left( argsJson, 200 ) & "...";
-			detail &= " | Args: #argsJson#";
-		}
-		writeEntry( "beforeToolCall", detail );
-		return AiMiddlewareResult.continue();
-	}
+        writeEntry( "beforeAgentRun", detail );
+        return AiMiddlewareResult.continue();
+    }
 
-	function afterToolCall( required struct context ){
-		var detail = "Tool '#context.toolName#' completed";
-		if( context.keyExists( "result" ) ){
-			var resultStr = isSimpleValue( context.result ) ? toString( context.result ) : serializeJSON( context.result );
-			if( len( resultStr ) > 200 ) resultStr = left( resultStr, 200 ) & "...";
-			detail &= " | Result: #resultStr#";
-		}
-		writeEntry( "afterToolCall", detail );
-		return AiMiddlewareResult.continue();
-	}
+    /**
+     * Fires after the agent completes its run cycle.
+     * Logs a preview of the final response.
+     */
+    AiMiddlewareResult function afterAgentRun( required struct context ) {
+        var detail = "Agent completed";
 
-	/**
-	 * onError always logs at "error" level regardless of configured logLevel —
-	 * errors must never be silenced by a debug or information setting.
-	 */
-	function onError( required struct context ){
-		var detail = "Error in phase '#context.phase#': #context.error.message#";
-		writeLog( text: "[bx-ai][onError] #detail#", type: "error", log: variables.logName );
-		if( variables.logToConsole ){
-			println( "[bx-ai][onError] #detail#" );
-		}
-		return AiMiddlewareResult.continue();
-	}
+        if ( context.keyExists( "response" ) ) {
+            var responseStr = toString( context.response );
+            detail &= " | Response: #left( responseStr, 100 )##( len( responseStr ) > 100 ? "..." : "" )#";
+        }
 
-	// =========================================================================
-	// Private Helpers
-	// =========================================================================
+        writeEntry( "afterAgentRun", detail );
+        return AiMiddlewareResult.continue();
+    }
 
-	private void function writeEntry( required string hook, required string detail ){
-		var text = "[bx-ai][#arguments.hook#] #arguments.detail#";
-		writeLog( text: text, type: variables.logLevel, log: variables.logName );
-		if( variables.logToConsole ){
-			println( text );
-		}
-	}
+    /**
+     * Fires before each LLM HTTP call.
+     * Logs message count so you can track context growth over a run.
+     */
+    AiMiddlewareResult function beforeLLMCall( required struct context ) {
+        var detail = "LLM call starting";
+
+        if ( context.keyExists( "messages" ) && isArray( context.messages ) ) {
+            detail &= " | Messages in context: #arrayLen( context.messages )#";
+        }
+
+        writeEntry( "beforeLLMCall", detail );
+        return AiMiddlewareResult.continue();
+    }
+
+    /**
+     * Fires after each LLM HTTP call returns.
+     * Optionally logs token usage when logTokens=true and response contains usage data.
+     */
+    AiMiddlewareResult function afterLLMCall( required struct context ) {
+        var detail = "LLM call completed";
+
+        if (
+            variables.logTokens
+            && context.keyExists( "response" )
+            && isStruct( context.response )
+            && context.response.keyExists( "usage" )
+        ) {
+            var usage            = context.response.usage;
+            var promptTokens     = usage.keyExists( "prompt_tokens" )     ? usage.prompt_tokens     : 0;
+            var completionTokens = usage.keyExists( "completion_tokens" ) ? usage.completion_tokens : 0;
+            var totalTokens      = usage.keyExists( "total_tokens" )      ? usage.total_tokens      : ( promptTokens + completionTokens );
+            detail &= " | Tokens: #promptTokens# in / #completionTokens# out / #totalTokens# total";
+        }
+
+        writeEntry( "afterLLMCall", detail );
+        return AiMiddlewareResult.continue();
+    }
+
+    /**
+     * Fires before each tool invocation.
+     * Logs tool name, call ID, and optionally the serialised arguments.
+     */
+    AiMiddlewareResult function beforeToolCall( required struct context ) {
+        var detail = "Tool '#context.toolName#' starting";
+
+        if ( context.keyExists( "toolCallId" ) && len( context.toolCallId ) ) {
+            detail &= " | ID: #context.toolCallId#";
+        }
+
+        if ( variables.logArgs && context.keyExists( "toolArgs" ) && isStruct( context.toolArgs ) ) {
+            var argsJson = serializeJSON( context.toolArgs );
+            detail &= " | Args: #left( argsJson, 200 )##( len( argsJson ) > 200 ? "..." : "" )#";
+        }
+
+        writeEntry( "beforeToolCall", detail );
+        return AiMiddlewareResult.continue();
+    }
+
+    /**
+     * Fires after each tool invocation returns.
+     * Logs a truncated preview of the result.
+     */
+    AiMiddlewareResult function afterToolCall( required struct context ) {
+        var detail = "Tool '#context.toolName#' completed";
+
+        if ( context.keyExists( "result" ) ) {
+            var resultStr = isSimpleValue( context.result )
+                ? toString( context.result )
+                : serializeJSON( context.result );
+            detail &= " | Result: #left( resultStr, 200 )##( len( resultStr ) > 200 ? "..." : "" )#";
+        }
+
+        writeEntry( "afterToolCall", detail );
+        return AiMiddlewareResult.continue();
+    }
+
+    /**
+     * Fires when any middleware in the pipeline throws an exception.
+     * Always logs at "error" level — errors must never be silenced by the
+     * configured logLevel. The chain continues so other error handlers can run.
+     */
+    AiMiddlewareResult function onError( required struct context ) {
+        var phase   = context.keyExists( "phase" )
+            ? context.phase
+            : "unknown";
+        var message = context.keyExists( "error" ) && isStruct( context.error ) && context.error.keyExists( "message" )
+            ? context.error.message
+            : "unknown error";
+
+        var text = "[bx-ai][onError] Error in phase '#phase#': #message#";
+
+        // Always write at error level — never honour the configured logLevel here
+        writeLog( text: text, type: "error", log: variables.logName );
+
+        if ( variables.logToConsole ) {
+            systemOutput( text, true );
+        }
+
+        return AiMiddlewareResult.continue();
+    }
+
+    // =========================================================================
+    // WRAP HOOKS — with elapsed-time logging
+    // =========================================================================
+
+    /**
+     * Wraps the actual LLM HTTP call and logs elapsed time in milliseconds.
+     * Logs before and after so a crash mid-call is distinguishable from a
+     * slow-but-successful call.
+     */
+    any function wrapLLMCall( required struct context, required function handler ) {
+        var modelName = context.keyExists( "model" ) ? context.model : "unknown";
+        writeEntry( "wrapLLMCall", "LLM call dispatched | Model: #modelName#" );
+
+        var startMs = getTickCount();
+        try {
+            var result = handler();
+        } catch ( any e ) {
+            var elapsedMs = getTickCount() - startMs;
+            writeEntry( "wrapLLMCall", "LLM call failed after #elapsedMs# ms | Error: #e.message#" );
+            rethrow;
+        }
+        var elapsedMs = getTickCount() - startMs;
+
+        writeEntry( "wrapLLMCall", "LLM call returned in #elapsedMs# ms" );
+        return result;
+    }
+
+    /**
+     * Wraps each tool invocation and logs elapsed time in milliseconds.
+     * Logs the tool name before dispatch so a hung tool is immediately visible
+     * in the log stream even before it returns.
+     */
+    any function wrapToolCall( required struct context, required function handler ) {
+        var toolName = context.keyExists( "toolName" ) ? context.toolName : "unknown";
+        writeEntry( "wrapToolCall", "Tool '#toolName#' dispatched" );
+
+        var startMs = getTickCount();
+        try {
+            var result = handler();
+        } catch ( any e ) {
+            var elapsedMs = getTickCount() - startMs;
+            writeEntry( "wrapToolCall", "Tool '#toolName#' threw after #elapsedMs# ms | Error: #e.message#" );
+            rethrow;
+        }
+        var elapsedMs = getTickCount() - startMs;
+
+        writeEntry( "wrapToolCall", "Tool '#toolName#' returned in #elapsedMs# ms" );
+        return result;
+    }
+
+    // =========================================================================
+    // PRIVATE HELPERS
+    // =========================================================================
+
+    /**
+     * Central write method — all hook log entries go through here.
+     * Writes to the configured log target and optionally to console.
+     */
+    private void function writeEntry( required string hook, required string detail ) {
+        var text = "[bx-ai][#arguments.hook#] #arguments.detail#";
+        writeLog( text: text, type: variables.logLevel, log: variables.logName );
+        if ( variables.logToConsole ) {
+            systemOutput( text, true );
+        }
+    }
+
+    /**
+     * Normalises the logLevel value to a valid BoxLang writeLog() type.
+     *
+     * BoxLang writeLog() accepts: information | warning | error | fatal
+     * Common mistakes: "debug" (not valid), "info" (not valid), "warn" (not valid)
+     *
+     * Invalid values are silently coerced to "information" so a misconfigured
+     * LoggingMiddleware never breaks the agent run.
+     */
+    private string function normalizeLogLevel( required string level ) {
+        var validLevels = [ "information", "warning", "error", "fatal" ];
+        var normalised  = trim( arguments.level ).lCase();
+
+        // Common aliases
+        switch ( normalised ) {
+            case "info":  return "information";
+            case "warn":  return "warning";
+            case "debug": return "information";   // debug is not a valid BoxLang writeLog type
+        }
+
+        // Return as-is if valid, fall back to information if not
+        return ( validLevels.findNoCase( normalised ) > 0 ) ? normalised : "information";
+    }
 
 }

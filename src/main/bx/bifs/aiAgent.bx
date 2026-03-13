@@ -3,427 +3,780 @@
  *
  * Copyright [2023] [Ortus Solutions, Corp]
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
- * License. You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
- * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
- * governing permissions and limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  * ----------------------------------------------------------------------------------
- * AI Agent - PHASE 4 COMPLETE: Autonomous reasoning + checkpointing + HITL
+ * AI Agent — Full middleware + checkpointing + HITL support
  * An autonomous entity that can reason, use tools, maintain memory, and be chained
  */
 import bxModules.bxai.models.runnables.*;
 import bxModules.bxai.models.middleware.*;
+import bxModules.bxai.models.middleware.builtin.*;
 import bxModules.bxai.models.memory.*;
 
 class extends="AiBaseRunnable" {
 
-	// CORE PROPERTIES
-	property name="agentName" type="string" default="BxAi";
-	property name="description" type="string" default="";
-	property name="instructions" type="string" default="";
-	property name="aiModel" type="AiModel";
-	property name="tools" type="array" default=[];
-	property name="memories" type="array" default=[];
-	property name="params" type="struct" default={};
-	property name="options" type="struct" default={};
+    // =========================================================================
+    // PROPERTIES
+    // =========================================================================
 
-	// PHASE 3: Middleware + Sub-agents
-	property name="subAgents" type="array" default=[];
-	property name="subAgentTools" type="array" default=[];
-	property name="middleware" type="array" default=[];
+    property name="agentName"     type="string"  default="BxAi";
+    property name="description"   type="string"  default="";
+    property name="instructions"  type="string"  default="";
+    property name="aiModel"       type="AiModel";
+    property name="tools"         type="array"   default=[];
+    property name="memories"      type="array"   default=[];
+    property name="params"        type="struct"  default={};
+    property name="options"       type="struct"  default={};
 
-	// 🔥 PHASE 4: CHECKPOINTING (HITL Support)
-	property name="checkpointer" type="IAiMemory";
-	property name="checkpointTTL" type="numeric" default=30; // minutes
-	property name="threadId" type="string" default="";
+    // Sub-agents
+    property name="subAgents"     type="array"   default=[];
+    property name="subAgentTools" type="array"   default=[];
 
-	// CONSTANTS
-	static {
-		DEFAULT_AGENT_NAME = "BxAi";
-		DEFAULT_DESCRIPTION = "You are a helpful AI assistant";
-		DEFAULT_INSTRUCTIONS = "Use available tools when needed to accomplish tasks effectively.";
-	}
+    // Middleware
+    property name="middleware"    type="array"   default=[];
 
-	/**
-	 * Constructor - FULL PHASE 4 SUPPORT
-	 */
-	function init(
-		string name = static.DEFAULT_AGENT_NAME,
-		string description = static.DEFAULT_DESCRIPTION,
-		string instructions = static.DEFAULT_INSTRUCTIONS,
-		AiModel model = aiModel(),
-		any memory = aiMemory(),
-		array tools = [],
-		array subAgents = [],
-		array middleware = [],
-		IAiMemory checkpointer = "",
-		numeric checkpointTTL = 30,
-		string threadId = "",
-		struct params = {},
-		struct options = {}
-	) {
-		super.init();
+    // Checkpointing (HITL)
+    // Typed as `any` so the default empty-string sentinel does not cause a
+    // type-mismatch — validated at use sites with isCheckpointerConfigured()
+    property name="checkpointer"  type="any"     default="";
+    property name="checkpointTTL" type="numeric" default=30;
+    property name="threadId"      type="string"  default="";
 
-		// Core setup
-		setName( arguments.name );
-		variables.description = arguments.description;
-		variables.instructions = arguments.instructions;
-		variables.aiModel = arguments.model.addTools( arguments.tools );
-		variables.tools = arguments.tools;
-		variables.params = arguments.params;
-		param variables.options.returnFormat = "single";
+    // =========================================================================
+    // CONSTANTS
+    // =========================================================================
 
-		// Memory setup
-		if ( isArray( arguments.memory ) ) {
-			variables.memories = arguments.memory;
-		} else {
-			variables.memories = [ arguments.memory ];
-		}
+    static {
+        DEFAULT_AGENT_NAME   = "BxAi";
+        DEFAULT_DESCRIPTION  = "You are a helpful AI assistant";
+        DEFAULT_INSTRUCTIONS = "Use available tools when needed to accomplish tasks effectively.";
+    }
 
-		// PHASE 3: Sub-agents + Middleware
-		variables.subAgents = [];
-		variables.subAgentTools = [];
-		arguments.subAgents.each( addSubAgent );
-		if ( !arguments.middleware.isEmpty() ) {
-			withMiddleware( arguments.middleware );
-		}
+    // =========================================================================
+    // CONSTRUCTOR
+    // =========================================================================
 
-		// 🔥 PHASE 4: Checkpointer
-		if ( structKeyExists( arguments, "checkpointer" ) && 
-			 !isNullLocal( arguments.checkpointer ) && 
-			 arguments.checkpointer.toString() != "" ) {
-			withCheckpointer( arguments.checkpointer, arguments.checkpointTTL );
-		}
+    /**
+     * All arguments are optional — the agent can be fully configured via
+     * constructor args, fluent methods, or any combination.
+     *
+     * @name          Display name (used in logs and sub-agent tool registration)
+     * @description   Role description injected into the system message
+     * @instructions  Task instructions injected into the system message
+     * @model         AiModel instance to delegate LLM calls to
+     * @memory        IAiMemory instance or array of instances for conversation history
+     * @tools         Array of ITool instances to register with the model
+     * @subAgents     Array of AiAgent instances to register as sub-agent tools
+     * @middleware    Single middleware, struct-of-closures, or array of either
+     * @checkpointer  IAiMemory instance for HITL checkpoint persistence (any type
+     *                to accept the empty-string default without type mismatch)
+     * @checkpointTTL Minutes before an abandoned checkpoint auto-expires (default: 30)
+     * @threadId      Explicit thread ID — auto-derived from memory config if omitted
+     * @params        Default params merged into every run() call
+     * @options       Default options merged into every run() call
+     */
+    function init(
+        string  name         = static.DEFAULT_AGENT_NAME,
+        string  description  = static.DEFAULT_DESCRIPTION,
+        string  instructions = static.DEFAULT_INSTRUCTIONS,
+        AiModel model        = aiModel(),
+        any     memory       = aiMemory(),
+        array   tools        = [],
+        array   subAgents    = [],
+        any     middleware   = [],
+        any     checkpointer = "",
+        numeric checkpointTTL = 30,
+        string  threadId     = "",
+        struct  params       = {},
+        struct  options      = {}
+    ) {
+        super.init();
 
-		if ( len( arguments.threadId ) ) {
-			withThreadId( arguments.threadId );
-		}
+        // Core
+        setName( arguments.name );
+        variables.description  = arguments.description;
+        variables.instructions = arguments.instructions;
+        variables.aiModel      = arguments.model.addTools( arguments.tools );
+        variables.tools        = arguments.tools;
+        variables.params       = arguments.params;
 
-		return this;
-	}
+        // options — ensure returnFormat default without mutating the argument
+        variables.options = duplicate( arguments.options );
+        param variables.options.returnFormat = "single";
 
-	/**
-	 * 🔥 PHASE 4: CHECKPOINT METHODS
-	 */
+        // Memory — accept single instance or array
+        variables.memories = isArray( arguments.memory )
+            ? arguments.memory
+            : [ arguments.memory ];
 
-	/**
-	 * Configure checkpointer (fluent)
-	 */
-	AiAgent function withCheckpointer( required IAiMemory checkpointer, numeric ttlMinutes = 30 ) {
-		variables.checkpointer = arguments.checkpointer;
-		variables.checkpointTTL = arguments.ttlMinutes;
-		return this;
-	}
+        // Sub-agents
+        variables.subAgents     = [];
+        variables.subAgentTools = [];
+        arguments.subAgents.each( addSubAgent );
 
-	/**
-	 * Set explicit thread ID
-	 */
-	AiAgent function withThreadId( required string threadId ) {
-		variables.threadId = arguments.threadId;
-		return this;
-	}
+        // Middleware — start fresh, delegate to withMiddleware() for normalisation
+        variables.middleware = [];
+        if ( !isEmptyValue( arguments.middleware ) ) {
+            withMiddleware( arguments.middleware );
+        }
 
-	/**
-	 * Get thread ID (auto-generate if empty)
-	 */
-	string function getThreadId() {
-		if ( len( variables.threadId ) ) return variables.threadId;
-		
-		if ( !variables.memories.isEmpty() ) {
-			return hash( variables.memories[1].key() & createUUID() );
-		}
-		return createUUID();
-	}
+        // Checkpointer — use isObject() so the empty-string default is safely skipped
+        if ( isObject( arguments.checkpointer ) ) {
+            withCheckpointer( arguments.checkpointer, arguments.checkpointTTL );
+        } else {
+            variables.checkpointTTL = arguments.checkpointTTL;
+        }
 
-	/**
-	 * RESUME from checkpoint with human decision
-	 */
-	any function resume( required AiMiddlewareResult decision, string threadId = "" ) {
-		var tid = len( arguments.threadId ) ? arguments.threadId : getThreadId();
+        // Explicit thread ID
+        if ( len( trim( arguments.threadId ) ) ) {
+            withThreadId( arguments.threadId );
+        }
 
-		if ( isNull( variables.checkpointer ) ) {
-			throw(
-				type = "NoCheckpointerException",
-				message = "Cannot resume without checkpointer. Use withCheckpointer()"
-			);
-		}
+        return this;
+    }
 
-		// 🔥 PHASE 4: LOAD CHECKPOINT
-		var state = variables.checkpointer.loadState( tid );
-		var messages = state.messages ?: [];
-		var params = state.params ?: {};
-		var options = state.options ?: {};
-		var pending = state.pending ?: {};
+    // =========================================================================
+    // CHECKPOINT / HITL METHODS
+    // =========================================================================
 
-		// Apply human decision
-		if ( decision.isApproved() ) {
-			pending.approved = true;
-		} else if ( decision.isRejected() ) {
-			messages.append( {
-				role: "tool",
-				tool_call_id: pending.toolCallId ?: "",
-				content: "Human rejected: #decision.getReason()#"
-			} );
-		} else if ( decision.isEdit() ) {
-			pending.toolArgs = decision.getData();
-			pending.approved = true;
-		}
+    /**
+     * Configure the IAiMemory backend used for HITL checkpoint persistence.
+     * Returns `this` for fluent chaining.
+     *
+     * @checkpointer IAiMemory instance (e.g. aiMemory("cache"))
+     * @ttlMinutes   Minutes before an abandoned checkpoint auto-expires (default: 30)
+     */
+    AiAgent function withCheckpointer( required any checkpointer, numeric ttlMinutes = 30 ) {
+        variables.checkpointer  = arguments.checkpointer;
+        variables.checkpointTTL = arguments.ttlMinutes;
+        return this;
+    }
 
-		// 🔥 PHASE 4: CLEANUP CHECKPOINT
-		variables.checkpointer.clearState( tid );
+    /**
+     * Set an explicit thread ID for checkpoint keying.
+     * Returns `this` for fluent chaining.
+     *
+     * @threadId Explicit thread identifier (e.g. "order-workflow-42")
+     */
+    AiAgent function withThreadId( required string threadId ) {
+        variables.threadId = arguments.threadId;
+        return this;
+    }
 
-		// Continue execution
-		return runFromMessages( messages, params, options );
-	}
+    /**
+     * Get the current thread ID, deriving and caching it if not yet set.
+     *
+     * Derivation order:
+     *   1. Explicit value set via withThreadId()
+     *   2. Derived from first memory: memory.key() & "_" & UUID (stable per instance)
+     *   3. Random UUID fallback when no memory is configured
+     *
+     * The derived value is stored in variables.threadId so repeated calls
+     * within a single agent lifecycle always return the same ID.
+     */
+    string function getThreadId() {
+        if ( len( trim( variables.threadId ) ) ) {
+            return variables.threadId;
+        }
 
-	/**
-	 * Stream resume from checkpoint
-	 */
-	void function resumeStream( required function onChunk, required AiMiddlewareResult decision, string threadId = "" ) {
-		var result = resume( arguments.decision, arguments.threadId );
-		onChunk( result );
-	}
+        // Derive from memory and cache — do NOT generate a new UUID on each call
+        if ( !variables.memories.isEmpty() ) {
+            try {
+                variables.threadId = variables.memories[ 1 ].key()
+                    & "_" & variables.memories[ 1 ].getUserId()
+                    & "_" & variables.memories[ 1 ].getConversationId();
+            } catch ( any e ) {
+                // Memory doesn't expose those methods — fall back to UUID
+                variables.threadId = createUUID();
+            }
+        } else {
+            variables.threadId = createUUID();
+        }
 
-	/**
-	 * MAIN EXECUTION - FULL PHASE 4 PIPELINE
-	 */
-	public any function run( any input = "", struct params = {}, struct options = {} ) {
-		// Build messages
-		var userMessage = isStruct( input ) && input.keyExists( "content" )
-			? input
-			: { "role": "user", "content": toString( input ) };
+        return variables.threadId;
+    }
 
-		var messages = [];
-		if ( len( buildSystemMessage() ) ) {
-			arrayAppend( messages, { "role": "system", "content": buildSystemMessage() } );
-		}
-		arrayAppend( messages, loadMemoryMessages(), true );
-		arrayAppend( messages, userMessage );
+    /**
+     * Resume execution from a suspended HITL checkpoint.
+     *
+     * Loads saved state, applies the human decision (approve/reject/edit),
+     * clears the checkpoint, then continues execution via runFromMessages().
+     *
+     * Throws NoCheckpointerException if no checkpointer is configured.
+     *
+     * @decision AiMiddlewareResult — must be approve(), reject(), or edit()
+     * @threadId Optional override — uses getThreadId() if omitted
+     */
+    any function resume( required AiMiddlewareResult decision, string threadId = "" ) {
+        var tid = len( trim( arguments.threadId ) ) ? arguments.threadId : getThreadId();
 
-		var effectiveParams = variables.params.append( arguments.params );
-		var effectiveOptions = variables.options.append( arguments.options );
+        if ( !isCheckpointerConfigured() ) {
+            throw(
+                type    : "NoCheckpointerException",
+                message : "Cannot resume without a checkpointer. Call withCheckpointer() first."
+            );
+        }
 
-		// 🔥 PHASE 3: AGENT MIDDLEWARE
-		var chatRequest = new AiChatRequest().addMiddleware( variables.middleware );
-		var agentContext = {
-			"agent"   : this,
-			"input"   : input,
-			"messages": messages,
-			"params"  : effectiveParams,
-			"options" : effectiveOptions
-		};
+        // Load saved state
+        var state    = variables.checkpointer.loadState( tid );
+        var messages = state.keyExists( "messages" ) ? state.messages : [];
+        var params   = state.keyExists( "params" )   ? state.params   : {};
+        var options  = state.keyExists( "options" )  ? state.options  : {};
+        var pending  = state.keyExists( "pending" )  ? state.pending  : {};
 
-		var beforeResult = chatRequest.fireMiddleware( "beforeAgentRun", agentContext );
-		if ( beforeResult.isTerminal() ) return beforeResult;
+        // Apply human decision to messages/pending
+        if ( arguments.decision.isApproved() ) {
+            pending.approved = true;
 
-		// Execute via model
-		var response = variables.aiModel.run( messages, effectiveParams, effectiveOptions );
+        } else if ( arguments.decision.isRejected() ) {
+            messages.append( {
+                "role"        : "tool",
+                "tool_call_id": pending.keyExists( "toolCallId" ) ? pending.toolCallId : "",
+                "content"     : "Rejected by human: #arguments.decision.getReason()#"
+            } );
 
-		// 🔥 PHASE 4: CHECKPOINT SUSPENSION
-		if ( isInstanceOf( response, "AiMiddlewareResult" ) && response.isSuspended() ) {
-			if ( !isNull( variables.checkpointer ) ) {
-				variables.checkpointer.saveState(
-					getThreadId(),
-					{
-						"messages": messages,
-						"params"  : effectiveParams,
-						"options" : effectiveOptions,
-						"pending" : response.getData()
-					},
-					variables.checkpointTTL
-				);
-			}
-			return response;
-		}
+        } else if ( arguments.decision.isEdit() ) {
+            pending.toolArgs = arguments.decision.getData();
+            pending.approved = true;
+        }
 
-		// Store response
-		storeInMemory( userMessage, response );
+        // Clear checkpoint before continuing — prevents stale state on error
+        variables.checkpointer.clearState( tid );
 
-		// 🔥 PHASE 3: afterAgentRun (reverse)
-		agentContext.response = response;
-		chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
+        return runFromMessages( messages, params, options );
+    }
 
-		return response;
-	}
+    /**
+     * Resume and stream the continuation after a HITL checkpoint.
+     * Calls the model's stream path rather than run().
+     *
+     * @onChunk  Callback fired for each streamed chunk
+     * @decision AiMiddlewareResult — must be approve(), reject(), or edit()
+     * @threadId Optional override — uses getThreadId() if omitted
+     */
+    void function resumeStream(
+        required function         onChunk,
+        required AiMiddlewareResult decision,
+        string                    threadId = ""
+    ) {
+        var tid = len( trim( arguments.threadId ) ) ? arguments.threadId : getThreadId();
 
-	/**
-	 * Continue from pre-built messages (used by resume)
-	 */
-	private any function runFromMessages( required array messages, struct params = {}, struct options = {} ) {
-		var chatRequest = new AiChatRequest().addMiddleware( variables.middleware );
-		var agentContext = {
-			"agent"   : this,
-			"messages": messages,
-			"params"  : arguments.params,
-			"options" : arguments.options
-		};
+        if ( !isCheckpointerConfigured() ) {
+            throw(
+                type    : "NoCheckpointerException",
+                message : "Cannot resume without a checkpointer. Call withCheckpointer() first."
+            );
+        }
 
-		var beforeResult = chatRequest.fireMiddleware( "beforeAgentRun", agentContext );
-		if ( beforeResult.isTerminal() ) return beforeResult;
+        var state    = variables.checkpointer.loadState( tid );
+        var messages = state.keyExists( "messages" ) ? state.messages : [];
+        var params   = state.keyExists( "params" )   ? state.params   : {};
+        var options  = state.keyExists( "options" )  ? state.options  : {};
+        var pending  = state.keyExists( "pending" )  ? state.pending  : {};
 
-		var response = variables.aiModel.run( messages, arguments.params, arguments.options );
+        if ( arguments.decision.isApproved() ) {
+            pending.approved = true;
+        } else if ( arguments.decision.isRejected() ) {
+            messages.append( {
+                "role"        : "tool",
+                "tool_call_id": pending.keyExists( "toolCallId" ) ? pending.toolCallId : "",
+                "content"     : "Rejected by human: #arguments.decision.getReason()#"
+            } );
+        } else if ( arguments.decision.isEdit() ) {
+            pending.toolArgs = arguments.decision.getData();
+            pending.approved = true;
+        }
 
-		if ( isInstanceOf( response, "AiMiddlewareResult" ) && response.isSuspended() ) {
-			if ( !isNull( variables.checkpointer ) ) {
-				variables.checkpointer.saveState(
-					getThreadId(),
-					{
-						"messages": messages,
-						"params"  : arguments.params,
-						"options" : arguments.options,
-						"pending" : response.getData()
-					},
-					variables.checkpointTTL
-				);
-			}
-			return response;
-		}
+        variables.checkpointer.clearState( tid );
 
-		storeInMemory( messages.last(), response );
-		agentContext.response = response;
-		chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
+        streamFromMessages( arguments.onChunk, messages, params, options );
+    }
 
-		return response;
-	}
+    // =========================================================================
+    // MAIN EXECUTION
+    // =========================================================================
 
-	/**
-	 * STREAMING EXECUTION
-	 */
-	public void function stream( required function onChunk, any input = "", struct params = {}, struct options = {} ) {
-		var userMessage = isStruct( input ) && input.keyExists( "content" )
-			? input
-			: { "role": "user", "content": toString( input ) };
+    /**
+     * Run the agent synchronously and return the final response.
+     *
+     * Pipeline:
+     *   1. Build messages from system prompt + memory + user input
+     *   2. Create chatRequest, inject middleware (one item at a time)
+     *   3. Auto-add MaxToolCallsMiddleware if not already in stack
+     *   4. Fire beforeAgentRun — terminal result short-circuits immediately
+     *   5. Delegate to aiModel.run()
+     *   6. Detect suspension — save checkpoint, return suspend result
+     *   7. Store response in memory
+     *   8. Fire afterAgentRun (reverse order)
+     *   9. Return response
+     */
+    public any function run( any input = "", struct params = {}, struct options = {} ) {
+        var userMessage = buildUserMessage( arguments.input );
 
-		var messages = [];
-		if ( len( buildSystemMessage() ) ) {
-			arrayAppend( messages, { "role": "system", "content": buildSystemMessage() } );
-		}
-		arrayAppend( messages, loadMemoryMessages(), true );
-		arrayAppend( messages, userMessage );
+        // Build message array — do NOT mutate variables.params or variables.options
+        var effectiveParams  = duplicate( variables.params );
+        effectiveParams.append( arguments.params );
+        var effectiveOptions = duplicate( variables.options );
+        effectiveOptions.append( arguments.options );
 
-		var effectiveParams = variables.params.append( arguments.params );
-		var effectiveOptions = variables.options.append( arguments.options );
+        var messages = buildMessages( userMessage );
 
-		var chatRequest = new AiChatRequest().addMiddleware( variables.middleware );
-		var agentContext = {
-			"agent"   : this,
-			"input"   : input,
-			"messages": messages,
-			"params"  : effectiveParams,
-			"options" : effectiveOptions
-		};
+        // Build chatRequest and inject middleware item-by-item
+        var chatRequest = new AiChatRequest();
+        injectMiddlewareInto( chatRequest );
 
-		var beforeResult = chatRequest.fireMiddleware( "beforeAgentRun", agentContext );
-		if ( beforeResult.isTerminal() ) {
-			onChunk( beforeResult );
-			return;
-		}
+        var agentContext = {
+            "agent"   : this,
+            "input"   : arguments.input,
+            "messages": messages,
+            "params"  : effectiveParams,
+            "options" : effectiveOptions
+        };
 
-		// Streaming with suspension detection
-		var accumulated = "";
-		var wrappedCallback = function( chunk ) {
-			var content = chunk.choices?.first()?.delta?.content ?: "";
-			accumulated &= content;
+        // beforeAgentRun
+        var beforeResult = chatRequest.fireMiddleware( "beforeAgentRun", agentContext );
+        if ( beforeResult.isTerminal() ) {
+            return beforeResult;
+        }
 
-			// 🔥 PHASE 4: Detect suspension chunks
-			if ( isStruct( chunk ) && chunk.keyExists( "type" ) && chunk.type == "suspend" ) {
-				if ( !isNull( variables.checkpointer ) ) {
-					variables.checkpointer.saveState(
-						getThreadId(),
-						{
-							"messages": messages,
-							"params"  : effectiveParams,
-							"options" : effectiveOptions,
-							"pending" : chunk.data
-						},
-						variables.checkpointTTL
-					);
-				}
-				onChunk( chunk );
-				agentContext.response = chunk;
-				chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
-				return;
-			}
+        // Delegate to model
+        var response = variables.aiModel.run( messages, effectiveParams, effectiveOptions );
 
-			onChunk( chunk );
-		};
+        // Suspension detection
+        if ( isInstanceOf( response, "AiMiddlewareResult" ) && response.isSuspended() ) {
+            if ( isCheckpointerConfigured() ) {
+                variables.checkpointer.saveState(
+                    getThreadId(),
+                    {
+                        "messages": messages,
+                        "params"  : effectiveParams,
+                        "options" : effectiveOptions,
+                        "pending" : response.getData()
+                    },
+                    variables.checkpointTTL
+                );
+            }
+            return response;
+        }
 
-		variables.aiModel.stream( wrappedCallback, messages, effectiveParams, effectiveOptions );
+        // Store in memory
+        storeInMemory( userMessage, response );
 
-		storeInMemory( userMessage, { "role": "assistant", "content": accumulated } );
-		agentContext.response = { "role": "assistant", "content": accumulated };
-		chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
-	}
+        // afterAgentRun (reverse order)
+        agentContext.response = response;
+        chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
 
-	// CONFIGURATION METHODS (shortened for brevity)
-	AiAgent function withInstructions( required string instructions ) {
-		variables.instructions = arguments.instructions; return this;
-	}
+        return response;
+    }
 
-	AiAgent function setName( required string name ) {
-		variables.agentName = arguments.name;
-		variables.name = "AiAgent-#arguments.name#"; return this;
-	}
+    /**
+     * Stream the agent response chunk by chunk.
+     *
+     * On suspension: saves checkpoint, emits the suspend chunk via onChunk(),
+     * fires afterAgentRun, then returns — does NOT continue streaming.
+     * afterAgentRun fires exactly once regardless of whether suspension occurred.
+     *
+     * @onChunk Callback fired for each chunk. Receives a struct or string.
+     * @input   User input (string or message struct)
+     * @params  Per-call param overrides
+     * @options Per-call option overrides
+     */
+    public void function stream(
+        required function onChunk,
+        any               input   = "",
+        struct            params  = {},
+        struct            options = {}
+    ) {
+        var userMessage      = buildUserMessage( arguments.input );
+        var effectiveParams  = duplicate( variables.params );
+        effectiveParams.append( arguments.params );
+        var effectiveOptions = duplicate( variables.options );
+        effectiveOptions.append( arguments.options );
+        var messages         = buildMessages( userMessage );
 
-	AiAgent function setModel( required AiModel model ) {
-		variables.aiModel = arguments.model.addTools( variables.tools ); return this;
-	}
+        var chatRequest = new AiChatRequest();
+        injectMiddlewareInto( chatRequest );
 
-	AiAgent function addTool( required ITool tool ) {
-		variables.tools.append( arguments.tool );
-		variables.aiModel.addTools( [ arguments.tool ] ); return this;
-	}
+        var agentContext = {
+            "agent"   : this,
+            "input"   : arguments.input,
+            "messages": messages,
+            "params"  : effectiveParams,
+            "options" : effectiveOptions
+        };
 
-	AiAgent function addMemory( required IAiMemory memory ) {
-		variables.memories.append( arguments.memory ); return this;
-	}
+        var beforeResult = chatRequest.fireMiddleware( "beforeAgentRun", agentContext );
+        if ( beforeResult.isTerminal() ) {
+            arguments.onChunk( beforeResult );
+            return;
+        }
 
-	// PHASE 3: Middleware methods
-	AiAgent function withMiddleware( required any middleware ) {
-		if ( !isArray( arguments.middleware ) ) arguments.middleware = [ arguments.middleware ];
-		variables.middleware.append( arguments.middleware, true );
-		return this;
-	}
+        // Track accumulated content and whether we suspended mid-stream
+        var accumulated  = "";
+        var didSuspend   = false;
 
-	// PRIVATE HELPERS (shortened)
-	private string function buildSystemMessage() {
-		var parts = [];
-		if ( len( variables.description ) ) arrayAppend( parts, "Role: #variables.description#" );
-		if ( len( variables.instructions ) ) arrayAppend( parts, variables.instructions );
-		return arrayToList( parts, chr(10) & chr(10) );
-	}
+        var wrappedCallback = function( chunk ) {
+            // Suspension chunk emitted by BaseService.chatStream()
+            if ( isStruct( chunk ) && chunk.keyExists( "type" ) && chunk.type == "suspend" ) {
+                didSuspend = true;
 
-	private array function loadMemoryMessages() {
-		var allMessages = [];
-		variables.memories.each( function( mem ) {
-			arrayAppend( allMessages, mem.getAll(), true );
-		} );
-		return allMessages;
-	}
+                if ( isCheckpointerConfigured() ) {
+                    variables.checkpointer.saveState(
+                        getThreadId(),
+                        {
+                            "messages": messages,
+                            "params"  : effectiveParams,
+                            "options" : effectiveOptions,
+                            "pending" : chunk.data
+                        },
+                        variables.checkpointTTL
+                    );
+                }
 
-	private void function storeInMemory( required struct userMessage, required any response ) {
-		if ( variables.memories.isEmpty() ) return;
+                // Emit the suspend chunk to the caller, then stop — do NOT fire
+                // afterAgentRun here; it fires once below after aiModel.stream() returns
+                arguments.onChunk( chunk );
+                return;
+            }
 
-		variables.memories.each( function( mem ) {
-			mem.add( arguments.userMessage );
-		} );
+            // Normal text chunk
+            var content = isStruct( chunk ) && chunk.keyExists( "choices" )
+                ? ( chunk.choices.first()?.delta?.content ?: "" )
+                : ( isSimpleValue( chunk ) ? chunk : "" );
+            accumulated &= content;
 
-		var content = "";
-		if ( isStruct( arguments.response ) && arguments.response.keyExists( "content" ) ) {
-			content = arguments.response.content;
-		} else if ( isSimpleValue( arguments.response ) ) {
-			content = arguments.response;
-		}
+            arguments.onChunk( chunk );
+        };
 
-		if ( len( content ) ) {
-			variables.memories.each( function( mem ) {
-				mem.add( { "role": "assistant", "content": content } );
-			} );
-		}
-	}
+        variables.aiModel.stream( wrappedCallback, messages, effectiveParams, effectiveOptions );
+
+        // afterAgentRun fires exactly once, after the full stream completes
+        if ( didSuspend ) {
+            agentContext.response = { "type": "suspend" };
+        } else {
+            storeInMemory( userMessage, { "role": "assistant", "content": accumulated } );
+            agentContext.response = { "role": "assistant", "content": accumulated };
+        }
+        chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
+    }
+
+    // =========================================================================
+    // MIDDLEWARE CONFIGURATION
+    // =========================================================================
+
+    /**
+     * Add one or more middleware to this agent's stack.
+     *
+     * Accepts:
+     *   - A single class instance (implements IAiMiddleware)
+     *   - A struct-of-closures (auto-wrapped by AiBaseRequest.addMiddleware())
+     *   - An array of any mix of the above
+     *
+     * Returns `this` for fluent chaining.
+     */
+    AiAgent function withMiddleware( required any middleware ) {
+        var items = isArray( arguments.middleware )
+            ? arguments.middleware
+            : [ arguments.middleware ];
+
+        for ( var item in items ) {
+            variables.middleware.append( item );
+        }
+
+        return this;
+    }
+
+    // =========================================================================
+    // CONFIGURATION (FLUENT)
+    // =========================================================================
+
+    AiAgent function withInstructions( required string instructions ) {
+        variables.instructions = arguments.instructions;
+        return this;
+    }
+
+    AiAgent function setName( required string name ) {
+        variables.agentName = arguments.name;
+        variables.name      = "AiAgent-#arguments.name#";
+        return this;
+    }
+
+    AiAgent function setModel( required AiModel model ) {
+        variables.aiModel = arguments.model.addTools( variables.tools );
+        return this;
+    }
+
+    AiAgent function addTool( required any tool ) {
+        variables.tools.append( arguments.tool );
+        variables.aiModel.addTools( [ arguments.tool ] );
+        return this;
+    }
+
+    AiAgent function addMemory( required any memory ) {
+        variables.memories.append( arguments.memory );
+        return this;
+    }
+
+    // =========================================================================
+    // PRIVATE HELPERS
+    // =========================================================================
+
+    /**
+     * Inject all items in variables.middleware into a chatRequest one at a time.
+     * addMiddleware() handles struct-of-closures auto-wrapping per item —
+     * passing the whole array directly would bypass that logic.
+     *
+     * Also auto-adds MaxToolCallsMiddleware as the last item if none is present,
+     * preserving the original maxInteractions safety behaviour.
+     */
+    private void function injectMiddlewareInto( required any chatRequest ) {
+        for ( var mw in variables.middleware ) {
+            arguments.chatRequest.addMiddleware( mw );
+        }
+
+        // Auto-add MaxToolCallsMiddleware if not already in the stack
+        if ( !middlewareStackContains( "MaxToolCallsMiddleware" ) ) {
+            arguments.chatRequest.addMiddleware(
+                new MaxToolCallsMiddleware( maxCalls: variables.maxInteractions ?: 10 )
+            );
+        }
+    }
+
+    /**
+     * Continue execution from a pre-built messages array.
+     * Used by resume() after the human decision has been applied.
+     */
+    private any function runFromMessages(
+        required array  messages,
+        struct          params  = {},
+        struct          options = {}
+    ) {
+        var chatRequest  = new AiChatRequest();
+        injectMiddlewareInto( chatRequest );
+
+        var agentContext = {
+            "agent"   : this,
+            "messages": arguments.messages,
+            "params"  : arguments.params,
+            "options" : arguments.options
+        };
+
+        var beforeResult = chatRequest.fireMiddleware( "beforeAgentRun", agentContext );
+        if ( beforeResult.isTerminal() ) {
+            return beforeResult;
+        }
+
+        var response = variables.aiModel.run( arguments.messages, arguments.params, arguments.options );
+
+        if ( isInstanceOf( response, "AiMiddlewareResult" ) && response.isSuspended() ) {
+            if ( isCheckpointerConfigured() ) {
+                variables.checkpointer.saveState(
+                    getThreadId(),
+                    {
+                        "messages": arguments.messages,
+                        "params"  : arguments.params,
+                        "options" : arguments.options,
+                        "pending" : response.getData()
+                    },
+                    variables.checkpointTTL
+                );
+            }
+            return response;
+        }
+
+        // Store the last user message and the assistant response
+        if ( !arguments.messages.isEmpty() ) {
+            storeInMemory( arguments.messages.last(), response );
+        }
+
+        agentContext.response = response;
+        chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
+
+        return response;
+    }
+
+    /**
+     * Continue streaming from a pre-built messages array.
+     * Used by resumeStream() after the human decision has been applied.
+     */
+    private void function streamFromMessages(
+        required function onChunk,
+        required array    messages,
+        struct            params  = {},
+        struct            options = {}
+    ) {
+        var chatRequest  = new AiChatRequest();
+        injectMiddlewareInto( chatRequest );
+
+        var agentContext = {
+            "agent"   : this,
+            "messages": arguments.messages,
+            "params"  : arguments.params,
+            "options" : arguments.options
+        };
+
+        var beforeResult = chatRequest.fireMiddleware( "beforeAgentRun", agentContext );
+        if ( beforeResult.isTerminal() ) {
+            arguments.onChunk( beforeResult );
+            return;
+        }
+
+        var accumulated = "";
+        var didSuspend  = false;
+
+        var wrappedCallback = function( chunk ) {
+            if ( isStruct( chunk ) && chunk.keyExists( "type" ) && chunk.type == "suspend" ) {
+                didSuspend = true;
+                if ( isCheckpointerConfigured() ) {
+                    variables.checkpointer.saveState(
+                        getThreadId(),
+                        {
+                            "messages": messages,
+                            "params"  : arguments.params,
+                            "options" : arguments.options,
+                            "pending" : chunk.data
+                        },
+                        variables.checkpointTTL
+                    );
+                }
+                arguments.onChunk( chunk );
+                return;
+            }
+
+            var content = isStruct( chunk ) && chunk.keyExists( "choices" )
+                ? ( chunk.choices.first()?.delta?.content ?: "" )
+                : ( isSimpleValue( chunk ) ? chunk : "" );
+            accumulated &= content;
+            arguments.onChunk( chunk );
+        };
+
+        variables.aiModel.stream( wrappedCallback, arguments.messages, arguments.params, arguments.options );
+
+        if ( didSuspend ) {
+            agentContext.response = { "type": "suspend" };
+        } else {
+            if ( !arguments.messages.isEmpty() ) {
+                storeInMemory( arguments.messages.last(), { "role": "assistant", "content": accumulated } );
+            }
+            agentContext.response = { "role": "assistant", "content": accumulated };
+        }
+        chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
+    }
+
+    /**
+     * Build a normalised user message struct from any input form.
+     */
+    private struct function buildUserMessage( required any input ) {
+        return isStruct( arguments.input ) && arguments.input.keyExists( "content" )
+            ? arguments.input
+            : { "role": "user", "content": toString( arguments.input ) };
+    }
+
+    /**
+     * Assemble the full message array: system prompt + memory history + user message.
+     */
+    private array function buildMessages( required struct userMessage ) {
+        var messages = [];
+        var systemMsg = buildSystemMessage();
+        if ( len( systemMsg ) ) {
+            messages.append( { "role": "system", "content": systemMsg } );
+        }
+        messages.append( loadMemoryMessages(), true );
+        messages.append( arguments.userMessage );
+        return messages;
+    }
+
+    /**
+     * Build the system message from description + instructions.
+     */
+    private string function buildSystemMessage() {
+        var parts = [];
+        if ( len( variables.description ) )  parts.append( "Role: #variables.description#" );
+        if ( len( variables.instructions ) ) parts.append( variables.instructions );
+        return parts.toList( chr( 10 ) & chr( 10 ) );
+    }
+
+    /**
+     * Collect all messages from all configured memory instances.
+     */
+    private array function loadMemoryMessages() {
+        var allMessages = [];
+        variables.memories.each( function( mem ) {
+            allMessages.append( mem.getAll(), true );
+        } );
+        return allMessages;
+    }
+
+    /**
+     * Store user message and assistant response in all memory instances.
+     */
+    private void function storeInMemory( required struct userMessage, required any response ) {
+        if ( variables.memories.isEmpty() ) return;
+
+        variables.memories.each( function( mem ) {
+            mem.add( arguments.userMessage );
+        } );
+
+        var content = "";
+        if ( isStruct( arguments.response ) && arguments.response.keyExists( "content" ) ) {
+            content = arguments.response.content;
+        } else if ( isSimpleValue( arguments.response ) ) {
+            content = arguments.response;
+        }
+
+        if ( len( content ) ) {
+            variables.memories.each( function( mem ) {
+                mem.add( { "role": "assistant", "content": content } );
+            } );
+        }
+    }
+
+    /**
+     * Returns true if a valid IAiMemory checkpointer is configured.
+     * Guards against the empty-string default value.
+     */
+    private boolean function isCheckpointerConfigured() {
+        return isObject( variables.checkpointer );
+    }
+
+    /**
+     * Returns true if the middleware stack already contains an instance
+     * of the named class. Used to avoid double-adding MaxToolCallsMiddleware.
+     *
+     * @className Simple class name suffix to match (e.g. "MaxToolCallsMiddleware")
+     */
+    private boolean function middlewareStackContains( required string className ) {
+        for ( var mw in variables.middleware ) {
+            try {
+                if ( getMetaData( mw ).name.endsWith( arguments.className ) ) {
+                    return true;
+                }
+            } catch ( any e ) {
+                // Struct-of-closures have no metadata — skip silently
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns true if a value is "empty" for constructor-argument purposes:
+     * null, empty string, or empty array.
+     */
+    private boolean function isEmptyValue( required any value ) {
+        if ( isNull( arguments.value ) )                                                    return true;
+        if ( isSimpleValue( arguments.value ) && !len( trim( arguments.value ) ) )         return true;
+        if ( isArray( arguments.value )       && arrayLen( arguments.value ) == 0 )        return true;
+        return false;
+    }
 
 }
