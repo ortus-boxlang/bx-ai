@@ -43,7 +43,7 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - 🦙 **Local AI** - Full Ollama support for privacy, offline use, and zero API costs
 - ⚡ **Async Operations** - Non-blocking futures for concurrent AI requests
 - 🎯 **Event-Driven** - 25+ lifecycle events for logging, monitoring, and custom workflows
-- - 🔐**Middleware System** - Lifecycle hooks for safety, logging, guardrails, and human-in-the-loop
+- 🔐**Middleware System** - Lifecycle hooks for safety, logging, guardrails, and human-in-the-loop
 - 🏭 **Production-Ready** - Timeout controls, error handling, rate limiting, and debugging tools
 
 ## 📃 Table of Contents
