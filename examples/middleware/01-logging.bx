@@ -1,25 +1,98 @@
 /**
- * 01-logging.bx
- * Basic LoggingMiddleware usage — log all agent lifecycle events.
+ * 01-logging.bx — Basic LoggingMiddleware Usage
+ *
+ * LoggingMiddleware writes structured entries to a BoxLang log file for
+ * every agent lifecycle event: agent run, LLM call, and tool call.
+ *
+ * Constructor options:
+ *   logName   – log file name (creates {logName}.log)
+ *   logLevel  – "debug" | "info" | "warn" | "error"
+ *   logArgs   – include tool arguments in log (disable for sensitive data)
+ *   logTokens – include LLM token counts per call
  */
 
-// Default: logs at "information" level to the "ai" log
-var agent = aiAgent(
-    name       : "LoggedAgent",
-    middleware : [ new LoggingMiddleware() ]
-);
+println( "=== Middleware Example 01: LoggingMiddleware ===" )
+println( "" )
 
-var result = agent.run( "What is the capital of France?" );
-println( result );
+// --- Tool so we can observe tool-call log entries ----------------------------
 
-// With options — verbose mode during development
-var verboseAgent = aiAgent()
-    .withMiddleware( new LoggingMiddleware(
-        logLevel     : "information",
-        logToConsole : true,    // print to console as well as log file
-        logArgs      : true,    // include tool arguments
-        logTokens    : true     // include token counts
-    ) );
+echoTool = aiTool(
+    name       : "echo",
+    description: "Echo a message back to the caller",
+    action     : ( message ) => "Echo: #arguments.message#"
+).addParameter( "message", "string", "The message to echo", true )
 
-result = verboseAgent.run( "Search for recent BoxLang releases" );
-println( result );
+// --- 1. Create the middleware -------------------------------------------------
+
+logger = new bxModules.bxai.models.middleware.builtin.LoggingMiddleware(
+    logName  : "ai-demo",   // writes to {logs}/ai-demo.log
+    logLevel : "info",      // info-level entries
+    logArgs  : true,        // include tool arguments
+    logTokens: true         // include token counts in afterLLMCall
+)
+
+// --- 2. Register on the agent via the middleware array -----------------------
+
+agent = aiAgent(
+    name        : "LoggedAgent",
+    instructions: "You are a helpful assistant. Use the echo tool when asked to echo a message.",
+    tools       : [ echoTool ],
+    middleware  : [ logger ]
+)
+
+println( "Agent created. Log file: ai-demo.log" )
+println( "" )
+
+// --- 3. Run — every lifecycle event is written to the log --------------------
+
+println( "User: Please echo 'Hello World'" )
+response = agent.run( "Please echo 'Hello World'" )
+println( "Agent: #response#" )
+println( "" )
+
+// --- 4. Fluent API alternative -----------------------------------------------
+//
+//    withMiddleware() can be called after construction and accepts a single
+//    middleware instance or an array.
+
+agent2 = aiAgent(
+    name        : "LoggedAgent2",
+    instructions: "You are a helpful assistant. Use the echo tool when asked.",
+    tools       : [ echoTool ]
+).withMiddleware(
+    new bxModules.bxai.models.middleware.builtin.LoggingMiddleware(
+        logName : "ai-demo2",
+        logArgs : false     // omit args – useful when inputs are sensitive
+    )
+)
+
+println( "User: Please echo 'Fluent API'" )
+println( "Agent: #agent2.run( 'Please echo Fluent API' )#" )
+println( "" )
+
+// --- 5. Log-only for LLM calls (no tools) ------------------------------------
+
+quietLogger = new bxModules.bxai.models.middleware.builtin.LoggingMiddleware(
+    logName  : "ai-llm-only",
+    logLevel : "debug",
+    logTokens: true
+)
+
+agent3 = aiAgent(
+    name        : "QuietAgent",
+    instructions: "Answer concisely.",
+    middleware  : [ quietLogger ]
+)
+
+println( "User: What is the capital of France?" )
+println( "Agent: #agent3.run( 'What is the capital of France?' )#" )
+println( "" )
+
+println( "=== Hooks fired by LoggingMiddleware ===" )
+println( "  beforeAgentRun  – agent name + input preview" )
+println( "  afterAgentRun   – response preview" )
+println( "  beforeLLMCall   – model name + message count + tool count" )
+println( "  afterLLMCall    – token usage (when logTokens=true)" )
+println( "  beforeToolCall  – tool name + args (when logArgs=true)" )
+println( "  afterToolCall   – result preview" )
+println( "  onSuspend       – suspension reason + thread ID" )
