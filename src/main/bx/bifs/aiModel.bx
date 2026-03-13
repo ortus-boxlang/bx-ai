@@ -12,95 +12,100 @@
  * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
- * aiModel() DSL BIF - PHASE 6 COMPLETE
- * Fluent factory for AI Models with full Phase 5 middleware integration
+ * aiModel() DSL BIF - PHASE 6
+ * Fluent factory for AI Models with middleware support
  */
+import bxModules.bxai.models.*;
+import bxModules.bxai.models.middleware.*;
+import bxModules.bxai.models.middleware.builtin.*;
+import bxModules.bxai.services.*;
+
 @BoxBIF
 class {
 
-	/** 
-	 * Create AI Model with full Phase 3-6 fluent DSL support
-	 *
-	 * @provider Required provider name: "openai", "anthropic", "azure", "ollama", "claude", "gpt"
-	 * @params Model parameters (model, temperature, max_tokens, etc.)
-	 * @tools Array of Tool objects
-	 * @middleware Array of middleware (Phase 5)
-	 * @options Additional model options
-	 *
-	 * @return Production-ready AiModel instance
-	 */
-	function invoke(
-		required string provider,
-		struct params = {},
-		array tools = [],
-		array middleware = [],
-		struct options = {}
-	) {
-		
-		// Create AI service by provider
-		var service = getAIService( arguments.provider.lcase() );
-		
-		// Create model instance with full Phase 6 support
-		var model = new AiModel(
-			service = service,
-			tools = arguments.tools,
-			middleware = arguments.middleware,
-			params = arguments.params,
-			options = arguments.options
-		);
+    /**
+     * Create an AiModel instance for the given provider.
+     *
+     * Constructor-style middleware wiring:
+     *   aiModel( "openai", middleware: [ new RetryMiddleware( maxRetries: 3 ) ] )
+     *
+     * Fluent middleware wiring:
+     *   aiModel( "openai" ).withMiddleware( new RetryMiddleware() )
+     *
+     * @provider  Required provider name: "openai", "anthropic", "azure", "ollama"
+     * @params    Model parameters (model, temperature, max_tokens, etc.)
+     * @tools     Array of ITool instances to register with the model
+     * @middleware Single middleware instance, struct-of-closures, or array of either
+     * @options   Additional model options passed through to the service
+     *
+     * @return AiModel instance ready for use
+     */
+    function invoke(
+        required string provider,
+        struct  params     = {},
+        array   tools      = [],
+        any     middleware = [],
+        struct  options    = {}
+    ) {
+        // Resolve service by provider name
+        var service = getAIService( arguments.provider.lCase() );
 
-		// 🔥 PHASE 6: DEFAULT PRODUCTION MIDDLEWARE (if none provided)
-		if ( arrayLen( arguments.middleware ) == 0 ) {
-			model.withMiddleware( [
-				new RateLimitMiddleware( requestsPerMinute = 120 ),
-				new LoggingMiddleware( logLevel = "info" )
-			] );
-			
-			writeLog(
-				text = "[bx-ai][aiModel()] Added default production middleware stack for #arguments.provider#",
-				type = "information",
-				file = "ai"
-			);
-		}
+        // Create the model
+        var model = new AiModel(
+            service  : service,
+            tools    : arguments.tools,
+            params   : arguments.params,
+            options  : arguments.options
+        );
 
-		// Announce model creation for module lifecycle
-		BoxAnnounce( "onAIModelCreate", { 
-			model = model, 
-			provider = arguments.provider,
-			params = arguments.params 
-		});
+        // Wire constructor-supplied middleware item by item so that
+        // struct-of-closures auto-wrapping in addMiddleware() fires per item
+        var middlewareItems = isArray( arguments.middleware )
+            ? arguments.middleware
+            : [ arguments.middleware ];
 
-		return model;
-	}
+        for ( var mw in middlewareItems ) {
+            if ( !isNull( mw ) && !( isSimpleValue( mw ) && !len( trim( mw ) ) ) ) {
+                model.withMiddleware( mw );
+            }
+        }
 
-	/**
-	 * Get AI service instance by provider name
-	 * @provider Provider identifier
-	 * @return IService implementation
-	 */
-	private function getAIService( required string provider ) {
-		switch( arguments.provider ) {
-			case "openai":
-			case "gpt":
-				return new OpenAIService();
-				
-			case "anthropic":
-			case "claude":
-				return new AnthropicService();
-				
-			case "azure":
-				return new AzureOpenAIService();
-				
-			case "ollama":
-				return new OllamaService();
-				
-			default:
-				throw(
-					type = "UnknownAIProviderException",
-					message = "AI provider '#arguments.provider#' not supported.",
-					detail = "Supported providers: openai, gpt, anthropic, claude, azure, ollama"
-				);
-		}
-	}
+        return model;
+    }
+
+    // =========================================================================
+    // PRIVATE HELPERS
+    // =========================================================================
+
+    /**
+     * Resolve a provider name string to a concrete service instance.
+     * Throws UnknownAIProviderException for unrecognised provider names.
+     *
+     * @provider Already lowercased provider identifier
+     */
+    private function getAIService( required string provider ) {
+        switch ( arguments.provider ) {
+            case "openai":
+            case "gpt":
+                return new OpenAIService();
+
+            case "anthropic":
+            case "claude":
+                return new AnthropicService();
+
+            case "azure":
+                return new AzureOpenAIService();
+
+            case "ollama":
+                return new OllamaService();
+
+            default:
+                throw(
+                    type    : "UnknownAIProviderException",
+                    message : "AI provider '#arguments.provider#' is not supported.",
+                    detail  : "Supported providers: openai, gpt, anthropic, claude, azure, ollama"
+                );
+        }
+    }
 
 }
