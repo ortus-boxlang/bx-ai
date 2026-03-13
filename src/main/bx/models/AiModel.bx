@@ -12,8 +12,8 @@
  * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
- * Wraps an AI Service as a runnable model for use in pipelines
- * Handles message extraction, request building, and response handling
+ * Wraps an AI Service as a runnable model for use in pipelines.
+ * Handles message extraction, request building, and response handling.
  */
 import bxModules.bxai.models.runnables.*;
 import bxModules.bxai.models.middleware.*;
@@ -21,223 +21,143 @@ import bxModules.bxai.models.middleware.*;
 class extends="AiBaseRunnable" {
 
 	/**
-	 * Model middleware stack (injected into chatRequest after agent middleware)
+	 * Model middleware stack — injected into chatRequest after agent middleware
 	 */
 	property name="middleware" type="array" default=[];
 
 	/**
-	 * The AI service provider we are linked to.
+	 * The AI service provider this model delegates to
 	 */
 	property name="service" type="IAiService";
 
 	/**
-	 * The tools attached to this model for tool-augmented generation.
+	 * Tools attached to this model for tool-augmented generation
 	 */
 	property name="tools" type="array" default=[];
 
-	/**
-	 * Constructor
-	 */
-	function init( 
-		required IAiService service, 
-		any tools = [],
-		array middleware = [],
-		struct params = {} 
-	) {
-		variables.name = "AiModel-" & arguments.service.getName();
-		variables.service = arguments.service;
+	// =========================================================================
+	// CONSTRUCTOR
+	// =========================================================================
 
-		// Bind tools and params
+	function init(
+		required IAiService service,
+		any tools            = [],
+		array middleware     = [],
+		struct params        = {}
+	){
+		variables.name       = "AiModel-" & arguments.service.getName();
+		variables.service    = arguments.service;
+		variables.middleware = [];
+
 		bindTools( arguments.tools );
 		withParams( arguments.params );
 
-		// Wire constructor middleware
-		if ( !arguments.middleware.isEmpty() ) {
+		if( !arguments.middleware.isEmpty() ){
 			withMiddleware( arguments.middleware );
 		}
 
 		return this;
 	}
 
+	// =========================================================================
+	// MIDDLEWARE
+	// =========================================================================
+
 	/**
-	 * Fluent middleware configuration (Phase 3)
-	 * Accepts: single instance, struct-of-closures, or array of either
+	 * Fluent middleware configuration.
+	 * Accepts: single class instance, struct-of-closures, or array of either.
+	 * Auto-wraps structs in StructMiddlewareAdapter.
 	 */
-	AiModel function withMiddleware( required any middleware ) {
-		if ( !isArray( arguments.middleware ) ) {
-			arguments.middleware = [ arguments.middleware ];
+	AiModel function withMiddleware( required any middleware ){
+		var mwList = isArray( arguments.middleware ) ? arguments.middleware : [ arguments.middleware ];
+
+		for( var item in mwList ){
+			// Auto-wrap structs in StructMiddlewareAdapter
+			if( isStruct( item ) ){
+				item = new models.middleware.StructMiddlewareAdapter( middlewareStruct: item );
+			}
+			arrayAppend( variables.middleware, item );
 		}
-		arguments.middleware.each( item => addMiddleware( item ) );
+
 		return this;
 	}
 
-	/**
-	 * Add single middleware instance (calls AiBaseRequest.addMiddleware)
-	 */
-	AiModel function addMiddleware( required any middleware ) {
-		variables.middleware.addMiddleware( arguments.middleware );
-		return this;
-	}
+	// =========================================================================
+	// TOOL MANAGEMENT
+	// =========================================================================
 
-	/**
-	 * ---------------------------------------------------------------------------------------------------------
-	 * Config Methods
-	 * ---------------------------------------------------------------------------------------------------------
-	 */
-
-	/**
-	 * Bind tools to this model
-	 */
-	public AiModel function bindTools( any tools ) {
-		if ( !isArray( arguments.tools ) ) {
-			arguments.tools = [ arguments.tools ];
-		}
+	public AiModel function bindTools( any tools ){
+		if( !isArray( arguments.tools ) ) arguments.tools = [ arguments.tools ];
 		variables.tools.append( arguments.tools, true );
 		return this;
 	}
 
-	/**
-	 * Add tools to existing set
-	 */
-	public AiModel function addTools( any tools ) {
-		if ( !isArray( arguments.tools ) ) {
-			arguments.tools = [ arguments.tools ];
-		}
-		if ( arguments.tools.len() ) {
+	public AiModel function addTools( any tools ){
+		if( !isArray( arguments.tools ) ) arguments.tools = [ arguments.tools ];
+		if( arguments.tools.len() ){
 			variables.tools.append( arguments.tools, true );
 		}
 		return this;
 	}
 
-	/**
-	 * Remove specific tools
-	 */
-	public AiModel function removeTools( any tools ) {
-		if ( !isArray( arguments.tools ) ) {
-			arguments.tools = [ arguments.tools ];
-		}
-		arguments.tools.each( toolToRemove => {
-			var index = variables.tools.findIndex( t => t == toolToRemove );
-			if ( index >= 1 ) {
+	public AiModel function removeTools( any tools ){
+		if( !isArray( arguments.tools ) ) arguments.tools = [ arguments.tools ];
+		arguments.tools.each( function( toolToRemove ){
+			var index = variables.tools.findIndex( function( t ){ return t == toolToRemove; } );
+			if( index >= 1 ){
 				variables.tools.deleteAt( index );
 			}
-		} );
+		});
 		return this;
 	}
 
-	/**
-	 * Get model configuration
-	 */
-	public struct function getConfig() {
+	// =========================================================================
+	// CONFIG
+	// =========================================================================
+
+	public struct function getConfig(){
 		return {
-			"name": variables.name,
-			"provider": variables.service.getName(),
-			"toolCount": variables.tools.len(),
+			"name"           : variables.name,
+			"provider"       : variables.service.getName(),
+			"toolCount"      : variables.tools.len(),
 			"middlewareCount": variables.middleware.len(),
-			"params": getMergedParams(),
-			"options": getMergedOptions().map( ( key, value ) => {
-				var maskedValue = ( listFindNoCase( "apikey,token,secret", key ) > 0 )
-					? "****"
-					: value;
-				return maskedValue;
-			} )
+			"params"         : getMergedParams(),
+			"options"        : getMergedOptions().map( function( key, value ){
+				return listFindNoCase( "apikey,token,secret", key ) > 0 ? "****" : value;
+			})
 		};
 	}
 
-	/**
-	 * ---------------------------------------------------------------------------------------------------------
-	 * Runnable Methods (Phase 3 - Middleware Integration)
-	 * ---------------------------------------------------------------------------------------------------------
-	 */
+	// =========================================================================
+	// RUNNABLE METHODS
+	// =========================================================================
 
 	/**
-	 * Run the model with full middleware pipeline
+	 * Run the model synchronously with full middleware pipeline.
 	 */
-	public any function run( any input = {}, struct params = {}, struct options = {} ) {
-		var messages = extractMessages( arguments.input );
-		var effectiveParams = getMergedParams( arguments.params );
+	public any function run( any input={}, struct params={}, struct options={} ){
+		var messages         = extractMessages( arguments.input );
+		var effectiveParams  = getMergedParams( arguments.params );
 		var effectiveOptions = getMergedOptions( arguments.options );
 
-		// Merge model tools
-		if ( effectiveParams.keyExists( "tools" ) ) {
-			if ( !isArray( effectiveParams.tools ) ) {
-				effectiveParams.tools = [ effectiveParams.tools ];
-			}
+		// Merge model tools into params
+		if( effectiveParams.keyExists( "tools" ) ){
+			if( !isArray( effectiveParams.tools ) ) effectiveParams.tools = [ effectiveParams.tools ];
 			effectiveParams.tools.append( variables.tools, true );
 		} else {
 			effectiveParams.tools = variables.tools;
 		}
 
-		// 1. CREATE CHATREQUEST
+		// 1. Build chatRequest
 		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
 			aiMessage( messages ),
 			effectiveParams,
 			effectiveOptions
 		);
 
-		// 2. INJECT MODEL MIDDLEWARE (AFTER AGENT MIDDLEWARE)
-		if ( variables.middleware.len() ) {
-			var existingMiddleware = chatRequest.getMiddleware();
-			chatRequest.setMiddleware( existingMiddleware.append( variables.middleware, true ) );
-		}
-
-		// 3. beforeLLMCall HOOK
-		var llmContext = {
-			"model"      : this,
-			"chatRequest": chatRequest,
-			"messages"   : messages
-		};
-		var beforeResult = chatRequest.fireMiddleware( "beforeLLMCall", llmContext );
-		if ( beforeResult.isTerminal() ) {
-			return beforeResult;
-		}
-
-		// 4. wrapLLMCall AROUND SERVICE INVOKE
-		var serviceFn = () => variables.service.invoke( chatRequest );
-		var response = chatRequest.fireWrapMiddleware( "wrapLLMCall", llmContext, serviceFn );
-
-		// 5. afterLLMCall HOOK (reverse order)
-		llmContext.response = response;
-		chatRequest.fireMiddleware( "afterLLMCall", llmContext, true );
-
-		return response;
-	}
-
-	/**
-	 * Stream through the model with middleware pipeline
-	 */
-	public void function stream(
-		required function onChunk,
-		any input = {},
-		struct params = {},
-		struct options = {}
-	) {
-		var messages = extractMessages( arguments.input );
-		var effectiveParams = getMergedParams( arguments.params );
-		var effectiveOptions = getMergedOptions( arguments.options );
-		effectiveOptions.stream = true;
-
-		// Merge model tools
-		if ( effectiveParams.keyExists( "tools" ) ) {
-			if ( !isArray( effectiveParams.tools ) ) {
-				effectiveParams.tools = [ effectiveParams.tools ];
-			}
-			effectiveParams.tools.append( variables.tools, true );
-		} else {
-			effectiveParams.tools = variables.tools;
-		}
-
-		// 1. CREATE CHATREQUEST
-		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
-			aiMessage( messages ),
-			effectiveParams,
-			effectiveOptions
-		);
-
-		// 2. INJECT MODEL MIDDLEWARE
-		if ( variables.middleware.len() ) {
-			var existingMiddleware = chatRequest.getMiddleware();
-			chatRequest.setMiddleware( existingMiddleware.append( variables.middleware, true ) );
+		// 2. Inject model middleware after any agent middleware already on the request
+		if( variables.middleware.len() ){
+			chatRequest.getMiddleware().append( variables.middleware, true );
 		}
 
 		// 3. beforeLLMCall
@@ -247,54 +167,116 @@ class extends="AiBaseRunnable" {
 			"messages"   : messages
 		};
 		var beforeResult = chatRequest.fireMiddleware( "beforeLLMCall", llmContext );
-		if ( beforeResult.isTerminal() ) {
+		if( beforeResult.isTerminal() ) return beforeResult;
+
+		// 4. wrapLLMCall around the actual service call
+		var serviceFn = function(){ return variables.service.invoke( chatRequest ); };
+		var response  = chatRequest.fireWrapMiddleware( "wrapLLMCall", llmContext, serviceFn );
+
+		// 5. afterLLMCall (reverse order)
+		llmContext.response = response;
+		chatRequest.fireMiddleware( "afterLLMCall", llmContext, true );
+
+		return response;
+	}
+
+	/**
+	 * Stream through the model with middleware pipeline.
+	 * NOTE: afterLLMCall fires after the stream completes with a placeholder response
+	 * since the full response is not available until streaming is done.
+	 */
+	public void function stream(
+		required function onChunk,
+		any input        = {},
+		struct params    = {},
+		struct options   = {}
+	){
+		var messages         = extractMessages( arguments.input );
+		var effectiveParams  = getMergedParams( arguments.params );
+		var effectiveOptions = getMergedOptions( arguments.options );
+		effectiveOptions.stream = true;
+
+		// Merge model tools into params
+		if( effectiveParams.keyExists( "tools" ) ){
+			if( !isArray( effectiveParams.tools ) ) effectiveParams.tools = [ effectiveParams.tools ];
+			effectiveParams.tools.append( variables.tools, true );
+		} else {
+			effectiveParams.tools = variables.tools;
+		}
+
+		// 1. Build chatRequest
+		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
+			aiMessage( messages ),
+			effectiveParams,
+			effectiveOptions
+		);
+
+		// 2. Inject model middleware after any agent middleware already on the request
+		if( variables.middleware.len() ){
+			chatRequest.getMiddleware().append( variables.middleware, true );
+		}
+
+		// 3. beforeLLMCall
+		var llmContext = {
+			"model"      : this,
+			"chatRequest": chatRequest,
+			"messages"   : messages
+		};
+		var beforeResult = chatRequest.fireMiddleware( "beforeLLMCall", llmContext );
+		if( beforeResult.isTerminal() ){
 			arguments.onChunk( beforeResult );
 			return;
 		}
 
-		// 4. wrapLLMCall around streaming service
-		var streamFn = ( ctx ) => {
-			variables.service.invokeStream( chatRequest, arguments.onChunk );
+		// 4. wrapLLMCall around the streaming service call
+		// Capture onChunk into a local var — arguments scope is not available inside nested closures
+		var onChunkRef = arguments.onChunk;
+		var streamFn   = function(){
+			variables.service.invokeStream( chatRequest, onChunkRef );
 		};
-		var wrappedStream = chatRequest.fireWrapMiddleware( "wrapLLMCall", llmContext, streamFn );
+		chatRequest.fireWrapMiddleware( "wrapLLMCall", llmContext, streamFn );
 
-		// 5. afterLLMCall (fires after stream completes)
-		llmContext.response = "Stream completed";
+		// 5. afterLLMCall (reverse order) — fires after stream completes
+		// Full streamed response is not available here; response is noted as stream-completed
+		llmContext.response = "stream-completed";
 		chatRequest.fireMiddleware( "afterLLMCall", llmContext, true );
 	}
 
-	/**
-	 * ---------------------------------------------------------------------------------------------------------
-	 * Private Methods
-	 * ---------------------------------------------------------------------------------------------------------
-	 */
+	// =========================================================================
+	// PRIVATE HELPERS
+	// =========================================================================
 
-	private array function extractMessages( required any input ) {
-		if ( arguments.input instanceof "AiMessage" ) {
+	private array function extractMessages( required any input ){
+		if( arguments.input instanceof "AiMessage" ){
 			return arguments.input.render();
 		}
-		if ( isArray( arguments.input ) ) {
-			return arguments.input.flatMap( m => extractMessages( m ) );
+		if( isArray( arguments.input ) ){
+			return arguments.input.flatMap( function( m ){ return extractMessages( m ); } );
 		}
-		if ( isStruct( arguments.input ) ) {
+		if( isStruct( arguments.input ) ){
 			return [ arguments.input ];
 		}
-		if ( isSimpleValue( arguments.input ) ) {
+		if( isSimpleValue( arguments.input ) ){
 			return [ { "role": "user", "content": arguments.input } ];
 		}
 		throw(
 			type    = "InvalidInput",
-			message = "Input must be: AiMessage, array of messages, struct with 'messages' key, or string"
+			message = "Input must be: AiMessage, array of messages, struct, or string"
 		);
 	}
 
-	// Placeholder methods (implement as needed from parent)
-	private struct function getMergedParams( struct overrides = {} ) {
-		return variables.params.append( arguments.overrides );
+	/**
+	 * Merge params without mutating variables.params
+	 */
+	private struct function getMergedParams( struct overrides={} ){
+		return duplicate( variables.params ).append( arguments.overrides );
 	}
 
-	private struct function getMergedOptions( struct overrides = {} ) {
-		return variables.options.append( arguments.overrides );
+	/**
+	 * Merge options without mutating variables.options
+	 */
+	private struct function getMergedOptions( struct overrides={} ){
+		return duplicate( variables.options ).append( arguments.overrides );
 	}
 
 }

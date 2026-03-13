@@ -35,550 +35,442 @@ class extends="BaseMemory" {
 	/**
 	 * Constructor
 	 *
-	 * @key The unique key for this memory instance
-	 * @userId The user identifier for multi-tenant isolation
+	 * @key            The unique key for this memory instance
+	 * @userId         The user identifier for multi-tenant isolation
 	 * @conversationId The conversation identifier for multiple conversations
-	 * @cacheName Name of the cache to use (default: "default")
-	 * @maxMessages Maximum number of messages to retain (0 = unbounded)
+	 * @cacheName      Name of the cache to use (default: "default")
+	 * @maxMessages    Maximum number of messages to retain (0 = unbounded)
 	 */
 	function init(
 		required string key,
-		string userId = "",
-		string conversationId = "",
-		string cacheName = static.DEFAULT_CACHE_NAME,
-		numeric maxMessages = 0
-	) {
-		// Call parent constructor with 0 max messages to be unbounded
-		super.init( argumentCollection: arguments )
-		variables.cacheName = arguments.cacheName
-		// Build composite cache key from key, userId, and conversationId
-		variables.cacheKey = buildCacheKey();
-		return this
+		string userId          = "",
+		string conversationId  = "",
+		string cacheName       = static.DEFAULT_CACHE_NAME,
+		numeric maxMessages    = 0
+	){
+		super.init( argumentCollection: arguments );
+		variables.cacheName = arguments.cacheName;
+		variables.cacheKey  = buildCacheKey();
+		return this;
 	}
 
 	/**
-	 * Configure the memory instance
-	 * Supports cacheName in config and initializes the cache provider
-	 * Loads metadata and config from cache if they exist
+	 * Configure the memory instance.
+	 * Supports cacheName in config and initializes the cache provider.
+	 * Loads metadata from cache if it exists.
 	 *
 	 * @config The configuration struct
-	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function configure( required struct config ) {
-		// Override cacheName if provided, else we use the default cache
-		if ( arguments.config.keyExists( "cacheName" ) ) {
-			variables.cacheName = arguments.config.cacheName
+	public IAiMemory function configure( required struct config ){
+		if( arguments.config.keyExists( "cacheName" ) ){
+			variables.cacheName = arguments.config.cacheName;
 		}
 
-		// Get the cache provider instance
-		variables.cache = cache( variables.cacheName )
+		variables.cache    = cache( variables.cacheName );
+		var data           = getCacheData();
+		variables.metadata = data.metadata;
 
-		// Load metadata from cache if it exists
-		// (but NOT messages - those are accessed on-demand via getAll())
-		// (and NOT config - that's just for instance configuration)
-		var data = getCacheData()
-		variables.metadata = data.metadata
+		super.configure( arguments.config );
 
-		super.configure( arguments.config )
-
-		return this
+		return this;
 	}
 
 	/**
-	 * Get or set metadata - persists to cache when setting
+	 * Get or set metadata — persists to cache when setting.
 	 *
 	 * @metadata Optional struct to merge with existing metadata
-	 *
 	 * @return Struct (getter) or IAiMemory (setter)
 	 */
-	public any function metadata( struct metadata ) {
-		if ( !isNull( arguments.metadata ) ) {
-			// Update variables.metadata
-			variables.metadata.append( arguments.metadata, true )
-			// Persist to cache
-			var data = getCacheData()
-			setCacheData( data.messages, variables.metadata )
-			return this
+	public any function metadata( struct metadata ){
+		if( !isNull( arguments.metadata ) ){
+			variables.metadata.append( arguments.metadata, true );
+			var data = getCacheData();
+			setCacheData( data.messages, variables.metadata );
+			return this;
 		}
-		return variables.metadata
+		return variables.metadata;
 	}
 
 	/**
-	 * Get all messages - reads directly from cache
+	 * Get all messages — reads directly from cache.
 	 *
 	 * @return Array of message structs
 	 */
-	public array function getAll() {
-		return getCacheData().messages
+	public array function getAll(){
+		return getCacheData().messages;
 	}
 
 	/**
-	 * Add a message - writes directly to cache
+	 * Add a message — writes directly to cache.
 	 *
 	 * @message The message to add
-	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function add( required any message ) {
-		var data = getCacheData()
-
-		// Append the processed message(s) to cache messages
-		data.messages.append( processMessage( arguments.message ), true )
-
-		// Save back to cache
-		setCacheData( data.messages, data.metadata )
-
-		// Trim if necessary
-		this.trim()
-
-		return this
+	public IAiMemory function add( required any message ){
+		var data = getCacheData();
+		data.messages.append( processMessage( arguments.message ), true );
+		setCacheData( data.messages, data.metadata );
+		this.trim();
+		return this;
 	}
 
 	/**
-	 * Clear all messages from cache
+	 * Clear all messages from cache.
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function clear() {
-		variables.cache.clear( variables.cacheKey )
-		return this
+	public IAiMemory function clear(){
+		variables.cache.clear( variables.cacheKey );
+		return this;
 	}
 
 	/**
-	 * Get the count of messages in cache
+	 * Get the count of messages in cache.
 	 *
 	 * @return Numeric count
 	 */
-	public numeric function count() {
-		return getCacheData().messages.len()
+	public numeric function count(){
+		return getCacheData().messages.len();
 	}
 
 	/**
-	 * Check if memory is empty
+	 * Check if memory is empty.
 	 *
 	 * @return True if empty, false otherwise
 	 */
-	public boolean function isEmpty() {
-		return getCacheData().messages.isEmpty()
+	public boolean function isEmpty(){
+		return getCacheData().messages.isEmpty();
 	}
 
 	/**
-	 * Get messages by role - reads from cache
+	 * Get messages by role — reads from cache.
 	 *
 	 * @role The role to filter by
-	 *
 	 * @return Array of message structs
 	 */
-	public array function getByRole( required string role ) {
-		return getCacheData().messages.filter( ( m ) => m.role == role )
+	public array function getByRole( required string role ){
+		return getCacheData().messages.filter( function( m ){ return m.role == role; } );
 	}
 
 	/**
-	 * Get the system message from cache
+	 * Get the system message from cache.
 	 *
 	 * @return The system message content or an empty string
 	 */
-	public string function getSystemMessage() {
-		var systemMessages = this.getByRole( "system" )
-		if ( systemMessages.isEmpty() ) {
-			return ""
-		}
-		return systemMessages.first().content
+	public string function getSystemMessage(){
+		var systemMessages = this.getByRole( "system" );
+		if( systemMessages.isEmpty() ) return "";
+		return systemMessages[ 1 ].content;
 	}
 
 	/**
-	 * Set or replace the system message in cache
+	 * Set or replace the system message in cache.
 	 *
-	 * @message The system message content (string)
+	 * @message The system message content
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function setSystemMessage( required string message ){
+		var data     = getCacheData();
+		var messages = data.messages.filter( function( m ){ return m.role != "system"; } );
+		messages.prepend({
+			"role"     : "system",
+			"content"  : arguments.message,
+			"timestamp": now()
+		});
+		setCacheData( messages, data.metadata );
+		return this;
+	}
+
+	/**
+	 * Remove the system message from cache.
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function setSystemMessage( required string message ) {
-		var data = getCacheData()
-		var messages = data.messages
-
-		// Remove existing system message
-		messages = messages.filter( ( m ) => m.role != "system" )
-
-		// Add new system message at the beginning
-		messages.prepend( {
-			role: "system",
-			content: arguments.message,
-			timestamp: now()
-		} )
-
-		setCacheData( messages, data.metadata )
-		return this
+	public IAiMemory function removeSystemMessage(){
+		var data     = getCacheData();
+		var messages = data.messages.filter( function( m ){ return m.role != "system"; } );
+		setCacheData( messages, data.metadata );
+		return this;
 	}
 
 	/**
-	 * Remove the system message from cache
-	 *
-	 * @return IAiMemory for chaining
-	 */
-	public IAiMemory function removeSystemMessage() {
-		var data = getCacheData()
-		var messages = data.messages.filter( ( m ) => m.role != "system" )
-		setCacheData( messages, data.metadata )
-		return this
-	}
-
-	/**
-	 * Get messages excluding system message from cache
+	 * Get messages excluding system message from cache.
 	 *
 	 * @return Array of message structs
 	 */
-	public array function getNonSystemMessages() {
-		return getCacheData().messages.filter( ( m ) => m.role != "system" )
+	public array function getNonSystemMessages(){
+		return getCacheData().messages.filter( function( m ){ return m.role != "system"; } );
 	}
 
 	/**
-	 * Get recent messages from cache
+	 * Get recent messages from cache.
 	 *
 	 * @limit Number of recent messages to retrieve
-	 *
 	 * @return Array of message structs
 	 */
-	public array function getRecent( numeric limit = 10 ) {
-		var messages = this.getAll()
-		var total = messages.len()
-		if ( total <= arguments.limit ) {
-			return messages
-		}
-		var start = total - arguments.limit + 1
-		return messages.slice( start, total )
+	public array function getRecent( numeric limit=10 ){
+		var messages = this.getAll();
+		var total    = messages.len();
+		if( total <= arguments.limit ) return messages;
+		var start = total - arguments.limit + 1;
+		return messages.slice( start, total );
 	}
 
 	/**
-	 * Search messages by content - reads from cache
+	 * Search messages by content — reads from cache.
 	 *
-	 * @searchTerm Text to search for
+	 * @searchTerm    Text to search for
 	 * @caseSensitive Whether search is case-sensitive (default: false)
-	 *
 	 * @return Array of matching message structs
 	 */
-	public array function search( required string searchTerm, boolean caseSensitive = false ) {
-		var term = arguments.searchTerm
-		var isCaseSensitive = arguments.caseSensitive
-
-		return this.getAll().filter( ( message ) => {
+	public array function search( required string searchTerm, boolean caseSensitive=false ){
+		var term            = arguments.searchTerm;
+		var isCaseSensitive = arguments.caseSensitive;
+		return this.getAll().filter( function( message ){
 			return isCaseSensitive
 				? message.content.find( term ) > 0
-				: message.content.findNoCase( term ) > 0
-		} )
+				: message.content.findNoCase( term ) > 0;
+		});
 	}
 
 	/**
-	 * Get messages in a specific range - reads from cache
+	 * Get messages in a specific range — reads from cache.
 	 *
 	 * @startIndex Starting index (1-based)
-	 * @endIndex Ending index (1-based), optional - defaults to last message
-	 *
+	 * @endIndex   Ending index (1-based), optional — defaults to last message
 	 * @return Array of message structs
 	 */
-	public array function getRange( required numeric startIndex, numeric endIndex ) {
-		var messages = this.getAll()
-		var total = messages.len()
+	public array function getRange( required numeric startIndex, numeric endIndex ){
+		var messages = this.getAll();
+		var total    = messages.len();
 
-		// Validate startIndex - must be within bounds
-		if ( arguments.startIndex < 1 || arguments.startIndex > total ) {
-			return []
-		}
+		if( arguments.startIndex < 1 || arguments.startIndex > total ) return [];
 
-		// Default endIndex to last message if not provided
-		var finalEndIndex = isNull( arguments.endIndex ) ? total : arguments.endIndex
+		var finalEndIndex = isNull( arguments.endIndex ) ? total : arguments.endIndex;
+		if( finalEndIndex > total ) finalEndIndex = total;
+		if( finalEndIndex < arguments.startIndex ) return [];
 
-		// Clamp endIndex to valid range
-		if ( finalEndIndex > total ) {
-			finalEndIndex = total
-		}
-
-		// If endIndex is before startIndex, return empty
-		if ( finalEndIndex < arguments.startIndex ) {
-			return []
-		}
-
-		// Calculate length for slice (slice takes start and length, not start and end)
-		var length = finalEndIndex - arguments.startIndex + 1
-		return messages.slice( arguments.startIndex, length )
+		var length = finalEndIndex - arguments.startIndex + 1;
+		return messages.slice( arguments.startIndex, length );
 	}
 
 	/**
-	 * Get a summary of this memory instance
-	 * Overrides base to add cacheName field
+	 * Get a summary of this memory instance.
 	 *
 	 * @return Struct with memory information
 	 */
-	public struct function getSummary() {
-		var summary = super.getSummary()
-		summary.cacheName = variables.cacheName
-		summary.cached = !isNull( variables.cache )
-		return summary
+	public struct function getSummary(){
+		var summary       = super.getSummary();
+		summary.cacheName = variables.cacheName;
+		summary.cached    = !isNull( variables.cache );
+		return summary;
 	}
 
 	/**
-	 * Export messages to a serializable format
-	 * Overrides base to add cacheName field
+	 * Export messages to a serializable format.
 	 *
 	 * @return Struct containing all memory data
 	 */
-	public struct function export() {
-		var exported = super.export()
-		exported.cacheName = variables.cacheName
-		return exported
+	public struct function export(){
+		var exported       = super.export();
+		exported.cacheName = variables.cacheName;
+		return exported;
 	}
 
 	/**
-	 * Import messages from a previously exported format
-	 * Overrides base to handle cacheName and persist to cache
+	 * Import messages from a previously exported format.
 	 *
 	 * @data The exported memory data
-	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function import( required struct data ) {
-		// Handle cacheName specific to CacheMemory
-		if ( arguments.data.keyExists( "cacheName" ) ) {
-			variables.cacheName = arguments.data.cacheName
-			// Reinitialize cache if cacheName changed
-			variables.cache = cache( variables.cacheName )
+	public IAiMemory function import( required struct data ){
+		if( arguments.data.keyExists( "cacheName" ) ){
+			variables.cacheName = arguments.data.cacheName;
+			variables.cache     = cache( variables.cacheName );
 		}
+		if( arguments.data.keyExists( "key" ) )            variables.key            = arguments.data.key;
+		if( arguments.data.keyExists( "userId" ) )         variables.userId         = arguments.data.userId;
+		if( arguments.data.keyExists( "conversationId" ) ) variables.conversationId = arguments.data.conversationId;
+		if( arguments.data.keyExists( "metadata" ) )       variables.metadata       = arguments.data.metadata;
+		if( arguments.data.keyExists( "config" ) )         variables.config         = arguments.data.config;
 
-		// Import key, userId, conversationId, metadata, config
-		if ( arguments.data.keyExists( "key" ) ) {
-			variables.key = arguments.data.key
-		}
-		if ( arguments.data.keyExists( "userId" ) ) {
-			variables.userId = arguments.data.userId
-		}
-		if ( arguments.data.keyExists( "conversationId" ) ) {
-			variables.conversationId = arguments.data.conversationId
-		}
-		if ( arguments.data.keyExists( "metadata" ) ) {
-			variables.metadata = arguments.data.metadata
-		}
-		if ( arguments.data.keyExists( "config" ) ) {
-			variables.config = arguments.data.config
-		}
-
-		// Rebuild cache key after importing identifiers
 		variables.cacheKey = buildCacheKey();
 
-		// Import messages directly to cache (don't use variables.messages)
-		var messages = arguments.data.messages ?: []
-		setCacheData( messages, variables.metadata )
+		var messages = arguments.data.messages ?: [];
+		setCacheData( messages, variables.metadata );
 
-		return this
+		return this;
 	}
 
 	/**
-	 * Create a deep copy of this cache memory instance
-	 * Note: Creates new instance but does NOT copy cache data - use different key
+	 * Create a deep copy of this cache memory instance.
 	 *
 	 * @return A new IAiMemory instance with the same data
 	 */
-	public IAiMemory function clone() {
-		// Export current state and deep copy it
-		var exported = duplicate( this.export() )
-
-		// Generate new unique key to avoid cache conflicts
-		var newKey = variables.key & "_clone_" & createUUID()
-		exported.key = newKey
-
-		// Create new instance with new key and same cache name
-		var cloned = new CacheMemory( newKey, variables.cacheName )
-			.configure( exported.config )
-
-		// Import data (will create new cache entry)
-		return cloned.import( exported )
+	public IAiMemory function clone(){
+		var exported = duplicate( this.export() );
+		var newKey   = variables.key & "_clone_" & createUUID();
+		exported.key = newKey;
+		var cloned   = new CacheMemory( newKey, variables.cacheName ).configure( exported.config );
+		return cloned.import( exported );
 	}
 
 	/**
-	 * Merge messages from another memory instance into this one
-	 * Reads from cache, merges, and writes back to cache
+	 * Merge messages from another memory instance into this one.
 	 *
-	 * @otherMemory The memory instance to merge from
-	 * @skipDuplicates Whether to skip duplicate messages based on content and role (default: false)
+	 * @otherMemory    The memory instance to merge from
+	 * @skipDuplicates Whether to skip duplicate messages (default: false)
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function merge( required IAiMemory otherMemory, boolean skipDuplicates=false ){
+		var data            = getCacheData();
+		var currentMessages = data.messages;
+		var otherMessages   = arguments.otherMemory.getAll();
+
+		if( arguments.skipDuplicates ){
+			otherMessages = otherMessages.filter( function( newMsg ){
+				return !currentMessages.some( function( existingMsg ){
+					return existingMsg.role == newMsg.role && existingMsg.content == newMsg.content;
+				});
+			});
+		}
+
+		currentMessages.append( otherMessages, true );
+		setCacheData( currentMessages, data.metadata );
+
+		return this;
+	}
+
+	/**
+	 * Trim messages stored in cache based on maxMessages.
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function merge( required IAiMemory otherMemory, boolean skipDuplicates = false ) {
-		var data = getCacheData()
-		var currentMessages = data.messages
-		var otherMessages = arguments.otherMemory.getAll()
+	public IAiMemory function trim(){
+		if( variables.maxMessages == 0 ) return this;
 
-		if ( arguments.skipDuplicates ) {
-			// Filter out duplicates by comparing role and content
-			otherMessages = otherMessages.filter( ( newMsg ) => {
-				return !currentMessages.some( ( existingMsg ) =>
-					existingMsg.role == newMsg.role && existingMsg.content == newMsg.content
-				)
-			} )
+		var data     = getCacheData();
+		var messages = data.messages;
+
+		var systemMessages = messages.filter( function( m ){ return m.role == "system"; } );
+		var hasSystem      = !systemMessages.isEmpty();
+		var systemMsg      = hasSystem ? systemMessages[ 1 ].content : "";
+
+		var nonSystem = messages.filter( function( m ){ return m.role != "system"; } );
+
+		if( nonSystem.len() <= variables.maxMessages ) return this;
+
+		var start = nonSystem.len() - variables.maxMessages + 1;
+		var keep  = nonSystem.slice( start, variables.maxMessages );
+
+		if( hasSystem ){
+			keep.prepend({ "role": "system", "content": systemMsg, "timestamp": now() });
 		}
 
-		// Append filtered messages
-		currentMessages.append( otherMessages, true )
+		setCacheData( keep, data.metadata );
 
-		// Write back to cache
-		setCacheData( currentMessages, data.metadata )
+		return this;
+	}
 
-		return this
+	// =========================================================================
+	// CHECKPOINT METHODS (HITL)
+	// =========================================================================
+
+	/**
+	 * Save agent execution state for HITL resume.
+	 * Storage key: "checkpoint_" & threadId
+	 *
+	 * @threadId   Unique execution thread identifier
+	 * @state      Complete agent state: { messages, params, options, pending }
+	 * @ttlMinutes Minutes until auto-expiry (0 = no expiry)
+	 */
+	public void function saveState( required string threadId, required struct state, numeric ttlMinutes=0 ){
+		var key        = "checkpoint_#arguments.threadId#";
+		var ttlSeconds = arguments.ttlMinutes > 0 ? arguments.ttlMinutes * 60 : 0;
+		variables.cache.set( key, arguments.state, ttlSeconds );
 	}
 
 	/**
-	 * Trim messages stored in cache based on maxMessages
+	 * Load saved agent state.
+	 * Throws CheckpointNotFoundException if the threadId is not found.
+	 *
+	 * @threadId Thread identifier to load
+	 * @return { messages, params, options, pending }
 	 */
-	public IAiMemory function trim() {
-		// If unbounded → do nothing
-		if ( variables.maxMessages == 0 ) return this
+	public struct function loadState( required string threadId ){
+		var key   = "checkpoint_#arguments.threadId#";
+		var state = variables.cache.get( key );
 
-		var data = getCacheData()
-		var messages = data.messages
-
-		// Extract system message if present
-		var systemMsg = ""
-		var hasSystem = false
-
-		var systemMessages = messages.filter( m => m.role == "system" )
-		if ( !systemMessages.isEmpty() ) {
-			systemMsg = systemMessages.first().content
-			hasSystem = true
+		if( isNull( state ) ){
+			throw(
+				type    = "CheckpointNotFoundException",
+				message = "Checkpoint not found for threadId: #arguments.threadId#"
+			);
 		}
 
-		// Trim non-system messages
-		var nonSystem = messages.filter( m => m.role != "system" )
-
-		// If no trimming needed, exit early
-		if ( nonSystem.len() <= variables.maxMessages ) {
-			return this
-		}
-
-		// Determine which messages to keep
-		var start = nonSystem.len() - variables.maxMessages + 1
-		var keep = nonSystem.slice( start, variables.maxMessages )
-
-		// Preserve system message at top
-		if ( hasSystem ){
-			keep.prepend( { role:"system", content:systemMsg, timestamp:now() } )
-		}
-
-		// Save back to cache
-		setCacheData( keep, data.metadata )
-
-		return this
+		return state;
 	}
 
 	/**
-     * 🔥 🔥 🔥 PHASE 4 CHECKPOINT METHODS 🔥 🔥 🔥
-     */
-
-    /**
-     * Save agent execution state for HITL resume
-     * Stores: { messages, params, options, pending }
-     * @threadId Unique execution thread identifier
-     * @state Complete agent state struct
-     * @ttlMinutes Minutes until auto-expiry (0 = no expiry)
-     */
-    public void function saveState( required string threadId, required struct state, numeric ttlMinutes = 0 ) {
-       var key = "checkpoint_#arguments.threadId#";
-       var ttlSeconds = arguments.ttlMinutes ? arguments.ttlMinutes * 60 : 30 * 60;
-       variables.cache.set( key, arguments.state, ttlSeconds );
-    }
-
-    /**
-     * Load saved agent state. Throws CheckpointNotFoundException if missing
-     * @threadId Thread identifier to load
-     * @return { messages: [], params: {}, options: {}, pending: {} }
-     */
-    public struct function loadState( required string threadId ) {
-       var key = "checkpoint_#arguments.threadId#";
-       var state = variables.cache.get( key );
-
-       if( isNull( state ) || state.isEmpty() ) {
-          throw(
-             type   = "CheckpointNotFoundException",
-             message= "Checkpoint not found for threadId: #arguments.threadId#"
-          );
-       }
-
-       return state;
-    }
-
-    /**
-     * Delete checkpoint after resume (cleanup)
-     * @threadId Thread identifier to clear
-     */
-    public void function clearState( required string threadId ) {
-       var key = "checkpoint_#arguments.threadId#";
-       variables.cache.remove( key );
-    }
-
-
-
-	/**
-	 * --------------------------------------------------------------------------
-	 * Private Helpers
-	 * --------------------------------------------------------------------------
+	 * Delete checkpoint after resume (one-time use cleanup).
+	 *
+	 * @threadId Thread identifier to clear
 	 */
+	public void function clearState( required string threadId ){
+		var key = "checkpoint_#arguments.threadId#";
+		variables.cache.remove( key );
+	}
+
+	// =========================================================================
+	// PRIVATE HELPERS
+	// =========================================================================
 
 	/**
-	 * Get cache data structure - reads directly from cache
+	 * Get cache data structure — reads directly from cache.
 	 *
 	 * @return Struct with keys: messages, metadata
 	 */
-	private struct function getCacheData() {
+	private struct function getCacheData(){
 		return variables.cache.getOrSet(
 			variables.cacheKey,
-			() => {
+			function(){
 				return {
-					"messages"  : [],
-					"metadata"  : {}
-				}
+					"messages": [],
+					"metadata": {}
+				};
 			}
-		)
+		);
 	}
 
 	/**
-	 * Set cache data structure - writes directly to cache
+	 * Set cache data structure — writes directly to cache.
 	 *
 	 * @messages Array of message structs
 	 * @metadata Metadata struct
 	 */
-	private void function setCacheData(
-		required array messages,
-		struct metadata = {}
-	) {
-		if ( !isNull( variables.cache ) && len( variables.cacheKey ) ) {
+	private void function setCacheData( required array messages, struct metadata={} ){
+		if( !isNull( variables.cache ) && len( variables.cacheKey ) ){
 			variables.cache.set(
 				variables.cacheKey,
 				{
-					messages  : arguments.messages,
-					metadata  : arguments.metadata
+					"messages": arguments.messages,
+					"metadata": arguments.metadata
 				}
-			)
+			);
 		}
 	}
 
 	/**
-	 * Build composite cache key from key, userId, and conversationId
+	 * Build composite cache key from key, userId, and conversationId.
 	 * Format: key:userId:conversationId or key:userId or just key
 	 *
 	 * @return String composite cache key
 	 */
-	private string function buildCacheKey() {
+	private string function buildCacheKey(){
 		var parts = [ variables.key ];
-
-		// Add userId if present
-		if ( len( variables.userId ) ) {
-			parts.append( variables.userId );
-		}
-
-		// Add conversationId if present
-		if ( len( variables.conversationId ) ) {
-			parts.append( variables.conversationId );
-		}
-
+		if( len( variables.userId ) )         parts.append( variables.userId );
+		if( len( variables.conversationId ) ) parts.append( variables.conversationId );
 		return parts.toList( ":" );
 	}
 

@@ -1,29 +1,80 @@
-component implements="IAiMiddleware"{
+boxlangcomponent implements="IAiMiddleware" {
 
-    property name="middlewareStruct";
+	property name="middlewareStruct";
 
-    StructMiddlewareAdapter function init( required struct middlewareStruct ){
-        variables.middlewareStruct = middlewareStruct;
-        return this;
-    }
+	public StructMiddlewareAdapter function init( required struct middlewareStruct ){
+		variables.middlewareStruct = middlewareStruct;
+		return this;
+	}
 
-    private AiMiddlewareResult function defaultContinue(){
-        return AiMiddlewareResult.continue();
-    }
+	// =========================================================================
+	// Sequential Hooks
+	// =========================================================================
 
-    public AiMiddlewareResult function beforeAgentRun( required struct context ){
-        return middlewareStruct.beforeAgentRun ?: defaultContinue();
-    }
-    // ... repeat pattern for all sequential hooks
-    public AiMiddlewareResult function beforeToolCall( required struct context ){
-        var handler = middlewareStruct.beforeToolCall ?: defaultContinue;
-        return handler( context );
-    }
+	public AiMiddlewareResult function beforeAgentRun( required struct context ){
+		return invoke( context, "beforeAgentRun" );
+	}
 
-    public any function wrapToolCall( required struct context, required function handler ){
-        var wrapHandler = middlewareStruct.wrapToolCall;
-        if( !isClosure( wrapHandler ) ) return handler( argumentCollection=arguments );
-        return wrapHandler( context, handler );
-    }
+	public AiMiddlewareResult function afterAgentRun( required struct context ){
+		return invoke( context, "afterAgentRun" );
+	}
+
+	public AiMiddlewareResult function beforeLLMCall( required struct context ){
+		return invoke( context, "beforeLLMCall" );
+	}
+
+	public AiMiddlewareResult function afterLLMCall( required struct context ){
+		return invoke( context, "afterLLMCall" );
+	}
+
+	public AiMiddlewareResult function beforeToolCall( required struct context ){
+		return invoke( context, "beforeToolCall" );
+	}
+
+	public AiMiddlewareResult function afterToolCall( required struct context ){
+		return invoke( context, "afterToolCall" );
+	}
+
+	public AiMiddlewareResult function onError( required struct context ){
+		return invoke( context, "onError" );
+	}
+
+	// =========================================================================
+	// Wrap Hooks
+	// =========================================================================
+
+	public any function wrapLLMCall( required struct context, required function handler ){
+		return invokeWrap( context, handler, "wrapLLMCall" );
+	}
+
+	public any function wrapToolCall( required struct context, required function handler ){
+		return invokeWrap( context, handler, "wrapToolCall" );
+	}
+
+	// =========================================================================
+	// Private Helpers
+	// =========================================================================
+
+	/**
+	 * Dispatches a sequential hook closure from the struct if present,
+	 * otherwise returns continueChain().
+	 */
+	private AiMiddlewareResult function invoke( required struct context, required string hookName ){
+		if( variables.middlewareStruct.keyExists( hookName ) && isClosure( variables.middlewareStruct[ hookName ] ) ){
+			return variables.middlewareStruct[ hookName ]( context );
+		}
+		return AiMiddlewareResult.continueChain();
+	}
+
+	/**
+	 * Dispatches a wrap hook closure from the struct if present,
+	 * otherwise calls handler() directly.
+	 */
+	private any function invokeWrap( required struct context, required function handler, required string hookName ){
+		if( variables.middlewareStruct.keyExists( hookName ) && isClosure( variables.middlewareStruct[ hookName ] ) ){
+			return variables.middlewareStruct[ hookName ]( context, handler );
+		}
+		return handler();
+	}
 
 }

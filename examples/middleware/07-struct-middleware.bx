@@ -1,0 +1,23 @@
+component {
+    function run() {
+        printLine( "=== 07 - Struct-of-Closures ===" );
+        var middleware = {
+            "onStart": ( agent ) => {
+                printLine( "🚀 Agent #agent.getName()# started" );
+            },
+            "onToolCall": ( tool ) => {
+                printLine( "🛠️  Tool: #tool.name#(#serializeJSON(tool.args)#)" );
+            },
+            "onComplete": ( result ) => {
+                printLine( "✅ Complete: #result#" );
+            },
+            "onError": ( error ) => {
+                printLine( "💥 Error: #error.message#" );
+                return AiMiddlewareResult.reject();
+            }
+        };
+        
+        var agent = new AiAgent().addMiddleware( middleware );
+        agent.ask( "What time is it?" );
+    }
+}

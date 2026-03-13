@@ -1,0 +1,20 @@
+component {
+    function run() {
+        printLine( "=== 06 - Custom Middleware ===" );
+        var agent = new AiAgent()
+            .addMiddleware( new CustomMiddleware() );
+        agent.ask( "Hello world" );
+    }
+}
+
+class CustomMiddleware extends AiMiddleware {
+    function onToolCall( toolCall ) {
+        printLine( "🔥 CUSTOM: #toolCall.name# called with args: #serializeJSON(toolCall.args)#" );
+        return super.onToolCall( toolCall );
+    }
+    
+    function onError( error ) {
+        printLine( "⚠️  Custom error: #error.message#" );
+        return AiMiddlewareResult.resume();
+    }
+}

@@ -1,0 +1,127 @@
+component {
+    function run() {
+        printLine( "=== 04 - HITL Web Suspend/Resume ===" );
+        printLine( "📱 CLI Demo + ColdBox Controller" );
+        
+        // CLI Demo
+        var agent = new AiAgent()
+            .addMiddleware( new HumanInTheLoopMiddleware( mode="suspend" ) );
+        var result = agent.ask( "Modify /etc/hosts" );
+        if ( result.isSuspended() ) {
+            printLine( "🔄 CLI Suspended: #result.getData().question#" );
+            printLine( "   Resume: agent.resume( AiMiddlewareResult.approve(), '#result.getThreadId()#' )" );
+        }
+        
+        printLine( chr(10) & "🌐 === FULL COLDBOX HANDLER === " );
+        printLine( "📁 handlers/ApprovalController.bx" );
+        printLine( repeatString( "=", 60 ) );
+    }
+}
+
+// ========================================
+// handlers/ApprovalController.bx
+// ========================================
+printLine( '
+component extends="coldbox.system.OrthoStack.controllers.RestHandler" {
+
+    /**
+    * Build configured AI Agent factory
+    */
+    function buildAgent() {
+        return new AiAgent()
+            .addMiddleware( new HumanInTheLoopMiddleware( mode="suspend" ) );
+    }
+
+    // POST /api/approval/suspend
+    function suspend( event, rc, prc ) {
+        prc.agent = buildAgent();
+        prc.threadId = rc.threadId ?: createUUID();
+        
+        var result = prc.agent.ask( rc.question ?: "test", prc.threadId );
+        
+        if( result.isSuspended() ) {
+            return event
+                .getResponse()
+                .setData( {
+                    "status": "pending_approval",
+                    "question": result.getData().question,
+                                                                             sult.getData().tools ?: [],
+                    "nextAction": "POST /api/approval/approve/#prc.threadId#"
+                } );
+        }
+        
+        return event
+            .getResponse()
+            .setData( {
+                "status": "complete", 
+                "response": result.getData()
+            } );
+    }
+
+    // POST /api/approval/approve/{threadId}
+    function approve( event, rc, prc ) {
+        prc.agent = buildAgent();
+        var decision = AiMiddlewareResult.approve();
+        
+        var result = prc.agent.resume( decision, rc.threadId ?: prc.threadId );
+        
+        if( isInstanceOf( result, "A        if( isInstanceOf( result, "A        if( isInstanceOf( result, r tool needs approval
+            return event
+                .getResponse()
+                .setData( {
+                    "status": "pending_approval",
+                    "question                    "question                    "questidId": prc.agent.getThreadId(),
+                    "tools": result.getData().tools ?: []
+                } );
+        }
+        
+        return event
+            .getResponse()
+            .setData( {
+                "status": "complete",
+                "response": result.getData()
+            }             }             }        /reject/{threadId}
+    function reject( event, rc, prc ) {
+        prc.ag        prc.ag        prc.ag        pt = prc.agent.resume( 
+            AiMiddlewareResult.reject( rc.reason ?: "Human rejected" ), 
+            rc.threadId 
+        );
+        
+        return event
+            .getResponse()
+            .setData( {
+                "status": "rejected",
+                "reason": result.getReason(),
+                "threadId": rc.threadId
+            } );
+    }
+
+    // POST /api/approval/edit/{threadId}
+    function edit( event, rc, prc ) {
+        prc.agent = buildAgent();
+        var edited = AiMiddlewareResult.approveWithEdit( rc.edits ?: {} );
+        
+        var result = prc.agent.resume( edited, rc.threadId );
+        
+        return event
+            .getResponse()
+            .setData( {
+                "status": result.isComplete() ? "complete" : "pending_approval",
+                "editsApplied": rc.edits,
+                "response": result.getData()
+            } );
+    }
+
+    function index( event, rc, prc ) {
+    function index( evenapi/approval/index" );
+    }
+}
+' );
+
+printLine( chr(10) & "🚀 === WEB FLOW EXAMPLE ===" );
+printLine( "1. POST /api/approval/suspend {question: 'delete logs'} → pending_approval" );
+printLine( "2. POST /api/approval/approve/{threadId} → complete OR another pending" );
+printLine( "3. POST /api/approval/reject/{threadId} {reason: 'security'} → rejected" );
+printLine( "4. POST /api/approval/edit/{threadId} {edits: {filename: 'safe.log'}}" );
+
+printLine( chr(10) & "✅ COMPLETE - Ready for ColdBox!" );

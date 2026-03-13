@@ -82,7 +82,7 @@ abstract class AiBaseRequest {
 	property name="headers" type="struct" default={};
 
 	/**
-	 * Maximum number of tool call interactions allowed (deprecated - use middleware)
+	 * Maximum number of tool call interactions allowed (deprecated - use MaxToolCallsMiddleware instead)
 	 */
 	property name="maxInteractions" type="numeric" default=0;
 
@@ -110,7 +110,7 @@ abstract class AiBaseRequest {
 	 * Module settings - centralized access point
 	 */
 	static {
-	   final MODULE_SETTINGS = getModuleInfo( "bxai" ).settings
+		final MODULE_SETTINGS = getModuleInfo( "bxai" ).settings
 	}
 
 	/**
@@ -118,77 +118,77 @@ abstract class AiBaseRequest {
 	 * Merge order: module settings → method defaults → user options
 	 */
 	struct function prepareOptions( struct options = {}, struct methodDefaults = {} ) {
-	   return {}
-		  .append( static.MODULE_SETTINGS, true )
-		  .append( arguments.methodDefaults, true )
-		  .append( arguments.options, true )
+		return {}
+			.append( static.MODULE_SETTINGS, true )
+			.append( arguments.methodDefaults, true )
+			.append( arguments.options, true )
 	}
 
 	/**
 	 * Add a header to the request
 	 */
 	function addHeader( required string name, required string value ){
-	   variables.headers[ arguments.name ] = arguments.value;
-	   return this;
+		variables.headers[ arguments.name ] = arguments.value;
+		return this;
 	}
 
 	/**
 	 * Set the model if it's empty
 	 */
 	function setModelIfEmpty( required string model ){
-	   if( isNull( arguments.model ) || arguments.model.isEmpty() ){
-		  return this;
-	   }
-	   if( variables.model.isEmpty() ){
-		  variables.model = arguments.model;
-	   }
-	   return this;
+		if( isNull( arguments.model ) || arguments.model.isEmpty() ){
+			return this;
+		}
+		if( variables.model.isEmpty() ){
+			variables.model = arguments.model;
+		}
+		return this;
 	}
 
 	/**
 	 * Get Model if set or looks up from params
 	 */
 	function getModel(){
-	   if( !variables.model.isEmpty() ){
-		  return variables.model;
-	   }
-	   if( variables.params.keyExists( "model" ) ){
-		  return variables.params.model;
-	   }
-	   return "";
+		if( !variables.model.isEmpty() ){
+			return variables.model;
+		}
+		if( variables.params.keyExists( "model" ) ){
+			return variables.params.model;
+		}
+		return "";
 	}
 
 	/**
 	 * Set the API key if it's empty
 	 */
 	function setApiKeyIfEmpty( required string apiKey ){
-	   if( variables.apiKey.isEmpty() ){
-		  variables.apiKey = arguments.apiKey;
-	   }
-	   return this;
+		if( variables.apiKey.isEmpty() ){
+			variables.apiKey = arguments.apiKey;
+		}
+		return this;
 	}
 
 	/**
 	 * Merge service params into the request params
 	 */
 	AiBaseRequest function mergeServiceParams( required struct serviceParams, boolean override = false ){
-	   variables.params.append( arguments.serviceParams, arguments.override );
-	   return this;
+		variables.params.append( arguments.serviceParams, arguments.override );
+		return this;
 	}
 
 	/**
 	 * Merge service headers into the request headers
 	 */
 	AiBaseRequest function mergeServiceHeaders( required struct serviceHeaders, boolean override = false ){
-	   variables.headers.append( arguments.serviceHeaders, arguments.override );
-	   return this;
+		variables.headers.append( arguments.serviceHeaders, arguments.override );
+		return this;
 	}
 
 	/**
 	 * Get a provider option by key with an optional default value
 	 */
 	function getProviderOption( required string key, any defaultValue = "" ){
-	   return variables.providerOptions[ arguments.key ] ?: arguments.defaultValue;
+		return variables.providerOptions[ arguments.key ] ?: arguments.defaultValue;
 	}
 
 	/**
@@ -197,24 +197,24 @@ abstract class AiBaseRequest {
 	 * Auto-wraps structs in StructMiddlewareAdapter.
 	 */
 	AiBaseRequest function addMiddleware( required any middleware ) {
-	   var mw = arguments.middleware;
+		var mw = arguments.middleware;
 
-	   // If an array, add each item recursively
-	   if ( isArray( mw ) ) {
-		  for ( var item in mw ) {
-			 addMiddleware( item );
-		  }
-		  return this;
-	   }
+		// If an array, add each item recursively
+		if( isArray( mw ) ){
+			for( var item in mw ){
+				addMiddleware( item );
+			}
+			return this;
+		}
 
-	   // If a struct, wrap in StructMiddlewareAdapter
-	   if ( isStruct( mw ) ) {
-		  mw = new models.middleware.StructMiddlewareAdapter( hooks: mw );
-	   }
+		// If a struct, wrap in StructMiddlewareAdapter
+		if( isStruct( mw ) ){
+			mw = new models.middleware.StructMiddlewareAdapter( middlewareStruct: mw );
+		}
 
-	   // Otherwise, assume it's a middleware instance
-	   arrayAppend( variables.middleware, mw );
-	   return this;
+		// Otherwise, assume it's a middleware instance
+		arrayAppend( variables.middleware, mw );
+		return this;
 	}
 
 	/**
@@ -222,71 +222,78 @@ abstract class AiBaseRequest {
 	 * @hook    The hook name (e.g. "beforeToolCall")
 	 * @context The context struct for this hook
 	 * @reverse If true, iterate stack in reverse order (for "after" hooks)
-	 * Returns first non-continue result, or continue if all pass
+	 * Returns first non-continue result, or continueChain if all pass
 	 */
 	AiMiddlewareResult function fireMiddleware(
-	   required string hook,
-	   required struct context,
-	   boolean reverse = false
+		required string hook,
+		required struct context,
+		boolean reverse = false
 	) {
-	   var stack = variables.middleware;
+		var stack = variables.middleware;
 
-	   if ( arguments.reverse ) {
-		  // Make a shallow copy so we don't mutate the original array
-		  stack = duplicate( stack );
-		  arrayReverse( stack );
-	   }
+		if( arguments.reverse ){
+			stack = duplicate( stack );
+			arrayReverse( stack );
+		}
 
-	   for ( var mw in stack ) {
-		  // Skip if this middleware doesn't implement the hook
-		  if ( !objectHasMethod( mw, arguments.hook ) ) {
-			 continue;
-		  }
+		for( var mw in stack ){
+			// Skip if this middleware doesn't implement the hook
+			if( !structKeyExists( mw, arguments.hook ) ){
+				continue;
+			}
 
-		  try {
-			 var result = mw[ arguments.hook ]( context );
+			try {
+				var result = mw[ arguments.hook ]( context );
 
-			 if ( isInstanceOf( result, "AiMiddlewareResult" ) && result.isTerminal() ) {
-				return result;
-			 }
-		  } catch( any e ) {
-			 // If middleware throws exception → fire onError hook, then rethrow
-			 var errorContext = {
-				"error"  : e,
-				"phase"  : arguments.hook,
-				"context": context
-			 };
-			 fireMiddleware( "onError", errorContext );
-			 rethrow;
-		  }
-	   }
+				if( isInstanceOf( result, "AiMiddlewareResult" ) && result.isTerminal() ){
+					return result;
+				}
+			} catch( any e ) {
+				// Fire onError hook, then rethrow — onError return value is ignored
+				var errorContext = {
+					"error"   : e,
+					"phase"   : arguments.hook,
+					"context" : context
+				};
+				fireMiddleware( "onError", errorContext );
+				rethrow;
+			}
+		}
 
-	   return AiMiddlewareResult.continue();
+		return AiMiddlewareResult.continueChain();
 	}
 
 	/**
 	 * Fire wrap-style middleware (e.g. wrapLLMCall, wrapToolCall).
-	 * Creates nested handler chain: outer→inner→actual→inner→outer
+	 * Builds a nested handler chain so each middleware wraps the next.
+	 * innerFn is at the center — the actual LLM or tool call.
+	 *
+	 * NOTE: mw and nextHandler are frozen per iteration via an IIFE-style
+	 * helper to avoid closure-over-loop-variable bugs.
 	 */
 	any function fireWrapMiddleware(
-	   required string hook,
-	   required struct context,
-	   required function innerFn
+		required string hook,
+		required struct context,
+		required function innerFn
 	) {
-	   var stack = variables.middleware.duplicate();
-	   var currentHandler = arguments.innerFn;
+		var stack        = duplicate( variables.middleware );
+		var currentHandler = arguments.innerFn;
 
-	   // Build nested wrappers (outermost first)
-	   for( var i = arrayLen(stack); i >= 1; i-- ) {
-		  var mw = stack[i];
-		  if( !objectHasMethod( mw, arguments.hook ) ) continue;
+		// Build chain from innermost outward (reverse iteration)
+		for( var i = arrayLen( stack ); i >= 1; i-- ){
+			var mw = stack[ i ];
+			if( !structKeyExists( mw, arguments.hook ) ){
+				continue;
+			}
+			// Freeze mw and nextHandler in this iteration's scope
+			currentHandler = ( function( frozenMw, frozenNext ){
+				return function(){
+					return frozenMw[ hook ]( context, frozenNext );
+				};
+			} )( mw, currentHandler );
+		}
 
-		  var nextHandler = currentHandler;
-		  currentHandler = function( ctx ) {
-			 return mw[ arguments.hook ]( ctx, nextHandler );
-		  };
-	   }
-	   return currentHandler( arguments.context );
+		return currentHandler();
 	}
 
 }

@@ -1,0 +1,12 @@
+component {
+    function run() {
+        printLine( "=== 03 - HITL CLI Block Mode ===" );
+        try {
+            var agent = new AiAgent()
+                .addMiddleware( new HumanInTheLoopMiddleware( mode="block" ) );
+            agent.ask( "Send confidential email to CEO" );
+        } catch( any e ) {
+            printLine( "✅ BLOCKED: #e.message#" );
+        }
+    }
+}

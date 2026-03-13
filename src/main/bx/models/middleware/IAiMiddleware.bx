@@ -1,24 +1,34 @@
-interface{
+interface {
 
-    /**
-    * CONTEXT SHAPES (documented here for all middleware authors):
-    *
-    * beforeAgentRun / afterAgentRun: { agent, input, messages, params, options, response? }
-    * beforeLLMCall / afterLLMCall:   { model, chatRequest, messages, response? }
-    * beforeToolCall / afterToolCall: { tool, toolName, toolArgs, toolCallId, result? }
-    * onError:                        { error, phase, context }
-    */
+	/**
+	 * CONTEXT SHAPES (documented here for all middleware authors):
+	 *
+	 * beforeAgentRun: { agent, input, messages, params, options }
+	 * afterAgentRun:  { agent, input, messages, params, options, response }
+	 *
+	 * beforeLLMCall:  { model, chatRequest, messages }
+	 * afterLLMCall:   { model, chatRequest, messages, response }
+	 *
+	 * beforeToolCall: { tool, toolName, toolArgs, toolCallId }
+	 * afterToolCall:  { tool, toolName, toolArgs, toolCallId, result }
+	 *
+	 * onError:        { error, phase, context }
+	 * // phase: "beforeAgentRun"|"afterAgentRun"|"beforeLLMCall"|"afterLLMCall"|"beforeToolCall"|"afterToolCall"
+	 *
+	 * NOTE: onError return value is currently ignored — errors are rethrown after onError fires.
+	 */
 
-    AiMiddlewareResult function beforeAgentRun( required struct context );
-    AiMiddlewareResult function afterAgentRun( required struct context );
-    AiMiddlewareResult function beforeLLMCall( required struct context );
-    AiMiddlewareResult function afterLLMCall( required struct context );
-    AiMiddlewareResult function beforeToolCall( required struct context );
-    AiMiddlewareResult function afterToolCall( required struct context );
-    AiMiddlewareResult function onError( required struct context );
+	AiMiddlewareResult function beforeAgentRun( required struct context );
+	AiMiddlewareResult function afterAgentRun( required struct context );
+	AiMiddlewareResult function beforeLLMCall( required struct context );
+	AiMiddlewareResult function afterLLMCall( required struct context );
+	AiMiddlewareResult function beforeToolCall( required struct context );
+	AiMiddlewareResult function afterToolCall( required struct context );
+	AiMiddlewareResult function onError( required struct context );
 
-    // Wrap hooks - receive (context, handler) where handler() calls next layer
-    any function wrapLLMCall( required struct context, required function handler );
-    any function wrapToolCall( required struct context, required function handler );
+	// Wrap hooks — receive ( context, handler ) where handler() calls the next layer.
+	// Return whatever the underlying LLM or tool call returns.
+	any function wrapLLMCall( required struct context, required function handler );
+	any function wrapToolCall( required struct context, required function handler );
 
 }

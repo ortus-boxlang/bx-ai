@@ -1,0 +1,146 @@
+/**
+ * LoggingMiddleware - Logs all agent lifecycle events to the configured log.
+ */
+component extends="models.middleware.BaseAiMiddleware" accessors="true" {
+
+	/**
+	 * Name of the log file (creates {logName}.log)
+	 */
+	property name="logName" type="string" default="ai";
+
+	/**
+	 * Log level for all hook messages.
+	 * BoxLang writeLog() options: debug | information | warning | error
+	 */
+	property name="logLevel" type="string" default="debug";
+
+	/**
+	 * Whether to log to console as well (for debugging)
+	 */
+	property name="logToConsole" type="boolean" default=false;
+
+	/**
+	 * Whether to include tool arguments in logs (may be security-sensitive)
+	 */
+	property name="logArgs" type="boolean" default=true;
+
+	/**
+	 * Whether to include token usage in logs (if available in afterLLMCall response)
+	 */
+	property name="logTokens" type="boolean" default=false;
+
+	/**
+	 * Initialize logging middleware with options.
+	 */
+	function init(
+		string  logName      = "ai",
+		string  logLevel     = "debug",
+		boolean logToConsole = false,
+		boolean logArgs      = true,
+		boolean logTokens    = false
+	){
+		variables.logName      = arguments.logName;
+		variables.logLevel     = arguments.logLevel;
+		variables.logToConsole = arguments.logToConsole;
+		variables.logArgs      = arguments.logArgs;
+		variables.logTokens    = arguments.logTokens;
+		return this;
+	}
+
+	// =========================================================================
+	// Sequential Hooks
+	// =========================================================================
+
+	function beforeAgentRun( required struct context ){
+		var detail = "Agent starting";
+		if( context.keyExists( "input" ) && len( toString( context.input ) ) ){
+			detail &= " | Input: #left( toString( context.input ), 100 )##( len( toString( context.input ) ) > 100 ? '...' : '' )#";
+		}
+		writeEntry( "beforeAgentRun", detail );
+		return AiMiddlewareResult.continue();
+	}
+
+	function afterAgentRun( required struct context ){
+		var detail = "Agent completed";
+		if( context.keyExists( "response" ) ){
+			var preview = left( toString( context.response ), 100 );
+			if( len( toString( context.response ) ) > 100 ) preview &= "...";
+			detail &= " | Response: #preview#";
+		}
+		writeEntry( "afterAgentRun", detail );
+		return AiMiddlewareResult.continue();
+	}
+
+	function beforeLLMCall( required struct context ){
+		var detail = "LLM call starting";
+		if( context.keyExists( "messages" ) && isArray( context.messages ) ){
+			detail &= " | Messages: #arrayLen( context.messages )#";
+		}
+		writeEntry( "beforeLLMCall", detail );
+		return AiMiddlewareResult.continue();
+	}
+
+	function afterLLMCall( required struct context ){
+		var detail = "LLM call completed";
+		if( variables.logTokens && context.keyExists( "response" ) && isStruct( context.response ) && context.response.keyExists( "usage" ) ){
+			var usage            = context.response.usage;
+			var promptTokens     = usage.keyExists( "prompt_tokens" )     ? usage.prompt_tokens     : 0;
+			var completionTokens = usage.keyExists( "completion_tokens" ) ? usage.completion_tokens : 0;
+			var totalTokens      = usage.keyExists( "total_tokens" )      ? usage.total_tokens      : promptTokens + completionTokens;
+			detail &= " | Tokens: #promptTokens#in/#completionTokens#out/#totalTokens#total";
+		}
+		writeEntry( "afterLLMCall", detail );
+		return AiMiddlewareResult.continue();
+	}
+
+	function beforeToolCall( required struct context ){
+		var detail = "Tool '#context.toolName#' starting";
+		if( context.keyExists( "toolCallId" ) && len( context.toolCallId ) ){
+			detail &= " | ID: #context.toolCallId#";
+		}
+		if( variables.logArgs && context.keyExists( "toolArgs" ) && isStruct( context.toolArgs ) ){
+			var argsJson = serializeJSON( context.toolArgs );
+			if( len( argsJson ) > 200 ) argsJson = left( argsJson, 200 ) & "...";
+			detail &= " | Args: #argsJson#";
+		}
+		writeEntry( "beforeToolCall", detail );
+		return AiMiddlewareResult.continue();
+	}
+
+	function afterToolCall( required struct context ){
+		var detail = "Tool '#context.toolName#' completed";
+		if( context.keyExists( "result" ) ){
+			var resultStr = isSimpleValue( context.result ) ? toString( context.result ) : serializeJSON( context.result );
+			if( len( resultStr ) > 200 ) resultStr = left( resultStr, 200 ) & "...";
+			detail &= " | Result: #resultStr#";
+		}
+		writeEntry( "afterToolCall", detail );
+		return AiMiddlewareResult.continue();
+	}
+
+	/**
+	 * onError always logs at "error" level regardless of configured logLevel —
+	 * errors must never be silenced by a debug or information setting.
+	 */
+	function onError( required struct context ){
+		var detail = "Error in phase '#context.phase#': #context.error.message#";
+		writeLog( text: "[bx-ai][onError] #detail#", type: "error", log: variables.logName );
+		if( variables.logToConsole ){
+			println( "[bx-ai][onError] #detail#" );
+		}
+		return AiMiddlewareResult.continue();
+	}
+
+	// =========================================================================
+	// Private Helpers
+	// =========================================================================
+
+	private void function writeEntry( required string hook, required string detail ){
+		var text = "[bx-ai][#arguments.hook#] #arguments.detail#";
+		writeLog( text: text, type: variables.logLevel, log: variables.logName );
+		if( variables.logToConsole ){
+			println( text );
+		}
+	}
+
+}

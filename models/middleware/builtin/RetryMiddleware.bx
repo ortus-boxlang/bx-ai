@@ -1,0 +1,148 @@
+/**
+ * RetryMiddleware - Implements retry logic with exponential backoff for tool and LLM calls.
+ */
+component extends="models.middleware.BaseAiMiddleware" accessors="true" {
+
+	/**
+	 * Maximum number of retries per call
+	 */
+	property name="maxRetries" type="numeric" default="3";
+
+	/**
+	 * Exponential backoff factor: wait = backoffFactor^attempt seconds
+	 */
+	property name="backoffFactor" type="numeric" default="1.5";
+
+	/**
+	 * Exception types to retry on (empty array = retry all exceptions)
+	 */
+	property name="retryOn" type="array" default="[]";
+
+	/**
+	 * Whether to retry LLM calls
+	 */
+	property name="retryLLM" type="boolean" default="true";
+
+	/**
+	 * Whether to retry tool calls
+	 */
+	property name="retryTools" type="boolean" default="true";
+
+	/**
+	 * Internal tracking of current attempt number
+	 */
+	property name="currentAttempt" type="numeric" default="1";
+
+	/**
+	 * Initialize retry middleware with options
+	 *
+	 * @param maxRetries     Maximum number of retries
+	 * @param backoffFactor  Exponential backoff multiplier
+	 * @param retryOn        Array of exception types to retry on (empty = all)
+	 * @param retryLLM       Whether to enable retry for LLM calls
+	 * @param retryTools     Whether to enable retry for tool calls
+	 */
+	function init(
+		numeric maxRetries    = 3,
+		numeric backoffFactor = 1.5,
+		array   retryOn       = [],
+		boolean retryLLM      = true,
+		boolean retryTools    = true
+	){
+		variables.maxRetries    = arguments.maxRetries;
+		variables.backoffFactor = arguments.backoffFactor;
+		variables.retryOn       = arguments.retryOn;
+		variables.retryLLM      = arguments.retryLLM;
+		variables.retryTools    = arguments.retryTools;
+		variables.currentAttempt = 1;
+		return this;
+	}
+
+	/**
+	 * Wrap tool calls with retry logic
+	 */
+	function wrapToolCall( required function toolCallFn ){
+		return function(){
+			var attempt = 1;
+			var lastError = "";
+
+			while( attempt <= variables.maxRetries ){
+				try {
+					return toolCallFn();
+				} catch( any e ){
+					lastError = e;
+
+					// Check if we should retry this exception type
+					if( !shouldRetry( e ) ){
+						rethrow;
+					}
+
+					// If we've exhausted retries, rethrow
+					if( attempt >= variables.maxRetries ){
+						rethrow;
+					}
+
+					// Calculate backoff and sleep
+					var waitSeconds = variables.backoffFactor ^ (attempt - 1);
+					sleep( int( waitSeconds * 1000 ) );
+
+					attempt++;
+				}
+			}
+
+			// If we get here, max retries exceeded
+			throw object=lastError;
+		};
+	}
+
+	/**
+	 * Wrap LLM calls with retry logic
+	 */
+	function wrapLLMCall( required function llmCallFn ){
+		return function(){
+			var attempt = 1;
+			var lastError = "";
+
+			while( attempt <= variables.maxRetries ){
+				try {
+					return llmCallFn();
+				} catch( any e ){
+					lastError = e;
+
+					// Check if we should retry this exception type
+					if( !shouldRetry( e ) ){
+						rethrow;
+					}
+
+					// If we've exhausted retries, rethrow
+					if( attempt >= variables.maxRetries ){
+						rethrow;
+					}
+
+					// Calculate backoff and sleep
+					var waitSeconds = variables.backoffFactor ^ (attempt - 1);
+					sleep( int( waitSeconds * 1000 ) );
+
+					attempt++;
+				}
+			}
+
+			// If we get here, max retries exceeded
+			throw object=lastError;
+		};
+	}
+
+	/**
+	 * Determine if we should retry based on exception type
+	 */
+	private boolean function shouldRetry( required any exception ){
+		// If retryOn is empty, retry all exceptions
+		if( arrayLen( variables.retryOn ) == 0 ){
+			return true;
+		}
+
+		// Check if exception type is in retryOn list
+		return variables.retryOn.findNoCase( arguments.exception.type ) > 0;
+	}
+
+}

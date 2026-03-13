@@ -1,4 +1,5 @@
-component accessors="true"{
+component
+accessors="true"{
 
     property name="type"    type="string" default="continue";
     property name="reason"  type="string" default="";

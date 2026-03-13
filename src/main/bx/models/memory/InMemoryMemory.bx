@@ -1,0 +1,121 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * In-memory checkpoint store for HITL agent execution state.
+ * Stores state in a local struct with optional TTL expiry.
+ * Not persistent across restarts — use CacheMemory or FileMemory for durability.
+ */
+component accessors="true" {
+
+	// In-memory store: { threadId: { state, expiresAt } }
+	variables.store = {};
+
+	// =========================================================================
+	// CHECKPOINT METHODS (IAiMemory contract)
+	// =========================================================================
+
+	/**
+	 * Save checkpoint state for a thread.
+	 * TTL is stored as an expiry timestamp and checked on load.
+	 *
+	 * @threadId   Thread identifier
+	 * @state      Agent state: { messages, params, options, pending }
+	 * @ttlMinutes Minutes until expiry (0 = no expiry)
+	 */
+	public void function saveState( required string threadId, required struct state, numeric ttlMinutes=0 ){
+		var expiresAt = arguments.ttlMinutes > 0
+			? dateAdd( "n", arguments.ttlMinutes, now() )
+			: "";
+
+		variables.store[ arguments.threadId ] = {
+			"state"    : duplicate( arguments.state ),
+			"expiresAt": expiresAt
+		};
+	}
+
+	/**
+	 * Load checkpoint state for a thread.
+	 * Throws CheckpointNotFoundException if missing or expired.
+	 *
+	 * @threadId Thread identifier
+	 * @return { messages, params, options, pending }
+	 */
+	public struct function loadState( required string threadId ){
+		if( !variables.store.keyExists( arguments.threadId ) ){
+			throw(
+				type    = "CheckpointNotFoundException",
+				message = "Checkpoint not found for threadId: #arguments.threadId#"
+			);
+		}
+
+		var entry = variables.store[ arguments.threadId ];
+
+		// Check TTL expiry
+		if( isDate( entry.expiresAt ) && now() > entry.expiresAt ){
+			structDelete( variables.store, arguments.threadId );
+			throw(
+				type    = "CheckpointNotFoundException",
+				message = "Checkpoint expired for threadId: #arguments.threadId#"
+			);
+		}
+
+		return entry.state;
+	}
+
+	/**
+	 * Delete checkpoint after resume (one-time use cleanup).
+	 *
+	 * @threadId Thread identifier to clear
+	 */
+	public void function clearState( required string threadId ){
+		structDelete( variables.store, arguments.threadId );
+	}
+
+	// =========================================================================
+	// HELPERS
+	// =========================================================================
+
+	/**
+	 * Clear all checkpoints from the store.
+	 */
+	public void function clearAll(){
+		variables.store.clear();
+	}
+
+	/**
+	 * Get all thread IDs with active checkpoints.
+	 *
+	 * @return Sorted array of thread ID strings
+	 */
+	public array function listThreads(){
+		return variables.store.keyArray().sort( "textnocase" );
+	}
+
+	/**
+	 * Get count of stored checkpoints.
+	 *
+	 * @return Numeric count
+	 */
+	public numeric function getCheckpointCount(){
+		return variables.store.count();
+	}
+
+	/**
+	 * Dump all checkpoints for debugging.
+	 */
+	public void function dump(){
+		writeDump( variables.store );
+	}
+
+}

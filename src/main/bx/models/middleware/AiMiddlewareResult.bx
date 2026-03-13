@@ -1,46 +1,112 @@
-component accessors="true"{
+boxlangcomponent accessors="true" {
 
-    property name="type"    type="string" default="continue";
-    property name="reason"  type="string" default="";
-    property name="data"    type="struct" default="{}";
+	property name="type"   type="string" default="continue";
+	property name="reason" type="string" default="";
+	property name="data"   type="struct";
 
-    // Static factories
-    static public AiMiddlewareResult function continue(){
-        return new AiMiddlewareResult().setType( "continue" );
-    }
+	/**
+	 * Constructor — initializes data as a fresh struct to avoid shared-reference issues
+	 * across instances when using the default property syntax.
+	 */
+	public AiMiddlewareResult function init(){
+		variables.data   = {};
+		variables.reason = "";
+		variables.type   = "continue";
+		return this;
+	}
 
-    static public AiMiddlewareResult function cancel( string reason="" ){
-        return new AiMiddlewareResult().setType( "cancel" ).setReason( reason );
-    }
+	// =========================================================================
+	// Static Factories
+	// =========================================================================
 
-    static public AiMiddlewareResult function approve(){
-        return new AiMiddlewareResult().setType( "approve" );
-    }
+	/**
+	 * Continue the middleware chain — no interruption.
+	 * Named "continueChain" because "continue" is a reserved keyword in BoxLang.
+	 */
+	static public AiMiddlewareResult function continueChain(){
+		return new AiMiddlewareResult().setType( "continue" );
+	}
 
-    static public AiMiddlewareResult function reject( string reason="" ){
-        return new AiMiddlewareResult().setType( "reject" ).setReason( reason );
-    }
+	/**
+	 * Cancel execution entirely.
+	 *
+	 * @reason Human-readable explanation
+	 */
+	static public AiMiddlewareResult function cancel( string reason="" ){
+		return new AiMiddlewareResult().setType( "cancel" ).setReason( reason );
+	}
 
-    static public AiMiddlewareResult function edit( required struct args ){
-        return new AiMiddlewareResult().setType( "edit" ).setData( args );
-    }
+	/**
+	 * Approve the pending action (e.g. a tool call) and allow it to proceed.
+	 * approve() is intentionally NOT terminal — it passes through the chain
+	 * and signals the executor to continue with the original action.
+	 */
+	static public AiMiddlewareResult function approve(){
+		return new AiMiddlewareResult().setType( "approve" );
+	}
 
-    static public AiMiddlewareResult function suspend( required struct pending ){
-        return new AiMiddlewareResult().setType( "suspend" ).setData( pending );
-    }
+	/**
+	 * Reject the pending action without cancelling the overall run.
+	 * The executor will inject a rejection message and continue the conversation.
+	 *
+	 * @reason Human-readable rejection explanation
+	 */
+	static public AiMiddlewareResult function reject( string reason="" ){
+		return new AiMiddlewareResult().setType( "reject" ).setReason( reason );
+	}
 
-    // Predicates
-    boolean function isContinue(){ return type == "continue"; }
-    boolean function isCancelled(){ return type == "cancel"; }
-    boolean function isApproved(){ return type == "approve"; }
-    boolean function isRejected(){ return type == "reject"; }
-    boolean function isEdit(){ return type == "edit"; }
-    boolean function isSuspended(){ return type == "suspend"; }
-    boolean function isTerminal(){
-        return isCancelled() || isRejected() || isSuspended();
-    }
+	/**
+	 * Edit the arguments of a pending tool call before execution.
+	 * Callers retrieve the modified args via result.getData().
+	 *
+	 * @args Modified tool arguments struct
+	 */
+	static public AiMiddlewareResult function edit( required struct args ){
+		return new AiMiddlewareResult().setType( "edit" ).setData( args );
+	}
 
-    public string function toString(){
-        return "AiMiddlewareResult[type=#type#,reason=#reason#,data=#serializeJSON(data)#]";
-    }
+	/**
+	 * Suspend execution and wait for a human decision.
+	 * The pending struct is persisted to the checkpointer and returned to the caller.
+	 *
+	 * @pending Must contain: { question, toolName, toolArgs, toolCallId }
+	 */
+	static public AiMiddlewareResult function suspend( required struct pending ){
+		if( !pending.keyExists( "toolName" ) || !pending.keyExists( "toolCallId" ) || !pending.keyExists( "toolArgs" ) || !pending.keyExists( "question" ) ){
+			throw(
+				type    = "InvalidSuspendState",
+				message = "suspend() pending struct must contain: toolName, toolCallId, toolArgs, question"
+			);
+		}
+		return new AiMiddlewareResult().setType( "suspend" ).setData( pending );
+	}
+
+	// =========================================================================
+	// Predicates
+	// =========================================================================
+
+	boolean function isContinue()  { return variables.type == "continue"; }
+	boolean function isCancelled() { return variables.type == "cancel";   }
+	boolean function isApproved()  { return variables.type == "approve";  }
+	boolean function isRejected()  { return variables.type == "reject";   }
+	boolean function isEdit()      { return variables.type == "edit";     }
+	boolean function isSuspended() { return variables.type == "suspend";  }
+
+	/**
+	 * Returns true if this result stops the middleware chain.
+	 * NOTE: approve() is NOT terminal — it allows the action to proceed.
+	 *       Only cancel, reject, and suspend halt chain execution.
+	 */
+	boolean function isTerminal(){
+		return isCancelled() || isRejected() || isSuspended();
+	}
+
+	// =========================================================================
+	// Helpers
+	// =========================================================================
+
+	public string function toString(){
+		return "AiMiddlewareResult[type=#variables.type#, reason=#variables.reason#, data=#serializeJSON( variables.data )#]";
+	}
+
 }

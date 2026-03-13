@@ -1,0 +1,12 @@
+component {
+    function run() {
+        printLine( "=== 02 - GuardrailMiddleware ===" );
+        var agent = new AiAgent()
+            .addMiddleware( new GuardrailMiddleware( {
+                "blockTools": [ "delete_file", "exec_shell" ],
+                "blockPatterns": [ "DELETE.*FROM", "rm -rf" ]
+            } ) );
+        var result = agent.ask( "Delete all files from production" );
+        printLine( "Result: #result.getStatus()#" );
+    }
+}

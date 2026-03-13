@@ -1,0 +1,200 @@
+/**
+ * HumanInTheLoopMiddleware
+ *
+ * Pauses execution before watched tool calls for human approval, rejection, or editing.
+ * Supports two execution modes:
+ *   - cli     : blocking stdin prompt via ask() (for scripts, CLI agents)
+ *   - suspend : returns AiMiddlewareResult.suspend() for async resume workflows
+ *   - auto    : detects environment and picks cli or suspend automatically
+ *
+ * Works with Phase 4 checkpointing — AiAgent.run() catches suspend results,
+ * saves state, and surfaces the question to the caller for async resolution.
+ *
+ * Usage:
+ *   // Interrupt on ALL tools, auto-detect mode
+ *   new HumanInTheLoopMiddleware()
+ *
+ *   // Interrupt only on specific tools
+ *   new HumanInTheLoopMiddleware(
+ *       interruptOn : { deleteRecord: { allowedDecisions: ["approve","reject"], description: "Deletes a record permanently" } },
+ *       autoApprove : [ "readRecord", "listRecords" ],
+ *       mode        : "suspend"
+ *   )
+ */
+component extends="models.middleware.BaseAiMiddleware" accessors="true" {
+
+	/**
+	 * Per-tool interrupt configuration.
+	 * Empty struct = interrupt on ALL tools.
+	 * Shape: { toolName: { allowedDecisions: ["approve","edit","reject"], description: "" } }
+	 */
+	property name="interruptOn" type="struct" default={};
+
+	/**
+	 * Tool names to always auto-approve without human review.
+	 */
+	property name="autoApprove" type="array" default=[];
+
+	/**
+	 * Execution mode: "auto" | "cli" | "suspend"
+	 * auto    : detects CLI vs web via CGI scope
+	 * cli     : always block and prompt via ask()
+	 * suspend : always return suspend signal immediately
+	 */
+	property name="mode" type="string" default="auto";
+
+	/**
+	 * Constructor
+	 *
+	 * @interruptOn  Struct of per-tool config. Empty = interrupt on ALL tools.
+	 * @autoApprove  Array of tool names to always approve without prompting.
+	 * @mode         "auto" | "cli" | "suspend" (default: "auto")
+	 */
+	function init(
+		struct interruptOn = {},
+		array  autoApprove = [],
+		string mode        = "auto"
+	){
+		variables.interruptOn = arguments.interruptOn;
+		variables.autoApprove = arguments.autoApprove;
+		variables.mode        = arguments.mode;
+		return this;
+	}
+
+	// =========================================================================
+	// beforeToolCall Hook
+	// =========================================================================
+
+	/**
+	 * Main hook — decides whether to approve, interrupt, or pass through.
+	 *
+	 * Logic:
+	 *  1. If toolName is in autoApprove → approve immediately
+	 *  2. If interruptOn is empty OR toolName is in interruptOn → interrupt
+	 *  3. Otherwise → continue
+	 */
+	public AiMiddlewareResult function beforeToolCall( required struct context ){
+		var toolName = context.toolName ?: "";
+
+		// 1. Auto-approve
+		if( variables.autoApprove.findNoCase( toolName ) ){
+			return AiMiddlewareResult.approve();
+		}
+
+		// 2. Check whether this tool should trigger an interrupt
+		var shouldIntercept = !structCount( variables.interruptOn ) || structKeyExists( variables.interruptOn, toolName );
+
+		if( !shouldIntercept ){
+			return AiMiddlewareResult.continue();
+		}
+
+		// 3. Build the description from interruptOn config or use a default
+		var toolConfig  = structKeyExists( variables.interruptOn, toolName ) ? variables.interruptOn[ toolName ] : {};
+		var description = structKeyExists( toolConfig, "description" ) && len( toolConfig.description )
+			? toolConfig.description
+			: "Tool '#toolName#' wants to execute";
+
+		// 4. Route to the correct mode
+		var effectiveMode = resolveMode();
+
+		if( effectiveMode == "cli" ){
+			return handleCli( context, description );
+		} else {
+			return handleSuspend( context, description );
+		}
+	}
+
+	// =========================================================================
+	// Private — Mode Resolution
+	// =========================================================================
+
+	/**
+	 * Detect whether we are running in a CLI or web context.
+	 * Checks CGI scope — if server_name is empty or unavailable, assume CLI.
+	 */
+	private string function resolveMode(){
+		if( variables.mode != "auto" ) return variables.mode;
+
+		try {
+			return ( len( cgi.server_name ) ) ? "suspend" : "cli";
+		} catch( any e ){
+			return "cli";
+		}
+	}
+
+	// =========================================================================
+	// Private — CLI Blocking Mode
+	// =========================================================================
+
+	/**
+	 * Block execution and prompt the human via ask().
+	 * Accepts: y/a=approve, n/r=reject, e=edit, q=quit/cancel
+	 */
+	private AiMiddlewareResult function handleCli( required struct context, required string description ){
+		var toolName = context.toolName ?: "";
+		var toolArgs = context.toolArgs ?: {};
+
+		println( "" );
+		println( "=== Human Approval Required ===" );
+		println( "#arguments.description#" );
+		println( "Tool     : #toolName#" );
+		println( "Arguments: #serializeJSON( toolArgs )#" );
+		println( "================================" );
+
+		while( true ){
+			var input = ask( "Approve '#toolName#'? (y/n/e=edit): " ).trim().lCase();
+
+			switch( input ){
+				case "y": case "a": case "approve":
+					return AiMiddlewareResult.approve();
+
+				case "n": case "r": case "reject":
+					var reason = ask( "Rejection reason (optional, press Enter to skip): " ).trim();
+					return AiMiddlewareResult.reject( reason );
+
+				case "e": case "edit":
+					while( true ){
+						var rawJson = ask( "Enter modified args as JSON (current: #serializeJSON( toolArgs )#): " ).trim();
+						try {
+							var editedArgs = deserializeJSON( rawJson );
+							return AiMiddlewareResult.edit( editedArgs );
+						} catch( any e ){
+							println( "Invalid JSON — please try again." );
+						}
+					}
+
+				case "q": case "quit":
+					return AiMiddlewareResult.cancel( "Cancelled by human operator" );
+
+				default:
+					println( "Unknown input '#input#' — please enter y, n, e, or q." );
+			}
+		}
+	}
+
+	// =========================================================================
+	// Private — Suspend Mode
+	// =========================================================================
+
+	/**
+	 * Return a suspend result immediately.
+	 * The caller (AiAgent.run()) will save checkpoint state and surface
+	 * the question for async resolution via AiAgent.resume().
+	 *
+	 * The pending struct shape matches what AiMiddlewareResult.suspend() expects:
+	 * { question, toolName, toolArgs, toolCallId }
+	 */
+	private AiMiddlewareResult function handleSuspend( required struct context, required string description ){
+		var toolName   = context.toolName   ?: "";
+		var toolArgs   = context.toolArgs   ?: {};
+		var toolCallId = context.toolCallId ?: "";
+
+		return AiMiddlewareResult.suspend({
+			"question"  : arguments.description & " — args: " & serializeJSON( toolArgs ),
+			"toolName"  : toolName,
+			"toolCallId": toolCallId,
+			"toolArgs"  : toolArgs
+		});
+	}
+
+}

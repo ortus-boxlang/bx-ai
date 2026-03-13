@@ -1,0 +1,12 @@
+component {
+    function run() {
+        printLine( "=== 05 - RetryMiddleware ===" );
+        var agent = new AiAgent()
+            .addMiddleware( new RetryMiddleware( {
+                "maxRetries": 3,
+                "backoff": 100 
+            } ) );
+        agent.ask( "Calculate pi to 100 digits (flaky tool)" );
+        printLine( "✅ Retry middleware tested" );
+    }
+}
