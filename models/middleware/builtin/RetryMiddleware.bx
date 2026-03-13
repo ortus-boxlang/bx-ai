@@ -2,13 +2,13 @@
  * RetryMiddleware - Automatic retry with exponential backoff for LLM and tool calls.
  *
  * Uses wrapLLMCall and wrapToolCall hooks to wrap the actual invocation in a
- * retry loop. Each failure sleeps for backoffFactor^attemptIndex seconds before
- * the next attempt.
+ * retry loop. Each failure sleeps for backoffFactor^attemptNumber seconds before
+ * the next attempt, where attemptNumber is 1-based (first retry = backoffFactor^1).
  *
  * Backoff schedule (default backoffFactor=1.5, maxRetries=3):
- *   Attempt 1 fails → wait 1.5^0 = 1.00 s → attempt 2
- *   Attempt 2 fails → wait 1.5^1 = 1.50 s → attempt 3
- *   Attempt 3 fails → wait 1.5^2 = 2.25 s → attempt 4 (final)
+ *   Attempt 1 fails → wait 1.5^1 = 1.50 s → attempt 2
+ *   Attempt 2 fails → wait 1.5^2 = 2.25 s → attempt 3
+ *   Attempt 3 fails → wait 1.5^3 = 3.375 s → attempt 4 (final)
  *   Attempt 4 fails → rethrow
  *
  * Usage:
@@ -34,8 +34,8 @@ component
 
     /**
      * Exponential backoff base.
-     * Wait time before attempt N (0-based) = backoffFactor^N seconds.
-     * Default 1.5 gives: 1.0s, 1.5s, 2.25s, 3.375s...
+     * Wait time before retry N (1-based) = backoffFactor^N seconds.
+     * Default 1.5 gives: 1.5s, 2.25s, 3.375s...
      */
     property name="backoffFactor" type="numeric" default=1.5;
 
@@ -43,6 +43,10 @@ component
      * Exception types that trigger a retry.
      * Empty array = retry on ALL exception types.
      * Example: [ "NetworkException", "TimeoutException" ]
+     *
+     * Note: default=[] on the property declaration is a placeholder only.
+     * The constructor always assigns a fresh array to variables.retryOn,
+     * preventing any shared-state issue across instances.
      */
     property name="retryOn" type="array" default=[];
 
@@ -74,6 +78,7 @@ component
         boolean retryLLM      = true,
         boolean retryTools    = true
     ) {
+        // Assign each arg explicitly — avoids shared mutable default on retryOn array
         variables.maxRetries    = arguments.maxRetries;
         variables.backoffFactor = arguments.backoffFactor;
         variables.retryOn       = arguments.retryOn;
@@ -89,9 +94,8 @@ component
     /**
      * Wraps the LLM HTTP call with retry logic.
      *
-     * Calls handler() directly and returns its result.
-     * On exception, checks shouldRetry() and either sleeps+retries or rethrows.
      * If retryLLM=false, calls handler() once with no retry wrapper.
+     * Otherwise delegates to executeWithRetry().
      *
      * @context { model, chatRequest, messages }
      * @handler Closure that executes the actual LLM call — call it to proceed
@@ -112,9 +116,8 @@ component
     /**
      * Wraps each tool invocation with retry logic.
      *
-     * Calls handler() directly and returns its result.
-     * On exception, checks shouldRetry() and either sleeps+retries or rethrows.
      * If retryTools=false, calls handler() once with no retry wrapper.
+     * Otherwise delegates to executeWithRetry().
      *
      * @context { tool, toolName, toolArgs, toolCallId }
      * @handler Closure that executes the actual tool call — call it to proceed
@@ -139,29 +142,31 @@ component
     /**
      * Core retry loop shared by wrapLLMCall and wrapToolCall.
      *
-     * Attempt numbering is zero-based for the backoff exponent:
-     *   attemptIndex 0 → first try (no sleep before this one)
-     *   attemptIndex 0 fails → sleep backoffFactor^0 s → attemptIndex 1
-     *   attemptIndex 1 fails → sleep backoffFactor^1 s → attemptIndex 2
+     * attemptIndex is 0-based and increments AFTER each failure.
+     * The backoff exponent uses (attemptIndex + 1) so the first wait
+     * is backoffFactor^1, the second is backoffFactor^2, and so on.
+     *
+     * Attempt numbering:
+     *   attemptIndex=0 → first try
+     *   attemptIndex=0 fails → sleep backoffFactor^1 s → attemptIndex=1
+     *   attemptIndex=1 fails → sleep backoffFactor^2 s → attemptIndex=2
      *   ...
-     *   attemptIndex maxRetries fails → rethrow (no more attempts)
+     *   attemptIndex=maxRetries fails → rethrow (total attempts = maxRetries+1)
      *
-     * Total attempts = maxRetries + 1.
+     * All locals are declared at the top — BoxLang var scope is function-wide.
+     * Arithmetic is pre-computed into named locals before string interpolation
+     * because BoxLang does not evaluate expressions inside #...#.
      *
-     * All local vars are declared at the top of the function — BoxLang var scope
-     * is function-wide, not block-scoped, so hoisting them here makes that
-     * explicit and avoids any ambiguity about when they come into existence.
-     *
-     * Arithmetic expressions are always pre-computed into named locals before
-     * string interpolation — BoxLang does not evaluate expressions inside #...#.
+     * sleep() is invoked via java.lang.Thread.sleep() for portability —
+     * BoxLang does not guarantee a native sleep() built-in.
      *
      * @fn        The closure to invoke on each attempt
-     * @callLabel Human-readable label for log messages
+     * @callLabel Human-readable label used in log messages
      */
     private any function executeWithRetry( required function fn, required string callLabel ) {
-        // All locals declared up front — var scope is function-wide in BoxLang
         var attemptIndex  = 0;
-        var totalAttempts = variables.maxRetries + 1;  // pre-computed once; used in exhausted-retries log
+        var totalAttempts = variables.maxRetries + 1;
+        var exponent      = 0;
         var waitSeconds   = 0;
         var waitMs        = 0;
         var attemptNumber = 0;
@@ -178,7 +183,7 @@ component
                 if ( !shouldRetry( e ) ) {
                     logEntry(
                         "warning",
-                        "#arguments.callLabel# failed with non-retryable exception (#e.type#): #e.message#"
+                        "#arguments.callLabel# failed with non-retryable exception type '#e.type#': #e.message#"
                     );
                     rethrow;
                 }
@@ -192,8 +197,10 @@ component
                     rethrow;
                 }
 
-                // Still have retries remaining — compute backoff, log, sleep, loop
-                waitSeconds   = variables.backoffFactor ^ attemptIndex;
+                // Compute backoff using (attemptIndex + 1) so the first sleep
+                // is backoffFactor^1, not backoffFactor^0 = 1 regardless of factor
+                exponent      = attemptIndex + 1;
+                waitSeconds   = variables.backoffFactor ^ exponent;
                 waitMs        = fix( waitSeconds * 1000 );
                 attemptNumber = attemptIndex + 1;
                 retriesLeft   = variables.maxRetries - attemptIndex;
@@ -204,7 +211,9 @@ component
                     "#arguments.callLabel# failed on attempt #attemptNumber# (#e.type#: #e.message#) — retrying in #waitFormatted# s (#retriesLeft# attempt(s) remaining)"
                 );
 
-                sleep( waitMs );
+                // Use java.lang.Thread.sleep() — portable across all BoxLang runtimes
+                createObject( "java", "java.lang.Thread" ).sleep( waitMs );
+
                 attemptIndex++;
             }
         }
@@ -213,10 +222,11 @@ component
     /**
      * Returns true if the exception should trigger a retry.
      *
-     * If retryOn is empty, every exception is retryable.
-     * Otherwise only exceptions whose type appears in retryOn are retried.
+     * If retryOn is empty, every exception type is retryable.
+     * Otherwise only exceptions whose .type appears in the retryOn array
+     * (case-insensitive) are retried — all others propagate immediately.
      *
-     * @exception The caught exception struct (must have a .type key)
+     * @exception The caught exception struct — must have a .type key
      */
     private boolean function shouldRetry( required any exception ) {
         if ( !arrayLen( variables.retryOn ) ) {
@@ -228,8 +238,10 @@ component
     /**
      * Write a log entry to the "ai" log.
      *
-     * @level   BoxLang writeLog type: information | warning | error | fatal
-     * @message Log message body
+     * Valid type values for BoxLang writeLog: information | warning | error | fatal
+     *
+     * @level   writeLog type string
+     * @message Log message body (the [bx-ai][RetryMiddleware] prefix is added here)
      */
     private void function logEntry( required string level, required string message ) {
         writeLog(
