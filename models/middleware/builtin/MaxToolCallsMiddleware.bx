@@ -98,19 +98,13 @@ component
     }
 
     /**
-     * Log the final tally after the agent run completes.
-     * Fires regardless of whether the limit was hit.
+     * Log the final tally after the agent run completes naturally.
+     * NOTE: does not fire when the limit is hit with exitBehavior="end"
+     * because cancel() is terminal and stops the middleware chain.
+     * The over-limit warning is already logged in beforeToolCall().
      */
     AiMiddlewareResult function afterAgentRun( required struct context ) {
-        var hitLimit = variables._callCount > variables.maxCalls;
-        var summary  = "#variables._callCount# tool call(s) used of #variables.maxCalls# allowed";
-
-        if ( hitLimit ) {
-            logEntry( "warning", "Agent run ended at limit — #summary#" );
-        } else {
-            logEntry( "information", "Agent run complete — #summary#" );
-        }
-
+        logEntry( "information", "Agent run complete — #variables._callCount# tool call(s) used of #variables.maxCalls# allowed" );
         return AiMiddlewareResult.continue();
     }
 
@@ -138,10 +132,10 @@ component
      * Trims whitespace and lowercases so "End", "END", " end " all work.
      * Falls back to "end" for any unrecognised value.
      *
-     * @level Raw exitBehavior string from constructor argument
+     * @value Raw exitBehavior string from constructor argument
      */
-    private string function normalizeExitBehavior( required string level ) {
-        var normalised = trim( arguments.level ).lCase();
+    private string function normalizeExitBehavior( required string value ) {
+        var normalised = trim( arguments.value ).lCase();
         return ( normalised == "error" ) ? "error" : "end";
     }
 
