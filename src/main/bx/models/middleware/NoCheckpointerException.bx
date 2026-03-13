@@ -1,0 +1,13 @@
+/**
+ * Thrown when checkpoint operations called without checkpointer configured
+ */
+component extends="bxException" {
+   function init( string message="No checkpointer configured" ){
+      super.init(
+         message=arguments.message,
+         type="NoCheckpointerException",
+         detail="Configure with: agent.withCheckpointer( new CacheMemory('checkpoints') )"
+      );
+      return this;
+   }
+}

@@ -1,0 +1,261 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License")
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Loads PDF files into Document objects using Apache PDFBox.
+ * Extracts text content and metadata from PDF files.
+ */
+import java.io.File;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.pdmodel.PDDocumentInformation;
+
+class extends="BaseDocumentLoader" {
+
+	/**
+	 * Static configuration defaults
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			encoding        : "UTF-8",
+			includeMetadata : true,
+			// Text extraction options
+			extractText     : true,
+			sortByPosition  : true,
+			// Page range options
+			startPage       : 1,
+			endPage         : 0,  // 0 = all pages
+			// Formatting options
+			addMoreFormatting : false,
+			suppressDuplicateOverlappingText : true
+		};
+	}
+
+	/**
+	 * Initialize the PDFLoader
+	 *
+	 * @source Path to the PDF file
+	 * @config Configuration options
+	 *
+	 * @return PDFLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		super.init( argumentCollection: arguments );
+		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true );
+		return this;
+	}
+
+	/**
+	 * Load the PDF file into Document objects
+	 *
+	 * @return Array of Document objects
+	 */
+	array function doLoad() {
+		// Validate source exists
+		if ( !len( variables.source ) ) {
+			throw(
+				type    : "PDFLoader.NoSource",
+				message : "No source file specified"
+			);
+		}
+
+		if ( !fileExists( variables.source ) ) {
+			throw(
+				type    : "PDFLoader.FileNotFound",
+				message : "File not found: #variables.source#"
+			);
+		}
+
+		// Extract text from PDF
+		var content = extractTextFromPDF( variables.source );
+
+		// Create document with metadata
+		var doc = createDocument(
+			content : content,
+			additionalMetadata : variables.config.includeMetadata ? getPDFMetadata( variables.source ) : {}
+		);
+
+		return [ doc ];
+	}
+
+	/**
+	 * Extract text content from PDF file
+	 *
+	 * @pdfPath Path to the PDF file
+	 *
+	 * @return Extracted text content
+	 */
+	private string function extractTextFromPDF( required string pdfPath ) {
+		var pdfFile = createObject( "java", "java.io.File" ).init( arguments.pdfPath );
+		var document = nullValue();
+		var text = "";
+
+		try {
+			// Load PDF document using Loader class (PDFBox 3.x)
+			var Loader = createObject( "java", "org.apache.pdfbox.Loader" );
+			document = Loader.loadPDF( pdfFile );
+
+			// Create text stripper
+			var stripper = createObject( "java", "org.apache.pdfbox.text.PDFTextStripper" ).init();
+
+			// Configure stripper options
+			stripper.setSortByPosition( variables.config.sortByPosition castAs "boolean" );
+			stripper.setAddMoreFormatting( variables.config.addMoreFormatting castAs "boolean" );
+			stripper.setSuppressDuplicateOverlappingText( variables.config.suppressDuplicateOverlappingText castAs "boolean" );
+
+			// Set page range if specified
+			if ( variables.config.endPage > 0 ) {
+				stripper.setStartPage( variables.config.startPage castAs "int" );
+				stripper.setEndPage( variables.config.endPage castAs "int" );
+			}
+
+			// Extract text
+			text = stripper.getText( document );
+
+		} catch ( any e ) {
+			throw(
+				type    : "PDFLoader.ExtractionError",
+				message : "Failed to extract text from PDF: #e.message#",
+				detail  : e.detail ?: ""
+			);
+		} finally {
+			// Always close the document
+			if ( !isNull( document ) ) {
+				document.close();
+			}
+		}
+
+		return text;
+	}
+
+	/**
+	 * Extract metadata from PDF file
+	 *
+	 * @pdfPath Path to the PDF file
+	 *
+	 * @return Struct with PDF metadata
+	 */
+	private struct function getPDFMetadata( required string pdfPath ) {
+		var metadata = getSourceInfo();
+		var pdfFile = createObject( "java", "java.io.File" ).init( arguments.pdfPath );
+		var document = nullValue();
+
+		try {
+			// Load PDF document using Loader class (PDFBox 3.x)
+			var Loader = createObject( "java", "org.apache.pdfbox.Loader" );
+			document = Loader.loadPDF( pdfFile );
+
+			// Get document information
+			var info = document.getDocumentInformation();
+
+			// Extract PDF-specific metadata
+			if ( !isNull( info ) ) {
+				metadata.title = info.getTitle() ?: "";
+				metadata.author = info.getAuthor() ?: "";
+				metadata.subject = info.getSubject() ?: "";
+				metadata.keywords = info.getKeywords() ?: "";
+				metadata.creator = info.getCreator() ?: "";
+				metadata.producer = info.getProducer() ?: "";
+
+				// Dates
+				var creationDate = info.getCreationDate();
+				if ( !isNull( creationDate ) ) {
+					metadata.creationDate = creationDate.getTime().toString();
+				}
+
+				var modificationDate = info.getModificationDate();
+				if ( !isNull( modificationDate ) ) {
+					metadata.modificationDate = modificationDate.getTime().toString();
+				}
+			}
+
+			// Page count
+			metadata.pageCount = document.getNumberOfPages();
+
+			// PDF version
+			metadata.pdfVersion = document.getVersion().toString();
+
+			// Encryption status
+			metadata.isEncrypted = document.isEncrypted();
+
+		} catch ( any e ) {
+			// If metadata extraction fails, just log and return basic metadata
+			// Don't throw - metadata is optional
+		} finally {
+			// Always close the document
+			if ( !isNull( document ) ) {
+				document.close();
+			}
+		}
+
+		return metadata;
+	}
+
+	// ==========================================
+	// Fluent Configuration Methods
+	// ==========================================
+
+	/**
+	 * Set whether to sort text by position
+	 *
+	 * @sort Whether to sort by position
+	 *
+	 * @return PDFLoader for chaining
+	 */
+	function sortByPosition( required boolean sort ) {
+		variables.config.sortByPosition = arguments.sort;
+		return this;
+	}
+
+	/**
+	 * Set whether to add more formatting
+	 *
+	 * @format Whether to add formatting
+	 *
+	 * @return PDFLoader for chaining
+	 */
+	function addMoreFormatting( required boolean format ) {
+		variables.config.addMoreFormatting = arguments.format;
+		return this;
+	}
+
+	/**
+	 * Set page range to extract
+	 *
+	 * @startPage Starting page number (1-based)
+	 * @endPage Ending page number (0 = all pages from start)
+	 *
+	 * @return PDFLoader for chaining
+	 */
+	function pageRange( required numeric startPage, numeric endPage = 0 ) {
+		variables.config.startPage = arguments.startPage;
+		variables.config.endPage = arguments.endPage;
+		return this;
+	}
+
+	/**
+	 * Set whether to suppress duplicate overlapping text
+	 *
+	 * @suppress Whether to suppress duplicates
+	 *
+	 * @return PDFLoader for chaining
+	 */
+	function suppressDuplicates( required boolean suppress ) {
+		variables.config.suppressDuplicateOverlappingText = arguments.suppress;
+		return this;
+	}
+
+}

@@ -1,0 +1,471 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Hybrid Memory Implementation
+ * Combines recent messages (WindowMemory) with semantic search (VectorMemory)
+ * Provides both recency and relevance in conversation history
+ */
+import bxModules.bxai.models.memory.WindowMemory;
+import bxModules.bxai.models.memory.vector.ChromaVectorMemory;
+
+class extends="bxModules.bxai.models.memory.BaseMemory" {
+
+	/**
+	 * Recent message memory (WindowMemory for recency)
+	 */
+	property name="recentMemory" type="any";
+
+	/**
+	 * Vector memory for semantic search
+	 */
+	property name="vectorMemory" type="any";
+
+	/**
+	 * Configuration for balancing recent vs semantic results
+	 */
+	property name="recentLimit" type="numeric" default=5;
+	property name="semanticLimit" type="numeric" default=5;
+	property name="totalLimit" type="numeric" default=10;
+	property name="recentWeight" type="numeric" default=0.6;  // 60% recent, 40% semantic
+
+	/**
+	 * Vector memory provider configuration
+	 */
+	property name="vectorProvider" type="string" default="BoxVectorMemory";
+	property name="vectorConfig" type="struct" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @key The unique key for this memory instance
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
+	 */
+	function init(
+		string key = createUUID(),
+		string userId = "",
+		string conversationId = ""
+	) {
+		super.init( argumentCollection: arguments );
+		return this;
+	}
+
+	/**
+	 * Configure the hybrid memory instance
+	 *
+	 * @config Configuration struct with hybrid-specific options
+	 *
+	 * @return HybridMemory for chaining
+	 */
+	public any function configure( required struct config ) {
+		// Extract hybrid configuration FIRST (before super.configure which may call getAll())
+		if ( arguments.config.keyExists( "recentLimit" ) ) {
+			variables.recentLimit = arguments.config.recentLimit;
+		}
+		if ( arguments.config.keyExists( "semanticLimit" ) ) {
+			variables.semanticLimit = arguments.config.semanticLimit;
+		}
+		if ( arguments.config.keyExists( "totalLimit" ) ) {
+			variables.totalLimit = arguments.config.totalLimit;
+		}
+		if ( arguments.config.keyExists( "recentWeight" ) ) {
+			variables.recentWeight = arguments.config.recentWeight;
+		}
+		if ( arguments.config.keyExists( "vectorProvider" ) ) {
+			variables.vectorProvider = arguments.config.vectorProvider;
+		}
+		if ( arguments.config.keyExists( "vectorConfig" ) ) {
+			variables.vectorConfig = arguments.config.vectorConfig;
+		}
+
+		// Initialize recent memory (WindowMemory)
+		var recentConfig = {
+			maxMessages: variables.recentLimit * 2  // Keep more in window than we return
+		};
+		variables.recentMemory = new WindowMemory(
+			key: variables.key & ":recent",
+			userId: variables.userId,
+			conversationId: variables.conversationId
+		).configure( recentConfig );
+
+		// Initialize vector memory based on provider
+		variables.vectorMemory = aiMemory(
+			memory: variables.vectorProvider,
+			key: variables.key & ":vector",
+			userId: variables.userId,
+			conversationId: variables.conversationId,
+			config: variables.vectorConfig
+		);
+
+		// Now call super.configure which may call trim() -> getAll()
+		super.configure( arguments.config );
+
+		return this;
+	}
+
+	/**
+	 * Add a message to both recent and vector memory
+	 *
+	 * @message The message to add
+	 *
+	 * @return HybridMemory for chaining
+	 */
+	public any function add( required any message ) {
+		// Add to both memories
+		variables.recentMemory.add( arguments.message );
+		variables.vectorMemory.add( arguments.message );
+
+		// Announce hybrid event
+		BoxAnnounce( "onHybridMemoryAdd", {
+			key: variables.key,
+			hasMessage: !isNull( arguments.message ),
+			timestamp: now()
+		} );
+
+		return this;
+	}
+
+	/**
+	 * Get all messages - combines recent and semantic with smart deduplication
+	 * Uses the last message in recent memory as the query for semantic search
+	 *
+	 * @return Array of messages
+	 */
+	public array function getAll() {
+		var recentMessages = variables.recentMemory.getAll();
+
+		// If no recent messages, return empty
+		if ( recentMessages.isEmpty() ) {
+			return [];
+		}
+
+		// Use last message as query for semantic search
+		var query = extractMessageText( recentMessages.last() );
+		var semanticMessages = variables.vectorMemory.getRelevant( query, variables.semanticLimit );
+
+		// Combine and deduplicate
+		var combinedMessages = combineMessages( recentMessages, semanticMessages );
+
+		// Limit to totalLimit
+		if ( combinedMessages.len() > variables.totalLimit ) {
+			combinedMessages = combinedMessages.slice( 1, variables.totalLimit );
+		}
+
+		return combinedMessages;
+	}
+
+	/**
+	 * Get relevant messages using semantic search
+	 * This is the primary method for retrieving contextual history
+	 *
+	 * @query The query to search for
+	 * @limit Maximum results to return
+	 *
+	 * @return Array of relevant messages
+	 */
+	public array function getRelevant( required string query, numeric limit = 10 ) {
+		// Calculate limits based on weights
+		var recentCount = ceiling( arguments.limit * variables.recentWeight );
+		var semanticCount = arguments.limit - recentCount;
+
+		// Get recent messages (all of them for now)
+		var recentMessages = variables.recentMemory.getAll();
+
+		// Get semantic messages
+		var semanticMessages = variables.vectorMemory.getRelevant(
+			arguments.query,
+			semanticCount
+		);
+
+		// Combine and deduplicate FIRST
+		var combinedMessages = combineMessages( recentMessages, semanticMessages );
+
+		// Sort by: semantic score > recency
+		combinedMessages.sort( ( a, b ) => {
+			var aScore = a.score ?: 0;
+			var bScore = b.score ?: 0;
+
+			if ( aScore > 0 && bScore > 0 ) {
+				// Both semantic - higher score first
+				return bScore - aScore;
+			} else if ( aScore > 0 ) {
+				// Only a is semantic - a wins
+				return -1;
+			} else if ( bScore > 0 ) {
+				// Only b is semantic - b wins
+				return 1;
+			} else {
+				// Both recent - compare timestamps (newer first)
+				var aTime = a.timestamp ?: 0;
+				var bTime = b.timestamp ?: 0;
+				return bTime - aTime;
+			}
+		} );
+
+		// Now slice to the limit (after dedup and sort)
+		if ( combinedMessages.len() > arguments.limit ) {
+			combinedMessages = combinedMessages.slice( 1, arguments.limit );
+		}
+
+		return combinedMessages;
+	}
+
+	/**
+	 * Get all non-system messages
+	 * Filters out system messages from both recent and vector results
+	 *
+	 * @return Array of non-system messages
+	 */
+	public array function getNonSystemMessages() {
+		// Get all messages from recent memory only (not from vectors to avoid duplicates)
+		return variables.recentMemory.getNonSystemMessages();
+	}
+
+	/**
+	 * Get messages by role
+	 * Uses recent memory only to avoid vector result format issues
+	 *
+	 * @role The role to filter by
+	 *
+	 * @return Array of messages with the specified role
+	 */
+	public array function getByRole( required string role ) {
+		return variables.recentMemory.getByRole( arguments.role );
+	}
+
+	/**
+	 * Check if memory has a system message
+	 * Uses recent memory only
+	 *
+	 * @return Boolean true if system message exists
+	 */
+	public boolean function hasSystemMessage() {
+		return variables.recentMemory.hasSystemMessage();
+	}
+
+	/**
+	 * Get memory summary including hybrid-specific configuration
+	 * Uses recent memory for role distribution and timestamps to avoid vector result format issues
+	 *
+	 * @return Struct containing memory statistics
+	 */
+	public struct function getSummary() {
+		// Get messages from recent memory only for summary stats (timestamps, roles, etc.)
+		var recentMessages = variables.recentMemory.getAll()
+		var summary = {
+			"type": this.name(),
+			"key": this.key(),
+			"userId": this.getUserId(),
+			"conversationId": this.getConversationId(),
+			"messageCount": count(),
+			"maxMessages": variables.maxMessages,
+			"nonSystemCount": getNonSystemMessages().len(),
+			"hasSystemMessage": hasSystemMessage(),
+			"metadata": this.metadata(),
+			"config": getConfig(),
+			"firstMessageAt": recentMessages.isEmpty() ? "" : recentMessages.first().timestamp,
+        	"lastMessageAt": recentMessages.isEmpty() ? "" : recentMessages.last().timestamp
+		}
+
+		// Add role distribution stats from recent memory
+		summary.roleDistribution = {
+			"user": getByRole( "user" ).len(),
+			"assistant": getByRole( "assistant" ).len(),
+			"system": getByRole( "system" ).len(),
+			"tool": getByRole( "tool" ).len()
+		}
+
+		// Add conversation age and rate from recent messages
+		if ( !recentMessages.isEmpty() && recentMessages.len() > 1 ) {
+			var firstTime = recentMessages.first().timestamp
+			var lastTime = recentMessages.last().timestamp
+			var durationMinutes = dateDiff( "n", firstTime, lastTime )
+			summary.conversationAgeMinutes = durationMinutes
+			if ( durationMinutes > 0 ) {
+				summary.messagesPerHour = ( recentMessages.len() / durationMinutes ) * 60
+			}
+		}
+
+		// Add estimated token count from recent messages (rough approximation: ~4 chars per token)
+		var totalChars = recentMessages.reduce( ( sum, msg ) => sum + len( msg.content ), 0 )
+		summary.estimatedTokens = ceiling( totalChars / 4 )
+
+		// Add hybrid-specific configuration
+		summary.recentLimit = variables.recentLimit;
+		summary.semanticLimit = variables.semanticLimit;
+		summary.totalLimit = variables.totalLimit;
+		summary.recentWeight = variables.recentWeight;
+		summary.semanticWeight = 1 - variables.recentWeight;
+		summary.vectorProvider = variables.vectorProvider;
+		summary.recentMemoryCount = variables.recentMemory.count();
+		summary.vectorMemoryCount = variables.vectorMemory.count();
+
+		// Add sub-memory info (just key fields to avoid vector format issues)
+		summary.recentMemorySummary = {
+			userId: variables.recentMemory.getUserId(),
+			conversationId: variables.recentMemory.getConversationId(),
+			key: variables.recentMemory.key(),
+			type: variables.recentMemory.name()
+		};
+		summary.vectorMemorySummary = {
+			userId: variables.vectorMemory.getUserId(),
+			conversationId: variables.vectorMemory.getConversationId(),
+			key: variables.vectorMemory.key(),
+			type: variables.vectorMemory.name()
+		};
+
+		return summary
+	}
+
+	/**
+	 * Clear both memories
+	 *
+	 * @return HybridMemory for chaining
+	 */
+	public any function clear() {
+		variables.recentMemory.clear();
+		variables.vectorMemory.clear();
+		return this;
+	}
+
+	/**
+	 * Export both memories
+	 *
+	 * @return Struct with both memory exports
+	 */
+	public struct function export() {
+		return {
+			type: "HybridMemory",
+			key: variables.key,
+			config: {
+				recentLimit: variables.recentLimit,
+				semanticLimit: variables.semanticLimit,
+				totalLimit: variables.totalLimit,
+				recentWeight: variables.recentWeight,
+				vectorProvider: variables.vectorProvider,
+				vectorConfig: variables.vectorConfig
+			},
+			recentMemory: variables.recentMemory.export(),
+			vectorMemory: variables.vectorMemory.export()
+		};
+	}
+
+	/**
+	 * Import both memories
+	 *
+	 * @data The exported data
+	 *
+	 * @return HybridMemory for chaining
+	 */
+	public any function import( required struct data ) {
+		if ( arguments.data.keyExists( "recentMemory" ) ) {
+			variables.recentMemory.import( arguments.data.recentMemory );
+		}
+		if ( arguments.data.keyExists( "vectorMemory" ) ) {
+			variables.vectorMemory.import( arguments.data.vectorMemory );
+		}
+		return this;
+	}
+
+	/**
+	 * Trim both memories to their limits
+	 *
+	 * @return HybridMemory for chaining
+	 */
+	public IAiMemory function trim() {
+		variables.recentMemory.trim();
+		return this;
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * HELPER METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Combine recent and semantic messages with deduplication
+	 *
+	 * @recentMessages Array of recent messages
+	 * @semanticMessages Array of semantic messages with scores
+	 *
+	 * @return Array of combined messages
+	 */
+	private array function combineMessages(
+		required array recentMessages,
+		required array semanticMessages
+	) {
+		var messageMap = {};
+
+		// Add semantic messages first (they have scores we want to preserve)
+		arguments.semanticMessages.each( ( message ) => {
+			var messageId = getMessageId( message );
+			messageMap[ messageId ] = message;
+		} );
+
+		// Add recent messages (only if not already present from semantic)
+		arguments.recentMessages.each( ( message ) => {
+			var messageId = getMessageId( message );
+			if ( !messageMap.keyExists( messageId ) ) {
+				messageMap[ messageId ] = message;
+			}
+		} );
+
+		// Convert map back to array
+		return messageMap.reduce( ( acc, id, message ) => {
+			acc.append( message );
+			return acc;
+		}, [] );
+	}
+
+	/**
+	 * Generate a unique ID for a message for deduplication
+	 *
+	 * @message The message object
+	 *
+	 * @return String unique ID
+	 */
+	private string function getMessageId( required any message ) {
+		if ( isStruct( arguments.message ) ) {
+			// If message has an ID, use it
+			if ( arguments.message.keyExists( "id" ) ) {
+				return arguments.message.id;
+			}
+			// Otherwise, hash the content
+			var content = arguments.message.content ?: arguments.message.text ?: "";
+			return hash( content, "MD5" );
+		}
+
+		// Simple value - hash it
+		return hash( arguments.message, "MD5" );
+	}
+
+	/**
+	 * Extract text from a message for queries
+	 *
+	 * @message The message object
+	 *
+	 * @return String text content
+	 */
+	private string function extractMessageText( required any message ) {
+		if ( isSimpleValue( arguments.message ) ) {
+			return arguments.message;
+		}
+		if ( isStruct( arguments.message ) ) {
+			return arguments.message.content ?: arguments.message.text ?: "";
+		}
+		return "";
+	}
+
+}

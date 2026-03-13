@@ -1,0 +1,29 @@
+component implements="IAiMiddleware"{
+
+    property name="middlewareStruct";
+
+    StructMiddlewareAdapter function init( required struct middlewareStruct ){
+        variables.middlewareStruct = middlewareStruct;
+        return this;
+    }
+
+    private AiMiddlewareResult function defaultContinue(){
+        return AiMiddlewareResult.continue();
+    }
+
+    public AiMiddlewareResult function beforeAgentRun( required struct context ){
+        return middlewareStruct.beforeAgentRun ?: defaultContinue();
+    }
+    // ... repeat pattern for all sequential hooks
+    public AiMiddlewareResult function beforeToolCall( required struct context ){
+        var handler = middlewareStruct.beforeToolCall ?: defaultContinue;
+        return handler( context );
+    }
+
+    public any function wrapToolCall( required struct context, required function handler ){
+        var wrapHandler = middlewareStruct.wrapToolCall;
+        if( !isClosure( wrapHandler ) ) return handler( argumentCollection=arguments );
+        return wrapHandler( context, handler );
+    }
+
+}

@@ -1,0 +1,549 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ */
+class extends="BaseService"{
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// according to the docs, this is the default model and tokens
+			// https://docs.anthropic.com/en/docs/about-claude/models/overview#model-aliases
+			"model" : "claude-sonnet-4-5",
+			"max_tokens": 1024
+		};
+		DEFAULT_HEADERS = {
+			// https://docs.anthropic.com/en/api/versioning
+			"anthropic-version" : "2023-06-01"
+		};
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.chatURL = "https://api.anthropic.com/v1/messages"
+		variables.name = "Claude"
+		// https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview
+		addHeader( name: "anthropic-version", value: static.DEFAULT_HEADERS[ "anthropic-version" ] )
+	}
+
+	/**
+	 * Invoke a request to the provider
+	 *
+	 * @chatRequest The AI request to send to the provider
+	 *
+	 * @return The response from the provider according to the return format in the AI request
+	 */
+	function invoke( required AiChatRequest chatRequest ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.invoke( arguments.chatRequest )
+	}
+
+	/**
+	 * Invoke a request to the provider in streaming mode
+	 *
+	 * @chatRequest The Chat request to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
+	 *
+	 * @return void
+	 */
+	function invokeStream( required AiChatRequest chatRequest, required function callback ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.invokeStream( arguments.chatRequest, arguments.callback )
+	}
+
+	/**
+	 * Claude streaming chat request - overridden to use Claude-specific authentication
+	 *
+	 * @chatRequest The AiChatRequest object to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream
+	 */
+	@override
+	public function chatStream( required AiChatRequest chatRequest, required function callback ){
+		var userCallback = arguments.callback;
+		var thisChatRequest = arguments.chatRequest;
+
+		var allMessages = arguments.chatRequest.getMessages();
+		var apiMessages = allMessages.filter( m => ( m.role ?: "" ) != "system" );
+		var systemMessages = allMessages
+			.filter( m => ( m.role ?: "" ) == "system" )
+			.map( m => toString( m.content ?: "" ) )
+			.filter( msg => msg.len() );
+		var systemPrompt = systemMessages.toList( char( 10 ) & char( 10 ) );
+
+		var dataPacket = {
+			"model"   : arguments.chatRequest.getModel(),
+			"messages": apiMessages,
+			"stream"  : true
+		}.append( arguments.chatRequest.getParams() );
+
+		if( systemPrompt.len() ){
+			dataPacket[ "system" ] = systemPrompt;
+		}
+
+		if( arguments.chatRequest.getParams()?.tools?.len() ) {
+			dataPacket[ "tools" ] = formatToolsForClaude( arguments.chatRequest.getParams().tools );
+		}
+
+		BoxAnnounce(
+			"onAIChatRequest",
+			{
+				"dataPacket" : dataPacket,
+				"chatRequest": arguments.chatRequest,
+				"provider"   : this
+			}
+		);
+
+		if( arguments.chatRequest.getLogRequestToConsole() ){
+			println( "AI Request (Stream)" );
+			println( dataPacket );
+		}
+
+		var streamState = {
+			"messageId": "",
+			"model": arguments.chatRequest.getModel(),
+			"toolCalls": [],
+			"toolInputBuffers": {},
+			"toolCallIndexMap": {},
+			"stopReason": "",
+			"emittedAnyText": false
+		};
+
+		var httpRequest = http( getChatURL() )
+			.method( "POST" )
+			.charset( "utf-8" )
+			.timeout( arguments.chatRequest.getTimeout() )
+			.header( "content-type", "application/json" )
+			.header( "x-api-key", arguments.chatRequest.getApiKey() )
+			.header( "anthropic-version", getHeaders()[ "anthropic-version" ] )
+			.sse( true );
+
+		for( var thisHeader in arguments.chatRequest.getHeaders() ){
+			httpRequest.header( thisHeader, arguments.chatRequest.getHeaders()[ thisHeader ] );
+		}
+
+		httpRequest
+			.body( jsonSerialize( dataPacket ) )
+			.onChunk( ( chunk, lastEventId, httpResult, httpClient, response ) => {
+				if( chunk.data == "[DONE]" || chunk?.data?.trim()?.isEmpty() ){
+					return;
+				}
+
+				try {
+					var parsedChunk = jsonDeserialize( chunk.data );
+
+					if( parsedChunk.type == "message_start" ){
+						streamState.model = parsedChunk.message?.model ?: streamState.model;
+						streamState.messageId = parsedChunk.message?.id ?: streamState.messageId;
+						return;
+					}
+
+					if( parsedChunk.type == "content_block_start" && parsedChunk.content_block?.type == "tool_use" ){
+						var contentBlockIndex = parsedChunk.index ?: 0;
+						var newToolCall = {
+							"type": "tool_use",
+							"id": parsedChunk.content_block.id ?: "",
+							"name": parsedChunk.content_block.name ?: "",
+							"input": parsedChunk.content_block.input ?: {},
+							"contentIndex": contentBlockIndex
+						};
+
+						streamState.toolCalls.append( newToolCall );
+						streamState.toolCallIndexMap[ toString( contentBlockIndex ) ] = streamState.toolCalls.len();
+						streamState.toolInputBuffers[ toString( contentBlockIndex ) ] = "";
+						return;
+					}
+
+					if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "input_json_delta" ){
+						var bufferKey = toString( parsedChunk.index ?: 0 );
+						if( !streamState.toolInputBuffers.keyExists( bufferKey ) ){
+							streamState.toolInputBuffers[ bufferKey ] = "";
+						}
+						streamState.toolInputBuffers[ bufferKey ] &= parsedChunk.delta.partial_json ?: "";
+						return;
+					}
+
+					if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "text_delta" ){
+						var textChunk = parsedChunk.delta.text ?: "";
+						streamState.emittedAnyText = streamState.emittedAnyText || textChunk.len();
+
+						userCallback({
+							"id": streamState.messageId,
+							"provider": "Claude",
+							"model": streamState.model,
+							"object": "chat.completion.chunk",
+							"choices": [
+								{
+									"index": 0,
+									"delta": {
+										"role": "assistant",
+										"content": textChunk
+									}
+								}
+							]
+						});
+						return;
+					}
+
+					if( parsedChunk.type == "message_delta" ){
+						streamState.stopReason = parsedChunk.delta?.stop_reason ?: streamState.stopReason;
+						return;
+					}
+				} catch( any e ){
+					writeLog(
+						text: "Error parsing stream chunk: #e.message# - Data: #chunk.data#",
+						type: "error",
+						log : "ai"
+					)
+				}
+			} )
+			.onError( ( error, httpResult ) => {
+				var errorMessage = "HTTP Error: #error.message#";
+
+				writeLog(
+					text: "Stream Request Error: #errorMessage#",
+					type: "error",
+					log : "ai"
+				)
+
+				BoxAnnounce( "onAIError", {
+					error: error,
+					errorMessage: errorMessage,
+					provider: this,
+					operation: "stream",
+					aiRequest: thisChatRequest,
+					canRetry: true
+				} );
+
+				throw(
+					type   : "ProviderError",
+					message: errorMessage
+				);
+			} )
+			.onComplete( ( httpResult ) => {
+				if( thisChatRequest.getLogResponse() ){
+					writeLog(
+						text: "Stream completed successfully",
+						type: "info",
+						log : "ai"
+					)
+				}
+
+				BoxAnnounce(
+					"onAIChatResponse",
+					{
+						"chatRequest" : thisChatRequest,
+						"provider"    : this,
+						"streamComplete" : true
+					}
+				);
+			} )
+			.send();
+
+		if( streamState.stopReason == "tool_use" && streamState.toolCalls.len() ){
+			var runtimeChatRequest = arguments.chatRequest;
+
+			streamState.toolCalls.each( toolCall => {
+				var bufferKey = toString( toolCall.contentIndex ?: 0 );
+				var inputBuffer = streamState.toolInputBuffers[ bufferKey ] ?: "";
+				if( inputBuffer.len() ){
+					try {
+						toolCall.input = jsonDeserialize( inputBuffer );
+					} catch( any e ){}
+				}
+			} );
+
+			var sanitizedToolCalls = streamState.toolCalls
+				.filter( toolCall => ( toolCall.name ?: "" ).len() && ( toolCall.id ?: "" ).len() )
+				.map( toolCall => {
+					return {
+						"type" : "tool_use",
+						"id"   : toolCall.id,
+						"name" : toolCall.name,
+						"input": toolCall.input ?: {}
+					};
+				} );
+
+			if( !sanitizedToolCalls.len() ){
+				var fallbackFromToolUse = chat( runtimeChatRequest );
+				var fallbackToolText = isSimpleValue( fallbackFromToolUse ) ? toString( fallbackFromToolUse ) : "";
+				if( fallbackToolText.len() ){
+					userCallback({
+						"id": streamState.messageId,
+						"provider": "Claude",
+						"model": streamState.model,
+						"object": "chat.completion.chunk",
+						"choices": [
+							{
+								"index": 0,
+								"delta": {
+									"role": "assistant",
+									"content": fallbackToolText
+								}
+							}
+						]
+					});
+				}
+				return;
+			}
+
+			runtimeChatRequest.getMessages().append({
+				"role"    : "assistant",
+				"content" : sanitizedToolCalls
+			});
+
+			sanitizedToolCalls.each( toolCall => executeClaudeTool( toolCall, runtimeChatRequest ) );
+
+			var finalResponse = chat( runtimeChatRequest );
+			var finalText = isSimpleValue( finalResponse ) ? toString( finalResponse ) : "";
+
+			if( finalText.len() ){
+				userCallback({
+					"id": streamState.messageId,
+					"provider": "Claude",
+					"model": streamState.model,
+					"object": "chat.completion.chunk",
+					"choices": [
+						{
+							"index": 0,
+							"delta": {
+								"role": "assistant",
+								"content": finalText
+							}
+						}
+					]
+				});
+			}
+		}
+
+		if( !streamState.emittedAnyText && streamState.stopReason != "tool_use" ){
+			var fallbackResponse = chat( arguments.chatRequest );
+			var fallbackText = isSimpleValue( fallbackResponse ) ? toString( fallbackResponse ) : "";
+			if( fallbackText.len() ){
+				userCallback({
+					"id": streamState.messageId,
+					"provider": "Claude",
+					"model": streamState.model,
+					"object": "chat.completion.chunk",
+					"choices": [
+						{
+							"index": 0,
+							"delta": {
+								"role": "assistant",
+								"content": fallbackText
+							}
+						}
+					]
+				});
+			}
+		}
+	}
+
+	/**
+	 * Claude chat request
+	 * Customized for Claude
+	 * https://docs.anthropic.com/en/api/messages-examples
+	 *
+	 * @chatRequest The AIChatRequest object to send to the provider
+	 * @interactionCount Current tool call interaction count (used internally)
+	 *
+	 * @throws ProviderError if the provider returns an error from the request
+	 * @throws MaxInteractionsExceeded if tool calls exceed the maximum allowed interactions
+	 */
+	@override
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		// No auth header, claude uses x-api-key
+		arguments.chatRequest
+			.setSendAuthHeader( false )
+			.addHeader( "x-api-key", arguments.chatRequest.getApiKey() )
+
+		// Build the packet according to Claude's API requirements
+		// https://docs.anthropic.com/en/api/messages#body-messages
+		var allMessages = arguments.chatRequest.getMessages();
+		var apiMessages = allMessages.filter( m => ( m.role ?: "" ) != "system" );
+		var systemMessages = allMessages
+			.filter( m => ( m.role ?: "" ) == "system" )
+			.map( m => toString( m.content ?: "" ) )
+			.filter( msg => msg.len() );
+		var systemPrompt = systemMessages.toList( char( 10 ) & char( 10 ) );
+
+		var dataPacket = {
+			"model"   : arguments.chatRequest.getModel(),
+			"messages": apiMessages
+		}.append( arguments.chatRequest.getParams() );
+
+		if( systemPrompt.len() ){
+			dataPacket[ "system" ] = systemPrompt;
+		}
+
+		// Add tool support if tools are present
+		if( arguments.chatRequest.getParams()?.tools?.len() ) {
+			dataPacket[ "tools" ] = formatToolsForClaude( arguments.chatRequest.getParams().tools )
+		}
+
+		// Send it
+		var result = sendChatRequest( arguments.chatRequest, dataPacket )
+
+		// If an error is returned, throw it
+		if( result.keyExists( "error" ) ){
+			writeLog(
+				text: result.error.toString(),
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "ProviderError",
+				message: result.error.toString()
+			);
+		}
+
+		// Handle tool use responses
+		// Check if Claude wants to use tools
+		var usingTools = false
+		for( var contentBlock in result.content ) {
+			if( contentBlock?.type == "tool_use" ) {
+				usingTools = true;
+				break;
+			}
+		}
+
+		// If Claude wants to use tools, we need to handle that
+		if( usingTools ){
+			/**
+			 * ---------------------------------------------------------------------------------------------------------
+			 * Max Interactions Check
+			 * ---------------------------------------------------------------------------------------------------------
+			 */
+			var maxAllowed = arguments.chatRequest.getMaxInteractions() > 0 ? arguments.chatRequest.getMaxInteractions() : variables.maxInteractions;
+			if( arguments.interactionCount >= maxAllowed ){
+				writeLog(
+					text: "Max tool call interactions (#maxAllowed#) exceeded",
+					type: "error",
+					log : "ai"
+				)
+				throw(
+					type   : "MaxInteractionsExceeded",
+					message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
+				);
+			}
+
+			var toolCalls = result.content.filter( contentBlock -> contentBlock?.type == "tool_use" );
+
+			// Add the role assistant message with tool calls
+			arguments.chatRequest.getMessages().append({
+				"role"    : "assistant",
+				"content" : result.content
+			});
+
+			// Create a new chat request for each tool call
+			for( var toolCall in toolCalls ) {
+				// Execute the tool call
+				executeClaudeTool( toolCall, arguments.chatRequest );
+			}
+
+			// Recursively call chat with the updated chat request and incremented interaction count
+			return chat( arguments.chatRequest, arguments.interactionCount + 1 );
+		}
+
+		// Determine return formats
+		var content = result.content.first().text
+		switch( arguments.chatRequest.getReturnFormat() ){
+			case "all":
+				return result.content;
+			case "raw":
+				return result;
+			case "json":
+				return JSONDeserialize( extractFromCodeBlock( content, "json" ) );
+			case "xml" :
+				return xmlParse( extractFromCodeBlock( content, "xml" ) );
+			case  "structuredOutput":
+				return populateStructuredOutput( content, arguments.chatRequest );
+			case "single": default:
+				return content;
+		}
+	}
+
+	/**
+	 * Format tools for Claude's specific tool format
+	 * @see https://docs.anthropic.com/en/api/messages#body-tools
+	 *
+	 * @tools The tools to format
+	 *
+	 * @return An array of tools formatted for Claude
+	 */
+	private array function formatToolsForClaude( required array tools ) {
+		var claudeTools = []
+
+		for( var tool in arguments.tools ) {
+			var argumentsSchema = tool.getArgumentsSchema();
+			var claudeTool = {
+				"name": tool.getName(),
+				"description": tool.getDescription(),
+				"input_schema": {
+					"type": "object",
+					"properties": argumentsSchema.properties,
+					"required": argumentsSchema.required
+				}
+			}
+			claudeTools.append( claudeTool )
+		}
+
+		return claudeTools
+	}
+
+	/**
+	 * Execute Claude tool calls
+	 *
+	 * @toolCall The tool call object from Claude: { type:"tool_use", id: "", name: "toolName", input: {} }
+	 * @chatRequest The original chat request containing the tool
+	 */
+	private function executeClaudeTool( required struct toolCall, required AiChatRequest chatRequest ) {
+		var messages = arguments.chatRequest.getMessages();
+
+		// Get the tool from the chat request
+		var toolAttempt = arguments.chatRequest.getTool( toolCall.name );
+
+		if( toolAttempt.isPresent() ){
+			var tool = toolAttempt.get();
+			messages.append({
+				"role" : "user",
+				"content" : [{
+					"type"        : "tool_result",
+					"tool_use_id" : toolCall.id,
+					"content"     : tool.invoke( args : toolCall.input )
+				}]
+			});
+		} else {
+			writeLog(
+				text: "Unable to find tool named: [#toolCall.name#]",
+				type: "warning",
+				log : "ai"
+			)
+			messages.append({
+				"role" : "user",
+				"content" : [{
+					"type"        : "tool_result",
+					"tool_use_id" : toolCall.id,
+					"content"     : "Tool ['#toolCall.name#'] not found in chat request"
+				}]
+			});
+		}
+	}
+
+}

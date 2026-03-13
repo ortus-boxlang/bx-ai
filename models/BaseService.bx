@@ -224,145 +224,101 @@ abstract class implements="IAiService" {
 	 *
 	 * @return The response from the provider according to the return format in the AI request
 	 */
-	// === PHASE 3.3 LLM HOOKS START === LINE 170
-     var llmContext = {
-        "model": arguments.chatRequest.getModel(),
-        "chatRequest": arguments.chatRequest,
-        "messages": arguments.chatRequest.getMessages()
-     };
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		// Build the packet according to the OpenAI standard
+		var dataPacket = {
+			"model"   : arguments.chatRequest.getModel(),
+			"messages": arguments.chatRequest.getMessages()
+		}.append( arguments.chatRequest.getParams() )
 
-     // 1. beforeLLMCall
-     var beforeResult = arguments.chatRequest.fireMiddleware( "beforeLLMCall", llmContext );
-     if( beforeResult.isTerminal() ) return beforeResult;
+		// Tooling support
+		if( dataPacket.keyExists( "tools" ) ){
+			dataPacket.tools = dataPacket.tools.map( .getSchema )
+		}
 
-     // 2. wrapLLMCall - FULL HTTP PIPELINE WRAPPED
-     var result = arguments.chatRequest.fireWrapMiddleware(
-        "wrapLLMCall",
-        llmContext,
-        () => {
-           var dataPacket = {
-              "model"   : arguments.chatRequest.getModel(),
-              "messages": arguments.chatRequest.getMessages()
-           }.append( arguments.chatRequest.getParams() );
+		// Structured output support (OpenAI format)
+		if( arguments.chatRequest.isStructuredOutput() ){
+			// Clean internal metadata before sending to provider
+			var cleanSchema = SchemaBuilder::cleanSchema( arguments.chatRequest.getStructuredOutput() );
+			dataPacket.response_format = {
+				"type": "json_schema",
+				"json_schema": {
+					"name": "response",
+					"strict": true,
+					"schema": cleanSchema
+				}
+			};
+		}
 
-           // Tooling support
-           if( dataPacket.keyExists( "tools" ) ){
-              dataPacket.tools = dataPacket.tools.map( .getSchema );
-           }
+		// Allow concrete providers to normalize the request packet before sending
+		dataPacket = preChatRequest( arguments.chatRequest, dataPacket )
 
-           // Structured output support
-           if( arguments.chatRequest.isStructuredOutput() ){
-              var cleanSchema = SchemaBuilder::cleanSchema( arguments.chatRequest.getStructuredOutput() );
-              dataPacket.response_format = {
-                 "type": "json_schema",
-                 "json_schema": {
-                    "name": "response",
-                    "strict": true,
-                    "schema": cleanSchema
-                 }
-              };
-           }
+		// Send HTTP request to the provider and get the response
+		// The result is a struct with normalized keys
+		var result = sendChatRequest( arguments.chatRequest, dataPacket )
 
-           // Provider hooks + HTTP
-           dataPacket = preChatRequest( arguments.chatRequest, dataPacket );
-           var rawResult = sendChatRequest( arguments.chatRequest, dataPacket );
-           return postChatResponse( arguments.chatRequest, dataPacket, rawResult );
-        }
-     );
+		// Allow concrete providers to normalize the response before error checking and returnFormat processing
+		result = postChatResponse( arguments.chatRequest, dataPacket, result )
 
-     // 3. afterLLMCall (reverse=true)
-     llmContext.response = result;
-     arguments.chatRequest.fireMiddleware( "afterLLMCall", llmContext, true );
+		// If an error is returned, throw it
+		if( result.keyExists( "error" ) ){
+			writeLog(
+				text: result.error.toString(),
+				type: "error",
+				log : "ai"
+			)
 
-     // Error handling (KEEP ORIGINAL)
-     if( result.keyExists( "error" ) ){
-        writeLog( text: result.error.toString(), type: "error", log: "ai" );
-        BoxAnnounce( "onAIError", {
-           error: result.error,
-           errorMessage: result.error.toString(),
-           provider: this,
-           operation: "chat",
-           aiRequest: arguments.chatRequest,
-           canRetry: true
-        } );
-        throw( type: "ProviderError", message: result.error.toString() );
-     }
+			// Announce the error
+			BoxAnnounce( "onAIError", {
+				error: result.error,
+				errorMessage: result.error.toString(),
+				provider: this,
+				operation: "chat",
+				aiRequest: arguments.chatRequest,
+				canRetry: true
+			} );
 
-     // Token usage (KEEP ORIGINAL)
-     if( result.keyExists( "usage" ) ){
-        BoxAnnounce( "onAITokenCount", {
-           provider: this,
-           operation: "chat",
-           model: arguments.chatRequest.getModel(),
-           promptTokens: result.usage.keyExists( "prompt_tokens" ) ? result.usage.prompt_tokens : 0,
-           completionTokens: result.usage.keyExists( "completion_tokens" ) ? result.usage.completion_tokens : 0,
-           totalTokens: result.usage.keyExists( "total_tokens" ) ? result.usage.total_tokens : 0,
-           aiRequest: arguments.chatRequest,
-           usage: result.usage,
-           timestamp: now()
-        } );
-     }
-     // === PHASE 3.3 LLM HOOKS END ===
+			throw(
+				type   : "ProviderError",
+				message: result.error.toString()
+			);
+		}
+
+		// Announce token usage if available
+		if( result.keyExists( "usage" ) ){
+			BoxAnnounce( "onAITokenCount", {
+				provider: this,
+				operation: "chat",
+				model: arguments.chatRequest.getModel(),
+				promptTokens: result.usage.keyExists( "prompt_tokens" ) ? result.usage.prompt_tokens : 0,
+				completionTokens: result.usage.keyExists( "completion_tokens" ) ? result.usage.completion_tokens : 0,
+				totalTokens: result.usage.keyExists( "total_tokens" ) ? result.usage.total_tokens : 0,
+				aiRequest: arguments.chatRequest,
+				usage: result.usage,
+				timestamp: now()
+			} );
+		}
 
 		// Result returns, only if we are not using tool calls
-		// Max interactions check + TOOL LOOP WITH MIDDLEWARE (BLOCK 2)
-        var maxAllowed = arguments.chatRequest.getMaxInteractions() > 0 ? arguments.chatRequest.getMaxInteractions() : variables.maxInteractions;
-        if( arguments.interactionCount >= maxAllowed ){
-           writeLog( text: "Max tool call interactions (#maxAllowed#) exceeded", type: "error", log: "ai" );
-           throw( type: "MaxInteractionsExceeded", message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#)." );
-        }
-
-        var newMessages = arguments.chatRequest.getMessages().map( message -> message );
-        result.choices.each( ( choice, index ) => {
-           newMessages.append( choice.message );
-
-           choice.message.tool_calls.each( ( toolCall, i ) => {
-              var toolCtx = {
-                 "tool": chatRequest.getTool( toolCall.function.name ).getOrDefault(),
-                 "toolName": toolCall.function.name,
-                 "toolArgs": JSONDeserialize( toolCall.function.arguments ?: "{}" ),
-                 "toolCallId": toolCall.id
-              };
-
-              // beforeToolCall - FULL TERMINAL HANDLING
-              var toolResult = chatRequest.fireMiddleware( "beforeToolCall", toolCtx );
-              if( toolResult.isTerminal() ){
-                 switch( toolResult.getType() ){
-                    case "suspend": return toolResult;  // PASS UP
-                    case "reject":
-                       newMessages.append({
-                          "role": "tool",
-                          "tool_call_id": toolCall.id,
-                          "content": "Human rejected: #toolResult.getReason()#"
-                       });
-                       break;
-                    case "cancel": return AiMiddlewareResult.cancel( "Tool cancelled" );
-                    case "edit": toolCtx.toolArgs = toolResult.getData();
-                 }
-              }
-
-              // wrapToolCall
-              var toolOutput = chatRequest.fireWrapMiddleware(
-                 "wrapToolCall", toolCtx,
-                 () => chatRequest.getTool( toolCall.function.name )
-                    .map( tool => tool.invoke( toolCtx.toolArgs ) )
-                    .getOrDefault( "Tool not found" )
-              );
-
-              // afterToolCall
-              toolCtx.result = toolOutput;
-              chatRequest.fireMiddleware( "afterToolCall", toolCtx, true );
-
-              newMessages.append({
-                 "role": "tool",
-                 "tool_call_id": toolCall.id,
-                 "content": toolOutput
-              });
-           });
-        });
-
-        arguments.chatRequest.setMessages( newMessages );
-        return chat( arguments.chatRequest, arguments.interactionCount + 1 );
+		var toolCalls = result.choices.first().message?.tool_calls ?: arrayNew()
+		if( !toolCalls.len() ){
+			var content = result.choices.first().message.content;
+			// Determine return formats
+			switch( arguments.chatRequest.getReturnFormat() ){
+				case "all":
+					return result.choices;
+				case "raw":
+					return result;
+				case "json":
+					return jsonDeserialize( extractFromCodeBlock( content, "json" ) );
+				case "xml":
+					return xmlParse( extractFromCodeBlock( content, "xml" ) );
+				case "structuredOutput":
+					return populateStructuredOutput( content, arguments.chatRequest );
+				case "single": default:
+					return content;
+			}
+		}
 
 		/**
 		 * ---------------------------------------------------------------------------------------------------------
@@ -519,7 +475,7 @@ streamState.toolCalls.each( toolCall => {
     // 🔥 FIXED: DECLARE MISSING VARIABLES
     var toolAttempt = chatRequest.getTool( toolCall.function.name ?: "" );
     var toolArguments = deserializeJSON( toolCall.function.arguments ?: "{}" );
-
+    
     if( toolAttempt.isPresent() ){
         var tool = toolAttempt.get();
         newMessages.append({

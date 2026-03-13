@@ -94,8 +94,8 @@ class extends="AiBaseRunnable" {
 		}
 
 		// 🔥 PHASE 4: Checkpointer
-		if ( structKeyExists( arguments, "checkpointer" ) && 
-			 !isNullLocal( arguments.checkpointer ) && 
+		if ( structKeyExists( arguments, "checkpointer" ) &&
+			 !isNullLocal( arguments.checkpointer ) &&
 			 arguments.checkpointer.toString() != "" ) {
 			withCheckpointer( arguments.checkpointer, arguments.checkpointTTL );
 		}
@@ -106,13 +106,13 @@ class extends="AiBaseRunnable" {
 
 		// 🔥 PHASE 6: BACKWARD COMPAT - Auto-add MaxToolCallsMiddleware
 		if ( arguments.maxInteractions > 0 && !hasMaxToolCallsMiddleware() ) {
-			arrayAppend( variables.middleware, 
+			arrayAppend( variables.middleware,
 				new MaxToolCallsMiddleware(
 					maxCalls = arguments.maxInteractions,
 					exitBehavior = "end"
 				)
 			);
-			
+
 			writeLog(
 				text = "[bx-ai][AiAgent] Auto-added MaxToolCallsMiddleware (max=#arguments.maxInteractions#)",
 				type = "information",
@@ -149,12 +149,100 @@ class extends="AiBaseRunnable" {
 	 */
 	string function getThreadId() {
 		if ( len( variables.threadId ) ) return variables.threadId;
-		
+
 		if ( !variables.memories.isEmpty() ) {
 			return hash( variables.memories[1].key() & createUUID() );
 		}
 		return createUUID();
 	}
+
+	/**
+     * Save current state to checkpointer before suspension
+     * Auto-called when middleware suspends execution
+     */
+    AiAgent function saveCheckpoint() {
+        if ( isNull( variables.checkpointer ) ) {
+            throw(
+                type="NoCheckpointerException",
+                message="No checkpointer configured. Use withCheckpointer()"
+            );
+        }
+
+        var state = {
+            "messages": getMessages(),
+            "params": getParams(),
+            "options": getOptions(),
+            "pending": variables.pendingTool ?: {},
+            "threadId": getThreadId(),
+            "timestamp": now()
+        };
+
+        variables.checkpointer.saveState(
+            getThreadId(),
+            state,
+            variables.checkpointTTL
+        );
+
+        return this;
+    }
+
+    /**
+     * Resume from suspended checkpoint with human decision
+     * Handles approve/reject/edit workflows
+     * @decision AiMiddlewareResult with action (approve/reject/edit)
+     * @threadId Optional thread override
+     */
+    any function resume( required AiMiddlewareResult decision, string threadId="" ) {
+        // 1. Resolve thread ID
+        var tid = len( arguments.threadId ) ? arguments.threadId : getThreadId();
+
+        // 2. Validate checkpointer exists
+        if ( isNull( variables.checkpointer ) ) {
+            throw(
+                type="NoCheckpointerException",
+                message="No checkpointer configured for resume(). Use withCheckpointer()"
+            );
+        }
+
+        // 3. Load suspended state
+        var state = variables.checkpointer.loadState( tid );
+
+        // 4. Apply human decision to pending tool
+        switch( arguments.decision.getAction() ) {
+            case "approve":
+                state.pending.approved = true;
+                break;
+
+            case "reject":
+                arrayAppend( state.messages, {
+                    "role": "tool",
+                    "tool_call_id": state.pending.toolCallId ?: "",
+                    "content": "Human rejected tool execution"
+                });
+                break;
+
+            case "edit":
+                state.pending.toolArgs = arguments.decision.getData();
+                state.pending.approved = true;
+                break;
+
+            default:
+                throw(
+                    type="InvalidDecisionException",
+                    message="Decision action must be 'approve', 'reject', or 'edit'. Got: #arguments.decision.getAction()#"
+                );
+        }
+
+        // 5. Clear checkpoint (one-time use)
+        variables.checkpointer.clearState( tid );
+
+        // 6. Restore agent state
+        setMessages( state.messages );
+        setParams( state.params ?: {} );
+
+        // 7. Continue execution from suspension point
+        return this.run();
+    }
 
 	/**
 	 * 🔥 PHASE 4: RESUME from checkpoint with human decision (SYNC)
@@ -200,10 +288,10 @@ class extends="AiBaseRunnable" {
 	/**
 	 * 🔥 PHASE 7: Stream resume from checkpoint with human decision
 	 */
-	public void function resumeStream( 
-		required function onChunk, 
-		required AiMiddlewareResult decision, 
-		string threadId = "" 
+	public void function resumeStream(
+		required function onChunk,
+		required AiMiddlewareResult decision,
+		string threadId = ""
 	) {
 		var tid = len( arguments.threadId ) ? arguments.threadId : getThreadId();
 
@@ -239,7 +327,7 @@ class extends="AiBaseRunnable" {
 
 			// 🔥 PHASE 7: Stream continuation
 			streamFromMessages( arguments.onChunk, messages, params, options );
-			
+
 		} catch ( any e ) {
 			onChunk( AiMiddlewareResult.reject( e.message ) );
 		}
@@ -360,11 +448,11 @@ class extends="AiBaseRunnable" {
 	/**
 	 * 🔥 PHASE 7: STREAM from pre-built messages (used by resumeStream)
 	 */
-	private void function streamFromMessages( 
-		required function onChunk, 
-		required array messages, 
-		struct params = {}, 
-		struct options = {} 
+	private void function streamFromMessages(
+		required function onChunk,
+		required array messages,
+		struct params = {},
+		struct options = {}
 	) {
 		var chatRequest = new AiChatRequest().addMiddleware( variables.middleware );
 		var agentContext = {
@@ -397,7 +485,7 @@ class extends="AiBaseRunnable" {
 						variables.checkpointTTL
 					);
 				}
-				
+
 				onChunk( chunk );
 				agentContext.response = chunk;
 				chatRequest.fireMiddleware( "afterAgentRun", agentContext, true );
@@ -409,9 +497,9 @@ class extends="AiBaseRunnable" {
 
 			// Handle final completion chunk
 			if ( isStruct( chunk ) && chunk.keyExists( "finish_reason" ) ) {
-				var finalResponse = { 
-					"role": "assistant", 
-					"content": chunk.choices?.first()?.delta?.content ?: "" 
+				var finalResponse = {
+					"role": "assistant",
+					"content": chunk.choices?.first()?.delta?.content ?: ""
 				};
 				storeInMemory( messages.last(), finalResponse );
 				agentContext.response = finalResponse;

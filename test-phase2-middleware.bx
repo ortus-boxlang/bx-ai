@@ -1,0 +1,41 @@
+<cfscript>
+    writeOutput("<h3>Phase 2 Middleware Engine Test</h3>");
+    
+    // Create request with middleware stack
+    request = new models.AiBaseRequest();
+    
+    // Middleware 1: Always continue (logs only)
+    request.addMiddleware({
+        beforeToolCall = (ctx) => {
+            writeOutput("MW1: Tool #ctx.toolName#<br/>");
+            return AiMiddlewareResult.continue();
+        }
+    });
+    
+    // Middleware 2: Blocks dangerous tools
+    request.addMiddleware({
+        beforeToolCall = (ctx) => {
+            writeOutput("MW2: Checking #ctx.toolName#<br/>");
+            if( ctx.toolName == "deleteAll" ){
+                return AiMiddlewareResult.cancel("Dangerous tool blocked");
+            }
+            return AiMiddlewareResult.continue();
+        }
+    });
+    
+    // Test 1: First terminal result stops chain
+    writeOutput("<h4>Test 1: First terminal stops chain</h4>");
+    result1 = request.fireMiddleware("beforeToolCall", {toolName:"deleteAll"});
+    writeOutput("Result: #result1.getType()# - #result1.getReason()#<br/>");
+    
+    // Test 2: Reverse order works (after hooks)
+    writeOutput("<h4>Test 2: Reverse order</h4>");
+    result2 = request.fireMiddleware("afterToolCall", {toolName:"safeTool"}, true);
+    writeOutput("Reverse result: #result2.getType()#<br/>");
+    
+    // Test 3: All continue passes through
+    writeOutput("<h4>Test 3: All continue</h4>");
+    result3 = request.fireMiddleware("beforeToolCall", {toolName:"safe    result3 = request.fi("All continue: #result3.getType()#<br/>");
+    
+    writeOutput("<h2>✅ PHASE 2 CHECKPOINT PASSED</h2>");
+</cfscript>

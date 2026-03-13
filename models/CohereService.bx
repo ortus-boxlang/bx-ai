@@ -1,0 +1,528 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Cohere Service - Specialized embeddings and chat provider
+ * Cohere offers high-quality embeddings with excellent multilingual support
+ * @see https://docs.cohere.com/reference/embed
+ * @see https://docs.cohere.com/reference/chat
+ */
+import bxModules.bxai.models.util.SchemaBuilder
+
+class extends="BaseService"{
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		DEFAULT_CHAT_PARAMS = {
+			// https://docs.cohere.com/docs/models
+			"model" : "command-a-03-2025"
+		};
+		DEFAULT_EMBED_PARAMS = {
+			// https://docs.cohere.com/docs/cohere-embed
+			"model" : "embed-v4.0",
+			"input_type" : "search_document"
+		};
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.chatURL = "https://api.cohere.com/v1/chat"
+		variables.embeddingsURL = "https://api.cohere.com/v1/embed"
+		variables.name = "Cohere"
+	}
+
+	/**
+	 * Invoke a request to the provider
+	 *
+	 * @chatRequest The AI request to send to the provider
+	 *
+	 * @return The response from the provider according to the return format in the AI request
+	 */
+	function invoke( required AiChatRequest chatRequest ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.invoke( arguments.chatRequest )
+	}
+
+	/**
+	 * Invoke a request to the provider in streaming mode
+	 *
+	 * @chatRequest The Chat request to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
+	 *
+	 * @return void
+	 */
+	function invokeStream( required AiChatRequest chatRequest, required function callback ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.invokeStream( arguments.chatRequest, arguments.callback )
+	}
+
+	/**
+	 * Seed the default embedding model before delegating to base.
+	 */
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
+		return super.embeddings( arguments.embeddingRequest )
+	}
+
+	/**
+	 * Build Cohere-specific embedding request format:
+	 * - Renames `input` → `texts` array (Cohere requires an array)
+	 * - Injects required `input_type` field
+	 * - Passes through optional `embedding_types` and `truncate` params
+	 * @see https://docs.cohere.com/reference/embed
+	 */
+	private struct function preEmbeddingRequest( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
+		var input  = arguments.embeddingRequest.getInput();
+		var params = arguments.embeddingRequest.getParams();
+		var packet = {
+			"texts"     : isArray( input ) ? input : [ input ],
+			"model"     : arguments.dataPacket.model ?: arguments.embeddingRequest.getModel(),
+			"input_type": params.input_type ?: static.DEFAULT_EMBED_PARAMS.input_type
+		};
+		if( params.keyExists( "embedding_types" ) ){ packet.embedding_types = params.embedding_types; }
+		if( params.keyExists( "truncate" ) )        { packet.truncate         = params.truncate; }
+		return packet;
+	}
+
+	/**
+	 * Normalize Cohere's embedding response to the standard OpenAI format.
+	 * Cohere returns: { embeddings: [[...]], meta: { billed_units: { input_tokens } } }
+	 * On error Cohere returns: { message: "..." }
+	 *
+	 * Missing `embeddings` key is remapped to { error: "..." } so BaseService's
+	 * centralized error handler, logging, and onAIError announcement fire correctly.
+	 * @see https://docs.cohere.com/reference/embed
+	 */
+	private struct function postEmbeddingResponse( required AiEmbeddingRequest embeddingRequest, required struct dataPacket, required struct result ){
+		if( !arguments.result.keyExists( "embeddings" ) ){
+			return { "error": arguments.result.message ?: "Unknown Cohere embedding error" };
+		}
+		return {
+			"data"  : arguments.result.embeddings.map( (embedding, index) => {
+				return { "embedding": embedding, "index": index - 1, "object": "embedding" }
+			} ),
+			"model" : arguments.embeddingRequest.getModel(),
+			"object": "list",
+			"usage" : arguments.result.keyExists( "meta" ) && arguments.result.meta.keyExists( "billed_units" ) ? {
+				"prompt_tokens": arguments.result.meta.billed_units.input_tokens ?: 0,
+				"total_tokens" : arguments.result.meta.billed_units.input_tokens ?: 0
+			} : {}
+		};
+	}
+
+	/**
+	 * Cohere chat request
+	 * @see https://docs.cohere.com/reference/chat
+	 *
+	 * @chatRequest The AIChatRequest object to send to the provider
+	 * @interactionCount Current tool call interaction count (used internally)
+	 *
+	 * @throws ProviderError if the provider returns an error from the request
+	 * @throws MaxInteractionsExceeded if tool calls exceed the maximum allowed interactions
+	 */
+	@override
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		// Cohere has a different message format
+		// Extract the last message as the main message
+		var messages = arguments.chatRequest.getMessages();
+		var lastMessage = messages.last();
+
+		// Build chat history (all messages except the last one)
+		var chatHistory = messages.len() > 1 ?
+			messages.slice( 1, messages.len() - 1 ).map( msg => {
+				return {
+					"role": msg.role == "assistant" ? "CHATBOT" : "USER",
+					"message": msg.content
+				}
+			} ) : [];
+
+		// Build the data packet
+		var dataPacket = {
+			"message": lastMessage.content,
+			"model": arguments.chatRequest.getModel()
+		}
+
+		// Add chat history if exists
+		if( chatHistory.len() > 0 ){
+			dataPacket.chat_history = chatHistory
+		}
+
+		// Add system message if exists (preamble in Cohere)
+		var systemMessages = messages.filter( msg => msg.role == "system" );
+		if( systemMessages.len() > 0 ){
+			dataPacket.preamble = systemMessages.first().content
+		}
+
+		// Add other parameters (but not tools and response_format yet, we'll transform them)
+		var tempParams = arguments.chatRequest.getParams().duplicate()
+		var tools = tempParams?.tools ?: []
+		var responseFormat = tempParams?.response_format ?: ""
+        tempParams.delete( "response_format" )
+        tempParams.delete( "tools" )
+		dataPacket.append( tempParams )
+
+		// Structured output support (Cohere format)
+		if( arguments.chatRequest.isStructuredOutput() ){
+			// Clean internal metadata before sending to provider
+			var cleanSchema = SchemaBuilder::cleanSchema( arguments.chatRequest.getStructuredOutput() );
+			dataPacket.response_format = {
+				"type": "json_object",
+				"schema": cleanSchema
+			};
+		}
+
+		// Tooling support - Convert OpenAI format to Cohere format
+		// OpenAI: { type: "function", function: { name, description, parameters: { properties, required } } }
+		// Cohere: { name, description, parameter_definitions: { param_name: { type, description, required } } }
+		if( !isNull( tools ) && tools.len() > 0 ){
+			dataPacket.tools = tools.map( tool => {
+				var schema = tool.getSchema();
+				var cohereToolDef = {
+					"name": schema.function.name,
+					"description": schema.function.description,
+					"parameter_definitions": {}
+				};
+
+				// Convert properties to parameter_definitions
+				schema.function.parameters.properties.each( (paramName, paramDef) => {
+					cohereToolDef.parameter_definitions[ paramName ] = {
+						"type": paramDef.type,
+						"description": paramDef.description,
+						"required": schema.function.parameters.required.findNoCase( paramName ) > 0
+					};
+				} );
+
+				return cohereToolDef;
+			} );
+		}
+
+		// Send it
+		var result = sendChatRequest( arguments.chatRequest, dataPacket )
+
+		// If an error is returned, throw it
+		if( result.keyExists( "message" ) && !result.keyExists( "text" ) ){
+			throw(
+				type   : "ProviderError",
+				message: result.message.toString()
+			);
+		}
+
+		// Handle tool calls if present
+		if( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ){
+			/**
+			 * ---------------------------------------------------------------------------------------------------------
+			 * Max Interactions Check
+			 * ---------------------------------------------------------------------------------------------------------
+			 */
+			var maxAllowed = arguments.chatRequest.getMaxInteractions() > 0 ? arguments.chatRequest.getMaxInteractions() : variables.maxInteractions;
+			if( arguments.interactionCount >= maxAllowed ){
+				writeLog(
+					text: "Max tool call interactions (#maxAllowed#) exceeded",
+					type: "error",
+					log : "ai"
+				)
+				throw(
+					type   : "MaxInteractionsExceeded",
+					message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
+				);
+			}
+
+			// Execute each tool call
+			var toolResults = result.tool_calls.map( toolCall => {
+				// Find the tool in our original tools list
+				var tool = tools.filter( t => t.getSchema().function.name == toolCall.name ).first();
+
+				// Invoke the tool with the parameters
+				var toolOutput = tool.invoke( toolCall.parameters );
+
+				return {
+					"call": toolCall,
+					"outputs": [ { "result": toolOutput } ]
+				};
+			} );
+
+			// Make a follow-up request with tool results
+			// NOTE: Cohere requires EITHER message OR tool_results, not both (unless force_single_step=true)
+			var followUpPacket = {
+				"model": arguments.chatRequest.getModel(),
+				"tool_results": toolResults
+			};
+
+			// Re-add tools for potential multi-step tool use
+			if( dataPacket.keyExists( "tools" ) ){
+				followUpPacket.tools = dataPacket.tools;
+			}
+
+			// Re-add chat history
+			if( dataPacket.keyExists( "chat_history" ) ){
+				followUpPacket.chat_history = dataPacket.chat_history;
+			}
+
+			// Re-add preamble
+			if( dataPacket.keyExists( "preamble" ) ){
+				followUpPacket.preamble = dataPacket.preamble;
+			}
+
+			// Add any remaining parameters
+			followUpPacket.append( tempParams );
+
+			// Send follow-up request with tool results
+			// Cohere typically needs only one follow-up; additional tool calls would require another interaction
+			result = sendChatRequest( arguments.chatRequest, followUpPacket );
+
+			// Check if Cohere is requesting MORE tool calls (multi-step reasoning)
+			if( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ){
+				// Increment interaction count and recurse
+				return chat( arguments.chatRequest, arguments.interactionCount + 1 );
+			}
+		}
+
+		// Determine return formats
+		switch( arguments.chatRequest.getReturnFormat() ){
+			case "all":
+				return result;
+			case "raw":
+				return result;
+			case "json":
+				return jsonDeserialize( extractFromCodeBlock( result.text, "json" ) );
+			case "xml":
+				return xmlParse( extractFromCodeBlock( result.text, "xml" ) );
+             case "structuredOutput":
+                return populateStructuredOutput( result.text, arguments.chatRequest );
+			case "single": default:
+				return result.text ?: result.message ?: ""
+		}
+	}
+
+	/**
+	 * Cohere streaming chat request
+	 * Cohere uses Server-Sent Events (SSE) format
+	 * @see https://docs.cohere.com/reference/chat#stream
+	 *
+	 * @chatRequest The AIChatRequest object to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream
+	 */
+	@override
+	public function chatStream( required AiChatRequest chatRequest, required function callback ){
+		// Capture callback and chatRequest in local variables for closure scope
+		var userCallback = arguments.callback;
+		var thisChatRequest = arguments.chatRequest;
+		var requestedModel = arguments.chatRequest.getModel();
+		var emitNormalizedChunk = ( parsedChunk ) => {
+			var content = parsedChunk.text ?: ""
+			var finishReason = ""
+
+			if( parsedChunk.event_type == "stream-end" ){
+				finishReason = "stop"
+			}
+
+			userCallback( {
+				"provider": "Cohere",
+				"model": requestedModel,
+				"object": "chat.completion.chunk",
+				"choices": [
+					{
+						"index": 0,
+						"delta": {
+							"role": "assistant",
+							"content": content
+						},
+						"finish_reason": finishReason
+					}
+				],
+				"raw": parsedChunk
+			} );
+		};
+
+		// Cohere has a different message format
+		// Extract the last message as the main message
+		var messages = arguments.chatRequest.getMessages();
+		var lastMessage = messages.last();
+
+		// Build chat history (all messages except the last one)
+		var chatHistory = messages.len() > 1 ?
+			messages.slice( 1, messages.len() - 1 ).map( msg => {
+				return {
+					"role": msg.role == "assistant" ? "CHATBOT" : "USER",
+					"message": msg.content
+				}
+			} ) : [];
+
+		// Build the data packet with streaming enabled
+		var dataPacket = {
+			"message": lastMessage.content,
+			"model": arguments.chatRequest.getModel(),
+			"stream": true
+		}
+
+		// Add chat history if exists
+		if( chatHistory.len() > 0 ){
+			dataPacket.chat_history = chatHistory
+		}
+
+		// Add system message if exists (preamble in Cohere)
+		var systemMessages = messages.filter( msg => msg.role == "system" );
+		if( systemMessages.len() > 0 ){
+			dataPacket.preamble = systemMessages.first().content
+		}
+
+		// Add other parameters (but not tools and response_format yet, we'll transform them)
+		var tempParams = arguments.chatRequest.getParams().duplicate()
+		var tools = tempParams?.tools ?: []
+		var responseFormat = tempParams?.response_format ?: ""
+		tempParams.delete( "response_format" )
+		tempParams.delete( "tools" )
+		dataPacket.append( tempParams )
+
+		// Structured output support (Cohere format)
+		if( arguments.chatRequest.isStructuredOutput() ){
+			// Clean internal metadata before sending to provider
+			var cleanSchema = SchemaBuilder::cleanSchema( arguments.chatRequest.getStructuredOutput() );
+			dataPacket.response_format = {
+				"type": "json_object",
+				"schema": cleanSchema
+			};
+		}
+
+		// Tooling support - Convert OpenAI format to Cohere format
+		if( !isNull( tools ) && tools.len() > 0 ){
+			dataPacket.tools = tools.map( tool => {
+				var schema = tool.getSchema();
+				var cohereToolDef = {
+					"name": schema.function.name,
+					"description": schema.function.description,
+					"parameter_definitions": {}
+				};
+
+				// Convert properties to parameter_definitions
+				schema.function.parameters.properties.each( (paramName, paramDef) => {
+					cohereToolDef.parameter_definitions[ paramName ] = {
+						"type": paramDef.type,
+						"description": paramDef.description,
+						"required": schema.function.parameters.required.findNoCase( paramName ) > 0
+					};
+				} );
+
+				return cohereToolDef;
+			} );
+		}
+
+		// Announce the request
+		BoxAnnounce(
+			"onAIChatRequest",
+			{
+				"dataPacket" : dataPacket,
+				"chatRequest": arguments.chatRequest,
+				"provider"   : this
+			}
+		);
+
+		// Log the request if enabled
+		if( arguments.chatRequest.getLogRequestToConsole() ){
+			println( "Cohere AI Request (Stream)" )
+			println( dataPacket )
+		}
+
+		// Build HTTP request with fluent API
+		var httpRequest = http( getChatURL() )
+			.method( "POST" )
+			.charset( "utf-8" )
+			.timeout( arguments.chatRequest.getTimeout() )
+			.header( "content-type", "application/json" )
+			.header( "Authorization", "Bearer #arguments.chatRequest.getApiKey()#" )
+			.sse( true ); // Enable SSE mode for Cohere streaming
+
+		// Add custom headers
+		for( var thisHeader in arguments.chatRequest.getHeaders() ){
+			httpRequest.header( thisHeader, arguments.chatRequest.getHeaders()[ thisHeader ] );
+		}
+
+		// Set request body and callbacks
+		httpRequest
+			.body( jsonSerialize( dataPacket ) )
+			.onChunk( ( chunk, lastEventId, httpResult, httpClient, response ) => {
+				// chunk is already parsed SSE data: { data, event, id, retry }
+				// For SSE streams, chunk.data contains the actual payload
+
+				// Check for stream end marker
+				if( chunk.data == "[DONE]" ){
+					return;
+				}
+
+				// Try to parse and send to callback
+				try {
+					var parsedChunk = jsonDeserialize( chunk.data );
+					emitNormalizedChunk( parsedChunk );
+				} catch( any e ){
+					writeLog(
+						text: "Error parsing Cohere stream chunk: #e.message# - Data: #chunk.data#",
+						type: "error",
+						log : "ai"
+					)
+				}
+			} )
+			.onError( ( error, httpResult ) => {
+				var errorMessage = "HTTP Error: #error.message#";
+
+				writeLog(
+					text: "Cohere Stream Request Error: #errorMessage#",
+					type: "error",
+					log : "ai"
+				)
+
+				// Announce the error
+				BoxAnnounce( "onAIError", {
+					error: error,
+					errorMessage: errorMessage,
+					provider: this,
+					operation: "stream",
+					aiRequest: thisChatRequest,
+					canRetry: true
+				} );
+
+				throw(
+					type   : "ProviderError",
+					message: errorMessage
+				);
+			} )
+			.onComplete( ( httpResult ) => {
+				// Log the response if enabled
+				if( thisChatRequest.getLogResponse() ){
+					writeLog(
+						text: "Cohere stream completed successfully",
+						type: "info",
+						log : "ai"
+					)
+				}
+
+				BoxAnnounce(
+					"onAIChatResponse",
+					{
+						"chatRequest" : thisChatRequest,
+						"provider"    : this,
+						"streamComplete" : true
+					}
+				);
+			} )
+			.send();
+	}
+
+
+}

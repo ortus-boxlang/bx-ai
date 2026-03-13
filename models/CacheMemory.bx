@@ -470,53 +470,6 @@ class extends="BaseMemory" {
 	}
 
 	/**
-     * 🔥 🔥 🔥 PHASE 4 CHECKPOINT METHODS 🔥 🔥 🔥
-     */
-
-    /**
-     * Save agent execution state for HITL resume
-     * Stores: { messages, params, options, pending }
-     * @threadId Unique execution thread identifier
-     * @state Complete agent state struct
-     * @ttlMinutes Minutes until auto-expiry (0 = no expiry)
-     */
-    public void function saveState( required string threadId, required struct state, numeric ttlMinutes = 0 ) {
-       var key = "checkpoint_#arguments.threadId#";
-       var ttlSeconds = arguments.ttlMinutes ? arguments.ttlMinutes * 60 : 30 * 60;
-       variables.cache.set( key, arguments.state, ttlSeconds );
-    }
-
-    /**
-     * Load saved agent state. Throws CheckpointNotFoundException if missing
-     * @threadId Thread identifier to load
-     * @return { messages: [], params: {}, options: {}, pending: {} }
-     */
-    public struct function loadState( required string threadId ) {
-       var key = "checkpoint_#arguments.threadId#";
-       var state = variables.cache.get( key );
-
-       if( isNull( state ) || state.isEmpty() ) {
-          throw(
-             type   = "CheckpointNotFoundException",
-             message= "Checkpoint not found for threadId: #arguments.threadId#"
-          );
-       }
-
-       return state;
-    }
-
-    /**
-     * Delete checkpoint after resume (cleanup)
-     * @threadId Thread identifier to clear
-     */
-    public void function clearState( required string threadId ) {
-       var key = "checkpoint_#arguments.threadId#";
-       variables.cache.remove( key );
-    }
-
-
-
-	/**
 	 * --------------------------------------------------------------------------
 	 * Private Helpers
 	 * --------------------------------------------------------------------------
