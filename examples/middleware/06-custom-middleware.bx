@@ -1,20 +1,84 @@
-component {
-    function run() {
-        printLine( "=== 06 - Custom Middleware ===" );
-        var agent = new AiAgent()
-            .addMiddleware( new CustomMiddleware() );
-        agent.ask( "Hello world" );
+/**
+ * 06-custom-middleware.bx
+ * Building a custom middleware class by extending BaseAiMiddleware.
+ *
+ * This example builds a BudgetMiddleware that tracks token usage across
+ * a run and cancels execution if a token budget is exceeded.
+ */
+
+// ============================================================================
+// models/middleware/BudgetMiddleware.bx
+// ============================================================================
+component extends="models.middleware.BaseAiMiddleware" accessors="true" {
+
+    property name="maxTokens"  type="numeric" default=10000;
+    property name="usedTokens" type="numeric" default=0;
+
+    function init( numeric maxTokens = 10000 ) {
+        variables.maxTokens  = arguments.maxTokens;
+        variables.usedTokens = 0;
+        return this;
     }
+
+    // Reset counter at the start of each run
+    AiMiddlewareResult function beforeAgentRun( required struct context ) {
+        variables.usedTokens = 0;
+        writeLog(
+            text : "[BudgetMiddleware] Run started — budget: #variables.maxTokens# tokens",
+            type : "information",
+            log  : "ai"
+        );
+        return AiMiddlewareResult.continue();
+    }
+
+    // Track token usage after each LLM response
+    AiMiddlewareResult function afterLLMCall( required struct context ) {
+        if (
+            context.keyExists( "response" )
+            && isStruct( context.response )
+            && context.response.keyExists( "usage" )
+        ) {
+            var used              = context.response.usage.total_tokens ?: 0;
+            variables.usedTokens += used;
+
+            writeLog(
+                text : "[BudgetMiddleware] #used# tokens used this call — #variables.usedTokens#/#variables.maxTokens# total",
+                type : "information",
+                log  : "ai"
+            );
+
+            if ( variables.usedTokens > variables.maxTokens ) {
+                var reason = "Token budget exceeded: #variables.usedTokens# of #variables.maxTokens# used";
+                writeLog( text: "[BudgetMiddleware] #reason#", type: "warning", log: "ai" );
+                return AiMiddlewareResult.cancel( reason );
+            }
+        }
+
+        return AiMiddlewareResult.continue();
+    }
+
+    // Report final usage after the run
+    AiMiddlewareResult function afterAgentRun( required struct context ) {
+        writeLog(
+            text : "[BudgetMiddleware] Run complete — #variables.usedTokens#/#variables.maxTokens# tokens used",
+            type : "information",
+            log  : "ai"
+        );
+        return AiMiddlewareResult.continue();
+    }
+
 }
 
-class CustomMiddleware extends AiMiddleware {
-    function onToolCall( toolCall ) {
-        printLine( "🔥 CUSTOM: #toolCall.name# called with args: #serializeJSON(toolCall.args)#" );
-        return super.onToolCall( toolCall );
-    }
-    
-    function onError( error ) {
-        printLine( "⚠️  Custom error: #error.message#" );
-        return AiMiddlewareResult.resume();
-    }
-}
+// ============================================================================
+// Usage
+// ============================================================================
+var agent = aiAgent(
+    name       : "BudgetedAgent",
+    middleware : [
+        new LoggingMiddleware(),
+        new BudgetMiddleware( maxTokens: 5000 )
+    ]
+);
+
+var result = agent.run( "Summarise the last 30 days of sales activity" );
+println( result );

@@ -1,12 +1,39 @@
-component {
-    function run() {
-        printLine( "=== 02 - GuardrailMiddleware ===" );
-        var agent = new AiAgent()
-            .addMiddleware( new GuardrailMiddleware( {
-                "blockTools": [ "delete_file", "exec_shell" ],
-                "blockPatterns": [ "DELETE.*FROM", "rm -rf" ]
-            } ) );
-        var result = agent.ask( "Delete all files from production" );
-        printLine( "Result: #result.getStatus()#" );
+/**
+ * 02-guardrails.bx
+ * GuardrailMiddleware — block dangerous tools and argument patterns.
+ */
+
+var guardrails = new GuardrailMiddleware(
+    // Completely block these tools — they will never execute
+    blockedTools : [ "dropTable", "deleteAllRecords", "truncateDatabase" ],
+
+    // Block specific argument keys — reject if present regardless of value
+    blockedArgs  : {
+        executeSQL    : [ "rawQuery" ],
+        fileOperation : [ "systemPath" ]
+    },
+
+    // Block argument values matching a pattern
+    // Use (?i) inline flag for case-insensitive matching
+    argPatterns : {
+        executeSQL : {
+            query : "(?i)DROP\s+TABLE|TRUNCATE|DELETE\s+FROM\s+\w+\s*$"
+        },
+        runCommand : {
+            command : "(?i)rm\s+-rf|format\s+c:|del\s+/[fqs]"
+        }
     }
-}
+);
+
+var agent = aiAgent(
+    name       : "SafeAgent",
+    middleware : [ new LoggingMiddleware(), guardrails ]
+);
+
+// This will proceed normally — readData is not blocked
+var result = agent.run( "Show me all active users" );
+println( result );
+
+// This will be rejected — the SQL pattern matches
+result = agent.run( "Delete all users from the users table" );
+println( result );

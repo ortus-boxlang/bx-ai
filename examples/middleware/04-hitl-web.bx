@@ -1,127 +1,140 @@
-component {
-    function run() {
-        printLine( "=== 04 - HITL Web Suspend/Resume ===" );
-        printLine( "📱 CLI Demo + ColdBox Controller" );
-        
-        // CLI Demo
-        var agent = new AiAgent()
-            .addMiddleware( new HumanInTheLoopMiddleware( mode="suspend" ) );
-        var result = agent.ask( "Modify /etc/hosts" );
-        if ( result.isSuspended() ) {
-            printLine( "🔄 CLI Suspended: #result.getData().question#" );
-            printLine( "   Resume: agent.resume( AiMiddlewareResult.approve(), '#result.getThreadId()#' )" );
-        }
-        
-        printLine( chr(10) & "🌐 === FULL COLDBOX HANDLER === " );
-        printLine( "📁 handlers/ApprovalController.bx" );
-        printLine( repeatString( "=", 60 ) );
+/**
+ * 04-hitl-web.bx
+ * HumanInTheLoopMiddleware — web suspend/resume pattern.
+ *
+ * This example shows the full ColdBox controller pattern for async HITL
+ * in a web application. The agent suspends when a tool needs approval,
+ * saves state to cache, and resumes in a subsequent HTTP request.
+ *
+ * Flow:
+ *   POST /api/agent/run       → agent runs, may suspend
+ *   POST /api/agent/approve   → human approves/rejects, agent continues
+ *   POST /api/agent/approve   → repeat if another tool needs approval
+ */
+
+// ============================================================================
+// AgentService.bx — shared factory (inject via WireBox in a real app)
+// ============================================================================
+component singleton {
+
+    function buildAgent() {
+        return aiAgent(
+            name         : "WebAgent",
+            middleware   : [
+                new LoggingMiddleware(),
+                new HumanInTheLoopMiddleware(
+                    interruptOn : {
+                        deleteRecord : {
+                            allowedDecisions : [ "approve", "reject" ],
+                            description      : "Permanently delete a record"
+                        },
+                        transferFunds : {
+                            allowedDecisions : [ "approve", "reject" ],
+                            description      : "Transfer funds between accounts"
+                        }
+                    },
+                    autoApprove : [ "readRecord", "listRecords" ],
+                    mode        : "suspend"   // always suspend in web mode
+                )
+            ],
+            checkpointer : aiMemory( "cache" ),
+            checkpointTTL: 30   // minutes before abandoned checkpoint expires
+        );
     }
+
 }
 
-// ========================================
-// handlers/ApprovalController.bx
-// ========================================
-printLine( '
-component extends="coldbox.system.OrthoStack.controllers.RestHandler" {
+// ============================================================================
+// AgentController.bx — ColdBox REST controller
+// ============================================================================
+component {
+
+    property name="agentService" inject;
 
     /**
-    * Build configured AI Agent factory
-    */
-    function buildAgent() {
-        return new AiAgent()
-            .addMiddleware( new HumanInTheLoopMiddleware( mode="suspend" ) );
-    }
+     * Start an agent run.
+     * POST /api/agent/run
+     * Body: { "input": "Delete order 42" }
+     *
+     * Response (suspended):
+     *   { "status": "pending_approval", "question": "...", "threadId": "..." }
+     *
+     * Response (complete):
+     *   { "status": "complete", "response": "..." }
+     */
+    function run( event, rc, prc ) {
+        param rc.input = "";
 
-    // POST /api/approval/suspend
-    function suspend( event, rc, prc ) {
-        prc.agent = buildAgent();
-        prc.threadId = rc.threadId ?: createUUID();
-        
-        var result = prc.agent.ask( rc.question ?: "test", prc.threadId );
-        
-        if( result.isSuspended() ) {
-            return event
-                .getResponse()
-                .setData( {
-                    "status": "pending_approval",
-                    "question": result.getData().question,
-                                                                             sult.getData().tools ?: [],
-                    "nextAction": "POST /api/approval/approve/#prc.threadId#"
-                } );
-        }
-        
-        return event
-            .getResponse()
-            .setData( {
-                "status": "complete", 
-                "response": result.getData()
+        var agent  = agentService.buildAgent();
+        var result = agent.run( rc.input );
+
+        if ( isInstanceOf( result, "AiMiddlewareResult" ) && result.isSuspended() ) {
+            return event.renderData( type: "json", data: {
+                "status"  : "pending_approval",
+                "question": result.getData().question,
+                "toolName": result.getData().toolName,
+                "toolArgs": result.getData().toolArgs,
+                "threadId": agent.getThreadId()
             } );
+        }
+
+        return event.renderData( type: "json", data: {
+            "status"  : "complete",
+            "response": result
+        } );
     }
 
-    // POST /api/approval/approve/{threadId}
+    /**
+     * Approve a suspended tool call.
+     * POST /api/agent/approve
+     * Body: { "threadId": "...", "decision": "approve" | "reject" | "edit",
+     *         "reason": "optional rejection reason",
+     *         "editedArgs": { "optional": "modified args struct" } }
+     *
+     * Response follows the same shape as run() — may suspend again if
+     * another tool needs approval.
+     */
     function approve( event, rc, prc ) {
-        prc.agent = buildAgent();
-        var decision = AiMiddlewareResult.approve();
-        
-        var result = prc.agent.resume( decision, rc.threadId ?: prc.threadId );
-        
-        if( isInstanceOf( result, "A        if( isInstanceOf( result, "A        if( isInstanceOf( result, r tool needs approval
-            return event
-                .getResponse()
-                .setData( {
-                    "status": "pending_approval",
-                    "question                    "question                    "questidId": prc.agent.getThreadId(),
-                    "tools": result.getData().tools ?: []
+        param rc.decision   = "approve";
+        param rc.reason     = "";
+        param rc.editedArgs = {};
+
+        var agent = agentService.buildAgent();
+
+        var decision = "";
+        switch ( rc.decision ) {
+            case "approve":
+                decision = AiMiddlewareResult.approve();
+                break;
+            case "reject":
+                decision = AiMiddlewareResult.reject( rc.reason );
+                break;
+            case "edit":
+                var args = isStruct( rc.editedArgs ) ? rc.editedArgs : deserializeJSON( rc.editedArgs );
+                decision = AiMiddlewareResult.edit( args );
+                break;
+            default:
+                return event.renderData( type: "json", statusCode: 400, data: {
+                    "error": "Invalid decision. Must be approve, reject, or edit."
                 } );
         }
-        
-        return event
-            .getResponse()
-            .setData( {
-                "status": "complete",
-                "response": result.getData()
-            }             }             }        /reject/{threadId}
-    function reject( event, rc, prc ) {
-        prc.ag        prc.ag        prc.ag        pt = prc.agent.resume( 
-            AiMiddlewareResult.reject( rc.reason ?: "Human rejected" ), 
-            rc.threadId 
-        );
-        
-        return event
-            .getResponse()
-            .setData( {
-                "status": "rejected",
-                "reason": result.getReason(),
-                "threadId": rc.threadId
-            } );
-    }
 
-    // POST /api/approval/edit/{threadId}
-    function edit( event, rc, prc ) {
-        prc.agent = buildAgent();
-        var edited = AiMiddlewareResult.approveWithEdit( rc.edits ?: {} );
-        
-        var result = prc.agent.resume( edited, rc.threadId );
-        
-        return event
-            .getResponse()
-            .setData( {
-                "status": result.isComplete() ? "complete" : "pending_approval",
-                "editsApplied": rc.edits,
-                "response": result.getData()
-            } );
-    }
+        var result = agent.resume( decision, rc.threadId );
 
-    function index( event, rc, prc ) {
-    function index( evenapi/approval/index" );
+        // May suspend again — another tool in the same run needs approval
+        if ( isInstanceOf( result, "AiMiddlewareResult" ) && result.isSuspended() ) {
+            return event.renderData( type: "json", data: {
+                "status"  : "pending_approval",
+                "question": result.getData().question,
+                "toolName": result.getData().toolName,
+                "toolArgs": result.getData().toolArgs,
+                "threadId": agent.getThreadId()
+            } );
+        }
+
+        return event.renderData( type: "json", data: {
+            "status"  : "complete",
+            "response": result
+        } );
     }
 }
-' );
-
-printLine( chr(10) & "🚀 === WEB FLOW EXAMPLE ===" );
-printLine( "1. POST /api/approval/suspend {question: 'delete logs'} → pending_approval" );
-printLine( "2. POST /api/approval/approve/{threadId} → complete OR another pending" );
-printLine( "3. POST /api/approval/reject/{threadId} {reason: 'security'} → rejected" );
-printLine( "4. POST /api/approval/edit/{threadId} {edits: {filename: 'safe.log'}}" );
-
-printLine( chr(10) & "✅ COMPLETE - Ready for ColdBox!" );
