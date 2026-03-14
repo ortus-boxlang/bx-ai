@@ -1,0 +1,166 @@
+/**
+ * 07-struct-middleware.bx — Using Struct-of-Closures Middleware Syntax
+ *
+ * Instead of creating a full component class you can pass a plain struct
+ * containing closure functions. The framework automatically wraps it via
+ * StructMiddlewareAdapter so it behaves identically to a class-based
+ * middleware in the pipeline.
+ *
+ * Rules:
+ *   • Only define the hooks you need — omitted keys default to continue()
+ *   • Each closure receives the same context struct a class method would
+ *   • Closures must return AiMiddlewareResult (continue, reject, cancel, etc.)
+ *   • Class-based and struct-based middleware can be freely mixed in the array
+ *
+ * Available hook keys:
+ *   beforeAgentRun, afterAgentRun,
+ *   beforeLLMCall,  afterLLMCall,
+ *   beforeToolCall, afterToolCall,
+ *   onError,
+ *   wrapLLMCall,    wrapToolCall
+ */
+
+println( "=== Middleware Example 07: Struct-of-Closures Middleware ===" )
+println( "" )
+
+// ---------------------------------------------------------------------------
+// 1. Audit middleware — observe every event without blocking anything
+// ---------------------------------------------------------------------------
+
+auditMiddleware = {
+
+    beforeAgentRun: ( context ) => {
+        println( "[AUDIT] Run started  | agent=#context.agent.agentName# input=#left( toString( context.input ?: '' ), 60 )#" )
+        return AiMiddlewareResult.continue()
+    },
+
+    afterAgentRun: ( context ) => {
+        println( "[AUDIT] Run finished | agent=#context.agent.agentName# response=#left( toString( context.response ?: '' ), 60 )#" )
+        return AiMiddlewareResult.continue()
+    },
+
+    beforeToolCall: ( context ) => {
+        println( "[AUDIT] Tool called  | #context.toolName# args=#serializeJSON( context.toolArgs ?: {} )#" )
+        return AiMiddlewareResult.continue()
+    },
+
+    afterToolCall: ( context ) => {
+        println( "[AUDIT] Tool done    | #context.toolName# result=#left( toString( context.result ?: '' ), 60 )#" )
+        return AiMiddlewareResult.continue()
+    }
+
+}
+
+// ---------------------------------------------------------------------------
+// 2. Per-run tool-call rate limiter — max N tool calls per agent.run()
+// ---------------------------------------------------------------------------
+//
+// Closures capture outer variables, so the counter is shared by reference.
+
+var toolCallCount = 0
+var maxToolCalls  = 2
+
+rateLimitMiddleware = {
+
+    beforeAgentRun: ( context ) => {
+        toolCallCount = 0   // reset at the start of each run
+        return AiMiddlewareResult.continue()
+    },
+
+    beforeToolCall: ( context ) => {
+        toolCallCount++
+        if ( toolCallCount > maxToolCalls ) {
+            return AiMiddlewareResult.reject(
+                "Rate limit: max #maxToolCalls# tool calls per run (attempt ##toolCallCount#)"
+            )
+        }
+        return AiMiddlewareResult.continue()
+    }
+
+}
+
+// ---------------------------------------------------------------------------
+// 3. Register both struct middlewares on an agent
+// ---------------------------------------------------------------------------
+
+greetTool = aiTool(
+    name       : "greet",
+    description: "Greet a person by name",
+    action     : ( name ) => "Hello, #arguments.name#!"
+).addParameter( "name", "string", "Person's name", true )
+
+agent = aiAgent(
+    name        : "StructMiddlewareAgent",
+    instructions: "Greet people by name using the greet tool. Greet each person individually.",
+    tools       : [ greetTool ],
+    middleware  : [ auditMiddleware, rateLimitMiddleware ]
+)
+
+println( "Agent created with two struct-based middleware" )
+println( "" )
+
+println( "User: Greet Alice and Bob" )
+response = agent.run( "Greet Alice and Bob" )
+println( "Agent: #response#" )
+println( "" )
+
+// ---------------------------------------------------------------------------
+// 4. Inline one-liner — single hook as an anonymous struct
+// ---------------------------------------------------------------------------
+
+println( "=== Inline Single-Hook Middleware ===" )
+
+agent2 = aiAgent(
+    name        : "InlineAgent",
+    instructions: "You are a helpful assistant. Answer concisely.",
+    middleware  : [
+        {
+            beforeLLMCall: ( ctx ) => {
+                println( "[inline] LLM call → #arrayLen( ctx.messages ?: [] )# messages in context" )
+                return AiMiddlewareResult.continue()
+            }
+        }
+    ]
+)
+
+println( "User: What is 6 times 7?" )
+println( "Agent: #agent2.run( 'What is 6 times 7?' )#" )
+println( "" )
+
+// ---------------------------------------------------------------------------
+// 5. Mixing struct and class-based middleware in one array
+// ---------------------------------------------------------------------------
+
+println( "=== Mixed Stack: Class + Struct ===" )
+
+mixedAgent = aiAgent(
+    name        : "MixedAgent",
+    instructions: "You are a helpful assistant.",
+    tools       : [ greetTool ],
+    middleware  : [
+        // Built-in class-based middleware
+        new bxModules.bxai.models.middleware.builtin.LoggingMiddleware(
+            logName: "ai-struct-demo",
+            logArgs: true
+        ),
+        // Ad-hoc struct middleware
+        {
+            beforeToolCall: ( ctx ) => {
+                println( "[struct] About to call tool: #ctx.toolName#" )
+                return AiMiddlewareResult.continue()
+            }
+        }
+    ]
+)
+
+println( "User: Greet Charlie" )
+println( "Agent: #mixedAgent.run( 'Greet Charlie' )#" )
+println( "" )
+
+println( "=== Summary ===" )
+println( "Struct middleware:" )
+println( "  • Pass a struct of closures anywhere a middleware instance is accepted" )
+println( "  • Only define the hooks you need — rest are no-ops" )
+println( "  • StructMiddlewareAdapter wraps the struct transparently" )
+println( "  • Mix freely with class-based middleware in the same array" )
+println( "  • Closures capture outer scope — useful for shared counters / state" )
