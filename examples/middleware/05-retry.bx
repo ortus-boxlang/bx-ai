@@ -1,0 +1,142 @@
+/**
+ * 05-retry.bx — RetryMiddleware on Flaky Tool Calls
+ *
+ * RetryMiddleware automatically retries failed LLM API calls and tool
+ * executions using exponential backoff. It wraps the call handlers rather
+ * than using before/after hooks, so the agent sees a single logical attempt.
+ *
+ * Constructor options:
+ *   maxRetries   – maximum additional attempts after the first failure (default 3)
+ *   backoffFactor– wait = backoffFactor ^ attemptNumber seconds (default 1.5)
+ *   retryOn      – array of exception type substrings to retry; [] = retry all
+ *   retryLLM     – enable retries for LLM API calls (default true)
+ *   retryTools   – enable retries for tool executions (default true)
+ *
+ * Hooks used (wrap hooks, not sequential hooks):
+ *   wrapLLMCall  – wraps the LLM call handler
+ *   wrapToolCall – wraps the tool call handler
+ *
+ * Note: file is named RetryMidlleware (typo preserved from source).
+ */
+
+println( "=== Middleware Example 05: RetryMiddleware ===" )
+println( "" )
+
+// --- Simulate a flaky external API -------------------------------------------
+//
+// Fails for the first two invocations, succeeds on the third.
+// In production this would be a real network call.
+
+callCount = 0
+
+flakyTool = aiTool(
+    name       : "fetch_report",
+    description: "Fetch a report from an external reporting API",
+    action     : () => {
+        callCount++
+        if ( callCount < 3 ) {
+            throw(
+                type   : "NetworkException",
+                message: "Connection timed out (attempt ##callCount)"
+            )
+        }
+        return { status: "ok", report: "Q3 summary data (retrieved on attempt ##callCount)" }
+    }
+)
+
+// --- Configure RetryMiddleware -----------------------------------------------
+
+retry = new bxModules.bxai.models.middleware.builtin.RetryMidlleware(
+    maxRetries   : 3,                                           // up to 3 retries
+    backoffFactor: 1.5,                                         // 1.5s, 2.25s, 3.375s
+    retryOn      : [ "NetworkException", "TimeoutException" ],  // only transient errors
+    retryLLM     : true,    // also retry failed LLM API calls
+    retryTools   : true     // retry failed tool executions
+)
+
+// --- Agent with retry middleware ---------------------------------------------
+
+agent = aiAgent(
+    name        : "ResilientAgent",
+    instructions: "You are a data analyst. Fetch reports using the fetch_report tool and summarize them.",
+    tools       : [ flakyTool ],
+    middleware  : [ retry ]
+)
+
+println( "RetryMiddleware: maxRetries=3, backoffFactor=1.5" )
+println( "Retry filter: NetworkException, TimeoutException" )
+println( "" )
+
+println( "User: Fetch the latest report" )
+response = agent.run( "Fetch the latest report" )
+println( "Agent: #response#" )
+println( "Total tool invocations: #callCount# (2 failures + 1 success)" )
+println( "" )
+
+// --- Retry all exceptions (empty retryOn) ------------------------------------
+
+println( "=== Retry ALL Exceptions ===" )
+callCount = 0
+
+retryAll = new bxModules.bxai.models.middleware.builtin.RetryMidlleware(
+    maxRetries: 2,
+    retryOn   : []  // empty array = retry on any exception type
+)
+
+agent2 = aiAgent(
+    name        : "RetryAllAgent",
+    instructions: "Fetch the report using fetch_report.",
+    tools       : [ flakyTool ],
+    middleware  : [ retryAll ]
+)
+
+println( "User: Get the report data" )
+response2 = agent2.run( "Get the report data" )
+println( "Agent: #response2#" )
+println( "Total tool invocations: #callCount#" )
+println( "" )
+
+// --- Stacking Retry + Logging ------------------------------------------------
+
+println( "=== Stack: Logging → RetryMiddleware ===" )
+callCount = 0
+
+stackedAgent = aiAgent(
+    name        : "LoggedResilientAgent",
+    instructions: "Fetch the report and summarize it.",
+    tools       : [ flakyTool ],
+    middleware  : [
+        // Logging first so it observes all attempts, including retried ones
+        new bxModules.bxai.models.middleware.builtin.LoggingMiddleware(
+            logName: "ai-retry-demo",
+            logLevel: "info"
+        ),
+        retry
+    ]
+)
+
+println( "User: Fetch and summarize the report" )
+response3 = stackedAgent.run( "Fetch and summarize the report" )
+println( "Agent: #response3#" )
+println( "" )
+
+// --- Tool-only retry (skip LLM retries) --------------------------------------
+
+println( "=== Tool-Only Retry (retryLLM=false) ===" )
+
+toolOnlyRetry = new bxModules.bxai.models.middleware.builtin.RetryMidlleware(
+    maxRetries: 3,
+    retryLLM  : false,   // don't retry LLM calls — fail fast on model errors
+    retryTools: true
+)
+
+println( "RetryMiddleware configured: retryLLM=false, retryTools=true" )
+println( "Useful when LLM quota errors should surface immediately" )
+println( "" )
+
+println( "=== Summary ===" )
+println( "RetryMiddleware uses wrap hooks (not sequential hooks):" )
+println( "  wrapLLMCall  → retries LLM API calls on transient failures" )
+println( "  wrapToolCall → retries tool executions on transient failures" )
+println( "Backoff formula: waitSeconds = backoffFactor ^ attemptNumber" )
+println( "retryOn: [] retries ALL exceptions; specify types to be selective" )
