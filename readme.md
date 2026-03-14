@@ -1182,13 +1182,13 @@ Every hook must return an `AiMiddlewareResult`:
 
 ```js
 // Allow execution to continue
-return AiMiddlewareResult.continue();
+return AiMiddlewareResult.continueChain();
 
 // Block execution with a reason
 return AiMiddlewareResult.reject( "Blocked by security policy" );
 
 // Pause for human review (HITL)
-return AiMiddlewareResult.suspend( data = {}, reason = "Human review required" );
+return AiMiddlewareResult.suspend( { question: "Approve?", toolName: ctx.toolName, toolArgs: ctx.toolArgs, toolCallId: ctx.toolCallId } );
 ```
 
 ---
@@ -1233,7 +1233,7 @@ model.withMiddleware( new LoggingMiddleware( logTokens=true ) );
 agent.withMiddleware({
     beforeToolCall: function( context ) {
         writeLog( "Tool: #context.toolName#", "information", "myapp" );
-        return AiMiddlewareResult.continue();
+        return AiMiddlewareResult.continueChain();
     }
 });
 ```
@@ -1429,7 +1429,7 @@ agent.withMiddleware({
         var input = getInput();  // blocking read
 
         if ( input == "y" ) {
-            return AiMiddlewareResult.continue();
+            return AiMiddlewareResult.continueChain();
         } else {
             return AiMiddlewareResult.reject( "Rejected by user" );
         }
@@ -1466,12 +1466,12 @@ The checkpointer persists agent state so suspended runs can be resumed across re
 
 ```js
 agent.withCheckpointer(
-    new FileCheckpointer( directory="/tmp/ai-checkpoints" )
+    aiMemory( "cache" )
 );
 
 // Or database-backed:
 agent.withCheckpointer(
-    new DBCheckpointer( datasource="myDB", table="ai_checkpoints" )
+    aiMemory( "jdbc" )
 );
 ```
 
@@ -1489,12 +1489,12 @@ component extends="models.middleware.BaseAiMiddleware" {
     function beforeToolCall( required struct context ) {
         // Your logic here
         writeLog( "About to call: #context.toolName#", "information", "myapp" );
-        return AiMiddlewareResult.continue();
+        return AiMiddlewareResult.continueChain();
     }
 
     function afterToolCall( required struct context ) {
         writeLog( "Finished: #context.toolName# → #context.result#", "information", "myapp" );
-        return AiMiddlewareResult.continue();
+        return AiMiddlewareResult.continueChain();
     }
 
 }
