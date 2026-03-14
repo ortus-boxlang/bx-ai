@@ -1,0 +1,127 @@
+/**
+ * 02-guardrails.bx — GuardrailMiddleware Blocking Dangerous Tools
+ *
+ * GuardrailMiddleware enforces three layers of protection before any
+ * tool call reaches execution:
+ *
+ *   Layer 1 – blockedTools  : completely ban named tools
+ *   Layer 2 – blockedArgs   : reject a call if a forbidden argument key is present
+ *   Layer 3 – argPatterns   : reject a call if an argument value matches a regex
+ *
+ * On a match, beforeToolCall() returns AiMiddlewareResult.reject(reason) and
+ * the tool is never executed.
+ */
+
+println( "=== Middleware Example 02: GuardrailMiddleware ===" )
+println( "" )
+
+// --- Tools used in this demo -------------------------------------------------
+
+deleteTool = aiTool(
+    name       : "delete_file",
+    description: "Delete a file from the filesystem",
+    action     : ( path ) => "Deleted: #arguments.path#"
+).addParameter( "path", "string", "File path to delete", true )
+
+shellTool = aiTool(
+    name       : "shell",
+    description: "Execute a shell command on the host",
+    action     : ( command ) => systemExecute( arguments.command )
+).addParameter( "command", "string", "Shell command to run", true )
+
+readTool = aiTool(
+    name       : "read_file",
+    description: "Read a file from the filesystem",
+    action     : ( path ) => fileRead( arguments.path )
+).addParameter( "path", "string", "File path to read", true )
+
+// --- Configure the three guardrail layers ------------------------------------
+
+guardrail = new bxModules.bxai.models.middleware.builtin.GuardrailMiddleware(
+
+    // Layer 1: these tools are completely blocked, no matter the arguments
+    blockedTools: [ "delete_file", "shell" ],
+
+    // Layer 2: block read_file if the caller passes a "sudo" argument key
+    //   Struct key   = tool name
+    //   Struct value = array of forbidden argument names
+    blockedArgs: {
+        "read_file": [ "sudo" ]
+    },
+
+    // Layer 3: block read_file when "path" value matches the regex
+    //   Struct key   = tool name
+    //   Struct value = struct of { argName: regexPattern }
+    argPatterns: {
+        "read_file": {
+            "path": "(?i)(/etc/|/proc/|/sys/|/root/)"
+        }
+    }
+
+)
+
+// --- Agent with guardrails ---------------------------------------------------
+
+agent = aiAgent(
+    name        : "SecureAgent",
+    instructions: "You are a helpful assistant. Use available tools when asked.",
+    tools       : [ deleteTool, shellTool, readTool ],
+    middleware  : [ guardrail ]
+)
+
+println( "Guardrail rules:" )
+println( "  Blocked tools   : delete_file, shell" )
+println( "  Blocked args    : read_file cannot receive a 'sudo' argument" )
+println( "  Arg patterns    : read_file path cannot match /etc, /proc, /sys, /root" )
+println( "" )
+
+// --- Test 1: Tool is in blockedTools → always blocked ------------------------
+
+println( "=== Test 1: Completely Blocked Tool ===" )
+println( "User: Delete /tmp/test.txt" )
+result = agent.run( "Delete /tmp/test.txt" )
+println( "Agent: #result#" )
+println( "" )
+
+// --- Test 2: Tool is allowed, safe path --------------------------------------
+
+println( "=== Test 2: Allowed Tool Call ===" )
+println( "User: Read /var/app/config.json" )
+result = agent.run( "Read /var/app/config.json" )
+println( "Agent: #result#" )
+println( "" )
+
+// --- Test 3: Arg value matches the blocked pattern ---------------------------
+
+println( "=== Test 3: Blocked Path Pattern ===" )
+println( "User: Read /etc/passwd" )
+result = agent.run( "Read /etc/passwd" )
+println( "Agent: #result#" )
+println( "" )
+
+// --- Stacking guardrails with logging ----------------------------------------
+
+println( "=== Stacking Guardrail + Logging ===" )
+
+stackedAgent = aiAgent(
+    name        : "SecureLoggedAgent",
+    instructions: "You are a helpful assistant.",
+    tools       : [ deleteTool, readTool ],
+    middleware  : [
+        new bxModules.bxai.models.middleware.builtin.LoggingMiddleware(
+            logName: "ai-guardrail",
+            logLevel: "warn"
+        ),
+        guardrail
+    ]
+)
+
+println( "User: Delete /home/user/data.csv" )
+result = stackedAgent.run( "Delete /home/user/data.csv" )
+println( "Agent: #result#" )
+println( "" )
+
+println( "=== Summary ===" )
+println( "GuardrailMiddleware intercepts beforeToolCall() and returns" )
+println( "AiMiddlewareResult.reject(reason) to stop execution." )
+println( "Middleware runs in array order — put guardrails early in the stack." )

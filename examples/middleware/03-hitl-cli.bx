@@ -1,39 +1,131 @@
 /**
- * 03-hitl-cli.bx
- * HumanInTheLoopMiddleware in CLI blocking mode.
- * Run this script directly — it will pause and prompt for approval.
+ * 03-hitl-cli.bx — HumanInTheLoopMiddleware in CLI Blocking Mode
+ *
+ * When a BoxLang script runs as a long-lived CLI process (worker, cron, REPL),
+ * HumanInTheLoopMiddleware suspends the agent before dangerous tool calls.
+ * The script then reads approval from stdin and resumes execution.
+ *
+ * Flow:
+ *   1. agent.run()           → returns AiMiddlewareResult (suspended)
+ *   2. Inspect pending data  → print tool name + args to the terminal
+ *   3. Read stdin            → user types "approve", "reject", or "edit"
+ *   4. agent.resume(decision)→ execution continues (or is cancelled)
+ *
+ * HumanInTheLoopMiddleware modes:
+ *   "always"    – suspend every tool call
+ *   "dangerous" – suspend only tools whose names match the dangerousTools list
+ *   "regex"     – suspend tools whose names match one of the regexPatterns
+ *   "never"     – disabled (pass-through)
  */
 
-var hitl = new HumanInTheLoopMiddleware(
-    // Configure per-tool interrupt rules
-    // Empty struct = interrupt on ALL tools
-    interruptOn : {
-        deleteRecord : {
-            allowedDecisions : [ "approve", "reject" ],
-            description      : "Permanently deletes a database record. This cannot be undone."
-        },
-        sendEmail : {
-            allowedDecisions : [ "approve", "edit", "reject" ],
-            description      : "Sends an email to one or more recipients."
-        }
-    },
+println( "=== Middleware Example 03: HITL CLI Blocking Mode ===" )
+println( "" )
 
-    // These tools are always approved without prompting
-    autoApprove : [ "readRecord", "listRecords", "searchRecords" ],
+// --- Tool we want to gate with human approval --------------------------------
 
-    // cli mode: block and prompt via stdin
-    mode : "cli"
-);
+deployTool = aiTool(
+    name       : "deploy",
+    description: "Deploy an application to a target environment",
+    action     : ( app, environment ) => {
+        return "Deployed '#arguments.app#' to #arguments.environment# successfully."
+    }
+).addParameter( "app",         "string", "Application name",        true )
+ .addParameter( "environment", "string", "Target environment name", true )
 
-var agent = aiAgent(
-    name       : "CLIAgent",
-    middleware : [ new LoggingMiddleware(), hitl ]
+// --- HITL middleware ----------------------------------------------------------
+//
+// mode: "always"  — every tool call needs a human decision
+// includeArgs: true — include tool arguments in the suspension payload so the
+//                     reviewer can see exactly what will execute
+
+hitl = new bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware(
+    mode        : "always",
+    reviewPrompt: "A tool call is pending. Review and approve or reject.",
+    includeArgs : true
 )
-.withInstructions( "You are an order management assistant. Use tools to fulfil requests." );
 
-println( "Agent ready. Type your request:" );
-var userInput = ask( "> " );
-var result    = agent.run( userInput );
+// --- Session-backed checkpointer so state survives the suspension -------------
+//
+// The checkpointer stores the in-progress conversation when the agent suspends
+// and restores it when agent.resume() is called.
 
-println( chr(10) & "=== Result ===" );
-println( result );
+checkpointer = aiMemory( type: "session" )
+threadId     = "cli-#createUUID()#"
+
+agent = aiAgent(
+    name        : "DeploymentAgent",
+    instructions: "You are a deployment assistant. Use the deploy tool to release applications.",
+    tools       : [ deployTool ],
+    middleware  : [ hitl ],
+    checkpointer: checkpointer,
+    threadId    : threadId
+)
+
+// --- Run the agent -----------------------------------------------------------
+
+println( "User: Deploy the 'payments-api' service to production" )
+println( "" )
+
+response = agent.run( "Deploy the 'payments-api' service to production" )
+
+// --- Handle suspension -------------------------------------------------------
+
+if ( isInstanceOf( response, "AiMiddlewareResult" ) && response.isSuspended() ) {
+
+    pending = response.getData()
+
+    println( "--- SUSPENDED — Human review required ---" )
+    println( "Tool     : #pending.toolName#" )
+    println( "Arguments: #serializeJSON( pending.toolArgs )#" )
+    println( "Prompt   : #pending.reviewPrompt ?: 'Please review'#" )
+    println( "" )
+
+    // In a real CLI, read from stdin:
+    //   userInput = trim( input( "Decision [approve / reject / edit]: " ) )
+    //
+    // For this example we simulate the user typing "approve":
+    userInput = "approve"
+    println( "(Simulating user input: '#userInput#')" )
+    println( "" )
+
+    switch ( lcase( trim( userInput ) ) ) {
+
+        case "approve":
+            decision = AiMiddlewareResult.approve()
+            break
+
+        case "reject":
+            decision = AiMiddlewareResult.reject( "Operator rejected at CLI prompt" )
+            break
+
+        case "edit":
+            // The human can override individual arguments before approving.
+            // Pass a struct with the modified args to AiMiddlewareResult.edit().
+            editedArgs = pending.toolArgs.duplicate()
+            editedArgs.environment = "staging"   // override: promote to staging only
+            decision = AiMiddlewareResult.edit( editedArgs )
+            break
+
+        default:
+            decision = AiMiddlewareResult.reject( "Unknown decision: '#userInput#'" )
+
+    }
+
+    // Resume the agent — the checkpointer reloads the state, applies the
+    // decision, and continues the agentic loop.
+    finalResponse = agent.resume( decision, threadId )
+    println( "Agent: #finalResponse#" )
+
+} else {
+    // Tool was not intercepted (mode: "never" or tool not in dangerous list)
+    println( "Agent: #response#" )
+}
+
+println( "" )
+println( "=== Summary ===" )
+println( "CLI HITL pattern:" )
+println( "  1. run()                → AiMiddlewareResult (type=suspend)" )
+println( "  2. getData()            → { toolName, toolArgs, toolCallId, ... }" )
+println( "  3. Read stdin / prompt user" )
+println( "  4. AiMiddlewareResult.approve() | .reject(reason) | .edit(args)" )
+println( "  5. agent.resume(decision, threadId) → final response" )
