@@ -1,0 +1,177 @@
+/**
+ * 06-custom-middleware.bx — Building a Custom Middleware Class
+ *
+ * Extend BaseAiMiddleware and override only the hooks you need.
+ * This example defines a BudgetMiddleware that:
+ *   • Blocks further LLM calls once a token budget is exhausted  (beforeLLMCall)
+ *   • Accumulates token usage after each successful LLM call     (afterLLMCall)
+ *   • Reports the total spend at the end of each agent run       (afterAgentRun)
+ *
+ * In production, BudgetMiddleware would live in its own file, e.g.:
+ *   src/main/bx/models/middleware/BudgetMiddleware.bx
+ *
+ * Available hooks (all default to AiMiddlewareResult.continue()):
+ *   beforeAgentRun( context )           – called once before the agent loop
+ *   afterAgentRun( context )            – called once after the agent loop
+ *   beforeLLMCall( context )            – called before every LLM API call
+ *   afterLLMCall( context )             – called after every LLM API call
+ *   beforeToolCall( context )           – called before every tool execution
+ *   afterToolCall( context )            – called after every tool execution
+ *   onError( context )                  – called when an unhandled error occurs
+ *   wrapLLMCall( context, handler )     – wrap handler for full LLM control
+ *   wrapToolCall( context, handler )    – wrap handler for full tool control
+ *
+ * Return types:
+ *   AiMiddlewareResult.continue()       – allow execution to proceed
+ *   AiMiddlewareResult.cancel(reason)   – abort the agent run gracefully
+ *   AiMiddlewareResult.reject(reason)   – block a single tool call
+ *   AiMiddlewareResult.approve()        – explicitly approve (HITL)
+ *   AiMiddlewareResult.edit(args)       – override tool arguments (HITL)
+ *   AiMiddlewareResult.suspend(pending) – suspend for async human review
+ */
+
+// ---------------------------------------------------------------------------
+// Custom middleware definition
+// In a BoxLang project this lives in its own .bx file.
+// ---------------------------------------------------------------------------
+
+component name="BudgetMiddleware"
+          extends="bxModules.bxai.models.middleware.BaseAiMiddleware"
+          accessors="true" {
+
+    /** Maximum cumulative tokens allowed across all LLM calls in a run */
+    property name="maxTokens"  type="numeric" default=1000;
+
+    /** Running total of tokens consumed in the current agent run */
+    property name="usedTokens" type="numeric" default=0;
+
+    function init( numeric maxTokens = 1000 ) {
+        variables.maxTokens  = arguments.maxTokens;
+        variables.usedTokens = 0;
+        return this;
+    }
+
+    /**
+     * Block LLM calls once the budget is exhausted.
+     * Returning cancel() stops the entire agent run gracefully.
+     */
+    function beforeLLMCall( required struct context ) {
+        if ( variables.usedTokens >= variables.maxTokens ) {
+            var reason = "Token budget exhausted: #variables.usedTokens#/#variables.maxTokens# tokens used"
+            writeLog(
+                text: "[BudgetMiddleware] BLOCKED — #reason#",
+                type: "warning",
+                file: "ai"
+            )
+            return AiMiddlewareResult.cancel( reason )
+        }
+        return AiMiddlewareResult.continue()
+    }
+
+    /**
+     * Accumulate token usage reported by the LLM response.
+     * context.response.usage contains prompt_tokens, completion_tokens, total_tokens.
+     */
+    function afterLLMCall( required struct context ) {
+        if ( structKeyExists( context, "response" ) &&
+             isStruct( context.response ) &&
+             structKeyExists( context.response, "usage" ) ) {
+
+            var usage  = context.response.usage
+            var tokens = usage.total_tokens ?:
+                         ( ( usage.prompt_tokens ?: 0 ) + ( usage.completion_tokens ?: 0 ) )
+
+            variables.usedTokens += tokens
+
+            writeLog(
+                text: "[BudgetMiddleware] +#tokens# tokens | running total: #variables.usedTokens#/#variables.maxTokens#",
+                type: "information",
+                file: "ai"
+            )
+        }
+        return AiMiddlewareResult.continue()
+    }
+
+    /**
+     * Report final token spend after the agent run completes.
+     */
+    function afterAgentRun( required struct context ) {
+        writeLog(
+            text: "[BudgetMiddleware] Run finished — total: #variables.usedTokens#/#variables.maxTokens# tokens",
+            type: "information",
+            file: "ai"
+        )
+        return AiMiddlewareResult.continue()
+    }
+
+    /** How many tokens remain before the budget is exhausted */
+    numeric function getRemainingTokens() {
+        return max( 0, variables.maxTokens - variables.usedTokens )
+    }
+
+    /** Reset the counter (call between agent runs if reusing the same instance) */
+    BudgetMiddleware function reset() {
+        variables.usedTokens = 0
+        return this
+    }
+
+}
+
+// ---------------------------------------------------------------------------
+// Usage
+// ---------------------------------------------------------------------------
+
+println( "=== Middleware Example 06: Custom Middleware Class ===" )
+println( "" )
+
+// Create an instance with a 300-token budget
+budget = new BudgetMiddleware( maxTokens: 300 )
+
+agent = aiAgent(
+    name        : "BudgetedAgent",
+    instructions: "You are a concise assistant. Keep all answers to one sentence.",
+    middleware  : [ budget ]
+)
+
+println( "Budget: 300 tokens" )
+println( "" )
+
+println( "User: What is the capital of Japan?" )
+response = agent.run( "What is the capital of Japan?" )
+println( "Agent: #response#" )
+println( "Tokens used: #budget.getUsedTokens()# / remaining: #budget.getRemainingTokens()#" )
+println( "" )
+
+println( "User: What is the capital of Australia?" )
+response2 = agent.run( "What is the capital of Australia?" )
+println( "Agent: #response2#" )
+println( "Tokens used: #budget.getUsedTokens()# / remaining: #budget.getRemainingTokens()#" )
+println( "" )
+
+// Reset the budget counter for the next "session"
+budget.reset()
+println( "Budget reset. Tokens used: #budget.getUsedTokens()#" )
+println( "" )
+
+// Stack with built-in logging
+println( "=== Stacking with LoggingMiddleware ===" )
+
+stackedAgent = aiAgent(
+    name        : "BudgetedLoggedAgent",
+    instructions: "You are a concise assistant.",
+    middleware  : [
+        new bxModules.bxai.models.middleware.builtin.LoggingMiddleware( logName: "ai-budget" ),
+        budget
+    ]
+)
+
+println( "User: Name the tallest mountain." )
+println( "Agent: #stackedAgent.run( 'Name the tallest mountain.' )#" )
+println( "" )
+
+println( "=== Summary ===" )
+println( "Custom middleware recipe:" )
+println( "  1. extend BaseAiMiddleware" )
+println( "  2. override only the hooks you need" )
+println( "  3. return AiMiddlewareResult.continue() from all other hooks (default)" )
+println( "  4. return .cancel(reason) to abort the run, .reject(reason) for one tool" )

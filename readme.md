@@ -67,6 +67,7 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - [📢 Events](#-events)
 - [🔐 Middleware System](#-middleware-support)
 - [🌐 GitHub Repository and Reporting Issues](#-github-repository-and-reporting-issues)
+- [🔐 Middleware System](#-middleware-support)
 - [🧪 Testing](#-testing)
 - [💖 Ortus Sponsors](#-ortus-sponsors)
 

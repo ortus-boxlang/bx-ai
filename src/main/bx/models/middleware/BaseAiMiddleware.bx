@@ -1,0 +1,41 @@
+boxlangcomponent abstract="true" implements="IAiMiddleware" {
+
+	public AiMiddlewareResult function beforeAgentRun( required struct context ){
+		return AiMiddlewareResult.continueChain();
+	}
+
+	public AiMiddlewareResult function afterAgentRun( required struct context ){
+		return AiMiddlewareResult.continueChain();
+	}
+
+	public AiMiddlewareResult function beforeLLMCall( required struct context ){
+		return AiMiddlewareResult.continueChain();
+	}
+
+	public AiMiddlewareResult function afterLLMCall( required struct context ){
+		return AiMiddlewareResult.continueChain();
+	}
+
+	public AiMiddlewareResult function beforeToolCall( required struct context ){
+		return AiMiddlewareResult.continueChain();
+	}
+
+	public AiMiddlewareResult function afterToolCall( required struct context ){
+		return AiMiddlewareResult.continueChain();
+	}
+
+	public AiMiddlewareResult function onError( required struct context ){
+		return AiMiddlewareResult.continueChain();
+	}
+
+	// Wrap hooks — default implementation just calls through to the next layer.
+	// handler() takes no arguments — it calls the next middleware or the actual LLM/tool call.
+	public any function wrapLLMCall( required struct context, required function handler ){
+		return handler();
+	}
+
+	public any function wrapToolCall( required struct context, required function handler ){
+		return handler();
+	}
+
+}

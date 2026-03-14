@@ -1,0 +1,7 @@
+try {
+    var memory = new models.memory.InMemoryMemory();
+    memory.saveState( "thread1", { "step": 1 } );
+    writeOutput( "✅ SUCCESS: #serializeJSON( memory.loadState('thread1') )#<br>" );
+} catch( any e ) {
+    writeOutput( "❌ ERROR: #e.message#<br>" );
+}

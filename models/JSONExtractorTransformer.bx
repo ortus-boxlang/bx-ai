@@ -1,0 +1,401 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License")
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Transformer that extracts and validates JSON from text responses.
+ *
+ * Features:
+ * - Extract JSON from markdown code blocks
+ * - Extract JSON from mixed text/JSON responses
+ * - Parse and validate JSON structures
+ * - Extract specific paths from JSON using dot notation
+ * - Handle arrays of text containing JSON
+ */
+class extends="BaseTransformer" {
+
+	/**
+	 * Configuration options
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			// Extraction options
+			stripMarkdown     : true,   // Remove markdown code blocks around JSON
+			strictMode        : false,  // Throw error if JSON not found/invalid
+			// Path extraction
+			extractPath       : "",     // Dot notation path to extract (e.g., "data.items")
+			// Output options
+			returnRaw         : false,  // Return raw JSON string instead of parsed object
+			// Validation
+			validateSchema    : false,  // Whether to validate against schema
+			schema            : {}      // JSON schema to validate against
+		}
+	}
+
+	/**
+	 * Initialize with optional configuration
+	 *
+	 * @config Optional configuration struct
+	 *
+	 * @return This transformer instance
+	 */
+	function init( struct config = {} ) {
+		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true )
+		return this
+	}
+
+	/**
+	 * Extract and parse JSON from input
+	 *
+	 * @input The text containing JSON (string or array of strings)
+	 *
+	 * @return The extracted JSON (parsed or raw string)
+	 */
+	public any function transform( required any input ) {
+		// Handle arrays by transforming each element
+		if ( isArray( arguments.input ) ) {
+			return arguments.input.map( text => extractJSON( text ) )
+		}
+
+		// Handle single string
+		return extractJSON( arguments.input )
+	}
+
+	/**
+	 * Extract JSON from a single text string
+	 *
+	 * @text The text to extract JSON from
+	 *
+	 * @return The extracted JSON
+	 */
+	private any function extractJSON( required string text ) {
+		var jsonString = arguments.text.trim()
+
+		// Strip markdown code blocks if configured
+		if ( variables.config.stripMarkdown ) {
+			jsonString = stripMarkdownCodeBlocks( jsonString )
+		}
+
+		// Try to find JSON in the text
+		jsonString = findJSONInText( jsonString )
+
+		// If no JSON found and strict mode, throw error
+		if ( len( jsonString ) == 0 && variables.config.strictMode ) {
+			throw(
+				type    = "JSONExtractor.NoJSONFound",
+				message = "No JSON found in input text"
+			)
+		}
+
+		// If no JSON found and not strict, return empty struct
+		if ( len( jsonString ) == 0 ) {
+			return variables.config.returnRaw ? "" : {}
+		}
+
+		// Return raw if configured
+		if ( variables.config.returnRaw ) {
+			return jsonString
+		}
+
+		// Parse JSON
+		try {
+			var parsed = jsonDeserialize( jsonString )
+
+			// Extract specific path if configured
+			if ( len( variables.config.extractPath ) > 0 ) {
+				parsed = extractPath( parsed, variables.config.extractPath )
+			}
+
+			// Validate against schema if configured
+			if ( variables.config.validateSchema && !structIsEmpty( variables.config.schema ) ) {
+				validateAgainstSchema( parsed, variables.config.schema )
+			}
+
+			return parsed
+		} catch ( any e ) {
+			if ( variables.config.strictMode ) {
+				throw(
+					type    = "JSONExtractor.InvalidJSON",
+					message = "Failed to parse JSON: " & e.message,
+					detail  = "JSON string: " & jsonString
+				)
+			}
+			// Return empty struct on parse error when not strict
+			return {}
+		}
+	}
+
+	/**
+	 * Strip markdown code blocks from text
+	 *
+	 * @text The text to process
+	 *
+	 * @return Text without markdown code blocks
+	 */
+	private string function stripMarkdownCodeBlocks( required string text ) {
+		var result = arguments.text.trim()
+
+		// Check for ```json ... ``` pattern
+		if ( result.findNoCase( "```json" ) > 0 ) {
+			// Find the start and end positions
+			var startPos = result.findNoCase( "```json" )
+			var contentStart = startPos + 7 // Length of "```json"
+			// Skip any whitespace after ```json
+			while ( contentStart <= len( result ) && mid( result, contentStart, 1 ).trim() == "" ) {
+				contentStart++
+			}
+			// Find closing ```
+			var endPos = result.find( "```", contentStart )
+			if ( endPos > 0 ) {
+				return mid( result, contentStart, endPos - contentStart ).trim()
+			}
+		}
+
+		// Check for ``` ... ``` pattern (no language)
+		if ( result.startsWith( "```" ) ) {
+			var contentStart = 4 // Position after ```
+			// Skip any whitespace
+			while ( contentStart <= len( result ) && mid( result, contentStart, 1 ).trim() == "" ) {
+				contentStart++
+			}
+			// Find closing ```
+			var endPos = result.find( "```", contentStart )
+			if ( endPos > 0 ) {
+				return mid( result, contentStart, endPos - contentStart ).trim()
+			}
+		}
+
+		// Remove single backticks around JSON-like content
+		if ( result.startsWith( "`" ) && result.endsWith( "`" ) && len( result ) > 2 ) {
+			return mid( result, 2, len( result ) - 2 ).trim()
+		}
+
+		return result.trim()
+	}
+
+	/**
+	 * Find JSON in mixed text
+	 *
+	 * @text The text to search
+	 *
+	 * @return The JSON string or empty string if not found
+	 */
+	private string function findJSONInText( required string text ) {
+		var content = arguments.text.trim()
+
+		// If it's already valid JSON, return it
+		if ( isJSON( content ) ) {
+			return content
+		}
+
+		// Find positions of both { and [
+		var objectPos = content.find( "{" )
+		var arrayPos = content.find( "[" )
+
+		// Try array first if it comes before object (or object not found)
+		if ( arrayPos > 0 && ( arrayPos < objectPos || objectPos == 0 ) ) {
+			var extracted = extractBracedContent( content, arrayPos, "[", "]" )
+			if ( len( extracted ) > 0 && isJSON( extracted ) ) {
+				return extracted
+			}
+		}
+
+		// Try object
+		if ( objectPos > 0 ) {
+			var extracted = extractBracedContent( content, objectPos, "{", "}" )
+			if ( len( extracted ) > 0 && isJSON( extracted ) ) {
+				return extracted
+			}
+		}
+
+		// If object failed, try array again
+		if ( arrayPos > 0 && arrayPos > objectPos ) {
+			var extracted = extractBracedContent( content, arrayPos, "[", "]" )
+			if ( len( extracted ) > 0 && isJSON( extracted ) ) {
+				return extracted
+			}
+		}
+
+		return ""
+	}
+
+	/**
+	 * Extract content between matching braces/brackets
+	 *
+	 * @text The text to search
+	 * @startPos The starting position (1-based)
+	 * @openChar The opening character
+	 * @closeChar The closing character
+	 *
+	 * @return The extracted content including braces
+	 */
+	private string function extractBracedContent(
+		required string text,
+		required numeric startPos,
+		required string openChar,
+		required string closeChar
+	) {
+		var depth = 0
+		var inString = false
+		var escapeNext = false
+		var result = ""
+
+		for ( var i = arguments.startPos; i <= len( arguments.text ); i++ ) {
+			var currentChar = mid( arguments.text, i, 1 )
+			result &= currentChar
+
+			if ( escapeNext ) {
+				escapeNext = false
+				continue
+			}
+
+			if ( currentChar == "\" ) {
+				escapeNext = true
+				continue
+			}
+
+			if ( currentChar == '"' ) {
+				inString = !inString
+				continue
+			}
+
+			if ( !inString ) {
+				if ( currentChar == arguments.openChar ) {
+					depth++
+				} else if ( currentChar == arguments.closeChar ) {
+					depth--
+					if ( depth == 0 ) {
+						return result
+					}
+				}
+			}
+		}
+
+		return ""
+	}
+
+	/**
+	 * Extract a specific path from a structure using dot notation
+	 *
+	 * @data The data structure to extract from
+	 * @path The dot notation path (e.g., "data.items.0.name")
+	 *
+	 * @return The extracted value
+	 */
+	private any function extractPath( required any data, required string path ) {
+		var parts = arguments.path.split( "\." )
+		var current = arguments.data
+
+		for ( var part in parts ) {
+			// Handle array index
+			if ( isNumeric( part ) ) {
+				var index = val( part ) + 1  // BoxLang arrays are 1-based
+				if ( isArray( current ) && index <= arrayLen( current ) ) {
+					current = current[ index ]
+				} else {
+					throw(
+						type    = "JSONExtractor.PathNotFound",
+						message = "Array index out of bounds: " & part,
+						detail  = "Path: " & arguments.path
+					)
+				}
+			} else {
+				// Handle struct key
+				if ( isStruct( current ) && structKeyExists( current, part ) ) {
+					current = current[ part ]
+				} else {
+					throw(
+						type    = "JSONExtractor.PathNotFound",
+						message = "Path not found: " & part,
+						detail  = "Full path: " & arguments.path
+					)
+				}
+			}
+		}
+
+		return current
+	}
+
+	/**
+	 * Validate data against a JSON schema (simplified validation)
+	 *
+	 * @data The data to validate
+	 * @schema The schema to validate against
+	 *
+	 * @throws ValidationError if validation fails
+	 */
+	private void function validateAgainstSchema( required any data, required struct schema ) {
+		// Simple type validation
+		if ( structKeyExists( arguments.schema, "type" ) ) {
+			var expectedType = arguments.schema.type
+			var actualType = getDataType( arguments.data )
+
+			if ( expectedType != actualType ) {
+				throw(
+					type    = "JSONExtractor.ValidationError",
+					message = "Type mismatch: expected " & expectedType & ", got " & actualType
+				)
+			}
+		}
+
+		// Required fields validation for objects
+		if ( structKeyExists( arguments.schema, "required" ) && isStruct( arguments.data ) ) {
+			for ( var field in arguments.schema.required ) {
+				if ( !structKeyExists( arguments.data, field ) ) {
+					throw(
+						type    = "JSONExtractor.ValidationError",
+						message = "Required field missing: " & field
+					)
+				}
+			}
+		}
+
+		// Properties validation for objects
+		if ( structKeyExists( arguments.schema, "properties" ) && isStruct( arguments.data ) ) {
+			for ( var key in arguments.schema.properties ) {
+				if ( structKeyExists( arguments.data, key ) ) {
+					validateAgainstSchema( arguments.data[ key ], arguments.schema.properties[ key ] )
+				}
+			}
+		}
+	}
+
+	/**
+	 * Get the data type as a string
+	 *
+	 * @data The data to check
+	 *
+	 * @return The type name
+	 */
+	private string function getDataType( required any data ) {
+		if ( isNull( arguments.data ) ) {
+			return "null"
+		}
+		if ( isArray( arguments.data ) ) {
+			return "array"
+		}
+		if ( isStruct( arguments.data ) ) {
+			return "object"
+		}
+		if ( isBoolean( arguments.data ) ) {
+			return "boolean"
+		}
+		if ( isNumeric( arguments.data ) ) {
+			return "number"
+		}
+		return "string"
+	}
+
+}

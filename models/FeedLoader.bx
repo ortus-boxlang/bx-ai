@@ -1,0 +1,322 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Loads and parses RSS and Atom feeds using com.apptasticsoftware:rssreader library.
+ * Each feed item/entry becomes a separate Document.
+ * Supports blog aggregation, news feeds, and content syndication.
+ */
+import java:com.apptasticsoftware.rssreader.RssReader;
+import java:com.apptasticsoftware.rssreader.Item;
+import java:org.jsoup.Jsoup;
+
+class extends="BaseDocumentLoader" {
+
+	/**
+	 * Static configuration
+	 */
+	static {
+		DEFAULT_CONFIG = {
+			encoding           : "UTF-8",
+			includeMetadata    : true,
+			continueOnError    : true,
+			// Content options
+			includeDescription : true,
+			stripHtml          : true,
+			// Filtering
+			maxItems           : 0,
+			sinceDate          : "",
+			categories         : [],
+			// HTTP options for URL sources
+			timeout            : 30,
+			userAgent          : "BoxLang-FeedLoader/1.0"
+		}
+	}
+
+	/**
+	 * Initialize the FeedLoader
+	 *
+	 * @source Path to feed file or feed URL
+	 * @config Configuration options
+	 *
+	 * @return FeedLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		super.init( argumentCollection: arguments )
+		variables.config = duplicate( static.DEFAULT_CONFIG ).append( arguments.config, true )
+		return this
+	}
+
+	/**
+	 * Load and parse the feed using RssReader library
+	 *
+	 * @return Array of Document objects (one per feed item)
+	 */
+	array function doLoad() {
+		if ( !len( variables.source ) ) {
+			throw(
+				type    : "FeedLoader.NoSource",
+				message : "No feed source specified"
+			)
+		}
+
+		try {
+			// Create RSS reader
+			var reader = new RssReader()
+
+			// Read the feed
+			var stream = reader.read( variables.source )
+
+			// Apply filters using Java Stream API (more efficient than forEach)
+			var filteredStream = stream
+
+			// Filter by date if configured
+			if ( len( variables.config.sinceDate ) ) {
+				filteredStream = filteredStream.filter( ( feedItem ) => {
+					var pubDate = feedItem.getPubDate().orElse( "" )
+					if ( !len( pubDate ) ) return true
+
+					try {
+						var itemDate = parseDateTime( pubDate )
+						var sinceDate = parseDateTime( variables.config.sinceDate )
+						return itemDate >= sinceDate
+					} catch ( any e ) {
+						return true // Include if date parsing fails
+					}
+				} )
+			}
+
+			// Filter by categories if configured
+			if ( variables.config.categories.len() > 0 ) {
+				filteredStream = filteredStream.filter( ( feedItem ) => {
+					var categories = feedItem.getCategories()
+					if ( categories.size() == 0 ) return false
+
+					var javaIter = categories.iterator()
+					while ( javaIter.hasNext() ) {
+						var cat = javaIter.next()
+						if ( variables.config.categories.findNoCase( cat ) ) {
+							return true
+						}
+					}
+					return false
+				} )
+			}			// Apply maxItems limit if configured
+			if ( variables.config.maxItems > 0 ) {
+				filteredStream = filteredStream.limit( variables.config.maxItems )
+			}
+
+			// Convert stream to list
+			var items = filteredStream.toList()
+
+			// Convert items to Document objects
+			var documents = []
+			for ( var feedEntry in items ) {
+				// Extract item data
+				var title = feedEntry.getTitle().orElse( "" )
+				var link = feedEntry.getLink().orElse( "" )
+				var description = feedEntry.getDescription().orElse( "" )
+				var pubDate = feedEntry.getPubDate().orElse( "" )
+				var author = feedEntry.getAuthor().orElse( "" )
+				var guid = feedEntry.getGuid().orElse( link )
+				var categories = feedEntry.getCategories()				// Build content
+				var docContent = buildContent( title, description )
+
+				// Convert Java categories list to array
+				var catArray = []
+				if ( categories.size() > 0 ) {
+					var catIter = categories.iterator()
+					while ( catIter.hasNext() ) {
+						catArray.append( catIter.next() )
+					}
+				}
+
+				// Build metadata
+				var metadata = {
+					"feedType"        : "rss",
+					"feedUrl"         : variables.source,
+					"itemTitle"       : title,
+					"itemLink"        : link,
+					"pubDate"         : pubDate,
+					"author"          : author,
+					"guid"            : guid,
+					"categories"      : catArray
+				}
+
+				documents.append(
+					createDocument(
+						content            : docContent,
+						additionalMetadata : metadata,
+						id                 : len( guid ) ? guid : link
+					)
+				)
+			}
+
+			return documents
+
+		} catch ( any e ) {
+			if ( variables.config.continueOnError ) {
+				addError( {
+					"message" : "Failed to parse feed: ${e.message}",
+					"type"    : e.type,
+					"source"  : variables.source
+				} )
+				return []
+			}
+			rethrow
+		}
+	}
+
+	/**
+	 * Build document content from feed item parts
+	 *
+	 * @title Item title
+	 * @description Item description/summary
+	 *
+	 * @return Combined content string
+	 */
+	private string function buildContent(
+		required string title,
+		required string description
+	) {
+		var parts = []
+
+		if ( len( arguments.title ) ) {
+			parts.append( arguments.title )
+		}
+
+	if ( variables.config.includeDescription && len( arguments.description ) ) {
+		var desc = variables.config.stripHtml ? stripHtmlTags( arguments.description ) : arguments.description
+		parts.append( desc )
+	}		return parts.toList( char( 10 ) & char( 10 ) )
+	}
+
+	/**
+	 * Strip HTML tags from text using JSoup
+	 *
+	 * @text HTML text
+	 *
+	 * @return Plain text
+	 */
+	private string function stripHtmlTags( required string text ) {
+		try {
+			// Use JSoup to parse and extract text
+			return Jsoup::parse( arguments.text ).text()
+		} catch ( any e ) {
+			// Fallback to regex if JSoup fails
+			var result = arguments.text.reReplace( "<[^>]*>", " ", "all" )
+			result = result.replace( "&nbsp;", " ", "all" )
+				.replace( "&amp;", "&", "all" )
+				.replace( "&lt;", "<", "all" )
+				.replace( "&gt;", ">", "all" )
+				.replace( "&quot;", """", "all" )
+				.replace( "&##39;", "'", "all" )
+			return result.reReplace( "\s+", " ", "all" ).trim()
+		}
+	}
+
+	// ==========================================
+	// Fluent Configuration Methods
+	// ==========================================
+
+	/**
+	 * Include item description in content
+	 *
+	 * @include Whether to include description
+	 *
+	 * @return FeedLoader for chaining
+	 */
+	FeedLoader function includeDescription( boolean include = true ) {
+		variables.config.includeDescription = arguments.include
+		return this
+	}
+
+	/**
+	 * Strip HTML from content
+	 *
+	 * @strip Whether to strip HTML
+	 *
+	 * @return FeedLoader for chaining
+	 */
+	FeedLoader function stripHtml( boolean strip = true ) {
+		variables.config.stripHtml = arguments.strip
+		return this
+	}
+
+	/**
+	 * Limit number of items to load
+	 *
+	 * @max Maximum items (0 = no limit)
+	 *
+	 * @return FeedLoader for chaining
+	 */
+	FeedLoader function maxItems( required numeric max ) {
+		variables.config.maxItems = arguments.max
+		return this
+	}
+
+	/**
+	 * Only load items published since date
+	 *
+	 * @date Date string or date object
+	 *
+	 * @return FeedLoader for chaining
+	 */
+	FeedLoader function sinceDate( required any date ) {
+		variables.config.sinceDate = isDate( arguments.date ) ? dateFormat( arguments.date, "yyyy-MM-dd" ) : arguments.date
+		return this
+	}
+
+	/**
+	 * Filter by categories
+	 *
+	 * @categories Array of category names to include
+	 *
+	 * @return FeedLoader for chaining
+	 */
+	FeedLoader function categories( required array categories ) {
+		variables.config.categories = arguments.categories
+		return this
+	}
+
+	/**
+	 * Set request timeout for URL sources
+	 *
+	 * @seconds Timeout in seconds
+	 *
+	 * @return FeedLoader for chaining
+	 */
+	FeedLoader function timeout( required numeric seconds ) {
+		variables.config.timeout = arguments.seconds
+		return this
+	}
+
+	/**
+	 * Get source metadata for feeds
+	 *
+	 * @return Struct with metadata
+	 */
+	struct function getSourceMetadata() {
+		return {
+			"source"            : variables.source,
+			"loader"            : getName(),
+			"isFeed"            : true,
+			"maxItems"          : variables.config.maxItems,
+			"stripHtml"         : variables.config.stripHtml
+		}
+	}
+
+}

@@ -1,0 +1,317 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * AWS Signature Version 4 Implementation
+ *
+ * This utility provides AWS Signature V4 signing for HTTP requests.
+ * Used by BedrockService to authenticate requests to AWS Bedrock.
+ *
+ * @see https://docs.aws.amazon.com/general/latest/gr/signature-version-4.html
+ */
+class {
+
+	/**
+	 * Sign an HTTP request using AWS Signature Version 4
+	 *
+	 * @method HTTP method (GET, POST, etc.)
+	 * @host The host (e.g., bedrock-runtime.eu-west-2.amazonaws.com)
+	 * @path The request path (e.g., /model/anthropic.claude-3/invoke)
+	 * @queryString Query string parameters (empty string if none)
+	 * @headers Struct of headers to include in signature
+	 * @payload Request body as string
+	 * @region AWS region (e.g., eu-west-2)
+	 * @service AWS service name (e.g., bedrock)
+	 * @accessKeyId AWS Access Key ID
+	 * @secretAccessKey AWS Secret Access Key
+	 * @sessionToken Optional session token for temporary credentials
+	 *
+	 * @return Struct containing the signed headers to add to the request
+	 */
+	public struct function signRequest(
+		required string method,
+		required string host,
+		required string path,
+		string queryString = "",
+		required struct headers,
+		required string payload,
+		required string region,
+		required string service,
+		required string accessKeyId,
+		required string secretAccessKey,
+		string sessionToken = ""
+	) {
+		// Get current timestamp in required formats
+		var now = now();
+		var amzDate = dateTimeFormat( now, "yyyyMMdd'T'HHmmss'Z'", "UTC" );
+		var dateStamp = dateTimeFormat( now, "yyyyMMdd", "UTC" );
+
+		// Step 1: Create canonical request
+		var canonicalHeaders = createCanonicalHeaders( arguments.headers, arguments.host, amzDate, arguments.sessionToken );
+		var signedHeaders = createSignedHeadersList( arguments.headers, arguments.sessionToken );
+		var payloadHash = hash( arguments.payload, "SHA-256" ).lcase();
+
+		var canonicalRequest = createCanonicalRequest(
+			method = arguments.method,
+			path = arguments.path,
+			queryString = arguments.queryString,
+			canonicalHeaders = canonicalHeaders,
+			signedHeaders = signedHeaders,
+			payloadHash = payloadHash
+		);
+
+		// Step 2: Create string to sign
+		var credentialScope = "#dateStamp#/#arguments.region#/#arguments.service#/aws4_request";
+		var stringToSign = createStringToSign( amzDate, credentialScope, canonicalRequest );
+
+		// Step 3: Calculate signature
+		var signingKey = getSignatureKey( arguments.secretAccessKey, dateStamp, arguments.region, arguments.service );
+		var signature = hmacSign( stringToSign, signingKey, "HMACSHA256" ).lcase();
+
+		// Step 4: Create authorization header
+		var authorizationHeader = "AWS4-HMAC-SHA256 " &
+			"Credential=#arguments.accessKeyId#/#credentialScope#, " &
+			"SignedHeaders=#signedHeaders#, " &
+			"Signature=#signature#";
+
+		// Return headers to add to request
+		var signedRequestHeaders = {
+			"Authorization": authorizationHeader,
+			"x-amz-date": amzDate,
+			"x-amz-content-sha256": payloadHash
+		};
+
+		// Add session token if provided (for temporary credentials)
+		if( len( arguments.sessionToken ) ) {
+			signedRequestHeaders[ "x-amz-security-token" ] = arguments.sessionToken;
+		}
+
+		return signedRequestHeaders;
+	}
+
+	/**
+	 * Create the canonical request string
+	 */
+	private string function createCanonicalRequest(
+		required string method,
+		required string path,
+		required string queryString,
+		required string canonicalHeaders,
+		required string signedHeaders,
+		required string payloadHash
+	) {
+		// AWS Signature V4 Canonical Request format:
+		// HTTPRequestMethod + \n
+		// CanonicalURI + \n
+		// CanonicalQueryString + \n
+		// CanonicalHeaders + \n (headers already end with \n)
+		// SignedHeaders + \n
+		// HashedPayload
+		//
+		// Note: canonicalHeaders already ends with a newline, so we don't use toList()
+		// which would add an extra newline between headers and signedHeaders
+		var canonicalRequest = arguments.method.ucase() & char(10)
+			& uriEncodePath( arguments.path ) & char(10)
+			& arguments.queryString & char(10)
+			& arguments.canonicalHeaders & char(10)
+			& arguments.signedHeaders & char(10)
+			& arguments.payloadHash;
+
+		return canonicalRequest;
+	}
+
+	/**
+	 * Create canonical headers string
+	 * Headers must be sorted alphabetically by name (lowercase)
+	 */
+	private string function createCanonicalHeaders(
+		required struct headers,
+		required string host,
+		required string amzDate,
+		string sessionToken = ""
+	) {
+		// Start with required headers
+		var headerMap = {
+			"host": arguments.host,
+			"x-amz-date": arguments.amzDate
+		};
+
+		// Add session token if present
+		if( len( arguments.sessionToken ) ) {
+			headerMap[ "x-amz-security-token" ] = arguments.sessionToken;
+		}
+
+		// Add provided headers (lowercase keys)
+		for( var key in arguments.headers ) {
+			headerMap[ key.lcase() ] = trim( arguments.headers[ key ] );
+		}
+
+		// Sort keys alphabetically
+		var sortedKeys = structKeyArray( headerMap );
+		arraySort( sortedKeys, "text", "asc" );
+
+		// Build canonical headers string
+		var canonicalHeaders = "";
+		for( var key in sortedKeys ) {
+			canonicalHeaders &= key & ":" & headerMap[ key ] & char(10);
+		}
+
+		return canonicalHeaders;
+	}
+
+	/**
+	 * Create the signed headers list (semicolon-separated, alphabetically sorted)
+	 */
+	private string function createSignedHeadersList( required struct headers, string sessionToken = "" ) {
+		var headerNames = [ "host", "x-amz-date" ];
+
+		if( len( arguments.sessionToken ) ) {
+			arrayAppend( headerNames, "x-amz-security-token" );
+		}
+
+		// Add provided header names (lowercase)
+		for( var key in arguments.headers ) {
+			if( !arrayFind( headerNames, key.lcase() ) ) {
+				arrayAppend( headerNames, key.lcase() );
+			}
+		}
+
+		arraySort( headerNames, "text", "asc" );
+		return headerNames.toList( ";" );
+	}
+
+	/**
+	 * Create the string to sign
+	 */
+	private string function createStringToSign(
+		required string amzDate,
+		required string credentialScope,
+		required string canonicalRequest
+	) {
+		var canonicalRequestHash = hash( arguments.canonicalRequest, "SHA-256" ).lcase();
+
+		var parts = [
+			"AWS4-HMAC-SHA256",
+			arguments.amzDate,
+			arguments.credentialScope,
+			canonicalRequestHash
+		];
+
+		return parts.toList( char(10) );
+	}
+
+	/**
+	 * Derive the signing key using the secret access key
+	 */
+	private binary function getSignatureKey(
+		required string secretKey,
+		required string dateStamp,
+		required string region,
+		required string service
+	) {
+		var kSecret = charsetDecode( "AWS4" & arguments.secretKey, "UTF-8" );
+		var kDate = hmacSignBinary( arguments.dateStamp, kSecret, "HMACSHA256" );
+		var kRegion = hmacSignBinary( arguments.region, kDate, "HMACSHA256" );
+		var kService = hmacSignBinary( arguments.service, kRegion, "HMACSHA256" );
+		var kSigning = hmacSignBinary( "aws4_request", kService, "HMACSHA256" );
+
+		return kSigning;
+	}
+
+	/**
+	 * HMAC-SHA256 sign a string with a binary key
+	 */
+	private binary function hmacSignBinary( required string data, required binary key, required string algorithm ) {
+		var mac = createObject( "java", "javax.crypto.Mac" ).getInstance( arguments.algorithm );
+		var secretKeySpec = createObject( "java", "javax.crypto.spec.SecretKeySpec" ).init(
+			arguments.key,
+			arguments.algorithm
+		);
+		mac.init( secretKeySpec );
+		return mac.doFinal( charsetDecode( arguments.data, "UTF-8" ) );
+	}
+
+	/**
+	 * HMAC-SHA256 sign a string with a binary key and return hex string
+	 */
+	private string function hmacSign( required string data, required binary key, required string algorithm ) {
+		var result = hmacSignBinary( arguments.data, arguments.key, arguments.algorithm );
+		return binaryEncode( result, "hex" );
+	}
+
+	/**
+	 * URI encode a path component for AWS Signature V4
+	 * Each path segment must be individually encoded
+	 */
+	private string function uriEncodePath( required string path ) {
+		// Don't encode forward slashes in path
+		var segments = arguments.path.split( "/" );
+		var encodedSegments = [];
+
+		for( var segment in segments ) {
+			arrayAppend( encodedSegments, uriEncodeComponent( segment ) );
+		}
+
+		var result = encodedSegments.toList( "/" );
+
+		// Ensure path starts with /
+		if( left( result, 1 ) != "/" ) {
+			result = "/" & result;
+		}
+
+		return result;
+	}
+
+	/**
+	 * URI encode a single component (AWS-style encoding)
+	 * AWS Signature V4 requires RFC 3986 unreserved characters to NOT be encoded
+	 * All other characters must be percent-encoded
+	 */
+	private string function uriEncodeComponent( required string component ) {
+		var result = "";
+		var componentLen = len( arguments.component );
+
+		for( var i = 1; i <= componentLen; i++ ) {
+			var char = mid( arguments.component, i, 1 );
+			if( isUnreservedChar( char ) ) {
+				result &= char;
+			} else {
+				// Percent encode
+				var bytes = charsetDecode( char, "UTF-8" );
+				for( var j = 1; j <= arrayLen( bytes ); j++ ) {
+					result &= "%" & right( "0" & formatBaseN( bitAnd( bytes[j], 255 ), 16 ).ucase(), 2 );
+				}
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Check if character is unreserved per RFC 3986
+	 * Unreserved characters: A-Z a-z 0-9 - _ . ~
+	 */
+	private boolean function isUnreservedChar( required string char ) {
+		var code = ascii( arguments.char );
+
+		// A-Z, a-z, 0-9, -, _, ., ~
+		return ( code >= 65 && code <= 90 )   // A-Z
+			|| ( code >= 97 && code <= 122 )  // a-z
+			|| ( code >= 48 && code <= 57 )   // 0-9
+			|| code == 45   // -
+			|| code == 95   // _
+			|| code == 46   // .
+			|| code == 126; // ~
+	}
+
+}

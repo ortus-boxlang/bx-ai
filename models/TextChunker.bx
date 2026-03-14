@@ -1,0 +1,422 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License")
+ * you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Text chunking utility for breaking large text into manageable segments
+ * Useful for processing large documents with AI models that have token limits
+ * Rough rule of thumb:
+* 1 token ≈ 4 characters (English)
+ */
+class {
+
+	// Static configuration
+	static {
+		DEFAULT_OPTIONS = {
+			chunkSize: 2000, // 500 tokens
+			overlap: 200, // 50 tokens
+			strategy: "recursive"
+		}
+		SEPARATOR = char(10) & char(10) // \n\n
+	}
+
+	/**
+	 * Chunk text into smaller segments
+	 *
+	 * @text The text to chunk
+	 * @options Configuration options:
+	 *   - chunkSize (numeric, default: 1000) - Maximum size of each chunk
+	 *   - overlap (numeric, default: 200) - Number of characters to overlap between chunks
+	 *   - strategy (string, default: "recursive") - Chunking strategy: "recursive", "characters", "words", "sentences", "paragraphs"
+	 *
+	 * @return Array of text chunks
+	 */
+	static function chunk( required string text, struct options = {} ) {
+		// Apply defaults - append static defaults to options (no override)
+		var config = arguments.options.append( static.DEFAULT_OPTIONS, false )
+
+		// Validate configuration
+		if ( config.overlap >= config.chunkSize ) {
+			throw(
+				type: "InvalidChunkConfiguration",
+				message: "Overlap (#config.overlap#) must be less than chunkSize (#config.chunkSize#)"
+			)
+		}
+
+		// Handle empty text
+		if ( !len( trim( arguments.text ) ) ) {
+			return []
+		}
+
+		// Route to appropriate chunking strategy
+		switch ( config.strategy.lcase() ) {
+			case "recursive":
+				return chunkRecursive( arguments.text, config )
+			case "characters":
+				return chunkByCharacters( arguments.text, config )
+			case "words":
+				return chunkByWords( arguments.text, config )
+			case "sentences":
+				return chunkBySentences( arguments.text, config )
+			case "paragraphs":
+				return chunkByParagraphs( arguments.text, config )
+			default:
+				throw(
+					type: "InvalidChunkStrategy",
+					message: "Unknown strategy: #config.strategy#. Valid strategies: recursive, characters, words, sentences, paragraphs"
+				)
+		}
+	}
+
+	/**
+	 * Chunk text recursively by trying paragraphs → sentences → words → characters
+	 */
+	private static function chunkRecursive( required string text, required struct config ) {
+		var chunks = []
+
+		// Step 1: Split by paragraphs
+		var paragraphs = reMatch( "[^\r\n]+(?:\r?\n\r?\n|$)", arguments.text )
+
+		// Fallback: if no paragraphs found, split on single newlines
+		if ( paragraphs.len() == 0 ) {
+			paragraphs = listToArray( arguments.text, char(10) & char(13), false, true )
+		}
+
+		// If still nothing, treat entire text as one paragraph
+		if ( paragraphs.len() == 0 ) {
+			paragraphs = [ arguments.text ]
+		}
+
+	for ( var para in paragraphs ) {
+		para = trim( para )
+		if ( !len( para ) ) continue
+
+		// If paragraph fits, add it directly
+		if ( len( para ) <= config.chunkSize ) {
+			chunks.append( para )
+			} else {
+				// Step 2: Paragraph too long, split by sentences
+				var sentences = reMatch( "[^.!?]+[.!?]+", para )
+
+				// If no sentences found, treat as one sentence
+			if ( sentences.len() == 0 ) {
+				sentences = [ para ]
+			}
+
+			var currentChunk = ""
+			for ( var sentence in sentences ) {
+				sentence = trim( sentence )
+				if ( !len( sentence ) ) continue
+
+				// If sentence itself is too long, split by words
+					if ( len( sentence ) > config.chunkSize ) {
+						// Add current chunk if any
+						if ( len( currentChunk ) ) {
+							chunks.append( trim( currentChunk ) )
+							currentChunk = ""
+						}
+
+						// Step 3: Sentence too long, split by words
+						var words = reMatch( "[^\s]+", sentence )
+						var wordChunk = ""
+
+						for ( var word in words ) {							// If single word is too long, split by characters immediately
+							if ( len( word ) > config.chunkSize ) {
+								// Add current chunk if any
+								if ( len( wordChunk ) ) {
+									chunks.append( trim( wordChunk ) )
+									wordChunk = ""
+								}
+								var charChunks = chunkByCharacters( word, config )
+								chunks.append( charChunks, true )
+							} else if ( !len( wordChunk ) ) {
+								wordChunk = word
+							} else if ( len( wordChunk ) + 1 + len( word ) <= config.chunkSize ) {
+								wordChunk &= " " & word
+							} else {
+								// Word chunk is full, save it and start new chunk
+								chunks.append( trim( wordChunk ) )
+								wordChunk = word
+							}
+						}
+
+						// Add remaining word chunk
+						if ( len( wordChunk ) ) {
+							chunks.append( trim( wordChunk ) )
+						}
+					} else {
+						// Sentence fits, try to add to current chunk
+						if ( !len( currentChunk ) ) {
+							currentChunk = sentence
+						} else if ( len( currentChunk ) + 1 + len( sentence ) <= config.chunkSize ) {
+							currentChunk &= " " & sentence
+						} else {
+							// Current chunk is full, save it
+							chunks.append( trim( currentChunk ) )
+							currentChunk = sentence
+						}
+					}
+				}
+
+				// Add remaining sentence chunk
+				if ( len( currentChunk ) ) {
+					chunks.append( trim( currentChunk ) )
+				}
+			}
+		}
+
+		// Apply overlap if needed
+		if ( config.overlap > 0 && chunks.len() > 1 ) {
+			chunks = applyOverlap( chunks, config.overlap )
+		}
+
+		return chunks
+	}
+
+	/**
+	 * Apply overlap between chunks
+	 */
+	private static function applyOverlap( required array chunks, required numeric overlap ) {
+		if ( arguments.chunks.len() <= 1 || arguments.overlap <= 0 ) {
+			return arguments.chunks
+		}
+
+		var overlappedChunks = [ arguments.chunks[ 1 ] ]
+
+		for ( var i = 2; i <= arguments.chunks.len(); i++ ) {
+			var previousChunk = arguments.chunks[ i - 1 ]
+			var currentChunk = arguments.chunks[ i ]
+
+			// Get last N characters from previous chunk
+			var overlapText = len( previousChunk ) > arguments.overlap
+				? right( previousChunk, arguments.overlap )
+				: previousChunk
+
+			// Prepend overlap to current chunk - trim both parts and add single space
+			overlappedChunks.append( trim( overlapText ) & " " & trim( currentChunk ) )
+		}
+
+		return overlappedChunks
+	}
+
+	/**
+	 * Chunk text by character count
+	 */
+	private static function chunkByCharacters( required string text, required struct config ) {
+		var chunks = []
+		var textLength = len( arguments.text )
+		var startPos = 1
+
+		while ( startPos <= textLength ) {
+			var endPos = min( startPos + config.chunkSize - 1, textLength )
+
+			// Try to break at space if we're not at the end
+			if ( endPos < textLength ) {
+				var separatorPos = findLastSeparator(
+					arguments.text,
+					startPos,
+					endPos,
+					" "
+				)
+				if ( separatorPos > startPos ) {
+					endPos = separatorPos
+				}
+			}
+
+			// Extract chunk
+			var chunk = trim( mid( arguments.text, startPos, endPos - startPos + 1 ) )
+
+			if ( len( chunk ) ) {
+				chunks.append( chunk )
+			}
+
+			// Move to next chunk with overlap
+			startPos = endPos + 1 - config.overlap
+
+			// Prevent infinite loop if overlap creates backward movement
+			if ( startPos <= chunks.len() > 0 ? len( chunks[ chunks.len() ] ) : 0 ) {
+				startPos = endPos + 1
+			}
+		}
+
+		return chunks
+	}
+
+	/**
+	 * Chunk text by word count
+	 */
+	private static function chunkByWords( required string text, required struct config ) {
+		// Split on whitespace characters using regex
+		var words = reMatch( "\S+", arguments.text )
+		var chunks = []
+		var currentChunk = []
+		var wordIndex = 1
+
+		while ( wordIndex <= words.len() ) {
+			currentChunk.append( words[ wordIndex ] )
+
+			// Check if we've reached chunk size
+			if ( currentChunk.len() >= config.chunkSize ) {
+				var chunkText = trim( currentChunk.toList( " " ) )
+				chunks.append( chunkText )
+
+				// Apply overlap by keeping last N words
+				if ( config.overlap > 0 && currentChunk.len() > config.overlap ) {
+					currentChunk = currentChunk.slice(
+						currentChunk.len() - config.overlap + 1,
+						config.overlap
+					)
+				} else {
+					currentChunk = []
+				}
+			}
+
+			wordIndex++
+		}
+
+		// Add remaining words
+		if ( currentChunk.len() > 0 ) {
+			var chunkText = trim( currentChunk.toList( " " ) )
+
+			if ( len( chunkText ) ) {
+				chunks.append( chunkText )
+			}
+		}
+
+		return chunks
+	}
+
+	/**
+	 * Chunk text by sentences
+	 */
+	private static function chunkBySentences( required string text, required struct config ) {
+		// Split by sentence boundaries (., !, ?) - Use reMatch to capture sentences
+		var sentences = reMatch( "[^.!?]+[.!?]+", arguments.text )
+
+		// If no sentences found (no punctuation), treat entire text as one sentence
+		if ( sentences.len() == 0 ) {
+			sentences = [ arguments.text ]
+		}
+		var chunks = []
+		var currentChunk = []
+		var sentenceIndex = 1
+
+		while ( sentenceIndex <= sentences.len() ) {
+			currentChunk.append( sentences[ sentenceIndex ] )
+
+			// Check if we've reached chunk size
+			if ( currentChunk.len() >= config.chunkSize ) {
+				var chunkText = trim( currentChunk.toList( " " ) )
+				chunks.append( chunkText )
+
+				// Apply overlap by keeping last N sentences
+				if ( config.overlap > 0 && currentChunk.len() > config.overlap ) {
+					currentChunk = currentChunk.slice(
+						currentChunk.len() - config.overlap + 1,
+						config.overlap
+					)
+				} else {
+					currentChunk = []
+				}
+			}
+
+			sentenceIndex++
+		}
+
+		// Add remaining sentences
+		if ( currentChunk.len() > 0 ) {
+			var chunkText = trim( currentChunk.toList( " " ) )
+
+			if ( len( chunkText ) ) {
+				chunks.append( chunkText )
+			}
+		}
+
+		return chunks
+	}
+
+	/**
+	 * Chunk text by paragraphs
+	 */
+	private static function chunkByParagraphs( required string text, required struct config ) {
+		// Split by double newlines or more - split text on paragraph boundaries
+		var paragraphs = reMatch( "[^\r\n]+(?:\r?\n\r?\n|$)", arguments.text )
+
+		// Fallback: if no paragraphs found, split on single newlines
+		if ( paragraphs.len() == 0 ) {
+			paragraphs = listToArray( arguments.text, char(10) & char(13), false, true )
+		}
+		var chunks = []
+		var currentChunk = []
+		var paragraphIndex = 1
+
+		while ( paragraphIndex <= paragraphs.len() ) {
+			var para = trim( paragraphs[ paragraphIndex ] )
+
+			if ( len( para ) ) {
+				currentChunk.append( para )
+
+				// Check if we've reached chunk size
+				if ( currentChunk.len() >= config.chunkSize ) {
+					var chunkText = trim( currentChunk.toList( static.SEPARATOR ) )
+					chunks.append( chunkText )
+
+					// Apply overlap by keeping last N paragraphs
+					if ( config.overlap > 0 && currentChunk.len() > config.overlap ) {
+						currentChunk = currentChunk.slice(
+							currentChunk.len() - config.overlap + 1,
+							config.overlap
+						)
+					} else {
+						currentChunk = []
+					}
+				}
+			}
+
+			paragraphIndex++
+		}
+
+		// Add remaining paragraphs
+		if ( currentChunk.len() > 0 ) {
+			var chunkText = trim( currentChunk.toList( static.SEPARATOR ) )
+
+			if ( len( chunkText ) ) {
+				chunks.append( chunkText )
+			}
+		}
+
+		return chunks
+	}
+
+	/**
+	 * Find the last occurrence of separator within a range
+	 */
+	private static function findLastSeparator(
+		required string text,
+		required numeric startPos,
+		required numeric endPos,
+		required string separator
+	) {
+		var searchText = mid( arguments.text, arguments.startPos, arguments.endPos - arguments.startPos + 1 )
+
+		// Use Java's lastIndexOf to find last occurrence (0-based indexing)
+		var lastPos = searchText.lastIndexOf( arguments.separator )
+
+		// Convert from 0-based to 1-based and adjust for startPos
+		return lastPos >= 0 ? arguments.startPos + lastPos : 0
+	}
+
+
+}

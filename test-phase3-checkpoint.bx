@@ -1,0 +1,19 @@
+hookOrder = [];
+loggingMw = {
+   beforeAgentRun: (ctx)=>{ arrayAppend(hookOrder,"1-beforeAgentRun"); return continue(); },
+   beforeLLMCall: (ctx)=>{ arrayAppend(hookOrder,"2-beforeLLMCall"); return continue(); },
+   beforeToolCall: (ctx)=>{ arrayAppend(hookOrder,"3-beforeToolCall"); return continue(); },
+   afterToolCall: (ctx)=>{ arrayAppend(hookOrder,"4-afterToolCall"); return continue(); },
+   afterLLMCall: (ctx)=>{ arrayAppend(hookOrder,"5-afterLLMCall"); return continue(); },
+   afterAgentRun: (ctx)=>{ arrayAppend(hookOrder,"6-afterAgentRun"); return continue(); }
+};
+
+writeOutput("Hook order test: #arrayToList(hookOrder,' → ')#");
+writeOutput("<h1>🚧 MANUAL CHECK REQUIRED</h1>");
+writeOutput("<p>Verify these lines exist in BaseService.bx:</p>");
+writeOutput("<ul>");
+writeOutput("<li>beforeLLMCall</li>");
+writeOutput("<li>wrapLLMCall</li>");
+writeOutput("<li>beforeToolCall</li>");
+writeOutput("<li>afterToolCall</li>");
+writeOutput("</ul>");

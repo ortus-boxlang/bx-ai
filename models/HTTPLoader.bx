@@ -1,0 +1,510 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * HTTP Document Loader
+ * Loads content from HTTP/HTTPS URLs with configurable content type handling.
+ * Uses the http() BIF with fluent builder pattern for making requests.
+ * Uses JSoup for robust HTML parsing and text extraction.
+ */
+import java:org.jsoup.Jsoup;
+import java:org.jsoup.safety.Safelist;
+
+class extends="BaseDocumentLoader" {
+
+	/**
+	 * Static loader configuration defaults
+	 */
+	static {
+	DEFAULT_CONFIG = {
+		encoding          : "UTF-8",
+		includeMetadata   : true,
+		continueOnError   : true,
+		// HTTP-specific defaults
+		contentType       : "auto",       // auto, text, html, json, xml
+		method            : "GET",
+			headers           : {},
+			body              : "",
+			connectionTimeout : 30,
+			timeout           : 30,
+			redirect          : true,
+			httpVersion       : "HTTP/2",
+			userAgent         : "BoxLang-AI-HTTPLoader/1.0",
+			// Proxy settings
+			proxyServer       : "",
+			proxyPort         : 0,
+			proxyUser         : "",
+			proxyPassword     : "",
+			// Processing options
+			extractText       : true,         // Extract text from HTML
+			removeScripts     : true,         // Remove script tags from HTML
+			removeStyles      : true          // Remove style tags from HTML
+		};
+	}
+
+	/**
+	 * Initialize the HTTP loader
+	 *
+	 * @source The URL to load from
+	 * @config Configuration options
+	 *
+	 * @return HTTPLoader instance
+	 */
+	function init( string source = "", struct config = {} ) {
+		super.init( argumentCollection: arguments )
+		variables.config = duplicate( static.DEFAULT_CONFIG ).append( variables.config, true );
+		return this;
+	}
+
+	/**
+	 * Set the HTTP method (GET, POST, etc.)
+	 *
+	 * @method The HTTP method
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function method( required string method ) {
+		variables.config.method = arguments.method.uCase();
+		return this;
+	}
+
+	/**
+	 * Shortcut for GET request
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function get() {
+		variables.config.method = "GET";
+		return this;
+	}
+
+	/**
+	 * Shortcut for POST request
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function post() {
+		variables.config.method = "POST";
+		return this;
+	}
+
+	/**
+	 * Shortcut for PUT request
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function put() {
+		variables.config.method = "PUT";
+		return this;
+	}
+
+	/**
+	 * Shortcut for DELETE request
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function delete() {
+		variables.config.method = "DELETE";
+		return this;
+	}
+
+	/**
+	 * Set request headers
+	 *
+	 * @headers Struct of headers to add
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function headers( required struct headers ) {
+		variables.config.headers.append( arguments.headers, true );
+		return this;
+	}
+
+	/**
+	 * Add a single header (fluent method matching http() BIF)
+	 *
+	 * @name Header name
+	 * @value Header value
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function header( required string name, required string value ) {
+		variables.config.headers[ arguments.name ] = arguments.value;
+		return this;
+	}
+
+	/**
+	 * Set the request body
+	 *
+	 * @bodyContent The body content
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function body( required any bodyContent ) {
+		variables.config.body = isSimpleValue( arguments.bodyContent )
+			? arguments.bodyContent
+			: jsonSerialize( arguments.bodyContent );
+		return this;
+	}
+
+	/**
+	 * Set the content type for parsing
+	 *
+	 * @type Content type (auto, text, html, json, xml)
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function contentType( required string type ) {
+		variables.config.contentType = arguments.type.lCase();
+		return this;
+	}
+
+	/**
+	 * Set request timeout (fluent method matching http() BIF)
+	 *
+	 * @seconds Timeout in seconds
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function timeout( required numeric seconds ) {
+		variables.config.timeout = arguments.seconds;
+		return this;
+	}
+
+	/**
+	 * Set connection timeout
+	 *
+	 * @seconds Timeout in seconds
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function connectionTimeout( required numeric seconds ) {
+		variables.config.connectionTimeout = arguments.seconds;
+		return this;
+	}
+
+	/**
+	 * Set whether to follow redirects
+	 *
+	 * @follow Whether to follow redirects
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function redirect( boolean follow = true ) {
+		variables.config.redirect = arguments.follow;
+		return this;
+	}
+
+	/**
+	 * Set proxy configuration
+	 *
+	 * @server Proxy server hostname
+	 * @port Proxy port
+	 * @user Optional proxy username
+	 * @password Optional proxy password
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function proxy( required string server, required numeric port, string user = "", string password = "" ) {
+		variables.config.proxyServer   = arguments.server;
+		variables.config.proxyPort     = arguments.port;
+		variables.config.proxyUser     = arguments.user;
+		variables.config.proxyPassword = arguments.password;
+		return this;
+	}
+
+	/**
+	 * Configure whether to extract text from HTML
+	 *
+	 * @extract Whether to extract text
+	 *
+	 * @return HTTPLoader for chaining
+	 */
+	HTTPLoader function extractText( boolean extract = true ) {
+		variables.config.extractText = arguments.extract;
+		return this;
+	}
+
+	/**
+	 * Load the document from the URL
+	 *
+	 * @return Array of Document objects
+	 */
+	array function doLoad() {
+		if ( variables.source.isEmpty() ) {
+			throw( type: "HTTPLoader.MissingSource", message: "No URL source specified for HTTPLoader" )
+		}
+
+		try {
+			// Build HTTP request using the http() BIF fluent builder
+			var httpArgs = {
+				url               : variables.source,
+				connectionTimeout : variables.config.connectionTimeout,
+				redirect          : variables.config.redirect,
+				httpVersion       : variables.config.httpVersion
+			}
+
+			// Add proxy settings if configured
+			if ( len( variables.config.proxyServer ) ) {
+				httpArgs.proxyServer = variables.config.proxyServer;
+				httpArgs.proxyPort   = variables.config.proxyPort;
+				if ( len( variables.config.proxyUser ) ) {
+					httpArgs.proxyUser     = variables.config.proxyUser;
+					httpArgs.proxyPassword = variables.config.proxyPassword;
+				}
+			}
+
+			// Create HTTP request using http() BIF with arguments
+			var httpRequest = http( argumentCollection: httpArgs )
+				// Set timeout using fluent method
+				.timeout( variables.config.timeout )
+				.method( variables.config.method )
+				// Add user agent header
+				.header( "User-Agent", variables.config.userAgent )
+
+			// Add custom headers using fluent builder
+			for ( var headerName in variables.config.headers ) {
+				httpRequest.header( headerName, variables.config.headers[ headerName ] )
+			}
+
+			// Add body if present
+			if ( len( variables.config.body ) ) {
+				httpRequest.body( variables.config.body );
+			}
+
+			// Execute request
+			var response = httpRequest.send()
+
+			// Validate response
+			if ( response.statusCode >= 400 ) {
+				if ( variables.config.continueOnError ) {
+					addError( {
+						"message"    : "HTTP request failed with status #response.statusCode#",
+						"statusCode" : response.statusCode,
+						"url"        : variables.source
+					} )
+					return []
+				}
+				throw(
+					type    : "HTTPLoader.RequestFailed",
+					message : "HTTP request failed with status #response.statusCode#: #response.statusText#"
+				)
+			}
+
+			// Get content and process based on type
+			var content        = response.fileContent;
+			var detectedType   = detectContentType( response );
+			var processedContent = processContent( content, detectedType );
+
+			// Build metadata
+			var metadata = {
+				"url"              : variables.source,
+				"statusCode"       : response.statusCode,
+				"contentType"      : detectedType,
+				"responseHeaders"  : response.responseHeader ?: {},
+				"charset"          : response.charset ?: variables.config.encoding,
+				"contentLength"    : len( content ),
+				"fileType"         : detectedType
+			};
+
+			return [
+				createDocument(
+					content: processedContent,
+					additionalMetadata: variables.config.includeMetadata ? metadata : {}
+				)
+			];
+
+		} catch ( any e ) {
+			if ( variables.config.continueOnError ) {
+				addError( {
+					"message" : e.message,
+					"type"    : e.type,
+					"url"     : variables.source
+				} );
+				return []
+			}
+			rethrow
+		}
+	}
+
+	/**
+	 * Detect content type from response
+	 *
+	 * @response The HTTP response
+	 *
+	 * @return String content type
+	 */
+	private string function detectContentType( required struct response ) {
+		// If explicit type configured, use that
+		if ( variables.config.contentType != "auto" ) {
+			return variables.config.contentType;
+		}
+
+		// Try to detect from response headers
+		var contentTypeHeader = arguments.response.responseHeader[ "Content-Type" ] ?: "";
+
+		if ( contentTypeHeader.findNoCase( "application/json" ) > 0 ) {
+			return "json";
+		} else if ( contentTypeHeader.findNoCase( "text/html" ) > 0 || contentTypeHeader.findNoCase( "application/xhtml" ) > 0 ) {
+			return "html";
+		} else if ( contentTypeHeader.findNoCase( "text/xml" ) > 0 || contentTypeHeader.findNoCase( "application/xml" ) > 0 ) {
+			return "xml";
+		} else if ( contentTypeHeader.findNoCase( "text/" ) > 0 ) {
+			return "text";
+		}
+
+		// Try to detect from URL extension
+		var url = variables.source.lCase();
+		if ( url.endsWith( ".json" ) ) {
+			return "json";
+		} else if ( url.endsWith( ".html" ) || url.endsWith( ".htm" ) ) {
+			return "html";
+		} else if ( url.endsWith( ".xml" ) ) {
+			return "xml";
+		}
+
+		// Default to text
+		return "text";
+	}
+
+	/**
+	 * Process content based on detected type
+	 *
+	 * @content The raw content
+	 * @type The detected content type
+	 *
+	 * @return Processed content string
+	 */
+	private string function processContent( required string content, required string type ) {
+		switch ( arguments.type ) {
+			case "html": {
+				if ( variables.config.extractText ) {
+					return extractTextFromHTML( arguments.content )
+				}
+				return arguments.content
+			}
+			case "json": {
+				// Pretty-format JSON for readability
+				try {
+					return JSONPrettify( arguments.content )
+				} catch ( any e ) {
+					return arguments.content
+				}
+			}
+			case "xml": {
+				// Return raw XML (could add text extraction later)
+				return arguments.content;
+			}
+			default: {
+				return arguments.content;
+			}
+		}
+	}
+
+	/**
+	 * Extract text content from HTML using JSoup.
+	 * JSoup provides robust HTML parsing and text extraction that handles malformed HTML,
+	 * properly decodes entities, and preserves document structure.
+	 *
+	 * @html The HTML content
+	 *
+	 * @return Extracted text
+	 */
+	private string function extractTextFromHTML( required string html ) {
+		try {
+			// Parse HTML with JSoup
+			var doc = Jsoup::parse( arguments.html );
+
+			// Remove script tags if configured
+			if ( variables.config.removeScripts ) {
+				doc.select( "script" ).remove();
+			}
+
+			// Remove style tags if configured
+			if ( variables.config.removeStyles ) {
+				doc.select( "style" ).remove();
+			}
+
+			// Extract text content (JSoup automatically handles entity decoding and whitespace normalization)
+			var text = doc.text();
+
+			return trim( text );
+		} catch ( any e ) {
+			// Fall back to regex-based extraction if JSoup fails
+			return extractTextFromHTMLFallback( arguments.html );
+		}
+	}
+
+	/**
+	 * Fallback HTML text extraction using JSoup's Safelist cleaner.
+	 * Uses JSoup's robust HTML cleaning with an empty safelist to strip all tags.
+	 * Falls back to regex only if JSoup cleaning also fails.
+	 *
+	 * @html The HTML content
+	 *
+	 * @return Extracted text
+	 */
+	private string function extractTextFromHTMLFallback( required string html ) {
+		try {
+			// Use JSoup's Safelist.none() to strip all HTML tags
+			// This is more robust than regex for handling malformed HTML
+			var cleaned = Jsoup::clean( arguments.html, Safelist::none() );
+
+			// Normalize whitespace
+			cleaned = reReplace( cleaned, "\s+", " ", "all" );
+
+			return trim( cleaned );
+		} catch ( any e ) {
+			// Last resort: basic regex stripping
+			var text = arguments.html;
+
+			// Remove script and style tags
+			text = reReplace( text, "<(script|style)[^>]*>[\s\S]*?</\1>", "", "all" );
+
+			// Remove HTML comments
+			text = reReplace( text, "<!--[\s\S]*?-->", "", "all" );
+
+			// Remove all HTML tags
+			text = reReplace( text, "<[^>]+>", " ", "all" );
+
+			// Decode HTML entities
+			text = htmlDecode( text );
+
+			// Normalize whitespace
+			text = reReplace( text, "\s+", " ", "all" );
+
+			return trim( text );
+		}
+	}
+
+	/**
+	 * Get source metadata for HTTP
+	 *
+	 * @return Struct with metadata
+	 */
+	struct function getSourceMetadata() {
+		return {
+			"source"            : variables.source,
+			"loader"            : getName(),
+			"isURL"             : true,
+			"method"            : variables.config.method,
+			"contentType"       : variables.config.contentType,
+			"timeout"           : variables.config.timeout,
+			"connectionTimeout" : variables.config.connectionTimeout
+		};
+	}
+
+}

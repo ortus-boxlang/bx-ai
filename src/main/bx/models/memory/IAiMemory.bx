@@ -12,7 +12,7 @@
  * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
- * Interface for AI Agent Memory implementations - PHASE 4 COMPLETE
+ * Interface for AI Agent Memory implementations
  * Defines the contract for storing/retrieving conversation history + CHECKPOINTING
  */
 interface {
@@ -38,7 +38,7 @@ interface {
 	any function key( string key );
 
 	/**
-	 * Get or set metadata for this memory
+	 * Get or set metadata for this memory instance
 	 * @metadata Optional struct to merge with existing metadata
 	 * @return Struct (getter) or IAiMemory (setter)
 	 */
@@ -163,31 +163,33 @@ interface {
 
 	/**
 	 * ------------------------------------------------------------------------------
-	 * 🔥 PHASE 4: CHECKPOINT METHODS (CRITICAL FOR HITL)
+	 * CHECKPOINT METHODS (HITL)
 	 * ------------------------------------------------------------------------------
 	 */
 
 	/**
-	 * Save agent execution state for HITL resume
-	 * Stores: { messages, params, options, pending }
-	 * @threadId Unique execution thread identifier
-	 * @state Complete agent state struct
-	 * @ttlMinutes Minutes until auto-expiry (0 = no expiry)
-	 * @return void
+	 * Save agent execution state for HITL resume.
+	 * Storage key convention: "checkpoint_" & threadId
+	 *
+	 * @threadId    Unique execution thread identifier
+	 * @state       Complete agent state: { messages, params, options, pending }
+	 * @ttlMinutes  Minutes until auto-expiry (0 = no expiry)
 	 */
-	void function saveState( required string threadId, required struct state, numeric ttlMinutes = 0 );
+	void function saveState( required string threadId, required struct state, numeric ttlMinutes=0 );
 
 	/**
-	 * Load saved agent state. Throws CheckpointNotFoundException if missing
+	 * Load saved agent state.
+	 * Throws CheckpointNotFoundException if the threadId is not found.
+	 *
 	 * @threadId Thread identifier to load
-	 * @return { messages: [], params: {}, options: {}, pending: {} }
+	 * @return { messages, params, options, pending }
 	 */
 	struct function loadState( required string threadId );
 
 	/**
-	 * Delete checkpoint after resume (cleanup)
+	 * Delete checkpoint after resume (one-time use cleanup).
+	 *
 	 * @threadId Thread identifier to clear
-	 * @return void
 	 */
 	void function clearState( required string threadId );
 
@@ -242,31 +244,31 @@ interface {
 	IAiMemory function clone();
 
 	/**
-	 * Merge messages from another memory
-	 * @otherMemory Source memory
+	 * Merge messages from another memory instance
+	 * @otherMemory    Source memory
 	 * @skipDuplicates Skip duplicate messages
 	 * @return IAiMemory for chaining
 	 */
-	IAiMemory function merge( required IAiMemory otherMemory, boolean skipDuplicates = false );
+	IAiMemory function merge( required IAiMemory otherMemory, boolean skipDuplicates=false );
 
 	/**
 	 * ------------------------------------------------------------------------------
-	 * SEARCH METHODS (Optional)
+	 * SEARCH METHODS
 	 * ------------------------------------------------------------------------------
 	 */
 
 	/**
 	 * Search messages by content
-	 * @searchTerm Search text
+	 * @searchTerm    Search text
 	 * @caseSensitive Case sensitive search
-	 * @return Matching messages
+	 * @return Array of matching messages
 	 */
-	array function search( required string searchTerm, boolean caseSensitive = false );
+	array function search( required string searchTerm, boolean caseSensitive=false );
 
 	/**
 	 * Get messages by range
-	 * @startIndex 1-based start (required)
-	 * @endIndex 1-based end (optional)
+	 * @startIndex 1-based start index (required)
+	 * @endIndex   1-based end index (optional)
 	 * @return Array of messages
 	 */
 	array function getRange( required numeric startIndex, numeric endIndex );

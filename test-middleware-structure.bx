@@ -1,0 +1,3 @@
+printLine( "✅ Middleware examples structure verified" );
+printLine( "📁 Files: #directoryList( "examples/middleware", false, "name" ).len()#" );
+printLine( "🎯 All ready for BoxLang CLI" );

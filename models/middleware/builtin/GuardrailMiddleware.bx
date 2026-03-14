@@ -1,0 +1,266 @@
+/**
+ * GuardrailMiddleware - Pattern-based security for tool execution
+ *
+ * Provides multiple layers of protection against dangerous tool operations:
+ * 1. Blocked Tools: Completely prohibit specific tools
+ * 2. Blocked Arguments: Reject tools if forbidden arguments are present
+ * 3. Argument Patterns: Reject tools if argument values match dangerous patterns
+ *
+ * Usage:
+ * new GuardrailMiddleware(
+ *     blockedTools : [ "dropTable", "deleteAllRecords" ],
+ *     blockedArgs  : { executeSQL: [ "rawQuery" ] },
+ *     argPatterns  : { executeSQL: { query: "(?i)DROP|TRUNCATE|DELETE FROM" } }
+ * )
+ */
+component
+    extends="models.middleware.BaseAiMiddleware"
+    accessors="true"
+    {
+
+    // =========================================================================
+    // PROPERTIES
+    // =========================================================================
+
+    /**
+     * Array of tool names that are completely blocked
+     */
+    property name="blockedTools" type="array" default="[]";
+
+    /**
+     * Struct mapping tool names to arrays of blocked argument names.
+     * Rejects the call if any listed argument key is present — regardless of value.
+     * Example: { "executeSQL": [ "password", "apiKey" ] }
+     */
+    property name="blockedArgs" type="struct" default="{}";
+
+    /**
+     * Struct mapping tool names to per-argument regex patterns.
+     * Rejects the call if the argument value matches the pattern.
+     * Example: { "executeSQL": { "query": "(?i)DROP|TRUNCATE|DELETE FROM" } }
+     *
+     * Use inline (?i) flag in the pattern itself for case-insensitive matching
+     * rather than relying on reFindNoCase() — this keeps pattern intent explicit.
+     */
+    property name="argPatterns" type="struct" default="{}";
+
+    // =========================================================================
+    // CONSTRUCTOR
+    // =========================================================================
+
+    /**
+     * Initialize GuardrailMiddleware with security rules.
+     *
+     * @blockedTools  Array of tool names to completely block
+     * @blockedArgs   Struct mapping tool names to forbidden argument name arrays
+     * @argPatterns   Struct mapping tool names to per-argument regex pattern structs
+     */
+    function init(
+        array  blockedTools = [],
+        struct blockedArgs  = {},
+        struct argPatterns  = {}
+    ) {
+        // Assign properties first, then log — log reads the properties
+        variables.blockedTools = arguments.blockedTools;
+        variables.blockedArgs  = arguments.blockedArgs;
+        variables.argPatterns  = arguments.argPatterns;
+
+        logGuardrailsInitialized();
+
+        return this;
+    }
+
+    // =========================================================================
+    // HOOK IMPLEMENTATION
+    // =========================================================================
+
+    /**
+     * Inspect each tool call before execution and apply all security rules.
+     *
+     * Evaluation order (first match wins):
+     *   1. Blocked tool name
+     *   2. Forbidden argument present
+     *   3. Argument value matches regex pattern
+     *
+     * @context { tool, toolName, toolArgs, toolCallId }
+     */
+    AiMiddlewareResult function beforeToolCall( required struct context ) {
+        var toolName = context.toolName;
+        var toolArgs = context.keyExists( "toolArgs" ) ? context.toolArgs : {};
+
+        // ---- Check 1: Is the tool completely blocked? ----
+        if ( isToolBlocked( toolName ) ) {
+            var reason = "Tool '#toolName#' is blocked by guardrail policy";
+            logBlockedTool( toolName, reason );
+            return AiMiddlewareResult.reject( reason );
+        }
+
+        // ---- Check 2: Are any forbidden argument keys present? ----
+        var forbiddenCheck = checkForbiddenArgs( toolName, toolArgs );
+        if ( forbiddenCheck.blocked ) {
+            var reason = "Tool '#toolName#' blocked: forbidden argument '#forbiddenCheck.argName#' is present";
+            logBlockedArg( toolName, forbiddenCheck.argName, reason );
+            return AiMiddlewareResult.reject( reason );
+        }
+
+        // ---- Check 3: Does any argument value match a blocked pattern? ----
+        var patternCheck = checkArgPatterns( toolName, toolArgs );
+        if ( patternCheck.blocked ) {
+            var reason = "Tool '#toolName#' blocked: argument '#patternCheck.argName#' matches forbidden pattern";
+            logBlockedPattern(
+                toolName,
+                patternCheck.argName,
+                patternCheck.value,
+                patternCheck.pattern,
+                reason
+            );
+            return AiMiddlewareResult.reject( reason );
+        }
+
+        // All checks passed
+        return AiMiddlewareResult.continue();
+    }
+
+    // =========================================================================
+    // PRIVATE HELPERS
+    // =========================================================================
+
+    /**
+     * Returns true if the tool name appears in the blockedTools array.
+     * Uses case-insensitive comparison so "DropTable" matches "dropTable".
+     */
+    private boolean function isToolBlocked( required string toolName ) {
+        return variables.blockedTools.findNoCase( arguments.toolName ) > 0;
+    }
+
+    /**
+     * Checks whether any blocked argument key is present in toolArgs.
+     * The check is on key presence only — value is irrelevant for this layer.
+     *
+     * @return { blocked: boolean, argName: string }
+     */
+    private struct function checkForbiddenArgs(
+        required string toolName,
+        required struct toolArgs
+    ) {
+        if ( !variables.blockedArgs.keyExists( arguments.toolName ) ) {
+            return { "blocked": false, "argName": "" };
+        }
+
+        var forbiddenNames = variables.blockedArgs[ arguments.toolName ];
+        for ( var argName in forbiddenNames ) {
+            if ( arguments.toolArgs.keyExists( argName ) ) {
+                return { "blocked": true, "argName": argName };
+            }
+        }
+
+        return { "blocked": false, "argName": "" };
+    }
+
+    /**
+     * Checks whether any argument value matches its configured regex pattern.
+     *
+     * Uses reFind() (case-sensitive) — patterns should use the inline (?i) flag
+     * when case-insensitive matching is needed (e.g. "(?i)DROP|TRUNCATE").
+     * This keeps case-sensitivity intent inside the pattern where it is visible.
+     *
+     * @return { blocked: boolean, argName: string, value: string, pattern: string }
+     */
+    private struct function checkArgPatterns(
+        required string toolName,
+        required struct toolArgs
+    ) {
+        var empty = { "blocked": false, "argName": "", "value": "", "pattern": "" };
+
+        if ( !variables.argPatterns.keyExists( arguments.toolName ) ) {
+            return empty;
+        }
+
+        var patterns = variables.argPatterns[ arguments.toolName ];
+        for ( var argName in patterns ) {
+            if ( arguments.toolArgs.keyExists( argName ) ) {
+                var argValue = toString( arguments.toolArgs[ argName ] );
+                var pattern  = patterns[ argName ];
+
+                // reFind() returns 0 when no match; > 0 means pattern found
+                if ( reFind( pattern, argValue ) > 0 ) {
+                    return {
+                        "blocked" : true,
+                        "argName" : argName,
+                        "value"   : argValue,
+                        "pattern" : pattern
+                    };
+                }
+            }
+        }
+
+        return empty;
+    }
+
+    // =========================================================================
+    // LOGGING
+    // =========================================================================
+
+    /**
+     * Log guardrail configuration summary at startup.
+     */
+    private void function logGuardrailsInitialized() {
+        writeLog(
+            text : "[bx-ai][guardrails] Initialized — blocked tools: #arrayLen( variables.blockedTools )# | blocked arg rules: #structCount( variables.blockedArgs )# | pattern rules: #structCount( variables.argPatterns )#",
+            type : "information",
+            log  : "ai"
+        );
+    }
+
+    /**
+     * Log a rejected tool-name match.
+     */
+    private void function logBlockedTool(
+        required string toolName,
+        required string reason
+    ) {
+        writeLog(
+            text : "[bx-ai][guardrails] BLOCKED_TOOL | tool=#arguments.toolName# | #arguments.reason#",
+            type : "warning",
+            log  : "ai"
+        );
+    }
+
+    /**
+     * Log a rejected forbidden-argument match.
+     */
+    private void function logBlockedArg(
+        required string toolName,
+        required string argName,
+        required string reason
+    ) {
+        writeLog(
+            text : "[bx-ai][guardrails] BLOCKED_ARG | tool=#arguments.toolName# | arg=#arguments.argName# | #arguments.reason#",
+            type : "warning",
+            log  : "ai"
+        );
+    }
+
+    /**
+     * Log a rejected pattern match. Truncates the matched value to 100 chars
+     * to keep log lines readable and avoid logging sensitive data in full.
+     */
+    private void function logBlockedPattern(
+        required string toolName,
+        required string argName,
+        required string value,
+        required string pattern,
+        required string reason
+    ) {
+        var safeValue = len( arguments.value ) > 100
+            ? left( arguments.value, 100 ) & "…"
+            : arguments.value;
+
+        writeLog(
+            text : "[bx-ai][guardrails] BLOCKED_PATTERN | tool=#arguments.toolName# | arg=#arguments.argName# | value=#safeValue# | pattern=#arguments.pattern# | #arguments.reason#",
+            type : "warning",
+            log  : "ai"
+        );
+    }
+
+}

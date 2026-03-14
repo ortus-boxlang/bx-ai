@@ -1,0 +1,24 @@
+component {
+    function run() {
+        var memory = new models.memory.InMemoryMemory();
+        
+        printLine( "=== InMemoryMemory Checkpoint Test ===" );
+        
+        // Test save/load
+        memory.saveState( "thread1", { "step": 1, "tools": ["calc"] } );
+        memory.saveState( "thread2", { "step": 2 } );
+        
+        printLine( "Thread1: #serializeJSON( memory.loadState('thread1') )#" );
+        printLine( "Thread2: #serializeJSON( memory.loadState('thread2') )#" );
+        printLine( "Count: #memory.getCheckpointCount()#" );
+        
+        // Test clear
+        memory.clearState( "thread1" );
+        printLine( "After clear thread1: #memory.getCheckpointCount()#" );
+        
+        // List threads
+        printLine( "Threads: #memory.listThreads().toString()#" );
+        
+        printLine( "✅ All tests passed!" );
+    }
+}

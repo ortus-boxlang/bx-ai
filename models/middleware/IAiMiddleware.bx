@@ -1,42 +1,23 @@
-interface {
+interface{
 
     /**
-     * beforeAgentRun / afterAgentRun context:
-     * {
-     *   agent,
-     *   input,
-     *   messages,
-     *   params,
-     *   options,
-     *   response?,        // after only
-     *   parentTraceId?,   // optional
-     *   parentSpanId?     // optional
-     * }
-     */
+    * CONTEXT SHAPES (documented here for all middleware authors):
+    *
+    * beforeAgentRun / afterAgentRun: { agent, input, messages, params, options, response? }
+    * beforeLLMCall / afterLLMCall:   { model, chatRequest, messages, response? }
+    * beforeToolCall / afterToolCall: { tool, toolName, toolArgs, toolCallId, result? }
+    * onError:                        { error, phase, context }
+    */
+
     AiMiddlewareResult function beforeAgentRun( required struct context );
     AiMiddlewareResult function afterAgentRun( required struct context );
-
-    /**
-     * beforeLLMCall / afterLLMCall context:
-     * { model, chatRequest, messages, response? }
-     */
     AiMiddlewareResult function beforeLLMCall( required struct context );
     AiMiddlewareResult function afterLLMCall( required struct context );
-
-    /**
-     * beforeToolCall / afterToolCall context:
-     * { tool, toolName, toolArgs, toolCallId, result? }
-     */
     AiMiddlewareResult function beforeToolCall( required struct context );
     AiMiddlewareResult function afterToolCall( required struct context );
-
-    /**
-     * onError context:
-     * { error, phase, context }
-     */
     AiMiddlewareResult function onError( required struct context );
 
-    // Wrap-style hooks
+    // Wrap hooks - receive (context, handler) where handler() calls next layer
     any function wrapLLMCall( required struct context, required function handler );
     any function wrapToolCall( required struct context, required function handler );
 
