@@ -1,0 +1,354 @@
+/**
+ * 04-hitl-web.bx — HumanInTheLoopMiddleware Web Suspend/Resume Pattern
+ *
+ * In a web application each HTTP request is independent, so the agent
+ * cannot block a thread waiting for human input. Instead:
+ *
+ *   Request 1  POST /chat     → agent.run()        → 202 Suspended
+ *              Front-end shows a review UI to the user
+ *   Request 2  POST /approve  → agent.resume()     → 200 OK + final answer
+ *
+ * A persistent checkpointer (cache or database-backed memory) stores the
+ * in-flight conversation state between the two requests.
+ *
+ * This file simulates both controller actions as plain functions so the
+ * pattern can be understood and tested as a script. In a real ColdBox app
+ * these live inside a Handler component.
+ */
+
+println( "=== Middleware Example 04: HITL Web Suspend / Resume ===" )
+println( "" )
+
+// ---------------------------------------------------------------------------
+// Shared setup — wire these in ColdBox via WireBox bindings
+// ---------------------------------------------------------------------------
+
+// Cache-backed checkpointer: survives across HTTP requests and server restarts.
+// Swap "session" for a persistent cache/database provider in production.
+checkpointer = aiMemory( type: "session" )
+
+hitl = new bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware(
+    mode        : "dangerous",   // intercept: delete, exec, send_email, transfer, etc.
+    includeArgs : true
+)
+
+transferTool = aiTool(
+    name       : "bank_transfer",
+    description: "Transfer funds between two bank accounts",
+    action     : ( from, to, amount ) => {
+        return "Transferred $#numberFormat( arguments.amount, '0.00' )# from #arguments.from# to #arguments.to#."
+    }
+).addParameter( "from",   "string",  "Source account number",      true )
+ .addParameter( "to",     "string",  "Destination account number", true )
+ .addParameter( "amount", "numeric", "Amount to transfer in USD",  true )
+
+// ---------------------------------------------------------------------------
+// Simulated ColdBox Handler: BankingHandler
+// ---------------------------------------------------------------------------
+
+/**
+ * Simulates: function chat( event, rc, prc )
+ *   POST /banking/chat
+ *   Body: { message: string, threadId: string }
+ *
+ * Returns a response struct that maps to an HTTP response:
+ *   { status: 200, reply: string }         — agent answered directly
+ *   { status: 202, suspended: true, ... }  — agent needs human review
+ */
+function chatAction( required string message, required string threadId ) {
+
+    var agent = aiAgent(
+        name        : "BankingAgent",
+        instructions: "You are a banking assistant. Help users with account transfers.",
+        tools       : [ transferTool ],
+        middleware  : [ hitl ],
+        checkpointer: checkpointer,
+        threadId    : arguments.threadId
+    )
+
+    var response = agent.run( arguments.message )
+
+    // Detect suspension
+    if ( isInstanceOf( response, "AiMiddlewareResult" ) && response.isSuspended() ) {
+        var pending = response.getData()
+        return {
+            status   : 202,
+            suspended: true,
+            threadId : arguments.threadId,
+            review   : {
+                toolName: pending.toolName,
+                toolArgs: pending.toolArgs,
+                prompt  : pending.reviewPrompt ?: "Please review this action before it executes."
+            }
+        }
+    }
+
+    return { status: 200, reply: response }
+}
+
+/**
+ * Simulates: function approve( event, rc, prc )
+ *   POST /banking/approve
+ *   Body: { threadId: string, approved: boolean, reason?: string, editedArgs?: struct }
+ *
+ * Returns:
+ *   { status: 200, reply: string }
+ */
+function approveAction(
+    required string  threadId,
+    required boolean approved,
+             string  reason     = "",
+             struct  editedArgs = {}
+) {
+    var agent = aiAgent(
+        name        : "BankingAgent",
+        instructions: "You are a banking assistant. Help users with account transfers.",
+        tools       : [ transferTool ],
+        middleware  : [ hitl ],
+        checkpointer: checkpointer,
+        threadId    : arguments.threadId
+    )
+
+    var decision = ""
+
+    if ( arguments.approved ) {
+        if ( !arguments.editedArgs.isEmpty() ) {
+            // Human approved but modified the arguments (e.g., reduced amount)
+            decision = AiMiddlewareResult.edit( arguments.editedArgs )
+        } else {
+            decision = AiMiddlewareResult.approve()
+        }
+    } else {
+        decision = AiMiddlewareResult.reject(
+            len( arguments.reason ) ? arguments.reason : "Rejected by compliance officer"
+        )
+    }
+
+    var finalResponse = agent.resume( decision, arguments.threadId )
+    return { status: 200, reply: finalResponse }
+}
+
+// ---------------------------------------------------------------------------
+// Simulate the two-request HTTP lifecycle
+// ---------------------------------------------------------------------------
+
+threadId = createUUID()
+
+println( "--- HTTP Request 1: POST /banking/chat ---" )
+firstResponse = chatAction(
+    message : "Transfer $500 from account ACC-001 to account ACC-002",
+    threadId: threadId
+)
+
+println( "HTTP #firstResponse.status#" )
+
+if ( firstResponse.status == 202 ) {
+
+    println( "Suspended — awaiting human review" )
+    println( "  Tool     : #firstResponse.review.toolName#" )
+    println( "  Arguments: #serializeJSON( firstResponse.review.toolArgs )#" )
+    println( "  Prompt   : #firstResponse.review.prompt#" )
+    println( "" )
+
+    // --- Scenario A: Compliance officer approves as-is ----------------------
+
+    println( "--- HTTP Request 2a: POST /banking/approve (approved) ---" )
+    approvedResponse = approveAction( threadId: threadId, approved: true )
+    println( "HTTP #approvedResponse.status#" )
+    println( "Agent: #approvedResponse.reply#" )
+    println( "" )
+
+} else {
+    println( "Agent: #firstResponse.reply#" )
+    println( "" )
+}
+
+// --- Scenario B: Reject example (separate thread) ---------------------------
+
+threadId2 = createUUID()
+
+println( "--- Scenario B: Rejection ---" )
+r2 = chatAction( message: "Transfer $10000 from ACC-001 to ACC-999", threadId: threadId2 )
+
+if ( r2.status == 202 ) {
+    rejectResponse = approveAction(
+        threadId: threadId2,
+        approved: false,
+        reason  : "Transfer exceeds daily limit — rejected by fraud detection"
+    )
+    println( "Agent: #rejectResponse.reply#" )
+}
+
+println( "" )
+println( "=== Summary ===" )
+println( "Web HITL pattern (two HTTP requests):" )
+println( "  Request 1  POST /chat     → 202 Suspended (state saved in checkpointer)" )
+println( "  Request 2  POST /approve  → agent.resume(decision) → 200 OK" )
+println( "" )
+println( "Decision types:" )
+println( "  AiMiddlewareResult.approve()         – run the tool as-is" )
+println( "  AiMiddlewareResult.reject(reason)    – skip the tool, tell the agent why" )
+println( "  AiMiddlewareResult.edit(modifiedArgs)– run the tool with overridden args" )
+
+// ===========================================================================
+// REAL COLDBOX INTEGRATION
+// ===========================================================================
+//
+// The script above simulates the two-request lifecycle as plain functions.
+// Below is the equivalent ColdBox Handler (BankingHandler.bx) that maps
+// each action directly to an HTTP route:
+//
+//   POST /banking/chat    → BankingHandler.chat()
+//   POST /banking/approve → BankingHandler.approve()
+//   POST /banking/reject  → BankingHandler.reject()
+//
+// Wire the shared checkpointer and HITL middleware via WireBox so every
+// request rebuilds the agent with the same in-flight conversation state.
+//
+// --- BankingHandler.bx (handlers/BankingHandler.bx) -------------------------
+//
+// component {
+//
+//     // WireBox injects a cache-backed memory store shared across requests
+//     property name="checkpointer" inject="CacheMemory@bxai";
+//
+//     /**
+//      * POST /banking/chat
+//      * Body: { message: string, threadId: string }
+//      *
+//      * 200 → { status: "complete",          response: string   }
+//      * 202 → { status: "pending_approval",  question: struct,
+//      *                                       threadId: string   }
+//      */
+//     function chat( event, rc, prc ) {
+//         var agent    = buildAgent( rc.threadId )
+//         var response = agent.run( rc.message )
+//
+//         if ( isInstanceOf( response, "AiMiddlewareResult" ) && response.isSuspended() ) {
+//             return event.renderData( data: {
+//                 status  : "pending_approval",
+//                 question: response.getData(),
+//                 threadId: agent.getThreadId()
+//             }, statusCode: 202 )
+//         }
+//
+//         return event.renderData( data: {
+//             status  : "complete",
+//             response: response
+//         } )
+//     }
+//
+//     /**
+//      * POST /banking/approve
+//      * Body: { threadId: string, editedArgs?: struct }
+//      *
+//      * Resumes the suspended tool with an approve (or edit) decision.
+//      * If the agent suspends again (multi-step approval), returns 202 again.
+//      *
+//      * 200 → { status: "complete",         response: string }
+//      * 202 → { status: "pending_approval", question: struct,
+//      *                                      threadId: string }
+//      */
+//     function approve( event, rc, prc ) {
+//         var agent    = buildAgent( rc.threadId )
+//         var decision = structIsEmpty( rc.editedArgs ?: {} )
+//                            ? AiMiddlewareResult.approve()
+//                            : AiMiddlewareResult.edit( rc.editedArgs )
+//
+//         var result = agent.resume( decision, rc.threadId )
+//
+//         if ( isInstanceOf( result, "AiMiddlewareResult" ) && result.isSuspended() ) {
+//             // Another tool in the same run needs approval — loop back to UI
+//             return event.renderData( data: {
+//                 status  : "pending_approval",
+//                 question: result.getData(),
+//                 threadId: agent.getThreadId()
+//             }, statusCode: 202 )
+//         }
+//
+//         return event.renderData( data: {
+//             status  : "complete",
+//             response: result
+//         } )
+//     }
+//
+//     /**
+//      * POST /banking/reject
+//      * Body: { threadId: string, reason?: string }
+//      *
+//      * Resumes the suspended tool with a rejection decision so the agent
+//      * can gracefully tell the user what happened.
+//      */
+//     function reject( event, rc, prc ) {
+//         var agent    = buildAgent( rc.threadId )
+//         var decision = AiMiddlewareResult.reject(
+//             len( rc.reason ?: "" ) ? rc.reason : "Action rejected by compliance officer"
+//         )
+//
+//         var result = agent.resume( decision, rc.threadId )
+//
+//         return event.renderData( data: {
+//             status  : "complete",
+//             response: result
+//         } )
+//     }
+//
+//     // -----------------------------------------------------------------------
+//     // Private helpers
+//     // -----------------------------------------------------------------------
+//
+//     /**
+//      * Rebuild the agent for the given thread.
+//      * The checkpointer rehydrates the in-flight conversation state
+//      * so resume() picks up exactly where the last request left off.
+//      */
+//     private function buildAgent( string threadId = "" ) {
+//         return aiAgent(
+//             name        : "BankingAgent",
+//             instructions: "You are a banking assistant. Help users with account transfers.",
+//             tools       : [ getTransferTool() ],
+//             middleware  : [
+//                 new bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware(
+//                     mode        : "dangerous",
+//                     includeArgs : true
+//                 )
+//             ],
+//             checkpointer: variables.checkpointer,
+//             threadId    : arguments.threadId
+//         )
+//     }
+//
+//     private function getTransferTool() {
+//         return aiTool(
+//             name       : "bank_transfer",
+//             description: "Transfer funds between two bank accounts",
+//             action     : ( from, to, amount ) => {
+//                 return "Transferred $#numberFormat( arguments.amount, '0.00' )# from #arguments.from# to #arguments.to#."
+//             }
+//         ).addParameter( "from",   "string",  "Source account number",      true )
+//          .addParameter( "to",     "string",  "Destination account number", true )
+//          .addParameter( "amount", "numeric", "Amount to transfer in USD",  true )
+//     }
+//
+// }   // end BankingHandler.bx
+//
+// ---------------------------------------------------------------------------
+// Route registration (config/Router.bx):
+//
+//   POST("/banking/chat",    "banking.chat")
+//   POST("/banking/approve", "banking.approve")
+//   POST("/banking/reject",  "banking.reject")
+//
+// ---------------------------------------------------------------------------
+// Front-end flow:
+//
+//   1. User submits a chat message → POST /banking/chat
+//      Response 202 → show review UI with question.toolName + question.toolArgs
+//
+//   2. Reviewer clicks Approve      → POST /banking/approve  { threadId }
+//      Reviewer clicks Approve+Edit → POST /banking/approve  { threadId, editedArgs: {...} }
+//      Reviewer clicks Reject        → POST /banking/reject   { threadId, reason: "..." }
+//
+//   3. If the next response is 202 again, repeat step 2 for the next tool.
+//      If the response is 200, display response.response to the user.
+// ===========================================================================
