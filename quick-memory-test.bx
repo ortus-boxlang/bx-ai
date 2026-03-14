@@ -1,8 +1,0 @@
-try {
-    memory = new models.memory.InMemoryMemory();
-    memory.saveState( "thread1", { "step":1, "tools":["calc"] } );
-    dump( memory.loadState( "thread1" ) );
-    writeOutput( "<br>Count: " & memory.getCheckpointCount() );
-} catch( any e ) {
-    writeOutput( "Error: " & e.message );
-}
