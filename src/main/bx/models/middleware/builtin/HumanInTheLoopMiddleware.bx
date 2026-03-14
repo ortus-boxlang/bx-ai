@@ -85,11 +85,11 @@ component extends="models.middleware.BaseAiMiddleware" accessors="true" {
                 break;
                 
             case "never":
-                return AiMiddlewareResult.continue();
+                return AiMiddlewareResult.continueChain();
         }
 
         if ( !shouldSuspend ) {
-            return AiMiddlewareResult.continue();
+            return AiMiddlewareResult.continueChain();
         }
 
         // 🔥 BUILD SUSPENSION PAYLOAD
@@ -98,18 +98,19 @@ component extends="models.middleware.BaseAiMiddleware" accessors="true" {
             "toolCallId": context.toolCallId ?: "",
             "toolArgs": variables.includeArgs ? ( context.toolArgs ?: {} ) : {},
             "timestamp": now(),
-            "reviewPrompt": variables.reviewPrompt
+            "reviewPrompt": variables.reviewPrompt,
+            "question": variables.reviewPrompt & " Tool: #toolName#. Args: " & serializeJSON( context.toolArgs ?: {} ).left( 200 )
         };
 
         var reason = "Human review required for tool '#toolName#'";
         
         log( "⏸️ HITL SUSPENSION: #toolName# | Args: #serializeJSON(suspendData.toolArgs).left(100)#..." );
 
-        // 🔥 PHASE 4 INTEGRATION: Return structured suspension
-        return AiMiddlewareResult.suspend(
-            data = suspendData,
-            reason = reason
-        );
+        // Return structured suspension
+        return AiMiddlewareResult.suspend( suspendData );
+
+
+
     }
 
     /**
@@ -119,7 +120,7 @@ component extends="models.middleware.BaseAiMiddleware" accessors="true" {
         if ( structKeyExists( context, "suspensions" ) && arrayLen( context.suspensions ) ) {
             log( "Agent run ended with #arrayLen(context.suspensions)# suspensions" );
         }
-        return AiMiddlewareResult.continue();
+        return AiMiddlewareResult.continueChain();
     }
 
     /**

@@ -88,7 +88,7 @@ component extends="models.middleware.BaseAiMiddleware" accessors="true" {
         }
 
         log( detail, "beforeAgentRun" );
-        return AiMiddlewareResult.continue();
+        return AiMiddlewareResult.continueChain();
     }
 
     /**
@@ -107,7 +107,7 @@ component extends="models.middleware.BaseAiMiddleware" accessors="true" {
         }
 
         log( detail, "afterAgentRun" );
-        return AiMiddlewareResult.continue();
+        return AiMiddlewareResult.continueChain();
     }
 
     /**
@@ -135,7 +135,7 @@ component extends="models.middleware.BaseAiMiddleware" accessors="true" {
         }
 
         log( detail, "beforeLLMCall" );
-        return AiMiddlewareResult.continue();
+        return AiMiddlewareResult.continueChain();
     }
 
     /**
@@ -169,7 +169,7 @@ component extends="models.middleware.BaseAiMiddleware" accessors="true" {
         }
 
         log( detail, "afterLLMCall" );
-        return AiMiddlewareResult.continue();
+        return AiMiddlewareResult.continueChain();
     }
 
     /**
@@ -194,7 +194,7 @@ component extends="models.middleware.BaseAiMiddleware" accessors="true" {
         }
 
         log( detail, "beforeToolCall" );
-        return AiMiddlewareResult.continue();
+        return AiMiddlewareResult.continueChain();
     }
 
     /**
@@ -222,7 +222,7 @@ component extends="models.middleware.BaseAiMiddleware" accessors="true" {
         }
 
         log( detail, "afterToolCall" );
-        return AiMiddlewareResult.continue();
+        return AiMiddlewareResult.continueChain();
     }
 
     /**
@@ -237,7 +237,7 @@ component extends="models.middleware.BaseAiMiddleware" accessors="true" {
             detail &= " | Thread: #context.threadId#";
         }
         log( detail, "onSuspend" );
-        return AiMiddlewareResult.continue();
+        return AiMiddlewareResult.continueChain();
     }
 
 }
