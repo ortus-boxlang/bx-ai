@@ -3,7 +3,7 @@
  *
  * Copyright [2023] [Ortus Solutions, Corp]
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * Licensed under the Apache License, Version 2.0 (the "License") you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
  *
  * http://www.apache.org/licenses/LICENSE-2.0
@@ -15,9 +15,9 @@
  * Wraps an AI Service as a runnable model for use in pipelines
  * Handles message extraction, request building, and response handling
  */
-import bxModules.bxai.models.runnables.*;
-import bxModules.bxai.models.middleware.AiMiddlewareResult;
-import bxModules.bxai.models.middleware.StructMiddlewareAdapter;
+import bxModules.bxai.models.runnables.*
+import bxModules.bxai.models.middleware.AiMiddlewareResult
+import bxModules.bxai.models.middleware.StructMiddlewareAdapter
 
 class extends="AiBaseRunnable" {
 
@@ -70,10 +70,10 @@ class extends="AiBaseRunnable" {
 	public AiModel function bindTools( any tools ) {
 		// If simple value, wrap as array
 		if( !isArray( arguments.tools ) ){
-			arguments.tools = [ arguments.tools ];
+			arguments.tools = [ arguments.tools ]
 		}
 		variables.tools.append( arguments.tools, true )
-		return this;
+		return this
 	}
 
 	/**
@@ -85,15 +85,15 @@ class extends="AiBaseRunnable" {
 	public AiModel function addTools( any tools ) {
 		// If simple value, wrap as array
 		if( !isArray( arguments.tools ) ){
-			arguments.tools = [ arguments.tools ];
+			arguments.tools = [ arguments.tools ]
 		}
 
 		// Append to existing tools
 		if( arguments.tools.len() ){
-			variables.tools.append( arguments.tools, true );
+			variables.tools.append( arguments.tools, true )
 		}
 
-		return this;
+		return this
 	}
 
 	/**
@@ -106,18 +106,18 @@ class extends="AiBaseRunnable" {
 	public AiModel function removeTools( any tools ) {
 		// If simple value, wrap as array
 		if( !isArray( arguments.tools ) ){
-			arguments.tools = [ arguments.tools ];
+			arguments.tools = [ arguments.tools ]
 		}
 
 		// Remove each tool from the current tools array
 		arguments.tools.each( toolToRemove => {
-			var index = variables.tools.findIndex( t => t == toolToRemove );
+			var index = variables.tools.findIndex( t => t == toolToRemove )
 			if ( index >= 1 ) {
-				variables.tools.deleteAt( index );
+				variables.tools.deleteAt( index )
 			}
-		} );
+		} )
 
-		return this;
+		return this
 	}
 
 	/**
@@ -131,15 +131,15 @@ class extends="AiBaseRunnable" {
 	 */
 	public AiModel function withMiddleware( required any middleware ) {
 		if ( isArray( arguments.middleware ) ) {
-			arguments.middleware.each( mw => withMiddleware( mw ) );
-			return this;
+			arguments.middleware.each( mw => withMiddleware( mw ) )
+			return this
 		}
 		if ( isStruct( arguments.middleware ) && !isObject( arguments.middleware ) ) {
-			variables.middleware.append( new StructMiddlewareAdapter( arguments.middleware ) );
+			variables.middleware.append( new StructMiddlewareAdapter( arguments.middleware ) )
 		} else {
-			variables.middleware.append( arguments.middleware );
+			variables.middleware.append( arguments.middleware )
 		}
-		return this;
+		return this
 	}
 
 	/**
@@ -187,13 +187,13 @@ class extends="AiBaseRunnable" {
 		if( effectiveParams.keyExists( "tools" ) ){
 			// Make sure these are normalized to an array
 			if( !isArray( effectiveParams.tools ) ){
-				effectiveParams.tools = [ effectiveParams.tools ];
+				effectiveParams.tools = [ effectiveParams.tools ]
 			}
-			effectiveParams.tools.append( variables.tools, true );
+			effectiveParams.tools.append( variables.tools, true )
 		}
 		// No tools in options, use model's tools
 		else {
-			effectiveParams.tools = variables.tools;
+			effectiveParams.tools = variables.tools
 		}
 
 
@@ -206,10 +206,10 @@ class extends="AiBaseRunnable" {
 
 		// Inject middleware: agent middleware first (from options), then model's own middleware
 		if ( effectiveOptions.keyExists( "_agentMiddleware" ) && isArray( effectiveOptions._agentMiddleware ) ) {
-			chatRequest.addMiddleware( effectiveOptions._agentMiddleware );
+			chatRequest.addMiddleware( effectiveOptions._agentMiddleware )
 		}
 		if ( !variables.middleware.isEmpty() ) {
-			chatRequest.addMiddleware( variables.middleware );
+			chatRequest.addMiddleware( variables.middleware )
 		}
 
         // beforeAIModelInvoke event
@@ -238,31 +238,31 @@ class extends="AiBaseRunnable" {
 		struct params = {},
 		struct options = {}
 	) {
-		var messages = extractMessages( arguments.input );
-		var effectiveParams = getMergedParams( arguments.params );
-		var effectiveOptions = getMergedOptions( arguments.options );
-		effectiveOptions.stream = true;
+		var messages = extractMessages( arguments.input )
+		var effectiveParams = getMergedParams( arguments.params )
+		var effectiveOptions = getMergedOptions( arguments.options )
+		effectiveOptions.stream = true
 
 		// If we have tools in params, merge them with the model's tools
 		if( effectiveParams.keyExists( "tools" ) ) {
 			// Make sure these are normalized to an array
 			if( !isArray( effectiveParams.tools ) ) {
-				effectiveParams.tools = [ effectiveParams.tools ];
+				effectiveParams.tools = [ effectiveParams.tools ]
 			}
-			effectiveParams.tools.append( variables.tools, true );
+			effectiveParams.tools.append( variables.tools, true )
 		}
 		// No tools in params, use model's tools
 		else {
-			effectiveParams.tools = variables.tools;
+			effectiveParams.tools = variables.tools
 		}
 
 		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
 			aiMessage( messages ),
 			effectiveParams,
 			effectiveOptions
-		);
+		)
 
-		variables.service.invokeStream( chatRequest, arguments.onChunk );
+		variables.service.invokeStream( chatRequest, arguments.onChunk )
 	}
 
 	/**
@@ -281,7 +281,7 @@ class extends="AiBaseRunnable" {
 	private array function extractMessages( required any input ) {
 		// AiMessage or other runnable that returns messages
         if( arguments.input instanceof "AiMessage" ){
-			return arguments.input.render();
+			return arguments.input.render()
 		}
 
 		// Array of messages
@@ -292,18 +292,18 @@ class extends="AiBaseRunnable" {
 
 		// Struct message, this can be different per LLM, just pass it through
 		if( isStruct( arguments.input ) ) {
-			return [ arguments.input ];
+			return [ arguments.input ]
 		}
 
 		// Simple string - convert to user message
 		if( isSimpleValue( arguments.input ) ) {
-			return [ { "role": "user", "content": arguments.input } ];
+			return [ { "role": "user", "content": arguments.input } ]
 		}
 
 		throw(
 			type: "InvalidInput",
 			message: "Input must be: AiMessage, array of messages, struct with 'messages' key, or string"
-		);
+		)
 	}
 
 }
