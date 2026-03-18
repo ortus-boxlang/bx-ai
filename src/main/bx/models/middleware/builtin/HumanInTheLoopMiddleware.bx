@@ -89,7 +89,42 @@ class extends="BaseAiMiddleware" {
 	 * Intercept tool calls that require approval.
 	 */
 	AiMiddlewareResult function beforeToolCall( required struct context ) {
-		var toolName = context.tool?.getName() ?: ""
+		var toolName = context.toolName ?: (context.tool?.getName() ?: "")
+
+		// ── Resume path ──────────────────────────────────────────────────────────
+		// If AiAgent.resume() was called, a resumeContext is stored on the request.
+		// Honour the human decision here instead of suspending again.
+		var resumeCtx = context.chatRequest.getResumeContext() ?: {}
+		if ( !resumeCtx.isEmpty() && resumeCtx.keyExists( "resumeDecision" ) ) {
+
+			// Only consume the context for the exact tool that was suspended
+			var suspendedTool = resumeCtx.suspendData?.toolName ?: ""
+			if ( suspendedTool.isEmpty() || suspendedTool == toolName ) {
+
+				// Clear so subsequent tool calls in the same run go through normal HITL
+				context.chatRequest.setResumeContext( {} )
+
+				var decision = resumeCtx.resumeDecision
+
+				if ( decision == "reject" ) {
+					return AiMiddlewareResult.reject( "Rejected by human operator during resume." )
+				}
+
+				if ( decision == "edit" && !resumeCtx.editedData.isEmpty() ) {
+					// Patch tool call arguments with the edited data.
+					// BaseService reads toolCall.function.arguments AFTER beforeToolCall
+					// returns, so in-place mutation is picked up automatically.
+					var newArgs = resumeCtx.editedData.correctedArgs ?: resumeCtx.editedData
+					if ( !isNull( context.toolCall ) && context.toolCall.keyExists( "function" ) ) {
+						context.toolCall.function.arguments = jsonSerialize( newArgs )
+					}
+				}
+
+				// "approve" (and "edit" after patching) → let the tool proceed
+				return AiMiddlewareResult.continue()
+			}
+		}
+		// ── End resume path ──────────────────────────────────────────────────────
 
 		// Only intercept matching tools
 		if ( variables.toolsRequiringApproval.findNoCase( toolName ) == 0 ) {

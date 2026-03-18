@@ -170,4 +170,214 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "dangerousIsRejected" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "safeIsContinue" ) ) ).isTrue();
 	}
+
+	// ---- HumanInTheLoopMiddleware ----
+
+	@DisplayName( "HumanInTheLoopMiddleware: web mode suspends matching tool" )
+	@Test
+	public void testHITLWebModeSuspends() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware;
+
+		        mw = new HumanInTheLoopMiddleware(
+		            toolsRequiringApproval: [ "placeOrder" ],
+		            mode: "web"
+		        );
+
+		        result = mw.beforeToolCall( context: { toolName: "placeOrder", toolCall: {} } );
+		        resultIsSuspended = result.isSuspended();
+		        resultData = result.getData();
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "resultIsSuspended" ) ) ).isTrue();
+	}
+
+	@DisplayName( "HumanInTheLoopMiddleware: web mode ignores non-listed tool" )
+	@Test
+	public void testHITLWebModeSkipsUnlisted() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware;
+
+		        mw = new HumanInTheLoopMiddleware(
+		            toolsRequiringApproval: [ "placeOrder" ],
+		            mode: "web"
+		        );
+
+		        result = mw.beforeToolCall( context: { toolName: "getWeather", toolCall: {} } );
+		        resultIsContinue = result.isContinue();
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "resultIsContinue" ) ) ).isTrue();
+	}
+
+	@DisplayName( "HumanInTheLoopMiddleware: resume with 'approve' returns continue" )
+	@Test
+	public void testHITLResumeApprove() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.requests.AiChatRequest;
+
+		        mw = new HumanInTheLoopMiddleware(
+		            toolsRequiringApproval: [ "placeOrder" ],
+		            mode: "web"
+		        );
+
+		        // Simulate the chatRequest that AiAgent.resume() creates
+		        chatRequest = new AiChatRequest(
+		            options: {
+		                _resumeContext: {
+		                    resumeDecision : "approve",
+		                    suspendData    : { toolName: "placeOrder" },
+		                    editedData     : {}
+		                }
+		            }
+		        );
+
+		        ctx = { toolName: "placeOrder", toolCall: {}, chatRequest: chatRequest };
+		        result = mw.beforeToolCall( context: ctx );
+		        resultIsContinue = result.isContinue();
+
+		        // resumeContext should be cleared after consumption
+		        resumeContextCleared = chatRequest.getResumeContext().isEmpty();
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "resultIsContinue" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resumeContextCleared" ) ) ).isTrue();
+	}
+
+	@DisplayName( "HumanInTheLoopMiddleware: resume with 'reject' returns reject" )
+	@Test
+	public void testHITLResumeReject() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.requests.AiChatRequest;
+
+		        mw = new HumanInTheLoopMiddleware(
+		            toolsRequiringApproval: [ "placeOrder" ],
+		            mode: "web"
+		        );
+
+		        chatRequest = new AiChatRequest(
+		            options: {
+		                _resumeContext: {
+		                    resumeDecision : "reject",
+		                    suspendData    : { toolName: "placeOrder" },
+		                    editedData     : {}
+		                }
+		            }
+		        );
+
+		        ctx    = { toolName: "placeOrder", toolCall: {}, chatRequest: chatRequest };
+		        result = mw.beforeToolCall( context: ctx );
+		        resultIsRejected = result.isRejected();
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "resultIsRejected" ) ) ).isTrue();
+	}
+
+	@DisplayName( "HumanInTheLoopMiddleware: resume with 'edit' patches tool args and returns continue" )
+	@Test
+	public void testHITLResumeEdit() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.requests.AiChatRequest;
+
+		        mw = new HumanInTheLoopMiddleware(
+		            toolsRequiringApproval: [ "placeOrder" ],
+		            mode: "web"
+		        );
+
+		        chatRequest = new AiChatRequest(
+		            options: {
+		                _resumeContext: {
+		                    resumeDecision : "edit",
+		                    suspendData    : { toolName: "placeOrder" },
+		                    editedData     : { correctedArgs: { qty: 5, item: "widget" } }
+		                }
+		            }
+		        );
+
+		        toolCallStruct = { id: "call_123", function: { name: "placeOrder", arguments: '{"qty":1}' } };
+		        ctx = { toolName: "placeOrder", toolCall: toolCallStruct, chatRequest: chatRequest };
+
+		        result       = mw.beforeToolCall( context: ctx );
+		        resultIsContinue = result.isContinue();
+
+		        // Arguments should be patched in place
+		        parsedArgs   = jsonDeserialize( toolCallStruct.function.arguments );
+		        argQtyPatched = parsedArgs.qty == 5;
+		        argItemSet    = parsedArgs.item == "widget";
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "resultIsContinue" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "argQtyPatched" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "argItemSet" ) ) ).isTrue();
+	}
+
+	@DisplayName( "HumanInTheLoopMiddleware: after resume, next tool call goes through normal HITL" )
+	@Test
+	public void testHITLResumeContextConsumedOnce() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.requests.AiChatRequest;
+
+		        mw = new HumanInTheLoopMiddleware(
+		            toolsRequiringApproval: [ "placeOrder" ],
+		            mode: "web"
+		        );
+
+		        chatRequest = new AiChatRequest(
+		            options: {
+		                _resumeContext: {
+		                    resumeDecision : "approve",
+		                    suspendData    : { toolName: "placeOrder" },
+		                    editedData     : {}
+		                }
+		            }
+		        );
+
+		        ctx = { toolName: "placeOrder", toolCall: {}, chatRequest: chatRequest };
+
+		        // First call: resume context is consumed → continue
+		        r1 = mw.beforeToolCall( context: ctx );
+		        r1IsContinue = r1.isContinue();
+
+		        // Second call on the same tool: normal HITL → suspend again
+		        r2 = mw.beforeToolCall( context: ctx );
+		        r2IsSuspended = r2.isSuspended();
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "r1IsContinue" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "r2IsSuspended" ) ) ).isTrue();
+	}
 }

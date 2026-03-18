@@ -80,6 +80,9 @@ class extends="AiBaseRequest"{
 		// Provider-specific options
 		variables.providerOptions = options.providerOptions ?: {};
 
+		// Resume context from AiAgent.resume() / resumeStream()
+		variables.resumeContext = options._resumeContext ?: {};
+
 		// If context is provided in options, merge it into the message object
 		if( options.keyExists( "context" ) && isStruct( options.context ) ){
 			variables.aiMessage.mergeContext( options.context );

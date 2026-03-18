@@ -114,6 +114,14 @@ abstract class{
 	property name="providerOptions" type="struct" default={};
 
 	/**
+	 * Resume context injected by AiAgent.resume() or resumeStream().
+	 * Carries the human decision ("approve", "reject", "edit") and any edited data
+	 * from a prior HumanInTheLoop suspension, so the middleware can honour it on the
+	 * next tool call instead of suspending again.
+	 */
+	property name="resumeContext" type="struct" default={};
+
+	/**
 	 * Middleware stack for this request.
 	 * Added via addMiddleware() — can be IAiMiddleware instances or struct-of-closures (auto-wrapped).
 	 */
