@@ -61,7 +61,9 @@ class extends="BaseAiMiddleware" {
 	 * Check the incoming tool call against all guardrail rules.
 	 */
 	AiMiddlewareResult function beforeToolCall( required struct context ) {
-		var toolName = context.tool?.getName() ?: ""
+		// Support both the flat test form  { toolName: "x", toolArgs: {} }
+		// and the production form           { tool: <Tool>, toolCall: <struct>, chatRequest: <req> }
+		var toolName = context.toolName ?: (context.tool?.getName() ?: "")
 
 		// 1. Blocked tool list
 		if ( variables.blockedTools.findNoCase( toolName ) > 0 ) {
@@ -71,22 +73,24 @@ class extends="BaseAiMiddleware" {
 		}
 
 		// 2. Argument pattern checks
-		// Note: we perform a best-effort check here since arguments may not be available at this stage, and patterns may be imperfect.
 		if ( variables.argPatterns.keyExists( toolName ) ) {
-			// Attempt to parse arguments if available; if not, we skip pattern checks since we can't evaluate them.
 			var rules = variables.argPatterns[ toolName ]
-			// tolCall.function.arguments may not be available at this stage — guard defensively
-			var rawArgs = context.toolCall?.function?.arguments ?: "{}"
-			var toolArguments = {}
-			try {
-				toolArguments = jsonDeserialize( rawArgs )
-			} catch ( any ignored ) {}
 
-			// Ex: if we have a rule like { runSql: [ { query: "(?i)drop|truncate|delete" } ] },
-			// then we check if the 'query' argument contains forbidden SQL commands.
+			// Resolve tool arguments: prefer the flat toolArgs struct, then fall back to
+			// parsing the JSON string in toolCall.function.arguments (production path).
+			var toolArguments = {}
+			if ( context.keyExists( "toolArgs" ) && isStruct( context.toolArgs ) ) {
+				toolArguments = context.toolArgs
+			} else {
+				var rawArgs = context.toolCall?.function?.arguments ?: "{}"
+				try {
+					toolArguments = jsonDeserialize( rawArgs )
+				} catch ( any ignored ) {}
+			}
+
 			for ( var rule in rules ) {
 				for ( var paramName in rule ) {
-					var pattern   = rule[ paramName ]
+					var pattern    = rule[ paramName ]
 					var paramValue = toolArguments[ paramName ] ?: ""
 					if ( len( paramValue ) && reFind( pattern, paramValue ) ) {
 						return AiMiddlewareResult.reject(
