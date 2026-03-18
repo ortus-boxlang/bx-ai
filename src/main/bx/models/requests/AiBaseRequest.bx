@@ -348,22 +348,35 @@ abstract class{
 			return arguments.innerFunction()
 		}
 
-		var capturedContext = arguments.context
-		var capturedHook    = arguments.hook
-
-		// Start from innerFunction and wrap outward
-		var handler = arguments.innerFunction
-
-		// Iterate in reverse so the first middleware in the stack is the outermost wrapper
-		var i = variables.middleware.len()
+		// Build the chain from innermost (last middleware) to outermost (first middleware).
+		// Each layer is created via a private helper so its captured variables live in
+		// their own function-call scope — avoiding the classic closure-in-loop bug where
+		// all lambdas share the same (final) values of loop variables.
+		var chain = arguments.innerFunction
+		var i     = variables.middleware.len()
 		while ( i >= 1 ) {
-			var capturedMw   = variables.middleware[ i ]
-			var capturedNext = handler
-			handler = () => invoke( capturedMw, capturedHook, { context: capturedContext, handler: capturedNext } )
+			chain = _buildWrapLayer( variables.middleware[ i ], arguments.hook, arguments.context, chain )
 			i--
 		}
 
-		return handler()
+		return chain()
+	}
+
+	/**
+	 * Creates a single wrap-layer closure that captures its arguments in an isolated
+	 * function scope, preventing shared-variable issues when chaining multiple layers.
+	 */
+	private function _buildWrapLayer(
+		required any mw,
+		required string hook,
+		required struct context,
+		required function next
+	) {
+		var _mw   = arguments.mw
+		var _hook = arguments.hook
+		var _ctx  = arguments.context
+		var _next = arguments.next
+		return () => invoke( _mw, _hook, [ _ctx, _next ] )
 	}
 
 }
