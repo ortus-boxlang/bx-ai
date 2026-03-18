@@ -294,4 +294,39 @@ interface {
 	 */
 	array function getRange( required numeric startIndex, numeric endIndex );
 
+	/**
+	 * ------------------------------------------------------------------------------
+	 * CHECKPOINT METHODS (used by the middleware checkpoint/suspend-resume system)
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Persist arbitrary checkpoint state keyed by threadId.
+	 *
+	 * @threadId Unique identifier for the agent thread
+	 * @state    Any serialisable struct to store
+	 * @ttl      Time-to-live in minutes (0 = no expiry)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	IAiMemory function saveState( required string threadId, required struct state, numeric ttl = 0 );
+
+	/**
+	 * Retrieve previously saved checkpoint state.
+	 *
+	 * @threadId Unique identifier for the agent thread
+	 *
+	 * @return The saved state struct, or an empty struct if not found
+	 */
+	struct function loadState( required string threadId );
+
+	/**
+	 * Delete checkpoint state for a thread.
+	 *
+	 * @threadId Unique identifier for the agent thread
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	IAiMemory function clearState( required string threadId );
+
 }

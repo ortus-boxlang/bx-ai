@@ -1,0 +1,59 @@
+/**
+ * Struct-of-Closures Middleware Example
+ *
+ * For simple one-off middleware you do not need to extend BaseAiMiddleware.
+ * Pass a struct whose keys are hook names and values are closures.
+ * Any hook not present in the struct is a no-op.
+ *
+ * The StructMiddlewareAdapter wraps the struct automatically when you pass
+ * it via aiAgent(middleware: [...]) or aiModel(middleware: [...]).
+ */
+
+println( "=== Struct-of-Closures Middleware ===" )
+println( "" )
+
+// Count how many LLM round-trips the agent makes
+var llmCallCount = 0
+
+// A plain struct — no class required
+var trackerMw = {
+	beforeAgentRun: function( required struct context ) {
+		println( "  [tracker] Agent starting run" )
+		llmCallCount = 0
+		return new bxModules.bxai.models.middleware.AiMiddlewareResult().continue()
+	},
+
+	beforeLLMCall: function( required struct context ) {
+		llmCallCount++
+		println( "  [tracker] LLM call ##: #llmCallCount#" )
+		return new bxModules.bxai.models.middleware.AiMiddlewareResult().continue()
+	},
+
+	afterAgentRun: function( required struct context ) {
+		println( "  [tracker] Agent finished. Total LLM calls: #llmCallCount#" )
+		return new bxModules.bxai.models.middleware.AiMiddlewareResult().continue()
+	}
+}
+
+// A second struct-based middleware that adds a short delay after every tool call
+var paceingMw = {
+	afterToolCall: function( required struct context ) {
+		sleep( 200 )  // give the provider a short breather
+		return new bxModules.bxai.models.middleware.AiMiddlewareResult().continue()
+	}
+}
+
+agent = aiAgent(
+	name      : "TrackedAgent",
+	description: "Agent instrumented with lightweight struct middleware",
+	middleware: [ trackerMw, paceingMw ]
+)
+
+println( "Running agent..." )
+println( "" )
+
+response = agent.run( "Tell me a fun fact about the number 42." )
+
+println( "" )
+println( "Response: #response#" )
+println( "LLM calls observed: #llmCallCount#" )

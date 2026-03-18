@@ -16,6 +16,8 @@
  * Handles message extraction, request building, and response handling
  */
 import bxModules.bxai.models.runnables.*;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+import bxModules.bxai.models.middleware.StructMiddlewareAdapter;
 
 class extends="AiBaseRunnable" {
 
@@ -28,6 +30,12 @@ class extends="AiBaseRunnable" {
 	 * The tools attached to this model for tool-augmented generation.
 	 */
 	property name="tools" type="array" default=[];
+
+	/**
+	 * Middleware stack for this model.
+	 * When an agent runs this model, agent middleware is prepended so the full chain fires.
+	 */
+	property name="middleware" type="array" default=[];
 
 	/**
 	 * Constructor
@@ -113,6 +121,28 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
+	 * Add middleware to this model's stack.
+	 * Structs are automatically wrapped in StructMiddlewareAdapter.
+	 * Arrays are flattened — each element is added individually.
+	 *
+	 * @middleware IAiMiddleware instance, struct-of-closures, or array of either
+	 *
+	 * @return This model for chaining
+	 */
+	public AiModel function withMiddleware( required any middleware ) {
+		if ( isArray( arguments.middleware ) ) {
+			arguments.middleware.each( mw => withMiddleware( mw ) );
+			return this;
+		}
+		if ( isStruct( arguments.middleware ) && !isObject( arguments.middleware ) ) {
+			variables.middleware.append( new StructMiddlewareAdapter( arguments.middleware ) );
+		} else {
+			variables.middleware.append( arguments.middleware );
+		}
+		return this;
+	}
+
+	/**
 	 * Get model configuration as a struct
 	 *
 	 * @return Struct of model configuration
@@ -130,7 +160,7 @@ class extends="AiBaseRunnable" {
 					: value
 				return maskedValue
 			} )
-		};
+		}
 	}
 
 	/**
@@ -173,6 +203,14 @@ class extends="AiBaseRunnable" {
 			effectiveParams,
 			effectiveOptions
 		)
+
+		// Inject middleware: agent middleware first (from options), then model's own middleware
+		if ( effectiveOptions.keyExists( "_agentMiddleware" ) && isArray( effectiveOptions._agentMiddleware ) ) {
+			chatRequest.addMiddleware( effectiveOptions._agentMiddleware );
+		}
+		if ( !variables.middleware.isEmpty() ) {
+			chatRequest.addMiddleware( variables.middleware );
+		}
 
         // beforeAIModelInvoke event
         BoxAnnounce( "beforeAIModelInvoke", { model: this, chatRequest: chatRequest } )

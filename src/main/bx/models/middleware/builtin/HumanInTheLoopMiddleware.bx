@@ -1,0 +1,148 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Human-in-the-Loop (HITL) middleware.
+ *
+ * Intercepts tool calls that match the configured approval list and either:
+ *   - mode "cli"  : Blocks execution and prompts the user on stdin/stdout
+ *   - mode "web"  : Suspends the run, returning an AiMiddlewareResult.suspend() so the
+ *                   caller can checkpoint and present the approval request asynchronously.
+ *
+ * CLI mode example:
+ *   aiAgent( middleware: new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ] ) )
+ *
+ * Web / async mode example:
+ *   aiAgent(
+ *       middleware  : new HumanInTheLoopMiddleware(
+ *                         mode                 : "web",
+ *                         toolsRequiringApproval: [ "placeOrder" ]
+ *                    ),
+ *       checkpointer: aiMemory( "cache" )
+ *   )
+ *
+ * After suspension the caller receives an AiMiddlewareResult and can call:
+ *   agent.resume( "approve", threadId )
+ *   agent.resume( "reject", threadId )
+ *   agent.resume( "edit", threadId, { correctedArgs: { ... } } )
+ */
+import bxModules.bxai.models.middleware.BaseAiMiddleware;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+class extends="BaseAiMiddleware" {
+
+	/**
+	 * Tool names that require human approval (case-insensitive)
+	 */
+	property name="toolsRequiringApproval" type="array" default=[];
+
+	/**
+	 * Approval mode: "cli" (blocking stdin prompt) or "web" (suspend and return)
+	 */
+	property name="approvalMode" type="string" default="cli";
+
+	/**
+	 * Optional callback invoked on approval in web mode: function( context ) => "approve"|"reject"|"edit"
+	 */
+	property name="approvalCallback";
+
+	/**
+	 * Controls whether to show tool arguments in the CLI prompt
+	 */
+	property name="showArguments" type="boolean" default=true;
+
+	/**
+	 * Constructor
+	 *
+	 * @toolsRequiringApproval Array of tool names needing human sign-off
+	 * @mode                   "cli" or "web", determines how the middleware requests approval. Default is "cli".
+	 * @showArguments          Whether to print tool arguments in the CLI prompt
+	 * @approvalCallback       Optional callback for custom approval logic
+	 */
+	function init(
+		array    toolsRequiringApproval = [],
+		string   mode                   = "cli",
+		boolean  showArguments          = true,
+		function approvalCallback
+	) {
+		variables.toolsRequiringApproval = arguments.toolsRequiringApproval
+		variables.approvalMode           = arguments.mode
+		variables.showArguments          = arguments.showArguments
+		variables.approvalCallback 		 = arguments.approvalCallback
+
+		return this
+	}
+
+	// ==================== Hooks ====================
+
+	/**
+	 * Intercept tool calls that require approval.
+	 */
+	AiMiddlewareResult function beforeToolCall( required struct context ) {
+		var toolName = context.tool?.getName() ?: ""
+
+		// Only intercept matching tools
+		if ( variables.toolsRequiringApproval.findNoCase( toolName ) == 0 ) {
+			return AiMiddlewareResult.continue()
+		}
+
+		// Gather pending tool info
+		var pendingData = {
+			toolName  : toolName,
+			toolCall  : context.toolCall ?: {},
+			arguments : context.toolCall?.function?.arguments ?: "{}"
+		}
+
+		if ( variables.approvalMode == "web" ) {
+			// Async/web mode: suspend and let the caller checkpoint
+			return AiMiddlewareResult.suspend( pendingData )
+		}
+
+		// CLI mode: block and prompt on stdin/stdout
+		return cliApprove( toolName, pendingData )
+	}
+
+	// ==================== Private Helpers ====================
+
+	private AiMiddlewareResult function cliApprove( required string toolName, required struct pendingData ) {
+		println( "" )
+		println( "╔══════════════════════════════════════════════════╗" )
+		println( "║         HUMAN APPROVAL REQUIRED                  ║" )
+		println( "╚══════════════════════════════════════════════════╝" )
+		println( " Tool: #arguments.toolName#" )
+
+		if ( variables.showArguments ) {
+			println( " Args: #arguments.pendingData.arguments#" )
+		}
+
+		println( "" )
+		println( " [A]pprove  [R]eject  [Q]uit" )
+		print  ( " Decision: " )
+
+		var input = cliRead().trim().lCase()
+
+		println( "" )
+
+		if ( input == "a" || input == "approve" ) {
+			return AiMiddlewareResult.approve()
+		}
+
+		if ( input == "r" || input == "reject" ) {
+			return AiMiddlewareResult.reject( "Rejected by human operator." )
+		}
+
+		// "q" or anything else = cancel the entire run
+		return AiMiddlewareResult.cancel( "Human operator chose to quit." )
+	}
+
+}

@@ -1,0 +1,83 @@
+/**
+ * Human-in-the-Loop Middleware — Web / Suspend Mode Example
+ *
+ * In web mode the middleware suspends execution instead of blocking
+ * on stdin. The caller receives an AiMiddlewareResult with type "suspend"
+ * and a `pending` payload describing the tool call that needs approval.
+ *
+ * Your web handler stores the pending state, shows a review UI to the user,
+ * and then calls agent.resume() (or agent.resumeStream()) with the decision.
+ *
+ * NOTE: This example simulates a web request cycle in a script for clarity.
+ *       In a real application you would store `suspendedPayload` in the
+ *       session/cache and call resume() from a separate HTTP request.
+ */
+
+println( "=== Human-in-the-Loop (Web / Suspend Mode) ===" )
+println( "" )
+
+// A tool that transfers money — requires human approval
+function transferFunds( required string from, required string to, required numeric amount ) {
+	println( "  [BANK] Transferring $#arguments.amount# from #arguments.from# to #arguments.to#" )
+	return "Transfer of $#arguments.amount# completed."
+}
+
+transferTool = aiTool(
+	"transferFunds",
+	"Transfer money between accounts",
+	[
+		{ name: "from",   type: "string",  description: "Source account",      required: true },
+		{ name: "to",     type: "string",  description: "Destination account", required: true },
+		{ name: "amount", type: "number",  description: "Amount in USD",        required: true }
+	],
+	transferFunds
+)
+
+// CacheMemory is used as the checkpointer so state persists across requests
+checkpointer = aiMemory( "cache" )
+
+hitlMw = new bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware( {
+	approvalMode         : "web",
+	toolsRequiringApproval: [ "transferFunds" ],
+	showArguments        : true
+} )
+
+agent = aiAgent(
+	name         : "BankingAgent",
+	description  : "Agent that processes financial transfers with human approval",
+	tools        : [ transferTool ],
+	middleware   : [ hitlMw ],
+	checkpointer : checkpointer,
+	checkpointTTL: 10   // minutes
+)
+
+// ---- Simulated first web request: start the agent ----
+println( "=== First request: asking the agent to transfer funds ===" )
+
+var firstResult = ""
+try {
+	firstResult = agent.run( "Transfer $500 from account A to account B" )
+	println( "Agent completed without suspension: #firstResult#" )
+} catch( any err ) {
+	println( "Unexpected error: #err.message#" )
+}
+
+// In web mode the run() return value is the middleware suspend result when suspended
+if ( isObject( firstResult ) && firstResult.isSuspended() ) {
+	var suspendedPayload = firstResult.getData()
+	println( "Agent suspended — pending tool call details:" )
+	println( "  Tool    : #suspendedPayload.toolName#" )
+	println( "  Args    : #jsonSerialize( suspendedPayload.toolArgs )#" )
+	println( "  ThreadId: #agent.getThreadId()#" )
+	println( "" )
+
+	// ---- Simulated second web request: human approves ----
+	println( "=== Second request: operator approves the transfer ===" )
+	var savedThreadId = agent.getThreadId()
+
+	var finalResponse = agent.resume( "approve", savedThreadId )
+	println( "Final response: #finalResponse#" )
+} else {
+	println( "Note: run() returned a string because the agent completed immediately or " )
+	println( "the middleware was not triggered. Adjust the prompt or tool list to trigger suspension." )
+}

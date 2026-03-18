@@ -1,0 +1,54 @@
+/**
+ * Retry Middleware Example
+ *
+ * Shows automatic retry with exponential back-off when the LLM call
+ * or a tool call throws a transient error.
+ *
+ * The RetryMiddleware wraps every LLM call and tool call. On failure it
+ * waits `initialDelay` ms, doubles the wait each attempt, and gives up
+ * after `maxRetries` attempts. Errors listed in `nonRetryableTypes` are
+ * rethrown immediately without retry.
+ */
+
+println( "=== Retry Middleware ===" )
+println( "" )
+
+// Simulate a flaky tool: fails the first two calls, succeeds on the third
+flakyCallCount = 0
+function flakySearch( required string query ) {
+	flakyCallCount++
+	if ( flakyCallCount < 3 ) {
+		throw( type: "TransientNetworkError", message: "Simulated network blip on attempt #flakyCallCount#" )
+	}
+	return "Search results for: #arguments.query#  (succeeded on attempt #flakyCallCount#)"
+}
+
+searchTool = aiTool(
+	"search",
+	"Search for information",
+	[ { name: "query", type: "string", description: "Search query", required: true } ],
+	flakySearch
+)
+
+retryMw = new bxModules.bxai.models.middleware.builtin.RetryMiddleware( {
+	maxRetries         : 4,
+	initialDelay       : 200,      // ms
+	backoffMultiplier  : 2.0,
+	maxDelay           : 3000,     // ms cap
+	nonRetryableTypes  : [ "ValidationError" ]
+} )
+
+agent = aiAgent(
+	name       : "ResilientAgent",
+	description: "Agent with automatic retry on transient failures",
+	tools      : [ searchTool ],
+	middleware : [ retryMw ]
+)
+
+println( "Running query (the search tool will fail twice before succeeding)..." )
+println( "" )
+
+response = agent.run( "Search for BoxLang documentation" )
+
+println( "Response: #response#" )
+println( "Actual tool call attempts: #flakyCallCount#" )

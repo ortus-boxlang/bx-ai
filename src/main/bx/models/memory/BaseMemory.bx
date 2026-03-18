@@ -678,4 +678,48 @@ abstract class implements="IAiMemory" {
 		)
 	}
 
+	// ==================== Checkpoint Methods ====================
+
+	/**
+	 * Save agent state for a given thread.
+	 * Subclasses with native storage (CacheMemory, FileMemory, JdbcMemory) override this.
+	 * The base implementation stores state in the variables scope (in-memory, non-persistent).
+	 *
+	 * @threadId Unique identifier for the agent thread
+	 * @state    Struct containing state to persist
+	 * @ttl      Optional time-to-live in seconds (0 = no expiry)
+	 */
+	IAiMemory function saveState( required string threadId, required struct state, numeric ttl = 0 ) {
+		if ( !structKeyExists( variables, "_checkpointStore" ) ) {
+			variables._checkpointStore = {}
+		}
+		variables._checkpointStore[ arguments.threadId ] = arguments.state
+		return this
+	}
+
+	/**
+	 * Load previously saved agent state for a given thread.
+	 * Returns an empty struct if no state exists for the thread.
+	 *
+	 * @threadId Unique identifier for the agent thread
+	 */
+	struct function loadState( required string threadId ) {
+		if ( !structKeyExists( variables, "_checkpointStore" ) ) {
+			return {}
+		}
+		return variables._checkpointStore[ arguments.threadId ] ?: {}
+	}
+
+	/**
+	 * Remove saved state for a given thread.
+	 *
+	 * @threadId Unique identifier for the agent thread
+	 */
+	IAiMemory function clearState( required string threadId ) {
+		if ( structKeyExists( variables, "_checkpointStore" ) ) {
+			variables._checkpointStore.delete( arguments.threadId )
+		}
+		return this
+	}
+
 }

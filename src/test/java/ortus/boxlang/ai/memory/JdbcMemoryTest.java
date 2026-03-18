@@ -507,4 +507,122 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "summaryUserId" ) ) ).isEqualTo( "charlie" );
 		assertThat( variables.getAsString( Key.of( "summaryConvId" ) ) ).isEqualTo( "order-555" );
 	}
+
+	// ==================== Checkpoint Tests ====================
+
+	@Test
+	@DisplayName( "Test JdbcMemory saveState persists checkpoint to database" )
+	public void testSaveState() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "jdbc", key: "cp-save-test", config: { datasource: "bxai_test" } )
+
+		    state = { step: "awaiting-hitl", input: "drop table users", toolName: "runQuery" }
+		    memory.saveState( "jdbc-thread-001", state )
+
+		    loaded = memory.loadState( "jdbc-thread-001" )
+
+		    // Cleanup
+		    memory.clearState( "jdbc-thread-001" )
+		    memory.clear()
+		    """,
+		    context
+		);
+
+		var loaded = variables.getAsStruct( Key.of( "loaded" ) );
+		assertThat( loaded.getAsString( Key.of( "step" ) ) ).isEqualTo( "awaiting-hitl" );
+		assertThat( loaded.getAsString( Key.of( "input" ) ) ).isEqualTo( "drop table users" );
+		assertThat( loaded.getAsString( Key.of( "toolName" ) ) ).isEqualTo( "runQuery" );
+	}
+
+	@Test
+	@DisplayName( "Test JdbcMemory loadState returns empty struct for unknown threadId" )
+	public void testLoadStateUnknownThread() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "jdbc", key: "cp-unknown-test", config: { datasource: "bxai_test" } )
+
+		    loaded  = memory.loadState( "nonexistent-jdbc-thread" )
+		    isEmpty = loaded.isEmpty()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsBoolean( Key.of( "isEmpty" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Test JdbcMemory clearState removes checkpoint row" )
+	public void testClearState() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "jdbc", key: "cp-clear-test", config: { datasource: "bxai_test" } )
+
+		    memory.saveState( "jdbc-thread-002", { status: "suspended" } )
+
+		    beforeClear = !memory.loadState( "jdbc-thread-002" ).isEmpty()
+
+		    memory.clearState( "jdbc-thread-002" )
+
+		    afterClear = memory.loadState( "jdbc-thread-002" ).isEmpty()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsBoolean( Key.of( "beforeClear" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "afterClear" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Test JdbcMemory saveState overwrites existing checkpoint for same threadId" )
+	public void testSaveStateOverwrite() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "jdbc", key: "cp-overwrite-test", config: { datasource: "bxai_test" } )
+
+		    memory.saveState( "jdbc-thread-003", { version: 1, status: "pending" } )
+		    memory.saveState( "jdbc-thread-003", { version: 2, status: "resumed" } )
+
+		    loaded = memory.loadState( "jdbc-thread-003" )
+
+		    // Cleanup
+		    memory.clearState( "jdbc-thread-003" )
+		    memory.clear()
+		    """,
+		    context
+		);
+
+		var loaded = variables.getAsStruct( Key.of( "loaded" ) );
+		assertThat( loaded.get( "version" ) ).isEqualTo( 2 );
+		assertThat( loaded.getAsString( Key.of( "status" ) ) ).isEqualTo( "resumed" );
+	}
+
+	@Test
+	@DisplayName( "Test JdbcMemory saveState isolates multiple threads" )
+	public void testSaveStateThreadIsolation() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "jdbc", key: "cp-isolation-test", config: { datasource: "bxai_test" } )
+
+		    memory.saveState( "jdbc-thread-A", { agent: "alice", task: "summarize" } )
+		    memory.saveState( "jdbc-thread-B", { agent: "bob",   task: "analyze" } )
+
+		    stateA = memory.loadState( "jdbc-thread-A" )
+		    stateB = memory.loadState( "jdbc-thread-B" )
+
+		    // Cleanup
+		    memory.clearState( "jdbc-thread-A" )
+		    memory.clearState( "jdbc-thread-B" )
+		    memory.clear()
+		    """,
+		    context
+		);
+
+		var	stateA	= variables.getAsStruct( Key.of( "stateA" ) );
+		var	stateB	= variables.getAsStruct( Key.of( "stateB" ) );
+		assertThat( stateA.getAsString( Key.of( "agent" ) ) ).isEqualTo( "alice" );
+		assertThat( stateA.getAsString( Key.of( "task" ) ) ).isEqualTo( "summarize" );
+		assertThat( stateB.getAsString( Key.of( "agent" ) ) ).isEqualTo( "bob" );
+		assertThat( stateB.getAsString( Key.of( "task" ) ) ).isEqualTo( "analyze" );
+	}
 }

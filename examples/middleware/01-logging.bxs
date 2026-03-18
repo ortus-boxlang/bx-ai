@@ -1,0 +1,34 @@
+/**
+ * Logging Middleware Example
+ *
+ * Shows how to attach LoggingMiddleware to an agent so every hook
+ * (beforeAgentRun, beforeLLMCall, beforeToolCall, etc.) is recorded
+ * to the "ai" log and optionally printed to the console.
+ */
+
+println( "=== Logging Middleware ===" )
+println( "" )
+
+// Create a logging middleware that prints to the console
+loggingMw = new bxModules.bxai.models.middleware.builtin.LoggingMiddleware( {
+	logToConsole: true,
+	logToFile   : true,
+	logLevel    : "info",
+	prefix      : "[MY-AGENT]"
+} )
+
+// Attach the middleware when creating the agent
+agent = aiAgent(
+	name      : "LoggedAgent",
+	description: "Demo agent with full logging",
+	middleware: [ loggingMw ]
+)
+
+println( "Running agent with logging middleware..." )
+println( "" )
+
+response = agent.run( "What is 2 + 2?" )
+
+println( "Response: #response#" )
+println( "" )
+println( "Check your 'ai' log file for structured log entries." )

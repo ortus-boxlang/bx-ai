@@ -337,4 +337,80 @@ class extends="BaseMemory" {
 		return this;
 	}
 
+	// ==================== Checkpoint Methods ====================
+
+	/**
+	 * Build the file path for a checkpoint file.
+	 */
+	private string function buildCheckpointFilePath( required string threadId ) {
+		var checkpointDir = variables.directoryPath & "/checkpoints";
+		if ( !directoryExists( checkpointDir ) ) {
+			directoryCreate( checkpointDir, true, true );
+		}
+		// Sanitise the threadId to only allow alphanumerics, dashes, and underscores
+		var safeId = arguments.threadId.reReplace( "[^a-zA-Z0-9_\-]", "_", "all" );
+		return checkpointDir & "/" & safeId & ".json";
+	}
+
+	/**
+	 * Persist checkpoint state as a JSON file.
+	 *
+	 * @threadId Unique agent thread identifier
+	 * @state    Serialisable struct to store
+	 * @ttl      TTL in minutes (stored as expiresAt; 0 = no expiry)
+	 *
+	 * @return this for chaining
+	 */
+	public IAiMemory function saveState( required string threadId, required struct state, numeric ttl = 0 ) {
+		var filePath = buildCheckpointFilePath( arguments.threadId );
+		var payload  = {
+			threadId  : arguments.threadId,
+			savedAt   : now(),
+			expiresAt : arguments.ttl > 0 ? dateAdd( "n", arguments.ttl, now() ) : "",
+			state     : arguments.state
+		};
+		fileWrite( filePath, jsonSerialize( payload ) );
+		return this;
+	}
+
+	/**
+	 * Retrieve checkpoint state from its JSON file.
+	 *
+	 * @threadId Unique agent thread identifier
+	 *
+	 * @return Saved state struct, or empty struct if not found or expired
+	 */
+	public struct function loadState( required string threadId ) {
+		var filePath = buildCheckpointFilePath( arguments.threadId );
+		if ( !fileExists( filePath ) ) {
+			return {};
+		}
+		try {
+			var payload = jsonDeserialize( fileRead( filePath ) );
+			// Honour expiry
+			if ( len( payload.expiresAt ) && now() > payload.expiresAt ) {
+				fileDelete( filePath );
+				return {};
+			}
+			return payload.state ?: {};
+		} catch ( any e ) {
+			return {};
+		}
+	}
+
+	/**
+	 * Delete checkpoint file.
+	 *
+	 * @threadId Unique agent thread identifier
+	 *
+	 * @return this for chaining
+	 */
+	public IAiMemory function clearState( required string threadId ) {
+		var filePath = buildCheckpointFilePath( arguments.threadId );
+		if ( fileExists( filePath ) ) {
+			fileDelete( filePath );
+		}
+		return this;
+	}
+
 }

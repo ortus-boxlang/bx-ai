@@ -52,7 +52,7 @@ class extends="BaseMemory" {
 		super.init( argumentCollection: arguments )
 		variables.cacheName = arguments.cacheName
 		// Build composite cache key from key, userId, and conversationId
-		variables.cacheKey = buildCacheKey();
+		variables.cacheKey = buildCacheKey()
 		return this
 	}
 
@@ -533,6 +533,61 @@ class extends="BaseMemory" {
 		}
 
 		return parts.toList( ":" );
+	}
+
+	/**
+	 * Build the cache key used to store checkpoint state for a given threadId.
+	 */
+	private string function buildCheckpointKey( required string threadId ) {
+		return "checkpoint:" & arguments.threadId;
+	}
+
+	// ==================== Checkpoint Methods ====================
+
+	/**
+	 * Persist checkpoint state in the cache.
+	 *
+	 * @threadId Unique agent thread identifier
+	 * @state    Serialisable struct to store
+	 * @ttl      TTL in minutes (0 = use cache default)
+	 *
+	 * @return this for chaining
+	 */
+	public IAiMemory function saveState( required string threadId, required struct state, numeric ttl = 0 ) {
+		var cacheKey = buildCheckpointKey( arguments.threadId )
+		if ( arguments.ttl > 0 ) {
+			variables.cache.set( cacheKey, arguments.state, arguments.ttl, 0 )
+		} else {
+			variables.cache.set( cacheKey, arguments.state )
+		}
+		return this
+	}
+
+	/**
+	 * Retrieve checkpoint state from the cache.
+	 *
+	 * @threadId Unique agent thread identifier
+	 *
+	 * @return Saved state struct, or empty struct if not found
+	 */
+	public struct function loadState( required string threadId ) {
+		var cacheKey = buildCheckpointKey( arguments.threadId )
+		return variables.cache
+			.get( cacheKey )
+			// We get always an attempt
+			.orElse( {} )
+	}
+
+	/**
+	 * Delete checkpoint state from the cache.
+	 *
+	 * @threadId Unique agent thread identifier
+	 *
+	 * @return this for chaining
+	 */
+	public IAiMemory function clearState( required string threadId ) {
+		variables.cache.clear( buildCheckpointKey( arguments.threadId ) )
+		return this
 	}
 
 }

@@ -1,0 +1,92 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Abstract no-op base class for AI middleware.
+ * <br>
+ * Extend this class and override only the hooks you need.
+ * All unoverridden hooks return AiMiddlewareResult.continue() by default.
+ * Wrap hooks delegate directly to the next handler by default.
+ * <br>
+ * This is the recommended base class for most middleware implementations, as it provides sensible defaults and reduces boilerplate.
+ * If you want to implement IAiMiddleware directly, you must provide implementations for all hooks.
+ * The StructMiddlewareAdapter class provides an alternative for users who prefer to pass a struct of closures instead of a full class.
+ */
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+abstract class implements="IAiMiddleware" {
+
+	/**
+	 * Default: continue
+	 */
+	AiMiddlewareResult function beforeAgentRun( required struct context ) {
+		return AiMiddlewareResult.continue();
+	}
+
+	/**
+	 * Default: continue
+	 */
+	AiMiddlewareResult function afterAgentRun( required struct context ) {
+		return AiMiddlewareResult.continue();
+	}
+
+	/**
+	 * Default: continue
+	 */
+	AiMiddlewareResult function beforeLLMCall( required struct context ) {
+		return AiMiddlewareResult.continue();
+	}
+
+	/**
+	 * Default: continue
+	 */
+	AiMiddlewareResult function afterLLMCall( required struct context ) {
+		return AiMiddlewareResult.continue();
+	}
+
+	/**
+	 * Default: continue
+	 */
+	AiMiddlewareResult function beforeToolCall( required struct context ) {
+		return AiMiddlewareResult.continue();
+	}
+
+	/**
+	 * Default: continue
+	 */
+	AiMiddlewareResult function afterToolCall( required struct context ) {
+		return AiMiddlewareResult.continue();
+	}
+
+	/**
+	 * Default: continue
+	 */
+	AiMiddlewareResult function onError( required struct context ) {
+		return AiMiddlewareResult.continue();
+	}
+
+	/**
+	 * Default: just call the next handler and return
+	 */
+	any function wrapLLMCall( required struct context, required function handler ) {
+		return arguments.handler();
+	}
+
+	/**
+	 * Default: just call the next handler and return
+	 */
+	any function wrapToolCall( required struct context, required function handler ) {
+		return arguments.handler();
+	}
+
+}

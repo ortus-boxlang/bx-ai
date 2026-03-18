@@ -451,4 +451,91 @@ class extends="BaseMemory" {
 		return result.len() > 0 && result[1].record_count > 0
 	}
 
+	// ==================== Checkpoint Methods ====================
+
+	/**
+	 * Persist checkpoint state using the memory table with a prefixed key.
+	 *
+	 * @threadId Unique agent thread identifier
+	 * @state    Serialisable struct to store
+	 * @ttl      TTL in minutes (stored as expiresAt; 0 = no expiry)
+	 *
+	 * @return this for chaining
+	 */
+	public IAiMemory function saveState( required string threadId, required struct state, numeric ttl = 0 ) {
+		var checkpointKey = "checkpoint_" & arguments.threadId;
+		var expiresAt     = arguments.ttl > 0 ? dateAdd( "n", arguments.ttl, now() ) : "";
+		var payload       = jsonSerialize( {
+			savedAt  : now(),
+			expiresAt: expiresAt,
+			state    : arguments.state
+		} );
+
+		// Upsert pattern: delete existing, then insert
+		try {
+			queryExecute(
+				"DELETE FROM #variables.table# WHERE memory_key = :key",
+				{ key: checkpointKey },
+				{ datasource: variables.datasource }
+			);
+		} catch ( any ignored ) {}
+
+		queryExecute(
+			"INSERT INTO #variables.table# (memory_key, memory_data) VALUES (:key, :data)",
+			{ key: checkpointKey, data: payload },
+			{ datasource: variables.datasource }
+		);
+
+		return this;
+	}
+
+	/**
+	 * Retrieve checkpoint state from the memory table.
+	 *
+	 * @threadId Unique agent thread identifier
+	 *
+	 * @return Saved state struct, or empty struct if not found or expired
+	 */
+	public struct function loadState( required string threadId ) {
+		var checkpointKey = "checkpoint_" & arguments.threadId;
+		try {
+			var rows = queryExecute(
+				"SELECT memory_data FROM #variables.table# WHERE memory_key = :key",
+				{ key: checkpointKey },
+				{ datasource: variables.datasource, returntype: "array" }
+			);
+			if ( rows.isEmpty() ) {
+				return {};
+			}
+			var payload = jsonDeserialize( rows[1].memory_data );
+			// Honour expiry
+			if ( len( payload.expiresAt ) && now() > payload.expiresAt ) {
+				clearState( arguments.threadId );
+				return {};
+			}
+			return payload.state ?: {};
+		} catch ( any e ) {
+			return {};
+		}
+	}
+
+	/**
+	 * Delete checkpoint state from the memory table.
+	 *
+	 * @threadId Unique agent thread identifier
+	 *
+	 * @return this for chaining
+	 */
+	public IAiMemory function clearState( required string threadId ) {
+		var checkpointKey = "checkpoint_" & arguments.threadId;
+		try {
+			queryExecute(
+				"DELETE FROM #variables.table# WHERE memory_key = :key",
+				{ key: checkpointKey },
+				{ datasource: variables.datasource }
+			);
+		} catch ( any ignored ) {}
+		return this;
+	}
+
 }
