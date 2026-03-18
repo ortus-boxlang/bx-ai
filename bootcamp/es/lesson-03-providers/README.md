@@ -360,11 +360,9 @@ println( "3. Ollama (local)" )
 println( "4. ¡Comparar todos!" )
 println()
 
-print( "Elige opción (1-4): " )
-eleccion = readLine()
+eleccion = cliRead( "Elige opción (1-4): " )
 
-print( "Ingresa tu pregunta: " )
-pregunta = readLine()
+pregunta = cliRead( "Ingresa tu pregunta: " )
 
 println()
 println( "─".repeat( 50 ) )

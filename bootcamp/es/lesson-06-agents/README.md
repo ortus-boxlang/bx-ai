@@ -752,8 +752,7 @@ println()
 
 running = true
 while( running ) {
-    print( "Tú: " )
-    userInput = readLine()
+        userInput = cliRead( "Tú: " )
 
     if( userInput.trim() == "salir" || userInput.trim() == "bye" ) {
         running = false
@@ -887,8 +886,7 @@ println()
 
 running = true
 while( running ) {
-    print( "Tú: " )
-    userInput = readLine()
+        userInput = cliRead( "Tú: " )
 
     if( userInput.trim() == "salir" ) {
         running = false

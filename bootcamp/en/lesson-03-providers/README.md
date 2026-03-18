@@ -349,11 +349,9 @@ println( "3. Ollama (local)" )
 println( "4. Compare all!" )
 println()
 
-print( "Choose option (1-4): " )
-choice = readLine()
+choice = cliRead( "Choose option (1-4): " )
 
-print( "Enter your question: " )
-question = readLine()
+question = cliRead( "Enter your question: " )
 
 println()
 println( "─".repeat( 50 ) )
