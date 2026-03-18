@@ -380,4 +380,159 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "r1IsContinue" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "r2IsSuspended" ) ) ).isTrue();
 	}
+
+	// ---- RetryMiddleware ----
+
+	@DisplayName( "RetryMiddleware: returns result when handler succeeds on first attempt" )
+	@Test
+	public void testRetrySucceedsFirstTry() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.RetryMiddleware;
+
+		        mw = new RetryMiddleware( maxRetries: 3, initialDelay: 0 );
+
+		        callCount = 0;
+		        result = mw.wrapLLMCall(
+		            context: {},
+		            handler: function() {
+		                callCount++;
+		                return "first try";
+		            }
+		        );
+
+		        calledOnce    = callCount == 1;
+		        resultCorrect = result == "first try";
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "calledOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resultCorrect" ) ) ).isTrue();
+	}
+
+	@DisplayName( "RetryMiddleware: retries on transient failure and returns result on second attempt" )
+	@Test
+	public void testRetrySucceedsOnSecondAttempt() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.RetryMiddleware;
+
+		        mw = new RetryMiddleware( maxRetries: 3, initialDelay: 0 );
+
+		        callCount = 0;
+		        result = mw.wrapLLMCall(
+		            context: {},
+		            handler: function() {
+		                callCount++;
+		                if ( callCount == 1 ) throw( type: "TransientError", message: "network blip" );
+		                return "retry success";
+		            }
+		        );
+
+		        calledTwice   = callCount == 2;
+		        resultCorrect = result == "retry success";
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "calledTwice" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resultCorrect" ) ) ).isTrue();
+	}
+
+	@DisplayName( "RetryMiddleware: rethrows after all retries are exhausted" )
+	@Test
+	public void testRetryExhaustsAndRethrows() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.RetryMiddleware;
+
+		        // maxRetries:0 = fail immediately on first attempt (no sleep)
+		        mw = new RetryMiddleware( maxRetries: 0, initialDelay: 0 );
+
+		        threw = false;
+		        try {
+		            mw.wrapLLMCall(
+		                context: {},
+		                handler: function() {
+		                    throw( type: "ProviderError", message: "provider down" );
+		                }
+		            );
+		        } catch( e ) {
+		            threw = e.type contains "ProviderError";
+		        }
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
+	}
+
+	@DisplayName( "RetryMiddleware: non-retryable exception type is rethrown immediately without retrying" )
+	@Test
+	public void testRetryNonRetryableTypesSkipRetry() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.RetryMiddleware;
+
+		        // maxRetries:5 but InvalidInput is in the non-retryable list
+		        mw = new RetryMiddleware( maxRetries: 5, initialDelay: 0 );
+
+		        threw = false;
+		        try {
+		            mw.wrapLLMCall(
+		                context: {},
+		                handler: function() {
+		                    throw( type: "InvalidInput", message: "bad prompt" );
+		                }
+		            );
+		        } catch( e ) {
+		            threw = e.type contains "InvalidInput";
+		        }
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		// InvalidInput is non-retryable so it must propagate immediately
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
+	}
+
+	@DisplayName( "RetryMiddleware: wrapToolCall also retries on failure" )
+	@Test
+	public void testRetryToolCallRetries() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.RetryMiddleware;
+
+		        mw = new RetryMiddleware( maxRetries: 3, initialDelay: 0 );
+
+		        callCount = 0;
+		        result = mw.wrapToolCall(
+		            context: { tool: { getName: function() { return "myTool"; } } },
+		            handler: function() {
+		                callCount++;
+		                if ( callCount < 3 ) throw( type: "ToolError", message: "flaky" );
+		                return "tool result";
+		            }
+		        );
+
+		        calledThrice  = callCount == 3;
+		        resultCorrect = result == "tool result";
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "calledThrice" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resultCorrect" ) ) ).isTrue();
+	}
 }

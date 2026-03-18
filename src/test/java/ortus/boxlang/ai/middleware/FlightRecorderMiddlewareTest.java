@@ -490,4 +490,133 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "llm3Correct" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "noRealCalls" ) ) ).isTrue();
 	}
+
+	// ---- Passthrough: wrapToolCall ----
+
+	@DisplayName( "passthrough mode: wrapToolCall also delegates to handler and returns result" )
+	@Test
+	public void testPassthroughWrapToolCallDelegates() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware( mode: "passthrough" );
+
+		        handlerCalled = false;
+		        result = mw.wrapToolCall(
+		            context: { toolCall: { function: { name: "ping", arguments: '{}' } } },
+		            handler: function() {
+		                handlerCalled = true;
+		                return "pong";
+		            }
+		        );
+
+		        handlerWasCalled = handlerCalled;
+		        resultCorrect    = result == "pong";
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "handlerWasCalled" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resultCorrect" ) ) ).isTrue();
+	}
+
+	// ---- Missing fixture path ----
+
+	@DisplayName( "replay mode: throws FlightRecorder.MissingFixturePath when fixturePath is not set" )
+	@Test
+	public void testReplayMissingFixturePathThrows() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+
+		        // replay mode with no fixturePath
+		        mw = new FlightRecorderMiddleware( mode: "replay" );
+
+		        threw = false;
+		        try {
+		            mw.beforeAgentRun( context: {} );
+		        } catch( e ) {
+		            threw = e.type contains "MissingFixturePath";
+		        }
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
+	}
+
+	// ---- Lazy init (no beforeAgentRun) ----
+
+	@DisplayName( "record mode: lazy init works when beforeAgentRun is not called" )
+	@Test
+	public void testRecordLazyInit( @TempDir Path tempDir ) throws IOException {
+		String fixturePath = tempDir.resolve( "lazy.json" ).toString();
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+
+		        // Deliberately skip beforeAgentRun — lazy init should kick in on first wrap call
+		        mw = new FlightRecorderMiddleware(
+		            mode       : "record",
+		            fixturePath: "%s"
+		        );
+
+		        mw.wrapLLMCall(
+		            context: {},
+		            handler: function() { return { id: "lazy-1" }; }
+		        );
+
+		        tape            = mw.getTape();
+		        tapeHasOneEntry = tape.interactions.len() == 1;
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "tapeHasOneEntry" ) ) ).isTrue();
+		assertThat( Files.exists( Path.of( fixturePath ) ) ).isTrue();
+	}
+
+	// ---- reset() ----
+
+	@DisplayName( "reset() clears in-memory tape and re-enables lazy init" )
+	@Test
+	public void testResetClearsState( @TempDir Path tempDir ) {
+		String fixturePath = tempDir.resolve( "reset.json" ).toString();
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware(
+		            mode       : "record",
+		            fixturePath: "%s"
+		        );
+		        mw.beforeAgentRun( context: {} );
+
+		        mw.wrapLLMCall(
+		            context: {},
+		            handler: function() { return { id: "before-reset" }; }
+		        );
+
+		        tapeBeforeReset = mw.getTape().interactions.len();
+
+		        mw.reset();
+		        tapeAfterReset = mw.getTape().isEmpty();
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "tapeBeforeReset" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsBoolean( Key.of( "tapeAfterReset" ) ) ).isTrue();
+	}
 }
