@@ -15,7 +15,7 @@
  * Wraps an AI Service as a runnable model for use in pipelines
  * Handles message extraction, request building, and response handling
  */
-import bxModules.bxai.models.runnables.*
+import bxModules.bxai.models.runnables.AiBaseRunnable
 import bxModules.bxai.models.middleware.AiMiddlewareResult
 import bxModules.bxai.models.middleware.StructMiddlewareAdapter
 
