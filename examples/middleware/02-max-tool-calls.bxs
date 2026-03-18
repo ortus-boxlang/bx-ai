@@ -24,9 +24,9 @@ echoTool = aiTool(
 )
 
 // Allow at most 3 tool calls before the middleware cancels further calls
-maxToolsMw = new bxModules.bxai.models.middleware.builtin.MaxToolCallsMiddleware( {
+maxToolsMw = new bxModules.bxai.models.middleware.builtin.MaxToolCallsMiddleware(
 	maxCalls: 3
-} )
+)
 
 agent = aiAgent(
 	name       : "BoundedAgent",

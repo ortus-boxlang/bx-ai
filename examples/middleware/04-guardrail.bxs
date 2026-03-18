@@ -40,7 +40,7 @@ shellTool = aiTool(
 	runShell
 )
 
-guardrailMw = new bxModules.bxai.models.middleware.builtin.GuardrailMiddleware( {
+guardrailMw = new bxModules.bxai.models.middleware.builtin.GuardrailMiddleware(
 	// Block the shell tool entirely
 	blockedTools: [ "runShell" ],
 
@@ -51,7 +51,7 @@ guardrailMw = new bxModules.bxai.models.middleware.builtin.GuardrailMiddleware( 
 			{ sql: "(?i)\bDELETE\b" }
 		]
 	}
-} )
+)
 
 agent = aiAgent(
 	name       : "SafeDbAgent",

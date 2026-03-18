@@ -27,11 +27,11 @@ emailTool = aiTool(
 	sendEmail
 )
 
-hitlMw = new bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware( {
+hitlMw = new bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware(
 	approvalMode         : "cli",
 	toolsRequiringApproval: [ "sendEmail" ],
 	showArguments        : true     // Print the arguments so the operator can review them
-} )
+)
 
 agent = aiAgent(
 	name       : "EmailAgent",

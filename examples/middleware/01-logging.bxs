@@ -10,12 +10,12 @@ println( "=== Logging Middleware ===" )
 println( "" )
 
 // Create a logging middleware that prints to the console
-loggingMw = new bxModules.bxai.models.middleware.builtin.LoggingMiddleware( {
+loggingMw = new bxModules.bxai.models.middleware.builtin.LoggingMiddleware(
 	logToConsole: true,
 	logToFile   : true,
 	logLevel    : "info",
 	prefix      : "[MY-AGENT]"
-} )
+)
 
 // Attach the middleware when creating the agent
 agent = aiAgent(

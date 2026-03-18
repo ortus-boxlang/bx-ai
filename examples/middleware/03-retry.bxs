@@ -30,13 +30,13 @@ searchTool = aiTool(
 	flakySearch
 )
 
-retryMw = new bxModules.bxai.models.middleware.builtin.RetryMiddleware( {
+retryMw = new bxModules.bxai.models.middleware.builtin.RetryMiddleware(
 	maxRetries         : 4,
 	initialDelay       : 200,      // ms
 	backoffMultiplier  : 2.0,
 	maxDelay           : 3000,     // ms cap
 	nonRetryableTypes  : [ "ValidationError" ]
-} )
+)
 
 agent = aiAgent(
 	name       : "ResilientAgent",

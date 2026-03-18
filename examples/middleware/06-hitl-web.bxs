@@ -36,11 +36,11 @@ transferTool = aiTool(
 // CacheMemory is used as the checkpointer so state persists across requests
 checkpointer = aiMemory( "cache" )
 
-hitlMw = new bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware( {
+hitlMw = new bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware(
 	approvalMode         : "web",
 	toolsRequiringApproval: [ "transferFunds" ],
 	showArguments        : true
-} )
+)
 
 agent = aiAgent(
 	name         : "BankingAgent",

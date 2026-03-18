@@ -17,19 +17,19 @@ var llmCallCount = 0
 
 // A plain struct — no class required
 var trackerMw = {
-	beforeAgentRun: function( required struct context ) {
+	beforeAgentRun: ( required struct context ) => {
 		println( "  [tracker] Agent starting run" )
 		llmCallCount = 0
 		return new bxModules.bxai.models.middleware.AiMiddlewareResult().continue()
 	},
 
-	beforeLLMCall: function( required struct context ) {
+	beforeLLMCall: ( required struct context ) => {
 		llmCallCount++
 		println( "  [tracker] LLM call ##: #llmCallCount#" )
 		return new bxModules.bxai.models.middleware.AiMiddlewareResult().continue()
 	},
 
-	afterAgentRun: function( required struct context ) {
+	afterAgentRun: ( required struct context ) => {
 		println( "  [tracker] Agent finished. Total LLM calls: #llmCallCount#" )
 		return new bxModules.bxai.models.middleware.AiMiddlewareResult().continue()
 	}
@@ -37,7 +37,7 @@ var trackerMw = {
 
 // A second struct-based middleware that adds a short delay after every tool call
 var paceingMw = {
-	afterToolCall: function( required struct context ) {
+	afterToolCall: ( required struct context ) => {
 		sleep( 200 )  // give the provider a short breather
 		return new bxModules.bxai.models.middleware.AiMiddlewareResult().continue()
 	}
