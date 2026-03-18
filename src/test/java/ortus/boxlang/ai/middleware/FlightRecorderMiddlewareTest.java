@@ -24,7 +24,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        mw = new FlightRecorderMiddleware( mode: "passthrough" );
 
@@ -58,7 +58,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        mw = new FlightRecorderMiddleware(
 		            mode       : "record",
@@ -100,7 +100,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        mw = new FlightRecorderMiddleware(
 		            mode       : "record",
@@ -146,7 +146,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        mw = new FlightRecorderMiddleware(
 		            mode       : "record",
@@ -199,7 +199,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        mw = new FlightRecorderMiddleware(
 		            mode       : "replay",
@@ -248,7 +248,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        mw = new FlightRecorderMiddleware(
 		            mode       : "replay",
@@ -297,7 +297,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        mw = new FlightRecorderMiddleware(
 		            mode       : "replay",
@@ -345,7 +345,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        mw = new FlightRecorderMiddleware(
 		            mode       : "replay",
@@ -393,7 +393,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        mw = new FlightRecorderMiddleware(
 		            mode       : "replay",
@@ -423,7 +423,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        recorder = new FlightRecorderMiddleware(
 		            mode       : "record",
@@ -458,7 +458,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// Phase 2 — replay in a fresh context
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        replayer = new FlightRecorderMiddleware(
 		            mode       : "replay",
@@ -499,7 +499,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        mw = new FlightRecorderMiddleware( mode: "passthrough" );
 
@@ -531,7 +531,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        // replay mode with no fixturePath
 		        mw = new FlightRecorderMiddleware( mode: "replay" );
@@ -560,7 +560,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        // Deliberately skip beforeAgentRun — lazy init should kick in on first wrap call
 		        mw = new FlightRecorderMiddleware(
@@ -594,7 +594,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.FlightRecorderMiddleware;
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
 		        mw = new FlightRecorderMiddleware(
 		            mode       : "record",

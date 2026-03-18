@@ -9,7 +9,7 @@ import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
 
 @DisplayName( "Built-in Middleware Unit Tests" )
-public class BuiltinMiddlewareTest extends BaseIntegrationTest {
+public class coreMiddlewareTest extends BaseIntegrationTest {
 
 	// ---- LoggingMiddleware ----
 
@@ -19,7 +19,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.LoggingMiddleware;
+		        import bxModules.bxai.models.middleware.core.LoggingMiddleware;
 
 		        mw = new LoggingMiddleware( logToFile: false, logToConsole: false );
 
@@ -45,7 +45,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.MaxToolCallsMiddleware;
+		        import bxModules.bxai.models.middleware.core.MaxToolCallsMiddleware;
 
 		        mw = new MaxToolCallsMiddleware( maxCalls: 2 );
 
@@ -75,7 +75,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.MaxToolCallsMiddleware;
+		        import bxModules.bxai.models.middleware.core.MaxToolCallsMiddleware;
 
 		        mw     = new MaxToolCallsMiddleware( maxCalls: 1 );
 		        ctx    = { context: { toolName: "x" } };
@@ -107,7 +107,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.GuardrailMiddleware;
+		        import bxModules.bxai.models.middleware.core.GuardrailMiddleware;
 
 		        mw = new GuardrailMiddleware( blockedTools: [ "dangerousTool" ] );
 
@@ -127,7 +127,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.GuardrailMiddleware;
+		        import bxModules.bxai.models.middleware.core.GuardrailMiddleware;
 
 		        mw = new GuardrailMiddleware( blockedTools: [ "dangerousTool" ] );
 
@@ -147,7 +147,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.GuardrailMiddleware;
+		        import bxModules.bxai.models.middleware.core.GuardrailMiddleware;
 
 		        mw = new GuardrailMiddleware(
 		            argPatterns: {
@@ -179,7 +179,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
 
 		        mw = new HumanInTheLoopMiddleware(
 		            toolsRequiringApproval: [ "placeOrder" ],
@@ -203,7 +203,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
 
 		        mw = new HumanInTheLoopMiddleware(
 		            toolsRequiringApproval: [ "placeOrder" ],
@@ -226,7 +226,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
 		        import bxModules.bxai.models.requests.AiChatRequest;
 
 		        mw = new HumanInTheLoopMiddleware(
@@ -266,7 +266,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
 		        import bxModules.bxai.models.requests.AiChatRequest;
 
 		        mw = new HumanInTheLoopMiddleware(
@@ -301,7 +301,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
 		        import bxModules.bxai.models.requests.AiChatRequest;
 
 		        mw = new HumanInTheLoopMiddleware(
@@ -345,7 +345,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
 		        import bxModules.bxai.models.requests.AiChatRequest;
 
 		        mw = new HumanInTheLoopMiddleware(
@@ -389,7 +389,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.RetryMiddleware;
+		        import bxModules.bxai.models.middleware.core.RetryMiddleware;
 
 		        mw = new RetryMiddleware( maxRetries: 3, initialDelay: 0 );
 
@@ -419,7 +419,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.RetryMiddleware;
+		        import bxModules.bxai.models.middleware.core.RetryMiddleware;
 
 		        mw = new RetryMiddleware( maxRetries: 3, initialDelay: 0 );
 
@@ -450,7 +450,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.RetryMiddleware;
+		        import bxModules.bxai.models.middleware.core.RetryMiddleware;
 
 		        // maxRetries:0 = fail immediately on first attempt (no sleep)
 		        mw = new RetryMiddleware( maxRetries: 0, initialDelay: 0 );
@@ -480,7 +480,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.RetryMiddleware;
+		        import bxModules.bxai.models.middleware.core.RetryMiddleware;
 
 		        // maxRetries:5 but InvalidInput is in the non-retryable list
 		        mw = new RetryMiddleware( maxRetries: 5, initialDelay: 0 );
@@ -511,7 +511,7 @@ public class BuiltinMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.RetryMiddleware;
+		        import bxModules.bxai.models.middleware.core.RetryMiddleware;
 
 		        mw = new RetryMiddleware( maxRetries: 3, initialDelay: 0 );
 

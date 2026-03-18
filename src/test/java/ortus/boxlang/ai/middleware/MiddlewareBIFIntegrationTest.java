@@ -104,7 +104,7 @@ public class MiddlewareBIFIntegrationTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.builtin.MaxToolCallsMiddleware;
+		        import bxModules.bxai.models.middleware.core.MaxToolCallsMiddleware;
 
 		        toolCallCount = 0;
 
