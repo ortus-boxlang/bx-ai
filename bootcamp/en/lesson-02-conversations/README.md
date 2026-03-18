@@ -209,8 +209,7 @@ println()
 
 running = true
 while( running ) {
-    print( "You: " )
-    userInput = readLine()
+        userInput = cliRead( "You: " )
 
     if( userInput == "quit" ) {
         running = false
@@ -689,8 +688,7 @@ println( "2. Funny - Witty with jokes" )
 println( "3. Serious - Professional and formal" )
 println()
 
-print( "Enter 1, 2, or 3: " )
-choice = readLine()
+choice = cliRead( "Enter 1, 2, or 3: " )
 
 // Set personality based on choice
 switch( choice ) {
@@ -724,8 +722,7 @@ messageCount = 0
 running = true
 
 while( running ) {
-    print( "You: " )
-    userInput = readLine()
+        userInput = cliRead( "You: " )
 
     if( userInput.trim() == "quit" ) {
         running = false

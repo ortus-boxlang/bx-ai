@@ -10,8 +10,7 @@ println( "2. Gracioso - Ingenioso con chistes" )
 println( "3. Serio - Profesional y formal" )
 println()
 
-print( "Ingresa 1, 2 o 3: " )
-choice = readLine()
+choice = cliRead( "Ingresa 1, 2 o 3: " )
 
 // Establecer personalidad según la elección
 switch( choice ) {
@@ -45,8 +44,7 @@ messageCount = 0
 running = true
 
 while( running ) {
-    print( "Tú: " )
-    userInput = readLine()
+        userInput = cliRead( "Tú: " )
 
     if( userInput.trim() == "salir" ) {
         running = false

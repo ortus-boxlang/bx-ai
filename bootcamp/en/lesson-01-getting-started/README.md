@@ -237,8 +237,7 @@ println( "Ask me a yes/no question..." )
 println( "" )
 
 // Get user's question
-print( "Your question: " )
-question = readLine()
+question = cliRead( "Your question: " )
 
 // Create the magic prompt
 prompt = "

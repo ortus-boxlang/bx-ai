@@ -89,8 +89,7 @@ println()
 
 running = true
 while( running ) {
-    print( "Tú: " )
-    question = readLine()
+        question = cliRead( "Tú: " )
 
     if( question.trim() == "salir" ) {
         running = false

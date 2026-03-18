@@ -209,8 +209,7 @@ println()
 
 ejecutando = true
 while( ejecutando ) {
-    print( "Tú: " )
-    entradaUsuario = readLine()
+        entradaUsuario = cliRead( "Tú: " )
 
     if( entradaUsuario == "salir" ) {
         ejecutando = false
@@ -275,8 +274,7 @@ println( "2. Gracioso - Ingenioso con chistes" )
 println( "3. Serio - Profesional y formal" )
 println()
 
-print( "Ingresa 1, 2 o 3: " )
-eleccion = readLine()
+eleccion = cliRead( "Ingresa 1, 2 o 3: " )
 
 // Establecer personalidad según la elección
 switch( eleccion ) {
@@ -310,8 +308,7 @@ contadorMensajes = 0
 ejecutando = true
 
 while( ejecutando ) {
-    print( "Tú: " )
-    entradaUsuario = readLine()
+        entradaUsuario = cliRead( "Tú: " )
 
     if( entradaUsuario.trim() == "salir" ) {
         ejecutando = false

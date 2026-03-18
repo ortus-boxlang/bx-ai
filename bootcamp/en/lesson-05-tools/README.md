@@ -362,8 +362,7 @@ println()
 
 running = true
 while( running ) {
-    print( "You: " )
-    question = readLine()
+        question = cliRead( "You: " )
     
     if( question.trim() == "quit" ) {
         running = false

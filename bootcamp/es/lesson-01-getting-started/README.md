@@ -238,8 +238,7 @@ println( "Hazme una pregunta de sí/no..." )
 println( "" )
 
 // Obtener la pregunta del usuario
-print( "Tu pregunta: " )
-pregunta = readLine()
+pregunta = cliRead( "Tu pregunta: " )
 
 // Crear el prompt mágico
 prompt = "
