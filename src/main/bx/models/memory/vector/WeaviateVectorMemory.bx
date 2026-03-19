@@ -190,8 +190,8 @@ class extends="BaseVectorMemory" {
 				"text": arguments.text,
 				"metadata": jsonSerialize( arguments.metadata ),
 				"timestamp": now().getTime(),
-				"userId": variables.userId,
-				"conversationId": variables.conversationId
+				"userId": arguments.metadata.userId ?: "",
+				"conversationId": arguments.metadata.conversationId ?: ""
 			},
 			"vector": arguments.embedding
 		};

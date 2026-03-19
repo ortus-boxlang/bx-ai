@@ -777,7 +777,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		    conversationId = "weaviate-test"
 
 		    memory.add(
-				message: { id: "123", text: "Weaviate vector database" },
+				message: { id: "123", content: "Weaviate vector database" },
 				userId: userId,
 				conversationId: conversationId
 			);

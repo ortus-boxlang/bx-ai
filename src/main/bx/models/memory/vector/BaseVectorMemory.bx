@@ -337,8 +337,10 @@ abstract class
 		// Generate embedding
 		var embedding = generateEmbedding( arguments.text );
 
-		param arguments.metadata.userId = resolveUserId( userId );
-		param arguments.metadata.conversationId = resolveConversationId( conversationId );
+		// Always override userId/conversationId with resolved values so per-call arguments
+		// take precedence over the instance defaults already set by extractMetadata()
+		arguments.metadata.userId = resolveUserId( userId );
+		arguments.metadata.conversationId = resolveConversationId( conversationId );
 
 		// Store in vector database (provider-specific)
 		storeDocument(
