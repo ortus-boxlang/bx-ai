@@ -41,6 +41,8 @@ public class MiniMaxTest extends BaseIntegrationTest {
 		executeWithTimeoutHandling(
 			"""
 			result = aiChat( messages:"what is boxlang?", options: {
+				logRequestToConsole: true,
+				logResponseToConsole: true
 			} )
 			println( result )
 			""",

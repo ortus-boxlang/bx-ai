@@ -126,7 +126,7 @@ class {
 				// }
 			},
 			// The default timeout of the ai requests
-			timeout : 30,
+			timeout : 45,
 			// If true, the AI request will be logged into the ai.log
 			logRequest : false,
 			// If true, the AI request will be logged to the console
