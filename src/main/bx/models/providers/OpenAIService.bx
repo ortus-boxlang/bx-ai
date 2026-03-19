@@ -19,8 +19,10 @@
  * should extend this class instead of BaseService.
  */
 import bxModules.bxai.models.util.SchemaBuilder;
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
-class extends="BaseService"{
+class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults

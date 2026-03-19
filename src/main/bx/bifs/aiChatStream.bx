@@ -84,11 +84,20 @@ class {
 			arguments.headers
 		 );
 
-		// Get the provider and chat stream with it
-		aiService(
+		// Get the provider and verify it supports stream chat
+		var service = aiService(
 			provider: arguments.options?.provider,
 			options: arguments.options
-		).invokeStream( chatRequest, arguments.callback );
+		);
+
+		if ( !isInstanceOf( service, "IAiChatService" ) ) {
+			throw(
+				type    : "UnsupportedCapability",
+				message : "Unsupported capability: provider [#service.getName()#] does not support streaming chat. Use a provider that implements IAiChatService."
+			);
+		}
+
+		service.invokeStream( chatRequest, arguments.callback );
 	}
 
 }

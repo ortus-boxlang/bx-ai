@@ -153,25 +153,63 @@ The following are the AI providers supported by this module. **Please note that 
 
 Here is a matrix of the providers and their feature support. Please keep checking as we will be adding more providers and features to this module. 🔄
 
-| Provider   | Real-time Tools | Embeddings | Structured Output |
-|------------|-----------------|------------|-------------------|
-| AWS Bedrock  | ✅ | ✅ | ✅ |
-| Claude    	| ✅ | ❌ | ✅ |
-| Cohere       | ✅ | ✅ | ✅ |
-| DeepSeek  | ✅ | ✅ | ✅ |
-| Docker Model Runner | ✅ | ✅ | ✅ |
-| Gemini    	| [Coming Soon]   | ✅ | ✅ |
-| Grok      	 | ✅ | ✅ | ✅ |
-| Groq         | ✅ | ✅ | ✅ |
-| HuggingFace | ✅ | ✅ | ✅ |
-| Mistral      | ✅ | ✅ | ✅ |
-| MiniMax      | ✅ | ✅ | ✅ |
-| Ollama       | ✅ | ✅ | ✅ |
-| OpenAI       | ✅ | ✅ | ✅ (Native) |
-| OpenAI-Compatible | ✅ | ✅ | ✅ |
-| OpenRouter   | ✅ | ✅ | ✅ |
-| Perplexity   | ✅ | ❌ | ✅ |
-| Voyage       | ❌ | ✅ (Specialized) | ❌ |
+| Provider            | Chat & Streaming | Real-time Tools | Embeddings       | Structured Output |
+|---------------------|------------------|-----------------|------------------|-------------------|
+| AWS Bedrock         | ✅               | ✅              | ✅               | ✅                |
+| Claude              | ✅               | ✅              | ❌               | ✅                |
+| Cohere              | ✅               | ✅              | ✅               | ✅                |
+| DeepSeek            | ✅               | ✅              | ✅               | ✅                |
+| Docker Model Runner | ✅               | ✅              | ✅               | ✅                |
+| Gemini              | ✅               | [Coming Soon]   | ✅               | ✅                |
+| Grok                | ✅               | ✅              | ✅               | ✅                |
+| Groq                | ✅               | ✅              | ✅               | ✅                |
+| HuggingFace         | ✅               | ✅              | ✅               | ✅                |
+| Mistral             | ✅               | ✅              | ✅               | ✅                |
+| MiniMax             | ✅               | ✅              | ✅               | ✅                |
+| Ollama              | ✅               | ✅              | ✅               | ✅                |
+| OpenAI              | ✅               | ✅              | ✅               | ✅ (Native)       |
+| OpenAI-Compatible   | ✅               | ✅              | ✅               | ✅                |
+| OpenRouter          | ✅               | ✅              | ✅               | ✅                |
+| Perplexity          | ✅               | ✅              | ❌               | ✅                |
+| Voyage              | ❌               | ❌              | ✅ (Specialized) | ❌                |
+
+### 🔍 Provider Capability Discovery
+
+Every provider exposes a **runtime capability API** so you can introspect what it supports without consulting documentation — and without risking cryptic errors when you call an unsupported operation. 🛡️
+
+```javascript
+// Get all capabilities a provider supports
+var provider = aiService( "openai" );
+var caps = provider.getCapabilities();
+// → [ "chat", "stream", "embeddings" ]
+
+// Check a specific capability before using it
+if ( provider.hasCapability( "embeddings" ) ) {
+    var embedding = aiEmbed( "Hello world" );
+}
+
+// Voyage is embeddings-only — getCapabilities() reflects this
+var voyage = aiService( "voyage" );
+voyage.getCapabilities(); // → [ "embeddings" ]
+voyage.hasCapability( "chat" ); // → false
+```
+
+The built-in BIFs (`aiChat`, `aiChatStream`, `aiEmbed`) automatically use this system and throw a clear `UnsupportedCapability` exception when the selected provider does not implement the required capability:
+
+```javascript
+// This will throw UnsupportedCapability — Voyage has no chat capability
+aiChat( "Hello?", provider: "voyage" );
+
+// This will throw UnsupportedCapability — Claude has no embeddings capability
+aiEmbed( "some text", provider: "claude" );
+```
+
+Capabilities map to the following **capability interfaces** (in `models/providers/capabilities/`):
+
+| Capability String | Interface           | Methods Provided         |
+|-------------------|---------------------|---------------------------|
+| `chat`, `stream`  | `IAiChatService`    | `chat()`, `chatStream()`  |
+| `embeddings`      | `IAiEmbeddingsService` | `embeddings()`         |
 
 ## 📤 Return Formats
 

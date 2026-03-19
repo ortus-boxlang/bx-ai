@@ -13,7 +13,10 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  */
-class extends="BaseService"{
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+
+class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults
@@ -144,7 +147,7 @@ class extends="BaseService"{
 	 * Gemini chat request
 	 */
 	@override
-	public function chat( required AiChatRequest chatRequest ){
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
 		// We need to pre-process the messages to conform to the Gemini API
 		var dataPacket = {
 			"contents": arguments.chatRequest
@@ -209,7 +212,7 @@ class extends="BaseService"{
 	 * @callback A callback function to be called with each chunk of the stream
 	 */
 	@override
-	public function chatStream( required AiChatRequest chatRequest, required function callback ){
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
 		var userCallback = arguments.callback;
 		var requestedModel = arguments.chatRequest.getModel();
 

@@ -13,7 +13,9 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  */
-class extends="BaseService"{
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+
+class extends="BaseService" implements="IAiChatService" {
 
 	/**
 	 * Static defaults
@@ -75,7 +77,7 @@ class extends="BaseService"{
 	 * @callback A callback function to be called with each chunk of the stream
 	 */
 	@override
-	public function chatStream( required AiChatRequest chatRequest, required function callback ){
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
 

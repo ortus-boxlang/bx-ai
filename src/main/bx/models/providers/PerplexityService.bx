@@ -13,7 +13,9 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  */
-class extends="OpenAIService"{
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+
+class extends="OpenAIService" implements="IAiChatService" {
 
 	/**
 	 * Static defaults
@@ -60,6 +62,18 @@ class extends="OpenAIService"{
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 		return super.invokeStream( arguments.chatRequest, arguments.callback )
+	}
+
+	/**
+	 * Perplexity is a chat-only provider — override to avoid inheriting the embeddings
+	 * capability that OpenAIService declares.
+	 */
+	public array function getCapabilities(){
+		return [ "chat", "stream" ]
+	}
+
+	public boolean function hasCapability( required string capability ){
+		return listFindNoCase( "chat,stream", arguments.capability ) > 0
 	}
 
 }

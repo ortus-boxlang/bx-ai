@@ -15,7 +15,10 @@
  * Mistral AI Service Provider
  * https://docs.mistral.ai/
  */
-class extends="OpenAIService"{
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults

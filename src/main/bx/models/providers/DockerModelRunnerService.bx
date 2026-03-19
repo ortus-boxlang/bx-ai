@@ -34,7 +34,10 @@
  * @see https://docs.docker.com/ai/model-runner/
  * @see https://docs.docker.com/ai/model-runner/api-reference/
  */
-class extends = "OpenAICompatibleService"{
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+
+class extends = "OpenAICompatibleService" implements="IAiChatService, IAiEmbeddingsService" {
 	/**
 	 * Static defaults
 	 *
@@ -154,11 +157,12 @@ class extends = "OpenAICompatibleService"{
 	public function chatStream(
 		required AiChatRequest chatRequest,
 		required function callback,
-		numeric retryCount = 0
+		numeric interactionCount = 0,
+		numeric retryCount       = 0
 	){
 		// Use the parent implementation with retry for model loading
 		try {
-			return super.chatStream( chatRequest = arguments.chatRequest, callback = arguments.callback );
+			return super.chatStream( chatRequest = arguments.chatRequest, callback = arguments.callback, interactionCount = arguments.interactionCount );
 		} catch ( ProviderError e ) {
 			// Check if this is a "model loading" error (503)
 			if ( e.message.findNoCase( "Loading model" ) > 0 || e.message.findNoCase( "503" ) > 0 ) {

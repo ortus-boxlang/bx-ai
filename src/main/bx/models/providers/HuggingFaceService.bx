@@ -19,7 +19,10 @@
  *
  * @see https://huggingface.co/docs/inference-providers/tasks/chat-completion
  */
-class extends="OpenAIService"{
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults

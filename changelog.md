@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Middleware support for `AiModel` and `AiAgent`, with agent middleware prepended ahead of model middleware.
 - Provider lifecycle hooks in `preRequest()`, `postResponse()`,for any custom logic before and after requests to change the shape of the request or response, log additional data, etc.  These hooks are provider-specific and allow for custom behavior without needing to override the entire `sendChatRequest()` method.
 - **Per-call identity routing on all memory types**: `add()`, `getAll()`, `clear()`, `trim()`, `seed()`, and related methods on every `IAiMemory` and `IVectorMemory` implementation now accept optional `userId` and `conversationId` arguments. This follows the Spring AI `ChatMemory` pattern — a single memory instance can safely serve multiple tenants without creating a new instance per user. Construction-time values remain as fallbacks.
+- **Provider capability interfaces**: New `models/providers/capabilities/` package introduces `IAiChatService` and `IAiEmbeddingsService` — scoped interfaces that let providers declare exactly which operations they support at the type level rather than through runtime throws.
+- **`getCapabilities()` / `hasCapability()` on all providers**: Every provider now exposes `getCapabilities()` (returns `["chat", "stream", "embeddings", ...]`) and `hasCapability( "chat" )` for clean, self-documenting runtime introspection. These are backed by `isInstanceOf()` checks and stay automatically in sync with the `implements` declarations on each provider — no maintenance required.
 
 ### Changed
 
@@ -21,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored the `BaseService` to be truly a base and move all OpenAI specific logic to `OpenAIService`, which now serves as the default provider implementation. This allows for cleaner implementations of other providers that don't need to override every method.
 - **`AiAgent` is now fully stateless**: `userId`, and `conversationId` are resolved per-call from the `options` argument passed to `run()` and `stream()`, eliminating shared-state concurrency bugs in multi-user deployments.  Seeding a memory with `userId` and `conversationId` is still supported, but these values will be overridden by any values passed in at call time.
 - `resume()` and `resumeStream()` now require `threadId` as an explicit `required string` argument instead of defaulting to the former instance property.
+- **`IAiService` contract trimmed**: The base interface now declares only identity/configuration/capability-discovery methods (`getName()`, `configure()`, `getCapabilities()`, `hasCapability()`). The operation methods (`invoke()`, `invokeStream()`, `embeddings()`) have moved to their respective capability interfaces where they belong.
+- **`VoyageService` now extends `BaseService` directly** and implements only `IAiEmbeddingsService` — it no longer extends `OpenAIService` with stubbed-out chat methods that threw at runtime. The type system now enforces the embeddings-only constraint at compile time.
+- **`aiChat()`, `aiChatStream()`, and `aiEmbed()` BIF guards**: Each BIF now checks the provider implements the required capability interface before attempting the call and throws a clear `UnsupportedCapability` exception instead of a cryptic provider error. Zero breaking changes to public BIF signatures.
 
 ### Improvements
 
@@ -32,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changelog corruption due to merge conflict.
 - MCP requestId null scope crash on JSON-RPC notifications for MCP servers
 - MiniMax chat errors (`base_resp.status_code != 0`) now surface correctly.
+- **`OllamaService` stale `postEmbeddingResponse()` hook**: The old hook was never wired to the current `BaseService` lifecycle and silently did nothing. Replaced with the proper `postResponse( aiRequest, dataPacket, result, operation )` override that guards on `operation != "embeddings"`, identical to how every other dual-capability provider handles this.
 
 ## [2.4.0] - 2026-02-20
 

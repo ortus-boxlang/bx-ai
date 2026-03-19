@@ -32,8 +32,10 @@
  * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
  */
 import bxModules.bxai.models.util.AwsSignatureV4;
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
-class extends = "BaseService"{
+class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	/**
 	 * AWS Region for Bedrock
 	 */
@@ -874,7 +876,7 @@ class extends = "BaseService"{
 	 * @callback    A callback function to be called with each chunk: function( chunk )
 	 */
 	@override
-	public function chatStream( required AiChatRequest chatRequest, required function callback ){
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
 		// Get the model to use
 		var modelId = len( variables.modelId ) ? variables.modelId : arguments.chatRequest.getModel();
 		if ( !len( modelId ) ) {

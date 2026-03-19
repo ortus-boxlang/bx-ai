@@ -18,8 +18,10 @@
  * @see https://docs.cohere.com/reference/chat
  */
 import bxModules.bxai.models.util.SchemaBuilder
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
-class extends="BaseService"{
+class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults
@@ -337,7 +339,7 @@ class extends="BaseService"{
 	 * @callback A callback function to be called with each chunk of the stream
 	 */
 	@override
-	public function chatStream( required AiChatRequest chatRequest, required function callback ){
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
 		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;

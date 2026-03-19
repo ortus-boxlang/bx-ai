@@ -13,7 +13,10 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  */
-class extends="BaseService"{
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+
+class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults
@@ -205,7 +208,7 @@ class extends="BaseService"{
 	 * @callback A callback function to be called with each chunk of the stream
 	 */
 	@override
-	public function chatStream( required AiChatRequest chatRequest, required function callback ){
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
 		// Handle authentication for remote/secured Ollama instances
 		if( !arguments.chatRequest.getApiKey().isEmpty() ){
 			arguments.chatRequest.addHeader( "Authorization", "Basic #toBase64( arguments.chatRequest.getApiKey() )#" );
@@ -382,17 +385,24 @@ class extends="BaseService"{
 	 * centralized error handler fires correctly.
 	 * @see https://github.com/ollama/ollama/blob/main/docs/api.md#generate-embeddings
 	 */
-	private struct function postEmbeddingResponse( required AiEmbeddingRequest embeddingRequest, required struct dataPacket, required struct result ){
-		if( !arguments.result.keyExists( "embeddings" ) ){
-			return { "error": "Invalid Ollama embedding response — 'embeddings' key missing. Response: #arguments.result.toString()#" };
+	@override
+	private any function postResponse(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required any result,
+		required string operation
+	) {
+		if ( arguments.operation != "embeddings" ) { return arguments.result }
+		if ( !arguments.result.keyExists( "embeddings" ) ) {
+			return { "error": "Invalid Ollama embedding response — 'embeddings' key missing. Response: #arguments.result.toString()#" }
 		}
 		return {
-			"data"  : arguments.result.embeddings.map( (embedding, index) => {
+			"data"  : arguments.result.embeddings.map( ( embedding, index ) => {
 				return { "embedding": embedding, "index": index - 1, "object": "embedding" }
 			} ),
-			"model" : arguments.embeddingRequest.getModel(),
+			"model" : arguments.aiRequest.getModel(),
 			"object": "list"
-		};
+		}
 	}
 
 	/**

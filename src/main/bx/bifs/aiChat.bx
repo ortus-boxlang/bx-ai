@@ -84,11 +84,20 @@ class {
 			static.DEFAULT_OPTIONS  // Pass method defaults separately
 		 );
 
-		// Get the provider and chat with it
-		return aiService(
+		// Get the provider and verify it supports chat
+		var service = aiService(
 			provider: arguments.options?.provider,
 			options: arguments.options
-		).invoke( chatRequest );
+		);
+
+		if ( !isInstanceOf( service, "IAiChatService" ) ) {
+			throw(
+				type    : "UnsupportedCapability",
+				message : "Unsupported capability: provider [#service.getName()#] does not support chat. Use a provider that implements IAiChatService."
+			);
+		}
+
+		return service.invoke( chatRequest );
 	}
 
 }

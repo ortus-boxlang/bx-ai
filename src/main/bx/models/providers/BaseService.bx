@@ -113,6 +113,51 @@ abstract class implements="IAiService" {
 	}
 
 	/**
+	 * Returns all capabilities this provider supports.
+	 * Derived from the interfaces the provider implements — always in sync,
+	 * nothing to maintain manually.
+	 *
+	 * @return Array of capability strings
+	 */
+	public array function getCapabilities() {
+		var caps = []
+		if ( isInstanceOf( this, "IAiChatService" ) ) {
+			caps.append( "chat" )
+			caps.append( "stream" )
+		}
+		if ( isInstanceOf( this, "IAiEmbeddingsService" ) ) {
+			caps.append( "embeddings" )
+		}
+		if ( isInstanceOf( this, "IAudioService" ) ) {
+			caps.append( "transcribe" )
+			caps.append( "speak" )
+		}
+		return caps
+	}
+
+	/**
+	 * Returns true if this provider supports the given capability.
+	 *
+	 * @capability  "chat" | "stream" | "embeddings" | "transcribe" | "speak"
+	 *
+	 * @return boolean
+	 */
+	public boolean function hasCapability( required string capability ) {
+		switch ( arguments.capability ) {
+			case "chat":
+			case "stream":
+				return isInstanceOf( this, "IAiChatService" )
+			case "embeddings":
+				return isInstanceOf( this, "IAiEmbeddingsService" )
+			case "transcribe":
+			case "speak":
+				return isInstanceOf( this, "IAudioService" )
+			default:
+				return false
+		}
+	}
+
+	/**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Interface Methods
 	 * ---------------------------------------------------------------------------------------------------------

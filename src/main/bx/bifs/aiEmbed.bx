@@ -73,6 +73,13 @@ class {
 		// Get the service
 		var service = aiService( arguments.options?.provider, arguments.options );
 
+		if ( !isInstanceOf( service, "IAiEmbeddingsService" ) ) {
+			throw(
+				type    : "UnsupportedCapability",
+				message : "Unsupported capability: provider [#service.getName()#] does not support embeddings. Use a provider that implements IAiEmbeddingsService."
+			);
+		}
+
 		// Announce the embedding request
 		BoxAnnounce( "beforeAIEmbed", { embeddingRequest: embeddingRequest, service: service } );
 
