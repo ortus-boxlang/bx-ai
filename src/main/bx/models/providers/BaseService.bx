@@ -217,7 +217,7 @@ abstract class implements="IAiService" {
 	 * If the provider does not support this standard, it should override this method.
 	 *
 	 * @chatRequest The AiChatRequest object to send to the provider
-	 * @interactionCount Current tool call interaction count (used internally)
+	 * @interactionCount Current tool call interaction count (used internally), default is 0
 	 *
 	 * @throws ProviderError if the provider returns an error from the request
 	 * @throws MaxInteractionsExceeded if tool calls exceed the maximum allowed interactions
@@ -231,15 +231,20 @@ abstract class implements="IAiService" {
 			"messages": arguments.chatRequest.getMessages()
 		}.append( arguments.chatRequest.getParams() )
 
-		// Tooling support
+		// -------------------------------------------------------------------------------------------
+		// --- Tooling Detection ---
+		// -------------------------------------------------------------------------------------------
 		if( dataPacket.keyExists( "tools" ) ){
+			// Convert tool definitions to schema format expected by the provider
 			dataPacket.tools = dataPacket.tools.map( .getSchema )
 		}
 
-		// Structured output support (OpenAI format)
+		// -------------------------------------------------------------------------------------------
+		// --- Structured output support (OpenAI format) ---
+		// -------------------------------------------------------------------------------------------
 		if( arguments.chatRequest.isStructuredOutput() ){
 			// Clean internal metadata before sending to provider
-			var cleanSchema = SchemaBuilder::cleanSchema( arguments.chatRequest.getStructuredOutput() );
+			var cleanSchema = SchemaBuilder::cleanSchema( arguments.chatRequest.getStructuredOutput() )
 			dataPacket.response_format = {
 				"type": "json_schema",
 				"json_schema": {
@@ -247,36 +252,56 @@ abstract class implements="IAiService" {
 					"strict": true,
 					"schema": cleanSchema
 				}
-			};
+			}
 		}
 
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Localized Callback ---
+		// -------------------------------------------------------------------------------------------
 		// Allow concrete providers to normalize the request packet before sending
 		dataPacket = preChatRequest( arguments.chatRequest, dataPacket )
 
-		// Fire beforeLLMCall middleware
-		var llmCtx = { chatRequest: arguments.chatRequest, dataPacket: dataPacket };
-		var llmBeforeResult = arguments.chatRequest.fireMiddleware( "beforeLLMCall", llmCtx );
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware ---
+		// -------------------------------------------------------------------------------------------
+		var llmContext = { chatRequest: arguments.chatRequest, dataPacket: dataPacket }
+		var llmBeforeResult = arguments.chatRequest.fireMiddleware( hook: "beforeLLMCall", context: llmContext )
+		// If any beforeLLMCall middleware returned a terminal result (suspend, cancel, reject),
+		// return it immediately to allow the agent to handle it (e.g. pause for human input, skip
 		if ( llmBeforeResult.isTerminal() ) {
-			return llmBeforeResult;
+			return llmBeforeResult
 		}
 
+		// -------------------------------------------------------------------------------------------
+		// --- Fire WrapLLM -> HTTP Call ---
+		// -------------------------------------------------------------------------------------------
 		// Send HTTP request to the provider — wrapped in wrapLLMCall middleware chain
 		// The result is a struct with normalized keys
 		var capturedDataPacket = dataPacket;
 		var capturedChatRequest = arguments.chatRequest;
 		var result = arguments.chatRequest.fireWrapMiddleware(
-			"wrapLLMCall",
-			llmCtx,
-			() => sendChatRequest( capturedChatRequest, capturedDataPacket )
-		);
+			hook: "wrapLLMCall",
+			context: llmContext,
+			innerFunction: () => sendChatRequest( capturedChatRequest, capturedDataPacket )
+		)
 
-		// Allow concrete providers to normalize the response before error checking and returnFormat processing
+		// -------------------------------------------------------------------------------------------
+		// --- Fire local callback for post mods ---
+		// -------------------------------------------------------------------------------------------
 		result = postChatResponse( arguments.chatRequest, dataPacket, result )
 
-		// Fire afterLLMCall middleware (outbound, reverse order)
-		arguments.chatRequest.fireMiddleware( "afterLLMCall", { chatRequest: arguments.chatRequest, result: result }, true );
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware, in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		arguments.chatRequest.fireMiddleware(
+			hook: "afterLLMCall",
+			context: { chatRequest: arguments.chatRequest, result: result },
+			reverse: true
+		)
 
-		// If an error is returned, throw it
+		// -------------------------------------------------------------------------------------------
+		// --- Direct Error Detection ---
+		// -------------------------------------------------------------------------------------------
 		if( result.keyExists( "error" ) ){
 			writeLog(
 				text: result.error.toString(),
@@ -300,7 +325,9 @@ abstract class implements="IAiService" {
 			);
 		}
 
-		// Announce token usage if available
+		// -------------------------------------------------------------------------------------------
+		// --- Usage Event Announcement---
+		// -------------------------------------------------------------------------------------------
 		if( result.keyExists( "usage" ) ){
 			BoxAnnounce( "onAITokenCount", {
 				provider: this,
@@ -312,27 +339,29 @@ abstract class implements="IAiService" {
 				aiRequest: arguments.chatRequest,
 				usage: result.usage,
 				timestamp: now()
-			} );
+			} )
 		}
 
-		// Result returns, only if we are not using tool calls
+		// -------------------------------------------------------------------------------------------
+		// --- Results Determination or Tool Calling ---
+		// -------------------------------------------------------------------------------------------
 		var toolCalls = result.choices.first().message?.tool_calls ?: arrayNew()
 		if( !toolCalls.len() ){
 			var content = result.choices.first().message.content;
 			// Determine return formats
 			switch( arguments.chatRequest.getReturnFormat() ){
 				case "all":
-					return result.choices;
+					return result.choices
 				case "raw":
-					return result;
+					return result
 				case "json":
-					return jsonDeserialize( extractFromCodeBlock( content, "json" ) );
+					return jsonDeserialize( extractFromCodeBlock( content, "json" ) )
 				case "xml":
-					return xmlParse( extractFromCodeBlock( content, "xml" ) );
+					return xmlParse( extractFromCodeBlock( content, "xml" ) )
 				case "structuredOutput":
-					return populateStructuredOutput( content, arguments.chatRequest );
+					return populateStructuredOutput( content, arguments.chatRequest )
 				case "single": default:
-					return content;
+					return content
 			}
 		}
 
@@ -352,7 +381,7 @@ abstract class implements="IAiService" {
 			throw(
 				type   : "MaxInteractionsExceeded",
 				message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
-			);
+			)
 		}
 
 		/**
@@ -364,62 +393,76 @@ abstract class implements="IAiService" {
 		// Capture chatRequest in local scope for use in nested closures
 		var newMessages = arguments.chatRequest.getMessages().map( message -> message )
 		result.choices.each( ( choice, index ) => {
+			var targetChatRequest = chatRequest
 
 			// add the tool call into our message history
-			newMessages.append( choice.message );
+			newMessages.append( choice.message )
 
 			// find the tool, invoke it, append the result to the chat history
 			choice.message.tool_calls.each( ( toolCall, i ) => {
-				var toolAttempt = chatRequest.getTool( toolCall.function.name );
-
+				var toolAttempt = chatRequest.getTool( toolCall.function.name )
 				if( toolAttempt.isPresent() ){
 					var tool = toolAttempt.get();
 
-					// Fire beforeToolCall middleware
-					var toolCtx = { tool: tool, toolCall: toolCall, chatRequest: arguments.chatRequest };
-					var toolBeforeResult = arguments.chatRequest.fireMiddleware( "beforeToolCall", toolCtx );
+					// -------------------------------------------------------------------------------------------
+					// --- Fire Tool MiddleWare ---
+					// -------------------------------------------------------------------------------------------
+					var toolContext = { tool: tool, toolCall: toolCall, chatRequest: targetChatRequest }
+					var toolBeforeResult = targetChatRequest.fireMiddleware( "beforeToolCall", toolContext )
+
+					// Suspend: return so the agent can checkpoint and pause
 					if ( toolBeforeResult.isSuspended() ) {
-						// Suspend: return so the agent can checkpoint and pause
 						newMessages.append( {
 							"role"        : "tool",
 							"tool_call_id": toolCall.id,
 							"content"     : "[Suspended: awaiting human approval]"
-						} );
-						arguments.chatRequest.setMessages( newMessages );
-						return toolBeforeResult;
+						} )
+						targetChatRequest.setMessages( newMessages )
+						return toolBeforeResult
 					}
+
+					// Cancel/Reject: skip the tool call but continue the chain, appending the reason to the chat history
 					if ( toolBeforeResult.isCancelled() || toolBeforeResult.isRejected() ) {
 						// Skip this tool call, append cancel reason
 						newMessages.append( {
 							"role"        : "tool",
 							"tool_call_id": toolCall.id,
 							"content"     : "[Tool call blocked: #toolBeforeResult.getReason()#]"
-						} );
-						return;
+						} )
+						return toolBeforeResult
 					}
 
-					// Invoke the tool, wrapped in wrapToolCall middleware chain
-					var capturedTool = tool;
-					var capturedToolCallArgs = toolCall.function.arguments;
-					var toolResult = arguments.chatRequest.fireWrapMiddleware(
+					// -------------------------------------------------------------------------------------------
+					// --- Invoke the Tool Middleware + Tooling ---
+					// -------------------------------------------------------------------------------------------
+					var capturedTool = tool
+					var capturedToolCallArgs = toolCall.function.arguments
+					var toolResult = targetChatRequest.fireWrapMiddleware(
 						"wrapToolCall",
-						toolCtx,
+						toolContext,
 						() => capturedTool.invoke( JSONDeserialize( capturedToolCallArgs ) )
-					);
+					)
 
-					// Fire afterToolCall middleware (reverse order)
-					arguments.chatRequest.fireMiddleware(
-						"afterToolCall",
-						{ tool: tool, toolCall: toolCall, chatRequest: arguments.chatRequest, result: toolResult },
-						true
-					);
+					// -------------------------------------------------------------------------------------------
+					// --- Fire afterToolCall Middleware ---
+					// -------------------------------------------------------------------------------------------
+					targetChatRequest.fireMiddleware(
+						hook: "afterToolCall",
+						context: { tool: tool, toolCall: toolCall, chatRequest: targetChatRequest, result: toolResult },
+						reverse: true
+					)
 
+					// Append the tool result to the messages for the next iteration of the chat loop
 					newMessages.append({
 						"role"        : "tool",
 						"tool_call_id": toolCall.id,
 						"content"     : toolResult
-					});
-				} else {
+					})
+				}
+				// -------------------------------------------------------------------------------------------
+				// --- Tool Not Found ---
+				// -------------------------------------------------------------------------------------------
+				else {
 					writeLog(
 						text: "Unable to find tool named: #toolCall.function.name#",
 						type: "warning",
@@ -429,13 +472,12 @@ abstract class implements="IAiService" {
 						"role"        : "tool",
 						"tool_call_id": toolCall.id,
 						"content"     : "Tool ['#toolCall.function.name#'] not found in chat request"
-					});
+					})
 				}
 			});
 		});
 
 		arguments.chatRequest.setMessages( newMessages )
-
 		return chat( arguments.chatRequest, arguments.interactionCount + 1 )
 	}
 
@@ -459,31 +501,47 @@ abstract class implements="IAiService" {
 			"stream"  : true
 		}.append( arguments.chatRequest.getParams() )
 
-		// Tooling support
+		// -------------------------------------------------------------------------------------------
+		// --- Tooling Detection ---
+		// -------------------------------------------------------------------------------------------
 		if( dataPacket.keyExists( "tools" ) ){
 			dataPacket.tools = dataPacket.tools.map( .getSchema )
 		}
 
-		// Allow concrete providers to normalize the request packet before streaming
+		// -------------------------------------------------------------------------------------------
+		// --- Fire local callback for pre mods ---
+		// -------------------------------------------------------------------------------------------
 		dataPacket = preStreamRequest( arguments.chatRequest, dataPacket )
 
-		// Fire beforeLLMCall middleware before sending the stream request
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware ---
+		// -------------------------------------------------------------------------------------------
 		var streamLlmCtx = { chatRequest: arguments.chatRequest, dataPacket: dataPacket };
 		var streamLlmBefore = arguments.chatRequest.fireMiddleware( "beforeLLMCall", streamLlmCtx );
 		if ( streamLlmBefore.isTerminal() ) {
 			// Emit a single sentinel chunk so callers know the stream was stopped
-			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } );
-			return;
+			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
+			return
 		}
 
-		// Send it with streaming
+		// -------------------------------------------------------------------------------------------
+		// --- Stream the chat response, with streaming tool call support ---
+		// -------------------------------------------------------------------------------------------
 		var streamState = sendStreamRequest( chatRequest, dataPacket, callback )
 
-		// Allow concrete providers to normalize the stream state after completion
+		// -------------------------------------------------------------------------------------------
+		// --- Fire local callback for post mods ---
+		// -------------------------------------------------------------------------------------------
 		streamState = postStreamResponse( arguments.chatRequest, dataPacket, streamState )
 
-		// Fire afterLLMCall middleware (outbound, reverse)
-		arguments.chatRequest.fireMiddleware( "afterLLMCall", { chatRequest: arguments.chatRequest, streamState: streamState }, true );
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware, in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		arguments.chatRequest.fireMiddleware(
+			hook: "afterLLMCall",
+			context: { chatRequest: arguments.chatRequest, streamState: streamState },
+			reverse: true
+		)
 
 		// If no tool calls were requested, we are done
 		if( !streamState.toolCalls.len() ){
@@ -506,7 +564,7 @@ abstract class implements="IAiService" {
 			throw(
 				type   : "MaxInteractionsExceeded",
 				message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#) during streaming. This may indicate an infinite loop."
-			);
+			)
 		}
 
 		/**
@@ -521,15 +579,16 @@ abstract class implements="IAiService" {
 			"content": streamState.content
 		};
 
-		assistantMessage.tool_calls = streamState.toolCalls;
-		newMessages.append( assistantMessage );
+		assistantMessage.tool_calls = streamState.toolCalls
+		newMessages.append( assistantMessage )
 
 		streamState.toolCalls.each( toolCall => {
-			var toolAttempt = chatRequest.getTool( toolCall.function.name ?: "" );
-			var toolArguments = {};
+			var targetChatRequest = chatRequest
+			var toolAttempt = chatRequest.getTool( toolCall.function.name ?: "" )
+			var toolArguments = {}
 
 			try {
-				toolArguments = JSONDeserialize( toolCall.function.arguments ?: "{}" );
+				toolArguments = JSONDeserialize( toolCall.function.arguments ?: "{}" )
 			} catch( any e ){
 				writeLog(
 					text: "Unable to deserialize tool call arguments for '#toolCall.function.name ?: "unknown"#': #e.message#",
@@ -541,18 +600,22 @@ abstract class implements="IAiService" {
 			if( toolAttempt.isPresent() ){
 				var tool = toolAttempt.get();
 
-				// Fire beforeToolCall middleware
-				var streamToolCtx = { tool: tool, toolCall: toolCall, chatRequest: arguments.chatRequest };
-				var streamToolBeforeResult = arguments.chatRequest.fireMiddleware( "beforeToolCall", streamToolCtx );
+				// -------------------------------------------------------------------------------------------
+				// --- Fire Before Tool MiddleWare ---
+				// -------------------------------------------------------------------------------------------
+				var streamToolCtx = { tool: tool, toolCall: toolCall, chatRequest: targetChatRequest };
+				var streamToolBeforeResult = targetChatRequest.fireMiddleware( "beforeToolCall", streamToolCtx );
 				if ( streamToolBeforeResult.isSuspended() ) {
 					newMessages.append( {
 						"role"        : "tool",
 						"tool_call_id": toolCall.id ?: "",
 						"content"     : "[Suspended: awaiting human approval]"
 					} );
-					arguments.chatRequest.setMessages( newMessages );
+					targetChatRequest.setMessages( newMessages );
 					return;
 				}
+
+				// If the tool call was cancelled or rejected by middleware, skip invoking the tool and append the reason to the chat history
 				if ( streamToolBeforeResult.isCancelled() || streamToolBeforeResult.isRejected() ) {
 					newMessages.append( {
 						"role"        : "tool",
@@ -562,20 +625,24 @@ abstract class implements="IAiService" {
 					return;
 				}
 
-				// Invoke via wrapToolCall middleware chain
+				// -------------------------------------------------------------------------------------------
+				// --- Invoke the Tool, wrapped in wrapToolCall middleware ---
+				// -------------------------------------------------------------------------------------------
 				var capturedStreamTool      = tool;
 				var capturedStreamToolArgs  = toolArguments;
-				var streamToolResult = arguments.chatRequest.fireWrapMiddleware(
+				var streamToolResult = targetChatRequest.fireWrapMiddleware(
 					"wrapToolCall",
 					streamToolCtx,
 					() => capturedStreamTool.invoke( capturedStreamToolArgs )
 				);
 
-				// Fire afterToolCall middleware (reverse)
-				arguments.chatRequest.fireMiddleware(
-					"afterToolCall",
-					{ tool: tool, toolCall: toolCall, chatRequest: arguments.chatRequest, result: streamToolResult },
-					true
+				// -------------------------------------------------------------------------------------------
+				// --- Fire afterToolCall Middleware ---
+				// -------------------------------------------------------------------------------------------
+				targetChatRequest.fireMiddleware(
+					hook: "afterToolCall",
+					context: { tool: tool, toolCall: toolCall, chatRequest: targetChatRequest, result: streamToolResult },
+					reverse: true
 				);
 
 				newMessages.append({
@@ -583,7 +650,11 @@ abstract class implements="IAiService" {
 					"tool_call_id": toolCall.id ?: "",
 					"content"     : streamToolResult
 				});
-			} else {
+			}
+			// -------------------------------------------------------------------------------------------
+			// --- Tool Not Found ---
+			// -------------------------------------------------------------------------------------------
+			else {
 				writeLog(
 					text: "Unable to find tool named during streaming: #toolCall.function.name ?: "unknown"#",
 					type: "warning",
@@ -593,13 +664,12 @@ abstract class implements="IAiService" {
 					"role"        : "tool",
 					"tool_call_id": toolCall.id ?: "",
 					"content"     : "Tool ['#toolCall.function.name ?: "unknown"#'] not found in chat request"
-				});
+				})
 			}
 		} );
 
-		arguments.chatRequest.setMessages( newMessages );
-
 		// Continue streaming the final answer after tool execution
+		arguments.chatRequest.setMessages( newMessages );
 		chatStream( arguments.chatRequest, arguments.callback, arguments.interactionCount + 1 );
 	}
 
@@ -627,16 +697,24 @@ abstract class implements="IAiService" {
 			"model": arguments.embeddingRequest.getModel()
 		}.append( arguments.embeddingRequest.getParams() )
 
-		// Allow concrete providers to normalize the embedding request packet before sending
+		// -------------------------------------------------------------------------------------------
+		// --- Fire local callback for pre mods ---
+		// -------------------------------------------------------------------------------------------
 		dataPacket = preEmbeddingRequest( arguments.embeddingRequest, dataPacket )
 
-		// Send it
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Embedding Request ---
+		// -------------------------------------------------------------------------------------------
 		var result = sendEmbeddingRequest( embeddingRequest, dataPacket )
 
-		// Allow concrete providers to normalize the embedding response before error checking and returnFormat processing
+		// -------------------------------------------------------------------------------------------
+		// --- Fire local callback for post mods ---
+		// -------------------------------------------------------------------------------------------
 		result = postEmbeddingResponse( arguments.embeddingRequest, dataPacket, result )
 
-		// If an error is returned, throw it
+		// -------------------------------------------------------------------------------------------
+		// --- Error Detection ---
+		// -------------------------------------------------------------------------------------------
 		if( result.keyExists( "error" ) ){
 			writeLog(
 				text: result.error.toString(),
@@ -652,15 +730,17 @@ abstract class implements="IAiService" {
 				operation: "embeddings",
 				embeddingRequest: arguments.embeddingRequest,
 				canRetry: true
-			} );
+			} )
 
 			throw(
 				type   : "ProviderError",
 				message: result.error.toString()
-			);
+			)
 		}
 
-        // Verify that data key exists, else throw an exception with the raw response
+        // -------------------------------------------------------------------------------------------
+		// --- Error Detection: Invalid Response Shape ---
+		// -------------------------------------------------------------------------------------------
         if( !result.keyExists( "data" ) ){
             writeLog(
                 text: "Invalid embedding response: #result.toString()#",
@@ -676,22 +756,24 @@ abstract class implements="IAiService" {
                 operation: "embeddings",
                 embeddingRequest: arguments.embeddingRequest,
                 canRetry: false
-            } );
+            } )
 
             throw(
                 type   : "ProviderError",
                 message: "Invalid embedding response from provider. Response: #result.toString()#"
-            );
+            )
         }
 
-		// Determine return formats
+		// -------------------------------------------------------------------------------------------
+		// --- Return Format Handling ---
+		// -------------------------------------------------------------------------------------------
 		switch( embeddingRequest.getReturnFormat() ){
 			case "embeddings":
-				return result.data.map( item => item.embedding );
+				return result.data.map( item => item.embedding )
 			case "raw":
-				return result;
+				return result
 			case "first": default:
-				return result.data.first().embedding;
+				return result.data.first().embedding
 		}
 	}
 
