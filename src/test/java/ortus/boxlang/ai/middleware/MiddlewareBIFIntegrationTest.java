@@ -34,7 +34,6 @@ public class MiddlewareBIFIntegrationTest extends BaseIntegrationTest {
 		        );
 
 		        middlewareCount = agent.getMiddleware().len();
-				threadId		= agent.getThreadId();
 		    """,
 		    context
 		);
@@ -42,10 +41,9 @@ public class MiddlewareBIFIntegrationTest extends BaseIntegrationTest {
 
 		// At least our struct middleware adapter should be present
 		assertThat( variables.getAsInteger( Key.of( "middlewareCount" ) ) ).isAtLeast( 1 );
-		assertThat( variables.getAsString( Key.of( "threadId" ) ) ).isNotEmpty();
 	}
 
-	@DisplayName( "aiAgent() accepts checkpointer, threadId, and checkpointTTL" )
+	@DisplayName( "aiAgent() accepts checkpointer, and checkpointTTL" )
 	@Test
 	public void testAiAgentCheckpointerWiring() {
 		// @formatter:off
@@ -56,11 +54,9 @@ public class MiddlewareBIFIntegrationTest extends BaseIntegrationTest {
 		        agent = aiAgent(
 		            name         : "CheckpointAgent",
 		            checkpointer : myCacheMemory,
-		            checkpointTTL: 5,
-		            threadId     : "thread-abc"
+		            checkpointTTL: 5
 		        );
 
-		        agentThreadId        = agent.getThreadId();
 		        agentCheckpointTTL   = agent.getCheckpointTTL();
 		        hasCheckpointer      = !isNull( agent.getCheckpointer() );
 		    """,
@@ -68,7 +64,6 @@ public class MiddlewareBIFIntegrationTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		assertThat( variables.getAsString( Key.of( "agentThreadId" ) ) ).isEqualTo( "thread-abc" );
 		assertThat( variables.getAsInteger( Key.of( "agentCheckpointTTL" ) ) ).isEqualTo( 5 );
 		assertThat( variables.getAsBoolean( Key.of( "hasCheckpointer" ) ) ).isTrue();
 	}
