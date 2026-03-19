@@ -70,6 +70,22 @@ class extends="BaseMemory" {
 
 		super.configure( arguments.config );
 
+		// Load metadata from file if it exists
+		var instancePath = getFilePath( variables.userId, variables.conversationId );
+		if ( fileExists( instancePath ) ) {
+			try {
+				var fileContent = fileRead( instancePath );
+				if ( len( trim( fileContent ) ) ) {
+					var data = jsonDeserialize( fileContent );
+					if ( isStruct( data ) && data.keyExists( "metadata" ) && isStruct( data.metadata ) ) {
+						variables.metadata = data.metadata;
+					}
+				}
+			} catch( any e ) {
+				// Corrupted file — ignore metadata load
+			}
+		}
+
 		return this;
 	}
 
@@ -147,6 +163,35 @@ class extends="BaseMemory" {
 		var instancePath = getFilePath( resolveUserId( userId ), resolveConversationId( conversationId ) );
 		var messages = loadMessagesFromFile( instancePath ).filter( m => m.role != "system" );
 		saveMessagesToFile( instancePath, messages );
+		return this;
+	}
+
+	/**
+	 * Set or replace the system message and persist to file
+	 *
+	 * @message The system message content (string)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function setSystemMessage( required string message, string userId = "", string conversationId = "" ) {
+		removeSystemMessage( arguments.userId, arguments.conversationId );
+
+		var targetUserId = resolveUserId( arguments.userId );
+		var targetConversationId = resolveConversationId( arguments.conversationId );
+		var instancePath = getFilePath( targetUserId, targetConversationId );
+		var messages = loadMessagesFromFile( instancePath );
+
+		messages.prepend( {
+			role: "system",
+			content: arguments.message,
+			timestamp: now()
+		} );
+
+		saveMessagesToFile( instancePath, messages );
+		this.trim( targetUserId, targetConversationId );
+
 		return this;
 	}
 

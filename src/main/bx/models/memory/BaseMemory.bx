@@ -26,11 +26,17 @@ abstract class implements="IAiMemory" {
 
 	/**
 	 * User identifier for multi-tenant memory isolation
+	 * - If empty, memory is shared across all users (not recommended for production)
+	 * - If set, memory operations will be scoped to this userId
+	 * - Can be overridden per method call for dynamic scoping (e.g. different conversations for same user)
 	 */
 	property name="userId" type="string" default="";
 
 	/**
 	 * Conversation identifier for multiple conversations per user
+	 * - If empty, memory is shared across all conversations for the user
+	 * - If set, memory operations will be scoped to this conversationId
+	 * - Can be overridden per method call for dynamic scoping (e.g. different conversations for same user)
 	 */
 	property name="conversationId" type="string" default="";
 
