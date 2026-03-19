@@ -138,10 +138,13 @@ class extends="BaseMemory" {
 	/**
 	 * Remove the system message and persist to file
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function removeSystemMessage() {
-		var instancePath = getFilePath( variables.userId, variables.conversationId );
+	public IAiMemory function removeSystemMessage( string userId = "", string conversationId = "" ) {
+		var instancePath = getFilePath( resolveUserId( userId ), resolveConversationId( conversationId ) );
 		var messages = loadMessagesFromFile( instancePath ).filter( m => m.role != "system" );
 		saveMessagesToFile( instancePath, messages );
 		return this;
@@ -186,8 +189,8 @@ class extends="BaseMemory" {
 	 *
 	 * @return Struct containing all memory data
 	 */
-	public struct function export() {
-		var exported = super.export();
+	public struct function export( string userId = "", string conversationId = "" ) {
+		var exported = super.export( resolveUserId( userId ), resolveConversationId( conversationId ) );
 		exported.directoryPath = variables.directoryPath;
 		return exported;
 	}

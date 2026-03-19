@@ -180,9 +180,12 @@ interface {
     /**
      * Check if memory is empty
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
      * @return True if empty, false otherwise
      */
-    boolean function isEmpty();
+    boolean function isEmpty( string userId = "", string conversationId = "" );
 
 	/**
 	 * ------------------------------------------------------------------------------
@@ -193,31 +196,43 @@ interface {
     /**
      * Get the system message if one exists
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
      * @return The system message or an empty string
      */
-    string function getSystemMessage();
+    string function getSystemMessage( string userId = "", string conversationId = "" );
 
     /**
      * Set or replace the system message
 	 *
      * @message The system message content (string)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
      * @return IAiMemory for chaining
      */
-    IAiMemory function setSystemMessage( required string  message );
+    IAiMemory function setSystemMessage( required string  message, string userId = "", string conversationId = "" );
 
     /**
      * Remove the system message
+	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
      * @return IAiMemory for chaining
      */
-    IAiMemory function removeSystemMessage();
+    IAiMemory function removeSystemMessage( string userId = "", string conversationId = "" );
 
     /**
      * Get messages excluding system message
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
      * @return Array of message structs
      */
-    array function getNonSystemMessages();
+    array function getNonSystemMessages( string userId = "", string conversationId = "" );
 
 	/**
 	 * ------------------------------------------------------------------------------
@@ -258,14 +273,17 @@ interface {
 
 	/**
      * Export memory to a serializable format
+	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
      *
      * @return Struct containing all memory data
      */
-    struct function export();
+    struct function export( string userId = "", string conversationId = "" );
 
 	/**
      * Import memory from exported format
-     *
+	 *
      * @data The exported memory data
      *
      * @return IAiMemory for chaining
@@ -298,20 +316,24 @@ interface {
 	 *
 	 * @searchTerm Text to search for
 	 * @caseSensitive Whether search is case-sensitive
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Array of matching message structs
 	 */
-	array function search( required string searchTerm, boolean caseSensitive = false );
+	array function search( required string searchTerm, boolean caseSensitive = false, string userId = "", string conversationId = "" );
 
 	/**
 	 * Get messages in a specific range
 	 *
 	 * @startIndex Starting index (1-based)
 	 * @endIndex Ending index (1-based), Optional, defaults to last message
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Array of message structs
 	 */
-	array function getRange( required numeric startIndex, numeric endIndex );
+	array function getRange( required numeric startIndex, numeric endIndex, string userId = "", string conversationId = "" );
 
 	/**
 	 * ------------------------------------------------------------------------------

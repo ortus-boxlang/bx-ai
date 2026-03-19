@@ -172,10 +172,13 @@ class extends="BaseMemory" {
 	/**
 	 * Check if memory is empty
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return True if empty, false otherwise
 	 */
-	public boolean function isEmpty() {
-		var cacheKey = buildCacheKey( variables.userId, variables.conversationId )
+	public boolean function isEmpty( string userId = "", string conversationId = "" ) {
+		var cacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		return getCacheData( cacheKey ).messages.isEmpty()
 	}
 
@@ -196,10 +199,13 @@ class extends="BaseMemory" {
 	/**
 	 * Get the system message from cache
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return The system message content or an empty string
 	 */
-	public string function getSystemMessage() {
-		var systemMessages = this.getByRole( "system" )
+	public string function getSystemMessage( string userId = "", string conversationId = "" ) {
+		var systemMessages = this.getByRole( "system", userId, conversationId )
 		if ( systemMessages.isEmpty() ) {
 			return ""
 		}
@@ -209,11 +215,13 @@ class extends="BaseMemory" {
 	 * Set or replace the system message in cache
 	 *
 	 * @message The system message content (string)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function setSystemMessage( required string message ) {
-		var instanceCacheKey = buildCacheKey( variables.userId, variables.conversationId )
+	public IAiMemory function setSystemMessage( required string message, string userId = "", string conversationId = "" ) {
+		var instanceCacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		var data = getCacheData( instanceCacheKey )
 		var messages = data.messages
 
@@ -234,10 +242,13 @@ class extends="BaseMemory" {
 	/**
 	 * Remove the system message from cache
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function removeSystemMessage() {
-		var instanceCacheKey = buildCacheKey( variables.userId, variables.conversationId )
+	public IAiMemory function removeSystemMessage( string userId = "", string conversationId = "" ) {
+		var instanceCacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		var data = getCacheData( instanceCacheKey )
 		var messages = data.messages.filter( ( m ) => m.role != "system" )
 		setCacheData( instanceCacheKey, messages, data.metadata )
@@ -247,10 +258,13 @@ class extends="BaseMemory" {
 	/**
 	 * Get messages excluding system message from cache
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return Array of message structs
 	 */
-	public array function getNonSystemMessages() {
-		var instanceCacheKey = buildCacheKey( variables.userId, variables.conversationId )
+	public array function getNonSystemMessages( string userId = "", string conversationId = "" ) {
+		var instanceCacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		return getCacheData( instanceCacheKey ).messages.filter( ( m ) => m.role != "system" )
 	}
 
@@ -264,7 +278,7 @@ class extends="BaseMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getRecent( numeric limit = 10, string userId = "", string conversationId = "" ) {
-		var messages = this.getAll( userId, conversationId )
+		var messages = this.getAll( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		var total = messages.len()
 		if ( total <= arguments.limit ) {
 			return messages
@@ -278,14 +292,16 @@ class extends="BaseMemory" {
 	 *
 	 * @searchTerm Text to search for
 	 * @caseSensitive Whether search is case-sensitive (default: false)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Array of matching message structs
 	 */
-	public array function search( required string searchTerm, boolean caseSensitive = false ) {
+	public array function search( required string searchTerm, boolean caseSensitive = false, string userId = "", string conversationId = "" ) {
 		var term = arguments.searchTerm
 		var isCaseSensitive = arguments.caseSensitive
 
-		return this.getAll().filter( ( message ) => {
+		return this.getAll( resolveUserId( userId ), resolveConversationId( conversationId ) ).filter( ( message ) => {
 			return isCaseSensitive
 				? message.content.find( term ) > 0
 				: message.content.findNoCase( term ) > 0
@@ -297,11 +313,13 @@ class extends="BaseMemory" {
 	 *
 	 * @startIndex Starting index (1-based)
 	 * @endIndex Ending index (1-based), optional - defaults to last message
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Array of message structs
 	 */
-	public array function getRange( required numeric startIndex, numeric endIndex ) {
-		var messages = this.getAll()
+	public array function getRange( required numeric startIndex, numeric endIndex, string userId = "", string conversationId = "" ) {
+		var messages = this.getAll( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		var total = messages.len()
 
 		// Validate startIndex - must be within bounds
@@ -344,10 +362,16 @@ class extends="BaseMemory" {
 	 * Export messages to a serializable format
 	 * Overrides base to add cacheName field
 	 *
+	 * Note: This exports all messages from cache for the current userId and conversationId
+	 * If you want to export a specific subset, you can use getRange() or getAll() and export that data separately.
+	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return Struct containing all memory data
 	 */
-	public struct function export() {
-		var exported = super.export()
+	public struct function export( string userId = "", string conversationId = "" ) {
+		var exported = super.export( arguments.userId, arguments.conversationId )
 		exported.cacheName = variables.cacheName
 		return exported
 	}

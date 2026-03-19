@@ -284,19 +284,25 @@ abstract class implements="IAiMemory" {
 	/**
 	 * Check if memory is empty
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return True if empty, false otherwise
 	 */
-	public boolean function isEmpty() {
-		return getAll().isEmpty()
+	public boolean function isEmpty( string userId = "", string conversationId = "" ) {
+		return getAll( arguments.userId, arguments.conversationId ).isEmpty()
 	}
 
 	/**
 	 * Get the system message if one exists
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return The system message content or an empty string
 	 */
-	public string function getSystemMessage() {
-		var systemMessages = getByRole( "system" )
+	public string function getSystemMessage( string userId = "", string conversationId = "" ) {
+		var systemMessages = getByRole( "system", arguments.userId, arguments.conversationId )
 		if ( systemMessages.isEmpty() ) {
 			return ""
 		}

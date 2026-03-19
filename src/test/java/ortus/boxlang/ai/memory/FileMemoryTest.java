@@ -357,21 +357,26 @@ public class FileMemoryTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "Test FileMemory system message persistence" )
 	public void testSystemMessagePersistence() {
+		// @formatter:off
 		runtime.executeSource(
 		    String.format( """
-		                   memory = new bxModules.bxai.models.memory.FileMemory( "system-key", \"%s\" )
-		                       .setSystemMessage( "Be helpful" )
-		                       .add( "User message" )
+				memory = new bxModules.bxai.models.memory.FileMemory( key:"system-key", directoryPath: "%s" )
+					.setSystemMessage( "Be helpful" )
+					.add( "User message" )
 
-		                   // Load from file with same key
-		                   memory2 = new bxModules.bxai.models.memory.FileMemory( "system-key", \"%s\" )
-		                       .configure( {} )
+				// Load from file with same key
+				memory2 = new bxModules.bxai.models.memory.FileMemory( key:"system-key", directoryPath: "%s" )
+					.configure( {} )
 
-		                   systemMsg = memory2.getSystemMessage()
-		                   count = memory2.count()
-		                   """, tempDir.toString().replace( "\\", "\\\\" ), tempDir.toString().replace( "\\", "\\\\" ) ),
+				systemMsg = memory2.getSystemMessage()
+				count = memory2.count()
+				""",
+				tempDir.toString().replace( "\\", "\\\\" ),
+				tempDir.toString().replace( "\\", "\\\\" )
+			),
 		    context
 		);
+		// @formatter:on
 
 		assertThat( variables.getAsString( Key.of( "systemMsg" ) ) ).isEqualTo( "Be helpful" );
 		assertThat( variables.getAsInteger( Key.of( "count" ) ) ).isEqualTo( 2 );
