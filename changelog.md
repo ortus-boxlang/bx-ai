@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Middleware support for `AiModel` and `AiAgent`, with agent middleware prepended ahead of model middleware.
-- Provider lifecycle hooks in `BaseService`: `preChatRequest`, `postChatResponse`, `preStreamRequest`, `postStreamResponse`, `preEmbeddingRequest`, `postEmbeddingResponse`.
+- Provider lifecycle hooks in `preRequest()`, `postResponse()`,for any custom logic before and after requests to change the shape of the request or response, log additional data, etc.  These hooks are provider-specific and allow for custom behavior without needing to override the entire `sendChatRequest()` method.
 - **Per-call identity routing on all memory types**: `add()`, `getAll()`, `clear()`, `trim()`, `seed()`, and related methods on every `IAiMemory` and `IVectorMemory` implementation now accept optional `userId` and `conversationId` arguments. This follows the Spring AI `ChatMemory` pattern — a single memory instance can safely serve multiple tenants without creating a new instance per user. Construction-time values remain as fallbacks.
 
 ### Changed

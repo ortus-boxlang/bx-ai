@@ -140,25 +140,16 @@ class extends="OpenAIService" {
 	 * Disable the Authorization header for unauthenticated endpoints
 	 * (e.g., local containers or proxies that do not require an API key).
 	 */
-	private struct function preChatRequest( required AiChatRequest chatRequest, required struct dataPacket ){
-		if( !len( variables.apiKey ) ){
-			arguments.chatRequest.setSendAuthHeader( false )
+	@override
+	private struct function preRequest(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required string operation
+	) {
+		if ( !len( variables.apiKey ) ) {
+			arguments.aiRequest.setSendAuthHeader( false )
 		}
-		return arguments.dataPacket;
-	}
-
-	private struct function preStreamRequest( required AiChatRequest chatRequest, required struct dataPacket ){
-		if( !len( variables.apiKey ) ){
-			arguments.chatRequest.setSendAuthHeader( false )
-		}
-		return arguments.dataPacket;
-	}
-
-	private struct function preEmbeddingRequest( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
-		if( !len( variables.apiKey ) ){
-			arguments.embeddingRequest.setSendAuthHeader( false )
-		}
-		return arguments.dataPacket;
+		return arguments.dataPacket
 	}
 
 	/**

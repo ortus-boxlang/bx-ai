@@ -88,17 +88,25 @@ class extends="BaseService"{
 	 * - Passes through optional `embedding_types` and `truncate` params
 	 * @see https://docs.cohere.com/reference/embed
 	 */
-	private struct function preEmbeddingRequest( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
-		var input  = arguments.embeddingRequest.getInput();
-		var params = arguments.embeddingRequest.getParams();
+	@override
+	private struct function preRequest(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required string operation
+	) {
+		if ( arguments.operation != "embeddings" ) {
+			return arguments.dataPacket
+		}
+		var input  = arguments.aiRequest.getInput()
+		var params = arguments.aiRequest.getParams()
 		var packet = {
 			"texts"     : isArray( input ) ? input : [ input ],
-			"model"     : arguments.dataPacket.model ?: arguments.embeddingRequest.getModel(),
+			"model"     : arguments.dataPacket.model ?: arguments.aiRequest.getModel(),
 			"input_type": params.input_type ?: static.DEFAULT_EMBED_PARAMS.input_type
-		};
-		if( params.keyExists( "embedding_types" ) ){ packet.embedding_types = params.embedding_types; }
-		if( params.keyExists( "truncate" ) )        { packet.truncate         = params.truncate; }
-		return packet;
+		}
+		if ( params.keyExists( "embedding_types" ) ) { packet.embedding_types = params.embedding_types }
+		if ( params.keyExists( "truncate" ) )         { packet.truncate         = params.truncate }
+		return packet
 	}
 
 	/**
@@ -110,21 +118,30 @@ class extends="BaseService"{
 	 * centralized error handler, logging, and onAIError announcement fire correctly.
 	 * @see https://docs.cohere.com/reference/embed
 	 */
-	private struct function postEmbeddingResponse( required AiEmbeddingRequest embeddingRequest, required struct dataPacket, required struct result ){
-		if( !arguments.result.keyExists( "embeddings" ) ){
-			return { "error": arguments.result.message ?: "Unknown Cohere embedding error" };
+	@override
+	private any function postResponse(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required any result,
+		required string operation
+	) {
+		if ( arguments.operation != "embeddings" ) {
+			return arguments.result
+		}
+		if ( !arguments.result.keyExists( "embeddings" ) ) {
+			return { "error": arguments.result.message ?: "Unknown Cohere embedding error" }
 		}
 		return {
 			"data"  : arguments.result.embeddings.map( (embedding, index) => {
 				return { "embedding": embedding, "index": index - 1, "object": "embedding" }
 			} ),
-			"model" : arguments.embeddingRequest.getModel(),
+			"model" : arguments.aiRequest.getModel(),
 			"object": "list",
 			"usage" : arguments.result.keyExists( "meta" ) && arguments.result.meta.keyExists( "billed_units" ) ? {
 				"prompt_tokens": arguments.result.meta.billed_units.input_tokens ?: 0,
 				"total_tokens" : arguments.result.meta.billed_units.input_tokens ?: 0
 			} : {}
-		};
+		}
 	}
 
 	/**

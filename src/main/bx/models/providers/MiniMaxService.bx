@@ -80,66 +80,72 @@ class extends="OpenAIService"{
 	}
 
 	/**
-	 * Remap MiniMax's base_resp error convention to the standard { error: "..." } shape
-	 * so BaseService's centralized error handling, logging, and onAIError announcement fire correctly.
-	 *
-	 * MiniMax response shape: { base_resp: { status_code: 0|N, status_msg: "..." }, choices: [...] }
-	 * @see https://platform.minimax.io/docs/api-reference/text-chat#response-base-resp
-	 */
-	private struct function postChatResponse( required AiChatRequest chatRequest, required struct dataPacket, required struct result ){
-		if( result.keyExists( "base_resp" ) && result.base_resp.status_code != 0 ){
-			return { "error": result.base_resp.status_msg ?: "Unknown MiniMax error (status_code: #result.base_resp.status_code#)" };
-		}
-		return arguments.result;
-	}
-
-	/**
 	 * Reshape the embedding request packet to MiniMax's format:
 	 * - Renames `input` → `texts` array (MiniMax requires an array, not a scalar)
 	 * - Injects the required `type` field (db = indexing, query = search)
 	 * @see https://platform.minimax.io/docs/api-reference/embeddings
 	 */
-	private struct function preEmbeddingRequest( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
-		var input = arguments.embeddingRequest.getInput();
-		return {
-			"model": arguments.dataPacket.model ?: arguments.embeddingRequest.getModel(),
-			"type" : "db",
-			"texts": isArray( input ) ? input : [ input ]
-		};
+	@override
+	private struct function preRequest(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required string operation
+	) {
+		if ( arguments.operation == "embeddings" ) {
+			var input = arguments.aiRequest.getInput()
+			return {
+				"model": arguments.dataPacket.model ?: arguments.aiRequest.getModel(),
+				"type" : "db",
+				"texts": isArray( input ) ? input : [ input ]
+			}
+		}
+		return arguments.dataPacket
 	}
 
 	/**
-	 * Normalize MiniMax's embedding response into the standard OpenAI format so
-	 * BaseService's returnFormat switch works without further overrides.
+	 * Remap MiniMax-specific response shapes to the standard format:
+	 * - Chat: remaps base_resp errors to { error: "..." }
+	 * - Embeddings: normalizes vectors → standard data array, remaps base_resp errors
 	 *
-	 * MiniMax returns: { vectors: [ { index, type, embedding } ], total_tokens, base_resp }
-	 * Standard format: { data: [ { embedding, index, object } ], model, object, usage }
-	 *
-	 * base_resp errors are remapped to { error: "..." } so BaseService's error handler fires.
+	 * @see https://platform.minimax.io/docs/api-reference/text-chat#response-base-resp
 	 * @see https://platform.minimax.io/docs/api-reference/embeddings
 	 */
-	private struct function postEmbeddingResponse( required AiEmbeddingRequest embeddingRequest, required struct dataPacket, required struct result ){
-		// Remap base_resp error to the standard error shape
-		if( result.keyExists( "base_resp" ) && result.base_resp.status_code != 0 ){
-			return { "error": result.base_resp.status_msg ?: "Unknown MiniMax embedding error (status_code: #result.base_resp.status_code#)" };
-		}
-
-		// Normalize vectors → standard data array
-		return {
-			"data"  : result.vectors.map( (vector) => {
-				return {
-					"embedding": vector.embedding,
-					"index"    : vector.index,
-					"object"   : "embedding"
-				}
-			} ),
-			"model" : arguments.embeddingRequest.getModel(),
-			"object": "list",
-			"usage" : {
-				"prompt_tokens": result.total_tokens ?: 0,
-				"total_tokens" : result.total_tokens ?: 0
+	@override
+	private any function postResponse(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required any result,
+		required string operation
+	) {
+		if ( arguments.operation == "chat" || arguments.operation == "stream" ) {
+			if ( arguments.result.keyExists( "base_resp" ) && arguments.result.base_resp.status_code != 0 ) {
+				return { "error": arguments.result.base_resp.status_msg ?: "Unknown MiniMax error (status_code: #arguments.result.base_resp.status_code#)" }
 			}
-		};
+			return arguments.result
+		}
+		if ( arguments.operation == "embeddings" ) {
+			// Remap base_resp error to the standard error shape
+			if ( arguments.result.keyExists( "base_resp" ) && arguments.result.base_resp.status_code != 0 ) {
+				return { "error": arguments.result.base_resp.status_msg ?: "Unknown MiniMax embedding error (status_code: #arguments.result.base_resp.status_code#)" }
+			}
+			// Normalize vectors → standard data array
+			return {
+				"data"  : arguments.result.vectors.map( (vector) => {
+					return {
+						"embedding": vector.embedding,
+						"index"    : vector.index,
+						"object"   : "embedding"
+					}
+				} ),
+				"model" : arguments.aiRequest.getModel(),
+				"object": "list",
+				"usage" : {
+					"prompt_tokens": arguments.result.total_tokens ?: 0,
+					"total_tokens" : arguments.result.total_tokens ?: 0
+				}
+			}
+		}
+		return arguments.result
 	}
 
 }

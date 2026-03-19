@@ -121,7 +121,7 @@ class extends="BaseService"{
 		// --- Fire Localized Callback ---
 		// -------------------------------------------------------------------------------------------
 		// Allow concrete providers to normalize the request packet before sending
-		dataPacket = preChatRequest( arguments.chatRequest, dataPacket )
+		dataPacket = preRequest( arguments.chatRequest, dataPacket, "chat" )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire beforeLLMCall middleware ---
@@ -150,7 +150,7 @@ class extends="BaseService"{
 		// -------------------------------------------------------------------------------------------
 		// --- Fire local callback for post mods ---
 		// -------------------------------------------------------------------------------------------
-		result = postChatResponse( arguments.chatRequest, dataPacket, result )
+		result = postResponse( arguments.chatRequest, dataPacket, result, "chat" )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire afterLLMCall middleware, in reverse order ---
@@ -370,7 +370,7 @@ class extends="BaseService"{
 		// -------------------------------------------------------------------------------------------
 		// --- Fire local callback for pre mods ---
 		// -------------------------------------------------------------------------------------------
-		dataPacket = preStreamRequest( arguments.chatRequest, dataPacket )
+		dataPacket = preRequest( arguments.chatRequest, dataPacket, "stream" )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire beforeLLMCall middleware ---
@@ -391,7 +391,7 @@ class extends="BaseService"{
 		// -------------------------------------------------------------------------------------------
 		// --- Fire local callback for post mods ---
 		// -------------------------------------------------------------------------------------------
-		streamState = postStreamResponse( arguments.chatRequest, dataPacket, streamState )
+		streamState = postResponse( arguments.chatRequest, dataPacket, streamState, "stream" )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire afterLLMCall middleware, in reverse order ---
@@ -558,7 +558,7 @@ class extends="BaseService"{
 		// -------------------------------------------------------------------------------------------
 		// --- Fire local callback for pre mods ---
 		// -------------------------------------------------------------------------------------------
-		dataPacket = preEmbeddingRequest( arguments.embeddingRequest, dataPacket )
+		dataPacket = preRequest( arguments.embeddingRequest, dataPacket, "embeddings" )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire Embedding Request ---
@@ -568,7 +568,7 @@ class extends="BaseService"{
 		// -------------------------------------------------------------------------------------------
 		// --- Fire local callback for post mods ---
 		// -------------------------------------------------------------------------------------------
-		result = postEmbeddingResponse( arguments.embeddingRequest, dataPacket, result )
+		result = postResponse( arguments.embeddingRequest, dataPacket, result, "embeddings" )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Error Detection ---

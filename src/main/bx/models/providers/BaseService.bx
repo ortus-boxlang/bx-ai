@@ -285,88 +285,41 @@ abstract class implements="IAiService" {
 	 */
 
 	/**
-	 * Called after the chat dataPacket is assembled but before it is sent to the provider.
-	 * Override to reshape the packet for provider-specific formats
-	 * (e.g., restructure messages, reformat tools, inject extra fields).
+	 * Called before any outgoing request packet is sent to the provider.
+	 * Override in concrete providers to mutate the dataPacket for any operation type.
 	 *
-	 * @chatRequest The AiChatRequest object
-	 * @dataPacket  The assembled data packet struct
+	 * @aiRequest   The AiBaseRequest subclass for this operation
+	 * @dataPacket  The outgoing struct — mutate and return it
+	 * @operation   The operation type: "chat" | "stream" | "embeddings" | "transcribe" | "speak"
 	 *
-	 * @return The (possibly modified) dataPacket struct
+	 * @return The (possibly mutated) dataPacket
 	 */
-	private struct function preChatRequest( required AiChatRequest chatRequest, required struct dataPacket ){
-		return arguments.dataPacket;
+	private struct function preRequest(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required string operation
+	) {
+		return arguments.dataPacket
 	}
 
 	/**
-	 * Called after the raw chat response is received but before error checking and returnFormat processing.
-	 * Override to normalize provider-specific response shapes into the standard OpenAI format
-	 * (e.g., remap base_resp errors to { error: "..." }, remap choices to the standard structure).
+	 * Called after any response is received from the provider.
+	 * Override in concrete providers to normalise the result for any operation type.
 	 *
-	 * @chatRequest The AiChatRequest object
-	 * @dataPacket  The data packet that was sent
-	 * @result      The deserialized response struct from the provider
+	 * @aiRequest   The AiBaseRequest subclass for this operation
+	 * @dataPacket  The packet that was sent
+	 * @result      The raw response — mutate and return it
+	 * @operation   The operation type: "chat" | "stream" | "embeddings" | "transcribe" | "speak"
 	 *
-	 * @return The (possibly modified) result struct
+	 * @return The (possibly mutated) result
 	 */
-	private struct function postChatResponse( required AiChatRequest chatRequest, required struct dataPacket, required struct result ){
-		return arguments.result;
-	}
-
-	/**
-	 * Called after the streaming dataPacket is assembled but before it is sent to the provider.
-	 * Override to reshape the packet for provider-specific streaming formats.
-	 *
-	 * @chatRequest The AiChatRequest object
-	 * @dataPacket  The assembled data packet struct
-	 *
-	 * @return The (possibly modified) dataPacket struct
-	 */
-	private struct function preStreamRequest( required AiChatRequest chatRequest, required struct dataPacket ){
-		return arguments.dataPacket;
-	}
-
-	/**
-	 * Called after streaming completes but before tool-call detection.
-	 * Override to normalize the accumulated stream state if the provider emits non-standard chunks.
-	 *
-	 * @chatRequest The AiChatRequest object
-	 * @dataPacket  The data packet that was sent
-	 * @streamState The accumulated stream state struct: { content, finishReason, toolCalls }
-	 *
-	 * @return The (possibly modified) streamState struct
-	 */
-	private struct function postStreamResponse( required AiChatRequest chatRequest, required struct dataPacket, required struct streamState ){
-		return arguments.streamState;
-	}
-
-	/**
-	 * Called after the embedding dataPacket is assembled but before it is sent to the provider.
-	 * Override to reshape the packet for provider-specific embedding formats
-	 * (e.g., rename `input` to `texts`, wrap content differently, inject required fields).
-	 *
-	 * @embeddingRequest The AiEmbeddingRequest object
-	 * @dataPacket       The assembled data packet struct
-	 *
-	 * @return The (possibly modified) dataPacket struct
-	 */
-	private struct function preEmbeddingRequest( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
-		return arguments.dataPacket;
-	}
-
-	/**
-	 * Called after the raw embedding response is received but before error checking and returnFormat processing.
-	 * Override to normalize provider-specific response structures into the standard format
-	 * ({ data: [{ embedding, index }], model, usage }).
-	 *
-	 * @embeddingRequest The AiEmbeddingRequest object
-	 * @dataPacket       The data packet that was sent
-	 * @result           The deserialized response struct from the provider
-	 *
-	 * @return The (possibly modified) result struct
-	 */
-	private struct function postEmbeddingResponse( required AiEmbeddingRequest embeddingRequest, required struct dataPacket, required struct result ){
-		return arguments.result;
+	private any function postResponse(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required any result,
+		required string operation
+	) {
+		return arguments.result
 	}
 
 	/**
