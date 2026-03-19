@@ -121,9 +121,12 @@ class extends="WindowMemory" {
 	 * Trim messages to keep only the last N (excluding system message)
 	 * Overrides base to add summarization behavior
 	 *
+	 * @userId   Optional per-call user identifier (ignored — SummaryMemory is an on-object store)
+	 * @conversationId Optional per-call conversation identifier (ignored — SummaryMemory is an on-object store)
+	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function trim() {
+	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
 		var nonSystemMessages = getNonSystemMessages()
 
 		// Calculate how many messages we would summarize
@@ -243,10 +246,13 @@ class extends="WindowMemory" {
 	/**
 	 * Clear all messages and reset summary
 	 *
+	 * @userId   Optional per-call user identifier (ignored — SummaryMemory is an on-object store)
+	 * @conversationId Optional per-call conversation identifier (ignored — SummaryMemory is an on-object store)
+	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function clear() {
-		super.clear();
+	public IAiMemory function clear( string userId = "", string conversationId = "" ) {
+		super.clear( userId, conversationId );
 		variables.currentSummary = "";
 		variables.hasSummary = false;
 		return this;

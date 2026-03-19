@@ -91,6 +91,28 @@ abstract class implements="IAiMemory" {
 	}
 
 	/**
+	 * Resolve the effective userId: per-call argument takes precedence over instance default
+	 *
+	 * @userId The per-call userId (empty = use instance default)
+	 *
+	 * @return The resolved userId string
+	 */
+	private string function resolveUserId( string userId = "" ) {
+		return len( arguments.userId ) ? arguments.userId : variables.userId
+	}
+
+	/**
+	 * Resolve the effective conversationId: per-call argument takes precedence over instance default
+	 *
+	 * @conversationId The per-call conversationId (empty = use instance default)
+	 *
+	 * @return The resolved conversationId string
+	 */
+	private string function resolveConversationId( string conversationId = "" ) {
+		return len( arguments.conversationId ) ? arguments.conversationId : variables.conversationId
+	}
+
+	/**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Interface Methods
 	 * ---------------------------------------------------------------------------------------------------------
@@ -135,10 +157,12 @@ abstract class implements="IAiMemory" {
 	 * - A Document instance: Its content will be added as a user message
 	 *
 	 * @message The message to add
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function add( required any message ) {
+	public IAiMemory function add( required any message, string userId = "", string conversationId = "" ) {
 		processMessage( arguments.message )
 			.each( msg => {
 				variables.messages.append( msg )
@@ -155,10 +179,12 @@ abstract class implements="IAiMemory" {
 	 * Optimized for batch insertion
 	 *
 	 * @documents Array of messages/documents to add
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Struct with results (added, failed, errors)
 	 */
-	public struct function seed( required array documents ) {
+	public struct function seed( required array documents, string userId = "", string conversationId = "" ) {
 		var results = {
 			added: 0,
 			failed: 0,
@@ -169,7 +195,7 @@ abstract class implements="IAiMemory" {
 		for ( var doc in arguments.documents ) {
 			index++;
 			try {
-				this.add( doc );
+				this.add( doc, arguments.userId, arguments.conversationId );
 				results.added++;
 			} catch ( any e ) {
 				results.failed++;
@@ -186,9 +212,12 @@ abstract class implements="IAiMemory" {
 	/**
 	 * Get all messages from memory
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default; ignored for on-object stores)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default; ignored for on-object stores)
+	 *
 	 * @return Array of message structs
 	 */
-	public array function getAll() {
+	public array function getAll( string userId = "", string conversationId = "" ) {
 		return variables.messages
 	}
 
@@ -196,11 +225,13 @@ abstract class implements="IAiMemory" {
 	 * Get recent messages from memory
 	 *
 	 * @limit Number of recent messages to retrieve
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Array of message structs
 	 */
-	public array function getRecent( numeric limit = 10 ) {
-		var allMessages = getAll()
+	public array function getRecent( numeric limit = 10, string userId = "", string conversationId = "" ) {
+		var allMessages = getAll( arguments.userId, arguments.conversationId )
 		var total = allMessages.len()
 
 		// If total messages less than or equal to limit, return all
@@ -216,19 +247,24 @@ abstract class implements="IAiMemory" {
 	 * Get messages by role (user, assistant, system, tool)
 	 *
 	 * @role The role to filter by
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Array of message structs
 	 */
-	public array function getByRole( required string role ) {
-		return this.getAll().filter( ( m ) => m.role == role )
+	public array function getByRole( required string role, string userId = "", string conversationId = "" ) {
+		return this.getAll( arguments.userId, arguments.conversationId ).filter( ( m ) => m.role == role )
 	}
 
 	/**
 	 * Clear all messages from memory
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default; ignored for on-object stores)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default; ignored for on-object stores)
+	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function clear() {
+	public IAiMemory function clear( string userId = "", string conversationId = "" ) {
 		variables.messages = []
 		return this
 	}
@@ -236,10 +272,13 @@ abstract class implements="IAiMemory" {
 	/**
 	 * Get the count of messages in memory
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return Numeric count
 	 */
-	public numeric function count() {
-		return getAll().len()
+	public numeric function count( string userId = "", string conversationId = "" ) {
+		return getAll( arguments.userId, arguments.conversationId ).len()
 	}
 
 	/**
@@ -561,9 +600,12 @@ abstract class implements="IAiMemory" {
 	/**
 	 * Trim messages to keep only the last N (excluding system message)
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default; ignored for on-object stores)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default; ignored for on-object stores)
+	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function trim() {
+	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
 		// If maxMessages is 0, do not trim
 		if ( variables.maxMessages == 0 ) {
 			return this

@@ -121,10 +121,10 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 *
 	 * @return HybridMemory for chaining
 	 */
-	public any function add( required any message ) {
-		// Add to both memories
-		variables.recentMemory.add( arguments.message );
-		variables.vectorMemory.add( arguments.message );
+	public any function add( required any message, string userId = "", string conversationId = "" ) {
+		// Add to both memories, passing per-call identity
+		variables.recentMemory.add( arguments.message, userId, conversationId );
+		variables.vectorMemory.add( arguments.message, userId, conversationId );
 
 		// Announce hybrid event
 		BoxAnnounce( "onHybridMemoryAdd", {
@@ -142,8 +142,8 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 *
 	 * @return Array of messages
 	 */
-	public array function getAll() {
-		var recentMessages = variables.recentMemory.getAll();
+	public array function getAll( string userId = "", string conversationId = "" ) {
+		var recentMessages = variables.recentMemory.getAll( userId, conversationId );
 
 		// If no recent messages, return empty
 		if ( recentMessages.isEmpty() ) {
@@ -152,7 +152,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 
 		// Use last message as query for semantic search
 		var query = extractMessageText( recentMessages.last() );
-		var semanticMessages = variables.vectorMemory.getRelevant( query, variables.semanticLimit );
+		var semanticMessages = variables.vectorMemory.getRelevant( query, variables.semanticLimit, {}, 0.0, userId, conversationId );
 
 		// Combine and deduplicate
 		var combinedMessages = combineMessages( recentMessages, semanticMessages );
@@ -240,8 +240,8 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 *
 	 * @return Array of messages with the specified role
 	 */
-	public array function getByRole( required string role ) {
-		return variables.recentMemory.getByRole( arguments.role );
+	public array function getByRole( required string role, string userId = "", string conversationId = "" ) {
+		return variables.recentMemory.getByRole( arguments.role, userId, conversationId );
 	}
 
 	/**
@@ -333,9 +333,9 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 *
 	 * @return HybridMemory for chaining
 	 */
-	public any function clear() {
-		variables.recentMemory.clear();
-		variables.vectorMemory.clear();
+	public any function clear( string userId = "", string conversationId = "" ) {
+		variables.recentMemory.clear( userId, conversationId );
+		variables.vectorMemory.clear( userId, conversationId );
 		return this;
 	}
 
@@ -383,8 +383,8 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 *
 	 * @return HybridMemory for chaining
 	 */
-	public IAiMemory function trim() {
-		variables.recentMemory.trim();
+	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
+		variables.recentMemory.trim( userId, conversationId );
 		return this;
 	}
 

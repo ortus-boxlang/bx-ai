@@ -35,27 +35,35 @@ class extends="WindowMemory" {
 	) {
 		super.init( argumentCollection: arguments );
 		// Build composite session key from key, userId, and conversationId
-		variables.sessionKey = buildSessionKey();
+		variables.sessionKey = buildSessionKey( variables.userId, variables.conversationId );
 		return this;
 	}
 
 	/**
 	 * Override getAll to read from session storage
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return Array of message structs
 	 */
-	public array function getAll() {
-		ensureSessionStorage();
-		return session[ variables.sessionKey ].messages;
+	public array function getAll( string userId = "", string conversationId = "" ) {
+		var sessionKey = buildSessionKey( resolveUserId( userId ), resolveConversationId( conversationId ) );
+		ensureSessionStorage( sessionKey );
+		return session[ sessionKey ].messages;
 	}
 
 	/**
 	 * Override clear to clear session storage
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function clear() {
-		ensureSessionStorage( true );
+	public IAiMemory function clear( string userId = "", string conversationId = "" ) {
+		var sessionKey = buildSessionKey( resolveUserId( userId ), resolveConversationId( conversationId ) );
+		ensureSessionStorage( sessionKey, true );
 		return this;
 	}
 
@@ -64,16 +72,19 @@ class extends="WindowMemory" {
 	 * Uses parent's logic but stores in session instead of variables
 	 *
 	 * @message The message to add
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function add( required any message ) {
-		ensureSessionStorage();
-		var container = session[ variables.sessionKey ];
+	public IAiMemory function add( required any message, string userId = "", string conversationId = "" ) {
+		var sessionKey = buildSessionKey( resolveUserId( userId ), resolveConversationId( conversationId ) );
+		ensureSessionStorage( sessionKey );
+		var container = session[ sessionKey ];
 
 		// AiMessage instance - get its messages and process them
  		if ( arguments.message instanceof "AiMessage" ) {
-			return this.add( arguments.message.getMessages() );
+			return this.add( arguments.message.getMessages(), userId, conversationId );
 		}
 
 		// Array - process each element
@@ -107,7 +118,7 @@ class extends="WindowMemory" {
 			);
 		}
 
-		this.trim();
+		this.trim( userId, conversationId );
 
 		return this;
 	}
@@ -120,7 +131,7 @@ class extends="WindowMemory" {
 	 * @return Struct (getter) or IAiMemory (setter)
 	 */
 	public any function metadata( struct metadata ) {
-		ensureSessionStorage();
+		ensureSessionStorage( variables.sessionKey );
 
 		if ( !isNull( arguments.metadata ) ) {
 			session[ variables.key ].metadata = arguments.metadata;
@@ -136,8 +147,8 @@ class extends="WindowMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function removeSystemMessage() {
-		ensureSessionStorage();
-		session[ variables.sessionKey ].messages = getAll().filter( ( m ) => m.role != "system" );
+		ensureSessionStorage( variables.sessionKey );
+		session[ variables.sessionKey ].messages = this.getAll().filter( ( m ) => m.role != "system" );
 		return this;
 	}
 
@@ -166,11 +177,11 @@ class extends="WindowMemory" {
 
 		// Rebuild session key if identifiers changed
 		if ( rebuildKey ) {
-			variables.sessionKey = buildSessionKey();
+			variables.sessionKey = buildSessionKey( variables.userId, variables.conversationId );
 		}
 
 		// Initialize session memory storage if not exists
-		ensureSessionStorage();
+		ensureSessionStorage( variables.sessionKey );
 
 		super.configure( arguments.config );
 
@@ -183,7 +194,7 @@ class extends="WindowMemory" {
 	 * @return Struct containing all memory data
 	 */
 	public struct function export() {
-		ensureSessionStorage();
+		ensureSessionStorage( variables.sessionKey );
 		return super.export();
 	}
 
@@ -210,9 +221,9 @@ class extends="WindowMemory" {
 		}
 
 		// Rebuild session key after importing identifiers
-		variables.sessionKey = buildSessionKey();
+		variables.sessionKey = buildSessionKey( variables.userId, variables.conversationId );
 
-		ensureSessionStorage();
+		ensureSessionStorage( variables.sessionKey );
 
 		// Import into session storage
 		if ( arguments.data.keyExists( "messages" ) ) {
@@ -233,11 +244,15 @@ class extends="WindowMemory" {
 	/**
 	 * Override count to read from session
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return Numeric count
 	 */
-	public numeric function count() {
-		ensureSessionStorage();
-		return session[ variables.sessionKey ].messages.len();
+	public numeric function count( string userId = "", string conversationId = "" ) {
+		var sessionKey = buildSessionKey( resolveUserId( userId ), resolveConversationId( conversationId ) );
+		ensureSessionStorage( sessionKey );
+		return session[ sessionKey ].messages.len();
 	}
 
 	/**
@@ -246,7 +261,7 @@ class extends="WindowMemory" {
 	 * @return True if empty, false otherwise
 	 */
 	public boolean function isEmpty() {
-		ensureSessionStorage();
+		ensureSessionStorage( variables.sessionKey );
 		return session[ variables.sessionKey ].messages.isEmpty();
 	}
 
@@ -254,13 +269,14 @@ class extends="WindowMemory" {
 	 * Trim session-stored messages based on maxMessages
 	 * (0 = unbounded, otherwise keep last N, preserve system message)
 	 */
-	public IAiMemory function trim() {
+	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
 		// Do nothing if unbounded
 		if ( variables.maxMessages == 0 ) {
 			return this
 		}
-		ensureSessionStorage()
-		var messages = session[ variables.sessionKey ].messages
+		var sessionKey = buildSessionKey( resolveUserId( userId ), resolveConversationId( conversationId ) );
+		ensureSessionStorage( sessionKey )
+		var messages = session[ sessionKey ].messages
 
 		// Extract system message if exists
 		var systemMsg = ""
@@ -294,7 +310,7 @@ class extends="WindowMemory" {
 		}
 
 		// Save back to session
-		session[ variables.sessionKey ].messages = keep
+		session[ sessionKey ].messages = keep
 
 		return this
 	}
@@ -303,11 +319,14 @@ class extends="WindowMemory" {
 	 * Ensure session storage exists for this memory instance
 	 * Creates the memory key storage if needed
 	 *
+	 * @sessionKey The resolved composite session key
+	 * @force Whether to force re-initialization
+	 *
 	 * @return void
 	 */
-	private void function ensureSessionStorage( boolean force = false ) {
-		if ( !structKeyExists( session, variables.sessionKey ) || arguments.force ) {
-			session[ variables.sessionKey ] = {
+	private void function ensureSessionStorage( required string sessionKey, boolean force = false ) {
+		if ( !structKeyExists( session, arguments.sessionKey ) || arguments.force ) {
+			session[ arguments.sessionKey ] = {
 				messages: [],
 				metadata: {},
 				config: {}
@@ -316,22 +335,25 @@ class extends="WindowMemory" {
 	}
 
 	/**
-	 * Build composite session key from key, userId, and conversationId
-	 * Format: key:userId:conversationId or key:userId or just key
+	 * Build composite session key from key, userId, and conversationId.
+	 * Pure function — does NOT read from identity variables scope.
+	 *
+	 * @userId The resolved user identifier
+	 * @conversationId The resolved conversation identifier
 	 *
 	 * @return String composite session key
 	 */
-	private string function buildSessionKey() {
+	private string function buildSessionKey( string userId = "", string conversationId = "" ) {
 		var parts = [ variables.key ];
 
 		// Add userId if present
-		if ( len( variables.userId ) ) {
-			parts.append( variables.userId );
+		if ( len( arguments.userId ) ) {
+			parts.append( arguments.userId );
 		}
 
 		// Add conversationId if present
-		if ( len( variables.conversationId ) ) {
-			parts.append( variables.conversationId );
+		if ( len( arguments.conversationId ) ) {
+			parts.append( arguments.conversationId );
 		}
 
 		return parts.toList( ":" );

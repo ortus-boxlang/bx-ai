@@ -127,9 +127,15 @@ class extends="BaseMemory" {
 
 	/**
 	 * Clear all messages and remove from database
+	 *
+	 * @userId   Optional per-call user identifier (ignored — JdbcMemory is an on-object store)
+	 * @conversationId Optional per-call conversation identifier (ignored — JdbcMemory is an on-object store)
+	 *
+	 * TODO: Full per-call routing requires on-demand DB loading per userId/conversationId.
+	 *       For multi-user apps, store one JdbcMemory instance per conversation.
 	 */
-	public IAiMemory function clear() {
-		super.clear()
+	public IAiMemory function clear( string userId = "", string conversationId = "" ) {
+		super.clear( userId, conversationId )
 		deleteFromDatabase()
 		return this
 	}
@@ -175,9 +181,12 @@ class extends="BaseMemory" {
 
 	/**
 	 * Trim memory and persist changes to database
+	 *
+	 * @userId   Optional per-call user identifier (ignored — JdbcMemory is an on-object store)
+	 * @conversationId Optional per-call conversation identifier (ignored — JdbcMemory is an on-object store)
 	 */
-	public IAiMemory function trim() {
-		super.trim();     // performs memory-side window cutoff
+	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
+		super.trim( userId, conversationId );     // performs memory-side window cutoff
 		saveToDatabase(); // sync DB storage
 		return this;
 	}

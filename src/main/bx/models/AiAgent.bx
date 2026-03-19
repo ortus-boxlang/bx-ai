@@ -96,12 +96,6 @@ class extends="AiBaseRunnable" {
 	property name="checkpointTTL" type="numeric" default="#static.DEFAULT_CHECKPOINT_TTL#";
 
 	/**
-	 * Thread ID used to isolate checkpoint state across concurrent agent runs.
-	 * Defaults to a new UUID on first run if not explicitly set.
-	 */
-	property name="threadId" type="string" default="";
-
-	/**
 	 * Default agent name constant
 	 */
 	static {
@@ -136,8 +130,7 @@ class extends="AiBaseRunnable" {
 		struct options = {},
 		any middleware = [],
 		any checkpointer,
-		numeric checkpointTTL = static.DEFAULT_CHECKPOINT_TTL,
-		string threadId = createUUID()
+		numeric checkpointTTL = static.DEFAULT_CHECKPOINT_TTL
 	) {
 		// Set them up baby!
 		variables.description = arguments.description
@@ -182,7 +175,6 @@ class extends="AiBaseRunnable" {
 		// Middleware setup
 		withMiddleware( arguments.middleware )
 		variables.checkpointTTL = arguments.checkpointTTL
-		variables.threadId      = arguments.threadId
 		variables.checkpointer = arguments.checkpointer
 
 		return this;
@@ -208,10 +200,10 @@ class extends="AiBaseRunnable" {
 	 * @return The agent's response (format depends on returnFormat option)
 	 */
 	public any function run( any input = "", struct params = {}, struct options = {} ) {
-		// Ensure threadId is always populated
-		if ( variables.threadId.isEmpty() ) {
-			variables.threadId = createUUID()
-		}
+		// Resolve per-call thread, user, and conversation identifiers
+		var threadId       = arguments.options.threadId ?: variables.options.threadId ?: createUUID()
+		var userId         = arguments.options.userId ?: variables.options.userId ?: ""
+		var conversationId = arguments.options.conversationId ?: variables.options.conversationId ?: ""
 
 		// Create the user message
 		var userMessage = isStruct( arguments.input ) && arguments.input.keyExists( "content" )
@@ -226,7 +218,7 @@ class extends="AiBaseRunnable" {
 			messages.append( { role: "system", content: systemMessage } )
 		}
 		// Load memory messages
-		messages.append( loadMemoryMessages(), true )
+		messages.append( loadMemoryMessages( userId, conversationId ), true )
 		// Add user message
 		messages.append( userMessage )
 
@@ -243,7 +235,7 @@ class extends="AiBaseRunnable" {
 			messages : messages,
 			params   : effectiveParams,
 			options  : effectiveOptions,
-			threadId : variables.threadId
+			threadId : threadId
 		};
 		var middlewareResult = fireAgentHook( "beforeAgentRun", agentBeforeCtx );
 		if ( middlewareResult.isTerminal() ) {
@@ -272,7 +264,7 @@ class extends="AiBaseRunnable" {
 		// However, if there is no checkpointer configured, we can't save state, so just return the suspension result without saving
 		if ( isObject( response ) && response instanceof "AiMiddlewareResult" && response.isSuspended() ) {
 			variables.checkpointer?.saveState(
-				variables.threadId,
+				threadId,
 				{
 					input       : arguments.input,
 					messages    : messages,
@@ -286,14 +278,14 @@ class extends="AiBaseRunnable" {
 		}
 
 		// Store in memory (handles all response formats)
-		storeInMemory( userMessage, response );
+		storeInMemory( userMessage, response, userId, conversationId );
 
 		// Fire afterAgentRun middleware (outbound, reverse order)
 		var agentAfterCtx = {
 			agent    : this,
 			response : response,
 			input    : arguments.input,
-			threadId : variables.threadId
+			threadId : threadId
 		}
 		fireAgentHook( "afterAgentRun", agentAfterCtx, true )
 
@@ -320,16 +312,16 @@ class extends="AiBaseRunnable" {
 		struct params = {},
 		struct options = {}
 	) {
-		// Ensure threadId is always populated
-		if ( variables.threadId.isEmpty() ) {
-			variables.threadId = createUUID()
-		}
+		// Resolve per-call thread, user, and conversation identifiers
+		var threadId       = arguments.options.threadId ?: variables.options.threadId ?: createUUID()
+		var userId         = arguments.options.userId ?: variables.options.userId ?: ""
+		var conversationId = arguments.options.conversationId ?: variables.options.conversationId ?: ""
 
 		// Build system message
 		var systemMessage = buildSystemMessage()
 
 		// Load memory
-		var memoryMessages = loadMemoryMessages()
+		var memoryMessages = loadMemoryMessages( userId, conversationId )
 
 		// Create user message
 		var userMessage = isStruct( arguments.input ) && arguments.input.keyExists( "content" )
@@ -357,7 +349,7 @@ class extends="AiBaseRunnable" {
 			messages : messages,
 			params   : effectiveParams,
 			options  : effectiveOptions,
-			threadId : variables.threadId
+			threadId : threadId
 		}
 		var streamMiddlewareResult = fireAgentHook( "beforeAgentRun", streamBeforeCtx )
 		if ( streamMiddlewareResult.isTerminal() ) {
@@ -387,14 +379,14 @@ class extends="AiBaseRunnable" {
 
 		// Store in memory after streaming completes
 		var assistantMessage = { role: "assistant", content: accumulated }
-		storeInMemory( userMessage, assistantMessage )
+		storeInMemory( userMessage, assistantMessage, userId, conversationId )
 
 		// Fire afterAgentRun middleware (outbound, reverse order)
 		var streamAfterCtx = {
 			agent    : this,
 			response : accumulated,
 			input    : arguments.input,
-			threadId : variables.threadId
+			threadId : threadId
 		}
 		fireAgentHook( "afterAgentRun", streamAfterCtx, true )
 	}
@@ -564,18 +556,6 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
-	 * Set or override the thread ID for checkpoint isolation.
-	 *
-	 * @id The thread ID string
-	 *
-	 * @return This agent for chaining
-	 */
-	AiAgent function withThreadId( required string id ) {
-		variables.threadId = arguments.id;
-		return this;
-	}
-
-	/**
 	 * Resume a previously suspended run from its saved checkpoint.
 	 *
 	 * When a middleware suspends a run (e.g. HumanInTheLoopMiddleware), the agent
@@ -588,7 +568,7 @@ class extends="AiBaseRunnable" {
 	 *
 	 * @return The agent response continuing from the checkpoint
 	 */
-	any function resume( required string decision, string threadId = variables.threadId, struct editedData = {} ) {
+	any function resume( required string decision, required string threadId, struct editedData = {} ) {
 		if ( isNull( variables.checkpointer ) ) {
 			throw(
 				type   : "AiAgent.NoCheckpointer",
@@ -606,10 +586,6 @@ class extends="AiBaseRunnable" {
 
 		// Clear the checkpoint so it is not accidentally resumed twice
 		variables.checkpointer.clearState( arguments.threadId )
-
-		// Restore thread context
-		// TODO: THink about this, because of thread concurrency
-		variables.threadId = arguments.threadId
 
 		// Build a resume result to inject into the middleware context
 		var resumeResult = savedState
@@ -638,7 +614,7 @@ class extends="AiBaseRunnable" {
 	void function resumeStream(
 		required function onChunk,
 		required string   decision,
-		string            threadId  = variables.threadId,
+		required string   threadId,
 		struct            editedData = {}
 	) {
 		if ( isNull( variables.checkpointer ) ) {
@@ -657,7 +633,6 @@ class extends="AiBaseRunnable" {
 		}
 
 		variables.checkpointer.clearState( arguments.threadId )
-		variables.threadId = arguments.threadId
 
 		var resumeResult = savedState
 		resumeResult.resumeDecision = arguments.decision
@@ -867,11 +842,11 @@ class extends="AiBaseRunnable" {
 	/**
 	 * Load messages from all memories
 	 */
-	private array function loadMemoryMessages() {
+	private array function loadMemoryMessages( string userId = "", string conversationId = "" ) {
 		var allMessages = [];
 
 		variables.memories.each( mem => {
-			allMessages.append( mem.getAll(), true );
+			allMessages.append( mem.getAll( userId, conversationId ), true );
 		} );
 
 		return allMessages;
@@ -885,14 +860,14 @@ class extends="AiBaseRunnable" {
 	 *
 	 * @return void
 	 */
-	private void function storeInMemory( required struct userMessage, required any response ) {
+	private void function storeInMemory( required struct userMessage, required any response, string userId = "", string conversationId = "" ) {
 		// No memories, nothing to do
 		if ( variables.memories.isEmpty() ) {
 			return;
 		}
 
 		// Add user message to all memories
-		variables.memories.each( .add( userMessage ) );
+		variables.memories.each( mem => mem.add( userMessage, userId, conversationId ) );
 
 		// Extract assistant message from response
 		var assistantContent = "";
@@ -912,7 +887,7 @@ class extends="AiBaseRunnable" {
 			variables.memories.each( mem => mem.add({
 				role: "assistant",
 				content: assistantContent
-			}) );
+			}, userId, conversationId) );
 		}
 	}
 

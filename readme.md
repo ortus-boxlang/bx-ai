@@ -720,6 +720,29 @@ memory = aiMemory( "hybrid", config: {
 // Combines recency with relevance
 ```
 
+**Per-Call Multi-Tenant Identity (Singleton-Safe):**
+
+Memory instances are **stateless** and safe to use as singletons. Pass `userId` and `conversationId` directly to `run()` / `stream()` via `options`, and they flow through to every memory read/write automatically:
+
+```java
+// One shared memory instance for all users
+sharedMemory = aiMemory( "cache" )
+agent = aiAgent( name: "Support", memory: sharedMemory )
+
+// Each call is routed to its own isolated conversation
+agent.run( "Hello!",             {}, { userId: "alice", conversationId: "session-1" } )
+agent.run( "What did I say?",    {}, { userId: "alice", conversationId: "session-1" } )  // Remembers
+agent.run( "Any prior context?", {}, { userId: "bob",   conversationId: "session-2" } )  // Isolated
+```
+
+You can also override identity per-call directly on memory methods:
+
+```java
+memory.getAll( userId: "alice", conversationId: "session-1" )
+memory.add( message, userId: "alice", conversationId: "session-1" )
+memory.clear( userId: "alice", conversationId: "session-1" )
+```
+
 #### 📚 Learn More
 
 - 💬 **Standard Memory**: [Memory Systems Guide](https://ai.ortusbooks.com/main-components/memory.md)
