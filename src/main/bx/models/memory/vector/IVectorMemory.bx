@@ -38,7 +38,9 @@ interface extends="bxModules.bxai.models.memory.IAiMemory" {
 		required string query,
 		numeric limit = 5,
 		struct filter = {},
-		numeric minScore = 0.0
+		numeric minScore = 0.0,
+		string userId = "",
+		string conversationId = ""
 	);
 
 	/**
@@ -54,7 +56,9 @@ interface extends="bxModules.bxai.models.memory.IAiMemory" {
 	array function findSimilar(
 		required array embedding,
 		numeric limit = 5,
-		struct filter = {}
+		struct filter = {},
+		string userId = "",
+		string conversationId = ""
 	);
 
 	/**
@@ -78,7 +82,9 @@ interface extends="bxModules.bxai.models.memory.IAiMemory" {
 	IVectorMemory function addWithId(
 		required string id,
 		required string text,
-		struct metadata = {}
+		struct metadata = {},
+		string userId = "",
+		string conversationId = ""
 	);
 
 	/**
@@ -94,9 +100,11 @@ interface extends="bxModules.bxai.models.memory.IAiMemory" {
 	default IVectorMemory function upsert(
 		required string id,
 		required string text,
-		struct metadata = {}
+		struct metadata = {},
+		string userId = "",
+		string conversationId = ""
 	){
-		return this.addWithId( arguments.id, arguments.text, arguments.metadata );
+		return this.addWithId( arguments.id, arguments.text, arguments.metadata, arguments.userId, arguments.conversationId );
 	}
 
 	/**

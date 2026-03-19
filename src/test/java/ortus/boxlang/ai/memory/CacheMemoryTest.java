@@ -536,4 +536,134 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		assertThat( persistedCount ).isEqualTo( 5 ); // Persisted trimmed state
 	}
 
+	// ==================== Checkpoint Tests ====================
+
+	@Test
+	@DisplayName( "Test CacheMemory saveState persists state by threadId" )
+	public void testSaveState() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( "cache", "checkpoint-save-test" )
+		        .configure( { cacheName: "default" } )
+
+		    state = { step: "tool-call", input: "Hello World", toolResults: [ "result1" ] }
+		    memory.saveState( "thread-001", state )
+
+		    loaded = memory.loadState( "thread-001" )
+
+		    // Cleanup
+		    memory.clearState( "thread-001" )
+		    memory.clear()
+		    """,
+		    context
+		);
+
+		var loaded = variables.getAsStruct( Key.of( "loaded" ) );
+		assertThat( loaded.getAsString( Key.of( "step" ) ) ).isEqualTo( "tool-call" );
+		assertThat( loaded.getAsString( Key.of( "input" ) ) ).isEqualTo( "Hello World" );
+		assertThat( loaded.getAsArray( Key.of( "toolResults" ) ).size() ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Test CacheMemory loadState returns empty struct for unknown threadId" )
+	public void testLoadStateUnknownThread() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( "cache", "checkpoint-unknown-test" )
+		        .configure( { cacheName: "default" } )
+
+		    loaded = memory.loadState( "nonexistent-thread" )
+		    isEmpty = loaded.isEmpty()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsBoolean( Key.of( "isEmpty" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Test CacheMemory clearState removes stored state" )
+	public void testClearState() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( "cache", "checkpoint-clear-test" )
+		        .configure( { cacheName: "default" } )
+
+		    state = { pending: "data", messages: [ "msg1", "msg2" ] }
+		    memory.saveState( "thread-002", state )
+
+		    // Verify it was saved
+		    beforeClear = memory.loadState( "thread-002" )
+		    beforeEmpty = beforeClear.isEmpty()
+
+		    // Clear and verify
+		    memory.clearState( "thread-002" )
+		    afterClear = memory.loadState( "thread-002" )
+		    afterEmpty = afterClear.isEmpty()
+
+		    // Cleanup
+		    memory.clear()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsBoolean( Key.of( "beforeEmpty" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "afterEmpty" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Test CacheMemory saveState isolates multiple threads" )
+	public void testSaveStateThreadIsolation() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( "cache", "checkpoint-isolation-test" )
+		        .configure( { cacheName: "default" } )
+
+		    memory.saveState( "thread-A", { agent: "alice", step: 1 } )
+		    memory.saveState( "thread-B", { agent: "bob",   step: 9 } )
+
+		    stateA = memory.loadState( "thread-A" )
+		    stateB = memory.loadState( "thread-B" )
+
+		    // Cleanup
+		    memory.clearState( "thread-A" )
+		    memory.clearState( "thread-B" )
+		    memory.clear()
+		    """,
+		    context
+		);
+
+		var	stateA	= variables.getAsStruct( Key.of( "stateA" ) );
+		var	stateB	= variables.getAsStruct( Key.of( "stateB" ) );
+		assertThat( stateA.getAsString( Key.of( "agent" ) ) ).isEqualTo( "alice" );
+		assertThat( stateA.get( "step" ) ).isEqualTo( 1 );
+		assertThat( stateB.getAsString( Key.of( "agent" ) ) ).isEqualTo( "bob" );
+		assertThat( stateB.get( "step" ) ).isEqualTo( 9 );
+	}
+
+	@Test
+	@DisplayName( "Test CacheMemory saveState overwrites existing state for same threadId" )
+	public void testSaveStateOverwrite() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( "cache", "checkpoint-overwrite-test" )
+		        .configure( { cacheName: "default" } )
+
+		    memory.saveState( "thread-003", { version: 1, status: "pending" } )
+		    memory.saveState( "thread-003", { version: 2, status: "resumed" } )
+
+		    loaded = memory.loadState( "thread-003" )
+
+		    // Cleanup
+		    memory.clearState( "thread-003" )
+		    memory.clear()
+		    """,
+		    context
+		);
+
+		var loaded = variables.getAsStruct( Key.of( "loaded" ) );
+		assertThat( loaded.get( "version" ) ).isEqualTo( 2 );
+		assertThat( loaded.getAsString( Key.of( "status" ) ) ).isEqualTo( "resumed" );
+	}
+
 }

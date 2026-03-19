@@ -11,17 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Provider Hook System**: Added six template-method hooks to `BaseService` — `preChatRequest`, `postChatResponse`, `preStreamRequest`, `postStreamResponse`, `preEmbeddingRequest`, `postEmbeddingResponse` — allowing concrete providers to normalize request packets and responses without overriding full methods. Refactored `MiniMaxService`, `GeminiService`, `OpenAICompatibleService`, `OllamaService`, and `CohereService` to use these hooks, removing significant boilerplate. Also fixed a bug where MiniMax chat errors (`base_resp.status_code != 0`) were silently ignored by the base error handler.
+- Middleware support for `AiModel` and `AiAgent`, with agent middleware prepended ahead of model middleware.
+- Provider lifecycle hooks in `BaseService`: `preChatRequest`, `postChatResponse`, `preStreamRequest`, `postStreamResponse`, `preEmbeddingRequest`, `postEmbeddingResponse`.
+- **Per-call identity routing on all memory types**: `add()`, `getAll()`, `clear()`, `trim()`, `seed()`, and related methods on every `IAiMemory` and `IVectorMemory` implementation now accept optional `userId` and `conversationId` arguments. This follows the Spring AI `ChatMemory` pattern — a single memory instance can safely serve multiple tenants without creating a new instance per user. Construction-time values remain as fallbacks.
+
+### Changed
+
+- **`AiAgent` is now fully stateless**: `userId`, and `conversationId` are resolved per-call from the `options` argument passed to `run()` and `stream()`, eliminating shared-state concurrency bugs in multi-user deployments.  Seeding a memory with `userId` and `conversationId` is still supported, but these values will be overridden by any values passed in at call time.
+- `resume()` and `resumeStream()` now require `threadId` as an explicit `required string` argument instead of defaulting to the former instance property.
 
 ### Improvements
 
-- Internally refactored the `sendRequest()` method in the `BaseService` to be `sendChatRequest()` so we can be specific about the type of request being sent, and to allow for better handling of different request types in the future (e.g. embedding requests).
-- Removed unecessary data elements to `onAITokenCount` that are already inside the chat request object.
+- Renamed `BaseService.sendRequest()` to `sendChatRequest()`.
+- Reduced duplicate payload fields in `onAITokenCount`.
 
 ### Fixed
 
 - Changelog corruption due to merge conflict.
 - MCP requestId null scope crash on JSON-RPC notifications for MCP servers
+- MiniMax chat errors (`base_resp.status_code != 0`) now surface correctly.
 
 ## [2.4.0] - 2026-02-20
 

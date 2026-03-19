@@ -38,6 +38,7 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - 🌊 **Streaming Support** - Real-time token streaming through pipelines for responsive applications
 - 📦 **Structured Output** - Type-safe responses using BoxLang classes, structs, or JSON schemas
 - 🔗 **AI Pipelines** - Composable workflows with models, transformers, and custom logic
+- 🧩 **Middleware** - Cross-cutting controls for agents/models (logging, retries, guardrails, approval, and replay)
 - 📡 **MCP Protocol** - Build and consume Model Context Protocol servers for distributed AI
 - 💬 **Fluent Interface** - Chainable, expressive syntax that makes AI integration intuitive
 - 🦙 **Local AI** - Full Ollama support for privacy, offline use, and zero API costs
@@ -55,6 +56,7 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - [🥊 Quick Overview](#-quick-overview)
   - [💬 Chats](#-chats)
   - [🔗 Pipelines](#-pipelines)
+    - [🧩 Middleware](#-middleware)
   - [🤖 AI Agents](#-ai-agents)
   - [📦 Structured Output](#-structured-output)
   - [🧠 Memory Systems](#-memory-systems)
@@ -186,7 +188,7 @@ BoxLang not only makes it extremely easy to interact with multiple AI providers,
 
 ## 🥊 Quick Overview
 
-In the following sections, we provide a quick overview of the main components of BoxLang AI including Chats, Pipelines, Agents, Structured Output, Memory Systems, Document Loaders & RAG, and MCP Client/Server. Each section includes quick examples and links to more detailed documentation.  For further details, please refer to the [official documentation](https://ai.ortusbooks.com/), this is just a high-level overview to get you started quickly. 🚀
+In the following sections, we provide a quick overview of the main components of BoxLang AI including Chats, Pipelines, Middleware, Agents, Structured Output, Memory Systems, Document Loaders & RAG, and MCP Client/Server. Each section includes quick examples and links to more detailed documentation.  For further details, please refer to the [official documentation](https://ai.ortusbooks.com/), this is just a high-level overview to get you started quickly. 🚀
 
 ### 💬 Chats
 
@@ -378,6 +380,55 @@ pipeline = aiModel( provider: "openai", params: { model: "gpt-4o" } )
 - 🎯 **Overview**: [Main Components](https://ai.ortusbooks.com/main-components/overview.md)
 - 🔧 **Custom Runnables**: [Building Custom Components](https://ai.ortusbooks.com/advanced/custom-runnables.md)
 - 💻 **Examples**: Check `examples/pipelines/` for complete examples
+
+----
+
+### 🧩 Middleware
+
+Add **cross-cutting behavior** around model and agent execution without changing your business logic. Use middleware for observability, reliability, safety, approvals, and deterministic replay in testing. 🎯
+
+#### 🤔 Why Use Middleware?
+
+- 🔍 **Observability** - Capture lifecycle logs and execution traces
+- ♻️ **Reliability** - Retry transient model/tool failures
+- 🛡️ **Safety** - Block risky tools or argument patterns
+- 👤 **Human Approval** - Require confirmation for sensitive tool calls
+- 🎬 **Replayability** - Record and replay runs for regression testing
+
+#### 📦 Core Middleware Included
+
+| Middleware | Purpose |
+|------------|---------|
+| LoggingMiddleware | Logs agent/model lifecycle activity for observability and troubleshooting. |
+| RetryMiddleware | Retries transient LLM/tool failures with configurable backoff. |
+| MaxToolCallsMiddleware | Enforces a per-run cap on total tool calls to prevent runaway execution. |
+| GuardrailMiddleware | Blocks disallowed tools and rejects risky tool arguments by pattern rules. |
+| HumanInTheLoopMiddleware | Requires human approval for selected tool calls (CLI or suspend/resume flow). |
+| FlightRecorderMiddleware | Records and replays LLM/tool interactions for deterministic testing and CI. |
+
+#### 💡 Quick Example
+
+```javascript
+import bxModules.bxai.models.middleware.core.LoggingMiddleware;
+import bxModules.bxai.models.middleware.core.RetryMiddleware;
+import bxModules.bxai.models.middleware.core.GuardrailMiddleware;
+
+agent = aiAgent(
+    name: "Safe Assistant",
+    middleware: [
+        new LoggingMiddleware( logToConsole: true ),
+        new RetryMiddleware( maxRetries: 2, initialDelay: 250 ),
+        new GuardrailMiddleware( blockedTools: [ "deleteRecord" ] )
+    ]
+)
+
+response = agent.run( "Summarize this report and suggest next steps" )
+```
+
+#### 📚 Learn More
+
+- 📖 **Full Guide**: [Middleware Documentation](https://ai.ortusbooks.com/main-components/middleware)
+- 💻 **Examples**: Check `examples/agents/` and `examples/pipelines/`
 
 ----
 
@@ -667,6 +718,29 @@ memory = aiMemory( "hybrid", config: {
     vectorProvider: "chroma"
 } )
 // Combines recency with relevance
+```
+
+**Per-Call Multi-Tenant Identity (Singleton-Safe):**
+
+Memory instances are **stateless** and safe to use as singletons. Pass `userId` and `conversationId` directly to `run()` / `stream()` via `options`, and they flow through to every memory read/write automatically:
+
+```java
+// One shared memory instance for all users
+sharedMemory = aiMemory( "cache" )
+agent = aiAgent( name: "Support", memory: sharedMemory )
+
+// Each call is routed to its own isolated conversation
+agent.run( "Hello!",             {}, { userId: "alice", conversationId: "session-1" } )
+agent.run( "What did I say?",    {}, { userId: "alice", conversationId: "session-1" } )  // Remembers
+agent.run( "Any prior context?", {}, { userId: "bob",   conversationId: "session-2" } )  // Isolated
+```
+
+You can also override identity per-call directly on memory methods:
+
+```java
+memory.getAll( userId: "alice", conversationId: "session-1" )
+memory.add( message, userId: "alice", conversationId: "session-1" )
+memory.clear( userId: "alice", conversationId: "session-1" )
 ```
 
 #### 📚 Learn More

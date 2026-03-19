@@ -253,12 +253,28 @@ abstract class implements="IAiService" {
 		// Allow concrete providers to normalize the request packet before sending
 		dataPacket = preChatRequest( arguments.chatRequest, dataPacket )
 
-		// Send HTTP request to the provider and get the response
+		// Fire beforeLLMCall middleware
+		var llmCtx = { chatRequest: arguments.chatRequest, dataPacket: dataPacket };
+		var llmBeforeResult = arguments.chatRequest.fireMiddleware( "beforeLLMCall", llmCtx );
+		if ( llmBeforeResult.isTerminal() ) {
+			return llmBeforeResult;
+		}
+
+		// Send HTTP request to the provider — wrapped in wrapLLMCall middleware chain
 		// The result is a struct with normalized keys
-		var result = sendChatRequest( arguments.chatRequest, dataPacket )
+		var capturedDataPacket = dataPacket;
+		var capturedChatRequest = arguments.chatRequest;
+		var result = arguments.chatRequest.fireWrapMiddleware(
+			"wrapLLMCall",
+			llmCtx,
+			() => sendChatRequest( capturedChatRequest, capturedDataPacket )
+		);
 
 		// Allow concrete providers to normalize the response before error checking and returnFormat processing
 		result = postChatResponse( arguments.chatRequest, dataPacket, result )
+
+		// Fire afterLLMCall middleware (outbound, reverse order)
+		arguments.chatRequest.fireMiddleware( "afterLLMCall", { chatRequest: arguments.chatRequest, result: result }, true );
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
@@ -358,10 +374,50 @@ abstract class implements="IAiService" {
 
 				if( toolAttempt.isPresent() ){
 					var tool = toolAttempt.get();
+
+					// Fire beforeToolCall middleware
+					var toolCtx = { tool: tool, toolCall: toolCall, chatRequest: arguments.chatRequest };
+					var toolBeforeResult = arguments.chatRequest.fireMiddleware( "beforeToolCall", toolCtx );
+					if ( toolBeforeResult.isSuspended() ) {
+						// Suspend: return so the agent can checkpoint and pause
+						newMessages.append( {
+							"role"        : "tool",
+							"tool_call_id": toolCall.id,
+							"content"     : "[Suspended: awaiting human approval]"
+						} );
+						arguments.chatRequest.setMessages( newMessages );
+						return toolBeforeResult;
+					}
+					if ( toolBeforeResult.isCancelled() || toolBeforeResult.isRejected() ) {
+						// Skip this tool call, append cancel reason
+						newMessages.append( {
+							"role"        : "tool",
+							"tool_call_id": toolCall.id,
+							"content"     : "[Tool call blocked: #toolBeforeResult.getReason()#]"
+						} );
+						return;
+					}
+
+					// Invoke the tool, wrapped in wrapToolCall middleware chain
+					var capturedTool = tool;
+					var capturedToolCallArgs = toolCall.function.arguments;
+					var toolResult = arguments.chatRequest.fireWrapMiddleware(
+						"wrapToolCall",
+						toolCtx,
+						() => capturedTool.invoke( JSONDeserialize( capturedToolCallArgs ) )
+					);
+
+					// Fire afterToolCall middleware (reverse order)
+					arguments.chatRequest.fireMiddleware(
+						"afterToolCall",
+						{ tool: tool, toolCall: toolCall, chatRequest: arguments.chatRequest, result: toolResult },
+						true
+					);
+
 					newMessages.append({
 						"role"        : "tool",
 						"tool_call_id": toolCall.id,
-						"content"     : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
+						"content"     : toolResult
 					});
 				} else {
 					writeLog(
@@ -411,11 +467,23 @@ abstract class implements="IAiService" {
 		// Allow concrete providers to normalize the request packet before streaming
 		dataPacket = preStreamRequest( arguments.chatRequest, dataPacket )
 
+		// Fire beforeLLMCall middleware before sending the stream request
+		var streamLlmCtx = { chatRequest: arguments.chatRequest, dataPacket: dataPacket };
+		var streamLlmBefore = arguments.chatRequest.fireMiddleware( "beforeLLMCall", streamLlmCtx );
+		if ( streamLlmBefore.isTerminal() ) {
+			// Emit a single sentinel chunk so callers know the stream was stopped
+			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } );
+			return;
+		}
+
 		// Send it with streaming
 		var streamState = sendStreamRequest( chatRequest, dataPacket, callback )
 
 		// Allow concrete providers to normalize the stream state after completion
 		streamState = postStreamResponse( arguments.chatRequest, dataPacket, streamState )
+
+		// Fire afterLLMCall middleware (outbound, reverse)
+		arguments.chatRequest.fireMiddleware( "afterLLMCall", { chatRequest: arguments.chatRequest, streamState: streamState }, true );
 
 		// If no tool calls were requested, we are done
 		if( !streamState.toolCalls.len() ){
@@ -472,10 +540,48 @@ abstract class implements="IAiService" {
 
 			if( toolAttempt.isPresent() ){
 				var tool = toolAttempt.get();
+
+				// Fire beforeToolCall middleware
+				var streamToolCtx = { tool: tool, toolCall: toolCall, chatRequest: arguments.chatRequest };
+				var streamToolBeforeResult = arguments.chatRequest.fireMiddleware( "beforeToolCall", streamToolCtx );
+				if ( streamToolBeforeResult.isSuspended() ) {
+					newMessages.append( {
+						"role"        : "tool",
+						"tool_call_id": toolCall.id ?: "",
+						"content"     : "[Suspended: awaiting human approval]"
+					} );
+					arguments.chatRequest.setMessages( newMessages );
+					return;
+				}
+				if ( streamToolBeforeResult.isCancelled() || streamToolBeforeResult.isRejected() ) {
+					newMessages.append( {
+						"role"        : "tool",
+						"tool_call_id": toolCall.id ?: "",
+						"content"     : "[Tool call blocked: #streamToolBeforeResult.getReason()#]"
+					} );
+					return;
+				}
+
+				// Invoke via wrapToolCall middleware chain
+				var capturedStreamTool      = tool;
+				var capturedStreamToolArgs  = toolArguments;
+				var streamToolResult = arguments.chatRequest.fireWrapMiddleware(
+					"wrapToolCall",
+					streamToolCtx,
+					() => capturedStreamTool.invoke( capturedStreamToolArgs )
+				);
+
+				// Fire afterToolCall middleware (reverse)
+				arguments.chatRequest.fireMiddleware(
+					"afterToolCall",
+					{ tool: tool, toolCall: toolCall, chatRequest: arguments.chatRequest, result: streamToolResult },
+					true
+				);
+
 				newMessages.append({
 					"role"        : "tool",
 					"tool_call_id": toolCall.id ?: "",
-					"content"     : tool.invoke( toolArguments )
+					"content"     : streamToolResult
 				});
 			} else {
 				writeLog(

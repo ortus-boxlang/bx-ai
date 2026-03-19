@@ -1,0 +1,123 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Middleware that logs lifecycle events to the BoxLang "ai" log and optionally to the console.
+ *
+ * Usage:
+ *   aiAgent( middleware: new LoggingMiddleware() )
+ *   aiAgent( middleware: new LoggingMiddleware( logToConsole: true, logLevel: "info" ) )
+ */
+import bxModules.bxai.models.middleware.BaseAiMiddleware;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+class extends="BaseAiMiddleware" {
+
+	/**
+	 * Write to BoxLang's "ai" log file (default: true)
+	 */
+	property name="logToFile" type="boolean" default=true;
+
+	/**
+	 * Also print to stdout (default: false)
+	 */
+	property name="logToConsole" type="boolean" default=false;
+
+	/**
+	 * Log level: "info", "debug", "warning", "error" (default: "info")
+	 */
+	property name="logLevel" type="string" default="info";
+
+	/**
+	 * Optional prefix prepended to every log message
+	 */
+	property name="prefix" type="string" default="[AI Middleware]";
+
+	/**
+	 * Constructor
+	 *
+	 * @logToFile    Whether to write to the "ai" log file
+	 * @logToConsole Whether to also print to stdout
+	 * @logLevel     BoxLang log level
+	 * @prefix       Message prefix
+	 */
+	function init(
+		boolean logToFile    = true,
+		boolean logToConsole = false,
+		string  logLevel     = "info",
+		string  prefix       = "[AI Middleware]"
+	) {
+		variables.logToFile    = arguments.logToFile
+		variables.logToConsole = arguments.logToConsole
+		variables.logLevel     = arguments.logLevel
+		variables.prefix       = arguments.prefix
+		return this
+	}
+
+	// ==================== Hooks ====================
+
+	AiMiddlewareResult function beforeAgentRun( required struct context ) {
+		emit( "Agent run starting | input: #left( toString( context.input ), 120 )#" )
+		return AiMiddlewareResult.continue()
+	}
+
+	AiMiddlewareResult function afterAgentRun( required struct context ) {
+		emit( "Agent run complete | response: #left( toString( context.response ), 120 )#" )
+		return AiMiddlewareResult.continue()
+	}
+
+	AiMiddlewareResult function beforeLLMCall( required struct context ) {
+		var model = context.chatRequest?.getModel() ?: "unknown"
+		emit( "LLM call starting | model: #model#" )
+		return AiMiddlewareResult.continue()
+	}
+
+	AiMiddlewareResult function afterLLMCall( required struct context ) {
+		var model = context.chatRequest?.getModel() ?: "unknown"
+		emit( "LLM call complete | model: #model#" )
+		return AiMiddlewareResult.continue()
+	}
+
+	AiMiddlewareResult function beforeToolCall( required struct context ) {
+		var toolName = context.tool?.getName() ?: "unknown"
+		emit( "Tool call starting | tool: #toolName#" )
+		return AiMiddlewareResult.continue()
+	}
+
+	AiMiddlewareResult function afterToolCall( required struct context ) {
+		var toolName = context.tool?.getName() ?: "unknown"
+		emit( "Tool call complete | tool: #toolName# | result: #left( toString( context.result ), 120 )#" )
+		return AiMiddlewareResult.continue()
+	}
+
+	AiMiddlewareResult function onError( required struct context ) {
+		var phase = context.phase ?: "unknown"
+		var msg   = context.error?.message ?: toString( context.error )
+		emit( "Error in phase '#phase#': #msg#", "error" )
+		return AiMiddlewareResult.continue()
+	}
+
+	// ==================== Private Helpers ====================
+
+	private void function emit( required string message, string level = variables.logLevel ) {
+		var fullMessage = variables.prefix & " " & arguments.message
+
+		if ( variables.logToFile ) {
+			writeLog( text: fullMessage, type: arguments.level, log: "ai" )
+		}
+		if ( variables.logToConsole ) {
+			println( fullMessage )
+		}
+	}
+
+}

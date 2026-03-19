@@ -1,0 +1,181 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Typed return object from all middleware hook methods.
+ *
+ * Valid types: continue | cancel | approve | reject | edit | suspend
+ *
+ * Use the static factory methods to create instances:
+ *   AiMiddlewareResult.continue()
+ *   AiMiddlewareResult.cancel( "reason" )
+ *   AiMiddlewareResult.approve()
+ *   AiMiddlewareResult.reject( "reason" )
+ *   AiMiddlewareResult.edit( { argName: newValue } )
+ *   AiMiddlewareResult.suspend( { question, toolName, toolArgs, toolCallId } )
+ */
+class {
+
+	/**
+	 * The result type: continue | cancel | approve | reject | edit | suspend
+	 */
+	property name="type" type="string" default="continue";
+
+	/**
+	 * Human-readable explanation (optional)
+	 */
+	property name="reason" type="string" default="";
+
+	/**
+	 * Arbitrary payload (e.g. edited args for "edit", pending struct for "suspend")
+	 */
+	property name="data" type="struct" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @type   One of: continue | cancel | approve | reject | edit | suspend
+	 * @reason Human-readable explanation
+	 * @data   Arbitrary payload struct
+	 */
+	function init( string type = "continue", string reason = "", struct data = {} ) {
+		variables.type   = arguments.type;
+		variables.reason = arguments.reason;
+		variables.data   = arguments.data;
+		return this;
+	}
+
+	// ==================== Static Factory Methods ====================
+
+	/**
+	 * Continue — chain proceeds normally
+	 */
+	static AiMiddlewareResult function continue() {
+		return new AiMiddlewareResult( type: "continue" );
+	}
+
+	/**
+	 * Cancel — stop the entire chain immediately
+	 *
+	 * @reason Human-readable reason
+	 */
+	static AiMiddlewareResult function cancel( string reason = "" ) {
+		return new AiMiddlewareResult(
+			type  : "cancel",
+			reason: arguments.reason
+		);
+	}
+
+	/**
+	 * Approve — human approved the pending action
+	 */
+	static AiMiddlewareResult function approve() {
+		return new AiMiddlewareResult( type: "approve" );
+	}
+
+	/**
+	 * Reject — human rejected the pending action
+	 *
+	 * @reason Human-readable reason
+	 */
+	static AiMiddlewareResult function reject( string reason = "" ) {
+		return new AiMiddlewareResult(
+			type  : "reject",
+			reason: arguments.reason
+		);
+	}
+
+	/**
+	 * Edit — use modified arguments for the tool call
+	 *
+	 * @args The replacement tool arguments struct
+	 */
+	static AiMiddlewareResult function edit( required struct args ) {
+		return new AiMiddlewareResult(
+			type: "edit",
+			data: arguments.args
+		);
+	}
+
+	/**
+	 * Suspend — pause execution for human review (async HITL)
+	 *
+	 * @pending Struct containing: { question, toolName, toolArgs, toolCallId }
+	 */
+	static AiMiddlewareResult function suspend( required struct pending ) {
+		return new AiMiddlewareResult(
+			type: "suspend",
+			data: arguments.pending
+		);
+	}
+
+	// ==================== Predicate Methods ====================
+
+	/**
+	 * Is this a "continue" result?
+	 */
+	boolean function isContinue() {
+		return variables.type == "continue";
+	}
+
+	/**
+	 * Is this a "cancel" result?
+	 */
+	boolean function isCancelled() {
+		return variables.type == "cancel";
+	}
+
+	/**
+	 * Is this an "approve" result?
+	 */
+	boolean function isApproved() {
+		return variables.type == "approve";
+	}
+
+	/**
+	 * Is this a "reject" result?
+	 */
+	boolean function isRejected() {
+		return variables.type == "reject";
+	}
+
+	/**
+	 * Is this an "edit" result?
+	 */
+	boolean function isEdit() {
+		return variables.type == "edit";
+	}
+
+	/**
+	 * Is this a "suspend" result?
+	 */
+	boolean function isSuspended() {
+		return variables.type == "suspend";
+	}
+
+	/**
+	 * Is this a terminal result (cancelled, rejected, or suspended)?
+	 * Terminal results stop the middleware chain.
+	 */
+	boolean function isTerminal() {
+		return listFindNoCase( "cancel,reject,suspend", variables.type ) > 0;
+	}
+
+	/**
+	 * Get string representation for debugging
+	 */
+	string function toString() {
+		return "AiMiddlewareResult[type=#variables.type##variables.reason.len() > 0 ? ", reason=" & variables.reason : ""#]";
+	}
+
+}

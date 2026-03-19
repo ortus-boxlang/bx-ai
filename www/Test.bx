@@ -1,0 +1,9 @@
+class{
+
+	property name="checkpointer";
+
+	function init( any checkpointer ){
+		variables.checkpointer = arguments.checkpointer;
+		return this;
+	}
+}

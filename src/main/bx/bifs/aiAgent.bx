@@ -35,23 +35,37 @@ class {
 	 * @memory Single IAiMemory instance or array of memory instances, defaults to WindowMemory
 	 * @tools Array of Tool objects the agent can use
 	 * @subAgents Array of sub-agents to register as internal tools for delegation
-	 * @params Additional provider parameters (model,temperature, max_tokens, etc.)
+	 * @params Additional provider parameters (model, temperature, max_tokens, etc.)
 	 * @options Additional options (timeout, logging, etc.)
+	 * @middleware IAiMiddleware instance, struct-of-closures, or array of either to attach to this agent
+	 * @checkpointer IAiMemory instance used to save/load checkpoint state for suspend-resume
+	 * @checkpointTTL Time-to-live for checkpoint state in minutes (0 = no expiry)
+	 * @threadId Optional thread identifier for checkpoint isolation
 	 *
 	 * @return AiAgent instance for fluent chaining
 	 */
 	function invoke(
-		string name = "BxAi",
-		string description = "",
+		string name         = "BxAi",
+		string description  = "",
 		string instructions = "",
-		AiModel model = aiModel(),
-		any memory = aiMemory(),
-		array tools = [],
-		array subAgents = [],
-		struct params = {},
-		struct options = {}
+		AiModel model       = aiModel(),
+		any memory          = aiMemory(),
+		array tools         = [],
+		array subAgents     = [],
+		struct params       = {},
+		struct options      = {},
+		any middleware      = [],
+		any checkpointer,
+		numeric checkpointTTL = 30,
+		string  threadId      = createUUID()
 	) {
+		// Create the agent with the provided configuration options
 		var agent = new bxModules.bxai.models.AiAgent( argumentCollection: arguments );
+
+		// Apply threadId to agent for checkpoint isolation if provided
+		if ( len( arguments.threadId ) ) {
+			agent.withThreadId( arguments.threadId );
+		}
 
 		BoxAnnounce( "onAIAgentCreate", { agent: agent } );
 

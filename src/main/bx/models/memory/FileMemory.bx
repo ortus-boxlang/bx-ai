@@ -64,11 +64,6 @@ class extends="BaseMemory" {
 			directoryCreate( variables.directoryPath, true, true );
 		}
 
-		// Load existing data from file if it exists
-		if ( fileExists( getFilePath() ) ) {
-			loadFromFile();
-		}
-
 		super.configure( arguments.config );
 
 		return this;
@@ -84,47 +79,55 @@ class extends="BaseMemory" {
 	public any function directoryPath( string directoryPath ) {
 		if ( !isNull( arguments.directoryPath ) ) {
 			variables.directoryPath = arguments.directoryPath;
-			// Load data from file if it exists
-			var filePath = getFilePath();
-			if ( len( filePath ) && fileExists( filePath ) ) {
-				loadFromFile();
-			}
 			return this;
 		}
 		return variables.directoryPath;
 	}
 
 	/**
+	 * Get all messages - reads directly from the per-call file
+	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
+	 * @return Array of message structs
+	 */
+	public array function getAll( string userId = "", string conversationId = "" ) {
+		var filePath = getFilePath( resolveUserId( userId ), resolveConversationId( conversationId ) );
+		return loadMessagesFromFile( filePath );
+	}
+
+	/**
 	 * Add a message to memory and persist to file
 	 *
 	 * @message The message to add
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function add( required any message ) {
-		// Use parent's add logic
-		super.add( arguments.message );
-
-		// Persist to file
-		saveToFile();
-
+	public IAiMemory function add( required any message, string userId = "", string conversationId = "" ) {
+		var filePath = getFilePath( resolveUserId( userId ), resolveConversationId( conversationId ) );
+		var messages = loadMessagesFromFile( filePath );
+		messages.append( processMessage( arguments.message ), true );
+		saveMessagesToFile( filePath, messages );
+		this.trim( userId, conversationId );
 		return this;
 	}
 
 	/**
 	 * Clear all messages from memory and file
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function clear() {
-		super.clear();
-
-		// Delete the file if it exists
-		var filePath = getFilePath();
+	public IAiMemory function clear( string userId = "", string conversationId = "" ) {
+		var filePath = getFilePath( resolveUserId( userId ), resolveConversationId( conversationId ) );
 		if ( len( filePath ) && fileExists( filePath ) ) {
 			fileDelete( filePath );
 		}
-
 		return this;
 	}
 
@@ -134,8 +137,9 @@ class extends="BaseMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function removeSystemMessage() {
-		super.removeSystemMessage();
-		saveToFile();
+		var instancePath = getFilePath( variables.userId, variables.conversationId );
+		var messages = loadMessagesFromFile( instancePath ).filter( m => m.role != "system" );
+		saveMessagesToFile( instancePath, messages );
 		return this;
 	}
 
@@ -149,7 +153,9 @@ class extends="BaseMemory" {
 	public any function metadata( struct metadata ) {
 		if ( !isNull( arguments.metadata ) ) {
 			variables.metadata.append( arguments.metadata, true );
-			saveToFile();
+			// Re-save the file to persist updated metadata
+			var instancePath = getFilePath( variables.userId, variables.conversationId );
+			saveMessagesToFile( instancePath, loadMessagesFromFile( instancePath ) );
 			return this;
 		}
 		return variables.metadata;
@@ -163,7 +169,7 @@ class extends="BaseMemory" {
 	 */
 	public struct function getSummary() {
 		var summary = super.getSummary();
-		var filePath = getFilePath();
+		var filePath = getFilePath( variables.userId, variables.conversationId );
 		summary.directoryPath = variables.directoryPath;
 		summary.filePath = filePath;
 		summary.fileExists = len( filePath ) && fileExists( filePath );
@@ -199,8 +205,9 @@ class extends="BaseMemory" {
 			variables.directoryPath = arguments.data.directoryPath;
 		}
 
-		// Persist imported data to file
-		saveToFile();
+		// Persist imported data to file using current instance identity
+		var instancePath = getFilePath( variables.userId, variables.conversationId );
+		saveMessagesToFile( instancePath, variables.messages );
 
 		return this;
 	}
@@ -208,14 +215,32 @@ class extends="BaseMemory" {
 	/**
 	 * Trim messages to keep only the last N (excluding system message)
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function trim() {
-		super.trim();
+	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
+		if ( variables.maxMessages == 0 ) return this;
 
-		// Persist to file
-		saveToFile();
+		var filePath = getFilePath( resolveUserId( userId ), resolveConversationId( conversationId ) );
+		var messages = loadMessagesFromFile( filePath );
 
+		var systemMessages = messages.filter( m => m.role == "system" );
+		var nonSystem = messages.filter( m => m.role != "system" );
+
+		if ( nonSystem.len() <= variables.maxMessages ) {
+			return this;
+		}
+
+		var start = nonSystem.len() - variables.maxMessages + 1;
+		var keep = nonSystem.slice( start, variables.maxMessages );
+
+		if ( !systemMessages.isEmpty() ) {
+			keep.prepend( systemMessages.first() );
+		}
+
+		saveMessagesToFile( filePath, keep );
 		return this;
 	}
 
@@ -226,23 +251,26 @@ class extends="BaseMemory" {
 	 */
 
 	/**
-	 * Get the full file path based on directoryPath, key, userId, and conversationId
-	 * Generates filename from memory key with userId and conversationId
+	 * Get the full file path based on directoryPath, key, userId, and conversationId.
+	 * Pure function — does NOT read from identity variables scope.
+	 *
+	 * @userId The resolved user identifier
+	 * @conversationId The resolved conversation identifier
 	 *
 	 * @return String full path to the memory file
 	 */
-	private string function getFilePath() {
+	private string function getFilePath( string userId = "", string conversationId = "" ) {
 		// Build filename parts: memory-{key}[-userId][-conversationId].json
 		var parts = [ "memory", variables.key.slugify() ];
 
 		// Add userId if present
-		if ( len( variables.userId ) ) {
-			parts.append( variables.userId.slugify() );
+		if ( len( arguments.userId ) ) {
+			parts.append( arguments.userId.slugify() );
 		}
 
 		// Add conversationId if present
-		if ( len( variables.conversationId ) ) {
-			parts.append( variables.conversationId.slugify() );
+		if ( len( arguments.conversationId ) ) {
+			parts.append( arguments.conversationId.slugify() );
 		}
 
 		var filename = parts.toList( "-" ) & ".json";
@@ -251,89 +279,141 @@ class extends="BaseMemory" {
 	}
 
 	/**
-	 * Load memory data from JSON file
+	 * Load messages array from a JSON file.
+	 * Returns an empty array if the file does not exist or is unreadable.
 	 *
-	 * @return IAiMemory for chaining
+	 * @filePath Full path to the memory JSON file
+	 *
+	 * @return Array of message structs
 	 */
-	private IAiMemory function loadFromFile() {
-		var filePath = getFilePath();
-
-		// Only load if file exists
-		if ( !fileExists( filePath ) ) {
-			return this;
+	private array function loadMessagesFromFile( required string filePath ) {
+		if ( !fileExists( arguments.filePath ) ) {
+			return [];
 		}
 
 		try {
-			var fileContent = fileRead( filePath );
+			var fileContent = fileRead( arguments.filePath );
 
-			// Handle empty files
 			if ( !len( trim( fileContent ) ) ) {
-				// delete the file
-				fileDelete( filePath );
-				return this;
+				fileDelete( arguments.filePath );
+				return [];
 			}
 
 			var data = jsonDeserialize( fileContent );
-
-			// Import the data using parent's import logic
-			if ( isStruct( data ) ) {
-				// Store current directoryPath
-				var currentDirectoryPath = variables.directoryPath;
-
-				// Import without changing directoryPath
-				if ( data.keyExists( "key" ) ) {
-					variables.key = data.key;
-				}
-				if ( data.keyExists( "metadata" ) ) {
-					variables.metadata = data.metadata;
-				}
-				if ( data.keyExists( "messages" ) && isArray( data.messages ) ) {
-					variables.messages = data.messages;
-				}
-
-				// Restore directoryPath
-				variables.directoryPath = currentDirectoryPath;
+			if ( isStruct( data ) && data.keyExists( "messages" ) && isArray( data.messages ) ) {
+				return data.messages;
 			}
 		} catch( any e ) {
-			// If there's an error reading the file, just continue with empty memory
-			// This handles corrupted JSON or other file issues gracefully
+			// Corrupted file — return empty
 		}
 
-		return this;
+		return [];
 	}
 
 	/**
-	 * Save memory data to JSON file
+	 * Persist a messages array to a JSON file.
 	 *
-	 * @return IAiMemory for chaining
+	 * @filePath Full path to the memory JSON file
+	 * @messages The messages array to persist
 	 */
-	private IAiMemory function saveToFile() {
-		var filePath = getFilePath();
-
+	private void function saveMessagesToFile( required string filePath, required array messages ) {
 		try {
 			// Ensure directory exists
 			if ( len( variables.directoryPath ) && !directoryExists( variables.directoryPath ) ) {
 				directoryCreate( variables.directoryPath, true, true );
 			}
 
-			// Export data and serialize to JSON
-			var data = {
-				type: variables.name,
-				key: variables.key,
-				metadata: variables.metadata,
-				messages: this.getAll()
-			};
-
-			// Write to file
-			fileWrite( filePath, jsonSerialize( data ) );
+			fileWrite(
+				arguments.filePath,
+				jsonSerialize( {
+					type     : variables.name,
+					key      : variables.key,
+					metadata : variables.metadata,
+					messages : arguments.messages
+				} )
+			);
 		} catch( any e ) {
 			throw(
 				type: "FileMemoryError",
-				message: "Failed to save memory to file: #filePath#",
+				message: "Failed to save memory to file: #arguments.filePath#",
 				detail: e.message
 			);
 		}
+	}
 
+	// ==================== Checkpoint Methods ====================
+
+	/**
+	 * Build the file path for a checkpoint file.
+	 */
+	private string function buildCheckpointFilePath( required string threadId ) {
+		var checkpointDir = variables.directoryPath & "/checkpoints";
+		if ( !directoryExists( checkpointDir ) ) {
+			directoryCreate( checkpointDir, true, true );
+		}
+		// Sanitise the threadId to only allow alphanumerics, dashes, and underscores
+		var safeId = arguments.threadId.reReplace( "[^a-zA-Z0-9_\-]", "_", "all" );
+		return checkpointDir & "/" & safeId & ".json";
+	}
+
+	/**
+	 * Persist checkpoint state as a JSON file.
+	 *
+	 * @threadId Unique agent thread identifier
+	 * @state    Serialisable struct to store
+	 * @ttl      TTL in minutes (stored as expiresAt; 0 = no expiry)
+	 *
+	 * @return this for chaining
+	 */
+	public IAiMemory function saveState( required string threadId, required struct state, numeric ttl = 0 ) {
+		var filePath = buildCheckpointFilePath( arguments.threadId );
+		var payload  = {
+			threadId  : arguments.threadId,
+			savedAt   : now(),
+			expiresAt : arguments.ttl > 0 ? dateAdd( "n", arguments.ttl, now() ) : "",
+			state     : arguments.state
+		};
+		fileWrite( filePath, jsonSerialize( payload ) );
+		return this;
+	}
+
+	/**
+	 * Retrieve checkpoint state from its JSON file.
+	 *
+	 * @threadId Unique agent thread identifier
+	 *
+	 * @return Saved state struct, or empty struct if not found or expired
+	 */
+	public struct function loadState( required string threadId ) {
+		var filePath = buildCheckpointFilePath( arguments.threadId );
+		if ( !fileExists( filePath ) ) {
+			return {};
+		}
+		try {
+			var payload = jsonDeserialize( fileRead( filePath ) );
+			// Honour expiry
+			if ( len( payload.expiresAt ) && now() > payload.expiresAt ) {
+				fileDelete( filePath );
+				return {};
+			}
+			return payload.state ?: {};
+		} catch ( any e ) {
+			return {};
+		}
+	}
+
+	/**
+	 * Delete checkpoint file.
+	 *
+	 * @threadId Unique agent thread identifier
+	 *
+	 * @return this for chaining
+	 */
+	public IAiMemory function clearState( required string threadId ) {
+		var filePath = buildCheckpointFilePath( arguments.threadId );
+		if ( fileExists( filePath ) ) {
+			fileDelete( filePath );
+		}
 		return this;
 	}
 

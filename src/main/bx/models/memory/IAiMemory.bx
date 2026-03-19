@@ -65,20 +65,24 @@ interface {
 	 * - A Document instance: Its content will be added as a user message
 	 *
      * @message
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
      * @return IAiMemory for chaining
      */
-    IAiMemory function add( required any message );
+    IAiMemory function add( required any message, string userId = "", string conversationId = "" );
 
 	/**
 	 * Seed memory with multiple messages/documents
 	 * Optimized for batch insertion
 	 *
 	 * @documents Array of messages/documents to add
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Struct with results (added, failed, errors)
 	 */
-	struct function seed( required array documents );
+	struct function seed( required array documents, string userId = "", string conversationId = "" );
 
 	/**
 	 * Seed memory with multiple documents at once asynchronously
@@ -87,45 +91,57 @@ interface {
 	 * @documents Array of documents to add. Each document can be:
 	 *   - String: Simple text (auto-generates ID)
 	 *   - Struct: { text, metadata, id? } (id is optional)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return BoxFuture with results: { added: numeric, failed: numeric, errors: array }
 	 */
-	default BoxFuture function seedAsync( required array documents ){
+	default BoxFuture function seedAsync( required array documents, string userId = "", string conversationId = "" ){
 		// Async in the virtual threads pool
-		return asyncRun( () => this.seed( documents ), "io-tasks" );
+		return asyncRun( () => this.seed( documents, userId, conversationId ), "io-tasks" );
 	}
 
     /**
      * Get all messages from memory
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
      * @return Array of message structs
      */
-    array function getAll();
+    array function getAll( string userId = "", string conversationId = "" );
 
     /**
      * Get recent messages from memory
 	 *
      * @limit Number of recent messages to retrieve
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
      * @return Array of message structs
      */
-    array function getRecent( numeric limit = 10 );
+    array function getRecent( numeric limit = 10, string userId = "", string conversationId = "" );
 
     /**
      * Get messages by role (user, assistant, system, tool)
 	 *
      * @role The role to filter by
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
      * @return Array of message structs
      */
-    array function getByRole( required string role );
+    array function getByRole( required string role, string userId = "", string conversationId = "" );
 
     /**
      * Clear all messages from memory
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
      * @return IAiMemory for chaining
      */
-    IAiMemory function clear();
+    IAiMemory function clear( string userId = "", string conversationId = "" );
 
     /**
      * Get the maximum number of messages this memory can store
@@ -154,9 +170,12 @@ interface {
     /**
      * Get the count of messages in memory
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
      * @return Numeric count
      */
-    numeric function count();
+    numeric function count( string userId = "", string conversationId = "" );
 
     /**
      * Check if memory is empty
@@ -293,5 +312,40 @@ interface {
 	 * @return Array of message structs
 	 */
 	array function getRange( required numeric startIndex, numeric endIndex );
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * CHECKPOINT METHODS (used by the middleware checkpoint/suspend-resume system)
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Persist arbitrary checkpoint state keyed by threadId.
+	 *
+	 * @threadId Unique identifier for the agent thread
+	 * @state    Any serialisable struct to store
+	 * @ttl      Time-to-live in minutes (0 = no expiry)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	IAiMemory function saveState( required string threadId, required struct state, numeric ttl = 0 );
+
+	/**
+	 * Retrieve previously saved checkpoint state.
+	 *
+	 * @threadId Unique identifier for the agent thread
+	 *
+	 * @return The saved state struct, or an empty struct if not found
+	 */
+	struct function loadState( required string threadId );
+
+	/**
+	 * Delete checkpoint state for a thread.
+	 *
+	 * @threadId Unique identifier for the agent thread
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	IAiMemory function clearState( required string threadId );
 
 }
