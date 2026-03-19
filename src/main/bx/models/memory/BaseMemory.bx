@@ -306,25 +306,30 @@ abstract class implements="IAiMemory" {
 	/**
 	 * Do you have a system message?
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return True if a system message exists, false otherwise
 	 */
-	public boolean function hasSystemMessage() {
-		return !getByRole( "system" ).isEmpty()
+	public boolean function hasSystemMessage( string userId = "", string conversationId = "" ) {
+		return !getByRole( "system", arguments.userId, arguments.conversationId ).isEmpty()
 	}
 
 	/**
 	 * Set or replace the system message
 	 *
 	 * @message The system message content (string)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function setSystemMessage( required string message ) {
+	public IAiMemory function setSystemMessage( required string message, string userId = "", string conversationId = "" ) {
 		// Remove existing system message if any
-		removeSystemMessage()
+		removeSystemMessage( arguments.userId, arguments.conversationId )
 
 		// Add new system message at the beginning
-		getAll().prepend( {
+		getAll( arguments.userId, arguments.conversationId ).prepend( {
 			role: "system",
 			content: arguments.message,
 			timestamp: now()
@@ -339,20 +344,26 @@ abstract class implements="IAiMemory" {
 	/**
 	 * Remove the system message
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function removeSystemMessage() {
-		variables.messages = getAll().filter( ( m ) => m.role != "system" )
+	public IAiMemory function removeSystemMessage( string userId = "", string conversationId = "" ) {
+		variables.messages = getAll( arguments.userId, arguments.conversationId ).filter( ( m ) => m.role != "system" )
 		return this
 	}
 
 	/**
 	 * Get messages excluding system message
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return Array of message structs
 	 */
-	public array function getNonSystemMessages() {
-		return getAll().filter( ( m ) => m.role != "system" )
+	public array function getNonSystemMessages( string userId = "", string conversationId = "" ) {
+		return getAll( arguments.userId, arguments.conversationId ).filter( ( m ) => m.role != "system" )
 	}
 
 	/**
@@ -360,14 +371,21 @@ abstract class implements="IAiMemory" {
 	 *
 	 * @searchTerm Text to search for
 	 * @caseSensitive Whether search is case-sensitive (default: false)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Array of matching message structs
 	 */
-	public array function search( required string searchTerm, boolean caseSensitive = false ) {
+	public array function search(
+		required string searchTerm,
+		boolean caseSensitive = false,
+		string userId = "",
+		string conversationId = ""
+	) {
 		var term = arguments.searchTerm
 		var isCaseSensitive = arguments.caseSensitive
 
-		return getAll().filter( ( message ) => {
+		return getAll( arguments.userId, arguments.conversationId ).filter( ( message ) => {
 			return isCaseSensitive
 				? message.content.find( term ) > 0
 				: message.content.findNoCase( term ) > 0
@@ -382,8 +400,13 @@ abstract class implements="IAiMemory" {
 	 *
 	 * @return Array of message structs
 	 */
-	public array function getRange( required numeric startIndex, numeric endIndex ) {
-		var messages = getAll()
+	public array function getRange(
+		required numeric startIndex,
+		numeric endIndex,
+		string userId = "",
+		string conversationId = ""
+	) {
+		var messages = getAll( arguments.userId, arguments.conversationId )
 		var total = messages.len()
 
 		// Validate startIndex - must be within bounds
@@ -500,17 +523,20 @@ abstract class implements="IAiMemory" {
 	 * Export messages to a serializable format
 	 * Subclasses can override to add specific fields
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return Struct containing all memory data
 	 */
-	public struct function export() {
+	public struct function export( String userId = "", String conversationId = "" ) {
 		return {
 			"type":this. name(),
 			"key": this.key(),
-			"userId": this.getUserId(),
-			"conversationId": this.getConversationId(),
+			"userId": resolveUserId( arguments.userId ),
+			"conversationId": resolveConversationId( arguments.conversationId ),
 			"metadata": this.metadata(),
 			"config": getConfig(),
-			"messages": getAll(),
+			"messages": getAll( arguments.userId, arguments.conversationId ),
 			"maxMessages": variables.maxMessages
 		}
 	}
@@ -611,9 +637,9 @@ abstract class implements="IAiMemory" {
 			return this
 		}
 
-		var hasSystem = hasSystemMessage()
-    	var systemMsg = hasSystem ? getSystemMessage() : ""
-		var nonSystemMessages = getNonSystemMessages()
+		var hasSystem = hasSystemMessage( arguments.userId, arguments.conversationId )
+    	var systemMsg = hasSystem ? getSystemMessage( arguments.userId, arguments.conversationId ) : ""
+		var nonSystemMessages = getNonSystemMessages( arguments.userId, arguments.conversationId )
 
 		// If we're over the limit, keep only the last N
 		if ( nonSystemMessages.len() > variables.maxMessages ) {
@@ -667,7 +693,7 @@ abstract class implements="IAiMemory" {
 	 *
 	 * @return The processed message as an array of message structs
 	 */
-	private array function processMessage( required any message){
+	private array function processMessage( required any message ){
 		// AiMessage instance - return it's state, it is supposed to be clean
  		if ( arguments.message instanceof "AiMessage" ) {
 			return 	arguments.message.getMessages()
