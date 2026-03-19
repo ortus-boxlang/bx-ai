@@ -52,7 +52,7 @@ class extends="AiBaseRequest"{
 	 * @methodDefaults Optional method-specific defaults (e.g., from aiChat BIF) to layer between module settings and user options
 	 */
 	function init(
-		aiMessage aiMessage = new bxModules.bxai.models.AiMessage(),
+		aiMessage aiMessage = new bxModules.bxai.models.runnables.AiMessage(),
 		struct params = {},
 		struct options = {},
 		struct methodDefaults = {}

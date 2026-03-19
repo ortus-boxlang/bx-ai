@@ -58,7 +58,7 @@ class {
 		numeric checkpointTTL = 30
 	) {
 		// Create the agent with the provided configuration options
-		var agent = new bxModules.bxai.models.AiAgent( argumentCollection: arguments )
+		var agent = new bxModules.bxai.models.runnables.AiAgent( argumentCollection: arguments )
 
 		// Announce agent creation for observability and extensibility (e.g. logging, analytics, etc.)
 		BoxAnnounce( "onAIAgentCreate", { agent: agent } )

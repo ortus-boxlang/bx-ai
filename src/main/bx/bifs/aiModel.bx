@@ -63,7 +63,7 @@ class {
 		var service = aiService( argumentCollection: arguments )
 
 		// Wrap it as a model entity for use in pipelines
-		var model = new bxModules.bxai.models.AiModel( service )
+		var model = new bxModules.bxai.models.runnables.AiModel( service )
 			.bindTools( arguments.tools )
 			.withParams( arguments.params )
 			.withOptions( arguments.options )
