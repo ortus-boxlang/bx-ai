@@ -172,6 +172,8 @@ class extends="BaseVectorMemory" {
 	/**
 	 * Flush the collection to ensure all data is persisted and queryable
 	 * This is essential for Milvus to make recently inserted data immediately available for queries
+	 *
+	 * @return IVectorMemory for chaining
 	 */
 	IVectorMemory function flush() {
 		var payload = {
@@ -285,6 +287,8 @@ class extends="BaseVectorMemory" {
 
 	/**
 	 * Get all documents
+	 *
+	 * @return Array of documents
 	 */
 	array function getAllDocuments() {
 		try {

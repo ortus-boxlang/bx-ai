@@ -410,6 +410,8 @@ class extends="BaseVectorMemory" {
 
 	/**
 	 * Clear all documents (alias for clearCollection)
+	 *
+	 * @return IVectorMemory for chaining
 	 */
 	function clearAll() {
 		return clearCollection()

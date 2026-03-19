@@ -39,7 +39,7 @@ class extends="BaseVectorMemory" {
 	/**
 	 * Configure the memory store
 	 *
-	 * @options Struct of configuration options (not needed for in-memory, but here for interface consistency)
+	 * @config Struct of configuration options (not needed for in-memory, but here for interface consistency)
 	 */
 	function configure( struct config = {} ) {
 		// Call parent configure to handle common settings (embeddingProvider, embeddingModel, embeddingOptions, etc.)

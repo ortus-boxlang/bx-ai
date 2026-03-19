@@ -455,6 +455,8 @@ class extends="BaseMemory" {
 	 *
 	 * @userId   Optional per-call user identifier (overrides instance default)
 	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
+	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
 		// If unbounded → do nothing

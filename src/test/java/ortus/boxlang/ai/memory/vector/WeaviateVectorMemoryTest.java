@@ -147,6 +147,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 	@DisplayName( "Test storing and retrieving documents with WeaviateVectorMemory" )
 	void testStoreAndRetrieve() throws Exception {
 
+		// @formatter:off
 		runtime.executeSource(
 		    """
 		    // Create memory with unique collection
@@ -195,7 +196,9 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		        // Ignore cleanup errors
 		    }
 		    """,
-		    context );
+		    context
+		);
+		// @formatter:on
 
 		IStruct testResult = variables.getAsStruct( result );
 
@@ -379,48 +382,64 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 	@Order( 6 )
 	@DisplayName( "Test metadata filtering" )
 	void testMetadataFiltering() throws Exception {
-
+		// @formatter: off
 		runtime.executeSource(
 		    """
-		    // Create memory
-		    testCollection = "TestFilter" & left( createUUID(), 8 );
-		    memory = aiMemory( memory: "weaviate", key: createUUID(), config: {
-		        host: "localhost",
-		        port: 8080,
-		        scheme: "http",
-		        collection: testCollection,
-		        embeddingProvider: "openai",
-		        embeddingModel: "text-embedding-3-small"
-		    } );
+		       // Create memory
+		       testCollection = "TestFilter" & left( createUUID(), 8 );
+		       memory = aiMemory( memory: "weaviate", key: createUUID(), config: {
+		           host: "localhost",
+		           port: 8080,
+		           scheme: "http",
+		           collection: testCollection,
+		           embeddingProvider: "openai",
+		           embeddingModel: "text-embedding-3-small"
+		       } );
 
-		    // Add documents with metadata
-		    memory.add( "Programming tutorials for beginners", { category: "tutorial", level: "beginner" } );
-		    memory.add( "Advanced programming concepts", { category: "advanced", level: "expert" } );
-		    memory.add( "Programming reference guide", { category: "reference", level: "all" } );
+		       // Add documents with metadata
+		       memory.add(
+		    		{
+		    text: "Programming tutorials for beginners",
+		    metadata: { category: "tutorial", level: "beginner" }
+		    		}
+		    	);
+		       memory.add(
+		    		{
+		    text: "Advanced programming concepts",
+		    metadata: { category: "advanced", level: "expert" }
+		    		}
+		    	);
+		       memory.add(
+		    		{
+		    text: "Programming reference guide",
+		    metadata: { category: "reference", level: "all" }
+		    		}
+		    	);
 
-		    // Wait for indexing
-		    sleep( 1000 );
+		       // Wait for indexing
+		       sleep( 1000 );
 
-		    // Search with filter
-		    results = memory.getRelevant(
-		        "programming",
-		        5,
-		        { category: "tutorial" }
-		    );
+		       // Search with filter
+		       results = memory.getRelevant(
+		           "programming",
+		           5,
+		           { category: "tutorial" }
+		       );
 
-		    result = {
-		        resultCount: results.len(),
-		        hasResults: results.len() > 0
-		    };
+		       result = {
+		           resultCount: results.len(),
+		           hasResults: results.len() > 0
+		       };
 
-		    // Cleanup
-		    try {
-		        memory.clearAll();
-		    } catch( any e ) {
-		        // Ignore
-		    }
-		    """,
+		       // Cleanup
+		       try {
+		           memory.clearAll();
+		       } catch( any e ) {
+		           // Ignore
+		       }
+		       """,
 		    context );
+		// @formatter: on
 
 		IStruct testResult = variables.getAsStruct( result );
 
@@ -688,7 +707,7 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		assertTrue( result.getAsBoolean( Key.of( "hasDocuments" ) ) );
 	}
 
-	@DisplayName( "Test WeaviateVectorMemory with userId and conversationId" )
+	@DisplayName( "Test WeaviateVectorMemory with userId and conversationId globally" )
 	@Test
 	@Order( 12 )
 	public void testUserIdAndConversationId() throws Exception {
@@ -733,6 +752,54 @@ public class WeaviateVectorMemoryTest extends BaseIntegrationTest {
 		IStruct result = variables.getAsStruct( Key.of( "result" ) );
 		assertEquals( "john", result.getAsString( Key.of( "userId" ) ) );
 		assertEquals( "weaviate-test", result.getAsString( Key.of( "conversationId" ) ) );
+	}
+
+	@DisplayName( "Test WeaviateVectorMemory with userId and conversationId by context" )
+	@Test
+	@Order( 12 )
+	public void testUserIdAndConversationIdByContext() throws Exception {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		    testCollection = "TestUserConv" & left( createUUID(), 8 );
+		    memory = aiMemory(
+		        memory: "weaviate",
+		        config: {
+		            host: "localhost",
+		            port: 8080,
+		            scheme: "http",
+		            collection: testCollection,
+		            embeddingProvider: "openai",
+		            embeddingModel: "text-embedding-3-small"
+		        }
+		    );
+			userId = "john"
+		    conversationId = "weaviate-test"
+
+		    memory.add(
+				message: { id: "123", text: "Weaviate vector database" },
+				userId: userId,
+				conversationId: conversationId
+			);
+
+		    // Wait for indexing
+		    sleep( 1000 );
+
+			// Get the document back to verify metadata
+			results = memory.getAll( userId: userId, conversationId: conversationId );
+
+			println( results )
+
+		    // Cleanup
+		    try {
+		        memory.clearAll();
+		    } catch( any e ) {
+		        // Ignore
+		    }
+		    """,
+		    context );
+		// @formatter:on
+
 	}
 
 	@DisplayName( "Test WeaviateVectorMemory export includes userId and conversationId" )
