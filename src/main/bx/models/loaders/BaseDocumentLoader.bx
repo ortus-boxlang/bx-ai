@@ -19,7 +19,7 @@
  * Provides common functionality for all loader implementations.
  */
 import bxModules.bxai.models.memory.IAiMemory
-import bxModules.bxai.models.Document
+import bxModules.bxai.models.loaders.Document
 
 abstract class implements="IDocumentLoader" {
 
