@@ -16,7 +16,7 @@
  * Voyage AI focuses exclusively on embeddings with state-of-the-art models
  * @see https://docs.voyageai.com/docs/embeddings
  */
-class extends="BaseService"{
+class extends="OpenAIService"{
 
 	/**
 	 * Static defaults

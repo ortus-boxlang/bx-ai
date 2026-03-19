@@ -19,7 +19,7 @@
  *
  * @see https://huggingface.co/docs/inference-providers/tasks/chat-completion
  */
-class extends="BaseService"{
+class extends="OpenAIService"{
 
 	/**
 	 * Static defaults

@@ -15,7 +15,7 @@
  * MiniMax AI Service Provider
  * https://platform.minimax.io/docs/api-reference/api-overview
  */
-class extends="BaseService"{
+class extends="OpenAIService"{
 
 	/**
 	 * Static defaults

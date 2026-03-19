@@ -51,7 +51,7 @@
  * })
  * ```
  */
-class extends="BaseService" {
+class extends="OpenAIService" {
 
 	/**
 	 * Static defaults
@@ -218,6 +218,19 @@ class extends="BaseService" {
 			)
 			return []
 		}
+	}
+
+	/**
+	 * Override to ensure service-configured model takes priority over OpenAI's
+	 * default embedding model (text-embedding-3-small). Pre-seeds variables.params
+	 * into the request before calling super, so the OpenAI default cannot clobber
+	 * the explicit user configuration.
+	 */
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		// Pre-seed service-configured params first so OpenAI defaults cannot override them
+		arguments.embeddingRequest.mergeServiceParams( variables.params )
+		return super.embeddings( arguments.embeddingRequest )
 	}
 
 }

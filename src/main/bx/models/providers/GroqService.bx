@@ -13,7 +13,7 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  */
-class extends="BaseService"{
+class extends="OpenAIService"{
 
 	/**
 	 * Static defaults

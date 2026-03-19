@@ -15,7 +15,7 @@
  * Mistral AI Service Provider
  * https://docs.mistral.ai/
  */
-class extends="BaseService"{
+class extends="OpenAIService"{
 
 	/**
 	 * Static defaults
