@@ -16,7 +16,7 @@
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
-class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
+class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults
@@ -88,6 +88,9 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 
+		// -------------------------------------------------------------------------------------------
+		// --- Authentication Handling ---
+		// -------------------------------------------------------------------------------------------
 		// Ollama typically doesn't use auth headers for local instances
 		// But may use basic auth for remote instances
 		if( !arguments.chatRequest.getApiKey().isEmpty() ){
@@ -96,36 +99,103 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 			arguments.chatRequest.setSendAuthHeader( false );
 		}
 
-		// Build the packet according to Ollama's API format
+		// -------------------------------------------------------------------------------------------
+		// --- Build the packet according to Ollama's API format ---
+		// -------------------------------------------------------------------------------------------
 		var dataPacket = {
 			"model": arguments.chatRequest.getModel(),
 			"messages": arguments.chatRequest.getMessages(),
 			"stream": false
 		}.append( arguments.chatRequest.getParams() )
 
-		// Add tool support if tools are present
+		// -------------------------------------------------------------------------------------------
+		// --- Tooling Detection ---
+		// -------------------------------------------------------------------------------------------
 		if( chatRequest.getParams()?.tools?.len() ) {
 			dataPacket[ "tools" ] = formatToolsForOllama( chatRequest.getParams().tools )
 		}
 
-		// Send it
-		var result = sendChatRequest( arguments.chatRequest, dataPacket )
+		// TODO: Structured Output
 
-		// If an error is returned, throw it
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware ---
+		// -------------------------------------------------------------------------------------------
+		var llmContext = { chatRequest: arguments.chatRequest, dataPacket: dataPacket }
+		var llmBeforeResult = arguments.chatRequest.fireMiddleware( hook: "beforeLLMCall", context: llmContext )
+		// If any beforeLLMCall middleware returned a terminal result (suspend, cancel, reject),
+		// return it immediately to allow the agent to handle it (e.g. pause for human input, skip)
+		if ( llmBeforeResult.isTerminal() ) {
+			return llmBeforeResult
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire WrapLLM -> HTTP Call ---
+		// -------------------------------------------------------------------------------------------
+		// Send HTTP request to the provider — wrapped in wrapLLMCall middleware chain
+		// The result is a struct with normalized keys
+		var capturedDataPacket  = dataPacket;
+		var capturedChatRequest = arguments.chatRequest;
+		var result = arguments.chatRequest.fireWrapMiddleware(
+			hook         : "wrapLLMCall",
+			context      : llmContext,
+			innerFunction: () => sendChatRequest( capturedChatRequest, capturedDataPacket )
+		)
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware, in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		arguments.chatRequest.fireMiddleware(
+			hook   : "afterLLMCall",
+			context: { chatRequest: arguments.chatRequest, result: result },
+			reverse: true
+		)
+
+		// -------------------------------------------------------------------------------------------
+		// --- Direct Error Detection ---
+		// -------------------------------------------------------------------------------------------
 		if( result.keyExists( "error" ) ){
 			writeLog(
 				text: result.error.toString(),
 				type: "error",
 				log : "ai"
 			)
+
+			// Announce the error
+			BoxAnnounce( "onAIError", {
+				error       : result.error,
+				errorMessage: result.error.toString(),
+				provider    : this,
+				operation   : "chat",
+				aiRequest   : arguments.chatRequest,
+				canRetry    : true
+			} )
+
 			throw(
 				type   : "ProviderError",
 				message: result.error.toString()
-			);
+			)
 		}
 
-		// Handle tool use responses
-		// Check if Ollama wants to use tools
+		// -------------------------------------------------------------------------------------------
+		// --- Usage Event Announcement ---
+		// -------------------------------------------------------------------------------------------
+		if( result.keyExists( "usage" ) ){
+			BoxAnnounce( "onAITokenCount", {
+				provider         : this,
+				operation        : "chat",
+				model            : arguments.chatRequest.getModel(),
+				promptTokens     : result.usage.keyExists( "prompt_tokens" )     ? result.usage.prompt_tokens     : 0,
+				completionTokens : result.usage.keyExists( "completion_tokens" ) ? result.usage.completion_tokens : 0,
+				totalTokens      : result.usage.keyExists( "total_tokens" )      ? result.usage.total_tokens      : 0,
+				aiRequest        : arguments.chatRequest,
+				usage            : result.usage,
+				timestamp        : now()
+			} )
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Results Determination or Tool Calling ---
+		// -------------------------------------------------------------------------------------------
 		var toolCalls = result.message?.tool_calls ?: arrayNew()
 		if( toolCalls.len() ){
 			/**
@@ -201,12 +271,27 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 			"stream": true
 		}.append( arguments.chatRequest.getParams() )
 
-		// Add tool support if tools are present
+		// -------------------------------------------------------------------------------------------
+		// --- Tooling Detection ---
+		// -------------------------------------------------------------------------------------------
 		if( arguments.chatRequest.getParams()?.tools?.len() ) {
 			dataPacket[ "tools" ] = formatToolsForOllama( arguments.chatRequest.getParams().tools )
 		}
 
-		// Announce the request
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware ---
+		// -------------------------------------------------------------------------------------------
+		var streamLlmCtx   = { chatRequest: arguments.chatRequest, dataPacket: dataPacket };
+		var streamLlmBefore = arguments.chatRequest.fireMiddleware( "beforeLLMCall", streamLlmCtx );
+		if ( streamLlmBefore.isTerminal() ) {
+			// Emit a single sentinel chunk so callers know the stream was stopped
+			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
+			return
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Global Announcement for Stream Start ---
+		// -------------------------------------------------------------------------------------------
 		BoxAnnounce(
 			"onAIChatRequest",
 			{
@@ -333,6 +418,15 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 					}
 				}
 
+				// -------------------------------------------------------------------------------------------
+				// --- Fire afterLLMCall middleware, in reverse order ---
+				// -------------------------------------------------------------------------------------------
+				thisChatRequest.fireMiddleware(
+					hook   : "afterLLMCall",
+					context: { chatRequest: thisChatRequest, streamState: httpResult },
+					reverse: true
+				)
+
 				BoxAnnounce(
 					"onAIChatResponse",
 					{
@@ -342,7 +436,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 					}
 				);
 			} )
-			.send();
+			.send()
 	}
 
 	@override

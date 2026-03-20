@@ -170,12 +170,12 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 				operation   : "chat",
 				aiRequest   : arguments.chatRequest,
 				canRetry    : true
-			} );
+			} )
 
 			throw(
 				type   : "ProviderError",
 				message: result.error.toString()
-			);
+			)
 		}
 
 		// -------------------------------------------------------------------------------------------
