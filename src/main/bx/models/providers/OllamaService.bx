@@ -418,32 +418,32 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	 * @chatRequest The original chat request containing the tool
 	 */
 	private function executeOllamaTool( required struct toolCall, required AiChatRequest chatRequest ) {
-		var messages = arguments.chatRequest.getMessages();
+		var messages = arguments.chatRequest.getMessages()
 
 		// Get the tool from the chat request
-		var toolAttempt = arguments.chatRequest.getTool( toolCall.function.name );
+		var toolAttempt = arguments.chatRequest.getTool( toolCall.function.name )
 
 		if( toolAttempt.isPresent() ){
-			var tool = toolAttempt.get();
+			var tool = toolAttempt.get()
 			// Deserialize arguments if they're a JSON string, otherwise use as-is
 			var toolArgs = isSimpleValue( toolCall.function.arguments )
 				? JSONDeserialize( toolCall.function.arguments )
-				: toolCall.function.arguments;
+				: toolCall.function.arguments
 
-			messages.append({
+			messages.append( {
 				"role" : "tool",
-				"content" : tool.invoke( toolArgs )
-			});
+				"content" : tool.invoke( toolArgs, arguments.chatRequest )
+			} )
 		} else {
 			writeLog(
 				text: "Unable to find tool named: [#toolCall.function.name#]",
 				type: "warning",
 				log : "ai"
 			)
-			messages.append({
+			messages.append( {
 				"role" : "tool",
 				"content" : "Tool ['#toolCall.function.name#'] not found in chat request"
-			});
+			} )
 		}
 	}
 

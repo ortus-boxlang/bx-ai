@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Tools can now have non-required arguments in their schema
+- Tools can now access the full `AiChatRequest` object during invocation, allowing for more complex and context-aware tool behavior. They receive a `_chatRequest` argument that includes all the properties of the original request, such as `messages`, `params`, `options`, and more. This enables tools to make informed decisions based on the full conversation context and request configuration.
 - HuggingFace embeddings support
 - Ability to send a custom URL to the different senders in the base service.
 - Middleware support for `AiModel` and `AiAgent`, with agent middleware prepended ahead of model middleware.

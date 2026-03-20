@@ -528,7 +528,7 @@ class extends="BaseService" implements="IAiChatService" {
 				"content" : [{
 					"type"        : "tool_result",
 					"tool_use_id" : toolCall.id,
-					"content"     : tool.invoke( args : toolCall.input )
+					"content"     : tool.invoke( args: toolCall.input, chatRequest: arguments.chatRequest )
 				}]
 			});
 		} else {

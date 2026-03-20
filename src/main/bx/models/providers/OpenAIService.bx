@@ -289,7 +289,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 					var toolResult = targetChatRequest.fireWrapMiddleware(
 						"wrapToolCall",
 						toolContext,
-						() => capturedTool.invoke( JSONDeserialize( capturedToolCallArgs ) )
+						() => capturedTool.invoke( JSONDeserialize( capturedToolCallArgs ), targetChatRequest )
 					)
 
 					// -------------------------------------------------------------------------------------------
@@ -485,12 +485,13 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 				// -------------------------------------------------------------------------------------------
 				// --- Invoke the Tool, wrapped in wrapToolCall middleware ---
 				// -------------------------------------------------------------------------------------------
-				var capturedStreamTool     = tool;
-				var capturedStreamToolArgs = toolArguments;
+				var capturedStreamTool        = tool;
+				var capturedStreamToolArgs    = toolArguments;
+				var capturedStreamChatRequest = targetChatRequest;
 				var streamToolResult = targetChatRequest.fireWrapMiddleware(
 					"wrapToolCall",
 					streamToolCtx,
-					() => capturedStreamTool.invoke( capturedStreamToolArgs )
+					() => capturedStreamTool.invoke( capturedStreamToolArgs, capturedStreamChatRequest )
 				);
 
 				// -------------------------------------------------------------------------------------------

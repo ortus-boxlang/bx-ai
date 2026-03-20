@@ -165,6 +165,9 @@ class implements="ITool" {
 		// -------------------------------------------------------------------------------------------
 		// --- Invoke the callable function ---
 		// -------------------------------------------------------------------------------------------
+		// Incorporate the chatRequest into the args as a special variable that the callable can use if needed.
+		// This allows the callable to have access to the full context of the chat request, including messages, parameters, and options.
+		arguments.args._chatRequest = chatRequest;
 		var startTime = getTickCount()
         var results = variables.callable( argumentCollection = args )
 		var executionTime = getTickCount() - startTime
