@@ -382,9 +382,12 @@ class extends="AiBaseRunnable" {
 			userId   : userId,
 			conversationId: conversationId
 		}
+		// add context to options for access in model and tools
+		effectiveOptions._agentContext = agentContext
+		// Fire the middleware
 		var streamMiddlewareResult = fireAgentHook( "beforeAgentRun", agentContext )
 		if ( streamMiddlewareResult.isTerminal() ) {
-			return middlewareResult
+			return streamMiddlewareResult
 		}
 
 		// Pass agent middleware to model
