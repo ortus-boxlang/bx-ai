@@ -116,7 +116,6 @@ class implements="ITool" {
      */
     function setSchema( required struct schema ){
         variables.schema = schema;
-
         return this;
     }
 
@@ -129,39 +128,62 @@ class implements="ITool" {
         if( variables?.schema == null ){
             return generateSchema()
         }
-
         return variables.schema
     }
 
     /**
-     * Invoke the function with the provided arguments.
-	 *  If the result is a simple value, returns the string representation of the value.
-	 * If the result is a complex value, returns the JSON representation of the value.
-     *
-     * @args The arguments to pass to the function
+     * Invoke the the tool's callable function with the provided arguments. This is used by the AI to execute the function and get a result.
 	 *
+	 * - If the result is a simple value, returns the string representation of the value.
+	 * - If the result is a complex value, returns the JSON representation of the value.
+     *
+     * @args The arguments to pass to the function for this invocation. This should be a struct where the keys match the argument names expected by the function.
+	 * @chatRequest The original chat request that triggered this tool invocation. This can be used to access additional context about the conversation or the AI's state when executing the tool.
+	 *
+	 * @throws MissingCallable If no callable function has been set for this tool.
 	 * @return The result of the function as a string. If the result is null, returns "null".
      */
-    public string function invoke( required struct args ){
-		// Announce before tool execution
+    public string function invoke( required struct args, AiChatRequest chatRequest ){
+		// Verify we have a callable function
+		if( variables.callable == null ){
+			throw(
+				type: "MissingCallable",
+				message: "No callable function has been set for this tool. Please set a callable function using the call() method before invoking the tool."
+			)
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Global event before tool execution ---
+		// -------------------------------------------------------------------------------------------
 		BoxAnnounce( "beforeAIToolExecute", {
 			tool: this,
 			name: variables.name,
-			arguments: arguments.args
-		} );
+			arguments: arguments.args,
+			chatRequest: chatRequest
+		} )
 
-		var startTime = getTickCount();
-        var results = variables.callable( argumentCollection = args );
-		var executionTime = getTickCount() - startTime;
+		// -------------------------------------------------------------------------------------------
+		// --- Invoke the callable function ---
+		// -------------------------------------------------------------------------------------------
+		var startTime = getTickCount()
+        var results = variables.callable( argumentCollection = args )
+		var executionTime = getTickCount() - startTime
 
-		// Announce after tool execution
+		// -------------------------------------------------------------------------------------------
+		// --- Global event after tool execution ---
+		// -------------------------------------------------------------------------------------------
 		BoxAnnounce( "afterAIToolExecute", {
 			tool: this,
 			name: variables.name,
 			arguments: arguments.args,
 			results: results,
-			executionTime: executionTime
-		} );
+			executionTime: executionTime,
+			chatRequest: chatRequest
+		} )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Process results ---
+		// -------------------------------------------------------------------------------------------
 
 		// If null or empty, return empty string
 		if( results == null ){
@@ -174,17 +196,28 @@ class implements="ITool" {
 		}
 
 		// Otherwise, return the JSON representation
-		return jsonSerialize( results )
+		try{
+			return jsonSerialize( results )
+		}
+		catch( any e ){
+			// If we can't serialize the result, return the string representation with a warning
+			return "Could not serialize result to JSON. Returning string representation instead. Warning: " & e.message & ". Result: " & toString( results )
+		}
     }
 
 	/**
 	 * Get the callable's properties schema
 	 *
+	 * @throws MissingCallable If no callable function has been set for this tool.
+	 *
 	 * @return The properties schema for the callable function: { properties:{}, required:[] }
 	 */
 	public struct function getArgumentsSchema(){
 		if( variables.callable == null ){
-			throw( "No callable function has been set for this tool." );
+			throw(
+				type: "MissingCallable",
+				message: "No callable function has been set for this tool. Please set a callable function using the call() method before invoking the tool or getting the arguments schema."
+			)
 		}
 		var results = {
 			"properties": {},
@@ -192,14 +225,16 @@ class implements="ITool" {
 		}
 		// Discover the parameters from the callable function metadata
         variables.callable.$bx.meta.parameters.each( param => {
-            results.required.append( param.name )
+			if( param.required ){
+				results.required.append( param.name )
+			}
             results.properties[ param.name ] = {
                 "type": "string",
                 "description": variables.argDescriptions[ param.name ] ?: param.name
-            };
-        });
+            }
+        } )
 
-		return results;
+		return results
 	}
 
     /**
@@ -208,7 +243,7 @@ class implements="ITool" {
 	 * https://platform.openai.com/docs/guides/function-calling?api-mode=responses
      */
     private struct function generateSchema(){
-        var argumentsSchema = getArgumentsSchema();
+        var argumentsSchema = getArgumentsSchema()
 
 		// https://platform.openai.com/docs/guides/function-calling#defining-functions
         return {
@@ -221,26 +256,31 @@ class implements="ITool" {
                     "properties": argumentsSchema.properties,
                     "required": argumentsSchema.required,
                     "additionalProperties": False
-                },
-                "strict": True
+                }
             }
-        };
+        }
     }
 
     /**
      * This is used to provide a fluent interface for describing the function and arguments.
      *
      * If your argument is named `location` you can use `describeLocation( "City and country e.g. Bogotá, Colombia" )`
+	 *
+	 * @throws MissingMethod If the method name does not start with "describe" or "describe[ArgumentName]", a MissingMethod error is thrown indicating that the method does not exist on the Tool class and providing guidance on how to use the describeFunction and describeArg methods or the fluent syntax for describing arguments.
      */
     function onMissingMethod( missingMethodName, missingMethodArguments ){
-
+		// If the method starts with "describe", we will assume it's a description for an argument or the function itself
         if( missingMethodName == "describe" ){
-            return this.describeFunction( missingMethodArguments[ 1 ] );
+            return this.describeFunction( missingMethodArguments[ 1 ] )
         }
+		// If the method starts with "describe", we will assume it's a description for an argument and extract the argument name from the method name
         else if( missingMethodName.startsWith( "describe" ) ){
-            return this.describeArg( missingMethodName.replace( "describe", "" ), missingMethodArguments[ 1 ] );
+            return this.describeArg( missingMethodName.replace( "describe", "" ), missingMethodArguments[ 1 ] )
         }
 
-        throw( "Method #missingMethodName# was not found" );
+        throw(
+			type: "MissingMethod",
+			message: "The method [#missingMethodName#] does not exist on the Tool class. If you are trying to describe the function or an argument, use the describeFunction or describeArg methods or the fluent syntax of describe[ArgumentName]( description )"
+		)
     }
 }

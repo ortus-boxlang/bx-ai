@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tools can now have non-required arguments in their schema
 - HuggingFace embeddings support
 - Ability to send a custom URL to the different senders in the base service.
 - Middleware support for `AiModel` and `AiAgent`, with agent middleware prepended ahead of model middleware.
