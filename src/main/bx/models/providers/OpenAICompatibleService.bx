@@ -132,14 +132,6 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
-	 * Get the base URL
-	 * @return The base URL string
-	 */
-	public string function getBaseURL() {
-		return variables.baseURL
-	}
-
-	/**
 	 * Disable the Authorization header for unauthenticated endpoints
 	 * (e.g., local containers or proxies that do not require an API key).
 	 */

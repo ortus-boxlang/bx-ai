@@ -49,31 +49,10 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	}
 
 	/**
-	 * Invoke a request to the provider
-	 *
-	 * @chatRequest The AI request to send to the provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiChatService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
 	 */
-	function invoke( required AiChatRequest chatRequest ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invoke( arguments.chatRequest )
-	}
-
-	/**
-	 * Invoke a request to the provider in streaming mode
-	 *
-	 * @chatRequest The Chat request to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @return void
-	 */
-	function invokeStream( required AiChatRequest chatRequest, required function callback ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invokeStream( arguments.chatRequest, arguments.callback )
-	}
 
 	/**
 	 * Process a synchronous chat request using the OpenAI chat completions API format.
@@ -89,6 +68,16 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	 */
 	@override
 	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		// Apply service-level params and headers, allowing the chatRequest to override them if set
+		arguments.chatRequest
+			// Seed the chat request with defaults
+			.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+			// Model Selection if not set, use the default in the service, which should always be set
+			.setModelIfEmpty( variables.params.model ?: "" )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers )
+
 		// Build the packet according to the OpenAI standard
 		var dataPacket = {
 			"model"   : arguments.chatRequest.getModel(),
@@ -355,6 +344,16 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	 */
 	@override
 	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
+		// Seed the chat request with defaults
+		arguments.chatRequest
+			.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+			// Model Selection if not set, use the default in the service, which should always be set
+			.setModelIfEmpty( variables.params.model ?: "" )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers )
+			.setStream( true )
+
 		// Build the packet according to the OpenAI standard
 		var dataPacket = {
 			"model"   : arguments.chatRequest.getModel(),
@@ -530,6 +529,12 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		arguments.chatRequest.setMessages( newMessages );
 		chatStream( arguments.chatRequest, arguments.callback, arguments.interactionCount + 1 );
 	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiEmbeddingsService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
 
 	/**
 	 * Generate embeddings for the given input text(s) using the OpenAI embeddings API.

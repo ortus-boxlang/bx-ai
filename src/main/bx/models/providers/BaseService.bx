@@ -216,106 +216,10 @@ abstract class implements="IAiService" {
 	}
 
 	/**
-	 * Invoke a request to the provider
-	 *
-	 * @chatRequest The AI request to send to the provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
-	 */
-	function invoke( required AiChatRequest chatRequest ){
-		// Model Selection if not set, use the default in the service, which should always be set
-		chatRequest
-			.setModelIfEmpty( variables.params.model ?: "" )
-			.setApiKeyIfEmpty( getAPIKey() )
-			.mergeServiceParams( variables.params )
-			.mergeServiceHeaders( variables.headers )
-		// Do a chat request
-		// MORE TYPES CAN BE ADDED HERE LATER
-		return chat( argumentCollection = arguments )
-	}
-
-	/**
-	 * Invoke a request to the provider in streaming mode
-	 *
-	 * @chatRequest The Chat request to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @return void
-	 */
-	function invokeStream( required AiChatRequest chatRequest, required function callback ){
-		// Model Selection if not set, use the default in the service, which should always be set
-		chatRequest
-			.setModelIfEmpty( variables.params.model ?: "" )
-			.setApiKeyIfEmpty( getAPIKey() )
-			.mergeServiceParams( variables.params )
-			.mergeServiceHeaders( variables.headers )
-			.setStream( true )
-		// Do a chat stream request
-		return chatStream( argumentCollection = arguments )
-	}
-
-	/**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Abstract Methods - Must be implemented by concrete providers
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
-
-	/**
-	 * Process a synchronous chat request in the provider's native format.
-	 * Override this to implement your provider's request/response cycle.
-	 * OpenAI-format providers inherit the full implementation from OpenAIService.
-	 *
-	 * @chatRequest The AiChatRequest object to send to the provider
-	 * @interactionCount Current tool call interaction count (used internally), default is 0
-	 *
-	 * @throws NotImplementedException if not overridden by the concrete provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
-	 */
-	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
-		throw(
-			type   : "NotImplementedException",
-			message: "chat() must be implemented by the provider: #variables.name#"
-		);
-	}
-
-	/**
-	 * Stream a chat request to the provider, invoking the callback for each chunk.
-	 * Override this to implement your provider's streaming format.
-	 * OpenAI-format providers (SSE) inherit the full implementation from OpenAIService.
-	 *
-	 * @chatRequest The chatRequest object to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 * @interactionCount Current tool call interaction count (used internally), default is 0
-	 *
-	 * @throws NotImplementedException if not overridden by the concrete provider
-	 *
-	 * @return void
-	 */
-	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
-		throw(
-			type   : "NotImplementedException",
-			message: "chatStream() must be implemented by the provider: #variables.name#"
-		);
-	}
-
-	/**
-	 * Generate vector embeddings for the given input.
-	 * Override this to implement your provider's embeddings API.
-	 * OpenAI-format providers inherit the full implementation from OpenAIService.
-	 *
-	 * @embeddingRequest The embedding request object
-	 *
-	 * @throws NotImplementedException if not overridden by the concrete provider
-	 *
-	 * @return The embeddings from the provider (format depends on returnFormat in the request)
-	 */
-	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
-		throw(
-			type   : "NotImplementedException",
-			message: "embeddings() must be implemented by the provider: #variables.name#"
-		);
-	}
 
 	/**
 	 * ---------------------------------------------------------------------------------------------------------
@@ -378,10 +282,15 @@ abstract class implements="IAiService" {
 	 *
 	 * @chatRequest The chatRequest object to use in the request
 	 * @dataPacket The data packet to send to the provider
+	 * chatUrl Optional URL to override the default chat endpoint (some providers use the same endpoint for chat and embeddings)
 	 *
 	 * @return The response from the provider as a struct
 	 */
-	private function sendChatRequest( required AiChatRequest chatRequest, required struct dataPacket ){
+	private function sendChatRequest(
+		required AiChatRequest chatRequest,
+		required struct dataPacket,
+		chatUrl = getChatURL()
+	){
 		// Announce the request
 		BoxAnnounce(
 			"onAIChatRequest",
@@ -407,7 +316,7 @@ abstract class implements="IAiService" {
 		}
 
 		bx: http
-			url     = getChatURL()
+			url     = arguments.chatUrl
 			method  = "post"
 			result  = "chatResult"
 			charset = "utf-8"
@@ -506,13 +415,15 @@ abstract class implements="IAiService" {
 	 * @chatRequest The chatRequest object to use in the request
 	 * @dataPacket The data packet to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
+	 * chatUrl Optional URL to override the default chat endpoint (some providers use the same endpoint for chat and embeddings)
 	 *
 	 * @return void
 	 */
 	private struct function sendStreamRequest(
 		required AiChatRequest chatRequest,
 		required struct dataPacket,
-		required function callback
+		required function callback,
+		chatUrl = getChatURL()
 	 ){
 		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback;
@@ -548,7 +459,7 @@ abstract class implements="IAiService" {
 		}
 
 		// Build HTTP request with fluent API
-		var httpRequest = http( getChatURL() )
+		var httpRequest = http( arguments.chatUrl )
 			.method( "POST" )
 			.charset( "utf-8" )
 			.timeout( arguments.chatRequest.getTimeout() )
@@ -732,10 +643,15 @@ abstract class implements="IAiService" {
 	 *
 	 * @embeddingRequest The embedding request object to use in the request
 	 * @dataPacket The data packet to send to the provider
+	 * @embeddingUrl Optional URL to override the default embeddings endpoint (some providers use the same endpoint for chat and embeddings)
 	 *
 	 * @return The response from the provider as a struct
 	 */
-	private function sendEmbeddingRequest( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
+	private function sendEmbeddingRequest(
+		required AiEmbeddingRequest embeddingRequest,
+		required struct dataPacket,
+		embeddingUrl = getEmbeddingsURL()
+	){
 		// Announce the request
 		BoxAnnounce(
 			"onAIEmbedRequest",
@@ -761,7 +677,7 @@ abstract class implements="IAiService" {
 		}
 
 		bx: http
-			url     = getEmbeddingsURL()
+			url     = arguments.embeddingUrl
 			method  = "post"
 			result  = "embeddingResult"
 			charset = "utf-8"

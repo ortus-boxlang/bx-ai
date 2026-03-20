@@ -12,11 +12,12 @@
  * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
+ *
  */
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
-class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults
@@ -42,31 +43,10 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	}
 
 	/**
-	 * Invoke a request to the provider
-	 *
-	 * @chatRequest The AI request to send to the provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiEmbeddingsService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
 	 */
-	function invoke( required AiChatRequest chatRequest ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invoke( arguments.chatRequest )
-	}
-
-	/**
-	 * Invoke a request to the provider in streaming mode
-	 *
-	 * @chatRequest The Chat request to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @return void
-	 */
-	function invokeStream( required AiChatRequest chatRequest, required function callback ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invokeStream( arguments.chatRequest, arguments.callback )
-	}
 
 	/**
 	 * Seed defaults, resolve the per-request URL (Gemini embeds model name + API key in the URL),
@@ -89,6 +69,12 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 
 		return super.embeddings( arguments.embeddingRequest );
 	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Callbacks for pre/post processing of requests and responses, to handle Gemini-specific formats for chat and embeddings
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
 
 	/**
 	 * Reshape the embedding packet to Gemini's format:
@@ -144,10 +130,18 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	}
 
 	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiChatService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
 	 * Gemini chat request
 	 */
 	@override
 	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 		// We need to pre-process the messages to conform to the Gemini API
 		var dataPacket = {
 			"contents": arguments.chatRequest
@@ -213,6 +207,9 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	 */
 	@override
 	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+
 		var userCallback = arguments.callback;
 		var requestedModel = arguments.chatRequest.getModel();
 

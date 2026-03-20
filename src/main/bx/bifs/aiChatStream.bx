@@ -97,7 +97,7 @@ class {
 			);
 		}
 
-		service.invokeStream( chatRequest, arguments.callback );
+		service.chatStream( chatRequest, arguments.callback );
 	}
 
 }

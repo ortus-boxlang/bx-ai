@@ -43,39 +43,20 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.name = "MiniMax"
 	}
 
-	/**
-	 * Invoke a request to the provider
-	 *
-	 * @chatRequest The AI request to send to the provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
-	 */
 	@override
-	function invoke( required AiChatRequest chatRequest ){
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invoke( arguments.chatRequest )
+		return super.chat( arguments.chatRequest )
 	}
 
-	/**
-	 * Invoke a request to the provider in streaming mode
-	 *
-	 * @chatRequest The Chat request to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @return void
-	 */
 	@override
-	function invokeStream( required AiChatRequest chatRequest, required function callback ){
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invokeStream( arguments.chatRequest, arguments.callback )
+		return super.chatStream( arguments.chatRequest, arguments.callback )
 	}
 
-	/**
-	 * Seed the default embedding model before delegating to base.
-	 * Mirrors the pattern used in invoke() for chat defaults.
-	 */
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
 		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )

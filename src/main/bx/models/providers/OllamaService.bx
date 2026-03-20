@@ -74,33 +74,6 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	}
 
 	/**
-	 * Invoke a request to the provider
-	 *
-	 * @chatRequest The AI request to send to the provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
-	 */
-	function invoke( required AiChatRequest chatRequest ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invoke( arguments.chatRequest )
-	}
-
-	/**
-	 * Invoke a request to the provider in streaming mode
-	 *
-	 * @chatRequest The Chat request to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @return void
-	 */
-	function invokeStream( required AiChatRequest chatRequest, required function callback ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invokeStream( arguments.chatRequest, arguments.callback )
-	}
-
-	/**
 	 * Ollama chat request - customized for Ollama's API format
 	 * @see https://github.com/ollama/ollama/blob/main/docs/api.md
 	 *
@@ -112,6 +85,9 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	 */
 	@override
 	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+
 		// Ollama typically doesn't use auth headers for local instances
 		// But may use basic auth for remote instances
 		if( !arguments.chatRequest.getApiKey().isEmpty() ){
@@ -209,6 +185,8 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	 */
 	@override
 	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 		// Handle authentication for remote/secured Ollama instances
 		if( !arguments.chatRequest.getApiKey().isEmpty() ){
 			arguments.chatRequest.addHeader( "Authorization", "Basic #toBase64( arguments.chatRequest.getApiKey() )#" );
@@ -367,9 +345,6 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 			.send();
 	}
 
-	/**
-	 * Seed the default embedding model before delegating to base.
-	 */
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
 		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )

@@ -99,4 +99,5 @@ public class GrokTest extends BaseIntegrationTest {
 		// Verify callback was invoked
 		assertThat( variables.get( "chunkCount" ) ).isNotNull();
 	}
+
 }

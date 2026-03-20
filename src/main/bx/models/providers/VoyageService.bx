@@ -38,9 +38,6 @@ class extends="BaseService" implements="IAiEmbeddingsService" {
 		variables.name = "Voyage"
 	}
 
-	/**
-	 * Override to set default embedding model if not specified
-	 */
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
 		// Set default embedding model if not specified

@@ -14,9 +14,8 @@
  * ----------------------------------------------------------------------------------
  */
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
-import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
-class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" {
+class extends="OpenAIService" implements="IAiChatService" {
 
 	/**
 	 * Static defaults
@@ -25,8 +24,8 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		DEFAULT_CHAT_PARAMS = {
 			// https://console.groq.com/docs/models
 			// according to the docs, this is a fast, efficient model
-			"model" : "llama-3.3-70b-versatile"
-		};
+			"model" : "llama-3.1-8b-instant"
+		}
 	}
 
 	/**
@@ -35,35 +34,21 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 */
 	function init(){
 		variables.chatURL = "https://api.groq.com/openai/v1/chat/completions"
-		variables.embeddingsURL = "https://api.groq.com/openai/v1/embeddings"
 		variables.name = "Groq"
 	}
 
-	/**
-	 * Invoke a request to the provider
-	 *
-	 * @chatRequest The AI request to send to the provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
-	 */
-	function invoke( required AiChatRequest chatRequest ){
+	@override
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invoke( arguments.chatRequest )
+		return super.chat( arguments.chatRequest )
 	}
 
-	/**
-	 * Invoke a request to the provider in streaming mode
-	 *
-	 * @chatRequest The Chat request to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @return void
-	 */
-	function invokeStream( required AiChatRequest chatRequest, required function callback ){
+	@override
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invokeStream( arguments.chatRequest, arguments.callback )
+		return super.chatStream( arguments.chatRequest, arguments.callback )
 	}
 
 }

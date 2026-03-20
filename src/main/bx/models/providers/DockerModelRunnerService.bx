@@ -49,14 +49,14 @@ class extends = "OpenAICompatibleService" implements="IAiChatService, IAiEmbeddi
 	static {
 		// Default endpoint for Docker Model Runner (accessible from Docker containers)
 		// Using /engines/v1 for better OpenAI compatibility
-		DEFAULT_BASE_URL = "http://model-runner.docker.internal/engines/v1";
+		DEFAULT_BASE_URL = "http://model-runner.docker.internal/engines/v1"
 		// Alternative for host machine access
-		HOST_BASE_URL    = "http://localhost:12434/engines/v1";
+		HOST_BASE_URL    = "http://localhost:12434/engines/v1"
 		// Native DMR API base (for model management)
-		DMR_API_BASE     = "http://localhost:12434";
-
-		DEFAULT_CHAT_PARAMS = {};
-		DEFAULT_EMBED_PARAMS = {};
+		DMR_API_BASE     = "http://localhost:12434"
+		// Default parameters for chat and embeddings (can be overridden in configure or per request)
+		DEFAULT_CHAT_PARAMS = {}
+		DEFAULT_EMBED_PARAMS = {}
 	}
 
 	/**
@@ -64,15 +64,15 @@ class extends = "OpenAICompatibleService" implements="IAiChatService, IAiEmbeddi
 	 */
 	function init(){
 		// Call parent constructor first
-		super.init();
+		super.init()
 
 		// Override with Docker Model Runner specific defaults
-		variables.baseURL       = static.DEFAULT_BASE_URL;
-		variables.chatURL       = variables.baseURL & "/chat/completions";
-		variables.embeddingsURL = variables.baseURL & "/embeddings";
-		variables.name          = "DockerModelRunner";
+		variables.baseURL       = static.DEFAULT_BASE_URL
+		variables.chatURL       = variables.baseURL & "/chat/completions"
+		variables.embeddingsURL = variables.baseURL & "/embeddings"
+		variables.name          = "DockerModelRunner"
 
-		defaults( static.DEFAULT_CHAT_PARAMS );
+		defaults( static.DEFAULT_CHAT_PARAMS )
 	}
 
 	/**
@@ -92,11 +92,11 @@ class extends = "OpenAICompatibleService" implements="IAiChatService, IAiEmbeddi
 		if (
 			isStruct( arguments.options ) && arguments.options.keyExists( "useHostURL" ) && arguments.options.useHostURL
 		) {
-			arguments.options.baseURL = static.HOST_BASE_URL;
+			arguments.options.baseURL = static.HOST_BASE_URL
 		}
 
 		// Delegate to parent for standard configuration
-		return super.configure( arguments.options );
+		return super.configure( arguments.options )
 	}
 
 	/**
@@ -109,39 +109,41 @@ class extends = "OpenAICompatibleService" implements="IAiChatService, IAiEmbeddi
 	 *
 	 * @return The response from the provider according to the return format
 	 */
-		@override
+	@override
 	public function chat(
 		required AiChatRequest chatRequest,
 		numeric interactionCount = 0,
 		numeric retryCount       = 0
 	){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 		// Use the parent implementation with retry for model loading
 		try {
-			return super.chat( chatRequest = arguments.chatRequest, interactionCount = arguments.interactionCount );
+			return super.chat( chatRequest = arguments.chatRequest, interactionCount = arguments.interactionCount )
 		} catch ( ProviderError e ) {
 			// Check if this is a "model loading" error (503)
 			if ( e.message.findNoCase( "Loading model" ) > 0 || e.message.findNoCase( "503" ) > 0 ) {
 				// Retry up to 10 times with longer delays for model loading
 				// Large models can take 30-60+ seconds to load
-				var maxRetries = 10;
+				var maxRetries = 10
 				if ( arguments.retryCount < maxRetries ) {
 					// Use 5 second intervals for consistent, longer waits during model load
-					var waitTime = 5000; // 5 seconds between retries
+					var waitTime = 5000 // 5 seconds between retries
 					writeLog(
 						text: "Docker Model Runner: Model loading, retrying in #waitTime / 1000#s (attempt #arguments.retryCount + 1#/#maxRetries#)",
 						type: "info",
 						log : "ai"
-					);
-					sleep( waitTime );
+					)
+					sleep( waitTime )
 					return chat(
 						arguments.chatRequest,
 						arguments.interactionCount,
 						arguments.retryCount + 1
-					);
+					)
 				}
 			}
 			// Re-throw if not a loading error or max retries exceeded
-			rethrow;
+			rethrow
 		}
 	}
 
@@ -153,40 +155,42 @@ class extends = "OpenAICompatibleService" implements="IAiChatService, IAiEmbeddi
 	 * @callback    A callback function to be called with each chunk of the stream
 	 * @retryCount  Current retry attempt for model loading (used internally)
 	 */
-		@override
+	@override
 	public function chatStream(
 		required AiChatRequest chatRequest,
 		required function callback,
 		numeric interactionCount = 0,
 		numeric retryCount       = 0
 	){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 		// Use the parent implementation with retry for model loading
 		try {
-			return super.chatStream( chatRequest = arguments.chatRequest, callback = arguments.callback, interactionCount = arguments.interactionCount );
+			return super.chatStream( chatRequest = arguments.chatRequest, callback = arguments.callback, interactionCount = arguments.interactionCount )
 		} catch ( ProviderError e ) {
 			// Check if this is a "model loading" error (503)
 			if ( e.message.findNoCase( "Loading model" ) > 0 || e.message.findNoCase( "503" ) > 0 ) {
 				// Retry up to 10 times with longer delays for model loading
 				// Large models can take 30-60+ seconds to load
-				var maxRetries = 10;
+				var maxRetries = 10
 				if ( arguments.retryCount < maxRetries ) {
 					// Use 5 second intervals for consistent, longer waits during model load
-					var waitTime = 5000; // 5 seconds between retries
+					var waitTime = 5000 // 5 seconds between retries
 					writeLog(
 						text: "Docker Model Runner: Model loading for stream, retrying in #waitTime / 1000#s (attempt #arguments.retryCount + 1#/#maxRetries#)",
 						type: "info",
 						log : "ai"
-					);
-					sleep( waitTime );
+					)
+					sleep( waitTime )
 					return chatStream(
 						arguments.chatRequest,
 						arguments.callback,
 						arguments.retryCount + 1
-					);
+					)
 				}
 			}
 			// Re-throw if not a loading error or max retries exceeded
-			rethrow;
+			rethrow
 		}
 	}
 

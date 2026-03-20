@@ -21,7 +21,7 @@ import bxModules.bxai.models.util.SchemaBuilder
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
-class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults
@@ -30,12 +30,12 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		DEFAULT_CHAT_PARAMS = {
 			// https://docs.cohere.com/docs/models
 			"model" : "command-a-03-2025"
-		};
+		}
 		DEFAULT_EMBED_PARAMS = {
 			// https://docs.cohere.com/docs/cohere-embed
 			"model" : "embed-v4.0",
 			"input_type" : "search_document"
-		};
+		}
 	}
 
 	/**
@@ -48,40 +48,10 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	}
 
 	/**
-	 * Invoke a request to the provider
-	 *
-	 * @chatRequest The AI request to send to the provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Cohere-specific request/response transformations
+	 * ---------------------------------------------------------------------------------------------------------
 	 */
-	function invoke( required AiChatRequest chatRequest ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invoke( arguments.chatRequest )
-	}
-
-	/**
-	 * Invoke a request to the provider in streaming mode
-	 *
-	 * @chatRequest The Chat request to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @return void
-	 */
-	function invokeStream( required AiChatRequest chatRequest, required function callback ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invokeStream( arguments.chatRequest, arguments.callback )
-	}
-
-	/**
-	 * Seed the default embedding model before delegating to base.
-	 */
-	@override
-	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
-		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
-		return super.embeddings( arguments.embeddingRequest )
-	}
 
 	/**
 	 * Build Cohere-specific embedding request format:
@@ -96,9 +66,11 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		required struct dataPacket,
 		required string operation
 	) {
+		// Only transform embedding requests, pass through others
 		if ( arguments.operation != "embeddings" ) {
 			return arguments.dataPacket
 		}
+
 		var input  = arguments.aiRequest.getInput()
 		var params = arguments.aiRequest.getParams()
 		var packet = {
@@ -127,12 +99,17 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		required any result,
 		required string operation
 	) {
+		// Only transform embedding responses, pass through others
 		if ( arguments.operation != "embeddings" ) {
 			return arguments.result
 		}
+
+		// If embeddings key is missing, treat it as an error (Cohere returns { message: "error details" })
 		if ( !arguments.result.keyExists( "embeddings" ) ) {
 			return { "error": arguments.result.message ?: "Unknown Cohere embedding error" }
 		}
+
+		// Normalize to the BXAI standard embedding response format
 		return {
 			"data"  : arguments.result.embeddings.map( (embedding, index) => {
 				return { "embedding": embedding, "index": index - 1, "object": "embedding" }
@@ -147,6 +124,12 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	}
 
 	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiChatService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
 	 * Cohere chat request
 	 * @see https://docs.cohere.com/reference/chat
 	 *
@@ -158,6 +141,8 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	 */
 	@override
 	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 		// Cohere has a different message format
 		// Extract the last message as the main message
 		var messages = arguments.chatRequest.getMessages();
@@ -340,6 +325,8 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	 */
 	@override
 	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
@@ -543,5 +530,19 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 			.send();
 	}
 
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiEmbeddingsService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Seed the default embedding model before delegating to base.
+	 */
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
+		return super.embeddings( arguments.embeddingRequest )
+	}
 
 }

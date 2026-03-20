@@ -32,7 +32,9 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			// Default to Qwen 2.5 which is a popular model available on HuggingFace
 			// Users can override with any model available via HuggingFace's inference providers
 			"model" : "Qwen/Qwen2.5-72B-Instruct"
-		};
+		}
+		DEFAULT_EMBED_PARAMS = {
+		}
 	}
 
 	/**
@@ -43,35 +45,96 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 */
 	function init(){
 		variables.chatURL = "https://router.huggingface.co/v1/chat/completions"
-		variables.embeddingsURL = "https://router.huggingface.co/v1/embeddings"
+		variables.embeddingsURL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
 		variables.name = "HuggingFace"
 	}
 
-	/**
-	 * Invoke a request to the provider
-	 *
-	 * @chatRequest The AI request to send to the provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
-	 */
-	function invoke( required AiChatRequest chatRequest ){
+	@override
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invoke( arguments.chatRequest )
+		return super.chat( arguments.chatRequest )
+	}
+
+	@override
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.chatStream( arguments.chatRequest, arguments.callback )
 	}
 
 	/**
-	 * Invoke a request to the provider in streaming mode
-	 *
-	 * @chatRequest The Chat request to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @return void
+	 * Seed the default embedding model before delegating to base.
 	 */
-	function invokeStream( required AiChatRequest chatRequest, required function callback ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invokeStream( arguments.chatRequest, arguments.callback )
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		// Seed OpenAI defaults first, then service-level params may override
+		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
+
+		// Model selection: apply service params and headers
+		arguments.embeddingRequest
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers )
+
+		// Build the packet according to the OpenAI embeddings API standard
+		var input = arguments.embeddingRequest.getInput()
+		var dataPacket = {
+			"inputs": isArray( input ) ? input : [ input ]
+		}.append( arguments.embeddingRequest.getParams() )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire local callback for pre mods ---
+		// -------------------------------------------------------------------------------------------
+		dataPacket = preRequest( arguments.embeddingRequest, dataPacket, "embeddings" )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Embedding Request ---
+		// -------------------------------------------------------------------------------------------
+		var result = sendEmbeddingRequest( embeddingRequest, dataPacket )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire local callback for post mods ---
+		// -------------------------------------------------------------------------------------------
+		result = postResponse( arguments.embeddingRequest, dataPacket, result, "embeddings" )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Error Detection ---
+		// -------------------------------------------------------------------------------------------
+		if( isStruct( result ) && result.keyExists( "error" ) ){
+			writeLog(
+				text: result.error.toString(),
+				type: "error",
+				log : "ai"
+			)
+
+			// Announce the error
+			BoxAnnounce( "onAIError", {
+				error            : result.error,
+				errorMessage     : result.error.toString(),
+				provider         : this,
+				operation        : "embeddings",
+				embeddingRequest : arguments.embeddingRequest,
+				canRetry         : true
+			} )
+
+			throw(
+				type   : "ProviderError",
+				message: result.error.toString()
+			)
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Return Format Handling ---
+		// -------------------------------------------------------------------------------------------
+		switch( embeddingRequest.getReturnFormat() ){
+			case "embeddings":
+				return result
+			case "raw":
+				return result
+			case "first": default:
+				return result.first()
+		}
 	}
 
 }

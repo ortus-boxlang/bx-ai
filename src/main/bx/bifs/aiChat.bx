@@ -97,7 +97,7 @@ class {
 			);
 		}
 
-		return service.invoke( chatRequest );
+		return service.chat( chatRequest );
 	}
 
 }

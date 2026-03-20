@@ -36,6 +36,7 @@ import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
 class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" {
+
 	/**
 	 * AWS Region for Bedrock
 	 */

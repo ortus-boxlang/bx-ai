@@ -216,7 +216,7 @@ class extends="AiBaseRunnable" {
         BoxAnnounce( "beforeAIModelInvoke", { model: this, chatRequest: chatRequest } )
 
 		// Invoke service
-		var results = variables.service.invoke( chatRequest )
+		var results = variables.service.chat( chatRequest )
 
         // afterAIModelInvoke event
         BoxAnnounce( "afterAIModelInvoke", { model: this, chatRequest: chatRequest, results: results } )
@@ -262,7 +262,7 @@ class extends="AiBaseRunnable" {
 			effectiveOptions
 		)
 
-		variables.service.invokeStream( chatRequest, arguments.onChunk )
+		variables.service.chatStream( chatRequest, arguments.onChunk )
 	}
 
 	/**
