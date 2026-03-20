@@ -247,7 +247,7 @@ class extends="AiBaseRunnable" {
 		var effectiveParams = variables.params.append( arguments.params )
 		// Merge options (including returnFormat)
 		var effectiveOptions = variables.options.append( arguments.options )
-		// Fire beforeAgentRun middleware (inbound)
+		// Create the agent context of execution
 		var agentContext = {
 			runId			: runId,
 			agent    		: this,
@@ -259,7 +259,11 @@ class extends="AiBaseRunnable" {
 			userId   		: userId,
 			conversationId	: conversationId,
 			response		: null // placeholder for response to be added in after hooks
-		};
+		}
+		// Add it to the options so it's available to model and tools
+		effectiveOptions._agentContext = agentContext
+
+		// Fire beforeAgentRun middleware (inbound)
 		var middlewareResult = fireAgentHook( "beforeAgentRun", agentContext );
 		if ( middlewareResult.isTerminal() ) {
 			return middlewareResult
