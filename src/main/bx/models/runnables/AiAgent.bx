@@ -217,6 +217,7 @@ class extends="AiBaseRunnable" {
 		var threadId       = arguments.options.threadId ?: variables.options.threadId ?: createUUID()
 		var userId         = arguments.options.userId ?: variables.options.userId ?: ""
 		var conversationId = arguments.options.conversationId ?: variables.options.conversationId ?: ""
+		var runId 		= "#agentName().slugify()#-#createUUID()#" // unique ID for this specific run, useful for logging and correlation
 
 		// -------------------------------------------------------------------------------------------
 		// --- Prep Message Context ---
@@ -247,15 +248,16 @@ class extends="AiBaseRunnable" {
 		var effectiveOptions = variables.options.append( arguments.options )
 		// Fire beforeAgentRun middleware (inbound)
 		var agentContext = {
-			agent    : this,
-			input    : arguments.input,
-			messages : messages,
-			params   : effectiveParams,
-			options  : effectiveOptions,
-			threadId : threadId,
-			userId   : userId,
-			conversationId: conversationId,
-			response: null // placeholder for response to be added in after hooks
+			runId			: runId,
+			agent    		: this,
+			input    		: arguments.input,
+			messages 		: messages,
+			params   		: effectiveParams,
+			options  		: effectiveOptions,
+			threadId 		: threadId,
+			userId   		: userId,
+			conversationId	: conversationId,
+			response		: null // placeholder for response to be added in after hooks
 		};
 		var middlewareResult = fireAgentHook( "beforeAgentRun", agentContext );
 		if ( middlewareResult.isTerminal() ) {
@@ -777,7 +779,7 @@ class extends="AiBaseRunnable" {
 	 * @return Array of sub-agent names
 	 */
 	Array function getSubAgentNames() {
-		return variables.subAgents.map( agent => agent.getAgentName() );
+		return variables.subAgents.map( agent -> agent.getAgentName() );
 	}
 
 	/**
@@ -1023,37 +1025,45 @@ class extends="AiBaseRunnable" {
 	 *
 	 * @userMessage The user message struct
 	 * @response The assistant response (string or struct)
+	 * @userId Optional user ID for memory correlation
+	 * @conversationId Optional conversation ID for memory correlation
 	 *
 	 * @return void
 	 */
-	private void function storeInMemory( required struct userMessage, required any response, string userId = "", string conversationId = "" ) {
+	private void function storeInMemory(
+		required struct userMessage,
+		required any response,
+		string userId = "",
+		string conversationId = ""
+	) {
 		// No memories, nothing to do
 		if ( variables.memories.isEmpty() ) {
-			return;
+			return
 		}
 
 		// Add user message to all memories
-		variables.memories.each( mem => mem.add( userMessage, userId, conversationId ) );
+		variables.memories.each( mem => mem.add( userMessage, userId, conversationId ) )
 
 		// Extract assistant message from response
-		var assistantContent = "";
+		var assistantContent = ""
 		if ( isStruct( arguments.response ) ) {
 			// Handle structured response
 			if ( arguments.response.keyExists( "choices" ) && !arguments.response.choices.isEmpty() ) {
-				assistantContent = arguments.response.choices[  1  ].message?.content ?: "";
+				assistantContent = arguments.response.choices[  1  ].message?.content ?: ""
 			} else if ( arguments.response.keyExists( "content" ) ) {
-				assistantContent = arguments.response.content;
+				assistantContent = arguments.response.content
 			}
 		} else {
-			assistantContent = toString( arguments.response );
+			assistantContent = toString( arguments.response )
 		}
 
 		// Add assistant message
 		if ( assistantContent.len() > 0 ) {
-			variables.memories.each( mem => mem.add({
-				role: "assistant",
-				content: assistantContent
-			}, userId, conversationId) );
+			variables.memories.each( mem => mem.add( {
+					role: "assistant",
+					content: assistantContent
+				}, userId, conversationId
+			) )
 		}
 	}
 
@@ -1066,30 +1076,27 @@ class extends="AiBaseRunnable" {
 	 * @return A Tool instance that delegates to the sub-agent
 	 */
 	private ITool function createSubAgentTool( required AiAgent subAgent ) {
-		var agentConfig = arguments.subAgent.getConfig();
-		var agentName = agentConfig.name;
-		var agentDescription = agentConfig.description;
+		var agentConfig = arguments.subAgent.getConfig()
+		var agentName = agentConfig.name
+		var agentDescription = agentConfig.description
 
 		// Build tool name: delegate_to_{agent_name}
 		// Regex only needs to match non-alphanumeric and non-underscore since we already lowercase
-		var toolName = "delegate_to_" & agentName.lCase().reReplace( "[^a-z0-9_]", "_", "all" );
+		var toolName = "delegate_to_" & agentName.slugify()
 
 		// Build description for the tool
 		var toolDescription = "Delegate a task to the '#agentName#' sub-agent. "
-			& "Use this tool when the task matches the sub-agent's specialty: #agentDescription#";
-
-		// Capture the sub-agent reference for the closure
-		var targetSubAgent = arguments.subAgent;
+			& "Use this tool when the task matches the sub-agent's specialty: #agentDescription#"
 
 		// Create a tool that wraps the sub-agent
 		return aiTool(
 			name: toolName,
 			description: toolDescription,
-			callable: ( task ) => {
+			callable: ( required task ) => {
 				// Invoke the sub-agent with the task
-				return targetSubAgent.run( task );
+				return subAgent.run( task )
 			}
-		).describeArg( "task", "The task or question to delegate to the sub-agent" );
+		).describeArg( "task", "The task or question to delegate to the sub-agent" )
 	}
 
 }
