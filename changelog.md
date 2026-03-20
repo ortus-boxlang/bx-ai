@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Model and Agent streaming was not announcing global pre/post events
 - Changelog corruption due to merge conflict.
 - MCP requestId null scope crash on JSON-RPC notifications for MCP servers
 - MiniMax chat errors (`base_resp.status_code != 0`) now surface correctly.

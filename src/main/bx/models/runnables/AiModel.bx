@@ -210,6 +210,11 @@ class extends="AiBaseRunnable" {
 			effectiveOptions
 		)
 
+		// -------------------------------------------------------------------------------------------
+		// --- Prepare middleware chain ---
+		// Agent middleware (if this model is being run by an agent) is added at the AiAgent level,
+		// so it wraps the entire model execution including all middleware and the service call.
+		// -------------------------------------------------------------------------------------------
 		// Inject middleware: agent middleware first (from options), then model's own middleware
 		if ( effectiveOptions.keyExists( "_agentMiddleware" ) && isArray( effectiveOptions._agentMiddleware ) ) {
 			chatRequest.addMiddleware( effectiveOptions._agentMiddleware )
@@ -218,13 +223,19 @@ class extends="AiBaseRunnable" {
 			chatRequest.addMiddleware( variables.middleware )
 		}
 
-        // beforeAIModelInvoke event
+		// -------------------------------------------------------------------------------------------
+		// --- Announce before invocation (global event) ---
+		// -------------------------------------------------------------------------------------------
         BoxAnnounce( "beforeAIModelInvoke", { model: this, chatRequest: chatRequest } )
 
-		// Invoke service
+		// -------------------------------------------------------------------------------------------
+		// --- Invoke the model via the service ---
+		// -------------------------------------------------------------------------------------------
 		var results = variables.service.chat( chatRequest )
 
-        // afterAIModelInvoke event
+        // -------------------------------------------------------------------------------------------
+		// --- Announce after invocation (global event) ---
+		// -------------------------------------------------------------------------------------------
         BoxAnnounce( "afterAIModelInvoke", { model: this, chatRequest: chatRequest, results: results } )
 
         return results
@@ -249,7 +260,12 @@ class extends="AiBaseRunnable" {
 		var effectiveOptions = getMergedOptions( arguments.options )
 		effectiveOptions.stream = true
 
-		// If we have tools in params, merge them with the model's tools
+		// -------------------------------------------------------------------------------------------
+		// --- Process tools for this run ---
+		// Tools can come from the model configuration or the runtime parameters. If tools are provided
+		// in the runtime parameters, they are merged with the model's configured tools, allowing for
+		// dynamic augmentation of the model's capabilities on a per-run basis.
+		// -------------------------------------------------------------------------------------------
 		if( effectiveParams.keyExists( "tools" ) ) {
 			// Make sure these are normalized to an array
 			if( !isArray( effectiveParams.tools ) ) {
@@ -262,13 +278,29 @@ class extends="AiBaseRunnable" {
 			effectiveParams.tools = variables.tools
 		}
 
+		// -------------------------------------------------------------------------------------------
+		// --- Create a chat request ---
+		// -------------------------------------------------------------------------------------------
 		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
 			aiMessage( messages ),
 			effectiveParams,
 			effectiveOptions
 		)
 
+		// -------------------------------------------------------------------------------------------
+		// --- Announce before invocation (global event) ---
+		// -------------------------------------------------------------------------------------------
+        BoxAnnounce( "beforeAIModelInvoke", { model: this, chatRequest: chatRequest } )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Invoke the model via the service ---
+		// -------------------------------------------------------------------------------------------
 		variables.service.chatStream( chatRequest, arguments.onChunk )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Announce after invocation (global event) ---
+		// -------------------------------------------------------------------------------------------
+        BoxAnnounce( "afterAIModelInvoke", { model: this, chatRequest: chatRequest } )
 	}
 
 	/**
