@@ -196,8 +196,7 @@ class extends="AiBaseRunnable" {
 			effectiveParams.tools = variables.tools
 		}
 
-
-		// Build the ai request
+		// Build the chat request
 		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
 			aiMessage( messages ),
 			effectiveParams,

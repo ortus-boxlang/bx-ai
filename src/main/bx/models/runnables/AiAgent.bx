@@ -187,15 +187,22 @@ class extends="AiBaseRunnable" {
 	 */
 
 	/**
-	 * Execute the agent with a task/prompt
+	 * Execute the agent with the given input, parameters, and options.
+	 *
+	 * Each call generates a unique `threadId` for correlation, which can be overridden via options.
+	 *
+	 * If you are using shared memory instances, then you will need to pass
+	 * the `userId` and `conversationId` in options to correlate the memory messages properly. If not provided, they will default to empty strings and use whatever the memory was built with.
 	 *
 	 * @input The task or question for the agent
 	 * @params Runtime parameters to override
-	 * @options Runtime options to override. Supported options:
-	 *          - returnFormat: "single" (default), "all", or "raw"
-	 *            - single: Returns just the assistant's content string
-	 *            - all: Returns all messages (handled by service)
-	 *            - raw: Returns the full provider response structure
+	 * @options Runtime options to override. This can include:
+	 *  - threadId: to correlate runs in the same thread
+	 * - userId: to correlate runs from the same user
+	 * - conversationId: to correlate runs in the same conversation
+	 * - _traceContext: (internal) for parent-child agent correlation
+	 * - returnFormat: "single" (default) or "full" to control the format of the response
+	 * - Any other options supported by the underlying model or tools
 	 *
 	 * @return The agent's response (format depends on returnFormat option)
 	 */
