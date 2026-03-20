@@ -246,6 +246,32 @@ public class OllamaTest extends BaseIntegrationTest {
 		assertThat( result.containsKey( "version" ) || result.containsKey( "VERSION" ) ).isTrue();
 	}
 
+	@DisplayName( "Test structured output response with a class" )
+	@Test
+	public void testStructuredOutputWithClass() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+			// Use the Product test class as the structured output target
+			result = aiChat(
+				messages = "Create a product: a wireless mouse called 'AirClick Pro' priced at 29.99 in the 'Electronics' category. Return ONLY valid JSON with fields: name, price, category.",
+				options = {
+					returnFormat: new src.test.bx.Product()
+				}
+			)
+			println( result )
+			resultClass = result.$bx.$class.getName()
+			println( "Result class: " & resultClass )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// Should come back as a populated Product instance
+		assertThat( variables.get( result ) ).isNotNull();
+		assertThat( variables.get( Key.of( "resultClass" ) ).toString() ).contains( "Product" );
+	}
+
 	@DisplayName( "Test Ollama embedding with single text" )
 	@Test
 	public void testOllamaEmbeddingSingle() {

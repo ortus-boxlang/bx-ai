@@ -13,6 +13,7 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  */
+import bxModules.bxai.models.util.SchemaBuilder;
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
@@ -115,7 +116,15 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 			dataPacket[ "tools" ] = formatToolsForOllama( chatRequest.getParams().tools )
 		}
 
-		// TODO: Structured Output
+		// -------------------------------------------------------------------------------------------
+		// --- Structured output support (Ollama format) ---
+		// -------------------------------------------------------------------------------------------
+		// Ollama accepts a JSON schema directly in the "format" field
+		// https://github.com/ollama/ollama/blob/main/docs/api.md#structured-outputs
+		if( arguments.chatRequest.isStructuredOutput() ){
+			var cleanSchema = SchemaBuilder::cleanSchema( arguments.chatRequest.getStructuredOutput() )
+			dataPacket[ "format" ] = cleanSchema
+		}
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire beforeLLMCall middleware ---
