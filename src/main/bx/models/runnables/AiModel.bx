@@ -183,7 +183,12 @@ class extends="AiBaseRunnable" {
 		var effectiveParams = getMergedParams( arguments.params )
 		var effectiveOptions = getMergedOptions( arguments.options )
 
-		// If we have tools in the options, merge them with the model's tools
+		// -------------------------------------------------------------------------------------------
+		// --- Process tools for this run ---
+		// Tools can come from the model configuration or the runtime parameters. If tools are provided
+		// in the runtime parameters, they are merged with the model's configured tools, allowing for
+		// dynamic augmentation of the model's capabilities on a per-run basis.
+		// -------------------------------------------------------------------------------------------
 		if( effectiveParams.keyExists( "tools" ) ){
 			// Make sure these are normalized to an array
 			if( !isArray( effectiveParams.tools ) ){
@@ -196,7 +201,9 @@ class extends="AiBaseRunnable" {
 			effectiveParams.tools = variables.tools
 		}
 
-		// Build the chat request
+		// -------------------------------------------------------------------------------------------
+		// --- Create a chat request ---
+		// -------------------------------------------------------------------------------------------
 		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
 			aiMessage( messages ),
 			effectiveParams,

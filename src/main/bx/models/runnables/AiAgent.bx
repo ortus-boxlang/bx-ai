@@ -30,7 +30,9 @@ class extends="AiBaseRunnable" {
 	property name="agentName" type="string" default="";
 
 	/**
-	 * The agent's description. This is used as the `role` in the system message.
+	 * The agent's description.
+	 * This is used as the `role` in the system message and should convey the agent's identity or purpose
+	 * because it will be used by the AI to refer to itself when deciding whether to use tools or not.
 	 */
 	property name="description" type="string" default="";
 
@@ -76,6 +78,11 @@ class extends="AiBaseRunnable" {
 	 * Tools created for sub-agents (tracked separately for cleanup)
 	 */
 	property name="subAgentTools" type="array" default=[];
+
+	/**
+	 * Parent agent reference for sub-agents (null for top-level agents)
+	 */
+	property name="parentAgent" type="AiAgent";
 
 	/**
 	 * Middleware stack for this agent.
@@ -197,12 +204,11 @@ class extends="AiBaseRunnable" {
 	 * @input The task or question for the agent
 	 * @params Runtime parameters to override
 	 * @options Runtime options to override. This can include:
-	 *  - threadId: to correlate runs in the same thread
-	 * - userId: to correlate runs from the same user
-	 * - conversationId: to correlate runs in the same conversation
-	 * - _traceContext: (internal) for parent-child agent correlation
-	 * - returnFormat: "single" (default) or "full" to control the format of the response
-	 * - Any other options supported by the underlying model or tools
+	 * 	- threadId: to correlate runs in the same thread
+	 * 	- userId: to correlate runs from the same user
+	 * 	- conversationId: to correlate runs in the same conversation
+	 * 	- returnFormat: "single" (default) or "full" to control the format of the response
+	 * 	- Any other options supported by the underlying model or tools
 	 *
 	 * @return The agent's response (format depends on returnFormat option)
 	 */
@@ -212,6 +218,9 @@ class extends="AiBaseRunnable" {
 		var userId         = arguments.options.userId ?: variables.options.userId ?: ""
 		var conversationId = arguments.options.conversationId ?: variables.options.conversationId ?: ""
 
+		// -------------------------------------------------------------------------------------------
+		// --- Prep Message Context ---
+		// -------------------------------------------------------------------------------------------
 		// Create the user message
 		var userMessage = isStruct( arguments.input ) && arguments.input.keyExists( "content" )
 			? arguments.input
@@ -221,30 +230,34 @@ class extends="AiBaseRunnable" {
 		var messages = []
 		// Build system message from instructions and description
 		var systemMessage = buildSystemMessage()
-		if ( systemMessage.len() > 0 ) {
+		if ( !systemMessage.isEmpty() ) {
 			messages.append( { role: "system", content: systemMessage } )
 		}
 		// Load memory messages
 		messages.append( loadMemoryMessages( userId, conversationId ), true )
-		// Add user message
+		// Add user message last so it's the most recent in the context
 		messages.append( userMessage )
 
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Before Agent MiddleWare ---
+		// -------------------------------------------------------------------------------------------
 		// Merge parameters
 		var effectiveParams = variables.params.append( arguments.params )
-
 		// Merge options (including returnFormat)
 		var effectiveOptions = variables.options.append( arguments.options )
-
 		// Fire beforeAgentRun middleware (inbound)
-		var agentBeforeCtx = {
+		var agentContext = {
 			agent    : this,
 			input    : arguments.input,
 			messages : messages,
 			params   : effectiveParams,
 			options  : effectiveOptions,
-			threadId : threadId
+			threadId : threadId,
+			userId   : userId,
+			conversationId: conversationId,
+			response: null // placeholder for response to be added in after hooks
 		};
-		var middlewareResult = fireAgentHook( "beforeAgentRun", agentBeforeCtx );
+		var middlewareResult = fireAgentHook( "beforeAgentRun", agentContext );
 		if ( middlewareResult.isTerminal() ) {
 			return middlewareResult
 		}
@@ -254,19 +267,21 @@ class extends="AiBaseRunnable" {
 			effectiveOptions._agentMiddleware = variables.middleware
 		}
 
-		// Announce before execution (global event)
-		BoxAnnounce( "beforeAIAgentRun", {
-			agent: this,
-			input: arguments.input,
-			messages: messages,
-			params: effectiveParams,
-			options: effectiveOptions
-		} )
+		// -------------------------------------------------------------------------------------------
+		// --- Announce before execution (global event) ---
+		// -------------------------------------------------------------------------------------------
+		BoxAnnounce( "beforeAIAgentRun", agentContext )
 
+		// -------------------------------------------------------------------------------------------
+		// --- Execute via model runnable chain ---
+		// -------------------------------------------------------------------------------------------
 		// Execute via model - service handles returnFormat and returns formatted result
 		// The return can be a direct response, a middleware result (e.g. for suspension), or a tool call result depending on the execution flow
 		var response = variables.aiModel.run( messages, effectiveParams, effectiveOptions )
 
+		// -------------------------------------------------------------------------------------------
+		// --- Handle Suspension ---
+		// -------------------------------------------------------------------------------------------
 		// If the model returned a suspension, save checkpoint and return it
 		// However, if there is no checkpointer configured, we can't save state, so just return the suspension result without saving
 		if ( isObject( response ) && response instanceof "AiMiddlewareResult" && response.isSuspended() ) {
@@ -284,24 +299,23 @@ class extends="AiBaseRunnable" {
 			return response
 		}
 
-		// Store in memory (handles all response formats)
+		// -------------------------------------------------------------------------------------------
+		// --- Store in memory ---
+		// -------------------------------------------------------------------------------------------
 		storeInMemory( userMessage, response, userId, conversationId );
 
-		// Fire afterAgentRun middleware (outbound, reverse order)
-		var agentAfterCtx = {
-			agent    : this,
-			response : response,
-			input    : arguments.input,
-			threadId : threadId
-		}
-		fireAgentHook( "afterAgentRun", agentAfterCtx, true )
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterAgentRun middleware (outbound, reverse order) ---
+		// -------------------------------------------------------------------------------------------
+		agentContext.response = response // add response to original context for after hooks
+		fireAgentHook( "afterAgentRun", agentContext, true )
 
-		// Announce after execution (global event)
-		BoxAnnounce( "afterAIAgentRun", {
-			agent: this,
-			response: response
-		} )
+		// -------------------------------------------------------------------------------------------
+		// --- Announce after execution (global event) ---
+		// -------------------------------------------------------------------------------------------
+		BoxAnnounce( "afterAIAgentRun", agentContext )
 
+		// Happy Day!
 		return response
 	}
 
@@ -324,17 +338,17 @@ class extends="AiBaseRunnable" {
 		var userId         = arguments.options.userId ?: variables.options.userId ?: ""
 		var conversationId = arguments.options.conversationId ?: variables.options.conversationId ?: ""
 
+		// -------------------------------------------------------------------------------------------
+		// --- Prep Message Context ---
+		// -------------------------------------------------------------------------------------------
 		// Build system message
 		var systemMessage = buildSystemMessage()
-
 		// Load memory
 		var memoryMessages = loadMemoryMessages( userId, conversationId )
-
 		// Create user message
 		var userMessage = isStruct( arguments.input ) && arguments.input.keyExists( "content" )
 			? arguments.input
 			: { role: "user", content: toString( arguments.input ) }
-
 		// Build messages
 		var messages = []
 		if ( systemMessage.len() > 0 ) {
@@ -343,24 +357,27 @@ class extends="AiBaseRunnable" {
 		messages.append( memoryMessages, true )
 		messages.append( userMessage )
 
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Before Agent MiddleWare ---
+		// -------------------------------------------------------------------------------------------
 		// Merge parameters
 		var effectiveParams = variables.params.append( arguments.params )
-
 		// Merge options
 		var effectiveOptions = variables.options.append( arguments.options )
-
 		// Fire beforeAgentRun middleware (inbound)
-		var streamBeforeCtx = {
+		var agentContext = {
 			agent    : this,
 			input    : arguments.input,
 			messages : messages,
 			params   : effectiveParams,
 			options  : effectiveOptions,
-			threadId : threadId
+			threadId : threadId,
+			userId   : userId,
+			conversationId: conversationId
 		}
-		var streamMiddlewareResult = fireAgentHook( "beforeAgentRun", streamBeforeCtx )
+		var streamMiddlewareResult = fireAgentHook( "beforeAgentRun", agentContext )
 		if ( streamMiddlewareResult.isTerminal() ) {
-			return
+			return middlewareResult
 		}
 
 		// Pass agent middleware to model
@@ -368,34 +385,47 @@ class extends="AiBaseRunnable" {
 			effectiveOptions._agentMiddleware = variables.middleware
 		}
 
+		// -------------------------------------------------------------------------------------------
+		// --- Prepare streaming callback ---
+		// -------------------------------------------------------------------------------------------
 		var userOnChunk = arguments.onChunk
-
 		// Store accumulated response for memory
 		var accumulated = ""
-		var wrappedCallback = function( chunk ) {
+		var wrappedCallback = ( chunk ) => {
 			// Accumulate content
-			var content = chunk.choices?.first()?.delta?.content ?: ""
-			accumulated &= content
-
-			// Call user callback
-			userOnChunk( chunk )
+			var content = arguments.chunk.choices?.first()?.delta?.content ?: ""
+			accumulated &= content;
+			// Call user callback with the chunk
+			userOnChunk( arguments.chunk )
 		}
 
-		// Stream via model (tools handled by model/service)
+		// -------------------------------------------------------------------------------------------
+		// --- Announce before execution (global event) ---
+		// -------------------------------------------------------------------------------------------
+		BoxAnnounce( "beforeAIAgentRun", agentContext )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Stream via model (tools handled by model/service) ---
+		// -------------------------------------------------------------------------------------------
 		variables.aiModel.stream( wrappedCallback, messages, effectiveParams, effectiveOptions )
 
-		// Store in memory after streaming completes
+
+		// -------------------------------------------------------------------------------------------
+		// --- Store in memory ---
+		// -------------------------------------------------------------------------------------------
 		var assistantMessage = { role: "assistant", content: accumulated }
 		storeInMemory( userMessage, assistantMessage, userId, conversationId )
 
-		// Fire afterAgentRun middleware (outbound, reverse order)
-		var streamAfterCtx = {
-			agent    : this,
-			response : accumulated,
-			input    : arguments.input,
-			threadId : threadId
-		}
-		fireAgentHook( "afterAgentRun", streamAfterCtx, true )
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterAgentRun middleware (outbound, reverse order) ---
+		// -------------------------------------------------------------------------------------------
+		agentContext.response = accumulated // add final response to original context for after hooks
+		fireAgentHook( "afterAgentRun", agentContext, true )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Announce after execution (global event) ---
+		// -------------------------------------------------------------------------------------------
+		BoxAnnounce( "afterAIAgentRun", agentContext )
 	}
 
 	/**
@@ -668,6 +698,9 @@ class extends="AiBaseRunnable" {
 	 * @return this for chaining
 	 */
 	AiAgent function addSubAgent( required AiAgent subAgent ) {
+		// Register parent reference on the sub-agent
+		arguments.subAgent.setParentAgent( this );
+
 		// Store the sub-agent
 		variables.subAgents.append( arguments.subAgent );
 
@@ -693,6 +726,9 @@ class extends="AiBaseRunnable" {
 	 * @return this for chaining
 	 */
 	AiAgent function setSubAgents( required array subAgents ) {
+		// Detach parent reference from all current sub-agents before replacing them
+		variables.subAgents.each( subAgent => subAgent.clearParentAgent() );
+
 		// Remove old sub-agent tools from the model
 		if ( !variables.subAgentTools.isEmpty() ) {
 			variables.aiModel.removeTools( variables.subAgentTools );
@@ -754,6 +790,9 @@ class extends="AiBaseRunnable" {
 			"name": variables.agentName,
 			"description": variables.description,
 			"instructions": variables.instructions,
+			"parentAgent": variables?.parentAgent?.getAgentName() ?: "",
+			"agentDepth": getAgentDepth(),
+			"agentPath": getAgentPath(),
 			"model": variables.aiModel.getConfig(),
 			"toolCount": variables.tools.len(),
 			"memoryCount": variables.memories.len(),
@@ -773,8 +812,128 @@ class extends="AiBaseRunnable" {
 					: value
 				return maskedValue
 			} )
-		};
+		}
 	}
+
+	// ==================== Parent - Child HELPERS ====================
+
+	/**
+	 * Set the parent agent reference for this agent.
+	 * Validates against self-reference and cycles before assigning.
+	 *
+	 * @parent The parent agent to set
+	 * @return this for chaining
+	 */
+	AiAgent function setParentAgent( required AiAgent parent ) {
+		// Prevent an agent from being its own parent
+		if ( arguments.parent == this ) {
+			throw( type: "AiAgent.InvalidParent", message: "An agent cannot be its own parent." )
+		}
+		// Prevent cycles: walk up the proposed parent's ancestry and check for self
+		var ancestor = arguments.parent
+		while ( ancestor.hasParentAgent() ) {
+			ancestor = ancestor.getParentAgent()
+			if ( ancestor == this ) {
+				throw(
+					type   : "AiAgent.CyclicParent",
+					message: "Setting this parent would create a cycle in the agent hierarchy."
+				)
+			}
+		}
+
+		// Assign new parent
+		variables.parentAgent = arguments.parent
+		return this;
+	}
+
+	/**
+	 * Clear the parent agent reference from this agent.
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function clearParentAgent() {
+		structDelete( variables, "parentAgent" )
+		return this;
+	}
+
+	/**
+	 * Check if this agent has a parent agent
+	 *
+	 * @return Boolean indicating if this agent has a parent
+	 */
+	boolean function hasParentAgent() {
+		return !isNull( variables.parentAgent )
+	}
+
+	/**
+	 * Check if this agent is a root (top-level) agent with no parent
+	 *
+	 * @return Boolean — true if this agent has no parent
+	 */
+	boolean function isRootAgent() {
+		return !hasParentAgent()
+	}
+
+	/**
+	 * Walk up the hierarchy and return the root (top-level) agent.
+	 * Returns self if this agent has no parent.
+	 *
+	 * @return The root AiAgent
+	 */
+	AiAgent function getRootAgent() {
+		var current = this
+		while ( current.hasParentAgent() ) {
+			current = current.getParentAgent()
+		}
+		return current
+	}
+
+	/**
+	 * Return the depth of this agent in the hierarchy.
+	 * The root agent has depth 0; each level of nesting adds 1.
+	 *
+	 * @return Numeric depth (0 = root)
+	 */
+	numeric function getAgentDepth() {
+		var depth = 0
+		var current = this
+		while ( current.hasParentAgent() ) {
+			depth++
+			current = current.getParentAgent()
+		}
+		return depth
+	}
+
+	/**
+	 * Return the full slash-delimited path from the root to this agent.
+	 * Example: /coordinator/researcher
+	 *
+	 * @return String path
+	 */
+	string function getAgentPath() {
+		return "/" & getAncestors()
+			.reverse()
+			.append( this )
+			.map( a -> a.getAgentName() )
+			.toList( "/" )
+	}
+
+	/**
+	 * Return an ordered array of ancestor agents, from immediate parent up to the root.
+	 *
+	 * @return Array of AiAgent — [immediateParent, grandparent, ..., root]
+	 */
+	array function getAncestors() {
+		var ancestors = []
+		var current = this
+		while ( current.hasParentAgent() ) {
+			current = current.getParentAgent()
+			ancestors.append( current )
+		}
+		return ancestors
+	}
+
+
 
 	// ==================== MIDDLEWARE HELPERS ====================
 

@@ -528,6 +528,39 @@ agent = aiAgent(
 agent.run( "Find order #12345, email the customer with status, and create a ticket if there's an issue" )
 ```
 
+**Multi-Agent Hierarchy (Sub-Agents):**
+
+```javascript
+// Create specialist sub-agents
+researchAgent = aiAgent(
+    name: "researcher",
+    description: "Researches topics in depth",
+    instructions: "Provide thorough research summaries"
+)
+
+writerAgent = aiAgent(
+    name: "writer",
+    description: "Writes polished content",
+    instructions: "Turn research into engaging articles"
+)
+
+// Coordinator automatically registers sub-agents as callable tools
+coordinator = aiAgent(
+    name: "coordinator",
+    description: "Orchestrates research and writing",
+    subAgents: [ researchAgent, writerAgent ]
+)
+
+// Coordinator decides when to delegate
+coordinator.run( "Write an article about BoxLang AI" )
+
+// Inspect the hierarchy
+writeln( researchAgent.getAgentPath() )   // /coordinator/researcher
+writeln( researchAgent.getAgentDepth() )  // 1
+writeln( researchAgent.isRootAgent() )    // false
+writeln( coordinator.getRootAgent().getAgentName() ) // coordinator
+```
+
 #### 📚 Learn More
 
 - 📖 **Full Guide**: [AI Agents Documentation](https://ai.ortusbooks.com/main-components/agents.md)

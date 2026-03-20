@@ -18,6 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Per-call identity routing on all memory types**: `add()`, `getAll()`, `clear()`, `trim()`, `seed()`, and related methods on every `IAiMemory` and `IVectorMemory` implementation now accept optional `userId` and `conversationId` arguments. This follows the Spring AI `ChatMemory` pattern — a single memory instance can safely serve multiple tenants without creating a new instance per user. Construction-time values remain as fallbacks.
 - **Provider capability interfaces**: New `models/providers/capabilities/` package introduces `IAiChatService` and `IAiEmbeddingsService` — scoped interfaces that let providers declare exactly which operations they support at the type level rather than through runtime throws.
 - **`getCapabilities()` / `hasCapability()` on all providers**: Every provider now exposes `getCapabilities()` (returns `["chat", "stream", "embeddings", ...]`) and `hasCapability( "chat" )` for clean, self-documenting runtime introspection. These are backed by `isInstanceOf()` checks and stay automatically in sync with the `implements` declarations on each provider — no maintenance required.
+- **`AiAgent` parent-child hierarchy**: `AiAgent` now tracks its position in a multi-agent tree through a `parentAgent` property and a full set of hierarchy helpers:
+  - `setParentAgent(parent)` — assign a parent with self-reference and cycle-detection guards
+  - `clearParentAgent()` — detach from a parent
+  - `hasParentAgent()` — returns `true` if the agent has a parent
+  - `isRootAgent()` — returns `true` for top-level agents
+  - `getRootAgent()` — walks up the tree and returns the root agent
+  - `getAgentDepth()` — returns the nesting depth (0 = root, 1 = direct child, …)
+  - `getAgentPath()` — returns a slash-delimited path string, e.g. `/coordinator/researcher`
+  - `getAncestors()` — returns an ordered array `[immediateParent, …, root]`
+  - `addSubAgent()` now automatically calls `setParentAgent(this)` on the sub-agent
+  - `setSubAgents()` now calls `clearParentAgent()` on replaced sub-agents before replacing them
+  - `getConfig()` now includes `parentAgent` (name string), `agentDepth`, and `agentPath`
 
 ### Changed
 

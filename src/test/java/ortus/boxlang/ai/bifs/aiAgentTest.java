@@ -15,6 +15,7 @@
 package ortus.boxlang.ai.bifs;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -487,6 +488,317 @@ public class aiAgentTest extends BaseIntegrationTest {
 		var subAgentInfo = variables.getAsStruct( Key.of( "subAgentInfo" ) );
 		assertEquals( "TestSubAgent", subAgentInfo.get( "name" ) );
 		assertEquals( "A test sub-agent description", subAgentInfo.get( "description" ) );
+	}
+
+	// ==================== PARENT-CHILD HELPER TESTS ====================
+
+	@Test
+	@DisplayName( "addSubAgent automatically sets parentAgent on the sub-agent" )
+	public void testAddSubAgentSetsParent() {
+		runtime.executeSource(
+		    """
+		    parent = aiAgent( name: "Parent", description: "Parent agent" )
+		    child  = aiAgent( name: "Child",  description: "Child agent" )
+		    parent.addSubAgent( child )
+
+		    hasParent  = child.hasParentAgent()
+		    parentName = child.getParentAgent().getAgentName()
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "hasParent" ) ) );
+		assertEquals( "Parent", variables.getAsString( Key.of( "parentName" ) ) );
+	}
+
+	@Test
+	@DisplayName( "setSubAgents clears parentAgent on replaced sub-agents" )
+	public void testSetSubAgentsClearsOldParent() {
+		runtime.executeSource(
+		    """
+		    parent   = aiAgent( name: "Parent",   description: "Parent" )
+		    oldChild = aiAgent( name: "OldChild", description: "Old" )
+		    newChild = aiAgent( name: "NewChild", description: "New" )
+
+		    parent.addSubAgent( oldChild )
+		    parent.setSubAgents( [ newChild ] )
+
+		    oldChildHasParent = oldChild.hasParentAgent()
+		    newChildHasParent = newChild.hasParentAgent()
+		    """,
+		    context
+		);
+
+		assertTrue( !variables.getAsBoolean( Key.of( "oldChildHasParent" ) ) );
+		assertTrue( variables.getAsBoolean( Key.of( "newChildHasParent" ) ) );
+	}
+
+	@Test
+	@DisplayName( "hasParentAgent returns false for root agents" )
+	public void testHasParentAgentFalseForRoot() {
+		runtime.executeSource(
+		    """
+		    agent  = aiAgent( name: "Root", description: "Root agent" )
+		    result = agent.hasParentAgent()
+		    """,
+		    context
+		);
+
+		assertTrue( !variables.getAsBoolean( Key.of( "result" ) ) );
+	}
+
+	@Test
+	@DisplayName( "isRootAgent returns true for top-level agents" )
+	public void testIsRootAgentTrue() {
+		runtime.executeSource(
+		    """
+		    agent  = aiAgent( name: "Root", description: "Root agent" )
+		    result = agent.isRootAgent()
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "result" ) ) );
+	}
+
+	@Test
+	@DisplayName( "isRootAgent returns false for sub-agents" )
+	public void testIsRootAgentFalseForChild() {
+		runtime.executeSource(
+		    """
+		    parent = aiAgent( name: "Parent", description: "Parent" )
+		    child  = aiAgent( name: "Child",  description: "Child" )
+		    parent.addSubAgent( child )
+
+		    result = child.isRootAgent()
+		    """,
+		    context
+		);
+
+		assertTrue( !variables.getAsBoolean( Key.of( "result" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getRootAgent returns self when agent has no parent" )
+	public void testGetRootAgentReturnsSelf() {
+		runtime.executeSource(
+		    """
+		    agent    = aiAgent( name: "Root", description: "Root agent" )
+		    rootName = agent.getRootAgent().getAgentName()
+		    """,
+		    context
+		);
+
+		assertEquals( "Root", variables.getAsString( Key.of( "rootName" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getRootAgent walks up to the top-level agent" )
+	public void testGetRootAgentWalksUp() {
+		runtime.executeSource(
+		    """
+		    root   = aiAgent( name: "Root",   description: "Root" )
+		    middle = aiAgent( name: "Middle", description: "Middle" )
+		    leaf   = aiAgent( name: "Leaf",   description: "Leaf" )
+
+		    root.addSubAgent( middle )
+		    middle.addSubAgent( leaf )
+
+		    rootName = leaf.getRootAgent().getAgentName()
+		    """,
+		    context
+		);
+
+		assertEquals( "Root", variables.getAsString( Key.of( "rootName" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getAgentDepth returns 0 for root agents" )
+	public void testGetAgentDepthRoot() {
+		runtime.executeSource(
+		    """
+		    agent = aiAgent( name: "Root", description: "Root" )
+		    depth = agent.getAgentDepth()
+		    """,
+		    context
+		);
+
+		assertEquals( 0L, ( long ) variables.getAsInteger( Key.of( "depth" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getAgentDepth returns correct depth for each level" )
+	public void testGetAgentDepthNested() {
+		runtime.executeSource(
+		    """
+		    root   = aiAgent( name: "Root",   description: "Root" )
+		    middle = aiAgent( name: "Middle", description: "Middle" )
+		    leaf   = aiAgent( name: "Leaf",   description: "Leaf" )
+
+		    root.addSubAgent( middle )
+		    middle.addSubAgent( leaf )
+
+		    rootDepth   = root.getAgentDepth()
+		    middleDepth = middle.getAgentDepth()
+		    leafDepth   = leaf.getAgentDepth()
+		    """,
+		    context
+		);
+
+		assertEquals( 0L, ( long ) variables.getAsInteger( Key.of( "rootDepth" ) ) );
+		assertEquals( 1L, ( long ) variables.getAsInteger( Key.of( "middleDepth" ) ) );
+		assertEquals( 2L, ( long ) variables.getAsInteger( Key.of( "leafDepth" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getAgentPath returns slash-delimited path from root to agent" )
+	public void testGetAgentPath() {
+		runtime.executeSource(
+		    """
+		    root   = aiAgent( name: "root",   description: "Root" )
+		    middle = aiAgent( name: "middle", description: "Middle" )
+		    leaf   = aiAgent( name: "leaf",   description: "Leaf" )
+
+		    root.addSubAgent( middle )
+		    middle.addSubAgent( leaf )
+
+		    rootPath   = root.getAgentPath()
+		    middlePath = middle.getAgentPath()
+		    leafPath   = leaf.getAgentPath()
+		    """,
+		    context
+		);
+
+		assertEquals( "/root", variables.getAsString( Key.of( "rootPath" ) ) );
+		assertEquals( "/root/middle", variables.getAsString( Key.of( "middlePath" ) ) );
+		assertEquals( "/root/middle/leaf", variables.getAsString( Key.of( "leafPath" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getAncestors returns empty array for root agents" )
+	public void testGetAncestorsEmpty() {
+		runtime.executeSource(
+		    """
+		    agent = aiAgent( name: "Root", description: "Root" )
+		    count = agent.getAncestors().len()
+		    """,
+		    context
+		);
+
+		assertEquals( 0L, ( long ) variables.getAsInteger( Key.of( "count" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getAncestors returns ordered array from immediate parent to root" )
+	public void testGetAncestors() {
+		runtime.executeSource(
+		    """
+		    root   = aiAgent( name: "Root",   description: "Root" )
+		    middle = aiAgent( name: "Middle", description: "Middle" )
+		    leaf   = aiAgent( name: "Leaf",   description: "Leaf" )
+
+		    root.addSubAgent( middle )
+		    middle.addSubAgent( leaf )
+
+		    ancestors      = leaf.getAncestors()
+		    ancestorCount  = ancestors.len()
+		    firstAncestor  = ancestors[ 1 ].getAgentName()
+		    secondAncestor = ancestors[ 2 ].getAgentName()
+		    """,
+		    context
+		);
+
+		assertEquals( 2L, ( long ) variables.getAsInteger( Key.of( "ancestorCount" ) ) );
+		assertEquals( "Middle", variables.getAsString( Key.of( "firstAncestor" ) ) );
+		assertEquals( "Root", variables.getAsString( Key.of( "secondAncestor" ) ) );
+	}
+
+	@Test
+	@DisplayName( "clearParentAgent removes the parent reference" )
+	public void testClearParentAgent() {
+		runtime.executeSource(
+		    """
+		    parent = aiAgent( name: "Parent", description: "Parent" )
+		    child  = aiAgent( name: "Child",  description: "Child" )
+		    parent.addSubAgent( child )
+
+		    hasBefore = child.hasParentAgent()
+		    child.clearParentAgent()
+		    hasAfter = child.hasParentAgent()
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "hasBefore" ) ) );
+		assertTrue( !variables.getAsBoolean( Key.of( "hasAfter" ) ) );
+	}
+
+	@Test
+	@DisplayName( "setParentAgent throws when an agent is set as its own parent" )
+	public void testSetParentAgentSelfReferenceThrows() {
+		assertThrows( Exception.class, () -> {
+			runtime.executeSource(
+			    """
+			    agent = aiAgent( name: "Agent", description: "Agent" )
+			    agent.setParentAgent( agent )
+			    """,
+			    context
+			);
+		} );
+	}
+
+	@Test
+	@DisplayName( "setParentAgent throws when the assignment would create a cycle" )
+	public void testSetParentAgentCycleThrows() {
+		assertThrows( Exception.class, () -> {
+			runtime.executeSource(
+			    """
+			    parent = aiAgent( name: "Parent", description: "Parent" )
+			    child  = aiAgent( name: "Child",  description: "Child" )
+			    parent.addSubAgent( child )
+			    // child -> parent -> child would be a cycle
+			    child.addSubAgent( parent )
+			    """,
+			    context
+			);
+		} );
+	}
+
+	@Test
+	@DisplayName( "getConfig includes parentAgent name, agentDepth, and agentPath" )
+	public void testGetConfigIncludesHierarchyFields() {
+		runtime.executeSource(
+		    """
+		    parent = aiAgent( name: "parent", description: "Parent" )
+		    child  = aiAgent( name: "child",  description: "Child" )
+		    parent.addSubAgent( child )
+
+		    config = child.getConfig()
+		    """,
+		    context
+		);
+
+		var config = variables.getAsStruct( Key.of( "config" ) );
+		assertEquals( "parent", config.get( "parentAgent" ) );
+		assertEquals( 1L, ( long ) ( ( Number ) config.get( "agentDepth" ) ).intValue() );
+		assertEquals( "/parent/child", config.get( "agentPath" ) );
+	}
+
+	@Test
+	@DisplayName( "getConfig shows empty parentAgent and depth 0 for root agents" )
+	public void testGetConfigRootHierarchyFields() {
+		runtime.executeSource(
+		    """
+		    agent  = aiAgent( name: "root", description: "Root" )
+		    config = agent.getConfig()
+		    """,
+		    context
+		);
+
+		var config = variables.getAsStruct( Key.of( "config" ) );
+		assertEquals( "", config.get( "parentAgent" ) );
+		assertEquals( 0L, ( long ) ( ( Number ) config.get( "agentDepth" ) ).intValue() );
+		assertEquals( "/root", config.get( "agentPath" ) );
 	}
 
 }
