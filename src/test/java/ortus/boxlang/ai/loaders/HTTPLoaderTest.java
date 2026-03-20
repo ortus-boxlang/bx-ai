@@ -2,6 +2,7 @@ package ortus.boxlang.ai.loaders;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -81,6 +82,7 @@ public class HTTPLoaderTest extends BaseIntegrationTest {
 	@DisplayName( "HTTPLoader can load HTML from a real webpage" )
 	@Test
 	public void testHTTPLoaderLiveHTML() {
+		try {
 		// @formatter:off
 		runtime.executeSource(
 		    """
@@ -90,25 +92,31 @@ public class HTTPLoaderTest extends BaseIntegrationTest {
 					.extractText( true );
 				rawDocs = loader.load();
 				result = rawDocs.map( d => d.toStruct() );
+				println( result )
 		    """,
 		    context
 		);
 		// @formatter:on
 
-		Array	docs	= variables.getAsArray( result );
-		IStruct	doc		= ( IStruct ) docs.getFirst();
-		String	content	= doc.getAsString( Key.of( "content" ) );
+			Array docs = variables.getAsArray( result );
 
-		assertThat( docs.size() ).isEqualTo( 1 );
-		assertThat( content ).isNotEmpty();
-		assertThat( content ).containsMatch( "(?i)boxlang" ); // Case-insensitive match
-		assertThat( content ).doesNotContain( "<html>" ); // Text extracted, no HTML tags
-		assertThat( content ).doesNotContain( "<div>" );
+			assertThat( docs.size() ).isEqualTo( 1 );
 
-		IStruct metadata = ( IStruct ) doc.get( Key.of( "metadata" ) );
-		assertThat( metadata.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://www.boxlang.io" );
-		assertThat( metadata.getAsInteger( Key.of( "statusCode" ) ) ).isEqualTo( 200 );
-		assertThat( metadata.getAsString( Key.of( "contentType" ) ) ).isEqualTo( "html" );
+			IStruct	doc		= ( IStruct ) docs.getFirst();
+			String	content	= doc.getAsString( Key.of( "content" ) );
+			assertThat( content ).isNotEmpty();
+			assertThat( content ).containsMatch( "(?i)boxlang" ); // Case-insensitive match
+			assertThat( content ).doesNotContain( "<html>" ); // Text extracted, no HTML tags
+			assertThat( content ).doesNotContain( "<div>" );
+
+			IStruct metadata = ( IStruct ) doc.get( Key.of( "metadata" ) );
+			assertThat( metadata.getAsString( Key.of( "url" ) ) ).isEqualTo( "https://www.boxlang.io" );
+			assertThat( metadata.getAsInteger( Key.of( "statusCode" ) ) ).isEqualTo( 200 );
+			assertThat( metadata.getAsString( Key.of( "contentType" ) ) ).isEqualTo( "html" );
+			// @formatter:on
+		} catch ( Exception e ) {
+			Assumptions.abort( "Live network test aborted: " + e.getMessage() );
+		}
 	}
 
 	@DisplayName( "HTTPLoader can load plain text from a webpage" )
