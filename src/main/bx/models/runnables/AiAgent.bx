@@ -217,7 +217,8 @@ class extends="AiBaseRunnable" {
 		var threadId       = arguments.options.threadId ?: variables.options.threadId ?: createUUID()
 		var userId         = arguments.options.userId ?: variables.options.userId ?: ""
 		var conversationId = arguments.options.conversationId ?: variables.options.conversationId ?: ""
-		var runId 		= "#agentName().slugify()#-#createUUID()#" // unique ID for this specific run, useful for logging and correlation
+		// unique ID for this specific run, useful for logging and correlation
+		var runId 		= "#agentName().slugify()#-#createUUID()#"
 
 		// -------------------------------------------------------------------------------------------
 		// --- Prep Message Context ---
@@ -789,23 +790,16 @@ class extends="AiBaseRunnable" {
 	 */
 	struct function getConfig() {
 		return {
-			"name": variables.agentName,
-			"description": variables.description,
-			"instructions": variables.instructions,
-			"parentAgent": variables?.parentAgent?.getAgentName() ?: "",
 			"agentDepth": getAgentDepth(),
 			"agentPath": getAgentPath(),
+			"description": variables.description,
+			"instructions": variables.instructions,
 			"model": variables.aiModel.getConfig(),
-			"toolCount": variables.tools.len(),
+			"middlewareCount": variables.middleware.len(),
 			"memoryCount": variables.memories.len(),
 			"memories": variables.memories.map( mem => mem.getSummary() ),
-			"subAgentCount": variables.subAgents.len(),
-			"subAgents": variables.subAgents.map( agent => {
-				return {
-					"name": agent.getConfig().name,
-					"description": agent.getConfig().description
-				};
-			} ),
+			"name": variables.agentName,
+			"parentAgent": variables?.parentAgent?.getAgentName() ?: "",
 			"params": variables.params,
 			"options": variables.options.map( ( key, value ) => {
 				// Mask sensitive options (e.g. API keys) in the config output
@@ -813,7 +807,15 @@ class extends="AiBaseRunnable" {
 					? "****"
 					: value
 				return maskedValue
-			} )
+			} ),
+			"subAgentCount": variables.subAgents.len(),
+			"subAgents": variables.subAgents.map( agent => {
+				return {
+					"name": agent.getConfig().name,
+					"description": agent.getConfig().description
+				};
+			} ),
+			"toolCount": variables.tools.len(),
 		}
 	}
 

@@ -149,17 +149,18 @@ class extends="AiBaseRunnable" {
 	 */
 	public struct function getConfig() {
 		return {
+			"middlewareCount": variables.middleware.len(),
 			"name": variables.name,
 			"provider": variables.service.getName(),
-			"toolCount": variables.tools.len(),
 			"params": getMergedParams(),
 			"options": getMergedOptions().map( ( key, value ) => {
 				// Mask sensitive options (e.g. API keys) in the config output
 				var maskedValue = ( listFindNoCase( "apikey,token,secret", key ) > 0 )
-					? "****"
-					: value
+				? "****"
+				: value
 				return maskedValue
-			} )
+			} ),
+			"toolCount": variables.tools.len()
 		}
 	}
 
