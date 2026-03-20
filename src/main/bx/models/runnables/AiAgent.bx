@@ -481,10 +481,13 @@ class extends="AiBaseRunnable" {
 	/**
 	 * Get all messages from all memories
 	 *
+	 * @userId Optional user ID for memory correlation
+	 * @conversationId Optional conversation ID for memory correlation
+	 *
 	 * @return Array of all messages
 	 */
-	array function getMemoryMessages() {
-		return loadMemoryMessages();
+	array function getMemoryMessages( string userId = "", string conversationId = "" ) {
+		return loadMemoryMessages( userId, conversationId );
 	}
 
 	/**
@@ -1018,15 +1021,20 @@ class extends="AiBaseRunnable" {
 
 	/**
 	 * Load messages from all memories
+	 *
+	 * @userId Optional user ID for memory correlation
+	 * @conversationId Optional conversation ID for memory correlation
+	 *
+	 * @return Array of messages from all memories
 	 */
 	private array function loadMemoryMessages( string userId = "", string conversationId = "" ) {
-		var allMessages = [];
+		var allMessages = []
 
 		variables.memories.each( mem => {
-			allMessages.append( mem.getAll( userId, conversationId ), true );
-		} );
+			allMessages.append( mem.getAll( userId, conversationId ), true )
+		} )
 
-		return allMessages;
+		return allMessages
 	}
 
 	/**
