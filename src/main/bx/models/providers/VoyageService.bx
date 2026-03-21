@@ -24,6 +24,7 @@ class extends="BaseService" implements="IAiEmbeddingsService" {
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "embeddings" ]
 		DEFAULT_EMBED_PARAMS = {
 			// voyage-3 is the latest and most capable model
 			"model" : "voyage-3"
@@ -36,6 +37,11 @@ class extends="BaseService" implements="IAiEmbeddingsService" {
 	function init(){
 		variables.embeddingsURL = "https://api.voyageai.com/v1/embeddings"
 		variables.name = "Voyage"
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	@override

@@ -28,6 +28,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// Default to Qwen 2.5 which is a popular model available on HuggingFace
 			// Users can override with any model available via HuggingFace's inference providers
@@ -47,6 +48,11 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.chatURL = "https://router.huggingface.co/v1/chat/completions"
 		variables.embeddingsURL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
 		variables.name = "HuggingFace"
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	@override

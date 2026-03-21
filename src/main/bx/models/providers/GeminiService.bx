@@ -23,6 +23,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://ai.google.dev/gemini-api/docs/quickstart
 			// according to the docs, this is the default model
@@ -40,6 +41,11 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.chatURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent"
 		variables.embeddingsURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:embedContent"
 		variables.name = "Gemini"
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	/**

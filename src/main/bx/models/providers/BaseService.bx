@@ -114,12 +114,17 @@ abstract class implements="IAiService" {
 
 	/**
 	 * Returns all capabilities this provider supports.
-	 * Derived from the interfaces the provider implements — always in sync,
-	 * nothing to maintain manually.
+	 * If the concrete class overrides getDeclaredCapabilities(), that result is used.
+	 * Otherwise capabilities are inferred from implemented interfaces.
 	 *
 	 * @return Array of capability strings
 	 */
 	public array function getCapabilities() {
+		var declared = getDeclaredCapabilities()
+		if ( !declared.isEmpty() ) {
+			return declared
+		}
+		// Fallback: infer from interfaces
 		var caps = []
 		if ( isInstanceOf( this, "IAiChatService" ) ) {
 			caps.append( "chat" )
@@ -143,18 +148,17 @@ abstract class implements="IAiService" {
 	 * @return boolean
 	 */
 	public boolean function hasCapability( required string capability ) {
-		switch ( arguments.capability ) {
-			case "chat":
-			case "stream":
-				return isInstanceOf( this, "IAiChatService" )
-			case "embeddings":
-				return isInstanceOf( this, "IAiEmbeddingsService" )
-			case "transcribe":
-			case "speak":
-				return isInstanceOf( this, "IAudioService" )
-			default:
-				return false
-		}
+		return getCapabilities().findNoCase( arguments.capability ) > 0
+	}
+
+	/**
+	 * Override in concrete providers to declare explicit capabilities via static.CAPABILITIES.
+	 * Returning a non-empty array bypasses interface-based detection entirely.
+	 *
+	 * @return Array of capability strings, or [] to use interface detection
+	 */
+	public array function getDeclaredCapabilities() {
+		return []
 	}
 
 	/**

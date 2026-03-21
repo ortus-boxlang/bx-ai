@@ -21,6 +21,7 @@ class extends="OpenAIService" implements="IAiChatService" {
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://console.groq.com/docs/models
 			// according to the docs, this is a fast, efficient model
@@ -35,6 +36,11 @@ class extends="OpenAIService" implements="IAiChatService" {
 	function init(){
 		variables.chatURL = "https://api.groq.com/openai/v1/chat/completions"
 		variables.name = "Groq"
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	@override

@@ -27,6 +27,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://docs.cohere.com/docs/models
 			"model" : "command-a-03-2025"
@@ -45,6 +46,11 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.chatURL = "https://api.cohere.com/v1/chat"
 		variables.embeddingsURL = "https://api.cohere.com/v1/embed"
 		variables.name = "Cohere"
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	/**

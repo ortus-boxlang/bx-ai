@@ -24,6 +24,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://docs.mistral.ai/getting-started/models/models_overview/
 			// mistral-small-latest is the default model for cost-effective tasks
@@ -43,6 +44,11 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.chatURL = "https://api.mistral.ai/v1/chat/completions"
 		variables.embeddingsURL = "https://api.mistral.ai/v1/embeddings"
 		variables.name = "Mistral"
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	@override
