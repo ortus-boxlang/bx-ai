@@ -25,7 +25,7 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 	static {
 		DEFAULT_CHAT_PARAMS = {
 			// Popular local models - users can override with any Ollama model
-			"model" : "qwen2.5:0.5b-instruct",
+			"model" : "qwen2.5:0.5b-instruct"
 		}
 		DEFAULT_EMBED_PARAMS = {
 			"model" : "nomic-embed-text"
@@ -341,7 +341,7 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 				"chatRequest": arguments.chatRequest,
 				"provider"   : this
 			}
-		);
+		)
 
 		// Log the request if enabled
 		if( arguments.chatRequest.getLogRequestToConsole() ){
@@ -349,15 +349,13 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 			println( dataPacket )
 		}
 
-		// Buffer for accumulating partial lines
-		var buffer = "";
 		// Capture callback in local variable for closure
-		var userCallback = arguments.callback;
-		var thisChatRequest = arguments.chatRequest;
-		var requestedModel = arguments.chatRequest.getModel();
+		var userCallback = arguments.callback
+		var thisChatRequest = arguments.chatRequest
+		var requestedModel = arguments.chatRequest.getModel()
 		var emitNormalizedChunk = ( parsedChunk ) => {
-			var content = parsedChunk.message?.content ?: "";
-			var finishReason = parsedChunk.done ? "stop" : "";
+			var content = parsedChunk.message?.content ?: ""
+			var finishReason = parsedChunk.done ? "stop" : ""
 
 			userCallback( {
 				"provider": "Ollama",
@@ -383,57 +381,48 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 			.method( "POST" )
 			.charset( "utf-8" )
 			.timeout( thisChatRequest.getTimeout() )
-			.header( "content-type", "application/json" );
+			.header( "content-type", "application/json" )
 
 		// Auth Header ONLY if the provider requires it
 		if( thisChatRequest.getSendAuthHeader() ){
-			httpRequest.header( "Authorization", "Bearer #thisChatRequest.getApiKey()#" );
+			httpRequest.header( "Authorization", "Bearer #thisChatRequest.getApiKey()#" )
 		}
 
 		// Add custom headers
 		for( var thisHeader in thisChatRequest.getHeaders() ){
-			httpRequest.header( thisHeader, thisChatRequest.getHeaders()[ thisHeader ] );
+			httpRequest.header( thisHeader, thisChatRequest.getHeaders()[ thisHeader ] )
 		}
 
 		// Set request body and callbacks
 		httpRequest
 			.body( jsonSerialize( dataPacket ) )
 			.onChunk( ( chunkNumber, content, totalBytes, httpResult, httpClient, response ) => {
-				// For regular streaming (not SSE), onChunk receives:
-				// chunkNumber, content (string), totalBytes, httpResult, httpClient, response
-				// Ollama sends newline-delimited JSON: {"message":{...}}\n{"message":{...}}\n
+				// Each HTTP chunk from Ollama is always a complete JSON object
+				if( content.isEmpty() ){
+					return
+				}
 
-				// Append chunk to buffer
-				buffer &= content;
+				// Deserialize the chunk and emit it in normalized format to the user callback
+				try{
+					var parsedChunk = jsonDeserialize( content )
+				} catch( any e ){
+					writeLog(
+						text: "Error deserializing Ollama stream chunk: #e.message# - Chunk content: #content#",
+						type: "error",
+						log : "ai"
+					)
+					return
+				}
 
-				// Process complete lines
-				var lines = buffer.split( char(10) );
-
-				// Keep the last potentially incomplete line in the buffer
-				buffer = lines[ lines.len() ];
-
-				// Process complete lines (all but the last)
-				for( var i = 1; i <= lines.len() - 1; i++ ){
-					var line = lines[ i ].trim();
-
-					// Skip empty lines
-					if( line.isEmpty() ){
-						continue;
-					}
-
-					println( "Received chunk: #line#" )
-
-					// Each line is a complete JSON object
-					try {
-						var parsedChunk = jsonDeserialize( line );
-						emitNormalizedChunk( parsedChunk );
-					} catch( any e ){
-						writeLog(
-							text: "Error parsing Ollama stream chunk: #e.message# - Data: #line#",
-							type: "error",
-							log : "ai"
-						)
-					}
+				// Emit normalized chunk to the user callback
+				try {
+					emitNormalizedChunk( parsedChunk )
+				} catch( any e ){
+					writeLog(
+						text: "Error emitting normalized chunk: #e.message# - Parsed chunk: #parsedChunk.toString()#",
+						type: "error",
+						log : "ai"
+					)
 				}
 			} )
 			.onError( ( error, httpResult ) => {
@@ -451,16 +440,6 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 				);
 			} )
 			.onComplete( ( httpResult ) => {
-				// Process any remaining data in buffer
-				if( !buffer.isEmpty() ){
-					try {
-						var parsedChunk = jsonDeserialize( buffer.trim() );
-						emitNormalizedChunk( parsedChunk );
-					} catch( any e ){
-						// Ignore parsing errors for final buffer
-					}
-				}
-
 				// -------------------------------------------------------------------------------------------
 				// --- Fire afterLLMCall middleware, in reverse order ---
 				// -------------------------------------------------------------------------------------------
@@ -481,19 +460,6 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 			} )
 			.send()
 
-		// -------------------------------------------------------------------------------------------
-		// --- Fire local callback for post mods ---
-		// -------------------------------------------------------------------------------------------
-		streamState = postResponse( arguments.chatRequest, dataPacket, buffer, "stream" )
-
-		// -------------------------------------------------------------------------------------------
-		// --- Fire afterLLMCall middleware, in reverse order ---
-		// -------------------------------------------------------------------------------------------
-		arguments.chatRequest.fireMiddleware(
-			hook   : "afterLLMCall",
-			context: { chatRequest: arguments.chatRequest, streamState: buffer },
-			reverse: true
-		)
 	}
 
 

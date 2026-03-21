@@ -66,17 +66,20 @@ public class OllamaTest extends BaseIntegrationTest {
 	@DisplayName( "Should handle custom model parameter for Ollama" )
 	public void testOllamaWithCustomModel() {
 		// Test with the lightweight model
+		// @formatter:off
 		executeWithTimeoutHandling(
 		    """
 		    result = aiChat(
 		        messages = "What is 2 + 2? Answer with just the number.",
 		        options = {
-		            "model": "qwen2.5:0.5b-instruct"
+		            "model": "qwen2.5:0.5b-instruct",
+		    	 	logResponseToConsole: true
 		        }
 		    )
 		    """,
 		    context
 		);
+		// @formatter:on
 
 		var result = variables.get( "result" );
 		assertThat( result ).isNotNull();
@@ -96,9 +99,9 @@ public class OllamaTest extends BaseIntegrationTest {
 		    aiChatStream(
 		        messages: "Tell me a bedtime story in 10 sentences.",
 		        callback:( chunk ) => {
-					println( "Received chunk: " & chunk )
-		            chunks.append( chunk )
-		            content = chunk.choices[ 1 ].delta?.content ?: ""
+		            chunks.append( arguments.chunk )
+		            content = chunk.choices.first().delta?.content ?: ""
+					println( content )
 		            fullResponse &= content
 		        },
 				options: {
@@ -116,7 +119,6 @@ public class OllamaTest extends BaseIntegrationTest {
 		// Verify we received chunks
 		assertThat( variables.get( "chunks" ) ).isNotNull();
 		var chunks = variables.get( "chunks" );
-		System.out.println( "Received " + chunks.toString() + " chunks" );
 	}
 
 	@DisplayName( "Test Ollama Tools" )
