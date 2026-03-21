@@ -19,8 +19,15 @@ interface {
 	/**
 	 * The name of the function the AI will look for
 	 */
-    public string function getName(){
+    default public string function getName(){
 		return variables.name;
+	}
+
+	/**
+	 * The description of the function the AI will look for
+	 */
+    default public string function getDescription(){
+		return variables.description;
 	}
 
 	/**
@@ -31,8 +38,9 @@ interface {
 	/**
      * Invoke the function with the provided arguments.
      *
-     * @args The arguments to pass to the function
+     * @args The arguments to pass to the function for this invocation. This should be a struct where the keys match the argument names expected by the function.
+	 * @chatRequest The original chat request that triggered this tool invocation. This can be used to access additional context about the conversation or the AI's state when executing the tool.
      */
-    public string function invoke( required struct args )
+    public string function invoke( required struct args, AiChatRequest chatRequest )
 
 }
