@@ -61,11 +61,12 @@ public class OpenAITest extends BaseIntegrationTest {
 			chunks = []
 			fullResponse = ""
 			aiChatStream(
-				"Count to 3",
+				"Count to 5",
 				( chunk ) => {
 					chunks.append( chunk )
 					content = chunk.choices?.first()?.delta?.content ?: ""
 					fullResponse &= content
+					println( "Received chunk: " & content )
 				}
 			)
 			println( "Received " & chunks.len() & " chunks" )

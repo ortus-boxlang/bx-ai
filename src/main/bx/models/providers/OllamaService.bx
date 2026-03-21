@@ -26,7 +26,6 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 		DEFAULT_CHAT_PARAMS = {
 			// Popular local models - users can override with any Ollama model
 			"model" : "qwen2.5:0.5b-instruct",
-			"stream": false  // Ollama supports both streaming and non-streaming
 		}
 		DEFAULT_EMBED_PARAMS = {
 			"model" : "nomic-embed-text"
@@ -74,6 +73,203 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 		return this
 	}
 
+	// -------------------------------------------------------------------------------------------
+	// --- Local Pre/Post Request/Response Handling Overrides ---
+	// -------------------------------------------------------------------------------------------
+
+	@override
+	private struct function preRequest(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required string operation
+	) {
+		// -------------------------------------------------------------------------------------------
+		// --- Authentication Handling ---
+		// -------------------------------------------------------------------------------------------
+		// Ollama typically doesn't use auth headers for local instances
+		// But may use basic auth for remote instances
+		if( !arguments.aiRequest.getApiKey().isEmpty() ){
+			arguments.aiRequest.addHeader( "Authorization", "Basic #toBase64( arguments.aiRequest.getApiKey() )#" )
+		} else {
+			arguments.aiRequest.setSendAuthHeader( false )
+		}
+
+
+		// -------------------------------------------------------------------------------------------
+		// --- Actions for Both Chat and Stream Operations ---
+		// -------------------------------------------------------------------------------------------
+		if( [ "stream", "chat" ].findNoCase( arguments.operation ) ){
+
+			// -------------------------------------------------------------------------------------------
+			// --- Structured Output Handling for Chat/Stream ---
+			// -------------------------------------------------------------------------------------------
+
+			// Ollama accepts a JSON schema directly in the "format" field
+			// https://github.com/ollama/ollama/blob/main/docs/api.md#structured-outputs
+			if( arguments.aiRequest.isStructuredOutput() ){
+				var cleanSchema = SchemaBuilder::cleanSchema( arguments.aiRequest.getStructuredOutput() )
+				dataPacket[ "format" ] = cleanSchema
+				// Remove any existing open ai response_format to avoid confusion
+				dataPacket.delete( "response_format" )
+			}
+
+			// -------------------------------------------------------------------------------------------
+			// --- Denormalize tool_call arguments in message history (chat + stream) ---
+			// -------------------------------------------------------------------------------------------
+			if( dataPacket.keyExists( "messages" ) ){
+				dataPacket.messages = dataPacket.messages.map( ( message ) => {
+					if( message.keyExists( "tool_calls" ) && isArray( message.tool_calls ) ){
+						message.tool_calls = message.tool_calls.map( ( toolCall ) => {
+							var args = toolCall.function?.arguments ?: {}
+							if( isSimpleValue( args ) && args.len() ){
+								toolCall.function[ "arguments" ] = jsonDeserialize( args )
+							}
+							return toolCall
+						} )
+					}
+					return message;
+			} )
+			}
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Operation Specific  ---
+		// -------------------------------------------------------------------------------------------
+
+		switch( arguments.operation ){
+			case "stream" : {
+				// Ollama uses the same endpoint for streaming and non-streaming requests, controlled by the "stream" parameter in the request body
+				dataPacket[ "stream" ] = true
+				break;
+			}
+
+			case "chat": {
+				// For non-streaming chat, explicitly set stream to false to get the correct response
+				dataPacket[ "stream" ] = false
+				break;
+			}
+
+		}
+
+		//println( "Pre-request data packet for operation [#arguments.operation#]: #dataPacket.toJSON( pretty:true )#" );
+
+		return dataPacket
+	}
+
+	/**
+	 * Normalize Ollama API responses to the standard OpenAI format so the parent
+	 * OpenAIService can handle tool calling, return formats, and middleware without
+	 * any Ollama-specific branching.
+	 *
+	 * Chat: Ollama's { message, done, prompt_eval_count, eval_count }
+	 *       → OpenAI's { choices:[{ message, finish_reason }], model, usage }
+	 *
+	 * Embeddings: Ollama's { embeddings:[[...]] }
+	 *             → OpenAI's { data:[{ embedding, index, object }], model, object }
+	 *
+	 * @see https://github.com/ollama/ollama/blob/main/docs/api.md
+	 */
+	@override
+	private any function postResponse(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required any result,
+		required string operation
+	) {
+		//println( "Post-response raw result for operation [#arguments.operation#]: #arguments.result.toString()#" );
+
+		// -------------------------------------------------------------------------------------------
+		// --- Error Pass-through For all Operations ---
+		// -------------------------------------------------------------------------------------------
+		// If the result already carries an error key, return it unchanged so BaseService's
+		// centralized error handler can fire the correct exception.
+		if( isStruct( arguments.result ) && arguments.result.keyExists( "error" ) ){
+			return arguments.result
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Chat Response Normalization ---
+		// -------------------------------------------------------------------------------------------
+		// Ollama returns: { message: { role, content, tool_calls }, model, done, prompt_eval_count, eval_count }
+		// OpenAI format:  { choices: [{ message, finish_reason }], model, usage: { ... } }
+		if( arguments.operation == "chat" ){
+			var ollamaResult = arguments.result
+			var message      = ollamaResult.message ?: {}
+
+			// Normalize tool_calls from Ollama format to OpenAI format
+			// Ollama:  [{ function: { name, arguments: struct } }]
+			// OpenAI:  [{ id, type:"function", function: { name, arguments: jsonString } }]
+			if( message.keyExists( "tool_calls" ) && message.tool_calls.len() ){
+				message.tool_calls = message.tool_calls.map( ( toolCall, i ) => {
+					var normalizedArgs = toolCall.function?.arguments ?: {}
+					return {
+						"id"      : toolCall.id ?: "call_ollama_#i#_#lCase( createUUID() )#",
+						"type"    : "function",
+						"function": {
+							"name"     : toolCall.function?.name ?: "",
+							"arguments": isSimpleValue( normalizedArgs ) ? normalizedArgs : jsonSerialize( normalizedArgs )
+						}
+					}
+				} )
+			}
+
+			// Determine finish reason: "tool_calls" if tools were invoked, "stop" otherwise
+			var hasToolCalls = message.keyExists( "tool_calls" ) && isArray( message.tool_calls ) && message.tool_calls.len()
+			var finishReason = hasToolCalls ? "tool_calls" : ( ollamaResult.done ? "stop" : "" )
+
+			var normalized = {
+				"choices": [{
+					"message"      : message,
+					"finish_reason": finishReason
+				}],
+				"model": ollamaResult.model ?: arguments.aiRequest.getModel()
+			}
+
+			// Map Ollama token counts to OpenAI usage format
+			if( ollamaResult.keyExists( "prompt_eval_count" ) ){
+				var promptTokens     = ollamaResult.prompt_eval_count ?: 0
+				var completionTokens = ollamaResult.eval_count ?: 0
+				normalized[ "usage" ] = {
+					"prompt_tokens"    : promptTokens,
+					"completion_tokens": completionTokens,
+					"total_tokens"     : promptTokens + completionTokens
+				}
+			}
+
+			//println( "Normalized Ollama Chat Response: " & normalized.toString() )
+
+			return normalized
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Embedding Response Normalization ---
+		// -------------------------------------------------------------------------------------------
+		// Ollama returns: { embeddings: [[...], ...] }
+		// Standard format: { data: [{ embedding, index, object }] }
+		//
+		// Missing `embeddings` key is remapped to { error: "..." } so BaseService's
+		// centralized error handler fires correctly.
+		// @see https://github.com/ollama/ollama/blob/main/docs/api.md#generate-embeddings
+		if( arguments.operation == "embeddings" ){
+			if ( !arguments.result.keyExists( "embeddings" ) ) {
+				return { "error": "Invalid Ollama embedding response — 'embeddings' key missing. Response: #arguments.result.toString()#" }
+			}
+			return {
+				"data"  : arguments.result.embeddings.map( ( embedding, index ) => {
+					return { "embedding": embedding, "index": index - 1, "object": "embedding" }
+				} ),
+				"model" : arguments.aiRequest.getModel(),
+				"object": "list"
+			}
+		}
+
+		return arguments.result
+	}
+
+	// -------------------------------------------------------------------------------------------
+	// --- Provider-Specific Overrides for Chat and Embeddings ---
+	// -------------------------------------------------------------------------------------------
+
 	/**
 	 * Ollama chat request - customized for Ollama's API format
 	 * @see https://github.com/ollama/ollama/blob/main/docs/api.md
@@ -88,190 +284,22 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-
-		// -------------------------------------------------------------------------------------------
-		// --- Authentication Handling ---
-		// -------------------------------------------------------------------------------------------
-		// Ollama typically doesn't use auth headers for local instances
-		// But may use basic auth for remote instances
-		if( !arguments.chatRequest.getApiKey().isEmpty() ){
-			arguments.chatRequest.addHeader( "Authorization", "Basic #toBase64( arguments.chatRequest.getApiKey() )#" );
-		} else {
-			arguments.chatRequest.setSendAuthHeader( false );
-		}
-
-		// -------------------------------------------------------------------------------------------
-		// --- Build the packet according to Ollama's API format ---
-		// -------------------------------------------------------------------------------------------
-		var dataPacket = {
-			"model": arguments.chatRequest.getModel(),
-			"messages": arguments.chatRequest.getMessages(),
-			"stream": false
-		}.append( arguments.chatRequest.getParams() )
-
-		// -------------------------------------------------------------------------------------------
-		// --- Tooling Detection ---
-		// -------------------------------------------------------------------------------------------
-		if( chatRequest.getParams()?.tools?.len() ) {
-			dataPacket[ "tools" ] = formatToolsForOllama( chatRequest.getParams().tools )
-		}
-
-		// -------------------------------------------------------------------------------------------
-		// --- Structured output support (Ollama format) ---
-		// -------------------------------------------------------------------------------------------
-		// Ollama accepts a JSON schema directly in the "format" field
-		// https://github.com/ollama/ollama/blob/main/docs/api.md#structured-outputs
-		if( arguments.chatRequest.isStructuredOutput() ){
-			var cleanSchema = SchemaBuilder::cleanSchema( arguments.chatRequest.getStructuredOutput() )
-			dataPacket[ "format" ] = cleanSchema
-		}
-
-		// -------------------------------------------------------------------------------------------
-		// --- Fire beforeLLMCall middleware ---
-		// -------------------------------------------------------------------------------------------
-		var llmContext = { chatRequest: arguments.chatRequest, dataPacket: dataPacket }
-		var llmBeforeResult = arguments.chatRequest.fireMiddleware( hook: "beforeLLMCall", context: llmContext )
-		// If any beforeLLMCall middleware returned a terminal result (suspend, cancel, reject),
-		// return it immediately to allow the agent to handle it (e.g. pause for human input, skip)
-		if ( llmBeforeResult.isTerminal() ) {
-			return llmBeforeResult
-		}
-
-		// -------------------------------------------------------------------------------------------
-		// --- Fire WrapLLM -> HTTP Call ---
-		// -------------------------------------------------------------------------------------------
-		// Send HTTP request to the provider — wrapped in wrapLLMCall middleware chain
-		// The result is a struct with normalized keys
-		var capturedDataPacket  = dataPacket;
-		var capturedChatRequest = arguments.chatRequest;
-		var result = arguments.chatRequest.fireWrapMiddleware(
-			hook         : "wrapLLMCall",
-			context      : llmContext,
-			innerFunction: () => sendChatRequest( capturedChatRequest, capturedDataPacket )
-		)
-
-		// -------------------------------------------------------------------------------------------
-		// --- Fire afterLLMCall middleware, in reverse order ---
-		// -------------------------------------------------------------------------------------------
-		arguments.chatRequest.fireMiddleware(
-			hook   : "afterLLMCall",
-			context: { chatRequest: arguments.chatRequest, result: result },
-			reverse: true
-		)
-
-		// -------------------------------------------------------------------------------------------
-		// --- Direct Error Detection ---
-		// -------------------------------------------------------------------------------------------
-		if( result.keyExists( "error" ) ){
-			writeLog(
-				text: result.error.toString(),
-				type: "error",
-				log : "ai"
-			)
-
-			// Announce the error
-			BoxAnnounce( "onAIError", {
-				error       : result.error,
-				errorMessage: result.error.toString(),
-				provider    : this,
-				operation   : "chat",
-				aiRequest   : arguments.chatRequest,
-				canRetry    : true
-			} )
-
-			throw(
-				type   : "ProviderError",
-				message: result.error.toString()
-			)
-		}
-
-		// -------------------------------------------------------------------------------------------
-		// --- Usage Event Announcement ---
-		// -------------------------------------------------------------------------------------------
-		if( result.keyExists( "usage" ) ){
-			BoxAnnounce( "onAITokenCount", {
-				provider         : this,
-				operation        : "chat",
-				model            : arguments.chatRequest.getModel(),
-				promptTokens     : result.usage.keyExists( "prompt_tokens" )     ? result.usage.prompt_tokens     : 0,
-				completionTokens : result.usage.keyExists( "completion_tokens" ) ? result.usage.completion_tokens : 0,
-				totalTokens      : result.usage.keyExists( "total_tokens" )      ? result.usage.total_tokens      : 0,
-				aiRequest        : arguments.chatRequest,
-				usage            : result.usage,
-				timestamp        : now()
-			} )
-		}
-
-		// -------------------------------------------------------------------------------------------
-		// --- Results Determination or Tool Calling ---
-		// -------------------------------------------------------------------------------------------
-		var toolCalls = result.message?.tool_calls ?: arrayNew()
-		if( toolCalls.len() ){
-			/**
-			 * ---------------------------------------------------------------------------------------------------------
-			 * Max Interactions Check
-			 * ---------------------------------------------------------------------------------------------------------
-			 */
-			var maxAllowed = chatRequest.getMaxInteractions() > 0 ? chatRequest.getMaxInteractions() : variables.maxInteractions;
-			if( arguments.interactionCount >= maxAllowed ){
-				writeLog(
-					text: "Max tool call interactions (#maxAllowed#) exceeded",
-					type: "error",
-					log : "ai"
-				)
-				throw(
-					type   : "MaxInteractionsExceeded",
-					message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
-				);
-			}
-
-			// Add the role assistant message with tool calls
-			chatRequest.getMessages().append( result.message );
-
-			// Execute each tool call
-			for( var toolCall in toolCalls ) {
-				executeOllamaTool( toolCall, chatRequest );
-			}
-
-			// Recursively call chat with the updated chat request and incremented interaction count
-			return chat( chatRequest, arguments.interactionCount + 1 );
-		}
-
-		// Determine return formats
-		var content = result.message?.content ?: "";
-		switch( arguments.chatRequest.getReturnFormat() ){
-			case "all":
-				return result;
-			case "raw":
-				return result;
-			case "json":
-				return JSONDeserialize( extractFromCodeBlock( content, "json" ) );
-			case "xml" :
-				return xmlParse( extractFromCodeBlock( content, "xml" ) );
-			case  "structuredOutput":
-				return populateStructuredOutput( content, arguments.chatRequest );
-			case "single": default:
-				return content;
-		}
+		// SuperSize me!
+		return super.chat( arguments.chatRequest, arguments.interactionCount )
 	}
 
 	/**
-	 * Ollama streaming chat request - overridden for Ollama's streaming format
-	 * Ollama uses newline-delimited JSON instead of SSE format
+	 * Ollama streaming chat request - delegates to parent after seeding defaults.
+	 * The actual NDJSON transport is handled by the sendStreamRequest() override below.
 	 *
-	 * @chatRequest The AiChatRequestobject to send to the provider
+	 * @chatRequest The AiChatRequest object to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream
+	 * @interactionCount The number of interactions (for tool calling recursion tracking)
 	 */
 	@override
 	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		// Handle authentication for remote/secured Ollama instances
-		if( !arguments.chatRequest.getApiKey().isEmpty() ){
-			arguments.chatRequest.addHeader( "Authorization", "Basic #toBase64( arguments.chatRequest.getApiKey() )#" );
-		} else {
-			arguments.chatRequest.setSendAuthHeader( false );
-		}
 
 		// Build the packet according to Ollama's API format with streaming
 		var dataPacket = {
@@ -283,9 +311,14 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 		// -------------------------------------------------------------------------------------------
 		// --- Tooling Detection ---
 		// -------------------------------------------------------------------------------------------
-		if( arguments.chatRequest.getParams()?.tools?.len() ) {
-			dataPacket[ "tools" ] = formatToolsForOllama( arguments.chatRequest.getParams().tools )
+		if( dataPacket.keyExists( "tools" ) ){
+			dataPacket.tools = dataPacket.tools.map( .getSchema )
 		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire local callback for pre mods ---
+		// -------------------------------------------------------------------------------------------
+		dataPacket = preRequest( arguments.chatRequest, dataPacket, "stream" )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire beforeLLMCall middleware ---
@@ -318,7 +351,6 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		// Buffer for accumulating partial lines
 		var buffer = "";
-
 		// Capture callback in local variable for closure
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
@@ -389,6 +421,8 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 						continue;
 					}
 
+					println( "Received chunk: #line#" )
+
 					// Each line is a complete JSON object
 					try {
 						var parsedChunk = jsonDeserialize( line );
@@ -446,108 +480,27 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 				);
 			} )
 			.send()
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire local callback for post mods ---
+		// -------------------------------------------------------------------------------------------
+		streamState = postResponse( arguments.chatRequest, dataPacket, buffer, "stream" )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware, in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		arguments.chatRequest.fireMiddleware(
+			hook   : "afterLLMCall",
+			context: { chatRequest: arguments.chatRequest, streamState: buffer },
+			reverse: true
+		)
 	}
+
 
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
 		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
 		return super.embeddings( arguments.embeddingRequest )
-	}
-
-	/**
-	 * Normalize Ollama's embedding response to the standard OpenAI format.
-	 * Ollama returns: { embeddings: [[...], ...] }
-	 * Standard format: { data: [{ embedding, index, object }] }
-	 *
-	 * Missing `embeddings` key is remapped to { error: "..." } so BaseService's
-	 * centralized error handler fires correctly.
-	 * @see https://github.com/ollama/ollama/blob/main/docs/api.md#generate-embeddings
-	 */
-	@override
-	private any function postResponse(
-		required AiBaseRequest aiRequest,
-		required struct dataPacket,
-		required any result,
-		required string operation
-	) {
-		if ( arguments.operation != "embeddings" ) { return arguments.result }
-		if ( !arguments.result.keyExists( "embeddings" ) ) {
-			return { "error": "Invalid Ollama embedding response — 'embeddings' key missing. Response: #arguments.result.toString()#" }
-		}
-		return {
-			"data"  : arguments.result.embeddings.map( ( embedding, index ) => {
-				return { "embedding": embedding, "index": index - 1, "object": "embedding" }
-			} ),
-			"model" : arguments.aiRequest.getModel(),
-			"object": "list"
-		}
-	}
-
-	/**
-	 * Format tools for Ollama's specific tool format
-	 * @see https://github.com/ollama/ollama/blob/main/docs/api.md#tool-calling
-	 *
-	 * @tools The tools to format
-	 *
-	 * @return An array of tools formatted for Ollama
-	 */
-	private array function formatToolsForOllama( required array tools ) {
-		var ollamaTools = []
-
-		for( var tool in arguments.tools ) {
-			var argumentsSchema = tool.getArgumentsSchema();
-			var ollamaTool = {
-				"type": "function",
-				"function": {
-					"name": tool.getName(),
-					"description": tool.getDescription(),
-					"parameters": {
-						"type": "object",
-						"properties": argumentsSchema.properties,
-						"required": argumentsSchema.required
-					}
-				}
-			}
-			ollamaTools.append( ollamaTool )
-		}
-
-		return ollamaTools
-	}
-
-	/**
-	 * Execute Ollama tool calls
-	 *
-	 * @toolCall The tool call object from Ollama: { function: { name: "toolName", arguments: {} } }
-	 * @chatRequest The original chat request containing the tool
-	 */
-	private function executeOllamaTool( required struct toolCall, required AiChatRequest chatRequest ) {
-		var messages = arguments.chatRequest.getMessages()
-
-		// Get the tool from the chat request
-		var toolAttempt = arguments.chatRequest.getTool( toolCall.function.name )
-
-		if( toolAttempt.isPresent() ){
-			var tool = toolAttempt.get()
-			// Deserialize arguments if they're a JSON string, otherwise use as-is
-			var toolArgs = isSimpleValue( toolCall.function.arguments )
-				? JSONDeserialize( toolCall.function.arguments )
-				: toolCall.function.arguments
-
-			messages.append( {
-				"role" : "tool",
-				"content" : tool.invoke( toolArgs, arguments.chatRequest )
-			} )
-		} else {
-			writeLog(
-				text: "Unable to find tool named: [#toolCall.function.name#]",
-				type: "warning",
-				log : "ai"
-			)
-			messages.append( {
-				"role" : "tool",
-				"content" : "Tool ['#toolCall.function.name#'] not found in chat request"
-			} )
-		}
 	}
 
 }

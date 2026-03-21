@@ -47,9 +47,12 @@ public class OllamaTest extends BaseIntegrationTest {
 		// Execute aiChat BIF with a simple question
 		executeWithTimeoutHandling(
 		    """
-		    result = aiChat( "What is 2+2? Answer with just the number." )
-		    println( result )
-		    """,
+		       result = aiChat( messages: "What is 2+2? Answer with just the number.", options:{
+		    	//logRequestToConsole: true,
+		    	//logResponseToConsole: true
+		    } )
+		       println( result )
+		       """,
 		    context
 		);
 
@@ -85,23 +88,30 @@ public class OllamaTest extends BaseIntegrationTest {
 	@DisplayName( "Should handle streaming chat with Ollama" )
 	public void testOllamaStreamingChat() {
 		// Test streaming functionality
+		// @formatter:off
 		executeWithTimeoutHandling(
 		    """
 		    chunks = []
 		    fullResponse = ""
 		    aiChatStream(
-		        "Say 'hi'",
-		        ( chunk ) => {
+		        messages: "Tell me a bedtime story in 10 sentences.",
+		        callback:( chunk ) => {
+					println( "Received chunk: " & chunk )
 		            chunks.append( chunk )
-		            content = chunk.message?.content ?: ""
+		            content = chunk.choices[ 1 ].delta?.content ?: ""
 		            fullResponse &= content
-		        }
+		        },
+				options: {
+					logResponseToConsole: true,
+					logRequestToConsole: true
+				}
 		    )
 		    println( "Received " & chunks.len() & " chunks" )
 		    println( "Full response: " & fullResponse )
 		    """,
 		    context
 		);
+		// @formatter:on
 
 		// Verify we received chunks
 		assertThat( variables.get( "chunks" ) ).isNotNull();
@@ -121,7 +131,7 @@ public class OllamaTest extends BaseIntegrationTest {
 			tool = aiTool(
 				"get_weather",
 				"Get current temperature for a given location.",
-				location => {
+				( required location) => {
 					// Ensure location is a string (handle if passed as struct)
 					var loc = isSimpleValue( location ) ? location : ( location.location ?: location.toString() );
 
@@ -137,12 +147,12 @@ public class OllamaTest extends BaseIntegrationTest {
 				}).describeLocation( "City and country e.g. Bogotá, Colombia" )
 
 			result = aiChat(
-				messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.",
+				messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.
+				Please use the provided tool to get the current temperature for each city.",
 				params = {
 					tools: [ tool ]
 				},
 				options = {
-					logResponseToConsole: true
 				} )
 			println( result )
 			""",
@@ -282,6 +292,7 @@ public class OllamaTest extends BaseIntegrationTest {
 				input: "BoxLang is a modern dynamic JVM language",
 				options: { provider: "ollama" }
 			)
+			//println( result )
 			println( "Ollama Embedding result type: " & result.getClass().getName() )
 			isArray = isArray( result )
 			embeddingLength = result.len()
