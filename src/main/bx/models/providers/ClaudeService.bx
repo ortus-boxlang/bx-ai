@@ -380,6 +380,7 @@ class extends="BaseService" implements="IAiChatService" {
 		arguments.chatRequest
 			.setSendAuthHeader( false )
 			.addHeader( "x-api-key", arguments.chatRequest.getApiKey() )
+			.addHeader( "anthropic-version", getHeaders()[ "anthropic-version" ] )
 
 		// Build the packet according to Claude's API requirements
 		// https://docs.anthropic.com/en/api/messages#body-messages
