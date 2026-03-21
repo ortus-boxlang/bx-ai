@@ -22,6 +22,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// according to the docs, this is the default model
 			"model" : "deepseek-chat"
@@ -35,6 +36,11 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.chatURL = "https://api.deepseek.com/v1/chat/completions"
 		variables.embeddingsURL = "https://api.deepseek.com/v1/embeddings"
 		variables.name = "DeepSeek"
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	@override

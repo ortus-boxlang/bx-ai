@@ -21,6 +21,7 @@ class extends="BaseService" implements="IAiChatService" {
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream" ]
 		DEFAULT_CHAT_PARAMS = {
 			// according to the docs, this is the default model and tokens
 			// https://docs.anthropic.com/en/docs/about-claude/models/overview#model-aliases
@@ -41,6 +42,11 @@ class extends="BaseService" implements="IAiChatService" {
 		variables.name = "Claude"
 		// https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview
 		addHeader( name: "anthropic-version", value: static.DEFAULT_HEADERS[ "anthropic-version" ] )
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	/**

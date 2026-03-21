@@ -60,6 +60,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_BASE_URL = "http://localhost:8080/v1"
 		DEFAULT_CHAT_PARAMS = {}
 		DEFAULT_EMBED_PARAMS = {}
@@ -75,6 +76,11 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.name = "OpenAICompatible"
 
 		defaults( static.DEFAULT_CHAT_PARAMS )
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	/**

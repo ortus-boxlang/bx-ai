@@ -23,6 +23,7 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// Popular local models - users can override with any Ollama model
 			"model" : "qwen2.5:0.5b-instruct"
@@ -44,6 +45,11 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.name = "Ollama"
 		// Ollama typically doesn't require auth headers for local instances
 		// But supports basic auth for remote/secured instances
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	/**

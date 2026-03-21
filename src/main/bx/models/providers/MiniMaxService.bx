@@ -24,6 +24,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://platform.minimax.io/docs/api-reference/chat-completion
 			"model" : "MiniMax-M2.5-highspeed"
@@ -41,6 +42,11 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.chatURL = "https://api.minimax.io/v1/chat/completions"
 		variables.embeddingsURL = "https://api.minimax.io/v1/embeddings"
 		variables.name = "MiniMax"
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	@override

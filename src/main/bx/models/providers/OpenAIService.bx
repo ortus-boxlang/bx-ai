@@ -28,6 +28,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://platform.openai.com/docs/models
 			// according to the docs, this is the default model
@@ -46,6 +47,11 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		variables.chatURL = "https://api.openai.com/v1/chat/completions"
 		variables.embeddingsURL = "https://api.openai.com/v1/embeddings"
 		variables.name = "OpenAI"
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	/**

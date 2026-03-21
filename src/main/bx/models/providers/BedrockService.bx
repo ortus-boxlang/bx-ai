@@ -66,6 +66,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			"model"      : "anthropic.claude-3-sonnet-20240229-v1:0",
 			"max_tokens" : 4096
@@ -90,6 +91,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		loadAwsCredentialsFromEnvironment();
 
 		return this;
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	/**

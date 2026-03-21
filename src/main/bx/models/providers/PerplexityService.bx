@@ -21,6 +21,7 @@ class extends="OpenAIService" implements="IAiChatService" {
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://docs.perplexity.ai/getting-started/models
 			// according to the docs, this is the default model
@@ -35,6 +36,11 @@ class extends="OpenAIService" implements="IAiChatService" {
 	function init(){
 		variables.chatURL = "https://api.perplexity.ai/chat/completions"
 		variables.name = "Perplexity"
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	@override

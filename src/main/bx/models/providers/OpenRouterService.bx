@@ -22,6 +22,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://openrouter.ai/docs/quickstart
 			// according to the docs, this is the default model
@@ -37,6 +38,11 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.chatURL = "https://openrouter.ai/api/v1/chat/completions"
 		variables.embeddingsURL = "https://openrouter.ai/api/v1/embeddings"
 		variables.name = "OpenRouter"
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	@override
