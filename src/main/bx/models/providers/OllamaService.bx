@@ -336,28 +336,6 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 			"finishReason": "",
 			"toolCalls": []
 		}
-		// We do this so all stream chunks go through the same normalization process, whether they come from SSE events or regular HTTP chunks. Ollama sends complete JSON objects in each chunk, so we can normalize them directly to the OpenAI format expected by the rest of the system.
-		var emitNormalizedChunk = ( parsedChunk ) => {
-			var content = parsedChunk.message?.content ?: ""
-			var finishReason = parsedChunk.done ? "stop" : ""
-
-			userCallback( {
-				"provider": "Ollama",
-				"model": parsedChunk.model ?: requestedModel,
-				"object": "chat.completion.chunk",
-				"choices": [
-					{
-						"index": 0,
-						"delta": {
-							"role": "assistant",
-							"content": content
-						},
-						"finish_reason": finishReason
-					}
-				],
-				"raw": parsedChunk
-			} )
-		}
 
 		// Announce the request
 		BoxAnnounce(
@@ -409,9 +387,27 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 					return
 				}
 
-				// Deserialize the chunk and emit it in normalized format to the user callback
+				// Deserialize the chunk and normalize it to the OpenAI format
+				// which is our standard internal format so user's don't rewrite their callbacks
+				// for each provider's unique response format.
 				try{
 					var parsedChunk = jsonDeserialize( content )
+					var normalizedChunk = {
+						"provider": "Ollama",
+						"model": parsedChunk.model ?: requestedModel,
+						"object": "chat.completion.chunk",
+						"choices": [
+							{
+								"index": 0,
+								"delta": {
+									"role": "assistant",
+									"content": parsedChunk.message?.content ?: ""
+								},
+								"finish_reason": parsedChunk.done ? "stop" : ""
+							}
+						],
+						"raw": parsedChunk
+					}
 				} catch( any e ){
 					writeLog(
 						text: "Error deserializing Ollama stream chunk: #e.message# - Chunk content: #content#",
@@ -423,10 +419,11 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 
 				// Emit normalized chunk to the user callback
 				try {
-					emitNormalizedChunk( parsedChunk )
+					userCallback( normalizedChunk )
+					updateStreamState( streamState, normalizedChunk )
 				} catch( any e ){
 					writeLog(
-						text: "Error emitting normalized chunk: #e.message# - Parsed chunk: #parsedChunk.toString()#",
+						text: "Error emitting normalized chunk: #e.message# #e.detail# - Normalized chunk: #normalizedChunk.toString()#",
 						type: "error",
 						log : "ai"
 					)
