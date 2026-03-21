@@ -218,7 +218,7 @@ class extends="AiBaseRunnable" {
 		var userId         = arguments.options.userId ?: variables.options.userId ?: ""
 		var conversationId = arguments.options.conversationId ?: variables.options.conversationId ?: ""
 		// unique ID for this specific run, useful for logging and correlation
-		var runId 		= "#agentName().slugify()#-#createUUID()#"
+		var runId 		= "#getAgentName().slugify()#-#createUUID()#"
 
 		// -------------------------------------------------------------------------------------------
 		// --- Prep Message Context ---
