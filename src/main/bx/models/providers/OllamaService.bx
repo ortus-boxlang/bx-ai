@@ -336,6 +336,9 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 			"finishReason": "",
 			"toolCalls": []
 		}
+		// Running 0-based offset so tool calls that arrive across multiple streaming
+		// chunks get unique indices that slot correctly into mergeToolCallDeltas().
+		var toolCallIndexOffset = 0
 
 		// Announce the request
 		BoxAnnounce(
@@ -387,23 +390,52 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 					return
 				}
 
-				// Deserialize the chunk and normalize it to the OpenAI format
-				// which is our standard internal format so user's don't rewrite their callbacks
-				// for each provider's unique response format.
+				// Deserialize the chunk and normalize it to the OpenAI streaming format
+				// (our internal standard) so user callbacks work the same across all providers.
 				try{
 					var parsedChunk = jsonDeserialize( content )
+
+					// Build the delta — start with the text content
+					var delta = {
+						"role"   : "assistant",
+						"content": parsedChunk.message?.content ?: ""
+					}
+
+					// Ollama sends COMPLETE tool-call objects in streaming chunks (not partial
+					// argument deltas like OpenAI).  Normalize each call to OpenAI delta format
+					// so BaseService.updateStreamState() / mergeToolCallDeltas() can accumulate
+					// them correctly.  We use a running offset so calls arriving across multiple
+					// chunks get unique 0-based indices.
+					var ollamaToolCalls = parsedChunk.message?.tool_calls ?: []
+					if( isArray( ollamaToolCalls ) && ollamaToolCalls.len() ){
+						delta[ "tool_calls" ] = ollamaToolCalls.map( ( toolCall, chunkLocalIndex ) => {
+							var globalIndex = toolCallIndexOffset + chunkLocalIndex - 1 // 0-based
+							var args        = toolCall.function?.arguments ?: {}
+							return {
+								"index"   : globalIndex,
+								"id"      : toolCall.id ?: "call_ollama_#globalIndex + 1#_#lCase( createUUID() )#",
+								"type"    : "function",
+								"function": {
+									"name"     : toolCall.function?.name ?: "",
+									"arguments": isSimpleValue( args ) ? args : jsonSerialize( args )
+								}
+							}
+						} )
+						toolCallIndexOffset += ollamaToolCalls.len()
+					}
+
+					// Determine finish reason
+					var hasToolCalls = delta.keyExists( "tool_calls" )
+					var finishReason = hasToolCalls ? "tool_calls" : ( parsedChunk.done ? "stop" : "" )
 					var normalizedChunk = {
 						"provider": "Ollama",
-						"model": parsedChunk.model ?: requestedModel,
-						"object": "chat.completion.chunk",
-						"choices": [
+						"model"   : parsedChunk.model ?: requestedModel,
+						"object"  : "chat.completion.chunk",
+						"choices" : [
 							{
-								"index": 0,
-								"delta": {
-									"role": "assistant",
-									"content": parsedChunk.message?.content ?: ""
-								},
-								"finish_reason": parsedChunk.done ? "stop" : ""
+								"index"        : 0,
+								"delta"        : delta,
+								"finish_reason": finishReason
 							}
 						],
 						"raw": parsedChunk

@@ -167,6 +167,64 @@ public class OllamaTest extends BaseIntegrationTest {
 		assertThat( result ).contains( "salvador" );
 	}
 
+	@DisplayName( "Test Ollama streaming with tool calls" )
+	@Test
+	public void testOllamaStreamingWithTools() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+			toolCallCount = 0
+			tool = aiTool(
+				"get_weather",
+				"Get current temperature for a given location.",
+				( required location) => {
+					toolCallCount++
+					var loc = isSimpleValue( location ) ? location : ( location.location ?: location.toString() );
+					println( "🔧 TOOL INVOKED with location: [" & loc & "]" )
+					if( loc contains "Kansas City" ) return "85"
+					if( loc contains "San Salvador" ) return "90"
+					return "unknown"
+				}).describeLocation( "City and country e.g. Bogotá, Colombia" )
+
+			chunks       = []
+			fullResponse = ""
+
+			aiChatStream(
+				messages: "How hot is it in Kansas City? Answer with only the temperature in Fahrenheit, nothing else. Use the provided tool.",
+				callback: ( chunk ) => {
+					chunks.append( chunk )
+					content = chunk.choices.first().delta?.content ?: ""
+					fullResponse &= content
+				},
+				params: {
+					tools: [ tool ]
+				},
+				options: {
+					//logRequestToConsole: true,
+					//logResponseToConsole: true
+				}
+			)
+
+			println( "Streaming tool call chunks received: " & chunks.len() )
+			println( "Tool invocation count: " & toolCallCount )
+			println( "Final streamed response: " & fullResponse )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "chunks" ) ).isNotNull();
+		assertThat( variables.get( "fullResponse" ) ).isNotNull();
+		var fullResponse = variables.get( "fullResponse" ).toString();
+		assertThat( fullResponse ).isNotEmpty();
+		// Assert the tool was actually invoked (mechanism is working)
+		// Note: qwen2.5:0.5b-instruct is a very small model and may not reliably
+		// incorporate tool results into its final answer - we assert invocation, not the value.
+		var toolCallCount = variables.getAsInteger( ortus.boxlang.runtime.scopes.Key.of( "toolCallCount" ) );
+		System.out.println( "Tool invoked " + toolCallCount + " time(s). Final response: " + fullResponse );
+		assertThat( toolCallCount ).isGreaterThan( 0 );
+	}
+
 	@DisplayName( "Test JSON response" )
 	@Test
 	public void testJsonResponse() {
@@ -312,4 +370,5 @@ public class OllamaTest extends BaseIntegrationTest {
 		// nomic-embed-text produces 768-dimensional vectors
 		assertThat( embeddingLength ).isAtLeast( 768 );
 	}
+
 }
