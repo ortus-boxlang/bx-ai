@@ -301,58 +301,42 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 
-		// Build the packet according to Ollama's API format with streaming
-		var dataPacket = {
-			"model": arguments.chatRequest.getModel(),
-			"messages": arguments.chatRequest.getMessages(),
-			"stream": true
-		}.append( arguments.chatRequest.getParams() )
+		// Delegate to parent which will handle middleware, tool calling, and response normalization. The actual streaming transport is handled by the sendStreamRequest() override below.
+		return super.chatStream( arguments.chatRequest, arguments.callback, arguments.interactionCount )
+	}
 
-		// -------------------------------------------------------------------------------------------
-		// --- Tooling Detection ---
-		// -------------------------------------------------------------------------------------------
-		if( dataPacket.keyExists( "tools" ) ){
-			dataPacket.tools = dataPacket.tools.map( .getSchema )
-		}
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
+		return super.embeddings( arguments.embeddingRequest )
+	}
 
-		// -------------------------------------------------------------------------------------------
-		// --- Fire local callback for pre mods ---
-		// -------------------------------------------------------------------------------------------
-		dataPacket = preRequest( arguments.chatRequest, dataPacket, "stream" )
-
-		// -------------------------------------------------------------------------------------------
-		// --- Fire beforeLLMCall middleware ---
-		// -------------------------------------------------------------------------------------------
-		var streamLlmCtx   = { chatRequest: arguments.chatRequest, dataPacket: dataPacket };
-		var streamLlmBefore = arguments.chatRequest.fireMiddleware( "beforeLLMCall", streamLlmCtx );
-		if ( streamLlmBefore.isTerminal() ) {
-			// Emit a single sentinel chunk so callers know the stream was stopped
-			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
-			return
-		}
-
-		// -------------------------------------------------------------------------------------------
-		// --- Global Announcement for Stream Start ---
-		// -------------------------------------------------------------------------------------------
-		BoxAnnounce(
-			"onAIChatRequest",
-			{
-				"dataPacket" : dataPacket,
-				"chatRequest": arguments.chatRequest,
-				"provider"   : this
-			}
-		)
-
-		// Log the request if enabled
-		if( arguments.chatRequest.getLogRequestToConsole() ){
-			println( "AI Request (Stream)" )
-			println( dataPacket )
-		}
-
-		// Capture callback in local variable for closure
+	/**
+	 * A generic HTTP proxy to send streaming requests to the provider
+	 *
+	 * @chatRequest The chatRequest object to use in the request
+	 * @dataPacket The data packet to send to the provider
+	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
+	 * chatUrl Optional URL to override the default chat endpoint (some providers use the same endpoint for chat and embeddings)
+	 *
+	 * @return void
+	 */
+	private struct function sendStreamRequest(
+		required AiChatRequest chatRequest,
+		required struct dataPacket,
+		required function callback,
+		chatUrl = getChatURL()
+	 ){
+		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback
 		var thisChatRequest = arguments.chatRequest
 		var requestedModel = arguments.chatRequest.getModel()
+		var streamState = {
+			"content": "",
+			"finishReason": "",
+			"toolCalls": []
+		}
+		// We do this so all stream chunks go through the same normalization process, whether they come from SSE events or regular HTTP chunks. Ollama sends complete JSON objects in each chunk, so we can normalize them directly to the OpenAI format expected by the rest of the system.
 		var emitNormalizedChunk = ( parsedChunk ) => {
 			var content = parsedChunk.message?.content ?: ""
 			var finishReason = parsedChunk.done ? "stop" : ""
@@ -375,27 +359,50 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 			} )
 		}
 
+		// Announce the request
+		BoxAnnounce(
+			"onAIChatRequest",
+			{
+				"dataPacket" : arguments.dataPacket,
+				"chatRequest": arguments.chatRequest,
+				"provider"   : this
+			}
+		);
+
+		// Log the request
+		if( arguments.chatRequest.getLogRequest() ){
+			writeLog(
+				text: buildRequestLog( arguments.chatRequest, arguments.dataPacket ),
+				type: "info",
+				log : "ai"
+			)
+		}
+
+		// Log the request to the console if enabled
+		if( arguments.chatRequest.getLogRequestToConsole() ){
+			println( buildRequestLog( arguments.chatRequest, arguments.dataPacket ) )
+		}
+
 		// Build HTTP request with fluent API
-		// Note: Ollama uses newline-delimited JSON, NOT SSE format
-		var httpRequest = http( getChatURL() )
+		var httpRequest = http( arguments.chatUrl )
 			.method( "POST" )
 			.charset( "utf-8" )
-			.timeout( thisChatRequest.getTimeout() )
+			.timeout( arguments.chatRequest.getTimeout() )
 			.header( "content-type", "application/json" )
 
 		// Auth Header ONLY if the provider requires it
-		if( thisChatRequest.getSendAuthHeader() ){
-			httpRequest.header( "Authorization", "Bearer #thisChatRequest.getApiKey()#" )
+		if( arguments.chatRequest.getSendAuthHeader() ){
+			httpRequest.header( "Authorization", "Bearer #arguments.chatRequest.getApiKey()#" );
 		}
 
 		// Add custom headers
-		for( var thisHeader in thisChatRequest.getHeaders() ){
-			httpRequest.header( thisHeader, thisChatRequest.getHeaders()[ thisHeader ] )
+		for( var thisHeader in arguments.chatRequest.getHeaders() ){
+			httpRequest.header( thisHeader, arguments.chatRequest.getHeaders()[ thisHeader ] );
 		}
 
-		// Set request body and callbacks
+		// Set request body and setup callbacks
 		httpRequest
-			.body( jsonSerialize( dataPacket ) )
+			.body( jsonSerialize( arguments.dataPacket ) )
 			.onChunk( ( chunkNumber, content, totalBytes, httpResult, httpClient, response ) => {
 				// Each HTTP chunk from Ollama is always a complete JSON object
 				if( content.isEmpty() ){
@@ -426,28 +433,38 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 				}
 			} )
 			.onError( ( error, httpResult ) => {
-				var errorMessage = "HTTP Error: #error.message#";
+				var errorMessage = "HTTP Error: [#error.message#]";
 
 				writeLog(
-					text: "Stream Request Error: #errorMessage#",
+					text: "Stream Request Error: [#errorMessage#]",
 					type: "error",
 					log : "ai"
 				)
 
+				// Announce the error
+				BoxAnnounce( "onAIError", {
+					error: error,
+					errorMessage: errorMessage,
+					provider: this,
+					operation: "stream",
+					aiRequest: thisChatRequest,
+					canRetry: true
+				} );
+
 				throw(
 					type   : "ProviderError",
 					message: errorMessage
-				);
+				)
 			} )
 			.onComplete( ( httpResult ) => {
-				// -------------------------------------------------------------------------------------------
-				// --- Fire afterLLMCall middleware, in reverse order ---
-				// -------------------------------------------------------------------------------------------
-				thisChatRequest.fireMiddleware(
-					hook   : "afterLLMCall",
-					context: { chatRequest: thisChatRequest, streamState: httpResult },
-					reverse: true
-				)
+				// Log the response if enabled
+				if( thisChatRequest.getLogResponse() ){
+					writeLog(
+						text: "Stream completed successfully",
+						type: "info",
+						log : "ai"
+					)
+				}
 
 				BoxAnnounce(
 					"onAIChatResponse",
@@ -456,17 +473,11 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 						"provider"    : this,
 						"streamComplete" : true
 					}
-				);
+				)
 			} )
 			.send()
 
-	}
-
-
-	@override
-	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
-		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
-		return super.embeddings( arguments.embeddingRequest )
+		return streamState;
 	}
 
 }
