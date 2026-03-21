@@ -84,6 +84,14 @@ class extends="BaseService" implements="IAiChatService" {
 	 */
 	@override
 	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
+		// Apply service-level defaults so model is always set
+		arguments.chatRequest
+			.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+			.setModelIfEmpty( variables.params.model ?: "" )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers );
+
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
 
@@ -376,6 +384,14 @@ class extends="BaseService" implements="IAiChatService" {
 	 */
 	@override
 	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		// Apply service-level defaults so model is always set
+		arguments.chatRequest
+			.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+			.setModelIfEmpty( variables.params.model ?: "" )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers );
+
 		// No auth header, claude uses x-api-key
 		arguments.chatRequest
 			.setSendAuthHeader( false )
