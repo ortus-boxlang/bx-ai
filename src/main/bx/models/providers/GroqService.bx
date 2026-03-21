@@ -14,14 +14,15 @@
  * ----------------------------------------------------------------------------------
  */
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
-class extends="OpenAIService" implements="IAiChatService" {
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "chat", "stream" ]
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://console.groq.com/docs/models
 			// according to the docs, this is a fast, efficient model
@@ -35,6 +36,7 @@ class extends="OpenAIService" implements="IAiChatService" {
 	 */
 	function init(){
 		variables.chatURL = "https://api.groq.com/openai/v1/chat/completions"
+		variables.embeddingsURL = "https://api.groq.com/openai/v1/embeddings"
 		variables.name = "Groq"
 	}
 

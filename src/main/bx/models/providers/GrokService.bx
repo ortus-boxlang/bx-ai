@@ -14,14 +14,15 @@
  * ----------------------------------------------------------------------------------
  */
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
-class extends="OpenAIService" implements="IAiChatService" {
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "chat", "stream" ]
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// according to the docs, this is the default model
 			// https://docs.x.ai/docs/models
