@@ -34,7 +34,6 @@ class extends="OpenAIService" implements="IAiChatService" {
 	 */
 	function init(){
 		variables.chatURL = "https://api.x.ai/v1/chat/completions"
-		variables.embeddingsURL = "https://api.x.ai/v1/embeddings"
 		variables.name = "Grok"
 	}
 
