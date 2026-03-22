@@ -14,15 +14,14 @@
  * ----------------------------------------------------------------------------------
  */
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
-import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
-class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" {
+class extends="OpenAIService" implements="IAiChatService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "chat", "stream", "embeddings" ]
+		CAPABILITIES = [ "chat", "stream" ]
 		DEFAULT_CHAT_PARAMS = {
 			// according to the docs, this is the default model
 			// https://docs.x.ai/docs/models
@@ -35,7 +34,6 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 */
 	function init(){
 		variables.chatURL = "https://api.x.ai/v1/chat/completions"
-		variables.embeddingsURL = "https://api.x.ai/v1/embeddings"
 		variables.name = "Grok"
 	}
 

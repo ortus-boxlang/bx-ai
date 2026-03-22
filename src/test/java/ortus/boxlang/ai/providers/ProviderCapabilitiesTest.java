@@ -80,21 +80,25 @@ public class ProviderCapabilitiesTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Groq reports chat, stream and embeddings capabilities" )
+	@DisplayName( "Groq reports only chat and stream — no embeddings" )
 	public void testGroqCapabilities() {
 		Array caps = executeGetCapabilities( "Groq" );
-		assertThat( caps ).containsAtLeast( "chat", "stream", "embeddings" );
+		assertThat( caps ).containsAtLeast( "chat", "stream" );
+		assertWithMessage( "Groq must NOT report embeddings" )
+		    .that( caps ).doesNotContain( "embeddings" );
 		assertThat( executeHasCapability( "Groq", "chat" ) ).isTrue();
-		assertThat( executeHasCapability( "Groq", "embeddings" ) ).isTrue();
+		assertThat( executeHasCapability( "Groq", "embeddings" ) ).isFalse();
 	}
 
 	@Test
-	@DisplayName( "Grok reports chat, stream and embeddings capabilities" )
+	@DisplayName( "Grok reports only chat and stream — no embeddings" )
 	public void testGrokCapabilities() {
 		Array caps = executeGetCapabilities( "Grok" );
-		assertThat( caps ).containsAtLeast( "chat", "stream", "embeddings" );
+		assertThat( caps ).containsAtLeast( "chat", "stream" );
+		assertWithMessage( "Grok must NOT report embeddings" )
+		    .that( caps ).doesNotContain( "embeddings" );
 		assertThat( executeHasCapability( "Grok", "chat" ) ).isTrue();
-		assertThat( executeHasCapability( "Grok", "embeddings" ) ).isTrue();
+		assertThat( executeHasCapability( "Grok", "embeddings" ) ).isFalse();
 	}
 
 	@Test
