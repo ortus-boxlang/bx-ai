@@ -557,6 +557,80 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
+	 * Seed this agent with tools discovered from an MCP server.
+	 *
+	 * Connects to the MCP server, calls listTools(), and wraps each discovered tool
+	 * as an MCPTool instance that is added to both the agent's tool list and the
+	 * underlying AI model.
+	 *
+	 * @server  A URL string pointing to the MCP server, or a pre-configured MCPClient instance.
+	 * @config  Optional configuration struct with any of: token, timeout, headers, user, password.
+	 *
+	 * @return This agent for chaining
+	 */
+	AiAgent function withMCPServer( required any server, struct config = {} ) {
+		var client   = buildMCPClient( arguments.server, arguments.config );
+		var response = client.listTools();
+
+		if ( response.isSuccess() ) {
+			var data      = response.getData();
+			var toolsList = isArray( data ) ? data : ( data.keyExists( "tools" ) ? data.tools : [] );
+
+			toolsList.each( toolDef => {
+				var mcpTool = new bxModules.bxai.models.tools.MCPTool( client, toolDef );
+				variables.tools.append( mcpTool );
+				variables.aiModel.addTools( [ mcpTool ] );
+			} );
+		}
+
+		return this;
+	}
+
+	/**
+	 * Seed this agent with tools from multiple MCP servers.
+	 *
+	 * Each entry in the array can be:
+	 * - A URL string: "http://server:3000"
+	 * - A config struct: { url: "http://server:3000", token: "...", timeout: 5000 }
+	 * - A pre-configured MCPClient instance
+	 *
+	 * @servers  Array of MCP server descriptors
+	 *
+	 * @return This agent for chaining
+	 */
+	AiAgent function withMCPServers( required array servers ) {
+		arguments.servers.each( server => {
+			if ( isStruct( server ) && !isObject( server ) ) {
+				withMCPServer( server.url ?: "", server.filter( ( k, v ) => k != "url" ) );
+			} else {
+				withMCPServer( server );
+			}
+		} );
+		return this;
+	}
+
+	/**
+	 * Build (or reuse) an MCPClient, applying optional config overrides.
+	 *
+	 * @server  URL string or existing MCPClient
+	 * @config  Optional struct with token, timeout, headers, user, password
+	 *
+	 * @return Configured MCPClient
+	 */
+	private any function buildMCPClient( required any server, struct config = {} ) {
+		var client = isSimpleValue( arguments.server )
+			? new bxModules.bxai.models.mcp.MCPClient( arguments.server )
+			: arguments.server;
+
+		if ( arguments.config.keyExists( "timeout" ) )  client.withTimeout( arguments.config.timeout );
+		if ( arguments.config.keyExists( "token" ) )    client.withBearerToken( arguments.config.token );
+		if ( arguments.config.keyExists( "headers" ) )  client.withHeaders( arguments.config.headers );
+		if ( arguments.config.keyExists( "user" ) )     client.withAuth( arguments.config.user, arguments.config.password ?: "" );
+
+		return client;
+	}
+
+	/**
 	 * Set a single parameter
 	 *
 	 * @key Parameter name

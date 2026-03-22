@@ -55,10 +55,20 @@ class {
 		struct options      = {},
 		any middleware      = [],
 		any checkpointer,
-		numeric checkpointTTL = 30
+		numeric checkpointTTL = 30,
+		array mcpServers    = []
 	) {
+		// Build agent args, excluding mcpServers which is not an AiAgent constructor argument
+		var agentArgs = duplicate( arguments )
+		agentArgs.delete( "mcpServers" )
+
 		// Create the agent with the provided configuration options
-		var agent = new bxModules.bxai.models.runnables.AiAgent( argumentCollection: arguments )
+		var agent = new bxModules.bxai.models.runnables.AiAgent( argumentCollection: agentArgs )
+
+		// Seed the agent with any MCP servers provided
+		if ( arguments.mcpServers.len() ) {
+			agent.withMCPServers( arguments.mcpServers )
+		}
 
 		// Announce agent creation for observability and extensibility (e.g. logging, analytics, etc.)
 		BoxAnnounce( "onAIAgentCreate", { agent: agent } )

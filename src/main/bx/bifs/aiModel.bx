@@ -57,9 +57,10 @@ class {
 		any tools=[],
 		struct params={},
 		struct options={},
-		any middleware=[]
+		any middleware=[],
+		array mcpServers=[]
 	) {
-		// Get the underlying service
+		// Get the underlying service (pass only service-relevant args)
 		var service = aiService( argumentCollection: arguments )
 
 		// Wrap it as a model entity for use in pipelines
@@ -68,6 +69,11 @@ class {
 			.withParams( arguments.params )
 			.withOptions( arguments.options )
 			.withMiddleware( arguments.middleware )
+
+		// Seed the model with any MCP servers provided
+		if ( arguments.mcpServers.len() ) {
+			model.withMCPServers( arguments.mcpServers )
+		}
 
 		// Notify of model creation
 		BoxAnnounce( "onAIModelCreate", { model: model, service: service } )
