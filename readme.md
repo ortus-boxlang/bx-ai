@@ -981,24 +981,35 @@ tools = mcpClient.listTools()
 println( tools ) // Returns available MCP tools
 ```
 
-**Use MCP Tools in Agent:**
+**Seed an Agent with MCP Tools:**
+
+Pass one or more MCP server URLs to `aiAgent()` via `mcpServers` and every tool the server exposes is automatically discovered and registered — no manual Tool construction required.
 
 ```javascript
-// Connect to MCP servers
-filesystemMcp = MCP( "http://localhost:3001" ).withTimeout( 5000 )
-databaseMcp = MCP( "http://localhost:3002" ).withTimeout( 5000 )
-
-// Create agent (MCP integration depends on agent implementation)
+// Seed at construction time (simplest)
 agent = aiAgent(
-    name: "Data Assistant",
-    description: "Assistant with MCP tool access"
+    name       : "Data Assistant",
+    description: "Assistant with filesystem and database access",
+    mcpServers : [
+        "http://localhost:3001",                                      // URL string
+        { url: "http://localhost:3002", token: "my-api-key" }         // with auth
+    ]
 )
 
-// Agent automatically discovers and uses MCP tools
-response = agent.run( "Read config.json and update the database with its contents" )
+// Fluent seeding after construction
+agent = aiAgent( name: "Data Assistant" )
+    .withMCPServer( "http://localhost:3001" )
+    .withMCPServer( "http://localhost:3002", { token: "my-api-key", timeout: 5000 } )
 
-// Agent automatically uses MCP tools
-agent.run( "Read config.json and update the database with its contents" )
+// Pass a pre-configured MCPClient for full control
+filesystemMcp = MCP( "http://localhost:3001" ).withTimeout( 5000 ).withBearerToken( "token" )
+agent = aiAgent( name: "Data Assistant" ).withMCPServer( filesystemMcp )
+
+// Seed a model directly (without an agent)
+model = aiModel( mcpServers: [ "http://localhost:3001" ] )
+
+// The agent/model now has all MCP tools and can use them automatically
+response = agent.run( "Read config.json and update the database with its contents" )
 ```
 
 **Access MCP Resources:**
@@ -1214,7 +1225,7 @@ Here are the settings you can place in your `boxlang.json` file:
 
 | Function | Purpose | Parameters | Return Type | Async Support |
 |----------|---------|------------|-------------|---------------|
-| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options` | AiAgent Object | ❌ |
+| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options`, `mcpServers=[]` | AiAgent Object | ❌ |
 | `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
 | `aiChatRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | AiRequestObject | N/A |
@@ -1224,7 +1235,7 @@ Here are the settings you can place in your `boxlang.json` file:
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
 | `aiMemory()` | Create memory instance | `memory`, `key`, `userId`, `conversationId`, `config={}` | IAiMemory Object | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
-| `aiModel()` | Create AI model wrapper | `provider`, `apiKey`, `tools` | AiModel Object | N/A |
+| `aiModel()` | Create AI model wrapper | `provider`, `apiKey`, `tools`, `mcpServers=[]` | AiModel Object | N/A |
 | `aiPopulate()` | Populate class/struct from JSON | `target`, `data` | Populated Object | N/A |
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
 | `aiTokens()` | Estimate token count | `text`, `options={}` | Numeric | N/A |

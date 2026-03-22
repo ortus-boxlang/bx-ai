@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MCP server seeding for agents and models**: Agents and models can now be seeded directly with one or more MCP servers. All tools exposed by those servers are automatically discovered via `listTools()` and registered as `MCPTool` instances — no manual Tool construction required.
+  - New `MCPTool` class (`models/tools/MCPTool.bx`) implements `ITool` by proxying a single MCP server tool. It converts the MCP `inputSchema` to the OpenAI function-calling schema format and forwards invocations to the server via `MCPClient.send()`.
+  - New `withMCPServer( server, config )` fluent method on `AiAgent` and `AiModel`. Accepts a URL string or a pre-configured `MCPClient` instance. Optional `config` struct supports `token`, `timeout`, `headers`, `user`, and `password`.
+  - New `withMCPServers( servers )` fluent method on `AiAgent` and `AiModel` for seeding from multiple servers in one call. Each entry can be a URL string, a config struct `{ url, token, timeout, … }`, or a pre-configured `MCPClient`.
+  - `aiAgent()` and `aiModel()` BIFs gain an `array mcpServers = []` parameter so servers can be provided at construction time.
 - Structured output for ollama tools, allowing for more complex and rich tool responses that can include multiple fields and nested data instead of just a single string output.
 - Streaming tools for ollama, allowing tools to return data in a streaming fashion for real-time processing and response generation.
 - Tools can now have non-required arguments in their schema
