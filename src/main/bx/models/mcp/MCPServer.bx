@@ -321,16 +321,31 @@ class {
 	 *
 	 * @return This server for chaining
 	 */
-	MCPServer function registerTool( required ITool tool ) {
+	/**
+	 * Register a tool with this MCP server.
+	 *
+	 * Accepts either an ITool instance or a string registry key (resolved via the global AIToolRegistry).
+	 *
+	 * @tool An ITool instance or a string registry key (e.g. "now@bxai")
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function registerTool( required any tool ) {
+		// Resolve string registry keys via the global AIToolRegistry
+		if ( isSimpleValue( arguments.tool ) ) {
+			arguments.tool = aiToolRegistry().get( arguments.tool )
+		}
 		static.mcpLogger.debug( "Registering tool: #arguments.tool.getName()#" )
 		variables.tools[ arguments.tool.getName() ] = arguments.tool
 		return this
 	}
 
 	/**
-	 * Register multiple tools at once
+	 * Register multiple tools at once.
 	 *
-	 * @tools Array of ITool instances to register
+	 * Each item may be an ITool instance or a string registry key.
+	 *
+	 * @tools Array of ITool instances and/or string registry keys
 	 *
 	 * @return This server for chaining
 	 */

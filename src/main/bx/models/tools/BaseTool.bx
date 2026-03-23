@@ -1,0 +1,232 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Abstract base class for all AI tools. Provides shared infrastructure:
+ * - name/description properties
+ * - BoxAnnounce event lifecycle (beforeAIToolExecute, afterAIToolExecute)
+ * - Result serialization
+ * - Fluent describe methods via onMissingMethod
+ *
+ * Subclasses must implement:
+ * - doInvoke( required struct args, AiChatRequest chatRequest ) : any
+ * - generateSchema() : struct
+ */
+abstract class implements="ITool" {
+
+	/**
+	 * The name of the tool, used for schema generation and registry keys.
+	 */
+	property name="name" default="";
+
+	/**
+	 * The description of the tool, used for schema generation and documentation. Fluent alias describeFunction().
+	 */
+	property name="description" default="";
+
+	/**
+	 * Optional manual schema override. When set, getSchema() returns this directly.
+	 */
+	property name="schema";
+
+	/**
+	 * Keyed descriptions for each argument, used during schema generation.
+	 */
+	property name="argDescriptions" default={};
+
+	/**
+	 * Describe the tool purpose. Fluent alias for setDescription().
+	 *
+	 * @description The description of the tool
+	 */
+	BaseTool function describeFunction( required string description ) {
+		variables.description = arguments.description
+		return this
+	}
+
+	/**
+	 * Describe a named argument. Used during schema generation.
+	 *
+	 * @name The argument name
+	 * @description The argument description
+	 */
+	BaseTool function describeArg( required string name, required string description ) {
+		variables.argDescriptions[ arguments.name ] = arguments.description
+		return this
+	}
+
+	/**
+     * Set the schema for the function. This is used to provide a more detailed schema
+     * for the function that the AI can use to validate the arguments.
+     *
+	 * This is the Open AI schema format for functions:
+	 * https://platform.openai.com/docs/guides/function-calling?api-mode=responses
+	 *
+     * ```
+     * {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get current temperature for a given location.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "City and country e.g. Bogotá, Colombia"
+                        }
+                    },
+                    "required": [
+                        "location"
+                    ],
+                    "additionalProperties": false
+                },
+                "strict": true
+            }
+        }
+     * ```
+     *
+     * @schema The schema for the function
+     */
+	BaseTool function setSchema( required struct schema ) {
+		variables.schema = arguments.schema
+		return this
+	}
+
+	/**
+     * Get the schema for the function.
+     *
+     * If you did not provide a schema, one will be generated based on the function and argument descriptions.
+     */
+	public struct function getSchema() {
+		if ( !isNull( variables?.schema ) ) {
+			return variables.schema
+		}
+		return generateSchema()
+	}
+
+	/**
+     * Invoke the the tool's callable function with the provided arguments. This is used by the AI to execute the function and get a result.
+	 *
+	 * - If the result is a simple value, returns the string representation of the value.
+	 * - If the result is a complex value, returns the JSON representation of the value.
+     *
+     * @args The arguments to pass to the function for this invocation. This should be a struct where the keys match the argument names expected by the function.
+	 * @chatRequest The original chat request that triggered this tool invocation. This can be used to access additional context about the conversation or the AI's state when executing the tool.
+	 *
+	 * @throws MissingCallable If no callable function has been set for this tool.
+	 * @return The result of the function as a string. If the result is null, returns "null".
+     */
+	public final string function invoke( required struct args, AiChatRequest chatRequest ) {
+		// -------------------------------------------------------------------------------------------
+		// --- Global event before tool execution ---
+		// -------------------------------------------------------------------------------------------
+		BoxAnnounce( "beforeAIToolExecute", {
+			tool        : this,
+			name        : variables.name,
+			arguments   : arguments.args,
+			chatRequest : arguments.chatRequest
+		} )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Invoke the tool ---
+		// -------------------------------------------------------------------------------------------
+		var startTime = getTickCount()
+		var results   = doInvoke( arguments.args, arguments.chatRequest )
+		var execTime  = getTickCount() - startTime
+
+		// -------------------------------------------------------------------------------------------
+		// --- Global event after tool execution ---
+		// -------------------------------------------------------------------------------------------
+		BoxAnnounce( "afterAIToolExecute", {
+			tool          : this,
+			name          : variables.name,
+			arguments     : arguments.args,
+			results       : results,
+			executionTime : execTime,
+			chatRequest   : arguments.chatRequest
+		} )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Process results ---
+		// -------------------------------------------------------------------------------------------
+		return serializeResult( results )
+	}
+
+	// -------------------------------------------------------------------------------------------
+	// --- Abstract Methods ---
+	// -------------------------------------------------------------------------------------------
+
+	/**
+	 * Subclasses implement this.
+	 * This is where the actual callable logic lives. The returned value can be of any type; it will be serialized to string by invoke().
+	 * This separation allows the base class to handle the BoxAnnounce lifecycle and result serialization, while subclasses focus on the core logic of the tool.
+	 * Return any value — serialization is handled by invoke().
+	 *
+	 * @args The arguments for this invocation
+	 * @chatRequest The originating chat request
+	 */
+	abstract public any function doInvoke( required struct args, AiChatRequest chatRequest );
+
+	/**
+	 * Subclasses implement this to provide the OpenAI function schema.
+	 * Called by getSchema() when no manual schema is set.
+	 */
+	abstract public struct function generateSchema();
+
+	/**
+	 * Fluent describe[ArgName]() syntax via onMissingMethod.
+	 * - describe( "..." )        → describeFunction()
+	 * - describeMyArg( "..." )   → describeArg( "MyArg", "..." )
+	 */
+	function onMissingMethod( missingMethodName, missingMethodArguments ) {
+		if ( arguments.missingMethodName == "describe" ) {
+			return describeFunction( arguments.missingMethodArguments[ 1 ] )
+		}
+		if ( arguments.missingMethodName.startsWith( "describe" ) ) {
+			return describeArg(
+				arguments.missingMethodName.replace( "describe", "" ),
+				arguments.missingMethodArguments[ 1 ]
+			)
+		}
+		throw(
+			type    : "MissingMethod",
+			message : "The method [#arguments.missingMethodName#] does not exist on this tool. Use describeFunction(), describeArg(), or the fluent describe[ArgName]() syntax."
+		)
+	}
+
+	// -------------------------------------------------------------------------------------------
+	// --- Private Helpers ---
+	// -------------------------------------------------------------------------------------------
+
+	/**
+	 * Serialize a result value to string for the AI.
+	 * - null         → "null"
+	 * - simple value → toString()
+	 * - complex      → jsonSerialize() with fallback
+	 */
+	private string function serializeResult( any results ) {
+		if ( isNull( arguments.results ) ) {
+			return "null"
+		}
+		if ( isSimpleValue( arguments.results ) ) {
+			return toString( arguments.results )
+		}
+		try {
+			return jsonSerialize( arguments.results )
+		} catch ( any e ) {
+			return "Could not serialize result to JSON. Returning string representation instead. Warning: #e.message#. Result: #toString( arguments.results )#"
+		}
+	}
+
+}

@@ -1,0 +1,134 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * A tool implementation backed by a closure or lambda.
+ * Extends BaseTool for lifecycle, event firing, and result serialization.
+ *
+ * Use aiTool( name, description, callable ) to create instances.
+ *
+ * You can also use the fluent describe syntax:
+ *   aiTool( "myFn", "Does something", myCallable )
+ *     .describeMyArg( "What this argument does" )
+ */
+class extends="BaseTool" {
+
+	/**
+	 * The callable (closure/lambda/function reference) this tool delegates to.
+	 */
+	property name="callable";
+
+	/**
+	 * Construct a new ClosureTool with the given name, description, and callable.
+	 *
+	 * @name The tool name
+	 * @description The tool description for AI understanding
+	 * @callable The function the tool will invoke when called by the AI
+	 */
+	ClosureTool function init( required string name, string description = "", any callable = null ) {
+		variables.name = arguments.name
+
+		if( variables.name.isEmpty() ) {
+			throw(
+				type    : "InvalidToolName",
+				message : "Tool name cannot be empty. Provide a valid name when creating a ClosureTool."
+			)
+		}
+
+		variables.description = arguments.description
+		if ( !isNull( arguments.callable ) ) {
+			this.call( arguments.callable )
+		}
+		return this
+	}
+
+	/**
+	 * Set the callable function this tool will invoke.
+	 *
+	 * @callable A closure, lambda, or function reference
+	 */
+	ClosureTool function call( required any callable ) {
+		variables.callable = arguments.callable
+		return this
+	}
+
+	/**
+	 * Invoke the callable with the provided args.
+	 * Injects _chatRequest into args so closures can optionally access conversation context.
+	 *
+	 * @args The arguments to pass to the callable
+	 * @chatRequest The originating chat request
+	 *
+	 * @throws MissingCallable if no callable has been set
+	 */
+	public any function doInvoke( required struct args, AiChatRequest chatRequest ) {
+		if ( isNull( variables?.callable ) ) {
+			throw(
+				type    : "MissingCallable",
+				message : "No callable has been set on this ClosureTool. Use call() before invoking."
+			)
+		}
+		// Inject _chatRequest into args for closures that want conversation context
+		arguments.args._chatRequest = arguments.chatRequest
+		return variables.callable( argumentCollection = arguments.args )
+	}
+
+	/**
+	 * Generate an OpenAI-compatible function schema from the callable's parameter metadata.
+	 */
+	struct function generateSchema() {
+		var argSchema = getArgumentsSchema()
+		return {
+			"type"     : "function",
+			"function" : {
+				"name"        : variables.name,
+				"description" : variables.description,
+				"parameters"  : {
+					"type"                 : "object",
+					"properties"           : argSchema.properties,
+					"required"             : argSchema.required,
+					"additionalProperties" : false
+				}
+			}
+		}
+	}
+
+	/**
+	 * Introspect the callable's parameter metadata to build the arguments schema.
+	 * Skips the injected _chatRequest parameter.
+	 *
+	 * @throws MissingCallable if no callable has been set
+	 *
+	 * @return Struct with properties:{} and required:[] keys
+	 */
+	public struct function getArgumentsSchema() {
+		if ( isNull( variables?.callable ) ) {
+			throw(
+				type    : "MissingCallable",
+				message : "No callable has been set. Use call() before calling getArgumentsSchema()."
+			)
+		}
+		var results = { "properties" : {}, "required" : [] }
+		variables.callable.$bx.meta.parameters.each( param => {
+			if ( param.required ) {
+				results.required.append( param.name )
+			}
+			results.properties[ param.name ] = {
+				"type"        : "string",
+				"description" : variables.argDescriptions[ param.name ] ?: param.name
+			}
+		} )
+		return results
+	}
+
+}

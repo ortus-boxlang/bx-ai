@@ -198,7 +198,11 @@ class {
 			"onMCPServerRemove",
 			"onMCPRequest",
 			"onMCPResponse",
-			"onMCPError"
+			"onMCPError",
+
+			// Tool Registry Events
+			"onAIToolRegistryRegister",
+			"onAIToolRegistryUnregister"
 		 ]
 	}
 
@@ -206,14 +210,22 @@ class {
 	 * Called by the ModuleService on module activation
 	 */
 	function onLoad(){
-
+		// Register core tools into the registry.
+		aiToolRegistry().scanClass(
+			new bxModules.bxai.models.tools.core.CoreTools(),
+			"bxai"
+		)
+		writeLog(
+			text: "BoxLang AI loaded and core tools registered into the registry",
+			type: "info",
+			log: "ai"
+		)
 	}
 
 	/**
 	 * Called by the ModuleService on module deactivation
 	 */
 	function onUnload(){
-
 	}
 
 	/**

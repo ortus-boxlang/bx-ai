@@ -52,11 +52,13 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - [🚀 Getting Started](#-getting-started)
 - [🤖 Supported Providers](#-supported-providers)
   - [📊 Provider Support Matrix](#-provider-support-matrix)
+  - [🔍 Provider Capability Discovery](#-provider-capability-discovery)
 - [📤 Return Formats](#-return-formats)
 - [🥊 Quick Overview](#-quick-overview)
   - [💬 Chats](#-chats)
   - [🔗 Pipelines](#-pipelines)
     - [🧩 Middleware](#-middleware)
+    - [🗂️ Tool Registry](#️-tool-registry)
   - [🤖 AI Agents](#-ai-agents)
   - [📦 Structured Output](#-structured-output)
   - [🧠 Memory Systems](#-memory-systems)
@@ -467,6 +469,178 @@ response = agent.run( "Summarize this report and suggest next steps" )
 
 - 📖 **Full Guide**: [Middleware Documentation](https://ai.ortusbooks.com/main-components/middleware)
 - 💻 **Examples**: Check `examples/agents/` and `examples/pipelines/`
+
+----
+
+### 🗂️ Tool Registry
+
+The **AI Tool Registry** is a global singleton that stores named `ITool` instances. Register tools once — at module load, on application start, or anywhere in your code — and then reference them by string name wherever tools are accepted. This decouples tool definitions from call sites and makes it easy to share tools across agents, models, and pipelines. 🎯
+
+#### 🤔 Why Use the Registry?
+
+- 🔑 **By-name references** — pass `"now@bxai"` as a string instead of a live object
+- 📦 **Module scoping** — namespace tools as `toolName@moduleName` to avoid collisions
+- 🔍 **Lazy resolution** — tools are resolved to `ITool` instances right before each LLM request
+- 🔌 **Auto-scanning** — annotate methods with `@AITool` and call `scan()` to register them all at once
+- ⚡ **Built-in tools** — `now@bxai` (current date/time) is registered automatically on module load
+
+#### 💡 Quick Examples
+
+**Using the registry:**
+
+```javascript
+// Register a tool once (e.g., in Application.bx or a module's onLoad)
+aiToolRegistry().register(
+    name        : "searchProducts",
+    description : "Search the product catalog",
+    callback    : ( required string query ) => productService.search( query )
+)
+
+// Later, reference by name — no object needed
+result = aiChat(
+    "Find me wireless headphones under $50",
+    { tools: [ "searchProducts" ] }
+)
+```
+
+**Module-namespaced tools:**
+
+```javascript
+// Namespaced registration avoids collisions across modules
+aiToolRegistry().register(
+    name        : "lookup",
+    description : "Look up a customer by ID",
+    callback    : id => customerService.find( id ),
+    module      : "my-app"
+)
+
+// Retrieve by full key or bare name (auto-resolved if unambiguous)
+var tool = aiToolRegistry().get( "lookup@my-app" )
+var tool = aiToolRegistry().get( "lookup" )       // works if only one "lookup" exists
+```
+
+**Scanning a class for `@AITool` annotations:**
+
+```javascript
+// Annotate methods in a class
+class WeatherTools {
+    @AITool( "Get current weather for a city" )
+    public string function getWeather( required string city ) {
+        return weatherAPI.fetch( city )
+    }
+
+    @AITool( "Get a 7-day forecast for a city" )
+    public string function getForecast( required string city ) {
+        return weatherAPI.forecast( city )
+    }
+}
+
+// Register all annotated methods in one call
+aiToolRegistry().scan( new WeatherTools(), "my-module" )
+// Registered as: getWeather@my-module, getForecast@my-module
+```
+
+**Using the built-in `now@bxai` tool:**
+
+```javascript
+// Auto-registered on module load — just reference it by name
+result = aiChat(
+    "What should I have for dinner tonight?",
+    { tools: [ "now@bxai" ] }
+)
+// AI knows the current date/time without any extra wiring
+```
+
+**Opt-in `httpGet` tool (NOT auto-registered):**
+
+```javascript
+// Register explicitly when your application needs web access
+import bxModules.bxai.models.tools.core.CoreTools;
+aiToolRegistry().scan( new CoreTools(), "bxai" )  // registers httpGet@bxai too
+```
+
+#### 🧑‍💻 Custom Tools via `BaseTool`
+
+For more complex tools ones that need their own state, unit tests, or reusable class structure extend `BaseTool` directly instead of using a closure. You only need to implement two abstract methods:
+
+| Method | Purpose |
+|--------|---------|
+| `doInvoke( required struct args, AiChatRequest chatRequest )` | The tool logic. Return any value serialization is handled automatically. |
+| `generateSchema()` | Return the OpenAI function-calling schema struct. Called by `getSchema()` unless a manual schema override has been set. |
+
+`invoke()` is `final` on `BaseTool` it fires the `beforeAIToolExecute` / `afterAIToolExecute` events and serializes the result before calling your `doInvoke()`, so you never need to wire those up yourself.
+
+```javascript
+// MySearchTool.bx
+class extends="bxModules.bxai.models.tools.BaseTool" {
+
+    property name="searchClient";
+
+    function init( required any searchClient ) {
+        variables.name        = "searchProducts"
+        variables.description = "Search the product catalog and return matching items"
+        variables.searchClient = arguments.searchClient
+        return this
+    }
+
+    /**
+     * Core tool logic return any type, BaseTool serializes it automatically.
+     */
+    public any function doInvoke( required struct args, AiChatRequest chatRequest ) {
+        return variables.searchClient.search(
+            query      : args.query,
+            maxResults : args.maxResults ?: 5
+        )
+    }
+
+    /**
+     * OpenAI function-calling schema for this tool.
+     */
+    public struct function generateSchema() {
+        return {
+            "type": "function",
+            "function": {
+                "name"       : variables.name,
+                "description": variables.description,
+                "parameters" : {
+                    "type"      : "object",
+                    "properties": {
+                        "query"     : { "type": "string",  "description": "Search query text" },
+                        "maxResults": { "type": "integer", "description": "Maximum number of results to return" }
+                    },
+                    "required": [ "query" ]
+                }
+            }
+        }
+    }
+}
+```
+
+Register and use it like any other tool:
+
+```javascript
+// Register in the global registry
+aiToolRegistry().register( new MySearchTool( searchClient ), "my-app" )
+
+// Reference by key name anywhere tools are accepted
+result = aiChat( "Find wireless headphones", { tools: [ "searchProducts@my-app" ] } )
+```
+
+**Fluent schema helpers** (inherited from `BaseTool`) let you skip writing `generateSchema()` manually when `ClosureTool`'s auto-introspection isn't available:
+
+```javascript
+tool = new MySearchTool( client )
+    .describeFunction( "Search the product catalog" )   // sets description
+    .describeQuery( "Search term to look up" )           // describeArg( "query", "..." )
+    .describeMaxResults( "Max items to return" )         // describeArg( "maxResults", "..." )
+```
+
+Or supply a fully hand-crafted schema with `setSchema( schemaStruct )` when set, it takes precedence over `generateSchema()`.
+
+#### 📚 Learn More
+
+- 📖 **Full Guide**: [AI Tool Registry Documentation](https://ai.ortusbooks.com/main-components/tool-registry)
+- 💻 **Examples**: Check `examples/advanced/` for complete registry examples
 
 ----
 
@@ -1046,7 +1220,7 @@ server = mcpServer(
     description: "Custom BoxLang tools"
 )
 
-// Register tool
+// Register a tool by ITool instance
 server.registerTool(
     aiTool(
         name: "calculate_tax",
@@ -1056,6 +1230,10 @@ server.registerTool(
         }
     )
 )
+
+// Or register by registry key (tool must be in the global AIToolRegistry)
+server.registerTool( "now@bxai" )           // built-in current date/time tool
+server.registerTool( "searchProducts" )      // any registered tool by name
 
 // Start server
 server.start() // Listens on stdio by default
@@ -1070,7 +1248,7 @@ server = mcpServer(
     description: "Internal enterprise tools"
 )
 
-// Register multiple tools
+// Register multiple tools — mix ITool instances and registry key strings
 server.registerTool( aiTool(
     name: "query_orders",
     description: "Query customer orders",
@@ -1081,11 +1259,8 @@ server.registerTool( aiTool(
     description: "Create customer invoice",
     callable: createInvoiceFunction
 ) )
-server.registerTool( aiTool(
-    name: "send_notification",
-    description: "Send customer notification",
-    callable: notifyFunction
-) )
+server.registerTool( "send_notification" )   // resolved from AIToolRegistry
+server.registerTool( "now@bxai" )            // built-in registry tool
 
 // Provide templates as prompts
 server.registerPrompt(
@@ -1229,6 +1404,7 @@ Here are the settings you can place in your `boxlang.json` file:
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
 | `aiTokens()` | Estimate token count | `text`, `options={}` | Numeric | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
+| `aiToolRegistry()` | Get the singleton AI Tool Registry | _(none)_ | AIToolRegistry Object | N/A |
 | `aiTransform()` | Create data transformer | `transformer`, `config={}` | Transformer Runnable | N/A |
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
 | `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors`, `statsEnabled`, `force` | MCPServer Object | N/A |
@@ -1270,6 +1446,9 @@ Read more about [Events in BoxLang AI](https://ai.ortusbooks.com/advanced/events
 | `onAIResponse` | After receiving HTTP response | `aiRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
 | `onAITokenCount` | When token usage data is available | `provider`, `model`, `promptTokens`, `completionTokens`, `totalTokens`, `tenantId`, `usageMetadata`, `providerOptions`, `timestamp` | Cost tracking, budget enforcement, multi-tenant billing |
 | `onAIToolCreate` | When tool is created | `tool`, `name`, `description` | Tool registration, validation |
+| `onAIToolRegistryClear` | When the tool registry is cleared | _(none)_ | Registry lifecycle monitoring |
+| `onAIToolRegistryRegister` | When a tool is registered in the registry | `tool`, `key`, `module` | Auditing, dynamic registration hooks |
+| `onAIToolRegistryUnregister` | When a tool is unregistered from the registry | `key`, `module` | Auditing, cleanup notifications |
 | `onAITransformerCreate` | When transformer is created | `transform` | Transform configuration, tracking |
 
 ## 🌐 GitHub Repository and Reporting Issues

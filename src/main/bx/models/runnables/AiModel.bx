@@ -18,6 +18,7 @@
 import bxModules.bxai.models.runnables.AiBaseRunnable
 import bxModules.bxai.models.middleware.AiMiddlewareResult
 import bxModules.bxai.models.middleware.StructMiddlewareAdapter
+import bxModules.bxai.models.registry.AIToolRegistry
 
 class extends="AiBaseRunnable" {
 
@@ -202,6 +203,9 @@ class extends="AiBaseRunnable" {
 			effectiveParams.tools = variables.tools
 		}
 
+		// Lazy resolve any string registry keys (e.g. "now@bx-ai") into ITool instances
+		effectiveParams.tools = aiToolRegistry().resolveTools( effectiveParams.tools )
+
 		// -------------------------------------------------------------------------------------------
 		// --- Create a chat request ---
 		// -------------------------------------------------------------------------------------------
@@ -278,6 +282,9 @@ class extends="AiBaseRunnable" {
 		else {
 			effectiveParams.tools = variables.tools
 		}
+
+		// Lazy resolve any string registry keys (e.g. "now@bx-ai") into ITool instances
+		effectiveParams.tools = aiToolRegistry().resolveTools( effectiveParams.tools )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Create a chat request ---
