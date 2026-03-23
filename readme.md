@@ -43,7 +43,7 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - 💬 **Fluent Interface** - Chainable, expressive syntax that makes AI integration intuitive
 - 🦙 **Local AI** - Full Ollama support for privacy, offline use, and zero API costs
 - ⚡ **Async Operations** - Non-blocking futures for concurrent AI requests
-- 🎯 **Event-Driven** - 25+ lifecycle events for logging, monitoring, and custom workflows
+- 🎯 **Event-Driven** - 35+ lifecycle events for logging, monitoring, and custom workflows
 - 🏭 **Production-Ready** - Timeout controls, error handling, rate limiting, and debugging tools
 
 ## 📃 Table of Contents
@@ -57,8 +57,8 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - [🥊 Quick Overview](#-quick-overview)
   - [💬 Chats](#-chats)
   - [🔗 Pipelines](#-pipelines)
-    - [🧩 Middleware](#-middleware)
-    - [🗂️ Tool Registry](#️-tool-registry)
+  - [🧩 Middleware](#-middleware)
+  - [🗂️ Tool Registry](#️-tool-registry)
   - [🤖 AI Agents](#-ai-agents)
   - [📦 Structured Output](#-structured-output)
   - [🧠 Memory Systems](#-memory-systems)
@@ -90,7 +90,24 @@ You can easily get started with BoxLang AI by using the module installer for bui
 install-bx-module bx-ai
 ```
 
-This will install the latest version of the BoxLang AI module in your BoxLang environment. Once installed, make sure you setup any of the supported AI providers and their API keys in your `boxlang.json` configuration file or environment variables.  After that you can leverage the global functions (BIFs) in your BoxLang code.  Here is a simple example:
+This will install the latest version of the BoxLang AI module in your BoxLang environment. Once installed, configure your default AI provider and API key in `boxlang.json`:
+
+```json
+{
+    "modules": {
+        "bxai": {
+            "settings": {
+                "provider": "openai",
+                "apiKey": "${OPENAI_API_KEY}"
+            }
+        }
+    }
+}
+```
+
+> 💡 **Tip:** Use environment variable placeholders like `${OPENAI_API_KEY}` so you never commit secrets to source control. Each provider also auto-detects its own env var (e.g. `OPENAI_API_KEY`, `CLAUDE_API_KEY`, `GEMINI_API_KEY`).
+
+After that you can leverage the global functions (BIFs) in your BoxLang code.  Here is a simple example:
 
 ```java
 // chat.bxs
@@ -1170,9 +1187,6 @@ agent = aiAgent(
 
 // Agent automatically discovers and uses MCP tools
 response = agent.run( "Read config.json and update the database with its contents" )
-
-// Agent automatically uses MCP tools
-agent.run( "Read config.json and update the database with its contents" )
 ```
 
 **Access MCP Resources:**
@@ -1390,11 +1404,11 @@ Here are the settings you can place in your `boxlang.json` file:
 | Function | Purpose | Parameters | Return Type | Async Support |
 |----------|---------|------------|-------------|---------------|
 | `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options` | AiAgent Object | ❌ |
-| `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
+| `aiChat()` | Chat with AI provider | `messages`, `params={}` _(includes `provider`, `model`, `temperature`, etc.)_, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
-| `aiChatRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | AiRequestObject | N/A |
+| `aiChatRequest()` | Compose a reusable chat request object (useful for advanced pipelines and middleware) | `messages`, `params`, `options`, `headers` | AiChatRequest Object | N/A |
 | `aiChatStream()` | Stream chat responses from AI provider | `messages`, `callback`, `params={}`, `options={}` | void | N/A |
-| `aiChunk()` | Split text into chunks | `text`, `options={}` | Array of Strings | N/A |
+| `aiChunk()` | Split text into chunks for RAG ingestion or token-window management | `text`, `options={}` _(chunkSize, overlap, strategy)_ | Array of Strings | N/A |
 | `aiDocuments()` | Create fluent document loader | `source`, `config={}` | IDocumentLoader Object | N/A |
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
 | `aiMemory()` | Create memory instance | `memory`, `key`, `userId`, `conversationId`, `config={}` | IAiMemory Object | N/A |
@@ -1402,7 +1416,7 @@ Here are the settings you can place in your `boxlang.json` file:
 | `aiModel()` | Create AI model wrapper | `provider`, `apiKey`, `tools` | AiModel Object | N/A |
 | `aiPopulate()` | Populate class/struct from JSON | `target`, `data` | Populated Object | N/A |
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
-| `aiTokens()` | Estimate token count | `text`, `options={}` | Numeric | N/A |
+| `aiTokens()` | Estimate token count for a text string | `text`, `options={}` _(method: characters\|words)_ | Numeric | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
 | `aiToolRegistry()` | Get the singleton AI Tool Registry | _(none)_ | AIToolRegistry Object | N/A |
 | `aiTransform()` | Create data transformer | `transformer`, `config={}` | Transformer Runnable | N/A |
@@ -1432,24 +1446,30 @@ Read more about [Events in BoxLang AI](https://ai.ortusbooks.com/advanced/events
 | `beforeAIPipelineRun` | Before pipeline execution starts | `sequence`, `stepCount`, `steps`, `input` | Pipeline validation, tracking |
 | `beforeAIToolExecute` | Before tool execution starts | `tool`, `name`, `arguments` | Permission checks, validation |
 | `onAIAgentCreate` | When agent is created | `agent` | Agent registration, configuration |
+| `onAIChatRequest` | When an HTTP chat or stream request is sent to the provider | `dataPacket`, `chatRequest`, `provider` | Request logging, modification, authentication |
+| `onAIChatRequestCreate` | When a chat request object is created | `chatRequest` | Request validation, modification |
+| `onAIChatResponse` | After receiving and deserializing the provider chat response | `chatRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
 | `onAIEmbedRequest` | Before sending embedding request | `dataPacket`, `embeddingRequest`, `provider` | Request logging, modification |
 | `onAIEmbedResponse` | After receiving embedding response | `embeddingRequest`, `response`, `provider` | Response processing, caching |
 | `onAIError` | When AI operation error occurs | `error`, `errorMessage`, `provider`, `operation`, `canRetry` | Error handling, retry logic, alerts |
+| `onAiLoaderCreate` | When a document loader is created | `loaderType`, `loaderClass`, `loaderConfig` | Loader configuration, tracking |
 | `onAiMemoryCreate` | When memory instance is created | `memory`, `type`, `config` | Memory configuration, tracking |
 | `onAIMessageCreate` | When message is created | `message` | Message validation, formatting |
 | `onAIModelCreate` | When model wrapper is created | `model`, `service` | Model configuration, tracking |
 | `onAIProviderCreate` | After provider is created | `provider` | Provider initialization, configuration |
-| `onAIProviderRequest` | When provider is requested | `provider`, `apiKey`, `service` | Custom provider registration |
 | `onAIRateLimitHit` | When rate limit (429) is encountered | `provider`, `statusCode`, `retryAfter` | Rate limit handling, provider switching |
-| `onAIRequest` | Before sending HTTP request | `dataPacket`, `aiRequest`, `provider` | Request logging, modification, authentication |
-| `onAIRequestCreate` | When request object is created | `aiRequest` | Request validation, modification |
-| `onAIResponse` | After receiving HTTP response | `aiRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
 | `onAITokenCount` | When token usage data is available | `provider`, `model`, `promptTokens`, `completionTokens`, `totalTokens`, `tenantId`, `usageMetadata`, `providerOptions`, `timestamp` | Cost tracking, budget enforcement, multi-tenant billing |
 | `onAIToolCreate` | When tool is created | `tool`, `name`, `description` | Tool registration, validation |
 | `onAIToolRegistryClear` | When the tool registry is cleared | _(none)_ | Registry lifecycle monitoring |
 | `onAIToolRegistryRegister` | When a tool is registered in the registry | `tool`, `key`, `module` | Auditing, dynamic registration hooks |
 | `onAIToolRegistryUnregister` | When a tool is unregistered from the registry | `key`, `module` | Auditing, cleanup notifications |
 | `onAITransformerCreate` | When transformer is created | `transform` | Transform configuration, tracking |
+| `onMCPError` | When an MCP operation error occurs | `server`, `context`, `exception`, `method` | Error handling, alerting |
+| `onMCPRequest` | When an MCP JSON-RPC request is processed | `server`, `requestData`, `serverName` | Request logging, authentication, inspection |
+| `onMCPResponse` | When an MCP response is sent | `server`, `response`, `requestData`, `serverName` | Response logging, transformation |
+| `onMCPServerCreate` | When an MCP server instance is created | `server`, `name`, `description`, `version` | Server lifecycle monitoring |
+| `onMCPServerRemove` | When an MCP server instance is removed | `name` | Server lifecycle monitoring, cleanup |
+| `onMissingAiProvider` | When a requested provider is not found | `provider`, `options`, `service` | Custom provider registration (set `service` to provide an alternative) |
 
 ## 🌐 GitHub Repository and Reporting Issues
 
