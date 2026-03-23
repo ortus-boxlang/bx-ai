@@ -1010,6 +1010,23 @@ model = aiModel( mcpServers: [ "http://localhost:3001" ] )
 
 // The agent/model now has all MCP tools and can use them automatically
 response = agent.run( "Read config.json and update the database with its contents" )
+
+// The agent knows what it has — ask it directly
+response = agent.run( "What tools do you have and which MCP servers are you connected to?" )
+```
+
+**Inspect tools and servers programmatically:**
+
+```javascript
+// List all tools (name + description)
+tools = agent.getTools()
+// => [{ name: "read_file", description: "Read a file..." }, ...]
+
+// Full config including tools and connected servers
+config = agent.getConfig()
+config.tools      // [{ name, description }]
+config.mcpServers // [{ url: "http://localhost:3001", toolNames: ["read_file", "write_file"] }]
+config.toolCount  // 2
 ```
 
 **Access MCP Resources:**

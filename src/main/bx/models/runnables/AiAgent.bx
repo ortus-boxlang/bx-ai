@@ -103,6 +103,12 @@ class extends="AiBaseRunnable" {
 	property name="checkpointTTL" type="numeric" default="#static.DEFAULT_CHECKPOINT_TTL#";
 
 	/**
+	 * MCP servers that have seeded this agent with tools.
+	 * Each entry is a struct: { url: string, toolNames: array }
+	 */
+	property name="mcpServers" type="array" default=[];
+
+	/**
 	 * Default agent name constant
 	 */
 	static {
@@ -146,6 +152,7 @@ class extends="AiBaseRunnable" {
 		variables.tools = arguments.tools
 		variables.subAgents = []
 		variables.subAgentTools = []
+		variables.mcpServers = []
 		variables.params = arguments.params
 		variables.options = arguments.options
 
@@ -557,6 +564,17 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
+	 * Get a summary of all tools registered to this agent.
+	 *
+	 * @return Array of structs: [{ name, description }]
+	 */
+	public array function getTools() {
+		return variables.tools.map( tool => {
+			return { name: tool.getName(), description: tool.getDescription() };
+		} );
+	}
+
+	/**
 	 * Seed this agent with tools discovered from an MCP server.
 	 *
 	 * Connects to the MCP server, calls listTools(), and wraps each discovered tool
@@ -581,6 +599,14 @@ class extends="AiBaseRunnable" {
 				variables.tools.append( mcpTool );
 				variables.aiModel.addTools( [ mcpTool ] );
 			} );
+
+			// Record this server so the agent (and the LLM via system prompt) is aware of it
+			if ( toolsList.len() ) {
+				variables.mcpServers.append( {
+					url      : client.getBaseURL(),
+					toolNames: toolsList.map( t => t.name ?: "" )
+				} );
+			}
 		}
 
 		return this;
@@ -899,7 +925,9 @@ class extends="AiBaseRunnable" {
 					"description": agent.getConfig().description
 				};
 			} ),
-			"toolCount": variables.tools.len(),
+			"toolCount" : variables.tools.len(),
+			"tools"     : getTools(),
+			"mcpServers": variables.mcpServers,
 		}
 	}
 
@@ -1088,6 +1116,14 @@ class extends="AiBaseRunnable" {
 
 		if ( variables.instructions.len() > 0 ) {
 			parts.append( variables.instructions );
+		}
+
+		// Include connected MCP servers so the LLM knows where its tools came from
+		if ( variables.mcpServers.len() > 0 ) {
+			var serverLines = variables.mcpServers.map( s =>
+				"- " & s.url & " (tools: " & s.toolNames.toList( ", " ) & ")"
+			);
+			parts.append( "Connected MCP Servers:" & char( 10 ) & serverLines.toList( char( 10 ) ) );
 		}
 
 		return parts.toList( char( 10 ) & char( 10 ) );
