@@ -358,4 +358,93 @@ public class MCPToolTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "functionName" ) ) ).isEqualTo( "search" );
 	}
 
+	@DisplayName( "withMCPServer() populates the mcpServers property with URL and tool names" )
+	@Test
+	public void testWithMCPServerPopulatesMCPServersProperty() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				mockClient = new src.test.bx.mocks.MockMCPClient();
+				mockClient.setToolsToReturn( [
+					{ name: "search",    description: "Search", inputSchema: {} },
+					{ name: "calculate", description: "Math",   inputSchema: {} }
+				] );
+
+				model      = aiModel().withMCPServer( mockClient );
+				serverList = model.getMCPServers();
+				serverCount = serverList.len();
+				serverUrl   = serverList[ 1 ].url;
+				toolNames   = serverList[ 1 ].toolNames;
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "serverCount" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "serverUrl" ) ) ).isEqualTo( "http://mock-mcp-server" );
+		@SuppressWarnings( "unchecked" )
+		var toolNames = ( java.util.List<Object> ) variables.get( Key.of( "toolNames" ) );
+		assertThat( toolNames ).containsExactly( "search", "calculate" );
+	}
+
+	@DisplayName( "withMCPServers() populates mcpServers property for each server" )
+	@Test
+	public void testWithMCPServersPopulatesPropertyForEachServer() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				client1 = new src.test.bx.mocks.MockMCPClient();
+				client1.setToolsToReturn( [ { name: "search", description: "Search", inputSchema: {} } ] );
+
+				client2 = new src.test.bx.mocks.MockMCPClient();
+				client2.setToolsToReturn( [ { name: "weather", description: "Weather", inputSchema: {} } ] );
+
+				model       = aiModel().withMCPServers( [ client1, client2 ] );
+				serverCount = model.getMCPServers().len();
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "serverCount" ) ) ).isEqualTo( 2 );
+	}
+
+	@DisplayName( "withMCPServer() does not add to mcpServers property when the connection fails" )
+	@Test
+	public void testWithMCPServerFailureDoesNotPopulateMCPServersProperty() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				mockClient = new src.test.bx.mocks.MockMCPClient();
+				mockClient.setListToolsSuccess( false );
+
+				model       = aiModel().withMCPServer( mockClient );
+				serverCount = model.getMCPServers().len();
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "serverCount" ) ) ).isEqualTo( 0 );
+	}
+
+	@DisplayName( "invoke() serializes empty struct response from MCP server to JSON" )
+	@Test
+	public void testInvokeHandlesEmptyStructResponseData() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.MCPTool;
+				mockClient = new src.test.bx.mocks.MockMCPClient();
+				mockClient.setSendResponseData( {} );
+				tool   = new MCPTool( mockClient, { name: "ping", description: "Ping" } );
+				result = tool.invoke( {} );
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( "{}" );
+	}
+
 }
