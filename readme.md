@@ -1210,7 +1210,7 @@ response = agent.run( "What tools do you have and which MCP servers are you conn
 
 ```javascript
 // List all tools (name + description)
-tools = agent.getTools()
+tools = agent.listTools()
 // => [{ name: "read_file", description: "Read a file..." }, ...]
 
 // Full config including tools and connected servers
