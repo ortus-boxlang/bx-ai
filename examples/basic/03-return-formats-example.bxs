@@ -65,7 +65,7 @@ println()
 // 6. JSON format - Parsed JSON object
 println( "=== JSON Format ===" )
 jsonPipeline = aiMessage()
-    .user( "Return JSON: {\"language\": \"BoxLang\", \"version\": \"2.0\", \"cool\": true}" )
+    .user( 'Return JSON: {"language": "BoxLang", "version": "2.0", "cool": true}' )
     .toDefaultModel()
     .asJson()
 
