@@ -376,7 +376,7 @@ class extends="AiBaseRunnable" {
 		// Fire the middleware
 		var streamMiddlewareResult = fireAgentHook( "beforeAgentRun", agentContext )
 		if ( streamMiddlewareResult.isTerminal() ) {
-			return streamMiddlewareResult
+			return
 		}
 
 		// Pass agent middleware to model
