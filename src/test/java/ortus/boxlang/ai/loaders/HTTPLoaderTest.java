@@ -3,6 +3,7 @@ package ortus.boxlang.ai.loaders;
 import static com.google.common.truth.Truth.assertThat;
 
 import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -80,23 +81,24 @@ public class HTTPLoaderTest extends BaseIntegrationTest {
 	}
 
 	@DisplayName( "HTTPLoader can load HTML from a real webpage" )
+	@Disabled( "Due to many intermittent issues" )
 	@Test
 	public void testHTTPLoaderLiveHTML() {
 		try {
-		// @formatter:off
-		runtime.executeSource(
-		    """
-				import bxModules.bxai.models.loaders.HTTPLoader;
-				loader = new HTTPLoader( source: "https://www.boxlang.io" )
-					.contentType( "html" )
-					.extractText( true );
-				rawDocs = loader.load();
-				result = rawDocs.map( d => d.toStruct() );
-				println( result )
-		    """,
-		    context
-		);
-		// @formatter:on
+			// @formatter:off
+			runtime.executeSource(
+				"""
+					import bxModules.bxai.models.loaders.HTTPLoader;
+					loader = new HTTPLoader( source: "https://www.boxlang.io" )
+						.contentType( "html" )
+						.extractText( true );
+					rawDocs = loader.load();
+					result = rawDocs.map( d => d.toStruct() );
+					println( result )
+				""",
+				context
+			);
+			// @formatter:on
 
 			Array docs = variables.getAsArray( result );
 
