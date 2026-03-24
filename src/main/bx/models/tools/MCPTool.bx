@@ -85,6 +85,10 @@ class extends="BaseTool"{
 		if ( response.isSuccess() ) {
 			var data = response.getData();
 
+			if ( isNull( data ) ) {
+				return "";
+			}
+
 			// MCP content array: [{ type: "text", text: "..." }, ...]
 			if ( isArray( data ) ) {
 				return data

@@ -30,9 +30,9 @@ class {
 	property name="listToolsSuccess" type="boolean" default=true;
 
 	/**
-	 * Return the mock base URL (used by AiBaseRunnable error logging)
+	 * Return the mock base URL (mirrors MCPClient.getBaseURL() from the baseURL property)
 	 */
-	public string function getUrl() {
+	public string function getBaseURL() {
 		return "http://mock-mcp-server";
 	}
 

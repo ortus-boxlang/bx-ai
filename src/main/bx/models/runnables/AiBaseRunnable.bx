@@ -564,15 +564,23 @@ abstract class implements="IAiRunnable" {
 		if ( response.isSuccess() ) {
 			var data      = response.getData();
 			var toolsList = isArray( data ) ? data : ( data.keyExists( "tools" ) ? data.tools : [] )
+			var toolNames = [];
 
 			toolsList.each( toolDef => {
 				withTools( [ new bxModules.bxai.models.tools.MCPTool( mcpClient, toolDef ) ] )
+				toolNames.append( toolDef.name ?: "" );
 			} )
+
+			// Track server metadata for config inspection and system message generation
+			variables.mcpServers.append( {
+				"url"      : mcpClient.getBaseURL(),
+				"toolNames": toolNames
+			} );
 		} else{
 			// Write to logs that the MCP server connection failed, but don't throw an error since the runnable can still function without the tools
 			var errorData = response.getError();
 			writeLog(
-				text: "Failed to connect to MCP server at " & ( isSimpleValue( arguments.mcpServer ) ? arguments.mcpServer : arguments.mcpServer.getUrl() ) & " - " & errorData,
+				text: "Failed to connect to MCP server at " & ( isSimpleValue( arguments.mcpServer ) ? arguments.mcpServer : arguments.mcpServer.getBaseURL() ) & " - " & errorData,
 				type: "error",
 				log: "ai"
 			)
