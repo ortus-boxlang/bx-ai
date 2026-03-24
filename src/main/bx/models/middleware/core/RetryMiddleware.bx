@@ -73,6 +73,9 @@ class extends="BaseAiMiddleware" {
 		variables.backoffMultiplier = arguments.backoffMultiplier
 		variables.maxDelay          = arguments.maxDelay
 		variables.nonRetryableTypes = arguments.nonRetryableTypes
+		variables.name = "Retry Middleware"
+		variables.description = "Retries failed LLM and tool calls with exponential back-off. " &
+			"Configurable max retries, initial delay, backoff multiplier, and non-retryable exception types."
 		return this
 	}
 

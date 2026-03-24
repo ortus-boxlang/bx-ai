@@ -61,6 +61,8 @@ class extends="BaseAiMiddleware" {
 		variables.logToConsole = arguments.logToConsole
 		variables.logLevel     = arguments.logLevel
 		variables.prefix       = arguments.prefix
+		variables.name = "Logging Middleware"
+		variables.description = "Logs AI lifecycle events to the BoxLang 'ai' log and optionally to the console. Configurable log level and message prefix."
 		return this
 	}
 

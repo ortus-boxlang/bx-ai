@@ -41,6 +41,20 @@
 interface {
 
 	/**
+	 * The name of the middleware, used for logging and debugging
+	 */
+    default public string function getName(){
+		return variables.name;
+	}
+
+	/**
+	 * The description of the middleware, used for logging and debugging
+	 */
+    default public string function getDescription(){
+		return variables.description;
+	}
+
+	/**
 	 * Fired before the agent's run() method begins processing.
 	 * Return cancel() or suspend() to halt execution.
 	 *

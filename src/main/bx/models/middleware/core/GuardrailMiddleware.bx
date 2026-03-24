@@ -52,6 +52,9 @@ class extends="BaseAiMiddleware" {
 	function init( array blockedTools = [], struct argPatterns = {} ) {
 		variables.blockedTools = arguments.blockedTools
 		variables.argPatterns  = arguments.argPatterns
+		variables.name = "Guardrail Middleware"
+		variables.description = "Blocks or sanitises tool calls based on configurable rules. " &
+			"Two guard types: blockedTools (array of tool names) and argPatterns (struct of { toolName: [ { param: regex } ] })."
 		return this
 	}
 

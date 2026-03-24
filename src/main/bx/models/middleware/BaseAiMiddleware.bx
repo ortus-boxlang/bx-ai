@@ -27,6 +27,21 @@ import bxModules.bxai.models.middleware.AiMiddlewareResult;
 abstract class implements="IAiMiddleware" {
 
 	/**
+	 * Name and description are used for logging and debugging purposes.
+	 * They do not affect middleware behavior but can help identify middleware in logs and error messages.
+	 */
+	property name="name" default="Base AI Middleware";
+	property name="description" default="";
+
+	// No-op init, override if needed
+	function init(){
+		// Set name and description from metadata if available
+		var md = getMetadata( this )
+		variables.name = md.name
+		variables.description = md.documentation?.hint ?: "";
+	}
+
+	/**
 	 * Default: continue
 	 */
 	AiMiddlewareResult function beforeAgentRun( required struct context ) {

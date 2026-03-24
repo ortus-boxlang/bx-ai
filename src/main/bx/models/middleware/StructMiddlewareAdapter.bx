@@ -43,7 +43,10 @@ class extends="BaseAiMiddleware" {
 	 * @definitions Struct whose keys are hook names and values are closures
 	 */
 	function init( required struct definitions ) {
-		variables.definitions = arguments.definitions;
+		variables.definitions = arguments.definitions
+		variables.name = "Struct Middleware Adapter"
+		variables.description = "Adapts a struct of closures into an IAiMiddleware implementation." &
+			"Provided hooks: #structKeyList( arguments.definitions )#"
 		return this;
 	}
 

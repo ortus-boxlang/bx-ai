@@ -43,6 +43,9 @@ class extends="BaseAiMiddleware" {
 	function init( numeric maxCalls = 10 ) {
 		variables.maxCalls  = arguments.maxCalls
 		variables.callCount = 0
+		variables.name = "Max Tool Calls Middleware"
+		variables.description = "Enforces a per-run cap on total tool invocations. Configurable max calls allowed."
+
 		return this
 	}
 

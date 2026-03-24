@@ -79,6 +79,9 @@ class extends="BaseAiMiddleware" {
 		variables.approvalMode           = arguments.mode
 		variables.showArguments          = arguments.showArguments
 		variables.approvalCallback 		 = arguments.approvalCallback
+		variables.name = "Human-in-the-Loop Middleware"
+		variables.description = "Intercepts specified tool calls and requires human approval before proceeding. " &
+			"Supports 'cli' mode for blocking stdin prompts and 'web' mode for asynchronous suspension. Configurable tool list and optional approval callback for custom logic."
 
 		return this
 	}

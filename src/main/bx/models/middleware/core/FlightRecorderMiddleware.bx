@@ -133,6 +133,9 @@ class extends="BaseAiMiddleware" {
 		variables.fixtureDir  = arguments.fixtureDir
 		variables.recordTools = arguments.recordTools
 		variables.strict      = arguments.strict
+		variables.name = "Flight Recorder Middleware"
+		variables.description = "Captures a structured trace of every LLM provider round-trip and tool invocation during an agent run, written as a human-readable JSON fixture. " &
+			"Supports three modes: passthrough (no recording), record (capture interactions to a fixture file), and replay (return interactions from a fixture file without live calls). Configurable fixture path, recording of tool calls, and strictness of replay matching."
 		return this
 	}
 
