@@ -226,10 +226,9 @@ public class AiToolRegistryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				import bxModules.bxai.models.registry.AIToolRegistry;
 				reg = aiToolRegistry()
 				reg.register( name: "resolveTool", description: "Resolve test", callback: () => "resolved" )
-				resolved = AIToolRegistry::resolveTools( [ "resolveTool" ] )
+				resolved = aiToolRegistry().resolveTools( [ "resolveTool" ] )
 				result       = resolved[ 1 ].getName()
 				// Cleanup
 				reg.unregister( "resolveTool" )
@@ -247,9 +246,8 @@ public class AiToolRegistryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				import bxModules.bxai.models.registry.AIToolRegistry;
 				tool     = aiTool( "passThroughResolve", "Pass-through", () => "pass" )
-				resolved = AIToolRegistry::resolveTools( [ tool ] )
+				resolved = aiToolRegistry().resolveTools( [ tool ] )
 				result       = ( resolved[ 1 ] === tool )
 			""",
 			context
@@ -269,9 +267,8 @@ public class AiToolRegistryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				import bxModules.bxai.models.registry.AIToolRegistry;
-				r1 = AIToolRegistry::getInstance()
-				r2 = AIToolRegistry::getInstance()
+				r1 = aiToolRegistry()
+				r2 = aiToolRegistry()
 				result = ( r1 === r2 )
 			""",
 			context
