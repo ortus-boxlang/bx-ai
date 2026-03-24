@@ -197,7 +197,7 @@ class extends="BaseRegistry" {
 	 */
 	AIToolRegistry function unregisterByModule( required string module ) {
 		getKeys()
-			.filter( key => extractModule( key ) == arguments.module )
+			.filter( key => extractModule( key ) == module )
 			.each( key => unregister( key ) )
 		return this
 	}
