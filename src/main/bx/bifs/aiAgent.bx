@@ -40,6 +40,7 @@ class {
 	 * @middleware IAiMiddleware instance, struct-of-closures, or array of either to attach to this agent
 	 * @checkpointer IAiMemory instance used to save/load checkpoint state for suspend-resume
 	 * @checkpointTTL Time-to-live for checkpoint state in minutes (0 = no expiry)
+	 * @mcpServers Array of MCP server URLs to seed into the agent for internal tool calls to sub-agents and tools
 	 *
 	 * @return AiAgent instance for fluent chaining
 	 */
@@ -55,7 +56,8 @@ class {
 		struct options      = {},
 		any middleware      = [],
 		any checkpointer,
-		numeric checkpointTTL = 30
+		numeric checkpointTTL = 30,
+		array mcpServers    = []
 	) {
 		// Create the agent with the provided configuration options
 		var agent = new bxModules.bxai.models.runnables.AiAgent( argumentCollection: arguments )

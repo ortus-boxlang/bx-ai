@@ -1,0 +1,108 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * An ITool implementation that proxies a tool exposed by an MCP server.
+ *
+ * Instances are created automatically when you call withMCPServer() on an agent or model.
+ * Each MCPTool wraps one entry from the MCPClient.listTools() response and delegates
+ * invocations back to the MCP server via MCPClient.send().
+ */
+class extends="BaseTool"{
+
+	/**
+	 * The MCPClient instance used to call this tool
+	 */
+	property name="mcpClient" type="any";
+
+	/**
+	 * The raw inputSchema from the MCP tool definition (OpenAI-style parameters object)
+	 */
+	property name="inputSchema" type="struct" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @mcpClient  The MCPClient connected to the MCP server that owns this tool
+	 * @toolDefinition  A single tool struct from MCPClient.listTools() data, containing name, description, inputSchema
+	 */
+	function init( required any mcpClient, required struct toolDefinition ) {
+		variables.mcpClient   = arguments.mcpClient;
+		variables.name        = arguments.toolDefinition.name        ?: "";
+		variables.description = arguments.toolDefinition.description ?: "";
+		variables.inputSchema = arguments.toolDefinition.inputSchema ?: {};
+		return this;
+	}
+
+	/**
+	 * Return the OpenAI function-calling schema for this tool.
+	 * Wraps the MCP inputSchema (already an OpenAI-style parameters object) in the
+	 * standard function wrapper expected by AI providers.
+	 */
+	public struct function generateSchema() {
+		var parameters = variables.inputSchema.isEmpty()
+			? { "type": "object", "properties": {}, "additionalProperties": false }
+			: variables.inputSchema;
+
+		return {
+			"type": "function",
+			"function": {
+				"name"       : variables.name,
+				"description": variables.description,
+				"parameters" : parameters
+			}
+		};
+	}
+
+	/**
+	 * Invoke this tool by forwarding the call to the MCP server.
+	 *
+	 * The special _chatRequest key injected by the agent loop is stripped before
+	 * forwarding so the MCP server only receives the declared tool arguments.
+	 *
+	 * MCP tool results may be a plain value, a JSON-serialisable struct/array, or
+	 * an array of content blocks in the form [{ type: "text", text: "..." }, ...].
+	 * All formats are normalised by BaseTool.invoke() via serializeResult().
+	 *
+	 * @args        Arguments struct from the AI (may include _chatRequest)
+	 * @chatRequest The originating AiChatRequest (used for observability events)
+	 */
+	public any function doInvoke( required struct args, AiChatRequest chatRequest ) {
+		// Strip internal agent key before forwarding to MCP server
+		var mcpArgs  = arguments.args.filter( ( k, v ) => k != "_chatRequest" );
+		var response = variables.mcpClient.send( variables.name, mcpArgs );
+
+		if ( response.isSuccess() ) {
+			var data = response.getData();
+
+			// MCP content array: [{ type: "text", text: "..." }, ...]
+			if ( isArray( data ) ) {
+				return data
+					.map( item => {
+						if ( isStruct( item ) && item.keyExists( "text" ) ) {
+							return item.text;
+						}
+						return isSimpleValue( item ) ? toString( item ) : jsonSerialize( item );
+					} )
+					.toList( char( 10 ) );
+			} else if ( isSimpleValue( data ) ) {
+				return toString( data );
+			} else {
+				return data;
+			}
+		}
+
+		return "Error from MCP tool [#variables.name#]: " & response.getError();
+	}
+
+}

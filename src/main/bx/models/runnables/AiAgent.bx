@@ -47,12 +47,6 @@ class extends="AiBaseRunnable" {
 	property name="aiModel" type="AiModel";
 
 	/**
-	 * Tools available to the agent to use.
-	 * It will also use any tools bound to the aiModel.
-	 */
-	property name="tools" type="array" default=[];
-
-	/**
 	 * Memory instances (array of IAiMemory)
 	 * You can add multiple memories for different purposes.
 	 */
@@ -83,13 +77,6 @@ class extends="AiBaseRunnable" {
 	 * Parent agent reference for sub-agents (null for top-level agents)
 	 */
 	property name="parentAgent" type="AiAgent";
-
-	/**
-	 * Middleware stack for this agent.
-	 * Hooks fire in order for inbound hooks (beforeAgentRun, beforeLLMCall, beforeToolCall)
-	 * and in reverse for outbound hooks (afterAgentRun, afterLLMCall, afterToolCall).
-	 */
-	property name="middleware" type="array" default=[];
 
 	/**
 	 * Optional checkpointer memory backend used to persist state during suspend/resume.
@@ -124,6 +111,10 @@ class extends="AiBaseRunnable" {
 	 * @subAgents Array of sub-agents to register as internal tools
 	 * @params Default model parameters
 	 * @options Default agent options
+	 * @middleware Middleware to apply to this agent (can also be added later with withMiddleware())
+	 * @checkpointer Optional memory backend for checkpointing on suspend
+	 * @checkpointTTL TTL in minutes for checkpoint data when using a checkpointer, defaults to 30 minutes
+	 * @mcpServers Optional array of MCP servers for distributed tool/sub-agent usage, each entry is a struct: { url: string, toolNames: array }
 	 */
 	function init(
 		string name = static.DEFAULT_AGENT_NAME,
@@ -137,17 +128,20 @@ class extends="AiBaseRunnable" {
 		struct options = {},
 		any middleware = [],
 		any checkpointer,
-		numeric checkpointTTL = static.DEFAULT_CHECKPOINT_TTL
+		numeric checkpointTTL = static.DEFAULT_CHECKPOINT_TTL,
+		array mcpServers = []
 	) {
 		// Set them up baby!
 		variables.description = arguments.description
 		variables.instructions = arguments.instructions
-		variables.aiModel = arguments.model.addTools( arguments.tools )
+		variables.aiModel = arguments.model.withTools( arguments.tools )
 		variables.tools = arguments.tools
 		variables.subAgents = []
 		variables.subAgentTools = []
 		variables.params = arguments.params
 		variables.options = arguments.options
+		variables.checkpointTTL = arguments.checkpointTTL
+		variables.checkpointer = arguments.checkpointer
 
 		// param the options return format to "single"
 		// Agent's by default return just the assistant's content
@@ -166,23 +160,18 @@ class extends="AiBaseRunnable" {
 			variables.instructions = static.DEFAULT_AGENT_INSTRUCTIONS
 		}
 
-		// Set internal name
+		// Set internal name + agentName
 		setName( arguments.name )
 
 		// Handle memory - can be single or array, or create default simple memory
-		if ( isArray( arguments.memory ) ) {
-			variables.memories = arguments.memory
-		} else {
-			variables.memories = [ arguments.memory ]
-		}
+		variables.memories = isArray( arguments.memory ) ? arguments.memory : [ arguments.memory ]
 
 		// Handle sub-agents - register each as an internal tool
 		arguments.subAgents.each( subAgent => addSubAgent( subAgent ) )
-
-		// Middleware setup
+		// Middleware setup + Checkpointer
 		withMiddleware( arguments.middleware )
-		variables.checkpointTTL = arguments.checkpointTTL
-		variables.checkpointer = arguments.checkpointer
+		// MCP Server Setup
+		withMCPServers( arguments.mcpServers )
 
 		return this;
 	}
@@ -527,33 +516,23 @@ class extends="AiBaseRunnable" {
 	 * @return this for chaining
 	 */
 	AiAgent function setModel( required AiModel model ) {
-		variables.aiModel = arguments.model.addTools( variables.tools );
-		return this;
+		variables.aiModel = arguments.model.withTools( variables.tools )
+		return this
 	}
 
 	/**
 	 * Set the tools for the agent (replaces existing tools)
+	 * It also updates the tools in the underlying AI model to keep them in sync, since tools are executed via the model's runnable chain.
 	 *
 	 * @tools Array of tools
 	 *
 	 * @return this for chaining
 	 */
+	@override
 	AiAgent function setTools( required array tools ) {
-		variables.tools = arguments.tools;
-		variables.aiModel.bindTools( arguments.tools );
-		return this;
-	}
-
-	/**
-	 * Add a tool to the agent
-	 *
-	 * @tool The tool to add
-	 *
-	 * @return this for chaining
-	 */
-	AiAgent function addTool( required ITool tool ) {
-		variables.tools.append( arguments.tool );
-		return this;
+		variables.tools = arguments.tools
+		variables.aiModel.withTools( arguments.tools )
+		return this
 	}
 
 	/**
@@ -566,28 +545,6 @@ class extends="AiBaseRunnable" {
 	 */
 	function setParam( required string key, required any value ) {
 		variables.params[ arguments.key ] = arguments.value;
-		return this;
-	}
-
-	/**
-	 * Add middleware to this agent's stack.
-	 * Structs are automatically wrapped in StructMiddlewareAdapter.
-	 * Arrays are flattened — each element is added individually.
-	 *
-	 * @middleware IAiMiddleware instance, struct-of-closures, or array of either
-	 *
-	 * @return This agent for chaining
-	 */
-	AiAgent function withMiddleware( required any middleware ) {
-		if ( isArray( arguments.middleware ) ) {
-			arguments.middleware.each( mw => withMiddleware( mw ) );
-			return this;
-		}
-		if ( isStruct( arguments.middleware ) && !isObject( arguments.middleware ) ) {
-			variables.middleware.append( new StructMiddlewareAdapter( arguments.middleware ) );
-		} else {
-			variables.middleware.append( arguments.middleware );
-		}
 		return this;
 	}
 
@@ -724,7 +681,7 @@ class extends="AiBaseRunnable" {
 		variables.subAgentTools.append( subAgentTool );
 
 		// Add the tool to this agent's model
-		variables.aiModel.addTools( [ subAgentTool ] );
+		variables.aiModel.withTools( [ subAgentTool ] );
 
 		return this;
 	}
@@ -806,6 +763,7 @@ class extends="AiBaseRunnable" {
 			"instructions": variables.instructions,
 			"model": variables.aiModel.getConfig(),
 			"middlewareCount": variables.middleware.len(),
+			"middleware": listMiddleware(),
 			"memoryCount": variables.memories.len(),
 			"memories": variables.memories.map( mem => mem.getSummary() ),
 			"name": variables.agentName,
@@ -825,7 +783,9 @@ class extends="AiBaseRunnable" {
 					"description": agent.getConfig().description
 				};
 			} ),
-			"toolCount": variables.tools.len(),
+			"toolCount" : variables.tools.len(),
+			"tools"     : listTools(),
+			"mcpServers": variables.mcpServers,
 		}
 	}
 
@@ -1014,6 +974,14 @@ class extends="AiBaseRunnable" {
 
 		if ( variables.instructions.len() > 0 ) {
 			parts.append( variables.instructions );
+		}
+
+		// Include connected MCP servers so the LLM knows where its tools came from
+		if ( variables.mcpServers.len() > 0 ) {
+			var serverLines = variables.mcpServers.map( s =>
+				"- " & s.url & " (tools: " & s.toolNames.toList( ", " ) & ")"
+			);
+			parts.append( "Connected MCP Servers:" & char( 10 ) & serverLines.toList( char( 10 ) ) );
 		}
 
 		return parts.toList( char( 10 ) & char( 10 ) );

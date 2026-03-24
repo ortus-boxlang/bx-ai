@@ -1,0 +1,66 @@
+/**
+ * A test-only mock implementation of an MCPClient.
+ * Used to test withMCPServer() and MCPTool without a live HTTP server.
+ *
+ * Wire it up before passing to withMCPServer():
+ *   var mockClient = new src.test.bx.mocks.MockMCPClient()
+ *   mockClient.setToolsToReturn( [ { name: "search", description: "Search", inputSchema: {} } ] )
+ *   mockClient.setSendResponse( "the result" )
+ */
+class {
+
+	/**
+	 * The tools to return from listTools()
+	 */
+	property name="toolsToReturn" type="array" default=[];
+
+	/**
+	 * The data to return from send()
+	 */
+	property name="sendResponseData" type="any" default="";
+
+	/**
+	 * Whether send() should report success
+	 */
+	property name="sendSuccess" type="boolean" default=true;
+
+	/**
+	 * Whether listTools() should report success
+	 */
+	property name="listToolsSuccess" type="boolean" default=true;
+
+	/**
+	 * Return the mock base URL (used by AiBaseRunnable error logging)
+	 */
+	public string function getUrl() {
+		return "http://mock-mcp-server";
+	}
+
+	/**
+	 * Return a successful MCPResponse with the configured tools list
+	 */
+	public any function listTools() {
+		return new bxModules.bxai.models.mcp.MCPResponse(
+			success    : variables.listToolsSuccess,
+			data       : variables.listToolsSuccess ? variables.toolsToReturn : {},
+			error      : variables.listToolsSuccess ? "" : "Mock listTools() error",
+			statusCode : variables.listToolsSuccess ? 200 : 500
+		);
+	}
+
+	/**
+	 * Simulate an MCP tool invocation by returning the configured send response
+	 *
+	 * @toolName  Name of the tool being called
+	 * @args      Arguments struct
+	 */
+	public any function send( required string toolName, struct args = {} ) {
+		return new bxModules.bxai.models.mcp.MCPResponse(
+			success    : variables.sendSuccess,
+			data       : variables.sendSuccess ? variables.sendResponseData : {},
+			error      : variables.sendSuccess ? "" : "Mock send() error",
+			statusCode : variables.sendSuccess ? 200 : 500
+		);
+	}
+
+}

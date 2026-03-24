@@ -48,6 +48,7 @@ class {
 	 * @param params Additional parameters to bind the model with
 	 * @param options Additional options for model creation (e.g., timeout, logResponse, logResponseToConsole, logRequest, logRequestToConsole)
 	 * @middleware IAiMiddleware instance, struct-of-closures, or array of either to attach to this model
+	 * @mcpServers Array of MCP server URLs to seed into the model for internal tool calls to sub-agents and tools. This allows the model to make calls to sub-agents and tools registered on those MCP servers, enabling distributed agent architectures and tool usage across multiple servers.
 	 *
 	 * @return An AiModel runnable
 	 */
@@ -57,17 +58,19 @@ class {
 		any tools=[],
 		struct params={},
 		struct options={},
-		any middleware=[]
+		any middleware=[],
+		array mcpServers=[]
 	) {
-		// Get the underlying service
+		// Get the underlying service (pass only service-relevant args)
 		var service = aiService( argumentCollection: arguments )
 
 		// Wrap it as a model entity for use in pipelines
 		var model = new bxModules.bxai.models.runnables.AiModel( service )
-			.bindTools( arguments.tools )
+			.withTools( arguments.tools )
 			.withParams( arguments.params )
 			.withOptions( arguments.options )
 			.withMiddleware( arguments.middleware )
+			.withMCPServers( arguments.mcpServers )
 
 		// Notify of model creation
 		BoxAnnounce( "onAIModelCreate", { model: model, service: service } )

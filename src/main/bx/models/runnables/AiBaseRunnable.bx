@@ -13,7 +13,8 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  * Base abstract class for all AI runnables.
- * Provides common functionality for naming, parameter management, and chaining operations.
+ * Defines the common interface and helper methods for AI operations, including tool management and response formatting.
+ * All specific runnable types (models, agents, transforms, etc.) should extend this base class
  */
 import bxModules.bxai.models.transformers.*;
 import bxModules.bxai.models.util.SchemaBuilder;
@@ -34,6 +35,22 @@ abstract class implements="IAiRunnable" {
 	 * Default options for this runnable (returnFormat, timeout, logging, etc.)
 	 */
 	property name="defaultOptions" type="struct" default={};
+
+	/**
+	 * MCP servers that can be used by this runnable for internal tool calls to sub-agents and tools. This allows the runnable to make calls to sub-agents and tools registered on those MCP servers, enabling distributed agent architectures and tool usage across multiple servers.
+	 * Each entry is a struct: { url: string, toolNames: array }
+	 */
+	property name="mcpServers" type="array" default=[];
+
+	/**
+	 * The tools attached to this runnable for tool-augmented generation.
+	 */
+	property name="tools" type="array" default=[];
+
+	/**
+	 * Middleware stack for this runnable.
+	 */
+	property name="middleware" type="array" default=[];
 
     /**
 	 * ---------------------------------------------------------------------------------------------------------
@@ -108,6 +125,13 @@ abstract class implements="IAiRunnable" {
 	}
 
 	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Runnable Chaining and Composition Methods
+	 * These methods allow you to easily chain runnables together, connect them to models, and apply transformations to create complex AI workflows with minimal boilerplate.
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
 	 * Alias to to()
 	 * Langchain style method name
 	 */
@@ -142,12 +166,6 @@ abstract class implements="IAiRunnable" {
 		) {
 		return this.to( aiModel( argumentCollection: arguments ) )
 	}
-
-    /**
-	 * ---------------------------------------------------------------------------------------------------------
-	 * Helper Methods
-	 * ---------------------------------------------------------------------------------------------------------
-	 */
 
 	/**
 	 * Apply a transformation function after this runnable
@@ -208,6 +226,12 @@ abstract class implements="IAiRunnable" {
         return this.transform( arguments.transformer )
             .run( arguments.input, arguments.params )
     }
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Configuration and Helper Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
 
 	/**
 	 * Set the name of this runnable
@@ -308,6 +332,289 @@ abstract class implements="IAiRunnable" {
 		variables.defaultOptions = {};
 		return this;
 	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Tool Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	 /**
+	 * Get a summary of all tools registered to this runnable.
+	 *
+	 * @return Array of structs: [{ name, description }]
+	 */
+	public array function listTools() {
+		return variables.tools.map( tool => {
+			return { name: tool.getName(), description: tool.getDescription() }
+		} )
+	}
+
+	/**
+	 * @deprecated Use withTools() instead. This method will be removed in a future version.
+	 */
+	public AiBaseRunnable function bindTools( required any tools ) {
+		return this.withTools( arguments.tools )
+	}
+
+	/**
+	 * @deprecated Use withTools() instead. This method will be removed in a future version.
+	 */
+	public AiBaseRunnable function addTools( required any tools ) {
+		return this.withTools( arguments.tools )
+	}
+
+	/**
+	 * Add a tool to the runnable's toolset.
+	 * This allows the tool to be used for tool-augmented generation when this runnable is executed.
+	 *
+	 * @tool The tool to add
+	 *
+	 * @return this for chaining
+	 */
+	public AiBaseRunnable function addTool( required ITool tool ) {
+		variables.tools.append( arguments.tool )
+		return this
+	}
+
+	 /**
+	  * Bind tools to this runnable
+	  *
+	  * @tools An array of tools to bind, or a single tool (will be wrapped as array)
+	  * @return This runnable with tools bound
+	  */
+	public AiBaseRunnable function withTools( required any tools ) {
+		// If simple value, wrap as array
+		if( !isArray( arguments.tools ) ){
+			arguments.tools = [ arguments.tools ]
+		}
+		variables.tools.append( arguments.tools, true )
+		return this
+	}
+
+	/**
+	 * Remove specific tools from this model, either by name or by reference
+	 *
+	 * @tools One or more tools to remove, specified as tool instances or tool names (will be wrapped as array if not already)
+	 *
+	 * @return This model with tools removed
+	 */
+	public AiBaseRunnable function removeTools( any tools ) {
+		// If simple value, wrap as array
+		if( !isArray( arguments.tools ) ){
+			arguments.tools = [ arguments.tools ]
+		}
+
+		// Extract tool names from the input array, whether they are tool instances or string names
+		arguments.tools
+			.map( t => {
+				if ( isObject( t ) && t instanceof "ITool" ) {
+					return t.getName()
+				}
+				return t.toString()
+			} )
+			// Remove each tool from the current tools array
+			.each( toolToRemove => {
+				var index = variables.tools.findNoCase( t => t.getName() == toolToRemove )
+				if ( index > 0 ) {
+					variables.tools.deleteAt( index )
+				}
+			} )
+
+		return this
+	}
+
+	/**
+	 * Verify if a tool is registered to this runnable
+	 *
+	 * @tool The tool to check for, or the name of the tool to check for (matched by reference or name)
+	 *
+	 * @return Boolean indicating if the tool is registered
+	 */
+	public boolean function hasTool( required any tool ) {
+		var targetTool = arguments.tool
+		return variables.tools.some( t => {
+			if( isObject( targetTool ) && targetTool instanceof "ITool" ) {
+				return t == targetTool
+			} else if ( isSimpleValue( targetTool ) ) {
+				return t.getName() == targetTool
+			}
+			return false
+		} );
+	}
+
+	/**
+	 * Get a specific tool by name
+	 *
+	 * @name The name of the tool to retrieve
+	 *
+	 * @return The tool instance if found, otherwise null
+	 */
+	public ITool function getTool( required string name ) {
+		return variables.tools.findFirst( t => t.getName() == name )
+	}
+
+	/**
+	 * Clear All tools from this runnable
+	 *
+	 * @return This runnable with all tools removed
+	 */
+	public AiBaseRunnable function clearTools() {
+		variables.tools = []
+		return this
+	}
+
+
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Middleware Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	 /**
+	 * Add middleware to this runnable. Middleware can be used to modify the input, output, or behavior of the runnable in a reusable way.
+	 * Middleware can be an instance of IAiMiddleware, a struct of closures (with beforeRun, afterRun, onError, etc.), or an array of either.
+	 * Structs are automatically wrapped in StructMiddlewareAdapter.
+	 * Arrays are flattened — each element is added individually.
+	 *
+	 * @middleware IAiMiddleware instance, struct-of-closures, or array of either
+	 *
+	 * @return This runnable for chaining
+	 */
+	public AiBaseRunnable function withMiddleware( required any middleware ) {
+		if ( isArray( arguments.middleware ) ) {
+			arguments.middleware.each( mw => withMiddleware( mw ) )
+			return this
+		}
+		if ( isStruct( arguments.middleware ) && !isObject( arguments.middleware ) ) {
+			variables.middleware.append( new StructMiddlewareAdapter( arguments.middleware ) )
+		} else {
+			variables.middleware.append( arguments.middleware )
+		}
+		return this
+	}
+
+	/**
+	 * Clear all middleware from this runnable
+	 *
+	 * @return This runnable with all middleware removed
+	 *
+	 */
+	public AiBaseRunnable function clearMiddleware() {
+		variables.middleware = []
+		return this
+	}
+
+	/**
+	 * Get a summary of all middleware registered to this runnable.
+	 *
+	 * @return Array of structs: [{ name, description }]
+	 */
+	public array function listMiddleware() {
+		return variables.middleware.map( mw => {
+			return { name: mw.getName(), description: mw.getDescription() }
+		} )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * MCP Server Tools Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Seed this runnable with tools from multiple MCP servers.
+	 *
+	 * Each entry in the array can be:
+	 * - A URL string to the MCP server: "http://server:3000"
+	 * - A config struct: { url: "http://server:3000", token: "...", timeout: 5000 }
+	 * - A pre-configured MCPClient instance
+	 *
+	 * @servers  Array of MCP server descriptors
+	 *
+	 * @return This runnable for chaining
+	 */
+	public AiBaseRunnable function withMCPServers( required array servers ) {
+		arguments.servers.each( mcpServer => {
+			if ( isStruct( mcpServer ) && !isObject( mcpServer ) ) {
+				withMCPServer( mcpServer.url ?: "", mcpServer.filter( ( k, v ) => k != "url" ) )
+			} else {
+				withMCPServer( mcpServer )
+			}
+		} )
+		return this
+	}
+
+	/**
+	 * Seed this model with tools discovered from an MCP server.
+	 *
+	 * Connects to the MCP server, calls listTools(), and wraps each discovered tool
+	 * as an MCPTool instance that is added to the model's tool list.
+	 *
+	 * @mcpServer  A URL string pointing to the MCP server, or a pre-configured MCPClient instance.
+	 * @config  Optional configuration struct with any of: token, timeout, headers, user, password.
+	 *
+	 * @return This runnable for chaining
+	 */
+	public AiBaseRunnable function withMCPServer( required any mcpServer, struct config = {} ) {
+		var mcpClient   = buildMCPClient( arguments.mcpServer, arguments.config );
+		var response = mcpClient.listTools();
+
+		if ( response.isSuccess() ) {
+			var data      = response.getData();
+			var toolsList = isArray( data ) ? data : ( data.keyExists( "tools" ) ? data.tools : [] )
+
+			toolsList.each( toolDef => {
+				withTools( [ new bxModules.bxai.models.tools.MCPTool( mcpClient, toolDef ) ] )
+			} )
+		} else{
+			// Write to logs that the MCP server connection failed, but don't throw an error since the runnable can still function without the tools
+			var errorData = response.getError();
+			writeLog(
+				text: "Failed to connect to MCP server at " & ( isSimpleValue( arguments.mcpServer ) ? arguments.mcpServer : arguments.mcpServer.getUrl() ) & " - " & errorData,
+				type: "error",
+				log: "ai"
+			)
+		}
+
+		return this;
+	}
+
+	/**
+	 * Build (or reuse) an MCPClient, applying optional config overrides.
+	 *
+	 * @serverUrl  URL string or existing MCPClient
+	 * @config  Optional struct with token, timeout, headers, user, password
+	 *
+	 * @return Configured MCPClient
+	 */
+	private any function buildMCPClient( required any serverUrl, struct config = {} ) {
+		var mcpClient = isSimpleValue( arguments.serverUrl )
+			? mcp( arguments.serverUrl )
+			: arguments.serverUrl
+
+		if ( arguments.config.keyExists( "timeout" ) ) {
+			mcpClient.withTimeout( arguments.config.timeout )
+		}
+		if ( arguments.config.keyExists( "token" ) )   {
+			mcpClient.withBearerToken( arguments.config.token )
+		}
+		if ( arguments.config.keyExists( "headers" ) ) {
+			mcpClient.withHeaders( arguments.config.headers )
+		}
+		if ( arguments.config.keyExists( "user" ) )    {
+			mcpClient.withAuth( arguments.config.user, arguments.config.password ?: "" )
+		}
+
+		return mcpClient
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Response Helper Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
 
 	/**
 	 * Convenience method to set return format to 'single'

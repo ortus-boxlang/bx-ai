@@ -209,7 +209,7 @@ public class aiModelTest extends BaseIntegrationTest {
 				).describeQuery( "Search query" )
 
 				model = aiModel( "openai" )
-					.bindTools( [ tool1, tool2 ] )
+					.withTools( [ tool1, tool2 ] )
 
 				config = model.getConfig()
 			""",
