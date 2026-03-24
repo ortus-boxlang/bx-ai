@@ -190,7 +190,7 @@ public class OllamaTest extends BaseIntegrationTest {
 			fullResponse = ""
 
 			aiChatStream(
-				messages: "How hot is it in Kansas City? Answer with only the temperature in Fahrenheit, nothing else. Use the provided tool.",
+				messages: "How hot is it in Kansas City? Answer with only the temperature in Fahrenheit, nothing else. Use the provided tool: get_weather",
 				callback: ( chunk ) => {
 					chunks.append( chunk )
 					content = chunk.choices.first().delta?.content ?: ""
