@@ -456,14 +456,18 @@ Add **cross-cutting behavior** around model and agent execution without changing
 
 | Middleware | Purpose |
 |------------|---------|
-| LoggingMiddleware | Logs agent/model lifecycle activity for observability and troubleshooting. |
-| RetryMiddleware | Retries transient LLM/tool failures with configurable backoff. |
-| MaxToolCallsMiddleware | Enforces a per-run cap on total tool calls to prevent runaway execution. |
-| GuardrailMiddleware | Blocks disallowed tools and rejects risky tool arguments by pattern rules. |
-| HumanInTheLoopMiddleware | Requires human approval for selected tool calls (CLI or suspend/resume flow). |
-| FlightRecorderMiddleware | Records and replays LLM/tool interactions for deterministic testing and CI. |
+| `LoggingMiddleware` | Logs agent/model lifecycle activity for observability and troubleshooting. |
+| `RetryMiddleware` | Retries transient LLM/tool failures with configurable backoff. |
+| `MaxToolCallsMiddleware` | Enforces a per-run cap on total tool calls to prevent runaway execution. |
+| `GuardrailMiddleware` | Blocks disallowed tools and rejects risky tool arguments by pattern rules. |
+| `HumanInTheLoopMiddleware` | Requires human approval for selected tool calls (CLI or suspend/resume flow). |
+| `FlightRecorderMiddleware` | Records and replays LLM/tool interactions for deterministic testing and CI. |
 
-#### 💡 Quick Example
+#### 📌 Registration
+
+Middleware can be attached to **agents**, **models**, or both. They are executed in the order registered; `after*` hooks fire in reverse order (cleanup order).
+
+**Via `aiAgent()` / `aiModel()` BIF parameter:**
 
 ```javascript
 import bxModules.bxai.models.middleware.core.LoggingMiddleware;
@@ -478,9 +482,245 @@ agent = aiAgent(
         new GuardrailMiddleware( blockedTools: [ "deleteRecord" ] )
     ]
 )
-
-response = agent.run( "Summarize this report and suggest next steps" )
 ```
+
+**Via `withMiddleware()` on a runnable (fluent API):**
+
+```javascript
+agent
+    .withMiddleware( new LoggingMiddleware() )
+    .withMiddleware( new RetryMiddleware( maxRetries: 3 ) )
+
+// Or pass an array — flattened automatically
+agent.withMiddleware( [ mw1, mw2, mw3 ] )
+```
+
+**Management methods** (available on `AiAgent` and `AiModel`):
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `withMiddleware( any middleware )` | `this` | Add one or more middleware (instance, struct, or array) |
+| `clearMiddleware()` | `this` | Remove all registered middleware |
+| `listMiddleware()` | `array` | Return array of `{ name, description }` for all middleware |
+
+When an agent runs, its middleware is **prepended** to any middleware already on the model, so agent-level hooks always fire first.
+
+---
+
+#### 🪝 Hooks Reference
+
+Middleware exposes two hook styles:
+
+**Sequential hooks** — called in order; return `AiMiddlewareResult`. Chain stops if any hook returns a terminal result.
+
+| Hook | Fires | Direction |
+|------|-------|-----------|
+| `beforeAgentRun( context )` | Before agent starts | Forward |
+| `afterAgentRun( context )` | After agent completes | **Reverse** |
+| `beforeLLMCall( context )` | Before each LLM provider call | Forward |
+| `afterLLMCall( context )` | After each LLM provider call | **Reverse** |
+| `beforeToolCall( context )` | Before each tool is invoked | Forward |
+| `afterToolCall( context )` | After each tool returns | **Reverse** |
+| `onError( context )` | When any hook throws an exception | — |
+
+**Wrap hooks** — called as nested closures; call `handler()` to proceed and return a value.
+
+| Hook | Purpose |
+|------|---------|
+| `wrapLLMCall( context, handler )` | Surround each LLM provider call (retry, caching, tracing) |
+| `wrapToolCall( context, handler )` | Surround each tool invocation (retry, mocking, sandboxing) |
+
+For wrap hooks, the first registered middleware is the outermost wrapper:
+
+```
+mw1.wrapLLMCall( ctx, () =>
+    mw2.wrapLLMCall( ctx, () =>
+        actualProviderCall()
+    )
+)
+```
+
+---
+
+#### 📬 AiMiddlewareResult
+
+Every sequential hook must return an `AiMiddlewareResult`. Use the static factory methods:
+
+```javascript
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+// Continue the chain normally
+return AiMiddlewareResult.continue()
+
+// Stop the chain immediately (terminal)
+return AiMiddlewareResult.cancel( "Too many sensitive operations" )
+
+// Human approved (HITL)
+return AiMiddlewareResult.approve()
+
+// Human rejected (terminal)
+return AiMiddlewareResult.reject( "Operator rejected this action" )
+
+// Human edited the tool arguments (passes modified args to tool)
+return AiMiddlewareResult.edit( { correctedArgs: { query: "safe query" } } )
+
+// Suspend for async human review (terminal — web mode HITL)
+return AiMiddlewareResult.suspend( { toolName: "deleteRecord", args: toolArgs } )
+```
+
+**Checking results:**
+
+| Predicate | Meaning |
+|-----------|---------|
+| `isContinue()` | Chain proceeds normally |
+| `isCancelled()` | Chain was stopped (terminal) |
+| `isApproved()` | Human approved |
+| `isRejected()` | Human rejected (terminal) |
+| `isEdit()` | Arguments were modified |
+| `isSuspended()` | Waiting for async human input (terminal) |
+| `isTerminal()` | `cancel`, `reject`, or `suspend` — stops the chain |
+
+---
+
+#### ✍️ Writing Middleware
+
+**Option 1: Struct-of-closures** (lightweight, no class needed)
+
+Only define the hooks you need — all others default to no-op:
+
+```javascript
+agent.withMiddleware({
+    // Sequential hooks — receive context struct, must return AiMiddlewareResult
+    beforeToolCall: (ctx) => {
+        if ( ctx.toolName == "dropTable" ) {
+            return AiMiddlewareResult.cancel( "Blocked: dropTable is not allowed" )
+        }
+        return AiMiddlewareResult.continue()
+    },
+
+    // Wrap hooks — receive context + handler function, must return handler()'s value
+    wrapLLMCall: (ctx, handler) => {
+        writeLog( "LLM call start", "ai" )
+        var result = handler()
+        writeLog( "LLM call end", "ai" )
+        return result
+    },
+
+    onError: (ctx) => {
+        writeLog( "Middleware error in #ctx.phase#: #ctx.error.message#", "ai" )
+        return AiMiddlewareResult.continue()
+    }
+})
+```
+
+**Option 2: Class-based** (reusable, configurable, shareable)
+
+Extend `BaseAiMiddleware` and override only the hooks you need:
+
+```javascript
+import bxModules.bxai.models.middleware.BaseAiMiddleware;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+class extends="BaseAiMiddleware" {
+
+    function init( required string tenantId ) {
+        variables.tenantId = arguments.tenantId
+        variables.name = "Tenant Audit Middleware"
+        return this
+    }
+
+    AiMiddlewareResult function beforeToolCall( required struct context ) {
+        auditLog( variables.tenantId, context.toolName, context.toolArgs )
+        return AiMiddlewareResult.continue()
+    }
+}
+```
+
+---
+
+#### 💡 Core Middleware Configuration
+
+**LoggingMiddleware**
+
+```javascript
+new LoggingMiddleware(
+    logToFile    : true,              // Write to BoxLang "ai" log file
+    logToConsole : false,             // Also print to stdout
+    logLevel     : "info",            // "info" | "debug" | "warning" | "error"
+    prefix       : "[AI Middleware]"  // Prefix for all log messages
+)
+```
+
+**RetryMiddleware**
+
+```javascript
+new RetryMiddleware(
+    maxRetries        : 3,                                        // Retries after first failure
+    initialDelay      : 1000,                                     // First retry delay (ms)
+    backoffMultiplier : 2,                                        // Exponential backoff factor
+    maxDelay          : 30000,                                    // Hard cap on delay (ms)
+    nonRetryableTypes : "InvalidInput,MaxInteractionsExceeded"    // Comma-separated exception types to skip
+)
+```
+
+**MaxToolCallsMiddleware**
+
+```javascript
+new MaxToolCallsMiddleware(
+    maxCalls: 10  // Max tool invocations per agent run
+)
+```
+
+**GuardrailMiddleware**
+
+```javascript
+new GuardrailMiddleware(
+    blockedTools : [ "deleteRecord", "dropTable" ],   // Tool names to reject outright
+    argPatterns  : {                                   // Per-tool argument regex rules
+        runSql: [ { query: "(?i)drop|truncate|delete" } ]
+    }
+)
+```
+
+**HumanInTheLoopMiddleware**
+
+```javascript
+new HumanInTheLoopMiddleware(
+    toolsRequiringApproval : [ "deleteRecord", "placeOrder" ],
+    mode                   : "cli",      // "cli" = blocking stdin | "web" = suspend/resume
+    showArguments          : true,       // Show tool args in CLI prompt
+    approvalCallback       : (ctx) => "approve"  // Optional custom approval logic
+)
+```
+
+In `web` mode, the agent suspends and returns an `AiMiddlewareResult.suspend()`. Resume it later:
+
+```javascript
+// Resume after human decision
+agent.resume( "approve", threadId, {} )
+agent.resume( "reject",  threadId, {} )
+agent.resume( "edit",    threadId, { correctedArgs: { query: "safer query" } } )
+```
+
+**FlightRecorderMiddleware**
+
+```javascript
+new FlightRecorderMiddleware(
+    mode        : "record",                        // "passthrough" | "record" | "replay"
+    fixturePath : "tests/fixtures/my-agent.json",  // Required in "replay" mode
+    fixtureDir  : ".ai/flight-recorder",           // Output directory for "record" mode
+    recordTools : true,                            // Include tool interactions in fixture
+    strict      : true                             // Strict type matching during replay
+)
+```
+
+| Mode | Behaviour |
+|------|-----------|
+| `passthrough` | No recording — calls pass through normally |
+| `record` | Calls real providers/tools and captures each interaction to a fixture file |
+| `replay` | Returns recorded interactions without making any live calls (zero-cost CI) |
+
+---
 
 #### 📚 Learn More
 
