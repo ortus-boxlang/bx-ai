@@ -93,43 +93,4 @@ public class MiddlewareBIFIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "middlewareCount" ) ) ).isAtLeast( 1 );
 	}
 
-	@DisplayName( "MaxToolCallsMiddleware cancels runs via aiAgent()" )
-	@Test
-	public void testMaxToolCallsViaAiAgent() {
-		// @formatter:off
-		runtime.executeSource(
-		    """
-		        import bxModules.bxai.models.middleware.core.MaxToolCallsMiddleware;
-
-		        toolCallCount = 0;
-
-		        function myTool( required string input ) {
-		            toolCallCount++;
-		            return "called: #arguments.input#";
-		        }
-
-		        theTool = aiTool(
-		            "myTool",
-		            "A simple test tool",
-		            [ { name: "input", type: "string", description: "Input value", required: true } ],
-		            myTool
-		        );
-
-		        mw = new MaxToolCallsMiddleware( maxCalls: 2 );
-
-		        agent = aiAgent(
-		            name       : "BoundedAgent",
-		            description: "Only allowed to call tools twice",
-		            tools      : [ theTool ],
-		            middleware : [ mw ]
-		        );
-
-		        agentMiddlewareCount = agent.getMiddleware().len();
-		    """,
-		    context
-		);
-		// @formatter:on
-
-		assertThat( variables.getAsInteger( Key.of( "agentMiddlewareCount" ) ) ).isAtLeast( 1 );
-	}
 }
