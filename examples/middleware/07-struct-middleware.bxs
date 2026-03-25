@@ -1,3 +1,5 @@
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
 /**
  * Struct-of-Closures Middleware Example
  *
@@ -20,18 +22,18 @@ var trackerMw = {
 	beforeAgentRun: ( required struct context ) => {
 		println( "  [tracker] Agent starting run" )
 		llmCallCount = 0
-		return new bxModules.bxai.models.middleware.AiMiddlewareResult().continue()
+		return AiMiddlewareResult.continue()
 	},
 
 	beforeLLMCall: ( required struct context ) => {
 		llmCallCount++
 		println( "  [tracker] LLM call ##: #llmCallCount#" )
-		return new bxModules.bxai.models.middleware.AiMiddlewareResult().continue()
+		return AiMiddlewareResult.continue()
 	},
 
 	afterAgentRun: ( required struct context ) => {
 		println( "  [tracker] Agent finished. Total LLM calls: #llmCallCount#" )
-		return new bxModules.bxai.models.middleware.AiMiddlewareResult().continue()
+		return AiMiddlewareResult.continue()
 	}
 }
 
@@ -39,7 +41,7 @@ var trackerMw = {
 var paceingMw = {
 	afterToolCall: ( required struct context ) => {
 		sleep( 200 )  // give the provider a short breather
-		return new bxModules.bxai.models.middleware.AiMiddlewareResult().continue()
+		return AiMiddlewareResult.continue()
 	}
 }
 

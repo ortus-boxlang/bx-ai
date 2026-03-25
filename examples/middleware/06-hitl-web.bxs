@@ -25,19 +25,17 @@ function transferFunds( required string from, required string to, required numer
 transferTool = aiTool(
 	"transferFunds",
 	"Transfer money between accounts",
-	[
-		{ name: "from",   type: "string",  description: "Source account",      required: true },
-		{ name: "to",     type: "string",  description: "Destination account", required: true },
-		{ name: "amount", type: "number",  description: "Amount in USD",        required: true }
-	],
 	transferFunds
 )
+	.describeArg( "from",   "Source account" )
+	.describeArg( "to",     "Destination account" )
+	.describeArg( "amount", "Amount in USD" )
 
 // CacheMemory is used as the checkpointer so state persists across requests
 checkpointer = aiMemory( "cache" )
 
-hitlMw = new bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware(
-	approvalMode         : "web",
+hitlMw = new bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware(
+	mode                 : "web",
 	toolsRequiringApproval: [ "transferFunds" ],
 	showArguments        : true
 )

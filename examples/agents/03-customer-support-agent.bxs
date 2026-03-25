@@ -53,33 +53,33 @@ knowledgeBase = {
 // Define support tools
 
 accountTool = aiTool(
-    name: "lookup_account",
-    description: "Look up customer account information",
-    action: ( customerId ) => {
+    "lookup_account",
+    "Look up customer account information",
+    ( customerId ) => {
         customer = customers[ arguments.customerId ]
         if ( isNull( customer ) ) {
             return { error: "Customer not found", customerId: arguments.customerId }
         }
         return customer
     }
-).addParameter( "customerId", "string", "Customer ID (format: C123)", true )
+).describeArg( "customerId", "Customer ID (format: C123)" )
 
 orderTool = aiTool(
-    name: "lookup_order",
-    description: "Look up order status and details",
-    action: ( orderId ) => {
+    "lookup_order",
+    "Look up order status and details",
+    ( orderId ) => {
         order = orders[ arguments.orderId ]
         if ( isNull( order ) ) {
             return { error: "Order not found", orderId: arguments.orderId }
         }
         return order
     }
-).addParameter( "orderId", "string", "Order ID (format: ORD-001)", true )
+).describeArg( "orderId", "Order ID (format: ORD-001)" )
 
 kbSearchTool = aiTool(
-    name: "search_knowledge_base",
-    description: "Search company knowledge base for policies and information",
-    action: ( topic ) => {
+    "search_knowledge_base",
+    "Search company knowledge base for policies and information",
+    ( topic ) => {
         topic = lCase( arguments.topic )
         result = ""
 
@@ -93,10 +93,10 @@ kbSearchTool = aiTool(
 
         return result.len() ? result : "No information found for that topic. Please contact a human agent."
     }
-).addParameter( "topic", "string", "Topic to search for (refund, shipping, returns, account, etc.)", true )
+).describeArg( "topic", "Topic to search for (refund, shipping, returns, account, etc.)" )
 
 // Create hybrid memory for support (recent + past tickets)
-supportMemory = aiMemory( "hybrid", {
+supportMemory = aiMemory( "hybrid", config: {
     recentLimit: 7,               // Keep last 7 messages of current conversation
     semanticLimit: 5,             // Add 5 relevant past interactions
     vectorProvider: "boxvector",  // In-memory for demo (use Pinecone for production)
@@ -136,7 +136,7 @@ supportAgent = aiAgent(
     tools: [ accountTool, orderTool, kbSearchTool ]
 )
 
-println( "Support agent initialized with #supportAgent.getConfig().tools.len()# tools" )
+println( "Support agent initialized with #supportAgent.getTools().len()# tools" )
 println( "" )
 
 // Scenario 1: Account inquiry

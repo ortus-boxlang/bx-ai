@@ -26,16 +26,15 @@ function flakySearch( required string query ) {
 searchTool = aiTool(
 	"search",
 	"Search for information",
-	[ { name: "query", type: "string", description: "Search query", required: true } ],
 	flakySearch
-)
+).describeArg( "query", "Search query" )
 
-retryMw = new bxModules.bxai.models.middleware.builtin.RetryMiddleware(
+retryMw = new bxModules.bxai.models.middleware.core.RetryMiddleware(
 	maxRetries         : 4,
 	initialDelay       : 200,      // ms
 	backoffMultiplier  : 2.0,
 	maxDelay           : 3000,     // ms cap
-	nonRetryableTypes  : [ "ValidationError" ]
+	nonRetryableTypes  : "ValidationError"
 )
 
 agent = aiAgent(

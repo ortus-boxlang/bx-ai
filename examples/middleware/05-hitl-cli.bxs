@@ -19,16 +19,14 @@ function sendEmail( required string to, required string subject, required string
 emailTool = aiTool(
 	"sendEmail",
 	"Send an email message",
-	[
-		{ name: "to",      type: "string", description: "Recipient address", required: true },
-		{ name: "subject", type: "string", description: "Email subject",     required: true },
-		{ name: "body",    type: "string", description: "Email body",        required: true }
-	],
 	sendEmail
 )
+	.describeArg( "to",      "Recipient address" )
+	.describeArg( "subject", "Email subject" )
+	.describeArg( "body",    "Email body" )
 
-hitlMw = new bxModules.bxai.models.middleware.builtin.HumanInTheLoopMiddleware(
-	approvalMode         : "cli",
+hitlMw = new bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware(
+	mode                 : "cli",
 	toolsRequiringApproval: [ "sendEmail" ],
 	showArguments        : true     // Print the arguments so the operator can review them
 )

@@ -13,12 +13,12 @@ println( "=== Multi-Memory Agent Example ===" )
 println( "One agent, multiple memory types\n" )
 
 // Memory 1: Windowed for immediate conversation
-recentMemory = aiMemory( "windowed", {
+recentMemory = aiMemory( "window", config: {
     maxMessages: 5
 } )
 
 // Memory 2: Vector for knowledge base
-knowledgeMemory = aiMemory( "boxvector", {
+knowledgeMemory = aiMemory( "boxvector", config: {
     collection: "product_knowledge",
     embeddingProvider: "openai",
     embeddingModel: "text-embedding-3-small",
@@ -27,8 +27,8 @@ knowledgeMemory = aiMemory( "boxvector", {
 } )
 
 // Memory 3: File for audit trail
-auditMemory = aiMemory( "file", {
-    filePath: getTempDirectory() & "multi_memory_audit.json",
+auditMemory = aiMemory( "file", config: {
+    directoryPath: getTempDirectory() & "/bx-ai-audit",
     maxMessages: 1000
 } )
 
@@ -100,7 +100,7 @@ println( "3️⃣  File Memory (Audit Trail):" )
 auditMessages = auditMemory.getAll()
 println( "   Messages: #auditMessages.len()#" )
 println( "   Purpose: Complete conversation history" )
-println( "   File: #auditMemory.export().filePath#\n" )
+println( "   File: #auditMemory.export().directoryPath#\n" )
 
 // Show memory coordination
 println( "=== How Memories Work Together ===\n" )

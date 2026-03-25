@@ -29,18 +29,16 @@ function runShell( required string cmd ) {
 sqlTool = aiTool(
 	"runQuery",
 	"Run a SQL query",
-	[ { name: "sql", type: "string", description: "SQL statement to execute", required: true } ],
 	runQuery
-)
+).describeArg( "sql", "SQL statement to execute" )
 
 shellTool = aiTool(
 	"runShell",
 	"Execute a shell command",
-	[ { name: "cmd", type: "string", description: "Command to run", required: true } ],
 	runShell
-)
+).describeArg( "cmd", "Command to run" )
 
-guardrailMw = new bxModules.bxai.models.middleware.builtin.GuardrailMiddleware(
+guardrailMw = new bxModules.bxai.models.middleware.core.GuardrailMiddleware(
 	// Block the shell tool entirely
 	blockedTools: [ "runShell" ],
 

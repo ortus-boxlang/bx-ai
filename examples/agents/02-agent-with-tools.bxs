@@ -12,9 +12,9 @@ println( "" )
 
 // 1. Weather lookup tool
 weatherTool = aiTool(
-    name: "get_weather",
-    description: "Get current weather for a city",
-    action: ( city ) => {
+    "get_weather",
+    "Get current weather for a city",
+    ( city ) => {
         // Simulate weather API call
         weatherData = {
             "San Francisco": { temp: 62, condition: "Foggy", humidity: 75 },
@@ -32,13 +32,13 @@ weatherTool = aiTool(
             city: arguments.city
         }
     }
-).addParameter( "city", "string", "The city name", true )
+).describeArg( "city", "The city name" )
 
 // 2. Calculator tool
 calcTool = aiTool(
-    name: "calculate",
-    description: "Perform mathematical calculations. Supports +, -, *, /, and parentheses.",
-    action: ( expression ) => {
+    "calculate",
+    "Perform mathematical calculations. Supports +, -, *, /, and parentheses.",
+    ( expression ) => {
         // Simple eval (in production, use a safe math parser)
         try {
             result = evaluate( arguments.expression )
@@ -47,13 +47,13 @@ calcTool = aiTool(
             return { error: "Invalid expression", expression: arguments.expression }
         }
     }
-).addParameter( "expression", "string", "Mathematical expression to evaluate", true )
+).describeArg( "expression", "Mathematical expression to evaluate" )
 
 // 3. Database lookup tool
 userLookupTool = aiTool(
-    name: "lookup_user",
-    description: "Look up user information by email",
-    action: ( email ) => {
+    "lookup_user",
+    "Look up user information by email",
+    ( email ) => {
         // Simulate database query
         users = {
             "john@example.com": { name: "John Doe", role: "Developer", joined: "2020-01-15" },
@@ -63,7 +63,7 @@ userLookupTool = aiTool(
 
         return users[ arguments.email ] ?: { error: "User not found" }
     }
-).addParameter( "email", "string", "User's email address", true )
+).describeArg( "email", "User's email address" )
 
 // Create agent with all tools
 agent = aiAgent(
@@ -72,7 +72,7 @@ agent = aiAgent(
     tools: [ weatherTool, calcTool, userLookupTool ]
 )
 
-println( "Agent created with #agent.getConfig().tools.len()# tools" )
+println( "Agent created with #agent.getTools().len()# tools" )
 println( "" )
 
 // Test 1: Weather query

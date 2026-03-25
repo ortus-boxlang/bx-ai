@@ -10,7 +10,7 @@ println( "=== Logging Middleware ===" )
 println( "" )
 
 // Create a logging middleware that prints to the console
-loggingMw = new bxModules.bxai.models.middleware.builtin.LoggingMiddleware(
+loggingMw = new bxModules.bxai.models.middleware.core.LoggingMiddleware(
 	logToConsole: true,
 	logToFile   : true,
 	logLevel    : "info",
