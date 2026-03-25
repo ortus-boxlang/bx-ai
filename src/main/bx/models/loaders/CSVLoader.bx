@@ -144,7 +144,7 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @return Array of values
 	 */
-	private array function parseCSVLine( required string line, required string delimiteriter ) {
+	private array function parseCSVLine( required string line, required string delimiter ) {
 		var values      = [];
 		var current     = "";
 		var inQuotes    = false;
