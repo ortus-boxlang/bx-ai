@@ -44,7 +44,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return PineconeVectorMemory for chaining
 	 */
-	function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		// Params
 		param arguments.config.apiKey = getSystemSetting( "PINECONE_API_KEY", "" )
 

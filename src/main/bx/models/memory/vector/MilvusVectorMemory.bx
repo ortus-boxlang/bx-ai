@@ -40,7 +40,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return MilvusVectorMemory for chaining
 	 */
-	function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		// Param config defaults
 		param arguments.config.host = "localhost"
 		param arguments.config.port = 19530
