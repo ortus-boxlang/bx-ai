@@ -121,7 +121,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 *
 	 * @return HybridMemory for chaining
 	 */
-	public any function add( required any message, string userId = "", string conversationId = "" ) {
+	public IAiMemory function add( required any message, string userId = "", string conversationId = "" ) {
 		// Add to both memories, passing per-call identity
 		variables.recentMemory.add( arguments.message, userId, conversationId );
 		variables.vectorMemory.add( arguments.message, userId, conversationId );
