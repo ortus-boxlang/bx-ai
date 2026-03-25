@@ -171,21 +171,25 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 *
 	 * @query The query to search for
 	 * @limit Maximum results to return
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
 	 *
 	 * @return Array of relevant messages
 	 */
-	public array function getRelevant( required string query, numeric limit = 10 ) {
+	public array function getRelevant( required string query, numeric limit = 10, string userId = "", string conversationId = "" ) {
 		// Calculate limits based on weights
 		var recentCount = ceiling( arguments.limit * variables.recentWeight );
 		var semanticCount = arguments.limit - recentCount;
 
 		// Get recent messages (all of them for now)
-		var recentMessages = variables.recentMemory.getAll();
+		var recentMessages = variables.recentMemory.getAll( userId, conversationId );
 
 		// Get semantic messages
 		var semanticMessages = variables.vectorMemory.getRelevant(
-			arguments.query,
-			semanticCount
+			query: arguments.query,
+			limit: semanticCount,
+			userId: arguments.userId,
+			conversationId: arguments.conversationId
 		);
 
 		// Combine and deduplicate FIRST
@@ -227,9 +231,9 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 *
 	 * @return Array of non-system messages
 	 */
-	public array function getNonSystemMessages() {
+	array function getNonSystemMessages( string userId = "", string conversationId = "" ){
 		// Get all messages from recent memory only (not from vectors to avoid duplicates)
-		return variables.recentMemory.getNonSystemMessages();
+		return variables.recentMemory.getNonSystemMessages( userId, conversationId );
 	}
 
 	/**
@@ -248,10 +252,13 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 * Check if memory has a system message
 	 * Uses recent memory only
 	 *
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
+	 *
 	 * @return Boolean true if system message exists
 	 */
-	public boolean function hasSystemMessage() {
-		return variables.recentMemory.hasSystemMessage();
+	public boolean function hasSystemMessage( string userId = "", string conversationId = "" ) {
+		return variables.recentMemory.hasSystemMessage( userId, conversationId );
 	}
 
 	/**
@@ -262,13 +269,13 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 */
 	public struct function getSummary() {
 		// Get messages from recent memory only for summary stats (timestamps, roles, etc.)
-		var recentMessages = variables.recentMemory.getAll()
+		var recentMessages = variables.recentMemory.getAll();
 		var summary = {
 			"type": this.name(),
 			"key": this.key(),
-			"userId": this.getUserId(),
-			"conversationId": this.getConversationId(),
-			"messageCount": count(),
+			"userId": userId,
+			"conversationId": conversationId,
+			"messageCount": recentMessages.len(),
 			"maxMessages": variables.maxMessages,
 			"nonSystemCount": getNonSystemMessages().len(),
 			"hasSystemMessage": hasSystemMessage(),
@@ -313,14 +320,14 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 
 		// Add sub-memory info (just key fields to avoid vector format issues)
 		summary.recentMemorySummary = {
-			userId: variables.recentMemory.getUserId(),
-			conversationId: variables.recentMemory.getConversationId(),
+			userId: userId,
+			conversationId: conversationId,
 			key: variables.recentMemory.key(),
 			type: variables.recentMemory.name()
 		};
 		summary.vectorMemorySummary = {
-			userId: variables.vectorMemory.getUserId(),
-			conversationId: variables.vectorMemory.getConversationId(),
+			userId: userId,
+			conversationId: conversationId,
 			key: variables.vectorMemory.key(),
 			type: variables.vectorMemory.name()
 		};
@@ -342,9 +349,12 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	/**
 	 * Export both memories
 	 *
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
+	 *
 	 * @return Struct with both memory exports
 	 */
-	public struct function export() {
+	public struct function export( string userId = "", string conversationId = "" ) {
 		return {
 			type: "HybridMemory",
 			key: variables.key,
@@ -356,8 +366,8 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 				vectorProvider: variables.vectorProvider,
 				vectorConfig: variables.vectorConfig
 			},
-			recentMemory: variables.recentMemory.export(),
-			vectorMemory: variables.vectorMemory.export()
+			recentMemory: variables.recentMemory.export( userId, conversationId ),
+			vectorMemory: variables.vectorMemory.export( userId, conversationId )
 		};
 	}
 
@@ -368,7 +378,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 *
 	 * @return HybridMemory for chaining
 	 */
-	public any function import( required struct data ) {
+	IAiMemory function import( required struct data ) {
 		if ( arguments.data.keyExists( "recentMemory" ) ) {
 			variables.recentMemory.import( arguments.data.recentMemory );
 		}
@@ -383,7 +393,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 *
 	 * @return HybridMemory for chaining
 	 */
-	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
+	IAiMemory function trim( string userId = "", string conversationId = "" ) {
 		variables.recentMemory.trim( userId, conversationId );
 		return this;
 	}
