@@ -1,4 +1,4 @@
-/**
+\/**
  * [BoxLang]
  *
  * Copyright [2023] [Ortus Solutions, Corp]
@@ -16,8 +16,8 @@
  * Defines the common interface and helper methods for AI operations, including tool management and response formatting.
  * All specific runnable types (models, agents, transforms, etc.) should extend this base class
  */
-import bxModules.bxai.models.transformers.*;
 import bxModules.bxai.models.util.SchemaBuilder;
+import bxModules.bxai.models.middleware.StructMiddlewareAdapter;
 
 abstract class implements="IAiRunnable" {
 
