@@ -41,7 +41,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @config Struct of configuration options (not needed for in-memory, but here for interface consistency)
 	 */
-	function configure( struct config = {} ) {
+	IAiMemory function configure( required struct config ) {
 		// Call parent configure to handle common settings (embeddingProvider, embeddingModel, embeddingOptions, etc.)
 		super.configure( arguments.config );
 
@@ -70,7 +70,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return Array of structs containing { id, score, metadata, vector }
 	 */
-	function search( required array vector, numeric limit = 5, numeric threshold = 0.0 ) {
+	private array function searchByEmbedding( required array vector, numeric limit = 5, numeric threshold = 0.0 ) {
 		// No data
 		if ( variables.vectors.len() == 0 ) {
 			return [];
@@ -157,8 +157,13 @@ class extends="BaseVectorMemory" {
 
 	/**
 	 * Clear all vectors from memory
+	 *
+	 * @userId The user identifier for multi-tenant isolation (not used in in-memory, but here for interface consistency)
+	 * @conversationId The conversation identifier for multiple conversations (not used in in-memory, but
+	 * here for interface consistency)
+	 *
 	 */
-	function clear() {
+	IAiMemory function clear( string userId = "", string conversationId = "" ) {
 		variables.vectors   = [];
 		variables.metadata  = [];
 		variables.ids       = [];
@@ -169,7 +174,7 @@ class extends="BaseVectorMemory" {
 	/**
 	 * Get the count of stored vectors
 	 */
-	function count() {
+	numeric function count( string userId = "", string conversationId = "" ) {
 		return variables.vectors.len();
 	}
 
@@ -233,7 +238,7 @@ class extends="BaseVectorMemory" {
 		required struct metadata
 	) {
 		if ( !variables.configured ) {
-			configure();
+			configure( {} );
 		}
 
 		// Set dimension on first add
@@ -272,8 +277,8 @@ class extends="BaseVectorMemory" {
 		required numeric limit,
 		required struct filter
 	) {
-		// Use search() method and transform results to match interface
-		var results = search(
+		// Use in-memory embedding search and transform results to match vector interface
+		var results = searchByEmbedding(
 			vector = arguments.embedding,
 			limit  = arguments.limit * 2  // Get more results since we'll filter them
 		);
@@ -392,6 +397,39 @@ class extends="BaseVectorMemory" {
 	 */
 	IVectorMemory function clearCollection() {
 		clear();
+		return this;
+	}
+
+	/**
+	 * Create a new in-memory collection.
+	 *
+	 * For this provider, a collection is represented by the collection name plus an empty store.
+	 */
+	IVectorMemory function createCollection( required string name ) {
+		variables.collection = arguments.name;
+		clear();
+		return this;
+	}
+
+	/**
+	 * Check if a collection exists.
+	 *
+	 * For in-memory storage, the active collection always exists if it has a non-empty name.
+	 */
+	boolean function collectionExists( required string name ) {
+		return variables.collection == arguments.name && len( variables.collection );
+	}
+
+	/**
+	 * Delete a collection and its contents.
+	 *
+	 * If the target collection is active, clear it and unset the name.
+	 */
+	IVectorMemory function deleteCollection( required string name ) {
+		if ( variables.collection == arguments.name ) {
+			clear();
+			variables.collection = "";
+		}
 		return this;
 	}
 

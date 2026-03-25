@@ -338,6 +338,9 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	/**
 	 * Clear both memories
 	 *
+	 * @userId The user identifier for multi-tenant isolation
+	 * @conversationId The conversation identifier for multiple conversations
+	 *
 	 * @return HybridMemory for chaining
 	 */
 	public IAiMemory function clear( string userId = "", string conversationId = "" ) {
