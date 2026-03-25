@@ -257,7 +257,7 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @return DirectoryLoader for chaining
 	 */
-	DirectoryLoader function recursive() {
+	IDocumentLoader function recursive() {
 		variables.config.recursive = true
 		return this
 	}
@@ -269,7 +269,7 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @return DirectoryLoader for chaining
 	 */
-	DirectoryLoader function extensions( required array extensions ) {
+	IDocumentLoader function extensions( required array extensions ) {
 		variables.config.extensions = arguments.extensions
 		return this
 	}

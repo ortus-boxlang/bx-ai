@@ -220,7 +220,7 @@ interface {
 	 *
 	 * @return IDocumentLoader for chaining
 	 */
-	IDocumentLoader function extensions( required array exts );
+	IDocumentLoader function extensions( required array extensions );
 
 	/**
 	 * Set the CSV/TSV delimiter
@@ -229,7 +229,7 @@ interface {
 	 *
 	 * @return IDocumentLoader for chaining
 	 */
-	IDocumentLoader function delimiter( required string delim );
+	IDocumentLoader function delimiter( required string delimiter );
 
 	/**
 	 * Reset the loader state to start from scratch.

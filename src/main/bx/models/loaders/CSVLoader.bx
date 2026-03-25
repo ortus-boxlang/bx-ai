@@ -144,7 +144,7 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @return Array of values
 	 */
-	private array function parseCSVLine( required string line, required string delimiter ) {
+	private array function parseCSVLine( required string line, required string delimiteriter ) {
 		var values      = [];
 		var current     = "";
 		var inQuotes    = false;
@@ -267,7 +267,7 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @return CSVLoader for chaining
 	 */
-	CSVLoader function delimiter( required string delimiter ) {
+	IDocumentLoader function delimiter( required string delimiter ) {
 		variables.config.delimiter = arguments.delimiter;
 		return this;
 	}

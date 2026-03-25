@@ -199,7 +199,7 @@ abstract class implements="IDocumentLoader" {
 	 *
 	 * @return IDocumentLoader for chaining
 	 */
-	IDocumentLoader function extensions( required array exts ) {
+	IDocumentLoader function extensions( required array extensions ) {
 		variables.config.extensions = arguments.exts
 		return this
 	}
@@ -211,7 +211,7 @@ abstract class implements="IDocumentLoader" {
 	 *
 	 * @return IDocumentLoader for chaining
 	 */
-	IDocumentLoader function delimiter( required string delim ) {
+	IDocumentLoader function delimiter( required string delimiter ) {
 		variables.config.delimiter = arguments.delim
 		return this
 	}
