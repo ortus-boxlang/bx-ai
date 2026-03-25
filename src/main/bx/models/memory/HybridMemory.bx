@@ -333,7 +333,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 *
 	 * @return HybridMemory for chaining
 	 */
-	public any function clear( string userId = "", string conversationId = "" ) {
+	public IAiMemory function clear( string userId = "", string conversationId = "" ) {
 		variables.recentMemory.clear( userId, conversationId );
 		variables.vectorMemory.clear( userId, conversationId );
 		return this;
