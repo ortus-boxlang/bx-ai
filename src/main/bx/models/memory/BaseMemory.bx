@@ -466,7 +466,7 @@ abstract class implements="IAiMemory" {
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		variables.config.append( arguments.config, true )
 
 		if ( arguments.config.keyExists( "maxMessages" ) ) {

@@ -98,7 +98,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return WeaviateVectorMemory for chaining
 	 */
-	public any function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		// Param config defaults
 		param arguments.config.host = "localhost";
 		param arguments.config.port = 8080;
@@ -429,7 +429,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	any function createCollection( required string name ) {
+	IVectorMemory function createCollection( required string name ) {
 		// Build class schema
 		var classSchema = {
 			"class": arguments.name,
@@ -528,7 +528,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	any function deleteCollection( required string name ) {
+	IVectorMemory function deleteCollection( required string name ) {
 		// Name is already PascalCase (collection), use it directly
 
 		// Check if collection exists before trying to delete

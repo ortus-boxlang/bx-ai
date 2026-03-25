@@ -68,7 +68,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return MysqlVectorMemory for chaining
 	 */
-	public any function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		// Extract MySQL-specific config FIRST
 		param arguments.config.datasource = ""
 		param arguments.config.table = static.DEFAULT_TABLE

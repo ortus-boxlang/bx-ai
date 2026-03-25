@@ -58,7 +58,7 @@ class extends="BaseMemory" {
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		if ( arguments.config.keyExists( "directoryPath" ) ) {
 			variables.directoryPath = arguments.config.directoryPath;
 		}

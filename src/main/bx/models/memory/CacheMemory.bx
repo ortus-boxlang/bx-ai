@@ -63,7 +63,7 @@ class extends="BaseMemory" {
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		// Override cacheName if provided, else we use the default cache
 		if ( arguments.config.keyExists( "cacheName" ) ) {
 			variables.cacheName = arguments.config.cacheName

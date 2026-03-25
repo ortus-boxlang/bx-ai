@@ -68,7 +68,7 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 *
 	 * @return HybridMemory for chaining
 	 */
-	public any function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		// Extract hybrid configuration FIRST (before super.configure which may call getAll())
 		if ( arguments.config.keyExists( "recentLimit" ) ) {
 			variables.recentLimit = arguments.config.recentLimit;

@@ -144,7 +144,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return OpenSearchVectorMemory for chaining
 	 */
-	public any function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		// Extract OpenSearch-specific config FIRST
 		param arguments.config.host = static.DEFAULT_HOST
 		param arguments.config.port = static.DEFAULT_PORT

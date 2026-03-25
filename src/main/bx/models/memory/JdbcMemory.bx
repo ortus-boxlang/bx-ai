@@ -60,7 +60,7 @@ class extends="BaseMemory" {
 	 * Configure the memory instance
 	 * Supports datasource and table in config, ensures table exists
 	 */
-	public IAiMemory function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		// Super Size this
 		super.configure( arguments.config )
 

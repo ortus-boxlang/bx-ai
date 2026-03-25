@@ -43,7 +43,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return TypesenseVectorMemory for chaining
 	 */
-	public any function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		// Param config defaults
 		param arguments.config.host = "localhost"
 		param arguments.config.port = 8108
@@ -399,7 +399,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	any function createCollection( required string name ) {
+	IVectorMemory function createCollection( required string name ) {
 		var schema = {
 			name: arguments.name,
 			enable_nested_fields: true,
@@ -461,7 +461,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	any function deleteCollection( required string name ) {
+	IVectorMemory function deleteCollection( required string name ) {
 		var response = http( variables.baseUrl & "/collections/" & arguments.name )
 			.delete()
 			.throwOnError( false )
