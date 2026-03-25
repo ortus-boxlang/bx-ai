@@ -186,7 +186,7 @@ abstract class implements="IAiRunnable" {
 	 * @return A new runnable sequence with the transform step
 	 */
 	public IAiRunnable function transform( required any transformer ) {
-		return this.to( new AiTransformRunnable( arguments.transformer ) )
+		return this.to( new bxModules.bxai.models.transformers.AiTransformRunnable( arguments.transformer ) )
 	}
 
 	/**
