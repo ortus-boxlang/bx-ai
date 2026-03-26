@@ -1,9 +1,0 @@
-// hacer-pregunta.bxs
-// Haz una pregunta simple a la IA
-// Ejecutar con: boxlang hacer-pregunta.bxs
-
-question = "What is BoxLang in one sentence?"
-answer = aiChat( question )
-
-println( "P: " & question )
-println( "R: " & answer )
