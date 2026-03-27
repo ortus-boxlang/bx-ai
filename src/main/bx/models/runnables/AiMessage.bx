@@ -327,8 +327,14 @@ class extends="AiBaseRunnable"{
 	 */
 	AiMessage function replaceSystemMessage( required string content ) {
 		if( !hasSystemMessage() ){
+			// If no system message exists, add one at the front
+			variables.messages.prepend( {
+				role: 'system',
+				content: arguments.content
+			} );
 			return this;
 		}
+
 		// Find the location of the system message in the array
 		var index = variables.messages.find( message => message.role == 'system' );
 		// Replace the message

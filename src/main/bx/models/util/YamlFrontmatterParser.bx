@@ -1,0 +1,113 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Static utility for parsing YAML frontmatter from Markdown or plain-text files.
+ *
+ * Extracts simple key: value pairs from a --- delimited block at the top of a file
+ * and returns those values plus the remaining body content.
+ *
+ * Supported frontmatter format:
+ * ```
+ * ---
+ * name: my-skill
+ * description: "Short summary"
+ * whenToUse: Use when writing SQL queries
+ * ---
+ * Body content starts here.
+ * ```
+ */
+class {
+
+	/**
+	 * Parse YAML frontmatter from raw file content.
+	 *
+	 * Returns a struct with two keys:
+	 * - frontmatter : struct of parsed key-value pairs from the --- block
+	 * - body        : the remaining content after the closing --- delimiter, trimmed
+	 *
+	 * If no valid frontmatter block is found, `frontmatter` is empty and `body` is the full content.
+	 *
+	 * @content The raw file content to parse
+	 *
+	 * @return Struct: { frontmatter: {}, body: "" }
+	 */
+	static function parse( required string content ) {
+		var result = { frontmatter: {}, body: "" }
+
+		// Normalize line endings to LF so split is consistent across platforms
+		var normalized = arguments.content.reReplace( "\r\n|\r", char( 10 ), "all" )
+		var lines      = normalized.split( char( 10 ), -1 )
+
+		// Content must start with --- to have frontmatter
+		if ( lines.len() == 0 || lines[ 1 ].trim() != "---" ) {
+			result.body = arguments.content.trim()
+			return result
+		}
+
+		// Find the closing --- delimiter
+		var endIndex = 0
+		for ( var i = 2; i <= lines.len(); i++ ) {
+			if ( lines[ i ].trim() == "---" ) {
+				endIndex = i
+				break
+			}
+		}
+
+		// No closing delimiter found — treat everything as body
+		if ( endIndex == 0 ) {
+			result.body = arguments.content.trim()
+			return result
+		}
+
+		// Parse each frontmatter line as "key: value"
+		for ( var i = 2; i < endIndex; i++ ) {
+			var line      = lines[ i ]
+			var colonPos  = line.find( ":" )
+			if ( colonPos > 0 ) {
+				var key   = line.left( colonPos - 1 ).trim()
+				var value = line.mid( colonPos + 1, line.len() - colonPos ).trim()
+				result.frontmatter[ key ] = stripQuotes( value )
+			}
+		}
+
+		// Collect body lines after the closing ---
+		var bodyLines = []
+		for ( var i = endIndex + 1; i <= lines.len(); i++ ) {
+			bodyLines.append( lines[ i ] )
+		}
+		result.body = bodyLines.toList( char( 10 ) ).trim()
+
+		return result
+	}
+
+	/**
+	 * Strip surrounding single or double quotes from a string value.
+	 * Only strips if both opening and closing quote characters match.
+	 *
+	 * @value The raw string value to strip
+	 *
+	 * @return The unquoted string, trimmed of whitespace
+	 */
+	static function stripQuotes( required string value ) {
+		var trimmed = arguments.value.trim()
+		if (
+			( trimmed.len() > 1 && trimmed.startsWith( '"' ) && trimmed.endsWith( '"' ) ) ||
+			( trimmed.len() > 1 && trimmed.startsWith( "'" ) && trimmed.endsWith( "'" ) )
+		) {
+			return trimmed.mid( 2, trimmed.len() - 2 )
+		}
+		return trimmed
+	}
+
+}

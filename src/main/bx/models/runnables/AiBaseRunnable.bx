@@ -52,6 +52,19 @@ abstract class implements="IAiRunnable" {
 	 */
 	property name="middleware" type="array" default=[];
 
+	/**
+	 * Always-on skills attached to this runnable.
+	 * Full content is injected into the system message on every call.
+	 */
+	property name="skills" type="array" default=[];
+
+	/**
+	 * Lazy skill library attached to this runnable.
+	 * Only the index (name + hint) is injected into the system message.
+	 * On agents, the LLM can activate individual skills via the built-in loadSkill() tool.
+	 */
+	property name="availableSkills" type="array" default=[];
+
     /**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Interface Methods
@@ -513,6 +526,138 @@ abstract class implements="IAiRunnable" {
 		return variables.middleware.map( mw => {
 			return { name: mw.getName(), description: mw.getDescription() }
 		} )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Skill Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Add a single always-on skill to this runnable.
+	 * The full skill content is injected into the system message on every call.
+	 *
+	 * @skill AiSkill instance to add
+	 *
+	 * @return This runnable for chaining
+	 */
+	public AiBaseRunnable function addSkill( required AiSkill skill ) {
+		variables.skills.append( arguments.skill )
+		return this
+	}
+
+	/**
+	 * Add multiple always-on skills to this runnable.
+	 *
+	 * @skills Array of AiSkill instances
+	 *
+	 * @return This runnable for chaining
+	 */
+	public AiBaseRunnable function withSkills( required array skills ) {
+		variables.skills.append( arguments.skills, true )
+		return this
+	}
+
+	/**
+	 * Add a single skill to the lazy available-skills pool.
+	 * Only its name and hint are shown in the system message; the LLM must call
+	 * loadSkill(name) to activate it and receive the full content.
+	 *
+	 * @skill AiSkill instance to add
+	 *
+	 * @return This runnable for chaining
+	 */
+	public AiBaseRunnable function addAvailableSkill( required AiSkill skill ) {
+		variables.availableSkills.append( arguments.skill )
+		return this
+	}
+
+	/**
+	 * Replace or extend the lazy available-skills pool on this runnable.
+	 *
+	 * @skills Array of AiSkill instances
+	 *
+	 * @return This runnable for chaining
+	 */
+	public AiBaseRunnable function withAvailableSkills( required array skills ) {
+		variables.availableSkills.append( arguments.skills, true )
+		return this
+	}
+
+	/**
+	 * Activate a skill from the lazy pool by moving it to the always-on pool.
+	 * Returns the skill instance so callers (e.g. the loadSkill tool) can read its content.
+	 * Returns null when the skill name is not found in availableSkills.
+	 *
+	 * @name The exact skill name to activate
+	 *
+	 * @return The activated AiSkill, or null if not found
+	 */
+	public any function activateSkill( required string name ) {
+		var skill = variables.availableSkills.findFirst( s => s.getName() == name )
+		if( !isNull( skill ) ){
+			variables.availableSkills.deleteAt( variables.availableSkills.indexOf( skill ) )
+			variables.skills.append( skill )
+		}
+		return skill
+	}
+
+	/**
+	 * Build the skills system-message block covering both pools.
+	 *
+	 * Always-on skills (variables.skills) are rendered with their full content.
+	 * Available skills (variables.availableSkills) are rendered as a compact index only.
+	 * Returns an empty string when both pools are empty.
+	 *
+	 * Output structure:
+	 * ```
+	 * ## Skills
+	 * You have the following skills always active:
+	 * - skill-name: When to use hint
+	 *
+	 * ### Skill: skill-name
+	 * **When to use:** hint
+	 * <full content>
+	 *
+	 * ## Available Skills
+	 * Call loadSkill(name) to activate when needed:
+	 * - lazy-skill: When to use hint
+	 * ```
+	 *
+	 * @return Rendered skills section string, or empty string when no skills are set
+	 */
+	public string function buildSkillsContent() {
+		if ( variables.skills.isEmpty() && variables.availableSkills.isEmpty() ) {
+			return ""
+		}
+
+		var sections = []
+
+		// Always-on skills: index header + full content blocks
+		if ( !variables.skills.isEmpty() ) {
+			var headerLines = [
+				"## Skills",
+				"You have the following skills always active:"
+			]
+			headerLines.append( variables.skills.map( s => s.toIndexLine() ), true )
+			sections.append( headerLines.toList( char( 10 ) ) )
+
+			// Full content block for each always-on skill
+			variables.skills.each( skill => sections.append( skill.toContentBlock() ) )
+		}
+
+		// Available skills: compact index only
+		if ( !variables.availableSkills.isEmpty() ) {
+			var availLines = [
+				"## Available Skills",
+				"Call loadSkill(name) to activate when needed:"
+			]
+			availLines.append( variables.availableSkills.map( s => s.toIndexLine() ), true )
+			sections.append( availLines.toList( char( 10 ) ) )
+		}
+
+		return sections.toList( char( 10 ) & char( 10 ) )
 	}
 
 	/**

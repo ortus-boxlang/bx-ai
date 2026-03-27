@@ -1,0 +1,88 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Discover and load all AI skills from a directory tree.
+ *
+ * Scans recursively for files named SKILL.md following the Agent Skills open
+ * standard, where each skill lives in its own named subdirectory:
+ *
+ * ```
+ * .ai/skills/
+ *   sql-optimizer/
+ *     SKILL.md
+ *   coding/
+ *     boxlang-expert/
+ *       SKILL.md
+ * ```
+ *
+ * Returns an empty array (without error) when the directory does not exist, making
+ * it safe to call with the default `.ai/skills` path in projects with no skills yet.
+ *
+ * Example:
+ * ```
+ * // Load all skills from the default .ai/skills directory
+ * var skills = aiSkill()
+ *
+ * // Load from a custom directory, non-recursive
+ * var skills = aiSkill( ".ai/custom-skills", false )
+ *
+ * // Use with an agent — auto-discovered skills go into the lazy pool
+ * var agent = aiAgent(
+ *     name           : "assistant",
+ *     availableSkills: aiSkill()
+ * )
+ * ```
+ */
+import bxModules.bxai.models.skills.AiSkill;
+
+@BoxBIF
+class {
+
+	/**
+	 * Discover and load all skills from a directory tree.
+	 *
+	 * @path A directory, or file path to a single skill markdown file. If a directory is provided, it will be scanned recursively for SKILL.md files. Defaults to ".ai/skills".
+	 * @name The skill's unique name/identifier used when accessing it via loadSkill()
+	 * @description What the skill does and when to use it. Claude uses this to decide when to apply the skill. If omitted, uses the first paragraph of markdown content.
+	 * @content The full instruction content of the skill (body text after frontmatter)
+	 * @recurse   Whether to scan subdirectories recursively. Defaults to true.
+	 *
+	 * @return An array of AiSkill instances loaded from the directory, or a single AiSkill if a file path is provided
+	 */
+	function invoke(
+		string path,
+		string name,
+		string description = "",
+		string content = "",
+		boolean recurse = true
+	) {
+
+		// If a path is provided, load skills from the directory.
+		if( !isNull( arguments.path ) ){
+			// If the path points to a single file, load that skill. Otherwise, treat it as a directory and scan for skills.
+			if( fileExists( arguments.path ) ){
+				return AiSkill::fromPath( arguments.path )
+			}
+			return AiSkill::fromDirectory( arguments.path, arguments.recurse )
+		}
+
+		// Else, create a single skill from the provided arguments (for inline skill definitions without needing a file)
+		if( !isNull( arguments.name ) ){
+			return new AiSkill( argumentCollection: arguments )
+		}
+
+		return []
+	}
+
+}

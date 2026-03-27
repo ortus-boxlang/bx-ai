@@ -109,6 +109,8 @@ class extends="AiBaseRunnable" {
 	 * @memory The memory instance or array of memories, defaults to a simple in-memory store
 	 * @tools Array of tools for the agent
 	 * @subAgents Array of sub-agents to register as internal tools
+	 * @skills Always-on skills: full content injected into the system message on every call
+	 * @availableSkills Lazy skills: index-only until the LLM requests one via the built-in loadSkill() tool
 	 * @params Default model parameters
 	 * @options Default agent options
 	 * @middleware Middleware to apply to this agent (can also be added later with withMiddleware())
@@ -124,6 +126,8 @@ class extends="AiBaseRunnable" {
 		any memory = aiMemory(),
 		array tools = [],
 		array subAgents = [],
+		array skills = [],
+		array availableSkills = [],
 		struct params = {},
 		struct options = {},
 		any middleware = [],
@@ -173,7 +177,84 @@ class extends="AiBaseRunnable" {
 		// MCP Server Setup
 		withMCPServers( arguments.mcpServers )
 
+		// Skill pools — always-on skills injected immediately; available skills are lazy
+		if ( arguments.skills.len() > 0 ) {
+			withSkills( arguments.skills )
+		}
+		if ( arguments.availableSkills.len() > 0 ) {
+			withAvailableSkills( arguments.availableSkills )
+		}
+
+		// Register the loadSkill tool if there are any lazy skills
+		if ( variables.availableSkills.len() > 0 ) {
+			_registerLoadSkillTool()
+		}
+
+		// Initialize system message cache
+		variables._systemMsgCache       = ""
+		variables._systemMsgFingerprint = ""
+
 		return this;
+	}
+
+	/**
+	 * Extend the always-on skill pool and keep the system message cache invalidated.
+	 * Overrides the base implementation to auto-register the loadSkill tool the first
+	 * time available skills are added after construction.
+	 *
+	 * @skills Array of AiSkill instances
+	 *
+	 * @return This agent for chaining
+	 */
+	@override
+	AiAgent function withAvailableSkills( required array skills ) {
+		variables.availableSkills.append( arguments.skills, true )
+		// Register the loadSkill internal tool the first time we get available skills
+		if ( !hasTool( "loadSkill" ) && variables.availableSkills.len() > 0 ) {
+			_registerLoadSkillTool()
+		}
+		// Clear the system message cache so the updated index is reflected
+		variables._systemMsgCache       = ""
+		variables._systemMsgFingerprint = ""
+		return this
+	}
+
+	/**
+	 * Add a single skill to the lazy available-skills pool.
+	 * Overrides the base implementation to handle tool registration and cache invalidation.
+	 *
+	 * @skill AiSkill instance
+	 *
+	 * @return This agent for chaining
+	 */
+	@override
+	AiAgent function addAvailableSkill( required any skill ) {
+		variables.availableSkills.append( arguments.skill )
+		if ( !hasTool( "loadSkill" ) && variables.availableSkills.len() > 0 ) {
+			_registerLoadSkillTool()
+		}
+		variables._systemMsgCache       = ""
+		variables._systemMsgFingerprint = ""
+		return this
+	}
+
+	/**
+	 * Activate a lazy skill by moving it to the always-on pool.
+	 * Overrides the base implementation to also invalidate the system message cache.
+	 *
+	 * @name The skill name to activate
+	 *
+	 * @return The activated AiSkill, or null if not found
+	 */
+	@override
+	any function activateSkill( required string name ) {
+		var skill = super.activateSkill( arguments.name )
+		if ( !isNull( skill ) ) {
+			// Invalidate cache so the next buildSystemMessage() reflects the now-active skill
+			variables._systemMsgCache       = ""
+			variables._systemMsgFingerprint = ""
+		}
+		return skill
 	}
 
 	/**
@@ -984,9 +1065,17 @@ class extends="AiBaseRunnable" {
 	// ==================== PRIVATE METHODS ====================
 
 	/**
-	 * Build the system message from instructions and description
+	 * Build the system message from description, instructions, skills, tools, and MCP servers.
+	 * Result is cached by a fingerprint covering description, instructions, and both skill pools.
+	 * The cache is invalidated automatically when skills are added or activated.
 	 */
 	private string function buildSystemMessage() {
+		// Return the cached value when nothing that affects the system message has changed
+		var fingerprint = _buildSystemMessageFingerprint()
+		if ( fingerprint == variables._systemMsgFingerprint && variables._systemMsgCache.len() > 0 ) {
+			return variables._systemMsgCache
+		}
+
 		var parts = []
 
 		// Include description as a "Role" if provided, so the LLM understands its identity and purpose
@@ -999,6 +1088,12 @@ class extends="AiBaseRunnable" {
 			parts.append( "Instructions: " & variables.instructions )
 		}
 
+		// Inject skills content (always-on full blocks + available skills index)
+		var skillsContent = buildSkillsContent()
+		if ( skillsContent.len() > 0 ) {
+			parts.append( skillsContent )
+		}
+
 		// Include available tools so the LLM knows what it can use (note: tools are also passed in the options for structured access, but including in system message can help with LLMs that rely more on the prompt)
 		if ( variables.tools.len() > 0 ) {
 			parts.append( "Available Tools: " & listTools().toString() )
@@ -1009,7 +1104,57 @@ class extends="AiBaseRunnable" {
 			parts.append( "Connected MCP Servers:" & listMCPServers().toString() )
 		}
 
-		return parts.toList( char( 10 ) & char( 10 ) )
+		var message = parts.toList( char( 10 ) & char( 10 ) )
+
+		// Cache for next call
+		variables._systemMsgCache       = message
+		variables._systemMsgFingerprint = fingerprint
+
+		return message
+	}
+
+	/**
+	 * Compute a lightweight fingerprint over the inputs that shape the system message.
+	 * When any of these change (description, instructions, skill names), the cache is stale.
+	 *
+	 * @return MD5 hash string
+	 */
+	private string function _buildSystemMessageFingerprint() {
+		var skillNames = variables.skills.map( s => s.getName() ).toList( "," )
+		var availNames = variables.availableSkills.map( s => s.getName() ).toList( "," )
+		return hash( variables.description & variables.instructions & skillNames & availNames )
+	}
+
+	/**
+	 * Register the built-in loadSkill(name) tool on this agent.
+	 * This tool is auto-registered when the agent has available (lazy) skills.
+	 * Calling it activates the named skill, injecting its full content as a tool result
+	 * so the LLM can use it immediately, and moves the skill to the always-on pool
+	 * for all subsequent calls.
+	 */
+	private void function _registerLoadSkillTool() {
+		// Prevent duplicate registration
+		if ( hasTool( "loadSkill" ) ) {
+			return
+		}
+
+		// Capture a reference to this agent so the closure can call activateSkill()
+		var agentSelf     = this
+		var loadSkillTool = aiTool(
+			name       : "loadSkill",
+			description: "Activate a skill from the Available Skills library to get its full instructions. Call this before answering any question that requires specialized domain knowledge listed in the Available Skills section.",
+			callable   : ( required string name ) => {
+				var skill = agentSelf.activateSkill( arguments.name )
+				if ( isNull( skill ) ) {
+					return "Skill '#arguments.name#' was not found in the Available Skills library. Available skills: " & agentSelf.getAvailableSkills().map( s => s.getName() ).toList( ", " )
+				}
+				return skill.toContentBlock()
+			},
+			autoRegister: false
+		).describeArg( "name", "The exact skill name to activate (must match a name from the Available Skills list)" )
+
+		// withTools() is overridden on AiAgent to also sync into variables.aiModel
+		withTools( [ loadSkillTool ] )
 	}
 
 	/**

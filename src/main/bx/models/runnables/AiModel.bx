@@ -33,14 +33,16 @@ class extends="AiBaseRunnable" {
 	 * @service The AI service provider to wrap
 	 * @tools An array of tools to bind to this model
 	 * @params A struct of parameters to bind to this model
+	 * @skills Always-on skills whose full content is injected as a system message on every call
 	 */
-	function init( required IAiService service, any tools =[], struct params = {} ) {
+	function init( required IAiService service, any tools =[], struct params = {}, array skills = [] ) {
 		variables.name = "AiModel-" & arguments.service.getName()
 		variables.service = arguments.service
 
-		// Bind tools and params
+		// Bind tools, params, and always-on skills
 		withTools( arguments.tools )
 		withParams( arguments.params )
+		withSkills( arguments.skills )
 
 		return this
 	}
@@ -95,6 +97,15 @@ class extends="AiBaseRunnable" {
 		var messages = extractMessages( arguments.input )
 		var effectiveParams = getMergedParams( arguments.params )
 		var effectiveOptions = getMergedOptions( arguments.options )
+		var aiMessage = aiMessage( messages )
+
+		// Inject always-on skills as a system message when non-empty
+		var skillsContent = buildSkillsContent()
+		if ( !skillsContent.isEmpty() ) {
+			aiMessage.replaceSystemMessage(
+				aiMessage().getSystemMessage() & char( 10 ) & char( 10 ) & skillsContent
+			)
+		}
 
 		// -------------------------------------------------------------------------------------------
 		// --- Process tools for this run ---
@@ -121,7 +132,7 @@ class extends="AiBaseRunnable" {
 		// --- Create a chat request ---
 		// -------------------------------------------------------------------------------------------
 		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
-			aiMessage( messages ),
+			aiMessage,
 			effectiveParams,
 			effectiveOptions
 		)
@@ -174,7 +185,18 @@ class extends="AiBaseRunnable" {
 		var messages = extractMessages( arguments.input )
 		var effectiveParams = getMergedParams( arguments.params )
 		var effectiveOptions = getMergedOptions( arguments.options )
+		var aiMessage = aiMessage( messages )
+
+		// Stream mode.
 		effectiveOptions.stream = true
+
+		// Inject always-on skills as a system message when non-empty
+		var skillsContent = buildSkillsContent()
+		if ( !skillsContent.isEmpty() ) {
+			aiMessage.replaceSystemMessage(
+				aiMessage().getSystemMessage() & char( 10 ) & char( 10 ) & skillsContent
+			)
+		}
 
 		// -------------------------------------------------------------------------------------------
 		// --- Process tools for this run ---
@@ -201,7 +223,7 @@ class extends="AiBaseRunnable" {
 		// --- Create a chat request ---
 		// -------------------------------------------------------------------------------------------
 		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
-			aiMessage( messages ),
+			aiMessage,
 			effectiveParams,
 			effectiveOptions
 		)

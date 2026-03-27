@@ -48,6 +48,7 @@ class {
 	 * @param params Additional parameters to bind the model with
 	 * @param options Additional options for model creation (e.g., timeout, logResponse, logResponseToConsole, logRequest, logRequestToConsole)
 	 * @middleware IAiMiddleware instance, struct-of-closures, or array of either to attach to this model
+	 * @skills Always-on skills: full content injected as a system message on every model call
 	 * @mcpServers Array of MCP server URLs to seed into the model for internal tool calls to sub-agents and tools. This allows the model to make calls to sub-agents and tools registered on those MCP servers, enabling distributed agent architectures and tool usage across multiple servers.
 	 *
 	 * @return An AiModel runnable
@@ -59,6 +60,7 @@ class {
 		struct params={},
 		struct options={},
 		any middleware=[],
+		array skills=[],
 		array mcpServers=[]
 	) {
 		// Get the underlying service (pass only service-relevant args)
@@ -70,6 +72,7 @@ class {
 			.withParams( arguments.params )
 			.withOptions( arguments.options )
 			.withMiddleware( arguments.middleware )
+			.withSkills( arguments.skills )
 			.withMCPServers( arguments.mcpServers )
 
 		// Notify of model creation
