@@ -885,9 +885,12 @@ class extends="AiBaseRunnable" {
 					"description": agent.getConfig().description
 				};
 			} ),
-			"toolCount" : variables.tools.len(),
-			"tools"     : listTools(),
-			"mcpServers": variables.mcpServers,
+			"toolCount"          : variables.tools.len(),
+			"tools"              : listTools(),
+			"mcpServers"         : variables.mcpServers,
+			"activeSkillCount" : variables.skills.len(),
+			"availableSkillCount": variables.availableSkills.len(),
+			"skills": listSkills()
 		}
 	}
 

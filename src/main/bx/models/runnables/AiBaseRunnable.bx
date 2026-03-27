@@ -661,6 +661,19 @@ abstract class implements="IAiRunnable" {
 	}
 
 	/**
+	 * List skills in a human-readable format for debugging or system message generation.
+	 * Returns a struct with two arrays: { activeSkills: [{ name, description }], availableSkills: [{ name, description }] }
+	 *
+	 * @return Struct with active and available skills
+	 */
+	public struct function listSkills() {
+		return {
+			"activeSkills"   : variables.skills.map( s => { "name": s.getName(), "description": s.getDescription() } ),
+			"availableSkills": variables.availableSkills.map( s => { "name": s.getName(), "description": s.getDescription() } )
+		};
+	}
+
+	/**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * MCP Server Tools Methods
 	 * ---------------------------------------------------------------------------------------------------------

@@ -39,14 +39,15 @@ public class aiAgentTest extends BaseIntegrationTest {
 	public void testBasicAgentCreation() {
 		runtime.executeSource(
 		    """
-		    agent = aiAgent(
-		        name: "TestAgent",
-		        description: "A test agent",
-		        instructions: "You are a helpful assistant"
-		    )
+		       agent = aiAgent(
+		           name: "TestAgent",
+		           description: "A test agent",
+		           instructions: "You are a helpful assistant"
+		       )
 
-		    result = agent.getConfig()
-		    """,
+		       result = agent.getConfig()
+		    println( result )
+		       """,
 		    context
 		);
 

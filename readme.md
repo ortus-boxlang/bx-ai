@@ -39,12 +39,14 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - 📦 **Structured Output** - Type-safe responses using BoxLang classes, structs, or JSON schemas
 - 🔗 **AI Pipelines** - Composable workflows with models, transformers, and custom logic
 - 🧩 **Middleware** - Cross-cutting controls for agents/models (logging, retries, guardrails, approval, and replay)
+- 🎓 **AI Skills** - Reusable, composable knowledge blocks following the [Claude Agent Skills](https://www.anthropic.com/news/agent-skills) open standard for modular agent behavior
 - 📡 **MCP Protocol** - Build and consume Model Context Protocol servers for distributed AI
 - 💬 **Fluent Interface** - Chainable, expressive syntax that makes AI integration intuitive
 - 🦙 **Local AI** - Full Ollama support for privacy, offline use, and zero API costs
 - ⚡ **Async Operations** - Non-blocking futures for concurrent AI requests
 - 🎯 **Event-Driven** - 35+ lifecycle events for logging, monitoring, and custom workflows
 - 🏭 **Production-Ready** - Timeout controls, error handling, rate limiting, and debugging tools
+- 🧪 **Testable** - Deterministic replay for reliable unit and integration testing
 
 ## 📃 Table of Contents
 
@@ -106,6 +108,80 @@ This will install the latest version of the BoxLang AI module in your BoxLang en
 ```
 
 > 💡 **Tip:** Use environment variable placeholders like `${OPENAI_API_KEY}` so you never commit secrets to source control. Each provider also auto-detects its own env var (e.g. `OPENAI_API_KEY`, `CLAUDE_API_KEY`, `GEMINI_API_KEY`).
+
+#### ⚙️ All Available Settings
+
+Below is the full reference of every setting you can place under `settings` in `boxlang.json`:
+
+```json
+{
+    "modules": {
+        "bxai": {
+            "settings": {
+                "provider": "openai",
+                "apiKey": "${OPENAI_API_KEY}",
+
+                "defaultParams": {
+                    "model": "gpt-4o",
+                    "temperature": 0.7,
+                    "max_tokens": 2000
+                },
+
+                "memory": {
+                    "provider": "window",
+                    "config": {
+                        "maxMessages": 20
+                    }
+                },
+
+                "providers": {
+                    "openai": {
+                        "params": { "model": "gpt-4o", "temperature": 0.7 },
+                        "options": { "timeout": 60 }
+                    },
+                    "claude": {
+                        "params": { "model": "claude-3-5-sonnet-20241022" }
+                    },
+                    "ollama": {
+                        "params": { "model": "qwen2.5:0.5b-instruct" }
+                    }
+                },
+
+                "timeout": 45,
+
+                "logRequest": false,
+                "logRequestToConsole": false,
+                "logResponse": false,
+                "logResponseToConsole": false,
+
+                "returnFormat": "single",
+
+                "skillsDirectory": "/.ai/skills",
+                "autoLoadSkills": true,
+                "globalSkills": []
+            }
+        }
+    }
+}
+```
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `provider` | `string` | `"openai"` | Default AI provider to use for all requests |
+| `apiKey` | `string` | `""` | Default API key; each provider also reads its own env var (e.g. `OPENAI_API_KEY`) |
+| `defaultParams` | `struct` | `{}` | Default request parameters sent to every provider (e.g. `model`, `temperature`, `max_tokens`) |
+| `memory.provider` | `string` | `"window"` | Default memory type: `window`, `cache`, `file`, `session`, `summary`, `jdbc`, `hybrid`, or any vector provider |
+| `memory.config` | `struct` | `{}` | Provider-specific memory configuration (e.g. `maxMessages`, `cacheName`) |
+| `providers` | `struct` | `{}` | Per-provider overrides — keys are provider names, values have `params` and `options` structs |
+| `timeout` | `numeric` | `45` | Default HTTP request timeout in seconds |
+| `logRequest` | `boolean` | `false` | Log outgoing AI requests to `ai.log` |
+| `logRequestToConsole` | `boolean` | `false` | Print outgoing AI requests to the console (useful for debugging) |
+| `logResponse` | `boolean` | `false` | Log AI responses to `ai.log` |
+| `logResponseToConsole` | `boolean` | `false` | Print AI responses to the console (useful for debugging) |
+| `returnFormat` | `string` | `"single"` | Default response format: `single`, `all`, `raw`, `json`, `xml`, or `structuredOutput` |
+| `skillsDirectory` | `string` | `"/.ai/skills"` | Directory scanned for `SKILL.md` files at startup. Set to `""` to disable auto-discovery |
+| `autoLoadSkills` | `boolean` | `true` | When `true`, skills found in `skillsDirectory` are auto-loaded and injected into every `aiAgent()` as global skills |
+| `globalSkills` | `array` | `[]` | Internal — populated at startup with auto-discovered skills; access via `aiGlobalSkills()` |
 
 After that you can leverage the global functions (BIFs) in your BoxLang code.  Here is a simple example:
 
@@ -1001,6 +1077,126 @@ writeln( coordinator.getRootAgent().getAgentName() ) // coordinator
 
 ----
 
+### 🎯 AI Skills
+
+Give agents and models reusable, composable **knowledge blocks** 📚 that can be injected into the system message at runtime. Skills follow the [Claude Agent Skills open standard](https://www.anthropic.com/news/agent-skills) — a `description` field tells the LLM when to apply the skill, and the body contains the full instructions. 🧩
+
+#### 🤔 Why Use Skills?
+
+- 📖 **Reusable knowledge** - Define domain expertise once, share across many agents and models
+- 🗂️ **File-based management** - Store skills as `SKILL.md` files in your project, commit alongside code
+- ⚡ **Two loading modes** - Always-on for universal guidance; lazy-loaded for large skill libraries
+- 🔌 **Zero-code discovery** - Drop a `SKILL.md` into `.ai/skills/my-skill/` and it's available automatically
+- 🌐 **Global skill pool** - Register global skills once in module config, automatically available to all agents
+
+#### 📋 Skill File Format
+
+Skills live in named subdirectories under `.ai/skills/`:
+
+```
+.ai/skills/
+    sql-optimizer/
+        SKILL.md
+    boxlang-expert/
+        SKILL.md
+    customer-tone/
+        SKILL.md
+```
+
+Each `SKILL.md` file uses optional YAML frontmatter and a Markdown body:
+
+```markdown
+---
+description: Optimise SQL queries for maximum performance. Apply when writing or reviewing database queries.
+---
+
+## SQL Optimisation Rules
+
+- Always use indexed columns in WHERE clauses
+- Prefer JOINs over subqueries for large datasets
+- Use EXPLAIN to verify query plans before deploying
+- Avoid SELECT * in production queries
+```
+
+> **Tip:** If you omit the frontmatter, the first paragraph of the body is used as the `description`.
+
+#### 💡 Quick Examples
+
+**Inline skill on a model:**
+
+```javascript
+// Create an inline skill (no files needed)
+sqlSkill = aiSkill(
+    name       : "sql-optimizer",
+    description: "Apply SQL optimisation rules when writing or reviewing queries",
+    content    : "Always use indexed columns. Prefer JOINs over subqueries."
+)
+
+// Always-on: injected into every call
+model = aiModel( "openai" ).withSkills( [ sqlSkill ] )
+response = model.run( "Write a query to get all orders" )
+```
+
+**Load skills from the filesystem:**
+
+```javascript
+// Load all SKILL.md files from .ai/skills/ (recursive by default)
+skills = aiSkill( ".ai/skills" )
+
+// Or load a single skill file
+sqlSkill = aiSkill( ".ai/skills/sql-optimizer/SKILL.md" )
+
+// Seed an agent with all discovered skills
+agent = aiAgent(
+    name           : "data-assistant",
+    availableSkills: skills    // Lazy pool — LLM loads on demand
+)
+```
+
+**Always-on vs lazy skills:**
+
+```javascript
+// Always-on: full content injected every call (small, universal skills)
+coreSkill = aiSkill( ".ai/skills/writing-style/SKILL.md" )
+agent.withSkills( [ coreSkill ] )
+
+// Lazy pool: only a compact index is included; LLM calls loadSkill() as needed
+bigLibrary = aiSkill( ".ai/skills" )   // Hundreds of skills
+agent.withAvailableSkills( bigLibrary )
+
+// activateSkill() promotes a lazy skill to always-on mid-session
+agent.activateSkill( "sql-optimizer" )
+```
+
+**Global skills auto-injected into every agent:**
+
+```javascript
+// In ModuleConfig.bx settings — all agents get these automatically
+settings = {
+    globalSkills: aiSkill( expandPath( ".ai/skills" ) )
+}
+
+// Or register programmatically via the BIF
+globalSkillPool = aiGlobalSkills()   // returns the current global pool
+```
+
+**Inspect skill state:**
+
+```javascript
+config = agent.getConfig()
+writeln( config.activeSkillCount )         // always-on skills count
+writeln( config.availableSkillCount )      // lazy skills count
+
+// Render the full skill system-message block for debugging
+writeln( agent.buildSkillsContent() )
+```
+
+#### 📚 Learn More
+
+- 💻 **Examples**: Check `examples/skills/` for complete working examples
+
+----
+
 ### 📦 Structured Output
 
 Get **type-safe, validated responses** ✅ from AI providers by defining expected output schemas using BoxLang classes, structs, or JSON schemas. The module automatically converts AI responses into properly typed objects, eliminating manual parsing and validation. 🎯
@@ -1674,7 +1870,7 @@ Here are the settings you can place in your `boxlang.json` file:
 
 | Function | Purpose | Parameters | Return Type | Async Support |
 |----------|---------|------------|-------------|---------------|
-| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options`, `mcpServers=[]` | AiAgent Object | ❌ |
+| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options`, `mcpServers=[]`, `skills=[]`, `availableSkills=[]` | AiAgent Object | ❌ |
 | `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
 | `aiChatRequest()` | Compose a reusable chat request object (useful for advanced pipelines and middleware) | `messages`, `params`, `options`, `headers` | AiChatRequest Object | N/A |
@@ -1684,9 +1880,11 @@ Here are the settings you can place in your `boxlang.json` file:
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
 | `aiMemory()` | Create memory instance | `memory`, `key`, `userId`, `conversationId`, `config={}` | IAiMemory Object | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
-| `aiModel()` | Create AI model wrapper | `provider`, `apiKey`, `tools`, `mcpServers=[]` | AiModel Object | N/A |
+| `aiModel()` | Create AI model wrapper | `provider`, `apiKey`, `tools`, `mcpServers=[]`, `skills=[]` | AiModel Object | N/A |
 | `aiPopulate()` | Populate class/struct from JSON | `target`, `data` | Populated Object | N/A |
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
+| `aiSkill()` | Create or discover AI skills | `path`, `name`, `description`, `content`, `recurse=true` | AiSkill / Array | N/A |
+| `aiGlobalSkills()` | Get the globally shared skill pool | _(none)_ | Array of AiSkill | N/A |
 | `aiTokens()` | Estimate token count for a text string | `text`, `options={}` _(method: characters\|words)_ | Numeric | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
 | `aiToolRegistry()` | Get the singleton AI Tool Registry | _(none)_ | AIToolRegistry Object | N/A |

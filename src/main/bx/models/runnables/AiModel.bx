@@ -69,12 +69,15 @@ class extends="AiBaseRunnable" {
 			"options": getMergedOptions().map( ( key, value ) => {
 				// Mask sensitive options (e.g. API keys) in the config output
 				var maskedValue = ( listFindNoCase( "apikey,token,secret", key ) > 0 )
-				? "****"
-				: value
+					? "****"
+					: value
 				return maskedValue
 			} ),
-			"toolCount": variables.tools.len(),
-			"tools"     : listTools()
+			"toolCount"          : variables.tools.len(),
+			"tools"              : listTools(),
+			"activeSkillCount"  : variables.skills.len(),
+			"availableSkillCount": variables.availableSkills.len(),
+			"skills": listSkills()
 		}
 	}
 
