@@ -274,10 +274,19 @@ public class aiAgentTest extends BaseIntegrationTest {
 		    agent = aiAgent(
 		        name: "RealAgent",
 		        description: "An agent that uses real AI",
-		        instructions: "Provide concise answers"
+		        instructions: "Provide concise answers",
+				// A tool from the default set provided by the BoxLang MCP server, which should be available without additional config in the test environment
+				tools: [ "now@bxai" ],
+				// Add the BoxLang MCP doc server
+				mcpServers: [ "https://boxlang.ortusbooks.com/~gitbook/mcp" ]
 		    )
 
-		    response = agent.run( "What is BoxLang?", {},  {} )
+			println( agent.getConfig() )
+
+		    response = agent.run( "What is BoxLang?", {},  {
+				logResponseToConsole: true,
+				logRequestToConsole: true
+			} )
 
 		    println( response )
 		    """,

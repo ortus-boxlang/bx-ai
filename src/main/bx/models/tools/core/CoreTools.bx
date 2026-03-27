@@ -12,10 +12,10 @@
  * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
- * Core built-in tools for bx-ai.
+ * Core built-in tools for bxai.
  *
  * Auto-registered tools (registered in ModuleConfig.onLoad):
- *   now@bx-ai  — Returns current date/time in ISO 8601 format.
+ *   now@bxai  — Returns current date/time in ISO 8601 format.
  *
  * Opt-in tools (NOT auto-registered — security risk, can reach internal network):
  *   httpGet    — Fetches the body of a URL via HTTP GET.
@@ -26,9 +26,7 @@ class {
 
 	/**
 	 * Returns the current date and time in ISO 8601 format.
-	 * Auto-registered as now@bx-ai on module load.
-	 *
-	 * @hint Returns the current date and time in ISO 8601 format. Use this whenever you need to know the current date or time.
+	 * Auto-registered as now@bxai on module load.
 	 */
 	@AITool( "Returns the current date and time in ISO 8601 format. Use this whenever you need to know the current date or time." )
 	public string function now() {
@@ -39,7 +37,6 @@ class {
 	 * Fetches the body of a URL via HTTP GET.
 	 * NOT auto-registered. Opt in explicitly if your application requires it.
 	 *
-	 * @hint Fetches the contents of a URL via HTTP GET. Use this to retrieve data from websites or REST APIs.
 	 * @url The URL to fetch
 	 */
 	@AITool( "Fetches the contents of a URL via HTTP GET. Use this to retrieve data from websites or REST APIs." )

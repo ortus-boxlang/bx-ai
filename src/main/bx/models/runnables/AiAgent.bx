@@ -536,6 +536,27 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
+	 * Add tools to the agent and keep the underlying AI model in sync.
+	 * This override is necessary because MCP server tools and other late-bound tools
+	 * are added via withTools(), and without this override only variables.tools would
+	 * be updated while variables.aiModel would not — causing the tools to appear only
+	 * in the system message and not in the actual tools array sent to the provider.
+	 *
+	 * @tools Array or single tool to add
+	 *
+	 * @return this for chaining
+	 */
+	@override
+	AiAgent function withTools( required any tools ) {
+		if ( !isArray( arguments.tools ) ) {
+			arguments.tools = [ arguments.tools ]
+		}
+		variables.tools.append( arguments.tools, true )
+		variables.aiModel.withTools( arguments.tools )
+		return this
+	}
+
+	/**
 	 * Set a single parameter
 	 *
 	 * @key Parameter name
@@ -966,25 +987,29 @@ class extends="AiBaseRunnable" {
 	 * Build the system message from instructions and description
 	 */
 	private string function buildSystemMessage() {
-		var parts = [];
+		var parts = []
 
+		// Include description as a "Role" if provided, so the LLM understands its identity and purpose
 		if ( variables.description.len() > 0 ) {
-			parts.append( "Role: " & variables.description );
+			parts.append( "Role: " & variables.description )
 		}
 
+		// Include instructions as "Instructions" if provided, so the LLM knows how to behave and use tools
 		if ( variables.instructions.len() > 0 ) {
-			parts.append( variables.instructions );
+			parts.append( "Instructions: " & variables.instructions )
+		}
+
+		// Include available tools so the LLM knows what it can use (note: tools are also passed in the options for structured access, but including in system message can help with LLMs that rely more on the prompt)
+		if ( variables.tools.len() > 0 ) {
+			parts.append( "Available Tools: " & listTools().toString() )
 		}
 
 		// Include connected MCP servers so the LLM knows where its tools came from
 		if ( variables.mcpServers.len() > 0 ) {
-			var serverLines = variables.mcpServers.map( s =>
-				"- " & s.url & " (tools: " & s.toolNames.toList( ", " ) & ")"
-			);
-			parts.append( "Connected MCP Servers:" & char( 10 ) & serverLines.toList( char( 10 ) ) );
+			parts.append( "Connected MCP Servers:" & listMCPServers().toString() )
 		}
 
-		return parts.toList( char( 10 ) & char( 10 ) );
+		return parts.toList( char( 10 ) & char( 10 ) )
 	}
 
 	/**

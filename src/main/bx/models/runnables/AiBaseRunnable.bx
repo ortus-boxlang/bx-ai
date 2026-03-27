@@ -345,7 +345,7 @@ abstract class implements="IAiRunnable" {
 	 * @return Array of structs: [{ name, description }]
 	 */
 	public array function listTools() {
-		return variables.tools.map( tool => {
+		return aiToolRegistry().resolveTools( variables.tools ).map( tool => {
 			return { name: tool.getName(), description: tool.getDescription() }
 		} )
 	}
@@ -463,8 +463,6 @@ abstract class implements="IAiRunnable" {
 		variables.tools = []
 		return this
 	}
-
-
 
 	/**
 	 * ---------------------------------------------------------------------------------------------------------
@@ -587,6 +585,16 @@ abstract class implements="IAiRunnable" {
 		}
 
 		return this;
+	}
+
+	/**
+	 * Lists out the MCP Servers that are currently connected to this runnable, along with the tools discovered from each server.
+	 * This is useful for debugging and for generating system messages for agents that include information about their available tools.
+	 *
+	 * @return Array of structs: [{ url, toolNames }]
+	 */
+	public array function listMCPServers() {
+		return variables.mcpServers;
 	}
 
 	/**
