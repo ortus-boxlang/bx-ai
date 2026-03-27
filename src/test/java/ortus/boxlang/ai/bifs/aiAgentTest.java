@@ -15,6 +15,7 @@
 package ortus.boxlang.ai.bifs;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -808,6 +809,167 @@ public class aiAgentTest extends BaseIntegrationTest {
 		assertEquals( "", config.get( "parentAgent" ) );
 		assertEquals( 0L, ( long ) ( ( Number ) config.get( "agentDepth" ) ).intValue() );
 		assertEquals( "/root", config.get( "agentPath" ) );
+	}
+
+	// ==================== SKILL TESTS ====================
+
+	@Test
+	@DisplayName( "It can create an agent with always-on skills" )
+	public void testAgentWithSkills() {
+		runtime.executeSource(
+		    """
+		    skill1 = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    skill2 = aiSkill( name: "code-style", description: "Code style guide", content: "Prefer tabs over spaces." )
+
+		    agent      = aiAgent( name: "SkillAgent", skills: [ skill1, skill2 ] )
+		    skillCount = agent.getSkills().len()
+		    """,
+		    context
+		);
+
+		assertEquals( 2L, ( long ) ( ( Number ) variables.get( Key.of( "skillCount" ) ) ).intValue() );
+	}
+
+	@Test
+	@DisplayName( "It can create an agent with lazy available-skills" )
+	public void testAgentWithAvailableSkills() {
+		runtime.executeSource(
+		    """
+		    skill1 = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    skill2 = aiSkill( name: "code-style", description: "Code style guide", content: "Prefer tabs over spaces." )
+
+		    agent      = aiAgent( name: "SkillAgent", availableSkills: [ skill1, skill2 ] )
+		    availCount = agent.getAvailableSkills().len()
+		    """,
+		    context
+		);
+
+		// 2 provided + any global skills auto-discovered (none in test env)
+		assertTrue( ( ( Number ) variables.get( Key.of( "availCount" ) ) ).intValue() >= 2 );
+	}
+
+	@Test
+	@DisplayName( "It can add a skill using the fluent addSkill() API" )
+	public void testAgentAddSkillFluent() {
+		runtime.executeSource(
+		    """
+		    skill = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    agent = aiAgent( name: "FluentSkillAgent" ).addSkill( skill )
+		    skillCount = agent.getSkills().len()
+		    """,
+		    context
+		);
+
+		assertEquals( 1L, ( long ) ( ( Number ) variables.get( Key.of( "skillCount" ) ) ).intValue() );
+	}
+
+	@Test
+	@DisplayName( "It can add a lazy skill using the fluent addAvailableSkill() API" )
+	public void testAgentAddAvailableSkillFluent() {
+		runtime.executeSource(
+		    """
+		    skill = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    agent = aiAgent( name: "FluentSkillAgent" ).addAvailableSkill( skill )
+		    availCount = agent.getAvailableSkills().len()
+		    """,
+		    context
+		);
+
+		assertTrue( ( ( Number ) variables.get( Key.of( "availCount" ) ) ).intValue() >= 1 );
+	}
+
+	@Test
+	@DisplayName( "buildSkillsContent() returns non-empty string when always-on skills are set" )
+	public void testAgentBuildSkillsContent() {
+		runtime.executeSource(
+		    """
+		    skill  = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    agent  = aiAgent( name: "SkillAgent", skills: [ skill ] )
+
+		    content       = agent.buildSkillsContent()
+		    hasHeader     = content.findNoCase( "## Skills" ) > 0
+		    hasSkillBlock = content.findNoCase( "#### Skill: sql-tips" ) > 0
+		    hasContent    = content.findNoCase( "Always use indexed columns." ) > 0
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "hasHeader" ) ) );
+		assertTrue( variables.getAsBoolean( Key.of( "hasSkillBlock" ) ) );
+		assertTrue( variables.getAsBoolean( Key.of( "hasContent" ) ) );
+	}
+
+	@Test
+	@DisplayName( "buildSkillsContent() includes available-skills index section" )
+	public void testAgentBuildSkillsContentWithAvailableSkills() {
+		runtime.executeSource(
+		    """
+		    skill  = aiSkill( name: "lazy-skill", description: "Use only when needed", content: "Be careful." )
+		    agent  = aiAgent( name: "LazySkillAgent", availableSkills: [ skill ] )
+
+		    content        = agent.buildSkillsContent()
+		    hasAvailHeader = content.findNoCase( "## Available Skills" ) > 0
+		    hasIndex       = content.findNoCase( "- lazy-skill:" ) > 0
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "hasAvailHeader" ) ) );
+		assertTrue( variables.getAsBoolean( Key.of( "hasIndex" ) ) );
+	}
+
+	@Test
+	@DisplayName( "activateSkill() promotes a lazy skill to always-on pool" )
+	public void testAgentActivateSkill() {
+		runtime.executeSource(
+		    """
+		    skill = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    agent = aiAgent( name: "ActivateSkillAgent", availableSkills: [ skill ] )
+
+		    beforeAvail  = agent.getAvailableSkills().filter( s => s.getName() == "sql-tips" ).len()
+		    beforeActive = agent.getSkills().filter( s => s.getName() == "sql-tips" ).len()
+
+		    agent.activateSkill( "sql-tips" )
+
+		    afterAvail  = agent.getAvailableSkills().filter( s => s.getName() == "sql-tips" ).len()
+		    afterActive = agent.getSkills().filter( s => s.getName() == "sql-tips" ).len()
+		    """,
+		    context
+		);
+
+		assertEquals( 1L, ( long ) ( ( Number ) variables.get( Key.of( "beforeAvail" ) ) ).intValue() );
+		assertEquals( 0L, ( long ) ( ( Number ) variables.get( Key.of( "beforeActive" ) ) ).intValue() );
+		assertEquals( 0L, ( long ) ( ( Number ) variables.get( Key.of( "afterAvail" ) ) ).intValue() );
+		assertEquals( 1L, ( long ) ( ( Number ) variables.get( Key.of( "afterActive" ) ) ).intValue() );
+	}
+
+	@Test
+	@DisplayName( "loadSkill tool is auto-registered when available skills are set" )
+	public void testAgentLoadSkillToolRegistered() {
+		runtime.executeSource(
+		    """
+		    skill       = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    agent       = aiAgent( name: "ToolRegAgent", availableSkills: [ skill ] )
+		    hasLoadTool = agent.hasTool( "loadSkill" )
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "hasLoadTool" ) ) );
+	}
+
+	@Test
+	@DisplayName( "loadSkill tool is NOT registered when no available skills are set" )
+	public void testAgentLoadSkillToolNotRegisteredWithoutSkills() {
+		runtime.executeSource(
+		    """
+		    agent       = aiAgent( name: "NoSkillAgent" )
+		    hasLoadTool = agent.hasTool( "loadSkill" )
+		    """,
+		    context
+		);
+
+		assertFalse( variables.getAsBoolean( Key.of( "hasLoadTool" ) ) );
 	}
 
 }
