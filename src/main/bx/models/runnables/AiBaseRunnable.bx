@@ -595,9 +595,10 @@ abstract class implements="IAiRunnable" {
 	 * @return The activated AiSkill, or null if not found
 	 */
 	public any function activateSkill( required string name ) {
-		var skill = variables.availableSkills.findFirst( s => s.getName() == name )
-		if( !isNull( skill ) ){
-			variables.availableSkills.deleteAt( variables.availableSkills.indexOf( skill ) )
+		var index = variables.availableSkills.find( s => s.getName() == name )
+		if( index > 0 ){
+			var skill = variables.availableSkills[ index ]
+			variables.availableSkills.deleteAt( index )
 			variables.skills.append( skill )
 		}
 		return skill
