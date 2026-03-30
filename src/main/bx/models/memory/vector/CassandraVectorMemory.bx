@@ -1,0 +1,434 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Cassandra Vector Memory Implementation
+ * Provides vector storage and semantic search using Cassandra-compatible vector indexing.
+ */
+class extends="BaseVectorMemory" {
+
+	/**
+	 * Cassandra datasource name
+	 */
+	property name="datasource" type="string";
+
+	/**
+	 * Cassandra contact points, e.g. "127.0.0.1:9042"
+	 * Could also be a list/array later, but keep it simple for now.
+	 */
+	property name="contactPoints" type="string";
+
+	/**
+	 * Keyspace name
+	 */
+	property name="keyspace" type="string";
+
+	/**
+	 * Table name for vector storage
+	 */
+	property name="table" type="string";
+
+	/**
+	 * Optional: username/password for auth (if your cluster requires it)
+	 */
+	property name="username" type="string";
+	property name="password" type="string";
+
+	/**
+	 * Automatic schema creation controls
+	 */
+	property name="autoCreateSchema" type="boolean";
+	property name="createKeyspaceIfMissing" type="boolean";
+
+	/**
+	 * Index name for vector ANN queries
+	 */
+	property name="vectorIndexName" type="string";
+
+	static {
+		DEFAULT_TABLE = "bx_ai_vectors"
+		DEFAULT_VECTOR_INDEX_NAME = "bx_ai_vectors_embedding_idx"
+	}
+
+	/**
+	 * Configure the Cassandra vector memory instance
+	 *
+	 * @config Configuration struct with Cassandra-specific options
+	 *
+	 * @return CassandraVectorMemory for chaining
+	 */
+	public any function configure( required struct config ) {
+		// Defaults
+		param arguments.config.datasource = getSystemSetting( "CASSANDRA_DATASOURCE", "" )
+		param arguments.config.contactPoints = getSystemSetting( "CASSANDRA_CONTACT_POINTS", "" )
+		param arguments.config.keyspace = getSystemSetting( "CASSANDRA_KEYSPACE", "" )
+		param arguments.config.table = getSystemSetting( "CASSANDRA_TABLE", static.DEFAULT_TABLE )
+		param arguments.config.username = getSystemSetting( "CASSANDRA_USERNAME", "" )
+		param arguments.config.password = getSystemSetting( "CASSANDRA_PASSWORD", "" )
+		param arguments.config.autoCreateSchema = true
+		param arguments.config.createKeyspaceIfMissing = true
+		param arguments.config.vectorIndexName = getSystemSetting( "CASSANDRA_VECTOR_INDEX", static.DEFAULT_VECTOR_INDEX_NAME )
+
+		// Default vector dimensions if not provided by caller
+		param arguments.config.dimensions = 1536
+
+		if ( arguments.config.keyExists( "indexName" ) ) {
+			arguments.config.vectorIndexName = arguments.config.indexName
+		}
+
+		// Validate required config
+		if ( !len( arguments.config.datasource ) ) {
+			throw(
+				type = "CassandraVectorMemory.MissingDatasource",
+				message = "datasource is required for CassandraVectorMemory. Provide it in config or set CASSANDRA_DATASOURCE."
+			)
+		}
+
+		if ( !len( arguments.config.contactPoints ) ) {
+			throw(
+				type = "CassandraVectorMemory.MissingContactPoints",
+				message = "contactPoints is required for CassandraVectorMemory. Provide it in config or set CASSANDRA_CONTACT_POINTS."
+			)
+		}
+		if ( !len( arguments.config.keyspace ) ) {
+			throw(
+				type = "CassandraVectorMemory.MissingKeyspace",
+				message = "keyspace is required for CassandraVectorMemory. Provide it in config or set CASSANDRA_KEYSPACE."
+			)
+		}
+
+		if ( arguments.config.dimensions <= 0 ) {
+			throw(
+				type = "CassandraVectorMemory.InvalidDimensions",
+				message = "dimensions must be greater than 0 for CassandraVectorMemory."
+			)
+		}
+
+		// Save provider config
+		variables.datasource = arguments.config.datasource
+		variables.contactPoints = arguments.config.contactPoints
+		variables.keyspace = arguments.config.keyspace
+		variables.table = arguments.config.table
+		variables.username = arguments.config.username
+		variables.password = arguments.config.password
+		variables.autoCreateSchema = arguments.config.autoCreateSchema
+		variables.createKeyspaceIfMissing = arguments.config.createKeyspaceIfMissing
+		variables.vectorIndexName = arguments.config.vectorIndexName
+
+		// Call parent configure (this will call ensureCollection())
+		super.configure( arguments.config )
+
+		return this
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * ABSTRACT METHOD IMPLEMENTATIONS
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure keyspace/table/index exist
+	 */
+	IVectorMemory function ensureCollection() {
+		if ( !variables.autoCreateSchema ) {
+			return this
+		}
+
+		if ( variables.createKeyspaceIfMissing ) {
+			queryExecute(
+				"CREATE KEYSPACE IF NOT EXISTS #variables.keyspace# WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}",
+				{},
+				{ datasource: variables.datasource }
+			)
+		}
+
+		createCollection( variables.collection )
+		ensureVectorIndex()
+
+		return this
+	}
+
+	/**
+	 * Store a document
+	 */
+	IVectorMemory function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	) {
+		var metadataWithScope = arguments.metadata.duplicate()
+		if ( len( variables.userId ) ) {
+			metadataWithScope.userId = variables.userId
+		}
+		if ( len( variables.conversationId ) ) {
+			metadataWithScope.conversationId = variables.conversationId
+		}
+
+		queryExecute(
+			"INSERT INTO #variables.keyspace#.#variables.table# (
+				id,
+				collection,
+				text,
+				embedding,
+				metadata_json,
+				userId,
+				conversationId,
+				created_at,
+				updated_at
+			) VALUES (
+				:id,
+				:collection,
+				:text,
+				:embedding,
+				:metadataJson,
+				:userId,
+				:conversationId,
+				toTimestamp(now()),
+				toTimestamp(now())
+			)",
+			{
+				id: arguments.id,
+				collection: variables.collection,
+				text: arguments.text,
+				embedding: arguments.embedding,
+				metadataJson: jsonSerialize( metadataWithScope ),
+				userId: metadataWithScope.keyExists( "userId" ) ? metadataWithScope.userId : "",
+				conversationId: metadataWithScope.keyExists( "conversationId" ) ? metadataWithScope.conversationId : ""
+			},
+			{ datasource: variables.datasource }
+		)
+
+		return this
+	}
+
+	/**
+	 * Search by vector embedding
+	 */
+	array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		var result = queryExecute(
+			"SELECT id, text, metadata_json, embedding, similarity_cosine( embedding, :embedding ) AS score
+			FROM #variables.keyspace#.#variables.table#
+			WHERE collection = :collection
+			ORDER BY embedding ANN OF :embedding
+			LIMIT :limit",
+			{
+				embedding: arguments.embedding,
+				collection: variables.collection,
+				limit: { value: arguments.limit, type: "integer" }
+			},
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		var filtered = result.filter( ( row ) => metadataMatchesFilter( parseMetadata( row.metadata_json ), arguments.filter ) )
+
+		return filtered.map( ( row ) => {
+			return {
+				id: row.id,
+				text: row.text,
+				score: row.keyExists( "score" ) ? val( row.score ) : 0,
+				metadata: parseMetadata( row.metadata_json ),
+				embedding: row.embedding ?: []
+			}
+		} )
+	}
+
+	/**
+	 * Get all documents
+	 */
+	array function getAllDocuments() {
+		var rows = queryExecute(
+			"SELECT id, text, metadata_json, embedding
+			FROM #variables.keyspace#.#variables.table#
+			WHERE collection = :collection",
+			{ collection: variables.collection },
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		return rows.map( ( row ) => {
+			return {
+				id: row.id,
+				text: row.text,
+				metadata: parseMetadata( row.metadata_json ),
+				embedding: row.embedding ?: []
+			}
+		} )
+	}
+
+	/**
+	 * Get document by id
+	 */
+	struct function getDocumentById( required string id ) {
+		var rows = queryExecute(
+			"SELECT id, text, metadata_json, embedding
+			FROM #variables.keyspace#.#variables.table#
+			WHERE collection = :collection AND id = :id",
+			{ collection: variables.collection, id: arguments.id },
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		if ( rows.isEmpty() ) {
+			return {}
+		}
+
+		var row = rows[ 1 ]
+		return {
+			id: row.id,
+			text: row.text,
+			metadata: parseMetadata( row.metadata_json ),
+			embedding: row.embedding ?: []
+		}
+	}
+
+	/**
+	 * Delete document by id
+	 */
+	boolean function deleteDocument( required string id ) {
+		queryExecute(
+			"DELETE FROM #variables.keyspace#.#variables.table# WHERE collection = :collection AND id = :id",
+			{ collection: variables.collection, id: arguments.id },
+			{ datasource: variables.datasource }
+		)
+
+		return true
+	}
+
+	/**
+	 * Delete documents by metadata filter
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		var docs = getAllDocuments()
+		var deleted = 0
+
+		docs.each( ( doc ) => {
+			if ( metadataMatchesFilter( doc.metadata, arguments.filter ) ) {
+				if ( deleteDocument( doc.id ) ) {
+					deleted++
+				}
+			}
+		} )
+
+		return deleted
+	}
+
+	/**
+	 * Clear the current collection
+	 */
+	IVectorMemory function clearCollection() {
+		queryExecute(
+			"DELETE FROM #variables.keyspace#.#variables.table# WHERE collection = :collection",
+			{ collection: variables.collection },
+			{ datasource: variables.datasource }
+		)
+
+		return this
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * COLLECTION MANAGEMENT
+	 * --------------------------------------------------------------------------
+	 */
+
+	IVectorMemory function createCollection( required string name ) {
+		queryExecute(
+			"CREATE TABLE IF NOT EXISTS #variables.keyspace#.#variables.table# (
+				collection text,
+				id text,
+				text text,
+				embedding vector<float, #variables.dimensions#>,
+				metadata_json text,
+				userId text,
+				conversationId text,
+				created_at timestamp,
+				updated_at timestamp,
+				PRIMARY KEY ( (collection), id )
+			)",
+			{},
+			{ datasource: variables.datasource }
+		)
+
+		return this
+	}
+
+	boolean function collectionExists( required string name ) {
+		var rows = queryExecute(
+			"SELECT table_name
+			FROM system_schema.tables
+			WHERE keyspace_name = :keyspace
+			AND table_name = :tableName",
+			{ keyspace: variables.keyspace, tableName: variables.table },
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		return !rows.isEmpty()
+	}
+
+	IVectorMemory function deleteCollection( required string name ) {
+		queryExecute(
+			"DROP TABLE IF EXISTS #variables.keyspace#.#variables.table#",
+			{},
+			{ datasource: variables.datasource }
+		)
+
+		return this
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * PRIVATE HELPERS
+	 * --------------------------------------------------------------------------
+	 */
+
+	private void function ensureVectorIndex() {
+		queryExecute(
+			"CREATE CUSTOM INDEX IF NOT EXISTS #variables.vectorIndexName#
+			ON #variables.keyspace#.#variables.table# ( embedding )
+			USING 'StorageAttachedIndex'",
+			{},
+			{ datasource: variables.datasource }
+		)
+	}
+
+	private struct function parseMetadata( required any metadataJson ) {
+		if ( isStruct( arguments.metadataJson ) ) {
+			return arguments.metadataJson
+		}
+
+		if ( !len( toString( arguments.metadataJson ) ) ) {
+			return {}
+		}
+
+		return jsonDeserialize( toString( arguments.metadataJson ) )
+	}
+
+	private boolean function metadataMatchesFilter( required struct metadata, required struct filter ) {
+		if ( arguments.filter.isEmpty() ) {
+			return true
+		}
+
+		for ( var key in arguments.filter ) {
+			if ( !arguments.metadata.keyExists( key ) || arguments.metadata[ key ] != arguments.filter[ key ] ) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+}

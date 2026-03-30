@@ -126,6 +126,10 @@ class {
 			case "WeaviateVectorMemory":
 				memoryClass = "bxModules.bxai.models.memory.vector.WeaviateVectorMemory";
 				break;
+			case "cassandra":
+			case "CassandraVectorMemory":
+				memoryClass = "bxModules.bxai.models.memory.vector.CassandraVectorMemory";
+				break;
 			default:
 				// Check if it's a full class path
 				if ( memoryType.findNoCase( "." ) ) {
@@ -133,7 +137,7 @@ class {
 				} else {
 					throw(
 						type: "InvalidMemoryType",
-						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, MilvusVectorMemory, MysqlVectorMemory, TypesenseVectorMemory, OpenSearchVectorMemory, HybridMemory"
+						message: "Unknown memory type: #memoryType#. Available types: WindowMemory, SummaryMemory, SessionMemory, CacheMemory, FileMemory, JdbcMemory, ChromaVectorMemory, PostgresVectorMemory, PineconeVectorMemory, BoxVectorMemory, MilvusVectorMemory, MysqlVectorMemory, TypesenseVectorMemory, OpenSearchVectorMemory, WeaviateVectorMemory, CassandraVectorMemory, HybridMemory"
 					);
 				}
 		}

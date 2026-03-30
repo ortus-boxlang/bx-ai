@@ -72,6 +72,7 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - [📢 Events](#-events)
 - [🌐 GitHub Repository and Reporting Issues](#-github-repository-and-reporting-issues)
 - [🧪 Testing](#-testing)
+  - [Cassandra Vector Memory Testing & Schema Setup](#cassandra-vector-memory-testing--schema-setup)
 - [💖 Ortus Sponsors](#-ortus-sponsors)
 
 ## 📃 License
@@ -1979,6 +1980,119 @@ You can also use the provided test script:
 This will start the service, verify it's working, and run a basic test.
 
 **Note**: The first time you run this, it will download the `qwen2.5:0.5b` model (~500MB), so it may take several minutes.
+
+### Cassandra Vector Memory Testing & Schema Setup
+
+Cassandra integration tests are **opt-in** and are skipped by default so normal `./gradlew test` remains green without a Cassandra instance.
+
+#### 1) Enable Cassandra integration tests
+
+```bash
+RUN_VECTOR_DB_TESTS=true \
+CASSANDRA_TEST_DATASOURCE=cassandra_vector_test \
+CASSANDRA_TEST_CONTACT_POINTS=127.0.0.1:9042 \
+./gradlew test --tests "ortus.boxlang.ai.memory.vector.CassandraVectorMemoryIntegrationTest"
+```
+
+The test creates unique keyspace/table names for each run and drops them during teardown.
+
+#### 2) Required Cassandra schema (DDL)
+
+Use Cassandra 5.0+/Astra DB with vector support. Create the keyspace and table before running in environments where `autoCreateSchema=false`:
+
+```sql
+CREATE KEYSPACE IF NOT EXISTS bx_ai
+WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+
+CREATE TABLE IF NOT EXISTS bx_ai.bx_ai_vectors (
+    collection text,
+    id text,
+    text text,
+    embedding vector<float, 1536>,
+    metadata_json text,
+    userId text,
+    conversationId text,
+    created_at timestamp,
+    updated_at timestamp,
+    PRIMARY KEY ((collection), id)
+);
+```
+
+#### 3) Vector index creation
+
+For Cassandra distributions that support ANN indexing (for example Cassandra 5 Storage-Attached Index / Astra DB), create a vector-capable index:
+
+```sql
+CREATE CUSTOM INDEX IF NOT EXISTS bx_ai_vectors_embedding_idx
+ON bx_ai.bx_ai_vectors (embedding)
+USING 'StorageAttachedIndex';
+```
+
+> If your Cassandra distribution/version does not support vector ANN indexes, keep the same table schema but adjust index strategy to your vendor's supported syntax/capabilities.
+
+#### 4) Required environment variables
+
+For provider configuration, set these vars (or pass equivalent values in `aiMemory(..., config={})`):
+
+- `CASSANDRA_DATASOURCE` (required by provider)
+- `CASSANDRA_CONTACT_POINTS` (required, `host:port`)
+- `CASSANDRA_KEYSPACE` (required)
+- `CASSANDRA_TABLE` (optional, default `bx_ai_vectors`)
+- `CASSANDRA_USERNAME` (optional)
+- `CASSANDRA_PASSWORD` (optional)
+- `CASSANDRA_VECTOR_INDEX` (optional, default `bx_ai_vectors_embedding_idx`)
+
+Common deployment/runtime env vars you may also need depending on driver/datasource configuration:
+
+- `CASSANDRA_HOST`, `CASSANDRA_PORT`
+- `CASSANDRA_DATACENTER`
+- `CASSANDRA_SSL` (for TLS-enabled clusters)
+
+For integration tests specifically:
+
+- `RUN_VECTOR_DB_TESTS=true`
+- `CASSANDRA_TEST_DATASOURCE`
+- `CASSANDRA_TEST_CONTACT_POINTS`
+
+#### 5) Example `boxlang.json` module settings snippet
+
+```json
+{
+  "modules": {
+    "bx-ai": {
+      "provider": "openai",
+      "apiKey": "${OPENAI_API_KEY}",
+      "memory": {
+        "provider": "cassandra",
+        "config": {
+          "datasource": "${CASSANDRA_DATASOURCE}",
+          "contactPoints": "${CASSANDRA_CONTACT_POINTS}",
+          "keyspace": "${CASSANDRA_KEYSPACE}",
+          "table": "${CASSANDRA_TABLE:bx_ai_vectors}",
+          "vectorIndexName": "${CASSANDRA_VECTOR_INDEX:bx_ai_vectors_embedding_idx}",
+          "dimensions": 1536,
+          "autoCreateSchema": true,
+          "createKeyspaceIfMissing": true
+        }
+      }
+    }
+  }
+}
+```
+
+You can also configure Cassandra memory ad-hoc in code:
+
+```js
+memory = aiMemory( "cassandra", createUUID(), {
+  datasource: getSystemSetting( "CASSANDRA_DATASOURCE" ),
+  contactPoints: getSystemSetting( "CASSANDRA_CONTACT_POINTS" ),
+  keyspace: getSystemSetting( "CASSANDRA_KEYSPACE" ),
+  table: getSystemSetting( "CASSANDRA_TABLE", "bx_ai_vectors" ),
+  embeddingProvider: "openai",
+  embeddingModel: "text-embedding-3-small",
+  dimensions: 1536
+} )
+```
 
 ## 💖 Ortus Sponsors
 
