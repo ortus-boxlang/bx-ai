@@ -44,7 +44,7 @@ dependencies {
 	//}
 
 	// PDF Extraction
-	implementation 'org.apache.pdfbox:pdfbox:3.0.6'
+	implementation 'org.apache.pdfbox:pdfbox:3.0.7'
 
 	// JSoup for HTML parsing and web scraping
 	implementation 'org.jsoup:jsoup:1.22.1'
