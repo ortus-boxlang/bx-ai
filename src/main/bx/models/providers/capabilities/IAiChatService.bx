@@ -1,0 +1,47 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Capability interface for AI providers that support chat and streaming.
+ *
+ * Implement this interface alongside IAiService to declare that a provider
+ * supports synchronous chat completions and streaming chat.
+ *
+ * @since 2.0.0
+ */
+import bxModules.bxai.models.providers.IAiService;
+
+interface extends="IAiService" {
+
+	/**
+	 * Process a synchronous chat request in the provider's native format.
+	 *
+	 * @chatRequest      The AiChatRequest object to send to the provider
+	 * @interactionCount Current tool call interaction count (used internally), default is 0
+	 *
+	 * @return The response from the provider according to the return format in the AI request
+	 */
+	function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 );
+
+	/**
+	 * Stream a chat request to the provider, invoking the callback for each chunk.
+	 *
+	 * @chatRequest      The AiChatRequest object to send to the provider
+	 * @callback         A callback function called with each incremental chunk: function( chunk )
+	 * @interactionCount Current tool call interaction count (used internally), default is 0
+	 *
+	 * @return void
+	 */
+	function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 );
+
+}

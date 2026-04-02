@@ -13,18 +13,22 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  * Base Service for AI Providers
- * This service provides a base implementation for AI providers
- * It is based on the Open AI standard, overridable by the provider
+ * This is the true abstraction layer: HTTP transport, request/response lifecycle hooks,
+ * logging, middleware, and configuration. Not tied to any specific provider's API format.
  *
- * All AI Providers must extend this service and implement the following methods:
- * - configure()
- * - invoke()
- * - invokeStream()
+ * - Extend this class directly for providers with fully custom API formats (Claude, Gemini, Ollama, Bedrock, Cohere).
+ * - Extend OpenAIService for any provider that follows the OpenAI chat/embeddings API standard.
+ *
+ * Concrete providers must implement these abstract methods:
+ * - chat()       : Send a synchronous chat request in the provider's native format
+ * - chatStream() : Handle streaming chat in the provider's native format
+ * - embeddings() : Generate vector embeddings in the provider's native format
  *
  * All providers have the following properties:
- * - apiKey                                   : The API key to use with the provider
- * - chatURL                                  : The chat URL of the provider API
- * - params                                   : The default params request properties
+ * - apiKey        : The API key for the provider
+ * - chatURL       : The chat endpoint URL
+ * - embeddingsURL : The embeddings endpoint URL
+ * - params        : Default request parameters
  */
 import bxModules.bxai.models.util.SchemaBuilder;
 
@@ -109,6 +113,55 @@ abstract class implements="IAiService" {
 	}
 
 	/**
+	 * Returns all capabilities this provider supports.
+	 * If the concrete class overrides getDeclaredCapabilities(), that result is used.
+	 * Otherwise capabilities are inferred from implemented interfaces.
+	 *
+	 * @return Array of capability strings
+	 */
+	public array function getCapabilities() {
+		var declared = getDeclaredCapabilities()
+		if ( !declared.isEmpty() ) {
+			return declared
+		}
+		// Fallback: infer from interfaces
+		var caps = []
+		if ( isInstanceOf( this, "IAiChatService" ) ) {
+			caps.append( "chat" )
+			caps.append( "stream" )
+		}
+		if ( isInstanceOf( this, "IAiEmbeddingsService" ) ) {
+			caps.append( "embeddings" )
+		}
+		if ( isInstanceOf( this, "IAudioService" ) ) {
+			caps.append( "transcribe" )
+			caps.append( "speak" )
+		}
+		return caps
+	}
+
+	/**
+	 * Returns true if this provider supports the given capability.
+	 *
+	 * @capability  "chat" | "stream" | "embeddings" | "transcribe" | "speak"
+	 *
+	 * @return boolean
+	 */
+	public boolean function hasCapability( required string capability ) {
+		return getCapabilities().findNoCase( arguments.capability ) > 0
+	}
+
+	/**
+	 * Override in concrete providers to declare explicit capabilities via static.CAPABILITIES.
+	 * Returning a non-empty array bypasses interface-based detection entirely.
+	 *
+	 * @return Array of capability strings, or [] to use interface detection
+	 */
+	public array function getDeclaredCapabilities() {
+		return []
+	}
+
+	/**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Interface Methods
 	 * ---------------------------------------------------------------------------------------------------------
@@ -167,412 +220,59 @@ abstract class implements="IAiService" {
 	}
 
 	/**
-	 * Invoke a request to the provider
-	 *
-	 * @chatRequest The AI request to send to the provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
-	 */
-	function invoke( required AiChatRequest chatRequest ){
-		// Model Selection if not set, use the default in the service, which should always be set
-		chatRequest
-			.setModelIfEmpty( variables.params.model ?: "" )
-			.setApiKeyIfEmpty( getAPIKey() )
-			.mergeServiceParams( variables.params )
-			.mergeServiceHeaders( variables.headers )
-		// Do a chat request
-		// MORE TYPES CAN BE ADDED HERE LATER
-		return chat( argumentCollection = arguments )
-	}
-
-	/**
-	 * Invoke a request to the provider in streaming mode
-	 *
-	 * @chatRequest The Chat request to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @return void
-	 */
-	function invokeStream( required AiChatRequest chatRequest, required function callback ){
-		// Model Selection if not set, use the default in the service, which should always be set
-		chatRequest
-			.setModelIfEmpty( variables.params.model ?: "" )
-			.setApiKeyIfEmpty( getAPIKey() )
-			.mergeServiceParams( variables.params )
-			.mergeServiceHeaders( variables.headers )
-			.setStream( true )
-		// Do a chat stream request
-		return chatStream( argumentCollection = arguments )
-	}
-
-	/**
 	 * ---------------------------------------------------------------------------------------------------------
-	 * Callers
+	 * Abstract Methods - Must be implemented by concrete providers
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
 
 	/**
-	 * A chat method that sends messages to the provider.
-	 * This method in this base class is based of OpenAI's standard.
-	 * If the provider does not support this standard, it should override this method.
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Pre/Post Hooks
+	 * Override in concrete providers to normalize requests/responses without needing to override
+	 * the full chat(), chatStream(), or embeddings() methods.
 	 *
-	 * @chatRequest The AiChatRequest object to send to the provider
-	 * @interactionCount Current tool call interaction count (used internally)
-	 *
-	 * @throws ProviderError if the provider returns an error from the request
-	 * @throws MaxInteractionsExceeded if tool calls exceed the maximum allowed interactions
-	 *
-	 * @return The response from the provider according to the return format in the AI request
+	 * Each hook is a no-op by default and returns its input unchanged.
+	 * - Pre hooks  : receive and return the dataPacket struct (modify before sending)
+	 * - Post hooks : receive and return the result/streamState struct (normalize after receiving)
+	 * ---------------------------------------------------------------------------------------------------------
 	 */
-	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
-		// Build the packet according to the OpenAI standard
-		var dataPacket = {
-			"model"   : arguments.chatRequest.getModel(),
-			"messages": arguments.chatRequest.getMessages()
-		}.append( arguments.chatRequest.getParams() )
 
-		// Tooling support
-		if( dataPacket.keyExists( "tools" ) ){
-			dataPacket.tools = dataPacket.tools.map( .getSchema )
-		}
-
-		// Structured output support (OpenAI format)
-		if( arguments.chatRequest.isStructuredOutput() ){
-			// Clean internal metadata before sending to provider
-			var cleanSchema = SchemaBuilder::cleanSchema( arguments.chatRequest.getStructuredOutput() );
-			dataPacket.response_format = {
-				"type": "json_schema",
-				"json_schema": {
-					"name": "response",
-					"strict": true,
-					"schema": cleanSchema
-				}
-			};
-		}
-
-		// Send it
-		var result = sendRequest( arguments.chatRequest, dataPacket )
-
-		// If an error is returned, throw it
-		if( result.keyExists( "error" ) ){
-			writeLog(
-				text: result.error.toString(),
-				type: "error",
-				log : "ai"
-			)
-
-			// Announce the error
-			BoxAnnounce( "onAIError", {
-				error: result.error,
-				errorMessage: result.error.toString(),
-				provider: this,
-				operation: "chat",
-				aiRequest: arguments.chatRequest,
-				canRetry: true
-			} );
-
-			throw(
-				type   : "ProviderError",
-				message: result.error.toString()
-			);
-		}
-
-		// Announce token usage if available
-		if( result.keyExists( "usage" ) ){
-			BoxAnnounce( "onAITokenCount", {
-				provider: this,
-				operation: "chat",
-				model: arguments.chatRequest.getModel(),
-				promptTokens: result.usage.keyExists( "prompt_tokens" ) ? result.usage.prompt_tokens : 0,
-				completionTokens: result.usage.keyExists( "completion_tokens" ) ? result.usage.completion_tokens : 0,
-				totalTokens: result.usage.keyExists( "total_tokens" ) ? result.usage.total_tokens : 0,
-				aiRequest: arguments.chatRequest,
-				usage: result.usage,
-				// Multi-tenant tracking fields
-				tenantId: arguments.chatRequest.getTenantId(),
-				usageMetadata: arguments.chatRequest.getUsageMetadata(),
-				providerOptions: arguments.chatRequest.getProviderOptions(),
-				timestamp: now()
-			} );
-		}
-
-		// Result returns, only if we are not using tool calls
-		var toolCalls = result.choices.first().message?.tool_calls ?: arrayNew()
-		if( !toolCalls.len() ){
-			var content = result.choices.first().message.content;
-
-			// Determine return formats
-			switch( arguments.chatRequest.getReturnFormat() ){
-				case "all":
-					return result.choices;
-				case "raw":
-					return result;
-				case "json":
-					return jsonDeserialize( extractFromCodeBlock( content, "json" ) );
-				case "xml":
-					return xmlParse( extractFromCodeBlock( content, "xml" ) );
-				case "structuredOutput":
-					return populateStructuredOutput( content, arguments.chatRequest );
-				case "single": default:
-					return content;
-			}
-		}
-
-		/**
-		 * ---------------------------------------------------------------------------------------------------------
-		 * Max Interactions Check
-		 * ---------------------------------------------------------------------------------------------------------
-		 */
-
-		var maxAllowed = arguments.chatRequest.getMaxInteractions() > 0 ? arguments.chatRequest.getMaxInteractions() : variables.maxInteractions;
-		if( arguments.interactionCount >= maxAllowed ){
-			writeLog(
-				text: "Max tool call interactions (#maxAllowed#) exceeded",
-				type: "error",
-				log : "ai"
-			)
-			throw(
-				type   : "MaxInteractionsExceeded",
-				message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
-			);
-		}
-
-		/**
-		 * ---------------------------------------------------------------------------------------------------------
-		 * Tool Chains
-		 * ---------------------------------------------------------------------------------------------------------
-		 */
-
-		// Capture chatRequest in local scope for use in nested closures
-		var newMessages = arguments.chatRequest.getMessages().map( message -> message )
-		result.choices.each( ( choice, index ) => {
-
-			// add the tool call into our message history
-			newMessages.append( choice.message );
-
-			// find the tool, invoke it, append the result to the chat history
-			choice.message.tool_calls.each( ( toolCall, i ) => {
-				var toolAttempt = chatRequest.getTool( toolCall.function.name );
-
-				if( toolAttempt.isPresent() ){
-					var tool = toolAttempt.get();
-					newMessages.append({
-						"role"        : "tool",
-						"tool_call_id": toolCall.id,
-						"content"     : tool.invoke( JSONDeserialize( toolCall.function.arguments ) )
-					});
-				} else {
-					writeLog(
-						text: "Unable to find tool named: #toolCall.function.name#",
-						type: "warning",
-						log : "ai"
-					)
-					newMessages.append({
-						"role"        : "tool",
-						"tool_call_id": toolCall.id,
-						"content"     : "Tool ['#toolCall.function.name#'] not found in chat request"
-					});
-				}
-			});
-		});
-
-		arguments.chatRequest.setMessages( newMessages )
-
-		return chat( arguments.chatRequest, arguments.interactionCount + 1 )
+	/**
+	 * Called before any outgoing request packet is sent to the provider.
+	 * Override in concrete providers to mutate the dataPacket for any operation type.
+	 *
+	 * @aiRequest   The AiBaseRequest subclass for this operation
+	 * @dataPacket  The outgoing struct — mutate and return it
+	 * @operation   The operation type: "chat" | "stream" | "embeddings" | "transcribe" | "speak"
+	 *
+	 * @return The (possibly mutated) dataPacket
+	 */
+	private struct function preRequest(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required string operation
+	) {
+		return arguments.dataPacket
 	}
 
 	/**
-	 * A chat stream method that sends messages to the provider and streams the response.
-	 * This method in this base class is based of OpenAI's standard.
-	 * If the provider does not support this standard, it should override this method.
+	 * Called after any response is received from the provider.
+	 * Override in concrete providers to normalise the result for any operation type.
 	 *
-	 * @chatRequest The chatRequest object to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
+	 * @aiRequest   The AiBaseRequest subclass for this operation
+	 * @dataPacket  The packet that was sent
+	 * @result      The raw response — mutate and return it
+	 * @operation   The operation type: "chat" | "stream" | "embeddings" | "transcribe" | "speak"
 	 *
-	 * @throws ProviderError if the provider returns an error from the request
-	 *
-	 * @return void
+	 * @return The (possibly mutated) result
 	 */
-	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
-		// Build the packet according to the OpenAI standard
-		var dataPacket = {
-			"model"   : arguments.chatRequest.getModel(),
-			"messages": arguments.chatRequest.getMessages(),
-			"stream"  : true
-		}.append( arguments.chatRequest.getParams() )
-
-		// Tooling support
-		if( dataPacket.keyExists( "tools" ) ){
-			dataPacket.tools = dataPacket.tools.map( .getSchema )
-		}
-
-		// Send it with streaming
-		var streamState = sendStreamRequest( chatRequest, dataPacket, callback )
-
-		// If no tool calls were requested, we are done
-		if( !streamState.toolCalls.len() ){
-			return;
-		}
-
-		/**
-		 * ---------------------------------------------------------------------------------------------------------
-		 * Max Interactions Check
-		 * ---------------------------------------------------------------------------------------------------------
-		 */
-
-		var maxAllowed = arguments.chatRequest.getMaxInteractions() > 0 ? arguments.chatRequest.getMaxInteractions() : variables.maxInteractions;
-		if( arguments.interactionCount >= maxAllowed ){
-			writeLog(
-				text: "Max tool call interactions (#maxAllowed#) exceeded during streaming",
-				type: "error",
-				log : "ai"
-			)
-			throw(
-				type   : "MaxInteractionsExceeded",
-				message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#) during streaming. This may indicate an infinite loop."
-			);
-		}
-
-		/**
-		 * ---------------------------------------------------------------------------------------------------------
-		 * Tool Chains (Streaming)
-		 * ---------------------------------------------------------------------------------------------------------
-		 */
-
-		var newMessages = arguments.chatRequest.getMessages().map( message -> message )
-		var assistantMessage = {
-			"role": "assistant",
-			"content": streamState.content
-		};
-
-		assistantMessage.tool_calls = streamState.toolCalls;
-		newMessages.append( assistantMessage );
-
-		streamState.toolCalls.each( toolCall => {
-			var toolAttempt = chatRequest.getTool( toolCall.function.name ?: "" );
-			var toolArguments = {};
-
-			try {
-				toolArguments = JSONDeserialize( toolCall.function.arguments ?: "{}" );
-			} catch( any e ){
-				writeLog(
-					text: "Unable to deserialize tool call arguments for '#toolCall.function.name ?: "unknown"#': #e.message#",
-					type: "warning",
-					log : "ai"
-				)
-			}
-
-			if( toolAttempt.isPresent() ){
-				var tool = toolAttempt.get();
-				newMessages.append({
-					"role"        : "tool",
-					"tool_call_id": toolCall.id ?: "",
-					"content"     : tool.invoke( toolArguments )
-				});
-			} else {
-				writeLog(
-					text: "Unable to find tool named during streaming: #toolCall.function.name ?: "unknown"#",
-					type: "warning",
-					log : "ai"
-				)
-				newMessages.append({
-					"role"        : "tool",
-					"tool_call_id": toolCall.id ?: "",
-					"content"     : "Tool ['#toolCall.function.name ?: "unknown"#'] not found in chat request"
-				});
-			}
-		} );
-
-		arguments.chatRequest.setMessages( newMessages );
-
-		// Continue streaming the final answer after tool execution
-		chatStream( arguments.chatRequest, arguments.callback, arguments.interactionCount + 1 );
-	}
-
-	/**
-	 * Generate embeddings for the given input text(s)
-	 * This method in this base class is based on OpenAI's embeddings API standard.
-	 * If the provider does not support this standard, it should override this method.
-	 *
-	 * @embeddingRequest The embedding request object
-	 *
-	 * @throws ProviderError if the provider returns an error from the request
-	 *
-	 * @return The embeddings response from the provider
-	 */
-	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
-		// Model Selection if not set, use the default in the service
-		arguments.embeddingRequest
-			.setApiKeyIfEmpty( getAPIKey() )
-			.mergeServiceParams( variables.params )
-			.mergeServiceHeaders( variables.headers )
-
-		// Build the packet according to the OpenAI embeddings API standard
-		var dataPacket = {
-			"input": arguments.embeddingRequest.getInput(),
-			"model": arguments.embeddingRequest.getModel()
-		}.append( arguments.embeddingRequest.getParams() )
-
-		// Send it
-		var result = sendEmbeddingRequest( embeddingRequest, dataPacket )
-
-		// If an error is returned, throw it
-		if( result.keyExists( "error" ) ){
-			writeLog(
-				text: result.error.toString(),
-				type: "error",
-				log : "ai"
-			)
-
-			// Announce the error
-			BoxAnnounce( "onAIError", {
-				error: result.error,
-				errorMessage: result.error.toString(),
-				provider: this,
-				operation: "embeddings",
-				embeddingRequest: arguments.embeddingRequest,
-				canRetry: true
-			} );
-
-			throw(
-				type   : "ProviderError",
-				message: result.error.toString()
-			);
-		}
-
-        // Verify that data key exists, else throw an exception with the raw response
-        if( !result.keyExists( "data" ) ){
-            writeLog(
-                text: "Invalid embedding response: #result.toString()#",
-                type: "error",
-                log : "ai"
-            )
-
-            // Announce the error
-            BoxAnnounce( "onAIError", {
-                error: "Invalid embedding response",
-                errorMessage: "Invalid embedding response from provider. Response: #result.toString()#",
-                provider: this,
-                operation: "embeddings",
-                embeddingRequest: arguments.embeddingRequest,
-                canRetry: false
-            } );
-
-            throw(
-                type   : "ProviderError",
-                message: "Invalid embedding response from provider. Response: #result.toString()#"
-            );
-        }
-
-		// Determine return formats
-		switch( embeddingRequest.getReturnFormat() ){
-			case "embeddings":
-				return result.data.map( item => item.embedding );
-			case "raw":
-				return result;
-			case "first": default:
-				return result.data.first().embedding;
-		}
+	private any function postResponse(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required any result,
+		required string operation
+	) {
+		return arguments.result
 	}
 
 	/**
@@ -586,10 +286,15 @@ abstract class implements="IAiService" {
 	 *
 	 * @chatRequest The chatRequest object to use in the request
 	 * @dataPacket The data packet to send to the provider
+	 * chatUrl Optional URL to override the default chat endpoint (some providers use the same endpoint for chat and embeddings)
 	 *
 	 * @return The response from the provider as a struct
 	 */
-	private function sendRequest( required AiChatRequest chatRequest, required struct dataPacket ){
+	private function sendChatRequest(
+		required AiChatRequest chatRequest,
+		required struct dataPacket,
+		chatUrl = getChatURL()
+	){
 		// Announce the request
 		BoxAnnounce(
 			"onAIChatRequest",
@@ -600,7 +305,7 @@ abstract class implements="IAiService" {
 			}
 		);
 
-		// Log the request
+		// Log the request to the logs if enabled
 		if( arguments.chatRequest.getLogRequest() ){
 			writeLog(
 				text: buildRequestLog( arguments.chatRequest, arguments.dataPacket ),
@@ -615,7 +320,7 @@ abstract class implements="IAiService" {
 		}
 
 		bx: http
-			url     = getChatURL()
+			url     = arguments.chatUrl
 			method  = "post"
 			result  = "chatResult"
 			charset = "utf-8"
@@ -679,10 +384,10 @@ abstract class implements="IAiService" {
 		// Try to deserialize the response
 		try{
 			var iData = {
-				"chatRequest" = arguments.chatRequest,
-				"response" = jsonDeserialize( chatResult.filecontent ),
+				"chatRequest" 	: arguments.chatRequest,
+				"response" 		: jsonDeserialize( chatResult.filecontent ),
 				"rawResponse"	: chatResult,
-				"provider" = this
+				"provider" 		: this
 			}
 		}
 		catch( Any e ){
@@ -691,7 +396,7 @@ abstract class implements="IAiService" {
 				error: e,
 				errorMessage: "Error deserializing response: #chatResult.filecontent#",
 				provider: this,
-				operation: "sendRequest",
+				operation: "sendChatRequest",
 				aiRequest: arguments.chatRequest,
 				canRetry: true
 			} );
@@ -714,13 +419,15 @@ abstract class implements="IAiService" {
 	 * @chatRequest The chatRequest object to use in the request
 	 * @dataPacket The data packet to send to the provider
 	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
+	 * chatUrl Optional URL to override the default chat endpoint (some providers use the same endpoint for chat and embeddings)
 	 *
 	 * @return void
 	 */
 	private struct function sendStreamRequest(
 		required AiChatRequest chatRequest,
 		required struct dataPacket,
-		required function callback
+		required function callback,
+		chatUrl = getChatURL()
 	 ){
 		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback;
@@ -756,7 +463,7 @@ abstract class implements="IAiService" {
 		}
 
 		// Build HTTP request with fluent API
-		var httpRequest = http( getChatURL() )
+		var httpRequest = http( arguments.chatUrl )
 			.method( "POST" )
 			.charset( "utf-8" )
 			.timeout( arguments.chatRequest.getTimeout() )
@@ -940,10 +647,15 @@ abstract class implements="IAiService" {
 	 *
 	 * @embeddingRequest The embedding request object to use in the request
 	 * @dataPacket The data packet to send to the provider
+	 * @embeddingUrl Optional URL to override the default embeddings endpoint (some providers use the same endpoint for chat and embeddings)
 	 *
 	 * @return The response from the provider as a struct
 	 */
-	private function sendEmbeddingRequest( required AiEmbeddingRequest embeddingRequest, required struct dataPacket ){
+	private function sendEmbeddingRequest(
+		required AiEmbeddingRequest embeddingRequest,
+		required struct dataPacket,
+		embeddingUrl = getEmbeddingsURL()
+	){
 		// Announce the request
 		BoxAnnounce(
 			"onAIEmbedRequest",
@@ -969,7 +681,7 @@ abstract class implements="IAiService" {
 		}
 
 		bx: http
-			url     = getEmbeddingsURL()
+			url     = arguments.embeddingUrl
 			method  = "post"
 			result  = "embeddingResult"
 			charset = "utf-8"

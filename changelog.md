@@ -34,6 +34,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **AI Skills system** (`aiSkill()` BIF + `withSkills()` / `withAvailableSkills()` APIs on `AiModel` and `AiAgent`): Composable, reusable knowledge blocks — following the [Claude Agent Skills open standard](https://www.anthropic.com/news/agent-skills) — that can be injected into any model or agent system message at runtime.
+  - **`aiSkill( path | name, description, content, recurse )`** — Creates or discovers `AiSkill` instances. Pass a file path to load a single `SKILL.md`, a directory path to auto-discover all skills recursively, or `name`/`description`/`content` for inline definitions with no files needed.
+  - **`aiGlobalSkills()`** — Returns the globally shared pool of skills auto-injected into every new agent's `availableSkills` pool. Populated via `ModuleConfig.bx` → `settings.globalSkills`.
+  - **Always-on skills** (`withSkills()` / `addSkill()`): Full skill content is injected into the system message on every call. Best for small, universally relevant guidance.
+  - **Lazy skills** (`withAvailableSkills()` / `addAvailableSkill()`): Only a compact index (name + description) is included in the system message. The LLM calls the auto-registered `loadSkill( name )` tool to fetch full content on demand. Best for large or rarely needed skill libraries.
+  - **`activateSkill( name )`** — Moves a skill from the lazy pool to always-on, promoting it for the rest of the session.
+  - **`buildSkillsContent()`** — Renders the combined skills system-message block for inspection or custom injection.
+  - **SKILL.md format**: Each skill lives in its own subdirectory under `.ai/skills/`. The file is Markdown with an optional YAML frontmatter block containing `description`. The body is the instruction content. If frontmatter is absent, the first paragraph of body text is used as the description.
+  - **`AiModel` and `AiAgent` `getConfig()`** now include `activeSkillCount`, `availableSkillCount`, and `skills` (a struct with `activeSkills` and `availableSkills` name/description arrays) for full introspection.
+  - **`aiAgent()` BIF** gains `skills: []` and `availableSkills: []` construction-time parameters. Global skills from `aiGlobalSkills()` are automatically prepended to every new agent's available pool.
+  - **`aiModel()` BIF** gains a `skills: []` construction-time parameter.
+- **MCP server seeding for agents and models**: Agents and models can now be seeded directly with one or more MCP servers. All tools exposed by those servers are automatically discovered via `listTools()` and registered as `MCPTool` instances — no manual Tool construction required.
+  - New `MCPTool` class (`models/tools/MCPTool.bx`) implements `ITool` by proxying a single MCP server tool. It converts the MCP `inputSchema` to the OpenAI function-calling schema format and forwards invocations to the server via `MCPClient.send()`.
+  - New `withMCPServer( server, config )` fluent method on `AiAgent` and `AiModel`. Accepts a URL string or a pre-configured `MCPClient` instance. Optional `config` struct supports `token`, `timeout`, `headers`, `user`, and `password`.
+  - New `withMCPServers( servers )` fluent method on `AiAgent` and `AiModel` for seeding from multiple servers in one call. Each entry can be a URL string, a config struct `{ url, token, timeout, … }`, or a pre-configured `MCPClient`.
+  - New `listMcpServers()` method on `AiAgent` and `AiModel` returns the list of currently connected MCP servers with their exposed tools for introspection and debugging.
+  - `aiAgent()` and `aiModel()` BIFs gain an `array mcpServers = []` parameter so servers can be provided at construction time.
+  - `AiAgent` now tracks connected MCP servers in a `mcpServers` property (`[{ url, toolNames }]`). This list is automatically injected into the system prompt so the LLM can correctly answer questions like *"what MCP servers are you connected to?"* and *"which tools came from which server?"*
+  - New `listTools()` method on `AiAgent` returns `[{ name, description }]` for all registered tools — useful for programmatic introspection.
+  - `AiAgent|AiModel.getConfig()` now includes `tools` (full name/description list) and `mcpServers` (server URL + tool-name list) alongside the existing `toolCount`.
+- **Global AI Tool Registry**: New singleton `AIToolRegistry` (accessible via `aiToolRegistry()` BIF) provides a module-scoped registry for AI tools. Tools can be registered by name with optional module namespacing (e.g. `now@bxai`), discovered at runtime by bare name or full key, and resolved lazily before LLM requests via `aiToolRegistry().resolveTools()`. This means tools can be referenced by string name in `params.tools` arrays and resolved automatically rather than requiring live object references.
+- **`BaseTool` abstract base class**: All tool implementations now extend `BaseTool`, which provides the shared invocation lifecycle (firing `beforeAIToolExecute` and `afterAIToolExecute` interception events), result serialization (primitives pass through, complex values serialize to JSON), and the fluent `describeArg()` / `describe[ArgName]()` schema annotation syntax.
+- **`ClosureTool` class**: Replaces the retired `Tool.bx`. A `BaseTool` subclass backed by any closure or lambda. Auto-introspects the callable's parameter metadata to generate an OpenAI-compatible function schema. Receives the originating `AiChatRequest` as `_chatRequest` for context-aware closures.
+- **`CoreTools` built-in tools**: Ships two tools out of the box. `now` (registered automatically as `now@bxai` on module load) returns the current date/time in ISO 8601 — ideal for giving the AI temporal awareness. `httpGet` (opt-in only, **not** auto-registered for security) fetches any URL via HTTP GET. Register it explicitly if your application requires web access.
+- **Lazy tool resolution**: `params.tools` arrays in `aiChat()`, `aiModel().run()`, and `aiAgent().run()` now accept string registry keys alongside live `ITool` instances. `AIToolRegistry::resolveTools()` converts any string keys to their registered `ITool` before the request is sent.
+- Two new interception points: `onAIToolRegistryRegister` and `onAIToolRegistryUnregister`.
+- Structured output for ollama tools, allowing for more complex and rich tool responses that can include multiple fields and nested data instead of just a single string output.
+- Streaming tools for ollama, allowing tools to return data in a streaming fashion for real-time processing and response generation.
+- Tools can now have non-required arguments in their schema
+- Tools can now access the full `AiChatRequest` object during invocation, allowing for more complex and context-aware tool behavior. They receive a `_chatRequest` argument that includes all the properties of the original request, such as `messages`, `params`, `options`, and more. This enables tools to make informed decisions based on the full conversation context and request configuration.
+- HuggingFace embeddings support
+- Ability to send a custom URL to the different senders in the base service.
+- Middleware support for `AiModel` and `AiAgent`, with agent middleware prepended ahead of model middleware.
+- Provider lifecycle hooks in `preRequest()`, `postResponse()`,for any custom logic before and after requests to change the shape of the request or response, log additional data, etc.  These hooks are provider-specific and allow for custom behavior without needing to override the entire `sendChatRequest()` method.
+- **Per-call identity routing on all memory types**: `add()`, `getAll()`, `clear()`, `trim()`, `seed()`, and related methods on every `IAiMemory` and `IVectorMemory` implementation now accept optional `userId` and `conversationId` arguments. This follows the Spring AI `ChatMemory` pattern — a single memory instance can safely serve multiple tenants without creating a new instance per user. Construction-time values remain as fallbacks.
+- **Provider capability interfaces**: New `models/providers/capabilities/` package introduces `IAiChatService` and `IAiEmbeddingsService` — scoped interfaces that let providers declare exactly which operations they support at the type level rather than through runtime throws.
+- **`getCapabilities()` / `hasCapability()` on all providers**: Every provider now exposes `getCapabilities()` (returns `["chat", "stream", "embeddings", ...]`) and `hasCapability( "chat" )` for clean, self-documenting runtime introspection. These are backed by `isInstanceOf()` checks and stay automatically in sync with the `implements` declarations on each provider — no maintenance required.
+- **`AiAgent` parent-child hierarchy**: `AiAgent` now tracks its position in a multi-agent tree through a `parentAgent` property and a full set of hierarchy helpers:
+  - `setParentAgent(parent)` — assign a parent with self-reference and cycle-detection guards
+  - `clearParentAgent()` — detach from a parent
+  - `hasParentAgent()` — returns `true` if the agent has a parent
+  - `isRootAgent()` — returns `true` for top-level agents
+  - `getRootAgent()` — walks up the tree and returns the root agent
+  - `getAgentDepth()` — returns the nesting depth (0 = root, 1 = direct child, …)
+  - `getAgentPath()` — returns a slash-delimited path string, e.g. `/coordinator/researcher`
+  - `getAncestors()` — returns an ordered array `[immediateParent, …, root]`
+  - `addSubAgent()` now automatically calls `setParentAgent(this)` on the sub-agent
+  - `setSubAgents()` now calls `clearParentAgent()` on replaced sub-agents before replacing them
+  - `getConfig()` now includes `parentAgent` (name string), `agentDepth`, and `agentPath`
+
+### Changed
+
+- Refactored all runnable objects to the `runnables` folder. This includes `AiModel`, `AiAgent`, and `AiMessage`. This better reflects their purpose as executable entities that can be run with different inputs, and allows for a cleaner separation between the core service logic and the runnable wrappers.
+- Refactored the `BaseService` to be truly a base and move all OpenAI specific logic to `OpenAIService`, which now serves as the default provider implementation. This allows for cleaner implementations of other providers that don't need to override every method.
+- **`AiAgent` is now fully stateless**: `userId`, and `conversationId` are resolved per-call from the `options` argument passed to `run()` and `stream()`, eliminating shared-state concurrency bugs in multi-user deployments.  Seeding a memory with `userId` and `conversationId` is still supported, but these values will be overridden by any values passed in at call time.
+- `resume()` and `resumeStream()` now require `threadId` as an explicit `required string` argument instead of defaulting to the former instance property.
+- **`IAiService` contract trimmed**: The base interface now declares only identity/configuration/capability-discovery methods (`getName()`, `configure()`, `getCapabilities()`, `hasCapability()`). The operation methods (`invoke()`, `invokeStream()`, `embeddings()`) have moved to their respective capability interfaces where they belong.
+- **`VoyageService` now extends `BaseService` directly** and implements only `IAiEmbeddingsService` — it no longer extends `OpenAIService` with stubbed-out chat methods that threw at runtime. The type system now enforces the embeddings-only constraint at compile time.
+- **`aiChat()`, `aiChatStream()`, and `aiEmbed()` BIF guards**: Each BIF now checks the provider implements the required capability interface before attempting the call and throws a clear `UnsupportedCapability` exception instead of a cryptic provider error. Zero breaking changes to public BIF signatures.
+
+### Improvements
+
+- Renamed `BaseService.sendRequest()` to `sendChatRequest()`.
+- Reduced duplicate payload fields in `onAITokenCount`.
+
+### Fixed
+
+- Model and Agent streaming was not announcing global pre/post events
+- Changelog corruption due to merge conflict.
+- MCP requestId null scope crash on JSON-RPC notifications for MCP servers
+- MiniMax chat errors (`base_resp.status_code != 0`) now surface correctly.
+- **`OllamaService` stale `postEmbeddingResponse()` hook**: The old hook was never wired to the current `BaseService` lifecycle and silently did nothing. Replaced with the proper `postResponse( aiRequest, dataPacket, result, operation )` override that guards on `operation != "embeddings"`, identical to how every other dual-capability provider handles this.
+
+## [2.4.0] - 2026-02-20
+
+### Added
+
 - **MiniMax AI Provider**: Added support for [MiniMax](https://platform.minimax.io/) AI service with chat, streaming, and embeddings support. Use the `minimax` provider name and set your API key via the `MINIMAX_API_KEY` environment variable.
 - Updated `getConfig()` to not show sensitive info.
 

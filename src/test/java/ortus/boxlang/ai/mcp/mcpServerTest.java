@@ -1512,4 +1512,27 @@ public class mcpServerTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "bodyLimit" ) ) ).isEqualTo( 1000 );
 	}
 
+	@Test
+	@DisplayName( "Notification without id does not throw and response omits id" )
+	public void testNotificationWithoutId() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "notificationTest" )
+				// JSON-RPC notification: no "id" key at all
+				result = myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "ping"
+				} )
+				hasId = structKeyExists( result, "id" )
+				hasJsonrpc = structKeyExists( result, "jsonrpc" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasId" ) ) ).isEqualTo( false );
+		assertThat( variables.get( Key.of( "hasJsonrpc" ) ) ).isEqualTo( true );
+	}
+
 }

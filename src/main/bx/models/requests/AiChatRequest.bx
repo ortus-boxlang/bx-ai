@@ -52,7 +52,7 @@ class extends="AiBaseRequest"{
 	 * @methodDefaults Optional method-specific defaults (e.g., from aiChat BIF) to layer between module settings and user options
 	 */
 	function init(
-		aiMessage aiMessage = new bxModules.bxai.models.AiMessage(),
+		aiMessage aiMessage = new bxModules.bxai.models.runnables.AiMessage(),
 		struct params = {},
 		struct options = {},
 		struct methodDefaults = {}
@@ -79,6 +79,9 @@ class extends="AiBaseRequest"{
 
 		// Provider-specific options
 		variables.providerOptions = options.providerOptions ?: {};
+
+		// Resume context from AiAgent.resume() / resumeStream()
+		variables.resumeContext = options._resumeContext ?: {};
 
 		// If context is provided in options, merge it into the message object
 		if( options.keyExists( "context" ) && isStruct( options.context ) ){

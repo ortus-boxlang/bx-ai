@@ -201,7 +201,7 @@ public class StructuredOutputTest extends BaseIntegrationTest {
 			)
 				.setStructuredOutput( new src.test.bx.Event() );
 
-			result = aiService().invoke( chatRequest );
+			result = aiService().chat( chatRequest );
 
 			eventName = result.getName();
 			eventDate = result.getDate();

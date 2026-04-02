@@ -35,7 +35,7 @@ println( "=" .repeatString( 70 ) )
 println( "\n1️⃣  WINDOWED MEMORY (keeps last 5 messages)" )
 println( "-" .repeatString( 70 ) )
 
-windowedMemory = aiMemory( "windowed", { maxMessages: 5 } )
+windowedMemory = aiMemory( "window", config: { maxMessages: 5 } )
 windowedAgent = aiAgent(
     name: "WindowedBot",
     description: "Agent with windowed memory",
@@ -64,7 +64,7 @@ println( "💰 Token usage: Low" )
 println( "\n2️⃣  SUMMARY MEMORY (summarizes old, keeps recent)" )
 println( "-" .repeatString( 70 ) )
 
-summaryMemory = aiMemory( "summary", {
+summaryMemory = aiMemory( "summary", config: {
     maxMessages: 8,
     summaryThreshold: 4,
     summaryModel: "gpt-4o-mini",
@@ -80,10 +80,10 @@ summaryAgent = aiAgent(
 conversationMessages.each( msg => summaryAgent.run( msg ) )
 
 println( "Messages after conversation: #summaryMemory.getAll().len()#" )
-println( "Has summary: #summaryMemory.hasSummary() ? 'Yes' : 'No'#" )
+println( "Has summary: #summaryMemory.getHasSummary() ? 'Yes' : 'No'#" )
 
-if ( summaryMemory.hasSummary() ) {
-    summary = summaryMemory.getSummary()
+if ( summaryMemory.getHasSummary() ) {
+    summary = summaryMemory.getCurrentSummary()
     println( "Summary: #left(summary, 80)#..." )
 }
 
@@ -105,9 +105,8 @@ println( "💰 Token usage: Moderate" )
 println( "\n3️⃣  FILE MEMORY (keeps everything)" )
 println( "-" .repeatString( 70 ) )
 
-tempFile = getTempDirectory() & "comparison_#createUUID()#.json"
-fileMemory = aiMemory( "file", {
-    filePath: tempFile,
+fileMemory = aiMemory( "file", config: {
+    directoryPath: getTempDirectory(),
     maxMessages: 100
 } )
 fileAgent = aiAgent(
@@ -120,7 +119,7 @@ fileAgent = aiAgent(
 conversationMessages.each( msg => fileAgent.run( msg ) )
 
 println( "Messages after conversation: #fileMemory.getAll().len()#" )
-println( "File size: #numberFormat(getFileInfo(tempFile).size / 1024, '0.00')# KB" )
+println( "Messages in file: #fileMemory.count()#" )
 
 println( "\nTesting memory recall:" )
 println( "Q: #testQuestion#" )
@@ -137,7 +136,7 @@ println( "📊 Context retention: Perfect" )
 println( "💰 Token usage: High" )
 
 // Cleanup
-fileDelete( tempFile )
+fileMemory.clear()
 
 // =============== COMPARISON TABLE ===============
 println( "\n" & "=" .repeatString( 70 ) )

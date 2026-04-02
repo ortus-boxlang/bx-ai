@@ -99,7 +99,7 @@ jobs:
           ./build.docs.sh
 
       - name: Commit Changelog [unreleased] with latest version
-        uses: EndBug/add-and-commit@v9.1.4
+        uses: EndBug/add-and-commit@v10.0.0
         if: env.SNAPSHOT == 'false'
         with:
           author_name: Github Actions
@@ -117,7 +117,7 @@ jobs:
 
       - name: Upload Build Artifacts
         if: success()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: boxlang-build
           path: |
@@ -164,7 +164,7 @@ jobs:
           cd $GITHUB_WORKSPACE
 
       - name: Create Github Release
-        uses: taiki-e/create-gh-release-action@v1.9.2
+        uses: taiki-e/create-gh-release-action@v1.9.3
         continue-on-error: true
         if: env.SNAPSHOT == 'false'
         id: create_release
@@ -206,7 +206,7 @@ jobs:
           ref: development
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: boxlang-build
           path: .tmp
@@ -221,7 +221,7 @@ jobs:
           git pull
 
       - name: Commit Version Bump
-        uses: EndBug/add-and-commit@v9.1.4
+        uses: EndBug/add-and-commit@v10.0.0
         with:
           author_name: Github Actions
           author_email: info@ortussolutions.com

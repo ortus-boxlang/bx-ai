@@ -1,0 +1,47 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Core built-in tools for bxai.
+ *
+ * Auto-registered tools (registered in ModuleConfig.onLoad):
+ *   now@bxai  — Returns current date/time in ISO 8601 format.
+ *
+ * Opt-in tools (NOT auto-registered — security risk, can reach internal network):
+ *   httpGet    — Fetches the body of a URL via HTTP GET.
+ *                Register manually if needed:
+ *                  aiToolRegistry().register( name: "httpGet", description: "...", callback: new CoreTools().httpGet )
+ */
+class {
+
+	/**
+	 * Returns the current date and time in ISO 8601 format.
+	 * Auto-registered as now@bxai on module load.
+	 */
+	@AITool( "Returns the current date and time in ISO 8601 format. Use this whenever you need to know the current date or time." )
+	public string function now() {
+		return now().dateTimeFormat( "iso" )
+	}
+
+	/**
+	 * Fetches the body of a URL via HTTP GET.
+	 * NOT auto-registered. Opt in explicitly if your application requires it.
+	 *
+	 * @url The URL to fetch
+	 */
+	@AITool( "Fetches the contents of a URL via HTTP GET. Use this to retrieve data from websites or REST APIs." )
+	public string function httpGet( required string url ) {
+		return http( url: arguments.url ).send().fileContent
+	}
+
+}

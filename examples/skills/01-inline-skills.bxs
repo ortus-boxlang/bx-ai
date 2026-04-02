@@ -1,0 +1,66 @@
+/**
+ * 01 - Inline Skills
+ *
+ * Demonstrates creating AI skills entirely in code (no files needed) and
+ * attaching them to a model.  Always-on skills inject their full content
+ * into the system message on every call.
+ *
+ * Run with:
+ *   box bx:run examples/skills/01-inline-skills.bxs
+ */
+
+println( "=== Inline Skills Example ===" )
+println( "" )
+
+// ── Create skills inline ──────────────────────────────────────────────────────
+
+sqlSkill = aiSkill(
+    name       : "sql-optimizer",
+    description: "Apply SQL optimisation rules when writing or reviewing queries",
+    content    : "
+## SQL Optimisation Rules
+
+- Always use indexed columns in WHERE, JOIN, and ORDER BY clauses
+- Avoid SELECT * — list only the columns you need
+- Prefer JOINs over subqueries for large datasets
+- Batch large writes; never DELETE millions of rows in one statement
+"
+)
+
+styleSkill = aiSkill(
+    name       : "concise-writing",
+    description: "Keep responses concise and jargon-free",
+    content    : "
+## Writing Style
+
+- Use active voice.
+- Cut any word that adds no meaning.
+- One idea per paragraph.
+"
+)
+
+println( "Skills created: #sqlSkill.getName()#, #styleSkill.getName()#" )
+println( "" )
+
+// ── Attach to a model ─────────────────────────────────────────────────────────
+
+model = aiModel( "openai" ).withSkills( [ sqlSkill, styleSkill ] )
+
+config = model.getConfig()
+println( "Model skill count: #config.activeSkillCount#" )
+println( "" )
+
+// ── Ask something that benefits from both skills ──────────────────────────────
+
+println( "Prompt: Write a query to fetch the 10 most recent active users" )
+println( "" )
+
+response = model.run( "Write a query to fetch the 10 most recent active users" )
+println( "Response:" )
+println( response )
+println( "" )
+
+// ── You can also pass skills at construction time via the BIF ─────────────────
+
+model2 = aiModel( skills: [ sqlSkill ] )
+println( "Model2 skill count: #model2.getConfig().skillCount#" )

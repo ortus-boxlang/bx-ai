@@ -14,6 +14,9 @@
  * ----------------------------------------------------------------------------------
  * Base class for AI request models that provides common properties and methods
  */
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+import bxModules.bxai.models.middleware.StructMiddlewareAdapter;
+
 abstract class{
 
 	/**
@@ -66,7 +69,7 @@ abstract class{
 	/**
 	 * The timeout for the request
 	 */
-	property name="timeout" type="numeric" default=30;
+	property name="timeout" type="numeric" default="#static.DEFAULT_HTTP_TIMEOUT#";
 
 	/**
 	 * Base URL for the provider API (optional override for the service's default)
@@ -111,10 +114,25 @@ abstract class{
 	property name="providerOptions" type="struct" default={};
 
 	/**
+	 * Resume context injected by AiAgent.resume() or resumeStream().
+	 * Carries the human decision ("approve", "reject", "edit") and any edited data
+	 * from a prior HumanInTheLoop suspension, so the middleware can honour it on the
+	 * next tool call instead of suspending again.
+	 */
+	property name="resumeContext" type="struct" default={};
+
+	/**
+	 * Middleware stack for this request.
+	 * Added via addMiddleware() — can be IAiMiddleware instances or struct-of-closures (auto-wrapped).
+	 */
+	property name="middleware" type="array" default=[];
+
+	/**
 	 * Module settings - centralized access point
 	 */
 	static {
 		final MODULE_SETTINGS = getModuleInfo( "bxai" ).settings
+		final DEFAULT_HTTP_TIMEOUT = MODULE_SETTINGS.timeout ?: 45
 	}
 
 	/**
@@ -228,6 +246,146 @@ abstract class{
 	 */
 	function getProviderOption( required string key, any defaultValue = "" ){
 		return variables.providerOptions[ arguments.key ] ?: arguments.defaultValue;
+	}
+
+	// ==================== Middleware Support ====================
+
+	/**
+	 * Add a middleware to the request's stack.
+	 * Structs are automatically wrapped in StructMiddlewareAdapter.
+	 * Arrays are flattened — each element is added individually.
+	 *
+	 * @middleware IAiMiddleware instance, struct-of-closures, or array of either
+	 *
+	 * @return This request for chaining
+	 */
+	AiBaseRequest function addMiddleware( required any middleware ) {
+		if ( isArray( arguments.middleware ) ) {
+			arguments.middleware.each( mw => addMiddleware( mw ) );
+			return this;
+		}
+
+		if ( isStruct( arguments.middleware ) && !isObject( arguments.middleware ) ) {
+			// Wrap plain struct-of-closures in the adapter
+			variables.middleware.append( new StructMiddlewareAdapter( arguments.middleware ) );
+		} else {
+			variables.middleware.append( arguments.middleware );
+		}
+		return this;
+	}
+
+	/**
+	 * Fire a named sequential hook across the middleware stack.
+	 *
+	 * - Iterates forward (or in reverse when reverse=true for "after" hooks)
+	 * - Stops and returns the first terminal result (cancel, reject, or suspend)
+	 * - Returns AiMiddlewareResult.continue() if all middleware pass
+	 * - Fires the onError hook if any middleware throws
+	 *
+	 * @hook    Hook method name (e.g. "beforeToolCall")
+	 * @context Context struct for this hook
+	 * @reverse If true, iterate in reverse order (for outbound "after" hooks)
+	 *
+	 * @return The first terminal AiMiddlewareResult, or continue()
+	 */
+	AiMiddlewareResult function fireMiddleware(
+		required string hook,
+		required struct context,
+		boolean reverse = false
+	) {
+		if ( variables.middleware.isEmpty() ) {
+			return AiMiddlewareResult.continue()
+		}
+
+		var stack = arguments.reverse ? variables.middleware.reverse() : variables.middleware
+
+		for ( var mw in stack ) {
+			try {
+				var result = invoke( mw, arguments.hook, { context: arguments.context } )
+
+				// Ensure we got a proper AiMiddlewareResult back
+				if ( !isNull( result ) && result instanceof "AiMiddlewareResult" && result.isTerminal() ) {
+					return result
+				}
+			} catch ( any e ) {
+				writeLog(
+					text: "Error in middleware " & arguments.hook & " handler: " & e.message & e.detail,
+					type:"error",
+					log: "ai"
+				)
+				// Fire onError hook, then rethrow
+				try {
+					invoke( mw, "onError", {
+						context: {
+							error  : e,
+							phase  : arguments.hook,
+							context: arguments.context
+						}
+					} )
+				} catch ( any ignored ) {
+					writeLog(
+						text: "Error in middleware onError handler: " & ignored.message & ignored.detail,
+						type:"error",
+						log: "ai"
+					)
+				}
+				rethrow
+			}
+		}
+
+		return AiMiddlewareResult.continue()
+	}
+
+	/**
+	 * Fire a wrap-style hook that surrounds the actual invocation.
+	 *
+	 * Builds a nested closure chain so each middleware wraps the next.
+	 * The innermost layer is innerFunction.
+	 *
+	 * @hook    Wrap method name (e.g. "wrapLLMCall" or "wrapToolCall")
+	 * @context Context struct for this hook
+	 * @innerFunction The actual LLM/tool call to execute at the center
+	 *
+	 * @return The result of the outermost wrapper (which eventually calls innerFunction)
+	 */
+	any function fireWrapMiddleware(
+		required string hook,
+		required struct context,
+		required function innerFunction
+	) {
+		if ( variables.middleware.isEmpty() ) {
+			return arguments.innerFunction()
+		}
+
+		// Build the chain from innermost (last middleware) to outermost (first middleware).
+		// Each layer is created via a private helper so its captured variables live in
+		// their own function-call scope — avoiding the classic closure-in-loop bug where
+		// all lambdas share the same (final) values of loop variables.
+		var chain = arguments.innerFunction
+		var i     = variables.middleware.len()
+		while ( i >= 1 ) {
+			chain = _buildWrapLayer( variables.middleware[ i ], arguments.hook, arguments.context, chain )
+			i--
+		}
+
+		return chain()
+	}
+
+	/**
+	 * Creates a single wrap-layer closure that captures its arguments in an isolated
+	 * function scope, preventing shared-variable issues when chaining multiple layers.
+	 */
+	private function _buildWrapLayer(
+		required any mw,
+		required string hook,
+		required struct context,
+		required function next
+	) {
+		var _mw   = arguments.mw
+		var _hook = arguments.hook
+		var _ctx  = arguments.context
+		var _next = arguments.next
+		return () => invoke( _mw, _hook, [ _ctx, _next ] )
 	}
 
 }

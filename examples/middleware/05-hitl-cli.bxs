@@ -1,0 +1,47 @@
+/**
+ * Human-in-the-Loop Middleware — CLI Mode Example
+ *
+ * In CLI mode the middleware pauses before any listed tool is executed
+ * and waits for a human to type "approve", "reject", or "edit" on stdin.
+ *
+ * Run this script from a terminal so stdin is available.
+ */
+
+println( "=== Human-in-the-Loop (CLI Mode) ===" )
+println( "" )
+
+// A tool that sends an email — we want human sign-off before it fires
+function sendEmail( required string to, required string subject, required string body ) {
+	println( "  [EMAIL] Sending to #arguments.to#: #arguments.subject#" )
+	return "Email sent to #arguments.to#"
+}
+
+emailTool = aiTool(
+	"sendEmail",
+	"Send an email message",
+	sendEmail
+)
+	.describeArg( "to",      "Recipient address" )
+	.describeArg( "subject", "Email subject" )
+	.describeArg( "body",    "Email body" )
+
+hitlMw = new bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware(
+	mode                 : "cli",
+	toolsRequiringApproval: [ "sendEmail" ],
+	showArguments        : true     // Print the arguments so the operator can review them
+)
+
+agent = aiAgent(
+	name       : "EmailAgent",
+	description: "Agent that sends emails — with human approval",
+	tools      : [ emailTool ],
+	middleware : [ hitlMw ]
+)
+
+println( "You will be prompted before the agent sends any email." )
+println( "Type 'approve', 'reject', or 'edit' at the prompt." )
+println( "" )
+
+response = agent.run( "Send a welcome email to alice@example.com" )
+println( "" )
+println( "Final response: #response#" )

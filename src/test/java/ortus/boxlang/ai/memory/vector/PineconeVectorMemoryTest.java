@@ -161,7 +161,7 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 	@Order( 2 )
 	@DisplayName( "Test storing and retrieving documents with PineconeVectorMemory" )
 	void testStoreAndRetrieve() throws Exception {
-
+		// @formatter:off
 		runtime.executeSource(
 		    """
 		    	// Get Pinecone config
@@ -184,8 +184,12 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 		    doc1Id = createUUID();
 		    doc2Id = createUUID();
 
-		    memory.add( doc1Id, "BoxLang is a modern JVM language", { category: "programming" } );
-		    memory.add( doc2Id, "Vector databases store embeddings", { category: "database" } );
+		    memory.add(
+				{ id:doc1Id, text: "BoxLang is a modern JVM language", metadata: { category: "programming" } }
+			);
+		    memory.add(
+				{ id:doc2Id, text: "Vector databases store embeddings", metadata: { category: "database" } }
+			);
 
 		    // Small delay to allow indexing
 		    sleep( 2000 );
@@ -207,6 +211,7 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 		    }
 		    """,
 		    context );
+		// @formatter:on
 
 		IStruct testResult = variables.getAsStruct( result );
 
@@ -279,53 +284,58 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 	@DisplayName( "Test document retrieval by ID" )
 	void testGetById() throws Exception {
 
+		// @formatter: off
 		runtime.executeSource(
 		    """
-		    	import java.lang.System;
+		           import java.lang.System;
 
 		    	// Get Pinecone config
 		    	apiKey = getSystemSetting( "PINECONE_API_KEY" );
 		    	indexName = getSystemSetting( "PINECONE_INDEX" );
 		    	host = getSystemSetting( "PINECONE_HOST" );
 
-		    // Create memory
-		    testNamespace = "test_getbyid_" & left( createUUID(), 8 );
-		    memory = aiMemory( memory: "pinecone", key: testNamespace, config: {
-		        apiKey: apiKey,
-		        indexName: indexName,
-		        host: host,
-		        namespace: testNamespace,
-		        embeddingProvider: "openai",
-		        embeddingModel: "text-embedding-3-small"
-		    } );
+		    	// Create memory
+		    	testNamespace = "test_getbyid_" & left( createUUID(), 8 );
+		    	memory = aiMemory( memory: "pinecone", key: testNamespace, config: {
+		    		apiKey: apiKey,
+		    		indexName: indexName,
+		    		host: host,
+		    		namespace: testNamespace,
+		    		embeddingProvider: "openai",
+		    		embeddingModel: "text-embedding-3-small"
+		    	} );
 
-		    // Store with explicit ID
-		    testId = "test-doc-123";
-		    memory.add( testId, "Test document content", { type: "test" } );
+		    	// Store with explicit ID
+		    	testId = "test-doc-123";
+		    	memory.add( {
+		    		id: testId,
+		    		content: "Test document content",
+		    		metadata: { type: "test" }
+		    	} );
 
-		    // Wait for indexing (Pinecone Local needs significant time to index)
-		    sleep( 5000 );
+		    	// Wait for indexing (Pinecone Local needs significant time to index)
+		    	sleep( 5000 );
 
-		    // Retrieve by ID
-		    doc = memory.getById( testId );
+		    	// Retrieve by ID
+		    	doc = memory.getById( testId );
 
-		    result = {
-		        found: !doc.isEmpty(),
-		        hasText: doc.keyExists( "text" ),
-		        hasMetadata: doc.keyExists( "metadata" ),
-		        id: doc.keyExists( "id" ) ? doc.id : "",
-		        testId: testId
-		    };
+		    	result = {
+		    		found: !doc.isEmpty(),
+		    		hasText: doc.keyExists( "text" ),
+		    		hasMetadata: doc.keyExists( "metadata" ),
+		    		id: doc.keyExists( "id" ) ? doc.id : "",
+		    		testId: testId
+		    	};
 
-		    // Cleanup
-		    try {
-		        memory.clearAll();
-		    } catch( any e ) {
-		        // Ignore
-		    }
+		    	// Cleanup
+		    	try {
+		    		memory.clearAll();
+		    	} catch( any e ) {
+		    		// Ignore
+		    	}
 		    """,
 		    context );
-
+		// @formatter: on
 		IStruct testResult = variables.getAsStruct( result );
 
 		// Note: Pinecone Local indexing can be slow/unreliable
@@ -406,62 +416,69 @@ public class PineconeVectorMemoryTest extends BaseIntegrationTest {
 	@Order( 6 )
 	@DisplayName( "Test metadata filtering" )
 	void testMetadataFiltering() throws Exception {
-
+		// @formatter:off
 		runtime.executeSource(
 		    """
-		    	import java.lang.System;
+		    import java.lang.System;
 
-		    	// Get Pinecone config
-		    	apiKey = getSystemSetting( "PINECONE_API_KEY" );
-		    	indexName = getSystemSetting( "PINECONE_INDEX" );
-		    	host = getSystemSetting( "PINECONE_HOST" );
+		    // Get Pinecone config
+		    apiKey = getSystemSetting( "PINECONE_API_KEY" );
+		    indexName = getSystemSetting( "PINECONE_INDEX" );
+		    host = getSystemSetting( "PINECONE_HOST" );
 
-		    // Create memory
-		    testNamespace = "test_filter_" & left( createUUID(), 8 );
-		    memory = aiMemory( memory: "pinecone", key: testNamespace, config: {
-		        apiKey: apiKey,
-		        indexName: indexName,
-		        host: host,
-		        namespace: testNamespace,
-		        embeddingProvider: "openai",
-		        embeddingModel: "text-embedding-3-small"
-		    } );
+			// Create memory
+			testNamespace = "test_filter_" & left( createUUID(), 8 );
+			memory = aiMemory( memory: "pinecone", key: testNamespace, config: {
+				apiKey: apiKey,
+				indexName: indexName,
+				host: host,
+				namespace: testNamespace,
+				embeddingProvider: "openai",
+				embeddingModel: "text-embedding-3-small"
+			} );
 
-		    // Add documents with metadata
-		    memory.add( "Programming tutorials for beginners", { category: "tutorial" } );
-		    memory.add( "Advanced programming concepts", { category: "advanced" } );
-		    memory.add( "Programming reference guide", { category: "reference" } );
-
-		    // Wait for indexing (Pinecone Local needs significant time to index)
-		    sleep( 5000 );
-
-		    // Search with filter
-		    results = memory.getRelevant(
-		        "programming",
-		        5,
-		        { category: "tutorial" }
+			// Add documents with metadata
+			memory.add(
+		    	{ content: "Programming tutorials for beginners", metadata: { category: "tutorial" } }
+		    );
+			memory.add(
+		    	{ content: "Advanced programming concepts", metadata: { category: "advanced" } }
+		    );
+			memory.add(
+		    	{ content: "Programming reference guide", metadata: { category: "reference" } }
 		    );
 
-		    result = {
-		        resultCount: results.len(),
-		        allTutorials: true
-		    };
+			// Wait for indexing (Pinecone Local needs significant time to index)
+			sleep( 5000 );
 
-		    // Verify all results have tutorial category
-		    results.each( function( item ) {
-		        if ( !item.metadata.keyExists( "category" ) || item.metadata.category != "tutorial" ) {
-		            result.allTutorials = false;
-		        }
-		    } );
+			// Search with filter
+			results = memory.getRelevant(
+				"programming",
+				5,
+				{ category: "tutorial" }
+			);
 
-		    // Cleanup
-		    try {
-		        memory.clearAll();
-		    } catch( any e ) {
-		        // Ignore
-		    }
+			result = {
+				resultCount: results.len(),
+				allTutorials: true
+			};
+
+			// Verify all results have tutorial category
+			results.each( function( item ) {
+				if ( !item.metadata.keyExists( "category" ) || item.metadata.category != "tutorial" ) {
+					result.allTutorials = false;
+				}
+			} );
+
+			// Cleanup
+			try {
+				memory.clearAll();
+			} catch( any e ) {
+				// Ignore
+			}
 		    """,
-		    context );
+		context );
+		// @formatter:on
 
 		IStruct testResult = variables.getAsStruct( result );
 

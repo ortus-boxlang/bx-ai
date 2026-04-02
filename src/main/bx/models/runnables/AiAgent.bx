@@ -1,0 +1,1260 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * AI Agent - An autonomous entity that can reason, use tools, and maintain memory
+ *
+ * Inspired by LangChain agents but "Boxified" for simplicity and productivity.
+ * Agents can execute tasks, use tools, maintain conversation memory, and be chained in pipelines.
+ */
+import bxModules.bxai.models.runnables.*;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+import bxModules.bxai.models.middleware.IAiMiddleware;
+import bxModules.bxai.models.middleware.StructMiddlewareAdapter;
+
+class extends="AiBaseRunnable" {
+
+	/**
+	 * The agent's unique name
+	 */
+	property name="agentName" type="string" default="";
+
+	/**
+	 * The agent's description.
+	 * This is used as the `role` in the system message and should convey the agent's identity or purpose
+	 * because it will be used by the AI to refer to itself when deciding whether to use tools or not.
+	 */
+	property name="description" type="string" default="";
+
+	/**
+	 * System instructions for the agent. These are used as the `content` in the system message.
+	 */
+	property name="instructions" type="string" default="";
+
+	/**
+	 * The AI model instance to use for this agent
+	 */
+	property name="aiModel" type="AiModel";
+
+	/**
+	 * Memory instances (array of IAiMemory)
+	 * You can add multiple memories for different purposes.
+	 */
+	property name="memories" type="array" default=[];
+
+	/**
+	 * Model parameters to use by default
+	 */
+	property name="params" type="struct" default={};
+
+	/**
+	 * Agent options to use by default
+	 */
+	property name="options" type="struct" default={};
+
+	/**
+	 * Sub-agents registered to this agent.
+	 * Each sub-agent is automatically wrapped as an internal tool for delegation.
+	 */
+	property name="subAgents" type="array" default=[];
+
+	/**
+	 * Tools created for sub-agents (tracked separately for cleanup)
+	 */
+	property name="subAgentTools" type="array" default=[];
+
+	/**
+	 * Parent agent reference for sub-agents (null for top-level agents)
+	 */
+	property name="parentAgent" type="AiAgent";
+
+	/**
+	 * Optional checkpointer memory backend used to persist state during suspend/resume.
+	 * When set, suspended runs will automatically save a checkpoint.
+	 */
+	property name="checkpointer";
+
+	/**
+	 * TTL in minutes for checkpoint data written by the checkpointer.
+	 */
+	property name="checkpointTTL" type="numeric" default="#static.DEFAULT_CHECKPOINT_TTL#";
+
+	/**
+	 * Default agent name constant
+	 */
+	static {
+		DEFAULT_AGENT_NAME = "BxAi"
+		DEFAULT_AGENT_DESCRIPTION = "Role: BoxLang AI Agent"
+		DEFAULT_AGENT_INSTRUCTIONS = "You are a helpful AI assistant. Use the available tools when needed to accomplish tasks."
+		DEFAULT_CHECKPOINT_TTL = 30
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @name The agent's name
+	 * @description The agent's description
+	 * @instructions The agent's instructions
+	 * @model The AI model to use, defaults to the default BoxLang AI model
+	 * @memory The memory instance or array of memories, defaults to a simple in-memory store
+	 * @tools Array of tools for the agent
+	 * @subAgents Array of sub-agents to register as internal tools
+	 * @skills Always-on skills: full content injected into the system message on every call
+	 * @availableSkills Lazy skills: index-only until the LLM requests one via the built-in loadSkill() tool
+	 * @params Default model parameters
+	 * @options Default agent options
+	 * @middleware Middleware to apply to this agent (can also be added later with withMiddleware())
+	 * @checkpointer Optional memory backend for checkpointing on suspend
+	 * @checkpointTTL TTL in minutes for checkpoint data when using a checkpointer, defaults to 30 minutes
+	 * @mcpServers Optional array of MCP servers for distributed tool/sub-agent usage, each entry is a struct: { url: string, toolNames: array }
+	 */
+	function init(
+		string name = static.DEFAULT_AGENT_NAME,
+		string description = static.DEFAULT_AGENT_DESCRIPTION,
+		string instructions = static.DEFAULT_AGENT_INSTRUCTIONS,
+		AiModel model = aiModel(),
+		any memory = aiMemory(),
+		array tools = [],
+		array subAgents = [],
+		array skills = [],
+		array availableSkills = [],
+		struct params = {},
+		struct options = {},
+		any middleware = [],
+		any checkpointer,
+		numeric checkpointTTL = static.DEFAULT_CHECKPOINT_TTL,
+		array mcpServers = []
+	) {
+		// Set them up baby!
+		variables.description = arguments.description
+		variables.instructions = arguments.instructions
+		variables.aiModel = arguments.model.withTools( arguments.tools )
+		variables.tools = arguments.tools
+		variables.subAgents = []
+		variables.subAgentTools = []
+		variables.params = arguments.params
+		variables.options = arguments.options
+		variables.checkpointTTL = arguments.checkpointTTL
+		variables.checkpointer = arguments.checkpointer
+
+		// param the options return format to "single"
+		// Agent's by default return just the assistant's content
+		param variables.options.returnFormat = "single"
+
+		// If the agent name is empty, use the default
+		if ( arguments.name.len() == 0 ) {
+			arguments.name = static.DEFAULT_AGENT_NAME
+		}
+		// If the agent description is empty, use the default
+		if ( arguments.description.len() == 0 ) {
+			variables.description = static.DEFAULT_AGENT_DESCRIPTION
+		}
+		// If the agent instructions is empty, use the default
+		if ( arguments.instructions.len() == 0 ) {
+			variables.instructions = static.DEFAULT_AGENT_INSTRUCTIONS
+		}
+
+		// Set internal name + agentName
+		setName( arguments.name )
+
+		// Handle memory - can be single or array, or create default simple memory
+		variables.memories = isArray( arguments.memory ) ? arguments.memory : [ arguments.memory ]
+
+		// Handle sub-agents - register each as an internal tool
+		arguments.subAgents.each( subAgent => addSubAgent( subAgent ) )
+		// Middleware setup + Checkpointer
+		withMiddleware( arguments.middleware )
+		// MCP Server Setup
+		withMCPServers( arguments.mcpServers )
+
+		// Skill pools — always-on skills injected immediately; available skills are lazy
+		if ( arguments.skills.len() > 0 ) {
+			withSkills( arguments.skills )
+		}
+		if ( arguments.availableSkills.len() > 0 ) {
+			withAvailableSkills( arguments.availableSkills )
+		}
+
+		// Register the loadSkill tool if there are any lazy skills
+		if ( variables.availableSkills.len() > 0 ) {
+			_registerLoadSkillTool()
+		}
+
+		// Initialize system message cache
+		variables._systemMsgCache       = ""
+		variables._systemMsgFingerprint = ""
+
+		return this;
+	}
+
+	/**
+	 * Extend the always-on skill pool and keep the system message cache invalidated.
+	 * Overrides the base implementation to auto-register the loadSkill tool the first
+	 * time available skills are added after construction.
+	 *
+	 * @skills Array of AiSkill instances
+	 *
+	 * @return This agent for chaining
+	 */
+	@override
+	AiAgent function withAvailableSkills( required array skills ) {
+		variables.availableSkills.append( arguments.skills, true )
+		// Register the loadSkill internal tool the first time we get available skills
+		if ( !hasTool( "loadSkill" ) && variables.availableSkills.len() > 0 ) {
+			_registerLoadSkillTool()
+		}
+		// Clear the system message cache so the updated index is reflected
+		variables._systemMsgCache       = ""
+		variables._systemMsgFingerprint = ""
+		return this
+	}
+
+	/**
+	 * Add a single skill to the lazy available-skills pool.
+	 * Overrides the base implementation to handle tool registration and cache invalidation.
+	 *
+	 * @skill AiSkill instance
+	 *
+	 * @return This agent for chaining
+	 */
+	@override
+	AiAgent function addAvailableSkill( required any skill ) {
+		variables.availableSkills.append( arguments.skill )
+		if ( !hasTool( "loadSkill" ) && variables.availableSkills.len() > 0 ) {
+			_registerLoadSkillTool()
+		}
+		variables._systemMsgCache       = ""
+		variables._systemMsgFingerprint = ""
+		return this
+	}
+
+	/**
+	 * Activate a lazy skill by moving it to the always-on pool.
+	 * Overrides the base implementation to also invalidate the system message cache.
+	 *
+	 * @name The skill name to activate
+	 *
+	 * @return The activated AiSkill, or null if not found
+	 */
+	@override
+	any function activateSkill( required string name ) {
+		var skill = super.activateSkill( arguments.name )
+		if ( !isNull( skill ) ) {
+			// Invalidate cache so the next buildSystemMessage() reflects the now-active skill
+			variables._systemMsgCache       = ""
+			variables._systemMsgFingerprint = ""
+		}
+		return skill
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiRunnable Interface Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Execute the agent with the given input, parameters, and options.
+	 *
+	 * Each call generates a unique `threadId` for correlation, which can be overridden via options.
+	 *
+	 * If you are using shared memory instances, then you will need to pass
+	 * the `userId` and `conversationId` in options to correlate the memory messages properly. If not provided, they will default to empty strings and use whatever the memory was built with.
+	 *
+	 * @input The task or question for the agent
+	 * @params Runtime parameters to override
+	 * @options Runtime options to override. This can include:
+	 * 	- threadId: to correlate runs in the same thread
+	 * 	- userId: to correlate runs from the same user
+	 * 	- conversationId: to correlate runs in the same conversation
+	 * 	- returnFormat: "single" (default) or "full" to control the format of the response
+	 * 	- Any other options supported by the underlying model or tools
+	 *
+	 * @return The agent's response (format depends on returnFormat option)
+	 */
+	public any function run( any input = "", struct params = {}, struct options = {} ) {
+		// Resolve per-call thread, user, and conversation identifiers
+		var threadId       = arguments.options.threadId ?: variables.options.threadId ?: createUUID()
+		var userId         = arguments.options.userId ?: variables.options.userId ?: ""
+		var conversationId = arguments.options.conversationId ?: variables.options.conversationId ?: ""
+		// unique ID for this specific run, useful for logging and correlation
+		var runId 		= "#getAgentName().slugify()#-#createUUID()#"
+
+		// -------------------------------------------------------------------------------------------
+		// --- Prep Message Context ---
+		// -------------------------------------------------------------------------------------------
+		// Create the user message
+		var userMessage = isStruct( arguments.input ) && arguments.input.keyExists( "content" )
+			? arguments.input
+			: { role: "user", content: toString( arguments.input ) }
+
+		// Build complete message set
+		var messages = []
+		// Build system message from instructions and description
+		var systemMessage = buildSystemMessage()
+		if ( !systemMessage.isEmpty() ) {
+			messages.append( { role: "system", content: systemMessage } )
+		}
+		// Load memory messages
+		messages.append( loadMemoryMessages( userId, conversationId ), true )
+		// Add user message last so it's the most recent in the context
+		messages.append( userMessage )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Before Agent MiddleWare ---
+		// -------------------------------------------------------------------------------------------
+		// Merge parameters
+		var effectiveParams = variables.params.append( arguments.params )
+		// Merge options (including returnFormat)
+		var effectiveOptions = variables.options.append( arguments.options )
+		// Create the agent context of execution
+		var agentContext = {
+			runId			: runId,
+			agent    		: this,
+			input    		: arguments.input,
+			messages 		: messages,
+			params   		: effectiveParams,
+			options  		: effectiveOptions,
+			threadId 		: threadId,
+			userId   		: userId,
+			conversationId	: conversationId,
+			response		: null // placeholder for response to be added in after hooks
+		}
+		// Add it to the options so it's available to model and tools
+		effectiveOptions._agentContext = agentContext
+
+		// Fire beforeAgentRun middleware (inbound)
+		var middlewareResult = fireAgentHook( "beforeAgentRun", agentContext );
+		if ( middlewareResult.isTerminal() ) {
+			return middlewareResult
+		}
+
+		// Pass agent middleware to model so LLM/tool hooks are also fired
+		if ( variables.middleware.len() > 0 ) {
+			effectiveOptions._agentMiddleware = variables.middleware
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Announce before execution (global event) ---
+		// -------------------------------------------------------------------------------------------
+		BoxAnnounce( "beforeAIAgentRun", agentContext )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Execute via model runnable chain ---
+		// -------------------------------------------------------------------------------------------
+		// Execute via model - service handles returnFormat and returns formatted result
+		// The return can be a direct response, a middleware result (e.g. for suspension), or a tool call result depending on the execution flow
+		var response = variables.aiModel.run( messages, effectiveParams, effectiveOptions )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Handle Suspension ---
+		// -------------------------------------------------------------------------------------------
+		// If the model returned a suspension, save checkpoint and return it
+		// However, if there is no checkpointer configured, we can't save state, so just return the suspension result without saving
+		if ( isObject( response ) && response instanceof "AiMiddlewareResult" && response.isSuspended() ) {
+			variables.checkpointer?.saveState(
+				threadId,
+				{
+					input       : arguments.input,
+					messages    : messages,
+					params      : effectiveParams,
+					options     : effectiveOptions,
+					suspendData : response.getData()
+				},
+				variables.checkpointTTL
+			)
+			return response
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Store in memory ---
+		// -------------------------------------------------------------------------------------------
+		storeInMemory( userMessage, response, userId, conversationId );
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterAgentRun middleware (outbound, reverse order) ---
+		// -------------------------------------------------------------------------------------------
+		agentContext.response = response // add response to original context for after hooks
+		fireAgentHook( "afterAgentRun", agentContext, true )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Announce after execution (global event) ---
+		// -------------------------------------------------------------------------------------------
+		BoxAnnounce( "afterAIAgentRun", agentContext )
+
+		// Happy Day!
+		return response
+	}
+
+	/**
+	 * Stream the agent's response
+	 *
+	 * @onChunk Callback for each chunk
+	 * @input The task or question
+	 * @params Runtime parameters
+	 * @options Runtime options
+	 */
+	public void function stream(
+		required function onChunk,
+		any input = "",
+		struct params = {},
+		struct options = {}
+	) {
+		// Resolve per-call thread, user, and conversation identifiers
+		var threadId       = arguments.options.threadId ?: variables.options.threadId ?: createUUID()
+		var userId         = arguments.options.userId ?: variables.options.userId ?: ""
+		var conversationId = arguments.options.conversationId ?: variables.options.conversationId ?: ""
+
+		// -------------------------------------------------------------------------------------------
+		// --- Prep Message Context ---
+		// -------------------------------------------------------------------------------------------
+		// Build system message
+		var systemMessage = buildSystemMessage()
+		// Load memory
+		var memoryMessages = loadMemoryMessages( userId, conversationId )
+		// Create user message
+		var userMessage = isStruct( arguments.input ) && arguments.input.keyExists( "content" )
+			? arguments.input
+			: { role: "user", content: toString( arguments.input ) }
+		// Build messages
+		var messages = []
+		if ( systemMessage.len() > 0 ) {
+			messages.append( { role: "system", content: systemMessage } )
+		}
+		messages.append( memoryMessages, true )
+		messages.append( userMessage )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Before Agent MiddleWare ---
+		// -------------------------------------------------------------------------------------------
+		// Merge parameters
+		var effectiveParams = variables.params.append( arguments.params )
+		// Merge options
+		var effectiveOptions = variables.options.append( arguments.options )
+		// Fire beforeAgentRun middleware (inbound)
+		var agentContext = {
+			agent    : this,
+			input    : arguments.input,
+			messages : messages,
+			params   : effectiveParams,
+			options  : effectiveOptions,
+			threadId : threadId,
+			userId   : userId,
+			conversationId: conversationId
+		}
+		// add context to options for access in model and tools
+		effectiveOptions._agentContext = agentContext
+		// Fire the middleware
+		var streamMiddlewareResult = fireAgentHook( "beforeAgentRun", agentContext )
+		if ( streamMiddlewareResult.isTerminal() ) {
+			return
+		}
+
+		// Pass agent middleware to model
+		if ( variables.middleware.len() > 0 ) {
+			effectiveOptions._agentMiddleware = variables.middleware
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Prepare streaming callback ---
+		// -------------------------------------------------------------------------------------------
+		var userOnChunk = arguments.onChunk
+		// Store accumulated response for memory
+		var accumulated = ""
+		var wrappedCallback = ( chunk ) => {
+			// Accumulate content
+			var content = arguments.chunk.choices?.first()?.delta?.content ?: ""
+			accumulated &= content;
+			// Call user callback with the chunk
+			userOnChunk( arguments.chunk )
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Announce before execution (global event) ---
+		// -------------------------------------------------------------------------------------------
+		BoxAnnounce( "beforeAIAgentRun", agentContext )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Stream via model (tools handled by model/service) ---
+		// -------------------------------------------------------------------------------------------
+		variables.aiModel.stream( wrappedCallback, messages, effectiveParams, effectiveOptions )
+
+
+		// -------------------------------------------------------------------------------------------
+		// --- Store in memory ---
+		// -------------------------------------------------------------------------------------------
+		var assistantMessage = { role: "assistant", content: accumulated }
+		storeInMemory( userMessage, assistantMessage, userId, conversationId )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterAgentRun middleware (outbound, reverse order) ---
+		// -------------------------------------------------------------------------------------------
+		agentContext.response = accumulated // add final response to original context for after hooks
+		fireAgentHook( "afterAgentRun", agentContext, true )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Announce after execution (global event) ---
+		// -------------------------------------------------------------------------------------------
+		BoxAnnounce( "afterAIAgentRun", agentContext )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Memory Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	 /**
+	 * Add another memory to the agent
+	 *
+	 * @memory The memory instance to add
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function addMemory( required IAiMemory memory ) {
+		variables.memories.append( arguments.memory );
+		return this;
+	}
+
+	/**
+	 * Set a single memory (replaces existing) with a single one
+	 *
+	 * @memory The memory instance
+	 *
+	 * @return this for chaining
+	 */
+	function setMemory( required IAiMemory memory ) {
+		variables.memories = [ arguments.memory ];
+		return this;
+	}
+
+	/**
+	 * Clear all registered memories
+	 *
+	 * @return this for chaining
+	 */
+	function clearMemory() {
+		variables.memories.each( .clear() );
+		return this;
+	}
+
+	/**
+	 * Get all messages from all memories
+	 *
+	 * @userId Optional user ID for memory correlation
+	 * @conversationId Optional conversation ID for memory correlation
+	 *
+	 * @return Array of all messages
+	 */
+	array function getMemoryMessages( string userId = "", string conversationId = "" ) {
+		return loadMemoryMessages( userId, conversationId );
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Configuration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	 /**
+	  * Set instructions
+	 * @instructions The agent's instructions
+	 * @return this for chaining
+	 */
+	AiAgent function withInstructions( required string instructions ) {
+		variables.instructions = arguments.instructions;
+		return this;
+	}
+
+	 /**
+	 * Set the agent's name
+	 *
+	 * @name The agent's name
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function setName( required string name ) {
+		variables.agentName = arguments.name;
+		variables.name = "AiAgent-" & arguments.name;
+		return this;
+	}
+
+	/**
+	 * Set the AI model for the agent
+	 *
+	 * @model The AI model to use
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function setModel( required AiModel model ) {
+		variables.aiModel = arguments.model.withTools( variables.tools )
+		return this
+	}
+
+	/**
+	 * Set the tools for the agent (replaces existing tools)
+	 * It also updates the tools in the underlying AI model to keep them in sync, since tools are executed via the model's runnable chain.
+	 *
+	 * @tools Array of tools
+	 *
+	 * @return this for chaining
+	 */
+	@override
+	AiAgent function setTools( required array tools ) {
+		variables.tools = arguments.tools
+		variables.aiModel.withTools( arguments.tools )
+		return this
+	}
+
+	/**
+	 * Add tools to the agent and keep the underlying AI model in sync.
+	 * This override is necessary because MCP server tools and other late-bound tools
+	 * are added via withTools(), and without this override only variables.tools would
+	 * be updated while variables.aiModel would not — causing the tools to appear only
+	 * in the system message and not in the actual tools array sent to the provider.
+	 *
+	 * @tools Array or single tool to add
+	 *
+	 * @return this for chaining
+	 */
+	@override
+	AiAgent function withTools( required any tools ) {
+		if ( !isArray( arguments.tools ) ) {
+			arguments.tools = [ arguments.tools ]
+		}
+		variables.tools.append( arguments.tools, true )
+		variables.aiModel.withTools( arguments.tools )
+		return this
+	}
+
+	/**
+	 * Set a single parameter
+	 *
+	 * @key Parameter name
+	 * @value Parameter value
+	 *
+	 * @return this for chaining
+	 */
+	function setParam( required string key, required any value ) {
+		variables.params[ arguments.key ] = arguments.value;
+		return this;
+	}
+
+	/**
+	 * Set the checkpointer backend and optional TTL.
+	 *
+	 * @checkpointer Any IAiMemory instance that supports saveState/loadState/clearState
+	 * @ttl TTL in minutes for checkpoint data (default 30)
+	 *
+	 * @return This agent for chaining
+	 */
+	AiAgent function withCheckpointer( required any checkpointer, numeric ttl = static.DEFAULT_CHECKPOINT_TTL ) {
+		variables.checkpointer  = arguments.checkpointer;
+		variables.checkpointTTL = arguments.ttl;
+		return this;
+	}
+
+	/**
+	 * Resume a previously suspended run from its saved checkpoint.
+	 *
+	 * When a middleware suspends a run (e.g. HumanInTheLoopMiddleware), the agent
+	 * saves a checkpoint. Call this method after the human has approved/edited the
+	 * pending operation to continue execution.
+	 *
+	 * @decision  "approve", "reject", or "edit" — the human's decision
+	 * @threadId  The thread to resume. Defaults to this agent's current threadId.
+	 * @editedData When decision is "edit", pass the corrected data here.
+	 *
+	 * @return The agent response continuing from the checkpoint
+	 */
+	any function resume( required string decision, required string threadId, struct editedData = {} ) {
+		if ( isNull( variables.checkpointer ) ) {
+			throw(
+				type   : "AiAgent.NoCheckpointer",
+				message: "Cannot resume: no checkpointer is configured on this agent."
+			)
+		}
+
+		var savedState = variables.checkpointer.loadState( arguments.threadId )
+		if ( savedState.isEmpty() ) {
+			throw(
+				type   : "AiAgent.CheckpointNotFound",
+				message: "No checkpoint found for threadId: '#arguments.threadId#'"
+			)
+		}
+
+		// Clear the checkpoint so it is not accidentally resumed twice
+		variables.checkpointer.clearState( arguments.threadId )
+
+		// Build a resume result to inject into the middleware context
+		var resumeResult = savedState
+		resumeResult.resumeDecision = arguments.decision
+		resumeResult.editedData     = arguments.editedData
+
+		// Re-run from the savedState input with resume context in options
+		return run(
+			savedState.input,
+			savedState.params,
+			savedState.options.append( { _resumeContext: resumeResult } )
+		)
+	}
+
+	/**
+	 * Resume a previously suspended streaming run from its saved checkpoint.
+	 *
+	 * Mirror of resume() for streaming agents. Calls stream() with the saved input
+	 * and injects the resume decision into options so middleware can act on it.
+	 *
+	 * @onChunk   Callback for each streamed chunk
+	 * @decision  "approve", "reject", or "edit"
+	 * @threadId  The thread to resume. Defaults to this agent's current threadId.
+	 * @editedData When decision is "edit", pass corrected data here.
+	 */
+	void function resumeStream(
+		required function onChunk,
+		required string   decision,
+		required string   threadId,
+		struct            editedData = {}
+	) {
+		if ( isNull( variables.checkpointer ) ) {
+			throw(
+				type   : "AiAgent.NoCheckpointer",
+				message: "Cannot resumeStream: no checkpointer is configured on this agent."
+			)
+		}
+
+		var savedState = variables.checkpointer.loadState( arguments.threadId )
+		if ( savedState.isEmpty() ) {
+			throw(
+				type   : "AiAgent.CheckpointNotFound",
+				message: "No checkpoint found for threadId: '#arguments.threadId#'"
+			)
+		}
+
+		variables.checkpointer.clearState( arguments.threadId )
+
+		var resumeResult = savedState
+		resumeResult.resumeDecision = arguments.decision
+		resumeResult.editedData     = arguments.editedData
+
+		stream(
+			arguments.onChunk,
+			savedState.input,
+			savedState.params,
+			savedState.options.append( { _resumeContext: resumeResult } )
+		)
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Sub-Agent Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Add a sub-agent to this agent.
+	 * The sub-agent will be wrapped as an internal tool that can be invoked by the parent agent.
+	 *
+	 * @subAgent The sub-agent to add
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function addSubAgent( required AiAgent subAgent ) {
+		// Register parent reference on the sub-agent
+		arguments.subAgent.setParentAgent( this );
+
+		// Store the sub-agent
+		variables.subAgents.append( arguments.subAgent );
+
+		// Create an internal tool for the sub-agent
+		var subAgentTool = createSubAgentTool( arguments.subAgent );
+
+		// Track the sub-agent tool for potential cleanup
+		variables.subAgentTools.append( subAgentTool );
+
+		// Add the tool to this agent's model
+		variables.aiModel.withTools( [ subAgentTool ] );
+
+		return this;
+	}
+
+	/**
+	 * Set the sub-agents for the agent (replaces existing sub-agents)
+	 *
+	 * This method removes old sub-agent delegation tools and registers new ones.
+	 *
+	 * @subAgents Array of sub-agents to register
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function setSubAgents( required array subAgents ) {
+		// Detach parent reference from all current sub-agents before replacing them
+		variables.subAgents.each( subAgent => subAgent.clearParentAgent() );
+
+		// Remove old sub-agent tools from the model
+		if ( !variables.subAgentTools.isEmpty() ) {
+			variables.aiModel.removeTools( variables.subAgentTools );
+		}
+
+		// Clear existing sub-agents and their tools
+		variables.subAgents = [];
+		variables.subAgentTools = [];
+
+		// Add each sub-agent
+		arguments.subAgents.each( subAgent => addSubAgent( subAgent ) );
+
+		return this;
+	}
+
+	/**
+	 * Get a sub-agent by name
+	 *
+	 * @name The name of the sub-agent to find
+	 *
+	 * @return The sub-agent if found, or null
+	 */
+	AiAgent function getSubAgent( required string name ) {
+		for ( var subAgent in variables.subAgents ) {
+			if ( subAgent.getAgentName() == arguments.name ) {
+				return subAgent;
+			}
+		}
+		return null
+	}
+
+	/**
+	 * Check if a sub-agent exists by name
+	 *
+	 * @name The name of the sub-agent to check
+	 *
+	 * @return Boolean indicating if the sub-agent exists
+	 */
+	boolean function hasSubAgent( required string name ) {
+		return !isNull( getSubAgent( arguments.name ) );
+	}
+
+	/**
+	 * Get the names of all registered sub-agents
+	 *
+	 * @return Array of sub-agent names
+	 */
+	Array function getSubAgentNames() {
+		return variables.subAgents.map( agent -> agent.getAgentName() );
+	}
+
+	/**
+	 * Get agent configuration as a struct
+	 *
+	 * @return Struct of agent configuration
+	 */
+	struct function getConfig() {
+		return {
+			"agentDepth": getAgentDepth(),
+			"agentPath": getAgentPath(),
+			"description": variables.description,
+			"instructions": variables.instructions,
+			"model": variables.aiModel.getConfig(),
+			"middlewareCount": variables.middleware.len(),
+			"middleware": listMiddleware(),
+			"memoryCount": variables.memories.len(),
+			"memories": variables.memories.map( mem => mem.getSummary() ),
+			"name": variables.agentName,
+			"parentAgent": variables?.parentAgent?.getAgentName() ?: "",
+			"params": variables.params,
+			"options": variables.options.map( ( key, value ) => {
+				// Mask sensitive options (e.g. API keys) in the config output
+				var maskedValue = ( listFindNoCase( "apikey,token,secret", key ) > 0 )
+					? "****"
+					: value
+				return maskedValue
+			} ),
+			"subAgentCount": variables.subAgents.len(),
+			"subAgents": variables.subAgents.map( agent => {
+				return {
+					"name": agent.getConfig().name,
+					"description": agent.getConfig().description
+				};
+			} ),
+			"toolCount"          : variables.tools.len(),
+			"tools"              : listTools(),
+			"mcpServers"         : variables.mcpServers,
+			"activeSkillCount" : variables.skills.len(),
+			"availableSkillCount": variables.availableSkills.len(),
+			"skills": listSkills()
+		}
+	}
+
+	// ==================== Parent - Child HELPERS ====================
+
+	/**
+	 * Set the parent agent reference for this agent.
+	 * Validates against self-reference and cycles before assigning.
+	 *
+	 * @parent The parent agent to set
+	 * @return this for chaining
+	 */
+	AiAgent function setParentAgent( required AiAgent parent ) {
+		// Prevent an agent from being its own parent
+		if ( arguments.parent == this ) {
+			throw( type: "AiAgent.InvalidParent", message: "An agent cannot be its own parent." )
+		}
+		// Prevent cycles: walk up the proposed parent's ancestry and check for self
+		var ancestor = arguments.parent
+		while ( ancestor.hasParentAgent() ) {
+			ancestor = ancestor.getParentAgent()
+			if ( ancestor == this ) {
+				throw(
+					type   : "AiAgent.CyclicParent",
+					message: "Setting this parent would create a cycle in the agent hierarchy."
+				)
+			}
+		}
+
+		// Assign new parent
+		variables.parentAgent = arguments.parent
+		return this;
+	}
+
+	/**
+	 * Clear the parent agent reference from this agent.
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function clearParentAgent() {
+		structDelete( variables, "parentAgent" )
+		return this;
+	}
+
+	/**
+	 * Check if this agent has a parent agent
+	 *
+	 * @return Boolean indicating if this agent has a parent
+	 */
+	boolean function hasParentAgent() {
+		return !isNull( variables.parentAgent )
+	}
+
+	/**
+	 * Check if this agent is a root (top-level) agent with no parent
+	 *
+	 * @return Boolean — true if this agent has no parent
+	 */
+	boolean function isRootAgent() {
+		return !hasParentAgent()
+	}
+
+	/**
+	 * Walk up the hierarchy and return the root (top-level) agent.
+	 * Returns self if this agent has no parent.
+	 *
+	 * @return The root AiAgent
+	 */
+	AiAgent function getRootAgent() {
+		var current = this
+		while ( current.hasParentAgent() ) {
+			current = current.getParentAgent()
+		}
+		return current
+	}
+
+	/**
+	 * Return the depth of this agent in the hierarchy.
+	 * The root agent has depth 0; each level of nesting adds 1.
+	 *
+	 * @return Numeric depth (0 = root)
+	 */
+	numeric function getAgentDepth() {
+		var depth = 0
+		var current = this
+		while ( current.hasParentAgent() ) {
+			depth++
+			current = current.getParentAgent()
+		}
+		return depth
+	}
+
+	/**
+	 * Return the full slash-delimited path from the root to this agent.
+	 * Example: /coordinator/researcher
+	 *
+	 * @return String path
+	 */
+	string function getAgentPath() {
+		return "/" & getAncestors()
+			.reverse()
+			.append( this )
+			.map( a -> a.getAgentName() )
+			.toList( "/" )
+	}
+
+	/**
+	 * Return an ordered array of ancestor agents, from immediate parent up to the root.
+	 *
+	 * @return Array of AiAgent — [immediateParent, grandparent, ..., root]
+	 */
+	array function getAncestors() {
+		var ancestors = []
+		var current = this
+		while ( current.hasParentAgent() ) {
+			current = current.getParentAgent()
+			ancestors.append( current )
+		}
+		return ancestors
+	}
+
+
+
+	// ==================== MIDDLEWARE HELPERS ====================
+
+	/**
+	 * Fire a named middleware hook across this agent's stack.
+	 *
+	 * @hook    The hook method name (e.g. "beforeAgentRun")
+	 * @ctx     Context struct for the hook
+	 * @reverse If true, iterate in reverse order (for outbound "after" hooks)
+	 *
+	 * @return The first terminal AiMiddlewareResult, or continue()
+	 */
+	private AiMiddlewareResult function fireAgentHook(
+		required string hook,
+		required struct ctx,
+		boolean reverse = false
+	) {
+		if ( variables.middleware.isEmpty() ) {
+			return AiMiddlewareResult.continue()
+		}
+
+		var stack = arguments.reverse ? variables.middleware.reverse() : variables.middleware
+
+		for ( var thisMiddleWare in stack ) {
+			try {
+				var result = invoke( thisMiddleWare, arguments.hook, { context: arguments.ctx } )
+				if ( !isNull( result ) && result instanceof "AiMiddlewareResult" && result.isTerminal() ) {
+					return result
+				}
+			} catch ( any e ) {
+				// Always log middleware errors, but don't let them crash the agent. Attempt to call onError handler if it exists.
+				writeLog(
+					text: "Error in middleware during '" & arguments.hook & "' hook: " & e.message & e.detail,
+					type:"error",
+					log: "ai"
+				)
+				try {
+					invoke( thisMiddleWare, "onError", { context: { error: e, phase: arguments.hook, context: arguments.ctx } } )
+				} catch ( any ignored ) {
+					writeLog(
+						text: "Error in middleware onError handler: " & ignored.message & ignored.detail,
+						type:"error",
+						log: "ai"
+					)
+				}
+				rethrow
+			}
+		}
+
+		return AiMiddlewareResult.continue()
+	}
+
+	// ==================== PRIVATE METHODS ====================
+
+	/**
+	 * Build the system message from description, instructions, skills, tools, and MCP servers.
+	 * Result is cached by a fingerprint covering description, instructions, and both skill pools.
+	 * The cache is invalidated automatically when skills are added or activated.
+	 */
+	private string function buildSystemMessage() {
+		// Return the cached value when nothing that affects the system message has changed
+		var fingerprint = _buildSystemMessageFingerprint()
+		if ( fingerprint == variables._systemMsgFingerprint && variables._systemMsgCache.len() > 0 ) {
+			return variables._systemMsgCache
+		}
+
+		var parts = []
+
+		// Include description as a "Role" if provided, so the LLM understands its identity and purpose
+		if ( variables.description.len() > 0 ) {
+			parts.append( "Role: " & variables.description )
+		}
+
+		// Include instructions as "Instructions" if provided, so the LLM knows how to behave and use tools
+		if ( variables.instructions.len() > 0 ) {
+			parts.append( "Instructions: " & variables.instructions )
+		}
+
+		// Inject skills content (always-on full blocks + available skills index)
+		var skillsContent = buildSkillsContent()
+		if ( skillsContent.len() > 0 ) {
+			parts.append( skillsContent )
+		}
+
+		// Include available tools so the LLM knows what it can use (note: tools are also passed in the options for structured access, but including in system message can help with LLMs that rely more on the prompt)
+		if ( variables.tools.len() > 0 ) {
+			parts.append( "Available Tools: " & listTools().toString() )
+		}
+
+		// Include connected MCP servers so the LLM knows where its tools came from
+		if ( variables.mcpServers.len() > 0 ) {
+			parts.append( "Connected MCP Servers:" & listMCPServers().toString() )
+		}
+
+		var message = parts.toList( char( 10 ) & char( 10 ) )
+
+		// Cache for next call
+		variables._systemMsgCache       = message
+		variables._systemMsgFingerprint = fingerprint
+
+		return message
+	}
+
+	/**
+	 * Compute a lightweight fingerprint over the inputs that shape the system message.
+	 * When any of these change (description, instructions, skill names), the cache is stale.
+	 *
+	 * @return MD5 hash string
+	 */
+	private string function _buildSystemMessageFingerprint() {
+		var skillNames = variables.skills.map( s => s.getName() ).toList( "," )
+		var availNames = variables.availableSkills.map( s => s.getName() ).toList( "," )
+		return hash( variables.description & variables.instructions & skillNames & availNames )
+	}
+
+	/**
+	 * Register the built-in loadSkill(name) tool on this agent.
+	 * This tool is auto-registered when the agent has available (lazy) skills.
+	 * Calling it activates the named skill, injecting its full content as a tool result
+	 * so the LLM can use it immediately, and moves the skill to the always-on pool
+	 * for all subsequent calls.
+	 */
+	private void function _registerLoadSkillTool() {
+		// Prevent duplicate registration
+		if ( hasTool( "loadSkill" ) ) {
+			return
+		}
+
+		// Capture a reference to this agent so the closure can call activateSkill()
+		var agentSelf     = this
+		var loadSkillTool = aiTool(
+			name       : "loadSkill",
+			description: "Activate a skill from the Available Skills library to get its full instructions. Call this before answering any question that requires specialized domain knowledge listed in the Available Skills section.",
+			callable   : ( required string name ) => {
+				var skill = agentSelf.activateSkill( arguments.name )
+				if ( isNull( skill ) ) {
+					return "Skill '#arguments.name#' was not found in the Available Skills library. Available skills: " & agentSelf.getAvailableSkills().map( s => s.getName() ).toList( ", " )
+				}
+				return skill.toContentBlock()
+			},
+			autoRegister: false
+		).describeArg( "name", "The exact skill name to activate (must match a name from the Available Skills list)" )
+
+		// withTools() is overridden on AiAgent to also sync into variables.aiModel
+		withTools( [ loadSkillTool ] )
+	}
+
+	/**
+	 * Load messages from all memories
+	 *
+	 * @userId Optional user ID for memory correlation
+	 * @conversationId Optional conversation ID for memory correlation
+	 *
+	 * @return Array of messages from all memories
+	 */
+	private array function loadMemoryMessages( string userId = "", string conversationId = "" ) {
+		var allMessages = []
+
+		variables.memories.each( mem => {
+			allMessages.append( mem.getAll( userId, conversationId ), true )
+		} )
+
+		return allMessages
+	}
+
+	/**
+	 * Store messages in all memories
+	 *
+	 * @userMessage The user message struct
+	 * @response The assistant response (string or struct)
+	 * @userId Optional user ID for memory correlation
+	 * @conversationId Optional conversation ID for memory correlation
+	 *
+	 * @return void
+	 */
+	private void function storeInMemory(
+		required struct userMessage,
+		required any response,
+		string userId = "",
+		string conversationId = ""
+	) {
+		// No memories, nothing to do
+		if ( variables.memories.isEmpty() ) {
+			return
+		}
+
+		// Add user message to all memories
+		variables.memories.each( mem => mem.add( userMessage, userId, conversationId ) )
+
+		// Extract assistant message from response
+		var assistantContent = ""
+		if ( isStruct( arguments.response ) ) {
+			// Handle structured response
+			if ( arguments.response.keyExists( "choices" ) && !arguments.response.choices.isEmpty() ) {
+				assistantContent = arguments.response.choices[  1  ].message?.content ?: ""
+			} else if ( arguments.response.keyExists( "content" ) ) {
+				assistantContent = arguments.response.content
+			}
+		} else {
+			assistantContent = toString( arguments.response )
+		}
+
+		// Add assistant message
+		if ( assistantContent.len() > 0 ) {
+			variables.memories.each( mem => mem.add( {
+					role: "assistant",
+					content: assistantContent
+				}, userId, conversationId
+			) )
+		}
+	}
+
+	/**
+	 * Create an internal tool wrapper for a sub-agent.
+	 * The tool delegates to the sub-agent's run method.
+	 *
+	 * @subAgent The sub-agent to wrap
+	 *
+	 * @return A Tool instance that delegates to the sub-agent
+	 */
+	private ITool function createSubAgentTool( required AiAgent subAgent ) {
+		var agentConfig = arguments.subAgent.getConfig()
+		var agentName = agentConfig.name
+		var agentDescription = agentConfig.description
+
+		// Build tool name: delegate_to_{agent_name}
+		// Regex only needs to match non-alphanumeric and non-underscore since we already lowercase
+		var toolName = "delegate_to_" & agentName.slugify()
+
+		// Build description for the tool
+		var toolDescription = "Delegate a task to the '#agentName#' sub-agent. "
+			& "Use this tool when the task matches the sub-agent's specialty: #agentDescription#"
+
+		// Create a tool that wraps the sub-agent
+		return aiTool(
+			name: toolName,
+			description: toolDescription,
+			callable: ( required task ) => {
+				// Invoke the sub-agent with the task
+				return subAgent.run( task )
+			}
+		).describeArg( "task", "The task or question to delegate to the sub-agent" )
+	}
+
+}

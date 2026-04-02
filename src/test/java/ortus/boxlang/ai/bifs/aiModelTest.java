@@ -19,6 +19,7 @@ package ortus.boxlang.ai.bifs;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
@@ -209,7 +210,7 @@ public class aiModelTest extends BaseIntegrationTest {
 				).describeQuery( "Search query" )
 
 				model = aiModel( "openai" )
-					.bindTools( [ tool1, tool2 ] )
+					.withTools( [ tool1, tool2 ] )
 
 				config = model.getConfig()
 			""",
@@ -239,5 +240,187 @@ public class aiModelTest extends BaseIntegrationTest {
 		assertThat( config.containsKey( Key.of( "toolCount" ) ) ).isTrue();
 		assertThat( config.containsKey( Key.of( "params" ) ) ).isTrue();
 		assertThat( config.containsKey( Key.of( "options" ) ) ).isTrue();
+	}
+
+	// ==================== SKILL TESTS ====================
+
+	@Test
+	@DisplayName( "Model accepts always-on skills at construction time via withSkills()" )
+	public void testModelWithSkills() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				skill1 = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+				skill2 = aiSkill( name: "code-style", description: "Code style guide", content: "Prefer tabs over spaces." )
+
+				model = aiModel( "openai" ).withSkills( [ skill1, skill2 ] )
+				skillCount = model.getSkills().len()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( ( Number ) variables.get( Key.of( "skillCount" ) ) ).intValue() ).isEqualTo( 2 );
+	}
+
+	@Test
+	@DisplayName( "Model accepts a single always-on skill via addSkill()" )
+	public void testModelAddSkillFluent() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				skill = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+				model = aiModel( "openai" ).addSkill( skill )
+				skillCount = model.getSkills().len()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( ( Number ) variables.get( Key.of( "skillCount" ) ) ).intValue() ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Model accepts lazy available-skills via withAvailableSkills()" )
+	public void testModelWithAvailableSkills() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				skill1 = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+				skill2 = aiSkill( name: "code-style", description: "Code style guide", content: "Prefer tabs over spaces." )
+
+				model = aiModel( "openai" ).withAvailableSkills( [ skill1, skill2 ] )
+				availCount = model.getAvailableSkills().len()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( ( Number ) variables.get( Key.of( "availCount" ) ) ).intValue() ).isEqualTo( 2 );
+	}
+
+	@Test
+	@DisplayName( "Model accepts a single lazy skill via addAvailableSkill()" )
+	public void testModelAddAvailableSkillFluent() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				skill = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+				model = aiModel( "openai" ).addAvailableSkill( skill )
+				availCount = model.getAvailableSkills().len()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( ( Number ) variables.get( Key.of( "availCount" ) ) ).intValue() ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "buildSkillsContent() returns non-empty string when always-on skills are present" )
+	public void testModelBuildSkillsContent() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				skill = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+				model = aiModel( "openai" ).withSkills( [ skill ] )
+
+				content       = model.buildSkillsContent()
+				hasHeader     = content.findNoCase( "## Skills" ) > 0
+				hasSkillBlock = content.findNoCase( "#### Skill: sql-tips" ) > 0
+				hasContent    = content.findNoCase( "Always use indexed columns." ) > 0
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasHeader" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasSkillBlock" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasContent" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "buildSkillsContent() includes lazy skill index when availableSkills are set" )
+	public void testModelBuildSkillsContentWithAvailableSkills() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				skill = aiSkill( name: "lazy-skill", description: "Use for lazy operations", content: "Be lazy." )
+				model = aiModel( "openai" ).withAvailableSkills( [ skill ] )
+
+				content         = model.buildSkillsContent()
+				hasAvailHeader  = content.findNoCase( "## Available Skills" ) > 0
+				hasSkillIndex   = content.findNoCase( "- lazy-skill:" ) > 0
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasAvailHeader" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasSkillIndex" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "buildSkillsContent() returns empty string when no skills are set" )
+	public void testModelBuildSkillsContentEmpty() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				model   = aiModel( "openai" )
+				content = model.buildSkillsContent()
+				isEmpty = content.isEmpty()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isEmpty" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "activateSkill() promotes a lazy skill to always-on pool" )
+	public void testModelActivateSkill() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				skill = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+				model = aiModel( "openai" ).withAvailableSkills( [ skill ] )
+
+				// Before activation
+				beforeAvail  = model.getAvailableSkills().len()
+				beforeActive = model.getSkills().len()
+
+				// Activate
+				model.activateSkill( "sql-tips" )
+
+				// After activation
+				afterAvail  = model.getAvailableSkills().len()
+				afterActive = model.getSkills().len()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( ( Number ) variables.get( Key.of( "beforeAvail" ) ) ).intValue() ).isEqualTo( 1 );
+		assertThat( ( ( Number ) variables.get( Key.of( "beforeActive" ) ) ).intValue() ).isEqualTo( 0 );
+		assertThat( ( ( Number ) variables.get( Key.of( "afterAvail" ) ) ).intValue() ).isEqualTo( 0 );
+		assertThat( ( ( Number ) variables.get( Key.of( "afterActive" ) ) ).intValue() ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "aiModel() BIF accepts skills at construction time" )
+	public void testAiModelBIFWithSkills() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				skill = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+				model = aiModel( skills: [ skill ] )
+				skillCount = model.getSkills().len()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( ( Number ) variables.get( Key.of( "skillCount" ) ) ).intValue() ).isEqualTo( 1 );
 	}
 }

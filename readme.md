@@ -38,12 +38,15 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - 🌊 **Streaming Support** - Real-time token streaming through pipelines for responsive applications
 - 📦 **Structured Output** - Type-safe responses using BoxLang classes, structs, or JSON schemas
 - 🔗 **AI Pipelines** - Composable workflows with models, transformers, and custom logic
+- 🧩 **Middleware** - Cross-cutting controls for agents/models (logging, retries, guardrails, approval, and replay)
+- 🎓 **AI Skills** - Reusable, composable knowledge blocks following the [Claude Agent Skills](https://www.anthropic.com/news/agent-skills) open standard for modular agent behavior
 - 📡 **MCP Protocol** - Build and consume Model Context Protocol servers for distributed AI
 - 💬 **Fluent Interface** - Chainable, expressive syntax that makes AI integration intuitive
 - 🦙 **Local AI** - Full Ollama support for privacy, offline use, and zero API costs
 - ⚡ **Async Operations** - Non-blocking futures for concurrent AI requests
-- 🎯 **Event-Driven** - 25+ lifecycle events for logging, monitoring, and custom workflows
+- 🎯 **Event-Driven** - 35+ lifecycle events for logging, monitoring, and custom workflows
 - 🏭 **Production-Ready** - Timeout controls, error handling, rate limiting, and debugging tools
+- 🧪 **Testable** - Deterministic replay for reliable unit and integration testing
 
 ## 📃 Table of Contents
 
@@ -51,10 +54,13 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - [🚀 Getting Started](#-getting-started)
 - [🤖 Supported Providers](#-supported-providers)
   - [📊 Provider Support Matrix](#-provider-support-matrix)
+  - [🔍 Provider Capability Discovery](#-provider-capability-discovery)
 - [📤 Return Formats](#-return-formats)
 - [🥊 Quick Overview](#-quick-overview)
   - [💬 Chats](#-chats)
   - [🔗 Pipelines](#-pipelines)
+  - [🧩 Middleware](#-middleware)
+  - [🗂️ Tool Registry](#️-tool-registry)
   - [🤖 AI Agents](#-ai-agents)
   - [📦 Structured Output](#-structured-output)
   - [🧠 Memory Systems](#-memory-systems)
@@ -76,7 +82,7 @@ BoxLang is open source and licensed under the [Apache 2](https://www.apache.org/
 
 You can use BoxLang AI in both operating system applications, AWS Lambda, and web applications.  For OS applications, you can use the module installer to install the module globally.  For AWS Lambda and web applications, you can use the module installer to install it locally in your project or CommandBox as the package manager, which is our preferred method for web applications.
 
-**📚 New to AI concepts?** Check out our [Key Concepts Guide](https://ai.ortusbooks.com/getting-started/concepts) for terminology and fundamentals, or browse our [FAQ](https://ai.ortusbooks.com/readme/faq) for quick answers to common questions.  We also have a [Quick Start Guide](https://ai.ortusbooks.com/getting-started/quickstart) and our intense [AI BootCamp](https://github.com/ortus-boxlang/bx-ai/tree/development/bootcamp) available to you as well.
+**📚 New to AI concepts?** Check out our [Key Concepts Guide](https://ai.ortusbooks.com/getting-started/concepts) for terminology and fundamentals, or browse our [FAQ](https://ai.ortusbooks.com/readme/faq) for quick answers to common questions.  We also have a [Quick Start Guide](https://ai.ortusbooks.com/getting-started/quickstart) and our intense [AI BootCamp](https://github.com/ortus-boxlang/bx-ai-bootcamp) available to you as well.
 
 ### OS
 
@@ -86,7 +92,98 @@ You can easily get started with BoxLang AI by using the module installer for bui
 install-bx-module bx-ai
 ```
 
-This will install the latest version of the BoxLang AI module in your BoxLang environment. Once installed, make sure you setup any of the supported AI providers and their API keys in your `boxlang.json` configuration file or environment variables.  After that you can leverage the global functions (BIFs) in your BoxLang code.  Here is a simple example:
+This will install the latest version of the BoxLang AI module in your BoxLang environment. Once installed, configure your default AI provider and API key in `boxlang.json`:
+
+```json
+{
+    "modules": {
+        "bxai": {
+            "settings": {
+                "provider": "openai",
+                "apiKey": "${OPENAI_API_KEY}"
+            }
+        }
+    }
+}
+```
+
+> 💡 **Tip:** Use environment variable placeholders like `${OPENAI_API_KEY}` so you never commit secrets to source control. Each provider also auto-detects its own env var (e.g. `OPENAI_API_KEY`, `CLAUDE_API_KEY`, `GEMINI_API_KEY`).
+
+#### ⚙️ All Available Settings
+
+Below is the full reference of every setting you can place under `settings` in `boxlang.json`:
+
+```json
+{
+    "modules": {
+        "bxai": {
+            "settings": {
+                "provider": "openai",
+                "apiKey": "${OPENAI_API_KEY}",
+
+                "defaultParams": {
+                    "model": "gpt-4o",
+                    "temperature": 0.7,
+                    "max_tokens": 2000
+                },
+
+                "memory": {
+                    "provider": "window",
+                    "config": {
+                        "maxMessages": 20
+                    }
+                },
+
+                "providers": {
+                    "openai": {
+                        "params": { "model": "gpt-4o", "temperature": 0.7 },
+                        "options": { "timeout": 60 }
+                    },
+                    "claude": {
+                        "params": { "model": "claude-3-5-sonnet-20241022" }
+                    },
+                    "ollama": {
+                        "params": { "model": "qwen2.5:0.5b-instruct" }
+                    }
+                },
+
+                "timeout": 45,
+
+                "logRequest": false,
+                "logRequestToConsole": false,
+                "logResponse": false,
+                "logResponseToConsole": false,
+
+                "returnFormat": "single",
+
+                "skillsDirectory": "/.ai/skills",
+                "autoLoadSkills": true,
+                "globalSkills": []
+            }
+        }
+    }
+}
+```
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `provider` | `string` | `"openai"` | Default AI provider to use for all requests |
+| `apiKey` | `string` | `""` | Default API key; each provider also reads its own env var (e.g. `OPENAI_API_KEY`) |
+| `defaultParams` | `struct` | `{}` | Default request parameters sent to every provider (e.g. `model`, `temperature`, `max_tokens`) |
+| `memory.provider` | `string` | `"window"` | Default memory type: `window`, `cache`, `file`, `session`, `summary`, `jdbc`, `hybrid`, or any vector provider |
+| `memory.config` | `struct` | `{}` | Provider-specific memory configuration (e.g. `maxMessages`, `cacheName`) |
+| `providers` | `struct` | `{}` | Per-provider overrides — keys are provider names, values have `params` and `options` structs |
+| `timeout` | `numeric` | `45` | Default HTTP request timeout in seconds |
+| `logRequest` | `boolean` | `false` | Log outgoing AI requests to `ai.log` |
+| `logRequestToConsole` | `boolean` | `false` | Print outgoing AI requests to the console (useful for debugging) |
+| `logResponse` | `boolean` | `false` | Log AI responses to `ai.log` |
+| `logResponseToConsole` | `boolean` | `false` | Print AI responses to the console (useful for debugging) |
+| `returnFormat` | `string` | `"single"` | Default response format: `single`, `all`, `raw`, `json`, `xml`, or `structuredOutput` |
+| `skillsDirectory` | `string` | `"/.ai/skills"` | Directory scanned for `SKILL.md` files at startup. Set to `""` to disable auto-discovery |
+| `autoLoadSkills` | `boolean` | `true` | When `true`, skills found in `skillsDirectory` are auto-loaded and injected into every `aiAgent()` as global skills |
+| `globalSkills` | `array` | `[]` | Internal — populated at startup with auto-discovered skills; access via `aiGlobalSkills()` |
+
+After that you can leverage the global functions (BIFs) in your BoxLang code.  Here is a simple example:
 
 ```java
 // chat.bxs
@@ -151,25 +248,63 @@ The following are the AI providers supported by this module. **Please note that 
 
 Here is a matrix of the providers and their feature support. Please keep checking as we will be adding more providers and features to this module. 🔄
 
-| Provider   | Real-time Tools | Embeddings | Structured Output |
-|------------|-----------------|------------|-------------------|
-| AWS Bedrock  | ✅ | ✅ | ✅ |
-| Claude    	| ✅ | ❌ | ✅ |
-| Cohere       | ✅ | ✅ | ✅ |
-| DeepSeek  | ✅ | ✅ | ✅ |
-| Docker Model Runner | ✅ | ✅ | ✅ |
-| Gemini    	| [Coming Soon]   | ✅ | ✅ |
-| Grok      	 | ✅ | ✅ | ✅ |
-| Groq         | ✅ | ✅ | ✅ |
-| HuggingFace | ✅ | ✅ | ✅ |
-| Mistral      | ✅ | ✅ | ✅ |
-| MiniMax      | ✅ | ✅ | ✅ |
-| Ollama       | ✅ | ✅ | ✅ |
-| OpenAI       | ✅ | ✅ | ✅ (Native) |
-| OpenAI-Compatible | ✅ | ✅ | ✅ |
-| OpenRouter   | ✅ | ✅ | ✅ |
-| Perplexity   | ✅ | ❌ | ✅ |
-| Voyage       | ❌ | ✅ (Specialized) | ❌ |
+| Provider            | Chat & Streaming | Real-time Tools | Embeddings       | Structured Output |
+|---------------------|------------------|-----------------|------------------|-------------------|
+| AWS Bedrock         | ✅               | ✅              | ✅               | ✅                |
+| Claude              | ✅               | ✅              | ❌               | ✅                |
+| Cohere              | ✅               | ✅              | ✅               | ✅                |
+| DeepSeek            | ✅               | ✅              | ✅               | ✅                |
+| Docker Model Runner | ✅               | ✅              | ✅               | ✅                |
+| Gemini              | ✅               | [Coming Soon]   | ✅               | ✅                |
+| Grok                | ✅               | ✅              | ✅               | ✅                |
+| Groq                | ✅               | ✅              | ✅               | ✅                |
+| HuggingFace         | ✅               | ✅              | ✅               | ✅                |
+| Mistral             | ✅               | ✅              | ✅               | ✅                |
+| MiniMax             | ✅               | ✅              | ✅               | ✅                |
+| Ollama              | ✅               | ✅              | ✅               | ✅                |
+| OpenAI              | ✅               | ✅              | ✅               | ✅ (Native)       |
+| OpenAI-Compatible   | ✅               | ✅              | ✅               | ✅                |
+| OpenRouter          | ✅               | ✅              | ✅               | ✅                |
+| Perplexity          | ✅               | ✅              | ❌               | ✅                |
+| Voyage              | ❌               | ❌              | ✅ (Specialized) | ❌                |
+
+### 🔍 Provider Capability Discovery
+
+Every provider exposes a **runtime capability API** so you can introspect what it supports without consulting documentation — and without risking cryptic errors when you call an unsupported operation. 🛡️
+
+```javascript
+// Get all capabilities a provider supports
+var provider = aiService( "openai" );
+var caps = provider.getCapabilities();
+// → [ "chat", "stream", "embeddings" ]
+
+// Check a specific capability before using it
+if ( provider.hasCapability( "embeddings" ) ) {
+    var embedding = aiEmbed( "Hello world" );
+}
+
+// Voyage is embeddings-only — getCapabilities() reflects this
+var voyage = aiService( "voyage" );
+voyage.getCapabilities(); // → [ "embeddings" ]
+voyage.hasCapability( "chat" ); // → false
+```
+
+The built-in BIFs (`aiChat`, `aiChatStream`, `aiEmbed`) automatically use this system and throw a clear `UnsupportedCapability` exception when the selected provider does not implement the required capability:
+
+```javascript
+// This will throw UnsupportedCapability — Voyage has no chat capability
+aiChat( "Hello?", provider: "voyage" );
+
+// This will throw UnsupportedCapability — Claude has no embeddings capability
+aiEmbed( "some text", provider: "claude" );
+```
+
+Capabilities map to the following **capability interfaces** (in `models/providers/capabilities/`):
+
+| Capability String | Interface           | Methods Provided         |
+|-------------------|---------------------|---------------------------|
+| `chat`, `stream`  | `IAiChatService`    | `chat()`, `chatStream()`  |
+| `embeddings`      | `IAiEmbeddingsService` | `embeddings()`         |
 
 ## 📤 Return Formats
 
@@ -186,7 +321,7 @@ BoxLang not only makes it extremely easy to interact with multiple AI providers,
 
 ## 🥊 Quick Overview
 
-In the following sections, we provide a quick overview of the main components of BoxLang AI including Chats, Pipelines, Agents, Structured Output, Memory Systems, Document Loaders & RAG, and MCP Client/Server. Each section includes quick examples and links to more detailed documentation.  For further details, please refer to the [official documentation](https://ai.ortusbooks.com/), this is just a high-level overview to get you started quickly. 🚀
+In the following sections, we provide a quick overview of the main components of BoxLang AI including Chats, Pipelines, Middleware, Agents, Structured Output, Memory Systems, Document Loaders & RAG, and MCP Client/Server. Each section includes quick examples and links to more detailed documentation.  For further details, please refer to the [official documentation](https://ai.ortusbooks.com/), this is just a high-level overview to get you started quickly. 🚀
 
 ### 💬 Chats
 
@@ -381,6 +516,467 @@ pipeline = aiModel( provider: "openai", params: { model: "gpt-4o" } )
 
 ----
 
+### 🧩 Middleware
+
+Add **cross-cutting behavior** around model and agent execution without changing your business logic. Use middleware for observability, reliability, safety, approvals, and deterministic replay in testing. 🎯
+
+#### 🤔 Why Use Middleware?
+
+- 🔍 **Observability** - Capture lifecycle logs and execution traces
+- ♻️ **Reliability** - Retry transient model/tool failures
+- 🛡️ **Safety** - Block risky tools or argument patterns
+- 👤 **Human Approval** - Require confirmation for sensitive tool calls
+- 🎬 **Replayability** - Record and replay runs for regression testing
+
+#### 📦 Core Middleware Included
+
+| Middleware | Purpose |
+|------------|---------|
+| `LoggingMiddleware` | Logs agent/model lifecycle activity for observability and troubleshooting. |
+| `RetryMiddleware` | Retries transient LLM/tool failures with configurable backoff. |
+| `MaxToolCallsMiddleware` | Enforces a per-run cap on total tool calls to prevent runaway execution. |
+| `GuardrailMiddleware` | Blocks disallowed tools and rejects risky tool arguments by pattern rules. |
+| `HumanInTheLoopMiddleware` | Requires human approval for selected tool calls (CLI or suspend/resume flow). |
+| `FlightRecorderMiddleware` | Records and replays LLM/tool interactions for deterministic testing and CI. |
+
+#### 📌 Registration
+
+Middleware can be attached to **agents**, **models**, or both. They are executed in the order registered; `after*` hooks fire in reverse order (cleanup order).
+
+**Via `aiAgent()` / `aiModel()` BIF parameter:**
+
+```javascript
+import bxModules.bxai.models.middleware.core.LoggingMiddleware;
+import bxModules.bxai.models.middleware.core.RetryMiddleware;
+import bxModules.bxai.models.middleware.core.GuardrailMiddleware;
+
+agent = aiAgent(
+    name: "Safe Assistant",
+    middleware: [
+        new LoggingMiddleware( logToConsole: true ),
+        new RetryMiddleware( maxRetries: 2, initialDelay: 250 ),
+        new GuardrailMiddleware( blockedTools: [ "deleteRecord" ] )
+    ]
+)
+```
+
+**Via `withMiddleware()` on a runnable (fluent API):**
+
+```javascript
+agent
+    .withMiddleware( new LoggingMiddleware() )
+    .withMiddleware( new RetryMiddleware( maxRetries: 3 ) )
+
+// Or pass an array — flattened automatically
+agent.withMiddleware( [ mw1, mw2, mw3 ] )
+```
+
+**Management methods** (available on `AiAgent` and `AiModel`):
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `withMiddleware( any middleware )` | `this` | Add one or more middleware (instance, struct, or array) |
+| `clearMiddleware()` | `this` | Remove all registered middleware |
+| `listMiddleware()` | `array` | Return array of `{ name, description }` for all middleware |
+
+When an agent runs, its middleware is **prepended** to any middleware already on the model, so agent-level hooks always fire first.
+
+---
+
+#### 🪝 Hooks Reference
+
+Middleware exposes two hook styles:
+
+**Sequential hooks** — called in order; return `AiMiddlewareResult`. Chain stops if any hook returns a terminal result.
+
+| Hook | Fires | Direction |
+|------|-------|-----------|
+| `beforeAgentRun( context )` | Before agent starts | Forward |
+| `afterAgentRun( context )` | After agent completes | **Reverse** |
+| `beforeLLMCall( context )` | Before each LLM provider call | Forward |
+| `afterLLMCall( context )` | After each LLM provider call | **Reverse** |
+| `beforeToolCall( context )` | Before each tool is invoked | Forward |
+| `afterToolCall( context )` | After each tool returns | **Reverse** |
+| `onError( context )` | When any hook throws an exception | — |
+
+**Wrap hooks** — called as nested closures; call `handler()` to proceed and return a value.
+
+| Hook | Purpose |
+|------|---------|
+| `wrapLLMCall( context, handler )` | Surround each LLM provider call (retry, caching, tracing) |
+| `wrapToolCall( context, handler )` | Surround each tool invocation (retry, mocking, sandboxing) |
+
+For wrap hooks, the first registered middleware is the outermost wrapper:
+
+```
+mw1.wrapLLMCall( ctx, () =>
+    mw2.wrapLLMCall( ctx, () =>
+        actualProviderCall()
+    )
+)
+```
+
+---
+
+#### 📬 AiMiddlewareResult
+
+Every sequential hook must return an `AiMiddlewareResult`. Use the static factory methods:
+
+```javascript
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+// Continue the chain normally
+return AiMiddlewareResult.continue()
+
+// Stop the chain immediately (terminal)
+return AiMiddlewareResult.cancel( "Too many sensitive operations" )
+
+// Human approved (HITL)
+return AiMiddlewareResult.approve()
+
+// Human rejected (terminal)
+return AiMiddlewareResult.reject( "Operator rejected this action" )
+
+// Human edited the tool arguments (passes modified args to tool)
+return AiMiddlewareResult.edit( { correctedArgs: { query: "safe query" } } )
+
+// Suspend for async human review (terminal — web mode HITL)
+return AiMiddlewareResult.suspend( { toolName: "deleteRecord", args: toolArgs } )
+```
+
+**Checking results:**
+
+| Predicate | Meaning |
+|-----------|---------|
+| `isContinue()` | Chain proceeds normally |
+| `isCancelled()` | Chain was stopped (terminal) |
+| `isApproved()` | Human approved |
+| `isRejected()` | Human rejected (terminal) |
+| `isEdit()` | Arguments were modified |
+| `isSuspended()` | Waiting for async human input (terminal) |
+| `isTerminal()` | `cancel`, `reject`, or `suspend` — stops the chain |
+
+---
+
+#### ✍️ Writing Middleware
+
+**Option 1: Struct-of-closures** (lightweight, no class needed)
+
+Only define the hooks you need — all others default to no-op:
+
+```javascript
+agent.withMiddleware({
+    // Sequential hooks — receive context struct, must return AiMiddlewareResult
+    beforeToolCall: (ctx) => {
+        if ( ctx.toolName == "dropTable" ) {
+            return AiMiddlewareResult.cancel( "Blocked: dropTable is not allowed" )
+        }
+        return AiMiddlewareResult.continue()
+    },
+
+    // Wrap hooks — receive context + handler function, must return handler()'s value
+    wrapLLMCall: (ctx, handler) => {
+        writeLog( "LLM call start", "ai" )
+        var result = handler()
+        writeLog( "LLM call end", "ai" )
+        return result
+    },
+
+    onError: (ctx) => {
+        writeLog( "Middleware error in #ctx.phase#: #ctx.error.message#", "ai" )
+        return AiMiddlewareResult.continue()
+    }
+})
+```
+
+**Option 2: Class-based** (reusable, configurable, shareable)
+
+Extend `BaseAiMiddleware` and override only the hooks you need:
+
+```javascript
+import bxModules.bxai.models.middleware.BaseAiMiddleware;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+class extends="BaseAiMiddleware" {
+
+    function init( required string tenantId ) {
+        variables.tenantId = arguments.tenantId
+        variables.name = "Tenant Audit Middleware"
+        return this
+    }
+
+    AiMiddlewareResult function beforeToolCall( required struct context ) {
+        auditLog( variables.tenantId, context.toolName, context.toolArgs )
+        return AiMiddlewareResult.continue()
+    }
+}
+```
+
+---
+
+#### 💡 Core Middleware Configuration
+
+**LoggingMiddleware**
+
+```javascript
+new LoggingMiddleware(
+    logToFile    : true,              // Write to BoxLang "ai" log file
+    logToConsole : false,             // Also print to stdout
+    logLevel     : "info",            // "info" | "debug" | "warning" | "error"
+    prefix       : "[AI Middleware]"  // Prefix for all log messages
+)
+```
+
+**RetryMiddleware**
+
+```javascript
+new RetryMiddleware(
+    maxRetries        : 3,                                        // Retries after first failure
+    initialDelay      : 1000,                                     // First retry delay (ms)
+    backoffMultiplier : 2,                                        // Exponential backoff factor
+    maxDelay          : 30000,                                    // Hard cap on delay (ms)
+    nonRetryableTypes : "InvalidInput,MaxInteractionsExceeded"    // Comma-separated exception types to skip
+)
+```
+
+**MaxToolCallsMiddleware**
+
+```javascript
+new MaxToolCallsMiddleware(
+    maxCalls: 10  // Max tool invocations per agent run
+)
+```
+
+**GuardrailMiddleware**
+
+```javascript
+new GuardrailMiddleware(
+    blockedTools : [ "deleteRecord", "dropTable" ],   // Tool names to reject outright
+    argPatterns  : {                                   // Per-tool argument regex rules
+        runSql: [ { query: "(?i)drop|truncate|delete" } ]
+    }
+)
+```
+
+**HumanInTheLoopMiddleware**
+
+```javascript
+new HumanInTheLoopMiddleware(
+    toolsRequiringApproval : [ "deleteRecord", "placeOrder" ],
+    mode                   : "cli",      // "cli" = blocking stdin | "web" = suspend/resume
+    showArguments          : true,       // Show tool args in CLI prompt
+    approvalCallback       : (ctx) => "approve"  // Optional custom approval logic
+)
+```
+
+In `web` mode, the agent suspends and returns an `AiMiddlewareResult.suspend()`. Resume it later:
+
+```javascript
+// Resume after human decision
+agent.resume( "approve", threadId, {} )
+agent.resume( "reject",  threadId, {} )
+agent.resume( "edit",    threadId, { correctedArgs: { query: "safer query" } } )
+```
+
+**FlightRecorderMiddleware**
+
+```javascript
+new FlightRecorderMiddleware(
+    mode        : "record",                        // "passthrough" | "record" | "replay"
+    fixturePath : "tests/fixtures/my-agent.json",  // Required in "replay" mode
+    fixtureDir  : ".ai/flight-recorder",           // Output directory for "record" mode
+    recordTools : true,                            // Include tool interactions in fixture
+    strict      : true                             // Strict type matching during replay
+)
+```
+
+| Mode | Behaviour |
+|------|-----------|
+| `passthrough` | No recording — calls pass through normally |
+| `record` | Calls real providers/tools and captures each interaction to a fixture file |
+| `replay` | Returns recorded interactions without making any live calls (zero-cost CI) |
+
+---
+
+#### 📚 Learn More
+
+- 📖 **Full Guide**: [Middleware Documentation](https://ai.ortusbooks.com/main-components/middleware)
+- 💻 **Examples**: Check `examples/agents/` and `examples/pipelines/`
+
+----
+
+### 🗂️ Tool Registry
+
+The **AI Tool Registry** is a global singleton that stores named `ITool` instances. Register tools once — at module load, on application start, or anywhere in your code — and then reference them by string name wherever tools are accepted. This decouples tool definitions from call sites and makes it easy to share tools across agents, models, and pipelines. 🎯
+
+#### 🤔 Why Use the Registry?
+
+- 🔑 **By-name references** — pass `"now@bxai"` as a string instead of a live object
+- 📦 **Module scoping** — namespace tools as `toolName@moduleName` to avoid collisions
+- 🔍 **Lazy resolution** — tools are resolved to `ITool` instances right before each LLM request
+- 🔌 **Auto-scanning** — annotate methods with `@AITool` and call `scan()` to register them all at once
+- ⚡ **Built-in tools** — `now@bxai` (current date/time) is registered automatically on module load
+
+#### 💡 Quick Examples
+
+**Using the registry:**
+
+```javascript
+// Register a tool once (e.g., in Application.bx or a module's onLoad)
+aiToolRegistry().register(
+    name        : "searchProducts",
+    description : "Search the product catalog",
+    callback    : ( required string query ) => productService.search( query )
+)
+
+// Later, reference by name — no object needed
+result = aiChat(
+    "Find me wireless headphones under $50",
+    { tools: [ "searchProducts" ] }
+)
+```
+
+**Module-namespaced tools:**
+
+```javascript
+// Namespaced registration avoids collisions across modules
+aiToolRegistry().register(
+    name        : "lookup",
+    description : "Look up a customer by ID",
+    callback    : id => customerService.find( id ),
+    module      : "my-app"
+)
+
+// Retrieve by full key or bare name (auto-resolved if unambiguous)
+var tool = aiToolRegistry().get( "lookup@my-app" )
+var tool = aiToolRegistry().get( "lookup" )       // works if only one "lookup" exists
+```
+
+**Scanning a class for `@AITool` annotations:**
+
+```javascript
+// Annotate methods in a class
+class WeatherTools {
+    @AITool( "Get current weather for a city" )
+    public string function getWeather( required string city ) {
+        return weatherAPI.fetch( city )
+    }
+
+    @AITool( "Get a 7-day forecast for a city" )
+    public string function getForecast( required string city ) {
+        return weatherAPI.forecast( city )
+    }
+}
+
+// Register all annotated methods in one call
+aiToolRegistry().scan( new WeatherTools(), "my-module" )
+// Registered as: getWeather@my-module, getForecast@my-module
+```
+
+**Using the built-in `now@bxai` tool:**
+
+```javascript
+// Auto-registered on module load — just reference it by name
+result = aiChat(
+    "What should I have for dinner tonight?",
+    { tools: [ "now@bxai" ] }
+)
+// AI knows the current date/time without any extra wiring
+```
+
+**Opt-in `httpGet` tool (NOT auto-registered):**
+
+```javascript
+// Register explicitly when your application needs web access
+import bxModules.bxai.models.tools.core.CoreTools;
+aiToolRegistry().scan( new CoreTools(), "bxai" )  // registers httpGet@bxai too
+```
+
+#### 🧑‍💻 Custom Tools via `BaseTool`
+
+For more complex tools ones that need their own state, unit tests, or reusable class structure extend `BaseTool` directly instead of using a closure. You only need to implement two abstract methods:
+
+| Method | Purpose |
+|--------|---------|
+| `doInvoke( required struct args, AiChatRequest chatRequest )` | The tool logic. Return any value serialization is handled automatically. |
+| `generateSchema()` | Return the OpenAI function-calling schema struct. Called by `getSchema()` unless a manual schema override has been set. |
+
+`invoke()` is `final` on `BaseTool` it fires the `beforeAIToolExecute` / `afterAIToolExecute` events and serializes the result before calling your `doInvoke()`, so you never need to wire those up yourself.
+
+```javascript
+// MySearchTool.bx
+class extends="bxModules.bxai.models.tools.BaseTool" {
+
+    property name="searchClient";
+
+    function init( required any searchClient ) {
+        variables.name        = "searchProducts"
+        variables.description = "Search the product catalog and return matching items"
+        variables.searchClient = arguments.searchClient
+        return this
+    }
+
+    /**
+     * Core tool logic return any type, BaseTool serializes it automatically.
+     */
+    public any function doInvoke( required struct args, AiChatRequest chatRequest ) {
+        return variables.searchClient.search(
+            query      : args.query,
+            maxResults : args.maxResults ?: 5
+        )
+    }
+
+    /**
+     * OpenAI function-calling schema for this tool.
+     */
+    public struct function generateSchema() {
+        return {
+            "type": "function",
+            "function": {
+                "name"       : variables.name,
+                "description": variables.description,
+                "parameters" : {
+                    "type"      : "object",
+                    "properties": {
+                        "query"     : { "type": "string",  "description": "Search query text" },
+                        "maxResults": { "type": "integer", "description": "Maximum number of results to return" }
+                    },
+                    "required": [ "query" ]
+                }
+            }
+        }
+    }
+}
+```
+
+Register and use it like any other tool:
+
+```javascript
+// Register in the global registry
+aiToolRegistry().register( new MySearchTool( searchClient ), "my-app" )
+
+// Reference by key name anywhere tools are accepted
+result = aiChat( "Find wireless headphones", { tools: [ "searchProducts@my-app" ] } )
+```
+
+**Fluent schema helpers** (inherited from `BaseTool`) let you skip writing `generateSchema()` manually when `ClosureTool`'s auto-introspection isn't available:
+
+```javascript
+tool = new MySearchTool( client )
+    .describeFunction( "Search the product catalog" )   // sets description
+    .describeQuery( "Search term to look up" )           // describeArg( "query", "..." )
+    .describeMaxResults( "Max items to return" )         // describeArg( "maxResults", "..." )
+```
+
+Or supply a fully hand-crafted schema with `setSchema( schemaStruct )` when set, it takes precedence over `generateSchema()`.
+
+#### 📚 Learn More
+
+- 📖 **Full Guide**: [AI Tool Registry Documentation](https://ai.ortusbooks.com/main-components/tool-registry)
+- 💻 **Examples**: Check `examples/advanced/` for complete registry examples
+
+----
+
 ### 🤖 AI Agents
 
 Build **autonomous AI agents** 🎯 that can use tools, maintain memory, and orchestrate complex workflows. BoxLang AI agents combine LLMs with function calling, memory systems, and orchestration patterns to create intelligent assistants that can interact with external systems and solve complex tasks. 💡
@@ -439,12 +1035,165 @@ agent = aiAgent(
 agent.run( "Find order #12345, email the customer with status, and create a ticket if there's an issue" )
 ```
 
+**Multi-Agent Hierarchy (Sub-Agents):**
+
+```javascript
+// Create specialist sub-agents
+researchAgent = aiAgent(
+    name: "researcher",
+    description: "Researches topics in depth",
+    instructions: "Provide thorough research summaries"
+)
+
+writerAgent = aiAgent(
+    name: "writer",
+    description: "Writes polished content",
+    instructions: "Turn research into engaging articles"
+)
+
+// Coordinator automatically registers sub-agents as callable tools
+coordinator = aiAgent(
+    name: "coordinator",
+    description: "Orchestrates research and writing",
+    subAgents: [ researchAgent, writerAgent ]
+)
+
+// Coordinator decides when to delegate
+coordinator.run( "Write an article about BoxLang AI" )
+
+// Inspect the hierarchy
+writeln( researchAgent.getAgentPath() )   // /coordinator/researcher
+writeln( researchAgent.getAgentDepth() )  // 1
+writeln( researchAgent.isRootAgent() )    // false
+writeln( coordinator.getRootAgent().getAgentName() ) // coordinator
+```
+
 #### 📚 Learn More
 
 - 📖 **Full Guide**: [AI Agents Documentation](https://ai.ortusbooks.com/main-components/agents.md)
 - 🎓 **Interactive Course**: [Lesson 6 - Building AI Agents](course/lesson-06-agents/)
 - 🔧 **Advanced Patterns**: [Agent Orchestration](https://ai.ortusbooks.com/advanced/agent-orchestration.md)
 - 💻 **Examples**: Check `examples/agents/` for complete working examples
+
+----
+
+### 🎯 AI Skills
+
+Give agents and models reusable, composable **knowledge blocks** 📚 that can be injected into the system message at runtime. Skills follow the [Claude Agent Skills open standard](https://www.anthropic.com/news/agent-skills) — a `description` field tells the LLM when to apply the skill, and the body contains the full instructions. 🧩
+
+#### 🤔 Why Use Skills?
+
+- 📖 **Reusable knowledge** - Define domain expertise once, share across many agents and models
+- 🗂️ **File-based management** - Store skills as `SKILL.md` files in your project, commit alongside code
+- ⚡ **Two loading modes** - Always-on for universal guidance; lazy-loaded for large skill libraries
+- 🔌 **Zero-code discovery** - Drop a `SKILL.md` into `.ai/skills/my-skill/` and it's available automatically
+- 🌐 **Global skill pool** - Register global skills once in module config, automatically available to all agents
+
+#### 📋 Skill File Format
+
+Skills live in named subdirectories under `.ai/skills/`:
+
+```
+.ai/skills/
+    sql-optimizer/
+        SKILL.md
+    boxlang-expert/
+        SKILL.md
+    customer-tone/
+        SKILL.md
+```
+
+Each `SKILL.md` file uses optional YAML frontmatter and a Markdown body:
+
+```markdown
+---
+description: Optimise SQL queries for maximum performance. Apply when writing or reviewing database queries.
+---
+
+## SQL Optimisation Rules
+
+- Always use indexed columns in WHERE clauses
+- Prefer JOINs over subqueries for large datasets
+- Use EXPLAIN to verify query plans before deploying
+- Avoid SELECT * in production queries
+```
+
+> **Tip:** If you omit the frontmatter, the first paragraph of the body is used as the `description`.
+
+#### 💡 Quick Examples
+
+**Inline skill on a model:**
+
+```javascript
+// Create an inline skill (no files needed)
+sqlSkill = aiSkill(
+    name       : "sql-optimizer",
+    description: "Apply SQL optimisation rules when writing or reviewing queries",
+    content    : "Always use indexed columns. Prefer JOINs over subqueries."
+)
+
+// Always-on: injected into every call
+model = aiModel( "openai" ).withSkills( [ sqlSkill ] )
+response = model.run( "Write a query to get all orders" )
+```
+
+**Load skills from the filesystem:**
+
+```javascript
+// Load all SKILL.md files from .ai/skills/ (recursive by default)
+skills = aiSkill( ".ai/skills" )
+
+// Or load a single skill file
+sqlSkill = aiSkill( ".ai/skills/sql-optimizer/SKILL.md" )
+
+// Seed an agent with all discovered skills
+agent = aiAgent(
+    name           : "data-assistant",
+    availableSkills: skills    // Lazy pool — LLM loads on demand
+)
+```
+
+**Always-on vs lazy skills:**
+
+```javascript
+// Always-on: full content injected every call (small, universal skills)
+coreSkill = aiSkill( ".ai/skills/writing-style/SKILL.md" )
+agent.withSkills( [ coreSkill ] )
+
+// Lazy pool: only a compact index is included; LLM calls loadSkill() as needed
+bigLibrary = aiSkill( ".ai/skills" )   // Hundreds of skills
+agent.withAvailableSkills( bigLibrary )
+
+// activateSkill() promotes a lazy skill to always-on mid-session
+agent.activateSkill( "sql-optimizer" )
+```
+
+**Global skills auto-injected into every agent:**
+
+```javascript
+// In ModuleConfig.bx settings — all agents get these automatically
+settings = {
+    globalSkills: aiSkill( expandPath( ".ai/skills" ) )
+}
+
+// Or register programmatically via the BIF
+globalSkillPool = aiGlobalSkills()   // returns the current global pool
+```
+
+**Inspect skill state:**
+
+```javascript
+config = agent.getConfig()
+writeln( config.activeSkillCount )         // always-on skills count
+writeln( config.availableSkillCount )      // lazy skills count
+
+// Render the full skill system-message block for debugging
+writeln( agent.buildSkillsContent() )
+```
+
+#### 📚 Learn More
+
+- 💻 **Examples**: Check `examples/skills/` for complete working examples
 
 ----
 
@@ -669,6 +1418,29 @@ memory = aiMemory( "hybrid", config: {
 // Combines recency with relevance
 ```
 
+**Per-Call Multi-Tenant Identity (Singleton-Safe):**
+
+Memory instances are **stateless** and safe to use as singletons. Pass `userId` and `conversationId` directly to `run()` / `stream()` via `options`, and they flow through to every memory read/write automatically:
+
+```java
+// One shared memory instance for all users
+sharedMemory = aiMemory( "cache" )
+agent = aiAgent( name: "Support", memory: sharedMemory )
+
+// Each call is routed to its own isolated conversation
+agent.run( "Hello!",             {}, { userId: "alice", conversationId: "session-1" } )
+agent.run( "What did I say?",    {}, { userId: "alice", conversationId: "session-1" } )  // Remembers
+agent.run( "Any prior context?", {}, { userId: "bob",   conversationId: "session-2" } )  // Isolated
+```
+
+You can also override identity per-call directly on memory methods:
+
+```java
+memory.getAll( userId: "alice", conversationId: "session-1" )
+memory.add( message, userId: "alice", conversationId: "session-1" )
+memory.clear( userId: "alice", conversationId: "session-1" )
+```
+
 #### 📚 Learn More
 
 - 💬 **Standard Memory**: [Memory Systems Guide](https://ai.ortusbooks.com/main-components/memory.md)
@@ -836,24 +1608,52 @@ tools = mcpClient.listTools()
 println( tools ) // Returns available MCP tools
 ```
 
-**Use MCP Tools in Agent:**
+**Seed an Agent with MCP Tools:**
+
+Pass one or more MCP server URLs to `aiAgent()` via `mcpServers` and every tool the server exposes is automatically discovered and registered — no manual Tool construction required.
 
 ```javascript
-// Connect to MCP servers
-filesystemMcp = MCP( "http://localhost:3001" ).withTimeout( 5000 )
-databaseMcp = MCP( "http://localhost:3002" ).withTimeout( 5000 )
-
-// Create agent (MCP integration depends on agent implementation)
+// Seed at construction time (simplest)
 agent = aiAgent(
-    name: "Data Assistant",
-    description: "Assistant with MCP tool access"
+    name       : "Data Assistant",
+    description: "Assistant with filesystem and database access",
+    mcpServers : [
+        "http://localhost:3001",                                      // URL string
+        { url: "http://localhost:3002", token: "my-api-key" }         // with auth
+    ]
 )
 
-// Agent automatically discovers and uses MCP tools
+// Fluent seeding after construction
+agent = aiAgent( name: "Data Assistant" )
+    .withMCPServer( "http://localhost:3001" )
+    .withMCPServer( "http://localhost:3002", { token: "my-api-key", timeout: 5000 } )
+
+// Pass a pre-configured MCPClient for full control
+filesystemMcp = MCP( "http://localhost:3001" ).withTimeout( 5000 ).withBearerToken( "token" )
+agent = aiAgent( name: "Data Assistant" ).withMCPServer( filesystemMcp )
+
+// Seed a model directly (without an agent)
+model = aiModel( mcpServers: [ "http://localhost:3001" ] )
+
+// The agent/model now has all MCP tools and can use them automatically
 response = agent.run( "Read config.json and update the database with its contents" )
 
-// Agent automatically uses MCP tools
-agent.run( "Read config.json and update the database with its contents" )
+// The agent knows what it has — ask it directly
+response = agent.run( "What tools do you have and which MCP servers are you connected to?" )
+```
+
+**Inspect tools and servers programmatically:**
+
+```javascript
+// List all tools (name + description)
+tools = agent.listTools()
+// => [{ name: "read_file", description: "Read a file..." }, ...]
+
+// Full config including tools and connected servers
+config = agent.getConfig()
+config.tools      // [{ name, description }]
+config.mcpServers // [{ url: "http://localhost:3001", toolNames: ["read_file", "write_file"] }]
+config.toolCount  // 2
 ```
 
 **Access MCP Resources:**
@@ -901,7 +1701,7 @@ server = mcpServer(
     description: "Custom BoxLang tools"
 )
 
-// Register tool
+// Register a tool by ITool instance
 server.registerTool(
     aiTool(
         name: "calculate_tax",
@@ -911,6 +1711,10 @@ server.registerTool(
         }
     )
 )
+
+// Or register by registry key (tool must be in the global AIToolRegistry)
+server.registerTool( "now@bxai" )           // built-in current date/time tool
+server.registerTool( "searchProducts" )      // any registered tool by name
 
 // Start server
 server.start() // Listens on stdio by default
@@ -925,7 +1729,7 @@ server = mcpServer(
     description: "Internal enterprise tools"
 )
 
-// Register multiple tools
+// Register multiple tools — mix ITool instances and registry key strings
 server.registerTool( aiTool(
     name: "query_orders",
     description: "Query customer orders",
@@ -936,11 +1740,8 @@ server.registerTool( aiTool(
     description: "Create customer invoice",
     callable: createInvoiceFunction
 ) )
-server.registerTool( aiTool(
-    name: "send_notification",
-    description: "Send customer notification",
-    callable: notifyFunction
-) )
+server.registerTool( "send_notification" )   // resolved from AIToolRegistry
+server.registerTool( "now@bxai" )            // built-in registry tool
 
 // Provide templates as prompts
 server.registerPrompt(
@@ -1069,21 +1870,24 @@ Here are the settings you can place in your `boxlang.json` file:
 
 | Function | Purpose | Parameters | Return Type | Async Support |
 |----------|---------|------------|-------------|---------------|
-| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options` | AiAgent Object | ❌ |
+| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options`, `mcpServers=[]`, `skills=[]`, `availableSkills=[]` | AiAgent Object | ❌ |
 | `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
-| `aiChatRequest()` | Compose raw chat request | `messages`, `params`, `options`, `headers` | AiRequestObject | N/A |
+| `aiChatRequest()` | Compose a reusable chat request object (useful for advanced pipelines and middleware) | `messages`, `params`, `options`, `headers` | AiChatRequest Object | N/A |
 | `aiChatStream()` | Stream chat responses from AI provider | `messages`, `callback`, `params={}`, `options={}` | void | N/A |
-| `aiChunk()` | Split text into chunks | `text`, `options={}` | Array of Strings | N/A |
+| `aiChunk()` | Split text into chunks for RAG ingestion or token-window management | `text`, `options={}` _(chunkSize, overlap, strategy)_ | Array of Strings | N/A |
 | `aiDocuments()` | Create fluent document loader | `source`, `config={}` | IDocumentLoader Object | N/A |
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
 | `aiMemory()` | Create memory instance | `memory`, `key`, `userId`, `conversationId`, `config={}` | IAiMemory Object | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
-| `aiModel()` | Create AI model wrapper | `provider`, `apiKey`, `tools` | AiModel Object | N/A |
+| `aiModel()` | Create AI model wrapper | `provider`, `apiKey`, `tools`, `mcpServers=[]`, `skills=[]` | AiModel Object | N/A |
 | `aiPopulate()` | Populate class/struct from JSON | `target`, `data` | Populated Object | N/A |
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
-| `aiTokens()` | Estimate token count | `text`, `options={}` | Numeric | N/A |
+| `aiSkill()` | Create or discover AI skills | `path`, `name`, `description`, `content`, `recurse=true` | AiSkill / Array | N/A |
+| `aiGlobalSkills()` | Get the globally shared skill pool | _(none)_ | Array of AiSkill | N/A |
+| `aiTokens()` | Estimate token count for a text string | `text`, `options={}` _(method: characters\|words)_ | Numeric | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
+| `aiToolRegistry()` | Get the singleton AI Tool Registry | _(none)_ | AIToolRegistry Object | N/A |
 | `aiTransform()` | Create data transformer | `transformer`, `config={}` | Transformer Runnable | N/A |
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
 | `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors`, `statsEnabled`, `force` | MCPServer Object | N/A |
@@ -1111,21 +1915,30 @@ Read more about [Events in BoxLang AI](https://ai.ortusbooks.com/advanced/events
 | `beforeAIPipelineRun` | Before pipeline execution starts | `sequence`, `stepCount`, `steps`, `input` | Pipeline validation, tracking |
 | `beforeAIToolExecute` | Before tool execution starts | `tool`, `name`, `arguments` | Permission checks, validation |
 | `onAIAgentCreate` | When agent is created | `agent` | Agent registration, configuration |
+| `onAIChatRequest` | When an HTTP chat or stream request is sent to the provider | `dataPacket`, `chatRequest`, `provider` | Request logging, modification, authentication |
+| `onAIChatRequestCreate` | When a chat request object is created | `chatRequest` | Request validation, modification |
+| `onAIChatResponse` | After receiving and deserializing the provider chat response | `chatRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
 | `onAIEmbedRequest` | Before sending embedding request | `dataPacket`, `embeddingRequest`, `provider` | Request logging, modification |
 | `onAIEmbedResponse` | After receiving embedding response | `embeddingRequest`, `response`, `provider` | Response processing, caching |
 | `onAIError` | When AI operation error occurs | `error`, `errorMessage`, `provider`, `operation`, `canRetry` | Error handling, retry logic, alerts |
+| `onAiLoaderCreate` | When a document loader is created | `loaderType`, `loaderClass`, `loaderConfig` | Loader configuration, tracking |
 | `onAiMemoryCreate` | When memory instance is created | `memory`, `type`, `config` | Memory configuration, tracking |
 | `onAIMessageCreate` | When message is created | `message` | Message validation, formatting |
 | `onAIModelCreate` | When model wrapper is created | `model`, `service` | Model configuration, tracking |
 | `onAIProviderCreate` | After provider is created | `provider` | Provider initialization, configuration |
-| `onAIProviderRequest` | When provider is requested | `provider`, `apiKey`, `service` | Custom provider registration |
 | `onAIRateLimitHit` | When rate limit (429) is encountered | `provider`, `statusCode`, `retryAfter` | Rate limit handling, provider switching |
-| `onAIRequest` | Before sending HTTP request | `dataPacket`, `aiRequest`, `provider` | Request logging, modification, authentication |
-| `onAIRequestCreate` | When request object is created | `aiRequest` | Request validation, modification |
-| `onAIResponse` | After receiving HTTP response | `aiRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
 | `onAITokenCount` | When token usage data is available | `provider`, `model`, `promptTokens`, `completionTokens`, `totalTokens`, `tenantId`, `usageMetadata`, `providerOptions`, `timestamp` | Cost tracking, budget enforcement, multi-tenant billing |
 | `onAIToolCreate` | When tool is created | `tool`, `name`, `description` | Tool registration, validation |
+| `onAIToolRegistryClear` | When the tool registry is cleared | _(none)_ | Registry lifecycle monitoring |
+| `onAIToolRegistryRegister` | When a tool is registered in the registry | `tool`, `key`, `module` | Auditing, dynamic registration hooks |
+| `onAIToolRegistryUnregister` | When a tool is unregistered from the registry | `key`, `module` | Auditing, cleanup notifications |
 | `onAITransformerCreate` | When transformer is created | `transform` | Transform configuration, tracking |
+| `onMCPError` | When an MCP operation error occurs | `server`, `context`, `exception`, `method` | Error handling, alerting |
+| `onMCPRequest` | When an MCP JSON-RPC request is processed | `server`, `requestData`, `serverName` | Request logging, authentication, inspection |
+| `onMCPResponse` | When an MCP response is sent | `server`, `response`, `requestData`, `serverName` | Response logging, transformation |
+| `onMCPServerCreate` | When an MCP server instance is created | `server`, `name`, `description`, `version` | Server lifecycle monitoring |
+| `onMCPServerRemove` | When an MCP server instance is removed | `name` | Server lifecycle monitoring, cleanup |
+| `onMissingAiProvider` | When a requested provider is not found | `provider`, `options`, `service` | Custom provider registration (set `service` to provide an alternative) |
 
 ## 🌐 GitHub Repository and Reporting Issues
 

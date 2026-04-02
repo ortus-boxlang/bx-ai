@@ -39,7 +39,10 @@ public class DeepSeekTest extends BaseIntegrationTest {
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
-			result = aiChat( "what is a servlet?" )
+			result = aiChat( messages: "what is a servlet?", options: {
+				logResponseToConsole: true,
+				logRequestToConsole: true
+			} )
 			println( result )
 			""",
 			context

@@ -267,7 +267,7 @@ class extends="BaseDocumentLoader" {
 	 *
 	 * @return CSVLoader for chaining
 	 */
-	CSVLoader function delimiter( required string delimiter ) {
+	IDocumentLoader function delimiter( required string delimiter ) {
 		variables.config.delimiter = arguments.delimiter;
 		return this;
 	}

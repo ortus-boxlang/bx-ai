@@ -1,0 +1,240 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Abstract base registry. Provides key-value storage with optional module namespacing.
+ *
+ * Key convention:
+ *   - With module:    itemName@moduleName
+ *   - Without module: itemName
+ *
+ * Lookup algorithm:
+ *   1. Exact key match
+ *   2. Search all keys for itemName@* — if one match return it, if multiple throw AmbiguousKeyException
+ *   3. Not found — throw RegistryItemNotFoundException
+ *
+ * Subclasses must implement register().
+ */
+abstract class {
+
+	/**
+	 * The main registry storage. Keyed by "name@module" or "name".
+	 */
+	property name="registry" type="struct" default={};
+
+	/**
+	 * Constructor initializes the registry storage.
+	 */
+	function init() {
+		// Initialize the registry storage
+		variables.registry = {}
+	}
+
+	/**
+	 * Register an item in the registry by a unique key.
+	 * Subclasses define the exact signature and validation.
+	 * This method uses the simplest interface approach
+	 */
+	BaseRegistry function register( required string key, required any item, string module = "" ){
+		variables.registry[ buildKey( arguments.key, arguments.module ) ] = arguments.item
+		return this
+	}
+
+	/**
+	 * Unregister by exact key.
+	 *
+	 * @key The exact registry key to remove
+	 *
+	 * @returns The registry instance for chaining
+	 */
+	BaseRegistry function unregister( required string key ) {
+		variables.registry.delete( arguments.key )
+		return this
+	}
+
+	/**
+	 * Unregister all items registered under a specific module.
+	 *
+	 * @module The module name whose items should be removed
+	 */
+	BaseRegistry function unregisterByModule( required string module ) {
+		getKeys()
+			.filter( key => extractModule( key ) == module )
+			.each( key => variables.registry.delete( key ) )
+		return this
+	}
+
+	/**
+	 * Clear the entire registry.
+	 */
+	BaseRegistry function clear() {
+		variables.registry = {}
+		return this
+	}
+
+	/**
+	 * Get an item by key. Uses two-step lookup (exact, then partial by name).
+	 *
+	 * @key Registry key or bare item name
+	 *
+	 * @throws RegistryItemNotFoundException, AmbiguousKeyException
+	 *
+	 * @return The resolved registry item
+	 */
+	function get( required string key ) {
+		return resolveKey( arguments.key )
+	}
+
+	/**
+	 * Check if a key exists.
+	 * This uses direct resolution and returns false if not found, rather than throwing an exception.
+	 *
+	 * @key Registry key or bare item name
+	 *
+	 * @return True if the item exists, false otherwise
+	 */
+	boolean function has( required string key ) {
+		return resolveKey( arguments.key, true ) != null
+	}
+
+	/**
+	 * Get all registered items as an array.
+	 */
+	array function getAll() {
+		return variables.registry.valueArray()
+	}
+
+	/**
+	 * Get all items registered under a specific module.
+	 *
+	 * @module The module name to filter by
+	 */
+	array function getByModule( required string module ) {
+		return variables.registry
+			.filter( ( key, val ) => extractModule( key ) == module )
+			.valueArray()
+	}
+
+	/**
+	 * Get all registered keys.
+	 */
+	array function getKeys() {
+		return variables.registry.keyArray()
+	}
+
+	/**
+	 * Get all distinct module names currently registered.
+	 */
+	array function getModules() {
+		return getKeys()
+			.map( key => extractModule( key ).lcase() )
+			.filter( module -> !module.isEmpty )
+			.unique()
+	}
+
+	/**
+	 * Number of registered items.
+	 */
+	numeric function size() {
+		return variables.registry.count()
+	}
+
+	/**
+	 * Whether the registry is empty.
+	 */
+	boolean function isEmpty() {
+		return variables.registry.isEmpty()
+	}
+
+	// -------------------------------------------------------------------------
+	// Helpers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Build a registry key from name and optional module.
+	 * With module: name@module. Without module: name.
+	 */
+	string function buildKey( required string name, string module = "" ) {
+		return arguments.module.len() ? "#arguments.name#@#arguments.module#" : arguments.name
+	}
+
+	/**
+	 * Extract the item name from a key (everything before @).
+	 */
+	string function extractName( required string key ) {
+		return arguments.key.listFirst( "@" )
+	}
+
+	/**
+	 * Extract the module from a key (everything after @), or empty string if none.
+	 *
+	 * Example:
+	 *   - "myTool@bx-weather" => module: "bx-weather"
+	 *   - "myTool" => module: ""
+	 *
+	 * @key The registry key to extract the module from
+	 *
+	 * @return The module name or empty string if no module is present
+	 */
+	string function extractModule( required string key ) {
+		return arguments.key.find( "@" ) ? arguments.key.listRest( "@" ) : ""
+	}
+
+	/**
+	 * Two-step key resolution:
+	 *   1. Exact match in registry
+	 *   2. Search for name@* — single match returns it, multiple throws AmbiguousKeyException
+	 *
+	 * @key The registry key or bare name to resolve
+	 * @safe If true, return null instead of throwing if not found
+	 *
+	 * @throws RegistryItemNotFoundException if no match found
+	 * @throws AmbiguousKeyException if multiple module-qualified matches found
+	 *
+	 * @return The resolved registry item
+	 */
+	function resolveKey( required string key, boolean safe = false ) {
+		// Step 1: exact match
+		if ( variables.registry.keyExists( arguments.key ) ) {
+			return variables.registry[ arguments.key ]
+		}
+
+		// Step 2: partial match by name across modules
+		var targetName = extractName( arguments.key )
+		var matches    = variables.registry.filter( ( k, v ) => extractName( k ) == targetName )
+
+		if ( matches.count() == 1 ) {
+			return matches.valueArray().first()
+		}
+
+		if ( matches.count() > 1 ) {
+			if ( arguments.safe ) {
+				return null
+			}
+			throw(
+				type    : "AmbiguousKeyException",
+				message : "Multiple items found for [#arguments.key#]. Be specific: #matches.keyArray().toList()#"
+			)
+		}
+
+		if ( arguments.safe ) {
+			return null
+		}
+
+		throw(
+			type    : "RegistryItemNotFoundException",
+			message : "No item found in registry for key [#arguments.key#]"
+		)
+	}
+
+}

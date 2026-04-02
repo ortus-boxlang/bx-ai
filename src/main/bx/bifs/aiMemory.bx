@@ -16,21 +16,23 @@
  * limitations under the License.
  * ----------------------------------------------------------------------------------
  * Create an AI memory instance for storing conversation history
- *
- * @param memory The memory type to create (default: "window")
- * @param config Configuration struct for the memory instance
  */
 @BoxBIF
 class {
 
 	/**
-	 * Create an AI memory instance
+	 * Create an AI memory instance.  Please note that if you seed
+	 * the memory with a <code>userId</code> and a <code>conversationid</code> then the memory instance
+	 * is bound to that configuration.
+	 *
+	 * By default, a memory is stateless, meaning you will pass the <code>userId</code> and a <code>conversationid</code>
+	 * via it's operational methods.
 	 *
 	 * @memory The memory type to create. Defaults to "window".
 	 * @key The key to identify the memory instance. Defaults to a new UUID.
-	 * @userId The user identifier for multi-tenant isolation.
-	 * @conversationId The conversation identifier for multiple conversations per user.
-	 * @config Configuration struct for the memory instance
+	 * @userId Optional : The user identifier for multi-tenant isolation the memory will be bound with if provided.
+	 * @conversationId Optional : The conversation identifier for multiple conversations per user the memory will be bound with if provided.
+	 * @config Optional : Configuration struct for the memory instance
 	 *
 	 * @return IAiMemory instance
 	 */

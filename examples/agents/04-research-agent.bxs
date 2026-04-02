@@ -53,9 +53,9 @@ codeExamples = {
 // Define research tools
 
 searchArticlesTool = aiTool(
-    name: "search_articles",
-    description: "Search article database for information on a topic",
-    action: ( query ) => {
+    "search_articles",
+    "Search article database for information on a topic",
+    ( query ) => {
         query = lCase( arguments.query )
         results = []
 
@@ -74,29 +74,29 @@ searchArticlesTool = aiTool(
 
         return results.len() ? results : [ { message: "No articles found" } ]
     }
-).addParameter( "query", "string", "Search keywords", true )
+).describeArg( "query", "Search keywords" )
 
 getArticleTool = aiTool(
-    name: "get_article_content",
-    description: "Retrieve full content of a specific article by ID",
-    action: ( articleId ) => {
+    "get_article_content",
+    "Retrieve full content of a specific article by ID",
+    ( articleId ) => {
         article = articles.find( a => a.id == arguments.articleId )
         return isNull( article ) ? { error: "Article not found" } : article
     }
-).addParameter( "articleId", "string", "Article ID (e.g., ART-001)", true )
+).describeArg( "articleId", "Article ID (e.g., ART-001)" )
 
 findCodeTool = aiTool(
-    name: "find_code_example",
-    description: "Find code examples for specific features",
-    action: ( feature ) => {
+    "find_code_example",
+    "Find code examples for specific features",
+    ( feature ) => {
         feature = lCase( arguments.feature )
         code = codeExamples[ feature ]
         return isNull( code ) ? { error: "No example found" } : { feature: feature, code: code }
     }
-).addParameter( "feature", "string", "Feature name (agent, tool, memory, pipeline)", true )
+).describeArg( "feature", "Feature name (agent, tool, memory, pipeline)" )
 
 // Create vector memory for research (semantic search across articles)
-researchMemory = aiMemory( "boxvector", {
+researchMemory = aiMemory( "boxvector", config: {
     collection: "research_articles",
     embeddingProvider: "openai",
     embeddingModel: "text-embedding-3-small",
@@ -113,16 +113,16 @@ articles.each( article => {
 println( "✓ Loaded #articles.len()# articles into vector memory\n" )
 
 citationTool = aiTool(
-    name: "create_citation",
-    description: "Format a proper citation for an article",
-    action: ( articleId ) => {
+    "create_citation",
+    "Format a proper citation for an article",
+    ( articleId ) => {
         article = articles.find( a => a.id == arguments.articleId )
         if ( isNull( article ) ) {
             return { error: "Article not found" }
         }
         return "#article.author#. '#article.title#'. #article.date#. [#article.id#]"
     }
-).addParameter( "articleId", "string", "Article ID to cite", true )
+).describeArg( "articleId", "Article ID to cite" )
 
 // Create research agent with vector memory
 researchAgent = aiAgent(

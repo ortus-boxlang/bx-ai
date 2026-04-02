@@ -400,4 +400,425 @@ public class RunnablesTest extends BaseIntegrationTest {
 		assertThat( variables.get( result ).toString() ).isEqualTo( "170" );
 	}
 
+	// =========================================================================
+	// Tool Methods
+	// =========================================================================
+
+	@DisplayName( "addTool() adds a single tool to the runnable" )
+	@Test
+	public void testAddSingleTool() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            tool = aiTool( "myTool", "A test tool", ( required string query ) => "result" )
+            transform.addTool( tool )
+            toolCount = transform.getTools().len()
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "toolCount" ) ).isEqualTo( 1 );
+	}
+
+	@DisplayName( "withTools() binds an array of tools to the runnable" )
+	@Test
+	public void testWithToolsAddsMultipleTools() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            tool1 = aiTool( "tool1", "First tool", ( required string query ) => "one" )
+            tool2 = aiTool( "tool2", "Second tool", ( required string query ) => "two" )
+            transform.withTools( [ tool1, tool2 ] )
+            toolCount = transform.getTools().len()
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "toolCount" ) ).isEqualTo( 2 );
+	}
+
+	@DisplayName( "withTools() accepts a single tool (wraps in array automatically)" )
+	@Test
+	public void testWithToolsAcceptsSingleTool() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            tool = aiTool( "singleTool", "A standalone tool", ( required string query ) => "result" )
+            transform.withTools( tool )
+            toolCount = transform.getTools().len()
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "toolCount" ) ).isEqualTo( 1 );
+	}
+
+	@DisplayName( "hasTool() finds a tool by name string" )
+	@Test
+	public void testHasToolByName() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            tool = aiTool( "namedTool", "A named tool", ( required string query ) => "result" )
+            transform.addTool( tool )
+            found    = transform.hasTool( "namedTool" )
+            notFound = transform.hasTool( "missingTool" )
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "found" ) ).isEqualTo( true );
+		assertThat( variables.get( "notFound" ) ).isEqualTo( false );
+	}
+
+	@DisplayName( "hasTool() finds a tool by object reference" )
+	@Test
+	public void testHasToolByReference() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            tool      = aiTool( "refTool",   "Registered tool", ( required string query ) => "result" )
+            otherTool = aiTool( "otherTool", "Not registered",  ( required string query ) => "result" )
+            transform.addTool( tool )
+            foundByRef    = transform.hasTool( tool )
+            notFoundByRef = transform.hasTool( otherTool )
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "foundByRef" ) ).isEqualTo( true );
+		assertThat( variables.get( "notFoundByRef" ) ).isEqualTo( false );
+	}
+
+	@DisplayName( "getTool() retrieves a registered tool by name" )
+	@Test
+	public void testGetToolByName() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            tool = aiTool( "fetchTool", "Fetch this tool", ( required string query ) => "result" )
+            transform.addTool( tool )
+            retrieved     = transform.getTool( "fetchTool" )
+            retrievedName = retrieved.getName()
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "retrievedName" ) ).isEqualTo( "fetchTool" );
+	}
+
+	@DisplayName( "removeTools() removes a specific tool while keeping others" )
+	@Test
+	public void testRemoveTools() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            keepTool   = aiTool( "keepTool",   "Keep this one",    ( required string query ) => "keep" )
+            removeTool = aiTool( "removeTool", "Remove this one",  ( required string query ) => "remove" )
+            transform.withTools( [ keepTool, removeTool ] )
+            transform.removeTools( removeTool )
+            toolCount     = transform.getTools().len()
+            keepRemains   = transform.hasTool( "keepTool" )
+            removeIsGone  = transform.hasTool( "removeTool" )
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "toolCount" ) ).isEqualTo( 1 );
+		assertThat( variables.get( "keepRemains" ) ).isEqualTo( true );
+		assertThat( variables.get( "removeIsGone" ) ).isEqualTo( false );
+	}
+
+	@DisplayName( "clearTools() removes all registered tools" )
+	@Test
+	public void testClearTools() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            transform.withTools( [
+                aiTool( "tool1", "Tool one",   ( required string query ) => "1" ),
+                aiTool( "tool2", "Tool two",   ( required string query ) => "2" ),
+                aiTool( "tool3", "Tool three", ( required string query ) => "3" )
+            ] )
+            beforeClear = transform.getTools().len()
+            transform.clearTools()
+            afterClear = transform.getTools().len()
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "beforeClear" ) ).isEqualTo( 3 );
+		assertThat( variables.get( "afterClear" ) ).isEqualTo( 0 );
+	}
+
+	@DisplayName( "listTools() returns a name/description summary for each tool" )
+	@Test
+	public void testListTools() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            transform.withTools( [
+                aiTool( "alpha", "Alpha description", ( required string query ) => "a" ),
+                aiTool( "beta",  "Beta description",  ( required string query ) => "b" )
+            ] )
+            summary      = transform.listTools()
+            summarySize  = summary.len()
+            firstName    = summary[ 1 ].name
+            firstDesc    = summary[ 1 ].description
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "summarySize" ) ).isEqualTo( 2 );
+		assertThat( variables.get( "firstName" ) ).isEqualTo( "alpha" );
+		assertThat( variables.get( "firstDesc" ) ).isEqualTo( "Alpha description" );
+	}
+
+	@DisplayName( "bindTools() is a deprecated alias for withTools()" )
+	@Test
+	public void testBindToolsDeprecated() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            tool = aiTool( "boundTool", "Bound via deprecated method", ( required string query ) => "result" )
+            transform.bindTools( tool )
+            toolCount = transform.getTools().len()
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "toolCount" ) ).isEqualTo( 1 );
+	}
+
+	@DisplayName( "addTools() is a deprecated alias for withTools()" )
+	@Test
+	public void testAddToolsDeprecated() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            tool1 = aiTool( "depTool1", "Deprecated add one", ( required string query ) => "1" )
+            tool2 = aiTool( "depTool2", "Deprecated add two", ( required string query ) => "2" )
+            transform.addTools( [ tool1, tool2 ] )
+            toolCount = transform.getTools().len()
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "toolCount" ) ).isEqualTo( 2 );
+	}
+
+	// =========================================================================
+	// Other Untested AiBaseRunnable Methods
+	// =========================================================================
+
+	@DisplayName( "pipe() is an alias for to() and produces the same chained result" )
+	@Test
+	public void testPipeAlias() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            double = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x * 2
+            )
+            addThree = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x + 3
+            )
+            // 4 * 2 = 8, 8 + 3 = 11
+            result = double.pipe( addThree ).run( 4 )
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "result" ).toString() ).isEqualTo( "11" );
+	}
+
+	@DisplayName( "transformAndRun() applies a transform and executes in a single call" )
+	@Test
+	public void testTransformAndRun() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            double = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x * 2
+            )
+            // double 3 -> 6, then +7 -> 13
+            result = double.transformAndRun( x => x + 7, 3 )
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "result" ).toString() ).isEqualTo( "13" );
+	}
+
+	@DisplayName( "Can set, merge, and clear default options on a runnable" )
+	@Test
+	public void testWithOptions() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            transform.withOptions( { returnFormat: "json", timeout: 30 } )
+
+            // Runtime option overrides default
+            merged = transform.getMergedOptions( { returnFormat: "single" } )
+
+            transform.clearOptions()
+            cleared = transform.getMergedOptions()
+            """,
+            context
+        );
+        // @formatter:on
+
+		var merged = variables.getAsStruct( Key.of( "merged" ) );
+		assertThat( merged ).isNotNull();
+		assertThat( merged.get( "returnFormat" ) ).isEqualTo( "single" ); // Runtime override
+		assertThat( merged.get( "timeout" ) ).isEqualTo( 30 );
+
+		var cleared = variables.getAsStruct( Key.of( "cleared" ) );
+		assertThat( cleared.size() ).isEqualTo( 0 );
+	}
+
+	@DisplayName( "singleMessage() sets returnFormat option to 'single'" )
+	@Test
+	public void testSingleMessageHelper() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            transform.singleMessage()
+            returnFormat = transform.getMergedOptions().returnFormat
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "returnFormat" ) ).isEqualTo( "single" );
+	}
+
+	@DisplayName( "allMessages() sets returnFormat option to 'all'" )
+	@Test
+	public void testAllMessagesHelper() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            transform.allMessages()
+            returnFormat = transform.getMergedOptions().returnFormat
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "returnFormat" ) ).isEqualTo( "all" );
+	}
+
+	@DisplayName( "asJson() sets returnFormat option to 'json'" )
+	@Test
+	public void testAsJsonHelper() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            transform.asJson()
+            returnFormat = transform.getMergedOptions().returnFormat
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "returnFormat" ) ).isEqualTo( "json" );
+	}
+
+	@DisplayName( "asXml() sets returnFormat option to 'xml'" )
+	@Test
+	public void testAsXmlHelper() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            transform.asXml()
+            returnFormat = transform.getMergedOptions().returnFormat
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "returnFormat" ) ).isEqualTo( "xml" );
+	}
+
+	@DisplayName( "rawResponse() sets returnFormat option to 'raw'" )
+	@Test
+	public void testRawResponseHelper() {
+		// @formatter:off
+        runtime.executeSource(
+            """
+            transform = new src.main.bx.models.transformers.AiTransformRunnable(
+                transformer = ( x ) => x
+            )
+            transform.rawResponse()
+            returnFormat = transform.getMergedOptions().returnFormat
+            """,
+            context
+        );
+        // @formatter:on
+
+		assertThat( variables.get( "returnFormat" ) ).isEqualTo( "raw" );
+	}
+
 }

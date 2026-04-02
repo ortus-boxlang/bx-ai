@@ -16,12 +16,15 @@
  * Voyage AI focuses exclusively on embeddings with state-of-the-art models
  * @see https://docs.voyageai.com/docs/embeddings
  */
-class extends="BaseService"{
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+
+class extends="BaseService" implements="IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "embeddings" ]
 		DEFAULT_EMBED_PARAMS = {
 			// voyage-3 is the latest and most capable model
 			"model" : "voyage-3"
@@ -34,62 +37,13 @@ class extends="BaseService"{
 	function init(){
 		variables.embeddingsURL = "https://api.voyageai.com/v1/embeddings"
 		variables.name = "Voyage"
-		// Voyage only does embeddings, no chat support
-		variables.chatURL = ""
 	}
 
-	/**
-	 * Invoke a request to the provider
-	 *
-	 * @chatRequest The AI request to send to the provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
-	 */
-	function invoke( required AiChatRequest chatRequest ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invoke( arguments.chatRequest )
-	}
-
-	/**
-	 * Invoke a request to the provider in streaming mode
-	 *
-	 * @chatRequest The Chat request to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @return void
-	 */
-	function invokeStream( required AiChatRequest chatRequest, required function callback ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invokeStream( arguments.chatRequest, arguments.callback )
-	}
-
-	/**
-	 * Override chat to throw error since Voyage doesn't support chat
-	 */
 	@override
-	private function chat( required AiChatRequest chatRequest ){
-		throw(
-			type: "UnsupportedOperation",
-			message: "Voyage AI only supports embeddings, not chat completions. Use aiEmbed() or aiEmbedding() instead."
-		);
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
-	/**
-	 * Override chatStream to throw error since Voyage doesn't support chat
-	 */
-	@override
-	private function chatStream( required AiChatRequest chatRequest, required function callback ){
-		throw(
-			type: "UnsupportedOperation",
-			message: "Voyage AI only supports embeddings, not chat completions. Use aiEmbed() or aiEmbedding() instead."
-		);
-	}
-
-	/**
-	 * Override to set default embedding model if not specified
-	 */
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
 		// Set default embedding model if not specified

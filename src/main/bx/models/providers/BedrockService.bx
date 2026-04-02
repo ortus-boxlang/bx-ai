@@ -32,8 +32,11 @@
  * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
  */
 import bxModules.bxai.models.util.AwsSignatureV4;
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
-class extends = "BaseService"{
+class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" {
+
 	/**
 	 * AWS Region for Bedrock
 	 */
@@ -63,6 +66,7 @@ class extends = "BaseService"{
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			"model"      : "anthropic.claude-3-sonnet-20240229-v1:0",
 			"max_tokens" : 4096
@@ -89,24 +93,29 @@ class extends = "BaseService"{
 		return this;
 	}
 
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
+	}
+
 	/**
 	 * Configure the service with AWS credentials and region
 	 *
 	 *         OR a simple string for backward compatibility (treated as modelId)
 	 *
-	 * @config A struct containing: region, awsAccessKeyId, awsSecretAccessKey, awsSessionToken (optional), modelId (optional)
+	 * @options A struct containing: region, awsAccessKeyId, awsSecretAccessKey, awsSessionToken (optional), modelId (optional)
 	 *
 	 * @return The service instance
 	 */
-	IAiService function configure( required any config ){
-		if ( isSimpleValue( arguments.config ) ) {
+	IAiService function configure( required any options ){
+		if ( isSimpleValue( arguments.options ) ) {
 			// If a simple string is passed, treat it as model ID for compatibility
-			variables.modelId = arguments.config;
-		} else if ( isStruct( arguments.config ) ) {
+			variables.modelId = arguments.options;
+		} else if ( isStruct( arguments.options ) ) {
 			// Check if credentials are nested inside apiKey (from aiChat/aiService flow)
-			var credSource = arguments.config;
-			if ( arguments.config.keyExists( "apiKey" ) && isStruct( arguments.config.apiKey ) ) {
-				credSource = arguments.config.apiKey;
+			var credSource = arguments.options;
+			if ( arguments.options.keyExists( "apiKey" ) && isStruct( arguments.options.apiKey ) ) {
+				credSource = arguments.options.apiKey;
 			}
 
 			// Configure with struct of settings - check both top-level and apiKey nested
@@ -123,11 +132,11 @@ class extends = "BaseService"{
 				variables.awsSessionToken = credSource.awsSessionToken;
 			}
 			// These remain at top level
-			if ( arguments.config.keyExists( "modelId" ) ) {
-				variables.modelId = arguments.config.modelId;
+			if ( arguments.options.keyExists( "modelId" ) ) {
+				variables.modelId = arguments.options.modelId;
 			}
-			if ( arguments.config.keyExists( "model" ) ) {
-				variables.params.model = arguments.config.model;
+			if ( arguments.options.keyExists( "model" ) ) {
+				variables.params.model = arguments.options.model;
 			}
 		}
 
@@ -874,7 +883,7 @@ class extends = "BaseService"{
 	 * @callback    A callback function to be called with each chunk: function( chunk )
 	 */
 	@override
-	public function chatStream( required AiChatRequest chatRequest, required function callback ){
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
 		// Get the model to use
 		var modelId = len( variables.modelId ) ? variables.modelId : arguments.chatRequest.getModel();
 		if ( !len( modelId ) ) {
@@ -921,7 +930,7 @@ class extends = "BaseService"{
 	private function sendBedrockStreamRequest(
 		required string modelId,
 		required struct dataPacket,
-		required AiRequest aiRequest,
+		required AiChatRequest aiRequest,
 		required string modelFamily,
 		required function callback
 	){

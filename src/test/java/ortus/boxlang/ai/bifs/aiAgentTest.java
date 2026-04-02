@@ -15,6 +15,8 @@
 package ortus.boxlang.ai.bifs;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -37,14 +39,15 @@ public class aiAgentTest extends BaseIntegrationTest {
 	public void testBasicAgentCreation() {
 		runtime.executeSource(
 		    """
-		    agent = aiAgent(
-		        name: "TestAgent",
-		        description: "A test agent",
-		        instructions: "You are a helpful assistant"
-		    )
+		       agent = aiAgent(
+		           name: "TestAgent",
+		           description: "A test agent",
+		           instructions: "You are a helpful assistant"
+		       )
 
-		    result = agent.getConfig()
-		    """,
+		       result = agent.getConfig()
+		    println( result )
+		       """,
 		    context
 		);
 
@@ -273,10 +276,19 @@ public class aiAgentTest extends BaseIntegrationTest {
 		    agent = aiAgent(
 		        name: "RealAgent",
 		        description: "An agent that uses real AI",
-		        instructions: "Provide concise answers"
+		        instructions: "Provide concise answers",
+				// A tool from the default set provided by the BoxLang MCP server, which should be available without additional config in the test environment
+				tools: [ "now@bxai" ],
+				// Add the BoxLang MCP doc server
+				mcpServers: [ "https://boxlang.ortusbooks.com/~gitbook/mcp" ]
 		    )
 
-		    response = agent.run( "What is BoxLang?", {},  {} )
+			println( agent.getConfig() )
+
+		    response = agent.run( "What is BoxLang?", {},  {
+				logResponseToConsole: true,
+				logRequestToConsole: true
+			} )
 
 		    println( response )
 		    """,
@@ -487,6 +499,478 @@ public class aiAgentTest extends BaseIntegrationTest {
 		var subAgentInfo = variables.getAsStruct( Key.of( "subAgentInfo" ) );
 		assertEquals( "TestSubAgent", subAgentInfo.get( "name" ) );
 		assertEquals( "A test sub-agent description", subAgentInfo.get( "description" ) );
+	}
+
+	// ==================== PARENT-CHILD HELPER TESTS ====================
+
+	@Test
+	@DisplayName( "addSubAgent automatically sets parentAgent on the sub-agent" )
+	public void testAddSubAgentSetsParent() {
+		runtime.executeSource(
+		    """
+		    parent = aiAgent( name: "Parent", description: "Parent agent" )
+		    child  = aiAgent( name: "Child",  description: "Child agent" )
+		    parent.addSubAgent( child )
+
+		    hasParent  = child.hasParentAgent()
+		    parentName = child.getParentAgent().getAgentName()
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "hasParent" ) ) );
+		assertEquals( "Parent", variables.getAsString( Key.of( "parentName" ) ) );
+	}
+
+	@Test
+	@DisplayName( "setSubAgents clears parentAgent on replaced sub-agents" )
+	public void testSetSubAgentsClearsOldParent() {
+		runtime.executeSource(
+		    """
+		    parent   = aiAgent( name: "Parent",   description: "Parent" )
+		    oldChild = aiAgent( name: "OldChild", description: "Old" )
+		    newChild = aiAgent( name: "NewChild", description: "New" )
+
+		    parent.addSubAgent( oldChild )
+		    parent.setSubAgents( [ newChild ] )
+
+		    oldChildHasParent = oldChild.hasParentAgent()
+		    newChildHasParent = newChild.hasParentAgent()
+		    """,
+		    context
+		);
+
+		assertTrue( !variables.getAsBoolean( Key.of( "oldChildHasParent" ) ) );
+		assertTrue( variables.getAsBoolean( Key.of( "newChildHasParent" ) ) );
+	}
+
+	@Test
+	@DisplayName( "hasParentAgent returns false for root agents" )
+	public void testHasParentAgentFalseForRoot() {
+		runtime.executeSource(
+		    """
+		    agent  = aiAgent( name: "Root", description: "Root agent" )
+		    result = agent.hasParentAgent()
+		    """,
+		    context
+		);
+
+		assertTrue( !variables.getAsBoolean( Key.of( "result" ) ) );
+	}
+
+	@Test
+	@DisplayName( "isRootAgent returns true for top-level agents" )
+	public void testIsRootAgentTrue() {
+		runtime.executeSource(
+		    """
+		    agent  = aiAgent( name: "Root", description: "Root agent" )
+		    result = agent.isRootAgent()
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "result" ) ) );
+	}
+
+	@Test
+	@DisplayName( "isRootAgent returns false for sub-agents" )
+	public void testIsRootAgentFalseForChild() {
+		runtime.executeSource(
+		    """
+		    parent = aiAgent( name: "Parent", description: "Parent" )
+		    child  = aiAgent( name: "Child",  description: "Child" )
+		    parent.addSubAgent( child )
+
+		    result = child.isRootAgent()
+		    """,
+		    context
+		);
+
+		assertTrue( !variables.getAsBoolean( Key.of( "result" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getRootAgent returns self when agent has no parent" )
+	public void testGetRootAgentReturnsSelf() {
+		runtime.executeSource(
+		    """
+		    agent    = aiAgent( name: "Root", description: "Root agent" )
+		    rootName = agent.getRootAgent().getAgentName()
+		    """,
+		    context
+		);
+
+		assertEquals( "Root", variables.getAsString( Key.of( "rootName" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getRootAgent walks up to the top-level agent" )
+	public void testGetRootAgentWalksUp() {
+		runtime.executeSource(
+		    """
+		    root   = aiAgent( name: "Root",   description: "Root" )
+		    middle = aiAgent( name: "Middle", description: "Middle" )
+		    leaf   = aiAgent( name: "Leaf",   description: "Leaf" )
+
+		    root.addSubAgent( middle )
+		    middle.addSubAgent( leaf )
+
+		    rootName = leaf.getRootAgent().getAgentName()
+		    """,
+		    context
+		);
+
+		assertEquals( "Root", variables.getAsString( Key.of( "rootName" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getAgentDepth returns 0 for root agents" )
+	public void testGetAgentDepthRoot() {
+		runtime.executeSource(
+		    """
+		    agent = aiAgent( name: "Root", description: "Root" )
+		    depth = agent.getAgentDepth()
+		    """,
+		    context
+		);
+
+		assertEquals( 0L, ( long ) variables.getAsInteger( Key.of( "depth" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getAgentDepth returns correct depth for each level" )
+	public void testGetAgentDepthNested() {
+		runtime.executeSource(
+		    """
+		    root   = aiAgent( name: "Root",   description: "Root" )
+		    middle = aiAgent( name: "Middle", description: "Middle" )
+		    leaf   = aiAgent( name: "Leaf",   description: "Leaf" )
+
+		    root.addSubAgent( middle )
+		    middle.addSubAgent( leaf )
+
+		    rootDepth   = root.getAgentDepth()
+		    middleDepth = middle.getAgentDepth()
+		    leafDepth   = leaf.getAgentDepth()
+		    """,
+		    context
+		);
+
+		assertEquals( 0L, ( long ) variables.getAsInteger( Key.of( "rootDepth" ) ) );
+		assertEquals( 1L, ( long ) variables.getAsInteger( Key.of( "middleDepth" ) ) );
+		assertEquals( 2L, ( long ) variables.getAsInteger( Key.of( "leafDepth" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getAgentPath returns slash-delimited path from root to agent" )
+	public void testGetAgentPath() {
+		runtime.executeSource(
+		    """
+		    root   = aiAgent( name: "root",   description: "Root" )
+		    middle = aiAgent( name: "middle", description: "Middle" )
+		    leaf   = aiAgent( name: "leaf",   description: "Leaf" )
+
+		    root.addSubAgent( middle )
+		    middle.addSubAgent( leaf )
+
+		    rootPath   = root.getAgentPath()
+		    middlePath = middle.getAgentPath()
+		    leafPath   = leaf.getAgentPath()
+		    """,
+		    context
+		);
+
+		assertEquals( "/root", variables.getAsString( Key.of( "rootPath" ) ) );
+		assertEquals( "/root/middle", variables.getAsString( Key.of( "middlePath" ) ) );
+		assertEquals( "/root/middle/leaf", variables.getAsString( Key.of( "leafPath" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getAncestors returns empty array for root agents" )
+	public void testGetAncestorsEmpty() {
+		runtime.executeSource(
+		    """
+		    agent = aiAgent( name: "Root", description: "Root" )
+		    count = agent.getAncestors().len()
+		    """,
+		    context
+		);
+
+		assertEquals( 0L, ( long ) variables.getAsInteger( Key.of( "count" ) ) );
+	}
+
+	@Test
+	@DisplayName( "getAncestors returns ordered array from immediate parent to root" )
+	public void testGetAncestors() {
+		runtime.executeSource(
+		    """
+		    root   = aiAgent( name: "Root",   description: "Root" )
+		    middle = aiAgent( name: "Middle", description: "Middle" )
+		    leaf   = aiAgent( name: "Leaf",   description: "Leaf" )
+
+		    root.addSubAgent( middle )
+		    middle.addSubAgent( leaf )
+
+		    ancestors      = leaf.getAncestors()
+		    ancestorCount  = ancestors.len()
+		    firstAncestor  = ancestors[ 1 ].getAgentName()
+		    secondAncestor = ancestors[ 2 ].getAgentName()
+		    """,
+		    context
+		);
+
+		assertEquals( 2L, ( long ) variables.getAsInteger( Key.of( "ancestorCount" ) ) );
+		assertEquals( "Middle", variables.getAsString( Key.of( "firstAncestor" ) ) );
+		assertEquals( "Root", variables.getAsString( Key.of( "secondAncestor" ) ) );
+	}
+
+	@Test
+	@DisplayName( "clearParentAgent removes the parent reference" )
+	public void testClearParentAgent() {
+		runtime.executeSource(
+		    """
+		    parent = aiAgent( name: "Parent", description: "Parent" )
+		    child  = aiAgent( name: "Child",  description: "Child" )
+		    parent.addSubAgent( child )
+
+		    hasBefore = child.hasParentAgent()
+		    child.clearParentAgent()
+		    hasAfter = child.hasParentAgent()
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "hasBefore" ) ) );
+		assertTrue( !variables.getAsBoolean( Key.of( "hasAfter" ) ) );
+	}
+
+	@Test
+	@DisplayName( "setParentAgent throws when an agent is set as its own parent" )
+	public void testSetParentAgentSelfReferenceThrows() {
+		assertThrows( Exception.class, () -> {
+			runtime.executeSource(
+			    """
+			    agent = aiAgent( name: "Agent", description: "Agent" )
+			    agent.setParentAgent( agent )
+			    """,
+			    context
+			);
+		} );
+	}
+
+	@Test
+	@DisplayName( "setParentAgent throws when the assignment would create a cycle" )
+	public void testSetParentAgentCycleThrows() {
+		assertThrows( Exception.class, () -> {
+			runtime.executeSource(
+			    """
+			    parent = aiAgent( name: "Parent", description: "Parent" )
+			    child  = aiAgent( name: "Child",  description: "Child" )
+			    parent.addSubAgent( child )
+			    // child -> parent -> child would be a cycle
+			    child.addSubAgent( parent )
+			    """,
+			    context
+			);
+		} );
+	}
+
+	@Test
+	@DisplayName( "getConfig includes parentAgent name, agentDepth, and agentPath" )
+	public void testGetConfigIncludesHierarchyFields() {
+		runtime.executeSource(
+		    """
+		    parent = aiAgent( name: "parent", description: "Parent" )
+		    child  = aiAgent( name: "child",  description: "Child" )
+		    parent.addSubAgent( child )
+
+		    config = child.getConfig()
+		    """,
+		    context
+		);
+
+		var config = variables.getAsStruct( Key.of( "config" ) );
+		assertEquals( "parent", config.get( "parentAgent" ) );
+		assertEquals( 1L, ( long ) ( ( Number ) config.get( "agentDepth" ) ).intValue() );
+		assertEquals( "/parent/child", config.get( "agentPath" ) );
+	}
+
+	@Test
+	@DisplayName( "getConfig shows empty parentAgent and depth 0 for root agents" )
+	public void testGetConfigRootHierarchyFields() {
+		runtime.executeSource(
+		    """
+		    agent  = aiAgent( name: "root", description: "Root" )
+		    config = agent.getConfig()
+		    """,
+		    context
+		);
+
+		var config = variables.getAsStruct( Key.of( "config" ) );
+		assertEquals( "", config.get( "parentAgent" ) );
+		assertEquals( 0L, ( long ) ( ( Number ) config.get( "agentDepth" ) ).intValue() );
+		assertEquals( "/root", config.get( "agentPath" ) );
+	}
+
+	// ==================== SKILL TESTS ====================
+
+	@Test
+	@DisplayName( "It can create an agent with always-on skills" )
+	public void testAgentWithSkills() {
+		runtime.executeSource(
+		    """
+		    skill1 = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    skill2 = aiSkill( name: "code-style", description: "Code style guide", content: "Prefer tabs over spaces." )
+
+		    agent      = aiAgent( name: "SkillAgent", skills: [ skill1, skill2 ] )
+		    skillCount = agent.getSkills().len()
+		    """,
+		    context
+		);
+
+		assertEquals( 2L, ( long ) ( ( Number ) variables.get( Key.of( "skillCount" ) ) ).intValue() );
+	}
+
+	@Test
+	@DisplayName( "It can create an agent with lazy available-skills" )
+	public void testAgentWithAvailableSkills() {
+		runtime.executeSource(
+		    """
+		    skill1 = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    skill2 = aiSkill( name: "code-style", description: "Code style guide", content: "Prefer tabs over spaces." )
+
+		    agent      = aiAgent( name: "SkillAgent", availableSkills: [ skill1, skill2 ] )
+		    availCount = agent.getAvailableSkills().len()
+		    """,
+		    context
+		);
+
+		// 2 provided + any global skills auto-discovered (none in test env)
+		assertTrue( ( ( Number ) variables.get( Key.of( "availCount" ) ) ).intValue() >= 2 );
+	}
+
+	@Test
+	@DisplayName( "It can add a skill using the fluent addSkill() API" )
+	public void testAgentAddSkillFluent() {
+		runtime.executeSource(
+		    """
+		    skill = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    agent = aiAgent( name: "FluentSkillAgent" ).addSkill( skill )
+		    skillCount = agent.getSkills().len()
+		    """,
+		    context
+		);
+
+		assertEquals( 1L, ( long ) ( ( Number ) variables.get( Key.of( "skillCount" ) ) ).intValue() );
+	}
+
+	@Test
+	@DisplayName( "It can add a lazy skill using the fluent addAvailableSkill() API" )
+	public void testAgentAddAvailableSkillFluent() {
+		runtime.executeSource(
+		    """
+		    skill = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    agent = aiAgent( name: "FluentSkillAgent" ).addAvailableSkill( skill )
+		    availCount = agent.getAvailableSkills().len()
+		    """,
+		    context
+		);
+
+		assertTrue( ( ( Number ) variables.get( Key.of( "availCount" ) ) ).intValue() >= 1 );
+	}
+
+	@Test
+	@DisplayName( "buildSkillsContent() returns non-empty string when always-on skills are set" )
+	public void testAgentBuildSkillsContent() {
+		runtime.executeSource(
+		    """
+		    skill  = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    agent  = aiAgent( name: "SkillAgent", skills: [ skill ] )
+
+		    content       = agent.buildSkillsContent()
+		    hasHeader     = content.findNoCase( "## Skills" ) > 0
+		    hasSkillBlock = content.findNoCase( "#### Skill: sql-tips" ) > 0
+		    hasContent    = content.findNoCase( "Always use indexed columns." ) > 0
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "hasHeader" ) ) );
+		assertTrue( variables.getAsBoolean( Key.of( "hasSkillBlock" ) ) );
+		assertTrue( variables.getAsBoolean( Key.of( "hasContent" ) ) );
+	}
+
+	@Test
+	@DisplayName( "buildSkillsContent() includes available-skills index section" )
+	public void testAgentBuildSkillsContentWithAvailableSkills() {
+		runtime.executeSource(
+		    """
+		    skill  = aiSkill( name: "lazy-skill", description: "Use only when needed", content: "Be careful." )
+		    agent  = aiAgent( name: "LazySkillAgent", availableSkills: [ skill ] )
+
+		    content        = agent.buildSkillsContent()
+		    hasAvailHeader = content.findNoCase( "## Available Skills" ) > 0
+		    hasIndex       = content.findNoCase( "- lazy-skill:" ) > 0
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "hasAvailHeader" ) ) );
+		assertTrue( variables.getAsBoolean( Key.of( "hasIndex" ) ) );
+	}
+
+	@Test
+	@DisplayName( "activateSkill() promotes a lazy skill to always-on pool" )
+	public void testAgentActivateSkill() {
+		runtime.executeSource(
+		    """
+		    skill = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    agent = aiAgent( name: "ActivateSkillAgent", availableSkills: [ skill ] )
+
+		    beforeAvail  = agent.getAvailableSkills().filter( s => s.getName() == "sql-tips" ).len()
+		    beforeActive = agent.getSkills().filter( s => s.getName() == "sql-tips" ).len()
+
+		    agent.activateSkill( "sql-tips" )
+
+		    afterAvail  = agent.getAvailableSkills().filter( s => s.getName() == "sql-tips" ).len()
+		    afterActive = agent.getSkills().filter( s => s.getName() == "sql-tips" ).len()
+		    """,
+		    context
+		);
+
+		assertEquals( 1L, ( long ) ( ( Number ) variables.get( Key.of( "beforeAvail" ) ) ).intValue() );
+		assertEquals( 0L, ( long ) ( ( Number ) variables.get( Key.of( "beforeActive" ) ) ).intValue() );
+		assertEquals( 0L, ( long ) ( ( Number ) variables.get( Key.of( "afterAvail" ) ) ).intValue() );
+		assertEquals( 1L, ( long ) ( ( Number ) variables.get( Key.of( "afterActive" ) ) ).intValue() );
+	}
+
+	@Test
+	@DisplayName( "loadSkill tool is auto-registered when available skills are set" )
+	public void testAgentLoadSkillToolRegistered() {
+		runtime.executeSource(
+		    """
+		    skill       = aiSkill( name: "sql-tips", description: "SQL optimisation rules", content: "Always use indexed columns." )
+		    agent       = aiAgent( name: "ToolRegAgent", availableSkills: [ skill ] )
+		    hasLoadTool = agent.hasTool( "loadSkill" )
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "hasLoadTool" ) ) );
+	}
+
+	@Test
+	@DisplayName( "loadSkill tool is NOT registered when no available skills are set" )
+	public void testAgentLoadSkillToolNotRegisteredWithoutSkills() {
+		runtime.executeSource(
+		    """
+		    agent       = aiAgent( name: "NoSkillAgent" )
+		    hasLoadTool = agent.hasTool( "loadSkill" )
+		    """,
+		    context
+		);
+
+		assertFalse( variables.getAsBoolean( Key.of( "hasLoadTool" ) ) );
 	}
 
 }

@@ -2,13 +2,13 @@
 plugins {
     id 'java'
     // For source code formatting
-    id "com.diffplug.spotless" version "8.2.1"
+    id "com.diffplug.spotless" version "8.4.0"
 	// https://github.com/harbby/gradle-serviceloader
     id "com.github.harbby.gradle.serviceloader" version "1.1.9"
 	// Shadow
-	id "com.gradleup.shadow" version "9.3.1"
+	id "com.gradleup.shadow" version "9.4.1"
     // Download task
-    id "de.undercouch.download" version "5.6.0"
+    id "de.undercouch.download" version "5.7.0"
 }
 
 /**
@@ -35,16 +35,16 @@ dependencies {
 	// Until BoxLang is published to Maven Central
 	// Look for it in the local build directory
 	// You must run `./gradle build -x test` in the BoxLang project
-	if ( file( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' ).exists() ) {
-		compileOnly files( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
-		testImplementation files( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
-	} else {
+	// if ( file( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' ).exists() ) {
+	// 	compileOnly files( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
+	// 	testImplementation files( '../../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
+	// } else {
 		compileOnly files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
 		testImplementation files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
-	}
+	//}
 
 	// PDF Extraction
-	implementation 'org.apache.pdfbox:pdfbox:3.0.6'
+	implementation 'org.apache.pdfbox:pdfbox:3.0.7'
 
 	// JSoup for HTML parsing and web scraping
 	implementation 'org.jsoup:jsoup:1.22.1'

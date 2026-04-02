@@ -1,0 +1,134 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Interface for AI middleware hooks.
+ *
+ * Implement this interface to intercept and control AI execution at various pipeline points.
+ * Extend BaseAiMiddleware instead when you only need to override a subset of hooks.
+ *
+ * Sequential hooks fire in registration order (inbound) or reverse order (outbound).
+ * Wrap-style hooks allow retry, caching, and fallback patterns.
+ *
+ * Context struct shapes per hook:
+ *
+ *   beforeAgentRun / afterAgentRun:
+ *     { agent, input, messages, params, options, response? }
+ *     (response only present in afterAgentRun)
+ *
+ *   beforeLLMCall / afterLLMCall:
+ *     { model, chatRequest, messages, response? }
+ *     (response only present in afterLLMCall)
+ *
+ *   beforeToolCall / afterToolCall:
+ *     { tool, toolName, toolArgs, toolCallId, result? }
+ *     (result only present in afterToolCall)
+ *
+ *   onError:
+ *     { error, phase, context }
+ *     phase: "beforeAgentRun" | "afterAgentRun" | "beforeLLMCall" | "afterLLMCall" | "beforeToolCall" | "afterToolCall"
+ */
+interface {
+
+	/**
+	 * The name of the middleware, used for logging and debugging
+	 */
+    default public string function getName(){
+		return variables.name;
+	}
+
+	/**
+	 * The description of the middleware, used for logging and debugging
+	 */
+    default public string function getDescription(){
+		return variables.description;
+	}
+
+	/**
+	 * Fired before the agent's run() method begins processing.
+	 * Return cancel() or suspend() to halt execution.
+	 *
+	 * @context A struct of { agent, input, messages, params, options }
+	 */
+	AiMiddlewareResult function beforeAgentRun( required struct context );
+
+	/**
+	 * Fired after the agent's run() method completes successfully.
+	 * Executed in reverse middleware registration order.
+	 *
+	 * @context A struct of { agent, input, messages, params, options, response }
+	 */
+	AiMiddlewareResult function afterAgentRun( required struct context );
+
+	/**
+	 * Fired before each LLM HTTP call.
+	 * Return cancel() to abort the call.
+	 *
+	 * @context A struct of { model, chatRequest, messages }
+	 */
+	AiMiddlewareResult function beforeLLMCall( required struct context );
+
+	/**
+	 * Fired after each LLM HTTP call completes.
+	 * Executed in reverse middleware registration order.
+	 *
+	 * @context A struct of { model, chatRequest, messages, response }
+	 */
+	AiMiddlewareResult function afterLLMCall( required struct context );
+
+	/**
+	 * Fired before each tool invocation.
+	 * Return approve(), reject(), edit(), or suspend() to control execution.
+	 *
+	 * @context A struct of { tool, toolName, toolArgs, toolCallId }
+	 */
+	AiMiddlewareResult function beforeToolCall( required struct context );
+
+	/**
+	 * Fired after each tool invocation completes.
+	 * Executed in reverse middleware registration order.
+	 *
+	 * @context A struct of { tool, toolName, toolArgs, toolCallId, result }
+	 */
+	AiMiddlewareResult function afterToolCall( required struct context );
+
+	/**
+	 * Fired when any hook throws an unhandled exception.
+	 *
+	 * @context A struct of { error, phase, context }
+	 */
+	AiMiddlewareResult function onError( required struct context );
+
+	/**
+	 * Wrap-style hook that surrounds the actual LLM HTTP call.
+	 * Full Around advice for LLM calls, allowing you to implement retry, caching, or fallback patterns.
+	 * Use for retry, caching, or fallback patterns.
+	 * Call handler() to execute the next layer (or the actual LLM call).
+	 *
+	 * @context A struct of { model, chatRequest, messages }
+	 * @handler The next handler in the chain — call it to proceed
+	 */
+	any function wrapLLMCall( required struct context, required function handler );
+
+	/**
+	 * Wrap-style hook that surrounds each tool invocation.
+	 * Full around advice for tool calls, allowing you to implement retry, caching, or fallback patterns.
+	 * Use for retry, caching, or fallback patterns.
+	 * Call handler() to execute the next layer (or the actual tool).
+	 *
+	 * @context A struct of { tool, toolName, toolArgs, toolCallId }
+	 * @handler The next handler in the chain — call it to proceed
+	 */
+	any function wrapToolCall( required struct context, required function handler );
+
+}

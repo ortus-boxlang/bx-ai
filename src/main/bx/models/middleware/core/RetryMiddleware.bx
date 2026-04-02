@@ -1,0 +1,137 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Middleware that retries failed LLM and tool calls with configurable exponential back-off.
+ *
+ * Wraps both LLM calls (wrapLLMCall) and tool calls (wrapToolCall) with retry logic.
+ * On onError, returns continue() so the normal exception path is still taken after
+ * all retries are exhausted.
+ *
+ * Usage:
+ *   aiAgent( middleware: new RetryMiddleware() )
+ *   aiAgent( middleware: new RetryMiddleware( maxRetries: 5, initialDelay: 2000, backoffMultiplier: 1.5 ) )
+ */
+import bxModules.bxai.models.middleware.BaseAiMiddleware;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+class extends="BaseAiMiddleware" {
+
+	/**
+	 * Maximum number of retry attempts (not counting the first attempt)
+	 */
+	property name="maxRetries" type="numeric" default=3;
+
+	/**
+	 * Initial delay in milliseconds before the first retry
+	 */
+	property name="initialDelay" type="numeric" default=1000;
+
+	/**
+	 * Multiplier applied to the delay after each failed attempt
+	 */
+	property name="backoffMultiplier" type="numeric" default=2;
+
+	/**
+	 * Maximum delay cap in milliseconds
+	 */
+	property name="maxDelay" type="numeric" default=30000;
+
+	/**
+	 * Exception types that should NOT be retried (comma-separated list)
+	 */
+	property name="nonRetryableTypes" type="string" default="InvalidInput,MaxInteractionsExceeded";
+
+	/**
+	 * Constructor
+	 *
+	 * @maxRetries         Maximum retry attempts
+	 * @initialDelay       Initial delay in ms
+	 * @backoffMultiplier  Exponential multiplier
+	 * @maxDelay           Hard cap on delay in ms
+	 * @nonRetryableTypes  Comma-separated list of exception types to NOT retry
+	 */
+	function init(
+		numeric maxRetries        = 3,
+		numeric initialDelay      = 1000,
+		numeric backoffMultiplier = 2,
+		numeric maxDelay          = 30000,
+		string  nonRetryableTypes = "InvalidInput,MaxInteractionsExceeded"
+	) {
+		variables.maxRetries        = arguments.maxRetries
+		variables.initialDelay      = arguments.initialDelay
+		variables.backoffMultiplier = arguments.backoffMultiplier
+		variables.maxDelay          = arguments.maxDelay
+		variables.nonRetryableTypes = arguments.nonRetryableTypes
+		variables.name = "Retry Middleware"
+		variables.description = "Retries failed LLM and tool calls with exponential back-off. " &
+			"Configurable max retries, initial delay, backoff multiplier, and non-retryable exception types."
+		return this
+	}
+
+	// ==================== Wrap Hooks ====================
+
+	/**
+	 * Retry the LLM call on failure with exponential back-off.
+	 */
+	any function wrapLLMCall( required struct context, required function handler ) {
+		return executeWithRetry( arguments.handler, "LLM" )
+	}
+
+	/**
+	 * Retry the tool call on failure with exponential back-off.
+	 */
+	any function wrapToolCall( required struct context, required function handler ) {
+		var toolName = context.tool?.getName() ?: "unknown"
+		return executeWithRetry( arguments.handler, "tool:#toolName#" )
+	}
+
+	// ==================== Private Helpers ====================
+
+	private any function executeWithRetry( required function handler, required string label ) {
+		var attempt = 0
+		var delay   = variables.initialDelay
+
+		while ( true ) {
+			try {
+				return arguments.handler()
+			} catch ( any e ) {
+				// Do not retry non-retryable exception types
+				if ( listFindNoCase( variables.nonRetryableTypes, e.type ) > 0 ) {
+					rethrow
+				}
+
+				attempt++
+				if ( attempt > variables.maxRetries ) {
+					writeLog(
+						text: "RetryMiddleware: #arguments.label# failed after #variables.maxRetries# retries. Last error: #e.message#",
+						type: "error",
+						log : "ai"
+					)
+					rethrow
+				}
+
+				writeLog(
+					text: "RetryMiddleware: #arguments.label# attempt #attempt# failed (#e.message#). Retrying in #delay#ms…",
+					type: "warning",
+					log : "ai"
+				)
+
+				// Sleep, then increase delay for next round
+				sleep( delay )
+				delay = min( delay * variables.backoffMultiplier, variables.maxDelay )
+			}
+		}
+	}
+
+}

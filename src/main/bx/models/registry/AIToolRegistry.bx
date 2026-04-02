@@ -1,0 +1,260 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Singleton registry for AI tools.
+ *
+ * Access via aiToolRegistry() BIF
+ *
+ * Key convention: toolName or toolName@moduleName
+ *
+ * Registration styles:
+ *   1. register( tool, module: "bx-weather" )                    — ITool instance
+ *   2. register( name:, description:, callback:, module: )       — shorthand, builds ClosureTool
+ *
+ * Lazy resolution:
+ *   aiToolRegistry().resolveTools( [ "now@bx-ai", toolInstance ] )
+ *   Converts string keys to ITool instances right before an LLM request.
+ */
+import bxModules.bxai.models.tools.ITool;
+import bxModules.bxai.models.tools.ClosureTool;
+
+class extends="BaseRegistry" {
+
+	// -------------------------------------------------------------------------
+	// Registry Methods
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Register an ITool instance, or build one from shorthand arguments.
+	 *
+	 * Supports two styles:
+	 *   1. register( tool, module: "bx-weather" )
+	 *   2. register( name: "myTool", description: "...", callback: myFn, module: "bx-ai" )
+	 *
+	 * @item       An ITool instance (style 1)
+	 * @module     Module name for namespacing (optional)
+	 * @name       Tool name for shorthand style (style 2)
+	 * @description Tool description for shorthand style
+	 * @callback   Callable for shorthand style
+	 *
+	 * @throws InvalidArgument if neither a valid ITool nor shorthand args are provided
+	 */
+	AIToolRegistry function register(
+		any item,
+		string module      = "",
+		string name        = "",
+		string description = "",
+		any callback
+	) {
+		// Shorthand style: build a ClosureTool from name + description + callback
+		if ( !isNull( arguments.callback ) && arguments.name.len() ) {
+			arguments.item = new ClosureTool(
+				arguments.name,
+				arguments.description,
+				arguments.callback
+			)
+		}
+
+		// Validation: must have an ITool instance at this point
+		if ( isNull( arguments.item ) || !( arguments.item instanceof "ITool" ) ) {
+			throw(
+				type    : "InvalidArgument",
+				message : "register() requires an ITool instance or name/description/callback arguments."
+			)
+		}
+
+		// Register the tool using the base registry method
+		super.register( arguments.item.getName(), arguments.item, arguments.module )
+		BoxAnnounce( "onAIToolRegistryRegister", {
+			tool   : arguments.item,
+			key    : buildKey( arguments.item.getName(), arguments.module ),
+			module : arguments.module
+		} )
+		return this
+	}
+
+	/**
+	 * Scan a class instance or an instantiation package path for methods annotated with @AITool.
+	 *
+	 * The package path will be expanded using expandPath() and all .bx files will be scanned for classes to inspect.
+	 * Each class will be instantiated (using a no-arg constructor) and scanned for annotated methods.
+	 * Each annotated method is registered as a ClosureTool.
+	 *
+	 * Annotation formats:
+	 * <pre>
+	 *   @AITool                                     — name from method, description from @hint
+	 *   @AITool( "Description string" )             — explicit description
+	 *   @AITool( { name: "x", description: "y" } )  — full struct
+	 * </pre>
+
+	 * @packagePath  A class instance OR an instantiation package path (e.g. "my.module.tools") to scan for @AITool annotations.
+	 * @module  Module name for namespacing (e.g. "bx-weather"), optional. This is used in registry keys for the discovered tools.
+	 *
+	 * @return An array of registered tools discovered from the class or package path.
+	 */
+	array function scan( required any packagePath, string module = "" ) {
+		// Directory path: scan all .bx files
+		if ( isSimpleValue( arguments.packagePath ) ) {
+			var physicalPath = expandPath( "/#arguments.packagePath.replace( ".", "/", "all" )#" )
+			var tools = []
+
+			directoryList( physicalPath, true, "path", "*.bx" )
+				.map( filePath => {
+					return packagePath & filePath.replaceNoCase( physicalPath, "" )
+						.replace( ".bx", "" )
+						.reReplace( "(\/|\\)", ".", "all" )
+				} )
+				.each( targetClass => tools.append(
+					scanClass( createObject( targetClass ), module )
+				) )
+		} else {
+			// Class instance: scan directly
+			return scanClass( arguments.packagePath, arguments.module )
+		}
+	}
+
+	/**
+	 * Scan a single class instance for @AITool annotations and register found methods.
+	 *
+	 * @instance The class instance to scan
+	 * @module   Module name for namespacing, used in registry keys for the discovered tools. Optional.
+	 *
+	 * @return The tools discovered and registered from the class.
+	 */
+	array function scanClass( required any instance, string module = "" ) {
+		var meta      = getMetaData( arguments.instance )
+		var functions = meta.functions ?: []
+		var targetInstance = arguments.instance
+		var targetModule = arguments.module
+		var results = [] // for returning discovered tools if needed in the future
+
+		functions
+			.filter( fn => ( fn.annotations ?: {} ).keyExists( "AITool" ) )
+			.each( fn => {
+				var annotation = fn.annotations.AITool
+				var methodName = fn.name
+				var toolName   = methodName
+				var toolDescription   = fn.documentation?.hint ?: ""
+				var argumentDescriptions   = {}
+
+				// Parse annotation value
+				if ( isStruct( annotation ) ) {
+					toolName = annotation.name ?: methodName
+					toolDescription = annotation.description ?: toolDescription
+				} else if ( isSimpleValue( annotation ) && annotation != true && annotation.len() ) {
+					toolDescription = annotation
+				}
+
+				// Collect per-parameter hint descriptions
+				( fn.parameters ?: [] ).each( thisParam => {
+					argumentDescriptions[ thisParam.name ] = thisParam.documentation?.hint ?: thisParam.name
+				} )
+
+				var tool = new ClosureTool(
+					toolName,
+					toolDescription,
+					( args ) => invoke( targetInstance, methodName, args )
+				)
+
+				argumentDescriptions.each( ( argName, argDesc ) => tool.describeArg( argName, argDesc ) )
+				register( tool, targetModule, toolName )
+				results.append( tool )
+			} )
+		return results
+	}
+
+	/**
+	 * Unregister by exact key and fire the onAIToolRegistryUnregister event.
+	 *
+	 * @key The exact registry key to remove
+	 *
+	 * @returns The registry instance for chaining
+	 */
+	AIToolRegistry function unregister( required string key ) {
+		super.unregister( arguments.key )
+		BoxAnnounce( "onAIToolRegistryUnregister", {
+			key    : arguments.key,
+			module : extractModule( arguments.key )
+		} )
+		return this
+	}
+
+	/**
+	 * Unregister all items registered under a specific module and fire per-item events.
+	 *
+	 * @module The module name whose items should be removed
+	 */
+	AIToolRegistry function unregisterByModule( required string module ) {
+		getKeys()
+			.filter( key => extractModule( key ) == module )
+			.each( key => unregister( key ) )
+		return this
+	}
+
+	/**
+	 * Resolve a mixed array of ITool instances and/or string registry keys into ITool[].
+	 * Called right before an LLM request to lazily resolve string keys.
+	 *
+	 * @tools Array of ITool instances or string registry keys
+	 * @throws RegistryItemNotFoundException if a string key cannot be resolved
+	 *
+	 * @return Array of ITool instances
+	 */
+	array function resolveTools( required array tools ) {
+		return arguments.tools.map( tool => {
+			return isSimpleValue( arguments.tool ) ?
+				this.get( arguments.tool ) :
+				arguments.tool
+		} )
+	}
+
+	/**
+	 * Get tool info (name and description) for a given registry key, without returning the full ITool instance.
+	 *
+	 * @key The registry key of the tool (e.g. "now@bx-ai")
+	 * @throws RegistryItemNotFoundException if the key cannot be found
+	 *
+	 * @return Struct with 'name' and 'description' of the tool
+	 */
+	struct function getToolInfo( required string key ) {
+		var tool = this.get( arguments.key )
+		if ( isNull( tool ) ) {
+			throw(
+				type    : "RegistryItemNotFoundException",
+				message : "No tool found for key: " & arguments.key
+			)
+		}
+		return {
+			name        : tool.getName(),
+			description : tool.getDescription()
+		}
+	}
+
+	/**
+	 * List all registered tools with their keys, names, and descriptions.
+	 *
+	 * @return Struct of all registered tools, keyed by registry key, with name and description.
+	 */
+	struct function listTools() {
+		return variables.registry.map( ( key, tool ) => {
+			return {
+				name        : tool.getName(),
+				description : tool.getDescription(),
+				module		: extractModule( key )
+			}
+		} )
+
+	}
+
+}

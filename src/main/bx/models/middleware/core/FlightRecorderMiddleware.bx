@@ -1,0 +1,438 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Flight Recorder Middleware
+ *
+ * Captures a structured trace of every LLM provider round-trip and tool invocation during an
+ * agent run, written as a human-readable JSON fixture. The same fixture can be replayed in CI
+ * without hitting any live provider or tool — making agent behaviour regression-testable.
+ *
+ * Modes:
+ *   - passthrough (default) : calls real providers and tools, no recording
+ *   - record                : calls through to real providers/tools, captures each interaction
+ *                             to a JSON fixture file incrementally (crash-safe)
+ *   - replay                : reads a previously recorded fixture file and returns interactions
+ *                             in sequence; no provider or tool is invoked
+ *
+ * Quick start — record a successful run:
+ *   aiAgent(
+ *       middleware: new FlightRecorderMiddleware( mode: "record" ),
+ *       ...
+ *   ).run( "What is the weather in London?" )
+ *   // Written to: .ai/flight-recorder/<agentName>-<timestamp>.json
+ *
+ * Replay in CI (zero live calls):
+ *   aiAgent(
+ *       middleware: new FlightRecorderMiddleware(
+ *           mode       : "replay",
+ *           fixturePath: "tests/fixtures/my-agent.json"
+ *       ),
+ *       ...
+ *   ).run( "What is the weather in London?" )
+ *
+ * Tape format:
+ * {
+ *   "version"     : "1",
+ *   "recordedAt"  : "2026-03-18T10:00:00",
+ *   "agentName"   : "my-agent",
+ *   "interactions": [
+ *     { "seq": 1, "type": "llm",  "request": { ...dataPacket... }, "response": { ...raw response... } },
+ *     { "seq": 2, "type": "tool", "toolName": "getWeather", "arguments": { "city": "London" }, "result": "72F, sunny" },
+ *     { "seq": 3, "type": "llm",  "request": { ... }, "response": { ... } }
+ *   ]
+ * }
+ */
+import bxModules.bxai.models.middleware.BaseAiMiddleware;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+class extends="BaseAiMiddleware" {
+
+	/**
+	 * Operating mode: "passthrough", "record", or "replay"
+	 */
+	property name="mode" type="string" default="passthrough";
+
+	/**
+	 * Path to the fixture file.
+	 * In record mode: auto-generated under `fixtureDir` if left empty.
+	 * In replay mode: required — the file to replay from.
+	 */
+	property name="fixturePath" type="string" default="";
+
+	/**
+	 * Base directory for auto-generated fixture files in record mode.
+	 * Default: .ai/flight-recorder/
+	 */
+	property name="fixtureDir" type="string" default=".ai/flight-recorder";
+
+	/**
+	 * Whether to also capture tool call inputs and outputs.
+	 * When false, tool calls are passed through without recording.
+	 */
+	property name="recordTools" type="boolean" default=true;
+
+	/**
+	 * In replay mode, throw an error when the next recorded interaction is a different type
+	 * than the one being requested (e.g. expecting "llm" but tape has "tool").
+	 * When false, the recorder skips ahead to find the next matching type (lenient).
+	 */
+	property name="strict" type="boolean" default=true;
+
+	// ==================== Internal State ====================
+
+	/**
+	 * In-memory tape written during recording.
+	 * Struct: { version, recordedAt, agentName, interactions: [] }
+	 */
+	variables._tape          = {};
+
+	/**
+	 * Sequential cursor into tape.interactions during replay (1-based).
+	 */
+	variables._playbackSeq   = 0;
+
+	/**
+	 * Agent name captured from the beforeAgentRun context.
+	 */
+	variables._agentName     = "default";
+
+	/**
+	 * Whether the tape has been initialised (record) or loaded (replay).
+	 */
+	variables._initialized   = false;
+
+	/**
+	 * Constructor
+	 *
+	 * @mode         "passthrough" | "record" | "replay"
+	 * @fixturePath  Explicit fixture path. Omit to auto-generate in record mode.
+	 * @fixtureDir   Base directory for auto-generated fixtures. Default: .ai/flight-recorder/
+	 * @recordTools  Whether tool interactions are captured/replayed. Default: true
+	 * @strict       In replay mode, throw on interaction type mismatch. Default: true
+	 */
+	function init(
+		string  mode        = "passthrough",
+		string  fixturePath = "",
+		string  fixtureDir  = ".ai/flight-recorder",
+		boolean recordTools = true,
+		boolean strict      = true
+	) {
+		variables.mode        = arguments.mode
+		variables.fixturePath = arguments.fixturePath
+		variables.fixtureDir  = arguments.fixtureDir
+		variables.recordTools = arguments.recordTools
+		variables.strict      = arguments.strict
+		variables.name = "Flight Recorder Middleware"
+		variables.description = "Captures a structured trace of every LLM provider round-trip and tool invocation during an agent run, written as a human-readable JSON fixture. " &
+			"Supports three modes: passthrough (no recording), record (capture interactions to a fixture file), and replay (return interactions from a fixture file without live calls). Configurable fixture path, recording of tool calls, and strictness of replay matching."
+		return this
+	}
+
+	// ==================== Sequential Hooks ====================
+
+	/**
+	 * Record mode : initialise a fresh tape for this run.
+	 * Replay mode : load the fixture and reset the playback cursor.
+	 */
+	AiMiddlewareResult function beforeAgentRun( required struct context ) {
+		variables._agentName = context.agent?.getAgentName() ?: "default"
+
+		if ( variables.mode == "record" ) {
+			_initTape( variables._agentName )
+		} else if ( variables.mode == "replay" ) {
+			_assertFixturePath()
+			_loadFixture()
+		}
+
+		variables._initialized = true
+		return AiMiddlewareResult.continue()
+	}
+
+	/**
+	 * Record mode : write the final snapshot so the fixture is complete.
+	 */
+	AiMiddlewareResult function afterAgentRun( required struct context ) {
+		if ( variables.mode == "record" && variables._initialized ) {
+			_saveSnapshot()
+		}
+		return AiMiddlewareResult.continue()
+	}
+
+	// ==================== Wrap Hooks ====================
+
+	/**
+	 * Intercept the LLM provider call.
+	 *   passthrough : delegate to handler unchanged
+	 *   record      : call handler, capture request + response, flush snapshot
+	 *   replay      : return recorded response without calling handler
+	 */
+	any function wrapLLMCall( required struct context, required function handler ) {
+		_lazyInit()
+
+		if ( variables.mode == "passthrough" ) {
+			return arguments.handler()
+		}
+
+		if ( variables.mode == "record" ) {
+			var response = arguments.handler()
+			_appendInteraction( {
+				"type"    : "llm",
+				"request" : context.dataPacket ?: {},
+				"response": response
+			} )
+			return response
+		}
+
+		// replay
+		var interaction = _nextInteraction( "llm" )
+		return interaction.response
+	}
+
+	/**
+	 * Intercept a tool invocation.
+	 *   passthrough / recordTools=false : delegate to handler unchanged
+	 *   record                           : call handler, capture tool name + args + result, flush
+	 *   replay                           : return recorded result without calling handler
+	 */
+	any function wrapToolCall( required struct context, required function handler ) {
+		_lazyInit()
+
+		if ( variables.mode == "passthrough" ) {
+			return arguments.handler()
+		}
+
+		if ( !variables.recordTools ) {
+			return arguments.handler()
+		}
+
+		var toolName = context.toolCall?.function?.name ?: (context.tool?.getName() ?: "unknown")
+		var rawArgs  = context.toolCall?.function?.arguments ?: "{}"
+		var toolArgs = isStruct( rawArgs ) ? rawArgs : jsonDeserialize( rawArgs )
+
+		if ( variables.mode == "record" ) {
+			var result = arguments.handler()
+			_appendInteraction( {
+				"type"    : "tool",
+				"toolName": toolName,
+				"arguments": toolArgs,
+				"result"  : result
+			} )
+			return result
+		}
+
+		// replay
+		var interaction = _nextInteraction( "tool" )
+		return interaction.result
+	}
+
+	// ==================== Public Utility Methods ====================
+
+	/**
+	 * Get the current in-memory tape (useful for assertions in tests).
+	 *
+	 * @return The tape struct (shallow copy)
+	 */
+	struct function getTape() {
+		return variables._tape.copy()
+	}
+
+	/**
+	 * Return the path where the last recorded fixture was (or will be) written.
+	 *
+	 * @return Absolute or relative fixture path
+	 */
+	string function getEffectiveFixturePath() {
+		return variables.fixturePath
+	}
+
+	/**
+	 * Reset internal state so the recorder can be reused across multiple runs
+	 * without re-instantiating. Useful in tests.
+	 */
+	void function reset() {
+		variables._tape        = {}
+		variables._playbackSeq = 0
+		variables._initialized = false
+	}
+
+	// ==================== Private Helpers ====================
+
+	/**
+	 * Perform lazy initialisation the first time a wrap hook fires, in case
+	 * beforeAgentRun was never called (e.g. middleware attached to AiModel directly).
+	 */
+	private void function _lazyInit() {
+		if ( variables._initialized ) {
+			return
+		}
+		if ( variables.mode == "record" ) {
+			_initTape( variables._agentName )
+		} else if ( variables.mode == "replay" ) {
+			_assertFixturePath()
+			_loadFixture()
+		}
+		variables._initialized = true
+	}
+
+	/**
+	 * Initialise a fresh, empty tape for this recording session.
+	 *
+	 * @agentName Agent name to embed in the metadata header
+	 */
+	private void function _initTape( required string agentName ) {
+		variables._playbackSeq = 0
+
+		// Auto-generate a fixture path if none was provided
+		if ( variables.fixturePath.isEmpty() ) {
+			variables.fixturePath = _buildDefaultFixturePath( arguments.agentName )
+		}
+
+		variables._tape = {
+			"version"     : "1",
+			"recordedAt"  : dateTimeFormat( now(), "iso8601" ),
+			"agentName"   : arguments.agentName,
+			"interactions": []
+		}
+	}
+
+	/**
+	 * Load an existing fixture file into memory and reset the playback cursor.
+	 */
+	private void function _loadFixture() {
+		variables._playbackSeq = 0
+		if ( !fileExists( variables.fixturePath ) ) {
+			throw(
+				type   : "FlightRecorder.FixtureNotFound",
+				message: "Flight recorder fixture not found: '#variables.fixturePath#'"
+			)
+		}
+		variables._tape = jsonDeserialize( fileRead( variables.fixturePath ) )
+		if ( !variables._tape.keyExists( "interactions" ) ) {
+			variables._tape.interactions = []
+		}
+	}
+
+	/**
+	 * Append one interaction to the tape and flush a snapshot to disk.
+	 * Flushing on every interaction means a partial recording is preserved even if
+	 * the agent run crashes or is interrupted.
+	 *
+	 * @interaction Struct: { type, ...type-specific fields... }
+	 */
+	private void function _appendInteraction( required struct interaction ) {
+		var seq = variables._tape.interactions.len() + 1
+		arguments.interaction.seq = seq
+		variables._tape.interactions.append( arguments.interaction )
+		_saveSnapshot()
+	}
+
+	/**
+	 * Serialise the in-memory tape to the fixture file.
+	 */
+	private void function _saveSnapshot() {
+		_ensureDirectory( getDirectoryFromPath( variables.fixturePath ) )
+		fileWrite( variables.fixturePath, jsonSerialize( variables._tape, true ), "UTF-8" )
+	}
+
+	/**
+	 * Advance the playback cursor and return the next interaction.
+	 * In strict mode the interaction type must match `expectedType`.
+	 * In lenient mode the cursor skips ahead until it finds a matching type.
+	 *
+	 * @expectedType "llm" or "tool"
+	 *
+	 * @return The matching interaction struct
+	 */
+	private struct function _nextInteraction( required string expectedType ) {
+		var interactions = variables._tape.interactions ?: []
+
+		if ( variables.strict ) {
+			variables._playbackSeq++
+			if ( variables._playbackSeq > interactions.len() ) {
+				throw(
+					type   : "FlightRecorder.ReplayExhausted",
+					message: "Flight recorder replay exhausted: no more recorded interactions (expected '#arguments.expectedType#', seq #variables._playbackSeq#)"
+				)
+			}
+			var interaction = interactions[ variables._playbackSeq ]
+			if ( interaction.type != arguments.expectedType ) {
+				throw(
+					type   : "FlightRecorder.TypeMismatch",
+					message: "Flight recorder type mismatch at seq #variables._playbackSeq#: expected '#arguments.expectedType#' but tape has '#interaction.type#'"
+				)
+			}
+			return interaction
+		}
+
+		// Lenient: scan forward from current position for the next matching type
+		var searchFrom = variables._playbackSeq + 1
+		var found      = 0
+		for ( var i = searchFrom; i <= interactions.len(); i++ ) {
+			if ( interactions[ i ].type == arguments.expectedType ) {
+				found = i
+				break
+			}
+		}
+		if ( found == 0 ) {
+			throw(
+				type   : "FlightRecorder.ReplayExhausted",
+				message: "Flight recorder replay exhausted: no more '#arguments.expectedType#' interactions after seq #variables._playbackSeq#"
+			)
+		}
+		variables._playbackSeq = found
+		return interactions[ found ]
+	}
+
+	/**
+	 * Build a default fixture path under `fixtureDir` using the agent name and a timestamp.
+	 *
+	 * @agentName Used as the file name prefix
+	 *
+	 * @return Relative path string, e.g. ".ai/flight-recorder/my-agent-20260318-100000.json"
+	 */
+	private string function _buildDefaultFixturePath( required string agentName ) {
+		var safeName  = arguments.agentName.lCase().reReplace( "[^a-z0-9_-]", "-", "all" )
+		var timestamp = dateTimeFormat( now(), "yyyyMMdd-HHmmss" )
+		var dir       = variables.fixtureDir.rtrim( "/" ).rtrim( "\" )
+		return dir & "/" & safeName & "-" & timestamp & ".json"
+	}
+
+	/**
+	 * Ensure that a directory path exists, creating it recursively if necessary.
+	 *
+	 * @dirPath The directory path to ensure
+	 */
+	private void function _ensureDirectory( required string dirPath ) {
+		var cleanDir = arguments.dirPath.trim()
+		if ( cleanDir.isEmpty() ) {
+			return
+		}
+		if ( !directoryExists( cleanDir ) ) {
+			directoryCreate( cleanDir, true )
+		}
+	}
+
+	/**
+	 * Validate that a fixturePath is set before attempting to load or replay.
+	 */
+	private void function _assertFixturePath() {
+		if ( variables.fixturePath.isEmpty() ) {
+			throw(
+				type   : "FlightRecorder.MissingFixturePath",
+				message: "Flight recorder in replay mode requires fixturePath to be set."
+			)
+		}
+	}
+
+}

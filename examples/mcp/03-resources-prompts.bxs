@@ -37,7 +37,7 @@ mcpSrv.registerResource(
 )
 
 // Register dynamic configuration data
-server.registerResource(
+mcpSrv.registerResource(
     uri: "config://app",
     name: "App Configuration",
     description: "Current application settings",
@@ -53,7 +53,7 @@ server.registerResource(
 )
 
 // Register a database-style resource
-server.registerResource(
+mcpSrv.registerResource(
     uri: "data://users",
     name: "User Directory",
     description: "List of application users",
@@ -123,7 +123,7 @@ mcpSrv.registerPrompt(
 )
 
 // Register a code review prompt
-server.registerPrompt(
+mcpSrv.registerPrompt(
     name: "codeReview",
     description: "Code review prompt template",
     args: [
@@ -147,7 +147,7 @@ server.registerPrompt(
 )
 
 // Register a summarization prompt
-server.registerPrompt(
+mcpSrv.registerPrompt(
     name: "summarize",
     description: "Summarize text in a specific style",
     args: [

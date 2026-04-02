@@ -13,12 +13,15 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  */
-class extends="BaseService"{
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+
+class extends="OpenAIService" implements="IAiChatService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://docs.perplexity.ai/getting-started/models
 			// according to the docs, this is the default model
@@ -35,31 +38,23 @@ class extends="BaseService"{
 		variables.name = "Perplexity"
 	}
 
-	/**
-	 * Invoke a request to the provider
-	 *
-	 * @chatRequest The AI request to send to the provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
-	 */
-	function invoke( required AiChatRequest chatRequest ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invoke( arguments.chatRequest )
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
-	/**
-	 * Invoke a request to the provider in streaming mode
-	 *
-	 * @chatRequest The Chat request to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @return void
-	 */
-	function invokeStream( required AiChatRequest chatRequest, required function callback ){
+	@override
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invokeStream( arguments.chatRequest, arguments.callback )
+		return super.chat( arguments.chatRequest )
+	}
+
+	@override
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.chatStream( arguments.chatRequest, arguments.callback )
 	}
 
 }

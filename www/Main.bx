@@ -1,0 +1,7 @@
+class{
+
+	function main(){
+		test = new Test()
+		println( test.getCheckpointer() );
+	}
+}

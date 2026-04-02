@@ -159,7 +159,7 @@ abstract class
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	IAiMemory function add( required any message ) {
+	IAiMemory function add( required any message, string userId = "", string conversationId = "" ) {
 		var text = normalizeMessageText( arguments.message );
 		var metadata = extractMetadata( arguments.message );
 
@@ -171,7 +171,7 @@ abstract class
 			id = generateId( text );
 		}
 
-		return addWithId( id, text, metadata );
+		return addWithId( id, text, metadata, userId, conversationId );
 	}
 
 	/**
@@ -181,21 +181,24 @@ abstract class
 	 *
 	 * @return Array of message structs
 	 */
-	array function getAll() {
+	array function getAll( string userId = "", string conversationId = "" ) {
+		var resolvedUserId = resolveUserId( userId );
+		var resolvedConversationId = resolveConversationId( conversationId );
+
 		// Get all documents from provider
 		var allDocuments = getAllDocuments();
 
-		// Filter by userId and conversationId if set
-		if ( len( variables.userId ) || len( variables.conversationId ) ) {
+		// Filter by resolved identity for multi-tenant isolation
+		if ( len( resolvedUserId ) || len( resolvedConversationId ) ) {
 			return allDocuments.filter( function( doc ) {
 				// Check userId match if set
-				if ( len( variables.userId ) &&
-					( isNull( doc.metadata.userId ) || doc.metadata.userId != variables.userId ) ) {
+				if ( len( resolvedUserId ) &&
+					( isNull( doc.metadata.userId ) || doc.metadata.userId != resolvedUserId ) ) {
 					return false;
 				}
 				// Check conversationId match if set
-				if ( len( variables.conversationId ) &&
-					( isNull( doc.metadata.conversationId ) || doc.metadata.conversationId != variables.conversationId ) ) {
+				if ( len( resolvedConversationId ) &&
+					( isNull( doc.metadata.conversationId ) || doc.metadata.conversationId != resolvedConversationId ) ) {
 					return false;
 				}
 				return true;
@@ -210,7 +213,20 @@ abstract class
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	IAiMemory function clear() {
+	IAiMemory function clear( string userId = "", string conversationId = "" ) {
+		var resolvedUserId = resolveUserId( userId );
+		var resolvedConversationId = resolveConversationId( conversationId );
+
+		// If identity is specified, remove only matching documents via filter
+		if ( len( resolvedUserId ) || len( resolvedConversationId ) ) {
+			var filter = {};
+			if ( len( resolvedUserId ) ) filter.userId = resolvedUserId;
+			if ( len( resolvedConversationId ) ) filter.conversationId = resolvedConversationId;
+			this.removeWhere( filter );
+			return this;
+		}
+
+		// No identity specified — clear the entire collection
 		clearCollection();
 		return this;
 	}
@@ -236,16 +252,20 @@ abstract class
 		required string query,
 		numeric limit = 5,
 		struct filter = {},
-		numeric minScore = 0.0
+		numeric minScore = 0.0,
+		string userId = "",
+		string conversationId = ""
 	) {
 		// Generate embedding (cached internally if enabled)
 		var embedding = generateEmbedding( arguments.query );
 
 		// Search with fresh results (new documents may have been added)
 		var results = findSimilar(
-			embedding : embedding,
-			limit : arguments.limit,
-			filter : arguments.filter
+			embedding      : embedding,
+			limit          : arguments.limit,
+			filter         : arguments.filter,
+			userId         : userId,
+			conversationId : conversationId
 		);
 
 		// Filter by minimum score
@@ -266,15 +286,20 @@ abstract class
 	array function findSimilar(
 		required array embedding,
 		numeric limit = 5,
-		struct filter = {}
+		struct filter = {},
+		string userId = "",
+		string conversationId = ""
 	) {
-		// Add userId and conversationId to filter for multi-tenant isolation
+		var resolvedUserId = resolveUserId( userId );
+		var resolvedConversationId = resolveConversationId( conversationId );
+
+		// Add resolved identity to filter for multi-tenant isolation
 		var enhancedFilter = arguments.filter.duplicate();
-		if ( len( variables.userId ) ) {
-			enhancedFilter.userId = variables.userId;
+		if ( len( resolvedUserId ) ) {
+			enhancedFilter.userId = resolvedUserId;
 		}
-		if ( len( variables.conversationId ) ) {
-			enhancedFilter.conversationId = variables.conversationId;
+		if ( len( resolvedConversationId ) ) {
+			enhancedFilter.conversationId = resolvedConversationId;
 		}
 
 		// Announce event for observability
@@ -305,13 +330,17 @@ abstract class
 	IVectorMemory function addWithId(
 		required string id,
 		required string text,
-		struct metadata = {}
+		struct metadata = {},
+		string userId = "",
+		string conversationId = ""
 	) {
 		// Generate embedding
 		var embedding = generateEmbedding( arguments.text );
 
-		param arguments.metadata.userId = variables.userId;
-		param arguments.metadata.conversationId = variables.conversationId;
+		// Always override userId/conversationId with resolved values so per-call arguments
+		// take precedence over the instance defaults already set by extractMetadata()
+		arguments.metadata.userId = resolveUserId( userId );
+		arguments.metadata.conversationId = resolveConversationId( conversationId );
 
 		// Store in vector database (provider-specific)
 		storeDocument(
@@ -340,7 +369,7 @@ abstract class
 	 *
 	 * @return Struct with results
 	 */
-	public struct function seed( required array documents ) {
+	public struct function seed( required array documents, string userId = "", string conversationId = "" ) {
 		var results = {
 			added: 0,
 			failed: 0,
@@ -350,7 +379,7 @@ abstract class
 		// Normalize documents
 		var normalized = arguments.documents.map( ( doc ) => {
 			// Handle Document instances
-			if ( doc instanceof "bxModules.bxai.models.Document" ) {
+			if ( doc instanceof "bxModules.bxai.models.loaders.Document" ) {
 				return {
 					id: generateId( doc.getContent() ),
 					text: doc.getContent(),
@@ -371,6 +400,14 @@ abstract class
 				text: doc.text ?: doc.content ?: "",
 				metadata: doc.metadata ?: {}
 			};
+		} );
+
+		// Inject identity into each document's metadata
+		var resolvedUserId         = resolveUserId( userId );
+		var resolvedConversationId = resolveConversationId( conversationId );
+		normalized.each( doc => {
+			doc.metadata.userId         = resolvedUserId;
+			doc.metadata.conversationId = resolvedConversationId;
 		} );
 
 		// Extract all text for batch embedding
@@ -649,7 +686,7 @@ abstract class
 			return arguments.message;
 		}
 		// Handle Document instances
-		if ( arguments.message instanceof "bxModules.bxai.models.Document" ) {
+		if ( arguments.message instanceof "bxModules.bxai.models.loaders.Document" ) {
 			return arguments.message.getContent();
 		}
 		if ( isStruct( arguments.message ) ) {
@@ -668,7 +705,7 @@ abstract class
 	 */
 	private struct function extractMetadata( required any message ) {
 		// Handle Document instances
-		if ( arguments.message instanceof "bxModules.bxai.models.Document" ) {
+		if ( arguments.message instanceof "bxModules.bxai.models.loaders.Document" ) {
 			return arguments.message.getMetadata();
 		}
 

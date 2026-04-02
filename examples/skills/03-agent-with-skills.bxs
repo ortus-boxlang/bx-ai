@@ -1,0 +1,78 @@
+/**
+ * 03 - Agent with Always-On Skills
+ *
+ * Demonstrates attaching skills directly to an AI agent so they are injected
+ * into the system message on every call.  Use always-on skills for small,
+ * universally relevant guidance that should apply to all responses.
+ *
+ * Run with:
+ *   box bx:run examples/skills/03-agent-with-skills.bxs
+ */
+
+println( "=== Agent with Always-On Skills ===" )
+println( "" )
+
+// ── Create skills ─────────────────────────────────────────────────────────────
+
+sqlSkill = aiSkill(
+    name       : "sql-optimizer",
+    description: "Apply SQL optimisation best practices to every query",
+    content    : "
+## SQL Rules
+
+- Always use indexed columns in WHERE and JOIN clauses
+- Avoid SELECT * in production
+- Use EXPLAIN before deploying queries
+- Paginate large result sets
+"
+)
+
+styleSkill = aiSkill(
+    name       : "concise-writing",
+    description: "Keep all prose concise and jargon-free",
+    content    : "
+## Writing Style
+
+- Prefer active voice
+- One idea per paragraph
+- Cut words that add no meaning
+"
+)
+
+// ── Build agent with always-on skills ─────────────────────────────────────────
+
+agent = aiAgent(
+    name        : "database-assistant",
+    description : "Expert database assistant with writing standards",
+    instructions: "Help users design and optimise their database queries.",
+    skills      : [ sqlSkill, styleSkill ]   // always-on
+)
+
+// ── Introspection ─────────────────────────────────────────────────────────────
+
+config = agent.getConfig()
+println( "Agent: #config.name#" )
+println( "Always-on skills : #config.activeSkillCount#" )
+println( "Available skills : #config.availableSkillCount#" )
+println( "" )
+
+// View the skills block that will be injected as a system message
+println( "--- Skills system-message block ---" )
+println( agent.buildSkillsContent() )
+println( "------------------------------------" )
+println( "" )
+
+// ── Conversations ─────────────────────────────────────────────────────────────
+
+questions = [
+    "Write a query to find all customers who placed more than 5 orders",
+    "How should I design an index for this query?",
+    "Explain what a covering index is"
+]
+
+for ( question in questions ) {
+    println( "User : #question#" )
+    response = agent.run( question )
+    println( "Agent: #response#" )
+    println( "" )
+}

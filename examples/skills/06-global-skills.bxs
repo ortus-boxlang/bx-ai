@@ -1,0 +1,74 @@
+/**
+ * 06 - Global Skills
+ *
+ * Demonstrates the global skill pool.  Skills added to `settings.globalSkills`
+ * in ModuleConfig.bx are automatically injected into every new agent's
+ * availableSkills pool at construction time.
+ *
+ * This example simulates that behaviour by calling aiGlobalSkills() to inspect
+ * the current pool and manually seeding it via the module settings for
+ * demonstration purposes.
+ *
+ * In a real application, set globalSkills in your ModuleConfig.bx:
+ *
+ *   settings = {
+ *       globalSkills: aiSkill( expandPath( ".ai/skills" ) )
+ *   }
+ *
+ * Run with:
+ *   box bx:run examples/skills/06-global-skills.bxs
+ */
+
+println( "=== Global Skills Example ===" )
+println( "" )
+
+// ── Inspect the currently registered global skills ────────────────────────────
+
+globalPool = aiGlobalSkills()
+
+if ( globalPool.isEmpty() ) {
+    println( "No global skills registered yet." )
+    println( "In your ModuleConfig.bx add:" )
+    println( '  settings = { globalSkills: aiSkill( expandPath( ".ai/skills" ) ) }' )
+} else {
+    println( "Global skill pool (#globalPool.len()# skill(s)):" )
+    for ( skill in globalPool ) {
+        println( "  • #skill.getName()# — #skill.getDescription()#" )
+    }
+}
+println( "" )
+
+// ── Create an agent — global skills are auto-prepended ────────────────────────
+
+// Even without specifying skills at construction, the agent picks up globals
+agent = aiAgent(
+    name: "global-skill-agent",
+    description: "Agent that inherits all global skills automatically"
+)
+
+config = agent.getConfig()
+println( "Agent available skills (includes globals): #config.availableSkillCount#" )
+println( "" )
+
+// ── Merge explicit skills with globals ────────────────────────────────────────
+
+extraSkill = aiSkill(
+    name       : "tone",
+    description: "Always reply in a friendly, encouraging tone",
+    content    : "Be warm, positive, and use simple language. Add an encouraging closing sentence."
+)
+
+agentWithExtra = aiAgent(
+    name           : "friendly-agent",
+    availableSkills: [ extraSkill ]   // globals are prepended automatically
+)
+
+config2 = agentWithExtra.getConfig()
+println( "Agent with extra skill, available count: #config2.availableSkillCount#" )
+println( "" )
+
+// ── Run ────────────────────────────────────────────────────────────────────────
+
+response = agentWithExtra.run( "How do I write a recursive function in BoxLang?" )
+println( "Response:" )
+println( response )

@@ -1,0 +1,79 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Middleware that enforces a per-run cap on the total number of tool invocations.
+ * When the cap is hit, any further tool calls are cancelled with a descriptive reason.
+ *
+ * The counter resets automatically at the start of each agent run (beforeAgentRun).
+ *
+ * Usage:
+ *   aiAgent( middleware: new MaxToolCallsMiddleware( maxCalls: 5 ) )
+ */
+import bxModules.bxai.models.middleware.BaseAiMiddleware;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+class extends="BaseAiMiddleware" {
+
+	/**
+	 * Maximum number of tool calls allowed per agent run
+	 */
+	property name="maxCalls" type="numeric" default=10;
+
+	/**
+	 * Running count of tool calls made in the current run
+	 */
+	property name="callCount" type="numeric" default=0;
+
+	/**
+	 * Constructor
+	 *
+	 * @maxCalls Maximum tool calls allowed per run
+	 */
+	function init( numeric maxCalls = 10 ) {
+		variables.maxCalls  = arguments.maxCalls
+		variables.callCount = 0
+		variables.name = "Max Tool Calls Middleware"
+		variables.description = "Enforces a per-run cap on total tool invocations. Configurable max calls allowed."
+
+		return this
+	}
+
+	// ==================== Hooks ====================
+
+	/**
+	 * Reset the counter at the start of each agent run so the cap is per-run.
+	 */
+	AiMiddlewareResult function beforeAgentRun( required struct context ) {
+		variables.callCount = 0
+		return AiMiddlewareResult.continue()
+	}
+
+	/**
+	 * Increment the counter before each tool call and cancel if the cap is exceeded.
+	 */
+	AiMiddlewareResult function beforeToolCall( required struct context ) {
+		variables.callCount++
+
+		if ( variables.callCount > variables.maxCalls ) {
+			var toolName = context.tool?.getName() ?: "unknown"
+			return AiMiddlewareResult.cancel(
+				"MaxToolCallsMiddleware: tool call limit of [#variables.maxCalls#] reached. "
+				& "Blocking '[#toolName#]' (call [#variables.callCount#])."
+			)
+		}
+
+		return AiMiddlewareResult.continue()
+	}
+
+}

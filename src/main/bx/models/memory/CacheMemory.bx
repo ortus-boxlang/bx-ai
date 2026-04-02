@@ -51,8 +51,6 @@ class extends="BaseMemory" {
 		// Call parent constructor with 0 max messages to be unbounded
 		super.init( argumentCollection: arguments )
 		variables.cacheName = arguments.cacheName
-		// Build composite cache key from key, userId, and conversationId
-		variables.cacheKey = buildCacheKey();
 		return this
 	}
 
@@ -65,7 +63,7 @@ class extends="BaseMemory" {
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		// Override cacheName if provided, else we use the default cache
 		if ( arguments.config.keyExists( "cacheName" ) ) {
 			variables.cacheName = arguments.config.cacheName
@@ -77,7 +75,8 @@ class extends="BaseMemory" {
 		// Load metadata from cache if it exists
 		// (but NOT messages - those are accessed on-demand via getAll())
 		// (and NOT config - that's just for instance configuration)
-		var data = getCacheData()
+		var instanceCacheKey = buildCacheKey( variables.userId, variables.conversationId )
+		var data = getCacheData( instanceCacheKey )
 		variables.metadata = data.metadata
 
 		super.configure( arguments.config )
@@ -97,8 +96,9 @@ class extends="BaseMemory" {
 			// Update variables.metadata
 			variables.metadata.append( arguments.metadata, true )
 			// Persist to cache
-			var data = getCacheData()
-			setCacheData( data.messages, variables.metadata )
+			var instanceCacheKey = buildCacheKey( variables.userId, variables.conversationId )
+			var data = getCacheData( instanceCacheKey )
+			setCacheData( instanceCacheKey, data.messages, variables.metadata )
 			return this
 		}
 		return variables.metadata
@@ -107,30 +107,37 @@ class extends="BaseMemory" {
 	/**
 	 * Get all messages - reads directly from cache
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return Array of message structs
 	 */
-	public array function getAll() {
-		return getCacheData().messages
+	public array function getAll( string userId = "", string conversationId = "" ) {
+		var cacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
+		return getCacheData( cacheKey ).messages
 	}
 
 	/**
 	 * Add a message - writes directly to cache
 	 *
 	 * @message The message to add
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function add( required any message ) {
-		var data = getCacheData()
+	public IAiMemory function add( required any message, string userId = "", string conversationId = "" ) {
+		var cacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
+		var data = getCacheData( cacheKey )
 
 		// Append the processed message(s) to cache messages
 		data.messages.append( processMessage( arguments.message ), true )
 
 		// Save back to cache
-		setCacheData( data.messages, data.metadata )
+		setCacheData( cacheKey, data.messages, data.metadata )
 
 		// Trim if necessary
-		this.trim()
+		this.trim( userId, conversationId )
 
 		return this
 	}
@@ -138,64 +145,84 @@ class extends="BaseMemory" {
 	/**
 	 * Clear all messages from cache
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function clear() {
-		variables.cache.clear( variables.cacheKey )
+	public IAiMemory function clear( string userId = "", string conversationId = "" ) {
+		var cacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
+		variables.cache.clear( cacheKey )
 		return this
 	}
 
 	/**
 	 * Get the count of messages in cache
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return Numeric count
 	 */
-	public numeric function count() {
-		return getCacheData().messages.len()
+	public numeric function count( string userId = "", string conversationId = "" ) {
+		var cacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
+		return getCacheData( cacheKey ).messages.len()
 	}
 
 	/**
 	 * Check if memory is empty
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return True if empty, false otherwise
 	 */
-	public boolean function isEmpty() {
-		return getCacheData().messages.isEmpty()
+	public boolean function isEmpty( string userId = "", string conversationId = "" ) {
+		var cacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
+		return getCacheData( cacheKey ).messages.isEmpty()
 	}
 
 	/**
 	 * Get messages by role - reads from cache
 	 *
 	 * @role The role to filter by
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Array of message structs
 	 */
-	public array function getByRole( required string role ) {
-		return getCacheData().messages.filter( ( m ) => m.role == role )
+	public array function getByRole( required string role, string userId = "", string conversationId = "" ) {
+		var cacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
+		return getCacheData( cacheKey ).messages.filter( ( m ) => m.role == role )
 	}
 
 	/**
 	 * Get the system message from cache
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return The system message content or an empty string
 	 */
-	public string function getSystemMessage() {
-		var systemMessages = this.getByRole( "system" )
+	public string function getSystemMessage( string userId = "", string conversationId = "" ) {
+		var systemMessages = this.getByRole( "system", userId, conversationId )
 		if ( systemMessages.isEmpty() ) {
 			return ""
 		}
 		return systemMessages.first().content
 	}
-
 	/**
 	 * Set or replace the system message in cache
 	 *
 	 * @message The system message content (string)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function setSystemMessage( required string message ) {
-		var data = getCacheData()
+	public IAiMemory function setSystemMessage( required string message, string userId = "", string conversationId = "" ) {
+		var instanceCacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
+		var data = getCacheData( instanceCacheKey )
 		var messages = data.messages
 
 		// Remove existing system message
@@ -208,40 +235,50 @@ class extends="BaseMemory" {
 			timestamp: now()
 		} )
 
-		setCacheData( messages, data.metadata )
+		setCacheData( instanceCacheKey, messages, data.metadata )
 		return this
 	}
 
 	/**
 	 * Remove the system message from cache
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function removeSystemMessage() {
-		var data = getCacheData()
+	public IAiMemory function removeSystemMessage( string userId = "", string conversationId = "" ) {
+		var instanceCacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
+		var data = getCacheData( instanceCacheKey )
 		var messages = data.messages.filter( ( m ) => m.role != "system" )
-		setCacheData( messages, data.metadata )
+		setCacheData( instanceCacheKey, messages, data.metadata )
 		return this
 	}
 
 	/**
 	 * Get messages excluding system message from cache
 	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return Array of message structs
 	 */
-	public array function getNonSystemMessages() {
-		return getCacheData().messages.filter( ( m ) => m.role != "system" )
+	public array function getNonSystemMessages( string userId = "", string conversationId = "" ) {
+		var instanceCacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
+		return getCacheData( instanceCacheKey ).messages.filter( ( m ) => m.role != "system" )
 	}
 
 	/**
 	 * Get recent messages from cache
 	 *
 	 * @limit Number of recent messages to retrieve
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Array of message structs
 	 */
-	public array function getRecent( numeric limit = 10 ) {
-		var messages = this.getAll()
+	public array function getRecent( numeric limit = 10, string userId = "", string conversationId = "" ) {
+		var messages = this.getAll( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		var total = messages.len()
 		if ( total <= arguments.limit ) {
 			return messages
@@ -255,14 +292,16 @@ class extends="BaseMemory" {
 	 *
 	 * @searchTerm Text to search for
 	 * @caseSensitive Whether search is case-sensitive (default: false)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Array of matching message structs
 	 */
-	public array function search( required string searchTerm, boolean caseSensitive = false ) {
+	public array function search( required string searchTerm, boolean caseSensitive = false, string userId = "", string conversationId = "" ) {
 		var term = arguments.searchTerm
 		var isCaseSensitive = arguments.caseSensitive
 
-		return this.getAll().filter( ( message ) => {
+		return this.getAll( resolveUserId( userId ), resolveConversationId( conversationId ) ).filter( ( message ) => {
 			return isCaseSensitive
 				? message.content.find( term ) > 0
 				: message.content.findNoCase( term ) > 0
@@ -274,11 +313,13 @@ class extends="BaseMemory" {
 	 *
 	 * @startIndex Starting index (1-based)
 	 * @endIndex Ending index (1-based), optional - defaults to last message
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Array of message structs
 	 */
-	public array function getRange( required numeric startIndex, numeric endIndex ) {
-		var messages = this.getAll()
+	public array function getRange( required numeric startIndex, numeric endIndex, string userId = "", string conversationId = "" ) {
+		var messages = this.getAll( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		var total = messages.len()
 
 		// Validate startIndex - must be within bounds
@@ -321,10 +362,16 @@ class extends="BaseMemory" {
 	 * Export messages to a serializable format
 	 * Overrides base to add cacheName field
 	 *
+	 * Note: This exports all messages from cache for the current userId and conversationId
+	 * If you want to export a specific subset, you can use getRange() or getAll() and export that data separately.
+	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
 	 * @return Struct containing all memory data
 	 */
-	public struct function export() {
-		var exported = super.export()
+	public struct function export( string userId = "", string conversationId = "" ) {
+		var exported = super.export( arguments.userId, arguments.conversationId )
 		exported.cacheName = variables.cacheName
 		return exported
 	}
@@ -363,11 +410,11 @@ class extends="BaseMemory" {
 		}
 
 		// Rebuild cache key after importing identifiers
-		variables.cacheKey = buildCacheKey();
+		var importedCacheKey = buildCacheKey( variables.userId, variables.conversationId );
 
 		// Import messages directly to cache (don't use variables.messages)
 		var messages = arguments.data.messages ?: []
-		setCacheData( messages, variables.metadata )
+		setCacheData( importedCacheKey, messages, variables.metadata )
 
 		return this
 	}
@@ -404,7 +451,8 @@ class extends="BaseMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function merge( required IAiMemory otherMemory, boolean skipDuplicates = false ) {
-		var data = getCacheData()
+		var instanceCacheKey = buildCacheKey( variables.userId, variables.conversationId )
+		var data = getCacheData( instanceCacheKey )
 		var currentMessages = data.messages
 		var otherMessages = arguments.otherMemory.getAll()
 
@@ -421,19 +469,25 @@ class extends="BaseMemory" {
 		currentMessages.append( otherMessages, true )
 
 		// Write back to cache
-		setCacheData( currentMessages, data.metadata )
+		setCacheData( instanceCacheKey, currentMessages, data.metadata )
 
 		return this
 	}
 
 	/**
 	 * Trim messages stored in cache based on maxMessages
+	 *
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
+	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function trim() {
+	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
 		// If unbounded → do nothing
 		if ( variables.maxMessages == 0 ) return this
 
-		var data = getCacheData()
+		var cacheKey = buildCacheKey( resolveUserId( userId ), resolveConversationId( conversationId ) )
+		var data = getCacheData( cacheKey )
 		var messages = data.messages
 
 		// Extract system message if present
@@ -464,7 +518,7 @@ class extends="BaseMemory" {
 		}
 
 		// Save back to cache
-		setCacheData( keep, data.metadata )
+		setCacheData( cacheKey, keep, data.metadata )
 
 		return this
 	}
@@ -478,11 +532,13 @@ class extends="BaseMemory" {
 	/**
 	 * Get cache data structure - reads directly from cache
 	 *
+	 * @cacheKey The resolved composite cache key
+	 *
 	 * @return Struct with keys: messages, metadata
 	 */
-	private struct function getCacheData() {
+	private struct function getCacheData( required string cacheKey ) {
 		return variables.cache.getOrSet(
-			variables.cacheKey,
+			arguments.cacheKey,
 			() => {
 				return {
 					"messages"  : [],
@@ -495,16 +551,18 @@ class extends="BaseMemory" {
 	/**
 	 * Set cache data structure - writes directly to cache
 	 *
+	 * @cacheKey The resolved composite cache key
 	 * @messages Array of message structs
 	 * @metadata Metadata struct
 	 */
 	private void function setCacheData(
+		required string cacheKey,
 		required array messages,
 		struct metadata = {}
 	) {
-		if ( !isNull( variables.cache ) && len( variables.cacheKey ) ) {
+		if ( !isNull( variables.cache ) && len( arguments.cacheKey ) ) {
 			variables.cache.set(
-				variables.cacheKey,
+				arguments.cacheKey,
 				{
 					messages  : arguments.messages,
 					metadata  : arguments.metadata
@@ -516,23 +574,82 @@ class extends="BaseMemory" {
 	/**
 	 * Build composite cache key from key, userId, and conversationId
 	 * Format: key:userId:conversationId or key:userId or just key
+	 * Pure function — does NOT read from variables scope.
+	 *
+	 * @userId The resolved user identifier
+	 * @conversationId The resolved conversation identifier
 	 *
 	 * @return String composite cache key
 	 */
-	private string function buildCacheKey() {
+	private string function buildCacheKey( string userId = "", string conversationId = "" ) {
 		var parts = [ variables.key ];
 
 		// Add userId if present
-		if ( len( variables.userId ) ) {
-			parts.append( variables.userId );
+		if ( len( arguments.userId ) ) {
+			parts.append( arguments.userId );
 		}
 
 		// Add conversationId if present
-		if ( len( variables.conversationId ) ) {
-			parts.append( variables.conversationId );
+		if ( len( arguments.conversationId ) ) {
+			parts.append( arguments.conversationId );
 		}
 
 		return parts.toList( ":" );
+	}
+
+	/**
+	 * Build the cache key used to store checkpoint state for a given threadId.
+	 */
+	private string function buildCheckpointKey( required string threadId ) {
+		return "checkpoint:" & arguments.threadId;
+	}
+
+	// ==================== Checkpoint Methods ====================
+
+	/**
+	 * Persist checkpoint state in the cache.
+	 *
+	 * @threadId Unique agent thread identifier
+	 * @state    Serialisable struct to store
+	 * @ttl      TTL in minutes (0 = use cache default)
+	 *
+	 * @return this for chaining
+	 */
+	public IAiMemory function saveState( required string threadId, required struct state, numeric ttl = 0 ) {
+		var cacheKey = buildCheckpointKey( arguments.threadId )
+		if ( arguments.ttl > 0 ) {
+			variables.cache.set( cacheKey, arguments.state, arguments.ttl, 0 )
+		} else {
+			variables.cache.set( cacheKey, arguments.state )
+		}
+		return this
+	}
+
+	/**
+	 * Retrieve checkpoint state from the cache.
+	 *
+	 * @threadId Unique agent thread identifier
+	 *
+	 * @return Saved state struct, or empty struct if not found
+	 */
+	public struct function loadState( required string threadId ) {
+		var cacheKey = buildCheckpointKey( arguments.threadId )
+		return variables.cache
+			.get( cacheKey )
+			// We get always an attempt
+			.orElse( {} )
+	}
+
+	/**
+	 * Delete checkpoint state from the cache.
+	 *
+	 * @threadId Unique agent thread identifier
+	 *
+	 * @return this for chaining
+	 */
+	public IAiMemory function clearState( required string threadId ) {
+		variables.cache.clear( buildCheckpointKey( arguments.threadId ) )
+		return this
 	}
 
 }

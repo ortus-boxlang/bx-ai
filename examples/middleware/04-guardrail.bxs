@@ -1,0 +1,73 @@
+/**
+ * Guardrail Middleware Example
+ *
+ * Demonstrates blocking dangerous tool calls before they execute.
+ *
+ * GuardrailMiddleware supports two protection layers:
+ * 1. Completely block specific tools by name (blockedTools)
+ * 2. Block calls whose arguments match a regex pattern (argPatterns)
+ *
+ * In this example we prevent the SQL tool from running DROP/DELETE
+ * statements and block the shell tool entirely.
+ */
+
+println( "=== Guardrail Middleware ===" )
+println( "" )
+
+// A database query tool
+function runQuery( required string sql ) {
+	println( "  [DB] Executing: #arguments.sql#" )
+	return "Query executed: #arguments.sql#"
+}
+
+// A shell execution tool (we'll block this entirely)
+function runShell( required string cmd ) {
+	println( "  [SHELL] Running: #arguments.cmd#" )
+	return createObject( "java", "java.lang.Runtime" ).getRuntime().exec( arguments.cmd )
+}
+
+sqlTool = aiTool(
+	"runQuery",
+	"Run a SQL query",
+	runQuery
+).describeArg( "sql", "SQL statement to execute" )
+
+shellTool = aiTool(
+	"runShell",
+	"Execute a shell command",
+	runShell
+).describeArg( "cmd", "Command to run" )
+
+guardrailMw = new bxModules.bxai.models.middleware.core.GuardrailMiddleware(
+	// Block the shell tool entirely
+	blockedTools: [ "runShell" ],
+
+	// For the SQL tool, block any statement containing DROP or DELETE
+	argPatterns: {
+		runQuery: [
+			{ sql: "(?i)\bDROP\b" },
+			{ sql: "(?i)\bDELETE\b" }
+		]
+	}
+)
+
+agent = aiAgent(
+	name       : "SafeDbAgent",
+	description: "An agent that safely queries a database",
+	tools      : [ sqlTool, shellTool ],
+	middleware : [ guardrailMw ]
+)
+
+println( "--- Safe query (should succeed) ---" )
+response1 = agent.run( "Run: SELECT * FROM users LIMIT 10" )
+println( "Response: #response1#" )
+println( "" )
+
+println( "--- Dangerous query (should be blocked by guardrail) ---" )
+response2 = agent.run( "Run: DROP TABLE users" )
+println( "Response: #response2#" )
+println( "" )
+
+println( "--- Shell command (blocked tool) ---" )
+response3 = agent.run( "Run this shell command: ls -la" )
+println( "Response: #response3#" )

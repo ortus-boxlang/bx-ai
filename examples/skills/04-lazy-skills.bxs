@@ -1,0 +1,105 @@
+/**
+ * 04 - Lazy (Available) Skills
+ *
+ * Demonstrates the lazy-loading skill pattern.  When skills are added via
+ * withAvailableSkills(), only a compact index (name + description) is included
+ * in the system message.  The LLM calls the built-in `loadSkill( name )` tool
+ * when it decides a skill is relevant, fetching the full content on demand.
+ *
+ * This is ideal for large skill libraries where injecting everything would waste
+ * tokens and degrade response quality.
+ *
+ * Run with:
+ *   box bx:run examples/skills/04-lazy-skills.bxs
+ */
+
+println( "=== Lazy Skills Example ===" )
+println( "" )
+
+// ── Create a library of skills ────────────────────────────────────────────────
+
+skills = [
+    aiSkill(
+        name       : "sql-optimizer",
+        description: "SQL query optimisation rules. Use when writing or reviewing SQL.",
+        content    : "
+## SQL Optimisation Rules
+- Always use indexed columns in WHERE and JOIN
+- Avoid SELECT *
+- Use EXPLAIN before deploying
+- Paginate large reads with LIMIT/OFFSET
+"
+    ),
+    aiSkill(
+        name       : "boxlang-expert",
+        description: "BoxLang language best practices. Use when writing or reviewing BoxLang code.",
+        content    : "
+## BoxLang Rules
+- No semicolons required
+- Use var for local scope
+- Imports at top of class, not inside methods
+- Use castAs operator instead of javaCast()
+- Access static variables with static. prefix
+"
+    ),
+    aiSkill(
+        name       : "writing-style",
+        description: "Writing style guidelines. Use when composing prose or documentation.",
+        content    : "
+## Writing Style
+- Be concise — cut words that add no meaning
+- Active voice over passive
+- One idea per paragraph
+- Spell out acronyms on first use
+"
+    )
+]
+
+println( "Skill library size: #skills.len()#" )
+println( "" )
+
+// ── Build agent with lazy (available) skills ──────────────────────────────────
+
+agent = aiAgent(
+    name           : "polyglot-assistant",
+    description    : "Expert assistant across SQL, BoxLang, and technical writing",
+    instructions   : "Help users with their questions. Load relevant skills as needed.",
+    availableSkills: skills    // lazy: index only until loadSkill() is called
+)
+
+config = agent.getConfig()
+println( "Always-on skills : #config.activeSkillCount#" )
+println( "Available skills : #config.availableSkillCount#" )     // 3
+println( "" )
+
+// The loadSkill tool was auto-registered
+println( "loadSkill tool registered: #agent.hasTool( 'loadSkill' )#" )
+println( "" )
+
+// ── View the compact index injected into the system message ───────────────────
+
+println( "--- Skills index (included in every system message) ---" )
+println( agent.buildSkillsContent() )
+println( "-------------------------------------------------------" )
+println( "" )
+
+// ── Activate a skill manually (promotes lazy → always-on) ────────────────────
+
+println( "Activating 'sql-optimizer' manually..." )
+agent.activateSkill( "sql-optimizer" )
+
+config = agent.getConfig()
+println( "Always-on skills now: #config.activeSkillCount#" )       // 1
+println( "Available skills now: #config.availableSkillCount#" ) // 2
+println( "" )
+
+// ── Run conversations ─────────────────────────────────────────────────────────
+
+println( "User : Write an optimised query to find orders placed last week" )
+response = agent.run( "Write an optimised query to find orders placed last week" )
+println( "Agent: #response#" )
+println( "" )
+
+println( "User : Write a BoxLang function that parses a CSV file" )
+response2 = agent.run( "Write a BoxLang function that parses a CSV file" )
+println( "Agent: #response2#" )

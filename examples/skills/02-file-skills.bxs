@@ -1,0 +1,76 @@
+/**
+ * 02 - File-Based Skills
+ *
+ * Demonstrates loading AI skills from SKILL.md files on disk.
+ * This example uses the sample skills bundled in `.ai/skills/` next to this
+ * file.  In your own project you would point aiSkill() at your own directory.
+ *
+ * SKILL.md format
+ * ───────────────
+ * Each skill lives in its own subdirectory:
+ *
+ *   .ai/skills/
+ *     sql-optimizer/
+ *       SKILL.md
+ *     writing-style/
+ *       SKILL.md
+ *
+ * The file may start with optional YAML frontmatter:
+ *
+ *   ---
+ *   description: What this skill does.
+ *   ---
+ *
+ *   ## Skill content here ...
+ *
+ * If frontmatter is absent, the first paragraph of the body is used as
+ * the description automatically.
+ *
+ * Run with:
+ *   box bx:run examples/skills/02-file-skills.bxs
+ */
+
+println( "=== File-Based Skills Example ===" )
+println( "" )
+
+skillsDir = expandPath( ".ai/skills" )
+
+// ── Load all skills from the directory (recursive) ───────────────────────────
+
+allSkills = aiSkill( skillsDir )
+
+println( "Discovered #allSkills.len()# skill(s) in #skillsDir#:" )
+for ( skill in allSkills ) {
+    println( "  • #skill.getName()# — #skill.getDescription()#" )
+}
+println( "" )
+
+// ── Load a single skill by file path ─────────────────────────────────────────
+
+sqlSkill = aiSkill( expandPath( ".ai/skills/sql-optimizer/SKILL.md" ) )
+println( "Single skill loaded: #sqlSkill.getName()#" )
+println( "" )
+
+// ── Inspect the content block rendered for the system message ─────────────────
+
+println( "--- Rendered content block (first skill) ---" )
+println( allSkills[ 1 ].toContentBlock() )
+println( "" )
+
+// ── Attach all skills to an agent ─────────────────────────────────────────────
+
+agent = aiAgent(
+    name  : "file-skill-agent",
+    skills: allSkills          // always-on: injected on every call
+)
+
+config = agent.getConfig()
+println( "Agent skill count : #config.activeSkillCount#" )
+println( "Available skill count: #config.availableSkillCount#" )
+println( "" )
+
+// ── Run the agent ─────────────────────────────────────────────────────────────
+
+response = agent.run( "Can you write an optimised SQL query to find all users created in the last 30 days?" )
+println( "Agent response:" )
+println( response )

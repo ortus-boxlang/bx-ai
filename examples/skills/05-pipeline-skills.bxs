@@ -1,0 +1,58 @@
+/**
+ * 05 - Skills in a Model Pipeline
+ *
+ * Demonstrates using skills with an AiModel inside a runnable pipeline.
+ * Skills behave identically on models and agents — the system-message block
+ * is injected before every pipeline call.
+ *
+ * Run with:
+ *   box bx:run examples/skills/05-pipeline-skills.bxs
+ */
+
+println( "=== Skills in a Pipeline ===" )
+println( "" )
+
+// ── Inline skill ──────────────────────────────────────────────────────────────
+
+responseFormatSkill = aiSkill(
+    name       : "json-response-format",
+    description: "Always respond in strict JSON format when asked to extract data",
+    content    : "
+## JSON Response Rules
+
+When the user asks you to extract, list, or return structured data:
+- Return ONLY valid JSON — no markdown fences, no prose
+- Use snake_case for property names
+- Use arrays for collections, objects for single entities
+- Omit null/empty fields
+"
+)
+
+// ── Build a pipeline: model → JSON transformer ───────────────────────────────
+
+pipeline = aiModel( "openai" )
+    .withSkills( [ responseFormatSkill ] )
+    .to( aiTransform( "json" ) )   // parse the JSON text into a struct/array
+
+println( "Pipeline built with skill: #responseFormatSkill.getName()#" )
+println( "" )
+
+// ── Run the pipeline ──────────────────────────────────────────────────────────
+
+prompt = "Extract the following people into a structured list: Alice (30, engineer), Bob (25, designer), Carol (35, manager)"
+
+println( "Prompt: #prompt#" )
+println( "" )
+
+result = pipeline.run( prompt )
+
+println( "Parsed result type : #getMetaData( result ).name#" )
+println( "Parsed result      : #jsonSerialize( result )#" )
+println( "" )
+
+// ── You can also check the skill config on the model ─────────────────────────
+
+model = aiModel( "openai" ).withSkills( [ responseFormatSkill ] )
+config = model.getConfig()
+println( "Model skill count         : #config.activeSkillCount#" )
+println( "Model available skill count: #config.availableSkillCount#" )

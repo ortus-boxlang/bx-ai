@@ -19,7 +19,7 @@ println( "=== Part 1: Basic Usage (Single-Tenant) ===" )
 println( "Simple windowed memory without user isolation\n" )
 
 // Create windowed memory with a small limit
-memory = aiMemory( "windowed", {
+memory = aiMemory( "window", config: {
     maxMessages: 5
 } )
 
@@ -97,19 +97,19 @@ println( "Demonstrate userId isolation for multi-user applications\n" )
 // Simulate three users with isolated windowed memory
 println( "Creating isolated memory for 3 users...\n" )
 
-aliceMemory = aiMemory( "windowed",
+aliceMemory = aiMemory( "window",
     key: createUUID(),
     userId: "alice",
     config: { maxMessages: 5 }
 )
 
-bobMemory = aiMemory( "windowed",
+bobMemory = aiMemory( "window",
     key: createUUID(),
     userId: "bob",
     config: { maxMessages: 5 }
 )
 
-charlieMemory = aiMemory( "windowed",
+charlieMemory = aiMemory( "window",
     key: createUUID(),
     userId: "charlie",
     config: { maxMessages: 5 }

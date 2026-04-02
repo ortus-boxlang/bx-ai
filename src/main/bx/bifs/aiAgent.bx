@@ -35,27 +35,48 @@ class {
 	 * @memory Single IAiMemory instance or array of memory instances, defaults to WindowMemory
 	 * @tools Array of Tool objects the agent can use
 	 * @subAgents Array of sub-agents to register as internal tools for delegation
-	 * @params Additional provider parameters (model,temperature, max_tokens, etc.)
+	 * @skills Always-on skills: full content injected on every call. Pass AiSkill instances.
+	 * @availableSkills Lazy skill library: index-only until the LLM calls loadSkill(name). Defaults to auto-discovering all global skills from the skillsDirectory.
+	 * @params Additional provider parameters (model, temperature, max_tokens, etc.)
 	 * @options Additional options (timeout, logging, etc.)
+	 * @middleware IAiMiddleware instance, struct-of-closures, or array of either to attach to this agent
+	 * @checkpointer IAiMemory instance used to save/load checkpoint state for suspend-resume
+	 * @checkpointTTL Time-to-live for checkpoint state in minutes (0 = no expiry)
+	 * @mcpServers Array of MCP server URLs to seed into the agent for internal tool calls to sub-agents and tools
 	 *
 	 * @return AiAgent instance for fluent chaining
 	 */
 	function invoke(
-		string name = "BxAi",
-		string description = "",
+		string name         = "BxAi",
+		string description  = "",
 		string instructions = "",
-		AiModel model = aiModel(),
-		any memory = aiMemory(),
-		array tools = [],
-		array subAgents = [],
-		struct params = {},
-		struct options = {}
+		AiModel model       = aiModel(),
+		any memory          = aiMemory(),
+		array tools         = [],
+		array subAgents     = [],
+		array skills        = [],
+		any availableSkills = [],
+		struct params       = {},
+		struct options      = {},
+		any middleware      = [],
+		any checkpointer,
+		numeric checkpointTTL = 30,
+		array mcpServers    = []
 	) {
-		var agent = new bxModules.bxai.models.AiAgent( argumentCollection: arguments );
+		// Create the agent with the provided configuration options
+		var agent = new bxModules.bxai.models.runnables.AiAgent( argumentCollection: arguments )
 
-		BoxAnnounce( "onAIAgentCreate", { agent: agent } );
+		// Prepend globally discovered skills (from skillsDirectory) so user-specified
+		// skills always take precedence when ordering matters in the system message.
+		var globalSkills = aiGlobalSkills()
+		if ( globalSkills.len() ) {
+			agent.withAvailableSkills( globalSkills )
+		}
 
-		return agent;
+		// Announce agent creation for observability and extensibility (e.g. logging, analytics, etc.)
+		BoxAnnounce( "onAIAgentCreate", { agent: agent } )
+
+		return agent
 	}
 
 }

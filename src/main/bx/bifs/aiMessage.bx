@@ -43,7 +43,7 @@ class {
 			return arguments.message;
 		}
 
-		var oMessage = new bxModules.bxai.models.AiMessage( argumentCollection: arguments )
+		var oMessage = new bxModules.bxai.models.runnables.AiMessage( argumentCollection: arguments )
 
 		BoxAnnounce( "onAIMessageCreate", { message: oMessage } );
 

@@ -13,12 +13,15 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  */
-class extends="BaseService"{
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+
+class extends="BaseService" implements="IAiChatService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream" ]
 		DEFAULT_CHAT_PARAMS = {
 			// according to the docs, this is the default model and tokens
 			// https://docs.anthropic.com/en/docs/about-claude/models/overview#model-aliases
@@ -39,6 +42,11 @@ class extends="BaseService"{
 		variables.name = "Claude"
 		// https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview
 		addHeader( name: "anthropic-version", value: static.DEFAULT_HEADERS[ "anthropic-version" ] )
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	/**
@@ -75,7 +83,15 @@ class extends="BaseService"{
 	 * @callback A callback function to be called with each chunk of the stream
 	 */
 	@override
-	public function chatStream( required AiChatRequest chatRequest, required function callback ){
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
+		// Apply service-level defaults so model is always set
+		arguments.chatRequest
+			.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+			.setModelIfEmpty( variables.params.model ?: "" )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers );
+
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
 
@@ -368,10 +384,19 @@ class extends="BaseService"{
 	 */
 	@override
 	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		// Apply service-level defaults so model is always set
+		arguments.chatRequest
+			.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+			.setModelIfEmpty( variables.params.model ?: "" )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceParams( variables.params )
+			.mergeServiceHeaders( variables.headers );
+
 		// No auth header, claude uses x-api-key
 		arguments.chatRequest
 			.setSendAuthHeader( false )
 			.addHeader( "x-api-key", arguments.chatRequest.getApiKey() )
+			.addHeader( "anthropic-version", getHeaders()[ "anthropic-version" ] )
 
 		// Build the packet according to Claude's API requirements
 		// https://docs.anthropic.com/en/api/messages#body-messages
@@ -398,7 +423,7 @@ class extends="BaseService"{
 		}
 
 		// Send it
-		var result = sendRequest( arguments.chatRequest, dataPacket )
+		var result = sendChatRequest( arguments.chatRequest, dataPacket )
 
 		// If an error is returned, throw it
 		if( result.keyExists( "error" ) ){
@@ -526,7 +551,7 @@ class extends="BaseService"{
 				"content" : [{
 					"type"        : "tool_result",
 					"tool_use_id" : toolCall.id,
-					"content"     : tool.invoke( args : toolCall.input )
+					"content"     : tool.invoke( args: toolCall.input, chatRequest: arguments.chatRequest )
 				}]
 			});
 		} else {

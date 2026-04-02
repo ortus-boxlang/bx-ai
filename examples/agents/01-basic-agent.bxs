@@ -49,8 +49,7 @@ println( "" )
 
 // Check memory state
 println( "=== Memory State ===" )
-memoryConfig = agent.getConfig()
-println( "Messages in memory: #memoryConfig.memories.first().getMessageCount()#" )
+println( "Messages in memory: #agent.getMemories().first().count()#" )
 println( "" )
 
 // Clear memory and start fresh

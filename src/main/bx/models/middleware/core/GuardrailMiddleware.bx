@@ -1,0 +1,111 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Middleware that blocks or sanitises tool calls based on configurable rules.
+ *
+ * Two guard types are available:
+ *   - blockedTools     : Array of tool name strings that are never allowed
+ *   - argPatterns      : Struct map of { toolName: [ { param: "regexPattern" } ] }
+ *                        If ANY pattern matches an argument value, the call is rejected.
+ *
+ * Usage:
+ *   var guardrail = new GuardrailMiddleware(
+ *       blockedTools : [ "deleteRecord", "dropTable" ],
+ *       argPatterns  : {
+ *           runSql: [ { query: "(?i)drop|truncate|delete" } ]
+ *       }
+ *   );
+ *   aiAgent( middleware: guardrail )
+ */
+import bxModules.bxai.models.middleware.BaseAiMiddleware;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+class extends="BaseAiMiddleware" {
+
+	/**
+	 * Tool names that are always blocked (case-insensitive comparison)
+	 */
+	property name="blockedTools" type="array" default=[];
+
+	/**
+	 * Per-tool argument regex checks: { toolName: [ { paramName: "pattern" } ] }
+	 */
+	property name="argPatterns" type="struct" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @blockedTools Array of tool names to block entirely
+	 * @argPatterns  Struct map of per-tool argument regex rules
+	 */
+	function init( array blockedTools = [], struct argPatterns = {} ) {
+		variables.blockedTools = arguments.blockedTools
+		variables.argPatterns  = arguments.argPatterns
+		variables.name = "Guardrail Middleware"
+		variables.description = "Blocks or sanitises tool calls based on configurable rules. " &
+			"Two guard types: blockedTools (array of tool names) and argPatterns (struct of { toolName: [ { param: regex } ] })."
+		return this
+	}
+
+	// ==================== Hooks ====================
+
+	/**
+	 * Check the incoming tool call against all guardrail rules.
+	 */
+	AiMiddlewareResult function beforeToolCall( required struct context ) {
+		// Support both the flat test form  { toolName: "x", toolArgs: {} }
+		// and the production form           { tool: <Tool>, toolCall: <struct>, chatRequest: <req> }
+		var toolName = context.toolName ?: (context.tool?.getName() ?: "")
+
+		// 1. Blocked tool list
+		if ( variables.blockedTools.findNoCase( toolName ) > 0 ) {
+			return AiMiddlewareResult.reject(
+				"GuardrailMiddleware: tool '#toolName#' is in the blocked tools list."
+			)
+		}
+
+		// 2. Argument pattern checks
+		if ( variables.argPatterns.keyExists( toolName ) ) {
+			var rules = variables.argPatterns[ toolName ]
+
+			// Resolve tool arguments: prefer the flat toolArgs struct, then fall back to
+			// parsing the JSON string in toolCall.function.arguments (production path).
+			var toolArguments = {}
+			if ( context.keyExists( "toolArgs" ) && isStruct( context.toolArgs ) ) {
+				toolArguments = context.toolArgs
+			} else {
+				var rawArgs = context.toolCall?.function?.arguments ?: "{}"
+				try {
+					toolArguments = jsonDeserialize( rawArgs )
+				} catch ( any ignored ) {}
+			}
+
+			for ( var rule in rules ) {
+				for ( var paramName in rule ) {
+					var pattern    = rule[ paramName ]
+					var paramValue = toolArguments[ paramName ] ?: ""
+					if ( len( paramValue ) && reFind( pattern, paramValue ) ) {
+						return AiMiddlewareResult.reject(
+							"GuardrailMiddleware: argument '#paramName#' in tool '#toolName#' "
+							& "matches forbidden pattern '#pattern#'."
+						)
+					}
+				}
+			}
+		}
+
+		return AiMiddlewareResult.continue()
+	}
+
+}

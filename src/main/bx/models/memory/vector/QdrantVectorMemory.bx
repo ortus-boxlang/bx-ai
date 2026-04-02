@@ -90,7 +90,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return QdrantVectorMemory for chaining
 	 */
-	public any function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		// Param config defaults
 		param arguments.config.host = "localhost";
 		param arguments.config.port = 6333;
@@ -459,7 +459,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	any function createCollection( required string name ) {
+	IVectorMemory function createCollection( required string name ) {
 		// Build collection config
 		var config = {
 			"vectors": {
@@ -526,7 +526,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	any function deleteCollection( required string name ) {
+	IVectorMemory function deleteCollection( required string name ) {
 		var response = makeRequest(
 			method = "DELETE",
 			path = static.API_COLLECTIONS & "/#arguments.name#"

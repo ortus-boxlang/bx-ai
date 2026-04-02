@@ -104,4 +104,25 @@ public class HuggingFaceTest extends BaseIntegrationTest {
 		// Verify callback was invoked
 		assertThat( variables.get( "chunkCount" ) ).isNotNull();
 	}
+
+	@DisplayName( "Test HuggingFace embeddings" )
+	@Test
+	public void testEmbeddings() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+			result = aiEmbed(
+				input: "BoxLang is a modern JVM language",
+				options: { provider: "huggingface" }
+			)
+			embeddingLength = result.len()
+			println( "Embedding dimensions: " & embeddingLength )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( "result" ) ).isNotNull();
+		assertThat( variables.get( "embeddingLength" ) ).isNotNull();
+	}
 }

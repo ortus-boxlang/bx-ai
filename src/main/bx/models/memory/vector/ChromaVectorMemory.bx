@@ -49,7 +49,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return ChromaVectorMemory for chaining
 	 */
-	public any function configure( required struct config ) {
+	IAiMemory function configure( required struct config ) {
 		// Param config defaults
 		param arguments.config.host = "localhost";
 		param arguments.config.port = 8000;
@@ -396,7 +396,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	any function createCollection( required string name ) {
+	IVectorMemory function createCollection( required string name ) {
 		var payload = {
 			name: arguments.name,
 			metadata: {
@@ -476,7 +476,7 @@ class extends="BaseVectorMemory" {
 	 *
 	 * @return IVectorMemory for chaining
 	 */
-	any function deleteCollection( required string name ) {
+	IVectorMemory function deleteCollection( required string name ) {
 		// First, get the collection ID
 		if ( !collectionExists( arguments.name ) ) {
 			throw(

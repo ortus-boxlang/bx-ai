@@ -1,0 +1,44 @@
+/**
+ * MaxToolCalls Middleware Example
+ *
+ * Demonstrates capping the total number of tool invocations an agent
+ * may make in a single run, preventing runaway tool loops.
+ */
+
+println( "=== MaxToolCalls Middleware ===" )
+println( "" )
+
+// A simple tool that the agent will try to call many times
+callCount = 0
+function countCall( required string message ) {
+	callCount++
+	println( "  Tool invoked (#callCount#): #arguments.message#" )
+	return "Acknowledged: #arguments.message#"
+}
+
+echoTool = aiTool(
+	"echoMessage",
+	"Echo a message back and count the call",
+	countCall
+).describeArg( "message", "Message to echo" )
+
+// Allow at most 3 tool calls before the middleware cancels further calls
+maxToolsMw = new bxModules.bxai.models.middleware.core.MaxToolCallsMiddleware(
+	maxCalls: 3
+)
+
+agent = aiAgent(
+	name       : "BoundedAgent",
+	description: "An agent that cannot call tools more than 3 times",
+	tools      : [ echoTool ],
+	middleware : [ maxToolsMw ]
+)
+
+println( "Asking the agent to echo many messages in one shot..." )
+println( "" )
+
+response = agent.run( "Please echo each of the following one by one: alpha, beta, gamma, delta, epsilon, zeta" )
+
+println( "" )
+println( "Response: #response#" )
+println( "Total tool calls allowed by middleware: #callCount#" )

@@ -1,0 +1,120 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Adapts a struct-of-closures into a full IAiMiddleware implementation.
+ *
+ * Allows users to pass inline closures/lambdas instead of a full class:
+ *
+ * <pre>
+ * agent.withMiddleware({
+ *     beforeToolCall: ( ctx ) => {
+ *         println( "Calling: #ctx.toolName#" )
+ *         return AiMiddlewareResult.continue()
+ *     }
+ * })
+ * </pre>
+ *
+ * Any hook key not present in the struct falls back to the default
+ * no-op behaviour (continue / call handler).
+ */
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+class extends="BaseAiMiddleware" {
+
+	/**
+	 * The user-supplied struct of closures
+	 */
+	property name="definitions" type="struct" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @definitions Struct whose keys are hook names and values are closures
+	 */
+	function init( required struct definitions ) {
+		variables.definitions = arguments.definitions
+		variables.name = "Struct Middleware Adapter"
+		variables.description = "Adapts a struct of closures into an IAiMiddleware implementation." &
+			"Provided hooks: #structKeyList( arguments.definitions )#"
+		return this;
+	}
+
+	// ==================== Sequential Hooks ====================
+
+	AiMiddlewareResult function beforeAgentRun( required struct context ) {
+		if ( structKeyExists( variables.definitions, "beforeAgentRun" ) ) {
+			return variables.definitions.beforeAgentRun( arguments.context );
+		}
+		return AiMiddlewareResult::continue();
+	}
+
+	AiMiddlewareResult function afterAgentRun( required struct context ) {
+		if ( structKeyExists( variables.definitions, "afterAgentRun" ) ) {
+			return variables.definitions.afterAgentRun( arguments.context );
+		}
+		return AiMiddlewareResult::continue();
+	}
+
+	AiMiddlewareResult function beforeLLMCall( required struct context ) {
+		if ( structKeyExists( variables.definitions, "beforeLLMCall" ) ) {
+			return variables.definitions.beforeLLMCall( arguments.context );
+		}
+		return AiMiddlewareResult::continue();
+	}
+
+	AiMiddlewareResult function afterLLMCall( required struct context ) {
+		if ( structKeyExists( variables.definitions, "afterLLMCall" ) ) {
+			return variables.definitions.afterLLMCall( arguments.context );
+		}
+		return AiMiddlewareResult::continue();
+	}
+
+	AiMiddlewareResult function beforeToolCall( required struct context ) {
+		if ( structKeyExists( variables.definitions, "beforeToolCall" ) ) {
+			return variables.definitions.beforeToolCall( arguments.context );
+		}
+		return AiMiddlewareResult::continue();
+	}
+
+	AiMiddlewareResult function afterToolCall( required struct context ) {
+		if ( structKeyExists( variables.definitions, "afterToolCall" ) ) {
+			return variables.definitions.afterToolCall( arguments.context );
+		}
+		return AiMiddlewareResult::continue();
+	}
+
+	AiMiddlewareResult function onError( required struct context ) {
+		if ( structKeyExists( variables.definitions, "onError" ) ) {
+			return variables.definitions.onError( arguments.context );
+		}
+		return AiMiddlewareResult::continue();
+	}
+
+	// ==================== Wrap-Style Hooks ====================
+
+	any function wrapLLMCall( required struct context, required function handler ) {
+		if ( structKeyExists( variables.definitions, "wrapLLMCall" ) ) {
+			return variables.definitions.wrapLLMCall( arguments.context, arguments.handler );
+		}
+		return arguments.handler();
+	}
+
+	any function wrapToolCall( required struct context, required function handler ) {
+		if ( structKeyExists( variables.definitions, "wrapToolCall" ) ) {
+			return variables.definitions.wrapToolCall( arguments.context, arguments.handler );
+		}
+		return arguments.handler();
+	}
+
+}

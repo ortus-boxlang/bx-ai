@@ -15,12 +15,16 @@
  * MiniMax AI Service Provider
  * https://platform.minimax.io/docs/api-reference/api-overview
  */
-class extends="BaseService"{
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://platform.minimax.io/docs/api-reference/chat-completion
 			"model" : "MiniMax-M2.5-highspeed"
@@ -35,119 +39,103 @@ class extends="BaseService"{
 	 * https://platform.minimax.io/docs/api-reference/api-overview
 	 */
 	function init(){
-		variables.chatURL = "https://api.minimax.io/v1/text/chatcompletion_v2"
+		variables.chatURL = "https://api.minimax.io/v1/chat/completions"
 		variables.embeddingsURL = "https://api.minimax.io/v1/embeddings"
 		variables.name = "MiniMax"
 	}
 
-	/**
-	 * Invoke a request to the provider
-	 *
-	 * @chatRequest The AI request to send to the provider
-	 *
-	 * @return The response from the provider according to the return format in the AI request
-	 */
-	function invoke( required AiChatRequest chatRequest ){
-		// Seed the chat request with defaults
-		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invoke( arguments.chatRequest )
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
-	/**
-	 * Invoke a request to the provider in streaming mode
-	 *
-	 * @chatRequest The Chat request to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
-	 *
-	 * @return void
-	 */
-	function invokeStream( required AiChatRequest chatRequest, required function callback ){
+	@override
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.invokeStream( arguments.chatRequest, arguments.callback )
+		return super.chat( arguments.chatRequest )
 	}
 
-	/**
-	 * Override embeddings to handle MiniMax's specific API format.
-	 * MiniMax uses a `texts` array instead of OpenAI's `input` field,
-	 * and returns `vectors` instead of `data` in the response.
-	 * @see https://platform.minimax.io/docs/api-reference/embeddings
-	 *
-	 * @embeddingRequest The embedding request object
-	 *
-	 * @throws ProviderError if the provider returns an error from the request
-	 *
-	 * @return The embeddings response from the provider
-	 */
+	@override
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
+		// Seed the chat request with defaults
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.chatStream( arguments.chatRequest, arguments.callback )
+	}
+
 	@override
 	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
-		// Seed defaults and merge service-level params/headers
 		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
-		arguments.embeddingRequest
-			.setApiKeyIfEmpty( getAPIKey() )
-			.mergeServiceParams( variables.params )
-			.mergeServiceHeaders( variables.headers )
+		return super.embeddings( arguments.embeddingRequest )
+	}
 
-		// MiniMax requires `texts` as an array, not a scalar `input`
-		var input = arguments.embeddingRequest.getInput()
-		var dataPacket = {
-			"model" : arguments.embeddingRequest.getModel(),
-			"type" : "db", // db (When indexing content into a vector database), query (When a user searches for something)
-			"texts" : isArray( input ) ? input : [ input ]
-		}
-
-		// Delegate HTTP, logging and event firing to the base implementation
-		var result = sendEmbeddingRequest( arguments.embeddingRequest, dataPacket )
-
-		// MiniMax errors are reported via base_resp.status_code (0 = success)
-		if( result.keyExists( "base_resp" ) && result.base_resp.status_code != 0 ){
-			var errorMessage = result.base_resp.status_msg ?: "Unknown MiniMax embedding error"
-			writeLog(
-				text: errorMessage,
-				type: "error",
-				log : "ai"
-			)
-			BoxAnnounce( "onAIError", {
-				error       : errorMessage,
-				errorMessage: errorMessage,
-				provider    : this,
-				operation   : "embeddings",
-				aiRequest   : arguments.embeddingRequest,
-				canRetry    : true
-			} )
-			throw(
-				type   : "ProviderError",
-				message: errorMessage
-			)
-		}
-
-		// Convert MiniMax response format to standard OpenAI format.
-		// MiniMax returns: { vectors: [ { index, type, embedding } ], total_tokens, base_resp }
-		var standardResponse = {
-			"data"  : result.vectors.map( (vector) => {
-				return {
-					"embedding": vector.embedding,
-					"index"    : vector.index,
-					"object"   : "embedding"
-				}
-			} ),
-			"model" : arguments.embeddingRequest.getModel(),
-			"object": "list",
-			"usage" : {
-				"prompt_tokens": result.total_tokens ?: 0,
-				"total_tokens" : result.total_tokens ?: 0
+	/**
+	 * Reshape the embedding request packet to MiniMax's format:
+	 * - Renames `input` → `texts` array (MiniMax requires an array, not a scalar)
+	 * - Injects the required `type` field (db = indexing, query = search)
+	 * @see https://platform.minimax.io/docs/api-reference/embeddings
+	 */
+	@override
+	private struct function preRequest(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required string operation
+	) {
+		if ( arguments.operation == "embeddings" ) {
+			var input = arguments.aiRequest.getInput()
+			return {
+				"model": arguments.dataPacket.model ?: arguments.aiRequest.getModel(),
+				"type" : "db",
+				"texts": isArray( input ) ? input : [ input ]
 			}
 		}
+		return arguments.dataPacket
+	}
 
-		// Honour standard return formats
-		switch( arguments.embeddingRequest.getReturnFormat() ){
-			case "embeddings":
-				return standardResponse.data.map( item => item.embedding )
-			case "raw":
-				return standardResponse
-			case "first": default:
-				return standardResponse.data.first().embedding
+	/**
+	 * Remap MiniMax-specific response shapes to the standard format:
+	 * - Chat: remaps base_resp errors to { error: "..." }
+	 * - Embeddings: normalizes vectors → standard data array, remaps base_resp errors
+	 *
+	 * @see https://platform.minimax.io/docs/api-reference/text-chat#response-base-resp
+	 * @see https://platform.minimax.io/docs/api-reference/embeddings
+	 */
+	@override
+	private any function postResponse(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required any result,
+		required string operation
+	) {
+		if ( arguments.operation == "chat" || arguments.operation == "stream" ) {
+			if ( arguments.result.keyExists( "base_resp" ) && arguments.result.base_resp.status_code != 0 ) {
+				return { "error": arguments.result.base_resp.status_msg ?: "Unknown MiniMax error (status_code: #arguments.result.base_resp.status_code#)" }
+			}
+			return arguments.result
 		}
+		if ( arguments.operation == "embeddings" ) {
+			// Remap base_resp error to the standard error shape
+			if ( arguments.result.keyExists( "base_resp" ) && arguments.result.base_resp.status_code != 0 ) {
+				return { "error": arguments.result.base_resp.status_msg ?: "Unknown MiniMax embedding error (status_code: #arguments.result.base_resp.status_code#)" }
+			}
+			// Normalize vectors → standard data array
+			return {
+				"data"  : arguments.result.vectors.map( (vector) => {
+					return {
+						"embedding": vector.embedding,
+						"index"    : vector.index,
+						"object"   : "embedding"
+					}
+				} ),
+				"model" : arguments.aiRequest.getModel(),
+				"object": "list",
+				"usage" : {
+					"prompt_tokens": arguments.result.total_tokens ?: 0,
+					"total_tokens" : arguments.result.total_tokens ?: 0
+				}
+			}
+		}
+		return arguments.result
 	}
 
 }

@@ -1,0 +1,291 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License") you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Wraps an AI Service as a runnable model for use in pipelines
+ * Handles message extraction, request building, and response handling
+ */
+import bxModules.bxai.models.runnables.AiBaseRunnable
+import bxModules.bxai.models.middleware.AiMiddlewareResult
+import bxModules.bxai.models.middleware.StructMiddlewareAdapter
+import bxModules.bxai.models.registry.AIToolRegistry
+
+class extends="AiBaseRunnable" {
+
+	/**
+	 * The AI service provider we are linked to.
+	 */
+	property name="service" type="IAiService";
+
+	/**
+	 * Constructor
+	 *
+	 * @service The AI service provider to wrap
+	 * @tools An array of tools to bind to this model
+	 * @params A struct of parameters to bind to this model
+	 * @skills Always-on skills whose full content is injected as a system message on every call
+	 */
+	function init( required IAiService service, any tools =[], struct params = {}, array skills = [] ) {
+		variables.name = "AiModel-" & arguments.service.getName()
+		variables.service = arguments.service
+
+		// Bind tools, params, and always-on skills
+		withTools( arguments.tools )
+		withParams( arguments.params )
+		withSkills( arguments.skills )
+
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Config Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get model configuration as a struct
+	 *
+	 * @return Struct of model configuration
+	 */
+	public struct function getConfig() {
+		return {
+			"mcpServers": variables.mcpServers,
+			"middlewareCount": variables.middleware.len(),
+			"middleware": listMiddleware(),
+			"name": variables.name,
+			"provider": variables.service.getName(),
+			"params": getMergedParams(),
+			"options": getMergedOptions().map( ( key, value ) => {
+				// Mask sensitive options (e.g. API keys) in the config output
+				var maskedValue = ( listFindNoCase( "apikey,token,secret", key ) > 0 )
+					? "****"
+					: value
+				return maskedValue
+			} ),
+			"toolCount"          : variables.tools.len(),
+			"tools"              : listTools(),
+			"activeSkillCount"  : variables.skills.len(),
+			"availableSkillCount": variables.availableSkills.len(),
+			"skills": listSkills()
+		}
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Runnable Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Run the model with messages as input
+	 *
+	 * @input Messages array, AiMessage, or struct with messages
+	 * @params Runtime parameters (model, temperature, tools, etc.)
+	 * @options Runtime options (returnFormat, timeout, logging, etc.)
+	 *
+	 * @return The LLM response
+	 */
+	public any function run( any input = {}, struct params = {}, struct options = {} ) {
+		var messages = extractMessages( arguments.input )
+		var effectiveParams = getMergedParams( arguments.params )
+		var effectiveOptions = getMergedOptions( arguments.options )
+		var aiMessage = aiMessage( messages )
+
+		// Inject always-on skills as a system message when non-empty
+		var skillsContent = buildSkillsContent()
+		if ( !skillsContent.isEmpty() ) {
+			aiMessage.replaceSystemMessage(
+				aiMessage().getSystemMessage() & char( 10 ) & char( 10 ) & skillsContent
+			)
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Process tools for this run ---
+		// Tools can come from the model configuration or the runtime parameters. If tools are provided
+		// in the runtime parameters, they are merged with the model's configured tools, allowing for
+		// dynamic augmentation of the model's capabilities on a per-run basis.
+		// -------------------------------------------------------------------------------------------
+		if( effectiveParams.keyExists( "tools" ) ){
+			// Make sure these are normalized to an array
+			if( !isArray( effectiveParams.tools ) ){
+				effectiveParams.tools = [ effectiveParams.tools ]
+			}
+			effectiveParams.tools.append( variables.tools, true )
+		}
+		// No tools in options, use model's tools
+		else {
+			effectiveParams.tools = variables.tools
+		}
+
+		// Lazy resolve any string registry keys (e.g. "now@bx-ai") into ITool instances
+		effectiveParams.tools = aiToolRegistry().resolveTools( effectiveParams.tools )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Create a chat request ---
+		// -------------------------------------------------------------------------------------------
+		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
+			aiMessage,
+			effectiveParams,
+			effectiveOptions
+		)
+
+		// -------------------------------------------------------------------------------------------
+		// --- Prepare middleware chain ---
+		// Agent middleware (if this model is being run by an agent) is added at the AiAgent level,
+		// so it wraps the entire model execution including all middleware and the service call.
+		// -------------------------------------------------------------------------------------------
+		// Inject middleware: agent middleware first (from options), then model's own middleware
+		if ( effectiveOptions.keyExists( "_agentMiddleware" ) && isArray( effectiveOptions._agentMiddleware ) ) {
+			chatRequest.addMiddleware( effectiveOptions._agentMiddleware )
+		}
+		if ( !variables.middleware.isEmpty() ) {
+			chatRequest.addMiddleware( variables.middleware )
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Announce before invocation (global event) ---
+		// -------------------------------------------------------------------------------------------
+        BoxAnnounce( "beforeAIModelInvoke", { model: this, chatRequest: chatRequest } )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Invoke the model via the service ---
+		// -------------------------------------------------------------------------------------------
+		var results = variables.service.chat( chatRequest )
+
+        // -------------------------------------------------------------------------------------------
+		// --- Announce after invocation (global event) ---
+		// -------------------------------------------------------------------------------------------
+        BoxAnnounce( "afterAIModelInvoke", { model: this, chatRequest: chatRequest, results: results } )
+
+        return results
+	}
+
+	/**
+	 * Stream through the model
+	 *
+	 * @onChunk The callback to invoke for each chunk
+	 * @input Messages array, AiMessage, or struct with messages
+	 * @params Runtime parameters
+	 * @options Runtime options (timeout, logging, etc.)
+	 */
+	public void function stream(
+		required function onChunk,
+		any input = {},
+		struct params = {},
+		struct options = {}
+	) {
+		var messages = extractMessages( arguments.input )
+		var effectiveParams = getMergedParams( arguments.params )
+		var effectiveOptions = getMergedOptions( arguments.options )
+		var aiMessage = aiMessage( messages )
+
+		// Stream mode.
+		effectiveOptions.stream = true
+
+		// Inject always-on skills as a system message when non-empty
+		var skillsContent = buildSkillsContent()
+		if ( !skillsContent.isEmpty() ) {
+			aiMessage.replaceSystemMessage(
+				aiMessage().getSystemMessage() & char( 10 ) & char( 10 ) & skillsContent
+			)
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Process tools for this run ---
+		// Tools can come from the model configuration or the runtime parameters. If tools are provided
+		// in the runtime parameters, they are merged with the model's configured tools, allowing for
+		// dynamic augmentation of the model's capabilities on a per-run basis.
+		// -------------------------------------------------------------------------------------------
+		if( effectiveParams.keyExists( "tools" ) ) {
+			// Make sure these are normalized to an array
+			if( !isArray( effectiveParams.tools ) ) {
+				effectiveParams.tools = [ effectiveParams.tools ]
+			}
+			effectiveParams.tools.append( variables.tools, true )
+		}
+		// No tools in params, use model's tools
+		else {
+			effectiveParams.tools = variables.tools
+		}
+
+		// Lazy resolve any string registry keys (e.g. "now@bx-ai") into ITool instances
+		effectiveParams.tools = aiToolRegistry().resolveTools( effectiveParams.tools )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Create a chat request ---
+		// -------------------------------------------------------------------------------------------
+		var chatRequest = new bxModules.bxai.models.requests.AiChatRequest(
+			aiMessage,
+			effectiveParams,
+			effectiveOptions
+		)
+
+		// -------------------------------------------------------------------------------------------
+		// --- Announce before invocation (global event) ---
+		// -------------------------------------------------------------------------------------------
+        BoxAnnounce( "beforeAIModelInvoke", { model: this, chatRequest: chatRequest } )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Invoke the model via the service ---
+		// -------------------------------------------------------------------------------------------
+		variables.service.chatStream( chatRequest, arguments.onChunk )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Announce after invocation (global event) ---
+		// -------------------------------------------------------------------------------------------
+        BoxAnnounce( "afterAIModelInvoke", { model: this, chatRequest: chatRequest } )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Extract messages from various input formats
+	 *
+	 * @input The input to extract messages from
+	 *
+	 * @return An array of messages
+	 */
+	private array function extractMessages( required any input ) {
+		// AiMessage or other runnable that returns messages
+        if( arguments.input instanceof "AiMessage" ){
+			return arguments.input.render()
+		}
+
+		// Array of messages
+		// Process each message
+		if( isArray( arguments.input ) ) {
+			return arguments.input.flatMap( m => extractMessages( m ) )
+		}
+
+		// Struct message, this can be different per LLM, just pass it through
+		if( isStruct( arguments.input ) ) {
+			return [ arguments.input ]
+		}
+
+		// Simple string - convert to user message
+		if( isSimpleValue( arguments.input ) ) {
+			return [ { "role": "user", "content": arguments.input } ]
+		}
+
+		throw(
+			type: "InvalidInput",
+			message: "Input must be: AiMessage, array of messages, struct with 'messages' key, or string"
+		)
+	}
+
+}

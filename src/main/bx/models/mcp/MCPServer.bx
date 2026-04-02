@@ -321,16 +321,31 @@ class {
 	 *
 	 * @return This server for chaining
 	 */
-	MCPServer function registerTool( required ITool tool ) {
+	/**
+	 * Register a tool with this MCP server.
+	 *
+	 * Accepts either an ITool instance or a string registry key (resolved via the global AIToolRegistry).
+	 *
+	 * @tool An ITool instance or a string registry key (e.g. "now@bxai")
+	 *
+	 * @return This server for chaining
+	 */
+	MCPServer function registerTool( required any tool ) {
+		// Resolve string registry keys via the global AIToolRegistry
+		if ( isSimpleValue( arguments.tool ) ) {
+			arguments.tool = aiToolRegistry().get( arguments.tool )
+		}
 		static.mcpLogger.debug( "Registering tool: #arguments.tool.getName()#" )
 		variables.tools[ arguments.tool.getName() ] = arguments.tool
 		return this
 	}
 
 	/**
-	 * Register multiple tools at once
+	 * Register multiple tools at once.
 	 *
-	 * @tools Array of ITool instances to register
+	 * Each item may be an ITool instance or a string registry key.
+	 *
+	 * @tools Array of ITool instances and/or string registry keys
 	 *
 	 * @return This server for chaining
 	 */
@@ -1283,7 +1298,7 @@ class {
 		var thisRequest = isStruct( arguments.requestBody )
 			? arguments.requestBody
 			: jsonDeserialize( arguments.requestBody )
-		var requestId = thisRequest.id ?: javacast( "null", "" )
+		var requestId = thisRequest?.id ?: ""
 		var method = thisRequest.method ?: ""
 		var params = thisRequest.params ?: {}
 
@@ -1495,18 +1510,18 @@ class {
 	/**
 	 * Build a JSON-RPC success response
 	 *
-	 * @id The request ID
+	 * @id The request ID. Empty string means the request was a notification (no id); omitted from response.
 	 * @result The result data
 	 *
 	 * @return The JSON-RPC response struct
 	 */
-	private struct function buildSuccessResponse( any id, struct result = {} ) {
+	private struct function buildSuccessResponse( any id = "", struct result = {} ) {
 		var response = {
 			"jsonrpc": "2.0",
 			"result": arguments.result
 		}
 
-		if ( !isNull( arguments.id ) ) {
+		if ( arguments.id.len() ) {
 			response[ "id" ] = arguments.id
 		}
 
@@ -1516,13 +1531,13 @@ class {
 	/**
 	 * Build a JSON-RPC error response
 	 *
-	 * @id The request ID, may be null
+	 * @id The request ID. Empty string means the request was a notification (no id); omitted from response.
 	 * @code The error code
 	 * @message The error message
 	 *
 	 * @return The JSON-RPC error response struct
 	 */
-	private struct function buildErrorResponse( any id, required numeric code, required string message ) {
+	private struct function buildErrorResponse( any id = "", required numeric code, required string message ) {
 		var response = {
 			"jsonrpc": "2.0",
 			"error": {
@@ -1531,7 +1546,7 @@ class {
 			}
 		}
 
-		if ( !isNull( arguments.id ) ) {
+		if ( arguments.id.len() ) {
 			response[ "id" ] = arguments.id
 		}
 

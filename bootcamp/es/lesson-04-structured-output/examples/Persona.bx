@@ -1,8 +1,0 @@
-// Persona.bx
-// Clase de ejemplo para salida estructurada
-
-class {
-    property name="name" type="string";
-    property name="age" type="numeric";
-    property name="email" type="string";
-}

@@ -126,7 +126,7 @@ class {
 				// }
 			},
 			// The default timeout of the ai requests
-			timeout : 30,
+			timeout : 45,
 			// If true, the AI request will be logged into the ai.log
 			logRequest : false,
 			// If true, the AI request will be logged to the console
@@ -136,7 +136,23 @@ class {
 			// If true, the AI response will be logged to the console
 			logResponseToConsole : false,
 			// The default return format of the AI response: single, all, raw
-			returnFormat : "single"
+			returnFormat : "single",
+			// --------------------------------------------------------------------------
+			// Skills Directory — Global Skill Auto-Discovery
+			// --------------------------------------------------------------------------
+			// Path to the directory scanned for SKILL.md files at module startup.
+			// Defaults to "/{webroot}/.ai/skills" — a vendor-neutral convention that works with
+			// any AI toolchain.  Can be absolute or relative (relative paths are
+			// expanded from the CWD).  Set to "" to disable auto-discovery entirely.
+			skillsDirectory : "/.ai/skills",
+
+			// When true, skills found in skillsDirectory are automatically loaded and injected
+			// into every agent created with aiAgent() as global / shared skills.
+			autoLoadSkills : true,
+
+			// Internal — populated by onLoad() with the globally discovered skills.
+			// Access via aiGlobalSkills() with no arguments, or read directly from settings.
+			globalSkills : []
 		}
 
 		/**
@@ -198,7 +214,11 @@ class {
 			"onMCPServerRemove",
 			"onMCPRequest",
 			"onMCPResponse",
-			"onMCPError"
+			"onMCPError",
+
+			// Tool Registry Events
+			"onAIToolRegistryRegister",
+			"onAIToolRegistryUnregister"
 		 ]
 	}
 
@@ -206,14 +226,41 @@ class {
 	 * Called by the ModuleService on module activation
 	 */
 	function onLoad(){
+		// Auto-discover global skills from the configured skillsDirectory
+		var skillsDir = moduleRecord.settings.skillsDirectory
 
+		if ( moduleRecord.settings.autoLoadSkills && len( skillsDir ) ) {
+			// Expand relative paths against the current working directory
+			if ( !skillsDir.startsWith( "/" ) && !reFind( "^[A-Za-z]:\\", skillsDir ) ) {
+				skillsDir = expandPath( skillsDir )
+			}
+
+			if ( directoryExists( skillsDir ) ) {
+				moduleRecord.settings.globalSkills = bxModules.bxai.models.skills.AiSkill::fromDirectory( skillsDir )
+				writeLog(
+					text: "bxAI: Auto-loaded [#moduleRecord.settings.globalSkills.len()#] global skill(s) from: #skillsDir#",
+					type: "info",
+					log: "ai"
+				)
+			}
+		}
+
+		// Register core tools into the registry.
+		aiToolRegistry().scanClass(
+			new bxModules.bxai.models.tools.core.CoreTools(),
+			"bxai"
+		)
+		writeLog(
+			text: "BoxLang AI loaded and core tools registered into the registry",
+			type: "info",
+			log: "ai"
+		)
 	}
 
 	/**
 	 * Called by the ModuleService on module deactivation
 	 */
 	function onUnload(){
-
 	}
 
 	/**

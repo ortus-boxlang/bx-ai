@@ -1,0 +1,261 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Represents a reusable AI skill — a named block of domain knowledge or instructions
+ * that can be injected into an agent or model's system context.
+ *
+ * Skills can be created in-memory from explicit content, or loaded from markdown files
+ * with optional YAML frontmatter for metadata.
+ *
+ * File format (.md):
+ * ```
+ * ---
+ * name: sql-optimizer
+ * description: Expert SQL query optimization guidance. Use when writing or reviewing SQL queries.
+ * ---
+ * Full skill instructions go here...
+ * ```
+ *
+ * If `description` is omitted from the frontmatter, the first paragraph of the
+ * markdown body is used instead — matching the Claude Agent Skills standard.
+ *
+ * Two rendering modes:
+ * - toIndexLine()    : compact one-liner for the lazy "Available Skills" index
+ * - toContentBlock() : full markdown block injected for always-on skills
+ */
+import bxModules.bxai.models.util.YamlFrontmatterParser;
+
+class {
+
+	/**
+	 * The skill's unique name/identifier used when activating it via loadSkill()
+	 */
+	property name="name" type="string" default="";
+
+	/**
+	 * What the skill does and when to use it. Claude uses this to decide when to apply the skill.
+	 * If omitted in frontmatter, the first paragraph of the markdown body is used instead.
+	 */
+	property name="description" type="string" default="";
+
+	/**
+	 * The full instruction content of the skill (body text after frontmatter)
+	 */
+	property name="content" type="string" default="";
+
+	/**
+	 * The absolute file path this skill was loaded from (empty for in-memory skills)
+	 */
+	property name="filePath" type="string" default="";
+
+	static{
+		DEFAULT_SKILLS_DIRECTORY = ".ai/skills"
+	}
+
+	/**
+	 * Constructor — create a skill from explicit values or from a file path.
+	 *
+	 * When `path` is provided it takes precedence and all other arguments are
+	 * ignored in favour of the file's frontmatter and body content.
+	 *
+	 * @name        The skill's unique identifier/name
+	 * @description What the skill does and when to use it (Claude standard)
+	 * @content     The full instruction content of the skill
+	 * @path        Optional file path to load the skill from (.md extension added if missing)
+	 */
+	function init(
+		string name        = "",
+		string description = "",
+		string content     = "",
+		string path        = ""
+	) {
+		// If a path is provided, load the skill from the file (overriding other arguments)
+		if ( len( arguments.path ) ) {
+			var loaded            = AiSkill::fromPath( arguments.path )
+			variables.name        = loaded.getName()
+			variables.description = loaded.getDescription()
+			variables.content     = loaded.getContent()
+			variables.filePath    = loaded.getFilePath()
+		} else {
+			variables.name        = arguments.name
+			variables.description = arguments.description
+			variables.content     = arguments.content
+		}
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Static factory methods for loading skills from files and directories, following the Agent Skills open standard.
+	 * The default directory is ".ai/skills" but a custom path can be provided.
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Load a skill from a file path.
+	 *
+	 * Reads the file and parses optional YAML frontmatter for metadata.
+	 * The following frontmatter keys are recognized:
+	 * - name        : skill identifier (defaults to the filename without extension)
+	 * - description : what the skill does and when to use it; if absent the first
+	 *                 paragraph of the markdown body is used (Claude standard)
+	 *
+	 * @path File path to load; a .md extension is appended automatically if missing
+	 *
+	 * @throws AiSkill.NotFound if the resolved path does not exist
+	 *
+	 * @return A new AiSkill populated from the file
+	 */
+	static AiSkill function fromPath( required string path ) {
+		var resolvedPath = arguments.path
+
+		// Append .md extension if the path has no recognized extension
+		if ( !resolvedPath.endsWith( ".md" ) && !resolvedPath.endsWith( ".txt" ) ) {
+			resolvedPath &= ".md"
+		}
+
+		if ( !fileExists( resolvedPath ) ) {
+			throw(
+				type   : "AiSkill.NotFound",
+				message: "Skill file not found: #resolvedPath#"
+			)
+		}
+
+		var fileContent = fileRead( resolvedPath )
+		var parsed      = YamlFrontmatterParser::parse( fileContent )
+
+		// Derive the skill name from the filename when not present in frontmatter
+		var derivedName = listLast( resolvedPath.reReplace( "\.md$|\.txt$", "" ), "/\" )
+		var skill = new AiSkill(
+				content: parsed.body,
+				name   : parsed.frontmatter.name ?: derivedName
+			)
+			.setFilePath( resolvedPath )
+
+		// Use the description frontmatter field when present; otherwise fall back to
+		// the first paragraph of the body (text before the first blank line), matching
+		// the Claude Agent Skills standard.
+		var descFromFrontmatter = parsed.frontmatter.description ?: ""
+		if ( descFromFrontmatter.len() ) {
+			skill.setDescription( descFromFrontmatter )
+		} else {
+			var bodyText   = parsed.body.trim()
+			var blankAt    = bodyText.find( char( 10 ) & char( 10 ) )
+			var firstParagraph = blankAt > 0 ? bodyText.left( blankAt - 1 ).trim() : bodyText
+			skill.setDescription( firstParagraph )
+		}
+
+		return skill
+	}
+
+	/**
+	 * Discover and load all skills from a directory tree.
+	 *
+	 * Scans for files literally named SKILL.md following the Agent Skills open
+	 * standard, where each skill lives in its own named subdirectory:
+	 *
+	 * <pre>
+	 * .ai/skills/
+	 *   sql-optimizer/
+	 *     SKILL.md
+	 *   coding/
+	 *     boxlang-expert/
+	 *       SKILL.md
+	 * </pre>
+	 *
+	 * The skill's identity comes from the `name` frontmatter field, not the
+	 * directory path. Returns an empty array (without error) when the directory
+	 * does not exist, making it safe to call with the default path.
+	 *
+	 * @directory    Root directory to scan. Defaults to ".ai/skills".
+	 * @recurse Whether to scan subdirectories recursively. Defaults to true.
+	 *
+	 * @return Array of AiSkill instances (empty if directory does not exist or has no SKILL.md files)
+	 */
+	static array function fromDirectory(
+		string directory = static.DEFAULT_SKILLS_DIRECTORY,
+		boolean recurse = true
+	) {
+
+		// Guard clause for non-existent directory — return empty array without error to allow safe default path usage
+		if ( !directoryExists( arguments.directory ) ) {
+			return []
+		}
+
+		return directoryList( arguments.directory, arguments.recurse, "path", "SKILL.md" )
+			.map( thisFile => {
+				try {
+					return static.fromPath( thisFile )
+				} catch ( any e ) {
+					writeLog(
+						text: "bx-ai: Failed to load skill from #thisFile# — #e.message#",
+						type: "warning",
+						log : "ai"
+					)
+					return "Failed to load skill from #thisFile# — #e.message#"
+				}
+			} )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Helpers for rendering the skill in different formats for different use cases.
+	 * The LLM can call loadSkill(name) to activate a skill from the Available Skills
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Return a compact one-liner for the Available Skills index.
+	 * Used when the skill is in the lazy pool so the LLM knows it exists.
+	 *
+	 * Format: "- skill-name: hint text"
+	 *
+	 * @return Index line string
+	 */
+	string function toIndexLine() {
+		var line = "- #variables.name#"
+		if ( variables.description.len() ) {
+			line &= ": " & variables.description
+		}
+		return line
+	}
+
+	/**
+	 * Return the full content block for always-on skill injection.
+	 * Used to inject the skill's complete instructions into the system message.
+	 *
+	 * Format:
+	 * <pre>
+	 * ## Skill: skill-name
+	 * description text
+	 * <full content>
+	 * </pre>
+	 *
+	 * @return Markdown-formatted skill block
+	 */
+	string function toContentBlock() {
+		var parts = [ "#### Skill: #variables.name#" ]
+
+		if ( variables.description.len() ) {
+			parts.append( variables.description )
+		}
+
+		if ( variables.content.len() ) {
+			parts.append( variables.content )
+		}
+
+		return parts.toList( char( 10 ) )
+	}
+
+}

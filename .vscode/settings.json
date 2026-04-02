@@ -20,5 +20,6 @@
 	"editor.formatOnSave": false,
 	"editor.codeActionsOnSave": {
 		"source.organizeImports": "explicit"
-	}
+    },
+    "boxlang.lsp.lspVersion": "bx-lsp@1.9.0-snapshot"
 }

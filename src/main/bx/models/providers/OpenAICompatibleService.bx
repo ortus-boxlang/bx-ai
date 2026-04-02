@@ -3,7 +3,7 @@
  *
  * Copyright [2023] [Ortus Solutions, Corp]
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * Licensed under the Apache License, Version 2.0 (the "License") you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at
  *
  * http://www.apache.org/licenses/LICENSE-2.0
@@ -37,48 +37,56 @@
  * var service = aiService("openai-compatible").configure({
  *     "baseURL": "http://embedding-service:8080/v1",
  *     "model": "bge-m3"
- * });
+ * })
  *
  * // Generate embeddings
  * var result = service.embeddings(
  *     new AiEmbeddingRequest( input: "Hello World" )
- * );
+ * )
  *
  * // Configure for a self-hosted LLM
  * var llmService = aiService("openai-compatible").configure({
  *     "baseURL": "http://vllm-server:8000/v1",
  *     "model": "llama-2-70b"
- * });
+ * })
  * ```
  */
-class extends="BaseService" {
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		DEFAULT_BASE_URL = "http://localhost:8080/v1";
-
-		DEFAULT_CHAT_PARAMS = {};
-		DEFAULT_EMBED_PARAMS = {};
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
+		DEFAULT_BASE_URL = "http://localhost:8080/v1"
+		DEFAULT_CHAT_PARAMS = {}
+		DEFAULT_EMBED_PARAMS = {}
 	}
 
 	/**
 	 * Constructor
 	 */
 	function init() {
-		variables.baseURL = static.DEFAULT_BASE_URL;
-		variables.chatURL = variables.baseURL & "/chat/completions";
-		variables.embeddingsURL = variables.baseURL & "/embeddings";
-		variables.name = "OpenAICompatible";
+		variables.baseURL = static.DEFAULT_BASE_URL
+		variables.chatURL = variables.baseURL & "/chat/completions"
+		variables.embeddingsURL = variables.baseURL & "/embeddings"
+		variables.name = "OpenAICompatible"
 
-		defaults( static.DEFAULT_CHAT_PARAMS );
+		defaults( static.DEFAULT_CHAT_PARAMS )
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
 	}
 
 	/**
 	 * Configure the service with options
 	 *
-	 * @config Can be:
+	 * @options Can be:
 	 *   - String: API key (optional, empty string for no auth)
 	 *   - Struct: Configuration options including:
 	 *     - apiKey: API key for authenticated endpoints (optional)
@@ -91,28 +99,28 @@ class extends="BaseService" {
 	 * @return The service instance for chaining
 	 */
 	@override
-	IAiService function configure( required any config ) {
+	IAiService function configure( required any options ) {
 		// Delegate to parent for standard configuration (handles apiKey, model extraction to params)
-		super.configure( arguments.config );
+		super.configure( arguments.options )
 
 		// Store baseURL for reference if provided
-		if ( isStruct( arguments.config ) && arguments.config.keyExists( "baseURL" ) && len( arguments.config.baseURL ) ) {
-			variables.baseURL = arguments.config.baseURL.trim();
-			variables.chatURL = variables.baseURL & "/chat/completions";
-			variables.embeddingsURL = variables.baseURL & "/embeddings";
+		if ( isStruct( arguments.options ) && arguments.options.keyExists( "baseURL" ) && len( arguments.options.baseURL ) ) {
+			variables.baseURL = arguments.options.baseURL.trim()
+			variables.chatURL = variables.baseURL & "/chat/completions"
+			variables.embeddingsURL = variables.baseURL & "/embeddings"
 		}
 
 		// Allow direct URL overrides
-		if ( isStruct( arguments.config ) ) {
-			if ( arguments.config.keyExists( "chatURL" ) && len( arguments.config.chatURL ) ) {
-				variables.chatURL = arguments.config.chatURL.trim();
+		if ( isStruct( arguments.options ) ) {
+			if ( arguments.options.keyExists( "chatURL" ) && len( arguments.options.chatURL ) ) {
+				variables.chatURL = arguments.options.chatURL.trim()
 			}
-			if ( arguments.config.keyExists( "embeddingsURL" ) && len( arguments.config.embeddingsURL ) ) {
-				variables.embeddingsURL = arguments.config.embeddingsURL.trim();
+			if ( arguments.options.keyExists( "embeddingsURL" ) && len( arguments.options.embeddingsURL ) ) {
+				variables.embeddingsURL = arguments.options.embeddingsURL.trim()
 			}
 		}
 
-		return this;
+		return this
 	}
 
 	/**
@@ -122,70 +130,27 @@ class extends="BaseService" {
 	 * @return This service instance for chaining
 	 */
 	public OpenAICompatibleService function setBaseURL( required string url ) {
-		variables.baseURL = arguments.url.trim();
-		variables.chatURL = variables.baseURL & "/chat/completions";
-		variables.embeddingsURL = variables.baseURL & "/embeddings";
+		variables.baseURL = arguments.url.trim()
+		variables.chatURL = variables.baseURL & "/chat/completions"
+		variables.embeddingsURL = variables.baseURL & "/embeddings"
 
-		return this;
+		return this
 	}
 
 	/**
-	 * Get the base URL
-	 * @return The base URL string
-	 */
-	public string function getBaseURL() {
-		return variables.baseURL;
-	}
-
-	/**
-	 * Override chat to disable auth header when no API key is set
-	 *
-	 * @chatRequest The AiChatRequest object to send to the provider
-	 * @interactionCount Current tool call interaction count (used internally)
-	 *
-	 * @return The response from the provider according to the return format
+	 * Disable the Authorization header for unauthenticated endpoints
+	 * (e.g., local containers or proxies that do not require an API key).
 	 */
 	@override
-	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ) {
-		// If no API key is set, disable auth header
+	private struct function preRequest(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required string operation
+	) {
 		if ( !len( variables.apiKey ) ) {
-			arguments.chatRequest.setSendAuthHeader( false );
+			arguments.aiRequest.setSendAuthHeader( false )
 		}
-
-		return super.chat( chatRequest = arguments.chatRequest, interactionCount = arguments.interactionCount );
-	}
-
-	/**
-	 * Override chatStream to disable auth header when no API key is set
-	 *
-	 * @chatRequest The AiChatRequest object to send to the provider
-	 * @callback A callback function to be called with each chunk of the stream
-	 */
-	@override
-	public function chatStream( required AiChatRequest chatRequest, required function callback ) {
-		// If no API key is set, disable auth header
-		if ( !len( variables.apiKey ) ) {
-			arguments.chatRequest.setSendAuthHeader( false );
-		}
-
-		return super.chatStream( argumentCollection = arguments );
-	}
-
-	/**
-	 * Override embeddings to disable auth header when no API key is set
-	 *
-	 * @embeddingRequest The embedding request object
-	 * @return The embeddings response from the provider
-	 */
-	@override
-	public function embeddings( required AiEmbeddingRequest embeddingRequest ) {
-		// If no API key is set, disable auth header
-		if ( !len( variables.apiKey ) ) {
-			arguments.embeddingRequest.setSendAuthHeader( false );
-		}
-
-		// Parent class handles model from params via mergeServiceParams()
-		return super.embeddings( embeddingRequest );
+		return arguments.dataPacket
 	}
 
 	/**
@@ -204,14 +169,14 @@ class extends="BaseService" {
 				timeout = 5
 			{}
 
-			return checkResult.statusCode == 200 || checkResult.statusCode == "200 OK";
+			return checkResult.statusCode == 200 || checkResult.statusCode == "200 OK"
 		} catch ( any e ) {
 			writeLog(
 				text : "OpenAI-compatible service availability check failed (#variables.baseURL#): #e.message#",
 				type : "warning",
 				log  : "ai"
-			);
-			return false;
+			)
+			return false
 		}
 	}
 
@@ -231,20 +196,33 @@ class extends="BaseService" {
 			{}
 
 			if ( ( modelsResult.statusCode == 200 || modelsResult.statusCode == "200 OK" ) && modelsResult.keyExists( "filecontent" ) && len( modelsResult.filecontent ) ) {
-				var response = jsonDeserialize( modelsResult.filecontent );
+				var response = jsonDeserialize( modelsResult.filecontent )
 				if ( response.keyExists( "data" ) && isArray( response.data ) ) {
-					return response.data.map( ( model ) => model.id ?: model.name ?: "" );
+					return response.data.map( ( model ) => model.id ?: model.name ?: "" )
 				}
 			}
-			return [];
+			return []
 		} catch ( any e ) {
 			writeLog(
 				text : "Error listing models from OpenAI-compatible service: #e.message#",
 				type : "error",
 				log  : "ai"
-			);
-			return [];
+			)
+			return []
 		}
+	}
+
+	/**
+	 * Override to ensure service-configured model takes priority over OpenAI's
+	 * default embedding model (text-embedding-3-small). Pre-seeds variables.params
+	 * into the request before calling super, so the OpenAI default cannot clobber
+	 * the explicit user configuration.
+	 */
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		// Pre-seed service-configured params first so OpenAI defaults cannot override them
+		arguments.embeddingRequest.mergeServiceParams( variables.params )
+		return super.embeddings( arguments.embeddingRequest )
 	}
 
 }
