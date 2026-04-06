@@ -109,7 +109,7 @@ This will install the latest version of the BoxLang AI module in your BoxLang en
 
 > 💡 **Tip:** Use environment variable placeholders like `${OPENAI_API_KEY}` so you never commit secrets to source control. Each provider also auto-detects its own env var (e.g. `OPENAI_API_KEY`, `CLAUDE_API_KEY`, `GEMINI_API_KEY`).
 
-#### ⚙️ All Available Settings
+### ⚙️ All Available Settings
 
 Below is the full reference of every setting you can place under `settings` in `boxlang.json`:
 
@@ -655,146 +655,6 @@ return AiMiddlewareResult.suspend( { toolName: "deleteRecord", args: toolArgs } 
 | `isEdit()` | Arguments were modified |
 | `isSuspended()` | Waiting for async human input (terminal) |
 | `isTerminal()` | `cancel`, `reject`, or `suspend` — stops the chain |
-
----
-
-#### ✍️ Writing Middleware
-
-**Option 1: Struct-of-closures** (lightweight, no class needed)
-
-Only define the hooks you need — all others default to no-op:
-
-```javascript
-agent.withMiddleware({
-    // Sequential hooks — receive context struct, must return AiMiddlewareResult
-    beforeToolCall: (ctx) => {
-        if ( ctx.toolName == "dropTable" ) {
-            return AiMiddlewareResult.cancel( "Blocked: dropTable is not allowed" )
-        }
-        return AiMiddlewareResult.continue()
-    },
-
-    // Wrap hooks — receive context + handler function, must return handler()'s value
-    wrapLLMCall: (ctx, handler) => {
-        writeLog( "LLM call start", "ai" )
-        var result = handler()
-        writeLog( "LLM call end", "ai" )
-        return result
-    },
-
-    onError: (ctx) => {
-        writeLog( "Middleware error in #ctx.phase#: #ctx.error.message#", "ai" )
-        return AiMiddlewareResult.continue()
-    }
-})
-```
-
-**Option 2: Class-based** (reusable, configurable, shareable)
-
-Extend `BaseAiMiddleware` and override only the hooks you need:
-
-```javascript
-import bxModules.bxai.models.middleware.BaseAiMiddleware;
-import bxModules.bxai.models.middleware.AiMiddlewareResult;
-
-class extends="BaseAiMiddleware" {
-
-    function init( required string tenantId ) {
-        variables.tenantId = arguments.tenantId
-        variables.name = "Tenant Audit Middleware"
-        return this
-    }
-
-    AiMiddlewareResult function beforeToolCall( required struct context ) {
-        auditLog( variables.tenantId, context.toolName, context.toolArgs )
-        return AiMiddlewareResult.continue()
-    }
-}
-```
-
----
-
-#### 💡 Core Middleware Configuration
-
-**LoggingMiddleware**
-
-```javascript
-new LoggingMiddleware(
-    logToFile    : true,              // Write to BoxLang "ai" log file
-    logToConsole : false,             // Also print to stdout
-    logLevel     : "info",            // "info" | "debug" | "warning" | "error"
-    prefix       : "[AI Middleware]"  // Prefix for all log messages
-)
-```
-
-**RetryMiddleware**
-
-```javascript
-new RetryMiddleware(
-    maxRetries        : 3,                                        // Retries after first failure
-    initialDelay      : 1000,                                     // First retry delay (ms)
-    backoffMultiplier : 2,                                        // Exponential backoff factor
-    maxDelay          : 30000,                                    // Hard cap on delay (ms)
-    nonRetryableTypes : "InvalidInput,MaxInteractionsExceeded"    // Comma-separated exception types to skip
-)
-```
-
-**MaxToolCallsMiddleware**
-
-```javascript
-new MaxToolCallsMiddleware(
-    maxCalls: 10  // Max tool invocations per agent run
-)
-```
-
-**GuardrailMiddleware**
-
-```javascript
-new GuardrailMiddleware(
-    blockedTools : [ "deleteRecord", "dropTable" ],   // Tool names to reject outright
-    argPatterns  : {                                   // Per-tool argument regex rules
-        runSql: [ { query: "(?i)drop|truncate|delete" } ]
-    }
-)
-```
-
-**HumanInTheLoopMiddleware**
-
-```javascript
-new HumanInTheLoopMiddleware(
-    toolsRequiringApproval : [ "deleteRecord", "placeOrder" ],
-    mode                   : "cli",      // "cli" = blocking stdin | "web" = suspend/resume
-    showArguments          : true,       // Show tool args in CLI prompt
-    approvalCallback       : (ctx) => "approve"  // Optional custom approval logic
-)
-```
-
-In `web` mode, the agent suspends and returns an `AiMiddlewareResult.suspend()`. Resume it later:
-
-```javascript
-// Resume after human decision
-agent.resume( "approve", threadId, {} )
-agent.resume( "reject",  threadId, {} )
-agent.resume( "edit",    threadId, { correctedArgs: { query: "safer query" } } )
-```
-
-**FlightRecorderMiddleware**
-
-```javascript
-new FlightRecorderMiddleware(
-    mode        : "record",                        // "passthrough" | "record" | "replay"
-    fixturePath : "tests/fixtures/my-agent.json",  // Required in "replay" mode
-    fixtureDir  : ".ai/flight-recorder",           // Output directory for "record" mode
-    recordTools : true,                            // Include tool interactions in fixture
-    strict      : true                             // Strict type matching during replay
-)
-```
-
-| Mode | Behaviour |
-|------|-----------|
-| `passthrough` | No recording — calls pass through normally |
-| `record` | Calls real providers/tools and captures each interaction to a fixture file |
-| `replay` | Returns recorded interactions without making any live calls (zero-cost CI) |
 
 ---
 
@@ -1656,21 +1516,6 @@ config.mcpServers // [{ url: "http://localhost:3001", toolNames: ["read_file", "
 config.toolCount  // 2
 ```
 
-**Access MCP Resources:**
-
-```javascript
-// List available resources
-resources = mcpClient.listResources()
-
-// Read resource content
-content = mcpClient.readResource( "file:///docs/readme.md" )
-println( content )
-
-// Use prompts from server
-prompts = mcpClient.listPrompts()
-prompt = mcpClient.getPrompt( "code-review", { language: "BoxLang" } )
-```
-
 ### 📚 Learn More
 
 - 📖 **Full Guide**: [MCP Client Documentation](https://ai.ortusbooks.com/advanced/mcp-client.md)
@@ -1696,13 +1541,13 @@ Expose your **BoxLang functions and data as MCP tools** 🎯 for use by AI agent
 
 ```javascript
 // Create server with tools
-server = mcpServer(
+myServer = mcpServer(
     name: "my-tools",
     description: "Custom BoxLang tools"
 )
 
 // Register a tool by ITool instance
-server.registerTool(
+myServer.registerTool(
     aiTool(
         name: "calculate_tax",
         description: "Calculate tax for a given amount",
@@ -1713,75 +1558,8 @@ server.registerTool(
 )
 
 // Or register by registry key (tool must be in the global AIToolRegistry)
-server.registerTool( "now@bxai" )           // built-in current date/time tool
-server.registerTool( "searchProducts" )      // any registered tool by name
-
-// Start server
-server.start() // Listens on stdio by default
-```
-
-**Advanced Server with Resources:**
-
-```javascript
-// Create server with tools, prompts, and resources
-server = mcpServer(
-    name: "enterprise-api",
-    description: "Internal enterprise tools"
-)
-
-// Register multiple tools — mix ITool instances and registry key strings
-server.registerTool( aiTool(
-    name: "query_orders",
-    description: "Query customer orders",
-    callable: queryOrdersFunction
-) )
-server.registerTool( aiTool(
-    name: "create_invoice",
-    description: "Create customer invoice",
-    callable: createInvoiceFunction
-) )
-server.registerTool( "send_notification" )   // resolved from AIToolRegistry
-server.registerTool( "now@bxai" )            // built-in registry tool
-
-// Provide templates as prompts
-server.registerPrompt(
-    name: "customer-email",
-    description: "Generate customer email",
-    template: ( orderNumber ) => {
-        return "Write a professional email about order ##orderNumber#";
-    }
-)
-
-// Expose data resources
-server.registerResource(
-    uri: "config://database",
-    description: "Database configuration",
-    getData: () => {
-        return fileRead( "/config/database.json" );
-    }
-)
-
-// Start with custom transport
-server.start( transport: "http", port: 3000 )
-```
-
-**Integration with BoxLang Web App:**
-
-```javascript
-// In your BoxLang app's Application.bx
-component {
-    function onApplicationStart() {
-        // Start MCP server on app startup
-        application.mcpServer = aiMcpServer( "myapp-api" )
-            .registerTool( "search", variables.searchFunction )
-            .registerTool( "create", variables.createFunction )
-            .start( background: true )
-    }
-
-    function onApplicationEnd() {
-        application.mcpServer.stop()
-    }
-}
+myServer.registerTool( "now@bxai" )           // built-in current date/time tool
+myServer.registerTool( "searchProducts" )      // any registered tool by name
 ```
 
 #### 📚 Learn More
@@ -1791,80 +1569,7 @@ component {
 - 🔧 **Advanced Features**: [Custom Transports & Authentication](https://ai.ortusbooks.com/advanced/mcp-server-advanced.md)
 - 💻 **Examples**: Check `examples/mcp/server/` for complete examples
 
----
-
-## ⚙️ Settings
-
-Here are the settings you can place in your `boxlang.json` file:
-
-```json
-{
-	"modules" : {
-		"bxai" : {
-			"settings": {
-				// The default provider to use: openai, claude, deepseek, gemini, grok, mistral, ollama, openrouter, perplexity
-				"provider" : "openai",
-				// The default API Key for the provider
-				"apiKey" : "",
-				// The default request params to use when calling a provider
-				// Ex: { temperature: 0.5, max_tokens: 100, model: "gpt-3.5-turbo" }
-				"defaultParams" : {
-					// model: "gpt-3.5-turbo"
-				},
-				// The default timeout of the ai requests
-				"timeout" : 30,
-				// If true, log request to the ai.log
-				"logRequest" : false,
-				// If true, log request to the console
-				"logRequestToConsole" : false,
-				// If true, log the response to the ai.log
-				"logResponse" : false,
-				// If true, log the response to the console
-				"logResponseToConsole" : false,
-				// The default return format of the AI response: single, all, raw
-				"returnFormat" : "single"
-			}
-		}
-	}
-}
-```
-
-### 🦙 Ollama Configuration
-
-**Ollama** allows you to run AI models locally on your machine. It's perfect for privacy, offline use, and cost savings. 💰
-
-#### 🔧 Setup Ollama
-
-1. 📥 **Install**: Download from [https://ollama.ai](https://ollama.ai)
-2. ⬇️ **Pull a model**: `ollama pull llama3.2` (or any supported model)
-3. ▶️ **Start service**: Ollama runs on `http://localhost:11434` by default
-
-### 📝 Configuration
-
-```json
-{
-	"modules": {
-		"bxai": {
-			"settings": {
-				"provider": "ollama",
-				"apiKey": "",  // Optional: for remote/secured Ollama instances
-				"chatURL": "http://localhost:11434",  // Default local instance
-				"defaultParams": {
-					"model": "llama3.2"  // Any Ollama model you have pulled
-				}
-			}
-		}
-	}
-}
-```
-
-### 🌟 Popular Ollama Models
-
-- 🦙 `llama3.2` - Latest Llama model (recommended)
-- ⚡ `llama3.2:1b` - Smaller, faster model
-- 💻 `codellama` - Code-focused model
-- 🎯 `mistral` - High-quality general model
-- 🔷 `phi3` - Microsoft's efficient model
+----
 
 ## 🛠️ Global Functions (BIFs)
 
@@ -1894,52 +1599,6 @@ Here are the settings you can place in your `boxlang.json` file:
 
 > **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](https://ai.ortusbooks.com/main-components/overview.md#return-formats) documentation for details.
 
-## 📢 Events
-
-The BoxLang AI module emits several events throughout the AI processing lifecycle that allow you to intercept, modify, or extend functionality. These events are useful for logging, debugging, custom providers, and response processing.
-
-Read more about [Events in BoxLang AI](https://ai.ortusbooks.com/advanced/events).
-
-### Event Reference Table
-
-| Event | When Fired | Data Emitted | Use Cases |
-|-------|------------|--------------|-----------|
-| `afterAIAgentRun` | After agent completes execution | `agent`, `response` | Agent monitoring, result tracking |
-| `afterAIEmbed` | After generating embeddings | `embeddingRequest`, `service`, `result` | Result processing, caching |
-| `afterAIModelInvoke` | After model invocation completes | `model`, `aiRequest`, `results` | Performance tracking, validation |
-| `afterAIPipelineRun` | After pipeline execution completes | `sequence`, `result`, `executionTime` | Pipeline monitoring, metrics |
-| `afterAIToolExecute` | After tool execution completes | `tool`, `results`, `executionTime` | Tool performance tracking |
-| `beforeAIAgentRun` | Before agent starts execution | `agent`, `input`, `messages`, `params` | Agent validation, preprocessing |
-| `beforeAIEmbed` | Before generating embeddings | `embeddingRequest`, `service` | Request validation, preprocessing |
-| `beforeAIModelInvoke` | Before model invocation starts | `model`, `aiRequest` | Request validation, cost estimation |
-| `beforeAIPipelineRun` | Before pipeline execution starts | `sequence`, `stepCount`, `steps`, `input` | Pipeline validation, tracking |
-| `beforeAIToolExecute` | Before tool execution starts | `tool`, `name`, `arguments` | Permission checks, validation |
-| `onAIAgentCreate` | When agent is created | `agent` | Agent registration, configuration |
-| `onAIChatRequest` | When an HTTP chat or stream request is sent to the provider | `dataPacket`, `chatRequest`, `provider` | Request logging, modification, authentication |
-| `onAIChatRequestCreate` | When a chat request object is created | `chatRequest` | Request validation, modification |
-| `onAIChatResponse` | After receiving and deserializing the provider chat response | `chatRequest`, `response`, `rawResponse`, `provider` | Response processing, logging, caching |
-| `onAIEmbedRequest` | Before sending embedding request | `dataPacket`, `embeddingRequest`, `provider` | Request logging, modification |
-| `onAIEmbedResponse` | After receiving embedding response | `embeddingRequest`, `response`, `provider` | Response processing, caching |
-| `onAIError` | When AI operation error occurs | `error`, `errorMessage`, `provider`, `operation`, `canRetry` | Error handling, retry logic, alerts |
-| `onAiLoaderCreate` | When a document loader is created | `loaderType`, `loaderClass`, `loaderConfig` | Loader configuration, tracking |
-| `onAiMemoryCreate` | When memory instance is created | `memory`, `type`, `config` | Memory configuration, tracking |
-| `onAIMessageCreate` | When message is created | `message` | Message validation, formatting |
-| `onAIModelCreate` | When model wrapper is created | `model`, `service` | Model configuration, tracking |
-| `onAIProviderCreate` | After provider is created | `provider` | Provider initialization, configuration |
-| `onAIRateLimitHit` | When rate limit (429) is encountered | `provider`, `statusCode`, `retryAfter` | Rate limit handling, provider switching |
-| `onAITokenCount` | When token usage data is available | `provider`, `model`, `promptTokens`, `completionTokens`, `totalTokens`, `tenantId`, `usageMetadata`, `providerOptions`, `timestamp` | Cost tracking, budget enforcement, multi-tenant billing |
-| `onAIToolCreate` | When tool is created | `tool`, `name`, `description` | Tool registration, validation |
-| `onAIToolRegistryClear` | When the tool registry is cleared | _(none)_ | Registry lifecycle monitoring |
-| `onAIToolRegistryRegister` | When a tool is registered in the registry | `tool`, `key`, `module` | Auditing, dynamic registration hooks |
-| `onAIToolRegistryUnregister` | When a tool is unregistered from the registry | `key`, `module` | Auditing, cleanup notifications |
-| `onAITransformerCreate` | When transformer is created | `transform` | Transform configuration, tracking |
-| `onMCPError` | When an MCP operation error occurs | `server`, `context`, `exception`, `method` | Error handling, alerting |
-| `onMCPRequest` | When an MCP JSON-RPC request is processed | `server`, `requestData`, `serverName` | Request logging, authentication, inspection |
-| `onMCPResponse` | When an MCP response is sent | `server`, `response`, `requestData`, `serverName` | Response logging, transformation |
-| `onMCPServerCreate` | When an MCP server instance is created | `server`, `name`, `description`, `version` | Server lifecycle monitoring |
-| `onMCPServerRemove` | When an MCP server instance is removed | `name` | Server lifecycle monitoring, cleanup |
-| `onMissingAiProvider` | When a requested provider is not found | `provider`, `options`, `service` | Custom provider registration (set `service` to provide an alternative) |
-
 ## 🌐 GitHub Repository and Reporting Issues
 
 Visit the [GitHub repository](https://github.com/ortus-boxlang/bx-ai) for release notes. You can also file a bug report or improvement suggestion  via [GitHub Issues](https://github.com/ortus-boxlang/bx-ai/issues).
@@ -1951,34 +1610,6 @@ This module includes tests for all AI providers. To run the tests:
 ```bash
 ./gradlew test
 ```
-
-### Ollama Testing
-
-For Ollama provider tests, you need to start the test Ollama service first:
-
-```bash
-# Start the Ollama test service
-docker-compose up -d ollama-test
-
-# Wait for it to be ready (this may take a few minutes for the first run)
-# The service will automatically pull the qwen2.5:0.5b model
-
-# Run the tests
-./gradlew test --tests "ortus.boxlang.ai.providers.OllamaTest"
-
-# Clean up when done
-docker-compose down -v
-```
-
-You can also use the provided test script:
-
-```bash
-./test-ollama.sh
-```
-
-This will start the service, verify it's working, and run a basic test.
-
-**Note**: The first time you run this, it will download the `qwen2.5:0.5b` model (~500MB), so it may take several minutes.
 
 ## 💖 Ortus Sponsors
 
