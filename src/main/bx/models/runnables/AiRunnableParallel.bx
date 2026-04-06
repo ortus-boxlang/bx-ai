@@ -1,0 +1,117 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Runs multiple named runnables in parallel and returns a struct of results.
+ *
+ * Each runnable receives the same input; all execute concurrently via runAsync() on the
+ * io-tasks virtual thread pool; results are aggregated into a { name: result } struct once
+ * all futures complete. Mirrors LangChain's RunnableParallel pattern.
+ *
+ * Example:
+ * ```
+ * var parallel = aiParallel({
+ *     summary:   summaryAgent,
+ *     analysis:  analysisAgent,
+ *     sentiment: sentimentModel
+ * })
+ * var results = parallel.run( "Some document..." )
+ * // results.summary, results.analysis, results.sentiment — all ran concurrently
+ *
+ * // Compose in a pipeline — parallel branch then merge
+ * var pipeline = aiMessage( "Analyze: ${text}" )
+ *     .to( aiParallel({ researcher: researchAgent, writer: writerAgent }) )
+ *     .transform( r => "Research: #r.researcher#\nDraft: #r.writer#" )
+ * ```
+ */
+class extends="AiBaseRunnable" {
+
+	/**
+	 * Named runnables to execute in parallel.
+	 * Keys become the keys in the result struct returned by run().
+	 */
+	property name="runnables" type="struct" default={};
+
+	/**
+	 * Initialize with a named struct of runnables.
+	 *
+	 * @runnables Struct of { name: IAiRunnable } pairs
+	 *
+	 * @return This instance for chaining
+	 */
+	function init( struct runnables = {} ) {
+		variables.runnables = arguments.runnables;
+		return this;
+	}
+
+	/**
+	 * Add a named runnable to the parallel set.
+	 *
+	 * @name     The key name for this runnable's result in the output struct
+	 * @runnable The runnable to execute in parallel
+	 *
+	 * @return This instance for chaining
+	 */
+	public AiRunnableParallel function add( required string name, required IAiRunnable runnable ) {
+		variables.runnables[ arguments.name ] = arguments.runnable;
+		return this;
+	}
+
+	/**
+	 * Run all runnables concurrently with the same input.
+	 * Blocks until all futures complete and returns a struct of { name: result }.
+	 *
+	 * @input   The input passed to every runnable
+	 * @params  Optional parameters forwarded to every runnable
+	 * @options Optional runtime options forwarded to every runnable
+	 *
+	 * @return Struct of { name: result } — one entry per registered runnable
+	 */
+	public struct function run( any input = {}, struct params = {}, struct options = {} ) {
+		// Fan-out: start all runnables asynchronously on the io-tasks pool
+		var futures = {};
+		variables.runnables.each( ( name, runnable ) => {
+			futures[ name ] = runnable.runAsync( input, params, options );
+		} );
+
+		// Gather: wait for each future and collect results
+		var results = {};
+		futures.each( ( name, future ) => {
+			results[ name ] = future.get();
+		} );
+
+		return results;
+	}
+
+	/**
+	 * Streaming is not supported — parallel runnables produce a struct, not a token stream.
+	 *
+	 * @throws AiRunnableParallel.NotSupported always
+	 */
+	public void function stream( required function onChunk, any input = {}, struct params = {}, struct options = {} ) {
+		throw(
+			type    : "AiRunnableParallel.NotSupported",
+			message : "AiRunnableParallel does not support streaming. Use run() or runAsync() instead."
+		);
+	}
+
+	/**
+	 * Returns a descriptive name listing the registered runnable keys.
+	 *
+	 * @return String name
+	 */
+	public string function getName() {
+		return "AiRunnableParallel(" & variables.runnables.keyList() & ")";
+	}
+
+}

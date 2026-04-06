@@ -973,4 +973,115 @@ public class aiAgentTest extends BaseIntegrationTest {
 		assertFalse( variables.getAsBoolean( Key.of( "hasLoadTool" ) ) );
 	}
 
+	// ==================== ASYNC TESTS ====================
+
+	@Test
+	@DisplayName( "runAsync() on an agent returns a non-null BoxFuture" )
+	public void testAgentRunAsyncReturnsFuture() {
+		runtime.executeSource(
+		    """
+		    agent  = aiAgent( name: "AsyncAgent", description: "Async test agent" )
+		    future = agent.runAsync( "Hello" )
+		    isFuture = !isNull( future )
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "isFuture" ) ) );
+	}
+
+	@Test
+	@DisplayName( "runAsync() on an AiModel returns a non-null BoxFuture" )
+	public void testModelRunAsyncReturnsFuture() {
+		runtime.executeSource(
+		    """
+		    model    = aiModel()
+		    future   = model.runAsync( "Hello" )
+		    isFuture = !isNull( future )
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "isFuture" ) ) );
+	}
+
+	@Test
+	@DisplayName( "aiParallel() BIF creates an AiRunnableParallel instance" )
+	public void testAiParallelBIFCreatesRunnableParallel() {
+		runtime.executeSource(
+		    """
+		    agentA   = aiAgent( name: "AgentA", description: "First agent" )
+		    agentB   = aiAgent( name: "AgentB", description: "Second agent" )
+		    parallel = aiParallel({ a: agentA, b: agentB })
+		    isParallel = parallel instanceof "bxModules.bxai.models.runnables.AiRunnableParallel"
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "isParallel" ) ) );
+	}
+
+	@Test
+	@DisplayName( "AiRunnableParallel.run() returns a struct with all named keys" )
+	public void testAiRunnableParallelRunReturnsMergedStruct() {
+		runtime.executeSource(
+		    """
+		    agentA   = aiAgent( name: "AgentA", description: "First agent" )
+		    agentB   = aiAgent( name: "AgentB", description: "Second agent" )
+		    parallel = aiParallel({ a: agentA, b: agentB })
+		    hasKeys  = parallel.getRunnables().keyExists( "a" ) && parallel.getRunnables().keyExists( "b" )
+		    """,
+		    context
+		);
+
+		assertTrue( variables.getAsBoolean( Key.of( "hasKeys" ) ) );
+	}
+
+	@Test
+	@DisplayName( "AiRunnableParallel.add() adds a named runnable and returns itself for chaining" )
+	public void testAiRunnableParallelAdd() {
+		runtime.executeSource(
+		    """
+		    agentA   = aiAgent( name: "AgentA", description: "First agent" )
+		    agentB   = aiAgent( name: "AgentB", description: "Second agent" )
+		    parallel = aiParallel({ a: agentA }).add( "b", agentB )
+		    keyCount = parallel.getRunnables().count()
+		    """,
+		    context
+		);
+
+		assertEquals( 2L, ( long ) ( ( Number ) variables.get( Key.of( "keyCount" ) ) ).intValue() );
+	}
+
+	@Test
+	@DisplayName( "AiRunnableParallel.getName() returns a descriptive string with runnable keys" )
+	public void testAiRunnableParallelGetName() {
+		runtime.executeSource(
+		    """
+		    agentA   = aiAgent( name: "AgentA", description: "First agent" )
+		    parallel = aiParallel({ summary: agentA })
+		    name     = parallel.getName()
+		    """,
+		    context
+		);
+
+		var name = ( String ) variables.get( Key.of( "name" ) );
+		assertTrue( name.contains( "summary" ) );
+	}
+
+	@Test
+	@DisplayName( "AiRunnableParallel.stream() throws AiRunnableParallel.NotSupported" )
+	public void testAiRunnableParallelStreamThrows() {
+		assertThrows( Exception.class, () -> {
+			runtime.executeSource(
+			    """
+			    agentA   = aiAgent( name: "AgentA", description: "First agent" )
+			    parallel = aiParallel({ a: agentA })
+			    parallel.stream( chunk => writeOutput( chunk ), "input" )
+			    """,
+			    context
+			);
+		} );
+	}
+
 }
