@@ -63,7 +63,7 @@ interface {
 		struct params = {},
 		struct options = {}
 	) {
-		return asyncRun( () => this.run( input, params, options ), "io-tasks" );
+		return asyncRun( () => this.run( input, params, options ), "io-tasks" )
 	}
 
     /**

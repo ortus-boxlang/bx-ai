@@ -50,8 +50,8 @@ class extends="AiBaseRunnable" {
 	 * @return This instance for chaining
 	 */
 	function init( struct runnables = {} ) {
-		variables.runnables = arguments.runnables;
-		return this;
+		variables.runnables = arguments.runnables
+		return this
 	}
 
 	/**
@@ -63,8 +63,8 @@ class extends="AiBaseRunnable" {
 	 * @return This instance for chaining
 	 */
 	public AiRunnableParallel function add( required string name, required IAiRunnable runnable ) {
-		variables.runnables[ arguments.name ] = arguments.runnable;
-		return this;
+		variables.runnables[ arguments.name ] = arguments.runnable
+		return this
 	}
 
 	/**
@@ -79,18 +79,18 @@ class extends="AiBaseRunnable" {
 	 */
 	public struct function run( any input = {}, struct params = {}, struct options = {} ) {
 		// Fan-out: start all runnables asynchronously on the io-tasks pool
-		var futures = {};
+		var futures = {}
 		variables.runnables.each( ( name, runnable ) => {
-			futures[ name ] = runnable.runAsync( input, params, options );
-		} );
+			futures[ name ] = runnable.runAsync( input, params, options )
+		} )
 
 		// Gather: wait for each future and collect results
-		var results = {};
+		var results = {}
 		futures.each( ( name, future ) => {
-			results[ name ] = future.get();
-		} );
+			results[ name ] = future.get()
+		} )
 
-		return results;
+		return results
 	}
 
 	/**
@@ -102,7 +102,7 @@ class extends="AiBaseRunnable" {
 		throw(
 			type    : "AiRunnableParallel.NotSupported",
 			message : "AiRunnableParallel does not support streaming. Use run() or runAsync() instead."
-		);
+		)
 	}
 
 	/**
@@ -111,7 +111,7 @@ class extends="AiBaseRunnable" {
 	 * @return String name
 	 */
 	public string function getName() {
-		return "AiRunnableParallel(" & variables.runnables.keyList() & ")";
+		return "AiRunnableParallel(" & variables.runnables.keyList() & ")"
 	}
 
 }

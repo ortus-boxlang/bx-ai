@@ -43,7 +43,7 @@ class {
 	 * @return AiRunnableParallel instance ready to call run() or chain with .to()
 	 */
 	function invoke( required struct runnables ) {
-		return new bxModules.bxai.models.runnables.AiRunnableParallel( arguments.runnables );
+		return new bxModules.bxai.models.runnables.AiRunnableParallel( arguments.runnables )
 	}
 
 }
