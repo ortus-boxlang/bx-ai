@@ -1026,15 +1026,18 @@ public class aiAgentTest extends BaseIntegrationTest {
 	public void testAiRunnableParallelRunReturnsMergedStruct() {
 		runtime.executeSource(
 		    """
-		    agentA   = aiAgent( name: "AgentA", description: "First agent" )
-		    agentB   = aiAgent( name: "AgentB", description: "Second agent" )
-		    parallel = aiParallel({ a: agentA, b: agentB })
-		    hasKeys  = parallel.getRunnables().keyExists( "a" ) && parallel.getRunnables().keyExists( "b" )
+		    runnableA = aiTransform( input => input & "-a" )
+		    runnableB = aiTransform( input => input & "-b" )
+		    parallel  = aiParallel({ a: runnableA, b: runnableB })
+		    result    = parallel.run( "input" )
+		    hasKeys   = isStruct( result ) && result.keyExists( "a" ) && result.keyExists( "b" )
+		    hasValues = result.a == "input-a" && result.b == "input-b"
 		    """,
 		    context
 		);
 
 		assertTrue( variables.getAsBoolean( Key.of( "hasKeys" ) ) );
+		assertTrue( variables.getAsBoolean( Key.of( "hasValues" ) ) );
 	}
 
 	@Test
