@@ -43,7 +43,7 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 - 📡 **MCP Protocol** - Build and consume Model Context Protocol servers for distributed AI
 - 💬 **Fluent Interface** - Chainable, expressive syntax that makes AI integration intuitive
 - 🦙 **Local AI** - Full Ollama support for privacy, offline use, and zero API costs
-- ⚡ **Async Operations** - Non-blocking futures for concurrent AI requests
+- ⚡ **Async Operations** - Non-blocking `runAsync()` on every runnable; `aiParallel()` for concurrent parallel pipelines
 - 🎯 **Event-Driven** - 35+ lifecycle events for logging, monitoring, and custom workflows
 - 🏭 **Production-Ready** - Timeout controls, error handling, rate limiting, and debugging tools
 - 🧪 **Testable** - Deterministic replay for reliable unit and integration testing
@@ -505,6 +505,34 @@ class implements="IAiRunnable" {
 customStage = new CustomRunnable()
 pipeline = aiModel( provider: "openai", params: { model: "gpt-4o" } )
 	.to( customStage )
+```
+
+**Parallel Pipelines:**
+
+Run multiple runnables concurrently with the same input and receive a named struct of results. Mirrors LangChain's `RunnableParallel` — parallelism is a developer/framework concern, not something the LLM decides.
+
+```javascript
+// Fan out to multiple agents/models in parallel
+results = aiParallel({
+    summary:  summaryAgent,
+    analysis: analysisAgent,
+    keywords: keywordModel
+}).run( "Some long document..." )
+
+// results.summary, results.analysis, results.keywords — all ran concurrently
+
+// Compose in a pipeline — parallel branch then merge
+pipeline = aiMessage( "Analyze: ${text}" )
+    .to( aiParallel({ researcher: researchAgent, writer: writerAgent }) )
+    .transform( r => "Research: #r.researcher#\nDraft: #r.writer#" )
+
+// Or dispatch the same agent for multiple independent inputs asynchronously
+futures = [
+    researchAgent.runAsync( "Topic A" ),
+    researchAgent.runAsync( "Topic B" ),
+    researchAgent.runAsync( "Topic C" )
+]
+results = futures.map( f => f.get() )
 ```
 
 #### 📚 Learn More
@@ -1575,7 +1603,7 @@ myServer.registerTool( "searchProducts" )      // any registered tool by name
 
 | Function | Purpose | Parameters | Return Type | Async Support |
 |----------|---------|------------|-------------|---------------|
-| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options`, `mcpServers=[]`, `skills=[]`, `availableSkills=[]` | AiAgent Object | ❌ |
+| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options`, `mcpServers=[]`, `skills=[]`, `availableSkills=[]` | AiAgent Object (supports `runAsync()`) | ✅ |
 | `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
 | `aiChatRequest()` | Compose a reusable chat request object (useful for advanced pipelines and middleware) | `messages`, `params`, `options`, `headers` | AiChatRequest Object | N/A |
@@ -1593,6 +1621,7 @@ myServer.registerTool( "searchProducts" )      // any registered tool by name
 | `aiTokens()` | Estimate token count for a text string | `text`, `options={}` _(method: characters\|words)_ | Numeric | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
 | `aiToolRegistry()` | Get the singleton AI Tool Registry | _(none)_ | AIToolRegistry Object | N/A |
+| `aiParallel()` | Run multiple named runnables concurrently and collect results | `runnables` (struct of `{ name: IAiRunnable }`) | AiRunnableParallel Object | ✅ (via `runAsync()`) |
 | `aiTransform()` | Create data transformer | `transformer`, `config={}` | Transformer Runnable | N/A |
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
 | `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors`, `statsEnabled`, `force` | MCPServer Object | N/A |

@@ -47,6 +47,25 @@ interface {
 		struct options = {}
 	);
 
+	/**
+	 * Run the operation asynchronously on the io-tasks virtual thread pool.
+	 * Returns immediately with a BoxFuture that resolves to the operation result.
+	 * Pattern mirrors aiChatAsync, loadAsync(), and seedAsync() in this module.
+	 *
+	 * @input   The input to process
+	 * @params  Optional parameters to configure the operation
+	 * @options Optional runtime options (returnFormat, timeout, logging, etc.)
+	 *
+	 * @return A BoxFuture that resolves to the result of the operation
+	 */
+	default BoxFuture function runAsync(
+		any input = {},
+		struct params = {},
+		struct options = {}
+	) {
+		return asyncRun( () => this.run( input, params, options ), "io-tasks" )
+	}
+
     /**
      * Get the name of the runnable
      *
