@@ -50,7 +50,11 @@ class extends="AiBaseRunnable" {
 	 * @return This instance for chaining
 	 */
 	function init( struct runnables = {} ) {
-		variables.runnables = arguments.runnables
+		variables.runnables = {}
+
+		arguments.runnables.each( ( name, runnable ) => {
+			add( name, runnable )
+		} )
 		return this
 	}
 
