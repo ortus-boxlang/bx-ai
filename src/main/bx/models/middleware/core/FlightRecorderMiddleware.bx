@@ -124,7 +124,7 @@ class extends="BaseAiMiddleware" {
 	function init(
 		string  mode        = "passthrough",
 		string  fixturePath = "",
-		string  fixtureDir  = ".ai/flight-recorder",
+		string  fixtureDir  = "/.ai/flight-recorder",
 		boolean recordTools = true,
 		boolean strict      = true
 	) {
