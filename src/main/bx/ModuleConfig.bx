@@ -243,11 +243,9 @@ class {
 				moduleRecord.settings.globalSkills = bxModules.bxai.models.skills.AiSkill::fromDirectory( skillsDir )
 				writeLog(
 					text: "bxAI: Auto-loaded [#moduleRecord.settings.globalSkills.len()#] global skill(s) from: #skillsDir#",
-					type: "info",
+					type: "debug",
 					log: "ai"
 				)
-
-				println( moduleRecord.settings.globalSkills )
 			}
 		}
 
