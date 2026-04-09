@@ -223,9 +223,13 @@ class {
 	}
 
 	/**
-	 * Called by the ModuleService on module activation
+	 * Called by the ModuleService on runtime start, after all modules have been registered.
+	 * This is a good place to perform any setup that requires multiple modules to be registered,
+	 * such as cross-module dependencies, or in our case, auto-discovering skills from the filesystem.
+	 *
+	 * Also assures us that datasources and caches are available if our skills need them during auto-discovery.
 	 */
-	function onLoad(){
+	function onRuntimeStart(){
 		// Auto-discover global skills from the configured skillsDirectory
 		var skillsDir = moduleRecord.settings.skillsDirectory
 
@@ -242,6 +246,8 @@ class {
 					type: "info",
 					log: "ai"
 				)
+
+				println( moduleRecord.settings.globalSkills )
 			}
 		}
 
@@ -255,6 +261,12 @@ class {
 			type: "debug",
 			log: "ai"
 		)
+	}
+
+	/**
+	 * Called by the ModuleService on module activation
+	 */
+	function onLoad(){
 	}
 
 	/**
