@@ -103,7 +103,7 @@ class {
 	 * @target Function to execute on success
 	 * @return The current MCPResponse instance
 	 */
-	function onSuccess(function target){
+	function onSuccess( required function target){
 		if( variables.success ){
 			arguments.target( this );
 		}
@@ -115,7 +115,7 @@ class {
 	 * @target Function to execute on error
 	 * @return The current MCPResponse instance
 	 */
-	function onError(function target){
+	function onError( required function target){
 		if( !variables.success ){
 			arguments.target( this );
 		}
