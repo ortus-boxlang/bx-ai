@@ -489,14 +489,17 @@ class {
 	}
 
 	/**
-	 * Scan a single class file for MCP annotations
+	 * Scan a single class file for MCP annotations and
+	 * register tools, resources, and prompts accordingly.
 	 *
-	 * @classPath The path to the class file
+	 * @classPath The path to the class file or an instance of the class to scan
 	 */
-	private void function scanClass( required string classPath ) {
+	private void function scanClass( required any classPath ) {
 		try {
-			// Get class metadata without instantiation
-			var metadata = getClassMetadata( arguments.classPath )
+			// Get class metadata for the given classPath or class instance
+			var metadata = isSimpleValue( arguments.classPath )
+				?  getClassMetadata( arguments.classPath )
+				: getMetadata( arguments.classPath )
 
 			// Skip if no metadata
 			if ( isNull( metadata ) || !isStruct( metadata ) ) {
@@ -527,7 +530,7 @@ class {
 			} )
 		} catch ( any e ) {
 			// Log error but continue scanning other classes
-			static.mcpLogger.error( "MCP scan error for #arguments.classPath#: #e.message#" )
+			static.mcpLogger.error( "MCP scan error for #arguments.classPath#: #e.message# #e.stackTrace#" )
 			// Announce error event
 			BoxAnnounce(
 				"onMCPError",
