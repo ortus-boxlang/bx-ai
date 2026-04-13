@@ -437,7 +437,20 @@ class extends="BaseService" implements="IAiChatService" {
 				message: result.error.toString()
 			);
 		}
-
+		// Announce token usage
+		if ( result.keyExists( "usage" ) ) {
+			BoxAnnounce( "onAITokenCount", {
+				provider         : this,
+				operation        : "chat",
+				model            : arguments.chatRequest.getModel(),
+				promptTokens     : result.usage.input_tokens ?: 0,
+				completionTokens : result.usage.output_tokens ?: 0,
+				totalTokens      : ( result.usage.input_tokens ?: 0 ) + ( result.usage.output_tokens ?: 0 ),
+				aiRequest        : arguments.chatRequest,
+				usage            : result.usage,
+				timestamp        : now()
+			} )
+		}
 		// Handle tool use responses
 		// Check if Claude wants to use tools
 		var usingTools = false

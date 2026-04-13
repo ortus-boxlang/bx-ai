@@ -708,12 +708,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					promptTokens        : openAIResponse.usage.prompt_tokens,
 					completionTokens    : openAIResponse.usage.completion_tokens,
 					totalTokens         : openAIResponse.usage.total_tokens,
-					chatRequest         : arguments.chatRequest,
+					aiRequest           : arguments.chatRequest,
 					usage               : openAIResponse.usage,
-					// Multi-tenant tracking fields
-					tenantId            : arguments.chatRequest.getTenantId(),
-					usageMetadata       : arguments.chatRequest.getUsageMetadata(),
-					inferenceProfileArn : arguments.chatRequest.getProviderOption( "inferenceProfileArn" ),
 					timestamp           : now()
 				}
 			);

@@ -234,6 +234,21 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			);
 		}
 
+		// Announce token usage
+		if ( result.keyExists( "meta" ) && result.meta.keyExists( "billed_units" ) ) {
+			BoxAnnounce( "onAITokenCount", {
+				provider         : this,
+				operation        : "chat",
+				model            : arguments.chatRequest.getModel(),
+				promptTokens     : result.meta.billed_units.input_tokens ?: 0,
+				completionTokens : result.meta.billed_units.output_tokens ?: 0,
+				totalTokens      : ( result.meta.billed_units.input_tokens ?: 0 ) + ( result.meta.billed_units.output_tokens ?: 0 ),
+				aiRequest        : arguments.chatRequest,
+				usage            : result.meta,
+				timestamp        : now()
+			} )
+		}
+
 		// Handle tool calls if present
 		if( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ){
 			/**

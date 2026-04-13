@@ -183,6 +183,21 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			);
 		}
 
+		// Announce token usage
+		if ( result.keyExists( "usageMetadata" ) ) {
+			BoxAnnounce( "onAITokenCount", {
+				provider         : this,
+				operation        : "chat",
+				model            : arguments.chatRequest.getModel(),
+				promptTokens     : result.usageMetadata.promptTokenCount ?: 0,
+				completionTokens : result.usageMetadata.candidatesTokenCount ?: 0,
+				totalTokens      : result.usageMetadata.totalTokenCount ?: 0,
+				aiRequest        : arguments.chatRequest,
+				usage            : result.usageMetadata,
+				timestamp        : now()
+			} )
+		}
+
 		// No Tool calls yet.
 
 		// Determine return formats
