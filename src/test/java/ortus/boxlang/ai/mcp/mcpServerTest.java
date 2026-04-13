@@ -19,6 +19,8 @@ package ortus.boxlang.ai.mcp;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import java.nio.file.Paths;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -1533,6 +1535,208 @@ public class mcpServerTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( Key.of( "hasId" ) ) ).isEqualTo( false );
 		assertThat( variables.get( Key.of( "hasJsonrpc" ) ) ).isEqualTo( true );
+	}
+
+	// ============================================================================
+	// scanClass() / scan() tests — three input types
+	// ============================================================================
+
+	@Test
+	@DisplayName( "scan() with dot-notation class path registers annotated tools, resources, and prompts" )
+	public void testScanDotNotation() {
+		// @formatter:off
+                runtime.executeSource(
+                        """
+                                myServer = mcpServer( "scanDotTest" )
+                                        .scanClass( "src.test.bx.mcp.SampleMCPTools" )
+
+                                hasTool     = myServer.hasTool( "echoMessage" )
+                                hasResource = myServer.hasResource( "test://status" )
+                                hasPrompt   = myServer.hasPrompt( "greet" )
+                        """,
+                        context
+                );
+                // @formatter:on
+
+		assertThat( variables.get( Key.of( "hasTool" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasResource" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasPrompt" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "scan() with absolute file path registers annotated tools, resources, and prompts" )
+	public void testScanAbsolutePath() {
+		String absPath = Paths.get( "src/test/bx/mcp/SampleMCPTools.bx" ).toAbsolutePath().toString();
+		variables.put( Key.of( "sampleToolsAbsPath" ), absPath );
+
+		// @formatter:off
+                runtime.executeSource(
+                        """
+                                myServer = mcpServer( "scanAbsPathTest" )
+                                        .scanClass( sampleToolsAbsPath )
+
+                                hasTool     = myServer.hasTool( "echoMessage" )
+                                hasResource = myServer.hasResource( "test://status" )
+                                hasPrompt   = myServer.hasPrompt( "greet" )
+                        """,
+                        context
+                );
+                // @formatter:on
+
+		assertThat( variables.get( Key.of( "hasTool" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasResource" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasPrompt" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "scan() with a class instance registers annotated tools, resources, and prompts" )
+	public void testScanInstance() {
+		// @formatter:off
+                runtime.executeSource(
+                        """
+                                import src.test.bx.mcp.SampleMCPTools;
+
+                                myServer = mcpServer( "scanInstanceTest" )
+                                        .scan( new SampleMCPTools() )
+
+                                hasTool     = myServer.hasTool( "echoMessage" )
+                                hasResource = myServer.hasResource( "test://status" )
+                                hasPrompt   = myServer.hasPrompt( "greet" )
+                        """,
+                        context
+                );
+                // @formatter:on
+
+		assertThat( variables.get( Key.of( "hasTool" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasResource" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasPrompt" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "Tool registered via scan() can be invoked through handleRequest()" )
+	public void testScannedToolIsInvocable() {
+		// @formatter:off
+                runtime.executeSource(
+                        """
+                                myServer = mcpServer( "scanInvokeTest" )
+                                        .scanClass( "src.test.bx.mcp.SampleMCPTools" )
+
+                                rpcRequest = {
+                                        "jsonrpc": "2.0",
+                                        "method" : "tools/call",
+                                        "id"     : "1",
+                                        "params" : {
+                                                "name"     : "echoMessage",
+                                                "arguments": { "message": "Hello" }
+                                        }
+                                }
+
+                                response = myServer.handleRequest( rpcRequest )
+								println( response )
+                                text = response.result.content[ 1 ].text
+                        """,
+                        context
+                );
+                // @formatter:on
+
+		assertThat( variables.get( Key.of( "text" ) ).toString() ).contains( "Hello" );
+	}
+
+	@Test
+	@DisplayName( "scan() with absolute path to non-existent file throws MCPServer.ClassNotFound" )
+	public void testScanAbsolutePathMissingFile() {
+		try {
+			// @formatter:off
+                        runtime.executeSource(
+                                """
+                                        mcpServer( "scanMissingTest" )
+                                                .scanClass( "/this/path/does/not/exist/MyTool.bx" )
+                                """,
+                                context
+                        );
+                        // @formatter:on
+			assertThat( false ).isTrue(); // Should not reach here
+		} catch ( Exception e ) {
+			assertThat( e.getMessage() ).containsMatch( "could not be found" );
+		}
+	}
+
+	// ============================================================================
+	// scan() — directory scanning with three path types
+	// ============================================================================
+
+	@Test
+	@DisplayName( "scan() with dot-notation package discovers and registers annotated tools" )
+	public void testScanDirectoryDotNotation() {
+		// @formatter:off
+                runtime.executeSource(
+                        """
+                                myServer = mcpServer( "scanDirDotTest" )
+                                        .scan( "src.test.bx.mcp" )
+
+                                hasTool     = myServer.hasTool( "echoMessage" )
+                                hasResource = myServer.hasResource( "test://status" )
+                                hasPrompt   = myServer.hasPrompt( "greet" )
+                        """,
+                        context
+                );
+                // @formatter:on
+
+		assertThat( variables.get( Key.of( "hasTool" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasResource" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasPrompt" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "scan() with relative directory path discovers and registers annotated tools" )
+	public void testScanDirectoryRelativePath() {
+		// Relative path from project root — BoxLang resolves it against its CWD
+		variables.put( Key.of( "scanMcpRelDir" ), "/src/test/bx/mcp" );
+
+		// @formatter:off
+                runtime.executeSource(
+                        """
+                                myServer = mcpServer( "scanDirRelTest" )
+                                        .scan( scanMcpRelDir )
+
+                                hasTool     = myServer.hasTool( "echoMessage" )
+                                hasResource = myServer.hasResource( "test://status" )
+                                hasPrompt   = myServer.hasPrompt( "greet" )
+                        """,
+                        context
+                );
+                // @formatter:on
+
+		assertThat( variables.get( Key.of( "hasTool" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasResource" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasPrompt" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "scan() with absolute directory path discovers and registers annotated tools" )
+	public void testScanDirectoryAbsolutePath() {
+		variables.put(
+		    Key.of( "scanMcpAbsDir" ),
+		    Paths.get( "src/test/bx/mcp" ).toAbsolutePath().toString()
+		);
+
+		// @formatter:off
+                runtime.executeSource(
+                        """
+                                myServer = mcpServer( "scanDirAbsTest" )
+                                        .scan( scanMcpAbsDir )
+
+                                hasTool     = myServer.hasTool( "echoMessage" )
+                                hasResource = myServer.hasResource( "test://status" )
+                                hasPrompt   = myServer.hasPrompt( "greet" )
+                        """,
+                        context
+                );
+                // @formatter:on
+
+		assertThat( variables.get( Key.of( "hasTool" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasResource" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasPrompt" ) ) ).isEqualTo( true );
 	}
 
 }
