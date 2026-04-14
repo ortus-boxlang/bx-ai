@@ -805,6 +805,58 @@ import bxModules.bxai.models.tools.core.CoreTools;
 aiToolRegistry().scan( new CoreTools(), "bxai" )  // registers httpGet@bxai too
 ```
 
+**Opt-in `FileSystemTools` (NOT auto-registered — supply `allowedPaths` for safety):**
+
+```javascript
+import bxModules.bxai.models.tools.filesystem.FileSystemTools;
+
+// Restrict the AI to specific directories (strongly recommended)
+aiToolRegistry().scanClass(
+    new FileSystemTools( allowedPaths: [ "/workspace/data", "/tmp/ai-output" ] ),
+    "bxai"
+)
+
+// Give a coding agent full filesystem capabilities within a project directory
+agent = aiAgent(
+    name         : "CodingAssistant",
+    instructions : "You are a coding assistant. You can read, write, search, and organize files.",
+    tools        : [
+        // Read / write
+        "readFile@bxai",
+        "readMultipleFiles@bxai",
+        "writeFile@bxai",
+        "appendFile@bxai",
+        "editFile@bxai",
+        // File management
+        "fileMetadata@bxai",
+        "pathExists@bxai",
+        "deleteFile@bxai",
+        "moveFile@bxai",
+        "copyFile@bxai",
+        // Search & utilities
+        "searchFiles@bxai",
+        "listAllowedDirectories@bxai",
+        // Directories
+        "listDirectory@bxai",
+        "directoryTree@bxai",
+        "createDirectory@bxai",
+        "deleteDirectory@bxai",
+        // Zip / archive
+        "zipFiles@bxai",
+        "unzipFile@bxai",
+        "checkZipFile@bxai"
+    ]
+)
+
+agent.run( "Read src/main/bx/App.bx and add a header comment to it" )
+agent.run( "List all .bx files under src/ recursively" )
+agent.run( "Create a directory reports/ and write a summary.txt file there" )
+agent.run( "Search src/ for all files containing the word 'deprecated'" )
+agent.run( "Zip the entire src/ directory to /tmp/src-backup.zip" )
+```
+
+> 🔐 **Security note**: `FileSystemTools` validates every path against the `allowedPaths` list using canonical path resolution, preventing directory-traversal attacks. Leave `allowedPaths` empty only in fully-trusted environments.
+
 #### 🧑‍💻 Custom Tools via `BaseTool`
 
 For more complex tools ones that need their own state, unit tests, or reusable class structure extend `BaseTool` directly instead of using a closure. You only need to implement two abstract methods:
