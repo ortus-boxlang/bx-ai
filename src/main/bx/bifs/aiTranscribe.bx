@@ -1,0 +1,113 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Transcribe speech (audio) to text using an AI provider.
+ * Accepts a local file path, a remote URL, or raw binary audio data.
+ *
+ * @example
+ * ```
+ * // Transcribe a local audio file (returns plain text by default)
+ * text = aiTranscribe( "/path/to/audio.mp3" )
+ * println( text )
+ *
+ * // Get structured response with timestamps
+ * response = aiTranscribe(
+ *     audio  : "/path/to/audio.wav",
+ *     params : { timestamp_granularities: ["word"] },
+ *     options: { returnFormat: "response" }
+ * )
+ * println( response.getSegments() )
+ *
+ * // Use a specific provider / model
+ * text = aiTranscribe(
+ *     audio  : "/path/to/audio.mp3",
+ *     params : { model: "whisper-large-v3", language: "es" },
+ *     options: { provider: "groq" }
+ * )
+ * ```
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Transcribe audio to text
+	 *
+	 * @audio   The audio source: local file path (string), remote URL (string), or binary data
+	 * @params  Provider API parameters (model, language, response_format, timestamp_granularities, etc.)
+	 * @options High-level options (provider, apiKey, returnFormat, timeout, logging)
+	 *
+	 * @return String (returnFormat "text") or AiTranscriptionResponse (returnFormat "response" / "raw")
+	 */
+	function invoke(
+		required any audio,
+		struct params = {},
+		struct options = {}
+	){
+		// Audio BIFs default to plain text; set before module merge so "single" from module settings doesn't override
+		if ( !arguments.options.keyExists( "returnFormat" ) ) {
+			arguments.options.returnFormat = "text"
+		}
+
+		// Merge module-level defaults
+		arguments.options.append( moduleRecord.settings, false )
+
+		// Seed audio-specific model default if not specified
+		var audioSettings = moduleRecord.settings.audio ?: {}
+		if ( audioSettings.defaultTranscriptionModel.len() && !arguments.options.keyExists( "model" ) && !arguments.params.keyExists( "model" ) ) {
+			arguments.params.model = audioSettings.defaultTranscriptionModel
+		}
+
+		// Create request
+		var transcriptionRequest = new bxModules.bxai.models.requests.AiTranscriptionRequest(
+			audio   = arguments.audio,
+			params  = arguments.params,
+			options = arguments.options
+		)
+
+		// Guard: audio source required
+		if ( !transcriptionRequest.hasAudio() ) {
+			throw(
+				type    : "InvalidArgument",
+				message : "aiTranscribe() requires a valid audio source (file path, URL, or binary data)."
+			)
+		}
+
+		// Get the service
+		var service = aiService( arguments.options?.provider, arguments.options )
+
+		if ( !isInstanceOf( service, "IAiTranscriptionService" ) ) {
+			throw(
+				type    : "UnsupportedCapability",
+				message : "Unsupported capability: provider [#service.getName()#] does not support transcription. Use a provider that implements IAiTranscriptionService."
+			)
+		}
+
+		// Fire before event
+		BoxAnnounce( "beforeAITranscription", { transcriptionRequest: transcriptionRequest, service: service } )
+
+		// Invoke STT
+		var result = service.transcribe( transcriptionRequest )
+
+		// Fire after event
+		BoxAnnounce( "afterAITranscription", { transcriptionRequest: transcriptionRequest, service: service, result: result } )
+
+		// Return plain text or full response based on returnFormat
+		if ( transcriptionRequest.getReturnFormat() == "text" && isInstanceOf( result, "AiTranscriptionResponse" ) ) {
+			return result.getText()
+		}
+
+		return result
+	}
+
+}

@@ -1,0 +1,206 @@
+/**
+ * Audio Speech-to-Text (STT) & Translation Example
+ *
+ * Demonstrates the aiTranscribe() and aiTranslate() BIFs for converting
+ * audio to text using multiple providers: OpenAI, Groq, and Gemini.
+ *
+ * Prerequisites:
+ *   - OPENAI_API_KEY env var set for OpenAI examples
+ *   - GROQ_API_KEY env var set for Groq examples
+ *   - GEMINI_API_KEY env var set for Gemini examples
+ *   - An audio file at the paths referenced below
+ *
+ * Usage:
+ *   boxlang examples/advanced/16-audio-stt-example.bxs
+ */
+
+println( "=== BoxLang AI — Speech-to-Text & Translation Examples ===" )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// Setup: generate a test audio file using aiSpeak (if API key available)
+// ─────────────────────────────────────────────────────────────────────
+var testAudioFile = expandPath( "/tmp/boxlang-test-audio.mp3" )
+
+println( "Setup: Generating test audio for transcription..." )
+try {
+    aiSpeak(
+        text   : "The weather forecast predicts sunny skies and mild temperatures throughout the week.",
+        options: { outputFile: testAudioFile }
+    )
+    println( "   Test audio generated at: " & testAudioFile )
+} catch ( any e ) {
+    println( "   Could not generate test audio — using existing file if available." )
+    println( "   (" & e.message & ")" )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 1. Basic transcription — returns text string (default)
+// ─────────────────────────────────────────────────────────────────────
+println( "1. Basic transcription — text string" )
+
+try {
+    var transcript = aiTranscribe( audio: testAudioFile )
+    println( "   Transcript: " & transcript )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 2. Transcription with full response object
+// ─────────────────────────────────────────────────────────────────────
+println( "2. Transcription — full response object" )
+
+try {
+    var response = aiTranscribe(
+        audio  : testAudioFile,
+        options: { returnFormat: "response" }
+    )
+
+    println( "   Provider:    " & response.getProvider() )
+    println( "   Model:       " & response.getModel() )
+    println( "   Text:        " & response.getText() )
+    println( "   Language:    " & response.getLanguage() )
+    println( "   Duration:    " & response.getDuration() & "s" )
+    println( "   Has segments: " & ( response.getSegments().len() > 0 ) )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 3. Transcription with language hint
+// ─────────────────────────────────────────────────────────────────────
+println( "3. Transcription with explicit language" )
+
+try {
+    var transcript = aiTranscribe(
+        audio : testAudioFile,
+        params: { language: "en" }
+    )
+    println( "   Transcript (en): " & transcript )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 4. Groq transcription — fast Whisper-based STT
+// ─────────────────────────────────────────────────────────────────────
+println( "4. Groq Whisper transcription" )
+
+try {
+    var groqTranscript = aiTranscribe(
+        audio  : testAudioFile,
+        params : { model: "whisper-large-v3" },
+        options: { provider: "groq" }
+    )
+    println( "   Groq transcript: " & groqTranscript )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 5. Gemini transcription
+// ─────────────────────────────────────────────────────────────────────
+println( "5. Gemini transcription" )
+
+try {
+    var geminiTranscript = aiTranscribe(
+        audio  : testAudioFile,
+        options: { provider: "gemini" }
+    )
+    println( "   Gemini transcript: " & geminiTranscript )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 6. ElevenLabs transcription (Scribe)
+// ─────────────────────────────────────────────────────────────────────
+println( "6. ElevenLabs Scribe transcription" )
+
+try {
+    var elevenTranscript = aiTranscribe(
+        audio  : testAudioFile,
+        options: { provider: "elevenlabs" }
+    )
+    println( "   ElevenLabs transcript: " & elevenTranscript )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 7. Translation — non-English audio to English
+//    (Requires a non-English audio file — swap testAudioFile for your own)
+// ─────────────────────────────────────────────────────────────────────
+println( "7. Translation — non-English audio to English text" )
+println( "   (Demo uses English audio, but aiTranslate works with any language)" )
+
+try {
+    var englishTranslation = aiTranslate( audio: testAudioFile )
+    println( "   Translation: " & englishTranslation )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 8. Groq translation — specialized translation endpoint
+// ─────────────────────────────────────────────────────────────────────
+println( "8. Groq translation endpoint" )
+
+try {
+    var groqTranslation = aiTranslate(
+        audio  : testAudioFile,
+        options: { provider: "groq" }
+    )
+    println( "   Groq translation: " & groqTranslation )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 9. Transcription from URL (if provider supports it)
+// ─────────────────────────────────────────────────────────────────────
+println( "9. Transcription from audio URL" )
+
+try {
+    var urlTranscript = aiTranscribe(
+        audio: "https://upload.wikimedia.org/wikipedia/commons/5/55/En-us-mono.ogg"
+    )
+    println( "   URL transcript: " & urlTranscript )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 10. Round-trip: TTS → STT verification
+// ─────────────────────────────────────────────────────────────────────
+println( "10. Round-trip — TTS then STT" )
+
+try {
+    var originalText = "BoxLang AI handles both speech synthesis and recognition with ease."
+    var roundTripFile = expandPath( "/tmp/boxlang-round-trip.mp3" )
+
+    // Convert to speech
+    aiSpeak( text: originalText, options: { outputFile: roundTripFile } )
+
+    // Transcribe it back
+    var transcribedBack = aiTranscribe( audio: roundTripFile )
+
+    println( "   Original:    " & originalText )
+    println( "   Transcribed: " & transcribedBack )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+println( "=== STT & Translation Examples Complete ===" )

@@ -1,0 +1,116 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Response object for text-to-speech synthesis operations.
+ * Wraps the raw audio binary data returned by an AI provider and provides
+ * convenience methods for saving to disk and encoding.
+ */
+class {
+
+	/**
+	 * The raw audio binary data returned by the provider
+	 */
+	property name="audioData" type="binary";
+
+	/**
+	 * The audio format of the returned data: mp3, wav, flac, opus, pcm
+	 */
+	property name="audioFormat" default="mp3";
+
+	/**
+	 * The model used for synthesis
+	 */
+	property name="model" default="";
+
+	/**
+	 * The provider name that generated this response
+	 */
+	property name="provider" default="";
+
+	/**
+	 * Constructor
+	 *
+	 * @audioData   The raw binary audio data
+	 * @audioFormat The audio format (mp3, wav, flac, opus, pcm)
+	 * @model       The model used for synthesis
+	 * @provider    The provider name
+	 */
+	function init(
+		required binary audioData,
+		string audioFormat = "mp3",
+		string model       = "",
+		string provider    = ""
+	){
+		variables.audioData   = arguments.audioData
+		variables.audioFormat = arguments.audioFormat
+		variables.model       = arguments.model
+		variables.provider    = arguments.provider
+		return this
+	}
+
+	/**
+	 * Save the audio data to disk at the given file path.
+	 * Creates parent directories if they do not exist.
+	 *
+	 * @filePath Absolute or relative path where the audio file should be written
+	 *
+	 * @return The absolute path of the written file
+	 */
+	string function saveToFile( required string filePath ){
+		return super.saveToFile( arguments.filePath, variables.audioData )
+	}
+
+	/**
+	 * Return the audio data as a base64-encoded string.
+	 *
+	 * @return Base64-encoded audio data
+	 */
+	string function getBase64(){
+		return toBase64( variables.audioData )
+	}
+
+	/**
+	 * Return the MIME type for this audio format.
+	 *
+	 * @return MIME type string (e.g. "audio/mpeg", "audio/wav")
+	 */
+	string function getMimeType(){
+		var mimeTypes = {
+			mp3  : "audio/mpeg",
+			wav  : "audio/wav",
+			flac : "audio/flac",
+			opus : "audio/ogg codecs=opus",
+			pcm  : "audio/pcm",
+			aac  : "audio/aac",
+			ogg  : "audio/ogg",
+			m4a  : "audio/mp4"
+		}
+		return mimeTypes[ variables.audioFormat.lCase() ] ?: "audio/octet-stream"
+	}
+
+	/**
+	 * Check whether there is audio data available
+	 */
+	boolean function hasAudio(){
+		return !isNull( variables.audioData ) && arrayLen( variables.audioData ) > 0
+	}
+
+	/**
+	 * Return the size of the audio data in bytes
+	 */
+	numeric function getSize(){
+		return !isNull( variables.audioData ) ? arrayLen( variables.audioData ) : 0
+	}
+
+}

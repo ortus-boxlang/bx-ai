@@ -14,18 +14,24 @@
  * ----------------------------------------------------------------------------------
  */
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiSpeechService;
+import bxModules.bxai.models.responses.AiSpeechResponse;
 
-class extends="OpenAIService" implements="IAiChatService" {
+class extends="OpenAIService" implements="IAiChatService, IAiSpeechService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "chat", "stream" ]
+		CAPABILITIES = [ "chat", "stream", "speech" ]
 		DEFAULT_CHAT_PARAMS = {
 			// according to the docs, this is the default model
 			// https://docs.x.ai/docs/models
 			"model" : "grok-4-1-fast-reasoning"
+		}
+		DEFAULT_SPEECH_PARAMS = {
+			// https://docs.x.ai/docs/tts — available voices: alloy, echo, fable, onyx, nova, shimmer, eve
+			"voice_id" : "alloy"
 		}
 	}
 
@@ -33,8 +39,9 @@ class extends="OpenAIService" implements="IAiChatService" {
 	 * Constructor
 	 */
 	function init(){
-		variables.chatURL = "https://api.x.ai/v1/chat/completions"
-		variables.name = "Grok"
+		variables.chatURL   = "https://api.x.ai/v1/chat/completions"
+		variables.speechURL = "https://api.x.ai/v1/tts"
+		variables.name      = "Grok"
 	}
 
 	@override
@@ -54,6 +61,86 @@ class extends="OpenAIService" implements="IAiChatService" {
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 		return super.chatStream( arguments.chatRequest, arguments.callback )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiSpeechService Implementation — xAI custom TTS endpoint
+	 * https://docs.x.ai/docs/tts
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	@override
+	public AiSpeechResponse function speak( required AiSpeechRequest speechRequest ){
+		arguments.speechRequest
+			.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceHeaders( variables.headers )
+
+		// xAI TTS body: { input, voice, response_format? }
+		// Uses "voice" key (OpenAI-style) mapped from voice_id default
+		var voiceId = arguments.speechRequest.getParams().voice_id ?: arguments.speechRequest.getVoice() ?: static.DEFAULT_SPEECH_PARAMS.voice_id;
+
+		var dataPacket = {
+			"input" : arguments.speechRequest.getInput(),
+			"voice" : voiceId
+		}
+
+		// Optional response_format
+		if ( arguments.speechRequest.getOutputFormat().len() && arguments.speechRequest.getOutputFormat() != "mp3" ) {
+			dataPacket.response_format = arguments.speechRequest.getOutputFormat();
+		}
+
+		// Logging
+		if ( arguments.speechRequest.getLogRequest() ) {
+			writeLog( text: "Grok aiSpeak request to #variables.speechURL#: #jsonSerialize( dataPacket )#", type: "info", log: "ai" )
+		}
+		if ( arguments.speechRequest.getLogRequestToConsole() ) {
+			println( "Grok aiSpeak request to #variables.speechURL#: #jsonSerialize( dataPacket )#" )
+		}
+
+		bx: http
+			url     = variables.speechURL
+			method  = "post"
+			result  = "speechResult"
+			charset = "utf-8"
+			timeout = arguments.speechRequest.getTimeout()
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+			bx:httpParam type="header" name="Authorization" value="Bearer #arguments.speechRequest.getApiKey()#";
+
+			for ( var thisHeader in arguments.speechRequest.getHeaders() ) {
+				bx:httpParam type="header" name="#thisHeader#" value="#arguments.speechRequest.getHeaders()[ thisHeader ]#";
+			}
+
+			bx:httpParam type="body" value=jsonSerialize( dataPacket );
+		}
+
+		if ( speechResult.statusCode != "200" ) {
+			var errorMessage = speechResult.fileContent;
+			try {
+				var errorData = jsonDeserialize( speechResult.fileContent );
+				errorMessage  = errorData.error?.message ?: errorData.toString();
+			} catch ( any parseEx ) {}
+
+			BoxAnnounce( "onAIError", {
+				error       : errorMessage,
+				errorMessage: errorMessage,
+				provider    : this,
+				operation   : "speech",
+				aiRequest   : arguments.speechRequest,
+				canRetry    : false
+			} );
+
+			throw( type: "ProviderError", message: "Grok TTS error: #errorMessage#" )
+		}
+
+		return new AiSpeechResponse(
+			audioData   : speechResult.fileContent,
+			audioFormat : arguments.speechRequest.getOutputFormat(),
+			model       : "",
+			provider    : variables.name
+		);
 	}
 
 }

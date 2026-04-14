@@ -17,14 +17,18 @@
  */
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+import bxModules.bxai.models.providers.capabilities.IAiSpeechService;
+import bxModules.bxai.models.providers.capabilities.IAiTranscriptionService;
+import bxModules.bxai.models.responses.AiSpeechResponse;
+import bxModules.bxai.models.responses.AiTranscriptionResponse;
 
-class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" {
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, IAiSpeechService, IAiTranscriptionService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "chat", "stream", "embeddings" ]
+		CAPABILITIES = [ "chat", "stream", "embeddings", "speech", "transcription" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://docs.mistral.ai/getting-started/models/models_overview/
 			// mistral-small-latest is the default model for cost-effective tasks
@@ -34,6 +38,15 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			// https://docs.mistral.ai/capabilities/embeddings/
 			"model" : "mistral-embed"
 		}
+		DEFAULT_SPEECH_PARAMS = {
+			// https://docs.mistral.ai/capabilities/audio/text_to_speech/speech/
+			"model" : "voxtral-mini-tts-2603",
+			"voice" : "Charlotte"
+		}
+		DEFAULT_TRANSCRIPTION_PARAMS = {
+			// https://docs.mistral.ai/capabilities/audio/offline_transcription/
+			"model" : "voxtral-mini-latest"
+		}
 	}
 
 	/**
@@ -41,9 +54,12 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * https://docs.mistral.ai/api/
 	 */
 	function init(){
-		variables.chatURL = "https://api.mistral.ai/v1/chat/completions"
+		variables.chatURL       = "https://api.mistral.ai/v1/chat/completions"
 		variables.embeddingsURL = "https://api.mistral.ai/v1/embeddings"
-		variables.name = "Mistral"
+		variables.speechURL     = "https://api.mistral.ai/v1/audio/speech"
+		variables.transcribeURL = "https://api.mistral.ai/v1/audio/transcriptions"
+		variables.translateURL  = "https://api.mistral.ai/v1/audio/transcriptions"
+		variables.name          = "Mistral"
 	}
 
 	@override
@@ -70,6 +86,39 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Set default embedding model if not specified
 		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
 		return super.embeddings( embeddingRequest )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiSpeechService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	@override
+	public AiSpeechResponse function speak( required AiSpeechRequest speechRequest ){
+		arguments.speechRequest.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
+		return super.speak( arguments.speechRequest )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiTranscriptionService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	@override
+	public AiTranscriptionResponse function transcribe( required AiTranscriptionRequest transcriptionRequest ){
+		arguments.transcriptionRequest.mergeServiceParams( static.DEFAULT_TRANSCRIPTION_PARAMS )
+		return super.transcribe( arguments.transcriptionRequest )
+	}
+
+	/**
+	 * Mistral does not have a separate translations endpoint — forward to transcribe.
+	 */
+	@override
+	public AiTranscriptionResponse function translate( required AiTranscriptionRequest transcriptionRequest ){
+		arguments.transcriptionRequest.mergeServiceParams( static.DEFAULT_TRANSCRIPTION_PARAMS )
+		return super.transcribe( arguments.transcriptionRequest )
 	}
 
 }

@@ -152,7 +152,17 @@ class {
 
 			// Internal — populated by onLoad() with the globally discovered skills.
 			// Access via aiGlobalSkills() with no arguments, or read directly from settings.
-			globalSkills : []
+			globalSkills : [],
+
+			// --------------------------------------------------------------------------
+			// Audio Settings — Defaults for aiSpeak() / aiTranscribe() / aiTranslate()
+			// --------------------------------------------------------------------------
+			audio : {
+				defaultVoice              : "",
+				defaultOutputFormat       : "mp3",
+				defaultSpeechModel        : "",
+				defaultTranscriptionModel : ""
+			}
 		}
 
 		/**
@@ -208,6 +218,18 @@ class {
 
 			// Utility Events
 			"onAITokenCount",
+
+			// Memory Events
+			"onHybridMemoryAdd",
+			"onVectorSearch",
+
+			// Audio Events
+			"beforeAISpeech",
+			"afterAISpeech",
+			"beforeAITranscription",
+			"afterAITranscription",
+			"beforeAITranslation",
+			"afterAITranslation",
 
 			// MCP Server Events
 			"onMCPServerCreate",

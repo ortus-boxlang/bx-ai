@@ -1,0 +1,107 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Response object for speech-to-text transcription and audio translation operations.
+ * Wraps the transcribed text and optional metadata (segments, word timestamps,
+ * speaker diarization) returned by an AI provider.
+ */
+class {
+
+	/**
+	 * The transcribed or translated text
+	 */
+	property name="text" default="";
+
+	/**
+	 * Array of segment objects with start/end timestamps and text (when requested)
+	 */
+	property name="segments" type="array" default=[];
+
+	/**
+	 * Array of word-level objects with start/end timestamps and text (when requested)
+	 */
+	property name="words" type="array" default=[];
+
+	/**
+	 * Detected or specified language of the audio (BCP-47 code)
+	 */
+	property name="language" default="";
+
+	/**
+	 * Duration of the audio in seconds (when available from the provider)
+	 */
+	property name="duration" type="numeric" default=0;
+
+	/**
+	 * The model used for transcription
+	 */
+	property name="model" default="";
+
+	/**
+	 * The provider name that generated this response
+	 */
+	property name="provider" default="";
+
+	/**
+	 * Constructor
+	 *
+	 * @text     The transcribed or translated text
+	 * @segments Optional array of segment-level timestamp structs
+	 * @words    Optional array of word-level timestamp structs
+	 * @language Detected or specified BCP-47 language code
+	 * @duration Audio duration in seconds
+	 * @model    Model used for transcription
+	 * @provider Provider name
+	 */
+	function init(
+		string text     = "",
+		array  segments = [],
+		array  words    = [],
+		string language = "",
+		numeric duration = 0,
+		string model    = "",
+		string provider = ""
+	){
+		variables.text     = arguments.text
+		variables.segments = arguments.segments
+		variables.words    = arguments.words
+		variables.language = arguments.language
+		variables.duration = arguments.duration
+		variables.model    = arguments.model
+		variables.provider = arguments.provider
+		return this
+	}
+
+	/**
+	 * Check whether the response has segment-level timestamps
+	 */
+	boolean function hasSegments(){
+		return variables.segments.len() > 0
+	}
+
+	/**
+	 * Check whether the response has word-level timestamps
+	 */
+	boolean function hasWords(){
+		return variables.words.len() > 0
+	}
+
+	/**
+	 * Return the transcription as a plain string (same as getText(), convenient for implicit casting)
+	 */
+	string function toString(){
+		return variables.text
+	}
+
+}

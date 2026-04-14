@@ -231,6 +231,7 @@ The following are the AI providers supported by this module. **Please note that 
 - 🧬 [Cohere](https://cohere.com/)
 - 🔍 [DeepSeek](https://www.deepseek.com/)
 - 🐳 [Docker Model Runner](https://docs.docker.com/ai/model-runner/) - Local models via Docker Desktop
+- 🎙️ [ElevenLabs](https://elevenlabs.io/) - Premium text-to-speech and speech-to-text
 - 💎 [Gemini](https://gemini.google.com/)
 - ⚡ [Grok](https://grok.com/)
 - 🚀 [Groq](https://groq.com/)
@@ -248,25 +249,26 @@ The following are the AI providers supported by this module. **Please note that 
 
 Here is a matrix of the providers and their feature support. Please keep checking as we will be adding more providers and features to this module. 🔄
 
-| Provider            | Chat & Streaming | Real-time Tools | Embeddings       | Structured Output |
-|---------------------|------------------|-----------------|------------------|-------------------|
-| AWS Bedrock         | ✅               | ✅              | ✅               | ✅                |
-| Claude              | ✅               | ✅              | ❌               | ✅                |
-| Cohere              | ✅               | ✅              | ✅               | ✅                |
-| DeepSeek            | ✅               | ✅              | ✅               | ✅                |
-| Docker Model Runner | ✅               | ✅              | ✅               | ✅                |
-| Gemini              | ✅               | [Coming Soon]   | ✅               | ✅                |
-| Grok                | ✅               | ✅              | ✅               | ✅                |
-| Groq                | ✅               | ✅              | ✅               | ✅                |
-| HuggingFace         | ✅               | ✅              | ✅               | ✅                |
-| Mistral             | ✅               | ✅              | ✅               | ✅                |
-| MiniMax             | ✅               | ✅              | ✅               | ✅                |
-| Ollama              | ✅               | ✅              | ✅               | ✅                |
-| OpenAI              | ✅               | ✅              | ✅               | ✅ (Native)       |
-| OpenAI-Compatible   | ✅               | ✅              | ✅               | ✅                |
-| OpenRouter          | ✅               | ✅              | ✅               | ✅                |
-| Perplexity          | ✅               | ✅              | ❌               | ✅                |
-| Voyage              | ❌               | ❌              | ✅ (Specialized) | ❌                |
+| Provider            | Chat & Streaming | Real-time Tools | Embeddings       | TTS (Speech)     | STT (Transcription) |
+|---------------------|------------------|-----------------|------------------|------------------|---------------------|
+| AWS Bedrock         | ✅               | ✅              | ✅               | ❌               | ❌                  |
+| Claude              | ✅               | ✅              | ❌               | ❌               | ❌                  |
+| Cohere              | ✅               | ✅              | ✅               | ❌               | ❌                  |
+| DeepSeek            | ✅               | ✅              | ✅               | ❌               | ❌                  |
+| Docker Model Runner | ✅               | ✅              | ✅               | ❌               | ❌                  |
+| ElevenLabs          | ❌               | ❌              | ❌               | ✅ (Premium)     | ✅ (Scribe v1)      |
+| Gemini              | ✅               | [Coming Soon]   | ✅               | ✅               | ✅                  |
+| Grok                | ✅               | ✅              | ✅               | ✅               | ❌                  |
+| Groq                | ✅               | ✅              | ✅               | ❌               | ✅ (Whisper)        |
+| HuggingFace         | ✅               | ✅              | ✅               | ❌               | ❌                  |
+| Mistral             | ✅               | ✅              | ✅               | ✅ (Voxtral)     | ✅ (Voxtral)        |
+| MiniMax             | ✅               | ✅              | ✅               | ❌               | ❌                  |
+| Ollama              | ✅               | ✅              | ✅               | ❌               | ❌                  |
+| OpenAI              | ✅               | ✅              | ✅               | ✅               | ✅ (Whisper)        |
+| OpenAI-Compatible   | ✅               | ✅              | ✅               | ❌               | ❌                  |
+| OpenRouter          | ✅               | ✅              | ✅               | ❌               | ❌                  |
+| Perplexity          | ✅               | ✅              | ❌               | ❌               | ❌                  |
+| Voyage              | ❌               | ❌              | ✅ (Specialized) | ❌               | ❌                  |
 
 ### 🔍 Provider Capability Discovery
 
@@ -301,10 +303,12 @@ aiEmbed( "some text", provider: "claude" );
 
 Capabilities map to the following **capability interfaces** (in `models/providers/capabilities/`):
 
-| Capability String | Interface           | Methods Provided         |
-|-------------------|---------------------|---------------------------|
-| `chat`, `stream`  | `IAiChatService`    | `chat()`, `chatStream()`  |
-| `embeddings`      | `IAiEmbeddingsService` | `embeddings()`         |
+| Capability String | Interface                  | Methods Provided                         |
+|-------------------|----------------------------|-------------------------------------------|
+| `chat`, `stream`  | `IAiChatService`           | `chat()`, `chatStream()`                  |
+| `embeddings`      | `IAiEmbeddingsService`     | `embeddings()`                            |
+| `speech`          | `IAiSpeechService`         | `speak()`                                 |
+| `transcription`   | `IAiTranscriptionService`  | `transcribe()`, `translate()`             |
 
 ## 📤 Return Formats
 
@@ -1206,6 +1210,62 @@ All providers support structured output! 🎉 OpenAI offers native structured ou
 - 🎓 **Interactive Course**: [Lesson 12 - Structured Output](course/lesson-12-structured-output/)
 - 💻 **Examples**: Check `examples/structured/` for complete working examples
 
+### 🔊 Audio — Speech & Transcription
+
+BoxLang AI provides three dedicated BIFs for **voice and audio AI** — convert text to natural-sounding speech, transcribe audio to text, and translate non-English audio to English. 🎙️
+
+#### 🗣️ Text-to-Speech (TTS)
+
+```javascript
+// Convert text to speech and save as MP3
+var audioPath = aiSpeak(
+    text   : "BoxLang makes AI simple and expressive.",
+    options: { outputFile: "/tmp/welcome.mp3" }
+)
+
+// Or get an AiSpeechResponse for programmatic access
+var response = aiSpeak( text: "Hello World", params: { voice: "nova" } )
+response.saveToFile( "/tmp/hello.mp3" )
+println( "Audio size: " & response.getSize() & " bytes" )
+```
+
+#### 🎤 Speech-to-Text (STT)
+
+```javascript
+// Transcribe audio (returns text string by default)
+var transcript = aiTranscribe( audio: "/path/to/audio.mp3" )
+println( transcript )
+
+// Get the full response object with metadata
+var response = aiTranscribe(
+    audio  : "/path/to/audio.mp3",
+    options: { returnFormat: "response" }
+)
+println( "Text: " & response.getText() )
+
+// Translate non-English audio to English
+var englishText = aiTranslate( audio: "/path/to/spanish-audio.mp3" )
+```
+
+> **Provider Support:** OpenAI (TTS + STT), Mistral/Voxtral (TTS + STT), Groq/Whisper (STT + translation), xAI/Grok (TTS), Gemini (TTS + STT), ElevenLabs (premium TTS + STT). Use `provider: "elevenlabs"` in options for ElevenLabs.
+
+#### ✅ Supported Audio Providers
+
+| Provider | TTS | STT | Translation |
+|----------|-----|-----|-------------|
+| OpenAI | ✅ (`tts-1`, `tts-1-hd`) | ✅ (Whisper) | ✅ |
+| ElevenLabs | ✅ (multilingual v2) | ✅ (Scribe) | ✅ (via transcribe) |
+| Mistral | ✅ (Voxtral) | ✅ (Voxtral) | ❌ |
+| Gemini | ✅ (TTS Preview) | ✅ (Flash) | ❌ |
+| Groq | ❌ | ✅ (Whisper) | ✅ |
+| xAI/Grok | ✅ | ❌ | ❌ |
+
+#### 📚 Learn More
+
+- 💻 **Examples**: Check `examples/advanced/` for TTS and STT working examples
+
+----
+
 ### 🧠 Memory Systems
 
 Build **stateful, context-aware AI applications** 🎯 with flexible memory systems that maintain conversation history, enable semantic search, and preserve context across interactions. BoxLang AI provides both traditional conversation memory and advanced vector-based memory for semantic understanding. 💡
@@ -1618,9 +1678,12 @@ myServer.registerTool( "searchProducts" )      // any registered tool by name
 | `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
 | `aiSkill()` | Create or discover AI skills | `path`, `name`, `description`, `content`, `recurse=true` | AiSkill / Array | N/A |
 | `aiGlobalSkills()` | Get the globally shared skill pool | _(none)_ | Array of AiSkill | N/A |
+| `aiSpeak()` | Convert text to speech (TTS) | `text`, `params={}`, `options={}` | AiSpeechResponse / File path | N/A |
 | `aiTokens()` | Estimate token count for a text string | `text`, `options={}` _(method: characters\|words)_ | Numeric | N/A |
 | `aiTool()` | Create tool for real-time processing | `name`, `description`, `callable` | Tool Object | N/A |
 | `aiToolRegistry()` | Get the singleton AI Tool Registry | _(none)_ | AIToolRegistry Object | N/A |
+| `aiTranscribe()` | Transcribe audio to text (STT) | `audio`, `params={}`, `options={}` | String / AiTranscriptionResponse | N/A |
+| `aiTranslate()` | Translate non-English audio to English | `audio`, `params={}`, `options={}` | String / AiTranscriptionResponse | N/A |
 | `aiParallel()` | Run multiple named runnables concurrently and collect results | `runnables` (struct of `{ name: IAiRunnable }`) | AiRunnableParallel Object | ✅ (via `runAsync()`) |
 | `aiTransform()` | Create data transformer | `transformer`, `config={}` | Transformer Runnable | N/A |
 | `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
