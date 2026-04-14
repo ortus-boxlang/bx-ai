@@ -16,7 +16,7 @@
  * Wraps the transcribed text and optional metadata (segments, word timestamps,
  * speaker diarization) returned by an AI provider.
  */
-class {
+class extends="AiBaseResponse"{
 
 	/**
 	 * The transcribed or translated text
@@ -81,6 +81,47 @@ class {
 		variables.model    = arguments.model
 		variables.provider = arguments.provider
 		return this
+	}
+
+	/**
+	 * Check whether the response contains any transcribed text
+	 */
+	boolean function hasText(){
+		return variables.text.len() > 0
+	}
+
+	/**
+	 * Return the number of words in the transcribed text
+	 */
+	numeric function getWordCount(){
+		return variables.text.len() > 0 ? listLen( variables.text.reReplace( "\s+", " ", "all" ).trim(), " " ) : 0
+	}
+
+	/**
+	 * Return the audio duration formatted as MM:SS.
+	 * Returns an empty string when duration is zero.
+	 */
+	string function getFormattedDuration(){
+		if ( variables.duration <= 0 ) return ""
+		var totalSeconds = int( variables.duration )
+		var minutes      = int( totalSeconds / 60 )
+		var seconds      = totalSeconds mod 60
+		return numberFormat( minutes, "00" ) & ":" & numberFormat( seconds, "00" )
+	}
+
+	/**
+	 * Serialize the response to a struct (suitable for logging, storage, or JSON output).
+	 */
+	struct function toStruct(){
+		return {
+			text     : variables.text,
+			language : variables.language,
+			duration : variables.duration,
+			model    : variables.model,
+			provider : variables.provider,
+			segments : variables.segments,
+			words    : variables.words
+		}
 	}
 
 	/**

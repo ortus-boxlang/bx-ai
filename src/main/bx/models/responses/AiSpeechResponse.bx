@@ -16,7 +16,7 @@
  * Wraps the raw audio binary data returned by an AI provider and provides
  * convenience methods for saving to disk and encoding.
  */
-class {
+class extends="AiBaseResponse"{
 
 	/**
 	 * The raw audio binary data returned by the provider
@@ -97,6 +97,27 @@ class {
 			m4a  : "audio/mp4"
 		}
 		return mimeTypes[ variables.audioFormat.lCase() ] ?: "audio/octet-stream"
+	}
+
+	/**
+	 * Return a data URI string suitable for embedding directly in an HTML <audio> src attribute.
+	 * Format: data:<mimeType>;base64,<audioData>
+	 */
+	string function toDataURI(){
+		return "data:#getMimeType()#;base64,#toBase64( variables.audioData )#"
+	}
+
+	/**
+	 * Serialize response metadata to a struct (no binary data — safe for logging or JSON output).
+	 */
+	struct function toStruct(){
+		return {
+			audioFormat : variables.audioFormat,
+			model       : variables.model,
+			provider    : variables.provider,
+			size        : getSize(),
+			mimeType    : getMimeType()
+		}
 	}
 
 	/**

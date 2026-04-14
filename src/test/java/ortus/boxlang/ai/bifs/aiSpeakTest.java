@@ -106,16 +106,17 @@ public class aiSpeakTest extends BaseIntegrationTest {
 	@DisplayName( "aiSpeak with outputFile option saves audio to disk" )
 	@Test
 	public void testAiSpeakSavesToFile() {
-		var outputPath = System.getProperty( "java.io.tmpdir" ) + "/bxai-speak-test.mp3";
+		var outputPath = "/src/test/resources/loaders/bxai-speak-test.mp3";
 		// @formatter:off
 		runtime.executeSource(
 			"""
 			outputPath = "#outputPath#";
 			savedPath = aiSpeak(
-				text   : "Hello from BoxLang AI.",
+				input   : "Hello from BoxLang AI.",
 				options: { outputFile: outputPath }
 			)
 			fileExistsResult = fileExists( savedPath )
+			println( savedPath )
 			""".replace( "#outputPath#", outputPath ),
 			context
 		);
@@ -126,31 +127,6 @@ public class aiSpeakTest extends BaseIntegrationTest {
 
 		// Cleanup
 		new java.io.File( outputPath ).delete();
-	}
-
-	@DisplayName( "aiSpeak with Ollama throws UnsupportedCapability" )
-	@org.junit.jupiter.api.Disabled( "Requires local Ollama running" )
-	@Test
-	public void testAiSpeakOllamaThrowsUnsupported() {
-		// @formatter:off
-		runtime.executeSource(
-			"""
-			threw = false;
-			try {
-				aiSpeak(
-					text    : "Hello",
-					options : { provider: "ollama" }
-				);
-			} catch( any e ){
-				threw = true;
-			}
-			""",
-			context
-		);
-		// @formatter:on
-
-		var threw = variables.getAsBoolean( Key.of( "threw" ) );
-		assertThat( threw ).isTrue();
 	}
 
 }
