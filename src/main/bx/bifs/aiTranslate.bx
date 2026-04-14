@@ -53,15 +53,14 @@ class {
 		struct params = {},
 		struct options = {}
 	){
-		// Audio BIFs default to plain text; set before module merge so "single" from module settings doesn't override
+		// Audio BIFs default to plain text; explicit here so aiService() key resolution (provider convention) is not disrupted
 		if ( !arguments.options.keyExists( "returnFormat" ) ) {
 			arguments.options.returnFormat = "text"
 		}
 
-		// Merge module-level defaults
-		arguments.options.append( moduleRecord.settings, false )
-
-		// Seed audio-specific model default if not specified
+		// Seed audio-specific defaults directly — do NOT merge all moduleRecord.settings into options
+		// because that would overwrite options.apiKey with the module global key, which breaks cross-provider
+		// key resolution inside aiService() (e.g. GROQ_API_KEY convention check)
 		var audioSettings = moduleRecord.settings.audio ?: {}
 		if ( audioSettings.defaultTranscriptionModel.len() && !arguments.options.keyExists( "model" ) && !arguments.params.keyExists( "model" ) ) {
 			arguments.params.model = audioSettings.defaultTranscriptionModel
