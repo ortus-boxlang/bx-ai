@@ -38,6 +38,12 @@ class extends="AiBaseRequest" {
 	property name="speed" type="numeric" default=1.0;
 
 	/**
+	 * Natural-language style instructions for the voice (e.g. "Speak like a pirate").
+	 * Only supported by models that accept an instructions field, such as OpenAI gpt-4o-mini-tts.
+	 */
+	property name="instructions" default="";
+
+	/**
 	 * Constructor
 	 *
 	 * @text          The text to convert to speech
@@ -69,6 +75,7 @@ class extends="AiBaseRequest" {
 		variables.voice                 = params.voice ?: options.voice ?: "";
 		variables.outputFormat          = params.outputFormat ?: options.outputFormat ?: "mp3";
 		variables.speed                 = params.speed ?: options.speed ?: 1.0;
+		variables.instructions          = params.instructions ?: options.instructions ?: "";
 
 		return this;
 	}

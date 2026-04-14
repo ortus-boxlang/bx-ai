@@ -738,6 +738,10 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		if ( arguments.speechRequest.getOutputFormat().len() && arguments.speechRequest.getOutputFormat() != "mp3" ) {
 			dataPacket.response_format = arguments.speechRequest.getOutputFormat()
 		}
+		// Style/tone instructions — e.g. "Speak like a pirate". Requires gpt-4o-mini-tts or a compatible model.
+		if ( arguments.speechRequest.getInstructions().len() ) {
+			dataPacket.instructions = arguments.speechRequest.getInstructions()
+		}
 
 		// Merge remaining provider params
 		dataPacket.append( arguments.speechRequest.getParams() )
