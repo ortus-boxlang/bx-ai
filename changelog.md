@@ -17,16 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`aiTranslate( audio, params, options )`** BIF: Translate non-English audio to English text using supported providers.
   - **`IAiSpeechService`** interface: Implemented by providers that support TTS (`speak()`).
   - **`IAiTranscriptionService`** interface: Implemented by providers that support STT (`transcribe()` + `translate()`).
-  - **`AiSpeechRequest`** / **`AiSpeechResponse`** model classes for TTS request/response.
-  - **`AiTranscriptionRequest`** / **`AiTranscriptionResponse`** model classes for STT request/response.
   - **Provider support**: OpenAI (TTS + STT), Mistral/Voxtral (TTS + STT), Groq/Whisper (STT + translation), xAI/Grok (TTS), Gemini (TTS + STT), ElevenLabs (TTS + STT — new dedicated audio provider).
   - **`ElevenLabsService`**: New provider supporting high-quality TTS via `eleven_multilingual_v2` and STT via `scribe_v1`. Use `aiService("elevenlabs", apiKey)`.
   - **6 new interception points**: `beforeAISpeech`, `afterAISpeech`, `beforeAITranscription`, `afterAITranscription`, `beforeAITranslation`, `afterAITranslation`.
   - **`audio` settings block** in module config: `defaultVoice`, `defaultOutputFormat`, `defaultSpeechModel`, `defaultTranscriptionModel`.
 
-- **`runAsync()` on all runnables** (`IAiRunnable`, `AiBaseRunnable`): Every runnable now has a non-blocking `runAsync(input, params, options)` method that dispatches execution to the `io-tasks` virtual thread pool and returns a `BoxFuture`. Mirrors the existing `aiChatAsync`, `loadAsync()`, and `seedAsync()` patterns throughout the module.
-- **`AiRunnableParallel` class** (`models/runnables/AiRunnableParallel.bx`): New runnable that accepts a named struct of runnables, fans them out concurrently via `runAsync()`, and returns a `{ name: result }` struct once all futures complete. Mirrors LangChain's `RunnableParallel` — a structural parallel composition primitive that integrates cleanly into the existing pipeline system via `.to()`, `.run()`, and `.runAsync()`.
-- **`aiParallel()` BIF**: Creates an `AiRunnableParallel` from a named struct of runnables. `aiParallel({ summary: summaryAgent, analysis: analysisAgent }).run("document")` runs both concurrently and returns `{ summary: "...", analysis: "..." }`.
+- **Async Runnables and Parallel Execution**:
+  - **`runAsync()` on all runnables** (`IAiRunnable`, `AiBaseRunnable`): Every runnable now has a non-blocking `runAsync(input, params, options)` method that dispatches execution to the `io-tasks` virtual thread pool and returns a `BoxFuture`. Mirrors the existing `aiChatAsync`, `loadAsync()`, and `seedAsync()` patterns throughout the module.
+  - **`AiRunnableParallel` class** (`models/runnables/AiRunnableParallel.bx`): New runnable that accepts a named struct of runnables, fans them out concurrently via `runAsync()`, and returns a `{ name: result }` struct once all futures complete. Mirrors LangChain's `RunnableParallel` — a structural parallel composition primitive that integrates cleanly into the existing pipeline system via `.to()`, `.run()`, and `.runAsync()`.
+  - **`aiParallel()` BIF**: Creates an `AiRunnableParallel` from a named struct of runnables. `aiParallel({ summary: summaryAgent, analysis: analysisAgent }).run("document")` runs both concurrently and returns `{ summary: "...", analysis: "..." }`.
 
 ### 🪲 Fixed
 

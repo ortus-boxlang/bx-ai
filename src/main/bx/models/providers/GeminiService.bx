@@ -324,7 +324,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		var ttsURL    = variables.ttsURL.replace( '%MODEL%', model ) & "?key=#arguments.speechRequest.getApiKey()#";
 
 		var dataPacket = {
-			"contents"       : [ { "parts": [ { "text": arguments.speechRequest.getInput() } ] } ],
+			"contents"       : [ { "parts": [ { "text": arguments.speechRequest.getText() } ] } ],
 			"generationConfig": {
 				"response_modalities": [ "AUDIO" ],
 				"speech_config": {

@@ -42,14 +42,14 @@ class {
 	/**
 	 * Convert text to synthesized speech
 	 *
-	 * @input   The text to convert to speech
+	 * @text   The text to convert to speech
 	 * @params  Provider API parameters (model, voice, speed, response_format, etc.)
 	 * @options High-level options (provider, apiKey, outputFile, outputFormat, returnFormat, timeout, logging)
 	 *
 	 * @return AiSpeechResponse containing the audio binary data, or saves to file if options.outputFile is set
 	 */
 	function invoke(
-		required string input,
+		required string text,
 		struct params = {},
 		struct options = {}
 	){
@@ -69,7 +69,7 @@ class {
 
 		// Create request
 		var speechRequest = new bxModules.bxai.models.requests.AiSpeechRequest(
-			input   = arguments.input,
+			text   = arguments.text,
 			params  = arguments.params,
 			options = arguments.options
 		)

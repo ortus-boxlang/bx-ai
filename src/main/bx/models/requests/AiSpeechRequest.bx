@@ -20,7 +20,7 @@ class extends="AiBaseRequest" {
 	/**
 	 * The text to convert to speech
 	 */
-	property name="input" default="";
+	property name="text" default="";
 
 	/**
 	 * The voice to use for synthesis (provider-specific voice name or ID)
@@ -40,20 +40,20 @@ class extends="AiBaseRequest" {
 	/**
 	 * Constructor
 	 *
-	 * @input          The text to convert to speech
+	 * @text          The text to convert to speech
 	 * @params         Provider API parameters (voice, speed, model, language, etc.)
 	 * @options        High-level options (provider, apiKey, returnFormat, outputFile, logging, etc.)
 	 * @methodDefaults Default values merged into options before processing
 	 */
 	function init(
-		string input = "",
+		string text = "",
 		struct params = {},
 		struct options = {},
 		struct methodDefaults = { returnFormat: "response" }
 	){
 		arguments.options = prepareOptions( arguments.options, arguments.methodDefaults );
 
-		variables.input                 = arguments.input;
+		variables.text                 = arguments.text;
 		variables.params                = arguments.params;
 		variables.provider              = options.provider ?: "";
 		variables.apiKey                = options.apiKey ?: "";

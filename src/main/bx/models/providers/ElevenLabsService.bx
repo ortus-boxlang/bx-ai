@@ -90,7 +90,7 @@ class extends="BaseService" implements="IAiSpeechService, IAiTranscriptionServic
 		var voiceSettings = params.voice_settings ?: static.DEFAULT_SPEECH_SETTINGS;
 
 		var dataPacket = {
-			"text"          : arguments.speechRequest.getInput(),
+			"text"          : arguments.speechRequest.getText(),
 			"model_id"      : modelId,
 			"voice_settings": voiceSettings
 		};

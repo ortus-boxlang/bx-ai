@@ -698,7 +698,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		// Build data packet
 		var dataPacket = {
 			"model" : arguments.speechRequest.getModel(),
-			"input" : arguments.speechRequest.getInput(),
+			"input" : arguments.speechRequest.getText(),
 			"voice" : arguments.speechRequest.getVoice()
 		}
 

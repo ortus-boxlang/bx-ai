@@ -82,7 +82,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiSpeechService" {
 		var voiceId = arguments.speechRequest.getParams().voice_id ?: arguments.speechRequest.getVoice() ?: static.DEFAULT_SPEECH_PARAMS.voice_id;
 
 		var dataPacket = {
-			"input" : arguments.speechRequest.getInput(),
+			"input" : arguments.speechRequest.getText(),
 			"voice" : voiceId
 		}
 
