@@ -43,15 +43,7 @@ class extends="AiBaseResponse"{
 	 */
 	property name="duration" type="numeric" default=0;
 
-	/**
-	 * The model used for transcription
-	 */
-	property name="model" default="";
 
-	/**
-	 * The provider name that generated this response
-	 */
-	property name="provider" default="";
 
 	/**
 	 * Constructor
@@ -73,13 +65,12 @@ class extends="AiBaseResponse"{
 		string model    = "",
 		string provider = ""
 	){
+		super.init( model = arguments.model, provider = arguments.provider )
 		variables.text     = arguments.text
 		variables.segments = arguments.segments
 		variables.words    = arguments.words
 		variables.language = arguments.language
 		variables.duration = arguments.duration
-		variables.model    = arguments.model
-		variables.provider = arguments.provider
 		return this
 	}
 
@@ -113,15 +104,16 @@ class extends="AiBaseResponse"{
 	 * Serialize the response to a struct (suitable for logging, storage, or JSON output).
 	 */
 	struct function toStruct(){
-		return {
-			text     : variables.text,
-			language : variables.language,
-			duration : variables.duration,
-			model    : variables.model,
-			provider : variables.provider,
-			segments : variables.segments,
-			words    : variables.words
-		}
+		return getBaseStruct().append(
+			{
+				text     : variables.text,
+				language : variables.language,
+				duration : variables.duration,
+				segments : variables.segments,
+				words    : variables.words
+			},
+			true
+		)
 	}
 
 	/**

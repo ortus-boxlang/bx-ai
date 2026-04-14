@@ -19,14 +19,102 @@
 class{
 
 	/**
-	 * Save data to a file on disk. This is a common operation for responses that include binary data, such as audio from text-to-speech synthesis.
+	 * The model used to generate this response
+	 */
+	property name="model" default="";
+
+	/**
+	 * The provider that generated this response
+	 */
+	property name="provider" default="";
+
+	/**
+	 * Arbitrary key-value metadata attached to this response (e.g. request IDs, cost centres)
+	 */
+	property name="metadata" type="struct";
+
+	/**
+	 * Timestamp of when this response object was created
+	 */
+	property name="timestamp" type="date";
+
+	/**
+	 * Base constructor — subclasses should call super.init() to populate common fields.
 	 *
-	 * @filePath Absolute or relative path where the audio file should be written
-	 * @data    The binary data to write to the file
+	 * @model    The model name used for the operation
+	 * @provider The provider name
+	 * @metadata Optional metadata struct
+	 */
+	function init(
+		string model    = "",
+		string provider = "",
+		struct metadata = {}
+	){
+		variables.model     = arguments.model
+		variables.provider  = arguments.provider
+		variables.metadata  = arguments.metadata
+		variables.timestamp = now()
+		return this
+	}
+
+	/**
+	 * Returns the common base fields as a struct.
+	 * Subclasses should call this inside their own toStruct() and append their specific fields.
+	 */
+	struct function getBaseStruct(){
+		return {
+			model     : variables.model,
+			provider  : variables.provider,
+			metadata  : variables.metadata,
+			timestamp : variables.timestamp
+		}
+	}
+
+	/**
+	 * Default serialization to a struct. Subclasses override this to add their own fields.
+	 */
+	struct function toStruct(){
+		return getBaseStruct()
+	}
+
+	/**
+	 * Serialize the response to a JSON string. Delegates to toStruct().
+	 */
+	string function toJSON(){
+		return jsonSerialize( toStruct() )
+	}
+
+	/**
+	 * Retrieve a value from the metadata bag.
+	 *
+	 * @key          The metadata key
+	 * @defaultValue Value to return when the key is absent
+	 */
+	any function getMetadataValue( required string key, any defaultValue = "" ){
+		return variables.metadata.keyExists( arguments.key ) ? variables.metadata[ arguments.key ] : arguments.defaultValue
+	}
+
+	/**
+	 * Store a value in the metadata bag. Returns this for fluent chaining.
+	 *
+	 * @key   The metadata key
+	 * @value The value to store
+	 */
+	AiBaseResponse function setMetadataValue( required string key, required any value ){
+		variables.metadata[ arguments.key ] = arguments.value
+		return this
+	}
+
+	/**
+	 * Save data to a file on disk. Works with both string and binary data.
+	 * Creates parent directories if they do not exist.
+	 *
+	 * @filePath Absolute or relative path where the file should be written
+	 * @data     The string or binary data to write
 	 *
 	 * @return The absolute path of the written file
 	 */
-	string function saveToFile( required string filePath, required binary data ){
+	string function saveToFile( required string filePath, required any data ){
 		arguments.filePath = expandPath( arguments.filePath )
 
 		// Make sure the target directory exists

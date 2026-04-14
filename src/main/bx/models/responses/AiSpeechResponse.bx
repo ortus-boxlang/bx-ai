@@ -28,15 +28,7 @@ class extends="AiBaseResponse"{
 	 */
 	property name="audioFormat" default="mp3";
 
-	/**
-	 * The model used for synthesis
-	 */
-	property name="model" default="";
 
-	/**
-	 * The provider name that generated this response
-	 */
-	property name="provider" default="";
 
 	/**
 	 * Constructor
@@ -52,10 +44,9 @@ class extends="AiBaseResponse"{
 		string model       = "",
 		string provider    = ""
 	){
+		super.init( model = arguments.model, provider = arguments.provider )
 		variables.audioData   = arguments.audioData
 		variables.audioFormat = arguments.audioFormat
-		variables.model       = arguments.model
-		variables.provider    = arguments.provider
 		return this
 	}
 
@@ -111,13 +102,14 @@ class extends="AiBaseResponse"{
 	 * Serialize response metadata to a struct (no binary data — safe for logging or JSON output).
 	 */
 	struct function toStruct(){
-		return {
-			audioFormat : variables.audioFormat,
-			model       : variables.model,
-			provider    : variables.provider,
-			size        : getSize(),
-			mimeType    : getMimeType()
-		}
+		return getBaseStruct().append(
+			{
+				audioFormat : variables.audioFormat,
+				size        : getSize(),
+				mimeType    : getMimeType()
+			},
+			true
+		)
 	}
 
 	/**
