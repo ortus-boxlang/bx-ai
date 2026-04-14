@@ -83,7 +83,7 @@ public class aiSpeakTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 			response = aiSpeak(
-				input   : "BoxLang is a modern, dynamic JVM language.",
+				text   : "BoxLang is a modern, dynamic JVM language.",
 				params : { voice: "alloy" }
 			)
 			hasAudio    = response.hasAudio()
@@ -112,7 +112,7 @@ public class aiSpeakTest extends BaseIntegrationTest {
 			"""
 			outputPath = "#outputPath#";
 			savedPath = aiSpeak(
-				input   : "Hello from BoxLang AI.",
+				text   : "Hello from BoxLang AI.",
 				options: { outputFile: outputPath }
 			)
 			fileExistsResult = fileExists( savedPath )
