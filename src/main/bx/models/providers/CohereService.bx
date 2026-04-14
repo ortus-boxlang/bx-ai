@@ -270,12 +270,13 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 
 			// Execute each tool call
+			var thisChatRequest = arguments.chatRequest;
 			var toolResults = result.tool_calls.map( toolCall => {
 				// Find the tool in our original tools list
 				var tool = tools.filter( t => t.getSchema().function.name == toolCall.name ).first();
 
 				// Invoke the tool with the parameters
-				var toolOutput = tool.invoke( toolCall.parameters, chatRequest );
+				var toolOutput = tool.invoke( toolCall.parameters, thisChatRequest );
 
 				return {
 					"call": toolCall,

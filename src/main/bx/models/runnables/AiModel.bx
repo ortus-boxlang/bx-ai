@@ -232,6 +232,19 @@ class extends="AiBaseRunnable" {
 		)
 
 		// -------------------------------------------------------------------------------------------
+		// --- Prepare middleware chain ---
+		// Agent middleware (if this model is being run by an agent) is added at the AiAgent level,
+		// so it wraps the entire model execution including all middleware and the service call.
+		// -------------------------------------------------------------------------------------------
+		// Inject middleware: agent middleware first (from options), then model's own middleware
+		if ( effectiveOptions.keyExists( "_agentMiddleware" ) && isArray( effectiveOptions._agentMiddleware ) ) {
+			chatRequest.addMiddleware( effectiveOptions._agentMiddleware )
+		}
+		if ( !variables.middleware.isEmpty() ) {
+			chatRequest.addMiddleware( variables.middleware )
+		}
+
+		// -------------------------------------------------------------------------------------------
 		// --- Announce before invocation (global event) ---
 		// -------------------------------------------------------------------------------------------
         BoxAnnounce( "beforeAIModelInvoke", { model: this, chatRequest: chatRequest } )

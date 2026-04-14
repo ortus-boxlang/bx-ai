@@ -115,8 +115,11 @@ class extends = "OpenAICompatibleService" implements="IAiChatService, IAiEmbeddi
 	){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		// Capture arguments in local scope so the closure doesn't lose them
+		var thisChatRequest      = arguments.chatRequest
+		var thisInteractionCount = arguments.interactionCount
 		return retryOnModelLoading( () => {
-			return super.chat( chatRequest = chatRequest, interactionCount = interactionCount )
+			return super.chat( chatRequest = thisChatRequest, interactionCount = thisInteractionCount )
 		} )
 	}
 
@@ -136,8 +139,12 @@ class extends = "OpenAICompatibleService" implements="IAiChatService, IAiEmbeddi
 	){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		// Capture arguments in local scope so the closure doesn't lose them
+		var thisChatRequest      = arguments.chatRequest
+		var thisCallback         = arguments.callback
+		var thisInteractionCount = arguments.interactionCount
 		return retryOnModelLoading( () => {
-			return super.chatStream( chatRequest = chatRequest, callback = callback, interactionCount = interactionCount )
+			return super.chatStream( chatRequest = thisChatRequest, callback = thisCallback, interactionCount = thisInteractionCount )
 		} )
 	}
 

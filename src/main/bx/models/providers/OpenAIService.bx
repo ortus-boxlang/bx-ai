@@ -249,14 +249,15 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		 */
 
 		// Capture chatRequest in local scope for use in nested closures
+		var thisChatRequest = arguments.chatRequest
 		var newMessages = arguments.chatRequest.getMessages().map( message -> message )
 		result.choices.each( ( choice, index ) => {
-			var targetChatRequest = chatRequest
+			var targetChatRequest = thisChatRequest
 			// add the tool call into our message history
 			newMessages.append( choice.message )
 			// find the tool, invoke it, append the result to the chat history
 			choice.message.tool_calls.each( ( toolCall, i ) => {
-				var toolAttempt = chatRequest.getTool( toolCall.function.name )
+				var toolAttempt = thisChatRequest.getTool( toolCall.function.name )
 				if( toolAttempt.isPresent() ){
 					var tool = toolAttempt.get();
 
@@ -393,7 +394,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		// -------------------------------------------------------------------------------------------
 		// --- Stream the chat response, with streaming tool call support ---
 		// -------------------------------------------------------------------------------------------
-		var streamState = sendStreamRequest( chatRequest, dataPacket, callback )
+		var streamState = sendStreamRequest( arguments.chatRequest, dataPacket, arguments.callback )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire local callback for post mods ---
@@ -445,9 +446,11 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		assistantMessage.tool_calls = streamState.toolCalls
 		newMessages.append( assistantMessage )
 
+		var thisChatRequest = arguments.chatRequest
+		var thisCallback    = arguments.callback
 		streamState.toolCalls.each( toolCall => {
-			var targetChatRequest = chatRequest
-			var toolAttempt       = chatRequest.getTool( toolCall.function.name ?: "" )
+			var targetChatRequest = thisChatRequest
+			var toolAttempt       = thisChatRequest.getTool( toolCall.function.name ?: "" )
 			var toolArguments     = {}
 
 			try {
@@ -533,8 +536,8 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		} );
 
 		// Continue streaming the final answer after tool execution
-		arguments.chatRequest.setMessages( newMessages );
-		chatStream( arguments.chatRequest, arguments.callback, arguments.interactionCount + 1 );
+		thisChatRequest.setMessages( newMessages );
+		chatStream( thisChatRequest, thisCallback, arguments.interactionCount + 1 );
 	}
 
 	/**
