@@ -435,7 +435,8 @@ abstract class implements="IAiService" {
 		var streamState = {
 			"content": "",
 			"finishReason": "",
-			"toolCalls": []
+			"toolCalls": [],
+			"usage": {}
 		};
 
 		// Announce the request
@@ -567,6 +568,11 @@ abstract class implements="IAiService" {
 	 * @return void
 	 */
 	private void function updateStreamState( required struct streamState, required struct parsedChunk ){
+		// Capture usage from final chunk (arrives with empty choices when stream_options.include_usage is true)
+		if( arguments.parsedChunk.keyExists( "usage" ) && isStruct( arguments.parsedChunk.usage ) && !structIsEmpty( arguments.parsedChunk.usage ) ){
+			arguments.streamState.usage = arguments.parsedChunk.usage;
+		}
+
 		var firstChoice = arguments.parsedChunk.choices?.first();
 		if( isNull( firstChoice ) ){
 			return;

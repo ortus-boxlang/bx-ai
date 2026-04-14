@@ -138,7 +138,8 @@ class extends="BaseService" implements="IAiChatService" {
 			"toolInputBuffers": {},
 			"toolCallIndexMap": {},
 			"stopReason": "",
-			"emittedAnyText": false
+			"emittedAnyText": false,
+			"usage": { "input_tokens": 0, "output_tokens": 0 }
 		};
 
 		var httpRequest = http( getChatURL() )
@@ -167,6 +168,9 @@ class extends="BaseService" implements="IAiChatService" {
 					if( parsedChunk.type == "message_start" ){
 						streamState.model = parsedChunk.message?.model ?: streamState.model;
 						streamState.messageId = parsedChunk.message?.id ?: streamState.messageId;
+						if( !isNull( parsedChunk.message?.usage ) ){
+							streamState.usage.input_tokens = parsedChunk.message.usage.input_tokens ?: 0;
+						}
 						return;
 					}
 
@@ -219,6 +223,9 @@ class extends="BaseService" implements="IAiChatService" {
 
 					if( parsedChunk.type == "message_delta" ){
 						streamState.stopReason = parsedChunk.delta?.stop_reason ?: streamState.stopReason;
+						if( !isNull( parsedChunk.usage ) ){
+							streamState.usage.output_tokens = parsedChunk.usage.output_tokens ?: 0;
+						}
 						return;
 					}
 				} catch( any e ){
@@ -271,6 +278,24 @@ class extends="BaseService" implements="IAiChatService" {
 				);
 			} )
 			.send();
+
+		// -------------------------------------------------------------------------------------------
+		// --- Usage Event Announcement (Streaming) ---
+		// -------------------------------------------------------------------------------------------
+		var claudeStreamTotalTokens = streamState.usage.input_tokens + streamState.usage.output_tokens;
+		if( claudeStreamTotalTokens > 0 ){
+			BoxAnnounce( "onAITokenCount", {
+				provider         : this,
+				operation        : "stream",
+				model            : arguments.chatRequest.getModel(),
+				promptTokens     : streamState.usage.input_tokens,
+				completionTokens : streamState.usage.output_tokens,
+				totalTokens      : claudeStreamTotalTokens,
+				aiRequest        : arguments.chatRequest,
+				usage            : streamState.usage,
+				timestamp        : now()
+			} )
+		}
 
 		if( streamState.stopReason == "tool_use" && streamState.toolCalls.len() ){
 			var runtimeChatRequest = arguments.chatRequest;

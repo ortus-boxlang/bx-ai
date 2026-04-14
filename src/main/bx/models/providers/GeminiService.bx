@@ -277,9 +277,18 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 
 		// No auth header for Gemini
 		arguments.chatRequest.setSendAuthHeader( false );
+		var geminiUsage = { "promptTokens": 0, "completionTokens": 0, "totalTokens": 0, "raw": {} };
 		var normalizedCallback = ( chunk ) => {
 			var content = chunk.candidates?.first()?.content?.parts?.first()?.text ?: "";
 			var finishReason = chunk.candidates?.first()?.finishReason ?: "";
+
+			// Capture usage metadata from Gemini chunks
+			if( !isNull( chunk.usageMetadata ) ){
+				geminiUsage.promptTokens     = chunk.usageMetadata.promptTokenCount ?: 0;
+				geminiUsage.completionTokens = chunk.usageMetadata.candidatesTokenCount ?: 0;
+				geminiUsage.totalTokens      = chunk.usageMetadata.totalTokenCount ?: 0;
+				geminiUsage.raw              = chunk.usageMetadata;
+			}
 
 			userCallback({
 				"provider": "Gemini",
@@ -301,6 +310,23 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 
 		// Send it with streaming
 		sendStreamRequest( chatRequest, dataPacket, normalizedCallback )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Usage Event Announcement (Streaming) ---
+		// -------------------------------------------------------------------------------------------
+		if( geminiUsage.totalTokens > 0 ){
+			BoxAnnounce( "onAITokenCount", {
+				provider         : this,
+				operation        : "stream",
+				model            : arguments.chatRequest.getModel(),
+				promptTokens     : geminiUsage.promptTokens,
+				completionTokens : geminiUsage.completionTokens,
+				totalTokens      : geminiUsage.totalTokens,
+				aiRequest        : arguments.chatRequest,
+				usage            : geminiUsage.raw,
+				timestamp        : now()
+			} )
+		}
 	}
 
 	/**

@@ -386,6 +386,15 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		}.append( arguments.chatRequest.getParams() )
 
 		// -------------------------------------------------------------------------------------------
+		// --- Request usage data in stream response ---
+		// -------------------------------------------------------------------------------------------
+		if( !dataPacket.keyExists( "stream_options" ) ){
+			dataPacket[ "stream_options" ] = { "include_usage": true };
+		} else if( isStruct( dataPacket.stream_options ) && !dataPacket.stream_options.keyExists( "include_usage" ) ){
+			dataPacket.stream_options[ "include_usage" ] = true;
+		}
+
+		// -------------------------------------------------------------------------------------------
 		// --- Tooling Detection ---
 		// -------------------------------------------------------------------------------------------
 		if( dataPacket.keyExists( "tools" ) ){
@@ -417,6 +426,26 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		// --- Fire local callback for post mods ---
 		// -------------------------------------------------------------------------------------------
 		streamState = postResponse( arguments.chatRequest, dataPacket, streamState, "stream" )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Usage Event Announcement (Streaming) ---
+		// -------------------------------------------------------------------------------------------
+		if( !structIsEmpty( streamState.usage ) ){
+			var streamTotalTokens = streamState.usage.keyExists( "total_tokens" ) ? streamState.usage.total_tokens : 0;
+			if( streamTotalTokens > 0 ){
+				BoxAnnounce( "onAITokenCount", {
+					provider         : this,
+					operation        : "stream",
+					model            : arguments.chatRequest.getModel(),
+					promptTokens     : streamState.usage.keyExists( "prompt_tokens" )     ? streamState.usage.prompt_tokens     : 0,
+					completionTokens : streamState.usage.keyExists( "completion_tokens" ) ? streamState.usage.completion_tokens : 0,
+					totalTokens      : streamTotalTokens,
+					aiRequest        : arguments.chatRequest,
+					usage            : streamState.usage,
+					timestamp        : now()
+				} )
+			}
+		}
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire afterLLMCall middleware, in reverse order ---
