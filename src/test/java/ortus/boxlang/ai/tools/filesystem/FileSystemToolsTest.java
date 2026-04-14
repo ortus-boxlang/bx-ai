@@ -215,7 +215,7 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 	// readMultipleFiles
 	// =========================================================================
 
-	@DisplayName( "readMultipleFiles() returns a JSON map of path to content" )
+	@DisplayName( "readMultipleFiles() returns a struct mapping path to content" )
 	@Test
 	public void testReadMultipleFiles() throws IOException {
 		Path	fileA	= tmpDir.resolve( "a.txt" );
@@ -228,8 +228,7 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 				"""
 					import bxModules.bxai.models.tools.filesystem.FileSystemTools;
 					tools   = new FileSystemTools( allowedPaths: [ "%s" ] );
-					rawJson = tools.readMultipleFiles( jsonSerialize( [ "%s", "%s" ] ) )
-					parsed  = jsonDeserialize( rawJson )
+					parsed  = tools.readMultipleFiles( jsonSerialize( [ "%s", "%s" ] ) )
 					resultA = parsed[ "%s" ]
 					resultB = parsed[ "%s" ]
 					result  = ( resultA == "alpha" && resultB == "beta" )
@@ -257,11 +256,10 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 			String.format(
 				"""
 					import bxModules.bxai.models.tools.filesystem.FileSystemTools;
-					tools   = new FileSystemTools( allowedPaths: [ "%s" ] );
-					rawJson = tools.readMultipleFiles( jsonSerialize( [ "%s", "/etc/passwd" ] ) )
-					parsed  = jsonDeserialize( rawJson )
+					tools      = new FileSystemTools( allowedPaths: [ "%s" ] );
+					parsed     = tools.readMultipleFiles( jsonSerialize( [ "%s", "/etc/passwd" ] ) )
 					errorEntry = parsed[ "/etc/passwd" ]
-					result  = errorEntry.startsWith( "ERROR:" )
+					result     = errorEntry.startsWith( "ERROR:" )
 				""",
 				bxTmpDir,
 				fileA.toAbsolutePath().toString().replace( "\\", "/" )
@@ -358,7 +356,7 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 	// fileMetadata / pathExists
 	// =========================================================================
 
-	@DisplayName( "fileMetadata() returns JSON with size and mimeType fields" )
+	@DisplayName( "fileMetadata() returns a struct with size and mimeType fields" )
 	@Test
 	public void testFileMetadata() throws IOException {
 		Path testFile = tmpDir.resolve( "meta.txt" );
@@ -368,10 +366,9 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 			String.format(
 				"""
 					import bxModules.bxai.models.tools.filesystem.FileSystemTools;
-					tools    = new FileSystemTools( allowedPaths: [ "%s" ] );
-					rawJson  = tools.fileMetadata( "%s" )
-					meta     = jsonDeserialize( rawJson )
-					result   = ( structKeyExists( meta, "size" ) && structKeyExists( meta, "mimeType" ) )
+					tools  = new FileSystemTools( allowedPaths: [ "%s" ] );
+					meta   = tools.fileMetadata( "%s" )
+					result = ( structKeyExists( meta, "size" ) && structKeyExists( meta, "mimeType" ) )
 				""",
 				bxTmpDir,
 				testFile.toAbsolutePath().toString().replace( "\\", "/" )
@@ -526,16 +523,9 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 				"""
 					import bxModules.bxai.models.tools.filesystem.FileSystemTools;
 					tools   = new FileSystemTools( allowedPaths: [ "%s" ] );
-					// Debug: list the directory first
-					rawList = directoryList( path: "%s", recurse: false, listInfo: "path", type: "file" )
-					systemOutput( "DEBUG dirlist type: " & rawList.getClass().getName(), true )
-					systemOutput( "DEBUG dirlist size: " & rawList.len(), true )
-					rawJson = tools.searchFiles( "%s", "fox" )
-					systemOutput( "DEBUG searchFiles raw: " & rawJson, true )
-					matches = jsonDeserialize( rawJson )
+					matches = tools.searchFiles( "%s", "fox" )
 					result  = ( matches.len() == 1 && matches[1].content.findNoCase( "fox" ) > 0 )
 				""",
-				bxTmpDir,
 				bxTmpDir,
 				bxTmpDir
 			),
@@ -550,7 +540,7 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 	// listAllowedDirectories
 	// =========================================================================
 
-	@DisplayName( "listAllowedDirectories() returns the configured allowed paths as JSON" )
+	@DisplayName( "listAllowedDirectories() returns the configured allowed paths" )
 	@Test
 	public void testListAllowedDirectories() {
 		// @formatter:off
@@ -558,10 +548,9 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 			String.format(
 				"""
 					import bxModules.bxai.models.tools.filesystem.FileSystemTools;
-					tools   = new FileSystemTools( allowedPaths: [ "%s" ] );
-					rawJson = tools.listAllowedDirectories()
-					dirs    = jsonDeserialize( rawJson )
-					result  = ( dirs.len() == 1 )
+					tools  = new FileSystemTools( allowedPaths: [ "%s" ] );
+					dirs   = tools.listAllowedDirectories()
+					result = ( dirs.len() == 1 )
 				""",
 				bxTmpDir
 			),
@@ -579,10 +568,9 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 				import bxModules.bxai.models.tools.filesystem.FileSystemTools;
-				tools   = new FileSystemTools();
-				rawJson = tools.listAllowedDirectories()
-				dirs    = jsonDeserialize( rawJson )
-				result  = ( dirs.len() == 0 )
+				tools  = new FileSystemTools();
+				dirs   = tools.listAllowedDirectories()
+				result = ( dirs.len() == 0 )
 			""",
 			context
 		);
@@ -595,7 +583,7 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 	// listDirectory / directoryTree
 	// =========================================================================
 
-	@DisplayName( "listDirectory() returns a JSON array with name and type fields" )
+	@DisplayName( "listDirectory() returns an array with name and type fields" )
 	@Test
 	public void testListDirectory() throws IOException {
 		Files.writeString( tmpDir.resolve( "f1.txt" ), "a" );
@@ -607,8 +595,7 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 				"""
 					import bxModules.bxai.models.tools.filesystem.FileSystemTools;
 					tools   = new FileSystemTools( allowedPaths: [ "%s" ] );
-					rawJson = tools.listDirectory( "%s" )
-					entries = jsonDeserialize( rawJson )
+					entries = tools.listDirectory( "%s" )
 					result  = ( entries.len() == 3 )
 				""",
 				bxTmpDir,
@@ -621,7 +608,7 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 		assertThat( variables.get( result ) ).isEqualTo( true );
 	}
 
-	@DisplayName( "directoryTree() returns a nested JSON tree with children" )
+	@DisplayName( "directoryTree() returns a nested struct tree with children" )
 	@Test
 	public void testDirectoryTree() throws IOException {
 		Path subDir = Files.createDirectory( tmpDir.resolve( "sub" ) );
@@ -631,10 +618,9 @@ public class FileSystemToolsTest extends BaseIntegrationTest {
 			String.format(
 				"""
 					import bxModules.bxai.models.tools.filesystem.FileSystemTools;
-					tools   = new FileSystemTools( allowedPaths: [ "%s" ] );
-					rawJson = tools.directoryTree( "%s" )
-					tree    = jsonDeserialize( rawJson )
-					result  = ( tree.type == "dir" && tree.children.len() > 0 )
+					tools  = new FileSystemTools( allowedPaths: [ "%s" ] );
+					tree   = tools.directoryTree( "%s" )
+					result = ( tree.type == "dir" && tree.children.len() > 0 )
 				""",
 				bxTmpDir,
 				bxTmpDir

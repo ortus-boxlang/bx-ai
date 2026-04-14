@@ -163,10 +163,10 @@ class {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Return file metadata as a JSON string.
+	 * Return file metadata.
 	 */
-	@AITool( "Return metadata about a file — name, absolute path, size in bytes, MIME type, and last-modified date — as a JSON string." )
-	public string function fileMetadata( required string path ) {
+	@AITool( "Return metadata about a file — name, absolute path, size in bytes, MIME type, and last-modified date." )
+	public struct function fileMetadata( required string path ) {
 		guardPath( arguments.path )
 		if ( !fileExists( arguments.path ) ) {
 			throw(
@@ -177,14 +177,14 @@ class {
 		var info     = fileInfo( arguments.path )
 		var mimeType = ""
 		try { mimeType = fileGetMimeType( arguments.path ) } catch ( any ignore ) {}
-		return jsonSerialize( {
+		return {
 			name            : info.name,
 			path            : info.path,
 			size            : info.size,
 			type            : info.type,
 			mimeType        : mimeType,
 			dateLastModified: info.lastModified.dateTimeFormat( "iso" )
-		} )
+		}
 	}
 
 	/**
@@ -262,10 +262,10 @@ class {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * List directory contents as a JSON array.
+	 * List directory contents.
 	 */
-	@AITool( "List the contents of a directory and return a JSON array where each entry contains name, path, type (file or dir), size, and last-modified date. Use the filter argument to match glob patterns such as *.txt or *.json|*.yaml. Set recurse to true to include all subdirectories." )
-	public string function listDirectory(
+	@AITool( "List the contents of a directory. Returns an array where each entry contains name, path, type (file or dir), size, and last-modified date. Use the filter argument to match glob patterns such as *.txt or *.json|*.yaml. Set recurse to true to include all subdirectories." )
+	public array function listDirectory(
 		required string  path,
 		string           filter  = "",
 		boolean          recurse = false
@@ -298,7 +298,7 @@ class {
 				dateLastModified: row.dateLastModified.dateTimeFormat( "iso" )
 			} )
 		} )
-		return jsonSerialize( results )
+		return results
 	}
 
 	/**
@@ -334,8 +334,8 @@ class {
 	/**
 	 * Read multiple files in a single batch.
 	 */
-	@AITool( "Read multiple files in a single batch and return a JSON object mapping each path to its text content. The paths argument must be a JSON array of absolute file paths. Unreadable paths are mapped to an error message instead of throwing." )
-	public string function readMultipleFiles( required string paths ) {
+	@AITool( "Read multiple files in a single batch. Returns a struct mapping each path to its text content. The paths argument must be a JSON array of absolute file paths. Unreadable paths are mapped to an error message instead of throwing." )
+	public struct function readMultipleFiles( required string paths ) {
 		var pathList = jsonDeserialize( arguments.paths )
 		var results  = {}
 		pathList.each( p => {
@@ -346,7 +346,7 @@ class {
 				results[ p ] = "ERROR: #e.message#"
 			}
 		} )
-		return jsonSerialize( results )
+		return results
 	}
 
 	/**
@@ -376,8 +376,8 @@ class {
 	/**
 	 * Search file contents within a directory for lines matching a pattern.
 	 */
-	@AITool( "Search file contents within a directory for lines matching a string or regex pattern. Returns a JSON array of matches, each containing the file path, line number, and the matching line content. Set recurse to true to search subdirectories." )
-	public string function searchFiles(
+	@AITool( "Search file contents within a directory for lines matching a string or regex pattern. Returns an array of matches, each containing the file path, line number, and the matching line content. Set recurse to true to search subdirectories." )
+	public array function searchFiles(
 		required string  path,
 		required string  pattern,
 		boolean          recurse = false
@@ -406,7 +406,7 @@ class {
 				}
 			} )
 		} )
-		return jsonSerialize( matches )
+		return matches
 	}
 
 	// -------------------------------------------------------------------------
@@ -416,9 +416,9 @@ class {
 	/**
 	 * Return the configured allowed root directories.
 	 */
-	@AITool( "Return a JSON array of the configured allowed root directories. These are the only paths the filesystem tools will access. If the list is empty, all paths are allowed." )
-	public string function listAllowedDirectories() {
-		return jsonSerialize( variables.allowedPaths )
+	@AITool( "Return the configured allowed root directories. These are the only paths the filesystem tools will access. If the list is empty, all paths are allowed." )
+	public array function listAllowedDirectories() {
+		return variables.allowedPaths
 	}
 
 	// -------------------------------------------------------------------------
@@ -426,10 +426,10 @@ class {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Build and return a recursive JSON tree of a directory.
+	 * Build and return a recursive tree of a directory.
 	 */
-	@AITool( "Return a recursive JSON tree of a directory. Each node contains name, type ('file' or 'dir'), and path. Directory nodes also have a children array file nodes also include size in bytes." )
-	public string function directoryTree( required string path ) {
+	@AITool( "Return a recursive tree of a directory. Each node contains name, type ('file' or 'dir'), and path. Directory nodes also have a children array. File nodes also include size in bytes." )
+	public struct function directoryTree( required string path ) {
 		guardPath( arguments.path )
 		if ( !directoryExists( arguments.path ) ) {
 			throw(
@@ -437,7 +437,7 @@ class {
 				message : "Directory not found: #arguments.path#"
 			)
 		}
-		return jsonSerialize( buildTree( arguments.path ) )
+		return buildTree( arguments.path )
 	}
 
 	// -------------------------------------------------------------------------
