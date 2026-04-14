@@ -573,10 +573,11 @@ abstract class implements="IAiService" {
 			arguments.streamState.usage = arguments.parsedChunk.usage;
 		}
 
-		var firstChoice = arguments.parsedChunk.choices?.first();
-		if( isNull( firstChoice ) ){
+		var choices = arguments.parsedChunk.choices ?: [];
+		if( !isArray( choices ) || choices.isEmpty() ){
 			return;
 		}
+		var firstChoice = choices.first();
 
 		// Accumulate streamed content
 		var content = firstChoice.delta?.content ?: "";
