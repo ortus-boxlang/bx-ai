@@ -70,7 +70,7 @@ class extends="AiBaseRequest" {
 		any audio = "",
 		struct params = {},
 		struct options = {},
-		struct methodDefaults = { returnFormat: "text" }
+		struct methodDefaults = {}
 	){
 		arguments.options = prepareOptions( arguments.options, arguments.methodDefaults );
 

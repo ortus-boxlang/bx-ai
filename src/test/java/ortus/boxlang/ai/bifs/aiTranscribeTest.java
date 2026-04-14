@@ -132,10 +132,12 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 			"""
 			result = aiTranscribe(
 				audio  : "#SAMPLE_AUDIO#",
-				options: { provider: "groq" }
+				options: { provider: "groq", apiKey: "#GROQ_API_KEY#" }
 			)
 			isText = isSimpleValue( result )
-			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO ),
+			println( result )
+			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO )
+			 .replace( "#GROQ_API_KEY#", dotenv.get( "GROQ_API_KEY", "" ) ),
 			context
 		);
 		// @formatter:on

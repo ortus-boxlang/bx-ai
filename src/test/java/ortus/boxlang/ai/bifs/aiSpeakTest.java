@@ -104,7 +104,6 @@ public class aiSpeakTest extends BaseIntegrationTest {
 	}
 
 	@DisplayName( "aiSpeak with outputFile option saves audio to disk" )
-	@org.junit.jupiter.api.Disabled( "Requires OPENAI_API_KEY environment variable" )
 	@Test
 	public void testAiSpeakSavesToFile() {
 		var outputPath = System.getProperty( "java.io.tmpdir" ) + "/bxai-speak-test.mp3";

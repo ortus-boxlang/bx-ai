@@ -129,18 +129,20 @@ public class aiTranslateTest extends BaseIntegrationTest {
 		assertThat( provider ).isEqualTo( "OpenAI" );
 	}
 
-	@DisplayName( "aiTranslate with Groq provider" )
+	@DisplayName( "aiTranslate with Mistral provider" )
 	@Test
-	public void testAiTranslateGroq() {
+	public void testAiTranslateMistral() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
 			result = aiTranslate(
 				audio  : "#SAMPLE_AUDIO#",
-				options: { provider: "groq" }
-			)
+				options: { provider: "mistral", apiKey: "#MISTRAL_API_KEY#" }
+			 )
+			 println( result )
 			isText = isSimpleValue( result )
-			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO ),
+			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO )
+			 .replace( "#MISTRAL_API_KEY#", dotenv.get( "MISTRAL_API_KEY", "" ) ),
 			context
 		);
 		// @formatter:on

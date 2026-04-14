@@ -42,6 +42,15 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		DEFAULT_EMBED_PARAMS = {
 			"model" : "text-embedding-3-small"
 		}
+		DEFAULT_SPEECH_PARAMS = {
+			// https://platform.openai.com/docs/speech-to-text/overview
+			"model" : "tts-1-small",
+			"voice" : "alloy"
+		}
+		DEFAULT_TRANSCRIPTION_PARAMS = {
+			// https://platform.openai.com/docs/speech-to-text/overview
+			"model" : "whisper-1"
+		}
 	}
 
 	/**
@@ -679,7 +688,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 	public AiSpeechResponse function speak( required AiSpeechRequest speechRequest ){
 		// Seed defaults
 		arguments.speechRequest
-			.mergeServiceParams( { "model": "tts-1", "voice": "alloy" } )
+			.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
 			.setModelIfEmpty( variables.params.model ?: "" )
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceParams( variables.params )
@@ -694,14 +703,28 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 
 		// Optional params
 		if ( arguments.speechRequest.getSpeed() != 1.0 ) {
-			dataPacket.speed = arguments.speechRequest.getSpeed();
+			dataPacket.speed = arguments.speechRequest.getSpeed()
 		}
 		if ( arguments.speechRequest.getOutputFormat().len() && arguments.speechRequest.getOutputFormat() != "mp3" ) {
-			dataPacket.response_format = arguments.speechRequest.getOutputFormat();
+			dataPacket.response_format = arguments.speechRequest.getOutputFormat()
 		}
 
 		// Merge remaining provider params
-		dataPacket.append( arguments.speechRequest.getParams() );
+		dataPacket.append( arguments.speechRequest.getParams() )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Localized Pre Callback ---
+		// -------------------------------------------------------------------------------------------
+		// Allow concrete providers to normalize the request packet before sending
+		dataPacket = preRequest( arguments.speechRequest, dataPacket, "speech" )
+
+		// Fire onAISpeakRequest announcement
+		BoxAnnounce( "onAISpeakRequest", {
+			provider      : this,
+			operation     : "speech",
+			aiRequest     : arguments.speechRequest,
+			dataPacket    : dataPacket
+		} )
 
 		// Logging
 		if ( arguments.speechRequest.getLogRequest() ) {
@@ -720,8 +743,15 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			timeout = arguments.speechRequest.getTimeout()
 		{
 			bx:httpParam type="header" name="content-type" value="application/json";
-			bx:httpParam type="header" name="Authorization" value="Bearer #arguments.speechRequest.getApiKey()#";
 
+			// Auth Header ONLY if the provider requires it
+			// This is the default for OpenAI
+			// If the provider does not require it, set it to false
+			if( arguments.speechRequest.getSendAuthHeader() ){
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.speechRequest.getApiKey()#";
+			}
+
+			// Custom headers from the request
 			for ( var thisHeader in arguments.speechRequest.getHeaders() ) {
 				bx:httpParam
 					type  = "header"
@@ -749,7 +779,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				operation   : "speech",
 				aiRequest   : arguments.speechRequest,
 				canRetry    : false
-			} );
+			} )
 
 			throw( type: "ProviderError", message: "OpenAI TTS error: #errorMessage#" )
 		}
@@ -762,12 +792,29 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			println( "aiSpeak response status=#speechResult.statusCode# size=#speechResult.fileContent.len()# bytes" )
 		}
 
-		return new AiSpeechResponse(
+		// Construct and return the AiSpeechResponse
+		var results = new AiSpeechResponse(
 			audioData   : speechResult.fileContent,
 			audioFormat : arguments.speechRequest.getOutputFormat(),
 			model       : arguments.speechRequest.getModel(),
 			provider    : variables.name
-		);
+		)
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Localized Post Callback ---
+		// -------------------------------------------------------------------------------------------
+		// Allow concrete providers to normalize the response before returning
+		results = postResponse( arguments.speechRequest, dataPacket, results, "speech" )
+
+		// Announcement for successful response
+		BoxAnnounce( "onAISpeakResponse", {
+			provider      : this,
+			operation     : "speech",
+			aiRequest     : arguments.speechRequest,
+			aiResponse    : results
+		} )
+
+		return results
 	}
 
 	/**
@@ -818,11 +865,23 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		required string targetURL
 	){
 		arguments.transcriptionRequest
-			.mergeServiceParams( { "model": "whisper-1" } )
+			.mergeServiceParams( static.DEFAULT_TRANSCRIPTION_PARAMS )
 			.setModelIfEmpty( variables.params.model ?: "" )
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceParams( variables.params )
 			.mergeServiceHeaders( variables.headers )
+
+		// Build a virtual data packet for the pre/post hooks (multipart fields represented as a struct)
+		var dataPacket = {
+			"model"          : arguments.transcriptionRequest.getModel(),
+			"response_format": arguments.transcriptionRequest.getResponseFormat(),
+			"language"       : arguments.transcriptionRequest.getLanguage()
+		}
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Localized Pre Callback ---
+		// -------------------------------------------------------------------------------------------
+		// Allow concrete providers to normalize the request before sending
+		dataPacket = preRequest( arguments.transcriptionRequest, dataPacket, "transcription" )
 
 		// Logging
 		if ( arguments.transcriptionRequest.getLogRequest() ) {
@@ -908,11 +967,12 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		var responseFormat = arguments.transcriptionRequest.getResponseFormat();
 		if ( responseFormat == "text" || responseFormat == "srt" || responseFormat == "vtt" ) {
 			// Plain text / subtitle format
-			return new AiTranscriptionResponse(
+			var transcriptionResponse = new AiTranscriptionResponse(
 				text     : transcribeResult.fileContent,
 				model    : arguments.transcriptionRequest.getModel(),
 				provider : variables.name
 			)
+			return postResponse( arguments.transcriptionRequest, dataPacket, transcriptionResponse, "transcription" )
 		}
 
 		// JSON / verbose_json
@@ -930,7 +990,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			println( "aiTranscribe response: #transcribeResult.fileContent#" )
 		}
 
-		return new AiTranscriptionResponse(
+		var transcriptionResponse = new AiTranscriptionResponse(
 			text     : parsedResponse.text ?: "",
 			segments : parsedResponse.segments ?: [],
 			words    : parsedResponse.words ?: [],
@@ -939,6 +999,11 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			model    : arguments.transcriptionRequest.getModel(),
 			provider : variables.name
 		)
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Localized Post Callback ---
+		// -------------------------------------------------------------------------------------------
+		// Allow concrete providers to normalize the response before returning
+		return postResponse( arguments.transcriptionRequest, dataPacket, transcriptionResponse, "transcription" )
 	}
 
 }
