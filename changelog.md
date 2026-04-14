@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **6 new interception points**: `beforeAISpeech`, `afterAISpeech`, `beforeAITranscription`, `afterAITranscription`, `beforeAITranslation`, `afterAITranslation`.
   - **`audio` settings block** in module config: `defaultVoice`, `defaultOutputFormat`, `defaultSpeechModel`, `defaultTranscriptionModel`.
 
+- **Audio Agent Tools — `speak@bxai`, `transcribe@bxai`, `translate@bxai`**: New `AudioTools` class (`models/tools/audio/AudioTools.bx`) auto-registered in the global tool registry at module startup. `speak@bxai` converts text to speech and returns the saved file path (auto-generates a temp file when no `outputFile` is supplied). `transcribe@bxai` transcribes a local file or URL to plain text. `translate@bxai` translates any-language audio to English text. Opt-in by name: `aiAgent( tools: [ "speak@bxai", "transcribe@bxai", "translate@bxai" ] )`.
+
 - **Async Runnables and Parallel Execution**:
   - **`runAsync()` on all runnables** (`IAiRunnable`, `AiBaseRunnable`): Every runnable now has a non-blocking `runAsync(input, params, options)` method that dispatches execution to the `io-tasks` virtual thread pool and returns a `BoxFuture`. Mirrors the existing `aiChatAsync`, `loadAsync()`, and `seedAsync()` patterns throughout the module.
   - **`AiRunnableParallel` class** (`models/runnables/AiRunnableParallel.bx`): New runnable that accepts a named struct of runnables, fans them out concurrently via `runAsync()`, and returns a `{ name: result }` struct once all futures complete. Mirrors LangChain's `RunnableParallel` — a structural parallel composition primitive that integrates cleanly into the existing pipeline system via `.to()`, `.run()`, and `.runAsync()`.
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🪲 Fixed
 
+- `chatStream()` across all providers never fires the onAITokenCount event, making streaming calls completely invisible to usage tracking, billing, and monitoring. The non-streaming chat() path fires it correctly.
 - `AiModel.stream()`: inject agent and model middleware into `chatRequest`, matching the existing pattern in `run()`
 - `DockerModelRunnerService`: capture arguments into local vars before `retryOnModelLoading` closure to prevent `ArgumentsScope` resolution failure
 - `OpenAIService.chat()`: capture `chatRequest` before nested `.each()` closures for tool calling

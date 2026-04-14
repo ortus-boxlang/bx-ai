@@ -707,7 +707,7 @@ The **AI Tool Registry** is a global singleton that stores named `ITool` instanc
 - 📦 **Module scoping** — namespace tools as `toolName@moduleName` to avoid collisions
 - 🔍 **Lazy resolution** — tools are resolved to `ITool` instances right before each LLM request
 - 🔌 **Auto-scanning** — annotate methods with `@AITool` and call `scan()` to register them all at once
-- ⚡ **Built-in tools** — `now@bxai` (current date/time) is registered automatically on module load
+- ⚡ **Built-in tools** — `now@bxai` (current date/time), `speak@bxai` (text-to-speech), `transcribe@bxai` (speech-to-text), and `translate@bxai` (audio-to-English) are registered automatically on module load
 
 #### 💡 Quick Examples
 
@@ -774,6 +774,27 @@ result = aiChat(
     { tools: [ "now@bxai" ] }
 )
 // AI knows the current date/time without any extra wiring
+```
+
+**Using the built-in audio tools (`speak@bxai`, `transcribe@bxai`, `translate@bxai`):**
+
+```javascript
+// All three are auto-registered on module load — opt in by name
+var agent = aiAgent(
+    name         : "VoiceAssistant",
+    instructions : "You are a helpful voice assistant. Speak responses aloud.",
+    tools        : [ "now@bxai", "speak@bxai", "transcribe@bxai", "translate@bxai" ]
+)
+
+// Agent can now convert text to speech, transcribe audio files, or translate audio to English
+agent.run( "Say hello to the user and tell them today's date" )
+// → AI calls speak@bxai with the greeting text, returns the saved audio file path
+
+// Standalone transcription — agent calls transcribe@bxai automatically
+agent.run( "Please transcribe the file at /recordings/meeting.mp3" )
+
+// Translation — agent calls translate@bxai for non-English audio
+agent.run( "Translate the Spanish audio at /audio/mensaje.mp3 to English" )
 ```
 
 **Opt-in `httpGet` tool (NOT auto-registered):**

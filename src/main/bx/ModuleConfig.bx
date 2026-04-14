@@ -276,8 +276,16 @@ class {
 			new bxModules.bxai.models.tools.core.CoreTools(),
 			"bxai"
 		)
+
+		// Register audio tools into the registry.
+		aiToolRegistry().scanClass(
+			new bxModules.bxai.models.tools.audio.AudioTools(),
+			"bxai"
+		)
+
+		// Log module load and core/audio tool registration
 		writeLog(
-			text: "BoxLang AI loaded and core tools registered into the registry",
+			text: "BoxLang AI loaded and core/audio tools registered into the registry",
 			type: "debug",
 			log: "ai"
 		)
