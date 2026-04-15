@@ -982,7 +982,13 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			try {
 				var errorData  = jsonDeserialize( transcribeResult.fileContent );
 				errorMessage   = errorData.error?.message ?: errorData.toString();
-			} catch ( any parseEx ) {}
+			} catch ( any parseEx ) {
+				writeLog(
+					text: "Unable to parse transcription error response: #transcribeResult.toString()#",
+					type: "warning",
+					log : "ai"
+				)
+			}
 
 			BoxAnnounce( "onAIError", {
 				error       : errorMessage,
@@ -994,7 +1000,11 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				canRetry    : false
 			} );
 
-			throw( type: "ProviderError", message: "HTTP Provider Error: #errorMessage# #errorDetail#" )
+			throw(
+				type: "ProviderError",
+				message: "HTTP Provider (#arguments.targetUrl#) Error: #errorMessage# #errorDetail#",
+				detail: CallStackGet().toString()
+			)
 		}
 
 		// Parse response
