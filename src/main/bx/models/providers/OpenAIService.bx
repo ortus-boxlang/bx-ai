@@ -716,12 +716,28 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 	 */
 	@override
 	public AiSpeechResponse function speak( required AiSpeechRequest speechRequest ){
-		// Seed defaults
+		return sendSpeechRequest( arguments.speechRequest, variables.speechURL );
+	}
+
+	/**
+	 * Internal helper — executes a TTS request against the given target URL.
+	 * Subclasses can override the URL (e.g. a custom speech endpoint) by calling
+	 * this method directly with a different targetURL.
+	 *
+	 * @speechRequest The AiSpeechRequest to send
+	 * @targetURL     The full URL to POST the TTS request to
+	 *
+	 * @return AiSpeechResponse
+	 */
+	private AiSpeechResponse function sendSpeechRequest(
+		required AiSpeechRequest speechRequest,
+		required string targetURL
+	){
+		// Seed defaults — use only speech-specific defaults; do NOT merge variables.params
+		// (those are chat-tier params and must not bleed across modalities).
 		arguments.speechRequest
 			.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
-			.setModelIfEmpty( variables.params.model ?: "" )
 			.setApiKeyIfEmpty( getAPIKey() )
-			.mergeServiceParams( variables.params )
 			.mergeServiceHeaders( variables.headers )
 
 		// Build data packet
@@ -754,23 +770,23 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 
 		// Fire onAISpeakRequest announcement
 		BoxAnnounce( "onAISpeakRequest", {
-			provider      : this,
-			operation     : "speech",
-			aiRequest     : arguments.speechRequest,
-			dataPacket    : dataPacket
+			provider   : this,
+			operation  : "speech",
+			aiRequest  : arguments.speechRequest,
+			dataPacket : dataPacket
 		} )
 
 		// Logging
 		if ( arguments.speechRequest.getLogRequest() ) {
-			writeLog( text: "aiSpeak request to #variables.speechURL#: #jsonSerialize( dataPacket )#", type: "info", log: "ai" )
+			writeLog( text: "aiSpeak request to #arguments.targetURL#: #jsonSerialize( dataPacket )#", type: "info", log: "ai" )
 		}
 		if ( arguments.speechRequest.getLogRequestToConsole() ) {
-			println( "aiSpeak request to #variables.speechURL#: #jsonSerialize( dataPacket )#" )
+			println( "aiSpeak request to #arguments.targetURL#: #jsonSerialize( dataPacket )#" )
 		}
 
 		// HTTP call — response is binary audio
 		bx: http
-			url     = variables.speechURL
+			url     = arguments.targetURL
 			method  = "post"
 			result  = "speechResult"
 			charset = "utf-8"
@@ -778,9 +794,6 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		{
 			bx:httpParam type="header" name="content-type" value="application/json";
 
-			// Auth Header ONLY if the provider requires it
-			// This is the default for OpenAI
-			// If the provider does not require it, set it to false
 			if( arguments.speechRequest.getSendAuthHeader() ){
 				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.speechRequest.getApiKey()#";
 			}
@@ -796,14 +809,18 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			bx:httpParam type="body" value=jsonSerialize( dataPacket );
 		}
 
-		// Error detection — if the response looks like JSON with an error key, parse and throw
+		// Error detection
 		if ( speechResult.statusCode != "200" ) {
-			var errorMessage = speechResult.fileContent;
+			var errorMessage = speechResult.fileContent
 			try {
-				var errorData = jsonDeserialize( speechResult.fileContent );
-				errorMessage  = errorData.error?.message ?: errorData.toString();
+				var errorData = jsonDeserialize( speechResult.fileContent )
+				errorMessage  = errorData.error?.message ?: errorData.toString()
 			} catch ( any parseEx ) {
-				// Not JSON, use raw text
+				writeLog(
+					text: "Unable to parse speech error response: #speechResult.toString()#",
+					type: "warning",
+					log : "ai"
+				)
 			}
 
 			BoxAnnounce( "onAIError", {
@@ -815,7 +832,11 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				canRetry    : false
 			} )
 
-			throw( type: "ProviderError", message: "OpenAI TTS error: #errorMessage#" )
+			throw(
+				type   : "ProviderError",
+				message: "HTTP Provider (#arguments.targetURL#) Error: #errorMessage#",
+				detail : CallStackGet().toString()
+			)
 		}
 
 		// Logging
@@ -826,7 +847,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			println( "aiSpeak response status=#speechResult.statusCode# size=#speechResult.fileContent.len()# bytes" )
 		}
 
-		// Construct and return the AiSpeechResponse
+		// Construct response
 		var results = new AiSpeechResponse(
 			audioData   : speechResult.fileContent,
 			audioFormat : arguments.speechRequest.getOutputFormat(),
@@ -837,15 +858,13 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		// -------------------------------------------------------------------------------------------
 		// --- Fire Localized Post Callback ---
 		// -------------------------------------------------------------------------------------------
-		// Allow concrete providers to normalize the response before returning
 		results = postResponse( arguments.speechRequest, dataPacket, results, "speech" )
 
-		// Announcement for successful response
 		BoxAnnounce( "onAISpeakResponse", {
-			provider      : this,
-			operation     : "speech",
-			aiRequest     : arguments.speechRequest,
-			aiResponse    : results
+			provider   : this,
+			operation  : "speech",
+			aiRequest  : arguments.speechRequest,
+			aiResponse : results
 		} )
 
 		return results
@@ -898,11 +917,11 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		required AiTranscriptionRequest transcriptionRequest,
 		required string targetURL
 	){
+		// Seed defaults — use only transcription-specific defaults; do NOT merge variables.params
+		// (those are chat-tier params and must not bleed across modalities).
 		arguments.transcriptionRequest
 			.mergeServiceParams( static.DEFAULT_TRANSCRIPTION_PARAMS )
-			.setModelIfEmpty( variables.params.model ?: "" )
 			.setApiKeyIfEmpty( getAPIKey() )
-			.mergeServiceParams( variables.params )
 			.mergeServiceHeaders( variables.headers )
 
 		// Build a virtual data packet for the pre/post hooks (multipart fields represented as a struct)
@@ -919,7 +938,11 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 
 		// Logging
 		if ( arguments.transcriptionRequest.getLogRequest() ) {
-			writeLog( text: "aiTranscribe request to #arguments.targetURL# model=#arguments.transcriptionRequest.getModel()#", type: "info", log: "ai" )
+			writeLog(
+				text: "aiTranscribe request to #arguments.targetURL# model=#arguments.transcriptionRequest.getModel()#",
+				type: "info",
+				log: "ai"
+			)
 		}
 		if ( arguments.transcriptionRequest.getLogRequestToConsole() ) {
 			println( "aiTranscribe request to #arguments.targetURL# model=#arguments.transcriptionRequest.getModel()#" )
@@ -933,8 +956,15 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			charset = "utf-8"
 			timeout = arguments.transcriptionRequest.getTimeout()
 		{
-			bx:httpParam type="header" name="Authorization" value="Bearer #arguments.transcriptionRequest.getApiKey()#";
 
+			// Auth Header ONLY if the provider requires it
+			// This is the default for OpenAI
+			// If the provider does not require it, set it to false
+			if( arguments.transcriptionRequest.getSendAuthHeader() ){
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.transcriptionRequest.getApiKey()#";
+			}
+
+			// Custom Headers from the request
 			for ( var thisHeader in arguments.transcriptionRequest.getHeaders() ) {
 				bx:httpParam
 					type  = "header"
@@ -1002,7 +1032,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 
 			throw(
 				type: "ProviderError",
-				message: "HTTP Provider (#arguments.targetUrl#) Error: #errorMessage# #errorDetail#",
+				message: "HTTP Target Url (#arguments.targetUrl#) Error: #errorMessage# #errorDetail#",
 				detail: CallStackGet().toString()
 			)
 		}
