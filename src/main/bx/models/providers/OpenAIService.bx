@@ -995,9 +995,12 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 					name     = "file"
 					file     = "#arguments.transcriptionRequest.getAudioFile()#";
 			} else if ( !isSimpleValue( arguments.transcriptionRequest.getAudioData() ) || arguments.transcriptionRequest.getAudioData().len() ) {
-				// Binary data — write to temp file and upload
-				var tempFile = getTempDirectory() & "bxai_audio_" & createUUID() & ".bin";
-				fileWrite( tempFile, arguments.transcriptionRequest.getAudioData() );
+				// Binary data — write to a temp file with the correct extension so the provider
+				// can identify the codec. Use options.format / params.inputFormat if supplied
+				// (seeded by the BIF from audio.defaultOutputFormat), otherwise fall back to "mp3".
+				var audioExtension = len( arguments.transcriptionRequest.getInputFormat() ) ? arguments.transcriptionRequest.getInputFormat() : "mp3"
+				var tempFile = getTempDirectory() & "bxai_audio_" & createUUID() & "." & audioExtension
+				fileWrite( tempFile, arguments.transcriptionRequest.getAudioData() )
 				bx:httpParam
 					type = "file"
 					name = "file"

@@ -78,6 +78,14 @@ class {
 				arguments.options.apiKey = audioSettings.defaultApiKey
 			}
 		}
+		// Seed inputFormat: options.format wins, then audio.defaultOutputFormat, so the provider
+		// can write the binary temp file with the correct extension.
+		if ( !arguments.params.keyExists( "inputFormat" ) && !arguments.options.keyExists( "inputFormat" ) ) {
+			var resolvedFormat = arguments.options.format ?: audioSettings.defaultOutputFormat ?: ""
+			if ( len( resolvedFormat ) ) {
+				arguments.params.inputFormat = resolvedFormat
+			}
+		}
 
 		// Create request
 		var transcriptionRequest = new bxModules.bxai.models.requests.AiTranscriptionRequest(
