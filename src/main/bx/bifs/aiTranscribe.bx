@@ -66,6 +66,18 @@ class {
 		if ( audioSettings.defaultTranscriptionModel.len() && !arguments.options.keyExists( "model" ) && !arguments.params.keyExists( "model" ) ) {
 			arguments.params.model = audioSettings.defaultTranscriptionModel
 		}
+		// Seed audio-specific provider default
+		if ( !arguments.options.keyExists( "provider" ) && len( audioSettings.defaultProvider ?: "" ) ) {
+			arguments.options.provider = audioSettings.defaultProvider
+		}
+		// Seed audio-specific apiKey — only when no convention env var exists for the resolved provider,
+		// so the convention check in aiService() is not inadvertently bypassed.
+		if ( !len( arguments.options.apiKey ?: "" ) && len( audioSettings.defaultApiKey ?: "" ) ) {
+			var resolvedProvider = arguments.options.provider ?: moduleRecord.settings.provider
+			if ( !len( getSystemSetting( "#resolvedProvider.ucase()#_API_KEY", "" ) ) ) {
+				arguments.options.apiKey = audioSettings.defaultApiKey
+			}
+		}
 
 		// Create request
 		var transcriptionRequest = new bxModules.bxai.models.requests.AiTranscriptionRequest(

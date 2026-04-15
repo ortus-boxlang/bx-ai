@@ -158,6 +158,8 @@ class {
 			// Audio Settings — Defaults for aiSpeak() / aiTranscribe() / aiTranslate()
 			// --------------------------------------------------------------------------
 			audio : {
+				defaultProvider		   	  : "openai",
+				defaultApiKey			  : "",
 				defaultVoice              : "",
 				defaultOutputFormat       : "mp3",
 				defaultSpeechModel        : "",
