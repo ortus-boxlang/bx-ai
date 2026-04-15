@@ -70,14 +70,35 @@ class {
 			return result
 		}
 
-		// Parse each frontmatter line as "key: value"
-		for ( var i = 2; i < endIndex; i++ ) {
-			var line      = lines[ i ]
-			var colonPos  = line.find( ":" )
+		// Parse each frontmatter line as "key: value", handling block scalars (> and |)
+		var i = 2
+		while ( i < endIndex ) {
+			var line     = lines[ i ]
+			var colonPos = line.find( ":" )
 			if ( colonPos > 0 ) {
 				var key   = line.left( colonPos - 1 ).trim()
 				var value = line.mid( colonPos + 1, line.len() - colonPos ).trim()
-				result.frontmatter[ key ] = stripQuotes( value )
+
+				// YAML block scalar: > (folded) or | (literal)
+				if ( value == ">" || value == "|" ) {
+					var isFolded    = ( value == ">" )
+					var blockLines  = []
+					i++
+					// Collect all indented continuation lines
+					while ( i < endIndex && ( lines[ i ].len() == 0 || lines[ i ].left( 1 ) == " " || lines[ i ].left( 1 ) == char( 9 ) ) ) {
+						blockLines.append( lines[ i ].trim() )
+						i++
+					}
+					// Folded (>) → join with spaces; literal (|) → join with newlines
+					result.frontmatter[ key ] = isFolded
+						? blockLines.filter( l -> l.len() > 0 ).toList( " " )
+						: blockLines.toList( char( 10 ) )
+				} else {
+					result.frontmatter[ key ] = stripQuotes( value )
+					i++
+				}
+			} else {
+				i++
 			}
 		}
 
