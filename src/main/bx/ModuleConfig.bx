@@ -163,7 +163,25 @@ class {
 				defaultVoice              : "",
 				defaultOutputFormat       : "mp3",
 				defaultSpeechModel        : "",
-				defaultTranscriptionModel : ""
+				defaultTranscriptionModel : "",
+				/**
+				 * Gender-to-voice keyword mapping per provider.
+				 * When voice is set to "male" or "female", aiSpeak() resolves it to the
+				 * concrete voice name for the active provider using this map.
+				 *
+				 * Override any entry here to swap which voice "male"/"female" resolves to.
+				 * An empty string means no override — the provider will use its own default.
+				 *
+				 * Example override in your module config:
+				 *   audio.voiceGenderMap.openai.male = "echo"
+				 */
+				voiceGenderMap : {
+					openai     : { male : "ash",                     female : "nova"                   },
+					grok       : { male : "onyx",                    female : "nova"                   },
+					gemini     : { male : "Fenrir",                  female : "Aoede"                  },
+					mistral    : { male : "",                        female : "Charlotte"               },
+					elevenlabs : { male : "",                        female : "21m00Tcm4TlvDq8ikWAM"   }
+				}
 			}
 		}
 

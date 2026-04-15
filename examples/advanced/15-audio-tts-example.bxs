@@ -17,9 +17,45 @@ println( "=== BoxLang AI — Text-to-Speech Examples ===" )
 println( "" )
 
 // ─────────────────────────────────────────────────────────────────────
-// 1. Basic TTS — save directly to file (returns file path as string)
+// 1. Gender keyword voices — "male" / "female" shortcut
+//
+// Instead of remembering provider-specific voice names, use the
+// gender keyword shortcut. aiSpeak() resolves it automatically:
+//
+//   openai   :  male  → "onyx"      female → "nova"
+//   grok     :  male  → "onyx"      female → "nova"
+//   gemini   :  male  → "Fenrir"    female → "Aoede"
+//   mistral  :  male  → (default)   female → "Charlotte"
+//   elevenlabs: male  → (default)   female → Rachel voice ID
+//
+// You can override any mapping in your module settings:
+//   audio.voiceGenderMap.openai.male = "echo"
 // ─────────────────────────────────────────────────────────────────────
-println( "1. Basic TTS — save to file" )
+println( "1. Gender keyword voices" )
+
+var malePath   = expandPath( "/tmp/boxlang-tts-male.mp3" )
+var femalePath = expandPath( "/tmp/boxlang-tts-female.mp3" )
+
+aiSpeak( text: "Hello! I am your male AI assistant.",   params: { voice: "male"   }, options: { outputFile: malePath   } )
+aiSpeak( text: "Hello! I am your female AI assistant.", params: { voice: "female" }, options: { outputFile: femalePath } )
+
+println( "   male   → " & malePath )
+println( "   female → " & femalePath )
+println( "" )
+
+// You can also specify the gender in options.voice
+var altPath = expandPath( "/tmp/boxlang-tts-female-alt.mp3" )
+aiSpeak(
+    text   : "Gender in options also works.",
+    options: { voice: "female", outputFile: altPath }
+)
+println( "   options.voice: female → " & altPath )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 2. Basic TTS — save directly to file (returns file path as string)
+// ─────────────────────────────────────────────────────────────────────
+println( "2. Basic TTS — save to file" )
 
 var outputFile = expandPath( "/tmp/boxlang-tts-basic.mp3" )
 
@@ -32,9 +68,9 @@ println( "   Saved to: " & savedPath )
 println( "" )
 
 // ─────────────────────────────────────────────────────────────────────
-// 2. TTS with custom voice and model — returns AiSpeechResponse object
+// 3. TTS with custom voice and model — returns AiSpeechResponse object
 // ─────────────────────────────────────────────────────────────────────
-println( "2. TTS with custom voice (nova) — response object" )
+println( "3. TTS with custom voice (nova) — response object" )
 
 var response = aiSpeak(
     text  : "The quick brown fox jumps over the lazy dog.",
@@ -54,9 +90,9 @@ println( "   Saved nova voice to /tmp/boxlang-tts-nova.mp3" )
 println( "" )
 
 // ─────────────────────────────────────────────────────────────────────
-// 3. Multiple voices comparison
+// 4. Multiple voices comparison
 // ─────────────────────────────────────────────────────────────────────
-println( "3. Multiple voices — OpenAI" )
+println( "4. Multiple voices — OpenAI" )
 
 var voices = [ "alloy", "echo", "fable", "onyx", "nova", "shimmer" ]
 var sampleText = "BoxLang AI — where imagination meets voice."
@@ -73,9 +109,9 @@ voices.each( function( voice ) {
 println( "" )
 
 // ─────────────────────────────────────────────────────────────────────
-// 4. ElevenLabs TTS — premium multilingual voice
+// 5. ElevenLabs TTS — premium multilingual voice
 // ─────────────────────────────────────────────────────────────────────
-println( "4. ElevenLabs TTS (requires ELEVENLABS_API_KEY)" )
+println( "5. ElevenLabs TTS (requires ELEVENLABS_API_KEY)" )
 
 try {
     var elevenResponse = aiSpeak(
@@ -95,9 +131,9 @@ try {
 println( "" )
 
 // ─────────────────────────────────────────────────────────────────────
-// 5. ElevenLabs with custom voice ID
+// 6. ElevenLabs with custom voice ID
 // ─────────────────────────────────────────────────────────────────────
-println( "5. ElevenLabs with custom voice ID" )
+println( "6. ElevenLabs with custom voice ID" )
 
 try {
     var customVoiceResponse = aiSpeak(
@@ -117,9 +153,9 @@ try {
 println( "" )
 
 // ─────────────────────────────────────────────────────────────────────
-// 6. Gemini TTS
+// 7. Gemini TTS
 // ─────────────────────────────────────────────────────────────────────
-println( "6. Gemini TTS (requires GEMINI_API_KEY)" )
+println( "7. Gemini TTS (requires GEMINI_API_KEY)" )
 
 try {
     var geminiResponse = aiSpeak(

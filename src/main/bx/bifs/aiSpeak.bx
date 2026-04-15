@@ -79,6 +79,19 @@ class {
 			}
 		}
 
+		// Resolve gender keywords ("male"/"female") to provider-specific voice names
+		// so providers always receive a concrete voice identifier, not a keyword.
+		var effectiveVoice = arguments.params.voice ?: arguments.options.voice ?: "";
+		if ( len( effectiveVoice ) && listFindNoCase( "male,female", effectiveVoice ) ) {
+			var resolvedProviderForVoice = arguments.options.provider ?: audioSettings.defaultProvider ?: moduleRecord.settings.provider ?: "openai";
+			var genderMap               = audioSettings.voiceGenderMap ?: {};
+			var providerGenderMap       = genderMap[ resolvedProviderForVoice ] ?: {};
+			var mappedVoice             = providerGenderMap[ effectiveVoice.lcase() ] ?: "";
+			if ( len( mappedVoice ) ) {
+				arguments.params.voice = mappedVoice;
+			}
+		}
+
 		// Create request
 		var speechRequest = new bxModules.bxai.models.requests.AiSpeechRequest(
 			text   = arguments.text,

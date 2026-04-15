@@ -129,4 +129,181 @@ public class aiSpeakTest extends BaseIntegrationTest {
 		new java.io.File( outputPath ).delete();
 	}
 
+	// ─────────────────────────────────────────────────────────────────────────
+	// Voice Gender Keyword Resolution Tests
+	//
+	// These tests use a beforeAISpeech interceptor to capture the resolved voice
+	// name BEFORE the provider makes its HTTP call, so no API key is required.
+	// ─────────────────────────────────────────────────────────────────────────
+
+	@DisplayName( "Voice gender keyword 'female' resolves to 'nova' for OpenAI" )
+	@Test
+	public void testVoiceGenderKeyword_female_resolvesToNova() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedVoice = "";
+			BoxRegisterInterceptor(
+				function( data ) { capturedVoice = data.speechRequest.getVoice(); },
+				"beforeAISpeech"
+			);
+			try {
+				aiSpeak( text: "Hello", params: { voice: "female" } );
+			} catch( any e ) {
+				// expected — API call may fail without a valid key
+			}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedVoice" ) ) ).isEqualTo( "nova" );
+	}
+
+	@DisplayName( "Voice gender keyword 'male' resolves to 'onyx' for OpenAI" )
+	@Test
+	public void testVoiceGenderKeyword_male_resolvesToOnyx() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedVoice = "";
+			BoxRegisterInterceptor(
+				function( data ) { capturedVoice = data.speechRequest.getVoice(); },
+				"beforeAISpeech"
+			);
+			try {
+				aiSpeak( text: "Hello", params: { voice: "male" } );
+			} catch( any e ) {
+				// expected — API call may fail without a valid key
+			}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedVoice" ) ) ).isEqualTo( "ash" );
+	}
+
+	@DisplayName( "Voice gender keyword is case-insensitive ('FEMALE' resolves to 'nova')" )
+	@Test
+	public void testVoiceGenderKeyword_caseInsensitive() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedVoice = "";
+			BoxRegisterInterceptor(
+				function( data ) { capturedVoice = data.speechRequest.getVoice(); },
+				"beforeAISpeech"
+			);
+			try {
+				aiSpeak( text: "Hello", params: { voice: "FEMALE" } );
+			} catch( any e ) {
+				// expected — API call may fail without a valid key
+			}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedVoice" ) ) ).isEqualTo( "nova" );
+	}
+
+	@DisplayName( "Voice gender keyword in options.voice is also resolved" )
+	@Test
+	public void testVoiceGenderKeyword_inOptionsVoice_resolves() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedVoice = "";
+			BoxRegisterInterceptor(
+				function( data ) { capturedVoice = data.speechRequest.getVoice(); },
+				"beforeAISpeech"
+			);
+			try {
+				aiSpeak( text: "Hello", options: { voice: "female" } );
+			} catch( any e ) {
+				// expected — API call may fail without a valid key
+			}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedVoice" ) ) ).isEqualTo( "nova" );
+	}
+
+	@DisplayName( "Concrete voice name passes through unchanged (no keyword resolution)" )
+	@Test
+	public void testVoiceConcreteNamePassesThrough() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedVoice = "";
+			BoxRegisterInterceptor(
+				function( data ) { capturedVoice = data.speechRequest.getVoice(); },
+				"beforeAISpeech"
+			);
+			try {
+				aiSpeak( text: "Hello", params: { voice: "alloy" } );
+			} catch( any e ) {
+				// expected — API call may fail without a valid key
+			}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedVoice" ) ) ).isEqualTo( "alloy" );
+	}
+
+	@DisplayName( "Voice gender keyword 'female' resolves to 'Aoede' for Gemini" )
+	@Test
+	public void testVoiceGenderKeyword_geminiProvider_resolvesToAoede() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedVoice = "";
+			BoxRegisterInterceptor(
+				function( data ) { capturedVoice = data.speechRequest.getVoice(); },
+				"beforeAISpeech"
+			);
+			try {
+				aiSpeak( text: "Hello", params: { voice: "female" }, options: { provider: "gemini" } );
+			} catch( any e ) {
+				// expected — API call may fail without a valid key
+			}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedVoice" ) ) ).isEqualTo( "Aoede" );
+	}
+
+	@DisplayName( "Empty gender mapping for a provider leaves the voice keyword unchanged" )
+	@Test
+	public void testVoiceGenderKeyword_emptyProviderMapping_doesNotOverrideVoice() {
+		// Mistral's 'male' mapping is "" (empty), so no override should occur
+		// and the voice stays as the original keyword "male"
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedVoice = "";
+			BoxRegisterInterceptor(
+				function( data ) { capturedVoice = data.speechRequest.getVoice(); },
+				"beforeAISpeech"
+			);
+			try {
+				aiSpeak( text: "Hello", params: { voice: "male" }, options: { provider: "mistral" } );
+			} catch( any e ) {
+				// expected — API call may fail without a valid key
+			}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedVoice" ) ) ).isEqualTo( "male" );
+	}
+
 }
