@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-04-16
+
 ### 🥊 New Features
 
 - **Audio Support — Text-to-Speech, Transcription, and Translation**:
@@ -454,7 +456,8 @@ One of our biggest library updates yet! This release introduces a powerful new d
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.0.0...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/ortus-boxlang/bx-ai/compare/v2.4.0...v3.0.0
 [2.4.0]: https://github.com/ortus-boxlang/bx-ai/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/ortus-boxlang/bx-ai/compare/v2.2.0...v2.3.0
