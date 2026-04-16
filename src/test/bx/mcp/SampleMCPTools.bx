@@ -1,0 +1,36 @@
+/**
+ * Test fixture: a class with @mcpTool, @mcpResource, and @mcpPrompt annotations.
+ * Used by mcpServerTest to validate scanClass() with all three input types:
+ *   - dot-notation path  (e.g. src.test.bx.mcp.SampleMCPTools)
+ *   - absolute file path (e.g. /abs/path/SampleMCPTools.bx)
+ *   - class instance     (e.g. new SampleMCPTools())
+ */
+class {
+
+	/**
+	 * Echo a message back to the caller.
+	 */
+	@mcpTool( "Echo a message back to the caller" )
+	function echoMessage( required string message ) {
+		return "Echo: " & arguments.message
+	}
+
+	/**
+	 * Return current status information.
+	 */
+	@mcpResource( { uri: "test://status", name: "Status", description: "Current status info" } )
+	function getStatus() {
+		return { ok: true }
+	}
+
+	/**
+	 * Generate a greeting prompt for a person.
+	 */
+	@mcpPrompt( "Generate a greeting for a person" )
+	function greet( required string name ){
+		return [
+			{ role: "user", content: "Say hello to " & arguments.name }
+		]
+	}
+
+}

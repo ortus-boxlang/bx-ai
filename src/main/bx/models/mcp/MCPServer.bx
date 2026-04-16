@@ -29,6 +29,8 @@
  * ```
  */
 import bxModules.bxai.models.mcp.MCPServerStats
+import java:ortus.boxlang.runtime.interop.DynamicInteropService
+import java:ortus.boxlang.runtime.runnables.RunnableLoader
 
 class {
 
@@ -438,8 +440,13 @@ class {
 	 */
 
 	/**
-	 * Scan a class or directory for methods annotated with @mcpTool, @mcpResource, or @mcpPrompt.
+	 * Scan a package/directory for methods annotated with @mcpTool, @mcpResource, or @mcpPrompt.
 	 * Annotated methods are automatically registered with the MCP server.
+	 *
+	 * Accepts these input types:
+	 * - Dot-notation package (e.g. models.tools)
+	 * - Absolute file path (e.g. /abs/path/tools or C:\path\tools)
+	 * - Relative file path (e.g. ./tools or ../tools)
 	 *
 	 * Annotation formats for @mcpTool:
 	 * - @mcpTool - Uses method name as tool name, function hint as description, version defaults to 1.0.0
@@ -456,100 +463,92 @@ class {
 	 * - @mcpPrompt( "Description" ) - Uses method name as prompt name
 	 * - @mcpPrompt( { name: "greeting", description: "...", arguments: [...] } )
 	 *
-	 * @path The path to a BoxLang class file or directory to scan
+	 * @path A package path or absolute path to the directory to scan for annotated methods.
 	 * @recurse Whether to scan directories recursively (default: true)
 	 *
-	 * @throws MCPServer.PathNotFound if the specified path does not exist
+	 * @return  An array of report structs for each scanned class, with counts of registered tools, resources, and prompts
+	 */
+	MCPServer function scan( required any path, boolean recurse = true ) {
+		// Instance passed directly: scan without any file-system lookup
+		if ( isObject( arguments.path ) ) {
+			 scanClass( arguments.path )
+		}
+		// Check if it's already an absolute path
+		else if( directoryExists( arguments.path ) ){
+			scanDirectory( path: arguments.path, recurse: arguments.recurse, mapping: "" )
+		}
+		// Check if it's a dot-notation path (contains dots but doesn't end with .bx)
+		else if( arguments.path.find( "." ) && arguments.path.listLast( "." ) != "bx" ){
+			// Expand dot-notation to absolute path (e.g. src.tools -> src/tools) and scan with mapping to allow class instantiation by path
+			var absolutePath = expandPath( "/" & arguments.path.replace( ".", "/", "all" ) )
+			scanDirectory( path: absolutePath, recurse: arguments.recurse, mapping: arguments.path )
+		}
+		// Otherwise treat as relative or absolute file path and validate existence
+		else{
+			var absolutePath = expandPath( arguments.path )
+			if( directoryExists( absolutePath ) ){
+				scanDirectory( path: absolutePath, recurse: arguments.recurse, mapping: "" )
+			} else {
+				throw( type: "MCPServer.ScanError", message: "Invalid path for MCP scan: #arguments.path#" )
+			}
+		}
+
+		return this;
+	}
+
+	/**
+	 * Scan a single class for MCP annotations and register tools, resources, and prompts accordingly.
+	 * If it's an instantation path or file path, the class must have a no-arg constructor.
+	 *
+	 * Accepts:
+	 * - A class instance          (any non-simple value)
+	 * - A dot-notation instantiation class path (e.g. models.tools.MyTools)
+	 * - An absolute file path     (e.g. /abs/path/MyTools.bx or C:\path\MyTools.bx)
+	 * - A relative file path     (e.g. ./MyTools.bx or ../tools/MyTools.bx)
+	 *
+	 * @classPath A class instance, absolute file path, or dot-notation class path
 	 *
 	 * @return This server for chaining
 	 */
-	MCPServer function scan( required string path, boolean recurse = true ) {
-		var targetPath = expandPath( arguments.path )
+	MCPServer function scanClass( required any classPath ) {
+		var classInstance = resolveClassInstance( arguments.classPath )
+		var metadata = getClassMetadata( classInstance )
 
-		// Check if path exists
-		if ( !fileExists( targetPath ) && !directoryExists( targetPath ) ) {
-			throw( type: "MCPServer.PathNotFound", message: "Path not found: #arguments.path#" )
-		}
+		// Get functions from metadata
+		var functions = metadata.functions ?: []
 
-		// If it's a directory, scan all .bx files
-		if ( directoryExists( targetPath ) ) {
-			var files = directoryList( targetPath, arguments.recurse, "path", "*.bx" )
-			// Use async mode for better performance when scanning many files
-			if ( files.len() > 10 ) {
-				files.each( file => scanClass( file ), true )
-			} else {
-				files.each( file => scanClass( file ) )
+		// Scan each function for annotations
+		functions.each( thisFunction => {
+			var annotations = thisFunction.annotations ?: {}
+
+			// Check for @mcpTool annotation
+			if ( annotations.keyExists( "mcpTool" ) ) {
+				registerAnnotatedTool( classInstance, thisFunction, annotations.mcpTool )
 			}
-		} else {
-			// Single file
-			scanClass( targetPath )
-		}
+
+			// Check for @mcpResource annotation
+			if ( annotations.keyExists( "mcpResource" ) ) {
+				registerAnnotatedResource( classInstance, thisFunction, annotations.mcpResource )
+			}
+
+			// Check for @mcpPrompt annotation
+			if ( annotations.keyExists( "mcpPrompt" ) ) {
+				registerAnnotatedPrompt( classInstance, thisFunction, annotations.mcpPrompt )
+			}
+		} )
 
 		return this
 	}
 
 	/**
-	 * Scan a single class file for MCP annotations
-	 *
-	 * @classPath The path to the class file
-	 */
-	private void function scanClass( required string classPath ) {
-		try {
-			// Get class metadata without instantiation
-			var metadata = getClassMetadata( arguments.classPath )
-
-			// Skip if no metadata
-			if ( isNull( metadata ) || !isStruct( metadata ) ) {
-				return
-			}
-
-			// Get functions from metadata
-			var functions = metadata.functions ?: []
-
-			// Scan each function for annotations
-			functions.each( thisFunction => {
-				var annotations = thisFunction.annotations ?: {}
-
-				// Check for @mcpTool annotation
-				if ( annotations.keyExists( "mcpTool" ) ) {
-					registerAnnotatedTool( arguments.classPath, thisFunction, annotations.mcpTool )
-				}
-
-				// Check for @mcpResource annotation
-				if ( annotations.keyExists( "mcpResource" ) ) {
-					registerAnnotatedResource( arguments.classPath, thisFunction, annotations.mcpResource )
-				}
-
-				// Check for @mcpPrompt annotation
-				if ( annotations.keyExists( "mcpPrompt" ) ) {
-					registerAnnotatedPrompt( arguments.classPath, thisFunction, annotations.mcpPrompt )
-				}
-			} )
-		} catch ( any e ) {
-			// Log error but continue scanning other classes
-			static.mcpLogger.error( "MCP scan error for #arguments.classPath#: #e.message#" )
-			// Announce error event
-			BoxAnnounce(
-				"onMCPError",
-				{
-					server: this,
-					context: "scanClass",
-					classPath: arguments.classPath,
-					exception: e
-				}
-			)
-		}
-	}
-
-	/**
 	 * Register a tool from an annotated method
 	 *
-	 * @classPath The class path for lazy instantiation
+	 * @classReference The class instance to register the method from (used for invocation)
 	 * @functionMetadata The function metadata
 	 * @annotation The @mcpTool annotation value
 	 */
 	private void function registerAnnotatedTool(
-		required string classPath,
+		required any classReference,
 		required struct functionMetadata,
 		required any annotation
 	) {
@@ -577,13 +576,14 @@ class {
 			argDescriptions[ param.name ] = param.hint ?: param.name
 		} )
 
-		// Capture classPath reference for lazy instantiation
-		var targetClassPath = arguments.classPath
+		// Capture class reference; strings use lazy createObject(), instances are used directly
+		var targetRef = arguments.classReference
 
-		// Create the tool callable with lazy instantiation
-		var callable = ( args ) => {
-			var targetInstance = createObject( targetClassPath )
-			return invoke( targetInstance, methodName, args )
+		// ClosureTool calls the callable with argumentCollection=args, spreading named args into
+		// the arguments scope.  Forward everything via argumentCollection so the target method
+		// receives its parameters by name.
+		var callable = () => {
+			return invoke( targetRef, methodName, arguments )
 		}
 
 		// Create and register the tool
@@ -600,12 +600,12 @@ class {
 	/**
 	 * Register a resource from an annotated method
 	 *
-	 * @classPath The class path for lazy instantiation
+	 * @classReference The class instance to register the method from (used for invocation)
 	 * @functionMetadata The function metadata
 	 * @annotation The @mcpResource annotation value
 	 */
 	private void function registerAnnotatedResource(
-		required string classPath,
+		required any classReference,
 		required struct functionMetadata,
 		required any annotation
 	) {
@@ -628,13 +628,12 @@ class {
 		}
 		// else: @mcpResource with no arguments - uses defaults (uri and name from method, description from hint)
 
-		// Capture classPath reference for lazy instantiation
-		var targetClassPath = arguments.classPath
+		// Capture class reference; strings use lazy createObject(), instances are used directly
+		var targetRef = arguments.classReference
 
-		// Create the handler with lazy instantiation
+		// Create the handler; no arguments expected for resource providers
 		var handler = () => {
-			var targetInstance = createObject( targetClassPath )
-			return invoke( targetInstance, methodName )
+			return invoke( targetRef, methodName )
 		}
 
 		registerResource(
@@ -649,12 +648,12 @@ class {
 	/**
 	 * Register a prompt from an annotated method
 	 *
-	 * @classPath The class path for lazy instantiation
+	 * @classReference The class instance to register the method from (used for invocation)
 	 * @functionMetadata The function metadata
 	 * @annotation The @mcpPrompt annotation value
 	 */
 	private void function registerAnnotatedPrompt(
-		required string classPath,
+		required any classReference,
 		required struct functionMetadata,
 		required any annotation
 	) {
@@ -687,13 +686,13 @@ class {
 			} )
 		}
 
-		// Capture classPath reference for lazy instantiation
-		var targetClassPath = arguments.classPath
+		// Capture class reference; strings use lazy createObject(), instances are used directly
+		var targetRef = arguments.classReference
 
-		// Create the handler with lazy instantiation
-		var handler = ( args ) => {
-			var targetInstance = createObject( targetClassPath )
-			return invoke( targetInstance, methodName, args )
+		// ClosureTool/getPrompt calls the handler with argumentCollection=args; forward everything
+		// via arguments scope so the target method receives its parameters by name.
+		var handler = () => {
+			return invoke( targetRef, methodName, arguments )
 		}
 
 		registerPrompt(
@@ -1447,7 +1446,105 @@ class {
 	// Private Helper Methods
 	// ---------------------------------------------------------------------------------------------------------
 
-    /**
+	/**
+	 * Resolve a class reference from various formats:
+	 * - If it's already an object instance, return it directly
+	 * - If it's a dot-notation class path (e.g. "models.tools.MyTool"), create an instance using createObject()
+	 * - If it's an absolute file path to a class file, load the class using Java interop and create an instance
+	 *
+	 * @classPath The class reference in one of the supported formats
+	 *
+	 * @return An instance of the class
+	 *
+	 * @throws MCPServer.ClassNotFound if the class cannot be resolved in any format
+	 */
+	private any function resolveClassInstance( required any classPath ) {
+		// If it's already an object instance, return it directly
+		if( IsObject( arguments.classPath ) ) {
+			return arguments.classPath
+		}
+
+		// Check if it's an instantion path, it has "." and ends with a class name (e.g. "models.tools.MyTool")
+		if ( arguments.classPath.find( "." ) && arguments.classPath.listLast( "." ) != "bx" ) {
+			return new "#arguments.classPath#"()
+		}
+
+		// Verify if it's an absolute file path to a class file, if not, we expand it.
+		if( !fileExists( arguments.classPath ) ) {
+			arguments.classPath = expandPath( arguments.classPath )
+		}
+
+		// Now we check again if the file exists, if it does, we create an instance using the file path.
+		if ( fileExists( arguments.classPath ) ) {
+			var boxContext       = getBoxContext()
+			var resolvedFilePath = createObject( "java", "ortus.boxlang.runtime.util.ResolvedFilePath" ).of( arguments.classPath )
+			var loadedClass      = RunnableLoader.getInstance().loadClass( resolvedFilePath, boxContext )
+			return DynamicInteropService.invokeConstructor( boxContext, loadedClass )
+		}
+
+		throw(
+			type    : "MCPServer.ClassNotFound",
+			message : "The class [#arguments.classPath#] could not be found as an object instance, class path, or file path."
+		)
+	}
+
+	/**
+	 * Scan a directory for *.bx files and register any annotated tools, resources, and prompts found.
+	 *
+	 * Each discovered file is passed to scanClass() as either:
+	 * - An absolute file path (when no mapping is provided)
+	 * - A dot-notation class path composed from the mapping + relative path (when mapping is provided)
+	 *
+	 * Example with mapping "models.tools":
+	 *   /app/models/tools/MyTool.bx            → models.tools.MyTool
+	 *   /app/models/tools/core/AnotherTool.bx  → models.tools.core.AnotherTool
+	 *
+	 * @path      Absolute path to the directory to scan
+	 * @recurse   Whether to scan sub-directories recursively (default: true)
+	 * @mapping   Dot-notation package prefix used as the root for composed class paths.
+	 *            Pass an empty string to disable mapping and use absolute file paths instead.
+	 *
+	 * @return Array of report structs (one per class) with keys: file, tools, resources, prompts
+	 */
+	private array function scanDirectory(
+		required string path,
+		boolean recurse  = true,
+		string mapping   = ""
+	) {
+		var report  = []
+		var bxFiles = directoryList( arguments.path, arguments.recurse, "path", "*.bx" )
+
+		bxFiles.each( filePath => {
+			var classRef = ""
+
+			if ( len( mapping ) ) {
+				// Build a relative path from the scanned root to this file, then convert to dot-notation
+				var rootLen      = len( path )
+				var relativePath = filePath.right( -rootLen )  // strip root prefix
+				// Strip leading separator
+				if ( relativePath.left( 1 ) == "/" || relativePath.left( 1 ) == char( 92 ) ) {
+					relativePath = relativePath.right( -1 )
+				}
+				// Remove .bx extension
+				if ( relativePath.right( 3 ).lCase() == ".bx" ) {
+					relativePath = relativePath.left( len( relativePath ) - 3 )
+				}
+				// Convert path separators to dots
+				relativePath = relativePath.replace( "/", ".", "all" ).replace( char( 92 ), ".", "all" )
+				// Compose: mapping.relative.ClassName
+				classRef = mapping & "." & relativePath
+			} else {
+				// No mapping — pass the absolute path directly
+				classRef = filePath
+			}
+
+			report.append( scanClass( classRef ) )
+		} )
+
+		return report
+	}
+
+	/**
 	 * Get the Box AI service from the runtime
 	 *
 	 * @return The AI service instance

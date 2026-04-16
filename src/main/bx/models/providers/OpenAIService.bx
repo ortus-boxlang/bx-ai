@@ -21,14 +21,18 @@
 import bxModules.bxai.models.util.SchemaBuilder;
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+import bxModules.bxai.models.providers.capabilities.IAiSpeechService;
+import bxModules.bxai.models.providers.capabilities.IAiTranscriptionService;
+import bxModules.bxai.models.responses.AiSpeechResponse;
+import bxModules.bxai.models.responses.AiTranscriptionResponse;
 
-class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
+class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IAiSpeechService, IAiTranscriptionService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "chat", "stream", "embeddings" ]
+		CAPABILITIES = [ "chat", "stream", "embeddings", "speech", "transcription", "translation" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://platform.openai.com/docs/models
 			// according to the docs, this is the default model
@@ -38,15 +42,28 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		DEFAULT_EMBED_PARAMS = {
 			"model" : "text-embedding-3-small"
 		}
+		DEFAULT_SPEECH_PARAMS = {
+			// https://platform.openai.com/docs/speech-to-text/overview
+			"model" : "tts-1",
+			// Voice Options: https://developers.openai.com/api/docs/guides/text-to-speech
+			"voice" : "ash"
+		}
+		DEFAULT_TRANSCRIPTION_PARAMS = {
+			// https://platform.openai.com/docs/speech-to-text/overview
+			"model" : "whisper-1"
+		}
 	}
 
 	/**
 	 * Constructor
 	 */
 	function init(){
-		variables.chatURL = "https://api.openai.com/v1/chat/completions"
-		variables.embeddingsURL = "https://api.openai.com/v1/embeddings"
-		variables.name = "OpenAI"
+		variables.chatURL        = "https://api.openai.com/v1/chat/completions"
+		variables.embeddingsURL  = "https://api.openai.com/v1/embeddings"
+		variables.speechURL      = "https://api.openai.com/v1/audio/speech"
+		variables.transcribeURL  = "https://api.openai.com/v1/audio/transcriptions"
+		variables.translateURL   = "https://api.openai.com/v1/audio/translations"
+		variables.name           = "OpenAI"
 	}
 
 	@override
@@ -249,14 +266,15 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		 */
 
 		// Capture chatRequest in local scope for use in nested closures
+		var thisChatRequest = arguments.chatRequest
 		var newMessages = arguments.chatRequest.getMessages().map( message -> message )
 		result.choices.each( ( choice, index ) => {
-			var targetChatRequest = chatRequest
+			var targetChatRequest = thisChatRequest
 			// add the tool call into our message history
 			newMessages.append( choice.message )
 			// find the tool, invoke it, append the result to the chat history
 			choice.message.tool_calls.each( ( toolCall, i ) => {
-				var toolAttempt = chatRequest.getTool( toolCall.function.name )
+				var toolAttempt = thisChatRequest.getTool( toolCall.function.name )
 				if( toolAttempt.isPresent() ){
 					var tool = toolAttempt.get();
 
@@ -368,6 +386,15 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		}.append( arguments.chatRequest.getParams() )
 
 		// -------------------------------------------------------------------------------------------
+		// --- Request usage data in stream response ---
+		// -------------------------------------------------------------------------------------------
+		if( !dataPacket.keyExists( "stream_options" ) ){
+			dataPacket[ "stream_options" ] = { "include_usage": true };
+		} else if( isStruct( dataPacket.stream_options ) && !dataPacket.stream_options.keyExists( "include_usage" ) ){
+			dataPacket.stream_options[ "include_usage" ] = true;
+		}
+
+		// -------------------------------------------------------------------------------------------
 		// --- Tooling Detection ---
 		// -------------------------------------------------------------------------------------------
 		if( dataPacket.keyExists( "tools" ) ){
@@ -393,12 +420,32 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		// -------------------------------------------------------------------------------------------
 		// --- Stream the chat response, with streaming tool call support ---
 		// -------------------------------------------------------------------------------------------
-		var streamState = sendStreamRequest( chatRequest, dataPacket, callback )
+		var streamState = sendStreamRequest( arguments.chatRequest, dataPacket, arguments.callback )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire local callback for post mods ---
 		// -------------------------------------------------------------------------------------------
 		streamState = postResponse( arguments.chatRequest, dataPacket, streamState, "stream" )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Usage Event Announcement (Streaming) ---
+		// -------------------------------------------------------------------------------------------
+		if( !structIsEmpty( streamState.usage ) ){
+			var streamTotalTokens = streamState.usage.keyExists( "total_tokens" ) ? streamState.usage.total_tokens : 0;
+			if( streamTotalTokens > 0 ){
+				BoxAnnounce( "onAITokenCount", {
+					provider         : this,
+					operation        : "stream",
+					model            : arguments.chatRequest.getModel(),
+					promptTokens     : streamState.usage.keyExists( "prompt_tokens" )     ? streamState.usage.prompt_tokens     : 0,
+					completionTokens : streamState.usage.keyExists( "completion_tokens" ) ? streamState.usage.completion_tokens : 0,
+					totalTokens      : streamTotalTokens,
+					aiRequest        : arguments.chatRequest,
+					usage            : streamState.usage,
+					timestamp        : now()
+				} )
+			}
+		}
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire afterLLMCall middleware, in reverse order ---
@@ -445,9 +492,11 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		assistantMessage.tool_calls = streamState.toolCalls
 		newMessages.append( assistantMessage )
 
+		var thisChatRequest = arguments.chatRequest
+		var thisCallback    = arguments.callback
 		streamState.toolCalls.each( toolCall => {
-			var targetChatRequest = chatRequest
-			var toolAttempt       = chatRequest.getTool( toolCall.function.name ?: "" )
+			var targetChatRequest = thisChatRequest
+			var toolAttempt       = thisChatRequest.getTool( toolCall.function.name ?: "" )
 			var toolArguments     = {}
 
 			try {
@@ -533,8 +582,8 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 		} );
 
 		// Continue streaming the final answer after tool execution
-		arguments.chatRequest.setMessages( newMessages );
-		chatStream( arguments.chatRequest, arguments.callback, arguments.interactionCount + 1 );
+		thisChatRequest.setMessages( newMessages );
+		chatStream( thisChatRequest, thisCallback, arguments.interactionCount + 1 );
 	}
 
 	/**
@@ -647,6 +696,391 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService" {
 			case "first": default:
 				return result.data.first().embedding
 		}
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiSpeechService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Convert text to speech using the OpenAI TTS API.
+	 * Returns an AiSpeechResponse containing the binary audio data.
+	 *
+	 * @speechRequest The AiSpeechRequest object
+	 *
+	 * @throws ProviderError if the provider returns an error
+	 *
+	 * @return AiSpeechResponse
+	 */
+	@override
+	public AiSpeechResponse function speak( required AiSpeechRequest speechRequest ){
+		return sendSpeechRequest( arguments.speechRequest, variables.speechURL );
+	}
+
+	/**
+	 * Internal helper — executes a TTS request against the given target URL.
+	 * Subclasses can override the URL (e.g. a custom speech endpoint) by calling
+	 * this method directly with a different targetURL.
+	 *
+	 * @speechRequest The AiSpeechRequest to send
+	 * @targetURL     The full URL to POST the TTS request to
+	 *
+	 * @return AiSpeechResponse
+	 */
+	private AiSpeechResponse function sendSpeechRequest(
+		required AiSpeechRequest speechRequest,
+		required string targetURL
+	){
+		// Seed defaults — use only speech-specific defaults; do NOT merge variables.params
+		// (those are chat-tier params and must not bleed across modalities).
+		arguments.speechRequest
+			.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceHeaders( variables.headers )
+
+		// Build data packet
+		var dataPacket = {
+			"model" : arguments.speechRequest.getModel(),
+			"input" : arguments.speechRequest.getText(),
+			"voice" : arguments.speechRequest.getVoice()
+		}
+
+		// Optional params
+		if ( arguments.speechRequest.getSpeed() != 1.0 ) {
+			dataPacket.speed = arguments.speechRequest.getSpeed()
+		}
+		if ( arguments.speechRequest.getOutputFormat().len() && arguments.speechRequest.getOutputFormat() != "mp3" ) {
+			dataPacket.response_format = arguments.speechRequest.getOutputFormat()
+		}
+		// Style/tone instructions — e.g. "Speak like a pirate". Requires gpt-4o-mini-tts or a compatible model.
+		if ( arguments.speechRequest.getInstructions().len() ) {
+			dataPacket.instructions = arguments.speechRequest.getInstructions()
+		}
+
+		// Merge remaining provider params
+		dataPacket.append( arguments.speechRequest.getParams() )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Localized Pre Callback ---
+		// -------------------------------------------------------------------------------------------
+		// Allow concrete providers to normalize the request packet before sending
+		dataPacket = preRequest( arguments.speechRequest, dataPacket, "speech" )
+
+		// Fire onAISpeakRequest announcement
+		BoxAnnounce( "onAISpeakRequest", {
+			provider   : this,
+			operation  : "speech",
+			aiRequest  : arguments.speechRequest,
+			dataPacket : dataPacket
+		} )
+
+		// Logging
+		if ( arguments.speechRequest.getLogRequest() ) {
+			writeLog( text: "aiSpeak request to #arguments.targetURL#: #jsonSerialize( dataPacket )#", type: "info", log: "ai" )
+		}
+		if ( arguments.speechRequest.getLogRequestToConsole() ) {
+			println( "aiSpeak request to #arguments.targetURL#: #jsonSerialize( dataPacket )#" )
+		}
+
+		// HTTP call — response is binary audio
+		bx: http
+			url     = arguments.targetURL
+			method  = "post"
+			result  = "speechResult"
+			charset = "utf-8"
+			timeout = arguments.speechRequest.getTimeout()
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+
+			if( arguments.speechRequest.getSendAuthHeader() ){
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.speechRequest.getApiKey()#";
+			}
+
+			// Custom headers from the request
+			for ( var thisHeader in arguments.speechRequest.getHeaders() ) {
+				bx:httpParam
+					type  = "header"
+					name  = "#thisHeader#"
+					value = "#arguments.speechRequest.getHeaders()[ thisHeader ]#";
+			}
+
+			bx:httpParam type="body" value=jsonSerialize( dataPacket );
+		}
+
+		// Error detection
+		if ( speechResult.statusCode != "200" ) {
+			var errorMessage = speechResult.fileContent
+			try {
+				var errorData = jsonDeserialize( speechResult.fileContent )
+				errorMessage  = errorData.error?.message ?: errorData.toString()
+			} catch ( any parseEx ) {
+				writeLog(
+					text: "Unable to parse speech error response: #speechResult.toString()#",
+					type: "warning",
+					log : "ai"
+				)
+			}
+
+			BoxAnnounce( "onAIError", {
+				error       : errorMessage,
+				errorMessage: errorMessage,
+				provider    : this,
+				operation   : "speech",
+				aiRequest   : arguments.speechRequest,
+				canRetry    : false
+			} )
+
+			throw(
+				type   : "ProviderError",
+				message: "HTTP Provider (#arguments.targetURL#) Error: #errorMessage#",
+				detail : CallStackGet().toString()
+			)
+		}
+
+		// Logging
+		if ( arguments.speechRequest.getLogResponse() ) {
+			writeLog( text: "aiSpeak response status=#speechResult.statusCode# size=#speechResult.fileContent.len()# bytes", type: "info", log: "ai" )
+		}
+		if ( arguments.speechRequest.getLogResponseToConsole() ) {
+			println( "aiSpeak response status=#speechResult.statusCode# size=#speechResult.fileContent.len()# bytes" )
+		}
+
+		// Construct response
+		var results = new AiSpeechResponse(
+			audioData   : speechResult.fileContent,
+			audioFormat : arguments.speechRequest.getOutputFormat(),
+			model       : arguments.speechRequest.getModel(),
+			provider    : variables.name
+		)
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Localized Post Callback ---
+		// -------------------------------------------------------------------------------------------
+		results = postResponse( arguments.speechRequest, dataPacket, results, "speech" )
+
+		BoxAnnounce( "onAISpeakResponse", {
+			provider   : this,
+			operation  : "speech",
+			aiRequest  : arguments.speechRequest,
+			aiResponse : results
+		} )
+
+		return results
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiTranscriptionService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Transcribe audio to text using the OpenAI Whisper API.
+	 *
+	 * @transcriptionRequest The AiTranscriptionRequest object
+	 *
+	 * @throws ProviderError if the provider returns an error
+	 *
+	 * @return AiTranscriptionResponse
+	 */
+	@override
+	public AiTranscriptionResponse function transcribe( required AiTranscriptionRequest transcriptionRequest ){
+		return sendTranscriptionRequest( arguments.transcriptionRequest, variables.transcribeURL );
+	}
+
+	/**
+	 * Translate audio from any language to English text using the OpenAI Whisper translations API.
+	 *
+	 * @transcriptionRequest The AiTranscriptionRequest object
+	 *
+	 * @throws ProviderError if the provider returns an error
+	 *
+	 * @return AiTranscriptionResponse
+	 */
+	@override
+	public AiTranscriptionResponse function translate( required AiTranscriptionRequest transcriptionRequest ){
+		return sendTranscriptionRequest( arguments.transcriptionRequest, variables.translateURL );
+	}
+
+	/**
+	 * Shared helper for transcribe() and translate().
+	 * Sends a multipart/form-data request to the Whisper API endpoint.
+	 *
+	 * @transcriptionRequest The AiTranscriptionRequest
+	 * @targetURL            The endpoint URL (transcriptions or translations)
+	 *
+	 * @return AiTranscriptionResponse
+	 */
+	private AiTranscriptionResponse function sendTranscriptionRequest(
+		required AiTranscriptionRequest transcriptionRequest,
+		required string targetURL
+	){
+		// Seed defaults — use only transcription-specific defaults; do NOT merge variables.params
+		// (those are chat-tier params and must not bleed across modalities).
+		arguments.transcriptionRequest
+			.mergeServiceParams( static.DEFAULT_TRANSCRIPTION_PARAMS )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceHeaders( variables.headers )
+
+		// Build a virtual data packet for the pre/post hooks (multipart fields represented as a struct)
+		var dataPacket = {
+			"model"          : arguments.transcriptionRequest.getModel(),
+			"response_format": arguments.transcriptionRequest.getResponseFormat(),
+			"language"       : arguments.transcriptionRequest.getLanguage()
+		}
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Localized Pre Callback ---
+		// -------------------------------------------------------------------------------------------
+		// Allow concrete providers to normalize the request before sending
+		dataPacket = preRequest( arguments.transcriptionRequest, dataPacket, "transcription" )
+
+		// Logging
+		if ( arguments.transcriptionRequest.getLogRequest() ) {
+			writeLog(
+				text: "aiTranscribe request to #arguments.targetURL# model=#arguments.transcriptionRequest.getModel()#",
+				type: "info",
+				log: "ai"
+			)
+		}
+		if ( arguments.transcriptionRequest.getLogRequestToConsole() ) {
+			println( "aiTranscribe request to #arguments.targetURL# model=#arguments.transcriptionRequest.getModel()#" )
+		}
+
+		// HTTP multipart/form-data request
+		bx: http
+			url     = arguments.targetURL
+			method  = "post"
+			result  = "transcribeResult"
+			charset = "utf-8"
+			timeout = arguments.transcriptionRequest.getTimeout()
+		{
+
+			// Auth Header ONLY if the provider requires it
+			// This is the default for OpenAI
+			// If the provider does not require it, set it to false
+			if( arguments.transcriptionRequest.getSendAuthHeader() ){
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.transcriptionRequest.getApiKey()#";
+			}
+
+			// Custom Headers from the request
+			for ( var thisHeader in arguments.transcriptionRequest.getHeaders() ) {
+				bx:httpParam
+					type  = "header"
+					name  = "#thisHeader#"
+					value = "#arguments.transcriptionRequest.getHeaders()[ thisHeader ]#";
+			}
+
+			// Model (required form field)
+			bx:httpParam type="formfield" name="model" value="#arguments.transcriptionRequest.getModel()#";
+
+			// Optional language
+			if ( arguments.transcriptionRequest.getLanguage().len() ) {
+				bx:httpParam type="formfield" name="language" value="#arguments.transcriptionRequest.getLanguage()#";
+			}
+
+			// Response format
+			bx:httpParam type="formfield" name="response_format" value="#arguments.transcriptionRequest.getResponseFormat()#";
+
+			// Timestamp granularities
+			if ( arguments.transcriptionRequest.getTimestamps().len() ) {
+				bx:httpParam type="formfield" name="timestamp_granularities[]" value="#arguments.transcriptionRequest.getTimestamps().toList()#";
+			}
+
+			// Audio file upload
+			if ( arguments.transcriptionRequest.getAudioFile().len() ) {
+				bx:httpParam
+					type     = "file"
+					name     = "file"
+					file     = "#arguments.transcriptionRequest.getAudioFile()#";
+			} else if ( !isSimpleValue( arguments.transcriptionRequest.getAudioData() ) || arguments.transcriptionRequest.getAudioData().len() ) {
+				// Binary data — write to a temp file with the correct extension so the provider
+				// can identify the codec. Use options.format / params.inputFormat if supplied
+				// (seeded by the BIF from audio.defaultOutputFormat), otherwise fall back to "mp3".
+				var audioExtension = len( arguments.transcriptionRequest.getInputFormat() ) ? arguments.transcriptionRequest.getInputFormat() : "mp3"
+				var tempFile = getTempDirectory() & "bxai_audio_" & createUUID() & "." & audioExtension
+				fileWrite( tempFile, arguments.transcriptionRequest.getAudioData() )
+				bx:httpParam
+					type = "file"
+					name = "file"
+					file = "#tempFile#";
+			}
+		}
+
+		// Error detection
+		if ( transcribeResult.statusCode != "200" ) {
+			var errorDetail = transcribeResult.errorDetail
+			var errorMessage = transcribeResult?.fileContent ?: "Unknown error";
+			try {
+				var errorData  = jsonDeserialize( transcribeResult.fileContent );
+				errorMessage   = errorData.error?.message ?: errorData.toString();
+			} catch ( any parseEx ) {
+				writeLog(
+					text: "Unable to parse transcription error response: #transcribeResult.toString()#",
+					type: "warning",
+					log : "ai"
+				)
+			}
+
+			BoxAnnounce( "onAIError", {
+				error       : errorMessage,
+				errorMessage: errorMessage,
+				errorDetail : errorDetail,
+				provider    : this,
+				operation   : "transcription",
+				aiRequest   : arguments.transcriptionRequest,
+				canRetry    : false
+			} );
+
+			throw(
+				type: "ProviderError",
+				message: "HTTP Target Url (#arguments.targetUrl#) Error: #errorMessage# #errorDetail#",
+				detail: CallStackGet().toString()
+			)
+		}
+
+		// Parse response
+		var responseFormat = arguments.transcriptionRequest.getResponseFormat();
+		if ( responseFormat == "text" || responseFormat == "srt" || responseFormat == "vtt" ) {
+			// Plain text / subtitle format
+			var transcriptionResponse = new AiTranscriptionResponse(
+				text     : transcribeResult.fileContent,
+				model    : arguments.transcriptionRequest.getModel(),
+				provider : variables.name
+			)
+			return postResponse( arguments.transcriptionRequest, dataPacket, transcriptionResponse, "transcription" )
+		}
+
+		// JSON / verbose_json
+		try {
+			var parsedResponse = jsonDeserialize( transcribeResult.fileContent )
+		} catch ( any parseEx ) {
+			throw( type: "ProviderError", message: "Failed to parse transcription response: #transcribeResult.fileContent#" )
+		}
+
+		// Logging
+		if ( arguments.transcriptionRequest.getLogResponse() ) {
+			writeLog( text: "aiTranscribe response: #transcribeResult.fileContent#", type: "info", log: "ai" )
+		}
+		if ( arguments.transcriptionRequest.getLogResponseToConsole() ) {
+			println( "aiTranscribe response: #transcribeResult.fileContent#" )
+		}
+
+		var transcriptionResponse = new AiTranscriptionResponse(
+			text     : parsedResponse.text ?: "",
+			segments : parsedResponse.segments ?: [],
+			words    : parsedResponse.words ?: [],
+			language : parsedResponse.language ?: "",
+			duration : parsedResponse.duration ?: 0,
+			model    : arguments.transcriptionRequest.getModel(),
+			provider : variables.name
+		)
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Localized Post Callback ---
+		// -------------------------------------------------------------------------------------------
+		// Allow concrete providers to normalize the response before returning
+		return postResponse( arguments.transcriptionRequest, dataPacket, transcriptionResponse, "transcription" )
 	}
 
 }

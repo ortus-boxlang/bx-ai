@@ -1,0 +1,41 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Capability interface for AI providers that support speech-to-text transcription
+ * and audio translation. Providers implementing this interface can convert audio
+ * files into text.
+ */
+import bxModules.bxai.models.providers.IAiService;
+
+interface extends="IAiService" {
+
+	/**
+	 * Transcribe audio into text in the original language.
+	 *
+	 * @transcriptionRequest The transcription request containing the audio source and parameters
+	 *
+	 * @return AiTranscriptionResponse with the transcribed text and optional metadata
+	 */
+	function transcribe( required AiTranscriptionRequest transcriptionRequest )
+
+	/**
+	 * Translate audio into English text regardless of the source language.
+	 *
+	 * @transcriptionRequest The transcription request containing the audio source and parameters
+	 *
+	 * @return AiTranscriptionResponse with the translated English text
+	 */
+	function translate( required AiTranscriptionRequest transcriptionRequest )
+
+}

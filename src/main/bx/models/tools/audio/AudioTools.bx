@@ -1,0 +1,74 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Audio built-in tools for bxai.
+ *
+ * Auto-registered tools (registered in ModuleConfig.onRuntimeStart):
+ *   speak@bxai      — Convert text to speech and save to a file; returns the absolute file path.
+ *   transcribe@bxai — Transcribe a local audio file or URL to plain text.
+ *   translate@bxai  — Translate non-English audio to English text.
+ *
+ * Usage (opt-in by tool key):
+ *   aiAgent( tools: [ "speak@bxai", "transcribe@bxai", "translate@bxai" ] )
+ */
+class {
+
+	/**
+	 * Convert text to speech and save to a file.
+	 * Auto-registered as speak@bxai on module load.
+	 */
+	@AITool( "Convert text to speech and save the audio to a file. Returns the absolute path to the saved audio file. Use this when you need to speak text aloud or produce an audio file." )
+	public string function speak(
+		required string text,
+		string voice        = "",
+		string outputFormat = "mp3",
+		string outputFile   = ""
+	) {
+		var params  = {}
+		var options = { outputFormat: arguments.outputFormat }
+		if ( arguments.voice.len() ) {
+			params.voice = arguments.voice
+		}
+		options.outputFile = arguments.outputFile.len()
+			? arguments.outputFile
+			: ( getTempDirectory() & createUUID() & "." & arguments.outputFormat )
+		return aiSpeak( arguments.text, params, options )
+	}
+
+	/**
+	 * Transcribe an audio file or URL to text.
+	 * Auto-registered as transcribe@bxai on module load.
+	 */
+	@AITool( "Transcribe audio from a local file path or URL to text. Returns the transcribed text as a plain string. Use this when you need to convert spoken audio to text." )
+	public string function transcribe(
+		required string audioPath,
+		string language = ""
+	) {
+		var params = {}
+		if ( arguments.language.len() ) {
+			params.language = arguments.language
+		}
+		return aiTranscribe( arguments.audioPath, params, { returnFormat: "text" } )
+	}
+
+	/**
+	 * Translate audio in any language to English text.
+	 * Auto-registered as translate@bxai on module load.
+	 */
+	@AITool( "Translate audio in any language to English text. Returns the English translation as a plain string. Note: converts speech to English — NOT text-to-text translation." )
+	public string function translate( required string audioPath ) {
+		return aiTranslate( arguments.audioPath, {}, { returnFormat: "text" } )
+	}
+
+}

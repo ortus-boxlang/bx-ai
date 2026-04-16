@@ -1,0 +1,134 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Translate audio from any supported language to English text using an AI provider.
+ * This is audio translation (speech-in → English text out), not text-to-text translation.
+ * Accepts a local file path, a remote URL, or raw binary audio data.
+ *
+ * @example
+ * ```
+ * // Translate a Spanish audio file to English text
+ * text = aiTranslate( "/path/to/spanish-audio.mp3" )
+ * println( text )
+ *
+ * // Get structured response
+ * response = aiTranslate(
+ *     audio  : "/path/to/audio.mp3",
+ *     options: { returnFormat: "response" }
+ * )
+ *
+ * // Use a specific provider
+ * text = aiTranslate(
+ *     audio  : "/path/to/audio.mp3",
+ *     params : { model: "whisper-1" },
+ *     options: { provider: "openai" }
+ * )
+ * ```
+ */
+@BoxBIF
+class {
+
+	static {
+		final VALID_RESPONSE_FORMATS = [ "text", "response", "raw" ]
+		final DEFAULT_OPTIONS = {
+			returnFormat : "text"
+		}
+	}
+
+	/**
+	 * Translate audio to English text
+	 *
+	 * @audio   The audio source: local file path (string), remote URL (string), or binary data
+	 * @params  Provider API parameters (model, response_format, etc.)
+	 * @options High-level options (provider, apiKey, returnFormat, timeout, logging)
+	 *
+	 * @return String (returnFormat "text") or AiTranscriptionResponse (returnFormat "response" / "raw")
+	 */
+	function invoke(
+		required any audio,
+		struct params = {},
+		struct options = {}
+	){
+		// Seed audio-specific defaults directly — do NOT merge all moduleRecord.settings into options
+		// because that would overwrite options.apiKey with the module global key, which breaks cross-provider
+		// key resolution inside aiService() (e.g. GROQ_API_KEY convention check)
+		var audioSettings = moduleRecord.settings.audio ?: {}
+		if ( audioSettings.defaultTranscriptionModel.len() && !arguments.options.keyExists( "model" ) && !arguments.params.keyExists( "model" ) ) {
+			arguments.params.model = audioSettings.defaultTranscriptionModel
+		}
+		// Seed audio-specific provider default
+		if ( !arguments.options.keyExists( "provider" ) && len( audioSettings.defaultProvider ?: "" ) ) {
+			arguments.options.provider = audioSettings.defaultProvider
+		}
+		// Seed audio-specific apiKey — only when no convention env var exists for the resolved provider,
+		// so the convention check in aiService() is not inadvertently bypassed.
+		if ( !len( arguments.options.apiKey ?: "" ) && len( audioSettings.defaultApiKey ?: "" ) ) {
+			var resolvedProvider = arguments.options.provider ?: moduleRecord.settings.provider
+			if ( !len( getSystemSetting( "#resolvedProvider.ucase()#_API_KEY", "" ) ) ) {
+				arguments.options.apiKey = audioSettings.defaultApiKey
+			}
+		}
+		// Seed inputFormat: options.format wins, then audio.defaultOutputFormat, so the provider
+		// can write the binary temp file with the correct extension.
+		if ( !arguments.params.keyExists( "inputFormat" ) && !arguments.options.keyExists( "inputFormat" ) ) {
+			var resolvedFormat = arguments.options.format ?: audioSettings.defaultOutputFormat ?: ""
+			if ( len( resolvedFormat ) ) {
+				arguments.params.inputFormat = resolvedFormat
+			}
+		}
+
+		// Create request (reuse AiTranscriptionRequest — same structure, different operation)
+		var transcriptionRequest = new bxModules.bxai.models.requests.AiTranscriptionRequest(
+			audio   = arguments.audio,
+			params  = arguments.params,
+			options = arguments.options,
+			methodDefaults = static.DEFAULT_OPTIONS  // Pass method defaults separately
+		)
+
+		// Guard: audio source required
+		if ( !transcriptionRequest.hasAudio() ) {
+			throw(
+				type    : "InvalidArgument",
+				message : "aiTranslate() requires a valid audio source (file path, URL, or binary data)."
+			)
+		}
+
+		// Get the service
+		var service = aiService( arguments.options?.provider, arguments.options )
+
+		if ( !isInstanceOf( service, "IAiTranscriptionService" ) ) {
+			throw(
+				type    : "UnsupportedCapability",
+				message : "Unsupported capability: provider [#service.getName()#] does not support audio translation. Use a provider that implements IAiTranscriptionService."
+			)
+		}
+
+		// Fire before event
+		BoxAnnounce( "beforeAITranslation", { transcriptionRequest: transcriptionRequest, service: service } )
+
+		// Invoke translation (speech-to-English-text)
+		var result = service.translate( transcriptionRequest )
+
+		// Fire after event
+		BoxAnnounce( "afterAITranslation", { transcriptionRequest: transcriptionRequest, service: service, result: result } )
+
+		// Return plain text or full response based on returnFormat
+		if ( transcriptionRequest.getReturnFormat() == "text" && isInstanceOf( result, "AiTranscriptionResponse" ) ) {
+			return result.getText()
+		}
+
+		return result
+	}
+
+}

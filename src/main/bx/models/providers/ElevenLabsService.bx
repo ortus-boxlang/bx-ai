@@ -1,0 +1,186 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * ElevenLabs Service - Premium TTS and STT provider
+ * ElevenLabs specializes in high-quality, lifelike text-to-speech and speech-to-text.
+ * Authentication uses the `xi-api-key` header rather than a Bearer token.
+ * @see https://elevenlabs.io/docs/api-reference
+ */
+import bxModules.bxai.models.providers.capabilities.IAiSpeechService;
+import bxModules.bxai.models.providers.capabilities.IAiTranscriptionService;
+import bxModules.bxai.models.requests.AiSpeechRequest;
+import bxModules.bxai.models.requests.AiTranscriptionRequest;
+import bxModules.bxai.models.responses.AiSpeechResponse;
+import bxModules.bxai.models.responses.AiTranscriptionResponse;
+
+class extends="BaseService" implements="IAiSpeechService, IAiTranscriptionService" {
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		CAPABILITIES = [ "speech", "transcription" ]
+		DEFAULT_SPEECH_PARAMS = {
+			// Multilingual v2 supports 29+ languages with high quality
+			"model_id" : "eleven_multilingual_v2",
+			// Rachel: warm, conversational female voice
+			"voice_id" : "21m00Tcm4TlvDq8ikWAM"
+		};
+		DEFAULT_SPEECH_SETTINGS = {
+			"stability"        : 0.5,
+			"similarity_boost" : 0.75,
+			"style"            : 0.0,
+			"use_speaker_boost": true
+		};
+		DEFAULT_TRANSCRIPTION_PARAMS = {
+			// Scribe v1: ElevenLabs' dedicated STT model
+			"model_id" : "scribe_v1"
+		};
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.speechURL      = "https://api.elevenlabs.io/v1/text-to-speech/%VOICE_ID%"
+		variables.transcribeURL  = "https://api.elevenlabs.io/v1/speech-to-text"
+		variables.name           = "ElevenLabs"
+	}
+
+	@override
+	public array function getDeclaredCapabilities(){
+		return static.CAPABILITIES;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiSpeechService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Convert text to speech using ElevenLabs TTS API.
+	 * Returns audio binary data in the requested format (default: mp3).
+	 * @see https://elevenlabs.io/docs/api-reference/text-to-speech
+	 */
+	@override
+	public AiSpeechResponse function speak( required AiSpeechRequest speechRequest ){
+		arguments.speechRequest
+			.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
+			.setApiKeyIfEmpty( getAPIKey() );
+
+		var params  = arguments.speechRequest.getParams();
+		var voiceId = params.voice_id ?: arguments.speechRequest.getVoice() ?: static.DEFAULT_SPEECH_PARAMS.voice_id;
+		var modelId = params.model_id ?: static.DEFAULT_SPEECH_PARAMS.model_id;
+		var format  = arguments.speechRequest.getOutputFormat() ?: "mp3";
+		var ttsURL  = variables.speechURL.replace( '%VOICE_ID%', voiceId )
+			& "?output_format=mp3_44100_128";
+
+		var voiceSettings = params.voice_settings ?: static.DEFAULT_SPEECH_SETTINGS;
+
+		var dataPacket = {
+			"text"          : arguments.speechRequest.getText(),
+			"model_id"      : modelId,
+			"voice_settings": voiceSettings
+		};
+
+		bx:http url=ttsURL method="post" result="speechResult" timeout=arguments.speechRequest.getTimeout(){
+			bx:httpParam type="header" name="xi-api-key"    value=arguments.speechRequest.getApiKey();
+			bx:httpParam type="header" name="content-type"  value="application/json";
+			bx:httpParam type="header" name="accept"        value="audio/mpeg";
+			bx:httpParam type="body"   value=jsonSerialize( dataPacket );
+		}
+
+		if ( speechResult.statusCode != "200" ) {
+			var errMsg = speechResult.fileContent;
+			try { errMsg = jsonDeserialize( speechResult.fileContent ).detail?.message ?: errMsg; } catch( any e ){}
+			throw( type: "ProviderError", message: "ElevenLabs TTS error: #errMsg#" );
+		}
+
+		return new AiSpeechResponse(
+			audioData  : speechResult.fileContent,
+			audioFormat: format,
+			model      : modelId,
+			provider   : variables.name
+		);
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiTranscriptionService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Transcribe audio to text using ElevenLabs Scribe STT API.
+	 * @see https://elevenlabs.io/docs/api-reference/speech-to-text
+	 */
+	@override
+	public AiTranscriptionResponse function transcribe( required AiTranscriptionRequest transcriptionRequest ){
+		arguments.transcriptionRequest
+			.mergeServiceParams( static.DEFAULT_TRANSCRIPTION_PARAMS )
+			.setApiKeyIfEmpty( getAPIKey() );
+
+		var params  = arguments.transcriptionRequest.getParams();
+		var modelId = params.model_id ?: static.DEFAULT_TRANSCRIPTION_PARAMS.model_id;
+
+		// Resolve audio to a temp file if needed (multipart upload requires a file path)
+		var audioFilePath = "";
+		if ( arguments.transcriptionRequest.getAudioFile().len() ) {
+			audioFilePath = arguments.transcriptionRequest.getAudioFile();
+		} else if ( !isSimpleValue( arguments.transcriptionRequest.getAudioData() ) ) {
+			audioFilePath = getTempDirectory() & createUUID() & ".audio";
+			fileWrite( audioFilePath, arguments.transcriptionRequest.getAudioData() );
+		}
+
+		if ( !audioFilePath.len() ) {
+			throw( type: "InvalidArgument", message: "ElevenLabs transcribe() requires an audio file path or binary audio data." );
+		}
+
+		bx:http url=variables.transcribeURL method="post" result="sttResult" timeout=arguments.transcriptionRequest.getTimeout(){
+			bx:httpParam type="header"  name="xi-api-key" value=arguments.transcriptionRequest.getApiKey();
+			bx:httpParam type="formfield" name="model_id" value=modelId;
+			bx:httpParam type="file"    name="audio"      file=audioFilePath;
+		}
+
+		if ( sttResult.statusCode != "200" ) {
+			var errMsg = sttResult.fileContent;
+			try { errMsg = jsonDeserialize( sttResult.fileContent ).detail?.message ?: errMsg; } catch( any e ){}
+			throw( type: "ProviderError", message: "ElevenLabs STT error: #errMsg#" );
+		}
+
+		var parsed   = jsonDeserialize( sttResult.fileContent );
+		var text     = parsed.text ?: "";
+		var language = parsed.language_code ?: "";
+		var segments = parsed.words ?: [];
+
+		return new AiTranscriptionResponse(
+			text    : text,
+			language: language,
+			segments: segments,
+			model   : modelId,
+			provider: variables.name
+		);
+	}
+
+	/**
+	 * ElevenLabs does not have a dedicated translation endpoint.
+	 * Delegates to transcribe() — Scribe STT supports multilingual detection.
+	 */
+	@override
+	public AiTranscriptionResponse function translate( required AiTranscriptionRequest transcriptionRequest ){
+		return transcribe( arguments.transcriptionRequest );
+	}
+
+}

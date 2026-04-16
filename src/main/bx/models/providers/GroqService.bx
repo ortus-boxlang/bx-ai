@@ -14,18 +14,24 @@
  * ----------------------------------------------------------------------------------
  */
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiTranscriptionService;
+import bxModules.bxai.models.responses.AiTranscriptionResponse;
 
-class extends="OpenAIService" implements="IAiChatService" {
+class extends="OpenAIService" implements="IAiChatService, IAiTranscriptionService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "chat", "stream" ]
+		CAPABILITIES = [ "chat", "stream", "transcription", "translation" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://console.groq.com/docs/models
 			// according to the docs, this is a fast, efficient model
 			"model" : "llama-3.1-8b-instant"
+		}
+		DEFAULT_TRANSCRIPTION_PARAMS = {
+			// https://console.groq.com/docs/speech-text
+			"model" : "whisper-large-v3"
 		}
 	}
 
@@ -34,8 +40,10 @@ class extends="OpenAIService" implements="IAiChatService" {
 	 * https://console.groq.com/docs/api-reference
 	 */
 	function init(){
-		variables.chatURL = "https://api.groq.com/openai/v1/chat/completions"
-		variables.name = "Groq"
+		variables.chatURL       = "https://api.groq.com/openai/v1/chat/completions"
+		variables.transcribeURL = "https://api.groq.com/openai/v1/audio/transcriptions"
+		variables.translateURL  = "https://api.groq.com/openai/v1/audio/translations"
+		variables.name          = "Groq"
 	}
 
 	@override
@@ -55,6 +63,24 @@ class extends="OpenAIService" implements="IAiChatService" {
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 		return super.chatStream( arguments.chatRequest, arguments.callback )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiTranscriptionService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	@override
+	public AiTranscriptionResponse function transcribe( required AiTranscriptionRequest transcriptionRequest ){
+		arguments.transcriptionRequest.mergeServiceParams( static.DEFAULT_TRANSCRIPTION_PARAMS )
+		return super.transcribe( arguments.transcriptionRequest )
+	}
+
+	@override
+	public AiTranscriptionResponse function translate( required AiTranscriptionRequest transcriptionRequest ){
+		arguments.transcriptionRequest.mergeServiceParams( static.DEFAULT_TRANSCRIPTION_PARAMS )
+		return super.translate( arguments.transcriptionRequest )
 	}
 
 }

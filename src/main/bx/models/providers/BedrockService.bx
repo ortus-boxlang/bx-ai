@@ -708,12 +708,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					promptTokens        : openAIResponse.usage.prompt_tokens,
 					completionTokens    : openAIResponse.usage.completion_tokens,
 					totalTokens         : openAIResponse.usage.total_tokens,
-					chatRequest         : arguments.chatRequest,
+					aiRequest           : arguments.chatRequest,
 					usage               : openAIResponse.usage,
-					// Multi-tenant tracking fields
-					tenantId            : arguments.chatRequest.getTenantId(),
-					usageMetadata       : arguments.chatRequest.getUsageMetadata(),
-					inferenceProfileArn : arguments.chatRequest.getProviderOption( "inferenceProfileArn" ),
 					timestamp           : now()
 				}
 			);
@@ -1022,12 +1018,42 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		// Parse the AWS event-stream binary response
 		// The response contains multiple events, each with a binary header and JSON payload
+		var bedrockUsage = { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "raw": {} };
+		var userStreamCallback = arguments.callback;
+		var usageCapturingCallback = ( chunk ) => {
+			// Capture usage data from the normalized chunk if present
+			if( !isNull( chunk.usage ) && isStruct( chunk.usage ) ){
+				bedrockUsage.inputTokens  = chunk.usage.keyExists( "prompt_tokens" )     ? chunk.usage.prompt_tokens     : bedrockUsage.inputTokens;
+				bedrockUsage.outputTokens = chunk.usage.keyExists( "completion_tokens" ) ? chunk.usage.completion_tokens : bedrockUsage.outputTokens;
+				bedrockUsage.totalTokens  = bedrockUsage.inputTokens + bedrockUsage.outputTokens;
+				bedrockUsage.raw          = chunk.usage;
+			}
+			userStreamCallback( chunk );
+		};
+
 		parseBedrockEventStream(
 			httpResult.fileContent,
 			arguments.modelFamily,
 			arguments.modelId,
-			arguments.callback
+			usageCapturingCallback
 		);
+
+		// -------------------------------------------------------------------------------------------
+		// --- Usage Event Announcement (Streaming) ---
+		// -------------------------------------------------------------------------------------------
+		if( bedrockUsage.totalTokens > 0 ){
+			boxAnnounce( "onAITokenCount", {
+				provider         : this,
+				operation        : "stream",
+				model            : arguments.modelId,
+				promptTokens     : bedrockUsage.inputTokens,
+				completionTokens : bedrockUsage.outputTokens,
+				totalTokens      : bedrockUsage.totalTokens,
+				aiRequest        : arguments.aiRequest,
+				usage            : bedrockUsage.raw,
+				timestamp        : now()
+			} );
+		}
 
 		// Log completion
 		if ( arguments.aiRequest.getLogResponse() ) {
@@ -1200,10 +1226,43 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				payloadJson = jsonDeserialize( decodedPayload );
 			}
 
+			// Capture usage data from various Bedrock model formats before transformation
+			var chunkUsage = {};
+			// Claude-on-Bedrock: message_start has input_tokens, message_delta has output_tokens
+			if( payloadJson.keyExists( "type" ) && payloadJson.type == "message_start" && !isNull( payloadJson.message?.usage ) ){
+				chunkUsage = {
+					"prompt_tokens"     : payloadJson.message.usage.input_tokens ?: 0,
+					"completion_tokens" : 0,
+					"total_tokens"      : payloadJson.message.usage.input_tokens ?: 0
+				};
+			}
+			if( payloadJson.keyExists( "type" ) && payloadJson.type == "message_delta" && !isNull( payloadJson.usage ) ){
+				chunkUsage = {
+					"prompt_tokens"     : 0,
+					"completion_tokens" : payloadJson.usage.output_tokens ?: 0,
+					"total_tokens"      : payloadJson.usage.output_tokens ?: 0
+				};
+			}
+			// Amazon invocation metrics (present in final event for all model families)
+			if( payloadJson.keyExists( "amazon-bedrock-invocationMetrics" ) ){
+				var metrics = payloadJson[ "amazon-bedrock-invocationMetrics" ];
+				chunkUsage = {
+					"prompt_tokens"     : metrics.inputTokenCount ?: 0,
+					"completion_tokens" : metrics.outputTokenCount ?: 0,
+					"total_tokens"      : ( metrics.inputTokenCount ?: 0 ) + ( metrics.outputTokenCount ?: 0 )
+				};
+			}
+
 			// Transform and send to callback
 			var streamChunk = transformStreamChunk( payloadJson, arguments.modelFamily, arguments.modelId );
 			if ( !isNull( streamChunk ) ) {
+				if( !structIsEmpty( chunkUsage ) ){
+					streamChunk.usage = chunkUsage;
+				}
 				arguments.callback( streamChunk );
+			} else if( !structIsEmpty( chunkUsage ) ){
+				// Send a usage-only chunk so the callback can capture it
+				arguments.callback( { "usage": chunkUsage, "choices": [], "model": arguments.modelId } );
 			}
 		} catch ( any e ) {
 			// Not valid JSON or processing error - may be a control message

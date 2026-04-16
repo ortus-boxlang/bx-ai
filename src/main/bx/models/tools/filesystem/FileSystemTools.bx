@@ -1,0 +1,549 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License") you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Filesystem tools for bxai — read, write, move, copy, delete, and list files and directories.
+ *
+ * NOT auto-registered. Opt-in only — register explicitly with the paths you allow:
+ *
+ *   import bxModules.bxai.models.tools.filesystem.FileSystemTools
+ *
+ *   // Restrict AI access to specific directories (recommended)
+ *   aiToolRegistry().scanClass(
+ *       new FileSystemTools( allowedPaths: [ "/data", "/workspace/output" ] ),
+ *       "bxai"
+ *   )
+ *
+ *   // Allow access to any path (use with caution)
+ *   aiToolRegistry().scanClass( new FileSystemTools(), "bxai" )
+ *
+ * Registered tool keys (sorted by category):
+ *   File read/write:
+ *     readFile@bxai              — Read text content from a file.
+ *     readMultipleFiles@bxai     — Read multiple files in a single batch (paths as JSON array).
+ *     writeFile@bxai             — Write (overwrite) text content to a file.
+ *     appendFile@bxai            — Append text content to a file.
+ *     editFile@bxai              — Find-and-replace patch within an existing file.
+ *   File management:
+ *     fileMetadata@bxai          — Return metadata (size, type, MIME, modified date) as JSON.
+ *     pathExists@bxai            — Check whether a path exists.
+ *     deleteFile@bxai            — Delete a file.
+ *     moveFile@bxai              — Move or rename a file.
+ *     copyFile@bxai              — Copy a file to a new location.
+ *   Search:
+ *     searchFiles@bxai           — Search file contents for a string or regex pattern.
+ *   Utilities:
+ *     listAllowedDirectories@bxai — Return the configured allowed root directories.
+ *   Directory operations:
+ *     listDirectory@bxai         — List directory contents as a JSON array.
+ *     directoryTree@bxai         — Return a recursive JSON tree of a directory.
+ *     createDirectory@bxai       — Create a directory (and any missing parents).
+ *     deleteDirectory@bxai       — Recursively delete a directory and all its contents.
+ *   Zip / archive:
+ *     zipFiles@bxai              — Compress a file or directory into a zip archive.
+ *     unzipFile@bxai             — Extract a zip archive to a directory.
+ *     checkZipFile@bxai          — Check whether a file is a valid zip archive.
+ *
+ * Security:
+ *   Pass `allowedPaths` to the constructor to restrict the AI to specific
+ *   directories. All path arguments are canonicalized before the check, so
+ *   directory-traversal tricks (e.g. "../../etc/passwd") are blocked.
+ */
+class {
+
+	/**
+	 * Canonical forms of all allowed root directories.
+	 * Empty means no restriction.
+	 */
+	property name="allowedPaths" type="array" default=[];
+
+	/**
+	 * Constructor.
+	 *
+	 * @allowedPaths Restrict the AI to these absolute directories only.
+	 *               Leave empty to allow access to any path (use with caution).
+	 */
+	function init( array allowedPaths = [] ) {
+		// Pre-compute canonical paths once to avoid repeated I/O per call
+		variables.allowedPaths = arguments.allowedPaths.map( p => getCanonicalPath( p ) )
+		return this
+	}
+
+	// -------------------------------------------------------------------------
+	// Internal guard — not annotated, never registered as a tool
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Resolves `path` to its canonical form and verifies it sits under at least
+	 * one of the configured allowed directories.
+	 * Throws FileSystemTools.AccessDenied when the check fails.
+	 */
+	private function guardPath( required string path ) {
+		if ( variables.allowedPaths.isEmpty() ) {
+			return; // no restriction configured
+		}
+		var resolvedPath = getCanonicalPath( arguments.path )
+		for ( var allowed in variables.allowedPaths ) {
+			if ( resolvedPath.startsWith( allowed ) ) {
+				// within an allowed root
+				return;
+			}
+		}
+		throw(
+			type    : "FileSystemTools.AccessDenied",
+			message : "Access denied: the path [#arguments.path#] is outside the configured allowed directories."
+		)
+	}
+
+	// -------------------------------------------------------------------------
+	// File read / write
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Read file text content.
+	 */
+	@AITool( "Read the full text content of a file on the local filesystem and return it as a string." )
+	public string function readFile( required string path ) {
+		guardPath( arguments.path )
+		if ( !fileExists( arguments.path ) ) {
+			throw(
+				type    : "FileSystemTools.NotFound",
+				message : "File not found: #arguments.path#"
+			)
+		}
+		return fileRead( arguments.path )
+	}
+
+	/**
+	 * Write (overwrite) text content to a file, creating parent directories as needed.
+	 */
+	@AITool( "Write text content to a file on the local filesystem, creating the file (and any missing parent directories) if needed. Overwrites existing content. Returns a confirmation message." )
+	public string function writeFile(
+		required string path,
+		required string content
+	) {
+		guardPath( arguments.path )
+		var directory = getDirectoryFromPath( arguments.path )
+		if ( directory.len() && !directoryExists( directory ) ) {
+			directoryCreate( directory, true )
+		}
+		fileWrite( arguments.path, arguments.content )
+		return "OK: wrote #arguments.content.len()# characters to #arguments.path#"
+	}
+
+	/**
+	 * Append text content to an existing file, creating it (and parent dirs) if absent.
+	 */
+	@AITool( "Append text content to a file on the local filesystem. Creates the file (and any missing parent directories) if it does not exist. Returns a confirmation message." )
+	public string function appendFile(
+		required string path,
+		required string content
+	) {
+		guardPath( arguments.path )
+		var directory = getDirectoryFromPath( arguments.path )
+		if ( directory.len() && !directoryExists( directory ) ) {
+			directoryCreate( directory, true )
+		}
+		fileAppend( arguments.path, arguments.content )
+		return "OK: appended #arguments.content.len()# characters to #arguments.path#"
+	}
+
+	// -------------------------------------------------------------------------
+	// File management
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Return file metadata.
+	 */
+	@AITool( "Return metadata about a file — name, absolute path, size in bytes, MIME type, and last-modified date." )
+	public struct function fileMetadata( required string path ) {
+		guardPath( arguments.path )
+		if ( !fileExists( arguments.path ) ) {
+			throw(
+				type    : "FileSystemTools.NotFound",
+				message : "File not found: #arguments.path#"
+			)
+		}
+		var info     = fileInfo( arguments.path )
+		var mimeType = ""
+		try { mimeType = fileGetMimeType( arguments.path ) } catch ( any ignore ) {}
+		return {
+			name            : info.name,
+			path            : info.path,
+			size            : info.size,
+			type            : info.type,
+			mimeType        : mimeType,
+			dateLastModified: info.lastModified.dateTimeFormat( "iso" )
+		}
+	}
+
+	/**
+	 * Check whether a file or directory exists.
+	 */
+	@AITool( "Check whether a file or directory exists at the given path. Returns 'true' or 'false'." )
+	public string function pathExists( required string path ) {
+		guardPath( arguments.path )
+		return ( fileExists( arguments.path ) || directoryExists( arguments.path ) ) ? "true" : "false"
+	}
+
+	/**
+	 * Delete a file.
+	 */
+	@AITool( "Delete a file from the local filesystem. Returns a confirmation message. This operation is irreversible." )
+	public string function deleteFile( required string path ) {
+		guardPath( arguments.path )
+		if ( !fileExists( arguments.path ) ) {
+			return "File not found (nothing deleted): #arguments.path#"
+		}
+		fileDelete( arguments.path )
+		return "OK: deleted #arguments.path#"
+	}
+
+	/**
+	 * Move or rename a file.
+	 */
+	@AITool( "Move or rename a file on the local filesystem. Creates missing parent directories at the destination automatically. Returns a confirmation message." )
+	public string function moveFile(
+		required string source,
+		required string destination
+	) {
+		guardPath( arguments.source )
+		guardPath( arguments.destination )
+		if ( !fileExists( arguments.source ) ) {
+			throw(
+				type    : "FileSystemTools.NotFound",
+				message : "Source file not found: #arguments.source#"
+			)
+		}
+		var destDirectory = getDirectoryFromPath( arguments.destination )
+		if ( destDirectory.len() && !directoryExists( destDirectory ) ) {
+			directoryCreate( destDirectory, true )
+		}
+		fileMove( arguments.source, arguments.destination )
+		return "OK: moved #arguments.source# to #arguments.destination#"
+	}
+
+	/**
+	 * Copy a file to a new location.
+	 */
+	@AITool( "Copy a file to a new location on the local filesystem. Creates missing parent directories at the destination automatically. Returns a confirmation message." )
+	public string function copyFile(
+		required string source,
+		required string destination
+	) {
+		guardPath( arguments.source )
+		guardPath( arguments.destination )
+		if ( !fileExists( arguments.source ) ) {
+			throw(
+				type    : "FileSystemTools.NotFound",
+				message : "Source file not found: #arguments.source#"
+			)
+		}
+		var destDirectory = getDirectoryFromPath( arguments.destination )
+		if ( destDirectory.len() && !directoryExists( destDirectory ) ) {
+			directoryCreate( destDirectory, true )
+		}
+		fileCopy( arguments.source, arguments.destination )
+		return "OK: copied #arguments.source# to #arguments.destination#"
+	}
+
+	// -------------------------------------------------------------------------
+	// Directory operations
+	// -------------------------------------------------------------------------
+
+	/**
+	 * List directory contents.
+	 */
+	@AITool( "List the contents of a directory. Returns an array where each entry contains name, path, type (file or dir), size, and last-modified date. Use the filter argument to match glob patterns such as *.txt or *.json|*.yaml. Set recurse to true to include all subdirectories." )
+	public array function listDirectory(
+		required string  path,
+		string           filter  = "",
+		boolean          recurse = false
+	) {
+		guardPath( arguments.path )
+		if ( !directoryExists( arguments.path ) ) {
+			throw(
+				type    : "FileSystemTools.NotFound",
+				message : "Directory not found: #arguments.path#"
+			)
+		}
+		var listArgs = {
+			path     : arguments.path,
+			recurse  : arguments.recurse,
+			listInfo : "query",
+			type     : "all",
+			sort     : "type asc, name asc"
+		}
+		if ( arguments.filter.len() ) {
+			listArgs.filter = arguments.filter
+		}
+		var listing = directoryList( argumentCollection: listArgs )
+		var results = []
+		listing.each( row => {
+			results.append( {
+				name            : row.name,
+				path            : row.directory & row.name,
+				type            : row.type,
+				size            : row.size,
+				dateLastModified: row.dateLastModified.dateTimeFormat( "iso" )
+			} )
+		} )
+		return results
+	}
+
+	/**
+	 * Create a directory (and any missing parent directories).
+	 */
+	@AITool( "Create a directory at the given path, including any missing parent directories. Returns a confirmation message." )
+	public string function createDirectory( required string path ) {
+		guardPath( arguments.path )
+		if ( directoryExists( arguments.path ) ) {
+			return "Directory already exists: #arguments.path#"
+		}
+		directoryCreate( arguments.path, true )
+		return "OK: directory created at #arguments.path#"
+	}
+
+	/**
+	 * Recursively delete a directory and all its contents.
+	 */
+	@AITool( "Recursively delete a directory and all of its contents from the local filesystem. Returns a confirmation message. This operation is irreversible." )
+	public string function deleteDirectory( required string path ) {
+		guardPath( arguments.path )
+		if ( !directoryExists( arguments.path ) ) {
+			return "Directory not found (nothing deleted): #arguments.path#"
+		}
+		directoryDelete( arguments.path, true )
+		return "OK: deleted directory #arguments.path# and all its contents"
+	}
+
+	// -------------------------------------------------------------------------
+	// File read/write (extended)
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Read multiple files in a single batch.
+	 */
+	@AITool( "Read multiple files in a single batch. Returns a struct mapping each path to its text content. The paths argument must be a JSON array of absolute file paths. Unreadable paths are mapped to an error message instead of throwing." )
+	public struct function readMultipleFiles( required string paths ) {
+		var pathList = jsonDeserialize( arguments.paths )
+		var results  = {}
+		pathList.each( p => {
+			try {
+				guardPath( p )
+				results[ p ] = fileRead( p )
+			} catch ( any e ) {
+				results[ p ] = "ERROR: #e.message#"
+			}
+		} )
+		return results
+	}
+
+	/**
+	 * Apply a find-and-replace patch to an existing file.
+	 */
+	@AITool( "Apply a find-and-replace edit to an existing file. Reads the file, replaces every occurrence of oldText with newText, then writes the result back. Returns a confirmation with the number of replacements made." )
+	public string function editFile(
+		required string path,
+		required string oldText,
+		required string newText
+	) {
+		guardPath( arguments.path )
+		if ( !fileExists( arguments.path ) ) {
+			throw( type: "FileSystemTools.NotFound", message: "File not found: #arguments.path#" )
+		}
+		var content  = fileRead( arguments.path )
+		var replaced = ( content.len() - replace( content, arguments.oldText, "", "all" ).len() ) / max( arguments.oldText.len(), 1 )
+		var updated  = replace( content, arguments.oldText, arguments.newText, "all" )
+		fileWrite( arguments.path, updated )
+		return "OK: made #int( replaced )# replacement(s) in #arguments.path#"
+	}
+
+	// -------------------------------------------------------------------------
+	// Search
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Search file contents within a directory for lines matching a pattern.
+	 */
+	@AITool( "Search file contents within a directory for lines matching a string or regex pattern. Returns an array of matches, each containing the file path, line number, and the matching line content. Set recurse to true to search subdirectories." )
+	public array function searchFiles(
+		required string  path,
+		required string  pattern,
+		boolean          recurse = false
+	) {
+		guardPath( arguments.path )
+		if ( !directoryExists( arguments.path ) ) {
+			throw(
+				type    : "FileSystemTools.NotFound",
+				message : "Directory not found: #arguments.path#"
+			)
+		}
+		var files          = directoryList( path: arguments.path, recurse: arguments.recurse, listInfo: "path", type: "file" )
+		var matches        = []
+		// Capture pattern in a local var so nested lambdas can access it
+		// (inner lambdas have their own 'arguments' scope that shadows the function's)
+		var searchPattern  = arguments.pattern
+		files.each( filePath => {
+			var lines = replace( fileRead( filePath ), char( 13 ), "", "all" ).listToArray( char( 10 ) )
+			lines.each( ( line, idx ) => {
+				if ( reFindNoCase( searchPattern, line ) ) {
+					matches.append( {
+						file    : filePath,
+						line    : idx,
+						content : line.trim()
+					} )
+				}
+			} )
+		} )
+		return matches
+	}
+
+	// -------------------------------------------------------------------------
+	// Utilities
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Return the configured allowed root directories.
+	 */
+	@AITool( "Return the configured allowed root directories. These are the only paths the filesystem tools will access. If the list is empty, all paths are allowed." )
+	public array function listAllowedDirectories() {
+		return variables.allowedPaths
+	}
+
+	// -------------------------------------------------------------------------
+	// Directory operations (extended)
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Build and return a recursive tree of a directory.
+	 */
+	@AITool( "Return a recursive tree of a directory. Each node contains name, type ('file' or 'dir'), and path. Directory nodes also have a children array. File nodes also include size in bytes." )
+	public struct function directoryTree( required string path ) {
+		guardPath( arguments.path )
+		if ( !directoryExists( arguments.path ) ) {
+			throw(
+				type    : "FileSystemTools.NotFound",
+				message : "Directory not found: #arguments.path#"
+			)
+		}
+		return buildTree( arguments.path )
+	}
+
+	// -------------------------------------------------------------------------
+	// Zip / archive operations
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Compress a file or directory into a zip archive.
+	 */
+	@AITool( "Compress a file or directory into a zip archive. sourcePath is the file or directory to compress. zipFilePath is the destination .zip file path. Set recurse to false to skip subdirectories (default true). Set includeBaseDir to false to omit the root folder inside the zip (default true)." )
+	public string function zipFiles(
+		required string  sourcePath,
+		required string  zipFilePath,
+		boolean          recurse        = true,
+		boolean          includeBaseDir = true
+	) {
+		guardPath( arguments.sourcePath )
+		guardPath( arguments.zipFilePath )
+		if ( !fileExists( arguments.sourcePath ) && !directoryExists( arguments.sourcePath ) ) {
+			throw(
+				type    : "FileSystemTools.NotFound",
+				message : "Source not found: #arguments.sourcePath#"
+			)
+		}
+		var destDir = getDirectoryFromPath( arguments.zipFilePath )
+		if ( destDir.len() && !directoryExists( destDir ) ) {
+			directoryCreate( destDir, true )
+		}
+		compress(
+			format           : "zip",
+			source           : arguments.sourcePath,
+			destination      : arguments.zipFilePath,
+			includeBaseFolder: arguments.includeBaseDir,
+			overwrite        : true,
+			recurse          : arguments.recurse
+		)
+		return "OK: created zip archive at #arguments.zipFilePath#"
+	}
+
+	/**
+	 * Extract a zip archive to a destination directory.
+	 */
+	@AITool( "Extract a zip archive to a destination directory. zipFilePath is the path to the .zip file. extractPath is the destination directory. Set overwrite to true to overwrite already-existing files (default false)." )
+	public string function unzipFile(
+		required string  zipFilePath,
+		required string  extractPath,
+		boolean          overwrite = false
+	) {
+		guardPath( arguments.zipFilePath )
+		guardPath( arguments.extractPath )
+		if ( !fileExists( arguments.zipFilePath ) ) {
+			throw(
+				type    : "FileSystemTools.NotFound",
+				message : "Zip file not found: #arguments.zipFilePath#"
+			)
+		}
+		if ( !directoryExists( arguments.extractPath ) ) {
+			directoryCreate( arguments.extractPath, true )
+		}
+		extract(
+			format      : "zip",
+			source      : arguments.zipFilePath,
+			destination : arguments.extractPath,
+			overwrite   : arguments.overwrite
+		)
+		return "OK: extracted #arguments.zipFilePath# to #arguments.extractPath#"
+	}
+
+	/**
+	 * Check whether a file is a valid zip archive.
+	 * Named checkZipFile to avoid shadowing the built-in isZipFile() BIF.
+	 */
+	@AITool( "Check whether the file at the given path is a valid zip / archive file. Returns 'true' or 'false'." )
+	public string function checkZipFile( required string path ) {
+		guardPath( arguments.path )
+		return isZipFile( arguments.path ) ? "true" : "false"
+	}
+
+	// -------------------------------------------------------------------------
+	// Private helpers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Recursive helper used by directoryTree().
+	 */
+	private struct function buildTree( required string path ) {
+		var node = {
+			name     : listLast( arguments.path, "/\" ),
+			type     : "dir",
+			path     : arguments.path,
+			children : []
+		}
+		directoryList( arguments.path, false, "query", "", "type asc, name asc" ).each( row => {
+			var childPath = row.directory & row.name
+			if ( row.type == "Dir" ) {
+				node.children.append( buildTree( childPath ) )
+			} else {
+				node.children.append( {
+					name : row.name,
+					type : "file",
+					path : childPath,
+					size : row.size
+				} )
+			}
+		} )
+		return node
+	}
+
+}

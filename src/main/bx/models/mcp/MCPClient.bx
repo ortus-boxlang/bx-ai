@@ -161,7 +161,7 @@ class {
 	 *
 	 * @return MCPResponse with tools data
 	 */
-	function listTools() {
+	MCPResponse function listTools() {
 		var body = {
 			"jsonrpc": "2.0",
 			"method": "tools/list",
@@ -175,7 +175,7 @@ class {
 	 *
 	 * @return MCPResponse with resources data
 	 */
-	function listResources() {
+	MCPResponse function listResources() {
 		var body = {
 			"jsonrpc": "2.0",
 			"method": "resources/list",
@@ -189,7 +189,7 @@ class {
 	 *
 	 * @return MCPResponse with prompts data
 	 */
-	function listPrompts() {
+	MCPResponse function listPrompts() {
 		var body = {
 			"jsonrpc": "2.0",
 			"method": "prompts/list",
@@ -203,7 +203,7 @@ class {
 	 *
 	 * @return MCPResponse with capabilities data
 	 */
-	function getCapabilities() {
+	MCPResponse function getCapabilities() {
 		var body = {
 			"jsonrpc": "2.0",
 			"method": "initialize",
@@ -228,7 +228,7 @@ class {
 	 * @args Arguments to pass to the tool
 	 * @return MCPResponse with invocation result
 	 */
-	function send( required string tool, struct args = {} ) {
+	MCPResponse function send( required string tool, struct args = {} ) {
 		var body = {
 			"jsonrpc": "2.0",
 			"method": "tools/call",
@@ -247,7 +247,7 @@ class {
 	 * @uri URI of the resource to read
 	 * @return MCPResponse with resource data
 	 */
-	function readResource( required string uri ) {
+	MCPResponse function readResource( required string uri ) {
 		var body = {
 			"jsonrpc": "2.0",
 			"method": "resources/read",
@@ -266,7 +266,7 @@ class {
 	 * @args Arguments for the prompt
 	 * @return MCPResponse with prompt data
 	 */
-	function getPrompt( required string name, struct args = {} ) {
+	MCPResponse function getPrompt( required string name, struct args = {} ) {
 		var body = {
 			"jsonrpc": "2.0",
 			"method": "prompts/get",
@@ -293,7 +293,7 @@ class {
 	 * @body Optional request body
 	 * @return MCPResponse with normalized response data
 	 */
-	private function makeRequest( required string method, required string path, any body ) {
+	private MCPResponse function makeRequest( required string method, required string path, any body ) {
 		var targetUrl = variables.baseURL & arguments.path;
 		var mcpResponse = null;
 

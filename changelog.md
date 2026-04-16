@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🥊 New Features
+
+- **Audio Support — Text-to-Speech, Transcription, and Translation**:
+  - **`aiSpeak( text, params, options )`** BIF: Convert text to speech using any provider that supports TTS. Returns an `AiSpeechResponse` (with `hasAudio()`, `saveToFile()`, `getBase64()`, `getMimeType()`, `getSize()`) or saves directly to a file via `options.outputFile`.
+  - **`aiTranscribe( audio, params, options )`** BIF: Transcribe audio (file path, URL, or binary) to text. Returns the transcript string by default or a full `AiTranscriptionResponse` when `options.returnFormat = "response"`.
+  - **`aiTranslate( audio, params, options )`** BIF: Translate non-English audio to English text using supported providers.
+  - **`IAiSpeechService`** interface: Implemented by providers that support TTS (`speak()`).
+  - **`IAiTranscriptionService`** interface: Implemented by providers that support STT (`transcribe()` + `translate()`).
+  - **Provider support**: OpenAI (TTS + STT), Mistral/Voxtral (TTS + STT), Groq/Whisper (STT + translation), xAI/Grok (TTS), Gemini (TTS + STT), ElevenLabs (TTS + STT — new dedicated audio provider).
+  - **`ElevenLabsService`**: New provider supporting high-quality TTS via `eleven_multilingual_v2` and STT via `scribe_v1`. Use `aiService("elevenlabs", apiKey)`.
+  - **6 new interception points**: `beforeAISpeech`, `afterAISpeech`, `beforeAITranscription`, `afterAITranscription`, `beforeAITranslation`, `afterAITranslation`.
+  - **`audio` settings block** in module config: `defaultVoice`, `defaultOutputFormat`, `defaultSpeechModel`, `defaultTranscriptionModel`.
+
+- **Audio Agent Tools — `speak@bxai`, `transcribe@bxai`, `translate@bxai`**: New `AudioTools` class (`models/tools/audio/AudioTools.bx`) auto-registered in the global tool registry at module startup. `speak@bxai` converts text to speech and returns the saved file path (auto-generates a temp file when no `outputFile` is supplied). `transcribe@bxai` transcribes a local file or URL to plain text. `translate@bxai` translates any-language audio to English text. Opt-in by name: `aiAgent( tools: [ "speak@bxai", "transcribe@bxai", "translate@bxai" ] )`.
+
+- **FileSystem Agent Tools** — New `FileSystemTools` class (`models/tools/filesystem/FileSystemTools.bx`) with 19 `@AITool`-annotated methods covering the full filesystem lifecycle. **NOT auto-registered** — opt-in only via `aiToolRegistry().scanClass()` so agents never get filesystem access unless explicitly granted. Supports a path-guard constructor (`allowedPaths: [...]`) that canonicalizes and validates every path argument before execution, blocking directory-traversal attacks. Tool keys: `readFile@bxai`, `readMultipleFiles@bxai`, `writeFile@bxai`, `appendFile@bxai`, `editFile@bxai`, `fileMetadata@bxai`, `pathExists@bxai`, `deleteFile@bxai`, `moveFile@bxai`, `copyFile@bxai`, `searchFiles@bxai`, `listAllowedDirectories@bxai`, `listDirectory@bxai`, `directoryTree@bxai`, `createDirectory@bxai`, `deleteDirectory@bxai`, `zipFiles@bxai`, `unzipFile@bxai`, `checkZipFile@bxai`.
+
+- **Async Runnables and Parallel Execution**:
+  - **`runAsync()` on all runnables** (`IAiRunnable`, `AiBaseRunnable`): Every runnable now has a non-blocking `runAsync(input, params, options)` method that dispatches execution to the `io-tasks` virtual thread pool and returns a `BoxFuture`. Mirrors the existing `aiChatAsync`, `loadAsync()`, and `seedAsync()` patterns throughout the module.
+  - **`AiRunnableParallel` class** (`models/runnables/AiRunnableParallel.bx`): New runnable that accepts a named struct of runnables, fans them out concurrently via `runAsync()`, and returns a `{ name: result }` struct once all futures complete. Mirrors LangChain's `RunnableParallel` — a structural parallel composition primitive that integrates cleanly into the existing pipeline system via `.to()`, `.run()`, and `.runAsync()`.
+  - **`aiParallel()` BIF**: Creates an `AiRunnableParallel` from a named struct of runnables. `aiParallel({ summary: summaryAgent, analysis: analysisAgent }).run("document")` runs both concurrently and returns `{ summary: "...", analysis: "..." }`.
+
+### 🪲 Fixed
+
+- `chatStream()` across all providers never fires the onAITokenCount event, making streaming calls completely invisible to usage tracking, billing, and monitoring. The non-streaming chat() path fires it correctly.
+- `AiModel.stream()`: inject agent and model middleware into `chatRequest`, matching the existing pattern in `run()`
+- `DockerModelRunnerService`: capture arguments into local vars before `retryOnModelLoading` closure to prevent `ArgumentsScope` resolution failure
+- `OpenAIService.chat()`: capture `chatRequest` before nested `.each()` closures for tool calling
+- `OpenAIService.chatStream()`: scope callback and `chatRequest` for `sendStreamRequest` call and tool-calling `.each()` closure
+- `CohereService.chat()`: capture `chatRequest` before `.map()` tool closure
+- Standardized the data for the `onAITokenCount` event and add missing event on the following services: `BedrockService, ClaudeService, CohereService, GeminiService`
+- MCPServer `scan()` and `scanClass()` where not working accordingly with all cases and permutations.
+- Invalid location of directory for flight recorder tapes
+- `aiAgent()` bif, `skills, availableSkills` can now be an array or a single skill, we will normalize it to an array internally. This allows for more flexible agent construction with a single skill without needing to wrap it in an array.
+- `ModuleConfig.bx` listens now to `onRuntimeStart()` in order to setup skills and more, so caches and other things are properly loaded before the modules.
+- Docker Service issues with interface upgrades from previous version.
+
 ## [3.0.0] - 2026-04-02
 
 ## [2.4.0] - 2026-02-20

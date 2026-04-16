@@ -234,6 +234,21 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			);
 		}
 
+		// Announce token usage
+		if ( result.keyExists( "meta" ) && result.meta.keyExists( "billed_units" ) ) {
+			BoxAnnounce( "onAITokenCount", {
+				provider         : this,
+				operation        : "chat",
+				model            : arguments.chatRequest.getModel(),
+				promptTokens     : result.meta.billed_units.input_tokens ?: 0,
+				completionTokens : result.meta.billed_units.output_tokens ?: 0,
+				totalTokens      : ( result.meta.billed_units.input_tokens ?: 0 ) + ( result.meta.billed_units.output_tokens ?: 0 ),
+				aiRequest        : arguments.chatRequest,
+				usage            : result.meta,
+				timestamp        : now()
+			} )
+		}
+
 		// Handle tool calls if present
 		if( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ){
 			/**
@@ -255,12 +270,13 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 
 			// Execute each tool call
+			var thisChatRequest = arguments.chatRequest;
 			var toolResults = result.tool_calls.map( toolCall => {
 				// Find the tool in our original tools list
 				var tool = tools.filter( t => t.getSchema().function.name == toolCall.name ).first();
 
 				// Invoke the tool with the parameters
-				var toolOutput = tool.invoke( toolCall.parameters, chatRequest );
+				var toolOutput = tool.invoke( toolCall.parameters, thisChatRequest );
 
 				return {
 					"call": toolCall,
@@ -337,6 +353,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
 		var requestedModel = arguments.chatRequest.getModel();
+		var cohereUsage = { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "raw": {} };
 		var emitNormalizedChunk = ( parsedChunk ) => {
 			var content = parsedChunk.text ?: ""
 			var finishReason = ""
@@ -481,6 +498,16 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				// Try to parse and send to callback
 				try {
 					var parsedChunk = jsonDeserialize( chunk.data );
+
+					// Capture usage from stream-end event
+					if( ( parsedChunk.event_type ?: "" ) == "stream-end" && !isNull( parsedChunk.response?.meta?.billed_units ) ){
+						var billedUnits = parsedChunk.response.meta.billed_units;
+						cohereUsage.inputTokens  = billedUnits.input_tokens ?: 0;
+						cohereUsage.outputTokens = billedUnits.output_tokens ?: 0;
+						cohereUsage.totalTokens  = cohereUsage.inputTokens + cohereUsage.outputTokens;
+						cohereUsage.raw          = parsedChunk.response.meta;
+					}
+
 					emitNormalizedChunk( parsedChunk );
 				} catch( any e ){
 					writeLog(
@@ -534,6 +561,23 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				);
 			} )
 			.send();
+
+		// -------------------------------------------------------------------------------------------
+		// --- Usage Event Announcement (Streaming) ---
+		// -------------------------------------------------------------------------------------------
+		if( cohereUsage.totalTokens > 0 ){
+			BoxAnnounce( "onAITokenCount", {
+				provider         : this,
+				operation        : "stream",
+				model            : arguments.chatRequest.getModel(),
+				promptTokens     : cohereUsage.inputTokens,
+				completionTokens : cohereUsage.outputTokens,
+				totalTokens      : cohereUsage.totalTokens,
+				aiRequest        : arguments.chatRequest,
+				usage            : cohereUsage.raw,
+				timestamp        : now()
+			} )
+		}
 	}
 
 	/**

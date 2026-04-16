@@ -147,6 +147,10 @@ public class BoxAiService extends BaseService {
 		return this.mcpServers.get( name );
 	}
 
+	public IClassRunnable getServer( String name ) {
+		return getServer( Key.of( name ) );
+	}
+
 	/**
 	 * Verifies if the named server exists
 	 *
@@ -156,6 +160,10 @@ public class BoxAiService extends BaseService {
 	 */
 	public boolean hasServer( Key name ) {
 		return this.mcpServers.containsKey( name );
+	}
+
+	public boolean hasServer( String name ) {
+		return hasServer( Key.of( name ) );
 	}
 
 	/**
@@ -168,6 +176,10 @@ public class BoxAiService extends BaseService {
 	public boolean removeServer( Key name ) {
 		IClassRunnable server = this.mcpServers.remove( name );
 		return server != null;
+	}
+
+	public boolean removeServer( String name ) {
+		return removeServer( Key.of( name ) );
 	}
 
 	/**

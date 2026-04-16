@@ -31,6 +31,7 @@ class {
 			"cohere",
 			"deepseek",
 			"docker",
+			"elevenlabs",
 			"gemini",
 			"grok",
 			"groq",
@@ -95,6 +96,9 @@ class {
 				break
 			case "docker":
 				targetClass = "bxModules.bxai.models.providers.DockerModelRunnerService"
+				break
+			case "elevenlabs":
+				targetClass = "bxModules.bxai.models.providers.ElevenLabsService"
 				break
 			case "gemini":
 				targetClass = "bxModules.bxai.models.providers.GeminiService"

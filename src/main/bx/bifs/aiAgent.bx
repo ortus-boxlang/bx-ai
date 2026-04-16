@@ -54,7 +54,7 @@ class {
 		any memory          = aiMemory(),
 		array tools         = [],
 		array subAgents     = [],
-		array skills        = [],
+		any skills        = [],
 		any availableSkills = [],
 		struct params       = {},
 		struct options      = {},
@@ -63,6 +63,14 @@ class {
 		numeric checkpointTTL = 30,
 		array mcpServers    = []
 	) {
+		if( isSimpleValue( arguments.skills ) ){
+			arguments.skills = [ arguments.skills ]
+		}
+
+		if( isSimpleValue( arguments.availableSkills ) ){
+			arguments.availableSkills = [ arguments.availableSkills ]
+		}
+
 		// Create the agent with the provided configuration options
 		var agent = new bxModules.bxai.models.runnables.AiAgent( argumentCollection: arguments )
 

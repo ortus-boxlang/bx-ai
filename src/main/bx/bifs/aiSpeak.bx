@@ -1,0 +1,129 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Convert text to speech using an AI provider.
+ * Returns an AiSpeechResponse with the binary audio data, or saves the audio to a file
+ * when options.outputFile is specified.
+ *
+ * @example
+ * ```
+ * // Synthesize speech and get binary audio
+ * response = aiSpeak( "Hello, welcome to BoxLang!" )
+ * response.saveToFile( "/tmp/welcome.mp3" )
+ *
+ * // Save directly to a file
+ * aiSpeak(
+ *     input  : "Hello World",
+ *     options: { outputFile: "/tmp/hello.mp3" }
+ * )
+ *
+ * // Use a specific provider, voice, and model
+ * response = aiSpeak(
+ *     input  : "The quick brown fox",
+ *     params : { model: "tts-1-hd", voice: "nova" },
+ *     options: { provider: "openai", outputFormat: "wav" }
+ * )
+ * ```
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Convert text to synthesized speech
+	 *
+	 * @text   The text to convert to speech
+	 * @params  Provider API parameters (model, voice, speed, response_format, etc.)
+	 * @options High-level options (provider, apiKey, outputFile, outputFormat, returnFormat, timeout, logging)
+	 *
+	 * @return AiSpeechResponse containing the audio binary data, or saves to file if options.outputFile is set
+	 */
+	function invoke(
+		required string text,
+		struct params = {},
+		struct options = {}
+	){
+		// Seed audio-specific defaults directly — do NOT merge all moduleRecord.settings into options
+		// because that would overwrite options.apiKey with the module global key, which breaks cross-provider
+		// key resolution inside aiService() (e.g. GROQ_API_KEY convention check)
+		var audioSettings = moduleRecord.settings.audio ?: {};
+		if ( audioSettings.defaultVoice.len() && !arguments.options.keyExists( "voice" ) && !arguments.params.keyExists( "voice" ) ) {
+			arguments.options.voice = audioSettings.defaultVoice
+		}
+		if ( audioSettings.defaultOutputFormat.len() && !arguments.options.keyExists( "outputFormat" ) && !arguments.params.keyExists( "outputFormat" ) ) {
+			arguments.options.outputFormat = audioSettings.defaultOutputFormat
+		}
+		if ( audioSettings.defaultSpeechModel.len() && !arguments.options.keyExists( "model" ) && !arguments.params.keyExists( "model" ) ) {
+			arguments.params.model = audioSettings.defaultSpeechModel
+		}
+		// Seed audio-specific provider default
+		if ( !arguments.options.keyExists( "provider" ) && len( audioSettings.defaultProvider ?: "" ) ) {
+			arguments.options.provider = audioSettings.defaultProvider
+		}
+		// Seed audio-specific apiKey — only when no convention env var exists for the resolved provider,
+		// so the convention check in aiService() is not inadvertently bypassed.
+		if ( !len( arguments.options.apiKey ?: "" ) && len( audioSettings.defaultApiKey ?: "" ) ) {
+			var resolvedProvider = arguments.options.provider ?: moduleRecord.settings.provider
+			if ( !len( getSystemSetting( "#resolvedProvider.ucase()#_API_KEY", "" ) ) ) {
+				arguments.options.apiKey = audioSettings.defaultApiKey
+			}
+		}
+
+		// Resolve gender keywords ("male"/"female") to provider-specific voice names
+		// so providers always receive a concrete voice identifier, not a keyword.
+		var effectiveVoice = arguments.params.voice ?: arguments.options.voice ?: "";
+		if ( len( effectiveVoice ) && listFindNoCase( "male,female", effectiveVoice ) ) {
+			var resolvedProviderForVoice = arguments.options.provider ?: audioSettings.defaultProvider ?: moduleRecord.settings.provider ?: "openai";
+			var genderMap               = audioSettings.voiceGenderMap ?: {};
+			var providerGenderMap       = genderMap[ resolvedProviderForVoice ] ?: {};
+			var mappedVoice             = providerGenderMap[ effectiveVoice.lcase() ] ?: "";
+			if ( len( mappedVoice ) ) {
+				arguments.params.voice = mappedVoice;
+			}
+		}
+
+		// Create request
+		var speechRequest = new bxModules.bxai.models.requests.AiSpeechRequest(
+			text   = arguments.text,
+			params  = arguments.params,
+			options = arguments.options
+		)
+
+		// Get the service
+		var service = aiService( arguments.options?.provider, arguments.options )
+
+		if ( !isInstanceOf( service, "IAiSpeechService" ) ) {
+			throw(
+				type    : "UnsupportedCapability",
+				message : "Unsupported capability: provider [#service.getName()#] does not support text-to-speech. Use a provider that implements IAiSpeechService."
+			)
+		}
+
+		// Fire before event
+		BoxAnnounce( "beforeAISpeech", { speechRequest: speechRequest, service: service } )
+
+		// Invoke TTS
+		var result = service.speak( speechRequest )
+
+		// Fire after event
+		BoxAnnounce( "afterAISpeech", { speechRequest: speechRequest, service: service, result: result } )
+
+		// If an output file was requested, save it and return the path
+		if ( arguments.options.keyExists( "outputFile" ) && arguments.options.outputFile.len() ) {
+			return result.saveToFile( arguments.options.outputFile )
+		}
+
+		return result
+	}
+
+}

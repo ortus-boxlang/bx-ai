@@ -72,6 +72,15 @@ public abstract class BaseIntegrationTest {
 			    .loadDescriptor( context )
 			    .register( context )
 			    .activate( context );
+
+			// Execute the onRuntimeStart() lifecycle method to ensure tools are registered
+			// Since we are lazy loading the module
+			moduleRecord.moduleConfig.dereferenceAndInvoke(
+			    context,
+			    Key.of( "onRuntimeStart" ),
+			    new Object[] {},
+			    false
+			);
 		} else {
 			moduleRecord = moduleService.getRegistry().get( moduleName );
 			System.out.println( "Module already loaded: " + moduleName );

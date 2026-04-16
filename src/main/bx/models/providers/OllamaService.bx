@@ -340,7 +340,8 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 		var streamState = {
 			"content": "",
 			"finishReason": "",
-			"toolCalls": []
+			"toolCalls": [],
+			"usage": {}
 		}
 		// Running 0-based offset so tool calls that arrive across multiple streaming
 		// chunks get unique indices that slot correctly into mergeToolCallDeltas().
@@ -445,6 +446,17 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 							}
 						],
 						"raw": parsedChunk
+					}
+
+					// Map Ollama token counts from the final done chunk to the standard usage format
+					if( parsedChunk.done && ( parsedChunk.keyExists( "prompt_eval_count" ) || parsedChunk.keyExists( "eval_count" ) ) ){
+						var promptTokens     = parsedChunk.prompt_eval_count ?: 0
+						var completionTokens = parsedChunk.eval_count ?: 0
+						normalizedChunk[ "usage" ] = {
+							"prompt_tokens"    : promptTokens,
+							"completion_tokens": completionTokens,
+							"total_tokens"     : promptTokens + completionTokens
+						}
 					}
 				} catch( any e ){
 					writeLog(

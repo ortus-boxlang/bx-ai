@@ -108,6 +108,25 @@ abstract class implements="IAiRunnable" {
     }
 
 	/**
+	 * Run the operation asynchronously on the io-tasks virtual thread pool.
+	 * Returns immediately with a BoxFuture that resolves to the operation result.
+	 * Pattern mirrors aiChatAsync, loadAsync(), and seedAsync() in this module.
+	 *
+	 * @input   The input to process, empty struct if none
+	 * @params  Optional parameters to configure the operation
+	 * @options Optional runtime options (returnFormat, timeout, logging, etc.)
+	 *
+	 * @return A BoxFuture that resolves to the result of the operation
+	 */
+	public BoxFuture function runAsync(
+		any input = {},
+		struct params = {},
+		struct options = {}
+	) {
+		return asyncRun( () => this.run( input, params, options ), "io-tasks" )
+	}
+
+	/**
 	 * Chain this runnable with another runnable
 	 * Creates a sequence that will execute this runnable followed by the next
      *

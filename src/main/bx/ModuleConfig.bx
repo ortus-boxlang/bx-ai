@@ -152,7 +152,37 @@ class {
 
 			// Internal — populated by onLoad() with the globally discovered skills.
 			// Access via aiGlobalSkills() with no arguments, or read directly from settings.
-			globalSkills : []
+			globalSkills : [],
+
+			// --------------------------------------------------------------------------
+			// Audio Settings — Defaults for aiSpeak() / aiTranscribe() / aiTranslate()
+			// --------------------------------------------------------------------------
+			audio : {
+				defaultProvider		   	  : "openai",
+				defaultApiKey			  : "",
+				defaultVoice              : "",
+				defaultOutputFormat       : "mp3",
+				defaultSpeechModel        : "",
+				defaultTranscriptionModel : "",
+				/**
+				 * Gender-to-voice keyword mapping per provider.
+				 * When voice is set to "male" or "female", aiSpeak() resolves it to the
+				 * concrete voice name for the active provider using this map.
+				 *
+				 * Override any entry here to swap which voice "male"/"female" resolves to.
+				 * An empty string means no override — the provider will use its own default.
+				 *
+				 * Example override in your module config:
+				 *   audio.voiceGenderMap.openai.male = "echo"
+				 */
+				voiceGenderMap : {
+					openai     : { male : "ash",                     female : "nova"                   },
+					grok       : { male : "onyx",                    female : "nova"                   },
+					gemini     : { male : "Fenrir",                  female : "Aoede"                  },
+					mistral    : { male : "",                        female : "Charlotte"               },
+					elevenlabs : { male : "",                        female : "21m00Tcm4TlvDq8ikWAM"   }
+				}
+			}
 		}
 
 		/**
@@ -209,6 +239,18 @@ class {
 			// Utility Events
 			"onAITokenCount",
 
+			// Memory Events
+			"onHybridMemoryAdd",
+			"onVectorSearch",
+
+			// Audio Events
+			"beforeAISpeech",
+			"afterAISpeech",
+			"beforeAITranscription",
+			"afterAITranscription",
+			"beforeAITranslation",
+			"afterAITranslation",
+
 			// MCP Server Events
 			"onMCPServerCreate",
 			"onMCPServerRemove",
@@ -223,9 +265,13 @@ class {
 	}
 
 	/**
-	 * Called by the ModuleService on module activation
+	 * Called by the ModuleService on runtime start, after all modules have been registered.
+	 * This is a good place to perform any setup that requires multiple modules to be registered,
+	 * such as cross-module dependencies, or in our case, auto-discovering skills from the filesystem.
+	 *
+	 * Also assures us that datasources and caches are available if our skills need them during auto-discovery.
 	 */
-	function onLoad(){
+	function onRuntimeStart(){
 		// Auto-discover global skills from the configured skillsDirectory
 		var skillsDir = moduleRecord.settings.skillsDirectory
 
@@ -239,7 +285,7 @@ class {
 				moduleRecord.settings.globalSkills = bxModules.bxai.models.skills.AiSkill::fromDirectory( skillsDir )
 				writeLog(
 					text: "bxAI: Auto-loaded [#moduleRecord.settings.globalSkills.len()#] global skill(s) from: #skillsDir#",
-					type: "info",
+					type: "debug",
 					log: "ai"
 				)
 			}
@@ -250,11 +296,25 @@ class {
 			new bxModules.bxai.models.tools.core.CoreTools(),
 			"bxai"
 		)
+
+		// Register audio tools into the registry.
+		aiToolRegistry().scanClass(
+			new bxModules.bxai.models.tools.audio.AudioTools(),
+			"bxai"
+		)
+
+		// Log module load and core/audio tool registration
 		writeLog(
-			text: "BoxLang AI loaded and core tools registered into the registry",
-			type: "info",
+			text: "BoxLang AI loaded and core/audio tools registered into the registry",
+			type: "debug",
 			log: "ai"
 		)
+	}
+
+	/**
+	 * Called by the ModuleService on module activation
+	 */
+	function onLoad(){
 	}
 
 	/**
