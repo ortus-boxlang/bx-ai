@@ -1739,4 +1739,183 @@ public class mcpServerTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "hasPrompt" ) ) ).isEqualTo( true );
 	}
 
+	@Test
+	@DisplayName( "Server is not paused by default" )
+	public void testNotPausedByDefault() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "pauseDefaultTest" )
+				isPaused = myServer.isPaused()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "isPaused" ) ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "pause() sets isPaused to true" )
+	public void testPauseSetsPausedState() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "pauseStateTest" )
+				myServer.pause()
+				isPaused = myServer.isPaused()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "isPaused" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "resume() clears paused state" )
+	public void testResumeClears() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "resumeTest" )
+				myServer.pause()
+				afterPause = myServer.isPaused()
+				myServer.resume()
+				afterResume = myServer.isPaused()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "afterPause" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "afterResume" ) ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "handleRequest returns SERVER_PAUSED error when paused" )
+	public void testHandleRequestWhenPaused() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "pausedRequestTest" )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+					.pause()
+
+				response = myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "tools/list",
+					"id": "1"
+				} )
+
+				hasError = structKeyExists( response, "error" )
+				errorCode = response.error.code
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasError" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "errorCode" ) ) ).isEqualTo( -32005 );
+	}
+
+	@Test
+	@DisplayName( "ping succeeds even when server is paused" )
+	public void testPingSucceedsWhenPaused() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "pausedPingTest" ).pause()
+
+				response = myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "ping",
+					"id": "hb-1"
+				} )
+
+				hasResult = structKeyExists( response, "result" )
+				hasError  = structKeyExists( response, "error" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasResult" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasError" ) ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "getSummary includes paused field" )
+	public void testGetSummaryIncludesPaused() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "summaryPausedTest" )
+				summaryBefore    = myServer.getSummary()
+				hasPausedBefore  = structKeyExists( summaryBefore, "paused" )
+				pausedBefore     = summaryBefore.paused
+
+				myServer.pause()
+				summaryAfter = myServer.getSummary()
+				pausedAfter  = summaryAfter.paused
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasPausedBefore" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "pausedBefore" ) ) ).isEqualTo( false );
+		assertThat( variables.get( Key.of( "pausedAfter" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "pause() and resume() support fluent chaining" )
+	public void testPauseResumeChaining() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "pauseChainTest" )
+					.pause()
+					.resume()
+					.registerTool( aiTool( "t", "T", ( x ) => x ) )
+
+				isObject  = isObject( myServer )
+				isPaused  = myServer.isPaused()
+				toolCount = myServer.getToolCount()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "isObject" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "isPaused" ) ) ).isEqualTo( false );
+		assertThat( variables.get( Key.of( "toolCount" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "After resume, requests are processed normally" )
+	public void testRequestsProcessedAfterResume() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "resumeRequestTest" )
+					.registerTool( aiTool( "echo", "Echo", ( msg ) => "Echo: " & msg ) )
+					.pause()
+					.resume()
+
+				response  = myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "tools/list",
+					"id": "1"
+				} )
+
+				hasResult = structKeyExists( response, "result" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasResult" ) ) ).isEqualTo( true );
+	}
+
 }

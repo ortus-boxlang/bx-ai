@@ -253,7 +253,9 @@ class {
 
 			// MCP Server Events
 			"onMCPServerCreate",
+			"onMCPServerPause",
 			"onMCPServerRemove",
+			"onMCPServerResume",
 			"onMCPRequest",
 			"onMCPResponse",
 			"onMCPError",

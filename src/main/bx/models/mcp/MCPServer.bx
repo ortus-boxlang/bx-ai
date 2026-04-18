@@ -109,6 +109,12 @@ class {
 	property name="apiKeyProvider" type="any" default="";
 
 	/**
+	 * Whether this server is currently paused.
+	 * When paused, all requests except "ping" are rejected with a SERVER_PAUSED error.
+	 */
+	property name="paused" type="boolean" default=false;
+
+	/**
 	 * Static configuration and service reference
 	 */
 	static {
@@ -129,6 +135,7 @@ class {
 			RATE_LIMIT_EXCEEDED: -32002,
 			SERVER_ERROR: -32000,
 			SERVER_OVERLOAD: -32001,
+			SERVER_PAUSED: -32005,
 			SESSION_EXPIRED: -32003,
 			TIMEOUT_ERROR: -32070,
 			TRANSPORT_ERROR: -32060
@@ -170,6 +177,7 @@ class {
 		variables.basicAuthPassword = ""
 		variables.maxRequestBodySize = 0
 		variables.apiKeyProvider = ""
+		variables.paused = false
 
 		return this
 	}
@@ -1030,6 +1038,7 @@ class {
 	struct function getSummary() {
 		return {
 			"description": variables.description,
+			"paused": variables.paused,
 			"promptCount": variables.prompts.count(),
 			"prompts": listPrompts(),
 			"resourceCount": variables.resources.count(),
@@ -1039,6 +1048,44 @@ class {
 			"tools": listTools(),
 			"version": variables.version
 		}
+	}
+
+	/**
+	 * Pause this MCP server. While paused, all requests except "ping" are rejected
+	 * with a SERVER_PAUSED error. The server remains registered and can be resumed.
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	MCPServer function pause() {
+		if ( !variables.paused ) {
+			variables.paused = true
+			static.mcpLogger.info( "MCP server paused: #variables.serverName#" )
+			BoxAnnounce( "onMCPServerPause", { server: this, name: variables.serverName } )
+		}
+		return this
+	}
+
+	/**
+	 * Resume this MCP server. Requests will be processed normally after resuming.
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	MCPServer function resume() {
+		if ( variables.paused ) {
+			variables.paused = false
+			static.mcpLogger.info( "MCP server resumed: #variables.serverName#" )
+			BoxAnnounce( "onMCPServerResume", { server: this, name: variables.serverName } )
+		}
+		return this
+	}
+
+	/**
+	 * Check if this server is currently paused
+	 *
+	 * @return Boolean true if paused, false if active
+	 */
+	boolean function isPaused() {
+		return variables.paused
 	}
 
 	/**
@@ -1300,6 +1347,15 @@ class {
 		var requestId = thisRequest?.id ?: ""
 		var method = thisRequest.method ?: ""
 		var params = thisRequest.params ?: {}
+
+		// Reject all non-ping requests while paused
+		if ( variables.paused && method.trim() != "ping" ) {
+			return buildErrorResponse(
+				requestId,
+				static.RPC_ERROR_CODES.SERVER_PAUSED,
+				"Server '#variables.serverName#' is paused and not accepting requests"
+			)
+		}
 
 		try {
 			var result = {}
