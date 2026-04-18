@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🥊 New Features
+
+- **MCP Server Pause/Resume**: `MCPServer` now supports pausing and resuming via `pause()` and `resume()` fluent methods. While paused, the server remains registered in the global registry but rejects all incoming JSON-RPC requests (except `ping`) with a `SERVER_PAUSED` error (code `-32005`). This lets an admin interface or AI service temporarily halt a server without destroying its configuration, tools, resources, or prompts. Resume restores normal request handling instantly.
+  - `pause()` — pause the server; fires `onMCPServerPause` interception point.
+  - `resume()` — resume the server; fires `onMCPServerResume` interception point.
+  - `isPaused()` — returns `true` if currently paused.
+  - `getSummary()` now includes a `paused` boolean field.
+  - New `SERVER_PAUSED: -32005` error code added to `RPC_ERROR_CODES`.
+  - Two new interception points registered: `onMCPServerPause`, `onMCPServerResume`.
+
 ## [3.1.0] - 2026-04-16
 
 ### 🥊 New Features
