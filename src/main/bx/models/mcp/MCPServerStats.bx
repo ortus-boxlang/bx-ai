@@ -58,6 +58,16 @@ class {
 	property name="errors" type="struct";
 
 	/**
+	 * Security failure tracking (auth, API key, body size)
+	 */
+	property name="security" type="struct";
+
+	/**
+	 * Count of requests currently being processed
+	 */
+	property name="activeRequests" type="any";
+
+	/**
 	 * Stats Id
 	 * Used for logging and identification
 	 */
@@ -69,33 +79,35 @@ class {
 	 * @enabled Whether stats tracking is enabled
 	 */
 	function init( boolean enabled = true ) {
-		variables.enabled = arguments.enabled
-		variables.createdAt = now()
-		variables.statsId = createUUID()
+		variables.enabled       = arguments.enabled
+		variables.createdAt     = now()
+		variables.statsId       = createUUID()
+		variables.activeRequests = new AtomicInteger( 0 )
 		reset()
 		return this
 	}
 
 	/**
-	 * Reset all statistics to initial state
+	 * Reset all statistics to initial state.
+	 * Note: activeRequests is NOT reset — it reflects live in-flight requests.
 	 */
 	MCPServerStats function reset() {
 		variables.requests = {
-			"total": new AtomicInteger( 0 ),
-			"successful": new AtomicInteger( 0 ),
-			"failed": new AtomicInteger( 0 ),
-			"byMethod": {},
-			"responseTimes": [],
+			"total"          : new AtomicInteger( 0 ),
+			"successful"     : new AtomicInteger( 0 ),
+			"failed"         : new AtomicInteger( 0 ),
+			"byMethod"       : {},
+			"responseTimes"  : [],
 			"avgResponseTime": 0,
 			"minResponseTime": 0,
 			"maxResponseTime": 0,
-			"lastRequestAt": new AtomicReference( "" )
+			"lastRequestAt"  : new AtomicReference( "" )
 		}
 
 		variables.tools = {
 			"totalInvocations": new AtomicInteger( 0 ),
-			"byTool": {},
-			"executionTimes": [],
+			"byTool"          : {},
+			"executionTimes"  : [],
 			"avgExecutionTime": 0,
 			"minExecutionTime": 0,
 			"maxExecutionTime": 0
@@ -103,18 +115,25 @@ class {
 
 		variables.resources = {
 			"totalReads": new AtomicInteger( 0 ),
-			"byUri": {}
+			"byUri"     : {}
 		}
 
 		variables.prompts = {
 			"totalGenerations": new AtomicInteger( 0 ),
-			"byName": {}
+			"byName"          : {}
 		}
 
 		variables.errors = {
-			"total": new AtomicInteger( 0 ),
-			"byCode": {},
+			"total"    : new AtomicInteger( 0 ),
+			"byCode"   : {},
+			"byTool"   : {},
 			"lastError": {}
+		}
+
+		variables.security = {
+			"authFailures"      : new AtomicInteger( 0 ),
+			"apiKeyFailures"    : new AtomicInteger( 0 ),
+			"bodySizeViolations": new AtomicInteger( 0 )
 		}
 
 		return this
@@ -148,11 +167,17 @@ class {
 			recordError( arguments.errorCode, arguments.errorMessage )
 		}
 
-		// Track by method
-		if ( !variables.requests.byMethod.keyExists( arguments.method ) ) {
-			variables.requests.byMethod[ arguments.method ] = 0
+		// Track by method (locked for thread safety)
+		lock
+			name="mcpserver-bymethod-#variables.statsId#"
+			type="exclusive"
+			timeout="5" {
+
+			if ( !variables.requests.byMethod.keyExists( arguments.method ) ) {
+				variables.requests.byMethod[ arguments.method ] = 0
+			}
+			variables.requests.byMethod[ arguments.method ]++
 		}
-		variables.requests.byMethod[ arguments.method ]++
 
 		// Track response times
 		variables.requests.responseTimes.append( arguments.responseTime )
@@ -167,7 +192,7 @@ class {
 	 * @toolName The name of the tool
 	 * @executionTime Execution time in milliseconds
 	 */
-	MCPServerStats	function recordToolInvocation(
+	MCPServerStats function recordToolInvocation(
 		required string toolName,
 		required numeric executionTime
 	) {
@@ -175,23 +200,74 @@ class {
 
 		variables.tools.totalInvocations.incrementAndGet()
 
-		// Track by tool
-		if ( !variables.tools.byTool.keyExists( arguments.toolName ) ) {
-			variables.tools.byTool[ arguments.toolName ] = {
-				"count": 0,
-				"totalTime": 0,
-				"avgTime": 0
-			}
-		}
+		// Track by tool (locked for thread safety)
+		lock
+			name="mcpserver-bytool-#variables.statsId#"
+			type="exclusive"
+			timeout="5" {
 
-		var toolStats = variables.tools.byTool[ arguments.toolName ]
-		toolStats.count++
-		toolStats.totalTime += arguments.executionTime
-		toolStats.avgTime = toolStats.totalTime / toolStats.count
+			if ( !variables.tools.byTool.keyExists( arguments.toolName ) ) {
+				variables.tools.byTool[ arguments.toolName ] = {
+					"count"    : 0,
+					"totalTime": 0,
+					"avgTime"  : 0,
+					"errors"   : 0
+				}
+			}
+
+			var toolStats = variables.tools.byTool[ arguments.toolName ]
+			toolStats.count++
+			toolStats.totalTime += arguments.executionTime
+			toolStats.avgTime = toolStats.totalTime / toolStats.count
+		}
 
 		// Track overall execution times
 		variables.tools.executionTimes.append( arguments.executionTime )
 		updateToolExecutionStats( arguments.executionTime )
+
+		return this
+	}
+
+	/**
+	 * Record a tool error (e.g. the tool threw an exception during invocation)
+	 *
+	 * @toolName The name of the tool that errored
+	 * @executionTime Time elapsed before the error occurred (milliseconds)
+	 */
+	MCPServerStats function recordToolError(
+		required string toolName,
+		required numeric executionTime
+	) {
+		if ( !variables.enabled ) return this
+
+		// Increment error count on the per-tool entry
+		lock
+			name="mcpserver-bytool-#variables.statsId#"
+			type="exclusive"
+			timeout="5" {
+
+			if ( !variables.tools.byTool.keyExists( arguments.toolName ) ) {
+				variables.tools.byTool[ arguments.toolName ] = {
+					"count"    : 0,
+					"totalTime": 0,
+					"avgTime"  : 0,
+					"errors"   : 0
+				}
+			}
+			variables.tools.byTool[ arguments.toolName ].errors++
+		}
+
+		// Also maintain an errors.byTool roll-up
+		lock
+			name="mcpserver-bytoolerr-#variables.statsId#"
+			type="exclusive"
+			timeout="5" {
+
+			if ( !variables.errors.byTool.keyExists( arguments.toolName ) ) {
+				variables.errors.byTool[ arguments.toolName ] = 0
+			}
+			variables.errors.byTool[ arguments.toolName ]++
+		}
 
 		return this
 	}
@@ -206,11 +282,17 @@ class {
 
 		variables.resources.totalReads.incrementAndGet()
 
-		// Track by URI
-		if ( !variables.resources.byUri.keyExists( arguments.uri ) ) {
-			variables.resources.byUri[ arguments.uri ] = 0
+		// Track by URI (locked for thread safety)
+		lock
+			name="mcpserver-byuri-#variables.statsId#"
+			type="exclusive"
+			timeout="5" {
+
+			if ( !variables.resources.byUri.keyExists( arguments.uri ) ) {
+				variables.resources.byUri[ arguments.uri ] = 0
+			}
+			variables.resources.byUri[ arguments.uri ]++
 		}
-		variables.resources.byUri[ arguments.uri ]++
 
 		return this
 	}
@@ -225,11 +307,17 @@ class {
 
 		variables.prompts.totalGenerations.incrementAndGet()
 
-		// Track by name
-		if ( !variables.prompts.byName.keyExists( arguments.name ) ) {
-			variables.prompts.byName[ arguments.name ] = 0
+		// Track by name (locked for thread safety)
+		lock
+			name="mcpserver-byname-#variables.statsId#"
+			type="exclusive"
+			timeout="5" {
+
+			if ( !variables.prompts.byName.keyExists( arguments.name ) ) {
+				variables.prompts.byName[ arguments.name ] = 0
+			}
+			variables.prompts.byName[ arguments.name ]++
 		}
-		variables.prompts.byName[ arguments.name ]++
 
 		return this
 	}
@@ -248,21 +336,72 @@ class {
 
 		variables.errors.total.incrementAndGet()
 
-		// Track by code
+		// Track by code and store last error (locked for thread safety)
 		var codeKey = toString( arguments.code )
-		if ( !variables.errors.byCode.keyExists( codeKey ) ) {
-			variables.errors.byCode[ codeKey ] = 0
-		}
-		variables.errors.byCode[ codeKey ]++
+		lock
+			name="mcpserver-bycode-#variables.statsId#"
+			type="exclusive"
+			timeout="5" {
 
-		// Store last error
-		variables.errors.lastError = {
-			"code": arguments.code,
-			"message": arguments.message,
-			"timestamp": now()
+			if ( !variables.errors.byCode.keyExists( codeKey ) ) {
+				variables.errors.byCode[ codeKey ] = 0
+			}
+			variables.errors.byCode[ codeKey ]++
+
+			variables.errors.lastError = {
+				"code"     : arguments.code,
+				"message"  : arguments.message,
+				"timestamp": now()
+			}
 		}
 
 		return this
+	}
+
+	/**
+	 * Record a security failure
+	 *
+	 * @type One of: "basicAuth", "apiKey", "bodySize"
+	 */
+	MCPServerStats function recordSecurityFailure( required string type ) {
+		if ( !variables.enabled ) return this
+
+		switch ( arguments.type ) {
+			case "basicAuth":
+				variables.security.authFailures.incrementAndGet()
+				break;
+			case "apiKey":
+				variables.security.apiKeyFailures.incrementAndGet()
+				break;
+			case "bodySize":
+				variables.security.bodySizeViolations.incrementAndGet()
+				break;
+		}
+
+		return this
+	}
+
+	/**
+	 * Increment the active (in-flight) request counter
+	 */
+	MCPServerStats function incrementActive() {
+		variables.activeRequests.incrementAndGet()
+		return this
+	}
+
+	/**
+	 * Decrement the active (in-flight) request counter
+	 */
+	MCPServerStats function decrementActive() {
+		variables.activeRequests.decrementAndGet()
+		return this
+	}
+
+	/**
+	 * Get the current number of active (in-flight) requests
+	 */
+	numeric function getActiveRequests() {
+		return variables.activeRequests.get()
 	}
 
 	/**
@@ -273,9 +412,9 @@ class {
 	struct function getStats() {
 		// Extract atomic values for serialization
 		var requestsCopy = variables.requests.copy()
-		requestsCopy.total = requestsCopy.total.get()
-		requestsCopy.successful = requestsCopy.successful.get()
-		requestsCopy.failed = requestsCopy.failed.get()
+		requestsCopy.total         = requestsCopy.total.get()
+		requestsCopy.successful    = requestsCopy.successful.get()
+		requestsCopy.failed        = requestsCopy.failed.get()
 		requestsCopy.lastRequestAt = requestsCopy.lastRequestAt.get()
 
 		var toolsCopy = variables.tools.copy()
@@ -290,15 +429,23 @@ class {
 		var errorsCopy = variables.errors.copy()
 		errorsCopy.total = errorsCopy.total.get()
 
+		var securityCopy = {
+			"authFailures"      : variables.security.authFailures.get(),
+			"apiKeyFailures"    : variables.security.apiKeyFailures.get(),
+			"bodySizeViolations": variables.security.bodySizeViolations.get()
+		}
+
 		return {
-			"enabled": variables.enabled,
-			"createdAt": variables.createdAt,
-			"uptime": dateDiff( "s", variables.createdAt, now() ) * 1000, // milliseconds
-			"requests": requestsCopy,
-			"tools": toolsCopy,
-			"resources": resourcesCopy,
-			"prompts": promptsCopy,
-			"errors": errorsCopy
+			"enabled"       : variables.enabled,
+			"createdAt"     : variables.createdAt,
+			"uptime"        : dateDiff( "s", variables.createdAt, now() ) * 1000, // milliseconds
+			"activeRequests": variables.activeRequests.get(),
+			"requests"      : requestsCopy,
+			"tools"         : toolsCopy,
+			"resources"     : resourcesCopy,
+			"prompts"       : promptsCopy,
+			"errors"        : errorsCopy,
+			"security"      : securityCopy
 		}
 	}
 
@@ -308,21 +455,22 @@ class {
 	 * @return Summary stats struct
 	 */
 	struct function getSummary() {
-		var total = variables.requests.total.get()
+		var total      = variables.requests.total.get()
 		var successful = variables.requests.successful.get()
+		var uptimeMs   = dateDiff( "s", variables.createdAt, now() ) * 1000
 
 		return {
-			"uptime": dateDiff( "s", variables.createdAt, now() ) * 1000,
-			"totalRequests": total,
-			"successRate": total > 0
-				? ( successful / total * 100 )
-				: 0,
-			"avgResponseTime": variables.requests.avgResponseTime,
-			"totalToolInvocations": variables.tools.totalInvocations.get(),
-			"totalResourceReads": variables.resources.totalReads.get(),
+			"uptime"               : uptimeMs,
+			"activeRequests"       : variables.activeRequests.get(),
+			"totalRequests"        : total,
+			"successRate"          : total > 0 ? ( successful / total * 100 ) : 0,
+			"requestsPerMinute"    : uptimeMs > 0 ? ( total / ( uptimeMs / 60000 ) ) : 0,
+			"avgResponseTime"      : variables.requests.avgResponseTime,
+			"totalToolInvocations" : variables.tools.totalInvocations.get(),
+			"totalResourceReads"   : variables.resources.totalReads.get(),
 			"totalPromptGenerations": variables.prompts.totalGenerations.get(),
-			"totalErrors": variables.errors.total.get(),
-			"lastRequestAt": variables.requests.lastRequestAt.get()
+			"totalErrors"          : variables.errors.total.get(),
+			"lastRequestAt"        : variables.requests.lastRequestAt.get()
 		}
 	}
 
@@ -352,7 +500,7 @@ class {
 	 * @responseTime The response time to process
 	 */
 	private function updateResponseTimeStats( required numeric responseTime ) {
-		var times = variables.requests.responseTimes
+		var times     = variables.requests.responseTimes
 		var timeCount = times.len()
 
 		lock
@@ -385,7 +533,7 @@ class {
 	 * @executionTime The execution time to process
 	 */
 	private function updateToolExecutionStats( required numeric executionTime ) {
-		var times = variables.tools.executionTimes
+		var times     = variables.tools.executionTimes
 		var timeCount = times.len()
 
 		lock

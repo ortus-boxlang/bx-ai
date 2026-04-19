@@ -68,18 +68,19 @@ class extends="BaseTransport" {
 
 			// Build normalized request
 			return {
-				"serverName": mcpServerName,
-				"method": "POST",  // Always POST for JSON-RPC
-				"body": line,
-				"headers": {},  // No headers in STDIO
+				"serverName"  : mcpServerName,
+				"method"      : "POST",  // Always POST for JSON-RPC
+				"body"        : line,
+				"headers"     : {},  // No headers in STDIO
 				"acceptHeader": "application/json",
-				"params": parsed.params ?: {},
-				"origin": "",  // No origin concept in STDIO
-				"metadata": {
-					"protocol": "stdio",
-					"jsonrpc": parsed.jsonrpc ?: "2.0",
-					"method": parsed.method ?: "",
-					"id": parsed.id ?: javacast( "null", "" ),
+				"params"      : parsed.params ?: {},
+				"origin"      : "",  // No origin concept in STDIO
+				"requestId"   : createUUID(),
+				"metadata"    : {
+					"protocol"  : "stdio",
+					"jsonrpc"   : parsed.jsonrpc ?: "2.0",
+					"method"    : parsed.method ?: "",
+					"id"        : parsed.id ?: javacast( "null", "" ),
 					"requestTime": now()
 				}
 			};
@@ -88,16 +89,17 @@ class extends="BaseTransport" {
 
 			// Return error request
 			return {
-				"serverName": variables.defaultServerName,
-				"method": "POST",
-				"body": "",
-				"headers": {},
+				"serverName"  : variables.defaultServerName,
+				"method"      : "POST",
+				"body"        : "",
+				"headers"     : {},
 				"acceptHeader": "application/json",
-				"params": {},
-				"origin": "",
-				"metadata": {
-					"protocol": "stdio",
-					"error": e.message,
+				"params"      : {},
+				"origin"      : "",
+				"requestId"   : createUUID(),
+				"metadata"    : {
+					"protocol"  : "stdio",
+					"error"     : e.message,
 					"requestTime": now()
 				}
 			};

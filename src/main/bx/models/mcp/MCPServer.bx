@@ -1350,12 +1350,21 @@ class {
 
 		// Reject all non-ping requests while paused
 		if ( variables.paused && method.trim() != "ping" ) {
+			variables.stats.recordRequest(
+				method      : method,
+				responseTime: 0,
+				success     : false,
+				errorCode   : static.RPC_ERROR_CODES.SERVER_PAUSED,
+				errorMessage: "Server paused"
+			)
 			return buildErrorResponse(
 				requestId,
 				static.RPC_ERROR_CODES.SERVER_PAUSED,
 				"Server '#variables.serverName#' is paused and not accepting requests"
 			)
 		}
+
+		variables.stats.incrementActive()
 
 		try {
 			var result = {}
@@ -1389,11 +1398,24 @@ class {
 					// Record failed request for method not found
 					var responseTime = getTickCount() - startTime
 					variables.stats.recordRequest(
-						method: method,
+						method      : method,
 						responseTime: responseTime,
-						success: false,
-						errorCode: static.RPC_ERROR_CODES.METHOD_NOT_FOUND,
+						success     : false,
+						errorCode   : static.RPC_ERROR_CODES.METHOD_NOT_FOUND,
 						errorMessage: "Method not found: #method#"
+					)
+					BoxAnnounce(
+						"onMCPError",
+						{
+							server     : this,
+							context    : "handleRequest",
+							method     : method,
+							requestId  : requestId,
+							params     : params,
+							responseTime: responseTime,
+							errorCode  : static.RPC_ERROR_CODES.METHOD_NOT_FOUND,
+							exception  : {}
+						}
 					)
 					return buildErrorResponse( requestId, static.RPC_ERROR_CODES.METHOD_NOT_FOUND, "Method not found: #method#" )
 			}
@@ -1432,6 +1454,8 @@ class {
 				}
 			)
 			return buildErrorResponse( requestId, static.RPC_ERROR_CODES.SERVER_ERROR, e.message )
+		} finally {
+			variables.stats.decrementActive()
 		}
 	}
 
@@ -1496,6 +1520,18 @@ class {
 	 */
 	boolean function isStatsEnabled() {
 		return variables.stats.getEnabled()
+	}
+
+	/**
+	 * Record a security failure (basic auth, API key, body size)
+	 *
+	 * @type One of: "basicAuth", "apiKey", "bodySize"
+	 *
+	 * @return This instance for chaining
+	 */
+	MCPServer function recordSecurityFailure( required string type ) {
+		variables.stats.recordSecurityFailure( arguments.type )
+		return this
 	}
 
 	// ---------------------------------------------------------------------------------------------------------
@@ -1640,13 +1676,19 @@ class {
 		}
 
 		var startTime = getTickCount()
-		var result = getTool( toolName )
-			.invoke( toolArgs )
+		try {
+			var result = getTool( toolName )
+				.invoke( toolArgs )
+		} catch ( any e ) {
+			var executionTime = getTickCount() - startTime
+			variables.stats.recordToolError( toolName: toolName, executionTime: executionTime )
+			rethrow;
+		}
 		var executionTime = getTickCount() - startTime
 
 		// Record tool invocation stats
 		variables.stats.recordToolInvocation(
-			toolName: toolName,
+			toolName     : toolName,
 			executionTime: executionTime
 		)
 
