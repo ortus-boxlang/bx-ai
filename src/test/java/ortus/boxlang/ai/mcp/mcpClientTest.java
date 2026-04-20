@@ -514,8 +514,8 @@ public class mcpClientTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var stats = variables.getAsStruct( result );
-		var calls = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
+		var	stats	= variables.getAsStruct( result );
+		var	calls	= ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
 		assertThat( calls.get( Key.of( "total" ) ) ).isEqualTo( 1 );
 		assertThat( calls.get( Key.of( "failed" ) ) ).isEqualTo( 1 );
 		assertThat( calls.get( Key.of( "successful" ) ) ).isEqualTo( 0 );
@@ -570,8 +570,8 @@ public class mcpClientTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( Key.of( "beforeReset" ) ) ).isEqualTo( 1 );
 
-		var stats = variables.getAsStruct( result );
-		var calls = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
+		var	stats	= variables.getAsStruct( result );
+		var	calls	= ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
 		assertThat( calls.get( Key.of( "total" ) ) ).isEqualTo( 0 );
 	}
 
@@ -589,8 +589,8 @@ public class mcpClientTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var stats = variables.getAsStruct( result );
-		var calls = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
+		var	stats	= variables.getAsStruct( result );
+		var	calls	= ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
 		assertThat( calls.get( Key.of( "total" ) ) ).isEqualTo( 1 );
 		assertThat( calls.get( Key.of( "successful" ) ) ).isEqualTo( 1 );
 		assertThat( calls.get( Key.of( "failed" ) ) ).isEqualTo( 0 );
@@ -614,10 +614,10 @@ public class mcpClientTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var stats         = variables.getAsStruct( result );
-		var tools         = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "tools" ) );
-		var calls         = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
-		var byOpType      = ( ortus.boxlang.runtime.types.IStruct ) calls.get( Key.of( "byOperationType" ) );
+		var	stats		= variables.getAsStruct( result );
+		var	tools		= ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "tools" ) );
+		var	calls		= ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
+		var	byOpType	= ( ortus.boxlang.runtime.types.IStruct ) calls.get( Key.of( "byOperationType" ) );
 
 		assertThat( tools.get( Key.of( "totalCalls" ) ) ).isEqualTo( 2 );
 		assertThat( byOpType.get( Key.of( "tool" ) ) ).isEqualTo( 2 );
@@ -725,4 +725,3 @@ public class mcpClientTest extends BaseIntegrationTest {
 	}
 
 }
-
