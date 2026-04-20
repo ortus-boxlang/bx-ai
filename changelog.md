@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 New Features
 
+- **MCP Server Observability & Analytics Improvements**: Multiple gaps in the MCP server's observability and analytics have been addressed.
+  - **Thread-safety fix**: `byMethod`, `byTool`, `byUri`, `byName`, and `byCode` counters in `MCPServerStats` were plain struct mutations happening outside any lock, causing silent lost updates under concurrent load. All are now wrapped in dedicated named locks.
+  - **Security failure tracking**: Basic auth rejections, API key rejections, and body-size violations now increment dedicated `AtomicInteger` counters (`security.authFailures`, `security.apiKeyFailures`, `security.bodySizeViolations`) visible in `getStats()` and `getSummary()`. `MCPServer` exposes a `recordSecurityFailure(type)` method for processor delegation.
+  - **Paused-request stats**: Requests rejected due to `SERVER_PAUSED` are now recorded in stats (previously they were silently dropped from all counters).
+  - **`onMCPError` for METHOD_NOT_FOUND**: The `default:` switch case was the only error path that never fired the `onMCPError` interception point. Fixed.
+  - **Per-tool error tracking**: `handleToolCall()` now records a tool error via `recordToolError()` before rethrowing any exception. `MCPServerStats` gains `byTool[name].errors` and an `errors.byTool` roll-up counter.
+  - **Active concurrent request counter**: `MCPServerStats` gains an `activeRequests` `AtomicInteger`; `handleRequest()` increments it on entry and decrements it in a `finally` block. Exposed in `getStats()` and `getSummary()`.
+  - **Requests-per-minute rate**: `getSummary()` now includes `requestsPerMinute` calculated from uptime and total request count.
+  - **X-Request-ID correlation**: `HTTPTransport` reads the `X-Request-ID` request header (or generates a UUID if absent); `StdioTransport` always generates one. The ID is echoed as `X-Request-ID` in the response headers and included in `onMCPRequest` and `onMCPResponse` event payloads.
+
 - **MCP Server Pause/Resume**: `MCPServer` now supports pausing and resuming via `pause()` and `resume()` fluent methods. While paused, the server remains registered in the global registry but rejects all incoming JSON-RPC requests (except `ping`) with a `SERVER_PAUSED` error (code `-32005`). This lets an admin interface or AI service temporarily halt a server without destroying its configuration, tools, resources, or prompts. Resume restores normal request handling instantly.
   - `pause()` — pause the server; fires `onMCPServerPause` interception point.
   - `resume()` — resume the server; fires `onMCPServerResume` interception point.
