@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 New Features
 
-- **MCP Server Observability & Analytics Improvements**: Multiple gaps in the MCP server's observability and analytics have been addressed.
+- **MCP Server Observability & Analytics Improvements**
+  - Multiple gaps in the MCP server's observability and analytics have been addressed.
   - **Thread-safety fix**: `byMethod`, `byTool`, `byUri`, `byName`, and `byCode` counters in `MCPServerStats` were plain struct mutations happening outside any lock, causing silent lost updates under concurrent load. All are now wrapped in dedicated named locks.
   - **Security failure tracking**: Basic auth rejections, API key rejections, and body-size violations now increment dedicated `AtomicInteger` counters (`security.authFailures`, `security.apiKeyFailures`, `security.bodySizeViolations`) visible in `getStats()` and `getSummary()`. `MCPServer` exposes a `recordSecurityFailure(type)` method for processor delegation.
   - **Paused-request stats**: Requests rejected due to `SERVER_PAUSED` are now recorded in stats (previously they were silently dropped from all counters).
