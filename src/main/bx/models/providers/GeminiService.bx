@@ -16,18 +16,20 @@
  */
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+import bxModules.bxai.models.providers.capabilities.IAiImageService;
 import bxModules.bxai.models.providers.capabilities.IAiSpeechService;
 import bxModules.bxai.models.providers.capabilities.IAiTranscriptionService;
+import bxModules.bxai.models.responses.AiImageResponse;
 import bxModules.bxai.models.responses.AiSpeechResponse;
 import bxModules.bxai.models.responses.AiTranscriptionResponse;
 
-class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, IAiSpeechService, IAiTranscriptionService" {
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, IAiImageService, IAiSpeechService, IAiTranscriptionService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "chat", "stream", "embeddings", "speech", "transcription" ]
+		CAPABILITIES = [ "chat", "stream", "embeddings", "image", "speech", "transcription" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://ai.google.dev/gemini-api/docs/quickstart
 			// according to the docs, this is the default model
@@ -40,6 +42,10 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			"model" : "gemini-2.5-flash-preview-tts",
 			"voice" : "Kore"
 		};
+		DEFAULT_IMAGE_PARAMS = {
+			// https://ai.google.dev/gemini-api/docs/imagen
+			"model" : "imagen-3.0-generate-008"
+		}
 		DEFAULT_TRANSCRIPTION_PARAMS = {
 			"model" : "gemini-2.5-flash"
 		};
@@ -51,6 +57,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 	function init(){
 		variables.chatURL       = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent"
 		variables.embeddingsURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:embedContent"
+		variables.imageURL      = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:predict"
 		variables.ttsURL        = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent"
 		variables.sttURL        = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent"
 		variables.name          = "Gemini"
@@ -451,6 +458,143 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		var parsed = jsonDeserialize( sttResult.fileContent );
 		var text   = parsed.candidates.first().content.parts.first().text ?: "";
 		return new AiTranscriptionResponse( text: text, model: model, provider: variables.name );
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiImageService Implementation — Google Imagen 3 via Vertex-style predict endpoint
+	 * https://ai.google.dev/gemini-api/docs/imagen
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Generate images using Google Imagen 3 via the Gemini API predict endpoint.
+	 * The Imagen API uses a different request/response format than the OpenAI images API.
+	 *
+	 * @imageRequest The AiImageRequest object
+	 *
+	 * @return AiImageResponse
+	 */
+	@override
+	public AiImageResponse function generateImage( required AiImageRequest imageRequest ){
+		arguments.imageRequest
+			.mergeServiceParams( static.DEFAULT_IMAGE_PARAMS )
+			.setApiKeyIfEmpty( getAPIKey() )
+
+		var model    = arguments.imageRequest.getModel()
+		var imageURL = variables.imageURL.replace( '%MODEL%', model ) & "?key=#arguments.imageRequest.getApiKey()#"
+
+		// Map size → aspectRatio (Imagen uses aspect ratio, not pixel dimensions)
+		var sizeToAspect = {
+			"1024x1024" : "1:1",
+			"1024x1792" : "9:16",
+			"1792x1024" : "16:9",
+			"512x512"   : "1:1",
+			"256x256"   : "1:1"
+		}
+		var aspectRatio = sizeToAspect[ arguments.imageRequest.getSize() ] ?: "1:1"
+
+		// Build Imagen-format request body
+		var dataPacket = {
+			"instances"  : [ { "prompt": arguments.imageRequest.getPrompt() } ],
+			"parameters" : {
+				"sampleCount" : arguments.imageRequest.getN(),
+				"aspectRatio" : aspectRatio
+			}
+		}
+
+		// Fire preRequest hook
+		dataPacket = preRequest( arguments.imageRequest, dataPacket, "image" )
+
+		// Fire onAIImageRequest announcement
+		BoxAnnounce( "onAIImageRequest", {
+			provider   : this,
+			operation  : "image",
+			aiRequest  : arguments.imageRequest,
+			dataPacket : dataPacket
+		} )
+
+		// Logging
+		if ( arguments.imageRequest.getLogRequest() ) {
+			writeLog( text: "aiImage request to #imageURL#: #jsonSerialize( dataPacket )#", type: "info", log: "ai" )
+		}
+		if ( arguments.imageRequest.getLogRequestToConsole() ) {
+			println( "aiImage request to #imageURL#: #jsonSerialize( dataPacket )#" )
+		}
+
+		// HTTP call — Gemini returns base64-encoded image data
+		bx: http
+			url     = imageURL
+			method  = "post"
+			result  = "imageResult"
+			charset = "utf-8"
+			timeout = arguments.imageRequest.getTimeout()
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+			bx:httpParam type="body" value=jsonSerialize( dataPacket );
+		}
+
+		// Error detection
+		if ( imageResult.statusCode != "200" ) {
+			var errorMessage = imageResult.fileContent
+			try {
+				var errorData = jsonDeserialize( imageResult.fileContent )
+				errorMessage  = errorData.error?.message ?: errorData.toString()
+			} catch ( any parseEx ) {}
+
+			BoxAnnounce( "onAIError", {
+				error        : errorMessage,
+				errorMessage : errorMessage,
+				provider     : this,
+				operation    : "image",
+				aiRequest    : arguments.imageRequest,
+				canRetry     : false
+			} )
+
+			throw(
+				type   : "ProviderError",
+				message: "Gemini Imagen error: #errorMessage#"
+			)
+		}
+
+		// Parse Imagen response: { predictions: [{ bytesBase64Encoded, mimeType }] }
+		var parsedResponse = jsonDeserialize( imageResult.fileContent )
+		var predictions    = parsedResponse.predictions ?: []
+		var images         = predictions.map( pred => {
+			var mimeType = pred.mimeType ?: "image/png"
+			return {
+				url           : "",
+				data          : binaryDecode( pred.bytesBase64Encoded, "base64" ),
+				mimeType      : mimeType,
+				revisedPrompt : ""
+			}
+		} )
+
+		// Logging
+		if ( arguments.imageRequest.getLogResponse() ) {
+			writeLog( text: "aiImage response status=#imageResult.statusCode# images=#images.len()#", type: "info", log: "ai" )
+		}
+		if ( arguments.imageRequest.getLogResponseToConsole() ) {
+			println( "aiImage response status=#imageResult.statusCode# images=#images.len()#" )
+		}
+
+		var results = new AiImageResponse(
+			images      : images,
+			imageFormat : "png",
+			model       : model,
+			provider    : variables.name
+		)
+
+		results = postResponse( arguments.imageRequest, dataPacket, results, "image" )
+
+		BoxAnnounce( "onAIImageResponse", {
+			provider   : this,
+			operation  : "image",
+			aiRequest  : arguments.imageRequest,
+			aiResponse : results
+		} )
+
+		return results
 	}
 
 }

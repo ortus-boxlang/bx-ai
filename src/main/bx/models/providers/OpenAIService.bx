@@ -21,18 +21,20 @@
 import bxModules.bxai.models.util.SchemaBuilder;
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+import bxModules.bxai.models.providers.capabilities.IAiImageService;
 import bxModules.bxai.models.providers.capabilities.IAiSpeechService;
 import bxModules.bxai.models.providers.capabilities.IAiTranscriptionService;
+import bxModules.bxai.models.responses.AiImageResponse;
 import bxModules.bxai.models.responses.AiSpeechResponse;
 import bxModules.bxai.models.responses.AiTranscriptionResponse;
 
-class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IAiSpeechService, IAiTranscriptionService" {
+class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IAiImageService, IAiSpeechService, IAiTranscriptionService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "chat", "stream", "embeddings", "speech", "transcription", "translation" ]
+		CAPABILITIES = [ "chat", "stream", "embeddings", "image", "speech", "transcription", "translation" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://platform.openai.com/docs/models
 			// according to the docs, this is the default model
@@ -41,6 +43,11 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		}
 		DEFAULT_EMBED_PARAMS = {
 			"model" : "text-embedding-3-small"
+		}
+		DEFAULT_IMAGE_PARAMS = {
+			// https://platform.openai.com/docs/guides/images
+			"model"           : "dall-e-3",
+			"response_format" : "url"
 		}
 		DEFAULT_SPEECH_PARAMS = {
 			// https://platform.openai.com/docs/speech-to-text/overview
@@ -60,6 +67,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 	function init(){
 		variables.chatURL        = "https://api.openai.com/v1/chat/completions"
 		variables.embeddingsURL  = "https://api.openai.com/v1/embeddings"
+		variables.imageURL       = "https://api.openai.com/v1/images/generations"
 		variables.speechURL      = "https://api.openai.com/v1/audio/speech"
 		variables.transcribeURL  = "https://api.openai.com/v1/audio/transcriptions"
 		variables.translateURL   = "https://api.openai.com/v1/audio/translations"
@@ -1081,6 +1089,188 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		// -------------------------------------------------------------------------------------------
 		// Allow concrete providers to normalize the response before returning
 		return postResponse( arguments.transcriptionRequest, dataPacket, transcriptionResponse, "transcription" )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiImageService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Generate one or more images from a text prompt using the OpenAI Images API.
+	 * Supports DALL-E 2 and DALL-E 3 models.
+	 *
+	 * @imageRequest The AiImageRequest object
+	 *
+	 * @throws ProviderError if the provider returns an error
+	 *
+	 * @return AiImageResponse
+	 */
+	@override
+	public AiImageResponse function generateImage( required AiImageRequest imageRequest ){
+		return sendImageRequest( arguments.imageRequest, variables.imageURL );
+	}
+
+	/**
+	 * Internal helper — executes an image generation request against the given target URL.
+	 * Subclasses can call this directly with a different imageURL (e.g. Grok, OpenRouter).
+	 *
+	 * @imageRequest The AiImageRequest to send
+	 * @targetURL    The full URL to POST the image generation request to
+	 *
+	 * @return AiImageResponse
+	 */
+	public AiImageResponse function sendImageRequest(
+		required AiImageRequest imageRequest,
+		required string targetURL
+	){
+		// Seed defaults — use only image-specific defaults; do NOT merge variables.params
+		// (those are chat-tier params and must not bleed across modalities).
+		arguments.imageRequest
+			.mergeServiceParams( static.DEFAULT_IMAGE_PARAMS )
+			.setApiKeyIfEmpty( getAPIKey() )
+			.mergeServiceHeaders( variables.headers )
+
+		// Build data packet
+		var dataPacket = {
+			"model"  : arguments.imageRequest.getModel(),
+			"prompt" : arguments.imageRequest.getPrompt(),
+			"n"      : arguments.imageRequest.getN(),
+			"size"   : arguments.imageRequest.getSize()
+		}
+
+		// Optional params
+		if ( arguments.imageRequest.getQuality().len() && arguments.imageRequest.getQuality() != "standard" ) {
+			dataPacket.quality = arguments.imageRequest.getQuality()
+		}
+		if ( arguments.imageRequest.getStyle().len() ) {
+			dataPacket.style = arguments.imageRequest.getStyle()
+		}
+		// response_format drives how the provider returns image data
+		dataPacket.response_format = arguments.imageRequest.getOutputFormat() == "b64_json" ? "b64_json" : "url"
+
+		// Merge remaining provider params
+		dataPacket.append( arguments.imageRequest.getParams() )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Localized Pre Callback ---
+		// -------------------------------------------------------------------------------------------
+		dataPacket = preRequest( arguments.imageRequest, dataPacket, "image" )
+
+		// Fire onAIImageRequest announcement
+		BoxAnnounce( "onAIImageRequest", {
+			provider   : this,
+			operation  : "image",
+			aiRequest  : arguments.imageRequest,
+			dataPacket : dataPacket
+		} )
+
+		// Logging
+		if ( arguments.imageRequest.getLogRequest() ) {
+			writeLog( text: "aiImage request to #arguments.targetURL#: #jsonSerialize( dataPacket )#", type: "info", log: "ai" )
+		}
+		if ( arguments.imageRequest.getLogRequestToConsole() ) {
+			println( "aiImage request to #arguments.targetURL#: #jsonSerialize( dataPacket )#" )
+		}
+
+		// HTTP call
+		bx: http
+			url     = arguments.targetURL
+			method  = "post"
+			result  = "imageResult"
+			charset = "utf-8"
+			timeout = arguments.imageRequest.getTimeout()
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+
+			if ( arguments.imageRequest.getSendAuthHeader() ) {
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.imageRequest.getApiKey()#";
+			}
+
+			// Custom headers from the request
+			for ( var thisHeader in arguments.imageRequest.getHeaders() ) {
+				bx:httpParam
+					type  = "header"
+					name  = "#thisHeader#"
+					value = "#arguments.imageRequest.getHeaders()[ thisHeader ]#";
+			}
+
+			bx:httpParam type="body" value=jsonSerialize( dataPacket );
+		}
+
+		// Error detection
+		if ( imageResult.statusCode != "200" ) {
+			var errorMessage = imageResult.fileContent
+			try {
+				var errorData = jsonDeserialize( imageResult.fileContent )
+				errorMessage  = errorData.error?.message ?: errorData.toString()
+			} catch ( any parseEx ) {
+				writeLog(
+					text: "Unable to parse image generation error response: #imageResult.toString()#",
+					type: "warning",
+					log : "ai"
+				)
+			}
+
+			BoxAnnounce( "onAIError", {
+				error        : errorMessage,
+				errorMessage : errorMessage,
+				provider     : this,
+				operation    : "image",
+				aiRequest    : arguments.imageRequest,
+				canRetry     : false
+			} )
+
+			throw(
+				type   : "ProviderError",
+				message: "HTTP Provider (#arguments.targetURL#) Error: #errorMessage#",
+				detail : CallStackGet().toString()
+			)
+		}
+
+		// Parse response
+		var parsedResponse = jsonDeserialize( imageResult.fileContent )
+		var rawImages      = parsedResponse.data ?: []
+		var images         = rawImages.map( img => {
+			var entry = {
+				url           : img.url ?: "",
+				data          : img.keyExists( "b64_json" ) && len( img.b64_json ) ? toBinary( img.b64_json ) : javaCast( "null", "" ),
+				mimeType      : "image/png",
+				revisedPrompt : img.revised_prompt ?: ""
+			}
+			return entry
+		} )
+
+		// Logging
+		if ( arguments.imageRequest.getLogResponse() ) {
+			writeLog( text: "aiImage response status=#imageResult.statusCode# images=#images.len()#", type: "info", log: "ai" )
+		}
+		if ( arguments.imageRequest.getLogResponseToConsole() ) {
+			println( "aiImage response status=#imageResult.statusCode# images=#images.len()#" )
+		}
+
+		// Construct response
+		var results = new AiImageResponse(
+			images      : images,
+			imageFormat : "png",
+			model       : arguments.imageRequest.getModel(),
+			provider    : variables.name
+		)
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Localized Post Callback ---
+		// -------------------------------------------------------------------------------------------
+		results = postResponse( arguments.imageRequest, dataPacket, results, "image" )
+
+		BoxAnnounce( "onAIImageResponse", {
+			provider   : this,
+			operation  : "image",
+			aiRequest  : arguments.imageRequest,
+			aiResponse : results
+		} )
+
+		return results
 	}
 
 }

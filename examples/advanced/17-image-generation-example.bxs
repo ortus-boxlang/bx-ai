@@ -1,0 +1,237 @@
+/**
+ * Image Generation Example
+ *
+ * Demonstrates the aiImage() BIF for generating images from text prompts
+ * using multiple providers: OpenAI DALL-E 3, Gemini Imagen 3, Grok Aurora,
+ * and OpenRouter.
+ *
+ * Prerequisites:
+ *   - OPENAI_API_KEY env var set for OpenAI examples
+ *   - GEMINI_API_KEY env var set for Gemini examples
+ *   - GROK_API_KEY env var set for Grok examples
+ *   - OPENROUTER_API_KEY env var set for OpenRouter examples
+ *
+ * Usage:
+ *   boxlang examples/advanced/17-image-generation-example.bxs
+ */
+
+println( "=== BoxLang AI — Image Generation Examples ===" )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 1. Basic image generation — returns AiImageResponse object
+//
+// By default, uses OpenAI DALL-E 3 and returns the image URL.
+// ─────────────────────────────────────────────────────────────────────
+println( "1. Basic image generation (returns AiImageResponse)" )
+
+var response = aiImage( "a majestic red fox sitting in an autumn forest at golden hour" )
+
+println( "   Provider:      " & response.getProvider() )
+println( "   Model:         " & response.getModel() )
+println( "   Image count:   " & response.getCount() )
+println( "   Has images:    " & response.hasImages() )
+println( "   First URL:     " & left( response.getFirstURL(), 80 ) & "..." )
+println( "   Revised prompt: " & left( response.getRevisedPrompt(), 80 ) )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 2. Save directly to a file (returns file path as string)
+//
+// When options.outputFile is provided, the first image is automatically
+// saved and the function returns the absolute path instead of the response.
+// ─────────────────────────────────────────────────────────────────────
+println( "2. Save directly to file" )
+
+var savedPath = aiImage(
+    "a serene mountain lake reflecting snow-capped peaks",
+    options: { outputFile: "/tmp/bxai-mountain-lake.png" }
+)
+
+println( "   Saved to: " & savedPath )
+println( "   File exists: " & fileExists( savedPath ) )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 3. HD quality, wide format, vivid style
+//
+// DALL-E 3 supports "hd" quality and "vivid"/"natural" style.
+// "1792x1024" produces a landscape-oriented image.
+// ─────────────────────────────────────────────────────────────────────
+println( "3. HD quality, widescreen, vivid style" )
+
+var hdResponse = aiImage(
+    "a futuristic cyberpunk cityscape at night with neon lights and flying cars",
+    params : {
+        quality : "hd",
+        style   : "vivid",
+        size    : "1792x1024"
+    },
+    options: { provider: "openai" }
+)
+
+hdResponse.saveToFile( "/tmp/bxai-cyberpunk-city.png" )
+println( "   Saved HD widescreen to /tmp/bxai-cyberpunk-city.png" )
+println( "   Size: " & hdResponse.getCount() & " image(s)" )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 4. Multiple images (n > 1)
+//
+// Generate several variations and save all to a directory.
+// Note: DALL-E 3 only supports n=1; use DALL-E 2 for multiple images.
+// ─────────────────────────────────────────────────────────────────────
+println( "4. Multiple images (DALL-E 2, n=4)" )
+
+try {
+    var multiResponse = aiImage(
+        "a cozy coffee shop interior with warm lighting",
+        params : {
+            model : "dall-e-2",
+            n     : 4,
+            size  : "512x512"
+        },
+        options: { provider: "openai" }
+    )
+
+    println( "   Generated " & multiResponse.getCount() & " image(s)" )
+    var savedPaths = multiResponse.saveAllToDirectory( "/tmp/bxai-coffeeshop" )
+    savedPaths.each( p -> println( "   → " & p ) )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 5. Working with the response object
+//
+// AiImageResponse gives you URLs, base64 data, MIME types, and data URIs.
+// ─────────────────────────────────────────────────────────────────────
+println( "5. Response object utilities" )
+
+var utilResponse = aiImage( "a simple geometric abstract pattern, primary colors" )
+
+println( "   First URL (50 chars): " & left( utilResponse.getFirstURL(), 50 ) & "..." )
+println( "   MIME type:            " & utilResponse.getMimeType() )
+println( "   Image format:         " & utilResponse.getImageFormat() )
+println( "   toStruct keys:        " & utilResponse.toStruct().keyList() )
+
+// Programmatic save
+utilResponse.saveToFile( "/tmp/bxai-abstract.png" )
+println( "   Saved to /tmp/bxai-abstract.png" )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 6. Gemini Imagen 3
+//
+// Google's Imagen 3 returns binary image data directly (no URL).
+// ─────────────────────────────────────────────────────────────────────
+println( "6. Gemini Imagen 3 (requires GEMINI_API_KEY)" )
+
+try {
+    var geminiResponse = aiImage(
+        "a watercolor painting of a Japanese garden with cherry blossoms",
+        options: { provider: "gemini" }
+    )
+
+    println( "   Provider:    " & geminiResponse.getProvider() )
+    println( "   Model:       " & geminiResponse.getModel() )
+    println( "   Has images:  " & geminiResponse.hasImages() )
+
+    geminiResponse.saveToFile( "/tmp/bxai-gemini-garden.png" )
+    println( "   Saved Imagen 3 result to /tmp/bxai-gemini-garden.png" )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 7. Grok Aurora
+//
+// xAI's image generation model via the Aurora endpoint.
+// ─────────────────────────────────────────────────────────────────────
+println( "7. Grok Aurora (requires GROK_API_KEY)" )
+
+try {
+    var grokResponse = aiImage(
+        "an ancient library filled with glowing magical books",
+        options: { provider: "grok" }
+    )
+
+    println( "   Provider:  " & grokResponse.getProvider() )
+    println( "   First URL: " & left( grokResponse.getFirstURL(), 80 ) )
+    grokResponse.saveToFile( "/tmp/bxai-grok-library.png" )
+    println( "   Saved to /tmp/bxai-grok-library.png" )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 8. OpenRouter with FLUX model
+//
+// OpenRouter routes to many image providers, including FLUX Schnell
+// which is fast and available on the free tier.
+// ─────────────────────────────────────────────────────────────────────
+println( "8. OpenRouter / FLUX Schnell (requires OPENROUTER_API_KEY)" )
+
+try {
+    var fluxResponse = aiImage(
+        "a hyperrealistic close-up of a dewdrop on a flower petal",
+        params : { model: "black-forest-labs/FLUX-1-schnell" },
+        options: { provider: "openrouter" }
+    )
+
+    println( "   Provider:  " & fluxResponse.getProvider() )
+    println( "   First URL: " & left( fluxResponse.getFirstURL(), 80 ) )
+    fluxResponse.saveToFile( "/tmp/bxai-flux-dewdrop.png" )
+    println( "   Saved to /tmp/bxai-flux-dewdrop.png" )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 9. Using aiImage as an agent tool
+//
+// Register generateImage@bxai and let an AI agent decide when to
+// generate images during a conversation.
+// ─────────────────────────────────────────────────────────────────────
+println( "9. Using generateImage@bxai as an agent tool" )
+
+try {
+    var agentResponse = aiChat(
+        messages: [
+            aiMessage( "user", "Generate an image of a friendly robot waving hello and tell me what you created." )
+        ],
+        tools: [ "generateImage@bxai" ]
+    )
+    println( "   Agent response: " & left( agentResponse, 200 ) )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 10. Observability — intercepting image generation events
+//
+// Register a listener on beforeAIImageGeneration to log every request
+// before it reaches the provider.
+// ─────────────────────────────────────────────────────────────────────
+println( "10. Observability — event interception" )
+
+BoxRegisterInterceptor(
+    function( data ) {
+        println( "   [EVENT] beforeAIImageGeneration fired" )
+        println( "   [EVENT]   prompt:   " & left( data.imageRequest.getPrompt(), 60 ) )
+        println( "   [EVENT]   size:     " & data.imageRequest.getSize() )
+        println( "   [EVENT]   provider: " & data.service.getName() )
+    },
+    "beforeAIImageGeneration"
+)
+
+aiImage( "a tiny robot reading a giant book", options: { size: "1024x1024" } )
+
+println( "" )
+println( "=== Image Generation Examples Complete ===" )
+println( "Check /tmp/ for generated image files." )

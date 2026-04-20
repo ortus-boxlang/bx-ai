@@ -1,0 +1,100 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Request object for text-to-image generation operations.
+ * Contains the text prompt and all image generation parameters.
+ */
+class extends="AiBaseRequest" {
+
+	/**
+	 * The text prompt describing the image to generate
+	 */
+	property name="prompt" default="";
+
+	/**
+	 * Number of images to generate (provider limits apply: DALL-E 3 max is 1)
+	 */
+	property name="n" type="numeric" default=1;
+
+	/**
+	 * Image dimensions, e.g. "1024x1024", "1792x1024", "1024x1792"
+	 */
+	property name="size" default="1024x1024";
+
+	/**
+	 * Image quality level: "standard" or "hd" (OpenAI DALL-E 3); provider-specific elsewhere
+	 */
+	property name="quality" default="standard";
+
+	/**
+	 * Visual style: "vivid" or "natural" (OpenAI DALL-E 3); provider-specific elsewhere
+	 */
+	property name="style" default="";
+
+	/**
+	 * Additional style, tone, or mood instructions for the image
+	 */
+	property name="instructions" default="";
+
+	/**
+	 * The format in which the provider returns image data: "url" or "b64_json"
+	 */
+	property name="outputFormat" default="url";
+
+	/**
+	 * If set, the first generated image is automatically saved to this file path
+	 */
+	property name="outputFile" default="";
+
+	/**
+	 * Constructor
+	 *
+	 * @prompt         The text prompt describing the desired image
+	 * @params         Provider API parameters (n, size, quality, style, model, etc.)
+	 * @options        High-level options (provider, apiKey, outputFile, outputFormat, logging, etc.)
+	 * @methodDefaults Default values merged into options before processing
+	 */
+	function init(
+		string prompt = "",
+		struct params = {},
+		struct options = {},
+		struct methodDefaults = { returnFormat: "response" }
+	){
+		arguments.options = prepareOptions( arguments.options, arguments.methodDefaults );
+
+		variables.prompt               = arguments.prompt;
+		variables.params               = arguments.params;
+		variables.provider             = options.provider ?: "";
+		variables.apiKey               = options.apiKey ?: "";
+		variables.logRequest           = options.logRequest ?: false;
+		variables.logRequestToConsole  = options.logRequestToConsole ?: false;
+		variables.logResponse          = options.logResponse ?: false;
+		variables.logResponseToConsole = options.logResponseToConsole ?: false;
+		variables.returnFormat         = options.returnFormat ?: "response";
+		variables.model                = params.model ?: "";
+		variables.timeout              = options.timeout ?: 30;
+		variables.baseURL              = options.baseURL ?: "";
+		variables.providerOptions      = options.providerOptions ?: {};
+		variables.n                    = params.n ?: options.n ?: 1;
+		variables.size                 = params.size ?: options.size ?: "1024x1024";
+		variables.quality              = params.quality ?: options.quality ?: "standard";
+		variables.style                = params.style ?: options.style ?: "";
+		variables.instructions         = params.instructions ?: options.instructions ?: "";
+		variables.outputFormat         = params.outputFormat ?: options.outputFormat ?: "url";
+		variables.outputFile           = options.outputFile ?: "";
+
+		return this;
+	}
+
+}
