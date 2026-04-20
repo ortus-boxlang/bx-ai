@@ -52,6 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `SERVER_PAUSED: -32005` error code added to `RPC_ERROR_CODES`.
   - Two new interception points registered: `onMCPServerPause`, `onMCPServerResume`.
 
+### 🪲 Fixed
+
+- `ClosureTool.doInvoke()`: MCP clients that send JSON fields as real objects/arrays (instead of pre-stringified JSON) caused a "Can't cast Struct to a string" error before the callable ran. The fix walks the callable's declared parameters and `jsonSerialize()`s any non-simple value whose declared type is `string`, keeping the schema contract intact while accepting both wire formats. Callables that declare `struct`, `array`, or `any` parameters are left untouched.
+
 ## [3.1.0] - 2026-04-16
 
 ### 🥊 New Features
