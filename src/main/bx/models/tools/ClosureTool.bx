@@ -78,6 +78,19 @@ class extends="BaseTool" {
 				message : "No callable has been set on this ClosureTool. Use call() before invoking."
 			)
 		}
+		// Coerce structured values to JSON strings for string-typed params. MCP clients may send
+		// object/array payloads for params whose schema declares "string" (e.g. JSON-encoded fields
+		// like source_context or key_decisions); without this, BoxLang's typed-arg binding would
+		// throw "Can't cast Struct<Ordered> to a string" before the callable runs.
+		var incomingArgs = arguments.args
+		variables.callable.$bx.meta.parameters.each( param => {
+			if ( ( param.type ?: "" ) == "string" && incomingArgs.keyExists( param.name ) ) {
+				var value = incomingArgs[ param.name ]
+				if ( !isNull( value ) && !isSimpleValue( value ) ) {
+					incomingArgs[ param.name ] = jsonSerialize( value )
+				}
+			}
+		} )
 		// Inject _chatRequest into args for closures that want conversation context
 		arguments.args._chatRequest = arguments.chatRequest
 		return variables.callable( argumentCollection = arguments.args )
