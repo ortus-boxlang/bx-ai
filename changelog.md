@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 New Features
 
+- **Agent Registry** — New `AIAgentRegistry` singleton (access via `aiAgentRegistry()` BIF) modeled after `AIToolRegistry`. Allows users to explicitly register `AiAgent` instances for centralized discoverability, observability, and analytics.
+  - `aiAgentRegistry().register( agent, module )` — register an `AiAgent` instance with optional module namespace. Key convention: `agentName` or `agentName@moduleName`.
+  - `aiAgentRegistry().unregister( key )` / `unregisterByModule( module )` — remove agents from the registry.
+  - `aiAgentRegistry().resolveAgents( array )` — lazily resolve a mixed array of string keys and `AiAgent` instances into `AiAgent[]`.
+  - `aiAgentRegistry().listAgents()` — returns a struct of all registered agents mapped to `{ name, description, module }` for analytics dashboards and introspection.
+  - `aiAgentRegistry().getAgentInfo( key )` — returns `{ name, description, module }` for a single registry key.
+  - Two new interception points: `onAIAgentRegistryRegister`, `onAIAgentRegistryUnregister` — fired on every register/unregister operation for external observability hooks.
+  - `aiAgent()` BIF gains two new parameters: `register: false` (opt-in flag) and `module: ""` — when `register: true` the agent is automatically placed in the registry at creation time. Defaults to `false` to prevent memory leaks from sub-agents and throwaway agents.
+
 - **MCP Server Pause/Resume**: `MCPServer` now supports pausing and resuming via `pause()` and `resume()` fluent methods. While paused, the server remains registered in the global registry but rejects all incoming JSON-RPC requests (except `ping`) with a `SERVER_PAUSED` error (code `-32005`). This lets an admin interface or AI service temporarily halt a server without destroying its configuration, tools, resources, or prompts. Resume restores normal request handling instantly.
   - `pause()` — pause the server; fires `onMCPServerPause` interception point.
   - `resume()` — resume the server; fires `onMCPServerResume` interception point.
