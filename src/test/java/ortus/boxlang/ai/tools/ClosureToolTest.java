@@ -110,6 +110,77 @@ public class ClosureToolTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "isString" ) ) ).isEqualTo( true );
 	}
 
+	@DisplayName( "invoke() coerces a struct arg to a JSON string for a string-typed param" )
+	@Test
+	public void testInvokeCoercesStructToJsonStringForStringParam() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				tool = new ClosureTool(
+					"jsonTool",
+					"Accepts a JSON-encoded struct",
+					( required string source_context ) => arguments.source_context
+				)
+				result = tool.invoke( { source_context: { repo: "acme/app", branch: "main" } } )
+				parsed = jsonDeserialize( result )
+				repoOut   = parsed.repo
+				branchOut = parsed.branch
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "repoOut" ) ) ).isEqualTo( "acme/app" );
+		assertThat( variables.get( Key.of( "branchOut" ) ) ).isEqualTo( "main" );
+	}
+
+	@DisplayName( "invoke() coerces an array arg to a JSON string for a string-typed param" )
+	@Test
+	public void testInvokeCoercesArrayToJsonStringForStringParam() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				tool = new ClosureTool(
+					"listTool",
+					"Accepts a JSON-encoded array",
+					( required string files_modified ) => arguments.files_modified
+				)
+				result = tool.invoke( { files_modified: [ "a.bx", "b.bx" ] } )
+				parsed = jsonDeserialize( result )
+				firstOut  = parsed[ 1 ]
+				lengthOut = parsed.len()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "firstOut" ) ) ).isEqualTo( "a.bx" );
+		assertThat( variables.get( Key.of( "lengthOut" ) ) ).isEqualTo( 2 );
+	}
+
+	@DisplayName( "invoke() leaves already-stringified args unchanged for string-typed params" )
+	@Test
+	public void testInvokeLeavesStringArgUnchanged() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				tool = new ClosureTool(
+					"echoTool",
+					"Echoes its input",
+					( required string payload ) => arguments.payload
+				)
+				result = tool.invoke( { payload: '{"already":"json"}' } )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( "{\"already\":\"json\"}" );
+	}
+
 	@DisplayName( "invoke() without a callable throws MissingCallable" )
 	@Test
 	public void testInvokeWithNoCallableThrows() {
