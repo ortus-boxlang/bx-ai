@@ -262,7 +262,11 @@ class {
 
 			// Tool Registry Events
 			"onAIToolRegistryRegister",
-			"onAIToolRegistryUnregister"
+			"onAIToolRegistryUnregister",
+
+			// Agent Registry Events
+			"onAIAgentRegistryRegister",
+			"onAIAgentRegistryUnregister"
 		 ]
 	}
 
