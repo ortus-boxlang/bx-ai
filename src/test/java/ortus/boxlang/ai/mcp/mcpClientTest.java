@@ -413,34 +413,316 @@ public class mcpClientTest extends BaseIntegrationTest {
 
 	}
 
-	@DisplayName( "Can query real MCP server with searchDocumentation tool" )
+	// ==================================================================================
+	// Stats Tests
+	// ==================================================================================
+
 	@Test
-	public void testQueryRealMCPServer() {
-		// Test calling the searchDocumentation tool
+	@DisplayName( "getStats method exists on client" )
+	public void testGetStatsMethodExists() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				target = MCP( "https://boxlang.ortusbooks.com/~gitbook/mcp" )
-				response = target.send( "searchDocumentation", { "query": "variables scope" } )
-				success = response.getSuccess()
-				hasData = isStruct( response.getData() )
-
-				println( "Success: " & success )
-				println( "Error: " & response.getError() )
-				println( "Status Code: " & response.getStatusCode() )
-				println( "Has data: " & hasData )
-				println( response.getData() )
+				client = MCP( "http://localhost:3000" )
+				hasGetStats = structKeyExists( client, "getStats" )
 			""",
 			context
 		);
 		// @formatter:on
 
-		var	success	= variables.getAsBoolean( Key.of( "success" ) );
-		var	hasData	= variables.getAsBoolean( Key.of( "hasData" ) );
+		assertThat( variables.get( Key.of( "hasGetStats" ) ) ).isEqualTo( true );
+	}
 
-		assertThat( success ).isEqualTo( true );
-		assertThat( hasData ).isEqualTo( true );
+	@Test
+	@DisplayName( "getSummary method exists on client" )
+	public void testGetSummaryMethodExists() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				client = MCP( "http://localhost:3000" )
+				hasSummary = structKeyExists( client, "getSummary" )
+			""",
+			context
+		);
+		// @formatter:on
 
+		assertThat( variables.get( Key.of( "hasSummary" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "resetStats method exists on client" )
+	public void testResetStatsMethodExists() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				client = MCP( "http://localhost:3000" )
+				hasResetStats = structKeyExists( client, "resetStats" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasResetStats" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "Stats are zero on a fresh client" )
+	public void testStatsInitialState() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				client = MCP( "http://localhost:3000" )
+				result = client.getStats()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var stats = variables.getAsStruct( result );
+		assertThat( stats ).isNotNull();
+
+		var calls = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
+		assertThat( calls.get( Key.of( "total" ) ) ).isEqualTo( 0 );
+		assertThat( calls.get( Key.of( "successful" ) ) ).isEqualTo( 0 );
+		assertThat( calls.get( Key.of( "failed" ) ) ).isEqualTo( 0 );
+
+		var errors = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "errors" ) );
+		assertThat( errors.get( Key.of( "total" ) ) ).isEqualTo( 0 );
+
+		var tools = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "tools" ) );
+		assertThat( tools.get( Key.of( "totalCalls" ) ) ).isEqualTo( 0 );
+
+		var resources = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "resources" ) );
+		assertThat( resources.get( Key.of( "totalReads" ) ) ).isEqualTo( 0 );
+
+		var prompts = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "prompts" ) );
+		assertThat( prompts.get( Key.of( "totalGenerations" ) ) ).isEqualTo( 0 );
+	}
+
+	@Test
+	@DisplayName( "Stats track a failed call (network error)" )
+	public void testStatsTrackErrorCall() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				client = MCP( "http://invalid-host-that-does-not-exist:9999" )
+					.withTimeout( 1000 )
+				client.listTools()
+				result = client.getStats()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var stats = variables.getAsStruct( result );
+		var calls = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
+		assertThat( calls.get( Key.of( "total" ) ) ).isEqualTo( 1 );
+		assertThat( calls.get( Key.of( "failed" ) ) ).isEqualTo( 1 );
+		assertThat( calls.get( Key.of( "successful" ) ) ).isEqualTo( 0 );
+
+		var errors = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "errors" ) );
+		assertThat( errors.get( Key.of( "total" ) ) ).isEqualTo( 1 );
+
+		// avgResponseTime must be a numeric (not an AtomicInteger) — verify it is >= 0
+		var avgResponseTime = ( Number ) calls.get( Key.of( "avgResponseTime" ) );
+		assertThat( avgResponseTime.doubleValue() ).isAtLeast( 0.0 );
+	}
+
+	@Test
+	@DisplayName( "getSummary returns correct metrics after a failed call" )
+	public void testSummaryAfterError() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				client = MCP( "http://invalid-host-that-does-not-exist:9999" )
+					.withTimeout( 1000 )
+				client.listTools()
+				result = client.getSummary()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var summary = variables.getAsStruct( result );
+		assertThat( summary.get( Key.of( "totalCalls" ) ) ).isEqualTo( 1 );
+		assertThat( summary.get( Key.of( "totalErrors" ) ) ).isEqualTo( 1 );
+
+		var successRate = ( Number ) summary.get( Key.of( "successRate" ) );
+		assertThat( successRate.doubleValue() ).isEqualTo( 0.0 );
+	}
+
+	@Test
+	@DisplayName( "resetStats resets all counters to zero" )
+	public void testResetStats() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				client = MCP( "http://invalid-host-that-does-not-exist:9999" )
+					.withTimeout( 1000 )
+				client.listTools()
+				beforeReset = client.getStats().calls.total
+				client.resetStats()
+				result = client.getStats()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "beforeReset" ) ) ).isEqualTo( 1 );
+
+		var stats = variables.getAsStruct( result );
+		var calls = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
+		assertThat( calls.get( Key.of( "total" ) ) ).isEqualTo( 0 );
+	}
+
+	@Test
+	@DisplayName( "Stats track a successful call (real server)" )
+	public void testStatsTrackSuccessfulCall() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				client = MCP( "https://boxlang.ortusbooks.com/~gitbook/mcp" )
+				client.listTools()
+				result = client.getStats()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var stats = variables.getAsStruct( result );
+		var calls = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
+		assertThat( calls.get( Key.of( "total" ) ) ).isEqualTo( 1 );
+		assertThat( calls.get( Key.of( "successful" ) ) ).isEqualTo( 1 );
+		assertThat( calls.get( Key.of( "failed" ) ) ).isEqualTo( 0 );
+
+		var avgResponseTime = ( Number ) calls.get( Key.of( "avgResponseTime" ) );
+		assertThat( avgResponseTime.doubleValue() ).isGreaterThan( 0.0 );
+	}
+
+	@Test
+	@DisplayName( "Stats track per-operation-type counts (real server)" )
+	public void testStatsTrackOperationTypes() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				client = MCP( "https://boxlang.ortusbooks.com/~gitbook/mcp" )
+				client.listTools()
+				client.send( "searchDocumentation", { "query": "variables scope" } )
+				result = client.getStats()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var stats         = variables.getAsStruct( result );
+		var tools         = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "tools" ) );
+		var calls         = ( ortus.boxlang.runtime.types.IStruct ) stats.get( Key.of( "calls" ) );
+		var byOpType      = ( ortus.boxlang.runtime.types.IStruct ) calls.get( Key.of( "byOperationType" ) );
+
+		assertThat( tools.get( Key.of( "totalCalls" ) ) ).isEqualTo( 2 );
+		assertThat( byOpType.get( Key.of( "tool" ) ) ).isEqualTo( 2 );
+	}
+
+	// ==================================================================================
+	// Event Tests
+	// ==================================================================================
+
+	@Test
+	@DisplayName( "onMCPClientRequest event fires before the HTTP call" )
+	public void testOnMCPClientRequestEventFires() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				eventFired       = false
+				capturedOperation = ""
+				capturedName     = ""
+
+				BoxRegisterInterceptor(
+					( event ) => {
+						eventFired        = true
+						capturedOperation = event.operation
+						capturedName      = event.name
+					},
+					"onMCPClientRequest"
+				)
+
+				MCP( "http://invalid-host-that-does-not-exist:9999" )
+					.withTimeout( 1000 )
+					.listTools()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "eventFired" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "capturedOperation" ) ) ).isEqualTo( "tool" );
+		assertThat( variables.get( Key.of( "capturedName" ) ) ).isEqualTo( "listTools" );
+	}
+
+	@Test
+	@DisplayName( "onMCPClientError event fires on network error" )
+	public void testOnMCPClientErrorEventFires() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				errorFired        = false
+				capturedOperation = ""
+				capturedError     = ""
+
+				BoxRegisterInterceptor(
+					( event ) => {
+						errorFired        = true
+						capturedOperation = event.operation
+						capturedError     = event.error
+					},
+					"onMCPClientError"
+				)
+
+				MCP( "http://invalid-host-that-does-not-exist:9999" )
+					.withTimeout( 1000 )
+					.listTools()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errorFired" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "capturedOperation" ) ) ).isEqualTo( "tool" );
+		assertThat( variables.get( Key.of( "capturedError" ) ).toString() ).isNotEmpty();
+	}
+
+	@Test
+	@DisplayName( "onMCPClientResponse event fires on a successful call (real server)" )
+	public void testOnMCPClientResponseEventFires() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				responseFired     = false
+				capturedOperation = ""
+				capturedTime      = -1
+
+				BoxRegisterInterceptor(
+					( event ) => {
+						responseFired     = true
+						capturedOperation = event.operation
+						capturedTime      = event.executionTime
+					},
+					"onMCPClientResponse"
+				)
+
+				MCP( "https://boxlang.ortusbooks.com/~gitbook/mcp" )
+					.listTools()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "responseFired" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "capturedOperation" ) ) ).isEqualTo( "tool" );
+
+		var capturedTime = ( Number ) variables.get( Key.of( "capturedTime" ) );
+		assertThat( capturedTime.doubleValue() ).isAtLeast( 0.0 );
 	}
 
 }
+

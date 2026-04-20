@@ -259,6 +259,10 @@ class {
 			"onMCPRequest",
 			"onMCPResponse",
 			"onMCPError",
+			// MCP Client Events
+			"onMCPClientRequest",
+			"onMCPClientResponse",
+			"onMCPClientError",
 
 			// Tool Registry Events
 			"onAIToolRegistryRegister",
