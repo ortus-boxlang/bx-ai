@@ -75,19 +75,23 @@ class extends="BaseTransport" {
 		// Extract origin for CORS
 		var requestOrigin = headers[ "Origin" ] ?: "";
 
+		// Propagate X-Request-ID for tracing, or generate one if absent
+		var requestId = headers[ "X-Request-ID" ] ?: createUUID();
+
 		// Build normalized request
 		return {
-			"serverName": mcpServerName,
-			"method": requestMethod,
-			"body": requestBody,
-			"headers": headers,
+			"serverName"  : mcpServerName,
+			"method"      : requestMethod,
+			"body"        : requestBody,
+			"headers"     : headers,
 			"acceptHeader": acceptHeader,
-			"params": url,
-			"origin": requestOrigin,
-			"metadata": {
-				"protocol": "http",
+			"params"      : url,
+			"origin"      : requestOrigin,
+			"requestId"   : requestId,
+			"metadata"    : {
+				"protocol"  : "http",
 				"remoteAddr": cgi.REMOTE_ADDR ?: "",
-				"userAgent": cgi.HTTP_USER_AGENT ?: "",
+				"userAgent" : cgi.HTTP_USER_AGENT ?: "",
 				"requestUri": cgi.REQUEST_URI ?: "",
 				"requestTime": now()
 			}
