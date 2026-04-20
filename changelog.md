@@ -84,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `OpenAIService.chat()`: capture `chatRequest` before nested `.each()` closures for tool calling
 - `OpenAIService.chatStream()`: scope callback and `chatRequest` for `sendStreamRequest` call and tool-calling `.each()` closure
 - `CohereService.chat()`: capture `chatRequest` before `.map()` tool closure
+- `ClaudeService`, `GeminiService`, `CohereService`, and `BedrockService` `chat()` methods called `sendChatRequest()` / `sendBedrockRequest()` directly, silently bypassing the entire `wrapLLMCall` middleware chain. `beforeLLMCall`, `wrapLLMCall`, and `afterLLMCall` hooks (including `FlightRecorderMiddleware`, retry wrappers, and any custom LLM wrappers) never fired for these providers.
 - Standardized the data for the `onAITokenCount` event and add missing event on the following services: `BedrockService, ClaudeService, CohereService, GeminiService`
 - MCPServer `scan()` and `scanClass()` where not working accordingly with all cases and permutations.
 - Invalid location of directory for flight recorder tapes
