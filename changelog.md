@@ -21,7 +21,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Requests-per-minute rate**: `getSummary()` now includes `requestsPerMinute` calculated from uptime and total request count.
   - **X-Request-ID correlation**: `HTTPTransport` reads the `X-Request-ID` request header (or generates a UUID if absent); `StdioTransport` always generates one. The ID is echoed as `X-Request-ID` in the response headers and included in `onMCPRequest` and `onMCPResponse` event payloads.
 
-- **MCP Server Pause/Resume**: `MCPServer` now supports pausing and resuming via `pause()` and `resume()` fluent methods. While paused, the server remains registered in the global registry but rejects all incoming JSON-RPC requests (except `ping`) with a `SERVER_PAUSED` error (code `-32005`). This lets an admin interface or AI service temporarily halt a server without destroying its configuration, tools, resources, or prompts. Resume restores normal request handling instantly.
+- **Agent Registry**
+  — New `AIAgentRegistry` singleton (access via `aiAgentRegistry()` BIF) modeled after `AIToolRegistry`. Allows users to explicitly register `AiAgent` instances for centralized discoverability, observability, and analytics.
+  - `aiAgentRegistry().register( agent, module )` — register an `AiAgent` instance with optional module namespace. Key convention: `agentName` or `agentName@moduleName`.
+  - `aiAgentRegistry().unregister( key )` / `unregisterByModule( module )` — remove agents from the registry.
+  - `aiAgentRegistry().resolveAgents( array )` — lazily resolve a mixed array of string keys and `AiAgent` instances into `AiAgent[]`.
+  - `aiAgentRegistry().listAgents()` — returns a struct of all registered agents mapped to `{ name, description, module }` for analytics dashboards and introspection.
+  - `aiAgentRegistry().getAgentInfo( key )` — returns `{ name, description, module }` for a single registry key.
+  - Two new interception points: `onAIAgentRegistryRegister`, `onAIAgentRegistryUnregister` — fired on every register/unregister operation for external observability hooks.
+  - `aiAgent()` BIF gains two new parameters: `register: false` (opt-in flag) and `module: ""` — when `register: true` the agent is automatically placed in the registry at creation time. Defaults to `false` to prevent memory leaks from sub-agents and throwaway agents.
+
+- **MCP Client Stats & Observability**
+  - `MCPClient` now tracks internal usage and performance metrics via a new `MCPClientStats` instance (using atomic variables for thread safety).
+  - `getStats()` — returns a fully serializable struct with call totals, per-operation-type breakdowns, response time avg/min/max, per-tool invocation stats (`count`, `totalTime`, `avgTime`), per-URI resource counts, per-name prompt counts, and error tracking.
+  - `getSummary()` — lightweight summary with `totalCalls`, `successRate`, `avgResponseTime`, per-type totals, `totalErrors`, and `lastCallAt`.
+  - `resetStats()` — resets all counters to zero (fluent).
+  - Three new interception points fired from every HTTP call:
+    - `onMCPClientRequest` — fires before the HTTP request with `{ client, baseURL, operation, name, requestBody }`.
+    - `onMCPClientResponse` — fires on success with `{ client, baseURL, operation, name, response, executionTime, statusCode }`.
+    - `onMCPClientError` — fires on HTTP errors (bad status / JSON-RPC error) and on network-level exceptions with `{ client, baseURL, operation, name, error, statusCode, executionTime }` (includes `exception` key when fired from a `catch` block).
+  - Every operation type is tracked: `tool` (covers `listTools` + `send`), `resource` (covers `listResources` + `readResource`), `prompt` (covers `listPrompts` + `getPrompt`), `discovery` (`getCapabilities`).
+
+- **MCP Server Pause/Resume**
+  - `MCPServer` now supports pausing and resuming via `pause()` and `resume()` fluent methods. While paused, the server remains registered in the global registry but rejects all incoming JSON-RPC requests (except `ping`) with a `SERVER_PAUSED` error (code `-32005`). This lets an admin interface or AI service temporarily halt a server without destroying its configuration, tools, resources, or prompts. Resume restores normal request handling instantly.
   - `pause()` — pause the server; fires `onMCPServerPause` interception point.
   - `resume()` — resume the server; fires `onMCPServerResume` interception point.
   - `isPaused()` — returns `true` if currently paused.
