@@ -14,6 +14,22 @@
  * ----------------------------------------------------------------------------------
  * Request object for text-to-image generation operations.
  * Contains the text prompt and all image generation parameters.
+ *
+ * Can be used directly (constructed by aiImage()) or as a fluent builder when aiImage() is called
+ * with no prompt:
+ *
+ * ```bx
+ * response = aiImage()
+ *     .of( "a red fox in an autumn forest" )
+ *     .provider( "openai" )
+ *     .size( "1792x1024" )
+ *     .quality( "hd" )
+ *     .style( "vivid" )
+ *     .generate()
+ * ```
+ *
+ * BoxLang auto-generates fluent setters for all properties (setPrompt, setSize, etc.)
+ * The methods below add shorter, more expressive aliases for common builder operations.
  */
 class extends="AiBaseRequest" {
 
@@ -43,7 +59,8 @@ class extends="AiBaseRequest" {
 	property name="style" default="";
 
 	/**
-	 * Additional style, tone, or mood instructions for the image
+	 * Additional style, tone, or mood instructions appended to the prompt before sending.
+	 * Useful for applying a consistent artistic direction without repeating it in every prompt.
 	 */
 	property name="instructions" default="";
 
@@ -95,6 +112,209 @@ class extends="AiBaseRequest" {
 		variables.outputFile           = options.outputFile ?: "";
 
 		return this;
+	}
+
+	// ==========================================================================
+	// Fluent Builder API
+	// ==========================================================================
+	// BoxLang auto-generates setXxx() fluent setters for all properties above.
+	// The methods below are expressive aliases that read naturally in a chain.
+
+	/**
+	 * Set the image prompt. Primary alias for the fluent builder — call this first.
+	 *
+	 * @prompt The text description of the image to generate
+	 */
+	AiImageRequest function of( required string prompt ){
+		variables.prompt = arguments.prompt
+		return this
+	}
+
+	/**
+	 * Set the AI model to use (e.g. "dall-e-3", "dall-e-2", "imagen-3.0-generate-008").
+	 *
+	 * @model The model name
+	 */
+	AiImageRequest function model( required string model ){
+		variables.model = arguments.model
+		return this
+	}
+
+	/**
+	 * Set the provider (e.g. "openai", "gemini", "grok", "openrouter").
+	 *
+	 * @provider The provider name
+	 */
+	AiImageRequest function provider( required string provider ){
+		variables.provider = arguments.provider
+		return this
+	}
+
+	/**
+	 * Set the API key for the provider.
+	 *
+	 * @apiKey The API key
+	 */
+	AiImageRequest function apiKey( required string apiKey ){
+		variables.apiKey = arguments.apiKey
+		return this
+	}
+
+	/**
+	 * Set the image dimensions (e.g. "1024x1024", "1792x1024", "1024x1792").
+	 *
+	 * @size The image size string
+	 */
+	AiImageRequest function size( required string size ){
+		variables.size = arguments.size
+		return this
+	}
+
+	/**
+	 * Set the image quality level ("standard" or "hd" for OpenAI DALL-E 3).
+	 *
+	 * @quality The quality level
+	 */
+	AiImageRequest function quality( required string quality ){
+		variables.quality = arguments.quality
+		return this
+	}
+
+	/**
+	 * Set the visual style ("vivid" or "natural" for OpenAI DALL-E 3).
+	 *
+	 * @style The style name
+	 */
+	AiImageRequest function style( required string style ){
+		variables.style = arguments.style
+		return this
+	}
+
+	/**
+	 * Set additional style, tone, or mood instructions that are appended to the prompt.
+	 * Useful for applying a consistent artistic direction across many calls.
+	 *
+	 * @instructions The style or mood instructions
+	 */
+	AiImageRequest function instructions( required string instructions ){
+		variables.instructions = arguments.instructions
+		return this
+	}
+
+	/**
+	 * Set the number of images to generate.
+	 * Provider limits apply — DALL-E 3 supports only n=1.
+	 *
+	 * @count Number of images
+	 */
+	AiImageRequest function n( required numeric count ){
+		variables.n = arguments.count
+		return this
+	}
+
+	/**
+	 * Set the file path where the first generated image will be automatically saved.
+	 * When set, .generate() returns the saved file path string instead of AiImageResponse.
+	 *
+	 * @filePath Absolute or relative path for the output file
+	 */
+	AiImageRequest function outputFile( required string filePath ){
+		variables.outputFile = arguments.filePath
+		return this
+	}
+
+	/**
+	 * Set the response format from the provider: "url" (default) or "b64_json".
+	 *
+	 * @format "url" or "b64_json"
+	 */
+	AiImageRequest function outputFormat( required string format ){
+		variables.outputFormat = arguments.format
+		return this
+	}
+
+	/**
+	 * Merge additional provider API parameters into the request params.
+	 * Useful for provider-specific fields not covered by the standard properties.
+	 *
+	 * @params Struct of provider API parameters to merge
+	 */
+	AiImageRequest function withParams( required struct params ){
+		variables.params.append( arguments.params, true )
+		return this
+	}
+
+	/**
+	 * Apply a struct of high-level options in bulk.
+	 * Recognizes: provider, apiKey, model, size, quality, style, instructions,
+	 * outputFile, outputFormat, timeout, n, logRequest, logResponse.
+	 *
+	 * @options Struct of options to apply
+	 */
+	AiImageRequest function withOptions( required struct options ){
+		if ( arguments.options.keyExists( "provider" ) )            variables.provider            = arguments.options.provider
+		if ( arguments.options.keyExists( "apiKey" ) )              variables.apiKey              = arguments.options.apiKey
+		if ( arguments.options.keyExists( "model" ) )               variables.model               = arguments.options.model
+		if ( arguments.options.keyExists( "size" ) )                variables.size                = arguments.options.size
+		if ( arguments.options.keyExists( "quality" ) )             variables.quality             = arguments.options.quality
+		if ( arguments.options.keyExists( "style" ) )               variables.style               = arguments.options.style
+		if ( arguments.options.keyExists( "instructions" ) )        variables.instructions        = arguments.options.instructions
+		if ( arguments.options.keyExists( "outputFile" ) )          variables.outputFile          = arguments.options.outputFile
+		if ( arguments.options.keyExists( "outputFormat" ) )        variables.outputFormat        = arguments.options.outputFormat
+		if ( arguments.options.keyExists( "timeout" ) )             variables.timeout             = arguments.options.timeout
+		if ( arguments.options.keyExists( "n" ) )                   variables.n                   = arguments.options.n
+		if ( arguments.options.keyExists( "logRequest" ) )          variables.logRequest          = arguments.options.logRequest
+		if ( arguments.options.keyExists( "logRequestToConsole" ) ) variables.logRequestToConsole = arguments.options.logRequestToConsole
+		if ( arguments.options.keyExists( "logResponse" ) )         variables.logResponse         = arguments.options.logResponse
+		if ( arguments.options.keyExists( "logResponseToConsole" ) ) variables.logResponseToConsole = arguments.options.logResponseToConsole
+		return this
+	}
+
+	/**
+	 * Enable request and/or response logging.
+	 *
+	 * @request  Log the request (default true)
+	 * @response Log the response (default true)
+	 * @console  Also print to console (default false)
+	 */
+	AiImageRequest function withLogging( boolean request = true, boolean response = true, boolean console = false ){
+		variables.logRequest           = arguments.request
+		variables.logResponse          = arguments.response
+		variables.logRequestToConsole  = arguments.console
+		variables.logResponseToConsole = arguments.console
+		return this
+	}
+
+	/**
+	 * Terminator — execute image generation with all options configured in the builder chain.
+	 * Calls aiImage() with the current state of this request, which fires all events,
+	 * validates the provider capability, and returns AiImageResponse (or a file path when
+	 * outputFile is set).
+	 *
+	 * @return AiImageResponse, or the saved file path string when outputFile is set
+	 */
+	function generate(){
+		return aiImage(
+			variables.prompt,
+			variables.params,
+			{
+				provider             : variables.provider,
+				apiKey               : variables.apiKey,
+				model                : variables.model,
+				size                 : variables.size,
+				quality              : variables.quality,
+				style                : variables.style,
+				instructions         : variables.instructions,
+				outputFormat         : variables.outputFormat,
+				outputFile           : variables.outputFile,
+				timeout              : variables.timeout,
+				n                    : variables.n,
+				logRequest           : variables.logRequest,
+				logRequestToConsole  : variables.logRequestToConsole,
+				logResponse          : variables.logResponse,
+				logResponseToConsole : variables.logResponseToConsole
+			}
+		)
 	}
 
 }

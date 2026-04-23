@@ -13,55 +13,62 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  * Generate images from a text prompt using an AI provider.
- * Returns an AiImageResponse with the generated image(s), or saves the first image to a file
- * when options.outputFile is specified.
+ *
+ * When called with a prompt, executes immediately and returns an AiImageResponse (or saves to file
+ * when options.outputFile is specified).
+ *
+ * When called with NO prompt, returns an AiImageRequest that supports a fluent builder API
+ * for setting options before calling .generate() as the terminator.
  *
  * @example
  * ```
- * // Generate an image and get the response object
+ * // Direct call — returns AiImageResponse
  * response = aiImage( "a cat riding a bicycle on the moon" )
  * response.saveToFile( "/tmp/cat.png" )
- * println( response.getFirstURL() )
  *
- * // Save directly to a file (returns the file path as a string)
- * path = aiImage(
- *     "futuristic cityscape at night",
- *     options: { outputFile: "/tmp/city.png" }
- * )
+ * // Save directly to a file (returns the file path)
+ * path = aiImage( "futuristic cityscape", options: { outputFile: "/tmp/city.png" } )
  *
- * // HD quality, wide format, vivid style
- * response = aiImage(
- *     "a breathtaking mountain sunrise",
- *     params : { quality: "hd", style: "vivid", size: "1792x1024" },
- *     options: { provider: "openai" }
- * )
+ * // Fluent builder — call aiImage() with no prompt, chain, then .generate()
+ * response = aiImage()
+ *     .of( "a breathtaking mountain sunrise" )
+ *     .provider( "openai" )
+ *     .size( "1792x1024" )
+ *     .quality( "hd" )
+ *     .style( "vivid" )
+ *     .generate()
  *
- * // Multiple images
- * response = aiImage(
- *     "a cozy coffee shop interior",
- *     params : { n: 4 },
- *     options: { provider: "openai" }
- * )
- * response.saveAllToDirectory( "/tmp/coffeeshop" )
+ * // Fluent builder with multiple options
+ * path = aiImage()
+ *     .of( "a cozy coffee shop interior, warm lighting" )
+ *     .model( "dall-e-3" )
+ *     .instructions( "painterly style, impressionist brush strokes" )
+ *     .outputFile( "/tmp/coffeeshop.png" )
+ *     .generate()
  *
- * // Use Gemini Imagen 3
- * response = aiImage( "a fox in an autumn forest", options: { provider: "gemini" } )
+ * // Gemini Imagen via fluent API
+ * response = aiImage()
+ *     .of( "a fox in an autumn forest" )
+ *     .provider( "gemini" )
+ *     .size( "1792x1024" )
+ *     .generate()
  * ```
  */
 @BoxBIF
 class {
 
 	/**
-	 * Generate one or more images from a text prompt.
+	 * Generate one or more images from a text prompt, or return a fluent AiImageRequest builder.
 	 *
-	 * @prompt  The text description of the image to generate
+	 * @prompt  The text description of the image to generate. When omitted, returns a fluent
+	 *          AiImageRequest so you can chain .of(), .provider(), .size(), etc. before calling .generate().
 	 * @params  Provider API parameters (model, n, size, quality, style, etc.)
 	 * @options High-level options (provider, apiKey, outputFile, outputFormat, timeout, logging)
 	 *
-	 * @return AiImageResponse containing the generated image(s), or the saved file path if options.outputFile is set
+	 * @return AiImageResponse, saved file path string, or a fluent AiImageRequest when no prompt is given
 	 */
 	function invoke(
-		required string prompt,
+		string prompt  = "",
 		struct params  = {},
 		struct options = {}
 	){
@@ -97,15 +104,29 @@ class {
 			}
 		}
 
-		// Create request
+		// Create request (seeded with all defaults resolved above)
 		var imageRequest = new bxModules.bxai.models.requests.AiImageRequest(
 			prompt  = arguments.prompt,
 			params  = arguments.params,
 			options = arguments.options
 		)
 
+		// No prompt → return the request object for fluent builder chaining.
+		// The caller chains .of(), .provider(), .size(), etc. and terminates with .generate().
+		if ( !len( arguments.prompt ) ) {
+			return imageRequest
+		}
+
+		return _execute( imageRequest, arguments.options )
+	}
+
+	/**
+	 * Core execution — resolves service, fires events, invokes provider, returns result.
+	 * Called by invoke() for direct calls and by AiImageRequest.generate() for the fluent path.
+	 */
+	private function _execute( required imageRequest, required struct options ){
 		// Get the service
-		var service = aiService( arguments.options?.provider, arguments.options )
+		var service = aiService( arguments.imageRequest.getProvider(), arguments.options )
 
 		if ( !isInstanceOf( service, "IAiImageService" ) ) {
 			throw(
@@ -115,17 +136,17 @@ class {
 		}
 
 		// Fire before event
-		BoxAnnounce( "beforeAIImageGeneration", { imageRequest: imageRequest, service: service } )
+		BoxAnnounce( "beforeAIImageGeneration", { imageRequest: arguments.imageRequest, service: service } )
 
 		// Invoke image generation
-		var result = service.generateImage( imageRequest )
+		var result = service.generateImage( arguments.imageRequest )
 
 		// Fire after event
-		BoxAnnounce( "afterAIImageGeneration", { imageRequest: imageRequest, service: service, result: result } )
+		BoxAnnounce( "afterAIImageGeneration", { imageRequest: arguments.imageRequest, service: service, result: result } )
 
 		// If an output file was requested, save the first image and return the path
-		if ( arguments.options.keyExists( "outputFile" ) && len( arguments.options.outputFile ) ) {
-			return result.saveToFile( arguments.options.outputFile )
+		if ( len( arguments.imageRequest.getOutputFile() ) ) {
+			return result.saveToFile( arguments.imageRequest.getOutputFile() )
 		}
 
 		return result

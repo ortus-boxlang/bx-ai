@@ -494,9 +494,14 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		}
 		var aspectRatio = sizeToAspect[ arguments.imageRequest.getSize() ] ?: "1:1"
 
-		// Build Imagen-format request body
+		// Build Imagen-format request body — append instructions to prompt when set
+		var effectivePrompt = arguments.imageRequest.getPrompt()
+		if ( arguments.imageRequest.getInstructions().len() ) {
+			effectivePrompt &= " " & arguments.imageRequest.getInstructions()
+		}
+
 		var dataPacket = {
-			"instances"  : [ { "prompt": arguments.imageRequest.getPrompt() } ],
+			"instances"  : [ { "prompt": effectivePrompt } ],
 			"parameters" : {
 				"sampleCount" : arguments.imageRequest.getN(),
 				"aspectRatio" : aspectRatio

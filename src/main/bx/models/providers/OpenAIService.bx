@@ -1132,10 +1132,16 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceHeaders( variables.headers )
 
-		// Build data packet
+		// Build data packet — append instructions to the prompt when set
+		// (OpenAI Images API has no separate instructions field; the prompt carries everything)
+		var effectivePrompt = arguments.imageRequest.getPrompt()
+		if ( arguments.imageRequest.getInstructions().len() ) {
+			effectivePrompt &= " " & arguments.imageRequest.getInstructions()
+		}
+
 		var dataPacket = {
 			"model"  : arguments.imageRequest.getModel(),
-			"prompt" : arguments.imageRequest.getPrompt(),
+			"prompt" : effectivePrompt,
 			"n"      : arguments.imageRequest.getN(),
 			"size"   : arguments.imageRequest.getSize()
 		}

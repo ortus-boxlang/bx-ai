@@ -192,12 +192,86 @@ try {
 println( "" )
 
 // ─────────────────────────────────────────────────────────────────────
-// 9. Using aiImage as an agent tool
+// 9. Fluent builder API
+//
+// Call aiImage() with NO prompt to get an AiImageRequest back, then
+// chain builder methods and terminate with .generate().
+// ─────────────────────────────────────────────────────────────────────
+println( "9. Fluent builder — aiImage() with no prompt" )
+
+try {
+    // Basic fluent chain
+    var fluentResponse = aiImage()
+        .of( "a neon-lit rainy street in a cyberpunk city" )
+        .provider( "openai" )
+        .size( "1792x1024" )
+        .quality( "hd" )
+        .style( "vivid" )
+        .generate()
+
+    println( "   Provider:  " & fluentResponse.getProvider() )
+    println( "   Has images: " & fluentResponse.hasImages() )
+    fluentResponse.saveToFile( "/tmp/bxai-fluent-cyberpunk.png" )
+    println( "   Saved to /tmp/bxai-fluent-cyberpunk.png" )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 9b. Fluent builder with instructions and outputFile
+//
+// instructions are appended to the prompt automatically before sending
+// to the provider, so you can set a reusable artistic style globally.
+// ─────────────────────────────────────────────────────────────────────
+println( "9b. Fluent builder with instructions + outputFile" )
+
+try {
+    var savedPath = aiImage()
+        .of( "a cottage by a lake" )
+        .instructions( "watercolor painting style, soft pastel palette" )
+        .size( "1024x1024" )
+        .outputFile( "/tmp/bxai-fluent-cottage.png" )
+        .generate()
+
+    println( "   Saved to: " & savedPath )
+    println( "   File exists: " & fileExists( savedPath ) )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 9c. Fluent builder — Gemini with withOptions()
+//
+// withOptions() applies a struct of settings in bulk — handy when
+// reusing a shared config struct across multiple calls.
+// ─────────────────────────────────────────────────────────────────────
+println( "9c. Fluent builder with withOptions() — Gemini" )
+
+try {
+    var geminiConfig = { provider: "gemini", size: "1792x1024" }
+
+    var geminiFluentResponse = aiImage()
+        .of( "a traditional Japanese tea ceremony" )
+        .withOptions( geminiConfig )
+        .generate()
+
+    println( "   Provider: " & geminiFluentResponse.getProvider() )
+    geminiFluentResponse.saveToFile( "/tmp/bxai-fluent-gemini.png" )
+    println( "   Saved to /tmp/bxai-fluent-gemini.png" )
+} catch ( any e ) {
+    println( "   Skipped: " & e.message )
+}
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 10. Using aiImage as an agent tool
 //
 // Register generateImage@bxai and let an AI agent decide when to
 // generate images during a conversation.
 // ─────────────────────────────────────────────────────────────────────
-println( "9. Using generateImage@bxai as an agent tool" )
+println( "10. Using generateImage@bxai as an agent tool" )
 
 try {
     var agentResponse = aiChat(
@@ -213,12 +287,12 @@ try {
 println( "" )
 
 // ─────────────────────────────────────────────────────────────────────
-// 10. Observability — intercepting image generation events
+// 11. Observability — intercepting image generation events
 //
 // Register a listener on beforeAIImageGeneration to log every request
 // before it reaches the provider.
 // ─────────────────────────────────────────────────────────────────────
-println( "10. Observability — event interception" )
+println( "11. Observability — event interception" )
 
 BoxRegisterInterceptor(
     function( data ) {
