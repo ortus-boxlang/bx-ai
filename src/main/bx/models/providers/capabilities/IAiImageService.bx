@@ -26,6 +26,6 @@ interface extends="IAiService" {
 	 *
 	 * @return AiImageResponse wrapping the generated image(s)
 	 */
-	function generateImage( required AiImageRequest imageRequest )
+	function generateImage( required AiImageRequest imageRequest );
 
 }

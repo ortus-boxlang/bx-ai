@@ -127,9 +127,17 @@ class extends="AiBaseResponse" {
 	/**
 	 * Return a data URI for the first image, suitable for embedding in an HTML <img> src.
 	 * Format: data:<mimeType>;base64,<imageData>
+	 *
+	 * Returns an empty string when no base64 image payload is available.
 	 */
 	string function toDataURI(){
-		return "data:#getMimeType()#;base64,#getFirstBase64()#"
+		var base64Image = getFirstBase64()
+
+		if ( !len( base64Image ) ) {
+			return ""
+		}
+
+		return "data:#getMimeType()#;base64,#base64Image#"
 	}
 
 	/**
@@ -179,6 +187,11 @@ class extends="AiBaseResponse" {
 			} else if ( len( img.url ?: "" ) ) {
 				imageData = _fetchURL( img.url )
 				img.data  = imageData
+			} else {
+				throw(
+					type   : "InvalidState",
+					message: "AiImageResponse image at index #i# has no image data or URL to save."
+				)
 			}
 			fileWrite( filePath, imageData )
 			paths.append( filePath )
