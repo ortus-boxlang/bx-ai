@@ -89,7 +89,9 @@ public class aiImageTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		var threw = variables.getAsBoolean( Key.of( "threw" ) );
+		var errorType = variables.getAsString( Key.of( "errorType" ) );
 		assertThat( threw ).isTrue();
+		assertThat( errorType ).isEqualTo( "UnsupportedCapability" );
 	}
 
 	@DisplayName( "beforeAIImageGeneration event fires with correct imageRequest context" )

@@ -35,6 +35,16 @@ class extends="AiBaseResponse" {
 	 */
 	property name="imageFormat" default="png";
 
+	static{
+		MIME_TYPES = {
+			png  : "image/png",
+			jpg  : "image/jpeg",
+			jpeg : "image/jpeg",
+			webp : "image/webp",
+			gif  : "image/gif"
+		}
+	}
+
 	/**
 	 * Constructor
 	 *
@@ -96,14 +106,7 @@ class extends="AiBaseResponse" {
 	 * Return the MIME type for this image format.
 	 */
 	string function getMimeType(){
-		var mimeTypes = {
-			png  : "image/png",
-			jpg  : "image/jpeg",
-			jpeg : "image/jpeg",
-			webp : "image/webp",
-			gif  : "image/gif"
-		}
-		return mimeTypes[ variables.imageFormat.lCase() ] ?: "image/png"
+		return static.MIME_TYPES[ variables.imageFormat.lCase() ] ?: "image/png"
 	}
 
 	/**
@@ -178,8 +181,7 @@ class extends="AiBaseResponse" {
 		createObject( "java", "java.io.File" ).init( expandedDir ).mkdirs()
 
 		var paths = []
-		var i = 1
-		for ( var img in variables.images ) {
+		for ( var img, i in variables.images ) {
 			var filePath = expandedDir & "/image-#i#.#variables.imageFormat#"
 			var imageData = ""
 			if ( !isNull( img.data ) && arrayLen( img.data ) > 0 ) {
@@ -195,7 +197,6 @@ class extends="AiBaseResponse" {
 			}
 			fileWrite( filePath, imageData )
 			paths.append( filePath )
-			i++
 		}
 		return paths
 	}
@@ -221,22 +222,25 @@ class extends="AiBaseResponse" {
 
 	/**
 	 * Fetch binary data from a URL (used when provider returns a URL instead of inline data).
+	 *
+	 * @targetUrl The URL to fetch image bytes from
+	 *
+	 * @return The fetched image bytes
 	 */
-	private binary function _fetchURL( required string url ){
-		bx: http
-			url    = arguments.url
-			method = "get"
-			result = "fetchResult"
-		{}
+	private binary function _fetchURL( required string targetUrl ){
+		var results = http( arguments.targetUrl )
+			.get()
+			.asBinary()
+			.send()
 
-		if ( fetchResult.statusCode != "200" ) {
+		if ( results.statusCode != 200 ) {
 			throw(
 				type   : "ImageFetchError",
-				message: "Failed to fetch image from URL (#arguments.url#): HTTP #fetchResult.statusCode#"
+				message: "Failed to fetch image from URL (#arguments.targetUrl#): HTTP #results.statusCode#"
 			)
 		}
 
-		return fetchResult.fileContent
+		return results.fileContent
 	}
 
 }

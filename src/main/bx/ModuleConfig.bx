@@ -194,10 +194,10 @@ class {
 				defaultApiKey       : "",
 				// Default model override (leave empty to use provider's built-in default)
 				defaultModel        : "",
-				// Default image dimensions — "1024x1024", "1792x1024", "1024x1792"
-				defaultSize         : "1024x1024",
-				// Default quality level — "standard" or "hd" (OpenAI DALL-E 3); provider-specific elsewhere
-				defaultQuality      : "standard",
+				// Default image dimensions — "auto", "1024x1024", "1792x1024", "1024x1792"
+				defaultSize         : "auto",
+				// Default quality level — "low", "medium", "high", or "auto"; provider-specific support
+				defaultQuality      : "auto",
 				// Default visual style — "vivid" or "natural" (OpenAI DALL-E 3); leave empty for provider default
 				defaultStyle        : "",
 				// Default style/tone/mood instructions appended to every image prompt

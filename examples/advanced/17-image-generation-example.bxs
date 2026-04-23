@@ -202,7 +202,7 @@ println( "9. Fluent builder — aiImage() with no prompt" )
 try {
     // Basic fluent chain
     var fluentResponse = aiImage()
-        .of( "a neon-lit rainy street in a cyberpunk city" )
+        .prompt( "a neon-lit rainy street in a cyberpunk city" )
         .provider( "openai" )
         .size( "1792x1024" )
         .quality( "hd" )
@@ -228,7 +228,7 @@ println( "9b. Fluent builder with instructions + outputFile" )
 
 try {
     var savedPath = aiImage()
-        .of( "a cottage by a lake" )
+        .prompt( "a cottage by a lake" )
         .instructions( "watercolor painting style, soft pastel palette" )
         .size( "1024x1024" )
         .outputFile( "/tmp/bxai-fluent-cottage.png" )
@@ -253,7 +253,7 @@ try {
     var geminiConfig = { provider: "gemini", size: "1792x1024" }
 
     var geminiFluentResponse = aiImage()
-        .of( "a traditional Japanese tea ceremony" )
+        .prompt( "a traditional Japanese tea ceremony" )
         .withOptions( geminiConfig )
         .generate()
 

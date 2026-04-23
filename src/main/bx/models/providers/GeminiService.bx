@@ -574,6 +574,10 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 				revisedPrompt : ""
 			}
 		} )
+		var imageFormat = arguments.imageRequest.getFormat()
+		if ( images.len() ) {
+			imageFormat = ( images[ 1 ].mimeType ?: "image/png" ).listLast( "/" )
+		}
 
 		// Logging
 		if ( arguments.imageRequest.getLogResponse() ) {
@@ -585,7 +589,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 
 		var results = new AiImageResponse(
 			images      : images,
-			imageFormat : "png",
+			imageFormat : imageFormat,
 			model       : model,
 			provider    : variables.name
 		)

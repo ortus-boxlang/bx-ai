@@ -31,16 +31,16 @@
  *
  * // Fluent builder — call aiImage() with no prompt, chain, then .generate()
  * response = aiImage()
- *     .of( "a breathtaking mountain sunrise" )
+ *     .prompt( "a breathtaking mountain sunrise" )
  *     .provider( "openai" )
  *     .size( "1792x1024" )
- *     .quality( "hd" )
+ *     .high()
  *     .style( "vivid" )
  *     .generate()
  *
  * // Fluent builder with multiple options
  * path = aiImage()
- *     .of( "a cozy coffee shop interior, warm lighting" )
+ *     .prompt( "a cozy coffee shop interior, warm lighting" )
  *     .model( "dall-e-3" )
  *     .instructions( "painterly style, impressionist brush strokes" )
  *     .outputFile( "/tmp/coffeeshop.png" )
@@ -48,7 +48,7 @@
  *
  * // Gemini Imagen via fluent API
  * response = aiImage()
- *     .of( "a fox in an autumn forest" )
+ *     .prompt( "a fox in an autumn forest" )
  *     .provider( "gemini" )
  *     .size( "1792x1024" )
  *     .generate()
@@ -61,8 +61,8 @@ class {
 	 * Generate one or more images from a text prompt, or return a fluent AiImageRequest builder.
 	 *
 	 * @prompt  The text description of the image to generate. When omitted, returns a fluent
-	 *          AiImageRequest so you can chain .of(), .provider(), .size(), etc. before calling .generate().
-	 * @params  Provider API parameters (model, n, size, quality, style, etc.)
+	 *          AiImageRequest so you can chain .prompt(), .provider(), .size(), etc. before calling .generate().
+	 * @params  Provider API parameters (model, n, size, quality, style, output_format, etc.)
 	 * @options High-level options (provider, apiKey, outputFile, outputFormat, timeout, logging)
 	 *
 	 * @return AiImageResponse, saved file path string, or a fluent AiImageRequest when no prompt is given

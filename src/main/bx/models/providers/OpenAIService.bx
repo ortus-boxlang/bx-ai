@@ -46,7 +46,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		}
 		DEFAULT_IMAGE_PARAMS = {
 			// https://platform.openai.com/docs/guides/images
-			"model"           : "dall-e-3",
+			"model"           : "gpt-image-1",
 			"response_format" : "url"
 		}
 		DEFAULT_SPEECH_PARAMS = {
@@ -1147,17 +1147,20 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		}
 
 		// Optional params
-		if ( arguments.imageRequest.getQuality().len() && arguments.imageRequest.getQuality() != "standard" ) {
+		if ( arguments.imageRequest.getQuality().len() && arguments.imageRequest.getQuality() != "auto" ) {
 			dataPacket.quality = arguments.imageRequest.getQuality()
 		}
 		if ( arguments.imageRequest.getStyle().len() ) {
 			dataPacket.style = arguments.imageRequest.getStyle()
 		}
+		if ( arguments.imageRequest.getFormat().len() ) {
+			dataPacket.output_format = arguments.imageRequest.getFormat()
+		}
 		// response_format drives how the provider returns image data
 		dataPacket.response_format = arguments.imageRequest.getOutputFormat() == "b64_json" ? "b64_json" : "url"
 
 		// Merge remaining provider params
-		dataPacket.append( arguments.imageRequest.getParams() )
+		dataPacket.append( arguments.imageRequest.getParams(), false )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire Localized Pre Callback ---
@@ -1238,11 +1241,15 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		// Parse response
 		var parsedResponse = jsonDeserialize( imageResult.fileContent )
 		var rawImages      = parsedResponse.data ?: []
+		var requestedFormat = arguments.imageRequest.getFormat().lCase()
+		var requestedMimeType = requestedFormat == "jpeg" || requestedFormat == "jpg"
+			? "image/jpeg"
+			: ( requestedFormat == "webp" ? "image/webp" : "image/png" )
 		var images         = rawImages.map( img => {
 			var entry = {
 				url           : img.url ?: "",
 				data          : img.keyExists( "b64_json" ) && len( img.b64_json ) ? toBinary( img.b64_json ) : javaCast( "null", "" ),
-				mimeType      : "image/png",
+				mimeType      : requestedMimeType,
 				revisedPrompt : img.revised_prompt ?: ""
 			}
 			return entry
@@ -1259,7 +1266,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		// Construct response
 		var results = new AiImageResponse(
 			images      : images,
-			imageFormat : "png",
+			imageFormat : arguments.imageRequest.getFormat(),
 			model       : arguments.imageRequest.getModel(),
 			provider    : variables.name
 		)
