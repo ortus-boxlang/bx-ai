@@ -389,20 +389,12 @@ class extends="AiBaseRequest" {
 		return this
 	}
 
-	AiImageRequest function twoksquare(){
-		return twoKSquare()
-	}
-
 	/**
 	 * Set size alias: 2048x1152.
 	 */
 	AiImageRequest function twoKLandscape(){
 		variables.size = static.POPULAR_SIZES.twoKlandscape
 		return this
-	}
-
-	AiImageRequest function twoklandscape(){
-		return twoKLandscape()
 	}
 
 	/**
@@ -413,20 +405,12 @@ class extends="AiBaseRequest" {
 		return this
 	}
 
-	AiImageRequest function fourklandscape(){
-		return fourKLandscape()
-	}
-
 	/**
 	 * Set size alias: 2160x3840.
 	 */
 	AiImageRequest function fourKPortrait(){
 		variables.size = static.POPULAR_SIZES.fourKportrait
 		return this
-	}
-
-	AiImageRequest function fourkportrait(){
-		return fourKPortrait()
 	}
 
 	/**
