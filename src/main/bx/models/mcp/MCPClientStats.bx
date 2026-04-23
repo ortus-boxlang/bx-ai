@@ -1,0 +1,366 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MCP Client Statistics Tracker
+ *
+ * Tracks performance and usage metrics for MCP client instances.
+ * All stats are in-memory aggregates for real-time monitoring.
+ * Counters use atomic variables for thread-safe increment without locking.
+ * Aggregate calculations (avg/min/max) use exclusive locks as they involve array operations.
+ */
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
+class {
+
+	/**
+	 * Client creation timestamp
+	 */
+	property name="createdAt" type="date";
+
+	/**
+	 * Call statistics (totals, by operation type, response times)
+	 */
+	property name="calls" type="struct";
+
+	/**
+	 * Tool invocation statistics
+	 */
+	property name="tools" type="struct";
+
+	/**
+	 * Resource read statistics
+	 */
+	property name="resources" type="struct";
+
+	/**
+	 * Prompt generation statistics
+	 */
+	property name="prompts" type="struct";
+
+	/**
+	 * Error tracking
+	 */
+	property name="errors" type="struct";
+
+	/**
+	 * Unique stats identifier, used for lock namespacing
+	 */
+	property name="statsId" type="string";
+
+	/**
+	 * Constructor — initializes all counters
+	 */
+	function init() {
+		variables.createdAt = now()
+		variables.statsId   = createUUID()
+		reset()
+		return this
+	}
+
+	/**
+	 * Reset all statistics to their initial zero state
+	 */
+	MCPClientStats function reset() {
+		variables.calls = {
+			"total"          : new AtomicInteger( 0 ),
+			"successful"     : new AtomicInteger( 0 ),
+			"failed"         : new AtomicInteger( 0 ),
+			"byOperationType": {},
+			"responseTimes"  : [],
+			"avgResponseTime": 0,
+			"minResponseTime": 0,
+			"maxResponseTime": 0,
+			"lastCallAt"     : new AtomicReference( "" )
+		}
+
+		variables.tools = {
+			"totalCalls"      : new AtomicInteger( 0 ),
+			"byTool"          : {},
+			"executionTimes"  : [],
+			"avgExecutionTime": 0,
+			"minExecutionTime": 0,
+			"maxExecutionTime": 0
+		}
+
+		variables.resources = {
+			"totalReads": new AtomicInteger( 0 ),
+			"byUri"     : {}
+		}
+
+		variables.prompts = {
+			"totalGenerations": new AtomicInteger( 0 ),
+			"byName"          : {}
+		}
+
+		variables.errors = {
+			"total"    : new AtomicInteger( 0 ),
+			"byCode"   : {},
+			"lastError": {}
+		}
+
+		return this
+	}
+
+	/**
+	 * Record a client call.
+	 *
+	 * Routes sub-counters based on operationType:
+	 *   "tool"      → tools.totalCalls, tools.byTool
+	 *   "resource"  → resources.totalReads, resources.byUri
+	 *   "prompt"    → prompts.totalGenerations, prompts.byName
+	 *   "discovery" → calls.byOperationType only
+	 *
+	 * @operationType The type of operation: tool, resource, prompt, or discovery
+	 * @name          The specific name (tool name, resource URI, prompt name, or operation label)
+	 * @responseTime  Elapsed time in milliseconds
+	 * @success       Whether the call succeeded
+	 * @errorCode     HTTP status code or 0 for network errors (only used when success=false)
+	 * @errorMessage  Human-readable error description (only used when success=false)
+	 */
+	MCPClientStats function recordCall(
+		required string  operationType,
+		required string  name,
+		required numeric responseTime,
+		boolean  success       = true,
+		numeric  errorCode     = 0,
+		string   errorMessage  = ""
+	) {
+		// Update top-level totals
+		variables.calls.total.incrementAndGet()
+		variables.calls.lastCallAt.set( now() )
+
+		if ( arguments.success ) {
+			variables.calls.successful.incrementAndGet()
+		} else {
+			variables.calls.failed.incrementAndGet()
+			recordError( arguments.errorCode, arguments.errorMessage )
+		}
+
+		// Track by operation type
+		var opType = arguments.operationType
+		if ( !variables.calls.byOperationType.keyExists( opType ) ) {
+			variables.calls.byOperationType[ opType ] = 0
+		}
+		variables.calls.byOperationType[ opType ]++
+
+		// Track response times
+		variables.calls.responseTimes.append( arguments.responseTime )
+		updateResponseTimeStats( arguments.responseTime )
+
+		// Route to per-type sub-counters
+		switch ( opType ) {
+			case "tool":
+				variables.tools.totalCalls.incrementAndGet()
+				updateToolStats( arguments.name, arguments.responseTime )
+				updateToolExecutionStats( arguments.responseTime )
+				break
+			case "resource":
+				variables.resources.totalReads.incrementAndGet()
+				if ( !variables.resources.byUri.keyExists( arguments.name ) ) {
+					variables.resources.byUri[ arguments.name ] = 0
+				}
+				variables.resources.byUri[ arguments.name ]++
+				break
+			case "prompt":
+				variables.prompts.totalGenerations.incrementAndGet()
+				if ( !variables.prompts.byName.keyExists( arguments.name ) ) {
+					variables.prompts.byName[ arguments.name ] = 0
+				}
+				variables.prompts.byName[ arguments.name ]++
+				break
+			// "discovery" falls through — tracked only in calls.byOperationType above
+		}
+
+		return this
+	}
+
+	/**
+	 * Record an error.
+	 *
+	 * @code    Error code (HTTP status or 0 for network errors)
+	 * @message Human-readable error description
+	 */
+	MCPClientStats function recordError(
+		required numeric code,
+		string message = ""
+	) {
+		variables.errors.total.incrementAndGet()
+
+		var codeKey = toString( arguments.code )
+		if ( !variables.errors.byCode.keyExists( codeKey ) ) {
+			variables.errors.byCode[ codeKey ] = 0
+		}
+		variables.errors.byCode[ codeKey ]++
+
+		variables.errors.lastError = {
+			"code"     : arguments.code,
+			"message"  : arguments.message,
+			"timestamp": now()
+		}
+
+		return this
+	}
+
+	/**
+	 * Get all statistics as a plain struct.
+	 * All atomic values are unwrapped via .get() so the result is safely serializable.
+	 *
+	 * @return Complete stats struct
+	 */
+	struct function getStats() {
+		var callsCopy = variables.calls.copy()
+		callsCopy.total       = callsCopy.total.get()
+		callsCopy.successful  = callsCopy.successful.get()
+		callsCopy.failed      = callsCopy.failed.get()
+		callsCopy.lastCallAt  = callsCopy.lastCallAt.get()
+
+		var toolsCopy = variables.tools.copy()
+		toolsCopy.totalCalls = toolsCopy.totalCalls.get()
+
+		var resourcesCopy = variables.resources.copy()
+		resourcesCopy.totalReads = resourcesCopy.totalReads.get()
+
+		var promptsCopy = variables.prompts.copy()
+		promptsCopy.totalGenerations = promptsCopy.totalGenerations.get()
+
+		var errorsCopy = variables.errors.copy()
+		errorsCopy.total = errorsCopy.total.get()
+
+		return {
+			"createdAt"  : variables.createdAt,
+			"uptime"     : dateDiff( "s", variables.createdAt, now() ) * 1000,
+			"calls"      : callsCopy,
+			"tools"      : toolsCopy,
+			"resources"  : resourcesCopy,
+			"prompts"    : promptsCopy,
+			"errors"     : errorsCopy
+		}
+	}
+
+	/**
+	 * Get a lightweight summary of the most useful metrics.
+	 *
+	 * @return Summary stats struct
+	 */
+	struct function getSummary() {
+		var total      = variables.calls.total.get()
+		var successful = variables.calls.successful.get()
+
+		return {
+			"uptime"                : dateDiff( "s", variables.createdAt, now() ) * 1000,
+			"totalCalls"            : total,
+			"successRate"           : total > 0 ? ( successful / total * 100 ) : 0,
+			"avgResponseTime"       : variables.calls.avgResponseTime,
+			"totalToolCalls"        : variables.tools.totalCalls.get(),
+			"totalResourceReads"    : variables.resources.totalReads.get(),
+			"totalPromptGenerations": variables.prompts.totalGenerations.get(),
+			"totalErrors"           : variables.errors.total.get(),
+			"lastCallAt"            : variables.calls.lastCallAt.get()
+		}
+	}
+
+	// ---------------------------------------------------------------------------------------------------------
+	// Private Helper Methods
+	// ---------------------------------------------------------------------------------------------------------
+
+	/**
+	 * Update per-tool invocation stats (count, totalTime, avgTime).
+	 *
+	 * @toolName      The name of the tool
+	 * @executionTime Execution time in milliseconds
+	 */
+	private function updateToolStats(
+		required string  toolName,
+		required numeric executionTime
+	) {
+		if ( !variables.tools.byTool.keyExists( arguments.toolName ) ) {
+			variables.tools.byTool[ arguments.toolName ] = {
+				"count"    : 0,
+				"totalTime": 0,
+				"avgTime"  : 0
+			}
+		}
+
+		var toolStats            = variables.tools.byTool[ arguments.toolName ]
+		toolStats.count++
+		toolStats.totalTime     += arguments.executionTime
+		toolStats.avgTime        = toolStats.totalTime / toolStats.count
+	}
+
+	/**
+	 * Update overall response time statistics (avg, min, max).
+	 * Uses an exclusive lock to protect the array reduction and scalar fields.
+	 *
+	 * @responseTime The response time to process
+	 */
+	private function updateResponseTimeStats( required numeric responseTime ) {
+		var times     = variables.calls.responseTimes
+		var timeCount = times.len()
+
+		lock
+			name    = "mcpclient-response-stats-#variables.statsId#"
+			type    = "exclusive"
+			timeout = "5" {
+
+			var total = times.reduce( ( sum, time ) => sum + time, 0 )
+			variables.calls.avgResponseTime = timeCount > 0 ? total / timeCount : 0
+
+			if ( variables.calls.minResponseTime == 0 || arguments.responseTime < variables.calls.minResponseTime ) {
+				variables.calls.minResponseTime = arguments.responseTime
+			}
+			if ( arguments.responseTime > variables.calls.maxResponseTime ) {
+				variables.calls.maxResponseTime = arguments.responseTime
+			}
+
+			// Cap array at 1000 entries to prevent memory bloat
+			if ( timeCount > 1000 ) {
+				variables.calls.responseTimes = times.slice( -1000 )
+			}
+		}
+	}
+
+	/**
+	 * Update overall tool execution time statistics (avg, min, max).
+	 * Uses an exclusive lock to protect the array reduction and scalar fields.
+	 *
+	 * @executionTime The execution time to process
+	 */
+	private function updateToolExecutionStats( required numeric executionTime ) {
+		var times     = variables.tools.executionTimes
+		var timeCount = times.len()
+
+		lock
+			name    = "mcpclient-execution-stats-#variables.statsId#"
+			type    = "exclusive"
+			timeout = "5" {
+
+			var total = times.reduce( ( sum, time ) => sum + time, 0 )
+			variables.tools.avgExecutionTime = timeCount > 0 ? total / timeCount : 0
+
+			if ( variables.tools.minExecutionTime == 0 || arguments.executionTime < variables.tools.minExecutionTime ) {
+				variables.tools.minExecutionTime = arguments.executionTime
+			}
+			if ( arguments.executionTime > variables.tools.maxExecutionTime ) {
+				variables.tools.maxExecutionTime = arguments.executionTime
+			}
+
+			// Cap array at 1000 entries to prevent memory bloat
+			if ( timeCount > 1000 ) {
+				variables.tools.executionTimes = times.slice( -1000 )
+			}
+		}
+	}
+
+}

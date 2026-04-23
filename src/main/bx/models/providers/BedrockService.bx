@@ -668,8 +668,35 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			modelFamily = modelFamily
 		);
 
-		// Send the request to Bedrock (use endpointId which may be an inference profile ARN)
-		var result = sendBedrockRequest( endpointId, dataPacket, arguments.chatRequest );
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware ---
+		// -------------------------------------------------------------------------------------------
+		var llmContext = { chatRequest: arguments.chatRequest, dataPacket: dataPacket }
+		var llmBeforeResult = arguments.chatRequest.fireMiddleware( hook: "beforeLLMCall", context: llmContext )
+		if ( llmBeforeResult.isTerminal() ) {
+			return llmBeforeResult
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire WrapLLM -> Bedrock Call ---
+		// -------------------------------------------------------------------------------------------
+		var capturedDataPacket  = dataPacket;
+		var capturedChatRequest = arguments.chatRequest;
+		var capturedEndpointId  = endpointId;
+		var result = arguments.chatRequest.fireWrapMiddleware(
+			hook         : "wrapLLMCall",
+			context      : llmContext,
+			innerFunction: () => sendBedrockRequest( capturedEndpointId, capturedDataPacket, capturedChatRequest )
+		)
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware, in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		arguments.chatRequest.fireMiddleware(
+			hook   : "afterLLMCall",
+			context: { chatRequest: arguments.chatRequest, result: result },
+			reverse: true
+		)
 
 		// Check for errors
 		if ( result.keyExists( "error" ) ) {

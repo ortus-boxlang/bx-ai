@@ -17,21 +17,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`AiImageRequest`** object: Carries prompt, n, size, quality, style, instructions, outputFormat, and outputFile. All fields fluent via BoxLang property conventions.
   - **`AiImageResponse`** object: Wraps one or more generated images, each as a struct with `url`, `data` (binary), `mimeType`, and `revisedPrompt`. Convenience methods for saving, encoding, and embedding as data URIs.
   - **Provider support**:
-    - **OpenAI** — DALL-E 3 (default) and DALL-E 2 via `/v1/images/generations`. Supports `quality` (standard/hd), `style` (vivid/natural), `size` (up to 1792×1024), and `n` images.
+    - **OpenAI** — `gpt-image-1` (default) and DALL-E models via `/v1/images/generations`. Supports quality/style/size controls and format/compression parameters.
     - **Gemini** — Imagen 3 (`imagen-3.0-generate-008`) via the Gemini API predict endpoint. Returns binary image data directly; `size` maps to aspect ratio (1:1, 16:9, 9:16).
     - **Grok (xAI)** — `grok-2-image` via `https://api.x.ai/v1/images/generations` (OpenAI-compatible format).
     - **OpenRouter** — FLUX Schnell (default) and many other image models via `https://openrouter.ai/api/v1/images/generations` (OpenAI-compatible format).
   - **4 new interception points**: `beforeAIImageGeneration`, `afterAIImageGeneration`, `onAIImageRequest`, `onAIImageResponse`.
   - **`image` settings block** in module config: `defaultProvider`, `defaultApiKey`, `defaultModel`, `defaultSize`, `defaultQuality`, `defaultStyle`, `defaultInstructions`.
   - **`generateImage@bxai` agent tool**: New `ImageTools` class (`models/tools/image/ImageTools.bx`) auto-registered in the global tool registry at module startup. Generates an image from a text prompt, saves to a file (auto-generates a temp file when no `outputFile` is supplied), and returns the absolute path. Opt-in: `aiAgent( tools: [ "generateImage@bxai" ] )`.
+- **MCP Server Observability & Analytics Improvements**
+  - Multiple gaps in the MCP server's observability and analytics have been addressed.
+  - **Thread-safety fix**: `byMethod`, `byTool`, `byUri`, `byName`, and `byCode` counters in `MCPServerStats` were plain struct mutations happening outside any lock, causing silent lost updates under concurrent load. All are now wrapped in dedicated named locks.
+  - **Security failure tracking**: Basic auth rejections, API key rejections, and body-size violations now increment dedicated `AtomicInteger` counters (`security.authFailures`, `security.apiKeyFailures`, `security.bodySizeViolations`) visible in `getStats()` and `getSummary()`. `MCPServer` exposes a `recordSecurityFailure(type)` method for processor delegation.
+  - **Paused-request stats**: Requests rejected due to `SERVER_PAUSED` are now recorded in stats (previously they were silently dropped from all counters).
+  - **`onMCPError` for METHOD_NOT_FOUND**: The `default:` switch case was the only error path that never fired the `onMCPError` interception point. Fixed.
+  - **Per-tool error tracking**: `handleToolCall()` now records a tool error via `recordToolError()` before rethrowing any exception. `MCPServerStats` gains `byTool[name].errors` and an `errors.byTool` roll-up counter.
+  - **Active concurrent request counter**: `MCPServerStats` gains an `activeRequests` `AtomicInteger`; `handleRequest()` increments it on entry and decrements it in a `finally` block. Exposed in `getStats()` and `getSummary()`.
+  - **Requests-per-minute rate**: `getSummary()` now includes `requestsPerMinute` calculated from uptime and total request count.
+  - **X-Request-ID correlation**: `HTTPTransport` reads the `X-Request-ID` request header (or generates a UUID if absent); `StdioTransport` always generates one. The ID is echoed as `X-Request-ID` in the response headers and included in `onMCPRequest` and `onMCPResponse` event payloads.
 
-- **MCP Server Pause/Resume**: `MCPServer` now supports pausing and resuming via `pause()` and `resume()` fluent methods. While paused, the server remains registered in the global registry but rejects all incoming JSON-RPC requests (except `ping`) with a `SERVER_PAUSED` error (code `-32005`). This lets an admin interface or AI service temporarily halt a server without destroying its configuration, tools, resources, or prompts. Resume restores normal request handling instantly.
+- **Agent Registry**
+  — New `AIAgentRegistry` singleton (access via `aiAgentRegistry()` BIF) modeled after `AIToolRegistry`. Allows users to explicitly register `AiAgent` instances for centralized discoverability, observability, and analytics.
+  - `aiAgentRegistry().register( agent, module )` — register an `AiAgent` instance with optional module namespace. Key convention: `agentName` or `agentName@moduleName`.
+  - `aiAgentRegistry().unregister( key )` / `unregisterByModule( module )` — remove agents from the registry.
+  - `aiAgentRegistry().resolveAgents( array )` — lazily resolve a mixed array of string keys and `AiAgent` instances into `AiAgent[]`.
+  - `aiAgentRegistry().listAgents()` — returns a struct of all registered agents mapped to `{ name, description, module }` for analytics dashboards and introspection.
+  - `aiAgentRegistry().getAgentInfo( key )` — returns `{ name, description, module }` for a single registry key.
+  - Two new interception points: `onAIAgentRegistryRegister`, `onAIAgentRegistryUnregister` — fired on every register/unregister operation for external observability hooks.
+  - `aiAgent()` BIF gains two new parameters: `register: false` (opt-in flag) and `module: ""` — when `register: true` the agent is automatically placed in the registry at creation time. Defaults to `false` to prevent memory leaks from sub-agents and throwaway agents.
+
+- **MCP Client Stats & Observability**
+  - `MCPClient` now tracks internal usage and performance metrics via a new `MCPClientStats` instance (using atomic variables for thread safety).
+  - `getStats()` — returns a fully serializable struct with call totals, per-operation-type breakdowns, response time avg/min/max, per-tool invocation stats (`count`, `totalTime`, `avgTime`), per-URI resource counts, per-name prompt counts, and error tracking.
+  - `getSummary()` — lightweight summary with `totalCalls`, `successRate`, `avgResponseTime`, per-type totals, `totalErrors`, and `lastCallAt`.
+  - `resetStats()` — resets all counters to zero (fluent).
+  - Three new interception points fired from every HTTP call:
+    - `onMCPClientRequest` — fires before the HTTP request with `{ client, baseURL, operation, name, requestBody }`.
+    - `onMCPClientResponse` — fires on success with `{ client, baseURL, operation, name, response, executionTime, statusCode }`.
+    - `onMCPClientError` — fires on HTTP errors (bad status / JSON-RPC error) and on network-level exceptions with `{ client, baseURL, operation, name, error, statusCode, executionTime }` (includes `exception` key when fired from a `catch` block).
+  - Every operation type is tracked: `tool` (covers `listTools` + `send`), `resource` (covers `listResources` + `readResource`), `prompt` (covers `listPrompts` + `getPrompt`), `discovery` (`getCapabilities`).
+
+- **MCP Server Pause/Resume**
+  - `MCPServer` now supports pausing and resuming via `pause()` and `resume()` fluent methods. While paused, the server remains registered in the global registry but rejects all incoming JSON-RPC requests (except `ping`) with a `SERVER_PAUSED` error (code `-32005`). This lets an admin interface or AI service temporarily halt a server without destroying its configuration, tools, resources, or prompts. Resume restores normal request handling instantly.
   - `pause()` — pause the server; fires `onMCPServerPause` interception point.
   - `resume()` — resume the server; fires `onMCPServerResume` interception point.
   - `isPaused()` — returns `true` if currently paused.
   - `getSummary()` now includes a `paused` boolean field.
   - New `SERVER_PAUSED: -32005` error code added to `RPC_ERROR_CODES`.
   - Two new interception points registered: `onMCPServerPause`, `onMCPServerResume`.
+
+### 🪲 Fixed
+
+- `ClosureTool.doInvoke()`: MCP clients that send JSON fields as real objects/arrays (instead of pre-stringified JSON) caused a "Can't cast Struct to a string" error before the callable ran. The fix walks the callable's declared parameters and `jsonSerialize()`s any non-simple value whose declared type is `string`, keeping the schema contract intact while accepting both wire formats. Callables that declare `struct`, `array`, or `any` parameters are left untouched.
 
 ## [3.1.0] - 2026-04-16
 
@@ -65,6 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `OpenAIService.chat()`: capture `chatRequest` before nested `.each()` closures for tool calling
 - `OpenAIService.chatStream()`: scope callback and `chatRequest` for `sendStreamRequest` call and tool-calling `.each()` closure
 - `CohereService.chat()`: capture `chatRequest` before `.map()` tool closure
+- `ClaudeService`, `GeminiService`, `CohereService`, and `BedrockService` `chat()` methods called `sendChatRequest()` / `sendBedrockRequest()` directly, silently bypassing the entire `wrapLLMCall` middleware chain. `beforeLLMCall`, `wrapLLMCall`, and `afterLLMCall` hooks (including `FlightRecorderMiddleware`, retry wrappers, and any custom LLM wrappers) never fired for these providers.
 - Standardized the data for the `onAITokenCount` event and add missing event on the following services: `BedrockService, ClaudeService, CohereService, GeminiService`
 - MCPServer `scan()` and `scanClass()` where not working accordingly with all cases and permutations.
 - Invalid location of directory for flight recorder tapes
