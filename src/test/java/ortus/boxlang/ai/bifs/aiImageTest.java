@@ -57,7 +57,7 @@ public class aiImageTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			toolExists = aiToolRegistry().get( "generateImage@bxai" ).isPresent()
+			toolExists = aiToolRegistry().has( "generateImage@bxai" )
 			""",
 			context
 		);
@@ -160,7 +160,7 @@ public class aiImageTest extends BaseIntegrationTest {
 		executeWithTimeoutHandling(
 			"""
 			response   = aiImage(
-				"a simple blue square on a white background",
+				prompt : "a simple blue square on a white background",
 				options: { provider: "gemini", apiKey: geminiKey }
 			)
 			hasImages  = response.hasImages()
@@ -193,7 +193,7 @@ public class aiImageTest extends BaseIntegrationTest {
 		executeWithTimeoutHandling(
 			"""
 			savedPath        = aiImage(
-				"a simple green triangle",
+				prompt : "a simple green triangle",
 				options: { outputFile: "#outputPath#" }
 			)
 			fileExistsResult = fileExists( savedPath )
@@ -216,7 +216,7 @@ public class aiImageTest extends BaseIntegrationTest {
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
-			result       = aiImage( "a yellow star", options: { outputFile: "#outputPath#" } )
+			result       = aiImage( prompt: "a yellow star", options: { outputFile: "#outputPath#" } )
 			resultIsString = isSimpleValue( result )
 			""".replace( "#outputPath#", outputPath ),
 			context

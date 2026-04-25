@@ -39,19 +39,6 @@
  */
 class extends="AiBaseRequest" {
 
-	static {
-		POPULAR_SIZES = {
-			auto        : "auto",
-			square      : "1024x1024",
-			landscape   : "1536x1024",
-			portrait    : "1024x1536",
-			twoKsquare  : "2048x2048",
-			twoKlandscape : "2048x1152",
-			fourKlandscape: "3840x2160",
-			fourKportrait : "2160x3840"
-		}
-	}
-
 	/**
 	 * The text prompt describing the image to generate
 	 */
@@ -97,6 +84,19 @@ class extends="AiBaseRequest" {
 	 * Requested output image format (provider-specific): png, jpeg, or webp
 	 */
 	property name="format" default="png";
+
+	static {
+		POPULAR_SIZES = {
+			auto        : "auto",
+			square      : "1024x1024",
+			landscape   : "1536x1024",
+			portrait    : "1024x1536",
+			twoKsquare  : "2048x2048",
+			twoKlandscape : "2048x1152",
+			fourKlandscape: "3840x2160",
+			fourKportrait : "2160x3840"
+		}
+	}
 
 	/**
 	 * Constructor
