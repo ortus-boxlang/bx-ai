@@ -1,0 +1,155 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Generate images from a text prompt using an AI provider.
+ *
+ * When called with a prompt, executes immediately and returns an AiImageResponse (or saves to file
+ * when options.outputFile is specified).
+ *
+ * When called with NO prompt, returns an AiImageRequest that supports a fluent builder API
+ * for setting options before calling .generate() as the terminator.
+ *
+ * @example
+ * ```
+ * // Direct call — returns AiImageResponse
+ * response = aiImage( "a cat riding a bicycle on the moon" )
+ * response.saveToFile( "/tmp/cat.png" )
+ *
+ * // Save directly to a file (returns the file path)
+ * path = aiImage( "futuristic cityscape", options: { outputFile: "/tmp/city.png" } )
+ *
+ * // Fluent builder — call aiImage() with no prompt, chain, then .generate()
+ * response = aiImage()
+ *     .prompt( "a breathtaking mountain sunrise" )
+ *     .provider( "openai" )
+ *     .size( "1792x1024" )
+ *     .high()
+ *     .style( "vivid" )
+ *     .generate()
+ *
+ * // Fluent builder with multiple options
+ * path = aiImage()
+ *     .prompt( "a cozy coffee shop interior, warm lighting" )
+ *     .model( "dall-e-3" )
+ *     .instructions( "painterly style, impressionist brush strokes" )
+ *     .outputFile( "/tmp/coffeeshop.png" )
+ *     .generate()
+ *
+ * // Gemini Imagen via fluent API
+ * response = aiImage()
+ *     .prompt( "a fox in an autumn forest" )
+ *     .provider( "gemini" )
+ *     .size( "1792x1024" )
+ *     .generate()
+ * ```
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Generate one or more images from a text prompt, or return a fluent AiImageRequest builder.
+	 *
+	 * @prompt  The text description of the image to generate. When omitted, returns a fluent
+	 *          AiImageRequest so you can chain .prompt(), .provider(), .size(), etc. before calling .generate().
+	 * @params  Provider API parameters (model, n, size, quality, style, output_format, etc.)
+	 * @options High-level options (provider, apiKey, outputFile, outputFormat, timeout, logging)
+	 *
+	 * @return AiImageResponse, saved file path string, or a fluent AiImageRequest when no prompt is given
+	 */
+	function invoke(
+		string prompt  = "",
+		struct params  = {},
+		struct options = {}
+	){
+		// Seed image-specific defaults — do NOT merge all moduleRecord.settings into options
+		// because that would overwrite options.apiKey with the module global key, which breaks
+		// cross-provider key resolution inside aiService() (e.g. GEMINI_API_KEY convention check).
+		var imageSettings = moduleRecord.settings.image ?: {};
+
+		if ( len( imageSettings.defaultSize ?: "" ) && !arguments.options.keyExists( "size" ) && !arguments.params.keyExists( "size" ) ) {
+			arguments.options.size = imageSettings.defaultSize
+		}
+		if ( len( imageSettings.defaultQuality ?: "" ) && !arguments.options.keyExists( "quality" ) && !arguments.params.keyExists( "quality" ) ) {
+			arguments.options.quality = imageSettings.defaultQuality
+		}
+		if ( len( imageSettings.defaultStyle ?: "" ) && !arguments.options.keyExists( "style" ) && !arguments.params.keyExists( "style" ) ) {
+			arguments.options.style = imageSettings.defaultStyle
+		}
+		if ( len( imageSettings.defaultInstructions ?: "" ) && !arguments.options.keyExists( "instructions" ) && !arguments.params.keyExists( "instructions" ) ) {
+			arguments.options.instructions = imageSettings.defaultInstructions
+		}
+		if ( len( imageSettings.defaultModel ?: "" ) && !arguments.options.keyExists( "model" ) && !arguments.params.keyExists( "model" ) ) {
+			arguments.params.model = imageSettings.defaultModel
+		}
+		// Seed image-specific provider default
+		if ( !arguments.options.keyExists( "provider" ) && len( imageSettings.defaultProvider ?: "" ) ) {
+			arguments.options.provider = imageSettings.defaultProvider
+		}
+		// Seed image-specific apiKey — only when no convention env var exists for the resolved provider
+		if ( !len( arguments.options.apiKey ?: "" ) && len( imageSettings.defaultApiKey ?: "" ) ) {
+			var resolvedProvider = arguments.options.provider ?: moduleRecord.settings.provider
+			if ( !len( getSystemSetting( "#resolvedProvider.ucase()#_API_KEY", "" ) ) ) {
+				arguments.options.apiKey = imageSettings.defaultApiKey
+			}
+		}
+
+		// Create request (seeded with all defaults resolved above)
+		var imageRequest = new bxModules.bxai.models.requests.AiImageRequest(
+			prompt  = arguments.prompt,
+			params  = arguments.params,
+			options = arguments.options
+		)
+
+		// No prompt → return the request object for fluent builder chaining.
+		// The caller chains .of(), .provider(), .size(), etc. and terminates with .generate().
+		if ( !len( arguments.prompt ) ) {
+			return imageRequest
+		}
+
+		return _execute( imageRequest, arguments.options )
+	}
+
+	/**
+	 * Core execution — resolves service, fires events, invokes provider, returns result.
+	 * Called by invoke() for direct calls and by AiImageRequest.generate() for the fluent path.
+	 */
+	private function _execute( required imageRequest, required struct options ){
+		// Get the service
+		var service = aiService( arguments.imageRequest.getProvider(), arguments.options )
+
+		if ( !isInstanceOf( service, "IAiImageService" ) ) {
+			throw(
+				type    : "UnsupportedCapability",
+				message : "Unsupported capability: provider [#service.getName()#] does not support image generation. Use a provider that implements IAiImageService."
+			)
+		}
+
+		// Fire before event
+		BoxAnnounce( "beforeAIImageGeneration", { imageRequest: arguments.imageRequest, service: service } )
+
+		// Invoke image generation
+		var result = service.generateImage( arguments.imageRequest )
+
+		// Fire after event
+		BoxAnnounce( "afterAIImageGeneration", { imageRequest: arguments.imageRequest, service: service, result: result } )
+
+		// If an output file was requested, save the first image and return the path
+		if ( len( arguments.imageRequest.getOutputFile() ) ) {
+			return result.saveToFile( arguments.imageRequest.getOutputFile() )
+		}
+
+		return result
+	}
+
+}
