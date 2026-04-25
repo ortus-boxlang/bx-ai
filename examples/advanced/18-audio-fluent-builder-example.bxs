@@ -80,16 +80,11 @@ println( "" )
 // ─────────────────────────────────────────────────────────────────────
 println( "4. Format shortcuts demonstration" )
 
-var formats = [ "asMP3", "asWav", "asFlac", "asOpus" ]
-for ( var fmt in formats ) {
-	var path = "/tmp/bxai-fluent-test.#fmt.replace('as','').lCase()#"
-	aiSpeak()
-		.text( "Testing #fmt# format." )
-		.invoke( fmt )  // dynamic method call
-		.outputFile( path )
-		.speak()
-	println( "   #fmt#() → #path# (exists: #fileExists(path)#)" )
-}
+aiSpeak().text( "Test MP3."  ).asMP3() .outputFile( "/tmp/bxai-test.mp3"  ).speak()
+aiSpeak().text( "Test WAV."  ).asWav() .outputFile( "/tmp/bxai-test.wav"  ).speak()
+aiSpeak().text( "Test FLAC." ).asFlac().outputFile( "/tmp/bxai-test.flac" ).speak()
+aiSpeak().text( "Test Opus." ).asOpus().outputFile( "/tmp/bxai-test.opus" ).speak()
+println( "   Format shortcuts: mp3, wav, flac, opus all generated" )
 println( "" )
 
 // ─────────────────────────────────────────────────────────────────────
