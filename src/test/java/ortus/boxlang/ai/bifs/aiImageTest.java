@@ -88,8 +88,8 @@ public class aiImageTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var threw = variables.getAsBoolean( Key.of( "threw" ) );
-		var errorType = variables.getAsString( Key.of( "errorType" ) );
+		var	threw		= variables.getAsBoolean( Key.of( "threw" ) );
+		var	errorType	= variables.getAsString( Key.of( "errorType" ) );
 		assertThat( threw ).isTrue();
 		assertThat( errorType ).isEqualTo( "UnsupportedCapability" );
 	}
@@ -142,10 +142,10 @@ public class aiImageTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var hasImages    = variables.getAsBoolean( Key.of( "hasImages" ) );
-		var imageCount   = variables.getAsInteger( Key.of( "imageCount" ) );
-		var firstURL     = variables.getAsString( Key.of( "firstURL" ) );
-		var providerName = variables.getAsString( Key.of( "providerName" ) );
+		var	hasImages		= variables.getAsBoolean( Key.of( "hasImages" ) );
+		var	imageCount		= variables.getAsInteger( Key.of( "imageCount" ) );
+		var	firstURL		= variables.getAsString( Key.of( "firstURL" ) );
+		var	providerName	= variables.getAsString( Key.of( "providerName" ) );
 
 		assertThat( hasImages ).isTrue();
 		assertThat( imageCount ).isGreaterThan( 0 );
@@ -174,10 +174,10 @@ public class aiImageTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var hasImages  = variables.getAsBoolean( Key.of( "hasImages" ) );
-		var imageCount = variables.getAsInteger( Key.of( "imageCount" ) );
-		var provider   = variables.getAsString( Key.of( "provider" ) );
-		var hasData    = variables.getAsBoolean( Key.of( "hasData" ) );
+		var	hasImages	= variables.getAsBoolean( Key.of( "hasImages" ) );
+		var	imageCount	= variables.getAsInteger( Key.of( "imageCount" ) );
+		var	provider	= variables.getAsString( Key.of( "provider" ) );
+		var	hasData		= variables.getAsBoolean( Key.of( "hasData" ) );
 
 		assertThat( hasImages ).isTrue();
 		assertThat( imageCount ).isGreaterThan( 0 );
