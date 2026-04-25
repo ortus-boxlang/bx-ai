@@ -306,4 +306,115 @@ public class aiSpeakTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "capturedVoice" ) ) ).isEqualTo( "male" );
 	}
 
+	// ─────────────────────────────────────────────────────────────────────────
+	// Fluent Builder API Tests
+	// ─────────────────────────────────────────────────────────────────────────
+
+	@DisplayName( "aiSpeak() with no arguments returns an AiSpeechRequest builder" )
+	@Test
+	public void testAiSpeakNoArgsReturnsBuilder() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiSpeak()
+			isBuilder = isInstanceOf( result, "AiSpeechRequest" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var isBuilder = variables.getAsBoolean( Key.of( "isBuilder" ) );
+		assertThat( isBuilder ).isTrue();
+	}
+
+	@DisplayName( "AiSpeechRequest.of() static factory creates a request with the given text" )
+	@Test
+	public void testAiSpeechRequestOfStaticFactory() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedText = "";
+			BoxRegisterInterceptor(
+				function( data ) { capturedText = data.speechRequest.getText(); },
+				"beforeAISpeech"
+			);
+			try {
+				AiSpeechRequest.of( "Hello from static factory" ).speak();
+			} catch( any e ) {
+				// expected — API call may fail without a valid key
+			}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedText" ) ) ).isEqualTo( "Hello from static factory" );
+	}
+
+	@DisplayName( "Fluent builder .female().asWav() sets the correct voice keyword and output format" )
+	@Test
+	public void testFluentBuilderVoiceAndFormat() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedVoice  = "";
+			capturedFormat = "";
+			BoxRegisterInterceptor(
+				function( data ) {
+					capturedVoice  = data.speechRequest.getVoice();
+					capturedFormat = data.speechRequest.getOutputFormat();
+				},
+				"beforeAISpeech"
+			);
+			try {
+				aiSpeak()
+					.text( "Test voice and format" )
+					.female()
+					.asWav()
+					.speak();
+			} catch( any e ) {
+				// expected — API call may fail without a valid key
+			}
+			""",
+			context
+		);
+		// @formatter:on
+
+		// The gender keyword "female" is resolved to "nova" for OpenAI by aiSpeak()
+		assertThat( variables.getAsString( Key.of( "capturedVoice" ) ) ).isEqualTo( "nova" );
+		assertThat( variables.getAsString( Key.of( "capturedFormat" ) ) ).isEqualTo( "wav" );
+	}
+
+	@DisplayName( "Fluent builder .text().provider().model() populates request correctly" )
+	@Test
+	public void testFluentBuilderTextProviderModel() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedText  = "";
+			capturedModel = "";
+			BoxRegisterInterceptor(
+				function( data ) {
+					capturedText  = data.speechRequest.getText();
+					capturedModel = data.speechRequest.getModel();
+				},
+				"beforeAISpeech"
+			);
+			try {
+				aiSpeak()
+					.text( "Fluent chain test" )
+					.model( "tts-1-hd" )
+					.speak();
+			} catch( any e ) {
+				// expected — API call may fail without a valid key
+			}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedText" ) ) ).isEqualTo( "Fluent chain test" );
+		assertThat( variables.getAsString( Key.of( "capturedModel" ) ) ).isEqualTo( "tts-1-hd" );
+	}
+
 }

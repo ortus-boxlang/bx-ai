@@ -14,6 +14,27 @@
  * ----------------------------------------------------------------------------------
  * Request object for text-to-speech synthesis operations.
  * Contains the input text and all audio generation parameters.
+ *
+ * Can be used directly (constructed by aiSpeak()) or as a fluent builder when aiSpeak() is called
+ * with no text:
+ *
+ * ```bx
+ * response = aiSpeak()
+ *     .text( "Hello from BoxLang!" )
+ *     .provider( "openai" )
+ *     .female()
+ *     .asWav()
+ *     .speak()
+ *
+ * response = AiSpeechRequest
+ *     .of( "Hello from BoxLang!" )
+ *     .male()
+ *     .asFlac()
+ *     .speak()
+ * ```
+ *
+ * BoxLang auto-generates fluent setters for all properties (setText, setVoice, etc.)
+ * The methods below add shorter, more expressive aliases for common builder operations.
  */
 class extends="AiBaseRequest" {
 
@@ -42,6 +63,12 @@ class extends="AiBaseRequest" {
 	 * Only supported by models that accept an instructions field, such as OpenAI gpt-4o-mini-tts.
 	 */
 	property name="instructions" default="";
+
+	/**
+	 * If set, the generated audio is automatically saved to this file path.
+	 * When set, .speak() returns the saved file path string instead of AiSpeechResponse.
+	 */
+	property name="outputFile" default="";
 
 	/**
 	 * Constructor
@@ -76,8 +103,273 @@ class extends="AiBaseRequest" {
 		variables.outputFormat          = params.outputFormat ?: options.outputFormat ?: "mp3";
 		variables.speed                 = params.speed ?: options.speed ?: 1.0;
 		variables.instructions          = params.instructions ?: options.instructions ?: "";
+		variables.outputFile            = options.outputFile ?: "";
 
 		return this;
+	}
+
+	// ==========================================================================
+	// Static Factory
+	// ==========================================================================
+
+	/**
+	 * Create a new speech request builder seeded with text.
+	 *
+	 * @text The text to convert to speech
+	 */
+	static AiSpeechRequest function of( required string text ){
+		return new AiSpeechRequest( text = arguments.text )
+	}
+
+	// ==========================================================================
+	// Fluent Builder API
+	// ==========================================================================
+
+	/**
+	 * Set the text to synthesize.
+	 *
+	 * @text The text to convert to speech
+	 */
+	AiSpeechRequest function text( required string text ){
+		variables.text = arguments.text
+		return this
+	}
+
+	/**
+	 * Set the AI model to use (e.g. "tts-1", "tts-1-hd", "gpt-4o-mini-tts").
+	 *
+	 * @model The model name
+	 */
+	AiSpeechRequest function model( required string model ){
+		variables.model = arguments.model
+		return this
+	}
+
+	/**
+	 * Set the provider (e.g. "openai", "gemini", "groq").
+	 *
+	 * @provider The provider name
+	 */
+	AiSpeechRequest function provider( required string provider ){
+		variables.provider = arguments.provider
+		return this
+	}
+
+	/**
+	 * Set the API key for the provider.
+	 *
+	 * @apiKey The API key
+	 */
+	AiSpeechRequest function apiKey( required string apiKey ){
+		variables.apiKey = arguments.apiKey
+		return this
+	}
+
+	/**
+	 * Set the voice to use for synthesis.
+	 * Provider-specific voice names (e.g. "alloy", "nova") or the gender shortcuts
+	 * .male() / .female() which are resolved by the BIF's gender-map logic.
+	 *
+	 * @voice The voice name or ID
+	 */
+	AiSpeechRequest function voice( required string voice ){
+		variables.params.voice = arguments.voice
+		return this
+	}
+
+	/**
+	 * Set the speech speed multiplier.
+	 *
+	 * @speed Speed multiplier (0.25 to 4.0 for OpenAI)
+	 */
+	AiSpeechRequest function speed( required numeric speed ){
+		variables.speed = arguments.speed
+		return this
+	}
+
+	/**
+	 * Set natural-language style instructions for the voice.
+	 *
+	 * @instructions Style or mood instructions
+	 */
+	AiSpeechRequest function instructions( required string instructions ){
+		variables.instructions = arguments.instructions
+		return this
+	}
+
+	/**
+	 * Set the file path where the generated audio will be automatically saved.
+	 * When set, .speak() returns the saved file path string instead of AiSpeechResponse.
+	 *
+	 * @filePath Absolute or relative path for the output file
+	 */
+	AiSpeechRequest function outputFile( required string filePath ){
+		variables.outputFile = arguments.filePath
+		return this
+	}
+
+	/**
+	 * Set the output audio format ("mp3", "wav", "flac", "opus", "pcm").
+	 *
+	 * @format The output format name
+	 */
+	AiSpeechRequest function outputFormat( required string format ){
+		variables.outputFormat = arguments.format
+		return this
+	}
+
+	/**
+	 * Set the request timeout in seconds.
+	 *
+	 * @seconds Timeout in seconds
+	 */
+	AiSpeechRequest function timeout( required numeric seconds ){
+		variables.timeout = arguments.seconds
+		return this
+	}
+
+	/**
+	 * Use a male voice (resolved via provider gender map in aiSpeak()).
+	 */
+	AiSpeechRequest function male(){
+		variables.params.voice = "male"
+		return this
+	}
+
+	/**
+	 * Use a female voice (resolved via provider gender map in aiSpeak()).
+	 */
+	AiSpeechRequest function female(){
+		variables.params.voice = "female"
+		return this
+	}
+
+	/**
+	 * Output format convenience method: mp3.
+	 */
+	AiSpeechRequest function asMP3(){
+		variables.outputFormat = "mp3"
+		return this
+	}
+
+	/**
+	 * Output format convenience method: wav.
+	 */
+	AiSpeechRequest function asWav(){
+		variables.outputFormat = "wav"
+		return this
+	}
+
+	/**
+	 * Output format convenience method: flac.
+	 */
+	AiSpeechRequest function asFlac(){
+		variables.outputFormat = "flac"
+		return this
+	}
+
+	/**
+	 * Output format convenience method: opus.
+	 */
+	AiSpeechRequest function asOpus(){
+		variables.outputFormat = "opus"
+		return this
+	}
+
+	/**
+	 * Output format convenience method: pcm.
+	 */
+	AiSpeechRequest function asPCM(){
+		variables.outputFormat = "pcm"
+		return this
+	}
+
+	/**
+	 * Merge additional provider API parameters into the request params.
+	 * Useful for provider-specific fields not covered by the standard properties.
+	 *
+	 * @params Struct of provider API parameters to merge
+	 */
+	AiSpeechRequest function withParams( required struct params ){
+		variables.params.append( arguments.params, true )
+		return this
+	}
+
+	/**
+	 * Apply a struct of high-level options in bulk.
+	 * Recognizes: provider, apiKey, model, voice, speed, instructions,
+	 * outputFile, outputFormat, timeout, logRequest, logResponse.
+	 *
+	 * @options Struct of options to apply
+	 */
+	AiSpeechRequest function withOptions( required struct options ){
+		if ( arguments.options.keyExists( "provider" ) )             variables.provider             = arguments.options.provider
+		if ( arguments.options.keyExists( "apiKey" ) )               variables.apiKey               = arguments.options.apiKey
+		if ( arguments.options.keyExists( "model" ) )                variables.model                = arguments.options.model
+		if ( arguments.options.keyExists( "voice" ) )                variables.params.voice         = arguments.options.voice
+		if ( arguments.options.keyExists( "speed" ) )                variables.speed                = arguments.options.speed
+		if ( arguments.options.keyExists( "instructions" ) )         variables.instructions         = arguments.options.instructions
+		if ( arguments.options.keyExists( "outputFormat" ) )         variables.outputFormat         = arguments.options.outputFormat
+		if ( arguments.options.keyExists( "outputFile" ) )           variables.outputFile           = arguments.options.outputFile
+		if ( arguments.options.keyExists( "timeout" ) )              variables.timeout              = arguments.options.timeout
+		if ( arguments.options.keyExists( "logRequest" ) )           variables.logRequest           = arguments.options.logRequest
+		if ( arguments.options.keyExists( "logRequestToConsole" ) )  variables.logRequestToConsole  = arguments.options.logRequestToConsole
+		if ( arguments.options.keyExists( "logResponse" ) )          variables.logResponse          = arguments.options.logResponse
+		if ( arguments.options.keyExists( "logResponseToConsole" ) ) variables.logResponseToConsole = arguments.options.logResponseToConsole
+		return this
+	}
+
+	/**
+	 * Enable request and/or response logging.
+	 *
+	 * @request  Log the request (default true)
+	 * @response Log the response (default true)
+	 * @console  Also print to console (default false)
+	 */
+	AiSpeechRequest function withLogging( boolean request = true, boolean response = true, boolean console = false ){
+		variables.logRequest           = arguments.request
+		variables.logResponse          = arguments.response
+		variables.logRequestToConsole  = arguments.console
+		variables.logResponseToConsole = arguments.console
+		return this
+	}
+
+	// ==========================================================================
+	// Terminator
+	// ==========================================================================
+
+	/**
+	 * Terminator — execute speech synthesis with all options configured in the builder chain.
+	 * Calls aiSpeak() with the current state of this request, which fires all events,
+	 * validates the provider capability, and returns AiSpeechResponse (or a file path when
+	 * outputFile is set).
+	 *
+	 * @return AiSpeechResponse, or the saved file path string when outputFile is set
+	 */
+	function speak(){
+		// Merge model into a copy of params (aiSpeak reads model from params, not options)
+		var p = variables.params.copy()
+		if ( len( variables.model ) && !p.keyExists( "model" ) ) {
+			p.model = variables.model
+		}
+
+		return aiSpeak(
+			variables.text,
+			p,
+			{
+				provider             : variables.provider,
+				apiKey               : variables.apiKey,
+				speed                : variables.speed,
+				instructions         : variables.instructions,
+				outputFormat         : variables.outputFormat,
+				outputFile           : variables.outputFile,
+				timeout              : variables.timeout,
+				logRequest           : variables.logRequest,
+				logRequestToConsole  : variables.logRequestToConsole,
+				logResponse          : variables.logResponse,
+				logResponseToConsole : variables.logResponseToConsole
+			}
+		)
 	}
 
 }

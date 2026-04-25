@@ -40,16 +40,17 @@
 class {
 
 	/**
-	 * Convert text to synthesized speech
+	 * Convert text to synthesized speech, or return a fluent AiSpeechRequest builder when called
+	 * with no text. Builder usage: aiSpeak().text("...").female().asWav().speak()
 	 *
-	 * @text   The text to convert to speech
+	 * @text    The text to convert to speech. Omit (or pass "") to get a fluent builder instead.
 	 * @params  Provider API parameters (model, voice, speed, response_format, etc.)
 	 * @options High-level options (provider, apiKey, outputFile, outputFormat, returnFormat, timeout, logging)
 	 *
-	 * @return AiSpeechResponse containing the audio binary data, or saves to file if options.outputFile is set
+	 * @return AiSpeechResponse, a file path string (when outputFile is set), or AiSpeechRequest (fluent builder)
 	 */
 	function invoke(
-		required string text,
+		string text = "",
 		struct params = {},
 		struct options = {}
 	){
@@ -77,6 +78,16 @@ class {
 			if ( !len( getSystemSetting( "#resolvedProvider.ucase()#_API_KEY", "" ) ) ) {
 				arguments.options.apiKey = audioSettings.defaultApiKey
 			}
+		}
+
+		// Return fluent builder when called with no text.
+		// Gender resolution is deferred so the builder can be re-pointed at a different provider
+		// before .speak() is called; resolution fires again on the .speak() invocation.
+		if ( !len( arguments.text ) ) {
+			return new bxModules.bxai.models.requests.AiSpeechRequest(
+				params  = arguments.params,
+				options = arguments.options
+			)
 		}
 
 		// Resolve gender keywords ("male"/"female") to provider-specific voice names
