@@ -284,7 +284,7 @@ What's New: <https://ai.ortusbooks.com/readme/release-history/2.1.0>
 	},
 	"ollama" : {
 		"params" : {
-			"model" : "qwen2.5:0.5b-instruct"
+			"model" : "qwen3:0.6b"
 		},
 		"options" : {
 			"baseUrl" : "http://my-ollama-server:11434/"

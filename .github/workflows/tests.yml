@@ -61,9 +61,9 @@ jobs:
         run: |
           echo "Waiting for Ollama to be ready..."
           sleep 20
-          echo "Making initial chat request to load qwen2.5:0.5b-instruct..."
+          echo "Making initial chat request to load qwen3:0.6b..."
           curl -s http://localhost:11434/api/chat -d '{
-            "model": "qwen2.5:0.5b-instruct",
+            "model": "qwen3:0.6b",
             "messages": [{"role": "user", "content": "Hi"}],
             "stream": false
           }' || echo "Chat model warming up..."
