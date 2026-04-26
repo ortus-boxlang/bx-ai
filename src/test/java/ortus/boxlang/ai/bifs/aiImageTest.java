@@ -132,11 +132,11 @@ public class aiImageTest extends BaseIntegrationTest {
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
-			response     = aiImage( "a simple red circle on a white background" )
-			hasImages    = response.hasImages()
-			imageCount   = response.getCount()
-			firstURL     = response.getFirstURL()
-			providerName = response.getProvider()
+			response      = aiImage( "a simple red circle on a white background" )
+			hasImages     = response.hasImages()
+			imageCount    = response.getCount()
+			firstBase64   = response.getFirstBase64()
+			providerName  = response.getProvider()
 			""",
 			context
 		);
@@ -144,12 +144,12 @@ public class aiImageTest extends BaseIntegrationTest {
 
 		var	hasImages		= variables.getAsBoolean( Key.of( "hasImages" ) );
 		var	imageCount		= variables.getAsInteger( Key.of( "imageCount" ) );
-		var	firstURL		= variables.getAsString( Key.of( "firstURL" ) );
+		var	firstBase64		= variables.getAsString( Key.of( "firstBase64" ) );
 		var	providerName	= variables.getAsString( Key.of( "providerName" ) );
 
 		assertThat( hasImages ).isTrue();
 		assertThat( imageCount ).isGreaterThan( 0 );
-		assertThat( firstURL ).isNotEmpty();
+		assertThat( firstBase64 ).isNotEmpty();
 		assertThat( providerName ).isEqualTo( "OpenAI" );
 	}
 
