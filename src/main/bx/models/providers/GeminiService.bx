@@ -44,7 +44,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		};
 		DEFAULT_IMAGE_PARAMS = {
 			// https://ai.google.dev/gemini-api/docs/imagen
-			"model" : "imagen-3.0-generate-008"
+			"model" : "gemini-3.1-flash-image-preview"
 		}
 		DEFAULT_TRANSCRIPTION_PARAMS = {
 			"model" : "gemini-2.5-flash"
@@ -57,7 +57,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 	function init(){
 		variables.chatURL       = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent"
 		variables.embeddingsURL = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:embedContent"
-		variables.imageURL      = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:predict"
+		variables.imageURL      = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent"
 		variables.ttsURL        = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent"
 		variables.sttURL        = "https://generativelanguage.googleapis.com/v1beta/models/%MODEL%:generateContent"
 		variables.name          = "Gemini"
@@ -488,14 +488,13 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 
 	/**
 	 * ---------------------------------------------------------------------------------------------------------
-	 * IAiImageService Implementation — Google Imagen 3 via Vertex-style predict endpoint
-	 * https://ai.google.dev/gemini-api/docs/imagen
+	 * IAiImageService Implementation — Gemini native image generation (Nano Banana)
+	 * https://ai.google.dev/gemini-api/docs/image-generation
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
 
 	/**
-	 * Generate images using Google Imagen 3 via the Gemini API predict endpoint.
-	 * The Imagen API uses a different request/response format than the OpenAI images API.
+	 * Generate images using Gemini's generateContent endpoint for image models.
 	 *
 	 * @imageRequest The AiImageRequest object
 	 *
@@ -510,7 +509,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		var model    = arguments.imageRequest.getModel()
 		var imageURL = variables.imageURL.replace( '%MODEL%', model ) & "?key=#arguments.imageRequest.getApiKey()#"
 
-		// Map size → aspectRatio (Imagen uses aspect ratio, not pixel dimensions)
+		// Map size to aspect ratio for Gemini image_config
 		var sizeToAspect = {
 			"1024x1024" : "1:1",
 			"1024x1792" : "9:16",
@@ -520,17 +519,23 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		}
 		var aspectRatio = sizeToAspect[ arguments.imageRequest.getSize() ] ?: "1:1"
 
-		// Build Imagen-format request body — append instructions to prompt when set
+		// Build Gemini generateContent request body — append instructions to prompt when set
 		var effectivePrompt = arguments.imageRequest.getPrompt()
 		if ( arguments.imageRequest.getInstructions().len() ) {
 			effectivePrompt &= " " & arguments.imageRequest.getInstructions()
 		}
 
 		var dataPacket = {
-			"instances"  : [ { "prompt": effectivePrompt } ],
-			"parameters" : {
-				"sampleCount" : arguments.imageRequest.getN(),
-				"aspectRatio" : aspectRatio
+			"contents" : [ {
+				"parts": [ {
+					"text": effectivePrompt
+				} ]
+			} ],
+			"generationConfig" : {
+				"responseModalities" : [ "IMAGE" ],
+				"imageConfig" : {
+					"aspectRatio" : aspectRatio
+				}
 			}
 		}
 
@@ -553,7 +558,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			println( "aiImage request to #imageURL#: #jsonSerialize( dataPacket )#" )
 		}
 
-		// HTTP call — Gemini returns base64-encoded image data
+		// HTTP call — Gemini returns inlineData parts with base64-encoded image data
 		bx: http
 			url     = imageURL
 			method  = "post"
@@ -584,22 +589,28 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 
 			throw(
 				type   : "ProviderError",
-				message: "Gemini Imagen error: #errorMessage#"
+				message: "Gemini image error: #errorMessage#"
 			)
 		}
 
-		// Parse Imagen response: { predictions: [{ bytesBase64Encoded, mimeType }] }
+		// Parse Gemini generateContent response
 		var parsedResponse = jsonDeserialize( imageResult.fileContent )
-		var predictions    = parsedResponse.predictions ?: []
-		var images         = predictions.map( pred => {
-			var mimeType = pred.mimeType ?: "image/png"
-			return {
-				url           : "",
-				data          : binaryDecode( pred.bytesBase64Encoded, "base64" ),
-				mimeType      : mimeType,
-				revisedPrompt : ""
-			}
-		} )
+		var parts          = parsedResponse.candidates?.first()?.content?.parts ?: []
+		var images         = parts
+			.filter( part => {
+				var imagePart = part.inlineData ?: part.inline_data ?: javaCast( "null", "" )
+				return !isNull( imagePart ) && !isNull( imagePart.data )
+			} )
+			.map( part => {
+				var imagePart = part.inlineData ?: part.inline_data
+				var mimeType = imagePart.mimeType ?: imagePart.mime_type ?: "image/png"
+				return {
+					url           : "",
+					data          : binaryDecode( imagePart.data, "base64" ),
+					mimeType      : mimeType,
+					revisedPrompt : ""
+				}
+			} )
 		var imageFormat = arguments.imageRequest.getFormat()
 		if ( images.len() ) {
 			imageFormat = ( images[ 1 ].mimeType ?: "image/png" ).listLast( "/" )

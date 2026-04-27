@@ -25,3 +25,4 @@ www/boxlang_modules/
 
 ### Ollama Data ###
 .ollama/
+.claude/settings.local.json
