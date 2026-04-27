@@ -143,7 +143,7 @@ Below is the full reference of every setting you can place under `settings` in `
                         "params": { "model": "claude-3-5-sonnet-20241022" }
                     },
                     "ollama": {
-                        "params": { "model": "qwen2.5:0.5b-instruct" }
+                        "params": { "model": "qwen3:0.6b" }
                     }
                 },
 

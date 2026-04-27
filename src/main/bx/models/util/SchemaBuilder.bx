@@ -349,6 +349,12 @@ class {
 	 * @return Array of populated class instances
 	 */
 	static array function populateArray( required any classInstance, required any data ) {
+		var type = arguments.classInstance instanceof "ortus.boxlang.runtime.types.Struct"
+					? "struct"
+					: arguments.classInstance instanceof "ortus.boxlang.runtime.types.Array"
+						? "array"
+						: arguments.classInstance;
+				
 		// Parse JSON if data is a string
 		var dataArray = isSimpleValue( arguments.data )
 			? jsonDeserialize( arguments.data )
@@ -358,11 +364,11 @@ class {
 
 		// Populate each item
 		for( var item in dataArray ) {
-			// Create new instance for each item
-			var className = getMetadata( arguments.classInstance ).name;
-			var newInstance = createObject( className );
+			var appendMe = (["struct","array"]).findNoCase(type) 
+				? item
+				:  populateClass( arguments.classInstance, item );
 
-			results.append( populateClass( newInstance, item ) );
+			results.append( appendMe );
 		}
 
 		return results;

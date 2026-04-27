@@ -26,7 +26,7 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
 			// Popular local models - users can override with any Ollama model
-			"model" : "qwen2.5:0.5b-instruct"
+			"model" : "qwen3:0.6b"
 		}
 		DEFAULT_EMBED_PARAMS = {
 			"model" : "nomic-embed-text"

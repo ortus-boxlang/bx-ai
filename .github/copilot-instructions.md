@@ -132,7 +132,7 @@ curl http://localhost:11434/api/tags  # Verify model availability
 - Use `variables.get("varName")` to extract BoxLang execution results from BoxLang execution context
 - Test class pattern: `extends BaseIntegrationTest` → access `runtime`, `context`, `variables` properties
 - Provider tests are `@Disabled` by default (require API keys in env vars like `OPENAI_API_KEY`)
-- Ollama tests require `docker compose up ollama` (auto-pulls `qwen2.5:0.5b-instruct`)
+- Ollama tests require `docker compose up ollama` (auto-pulls `qwen3:0.6b`)
 - **Debugging AI Provider HTTP responses**: Add `logResponseToConsole: true` to AI service provider config (OpenAI, Claude, etc.) to see raw API responses in console output - useful for debugging provider integration issues
 
 **BaseIntegrationTest provides:**
@@ -822,7 +822,7 @@ Complete settings from [ModuleConfig.bx](src/main/bx/ModuleConfig.bx#L103-L147):
             options: { timeout: 60 }
         },
         ollama: {
-            params: { model: "qwen2.5:0.5b-instruct" }
+            params: { model: "qwen3:0.6b" }
         }
     },
     timeout: 30,                      // Default HTTP timeout (seconds)
@@ -1280,7 +1280,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
 9. **Ollama model names**: Must include version tags
    ```javascript
    // ✅ Correct
-   params: { model: "qwen2.5:0.5b-instruct" }
+   params: { model: "qwen3:0.6b" }
 
    // ❌ Wrong - missing version tag
    params: { model: "qwen2.5" }  // ERROR: model not found
