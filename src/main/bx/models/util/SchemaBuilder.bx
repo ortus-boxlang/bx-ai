@@ -367,11 +367,7 @@ class {
 			var appendMe = (["struct","array"]).findNoCase(type) 
 				? item
 				:  populateClass( arguments.classInstance, item );
-			// Create new instance for each item
-			//systemOutput(getMetadata( arguments.classInstance ))
-			//var className = getMetadata( arguments.classInstance ).name;
-			//var newInstance = createObject( className );
-			//populateClass( newInstance, item )
+
 			results.append( appendMe );
 		}
 
