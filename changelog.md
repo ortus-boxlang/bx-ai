@@ -30,7 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     an `AiSpeechRequest` builder pre-seeded with any module-level audio defaults.
   - **`aiTranscribe()`** and **`aiTranslate()`** — `audio` parameter is now optional (default
     `""`); omitting it returns an `AiTranscriptionRequest` builder.
-
 - **Image Generation — `aiImage()`**: New BIF for generating images from text prompts using any provider that implements `IAiImageService`.
   - **`aiImage( prompt, params, options )`** BIF: Generate one or more images from a text description. Returns an `AiImageResponse` (with `hasImages()`, `getCount()`, `getFirstURL()`, `getFirstBase64()`, `getRevisedPrompt()`, `saveToFile()`, `saveAllToDirectory()`, `toDataURI()`, `getMimeType()`, `toStruct()`) or saves directly to a file via `options.outputFile`.
   - **`IAiImageService`** interface: New capability interface implemented by providers that support text-to-image generation (`generateImage()`).
@@ -304,7 +303,7 @@ What's New: <https://ai.ortusbooks.com/readme/release-history/2.1.0>
 	},
 	"ollama" : {
 		"params" : {
-			"model" : "qwen2.5:0.5b-instruct"
+			"model" : "qwen3:0.6b"
 		},
 		"options" : {
 			"baseUrl" : "http://my-ollama-server:11434/"

@@ -57,7 +57,7 @@ public class aiImageTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			toolExists = aiToolRegistry().get( "generateImage@bxai" ).isPresent()
+			toolExists = aiToolRegistry().has( "generateImage@bxai" )
 			""",
 			context
 		);
@@ -88,8 +88,8 @@ public class aiImageTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var threw = variables.getAsBoolean( Key.of( "threw" ) );
-		var errorType = variables.getAsString( Key.of( "errorType" ) );
+		var	threw		= variables.getAsBoolean( Key.of( "threw" ) );
+		var	errorType	= variables.getAsString( Key.of( "errorType" ) );
 		assertThat( threw ).isTrue();
 		assertThat( errorType ).isEqualTo( "UnsupportedCapability" );
 	}
@@ -132,24 +132,24 @@ public class aiImageTest extends BaseIntegrationTest {
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
-			response     = aiImage( "a simple red circle on a white background" )
-			hasImages    = response.hasImages()
-			imageCount   = response.getCount()
-			firstURL     = response.getFirstURL()
-			providerName = response.getProvider()
+			response      = aiImage( "a simple red circle on a white background" )
+			hasImages     = response.hasImages()
+			imageCount    = response.getCount()
+			firstBase64   = response.getFirstBase64()
+			providerName  = response.getProvider()
 			""",
 			context
 		);
 		// @formatter:on
 
-		var hasImages    = variables.getAsBoolean( Key.of( "hasImages" ) );
-		var imageCount   = variables.getAsInteger( Key.of( "imageCount" ) );
-		var firstURL     = variables.getAsString( Key.of( "firstURL" ) );
-		var providerName = variables.getAsString( Key.of( "providerName" ) );
+		var	hasImages		= variables.getAsBoolean( Key.of( "hasImages" ) );
+		var	imageCount		= variables.getAsInteger( Key.of( "imageCount" ) );
+		var	firstBase64		= variables.getAsString( Key.of( "firstBase64" ) );
+		var	providerName	= variables.getAsString( Key.of( "providerName" ) );
 
 		assertThat( hasImages ).isTrue();
 		assertThat( imageCount ).isGreaterThan( 0 );
-		assertThat( firstURL ).isNotEmpty();
+		assertThat( firstBase64 ).isNotEmpty();
 		assertThat( providerName ).isEqualTo( "OpenAI" );
 	}
 
@@ -160,7 +160,7 @@ public class aiImageTest extends BaseIntegrationTest {
 		executeWithTimeoutHandling(
 			"""
 			response   = aiImage(
-				"a simple blue square on a white background",
+				prompt : "a simple blue square on a white background",
 				options: { provider: "gemini", apiKey: geminiKey }
 			)
 			hasImages  = response.hasImages()
@@ -174,10 +174,10 @@ public class aiImageTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var hasImages  = variables.getAsBoolean( Key.of( "hasImages" ) );
-		var imageCount = variables.getAsInteger( Key.of( "imageCount" ) );
-		var provider   = variables.getAsString( Key.of( "provider" ) );
-		var hasData    = variables.getAsBoolean( Key.of( "hasData" ) );
+		var	hasImages	= variables.getAsBoolean( Key.of( "hasImages" ) );
+		var	imageCount	= variables.getAsInteger( Key.of( "imageCount" ) );
+		var	provider	= variables.getAsString( Key.of( "provider" ) );
+		var	hasData		= variables.getAsBoolean( Key.of( "hasData" ) );
 
 		assertThat( hasImages ).isTrue();
 		assertThat( imageCount ).isGreaterThan( 0 );
@@ -193,7 +193,7 @@ public class aiImageTest extends BaseIntegrationTest {
 		executeWithTimeoutHandling(
 			"""
 			savedPath        = aiImage(
-				"a simple green triangle",
+				prompt : "a simple green triangle",
 				options: { outputFile: "#outputPath#" }
 			)
 			fileExistsResult = fileExists( savedPath )
@@ -216,7 +216,7 @@ public class aiImageTest extends BaseIntegrationTest {
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
-			result       = aiImage( "a yellow star", options: { outputFile: "#outputPath#" } )
+			result       = aiImage( prompt: "a yellow star", options: { outputFile: "#outputPath#" } )
 			resultIsString = isSimpleValue( result )
 			""".replace( "#outputPath#", outputPath ),
 			context

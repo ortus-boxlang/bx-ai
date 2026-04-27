@@ -27,7 +27,7 @@
  * response.saveToFile( "/tmp/cat.png" )
  *
  * // Save directly to a file (returns the file path)
- * path = aiImage( prompt: "futuristic cityscape", options: { outputFile: "/tmp/city.png" } )
+ * path = aiImage( "futuristic cityscape", options: { outputFile: "/tmp/city.png" } )
  *
  * // Fluent builder — call aiImage() with no prompt, chain, then .generate()
  * response = aiImage()
