@@ -349,13 +349,11 @@ class {
 	 * @return Array of populated class instances
 	 */
 	static array function populateArray( required any classInstance, required any data ) {
-		var type = isSimpleValue( arguments.classInstance ) 
-			? "simple" 
-			: arguments.classInstance.getClass().getName()=="ortus.boxlang.runtime.types.Struct"
+		var type = arguments.classInstance instanceof "ortus.boxlang.runtime.types.Struct"
 					? "struct"
-					: arguments.classInstance.getClass().getname()=="ortus.boxlang.runtime.types.Array"
+					: arguments.classInstance instanceof "ortus.boxlang.runtime.types.Array"
 						? "array"
-						: arguments.classInstance.getClass().getName();
+						: arguments.classInstance;
 				
 		// Parse JSON if data is a string
 		var dataArray = isSimpleValue( arguments.data )
