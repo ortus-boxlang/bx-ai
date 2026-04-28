@@ -261,7 +261,7 @@ public class OllamaTest extends BaseIntegrationTest {
 		executeWithTimeoutHandling(
 			"""
 			result = aiChat(
-				messages = "Return a JSON object with name 'BoxLang' and version '1.0'. Return ONLY valid JSON, nothing else.",
+				messages = "Return a JSON object with exactly two fields: a 'name' field with value 'BoxLang' and a 'version' field with value '1.0'. Return ONLY valid JSON, nothing else.",
 				options = {
 					returnFormat: "json"
 				}
