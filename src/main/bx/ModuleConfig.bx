@@ -141,10 +141,10 @@ class {
 			// Skills Directory — Global Skill Auto-Discovery
 			// --------------------------------------------------------------------------
 			// Path to the directory scanned for SKILL.md files at module startup.
-			// Defaults to "/{webroot}/.ai/skills" — a vendor-neutral convention that works with
+			// Defaults to "/{webroot}/.agents/skills" — a vendor-neutral convention that works with
 			// any AI toolchain.  Can be absolute or relative (relative paths are
 			// expanded from the CWD).  Set to "" to disable auto-discovery entirely.
-			skillsDirectory : "/.ai/skills",
+			skillsDirectory : "/.agents/skills",
 
 			// When true, skills found in skillsDirectory are automatically loaded and injected
 			// into every agent created with aiAgent() as global / shared skills.

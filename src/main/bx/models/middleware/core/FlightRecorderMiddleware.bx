@@ -30,7 +30,7 @@
  *       middleware: new FlightRecorderMiddleware( mode: "record" ),
  *       ...
  *   ).run( "What is the weather in London?" )
- *   // Written to: .ai/flight-recorder/<agentName>-<timestamp>.json
+ *   // Written to: .agents/flight-recorder/<agentName>-<timestamp>.json
  *
  * Replay in CI (zero live calls):
  *   aiAgent(
@@ -72,9 +72,9 @@ class extends="BaseAiMiddleware" {
 
 	/**
 	 * Base directory for auto-generated fixture files in record mode.
-	 * Default: .ai/flight-recorder/
+	 * Default: /.agents/flight-recorder/
 	 */
-	property name="fixtureDir" type="string" default=".ai/flight-recorder";
+	property name="fixtureDir" type="string" default="/.agents/flight-recorder";
 
 	/**
 	 * Whether to also capture tool call inputs and outputs.
@@ -117,14 +117,14 @@ class extends="BaseAiMiddleware" {
 	 *
 	 * @mode         "passthrough" | "record" | "replay"
 	 * @fixturePath  Explicit fixture path. Omit to auto-generate in record mode.
-	 * @fixtureDir   Base directory for auto-generated fixtures. Default: .ai/flight-recorder/
+	 * @fixtureDir   Base directory for auto-generated fixtures. Default: .agents/flight-recorder/
 	 * @recordTools  Whether tool interactions are captured/replayed. Default: true
 	 * @strict       In replay mode, throw on interaction type mismatch. Default: true
 	 */
 	function init(
 		string  mode        = "passthrough",
 		string  fixturePath = "",
-		string  fixtureDir  = "/.ai/flight-recorder",
+		string  fixtureDir  = "/.agents/flight-recorder",
 		boolean recordTools = true,
 		boolean strict      = true
 	) {
@@ -399,7 +399,7 @@ class extends="BaseAiMiddleware" {
 	 *
 	 * @agentName Used as the file name prefix
 	 *
-	 * @return Relative path string, e.g. ".ai/flight-recorder/my-agent-20260318-100000.json"
+	 * @return Relative path string, e.g. "/.agents/flight-recorder/my-agent-20260318-100000.json"
 	 */
 	private string function _buildDefaultFixturePath( required string agentName ) {
 		var safeName  = arguments.agentName.lCase().reReplace( "[^a-z0-9_-]", "-", "all" )
