@@ -354,7 +354,7 @@ class {
 					: arguments.classInstance instanceof "ortus.boxlang.runtime.types.Array"
 						? "array"
 						: arguments.classInstance;
-				
+
 		// Parse JSON if data is a string
 		var dataArray = isSimpleValue( arguments.data )
 			? jsonDeserialize( arguments.data )
@@ -362,11 +362,11 @@ class {
 
 		var results = [];
 
-		// Populate each item
+		// Populate each item - duplicate the template for each so each gets its own instance
 		for( var item in dataArray ) {
-			var appendMe = (["struct","array"]).findNoCase(type) 
+			var appendMe = (["struct","array"]).findNoCase(type)
 				? item
-				:  populateClass( arguments.classInstance, item );
+				: populateClass( duplicate( arguments.classInstance ), item );
 
 			results.append( appendMe );
 		}
