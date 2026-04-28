@@ -109,7 +109,6 @@ public class aiPopulateTest extends BaseIntegrationTest {
 				{ firstName: "Bob", lastName: "Johnson", age: 35 }
 			];
 			people = aiPopulate( [new src.test.bx.Person()], data );
-
 			count = people.len();
 			firstName1 = people[1].getFirstName();
 			age2 = people[2].getAge();
