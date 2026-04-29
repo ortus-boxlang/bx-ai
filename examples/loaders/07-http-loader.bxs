@@ -62,7 +62,7 @@ try {
 	println( "Loaded #allDocs.len()# documents from multiple URLs" )
 	allDocs.each( ( doc, idx ) => {
 		content = jsonDeserialize( doc.content )
-		println( "  ##idx#: #content.title#" )
+		println( "  ###idx#: #content.title#" )
 	})
 	println()
 

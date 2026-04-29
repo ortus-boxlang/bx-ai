@@ -78,7 +78,7 @@ try {
 
 	println( "Split into #chunks.len()# chunks" )
 	chunks.each( ( chunk, idx ) => {
-		println( "  Chunk ##idx#: #left( chunk.content, 50 )#..." )
+		println( "  Chunk ###idx#: #left( chunk.content, 50 )#..." )
 	})
 	println()
 
@@ -131,7 +131,7 @@ try {
 
 	println( "Loaded #allDocs.len()# documents from #files.len()# files" )
 	allDocs.each( ( doc, idx ) => {
-		println( "  Doc ##idx#: #left( doc.content, 40 )#..." )
+		println( "  Doc ###idx#: #left( doc.content, 40 )#..." )
 	})
 
 	// Cleanup temp files
