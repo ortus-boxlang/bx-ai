@@ -18,7 +18,7 @@
  * standard, where each skill lives in its own named subdirectory:
  *
  * ```
- * .ai/skills/
+ * .agents/skills/
  *   sql-optimizer/
  *     SKILL.md
  *   coding/
@@ -27,15 +27,15 @@
  * ```
  *
  * Returns an empty array (without error) when the directory does not exist, making
- * it safe to call with the default `.ai/skills` path in projects with no skills yet.
+ * it safe to call with the default `.agents/skills` path in projects with no skills yet.
  *
  * Example:
  * ```
- * // Load all skills from the default .ai/skills directory
+ * // Load all skills from the default .agents/skills directory
  * var skills = aiSkill()
  *
  * // Load from a custom directory, non-recursive
- * var skills = aiSkill( ".ai/custom-skills", false )
+ * var skills = aiSkill( ".agents/custom-skills", false )
  *
  * // Use with an agent — auto-discovered skills go into the lazy pool
  * var agent = aiAgent(
@@ -52,7 +52,7 @@ class {
 	/**
 	 * Discover and load all skills from a directory tree.
 	 *
-	 * @path A directory, or file path to a single skill markdown file. If a directory is provided, it will be scanned recursively for SKILL.md files. Defaults to ".ai/skills".
+	 * @path A directory, or file path to a single skill markdown file. If a directory is provided, it will be scanned recursively for SKILL.md files. Defaults to ".agents/skills".
 	 * @name The skill's unique name/identifier used when accessing it via loadSkill()
 	 * @description What the skill does and when to use it. Claude uses this to decide when to apply the skill. If omitted, uses the first paragraph of markdown content.
 	 * @content The full instruction content of the skill (body text after frontmatter)

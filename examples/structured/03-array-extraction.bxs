@@ -39,7 +39,7 @@ println( "Total tasks: #tasks.len()#" )
 println( "" )
 
 tasks.each( ( task, index ) => {
-    println( "Task ##index#: #task.getTitle()#" )
+    println( "Task ###index#: #task.getTitle()#" )
     println( "  Priority: #task.getPriority()#" )
     println( "  Estimated: #task.getEstimatedHours()# hours" )
     println( "  Assignee: #task.getAssignee()#" )

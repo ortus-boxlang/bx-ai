@@ -105,7 +105,7 @@ texts = [
 
 texts.each( ( text, index ) => {
     result = processor.run({ text: text })
-    println( "Text ##index#: '#text#'" )
+    println( "Text ###index#: '#text#'" )
     println( "Sentiment: #result.sentiment# #result.emoji# (Score: #result.score#/5)" )
     println( "" )
 } )

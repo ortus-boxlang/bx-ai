@@ -45,7 +45,7 @@ println( "" )
 reviews.each( ( review, index ) => {
     analysis = sentimentPipeline.run({ text: review })
 
-    println( "Review ##index#:" )
+    println( "Review ###index#:" )
     println( 'Text: "#left(review, 50)#..."' )
     println( "Sentiment: #analysis.getSentiment()#" )
     println( "Score: #analysis.getScore()#" )

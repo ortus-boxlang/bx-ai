@@ -18,8 +18,8 @@ directoryCreate( testDir )
 files = [
 	{ name: "intro.txt", content: "Introduction to BoxLang AI Module. A comprehensive guide to getting started." },
 	{ name: "features.txt", content: "Key features include multi-provider support, streaming, memory, and tools." },
-	{ name: "quickstart.md", content: "# Quick Start\n\nInstall and use BoxLang AI in minutes." },
-	{ name: "api.md", content: "# API Reference\n\n## aiChat()\n\nBasic chat function." },
+	{ name: "quickstart.md", content: "## Quick Start\n\nInstall and use BoxLang AI in minutes." },
+	{ name: "api.md", content: "## API Reference\n\n#### aiChat()\n\nBasic chat function." },
 	{ name: "changelog.txt", content: "v1.0.0 - Initial release with OpenAI support" }
 ]
 
@@ -40,7 +40,7 @@ try {
 
 	println( "Loaded #documents.len()# documents from directory" )
 	documents.each( ( doc, idx ) => {
-		println( "  ##idx#: #doc.metadata.source ?: 'unknown'#" )
+		println( "  ###idx#: #doc.metadata.source ?: 'unknown'#" )
 	})
 	println()
 
@@ -59,7 +59,7 @@ try {
 
 	println( "Loaded #txtDocs.len()# .txt files:" )
 	txtDocs.each( ( doc, idx ) => {
-		println( "  ##idx#: #doc.metadata.source ?: 'unknown'#" )
+		println( "  ###idx#: #doc.metadata.source ?: 'unknown'#" )
 	})
 	println()
 
@@ -70,8 +70,8 @@ try {
 	// Create subdirectory with files
 	subDir = testDir & "advanced/"
 	directoryCreate( subDir )
-	fileWrite( subDir & "agents.md", "# Agents\n\nAdvanced agent patterns and workflows." )
-	fileWrite( subDir & "memory.md", "# Memory\n\nConversation history and context management." )
+	fileWrite( subDir & "agents.md", "## Agents\n\nAdvanced agent patterns and workflows." )
+	fileWrite( subDir & "memory.md", "## Memory\n\nConversation history and context management." )
 
 	dirLoaderRecursive = new src.main.bx.models.loaders.DirectoryLoader(
 		source: testDir,
@@ -117,7 +117,7 @@ try {
 	println( "Document index created:" )
 	docIndex.each( entry => {
 		if ( entry.id <= 5 ) {
-			println( "  ##entry.id#: #entry.filename# (#entry.contentLength# chars)" )
+			println( "  ###entry.id#: #entry.filename# (#entry.contentLength# chars)" )
 		}
 	})
 	println()
