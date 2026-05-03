@@ -46,7 +46,7 @@ try {
 
 	println( "Loaded #simulatedDocs.len()# documents from database" )
 	simulatedDocs.each( ( doc, idx ) => {
-		println( "  ##idx#: #doc.content#" )
+		println( "  ###idx#: #doc.content#" )
 	})
 	println()
 
@@ -71,7 +71,7 @@ try {
 
 	println( "Converted #employeeDocs.len()# rows to documents:" )
 	employeeDocs.each( ( doc, idx ) => {
-		println( "  ##idx#: #doc.content#" )
+		println( "  ###idx#: #doc.content#" )
 	})
 	println()
 
@@ -141,7 +141,7 @@ try {
 	println( "Loaded #products.len()# products from database" )
 	println( "Prepared for embeddings:" )
 	productTexts.each( ( text, idx ) => {
-		println( "  ##idx#: #left( text, 50 )#..." )
+		println( "  ###idx#: #left( text, 50 )#..." )
 	})
 	println()
 	println( "💡 Generate embeddings:" )

@@ -15,49 +15,49 @@ println( "" )
 mathAgent = aiAgent(
     name: "MathAgent",
     description: "A mathematics expert that can solve calculations and explain math concepts",
-    instructions: """
+    instructions: "
         You are a mathematics expert. You help with:
         - Mathematical calculations
         - Explaining math concepts
         - Solving equations
         - Statistical analysis
         Be precise and show your work when solving problems.
-    """
+    "
 )
 
 // 2. Code Agent - handles coding tasks
 codeAgent = aiAgent(
     name: "CodeAgent",
     description: "A programming expert that can write, review, and explain code",
-    instructions: """
+    instructions: "
         You are a programming expert. You help with:
         - Writing code in various languages
         - Code review and optimization
         - Debugging issues
         - Explaining programming concepts
         Provide clean, well-documented code examples.
-    """
+    "
 )
 
 // 3. Research Agent - handles research and fact-finding
 researchAgent = aiAgent(
     name: "ResearchAgent",
     description: "A research specialist that can gather information and provide summaries",
-    instructions: """
+    instructions: "
         You are a research specialist. You help with:
         - Finding relevant information on topics
         - Summarizing complex subjects
         - Comparing different options or solutions
         - Providing factual, well-organized responses
         Cite sources when possible and present information clearly.
-    """
+    "
 )
 
 // Create the main orchestrator agent with sub-agents
 mainAgent = aiAgent(
     name: "OrchestratorAgent",
     description: "A main coordinator that delegates tasks to specialized sub-agents",
-    instructions: """
+    instructions: "
         You are a task orchestrator. You have access to specialized sub-agents:
         - MathAgent: For mathematical calculations and concepts
         - CodeAgent: For programming tasks and code review
@@ -66,7 +66,7 @@ mainAgent = aiAgent(
         Analyze each user request and delegate to the appropriate sub-agent when needed.
         For simple queries, answer directly. For specialized tasks, use the delegation tools.
         Summarize the sub-agent's response in a user-friendly way.
-    """,
+    ",
     subAgents: [ mathAgent, codeAgent, researchAgent ]
 )
 
