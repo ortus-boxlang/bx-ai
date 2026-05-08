@@ -89,20 +89,17 @@ class {
 			}
 		}
 
-		// Return fluent builder when called with no audio
-		if ( isSimpleValue( arguments.audio ) && !len( arguments.audio ) ) {
-			return new bxModules.bxai.models.requests.AiTranscriptionRequest(
-				params  = arguments.params,
-				options = arguments.options
-			)
-		}
-
 		// Create request
 		var transcriptionRequest = new bxModules.bxai.models.requests.AiTranscriptionRequest(
 			audio   = arguments.audio,
 			params  = arguments.params,
 			options = arguments.options
 		)
+
+		// Return fluent builder when called with no audio
+		if ( isSimpleValue( arguments.audio ) && !len( arguments.audio ) ) {
+			return transcriptionRequest
+		}
 
 		// Guard: audio source required
 		if ( !transcriptionRequest.hasAudio() ) {

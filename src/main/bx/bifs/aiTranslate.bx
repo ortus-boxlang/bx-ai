@@ -90,15 +90,6 @@ class {
 			}
 		}
 
-		// Return fluent builder when called with no audio
-		if ( isSimpleValue( arguments.audio ) && !len( arguments.audio ) ) {
-			return new bxModules.bxai.models.requests.AiTranscriptionRequest(
-				params         = arguments.params,
-				options        = arguments.options,
-				methodDefaults = static.DEFAULT_OPTIONS
-			)
-		}
-
 		// Create request (reuse AiTranscriptionRequest — same structure, different operation)
 		var transcriptionRequest = new bxModules.bxai.models.requests.AiTranscriptionRequest(
 			audio   = arguments.audio,
@@ -106,6 +97,11 @@ class {
 			options = arguments.options,
 			methodDefaults = static.DEFAULT_OPTIONS  // Pass method defaults separately
 		)
+
+		// Return fluent builder when called with no audio
+		if ( isSimpleValue( arguments.audio ) && !len( arguments.audio ) ) {
+			return transcriptionRequest
+		}
 
 		// Guard: audio source required
 		if ( !transcriptionRequest.hasAudio() ) {

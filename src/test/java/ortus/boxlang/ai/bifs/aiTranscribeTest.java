@@ -173,9 +173,11 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			request      = AiTranscriptionRequest.of( "#SAMPLE_AUDIO#" )
-			isBuilder    = isInstanceOf( request, "AiTranscriptionRequest" )
-			hasAudio     = request.hasAudio()
+			import bxModules.bxai.models.requests.AiTranscriptionRequest
+
+			transcriptionRequest      = AiTranscriptionRequest.of( "#SAMPLE_AUDIO#" )
+			isBuilder    = isInstanceOf( transcriptionRequest, "AiTranscriptionRequest" )
+			hasAudio     = transcriptionRequest.hasAudio()
 			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO ),
 			context
 		);
@@ -197,15 +199,11 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 			BoxRegisterInterceptor(
 				function( data ) { capturedLang = data.transcriptionRequest.getLanguage(); },
 				"beforeAITranscription"
-			);
-			try {
-				aiTranscribe()
-					.file( "#SAMPLE_AUDIO#" )
-					.language( "en" )
-					.transcribe();
-			} catch( any e ) {
-				// expected — API call may fail without a valid key
-			}
+			)
+			aiTranscribe()
+				.file( "#SAMPLE_AUDIO#" )
+				.language( "en" )
+				.transcribe()
 			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO ),
 			context
 		);
@@ -224,15 +222,11 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 			BoxRegisterInterceptor(
 				function( data ) { capturedTimestamps = data.transcriptionRequest.getTimestamps(); },
 				"beforeAITranscription"
-			);
-			try {
-				aiTranscribe()
-					.file( "#SAMPLE_AUDIO#" )
-					.withWordTimestamps()
-					.transcribe();
-			} catch( any e ) {
-				// expected — API call may fail without a valid key
-			}
+			)
+			aiTranscribe()
+				.file( "#SAMPLE_AUDIO#" )
+				.withWordTimestamps()
+				.transcribe()
 			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO ),
 			context
 		);

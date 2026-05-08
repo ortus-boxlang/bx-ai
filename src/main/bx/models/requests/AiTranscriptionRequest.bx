@@ -94,36 +94,42 @@ class extends="AiBaseRequest" {
 	){
 		super.init()
 
-		arguments.options = prepareOptions( arguments.options, arguments.methodDefaults );
+		arguments.options = prepareOptions( arguments.options, arguments.methodDefaults )
 
-		variables.params                = arguments.params;
-		variables.provider              = options.provider ?: "";
-		variables.apiKey                = options.apiKey ?: "";
-		variables.logRequest            = options.logRequest ?: false;
-		variables.logRequestToConsole   = options.logRequestToConsole ?: false;
-		variables.logResponse           = options.logResponse ?: false;
-		variables.logResponseToConsole  = options.logResponseToConsole ?: false;
-		variables.returnFormat          = options.returnFormat ?: "text";
-		variables.model                 = params.model ?: "";
-		variables.timeout               = options.timeout ?: 60;
-		variables.baseURL               = options.baseURL ?: "";
-		variables.providerOptions       = options.providerOptions ?: {};
-		variables.language              = params.language ?: options.language ?: "";
-		variables.responseFormat        = params.response_format ?: options.responseFormat ?: "json";
-		variables.timestamps            = params.timestamp_granularities ?: options.timestamps ?: [];
-		variables.diarize               = params.diarize ?: options.diarize ?: false;
-		variables.inputFormat           = params.inputFormat ?: options.inputFormat ?: "";
+		variables.params                = arguments.params
+		variables.provider              = options.provider ?: ""
+		variables.apiKey                = options.apiKey ?: ""
+		variables.logRequest            = options.logRequest ?: false
+		variables.logRequestToConsole   = options.logRequestToConsole ?: false
+		variables.logResponse           = options.logResponse ?: false
+		variables.logResponseToConsole  = options.logResponseToConsole ?: false
+		variables.returnFormat          = options.returnFormat ?: "text"
+		variables.model                 = params.model ?: ""
+		variables.timeout               = options.timeout ?: 60
+		variables.baseURL               = options.baseURL ?: ""
+		variables.providerOptions       = options.providerOptions ?: {}
+		variables.language              = params.language ?: options.language ?: ""
+		variables.responseFormat        = params.response_format ?: options.responseFormat ?: "json"
+		variables.timestamps            = params.timestamp_granularities ?: options.timestamps ?: []
+		variables.diarize               = params.diarize ?: options.diarize ?: false
+		variables.inputFormat           = params.inputFormat ?: options.inputFormat ?: ""
+
+		// OpenAI and compatible providers require response_format=verbose_json when timestamps are requested.
+		// Auto-upgrade the response format to avoid API errors.
+		if ( variables.timestamps.len() > 0 && variables.responseFormat != "verbose_json" ) {
+			variables.responseFormat = "verbose_json"
+		}
 
 		// Detect and assign the audio source type
 		if ( isSimpleValue( arguments.audio ) && arguments.audio.len() > 0 ) {
 			if ( arguments.audio.left( 4 ) == "http" ) {
-				variables.audioURL  = arguments.audio;
-				variables.audioFile = "";
-				variables.audioData = "";
+				variables.audioURL  = arguments.audio
+				variables.audioFile = ""
+				variables.audioData = ""
 			} else {
-				variables.audioFile = arguments.audio;
-				variables.audioURL  = "";
-				variables.audioData = "";
+				variables.audioFile = arguments.audio
+				variables.audioURL  = ""
+				variables.audioData = ""
 				// Verify that the file exists, else throw an exception
 				if ( !fileExists( variables.audioFile ) ) {
 					throw(
@@ -133,23 +139,23 @@ class extends="AiBaseRequest" {
 				}
 			}
 		} else if ( isBinary( arguments.audio ) ) {
-			variables.audioData = arguments.audio;
-			variables.audioFile = "";
-			variables.audioURL  = "";
+			variables.audioData = arguments.audio
+			variables.audioFile = ""
+			variables.audioURL  = ""
 		} else {
-			variables.audioFile = "";
-			variables.audioURL  = "";
-			variables.audioData = "";
+			variables.audioFile = ""
+			variables.audioURL  = ""
+			variables.audioData = ""
 		}
 
-		return this;
+		return this
 	}
 
 	/**
 	 * Check whether this request has a valid audio source
 	 */
 	boolean function hasAudio(){
-		return ( variables.audioFile.len() > 0 || variables.audioURL.len() > 0 || ( !isSimpleValue( variables.audioData ) || variables.audioData.len() > 0 ) );
+		return ( variables.audioFile.len() > 0 || variables.audioURL.len() > 0 || ( !isSimpleValue( variables.audioData ) || variables.audioData.len() > 0 ) )
 	}
 
 	// ==========================================================================
@@ -277,25 +283,31 @@ class extends="AiBaseRequest" {
 
 	/**
 	 * Request word-level timestamps in the response.
+	 * Automatically sets responseFormat to "verbose_json" as required by OpenAI and compatible providers.
 	 */
 	AiTranscriptionRequest function withWordTimestamps(){
-		variables.timestamps = [ "word" ]
+		variables.timestamps     = [ "word" ]
+		variables.responseFormat = "verbose_json"
 		return this
 	}
 
 	/**
 	 * Request segment-level timestamps in the response.
+	 * Automatically sets responseFormat to "verbose_json" as required by OpenAI and compatible providers.
 	 */
 	AiTranscriptionRequest function withSegmentTimestamps(){
-		variables.timestamps = [ "segment" ]
+		variables.timestamps     = [ "segment" ]
+		variables.responseFormat = "verbose_json"
 		return this
 	}
 
 	/**
 	 * Request both word- and segment-level timestamps in the response.
+	 * Automatically sets responseFormat to "verbose_json" as required by OpenAI and compatible providers.
 	 */
 	AiTranscriptionRequest function withTimestamps(){
-		variables.timestamps = [ "word", "segment" ]
+		variables.timestamps     = [ "word", "segment" ]
+		variables.responseFormat = "verbose_json"
 		return this
 	}
 
@@ -356,6 +368,17 @@ class extends="AiBaseRequest" {
 	 */
 	AiTranscriptionRequest function withParams( required struct params ){
 		variables.params.append( arguments.params, true )
+
+		// If timestamp_granularities passed via params, sync to variables.timestamps
+		if ( arguments.params.keyExists( "timestamp_granularities" ) ) {
+			variables.timestamps = arguments.params.timestamp_granularities
+		}
+
+		// OpenAI requires response_format=verbose_json when timestamps are requested
+		if ( variables.timestamps.len() > 0 && variables.responseFormat != "verbose_json" ) {
+			variables.responseFormat = "verbose_json"
+		}
+
 		return this
 	}
 
@@ -381,6 +404,12 @@ class extends="AiBaseRequest" {
 		if ( arguments.options.keyExists( "logRequestToConsole" ) )  variables.logRequestToConsole  = arguments.options.logRequestToConsole
 		if ( arguments.options.keyExists( "logResponse" ) )          variables.logResponse          = arguments.options.logResponse
 		if ( arguments.options.keyExists( "logResponseToConsole" ) ) variables.logResponseToConsole = arguments.options.logResponseToConsole
+
+		// OpenAI requires response_format=verbose_json when timestamps are requested
+		if ( variables.timestamps.len() > 0 && variables.responseFormat != "verbose_json" ) {
+			variables.responseFormat = "verbose_json"
+		}
+
 		return this
 	}
 

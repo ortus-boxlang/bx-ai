@@ -23,6 +23,7 @@ derby.log
 ### Runtime Web Content ###
 www/boxlang_modules/
 
-### Ollama Data ###
+### AI Data ###
 .ollama/
-.claude/settings.local.json
+.claude/**
+.agents/**

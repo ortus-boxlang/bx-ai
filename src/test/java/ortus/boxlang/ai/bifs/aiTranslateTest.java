@@ -178,18 +178,15 @@ public class aiTranslateTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
+			import bxModules.bxai.models.requests.AiTranscriptionRequest
 			eventFired = false;
 			BoxRegisterInterceptor(
 				function( data ) { eventFired = true; },
 				"beforeAITranslation"
-			);
-			try {
-				AiTranscriptionRequest
-					.of( "#SAMPLE_AUDIO#" )
-					.translate();
-			} catch( any e ) {
-				// expected — API call may fail without a valid key
-			}
+			)
+			AiTranscriptionRequest
+				.of( "#SAMPLE_AUDIO#" )
+				.translate()
 			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO ),
 			context
 		);
@@ -209,15 +206,11 @@ public class aiTranslateTest extends BaseIntegrationTest {
 			BoxRegisterInterceptor(
 				function( data ) { capturedDiarize = data.transcriptionRequest.getDiarize(); },
 				"beforeAITranslation"
-			);
-			try {
-				aiTranslate()
-					.file( "#SAMPLE_AUDIO#" )
-					.diarize( true )
-					.translate();
-			} catch( any e ) {
-				// expected — API call may fail without a valid key
-			}
+			)
+			aiTranslate()
+				.file( "#SAMPLE_AUDIO#" )
+				.diarize( true )
+				.translate()
 			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO ),
 			context
 		);
