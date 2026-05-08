@@ -57,6 +57,8 @@ class extends="AiBaseRequest"{
 		struct options = {},
 		struct methodDefaults = {}
 	){
+		super.init()
+
 		// Merge module settings → method defaults → user options
 		arguments.options = prepareOptions( arguments.options, arguments.methodDefaults );
 

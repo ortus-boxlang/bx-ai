@@ -112,6 +112,8 @@ class extends="AiBaseRequest" {
 		struct options = {},
 		struct methodDefaults = { returnFormat: "response" }
 	){
+		super.init()
+
 		arguments.options = prepareOptions( arguments.options, arguments.methodDefaults );
 
 		variables.prompt               = arguments.prompt;

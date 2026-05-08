@@ -84,26 +84,37 @@ class extends="AiBaseRequest" {
 		struct options = {},
 		struct methodDefaults = { returnFormat: "response" }
 	){
+		super.init()
+
+		// Prepare options with method defaults (e.g. returnFormat) before seeding variables, so defaults are applied even when using the fluent builder without passing options to the constructor
 		arguments.options = prepareOptions( arguments.options, arguments.methodDefaults );
 
-		variables.text                 = arguments.text;
-		variables.params                = arguments.params;
-		variables.provider              = options.provider ?: "";
-		variables.apiKey                = options.apiKey ?: "";
-		variables.logRequest            = options.logRequest ?: false;
-		variables.logRequestToConsole   = options.logRequestToConsole ?: false;
-		variables.logResponse           = options.logResponse ?: false;
-		variables.logResponseToConsole  = options.logResponseToConsole ?: false;
-		variables.returnFormat          = options.returnFormat ?: "response";
-		variables.model                 = params.model ?: "";
-		variables.timeout               = options.timeout ?: 30;
-		variables.baseURL               = options.baseURL ?: "";
-		variables.providerOptions       = options.providerOptions ?: {};
-		variables.voice                 = params.voice ?: options.voice ?: "";
-		variables.outputFormat          = params.outputFormat ?: options.outputFormat ?: "mp3";
-		variables.speed                 = params.speed ?: options.speed ?: 1.0;
-		variables.instructions          = params.instructions ?: options.instructions ?: "";
-		variables.outputFile            = options.outputFile ?: "";
+		// Seed audio-specific defaults directly — do NOT merge all moduleRecord.settings into options
+		// because that would overwrite options.apiKey with the module global key, which breaks cross-provider key resolution inside aiService() (e.g. GROQ_API_KEY convention check)
+		variables.text                 = arguments.text
+		variables.params                = arguments.params
+		variables.provider              = options.provider ?: ""
+		variables.apiKey                = options.apiKey ?: ""
+		variables.logRequest            = options.logRequest ?: false
+		variables.logRequestToConsole   = options.logRequestToConsole ?: false
+		variables.logResponse           = options.logResponse ?: false
+		variables.logResponseToConsole  = options.logResponseToConsole ?: false
+		variables.returnFormat          = options.returnFormat ?: "response"
+		variables.model                 = params.model ?: ""
+		variables.timeout               = options.timeout ?: 30
+		variables.baseURL               = options.baseURL ?: ""
+		variables.providerOptions       = options.providerOptions ?: {}
+		variables.voice                 = params.voice ?: options.voice ?: ""
+		variables.outputFormat          = params.outputFormat ?: options.outputFormat ?: "mp3"
+		variables.speed                 = params.speed ?: options.speed ?: 1.0
+		variables.instructions          = params.instructions ?: options.instructions ?: ""
+		variables.outputFile            = options.outputFile ?: ""
+
+		// Resolve genered voice if passed
+		var effectiveVoice = arguments.params.voice ?: arguments.options.voice ?: "";
+		if ( len( effectiveVoice ) && listFindNoCase( "male,female", effectiveVoice ) ) {
+			resolveGenderedVoice( effectiveVoice )
+		}
 
 		return this;
 	}
@@ -173,7 +184,7 @@ class extends="AiBaseRequest" {
 	 * @voice The voice name or ID
 	 */
 	AiSpeechRequest function voice( required string voice ){
-		variables.params.voice = arguments.voice
+		variables.voice = arguments.voice
 		return this
 	}
 
@@ -232,7 +243,7 @@ class extends="AiBaseRequest" {
 	 * Use a male voice (resolved via provider gender map in aiSpeak()).
 	 */
 	AiSpeechRequest function male(){
-		variables.params.voice = "male"
+		variables.voice = "male"
 		return this
 	}
 
@@ -240,7 +251,7 @@ class extends="AiBaseRequest" {
 	 * Use a female voice (resolved via provider gender map in aiSpeak()).
 	 */
 	AiSpeechRequest function female(){
-		variables.params.voice = "female"
+		variables.voice = "female"
 		return this
 	}
 
@@ -347,15 +358,21 @@ class extends="AiBaseRequest" {
 	 * @return AiSpeechResponse, or the saved file path string when outputFile is set
 	 */
 	function speak(){
-		// Merge model into a copy of params (aiSpeak reads model from params, not options)
-		var p = variables.params.copy()
-		if ( len( variables.model ) && !p.keyExists( "model" ) ) {
-			p.model = variables.model
+		// Resolve gendered voice if set but not yet resolved
+		if ( len( variables.voice ) && listFindNoCase( "male,female", variables.voice ) ) {
+			resolveGenderedVoice( variables.voice )
 		}
+
+		// Merge model into a copy of params (aiSpeak reads model from params, not options)
+		var newParams = variables.params.copy()
+		if ( len( variables.model ) && !newParams.keyExists( "model" ) ) {
+			newParams.model = variables.model
+		}
+		newParams.voice = variables.voice // Ensure the resolved voice is included in params
 
 		return aiSpeak(
 			variables.text,
-			p,
+			newParams,
 			{
 				provider             : variables.provider,
 				apiKey               : variables.apiKey,
@@ -370,6 +387,27 @@ class extends="AiBaseRequest" {
 				logResponseToConsole : variables.logResponseToConsole
 			}
 		)
+	}
+
+	/**
+	 * Resolve gender keywords ("male"/"female") to provider-specific voice names, so providers always receive a concrete voice identifier, not a keyword.
+	 *
+	 * @gender The gender keyword to resolve ("male" or "female")
+	 * @provider The provider for which to resolve the voice (optional; falls back to options.provider, then module default provider)
+	 *
+	 * @return The resolved voice name is set back on the request params.voice property
+	 */
+	private string function resolveGenderedVoice( string gender, string provider ){
+		var audioSettings = super.getModuleSettings().audio
+		var resolvedProviderForVoice = variables.provider.isEmpty() ? ( audioSettings.defaultProvider ?: super.getModuleSettings().provider ) : variables.provider
+		var genderMap               = audioSettings.voiceGenderMap ?: {}
+		var providerGenderMap       = genderMap[ resolvedProviderForVoice ] ?: {}
+		var mappedVoice             = providerGenderMap[ arguments.gender.lcase() ] ?: ""
+		if ( len( mappedVoice ) ) {
+			variables.voice = mappedVoice
+			return mappedVoice
+		}
+		return ""
 	}
 
 }

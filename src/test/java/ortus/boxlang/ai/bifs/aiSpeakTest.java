@@ -333,16 +333,13 @@ public class aiSpeakTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
+			import bxModules.bxai.models.requests.AiSpeechRequest
 			capturedText = "";
 			BoxRegisterInterceptor(
 				function( data ) { capturedText = data.speechRequest.getText(); },
 				"beforeAISpeech"
 			);
-			try {
-				AiSpeechRequest.of( "Hello from static factory" ).speak();
-			} catch( any e ) {
-				// expected — API call may fail without a valid key
-			}
+			AiSpeechRequest.of( "Hello from static factory" ).speak();
 			""",
 			context
 		);
@@ -365,16 +362,12 @@ public class aiSpeakTest extends BaseIntegrationTest {
 					capturedFormat = data.speechRequest.getOutputFormat();
 				},
 				"beforeAISpeech"
-			);
-			try {
-				aiSpeak()
-					.text( "Test voice and format" )
-					.female()
-					.asWav()
-					.speak();
-			} catch( any e ) {
-				// expected — API call may fail without a valid key
-			}
+			)
+			aiSpeak()
+				.text( "Test voice and format" )
+				.female()
+				.asWav()
+				.speak()
 			""",
 			context
 		);
@@ -400,14 +393,10 @@ public class aiSpeakTest extends BaseIntegrationTest {
 				},
 				"beforeAISpeech"
 			);
-			try {
-				aiSpeak()
-					.text( "Fluent chain test" )
-					.model( "tts-1-hd" )
-					.speak();
-			} catch( any e ) {
-				// expected — API call may fail without a valid key
-			}
+			aiSpeak()
+				.text( "Fluent chain test" )
+				.model( "tts-1-hd" )
+				.speak();
 			""",
 			context
 		);

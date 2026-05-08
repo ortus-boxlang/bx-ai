@@ -92,6 +92,8 @@ class extends="AiBaseRequest" {
 		struct options = {},
 		struct methodDefaults = {}
 	){
+		super.init()
+
 		arguments.options = prepareOptions( arguments.options, arguments.methodDefaults );
 
 		variables.params                = arguments.params;

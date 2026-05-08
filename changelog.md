@@ -13,8 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Fluent Builder API for Audio BIFs**: `aiSpeak()`, `aiTranscribe()`, and `aiTranslate()` now
   support a fluent builder API. Calling any of these BIFs with no arguments returns the request
-  object for chaining. Static factory methods `AiSpeechRequest.of(text)` and
-  `AiTranscriptionRequest.of(audio)` are also available for direct construction.
+  object for chaining.
   - **`AiSpeechRequest`** gains: `of(text)` static factory, `.text()`, `.model()`, `.provider()`,
     `.apiKey()`, `.voice()`, `.speed()`, `.instructions()`, `.outputFile()`, `.outputFormat()`,
     `.timeout()`, gender shortcuts (`.male()`, `.female()`), format shortcuts (`.asMP3()`,
@@ -26,10 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `.withTimestamps()`), `.diarize()`, format shortcuts (`.asJSON()`, `.asText()`,
     `.asVerboseJSON()`, `.asSRT()`, `.asVTT()`), `.withParams()`, `.withOptions()`,
     `.withLogging()`, and dual terminators `.transcribe()` and `.translate()`.
-  - **`aiSpeak()`** — `text` parameter is now optional (default `""`); omitting it returns
-    an `AiSpeechRequest` builder pre-seeded with any module-level audio defaults.
-  - **`aiTranscribe()`** and **`aiTranslate()`** — `audio` parameter is now optional (default
-    `""`); omitting it returns an `AiTranscriptionRequest` builder.
+
 - **Image Generation — `aiImage()`**: New BIF for generating images from text prompts using any provider that implements `IAiImageService`.
   - **`aiImage( prompt, params, options )`** BIF: Generate one or more images from a text description. Returns an `AiImageResponse` (with `hasImages()`, `getCount()`, `getFirstURL()`, `getFirstBase64()`, `getRevisedPrompt()`, `saveToFile()`, `saveAllToDirectory()`, `toDataURI()`, `getMimeType()`, `toStruct()`) or saves directly to a file via `options.outputFile`.
   - **`IAiImageService`** interface: New capability interface implemented by providers that support text-to-image generation (`generateImage()`).
@@ -43,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **4 new interception points**: `beforeAIImageGeneration`, `afterAIImageGeneration`, `onAIImageRequest`, `onAIImageResponse`.
   - **`image` settings block** in module config: `defaultProvider`, `defaultApiKey`, `defaultModel`, `defaultSize`, `defaultQuality`, `defaultStyle`, `defaultInstructions`.
   - **`generateImage@bxai` agent tool**: New `ImageTools` class (`models/tools/image/ImageTools.bx`) auto-registered in the global tool registry at module startup. Generates an image from a text prompt, saves to a file (auto-generates a temp file when no `outputFile` is supplied), and returns the absolute path. Opt-in: `aiAgent( tools: [ "generateImage@bxai" ] )`.
+
 - **MCP Server Observability & Analytics Improvements**
   - Multiple gaps in the MCP server's observability and analytics have been addressed.
   - **Thread-safety fix**: `byMethod`, `byTool`, `byUri`, `byName`, and `byCode` counters in `MCPServerStats` were plain struct mutations happening outside any lock, causing silent lost updates under concurrent load. All are now wrapped in dedicated named locks.
@@ -83,6 +80,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `getSummary()` now includes a `paused` boolean field.
   - New `SERVER_PAUSED: -32005` error code added to `RPC_ERROR_CODES`.
   - Two new interception points registered: `onMCPServerPause`, `onMCPServerResume`.
+
+- BoxLang 1.13.0 testing.
 
 ### 🪲 Fixed
 
