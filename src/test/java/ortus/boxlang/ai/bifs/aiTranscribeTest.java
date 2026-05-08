@@ -181,8 +181,8 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		var isBuilder = variables.getAsBoolean( Key.of( "isBuilder" ) );
-		var hasAudio  = variables.getAsBoolean( Key.of( "hasAudio" ) );
+		var	isBuilder	= variables.getAsBoolean( Key.of( "isBuilder" ) );
+		var	hasAudio	= variables.getAsBoolean( Key.of( "hasAudio" ) );
 		assertThat( isBuilder ).isTrue();
 		assertThat( hasAudio ).isTrue();
 	}
