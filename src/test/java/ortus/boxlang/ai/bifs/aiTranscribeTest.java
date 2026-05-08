@@ -146,4 +146,101 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 		assertThat( isText ).isTrue();
 	}
 
+	// ─────────────────────────────────────────────────────────────────────────
+	// Fluent Builder API Tests
+	// ─────────────────────────────────────────────────────────────────────────
+
+	@DisplayName( "aiTranscribe() with no arguments returns an AiTranscriptionRequest builder" )
+	@Test
+	public void testAiTranscribeNoArgsReturnsBuilder() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result    = aiTranscribe()
+			isBuilder = isInstanceOf( result, "AiTranscriptionRequest" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var isBuilder = variables.getAsBoolean( Key.of( "isBuilder" ) );
+		assertThat( isBuilder ).isTrue();
+	}
+
+	@DisplayName( "AiTranscriptionRequest.of() static factory creates a request with the given audio source" )
+	@Test
+	public void testAiTranscriptionRequestOfStaticFactory() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			request      = AiTranscriptionRequest.of( "#SAMPLE_AUDIO#" )
+			isBuilder    = isInstanceOf( request, "AiTranscriptionRequest" )
+			hasAudio     = request.hasAudio()
+			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO ),
+			context
+		);
+		// @formatter:on
+
+		var isBuilder = variables.getAsBoolean( Key.of( "isBuilder" ) );
+		var hasAudio  = variables.getAsBoolean( Key.of( "hasAudio" ) );
+		assertThat( isBuilder ).isTrue();
+		assertThat( hasAudio ).isTrue();
+	}
+
+	@DisplayName( "Fluent builder .file().language() populates request correctly before transcribing" )
+	@Test
+	public void testFluentBuilderFileAndLanguage() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedLang = "";
+			BoxRegisterInterceptor(
+				function( data ) { capturedLang = data.transcriptionRequest.getLanguage(); },
+				"beforeAITranscription"
+			);
+			try {
+				aiTranscribe()
+					.file( "#SAMPLE_AUDIO#" )
+					.language( "en" )
+					.transcribe();
+			} catch( any e ) {
+				// expected — API call may fail without a valid key
+			}
+			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedLang" ) ) ).isEqualTo( "en" );
+	}
+
+	@DisplayName( "Fluent builder .withWordTimestamps() sets timestamps correctly" )
+	@Test
+	public void testFluentBuilderWithWordTimestamps() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedTimestamps = [];
+			BoxRegisterInterceptor(
+				function( data ) { capturedTimestamps = data.transcriptionRequest.getTimestamps(); },
+				"beforeAITranscription"
+			);
+			try {
+				aiTranscribe()
+					.file( "#SAMPLE_AUDIO#" )
+					.withWordTimestamps()
+					.transcribe();
+			} catch( any e ) {
+				// expected — API call may fail without a valid key
+			}
+			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO ),
+			context
+		);
+		// @formatter:on
+
+		var timestamps = variables.getAsArray( Key.of( "capturedTimestamps" ) );
+		assertThat( timestamps.size() ).isEqualTo( 1 );
+		assertThat( timestamps.get( 0 ).toString() ).isEqualTo( "word" );
+	}
+
 }

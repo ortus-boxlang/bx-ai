@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 New Features
 
+- **Fluent Builder API for Audio BIFs**: `aiSpeak()`, `aiTranscribe()`, and `aiTranslate()` now
+  support a fluent builder API. Calling any of these BIFs with no arguments returns the request
+  object for chaining. Static factory methods `AiSpeechRequest.of(text)` and
+  `AiTranscriptionRequest.of(audio)` are also available for direct construction.
+  - **`AiSpeechRequest`** gains: `of(text)` static factory, `.text()`, `.model()`, `.provider()`,
+    `.apiKey()`, `.voice()`, `.speed()`, `.instructions()`, `.outputFile()`, `.outputFormat()`,
+    `.timeout()`, gender shortcuts (`.male()`, `.female()`), format shortcuts (`.asMP3()`,
+    `.asWav()`, `.asFlac()`, `.asOpus()`, `.asPCM()`), `.withParams()`, `.withOptions()`,
+    `.withLogging()`, and `.speak()` terminator.
+  - **`AiTranscriptionRequest`** gains: `of(audio)` static factory, `.file(path)`, `.url(url)`,
+    `.data(binary)`, `.model()`, `.provider()`, `.apiKey()`, `.language()`, `.inputFormat()`,
+    `.timeout()`, timestamp shortcuts (`.withWordTimestamps()`, `.withSegmentTimestamps()`,
+    `.withTimestamps()`), `.diarize()`, format shortcuts (`.asJSON()`, `.asText()`,
+    `.asVerboseJSON()`, `.asSRT()`, `.asVTT()`), `.withParams()`, `.withOptions()`,
+    `.withLogging()`, and dual terminators `.transcribe()` and `.translate()`.
+  - **`aiSpeak()`** — `text` parameter is now optional (default `""`); omitting it returns
+    an `AiSpeechRequest` builder pre-seeded with any module-level audio defaults.
+  - **`aiTranscribe()`** and **`aiTranslate()`** — `audio` parameter is now optional (default
+    `""`); omitting it returns an `AiTranscriptionRequest` builder.
 - **Image Generation — `aiImage()`**: New BIF for generating images from text prompts using any provider that implements `IAiImageService`.
   - **`aiImage( prompt, params, options )`** BIF: Generate one or more images from a text description. Returns an `AiImageResponse` (with `hasImages()`, `getCount()`, `getFirstURL()`, `getFirstBase64()`, `getRevisedPrompt()`, `saveToFile()`, `saveAllToDirectory()`, `toDataURI()`, `getMimeType()`, `toStruct()`) or saves directly to a file via `options.outputFile`.
   - **`IAiImageService`** interface: New capability interface implemented by providers that support text-to-image generation (`generateImage()`).
