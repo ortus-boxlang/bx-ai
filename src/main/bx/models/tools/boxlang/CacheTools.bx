@@ -60,7 +60,7 @@ class extends="BaseTool" {
 					"reapCount"         : stats.reapCount(),
 					"lastReapDatetime"  : ( !isNull( stats.lastReapDatetime() ) ? stats.lastReapDatetime().toString() : "never" )
 				},
-				"configuration"     : cache.getConfig().asStruct()
+				"configuration"     : cache.getConfig().toStruct()
 			}
 		} )
 
