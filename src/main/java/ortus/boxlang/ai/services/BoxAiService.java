@@ -125,6 +125,18 @@ public class BoxAiService extends BaseService {
 	}
 
 	/**
+	 * Get or build by name as string
+	 *
+	 * @param name   The name of the server
+	 * @param server The server instance to store
+	 *
+	 * @return The MCPServer that was found or stored
+	 */
+	public IClassRunnable getOrBuildServer( String name, IClassRunnable server ) {
+		return getOrBuildServer( Key.of( name ), server );
+	}
+
+	/**
 	 * Put/replace an MCP server instance directly
 	 *
 	 * @param name   The name of the server
@@ -134,6 +146,18 @@ public class BoxAiService extends BaseService {
 	 */
 	public IClassRunnable putServer( Key name, IClassRunnable server ) {
 		return this.mcpServers.put( name, server );
+	}
+
+	/**
+	 * Put a server by name as string
+	 *
+	 * @param name   The name of the server
+	 * @param server The server instance to store
+	 *
+	 * @return The previous server instance if any
+	 */
+	public IClassRunnable putServer( String name, IClassRunnable server ) {
+		return putServer( Key.of( name ), server );
 	}
 
 	/**
@@ -147,6 +171,13 @@ public class BoxAiService extends BaseService {
 		return this.mcpServers.get( name );
 	}
 
+	/**
+	 * Get an existing MCP server by name as string
+	 *
+	 * @param name The name of the server
+	 *
+	 * @return The MCPServer if found, null otherwise
+	 */
 	public IClassRunnable getServer( String name ) {
 		return getServer( Key.of( name ) );
 	}
@@ -162,6 +193,13 @@ public class BoxAiService extends BaseService {
 		return this.mcpServers.containsKey( name );
 	}
 
+	/**
+	 * Verifies if the named server exists by name as string
+	 *
+	 * @param name The name of the server
+	 *
+	 * @return True if the server exists, false if it does not
+	 */
 	public boolean hasServer( String name ) {
 		return hasServer( Key.of( name ) );
 	}
@@ -178,6 +216,13 @@ public class BoxAiService extends BaseService {
 		return server != null;
 	}
 
+	/**
+	 * Remove a server by name as string
+	 *
+	 * @param name The name of the server
+	 *
+	 * @return True if the server was removed, false if it was not found
+	 */
 	public boolean removeServer( String name ) {
 		return removeServer( Key.of( name ) );
 	}
