@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 New Features
 
+- **MCP Server IP Allowlist & Proxy-Aware Client IP Extraction**: `MCPServer` now supports IP-based access control with automatic client IP resolution from common proxy headers.
+  - **`withAllowedIPs(ips)` fluent method**: Configure allowed IP addresses or CIDR ranges. Pass empty array to allow all (default).
+  - **`addAllowedIP(ip)` / `clearAllowedIPs()`**: Incremental allowlist management.
+  - **`hasAllowedIPs()`**: Check if IP filtering is active.
+  - **`verifyClientIP(clientIP, requestData)`**: Validate a client IP against the allowlist with exact match and CIDR range support.
+  - **`getClientIP(requestData)`**: Extract client IP from trusted proxy headers (`X-Forwarded-For`, `CF-Connecting-IP`, `True-Client-IP`, `X-Real-IP`) with fallback to `cgi.REMOTE_ADDR` for direct connections.
+  - **CIDR range matching**: Support both individual IPs (`192.168.1.100`) and CIDR blocks (`192.168.0.0/24`) for IPv4 and IPv6.
+  - **IP filter failure tracking**: Rejected IP checks recorded in `MCPServerStats.security.ipFilterFailures` counter and exposed in `getStats()` / `getSummary()`.
+  - **Security rejection**: Denied IPs return HTTP 403 Forbidden with `INVALID_REQUEST` JSON-RPC error code.
+
+- **`BoxLangMCP` Server**: A complex and production capable MCP server so you can manage and introspect any BoxLang server.
+
 - **Fluent Builder API for Audio BIFs**: `aiSpeak()`, `aiTranscribe()`, and `aiTranslate()` now
   support a fluent builder API. Calling any of these BIFs with no arguments returns the request
   object for chaining.

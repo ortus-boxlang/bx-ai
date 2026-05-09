@@ -215,6 +215,20 @@ class {
 			);
 		}
 
+		// Check IP allowlist if configured
+		if ( targetServer.hasAllowedIPs() ) {
+			var clientIP = targetServer.getClientIP( arguments.requestData );
+			if ( !targetServer.verifyClientIP( clientIP, arguments.requestData ) ) {
+				static.mcpLogger.warn( "MCP request blocked by IP filter: #clientIP# for server: #mcpServerName#" );
+				targetServer.recordSecurityFailure( "ipFilter" );
+				return arguments.transport.createErrorResponse(
+					statusCode: 403,
+					errorCode: MCPServer::errorCode( "INVALID_REQUEST" ),
+					message: "Forbidden: IP address not allowed"
+				);
+			}
+		}
+
 		// Handle CORS if transport supports it
 		if ( arguments.transport.supports( "cors" ) && len( requestOrigin ) ) {
 			if ( targetServer.isCorsAllowed( requestOrigin ) ) {

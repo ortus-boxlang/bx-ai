@@ -133,7 +133,8 @@ class {
 		variables.security = {
 			"authFailures"      : new AtomicInteger( 0 ),
 			"apiKeyFailures"    : new AtomicInteger( 0 ),
-			"bodySizeViolations": new AtomicInteger( 0 )
+			"bodySizeViolations": new AtomicInteger( 0 ),
+			"ipFilterFailures"  : new AtomicInteger( 0 )
 		}
 
 		return this
@@ -376,6 +377,9 @@ class {
 			case "bodySize":
 				variables.security.bodySizeViolations.incrementAndGet()
 				break;
+			case "ipFilter":
+				variables.security.ipFilterFailures.incrementAndGet()
+				break;
 		}
 
 		return this
@@ -432,7 +436,8 @@ class {
 		var securityCopy = {
 			"authFailures"      : variables.security.authFailures.get(),
 			"apiKeyFailures"    : variables.security.apiKeyFailures.get(),
-			"bodySizeViolations": variables.security.bodySizeViolations.get()
+			"bodySizeViolations": variables.security.bodySizeViolations.get(),
+			"ipFilterFailures"  : variables.security.ipFilterFailures.get()
 		}
 
 		return {
@@ -470,7 +475,13 @@ class {
 			"totalResourceReads"   : variables.resources.totalReads.get(),
 			"totalPromptGenerations": variables.prompts.totalGenerations.get(),
 			"totalErrors"          : variables.errors.total.get(),
-			"lastRequestAt"        : variables.requests.lastRequestAt.get()
+			"lastRequestAt"        : variables.requests.lastRequestAt.get(),
+			"security"             : {
+				"authFailures"      : variables.security.authFailures.get(),
+				"apiKeyFailures"    : variables.security.apiKeyFailures.get(),
+				"bodySizeViolations": variables.security.bodySizeViolations.get(),
+				"ipFilterFailures"  : variables.security.ipFilterFailures.get()
+			}
 		}
 	}
 

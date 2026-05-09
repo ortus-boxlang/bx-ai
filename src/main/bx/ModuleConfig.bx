@@ -214,9 +214,15 @@ class {
 				// Use with caution, as this can expose internal runtime functionality if enabled.
 				enabled : false,
 				// An optional secret token that clients must provide to connect to the MCP server.  Set to "" to disable authentication.
+				// Clients send via Authorization header: Authorization: Bearer {authToken}
 				authToken : "",
-				// If true, the MCP server will only accept connections from localhost.  Set to false to allow remote connections (use with caution).
-				localOnly : true
+				// Allowed IP addresses for request filtering. When non-empty, only requests from these IPs are accepted.
+				// Supports individual IPs (e.g., "127.0.0.1") and CIDR ranges (e.g., "192.168.0.0/24").
+				// Empty array means no IP filtering (all IPs allowed).
+				allowedIPs : [ "127.0.0.1" ],
+				// CORS allowed origins (array of strings, supports wildcards like *.domain.com)
+				// Empty array means no CORS headers - secure by default
+				corsAllowedOrigins : []
 			}
 		}
 
@@ -337,6 +343,32 @@ class {
 				writeLog(
 					text: "bxAI: Auto-loaded [#moduleRecord.settings.globalSkills.len()#] global skill(s) from: #skillsDir#",
 					type: "debug",
+					log: "ai"
+				)
+			}
+		}
+
+		// ============================================================================
+		// BoxLang MCP Server - Conditional Registration
+		// ============================================================================
+
+		var boxlangMCPSettings = moduleRecord.settings.boxlangMCP
+
+		if ( boxlangMCPSettings.enabled ) {
+			try {
+				// Create and register the BoxLangMCP server instance
+				var mcpServer = new bxModules.bxai.models.mcp.BoxLangMCP()
+				aiService().putServer( "boxlang", mcpServer )
+
+				writeLog(
+					text: "bxAI: BoxLang MCP server registered with #mcpServer.getToolCount()# tools - endpoint: /~bxai/boxlang.bxm",
+					type: "debug",
+					log: "ai"
+				)
+			} catch ( any e ) {
+				writeLog(
+					text: "bxAI: Failed to create BoxLang MCP server - #e.message#",
+					type: "error",
 					log: "ai"
 				)
 			}

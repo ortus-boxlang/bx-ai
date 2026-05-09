@@ -1,0 +1,83 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * BoxLang MCP Server - Concrete implementation for exposing BoxLang runtime introspection tools
+ *
+ * This MCP server is automatically created and registered by the bxAI module when enabled
+ * in the module configuration. It exposes BoxLang runtime introspection tools via the Model
+ * Context Protocol, allowing external MCP clients to query and manage the BoxLang runtime.
+ *
+ * Usage:
+ * ```js
+ * // Enabled via module config in ModuleConfig.bx:
+ * boxlangMCP: {
+ *     enabled: true,
+ *     authToken: "your-secret-token",
+ *     allowedIPs: ["127.0.0.1", "192.168.1.0/24"],
+ *     corsAllowedOrigins: ["https://example.com"]
+ * }
+ * ```
+ */
+class extends="MCPServer" {
+
+	/**
+	 * Constructor - Initialize the BoxLang MCP server with runtime introspection tools
+	 */
+	function init() {
+		// Call parent constructor with BoxLang-specific configuration
+		super.init(
+			name: "boxlang",
+			description: "BoxLang Runtime Introspection - Tools for inspecting and managing the BoxLang runtime",
+			version: server.boxlang.version
+		)
+
+		// Get module settings for configuration
+		var moduleSettings = getModuleInfo( "bxai" ).settings.boxlangMCP
+
+		// Configure API key validation using authToken if provided
+		if ( len( trim( moduleSettings.authToken ?: "" ) ) ) {
+			var expectedToken = moduleSettings.authToken
+			this.withApiKeyProvider( ( apiKey ) => {
+				return apiKey == expectedToken
+			} )
+		}
+
+		// Configure CORS if origins are specified
+		if ( isArray( moduleSettings.corsAllowedOrigins ?: [] ) && moduleSettings.corsAllowedOrigins.len() ) {
+			this.withCors( moduleSettings.corsAllowedOrigins )
+		}
+
+		// Configure IP allowlist if specified
+		if ( isArray( moduleSettings.allowedIPs ?: [] ) && moduleSettings.allowedIPs.len() ) {
+			this.withAllowedIPs( moduleSettings.allowedIPs )
+		}
+
+		// Enable statistics tracking by default
+		this.enableStats()
+
+		// Scan and register BoxLang runtime introspection tools
+		try {
+			// Scan the boxlang tools package for @mcpTool annotations
+			this.scan( "bxModules.bxai.models.tools.boxlang" )
+		} catch ( any e ) {
+			writeLog(
+				text: "BoxLangMCP: Error scanning tools - #e.message#",
+				type: "error",
+				log: "ai"
+			)
+		}
+
+		return this
+	}
+}

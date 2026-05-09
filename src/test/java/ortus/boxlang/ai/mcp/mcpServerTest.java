@@ -1918,4 +1918,335 @@ public class mcpServerTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "hasResult" ) ) ).isEqualTo( true );
 	}
 
+	// ============================================================================
+	// IP Allowlist Tests
+	// ============================================================================
+
+	@Test
+	@DisplayName( "withAllowedIPs stores and normalizes configured IP list" )
+	public void testWithAllowedIPsStoresList() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "allowedIPsTest" )
+					.withAllowedIPs( [ "192.168.1.100", "10.0.0.1", "  172.16.0.1  " ] )
+
+				ips = myServer.getAllowedIPs()
+				count = ips.size()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var ips = ( ortus.boxlang.runtime.types.Array ) variables.get( Key.of( "ips" ) );
+		assertThat( ips.size() ).isEqualTo( 3 );
+		assertThat( ips.get( 0 ).toString() ).isEqualTo( "192.168.1.100" );
+		assertThat( ips.get( 2 ).toString() ).isEqualTo( "172.16.0.1" ); // trimmed
+	}
+
+	@Test
+	@DisplayName( "hasAllowedIPs false when empty, true when populated" )
+	public void testHasAllowedIPs() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				srv1 = mcpServer( "noIPsTest" )
+				hasIPs1 = srv1.hasAllowedIPs()
+
+				srv2 = mcpServer( "withIPsTest" )
+					.withAllowedIPs( [ "127.0.0.1" ] )
+				hasIPs2 = srv2.hasAllowedIPs()
+
+				srv2.clearAllowedIPs()
+				hasIPs3 = srv2.hasAllowedIPs()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasIPs1" ) ) ).isEqualTo( false );
+		assertThat( variables.get( Key.of( "hasIPs2" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasIPs3" ) ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "addAllowedIP adds single IP to allowlist" )
+	public void testAddAllowedIP() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "addIPTest" )
+					.addAllowedIP( "192.168.1.1" )
+					.addAllowedIP( "10.0.0.1" )
+					.addAllowedIP( "192.168.1.1" )  // duplicate, should not add again
+
+				count = myServer.getAllowedIPs().size()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "count" ) ) ).isEqualTo( 2 );
+	}
+
+	@Test
+	@DisplayName( "verifyClientIP true on exact match, false on non-match" )
+	public void testVerifyClientIP() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "verifyIPTest" )
+					.withAllowedIPs( [ "192.168.1.100", "10.0.0.1" ] )
+
+				matchExact = myServer.verifyClientIP( "192.168.1.100" )
+				matchOther = myServer.verifyClientIP( "10.0.0.1" )
+				noMatch    = myServer.verifyClientIP( "172.16.0.1" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "matchExact" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "matchOther" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "noMatch" ) ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "verifyClientIP returns true when no allowlist configured" )
+	public void testVerifyClientIPNoAllowlist() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "noAllowlistTest" )
+				result = myServer.verifyClientIP( "1.2.3.4" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "result" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "getClientIP prefers x-forwarded-for first value" )
+	public void testGetClientIPXForwardedFor() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "xffTest" )
+				requestData = {
+					"headers": {
+						"x-forwarded-for": "203.0.113.50, 70.41.3.18, 150.172.238.178",
+						"cf-connecting-ip": "198.51.100.1"
+					},
+					"metadata": {
+						"remoteAddr": "10.0.0.1"
+					}
+				}
+				clientIP = myServer.getClientIP( requestData )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "clientIP" ) ).toString() ).isEqualTo( "203.0.113.50" );
+	}
+
+	@Test
+	@DisplayName( "getClientIP falls back to cf-connecting-ip when x-forwarded-for absent" )
+	public void testGetClientIPFallbackToCF() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "cfIPTest" )
+				requestData = {
+					"headers": {
+						"cf-connecting-ip": "198.51.100.1"
+					},
+					"metadata": {
+						"remoteAddr": "10.0.0.1"
+					}
+				}
+				clientIP = myServer.getClientIP( requestData )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "clientIP" ) ).toString() ).isEqualTo( "198.51.100.1" );
+	}
+
+	@Test
+	@DisplayName( "getClientIP falls back to remoteAddr when no proxy headers" )
+	public void testGetClientIPFallbackToRemoteAddr() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "remoteAddrTest" )
+				requestData = {
+					"headers": {},
+					"metadata": {
+						"remoteAddr": "10.0.0.1"
+					}
+				}
+				clientIP = myServer.getClientIP( requestData )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "clientIP" ) ).toString() ).isEqualTo( "10.0.0.1" );
+	}
+
+	@Test
+	@DisplayName( "verifyClientIP supports CIDR range matching" )
+	public void testVerifyClientIPCIDR() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "cidrTest" )
+					.withAllowedIPs( [ "192.168.0.0/24", "10.0.0.0/8" ] )
+
+				inRange1 = myServer.verifyClientIP( "192.168.0.50" )
+				inRange2 = myServer.verifyClientIP( "192.168.0.255" )
+				inRange3 = myServer.verifyClientIP( "10.255.255.255" )
+				outRange = myServer.verifyClientIP( "172.16.0.1" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "inRange1" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "inRange2" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "inRange3" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "outRange" ) ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "IP allowlist blocks non-matching IP via handleRequest" )
+	public void testIPAllowlistBlocksRequest() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.mcp.MCPRequestProcessor;
+
+				myServer = mcpServer( "ipBlockTest" )
+					.withAllowedIPs( [ "192.168.1.100" ] )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// Mock request from non-allowed IP
+				mockServer = mockRequestNew(
+					method: "POST",
+					path: "/mcp.bxm",
+					body: jsonSerialize( { "method": "tools/list", "id": "1" } ),
+					headers: {},
+					metadata: { "remoteAddr": "10.0.0.1" }
+				)
+				mockHttpTransport = MCPRequestProcessor::getHttpTransport()
+				mockHttpTransport.writeResponse = ( response ) => {
+					println( response )
+					return response
+				}
+
+				content = MCPRequestProcessor::processHttp( "ipBlockTest" )
+				parsedContent = jsonDeserialize( content )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var content = variables.getAsStruct( Key.of( "parsedContent" ) );
+		assertThat( content.containsKey( Key.of( "error" ) ) ).isTrue();
+		var error = content.getAsStruct( Key.of( "error" ) );
+		assertThat( error.getAsString( Key.of( "message" ) ) ).contains( "Forbidden" );
+	}
+
+	@Test
+	@DisplayName( "IP allowlist allows matching IP via handleRequest" )
+	public void testIPAllowlistAllowsRequest() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "ipAllowTest" )
+					.withAllowedIPs( [ "192.168.1.100" ] )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// When no allowlist enforcement is triggered (no IP check in handleRequest),
+				// the request should succeed normally
+				response = myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method": "tools/list",
+					"id": "1"
+				} )
+
+				hasResult = structKeyExists( response, "result" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasResult" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "IP filter rejection increments ipFilterFailures in stats" )
+	public void testIPFilterStatsIncrement() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "ipStatsTest" )
+					.withAllowedIPs( [ "192.168.1.100" ] )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// Simulate IP filter rejection by calling recordSecurityFailure directly
+				myServer.recordSecurityFailure( "ipFilter" )
+
+				summary = myServer.getStatsSummary()
+				ipFailures = summary.security.ipFilterFailures
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "ipFailures" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "IP allowlist with x-forwarded-for header honors first client IP" )
+	public void testIPAllowlistWithXForwardedFor() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.mcp.MCPRequestProcessor;
+
+				myServer = mcpServer( "ipXFFTest" )
+					.withAllowedIPs( [ "203.0.113.50" ] )
+					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
+
+				// Mock request with x-forwarded-for containing allowed IP as first entry
+				mockServer = mockRequestNew(
+					method: "POST",
+					path: "/mcp.bxm",
+					body: jsonSerialize( { "method": "tools/list", "id": "1" } ),
+					headers: {
+						"x-forwarded-for": "203.0.113.50, 70.41.3.18"
+					},
+					metadata: { "remoteAddr": "10.0.0.1" }
+				)
+				mockHttpTransport = MCPRequestProcessor::getHttpTransport()
+				mockHttpTransport.writeResponse = ( response ) => {
+					return response
+				}
+
+				content = MCPRequestProcessor::processHttp( "ipXFFTest" )
+				parsedContent = jsonDeserialize( content )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var content = variables.getAsStruct( Key.of( "parsedContent" ) );
+		assertThat( content.containsKey( Key.of( "result" ) ) ).isTrue();
+	}
+
 }

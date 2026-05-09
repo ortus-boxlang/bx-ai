@@ -115,6 +115,26 @@ class {
 	property name="paused" type="boolean" default=false;
 
 	/**
+	 * Allowed IP addresses for request filtering.
+	 * When non-empty, only requests from these IPs are accepted.
+	 * Supports individual IPs (e.g., "192.168.1.100") and CIDR ranges (e.g., "192.168.0.0/24").
+	 * Empty array means no IP filtering (all IPs allowed).
+	 */
+	property name="allowedIPs" type="array" default=[];
+
+	/**
+	 * Ordered list of proxy headers to check for client IP extraction.
+	 * Headers are checked in order; first valid IP found is used.
+	 * Falls back to metadata.remoteAddr if no proxy headers contain a valid IP.
+	 */
+	property name="trustedProxyHeaders" type="array" default=[
+		"x-forwarded-for",
+		"cf-connecting-ip",
+		"true-client-ip",
+		"x-real-ip"
+	];
+
+	/**
 	 * Static configuration and service reference
 	 */
 	static {
@@ -1328,6 +1348,119 @@ class {
 
 	/**
 	 * ---------------------------------------------------------------------------------------------------------
+	 * IP Allowlist Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Configure allowed IP addresses for request filtering.
+	 * When non-empty, only requests from these IPs are accepted.
+	 * Supports individual IPs (e.g., "192.168.1.100") and CIDR ranges (e.g., "192.168.0.0/24").
+	 *
+	 * @ips Array of IP addresses or CIDR ranges. Pass empty array to allow all IPs.
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function withAllowedIPs( required array ips ) {
+		variables.allowedIPs = arguments.ips.map( ip => trim( ip ).lCase() )
+		return this
+	}
+
+	/**
+	 * Add a single IP address or CIDR range to the allowed list.
+	 *
+	 * @ip IP address or CIDR range to allow
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function addAllowedIP( required string ip ) {
+		var normalized = trim( arguments.ip ).lCase()
+		if ( !variables.allowedIPs.contains( normalized ) ) {
+			arrayAppend( variables.allowedIPs, normalized )
+		}
+		return this
+	}
+
+	/**
+	 * Clear all allowed IP addresses (allow all IPs).
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function clearAllowedIPs() {
+		variables.allowedIPs = []
+		return this
+	}
+
+	/**
+	 * Check if IP allowlist is configured (non-empty).
+	 *
+	 * @return Boolean indicating if IP filtering is active
+	 */
+	boolean function hasAllowedIPs() {
+		return variables.allowedIPs.len() > 0
+	}
+
+	/**
+	 * Verify if a client IP is allowed based on the configured allowlist.
+	 * Supports exact IP matching and CIDR range matching.
+	 *
+	 * @clientIP The client IP address to verify
+	 * @requestData Optional request metadata for context
+	 *
+	 * @return Boolean indicating if the IP is allowed
+	 */
+	boolean function verifyClientIP( required string clientIP, struct requestData = {} ) {
+		if ( !hasAllowedIPs() ) {
+			return true // No allowlist configured, allow all
+		}
+
+		var normalizedIP = trim( arguments.clientIP ).lCase()
+
+		// Check exact match first
+		if ( variables.allowedIPs.contains( normalizedIP ) ) {
+			return true
+		}
+
+		// Check CIDR range matches
+		for ( var allowedEntry in variables.allowedIPs ) {
+			if ( allowedEntry.find( "/" ) ) {
+				// CIDR notation - check if IP falls within range
+				if ( isCIDRMatch( normalizedIP, allowedEntry ) ) {
+					return true
+				}
+			}
+		}
+
+		return false
+	}
+
+	/**
+	 * Extract the client IP address from request data.
+	 * Checks trusted proxy headers in order, then falls back to remoteAddr.
+	 *
+	 * @requestData The request metadata struct containing headers and connection info
+	 *
+	 * @return The extracted client IP address string
+	 */
+	string function getClientIP( required struct requestData ) {
+		// Check trusted proxy headers in order
+		for ( var headerName in variables.trustedProxyHeaders ) {
+			var headerValue = arguments.requestData.headers?.get( headerName ) ?: ""
+			if ( len( headerValue ) ) {
+				var extractedIP = _extractIPFromHeader( headerValue )
+				if ( len( extractedIP ) ) {
+					return extractedIP
+				}
+			}
+		}
+
+		// Fallback to remote address from metadata
+		var remoteAddr = arguments.requestData.metadata?.remoteAddr ?: ""
+		return _normalizeIPAddress( remoteAddr )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
 	 * MCP Request Handling
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
@@ -1746,6 +1879,126 @@ class {
 		}
 
 		return response
+	}
+
+	// ---------------------------------------------------------------------------------------------------------
+	// Private IP Allowlist Helper Methods
+	// ---------------------------------------------------------------------------------------------------------
+
+	/**
+	 * Extract the first valid IP from a proxy header value.
+	 * Handles comma-separated chains (e.g., X-Forwarded-For: client, proxy1, proxy2).
+	 *
+	 * @headerValue The raw header value string
+	 *
+	 * @return The first valid IP found, or empty string if none
+	 */
+	private string function _extractIPFromHeader( required string headerValue ) {
+		// X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
+		// The first one is the original client IP
+		var parts = arguments.headerValue.split( "," )
+		for ( var part in parts ) {
+			var ip = _normalizeIPAddress( part )
+			if ( len( ip ) && ip != "unknown" && ip != "null" ) {
+				return ip
+			}
+		}
+		return ""
+	}
+
+	/**
+	 * Normalize an IP address string by trimming whitespace and removing port suffix.
+	 *
+	 * @ip The raw IP string (may include port like "192.168.1.1:8080")
+	 *
+	 * @return Normalized IP address string
+	 */
+	private string function _normalizeIPAddress( required string ip ) {
+		var cleaned = trim( arguments.ip )
+
+		// Remove port suffix for IPv4 (e.g., "192.168.1.1:8080" -> "192.168.1.1")
+		if ( cleaned.find( ":" ) && !cleaned.startsWith( "[" ) ) {
+			// Check if it's IPv4 with port (single colon) vs IPv6 (multiple colons)
+			var colonCount = cleaned.replace( ":", "", "all" ).len()
+			if ( colonCount == 1 ) {
+				cleaned = cleaned.listFirst( ":" )
+			}
+		}
+
+		// Remove IPv6 brackets if present
+		if ( cleaned.startsWith( "[" ) && cleaned.endsWith( "]" ) ) {
+			cleaned = cleaned.substring( 2, cleaned.len() - 1 )
+		}
+
+		return cleaned.lCase()
+	}
+
+	/**
+	 * Check if a client IP falls within a CIDR range.
+	 * Supports both IPv4 and IPv6 CIDR notation.
+	 *
+	 * @clientIP The client IP address to check
+	 * @cidrRange The CIDR range (e.g., "192.168.0.0/24")
+	 *
+	 * @return Boolean indicating if the IP is within the CIDR range
+	 */
+	private boolean function isCIDRMatch( required string clientIP, required string cidrRange ) {
+		try {
+			var parts = arguments.cidrRange.split( "/" )
+			if ( parts.len() != 2 ) {
+				return false
+			}
+
+			var networkIP = parts[ 1 ]
+			var prefixLen = parseNumber( parts[ 2 ] )
+
+			// Use Java InetAddress for IP comparison
+			var clientAddr = createObject( "java", "java.net.InetAddress" ).getByName( arguments.clientIP )
+			var networkAddr = createObject( "java", "java.net.InetAddress" ).getByName( networkIP )
+
+			var clientBytes = clientAddr.getAddress()
+			var networkBytes = networkAddr.getAddress()
+
+			// Must be same address family
+			if ( clientBytes.len() != networkBytes.len() ) {
+				return false
+			}
+
+			// Check if prefix bits match using byte-by-byte comparison
+			// Java bytes are signed (-128 to 127), so we need to convert to unsigned (0-255)
+			// BoxLang uses 1-based indexing for Java arrays
+			var bitsToCheck = prefixLen
+			for ( var i = 1; i <= clientBytes.len() && bitsToCheck > 0; i++ ) {
+				var bitsInThisByte = min( 8, bitsToCheck )
+				// Build mask: for N bits, mask = 255 - (2^(8-N) - 1)
+				var shiftAmount = 8 - bitsInThisByte
+				var maskValue = 0
+				if ( shiftAmount == 0 ) {
+					maskValue = 255
+				} else {
+					maskValue = 255 - ( Math.pow( 2, shiftAmount ) castAs int - 1 )
+				}
+				// Convert signed Java byte to unsigned int before bitwise AND
+				// Must cast to int for b& operator (BoxLang returns BigDecimal from Java byte arrays)
+				var clientByteUnsigned = clientBytes[ i ] castAs int
+				if ( clientByteUnsigned < 0 ) clientByteUnsigned = clientByteUnsigned + 256
+				var networkByteUnsigned = networkBytes[ i ] castAs int
+				if ( networkByteUnsigned < 0 ) networkByteUnsigned = networkByteUnsigned + 256
+
+				// Use BoxLang's native b& bitwise AND operator
+				var clientMasked = clientByteUnsigned b& maskValue
+				var networkMasked = networkByteUnsigned b& maskValue
+				if ( clientMasked != networkMasked ) {
+					return false
+				}
+				bitsToCheck -= bitsInThisByte
+			}
+
+			return true
+		} catch ( any e ) {
+			static.mcpLogger.debug( "CIDR match failed for #arguments.clientIP# vs #arguments.cidrRange#: #e.message#" )
+			return false
+		}
 	}
 
 }
