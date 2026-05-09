@@ -1,0 +1,33 @@
+/**
+ * Test scheduler for SchedulerToolsTest
+ * Registers a few simple tasks for testing purposes
+ */
+class {
+
+	property name="scheduler";
+
+	function configure() {
+		scheduler
+			.setSchedulerName( "data-processing" )
+			.setTimezone( "America/New_York" );
+
+		scheduler.task( "cleanup-temp-files", "maintenance" )
+			.call( () => {
+				return "Cleaned up temp files";
+			} )
+			.every( 15, "minute" );
+
+		scheduler.task( "sync-database", "data" )
+			.call( () => {
+				return "Database synced";
+			} )
+			.everyHourAt( 30 );
+
+		scheduler.task( "generate-metrics", "reporting" )
+			.call( () => {
+				return "Metrics generated";
+			} )
+			.every( 5, "minute" );
+	}
+
+}
