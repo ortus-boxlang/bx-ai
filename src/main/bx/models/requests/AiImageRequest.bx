@@ -114,29 +114,29 @@ class extends="AiBaseRequest" {
 	){
 		super.init()
 
-		arguments.options = prepareOptions( arguments.options, arguments.methodDefaults );
+		arguments.options = prepareOptions( arguments.options, arguments.methodDefaults )
 
-		variables.prompt               = arguments.prompt;
-		variables.params               = arguments.params;
-		variables.provider             = options.provider ?: "";
-		variables.apiKey               = options.apiKey ?: "";
-		variables.logRequest           = options.logRequest ?: false;
-		variables.logRequestToConsole  = options.logRequestToConsole ?: false;
-		variables.logResponse          = options.logResponse ?: false;
-		variables.logResponseToConsole = options.logResponseToConsole ?: false;
-		variables.returnFormat         = options.returnFormat ?: "response";
-		variables.model                = params.model ?: options.model ?: "";
-		variables.timeout              = options.timeout ?: 30;
-		variables.baseURL              = options.baseURL ?: "";
-		variables.providerOptions      = options.providerOptions ?: {};
-		variables.n                    = params.n ?: options.n ?: 1;
-		variables.size                 = params.size ?: options.size ?: "auto";
-		variables.quality              = params.quality ?: options.quality ?: "auto";
-		variables.style                = params.style ?: options.style ?: "";
-		variables.instructions         = params.instructions ?: options.instructions ?: "";
-		variables.outputFormat         = params.outputFormat ?: options.outputFormat ?: "url";
-		variables.outputFile           = options.outputFile ?: "";
-		variables.format               = ( params.format ?: options.format ?: "png" ).lCase();
+		variables.prompt               = arguments.prompt
+		variables.params               = arguments.params
+		variables.provider             = options.provider ?: ""
+		variables.apiKey               = options.apiKey ?: ""
+		variables.logRequest           = options.logRequest ?: false
+		variables.logRequestToConsole  = options.logRequestToConsole ?: false
+		variables.logResponse          = options.logResponse ?: false
+		variables.logResponseToConsole = options.logResponseToConsole ?: false
+		variables.returnFormat         = options.returnFormat ?: "response"
+		variables.model                = params.model ?: options.model ?: ""
+		variables.timeout              = options.timeout ?: 30
+		variables.baseURL              = options.baseURL ?: ""
+		variables.providerOptions      = options.providerOptions ?: {}
+		variables.n                    = params.n ?: options.n ?: 1
+		variables.size                 = params.size ?: options.size ?: "auto"
+		variables.quality              = params.quality ?: options.quality ?: "auto"
+		variables.style                = params.style ?: options.style ?: ""
+		variables.instructions         = params.instructions ?: options.instructions ?: ""
+		variables.outputFormat         = params.outputFormat ?: options.outputFormat ?: "url"
+		variables.outputFile           = options.outputFile ?: ""
+		variables.format               = ( params.format ?: options.format ?: "png" ).lCase()
 		if ( options.keyExists( "outputCompression" ) ) {
 			variables.params.output_compression = options.outputCompression
 		}
@@ -453,8 +453,8 @@ class extends="AiBaseRequest" {
 	AiImageRequest function withLogging( boolean request = true, boolean response = true, boolean console = false ){
 		variables.logRequest           = arguments.request
 		variables.logResponse          = arguments.response
-		variables.logRequestToConsole  = arguments.console
-		variables.logResponseToConsole = arguments.console
+		variables.logRequestToConsole  = arguments.console && arguments.request
+		variables.logResponseToConsole = arguments.console && arguments.response
 		return this
 	}
 

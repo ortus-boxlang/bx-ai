@@ -189,6 +189,14 @@ class extends="AiBaseRequest" {
 	}
 
 	/**
+	 * Check if a voice has been set on this request (either directly or via the .male() / .female() shortcuts).
+	 * Useful for conditionally applying voice-related options or logic in aiSpeak() before the request is executed.
+	 */
+	boolean function hasVoice(){
+		return !variables.voice.isEmpty()
+	}
+
+	/**
 	 * Set the speech speed multiplier.
 	 *
 	 * @speed Speed multiplier (0.25 to 4.0 for OpenAI)
@@ -340,8 +348,8 @@ class extends="AiBaseRequest" {
 	AiSpeechRequest function withLogging( boolean request = true, boolean response = true, boolean console = false ){
 		variables.logRequest           = arguments.request
 		variables.logResponse          = arguments.response
-		variables.logRequestToConsole  = arguments.console
-		variables.logResponseToConsole = arguments.console
+		variables.logRequestToConsole  = arguments.console && arguments.request
+		variables.logResponseToConsole = arguments.console && arguments.response
 		return this
 	}
 
@@ -368,7 +376,10 @@ class extends="AiBaseRequest" {
 		if ( len( variables.model ) && !newParams.keyExists( "model" ) ) {
 			newParams.model = variables.model
 		}
-		newParams.voice = variables.voice // Ensure the resolved voice is included in params
+
+		if( hasVoice() ){
+			newParams.voice = variables.voice
+		}
 
 		return aiSpeak(
 			variables.text,

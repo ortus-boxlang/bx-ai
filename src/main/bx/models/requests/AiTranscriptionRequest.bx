@@ -423,8 +423,8 @@ class extends="AiBaseRequest" {
 	AiTranscriptionRequest function withLogging( boolean request = true, boolean response = true, boolean console = false ){
 		variables.logRequest           = arguments.request
 		variables.logResponse          = arguments.response
-		variables.logRequestToConsole  = arguments.console
-		variables.logResponseToConsole = arguments.console
+		variables.logRequestToConsole  = arguments.console && arguments.request
+		variables.logResponseToConsole = arguments.console && arguments.response
 		return this
 	}
 

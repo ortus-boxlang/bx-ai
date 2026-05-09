@@ -751,7 +751,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		var dataPacket = {
 			"model" : arguments.speechRequest.getModel(),
 			"input" : arguments.speechRequest.getText(),
-			"voice" : arguments.speechRequest.getVoice()
+			"voice" : arguments.speechRequest.hasVoice() ? arguments.speechRequest.getVoice() : static.DEFAULT_SPEECH_PARAMS.voice
 		}
 
 		// Optional params

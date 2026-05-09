@@ -396,6 +396,7 @@ public class aiSpeakTest extends BaseIntegrationTest {
 			aiSpeak()
 				.text( "Fluent chain test" )
 				.model( "tts-1-hd" )
+				.withLogging( console: true )
 				.speak();
 			""",
 			context
