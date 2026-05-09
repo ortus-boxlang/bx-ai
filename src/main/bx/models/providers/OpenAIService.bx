@@ -1149,9 +1149,6 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		if ( arguments.imageRequest.getQuality().len() && arguments.imageRequest.getQuality() != "auto" ) {
 			dataPacket.quality = arguments.imageRequest.getQuality()
 		}
-		if ( arguments.imageRequest.getStyle().len() ) {
-			dataPacket.style = arguments.imageRequest.getStyle()
-		}
 		if ( arguments.imageRequest.getFormat().len() && arguments.imageRequest.getFormat() != "png" ) {
 			dataPacket.output_format = arguments.imageRequest.getFormat()
 		}
@@ -1213,7 +1210,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				errorMessage  = errorData.error?.message ?: errorData.toString()
 			} catch ( any parseEx ) {
 				writeLog(
-					text: "Unable to parse image generation error response: #imageResult.toString()#",
+					text: "Unable to parse image generation error response: #imageResult.errorDetail#",
 					type: "warning",
 					log : "ai"
 				)

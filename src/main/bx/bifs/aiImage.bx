@@ -117,16 +117,8 @@ class {
 			return imageRequest
 		}
 
-		return _execute( imageRequest, arguments.options )
-	}
-
-	/**
-	 * Core execution — resolves service, fires events, invokes provider, returns result.
-	 * Called by invoke() for direct calls and by AiImageRequest.generate() for the fluent path.
-	 */
-	private function _execute( required imageRequest, required struct options ){
 		// Get the service
-		var service = aiService( arguments.imageRequest.getProvider(), arguments.options )
+		var service = aiService( imageRequest.getProvider(), arguments.options )
 
 		if ( !isInstanceOf( service, "IAiImageService" ) ) {
 			throw(
@@ -136,17 +128,17 @@ class {
 		}
 
 		// Fire before event
-		BoxAnnounce( "beforeAIImageGeneration", { imageRequest: arguments.imageRequest, service: service } )
+		BoxAnnounce( "beforeAIImageGeneration", { imageRequest: imageRequest, service: service } )
 
 		// Invoke image generation
-		var result = service.generateImage( arguments.imageRequest )
+		var result = service.generateImage( imageRequest )
 
 		// Fire after event
-		BoxAnnounce( "afterAIImageGeneration", { imageRequest: arguments.imageRequest, service: service, result: result } )
+		BoxAnnounce( "afterAIImageGeneration", { imageRequest: imageRequest, service: service, result: result } )
 
 		// If an output file was requested, save the first image and return the path
-		if ( len( arguments.imageRequest.getOutputFile() ) ) {
-			return result.saveToFile( arguments.imageRequest.getOutputFile() )
+		if ( len( imageRequest.getOutputFile() ) ) {
+			return result.saveToFile( imageRequest.getOutputFile() )
 		}
 
 		return result

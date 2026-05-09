@@ -81,7 +81,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `SERVER_PAUSED: -32005` error code added to `RPC_ERROR_CODES`.
   - Two new interception points registered: `onMCPServerPause`, `onMCPServerResume`.
 
+### 🧠 Improvements
+
 - BoxLang 1.13.0 testing.
+- You can now get the binded system message from an agent via `agent.buildSystemMessage()` for debugging and inspection.
+- An agent config now includes the `systemMessage` property
 
 ### 🪲 Fixed
 

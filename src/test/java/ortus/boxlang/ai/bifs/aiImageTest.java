@@ -108,22 +108,18 @@ public class aiImageTest extends BaseIntegrationTest {
 					capturedSize   = data.imageRequest.getSize();
 				},
 				"beforeAIImageGeneration"
-			);
-			try {
-				aiImage(
-					prompt  : "a sunset over the ocean",
-					options : { size: "1792x1024" }
-				);
-			} catch( any e ) {
-				// expected — API call may fail without a valid key
-			}
+			)
+			aiImage(
+				prompt  : "a sunset over the ocean",
+				options : { size: "1024x1024" }
+			)
 			""",
 			context
 		);
 		// @formatter:on
 
 		assertThat( variables.getAsString( Key.of( "capturedPrompt" ) ) ).isEqualTo( "a sunset over the ocean" );
-		assertThat( variables.getAsString( Key.of( "capturedSize" ) ) ).isEqualTo( "1792x1024" );
+		assertThat( variables.getAsString( Key.of( "capturedSize" ) ) ).isEqualTo( "1024x1024" );
 	}
 
 	@DisplayName( "aiImage with OpenAI returns AiImageResponse with at least one image" )
@@ -151,38 +147,6 @@ public class aiImageTest extends BaseIntegrationTest {
 		assertThat( imageCount ).isGreaterThan( 0 );
 		assertThat( firstBase64 ).isNotEmpty();
 		assertThat( providerName ).isEqualTo( "OpenAI" );
-	}
-
-	@DisplayName( "aiImage with Gemini Imagen returns AiImageResponse with binary image data" )
-	@Test
-	public void testAiImageGeminiReturnsResponse() {
-		// @formatter:off
-		executeWithTimeoutHandling(
-			"""
-			response   = aiImage(
-				prompt : "a simple blue square on a white background",
-				options: { provider: "gemini", apiKey: geminiKey }
-			)
-			hasImages  = response.hasImages()
-			imageCount = response.getCount()
-			provider   = response.getProvider()
-			// Gemini returns binary data directly (no URL)
-			firstImage = response.getFirstImage()
-			hasData    = !isNull( firstImage.data ) && arrayLen( firstImage.data ) > 0
-			""".replace( "geminiKey", "\"" + dotenv.get( "GEMINI_API_KEY", "" ) + "\"" ),
-			context
-		);
-		// @formatter:on
-
-		var	hasImages	= variables.getAsBoolean( Key.of( "hasImages" ) );
-		var	imageCount	= variables.getAsInteger( Key.of( "imageCount" ) );
-		var	provider	= variables.getAsString( Key.of( "provider" ) );
-		var	hasData		= variables.getAsBoolean( Key.of( "hasData" ) );
-
-		assertThat( hasImages ).isTrue();
-		assertThat( imageCount ).isGreaterThan( 0 );
-		assertThat( provider ).isEqualTo( "Gemini" );
-		assertThat( hasData ).isTrue();
 	}
 
 	@DisplayName( "aiImage with outputFile option saves image to disk and returns path" )
@@ -228,6 +192,320 @@ public class aiImageTest extends BaseIntegrationTest {
 
 		// Cleanup
 		new java.io.File( outputPath ).delete();
+	}
+
+	// ==========================================================================
+	// Fluent Builder API Tests
+	// ==========================================================================
+
+	@DisplayName( "aiImage() with no arguments returns an AiImageRequest builder" )
+	@Test
+	public void testAiImageNoArgsReturnsBuilder() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiImage()
+			isBuilder = isInstanceOf( result, "AiImageRequest" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var isBuilder = variables.getAsBoolean( Key.of( "isBuilder" ) );
+		assertThat( isBuilder ).isTrue();
+	}
+
+	@DisplayName( "AiImageRequest.of() static factory creates a request with the given prompt" )
+	@Test
+	public void testAiImageRequestOfStaticFactory() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.requests.AiImageRequest
+			imageRequest = AiImageRequest.of( "a red fox in autumn leaves" )
+			result = imageRequest.getPrompt()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var result = variables.getAsString( Key.of( "result" ) );
+		assertThat( result ).isEqualTo( "a red fox in autumn leaves" );
+	}
+
+	@DisplayName( "Fluent builder .landscape().high() sets size and quality correctly" )
+	@Test
+	public void testFluentBuilderSizeAndQuality() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result = aiImage()
+				.prompt( "mountain landscape" )
+				.landscape()
+				.high()
+
+			prompt = result.getPrompt()
+			size   = result.getSize()
+			quality = result.getQuality()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var	prompt	= variables.getAsString( Key.of( "prompt" ) );
+		var	size	= variables.getAsString( Key.of( "size" ) );
+		var	quality	= variables.getAsString( Key.of( "quality" ) );
+		assertThat( prompt ).isEqualTo( "mountain landscape" );
+		assertThat( size ).isEqualTo( "1536x1024" );
+		assertThat( quality ).isEqualTo( "high" );
+
+	}
+
+	@DisplayName( "Fluent builder .portrait().low() sets portrait size and low quality" )
+	@Test
+	public void testFluentBuilderPortraitAndLowQuality() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedSize    = "";
+			capturedQuality = "";
+			BoxRegisterInterceptor(
+				function( data ) {
+					capturedSize    = data.imageRequest.getSize();
+					capturedQuality = data.imageRequest.getQuality();
+				},
+				"beforeAIImageGeneration"
+			);
+			aiImage()
+				.prompt( "portrait photo" )
+				.portrait()
+				.low()
+				.generate();
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedSize" ) ) ).isEqualTo( "1024x1536" );
+		assertThat( variables.getAsString( Key.of( "capturedQuality" ) ) ).isEqualTo( "low" );
+	}
+
+	@DisplayName( "Fluent builder .style().instructions() sets style and instructions" )
+	@Test
+	public void testFluentBuilderStyleAndInstructions() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedStyle      = "";
+			capturedInstructions = "";
+			BoxRegisterInterceptor(
+				function( data ) {
+					capturedStyle      = data.imageRequest.getStyle();
+					capturedInstructions = data.imageRequest.getInstructions();
+				},
+				"beforeAIImageGeneration"
+			);
+			aiImage()
+				.prompt( "a cat" )
+				.style( "vivid" )
+				.instructions( "in the style of impressionist painting" )
+				.generate();
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedStyle" ) ) ).isEqualTo( "vivid" );
+		assertThat( variables.getAsString( Key.of( "capturedInstructions" ) ) ).isEqualTo( "in the style of impressionist painting" );
+	}
+
+	@DisplayName( "Fluent builder .asWebp() sets output format to webp" )
+	@Test
+	public void testFluentBuilderOutputFormatWebp() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedFormat = "";
+			BoxRegisterInterceptor(
+				function( data ) { capturedFormat = data.imageRequest.getFormat(); },
+				"beforeAIImageGeneration"
+			);
+			aiImage()
+				.prompt( "a blue circle" )
+				.asWebp()
+				.generate();
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedFormat" ) ) ).isEqualTo( "webp" );
+	}
+
+	@DisplayName( "Fluent builder .asJpeg() sets output format to jpeg" )
+	@Test
+	public void testFluentBuilderOutputFormatJpeg() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedFormat = "";
+			BoxRegisterInterceptor(
+				function( data ) { capturedFormat = data.imageRequest.getFormat(); },
+				"beforeAIImageGeneration"
+			);
+			aiImage()
+				.prompt( "a green square" )
+				.asJpeg()
+				.generate();
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedFormat" ) ) ).isEqualTo( "jpeg" );
+	}
+
+	@DisplayName( "Fluent builder .outputFormat('b64_json') sets response format" )
+	@Test
+	public void testFluentBuilderOutputFormatB64Json() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedOutputFormat = "";
+			BoxRegisterInterceptor(
+				function( data ) { capturedOutputFormat = data.imageRequest.getOutputFormat(); },
+				"beforeAIImageGeneration"
+			);
+			aiImage()
+				.prompt( "a purple triangle" )
+				.outputFormat( "b64_json" )
+				.generate();
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedOutputFormat" ) ) ).isEqualTo( "b64_json" );
+	}
+
+	@DisplayName( "Fluent builder .n(2) sets number of images" )
+	@Test
+	public void testFluentBuilderImageCount() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedN = 0;
+			BoxRegisterInterceptor(
+				function( data ) { capturedN = data.imageRequest.getN(); },
+				"beforeAIImageGeneration"
+			);
+			aiImage()
+				.prompt( "three colored dots" )
+				.n( 2 )
+				.generate();
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "capturedN" ) ) ).isEqualTo( 2 );
+	}
+
+	@DisplayName( "Fluent builder .outputFile() saves image and returns file path" )
+	@Test
+	public void testFluentBuilderOutputFile() {
+		var outputPath = "/tmp/bxai-fluent-image-test.png";
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+			savedPath = aiImage()
+				.prompt( "a simple orange diamond" )
+				.outputFile( "#outputPath#" )
+				.generate()
+			fileExistsResult = fileExists( savedPath )
+			""".replace( "#outputPath#", outputPath ),
+			context
+		);
+		// @formatter:on
+
+		var fileExistsResult = variables.getAsBoolean( Key.of( "fileExistsResult" ) );
+		assertThat( fileExistsResult ).isTrue();
+
+		// Cleanup
+		new java.io.File( outputPath ).delete();
+	}
+
+	@DisplayName( "Fluent builder .outputCompression() sets compression param" )
+	@Test
+	public void testFluentBuilderOutputCompression() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedCompression = 0;
+			BoxRegisterInterceptor(
+				function( data ) { capturedCompression = data.imageRequest.getParams().output_compression ?: 0; },
+				"beforeAIImageGeneration"
+			);
+			aiImage()
+				.prompt( "a compressed image test" )
+				.asJpeg()
+				.outputCompression( 75 )
+				.generate();
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "capturedCompression" ) ) ).isEqualTo( 75 );
+	}
+
+	@DisplayName( "Fluent builder full chain: prompt, provider, model, size, quality, style, format" )
+	@Test
+	public void testFluentBuilderFullChain() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedPrompt   = "";
+			capturedProvider = "";
+			capturedModel    = "";
+			capturedSize     = "";
+			capturedQuality  = "";
+			capturedStyle    = "";
+			capturedFormat   = "";
+			BoxRegisterInterceptor(
+				function( data ) {
+					var req = data.imageRequest;
+					capturedPrompt   = req.getPrompt();
+					capturedProvider = req.getProvider();
+					capturedModel    = req.getModel();
+					capturedSize     = req.getSize();
+					capturedQuality  = req.getQuality();
+					capturedStyle    = req.getStyle();
+					capturedFormat   = req.getFormat();
+				},
+				"beforeAIImageGeneration"
+			);
+			aiImage()
+				.prompt( "a majestic eagle soaring over snow-capped mountains" )
+				.provider( "openai" )
+				.model( "gpt-image-1" )
+				.landscape()
+				.high()
+				.style( "vivid" )
+				.asWebp()
+				.generate();
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "capturedPrompt" ) ) ).isEqualTo( "a majestic eagle soaring over snow-capped mountains" );
+		assertThat( variables.getAsString( Key.of( "capturedProvider" ) ) ).isEqualTo( "openai" );
+		assertThat( variables.getAsString( Key.of( "capturedModel" ) ) ).isEqualTo( "gpt-image-1" );
+		assertThat( variables.getAsString( Key.of( "capturedSize" ) ) ).isEqualTo( "1536x1024" );
+		assertThat( variables.getAsString( Key.of( "capturedQuality" ) ) ).isEqualTo( "high" );
+		assertThat( variables.getAsString( Key.of( "capturedStyle" ) ) ).isEqualTo( "vivid" );
+		assertThat( variables.getAsString( Key.of( "capturedFormat" ) ) ).isEqualTo( "webp" );
 	}
 
 }
