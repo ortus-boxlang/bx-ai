@@ -46,7 +46,7 @@ class {
 	 *
 	 * @data The struct to mask (modified in place)
 	 */
-	private void function maskSensitiveValues( required struct data ) {
+	private struct function maskSensitiveValues( required struct data ) {
 		var patterns = static.sensitivePatterns
 
 		data.each( ( k, v ) => {
@@ -65,6 +65,8 @@ class {
 				maskSensitiveValues( v )
 			}
 		} )
+
+		return data
 	}
 
 	/**
@@ -199,5 +201,9 @@ class {
 	 */
 	private string function getSystemProperty( required string name, string defaultValue = "" ) {
 		return System.getProperty( arguments.name ) ?: arguments.defaultValue
+	}
+
+	private Key function keyOf( required string name ) {
+		return createObject( "java", "ortus.boxlang.runtime.scopes.Key" ).of( arguments.name )
 	}
 }

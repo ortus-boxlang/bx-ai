@@ -1,0 +1,397 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MCP Tools for BoxLang SchedulerService introspection and task management.
+ *
+ * Provides comprehensive visibility into the BoxLang scheduler system including:
+ * - Registered schedulers with their configurations and tasks
+ * - Task statistics, execution history, and health
+ * - Task lifecycle management (run, pause, resume)
+ * - Scheduler health and status
+ *
+ * These tools are designed for system administrators and developers
+ * who need to inspect and manage scheduled tasks in the BoxLang runtime.
+ *
+ * NOTE: These tools are MCP-only and are NOT registered in the AI tool registry.
+ */
+class extends="BaseTool" {
+
+	static{
+		schedulerService = getBoxRuntime().getSchedulerService()
+	}
+
+
+	// =========================================================================
+	// Scheduler Introspection Methods
+	// =========================================================================
+
+	/**
+	 * Get all registered task schedulers with their configurations and scheduled tasks.
+	 */
+	@mcpTool
+	@AITool
+	public array function get_schedulers() {
+		var schedulers       = static.schedulerService.getSchedulers()
+		var result           = []
+
+		schedulers.each( ( key, scheduler ) => {
+			result.append( {
+				"name"            : scheduler.getSchedulerName(),
+				"executor"        : _getExecutorName( scheduler ),
+				"started"         : scheduler.hasStarted(),
+				"startedAt"       : scheduler.getStartedAt(),
+				"isRunning" 	  : scheduler.isRunning(),
+				"timezone"        : scheduler.getTimezone()?.getID() ?: "",
+				"taskCount"       : scheduler.getRegisteredTasks().size(),
+				"tasks"           : scheduler.getRegisteredTasks(),
+				"taskStats"       : scheduler.getTaskStats()
+			} )
+		} )
+
+		return result.sort( ( a, b ) => lCase( a.name ).compare( lCase( b.name ) ) )
+	}
+
+	/**
+	 * Get a simple array of registered scheduler names.
+	 */
+	@mcpTool
+	@AITool
+	public array function get_scheduler_names() {
+		return static.schedulerService.getSchedulerNames()
+	}
+
+	/**
+	 * Get details for a specific scheduler by name, including its tasks and their records.
+	 *
+	 * @schedulerName The name of the scheduler to inspect
+	 */
+	@mcpTool
+	@AITool
+	public any function get_scheduler( required string schedulerName ) {
+		var schedulerKey = keyOf( arguments.schedulerName )
+
+		if ( !static.schedulerService.hasScheduler( schedulerKey ) ) {
+			return {
+				"error"   : true,
+				"message" : "Scheduler not found: #arguments.schedulerName#. Use get_schedulers() to see available schedulers."
+			}
+		}
+
+		var scheduler = static.schedulerService.getScheduler( schedulerKey )
+
+		return {
+			"name"            : scheduler.getSchedulerName(),
+			"executor"        : _getExecutorName( scheduler ),
+			"started"         : scheduler.hasStarted(),
+			"startedAt"       : scheduler.getStartedAt(),
+			"isRunning" 	  : scheduler.isRunning(),
+			"timezone"        : scheduler.getTimezone()?.getID() ?: "",
+			"taskCount"       : scheduler.getRegisteredTasks().size(),
+			"tasks"           : scheduler.getRegisteredTasks(),
+			"taskStats"       : scheduler.getTaskStats()
+		}
+	}
+
+	/**
+	 * Check if a scheduler is registered in the runtime.
+	 *
+	 * @schedulerName The name of the scheduler to check
+	 */
+	@mcpTool
+	@AITool
+	public any function has_scheduler( required string schedulerName ) {
+		return {
+			"name"      : arguments.schedulerName,
+			"registered" : static.schedulerService.hasScheduler( keyOf( arguments.schedulerName ) )
+		}
+	}
+
+	// =========================================================================
+	// Task Introspection Methods
+	// =========================================================================
+
+	/**
+	 * Get the execution statistics for a specific task within a scheduler.
+	 *
+	 * @schedulerName The name of the scheduler that owns the task
+	 * @taskName      The name of the task to inspect
+	 */
+	@mcpTool
+	@AITool
+	public struct function get_task_stats( required string schedulerName, required string taskName ) {
+		var task = _resolveTask( arguments.schedulerName, arguments.taskName )
+
+		if ( isStruct( task ) && task.containsKey( "error" ) ) {
+			return task
+		}
+
+		return task.getStats()
+	}
+
+	/**
+	 * Get details for a specific task including its configuration and metadata.
+	 *
+	 * @schedulerName The name of the scheduler that owns the task
+	 * @taskName      The name of the task to inspect
+	 */
+	@mcpTool
+	@AITool
+	public any function get_task_info( required string schedulerName, required string taskName ) {
+		var task = _resolveTask( arguments.schedulerName, arguments.taskName )
+		if ( isStruct( task ) && task.containsKey( "error" ) ) {
+			return task
+		}
+
+		return {
+			"name"       : task.getName(),
+			"group"      : task.getGroup(),
+			"scheduler"  : arguments.schedulerName,
+			"scheduled"  : task.isScheduled(),
+			"disabled"   : task.isDisabled(),
+			"period"     : task.getPeriod(),
+			"timeUnit"   : task.getTimeUnit()?.name() ?: "",
+			"cron"       : task.getMeta().get( "cronExpression" ) ?: "",
+			"stats"      : task.getStats(),
+			"meta"       : task.getMeta()
+		}
+	}
+
+	/**
+	 * Get all tasks across all schedulers with their basic info.
+	 */
+	@mcpTool
+	@AITool
+	public any function get_all_tasks() {
+		var schedulerService = getRuntime().getSchedulerService()
+		var schedulers       = schedulerService.getSchedulers()
+		var result           = []
+
+		schedulers.each( ( key, scheduler ) => {
+			var schedulerName = scheduler.getSchedulerName()
+			scheduler.getRegisteredTasks().each( ( taskName ) => {
+				var taskRecord = scheduler.getTaskRecord( taskName )
+				if ( !isNull( taskRecord ) && !isNull( taskRecord.task ) ) {
+					var task = taskRecord.task
+					result.append( {
+						"scheduler"  : schedulerName,
+						"name"       : task.getName(),
+						"group"      : task.getGroup(),
+						"scheduled"  : task.isScheduled(),
+						"disabled"   : task.isDisabled(),
+						"period"     : task.getPeriod(),
+						"timeUnit"   : task.getTimeUnit()?.name() ?: "",
+						"cron"       : task.getMeta().get( "cronExpression" ) ?: ""
+					} )
+				}
+			} )
+		} )
+
+		return result.sort( ( a, b ) => {
+			var cmp = lCase( a.scheduler ).compare( lCase( b.scheduler ) )
+			if ( cmp != 0 ) return cmp
+			return lCase( a.name ).compare( lCase( b.name ) )
+		} )
+	}
+
+	// =========================================================================
+	// Task Lifecycle Management
+	// =========================================================================
+
+	/**
+	 * Force-run a specific scheduled task immediately, bypassing any constraints or disabled flag.
+	 *
+	 * @schedulerName The name of the scheduler that owns the task
+	 * @taskName      The name of the task to run
+	 *
+	 * @return The stats of the task execution attempt
+	 */
+	@mcpTool
+	@AITool
+	public struct function run_task( required string schedulerName, required string taskName ) {
+		var task = _resolveTask( arguments.schedulerName, arguments.taskName )
+		if ( isStruct( task ) && task.containsKey( "error" ) ) return task
+
+		task.run( force = true )
+
+		return task.getStats()
+	}
+
+	/**
+	 * Pause a specific scheduled task so it skips execution on its next scheduled trigger.
+	 * The task remains registered in the scheduler but will not run until resumed.
+	 *
+	 * @schedulerName The name of the scheduler that owns the task
+	 * @taskName      The name of the task to pause
+	 */
+	@mcpTool
+	@AITool
+	public any function pause_task( required string schedulerName, required string taskName ) {
+		var task = _resolveTask( arguments.schedulerName, arguments.taskName )
+		if ( isStruct( task ) && task.containsKey( "error" ) ) return task
+
+		task.disable()
+		return {
+			"success" : true,
+			"message" : "Task '#arguments.taskName#' in scheduler '#arguments.schedulerName#' has been paused."
+		}
+	}
+
+	/**
+	 * Resume a previously paused scheduled task so it executes again on its next scheduled trigger.
+	 *
+	 * @schedulerName The name of the scheduler that owns the task
+	 * @taskName      The name of the task to resume
+	 */
+	@mcpTool
+	@AITool
+	public any function resume_task( required string schedulerName, required string taskName ) {
+		var task = _resolveTask( arguments.schedulerName, arguments.taskName )
+		if ( isStruct( task ) && task.containsKey( "error" ) ) return task
+
+		task.enable()
+		return {
+			"success" : true,
+			"message" : "Task '#arguments.taskName#' in scheduler '#arguments.schedulerName#' has been resumed."
+		}
+	}
+
+	// =========================================================================
+	// Scheduler Health & Summary
+	// =========================================================================
+
+	/**
+	 * Get a health summary of all schedulers and their tasks.
+	 */
+	@mcpTool
+	@AITool
+	public any function get_scheduler_health() {
+		var schedulers       = static.schedulerService.getSchedulers()
+		var totalTasks       = 0
+		var activeTasks      = 0
+		var pausedTasks      = 0
+		var startedCount     = 0
+
+		schedulers.each( ( key, scheduler ) => {
+			if ( scheduler.hasStarted() ) startedCount++
+			totalTasks += scheduler.getRegisteredTasks().size()
+
+			scheduler.getRegisteredTasks().each( ( taskName ) => {
+				var taskRecord = scheduler.getTaskRecord( taskName )
+				if ( !isNull( taskRecord ) && !isNull( taskRecord.task ) ) {
+					var task = taskRecord.task
+					if ( task.isDisabled() ) {
+						pausedTasks++
+					} else {
+						activeTasks++
+					}
+				}
+			} )
+		} )
+
+		return {
+			"totalSchedulers" : schedulers.size(),
+			"startedSchedulers" : startedCount,
+			"stoppedSchedulers" : schedulers.size() - startedCount,
+			"totalTasks"      : totalTasks,
+			"activeTasks"     : activeTasks,
+			"pausedTasks"     : pausedTasks
+		}
+	}
+
+	/**
+	 * Get a summary of all scheduler task stats across all schedulers.
+	 */
+	@mcpTool
+	@AITool
+	public any function get_all_task_stats() {
+		return static.schedulerService.getSchedulerStats()
+	}
+
+	/**
+	 * Get all scheduled tasks persisted on disk (tasks.json).
+	 * These are the task definitions that survive runtime restarts and are loaded
+	 * into schedulers on startup.
+	 */
+	@mcpTool
+	@AITool
+	public any function get_persisted_tasks() {
+		try {
+			var tasks = static.schedulerService.loadTasksFromDisk()
+			return {
+				"total" : tasks.size(),
+				"tasks" : tasks
+			}
+		} catch ( any e ) {
+			return {
+				"error"   : true,
+				"message" : "Failed to load persisted tasks: #e.message#"
+			}
+		}
+	}
+
+	// =========================================================================
+	// Private Helpers
+	// =========================================================================
+
+	/**
+	 * Resolves a task by scheduler and task name.
+	 * Returns the ScheduledTask object on success, or an error struct if the
+	 * scheduler or task does not exist.
+	 *
+	 * @schedulerName The name of the scheduler that owns the task
+	 * @taskName      The name of the task to resolve
+	 */
+	private any function _resolveTask( required string schedulerName, required string taskName ) {
+		var schedulerKey     = keyOf( arguments.schedulerName )
+
+		if ( !static.schedulerService.hasScheduler( schedulerKey ) ) {
+			return {
+				"error"   : true,
+				"message" : "Scheduler not found: #arguments.schedulerName#. Use get_schedulers() to see available schedulers."
+			}
+		}
+
+		var scheduler = static.schedulerService.getScheduler( schedulerKey )
+
+		if ( !scheduler.hasTask( arguments.taskName ) ) {
+			return {
+				"error"   : true,
+				"message" : "Task not found: '#arguments.taskName#' in scheduler '#arguments.schedulerName#'"
+			}
+		}
+
+		var taskRecord = scheduler.getTaskRecord( arguments.taskName )
+		if ( isNull( taskRecord ) || isNull( taskRecord.task ) ) {
+			return {
+				"error"   : true,
+				"message" : "Task record is null for '#arguments.taskName#' in scheduler '#arguments.schedulerName#'"
+			}
+		}
+
+		return taskRecord.task
+	}
+
+	/**
+	 * Get the executor name from a scheduler, handling null safely.
+	 *
+	 * @scheduler The target scheduler
+	 *
+	 * @return The name of the executor, none if null
+	 */
+	private string function _getExecutorName( required any scheduler ) {
+		var executor = scheduler.getExecutor()
+		return isNull( executor ) ? "none" : executor.name()
+	}
+
+}

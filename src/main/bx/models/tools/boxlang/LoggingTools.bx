@@ -35,6 +35,7 @@ class extends="BaseTool" {
 	 * Get general information about the BoxLang logging system including log directory, logger count, and appender count.
 	 */
 	@mcpTool
+	@AITool
 	public struct function get_logging_info() {
 		var loggingService = getRuntime().getLoggingService()
 		var config         = getRuntime().getConfiguration().logging
@@ -57,6 +58,7 @@ class extends="BaseTool" {
 	 * Get the runtime logging configuration including log levels, appenders, and retention policies.
 	 */
 	@mcpTool
+	@AITool
 	public struct function get_logging_config() {
 		var config = getRuntime().getConfiguration().logging
 		var result = config.asStruct()
@@ -84,6 +86,7 @@ class extends="BaseTool" {
 	 * Get all registered loggers with their names and appender information.
 	 */
 	@mcpTool
+	@AITool
 	public array function get_loggers() {
 		var loggingService = getRuntime().getLoggingService()
 		var loggerNames    = loggingService.getLoggersList()
@@ -108,6 +111,7 @@ class extends="BaseTool" {
 	 * @loggerName The name of the logger to inspect (e.g., "application", "async", "cache")
 	 */
 	@mcpTool
+	@AITool
 	public any function get_logger( required string loggerName ) {
 		var loggingService = getRuntime().getLoggingService()
 		var loggerNames    = loggingService.getLoggersList()
@@ -135,6 +139,7 @@ class extends="BaseTool" {
 	 * Get the root logger details including its attached appenders.
 	 */
 	@mcpTool
+	@AITool
 	public struct function get_root_logger() {
 		var loggingService = getRuntime().getLoggingService()
 		var rootLogger     = loggingService.getRootLogger()
@@ -154,6 +159,7 @@ class extends="BaseTool" {
 	 * Get all registered appenders with their file paths, types, and configuration.
 	 */
 	@mcpTool
+	@AITool
 	public array function get_appenders() {
 		var loggingService = getRuntime().getLoggingService()
 		var appenderPaths  = loggingService.getAppendersList()
@@ -181,6 +187,7 @@ class extends="BaseTool" {
 	 * @limit      Maximum number of log entries to return (default: 100).
 	 */
 	@mcpTool
+	@AITool
 	public any function read_log_entries( string loggerName = "runtime", numeric limit = 100 ) {
 		var loggingService = getRuntime().getLoggingService()
 		var logFile        = _getLogFileForLogger( arguments.loggerName )
@@ -219,6 +226,7 @@ class extends="BaseTool" {
 	 * @loggerName The name of the logger to search (e.g., "application", "exception"). Defaults to "runtime".
 	 */
 	@mcpTool
+	@AITool
 	public any function get_last_error( string loggerName = "runtime" ) {
 		var loggingService = getRuntime().getLoggingService()
 		var logFile        = _getLogFileForLogger( arguments.loggerName )
@@ -265,6 +273,7 @@ class extends="BaseTool" {
 	 * @limit      Maximum number of matching entries to return (default: 50).
 	 */
 	@mcpTool
+	@AITool
 	public any function search_log_entries( string loggerName = "runtime", required string keyword, numeric limit = 50 ) {
 		var loggingService = getRuntime().getLoggingService()
 		var logFile        = _getLogFileForLogger( arguments.loggerName )
@@ -315,6 +324,7 @@ class extends="BaseTool" {
 	 * @message    The message to log.
 	 */
 	@mcpTool
+	@AITool
 	public any function log_message( required string loggerName, string level = "info", required string message ) {
 		var loggingService = getRuntime().getLoggingService()
 		var logger         = loggingService.getLogger( arguments.loggerName )
