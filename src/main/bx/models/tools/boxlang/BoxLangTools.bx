@@ -245,7 +245,7 @@ class {
 
 		for ( var serviceKey in serviceKeys ) {
 			try {
-				var svc = rt.getGlobalService( serviceKey )
+				var svc = static.runtime.getGlobalService( serviceKey )
 				result.append( {
 					"name" : serviceKey.getName(),
 					"type" : svc.getClass().getSimpleName()
