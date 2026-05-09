@@ -79,7 +79,7 @@ public class BoxLangToolsTest extends BaseIntegrationTest {
 
 		var info = ( IStruct ) variables.get( result );
 		assertThat( info ).isNotNull();
-		assertThat( info.containsKey( "version" ) ).isTrue();
+		assertThat( info.containsKey( "boxlang" ) ).isTrue();
 		assertThat( info.containsKey( "uptime" ) ).isTrue();
 		assertThat( info.containsKey( "jvm" ) ).isTrue();
 		assertThat( info.containsKey( "os" ) ).isTrue();

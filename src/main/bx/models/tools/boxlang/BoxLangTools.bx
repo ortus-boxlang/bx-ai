@@ -39,11 +39,9 @@ class extends="BaseTool" {
 		var startTime   = getRuntime().getStartTime()
 
 		return {
-			"version"     : versionInfo.version,
-			"buildInfo"   : versionInfo,
+			"boxlang"     : server.boxlang,
 			"jvm"         : getJVMInfo(),
 			"os"          : getOSInfo(),
-			"runtimeId"   : versionInfo.boxlangId ?: "unknown",
 			"startTime"   : ( !isNull( startTime ) ? startTime.toString() : "unknown" ),
 			"uptime"      : formatUptimeDate( startTime )
 		}
