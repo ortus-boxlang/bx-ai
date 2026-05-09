@@ -1,0 +1,357 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MCP and AI Tools for JVM introspection.
+ *
+ * Provides comprehensive visibility into the JVM running the BoxLang runtime including:
+ * - Memory usage (heap, non-heap, memory pools)
+ * - Thread information and full thread dumps
+ * - CPU usage and load
+ * - Garbage collection statistics
+ * - Class loading information
+ * - System properties and environment variables
+ * - Operating system details
+ *
+ * These tools are designed for performance tuning, troubleshooting, and operational
+ * visibility into the JVM running BoxLang.
+ */
+import java:java.lang.management.ManagementFactory
+import java:java.lang.System
+
+class extends="BaseTool" {
+
+	// =========================================================================
+	// Memory Information
+	// =========================================================================
+
+	/**
+	 * Get JVM heap and non-heap memory usage including used, committed, max, and free memory. Use this to diagnose memory pressure or leaks.
+	 */
+	@AITool
+	@mcpTool
+	public struct function get_memory_info() {
+		var memoryMXBean = ManagementFactory.getMemoryMXBean()
+		var heap         = memoryMXBean.getHeapMemoryUsage()
+		var nonHeap      = memoryMXBean.getNonHeapMemoryUsage()
+
+		return {
+			"heap" : {
+				"used"      : heap.getUsed(),
+				"committed" : heap.getCommitted(),
+				"max"       : heap.getMax(),
+				"init"      : heap.getInit(),
+				"usedHuman"      : formatBytes( heap.getUsed() ),
+				"committedHuman" : formatBytes( heap.getCommitted() ),
+				"maxHuman"       : formatBytes( heap.getMax() ),
+				"percentUsed"    : ( heap.getMax() > 0 ? int( ( heap.getUsed() / heap.getMax() ) * 100 ) : -1 )
+			},
+			"nonHeap" : {
+				"used"      : nonHeap.getUsed(),
+				"committed" : nonHeap.getCommitted(),
+				"max"       : nonHeap.getMax(),
+				"init"      : nonHeap.getInit(),
+				"usedHuman"      : formatBytes( nonHeap.getUsed() ),
+				"committedHuman" : formatBytes( nonHeap.getCommitted() )
+			}
+		}
+	}
+
+	/**
+	 * Get detailed JVM memory pool information including Eden Space, Survivor Space, Old Gen, Metaspace, and Code Cache. Useful for diagnosing GC behavior.
+	 */
+	@AITool
+	@mcpTool
+	public array function get_memory_pool_details() {
+		var factory   = ManagementFactory
+		var pools     = factory.getMemoryPoolMXBeans()
+		var result    = []
+
+		for ( var pool in pools ) {
+			var usage = pool.getUsage()
+			result.append( {
+				"name"       : pool.getName(),
+				"type"       : pool.getType().toString(),
+				"used"       : usage.getUsed(),
+				"committed"  : usage.getCommitted(),
+				"max"        : usage.getMax(),
+				"usedHuman"  : formatBytes( usage.getUsed() ),
+				"maxHuman"   : formatBytes( usage.getMax() ),
+				"percentUsed": ( usage.getMax() > 0 ? int( ( usage.getUsed() / usage.getMax() ) * 100 ) : -1 )
+			} )
+		}
+
+		return result
+	}
+
+	// =========================================================================
+	// Thread Information
+	// =========================================================================
+
+	/**
+	 * Get JVM thread counts including total, daemon, peak, and started threads, plus breakdown by thread state (RUNNABLE, WAITING, BLOCKED, etc.).
+	 */
+	@AITool
+	@mcpTool
+	public struct function get_thread_info() {
+		var threadMXBean = ManagementFactory.getThreadMXBean()
+		var threadIds    = threadMXBean.getAllThreadIds()
+		var threadInfos  = threadMXBean.getThreadInfo( threadIds )
+		var states       = {}
+
+		for ( var info in threadInfos ) {
+			if ( !isNull( info ) ) {
+				var state = info.getThreadState().toString()
+				if ( !states.keyExists( state ) ) {
+					states[ state ] = 0
+				}
+				states[ state ]++
+			}
+		}
+
+		return {
+			"threadCount"        : threadMXBean.getThreadCount(),
+			"daemonThreadCount"  : threadMXBean.getDaemonThreadCount(),
+			"peakThreadCount"    : threadMXBean.getPeakThreadCount(),
+			"totalStartedThreads": threadMXBean.getTotalStartedThreadCount(),
+			"stateBreakdown"     : states
+		}
+	}
+
+	/**
+	 * Get a full JVM thread dump with stack traces for all running threads. Useful for diagnosing deadlocks, hangs, or high CPU usage.
+	 */
+	@AITool
+	@mcpTool
+	public array function get_thread_dump() {
+		var threadMXBean = ManagementFactory.getThreadMXBean()
+		var threadIds    = threadMXBean.getAllThreadIds()
+		var threadInfos  = threadMXBean.getThreadInfo( threadIds, 50 )
+		var result       = []
+
+		for ( var info in threadInfos ) {
+			if ( !isNull( info ) ) {
+				var stackTrace = []
+				for ( var frame in info.getStackTrace() ) {
+					stackTrace.append( frame.toString() )
+				}
+				result.append( {
+					"id"         : info.getThreadId(),
+					"name"       : info.getThreadName(),
+					"state"      : info.getThreadState().toString(),
+					"daemon"     : info.isDaemon(),
+					"priority"   : info.getPriority(),
+					"stackTrace" : stackTrace
+				} )
+			}
+		}
+
+		return result
+	}
+
+	// =========================================================================
+	// CPU Information
+	// =========================================================================
+
+	/**
+	 * Get CPU information including available processors, system load average, and process CPU time if available.
+	 */
+	@AITool
+	@mcpTool
+	public struct function get_cpu_info() {
+		var osMXBean   = ManagementFactory.getOperatingSystemMXBean()
+		var processors = osMXBean.getAvailableProcessors()
+		var loadAvg    = osMXBean.getSystemLoadAverage()
+		var result     = {
+			"availableProcessors" : processors,
+			"systemLoadAverage"   : loadAvg,
+			"loadPerProcessor"    : ( processors > 0 && loadAvg >= 0 ? loadAvg / processors : -1 )
+		}
+
+		// Try to get additional metrics from the com.sun extension if available
+		try {
+			var sunOsMXBean = createObject( "java", "com.sun.management.OperatingSystemMXBean" )
+			result[ "processCpuTime" ]  = osMXBean.getProcessCpuTime()
+			result[ "processCpuLoad" ]  = osMXBean.getProcessCpuLoad()
+			result[ "systemCpuLoad" ]   = osMXBean.getSystemCpuLoad()
+		} catch ( any e ) {
+			// com.sun extension not available, skip
+		}
+
+		return result
+	}
+
+	// =========================================================================
+	// Garbage Collection
+	// =========================================================================
+
+	/**
+	 * Get garbage collection statistics including collection count and cumulative collection time for each GC algorithm (e.g., G1 Young/Old Generation).
+	 */
+	@AITool
+	@mcpTool
+	public array function get_gc_info() {
+		var factory = ManagementFactory
+		var gcBeans = factory.getGarbageCollectorMXBeans()
+		var result  = []
+
+		for ( var gc in gcBeans ) {
+			result.append( {
+				"name"            : gc.getName(),
+				"collectionCount" : gc.getCollectionCount(),
+				"collectionTime"  : gc.getCollectionTime(),
+				"memoryPoolNames" : gc.getMemoryPoolNames()
+			} )
+		}
+
+		return result
+	}
+
+	/**
+	 * Manually trigger a JVM garbage collection cycle. Use sparingly as this can impact application performance. Returns memory stats before and after.
+	 */
+	@AITool
+	@mcpTool
+	public struct function trigger_gc() {
+		var memoryMXBean = ManagementFactory.getMemoryMXBean()
+		var heapBefore   = memoryMXBean.getHeapMemoryUsage()
+		var beforeUsed   = heapBefore.getUsed()
+
+		memoryMXBean.gc()
+
+		var heapAfter = memoryMXBean.getHeapMemoryUsage()
+		var afterUsed = heapAfter.getUsed()
+
+		return {
+			"triggered"   : true,
+			"before"      : { "used" : beforeUsed, "usedHuman" : formatBytes( beforeUsed ) },
+			"after"       : { "used" : afterUsed, "usedHuman" : formatBytes( afterUsed ) },
+			"freedBytes"  : ( beforeUsed - afterUsed ),
+			"freedHuman"  : formatBytes( max( 0, beforeUsed - afterUsed ) )
+		}
+	}
+
+	// =========================================================================
+	// Class Loading
+	// =========================================================================
+
+	/**
+	 * Get JVM class loading statistics including currently loaded classes, total loaded since startup, and total unloaded.
+	 */
+	@AITool
+	@mcpTool
+	public struct function get_class_loading_info() {
+		var classLoaderMXBean = ManagementFactory.getClassLoadingMXBean()
+
+		return {
+			"loadedClassCount"    : classLoaderMXBean.getLoadedClassCount(),
+			"totalLoadedCount"    : classLoaderMXBean.getTotalLoadedClassCount(),
+			"unloadedClassCount"  : classLoaderMXBean.getUnloadedClassCount()
+		}
+	}
+
+	// =========================================================================
+	// JVM Runtime Info
+	// =========================================================================
+
+	/**
+	 * Get JVM runtime information including JVM uptime, JVM name, vendor, and version. Use this to understand the JVM environment.
+	 */
+	@AITool
+	@mcpTool
+	public struct function get_jvm_runtime_info() {
+		var runtimeMXBean = ManagementFactory.getRuntimeMXBean()
+		var uptimeMs      = runtimeMXBean.getUptime()
+
+		return {
+			"name"        : runtimeMXBean.getName(),
+			"vmName"      : runtimeMXBean.getVmName(),
+			"vmVendor"    : runtimeMXBean.getVmVendor(),
+			"vmVersion"   : runtimeMXBean.getVmVersion(),
+			"specName"    : runtimeMXBean.getSpecName(),
+			"specVersion" : runtimeMXBean.getSpecVersion(),
+			"uptimeMs"    : uptimeMs,
+			"uptime"      : formatUptimeMillis( uptimeMs ),
+			"startTime"   : runtimeMXBean.getStartTime()
+		}
+	}
+
+	// =========================================================================
+	// System Properties & Environment
+	// =========================================================================
+
+	/**
+	 * Get all JVM system properties as a key-value map. Contains Java configuration, file paths, OS details, and more.
+	 */
+	@AITool
+	@mcpTool
+	public struct function get_system_properties() {
+		var props  = System.getProperties()
+		var result = {}
+
+		for ( var key in props.keySet() ) {
+			result[ key ] = props.get( key )
+		}
+
+		return result
+	}
+
+	/**
+	 * Get JVM environment variables with optional keyword filter. Sensitive values like passwords and secrets are masked. Use the filter argument to narrow results.
+	 *
+	 * @filter Optional keyword to filter environment variable names (case-insensitive). Leave empty to get all.
+	 */
+	@AITool
+	@mcpTool
+	public struct function get_environment_variables( string filter = "" ) {
+		var envMap = System.getenv()
+		var result = {}
+
+		for ( var key in envMap.keySet() ) {
+			var keyStr = key.toString()
+
+			// Apply filter if provided
+			if ( len( arguments.filter ) && !keyStr.findNoCase( arguments.filter ) ) {
+				continue
+			}
+
+			var value = envMap.get( key )
+
+			result[ keyStr ] = ( isSensitiveKey( keyStr ) ? "********" : value )
+		}
+
+		return result
+	}
+
+	// =========================================================================
+	// Operating System
+	// =========================================================================
+
+	/**
+	 * Get operating system details including name, version, architecture, and available processors.
+	 */
+	@AITool
+	@mcpTool
+	public struct function get_operating_system_info() {
+		var osMXBean = ManagementFactory.getOperatingSystemMXBean()
+
+		return {
+			"name"                : osMXBean.getName(),
+			"version"             : osMXBean.getVersion(),
+			"arch"                : osMXBean.getArch(),
+			"availableProcessors" : osMXBean.getAvailableProcessors(),
+			"systemLoadAverage"   : osMXBean.getSystemLoadAverage()
+		}
+	}
+
+}

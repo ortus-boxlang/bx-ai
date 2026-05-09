@@ -22,13 +22,7 @@
  * These tools are designed for administrators, DevOps engineers, and developers
  * who need to inspect and understand the BoxLang runtime state.
  */
-import java:java.lang.System
-
-class {
-
-	static{
-		runtime = getBoxRuntime()
-	}
+class extends="BaseTool" {
 
 	// =========================================================================
 	// Runtime Information
@@ -41,8 +35,8 @@ class {
 	@AITool
 	@mcpTool
 	public struct function get_runtime_info() {
-		var versionInfo = static.runtime.getVersionInfo()
-		var startTime   = static.runtime.getStartTime()
+		var versionInfo = getRuntime().getVersionInfo()
+		var startTime   = getRuntime().getStartTime()
 
 		return {
 			"version"     : versionInfo.version,
@@ -51,7 +45,7 @@ class {
 			"os"          : getOSInfo(),
 			"runtimeId"   : versionInfo.boxlangId ?: "unknown",
 			"startTime"   : ( !isNull( startTime ) ? startTime.toString() : "unknown" ),
-			"uptime"      : getUptime( startTime )
+			"uptime"      : formatUptimeDate( startTime )
 		}
 	}
 
@@ -63,7 +57,7 @@ class {
 	@AITool
 	@mcpTool
 	public struct function get_runtime_config( boolean includeSensitive = false ) {
-		var config = static.runtime.getConfiguration()
+		var config = getRuntime().getConfiguration()
 		var result = config.asStruct()
 
 		if ( !arguments.includeSensitive ) {
@@ -81,7 +75,7 @@ class {
 	@AITool
 	@mcpTool
 	public any function get_config_value( required string configPath ) {
-		var config     = static.runtime.getConfiguration()
+		var config     = getRuntime().getConfiguration()
 		var fullConfig = config.asStruct()
 
 		return resolvePath( fullConfig, arguments.configPath )
@@ -240,12 +234,12 @@ class {
 	@AITool
 	@mcpTool
 	public array function get_global_services() {
-		var serviceKeys = static.runtime.getGlobalServiceKeys()
+		var serviceKeys = getRuntime().getGlobalServiceKeys()
 		var result     = []
 
 		for ( var serviceKey in serviceKeys ) {
 			try {
-				var svc = static.runtime.getGlobalService( serviceKey )
+				var svc = getRuntime().getGlobalService( serviceKey )
 				result.append( {
 					"name" : serviceKey.getName(),
 					"type" : svc.getClass().getSimpleName()
@@ -259,82 +253,8 @@ class {
 	}
 
 	// =========================================================================
-	// Private Helpers
+	// Private Helpers (BoxLang-specific)
 	// =========================================================================
-
-	private struct function getJVMInfo() {
-		return {
-			"vendor"         : System.getProperty( "java.vendor" ) ?: "",
-			"version"        : System.getProperty( "java.version" ) ?: "",
-			"runtimeName"    : System.getProperty( "java.runtime.name" ) ?: "",
-			"runtimeVersion" : System.getProperty( "java.runtime.version" ) ?: "",
-			"home"           : System.getProperty( "java.home" ) ?: "",
-			"vmName"         : System.getProperty( "java.vm.name" ) ?: "",
-			"vmVersion"      : System.getProperty( "java.vm.version" ) ?: ""
-		}
-	}
-
-	private struct function getOSInfo() {
-		return {
-			"name"    : System.getProperty( "os.name" ) ?: "",
-			"version" : System.getProperty( "os.version" ) ?: "",
-			"arch"    : System.getProperty( "os.arch" ) ?: ""
-		}
-	}
-
-	private string function getUptime( required any startTime ) {
-		if ( isNull( arguments.startTime ) ) {
-			return "unknown"
-		}
-
-		var now     = now()
-		var diff    = dateDiff( "s", arguments.startTime, now )
-		var days    = int( diff / 86400 )
-		var hours   = int( ( diff % 86400 ) / 3600 )
-		var minutes = int( ( diff % 3600 ) / 60 )
-		var seconds = diff % 60
-
-		return "#days#d #hours#h #minutes#m #seconds#s"
-	}
-
-	private void function maskSensitiveValues( required struct data ) {
-		var sensitivePatterns = [ "password", "secret", "key", "token", "credential", "auth", "connectionstring" ]
-
-		data.each( ( k, v ) => {
-			var keyLower = lCase( k )
-			var isSensitive = false
-
-			sensitivePatterns.each( ( pattern ) => {
-				if ( keyLower.find( pattern ) ) {
-					isSensitive = true
-				}
-			} )
-
-			if ( isSensitive && isSimpleValue( v ) && len( v ) ) {
-				data[ k ] = "********"
-			} else if ( isStruct( v ) ) {
-				maskSensitiveValues( v )
-			}
-		} )
-	}
-
-	private any function resolvePath( required struct data, required string path ) {
-		var parts   = arguments.path.listToArray( "." )
-		var current = arguments.data
-
-		parts.each( ( part ) => {
-			if ( isStruct( current ) && current.keyExists( part ) ) {
-				current = current[ part ]
-			} else {
-				return {
-					"error"   : true,
-					"message" : "Path not found: #arguments.path# (stopped at '#part#')"
-				}
-			}
-		} )
-
-		return current
-	}
 
 	private string function categorizeBIF( required string name ) {
 		var n = lCase( arguments.name )
