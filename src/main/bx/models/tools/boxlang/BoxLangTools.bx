@@ -280,4 +280,32 @@ class extends="BaseTool" {
 
 		return "other"
 	}
+
+	// =========================================================================
+	// Debug Mode
+	// =========================================================================
+
+	/**
+	 * Toggle debug mode for the BoxLang runtime. When enabled, detailed debugging information is logged for requests, responses, and runtime operations.
+	 *
+	 * @enabled Whether to enable debug mode (default: true). Pass false to disable.
+	 *
+	 * @return Struct with the updated debug mode status
+	 */
+	@AITool
+	@mcpTool
+	public struct function toggle_debug_mode( boolean enabled = true ) {
+		var config = getBoxRuntime().getConfiguration()
+		var previous = config.debugMode
+
+		config.debugMode = arguments.enabled
+
+		var status = arguments.enabled ? "enabled" : "disabled"
+
+		return {
+			"debugMode": arguments.enabled,
+			"previous" : previous,
+			"message"  : "BoxLang runtime debug mode #status#"
+		}
+	}
 }

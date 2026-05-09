@@ -297,4 +297,52 @@ public class BoxLangToolsTest extends BaseIntegrationTest {
 		assertThat( services ).isNotNull();
 	}
 
+	// =========================================================================
+	// toggle_debug_mode
+	// =========================================================================
+
+	@DisplayName( "toggle_debug_mode() enables and disables runtime debug mode" )
+	@Test
+	public void testToggleDebugMode() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.boxlang.BoxLangTools;
+				tools = new BoxLangTools()
+
+				// Enable debug mode
+				result = tools.toggle_debug_mode( enabled: true )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var debugResult = ( IStruct ) variables.get( result );
+		assertThat( debugResult ).isNotNull();
+		assertThat( debugResult.get( "debugMode" ) ).isEqualTo( true );
+		assertThat( debugResult.containsKey( "previous" ) ).isTrue();
+		assertThat( debugResult.containsKey( "message" ) ).isTrue();
+
+		// Verify runtime config was actually updated
+		runtime.executeSource(
+			"""
+				config = getBoxRuntime().getConfiguration()
+				isDebug = config.debugMode
+			""",
+			context
+		);
+		assertThat( variables.get( "isDebug" ) ).isEqualTo( true );
+
+		// Disable debug mode
+		runtime.executeSource(
+			"""
+				result = tools.toggle_debug_mode( enabled: false )
+			""",
+			context
+		);
+		debugResult = ( IStruct ) variables.get( result );
+		assertThat( debugResult.get( "debugMode" ) ).isEqualTo( false );
+		assertThat( debugResult.get( "previous" ) ).isEqualTo( true );
+	}
+
 }
