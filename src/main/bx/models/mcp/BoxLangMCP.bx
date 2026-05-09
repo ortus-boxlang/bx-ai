@@ -78,6 +78,429 @@ class extends="MCPServer" {
 			)
 		}
 
+		// Register developer and admin assistance prompts
+		registerPrompts()
+
 		return this
+	}
+
+	/**
+	 * Register all developer and admin assistance prompts for the BoxLang MCP server.
+	 * These prompts guide AI clients through common management and diagnostic workflows.
+	 */
+	private void function registerPrompts() {
+
+		// =========================================================================
+		// 1. Runtime Health Check
+		// =========================================================================
+		this.registerPrompt(
+			name: "runtime_health_check",
+			description: "Perform a comprehensive BoxLang runtime health check covering memory, caches, datasources, executors, and modules. Ideal for a quick operational status overview.",
+			args: [],
+			handler: ( struct args = {} ) => {
+				return [
+					{
+						role: "system",
+						content: "You are a BoxLang runtime operations expert. Analyze the health of a running BoxLang instance by calling the available MCP tools and produce a structured health report. Use traffic-light status indicators (✅ Healthy / ⚠️ Warning / ❌ Critical) for each subsystem. Include actionable recommendations for any issues found."
+					},
+					{
+						role: "user",
+						content: "Please perform a full health check on this BoxLang runtime. Use the following tools in order:
+1. `get_runtime_info` — BoxLang version, uptime, and environment
+2. `get_memory_info` — JVM heap and non-heap usage
+3. `get_cache_health_summary` — cache hit rates and evictions
+4. `get_datasource_health` — datasource connectivity and pool utilization
+5. `get_executor_health_summary` — async executor pool saturation
+
+Summarize each subsystem with a status indicator and list any issues that require attention."
+					}
+				]
+			}
+		)
+
+		// =========================================================================
+		// 2. Memory Pressure Diagnosis
+		// =========================================================================
+		this.registerPrompt(
+			name: "diagnose_memory_pressure",
+			description: "Diagnose JVM memory pressure in a running BoxLang instance. Analyzes heap, non-heap, memory pools, and GC activity to identify leaks or misconfiguration.",
+			args: [
+				{ name: "threshold", description: "Heap usage percentage to treat as critical (default: 80)", required: false }
+			],
+			handler: ( struct args = {} ) => {
+				var threshold = args.threshold ?: 80
+				return [
+					{
+						role: "system",
+						content: "You are a JVM memory and garbage collection expert specializing in BoxLang deployments. When analyzing memory data, consider heap fragmentation, GC pressure, and memory pool saturation. Provide concrete JVM tuning flags and BoxLang configuration changes when recommending fixes."
+					},
+					{
+						role: "user",
+						content: "Diagnose memory pressure on this BoxLang runtime. Use the following tools:
+1. `get_memory_info` — heap and non-heap overview
+2. `get_memory_pool_details` — individual pool breakdown (Eden, Old Gen, Metaspace, Code Cache)
+3. `get_gc_info` — GC collector statistics and collection counts
+
+Critical threshold is set at #threshold#% heap usage. Identify whether memory is healthy, under pressure, or critical. Recommend specific JVM flags (e.g., -Xmx, -XX:MaxMetaspaceSize) or cache/object lifecycle changes if issues are found."
+					}
+				]
+			}
+		)
+
+		// =========================================================================
+		// 3. Cache Performance Analysis
+		// =========================================================================
+		this.registerPrompt(
+			name: "analyze_cache_performance",
+			description: "Analyze BoxLang cache performance, hit rates, eviction patterns, and sizing. Optionally focus on a specific named cache.",
+			args: [
+				{ name: "cacheName", description: "Name of a specific cache to analyze (leave empty to analyze all caches)", required: false }
+			],
+			handler: ( struct args = {} ) => {
+				var focusPart = len( trim( args.cacheName ?: "" ) )
+					? "Focus your analysis on the `#args.cacheName#` cache but also call `get_caches` for overall context."
+					: "Analyze all registered caches."
+				return [
+					{
+						role: "system",
+						content: "You are a caching systems expert for BoxLang applications. Evaluate cache hit rates, eviction counts, object counts, and memory consumption. A healthy cache has a hit rate above 80%. Eviction rates above 10% of total operations suggest the cache is undersized. Provide concrete recommendations on cache sizing, TTL tuning, and eviction policies."
+					},
+					{
+						role: "user",
+						content: "Analyze cache performance on this BoxLang runtime. #focusPart#
+
+Use the following tools:
+1. `get_caches` — all registered caches with stats
+2. `get_cache_health_summary` — overall cache health status
+3. If a specific cache name is known, also call `get_cache_stats` for deeper metrics and `get_store_metadata_report` for object-level insight.
+
+Report on hit rates, miss rates, eviction rates, and memory usage. Flag any cache that is performing poorly and recommend tuning or resizing."
+					}
+				]
+			}
+		)
+
+		// =========================================================================
+		// 4. Datasource Health Report
+		// =========================================================================
+		this.registerPrompt(
+			name: "datasource_health_report",
+			description: "Check the health of all configured BoxLang datasources including connectivity, connection pool utilization, and configuration audit.",
+			args: [],
+			handler: ( struct args = {} ) => {
+				return [
+					{
+						role: "system",
+						content: "You are a database connectivity and connection pool expert for BoxLang deployments. Evaluate datasource health by examining pool utilization, active vs. idle connections, and test results. A pool utilization above 80% risks connection exhaustion. Flag misconfigured pools, unreachable datasources, and recommend pool sizing adjustments."
+					},
+					{
+						role: "user",
+						content: "Generate a datasource health report for this BoxLang runtime. Use the following tools:
+1. `get_datasources` — all registered datasources and their configuration
+2. `get_datasource_health` — health summary for all datasources
+3. For each datasource found, call `get_pool_metrics` to get connection pool statistics
+4. Call `test_datasource` on any datasource that appears unhealthy
+
+Report connectivity status, pool utilization percentages, and flag any datasource that is unavailable, undersized, or misconfigured."
+					}
+				]
+			}
+		)
+
+		// =========================================================================
+		// 5. Error Log Investigation
+		// =========================================================================
+		this.registerPrompt(
+			name: "investigate_errors",
+			description: "Investigate recent errors in BoxLang logs. Retrieves and analyzes log entries to identify patterns, root causes, and recommended fixes.",
+			args: [
+				{ name: "loggerName", description: "Name of the logger to inspect (default: runtime)", required: false },
+				{ name: "keyword",    description: "Optional keyword to filter log entries (e.g., NullPointerException, timeout)", required: false }
+			],
+			handler: ( struct args = {} ) => {
+				var loggerName = args.loggerName ?: "runtime"
+				var keywordPart = len( trim( args.keyword ?: "" ) )
+					? "Also call `search_log_entries` with the keyword `#args.keyword#` to find relevant log entries."
+					: ""
+				return [
+					{
+						role: "system",
+						content: "You are a BoxLang application diagnostics expert. When analyzing log entries, identify recurring error patterns, root causes, and affected components. Group similar errors, estimate frequency, and prioritize by severity. Provide specific fixes or investigation steps for each error class found."
+					},
+					{
+						role: "user",
+						content: "Investigate recent errors in the `#loggerName#` BoxLang log. Use the following tools:
+1. `get_logger` with loggerName=`#loggerName#` — logger configuration and level
+2. `get_last_error` with loggerName=`#loggerName#` — most recent error entry
+3. `read_log_entries` with loggerName=`#loggerName#` and limit=50 — recent log entries
+#keywordPart#
+
+Group errors by type, identify the most frequent issues, and provide a prioritized list of root causes with recommended fixes."
+					}
+				]
+			}
+		)
+
+		// =========================================================================
+		// 6. Thread Dump Analysis
+		// =========================================================================
+		this.registerPrompt(
+			name: "thread_dump_analysis",
+			description: "Capture and analyze a JVM thread dump from the running BoxLang instance. Identifies deadlocks, blocked threads, thread pool saturation, and long-running operations.",
+			args: [],
+			handler: ( struct args = {} ) => {
+				return [
+					{
+						role: "system",
+						content: "You are a JVM concurrency and threading expert. When analyzing thread dumps, look for: deadlocks (threads waiting on each other's locks), blocked threads (BLOCKED state), thread pool saturation (queued vs active tasks), and long-running virtual threads. Categorize threads by state (RUNNABLE, BLOCKED, WAITING, TIMED_WAITING) and identify problematic patterns."
+					},
+					{
+						role: "user",
+						content: "Capture and analyze the current JVM thread state for this BoxLang runtime. Use the following tools:
+1. `get_thread_info` — summary of thread counts by state
+2. `get_thread_dump` — full thread dump with stack traces
+3. `get_executor_health_summary` — async executor pool status
+
+Look for deadlocks, threads stuck on locks, BLOCKED threads, and evidence of thread pool exhaustion. Provide a categorized summary and flag any threads requiring immediate attention."
+					}
+				]
+			}
+		)
+
+		// =========================================================================
+		// 7. Module Audit
+		// =========================================================================
+		this.registerPrompt(
+			name: "module_audit",
+			description: "Audit all registered BoxLang modules: status, version, registered BIFs, components, interceptors, and configuration. Useful for understanding what is installed and catching misconfigured modules.",
+			args: [],
+			handler: ( struct args = {} ) => {
+				return [
+					{
+						role: "system",
+						content: "You are a BoxLang module system expert. When auditing modules, examine their activation status, version compatibility, registered BIFs and components, interceptor registrations, and configuration settings. Flag modules that are disabled, misconfigured, or potentially conflicting with each other."
+					},
+					{
+						role: "user",
+						content: "Perform a full audit of all registered BoxLang modules. Use the following tools:
+1. `get_modules` — all registered modules with metadata
+2. `get_module_names` — verify the count of loaded modules
+3. For each module of interest, call `get_module_info` to inspect its BIFs, components, interceptors, and settings
+
+Produce a table summarizing each module (name, version, status, BIF count, component count). Highlight any modules that are inactive, missing configuration, or show signs of misconfiguration."
+					}
+				]
+			}
+		)
+
+		// =========================================================================
+		// 8. Scheduler Status Report
+		// =========================================================================
+		this.registerPrompt(
+			name: "scheduler_status_report",
+			description: "Report on all BoxLang schedulers and their tasks: execution history, upcoming runs, failed tasks, and task health. Useful for monitoring background job infrastructure.",
+			args: [
+				{ name: "schedulerName", description: "Name of a specific scheduler to focus on (leave empty for all schedulers)", required: false }
+			],
+			handler: ( struct args = {} ) => {
+				var focusPart = len( trim( args.schedulerName ?: "" ) )
+					? "Focus on the `#args.schedulerName#` scheduler but also list all schedulers for context."
+					: "Inspect all registered schedulers."
+				return [
+					{
+						role: "system",
+						content: "You are a BoxLang scheduled tasks and background jobs expert. When analyzing schedulers, examine task execution history, failure rates, average execution time, and upcoming scheduled runs. Flag tasks that are overdue, failing repeatedly, or taking longer than expected. Recommend cron expression or configuration changes where appropriate."
+					},
+					{
+						role: "user",
+						content: "Generate a scheduler status report for this BoxLang runtime. #focusPart#
+
+Use the following tools:
+1. `get_schedulers` — all registered schedulers and their task lists
+2. `get_scheduler_names` — total count of schedulers
+3. For each scheduler, call `get_scheduler_tasks` for detailed task information
+4. Call `get_scheduler_stats` for execution statistics on tasks of interest
+
+Report on each scheduler's task count, last run times, success/failure rates, and next scheduled execution. Flag any tasks that are failing, overdue, or have unusual execution patterns."
+					}
+				]
+			}
+		)
+
+		// =========================================================================
+		// 9. Async Executor Saturation Check
+		// =========================================================================
+		this.registerPrompt(
+			name: "executor_saturation_check",
+			description: "Check BoxLang async executor pools for saturation, queue buildup, and rejected tasks. Helps diagnose slow async operations or thread pool exhaustion.",
+			args: [],
+			handler: ( struct args = {} ) => {
+				return [
+					{
+						role: "system",
+						content: "You are a BoxLang async and concurrency expert. When analyzing executor pools, evaluate active thread counts vs. pool size, queue depth, completed task counts, and rejection rates. A pool is saturated when active threads equal pool size and the queue is growing. Virtual thread executors have different saturation characteristics than fixed-size pools. Recommend pool resizing or workload distribution changes where needed."
+					},
+					{
+						role: "user",
+						content: "Check all async executor pools in this BoxLang runtime for saturation and health. Use the following tools:
+1. `get_executors` — all registered executors with configuration
+2. `get_executor_health_summary` — overall health across all executors
+3. For each executor, call `get_executor_stats` to get active, queued, completed, and rejected task counts
+4. Call `get_executor_health` on any executor showing signs of saturation
+
+Report pool utilization (active/pool-size ratio), queue depth, and rejection counts for each executor. Flag any saturated or unhealthy pools and recommend adjustments to pool size or workload distribution."
+					}
+				]
+			}
+		)
+
+		// =========================================================================
+		// 10. Full System Audit
+		// =========================================================================
+		this.registerPrompt(
+			name: "full_system_audit",
+			description: "Run a comprehensive end-to-end audit of the entire BoxLang runtime including all subsystems: JVM, memory, threads, caches, datasources, modules, schedulers, executors, logging, and file watchers.",
+			args: [],
+			handler: ( struct args = {} ) => {
+				return [
+					{
+						role: "system",
+						content: "You are a senior BoxLang platform engineer conducting a full system audit. Examine every subsystem methodically and produce an executive summary followed by detailed findings per subsystem. Use ✅ Healthy / ⚠️ Warning / ❌ Critical status for each area. End with a prioritized action list: Critical issues first, then Warnings, then Optimizations."
+					},
+					{
+						role: "user",
+						content: "Conduct a full system audit of this BoxLang runtime. Work through each subsystem in order:
+
+**Runtime & JVM**
+- `get_runtime_info` — BoxLang version and uptime
+- `get_jvm_runtime_info` — JVM version and flags
+- `get_memory_info` — heap usage
+- `get_cpu_info` — CPU load
+
+**Concurrency**
+- `get_thread_info` — thread state summary
+- `get_executor_health_summary` — executor pool health
+
+**Data Layer**
+- `get_caches` — cache provider stats
+- `get_cache_health_summary` — overall cache health
+- `get_datasource_health` — datasource connectivity
+
+**Modules & Extensions**
+- `get_modules` — all loaded modules
+
+**Background Jobs**
+- `get_schedulers` — scheduler and task status
+
+**Logging**
+- `get_logging_info` — logging configuration and logger count
+
+**File Watchers**
+- `get_watchers` — active filesystem watchers
+
+Produce an executive summary, per-subsystem status, and a prioritized action plan."
+					}
+				]
+			}
+		)
+
+		// =========================================================================
+		// 11. Performance Troubleshooting Guide
+		// =========================================================================
+		this.registerPrompt(
+			name: "performance_troubleshooting",
+			description: "Interactive performance troubleshooting guide. Describe a symptom (slow responses, high memory, CPU spikes, etc.) and receive a targeted diagnostic plan with specific tools to run.",
+			args: [
+				{ name: "symptom", description: "Describe the performance symptom you are experiencing (e.g., 'slow response times', 'high heap usage', 'CPU spikes', 'thread pool exhausted')", required: true }
+			],
+			handler: ( struct args = {} ) => {
+				var symptom = args.symptom ?: "general slowness"
+				return [
+					{
+						role: "system",
+						content: "You are a BoxLang performance expert and SRE. Given a performance symptom, guide the user through a structured diagnostic process using the available MCP tools. Start with the most likely causes based on the symptom, collect data from the relevant tools, interpret the results, and provide concrete fixes with expected impact. Be specific about what values indicate a problem and what thresholds to use."
+					},
+					{
+						role: "user",
+						content: "I am experiencing this performance issue with my BoxLang runtime: **#symptom#**
+
+Please help me diagnose it. Start by determining which subsystems are most likely to be the cause, then use the appropriate MCP tools to collect diagnostic data. Based on the data, identify the root cause and provide specific remediation steps.
+
+Available tool categories:
+- JVM: `get_memory_info`, `get_memory_pool_details`, `get_gc_info`, `get_cpu_info`, `get_thread_dump`
+- Caching: `get_caches`, `get_cache_health_summary`, `get_cache_stats`
+- Database: `get_datasource_health`, `get_pool_metrics`, `test_datasource`
+- Async: `get_executor_health_summary`, `get_executor_stats`
+- Schedulers: `get_schedulers`, `get_scheduler_stats`
+- Logging: `read_log_entries`, `search_log_entries`, `get_last_error`"
+					}
+				]
+			}
+		)
+
+		// =========================================================================
+		// 12. Logging Infrastructure Review
+		// =========================================================================
+		this.registerPrompt(
+			name: "logging_infrastructure_review",
+			description: "Review the BoxLang logging infrastructure: configured loggers, log levels, appenders, and recent error patterns. Useful for auditing log verbosity and ensuring errors are captured correctly.",
+			args: [],
+			handler: ( struct args = {} ) => {
+				return [
+					{
+						role: "system",
+						content: "You are a BoxLang logging and observability expert. When reviewing logging infrastructure, examine log level appropriateness (too verbose wastes I/O, too quiet misses issues), appender configuration, log rotation, and recent error frequency. The production best practice is INFO level for the root logger with DEBUG enabled only for specific problem areas."
+					},
+					{
+						role: "user",
+						content: "Review the logging infrastructure for this BoxLang runtime. Use the following tools:
+1. `get_logging_info` — logging service overview and active logger count
+2. `get_logging_config` — full logging configuration
+3. `get_root_logger` — root logger level and appenders
+4. `get_loggers` — all registered named loggers with levels
+5. `get_appenders` — all configured appenders (file, console, etc.)
+6. `get_last_error` — most recent error from the runtime logger
+7. `read_log_entries` with limit=20 — recent runtime log activity
+
+Report on: log level appropriateness, appender configuration, any loggers set to DEBUG/TRACE in production, recent error frequency, and recommendations for improving observability."
+					}
+				]
+			}
+		)
+
+		// =========================================================================
+		// 13. BIF and Component Discovery
+		// =========================================================================
+		this.registerPrompt(
+			name: "bif_component_discovery",
+			description: "Discover and explore BoxLang Built-In Functions (BIFs) and components available in the running runtime. Useful for developers learning the API or verifying what modules contribute.",
+			args: [
+				{ name: "keyword", description: "Optional keyword to search for specific BIFs or components (e.g., 'array', 'cache', 'string')", required: false }
+			],
+			handler: ( struct args = {} ) => {
+				var keywordPart = len( trim( args.keyword ?: "" ) )
+					? "Focus on BIFs and components matching the keyword `#args.keyword#`. Use `search_bifs` and `search_components` with that keyword."
+					: "Provide a broad overview of all BIF categories and component namespaces."
+				return [
+					{
+						role: "system",
+						content: "You are a BoxLang API documentation expert. When presenting BIFs and components, organize them by category (string, array, struct, date, file, cache, etc.) and provide brief descriptions. Highlight which BIFs are contributed by modules versus the core runtime. Format the output for developer readability."
+					},
+					{
+						role: "user",
+						content: "Explore the BoxLang Built-In Functions and components available in this runtime. #keywordPart#
+
+Use the following tools:
+1. `get_bif_summary` — total BIF count by category
+2. `get_component_summary` — total component count by namespace
+3. `get_modules` — identify which modules contribute BIFs/components
+4. If a keyword was provided, call `search_bifs` and `search_components` with it
+5. For any interesting BIF found, call `get_bif_info` to get its full signature
+
+Present a structured overview of available functionality, organized by category. For keyword searches, show the top matching BIFs with their signatures."
+					}
+				]
+			}
+		)
 	}
 }

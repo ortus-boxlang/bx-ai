@@ -325,20 +325,20 @@ public class BoxLangToolsTest extends BaseIntegrationTest {
 
 		// Verify runtime config was actually updated
 		runtime.executeSource(
-			"""
-				config = getBoxRuntime().getConfiguration()
-				isDebug = config.debugMode
-			""",
-			context
+		    """
+		    	config = getBoxRuntime().getConfiguration()
+		    	isDebug = config.debugMode
+		    """,
+		    context
 		);
 		assertThat( variables.get( "isDebug" ) ).isEqualTo( true );
 
 		// Disable debug mode
 		runtime.executeSource(
-			"""
-				result = tools.toggle_debug_mode( enabled: false )
-			""",
-			context
+		    """
+		    	result = tools.toggle_debug_mode( enabled: false )
+		    """,
+		    context
 		);
 		debugResult = ( IStruct ) variables.get( result );
 		assertThat( debugResult.get( "debugMode" ) ).isEqualTo( false );
