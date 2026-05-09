@@ -267,6 +267,132 @@ class extends="BaseTool" {
 	}
 
 	// =========================================================================
+	// Persisted Task Management (tasks.json)
+	// =========================================================================
+
+	/**
+	 * Pause a persisted task on disk so it will not run on its next scheduled trigger.
+	 * Updates the tasks.json file directly. The task remains registered but is marked as paused.
+	 *
+	 * @taskName      The name of the persisted task to pause
+	 * @schedulerName The scheduler the task belongs to. Defaults to "bxschedule" if not provided.
+	 */
+	@mcpTool
+	@AITool
+	public any function pause_persisted_task( required string taskName, string schedulerName = "bxschedule" ) {
+		try {
+			static.schedulerService.updateTaskPausedState(
+				arguments.taskName,
+				arguments.schedulerName,
+				true
+			)
+			return {
+				"success" : true,
+				"message" : "Persisted task '#arguments.taskName#' in scheduler '#arguments.schedulerName#' has been paused on disk."
+			}
+		} catch ( any e ) {
+			return {
+				"error"   : true,
+				"message" : "Failed to pause persisted task '#arguments.taskName#': #e.message#"
+			}
+		}
+	}
+
+	/**
+	 * Resume a previously paused persisted task on disk so it executes again on its next scheduled trigger.
+	 * Updates the tasks.json file directly.
+	 *
+	 * @taskName      The name of the persisted task to resume
+	 * @schedulerName The scheduler the task belongs to. Defaults to "bxschedule" if not provided.
+	 */
+	@mcpTool
+	@AITool
+	public any function resume_persisted_task( required string taskName, string schedulerName = "bxschedule" ) {
+		try {
+			static.schedulerService.updateTaskPausedState(
+				arguments.taskName,
+				arguments.schedulerName,
+				false
+			)
+			return {
+				"success" : true,
+				"message" : "Persisted task '#arguments.taskName#' in scheduler '#arguments.schedulerName#' has been resumed on disk."
+			}
+		} catch ( any e ) {
+			return {
+				"error"   : true,
+				"message" : "Failed to resume persisted task '#arguments.taskName#': #e.message#"
+			}
+		}
+	}
+
+	/**
+	 * Pause all persisted tasks on disk. Optionally filter by scheduler and/or group.
+	 * Updates the tasks.json file directly. All matching tasks will be marked as paused.
+	 *
+	 * @schedulerName The scheduler to filter by. If omitted, pauses tasks across all schedulers.
+	 * @group         The task group to filter by. If omitted, pauses all groups.
+	 */
+	@mcpTool
+	@AITool
+	public any function pause_all_persisted_tasks( string schedulerName, string group ) {
+		try {
+			static.schedulerService.updateAllTasksPausedState(
+				arguments.schedulerName ?: "",
+				arguments.group ?: "",
+				true
+			)
+			var scope = []
+			if ( !isNull( arguments.schedulerName ) ) scope.append( "scheduler '#arguments.schedulerName#'" )
+			if ( !isNull( arguments.group ) ) scope.append( "group '#arguments.group#'" )
+			var scopeText = scope.len() ? " matching " & scope.join( " and " ) : " (all tasks)"
+
+			return {
+				"success" : true,
+				"message" : "All persisted tasks#scopeText# have been paused on disk."
+			}
+		} catch ( any e ) {
+			return {
+				"error"   : true,
+				"message" : "Failed to pause persisted tasks: #e.message#"
+			}
+		}
+	}
+
+	/**
+	 * Resume all paused persisted tasks on disk. Optionally filter by scheduler and/or group.
+	 * Updates the tasks.json file directly. All matching tasks will be marked as active.
+	 *
+	 * @schedulerName The scheduler to filter by. If omitted, resumes tasks across all schedulers.
+	 * @group         The task group to filter by. If omitted, resumes all groups.
+	 */
+	@mcpTool
+	@AITool
+	public any function resume_all_persisted_tasks( string schedulerName, string group ) {
+		try {
+			static.schedulerService.updateAllTasksPausedState(
+				arguments.schedulerName ?: "",
+				arguments.group ?: "",
+				false
+			)
+			var scope = []
+			if ( !isNull( arguments.schedulerName ) ) scope.append( "scheduler '#arguments.schedulerName#'" )
+			if ( !isNull( arguments.group ) ) scope.append( "group '#arguments.group#'" )
+			var scopeText = scope.len() ? " matching " & scope.join( " and " ) : " (all tasks)"
+
+			return {
+				"success" : true,
+				"message" : "All persisted tasks#scopeText# have been resumed on disk."
+			}
+		} catch ( any e ) {
+			return {
+				"error"   : true,
+				"message" : "Failed to resume persisted tasks: #e.message#"
+			}
+		}
+	}
+
+	// =========================================================================
 	// Scheduler Health & Summary
 	// =========================================================================
 

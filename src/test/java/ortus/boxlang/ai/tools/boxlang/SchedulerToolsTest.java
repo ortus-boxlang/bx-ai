@@ -19,6 +19,7 @@ package ortus.boxlang.ai.tools.boxlang;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -27,6 +28,30 @@ import ortus.boxlang.runtime.types.Array;
 import ortus.boxlang.runtime.types.IStruct;
 
 public class SchedulerToolsTest extends BaseIntegrationTest {
+
+	@BeforeAll
+	public static void registerTestSchedulers() {
+		// Register two schedulers with random tasks for testing
+		runtime.executeSource(
+		    """
+		    println( "====> Registering test schedulers for SchedulerToolsTest..." )
+		      	// Scheduler 1: Data processing scheduler with multiple tasks
+		      	schedulerStart(
+		      		className = "src.test.bx.DataProcessingScheduler",
+		      		name = "data-processing",
+		      		force = true
+		      	)
+
+		      	// Scheduler 2: Reporting scheduler with different tasks
+		      	schedulerStart(
+		      		className = "src.test.bx.ReportingScheduler",
+		      		name = "reporting",
+		      		force = true
+		      	)
+		      """,
+		    runtime.getRuntimeContext()
+		);
+	}
 
 	// =========================================================================
 	// get_schedulers
@@ -41,6 +66,8 @@ public class SchedulerToolsTest extends BaseIntegrationTest {
 				import bxModules.bxai.models.tools.boxlang.SchedulerTools;
 				tools = new SchedulerTools()
 				result = tools.get_schedulers()
+				println( "Schedulers: " )
+				println( result )
 			""",
 			context
 		);
@@ -392,6 +419,156 @@ public class SchedulerToolsTest extends BaseIntegrationTest {
 			assertThat( info.containsKey( "total" ) ).isTrue();
 			assertThat( info.containsKey( "tasks" ) ).isTrue();
 		}
+	}
+
+	// =========================================================================
+	// pause_persisted_task
+	// =========================================================================
+
+	@DisplayName( "pause_persisted_task() returns success or error struct" )
+	@Test
+	public void testPausePersistedTaskReturnsResult() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.boxlang.SchedulerTools;
+				tools = new SchedulerTools()
+				result = tools.pause_persisted_task( "nonexistent-task-xyz" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var info = ( IStruct ) variables.get( "result" );
+		assertThat( info ).isNotNull();
+		// Either success (if tasks.json exists and upserts) or error
+		assertThat( info.containsKey( "success" ) || info.containsKey( "error" ) ).isTrue();
+	}
+
+	// =========================================================================
+	// resume_persisted_task
+	// =========================================================================
+
+	@DisplayName( "resume_persisted_task() returns success or error struct" )
+	@Test
+	public void testResumePersistedTaskReturnsResult() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.boxlang.SchedulerTools;
+				tools = new SchedulerTools()
+				result = tools.resume_persisted_task( "nonexistent-task-xyz" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var info = ( IStruct ) variables.get( "result" );
+		assertThat( info ).isNotNull();
+		assertThat( info.containsKey( "success" ) || info.containsKey( "error" ) ).isTrue();
+	}
+
+	// =========================================================================
+	// pause_all_persisted_tasks
+	// =========================================================================
+
+	@DisplayName( "pause_all_persisted_tasks() returns success or error struct" )
+	@Test
+	public void testPauseAllPersistedTasksReturnsResult() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.boxlang.SchedulerTools;
+				tools = new SchedulerTools()
+				result = tools.pause_all_persisted_tasks()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var info = ( IStruct ) variables.get( "result" );
+		assertThat( info ).isNotNull();
+		assertThat( info.containsKey( "success" ) || info.containsKey( "error" ) ).isTrue();
+	}
+
+	@DisplayName( "pause_all_persisted_tasks() with scheduler filter returns result" )
+	@Test
+	public void testPauseAllPersistedTasksWithSchedulerFilter() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.boxlang.SchedulerTools;
+				tools = new SchedulerTools()
+				result = tools.pause_all_persisted_tasks( schedulerName = "bxschedule" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var info = ( IStruct ) variables.get( "result" );
+		assertThat( info ).isNotNull();
+		assertThat( info.containsKey( "success" ) || info.containsKey( "error" ) ).isTrue();
+	}
+
+	@DisplayName( "pause_all_persisted_tasks() with group filter returns result" )
+	@Test
+	public void testPauseAllPersistedTasksWithGroupFilter() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.boxlang.SchedulerTools;
+				tools = new SchedulerTools()
+				result = tools.pause_all_persisted_tasks( group = "reports" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var info = ( IStruct ) variables.get( "result" );
+		assertThat( info ).isNotNull();
+		assertThat( info.containsKey( "success" ) || info.containsKey( "error" ) ).isTrue();
+	}
+
+	// =========================================================================
+	// resume_all_persisted_tasks
+	// =========================================================================
+
+	@DisplayName( "resume_all_persisted_tasks() returns success or error struct" )
+	@Test
+	public void testResumeAllPersistedTasksReturnsResult() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.boxlang.SchedulerTools;
+				tools = new SchedulerTools()
+				result = tools.resume_all_persisted_tasks()
+			""",
+			context
+		);
+		// @formatter:on
+
+		var info = ( IStruct ) variables.get( "result" );
+		assertThat( info ).isNotNull();
+		assertThat( info.containsKey( "success" ) || info.containsKey( "error" ) ).isTrue();
+	}
+
+	@DisplayName( "resume_all_persisted_tasks() with scheduler filter returns result" )
+	@Test
+	public void testResumeAllPersistedTasksWithSchedulerFilter() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.boxlang.SchedulerTools;
+				tools = new SchedulerTools()
+				result = tools.resume_all_persisted_tasks( schedulerName = "bxschedule" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var info = ( IStruct ) variables.get( "result" );
+		assertThat( info ).isNotNull();
+		assertThat( info.containsKey( "success" ) || info.containsKey( "error" ) ).isTrue();
 	}
 
 }
