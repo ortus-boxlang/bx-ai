@@ -1,0 +1,222 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MCP Tools for BoxLang ModuleService introspection and management.
+ *
+ * Provides comprehensive visibility into the BoxLang module system including:
+ * - Registered modules with their configuration and status
+ * - Module settings, BIFs, components, interceptors
+ * - Module search paths
+ * - Module reload operations (useful for development)
+ *
+ * These tools are designed for system administrators and developers
+ * who need to inspect and manage the BoxLang module environment.
+ *
+ * NOTE: These tools are MCP-only and are NOT registered in the AI tool registry.
+ */
+class extends="BaseTool" {
+
+	// =========================================================================
+	// Module Introspection Methods
+	// =========================================================================
+
+	/**
+	 * Get all registered modules with their configuration and status.
+	 */
+	@mcpTool
+	@AITool
+	public struct function get_modules() {
+		return getModuleList()
+	}
+
+	/**
+	 * Get a simple array of registered module names.
+	 */
+	@mcpTool
+	@AITool
+	public array function get_module_names() {
+		return get_modules().keyArray()
+	}
+
+	/**
+	 * Get the full configuration and status for a specific registered module.
+	 *
+	 * @moduleName The name of the module to inspect
+	 */
+	@mcpTool
+	@AITool
+	public struct function get_module_info( required string moduleName ) {
+		var modules = getModuleList()
+
+		if ( !modules.keyExists( arguments.moduleName )) {
+			return {
+				"error"   : true,
+				"message" : "Module not found: #arguments.moduleName#. Use get_modules() to see available modules."
+			}
+		}
+
+		var record = modules[ arguments.moduleName ]
+		maskSensitiveValues( record.settings )
+		return record
+	}
+
+	/**
+	 * Get the settings for a specific registered module.
+	 *
+	 * @moduleName The name of the module to get settings for
+	 */
+	@mcpTool
+	@AITool
+	public any function get_module_settings( required string moduleName ) {
+		var record = get_module_info( arguments.moduleName )
+
+		if( record?.error ) {
+			return record
+		}
+
+		return {
+			"name"     : arguments.moduleName,
+			"settings" : record.settings
+		}
+	}
+
+	/**
+	 * Get the list of module search paths registered in the ModuleService.
+	 */
+	@mcpTool
+	@AITool
+	public any function get_module_paths() {
+		var moduleService = getRuntime().getModuleService()
+		return moduleService.getModulePaths().map( ( path ) => path.toString() )
+	}
+
+	// =========================================================================
+	// Module Management Methods
+	// =========================================================================
+
+	/**
+	 * Reload a specific module (unload, re-register, and re-activate).
+	 * Useful during development when module code changes.
+	 *
+	 * @moduleName The name of the module to reload
+	 */
+	@mcpTool
+	@AITool
+	public any function reload_module( required string moduleName ) {
+		var moduleService = getRuntime().getModuleService()
+
+		if ( !moduleService.hasModule( keyOf( arguments.moduleName ) ) ) {
+			return {
+				"error"   : true,
+				"message" : "Module not found: #arguments.moduleName#. Use get_modules() to see available modules."
+			}
+		}
+
+		try {
+			moduleService.reload( keyOf( arguments.moduleName ) )
+			return {
+				"success" : true,
+				"message" : "Module '#arguments.moduleName#' reloaded successfully."
+			}
+		} catch ( any e ) {
+			return {
+				"error"   : true,
+				"message" : "Failed to reload module '#arguments.moduleName#': #e.message#"
+			}
+		}
+	}
+
+	/**
+	 * Reload all registered modules.
+	 * Useful during development when multiple modules have changed.
+	 */
+	@mcpTool
+	@AITool
+	public any function reload_all_modules() {
+		var moduleService = getRuntime().getModuleService()
+		var moduleNames   = moduleService.getModuleNames().map( ( key ) => key.getName() )
+		var results       = []
+
+		moduleNames.each( ( name ) => {
+			try {
+				moduleService.reload( keyOf( name ) )
+				results.append( {
+					"name"    : name,
+					"success" : true
+				} )
+			} catch ( any e ) {
+				results.append( {
+					"name"    : name,
+					"success" : false,
+					"error"   : e.message
+				} )
+			}
+		} )
+
+		return {
+			"total"   : results.len(),
+			"results" : results
+		}
+	}
+
+	/**
+	 * Check if a module is registered in the runtime.
+	 *
+	 * @moduleName The name of the module to check
+	 */
+	@mcpTool
+	@AITool
+	public any function has_module( required string moduleName ) {
+		return {
+			"name"      : arguments.moduleName,
+			"registered" : getModuleList().keyExists( arguments.moduleName )
+		}
+	}
+
+	/**
+	 * Get a summary of module statistics (total count, activated, enabled, etc.)
+	 */
+	@mcpTool
+	@AITool
+	public any function get_module_stats() {
+		var moduleService = getRuntime().getModuleService()
+		var registry      = moduleService.getRegistry()
+		var total         = registry.size()
+		var activated     = 0
+		var enabled       = 0
+		var totalBifs     = 0
+		var totalComponents = 0
+		var totalInterceptors = 0
+
+		registry.each( ( key, record ) => {
+			if ( record.activated ) activated++
+			if ( record.enabled ) enabled++
+			totalBifs += record.bifs.len()
+			totalComponents += record.components.len()
+			totalInterceptors += record.interceptors.len()
+		} )
+
+		return {
+			"totalModules"      : total,
+			"activatedModules"  : activated,
+			"enabledModules"    : enabled,
+			"disabledModules"   : total - enabled,
+			"totalBifs"         : totalBifs,
+			"totalComponents"   : totalComponents,
+			"totalInterceptors" : totalInterceptors,
+			"modulePaths"       : moduleService.getModulePaths().map( ( path ) => path.toString() )
+		}
+	}
+
+}
