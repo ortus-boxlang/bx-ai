@@ -1,0 +1,315 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MCP Tools for BoxLang DatasourceService introspection and management.
+ *
+ * Provides comprehensive visibility into the BoxLang datasource system including:
+ * - Registered datasources with their configurations
+ * - Connection pool metrics (active, idle, total connections)
+ * - Datasource health and status
+ * - Datasource connection testing
+ *
+ * These tools are designed for system administrators and developers
+ * who need to inspect and manage database connections in the BoxLang runtime.
+ *
+ * NOTE: These tools are MCP-only and are NOT registered in the AI tool registry.
+ */
+class extends="BaseTool" {
+
+	static {
+		datasourceService = getBoxRuntime().getDataSourceService()
+	}
+
+	// =========================================================================
+	// Datasource Introspection Methods
+	// =========================================================================
+
+	/**
+	 * Get all registered datasources with their configurations and pool metrics.
+	 */
+	@mcpTool
+	@AITool
+	public array function get_datasources() {
+		var datasources = static.datasourceService.getAll()
+		var result      = []
+
+		datasources.each( ( key, ds ) => {
+			var config = ds.getConfiguration()
+			var props  = config.getProperties()
+			result.append( {
+				"name"            : config.getOriginalName(),
+				"driver"          : config.getDriverName(),
+				"jdbcUrl"         : props.get( "connectionString" ) ?: props.get( "jdbcURL" ) ?: props.get( "url" ) ?: "",
+				"poolingStarted"  : ds.isPoolingStarted(),
+				"poolMetrics"     : _getPoolMetrics( ds ),
+				"config"          : _getSafeConfig( config )
+			} )
+		} )
+
+		return result.sort( ( a, b ) => lCase( a.name ).compare( lCase( b.name ) ) )
+	}
+
+	/**
+	 * Get a simple array of registered datasource names.
+	 */
+	@mcpTool
+	@AITool
+	public array function get_datasource_names() {
+		var names = static.datasourceService.getNames()
+		var result = []
+		names.each( ( name ) => result.append( name ) )
+		return result
+	}
+
+	/**
+	 * Get details for a specific datasource by name, including its configuration and pool metrics.
+	 *
+	 * @datasourceName The name of the datasource to inspect
+	 */
+	@mcpTool
+	@AITool
+	public any function get_datasource( required string datasourceName ) {
+		var dsKey = keyOf( arguments.datasourceName )
+
+		if ( !static.datasourceService.has( dsKey ) ) {
+			return {
+				"error"   : true,
+				"message" : "Datasource not found: #arguments.datasourceName#. Use get_datasources() to see available datasources."
+			}
+		}
+
+		var ds     = static.datasourceService.get( dsKey )
+		var config = ds.getConfiguration()
+		var props  = config.getProperties()
+
+		return {
+			"name"            : config.getOriginalName(),
+			"driver"          : config.getDriverName(),
+			"jdbcUrl"         : props.get( "connectionString" ) ?: props.get( "jdbcURL" ) ?: props.get( "url" ) ?: "",
+			"poolingStarted"  : ds.isPoolingStarted(),
+			"poolMetrics"     : _getPoolMetrics( ds ),
+			"config"          : _getSafeConfig( config )
+		}
+	}
+
+	/**
+	 * Check if a datasource is registered in the runtime.
+	 *
+	 * @datasourceName The name of the datasource to check
+	 */
+	@mcpTool
+	@AITool
+	public any function has_datasource( required string datasourceName ) {
+		return {
+			"name"      : arguments.datasourceName,
+			"registered" : static.datasourceService.has( keyOf( arguments.datasourceName ) )
+		}
+	}
+
+	// =========================================================================
+	// Pool Metrics & Performance
+	// =========================================================================
+
+	/**
+	 * Get connection pool metrics for a specific datasource.
+	 * Includes active connections, idle connections, total connections, and wait times.
+	 *
+	 * @datasourceName The name of the datasource to inspect
+	 */
+	@mcpTool
+	@AITool
+	public any function get_pool_metrics( required string datasourceName ) {
+		var ds = _resolveDatasource( arguments.datasourceName )
+		if ( isStruct( ds ) && ds.containsKey( "error" ) ) return ds
+
+		return _getPoolMetrics( ds )
+	}
+
+	/**
+	 * Get the configuration for a specific datasource.
+	 * Sensitive values like passwords and usernames are masked for security.
+	 *
+	 * @datasourceName The name of the datasource to inspect
+	 */
+	@mcpTool
+	@AITool
+	public any function get_datasource_config( required string datasourceName ) {
+		var ds = _resolveDatasource( arguments.datasourceName )
+		if ( isStruct( ds ) && ds.containsKey( "error" ) ) return ds
+
+		return {
+			"name"   : ds.getConfiguration().getOriginalName(),
+			"config" : _getSafeConfig( ds.getConfiguration() )
+		}
+	}
+
+	// =========================================================================
+	// Datasource Management
+	// =========================================================================
+
+	/**
+	 * Test a datasource connection by attempting to acquire a connection from the pool.
+	 * Returns success/failure with timing information.
+	 *
+	 * @datasourceName The name of the datasource to test
+	 */
+	@mcpTool
+	@AITool
+	public any function test_datasource( required string datasourceName ) {
+		var ds = _resolveDatasource( arguments.datasourceName )
+		if ( isStruct( ds ) && ds.containsKey( "error" ) ) return ds
+
+		var startTime = getTickCount()
+		try {
+			var conn = ds.getConnection()
+			var elapsed = getTickCount() - startTime
+			var isValid = !conn.isClosed()
+			conn.close()
+
+			return {
+				"success"    : true,
+				"message"    : "Datasource '#arguments.datasourceName#' connection test passed.",
+				"elapsedMs"  : elapsed,
+				"connectionValid" : isValid
+			}
+		} catch ( any e ) {
+			var elapsed = getTickCount() - startTime
+			return {
+				"success"   : false,
+				"message"   : "Datasource '#arguments.datasourceName#' connection test failed: #e.message#",
+				"elapsedMs" : elapsed
+			}
+		}
+	}
+
+	// =========================================================================
+	// Datasource Health & Summary
+	// =========================================================================
+
+	/**
+	 * Get a health summary of all datasources and their connection pools.
+	 */
+	@mcpTool
+	@AITool
+	public any function get_datasource_health() {
+		var datasources = static.datasourceService.getAll()
+		var total       = datasources.size()
+		var pooling     = 0
+		var notPooling  = 0
+		var totalActive = 0
+		var totalIdle   = 0
+		var totalMax    = 0
+
+		datasources.each( ( key, ds ) => {
+			if ( ds.isPoolingStarted() ) {
+				pooling++
+				var metrics = _getPoolMetrics( ds )
+				totalActive += metrics.activeConnections ?: 0
+				totalIdle += metrics.idleConnections ?: 0
+				totalMax += metrics.maxConnections ?: 0
+			} else {
+				notPooling++
+			}
+		} )
+
+		return {
+			"totalDatasources"    : total,
+			"poolingStarted"      : pooling,
+			"poolingNotStarted"   : notPooling,
+			"totalActiveConnections" : totalActive,
+			"totalIdleConnections"   : totalIdle,
+			"totalMaxConnections"    : totalMax,
+			"utilizationPercent"     : totalMax > 0 ? round( ( totalActive / totalMax ) * 100 ) : 0
+		}
+	}
+
+	// =========================================================================
+	// Private Helpers
+	// =========================================================================
+
+	/**
+	 * Resolves a datasource by name.
+	 * Returns the DataSource object on success, or an error struct if the
+	 * datasource does not exist.
+	 *
+	 * @datasourceName The name of the datasource to resolve
+	 */
+	private any function _resolveDatasource( required string datasourceName ) {
+		var dsKey = keyOf( arguments.datasourceName )
+
+		if ( !static.datasourceService.has( dsKey ) ) {
+			return {
+				"error"   : true,
+				"message" : "Datasource not found: #arguments.datasourceName#. Use get_datasources() to see available datasources."
+			}
+		}
+
+		return static.datasourceService.get( dsKey )
+	}
+
+	/**
+	 * Get HikariCP pool metrics for a datasource.
+	 */
+	private struct function _getPoolMetrics( required any ds ) {
+		if ( !ds.isPoolingStarted() ) {
+			return {
+				"poolingStarted"    : false,
+				"activeConnections" : 0,
+				"idleConnections"   : 0,
+				"totalConnections"  : 0,
+				"maxConnections"    : 0,
+				"minConnections"    : 0,
+				"waitingThreads"    : 0,
+				"totalCreated"      : 0,
+				"totalAcquired"     : 0,
+				"totalReleased"     : 0
+			}
+		}
+
+		var pool = ds.hikariDataSource.getHikariPoolMXBean()
+		return {
+			"poolingStarted"    : true,
+			"activeConnections" : pool.getActiveConnections(),
+			"idleConnections"   : pool.getIdleConnections(),
+			"totalConnections"  : pool.getTotalConnections(),
+			"maxConnections"    : pool.getMaximumPoolSize(),
+			"minConnections"    : pool.getMinimumIdle(),
+			"waitingThreads"    : pool.getThreadsAwaitingConnection(),
+			"totalCreated"      : pool.getTotalCreated(),
+			"totalAcquired"     : pool.getTotalAcquired(),
+			"totalReleased"     : pool.getTotalReleased()
+		}
+	}
+
+	/**
+	 * Get a safe version of the datasource config with sensitive values masked.
+	 */
+	private struct function _getSafeConfig( required any config ) {
+		var cfg = config.getProperties().duplicate( true )
+
+		// Mask sensitive values
+		if ( cfg.containsKey( "password" ) && !isNull( cfg.password ) && len( cfg.password ?: "" ) > 0 ) {
+			cfg.password = "********"
+		}
+		if ( cfg.containsKey( "encryptedPassword" ) && !isNull( cfg.encryptedPassword ) && len( cfg.encryptedPassword ?: "" ) > 0 ) {
+			cfg.encryptedPassword = "********"
+		}
+		if ( cfg.containsKey( "username" ) && !isNull( cfg.username ) && len( cfg.username ?: "" ) > 0 ) {
+			cfg.username = "********"
+		}
+
+		return cfg
+	}
+
+}
