@@ -327,32 +327,6 @@ class {
 			}
 		}
 
-		// ============================================================================
-		// BoxLang MCP Server - Conditional Registration
-		// ============================================================================
-
-		var boxlangMCPSettings = moduleRecord.settings.boxlangMCP
-
-		if ( boxlangMCPSettings.enabled ) {
-			try {
-				// Create and register the BoxLangMCP server instance
-				var mcpServer = new bxModules.bxai.models.mcp.BoxLangMCP()
-				aiService().putServer( "boxlang", mcpServer )
-
-				writeLog(
-					text: "bxAI: BoxLang MCP server registered with #mcpServer.getToolCount()# tools - endpoint: /~bxai/boxlang.bxm",
-					type: "debug",
-					log: "ai"
-				)
-			} catch ( any e ) {
-				writeLog(
-					text: "bxAI: Failed to create BoxLang MCP server - #e.message#",
-					type: "error",
-					log: "ai"
-				)
-			}
-		}
-
 		// Register core tools into the registry.
 		aiToolRegistry().scanClass(
 			new bxModules.bxai.models.tools.core.CoreTools(),
