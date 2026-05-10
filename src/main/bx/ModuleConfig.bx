@@ -202,27 +202,6 @@ class {
 				defaultStyle        : "",
 				// Default style/tone/mood instructions appended to every image prompt
 				defaultInstructions : ""
-			},
-
-			// --------------------------------------------------------------------------
-			// BoxLang MCP Server Settings
-			// --------------------------------------------------------------------------
-			// The BoxLang MCP server is ONLY exposed when you are running a web server with this module loaded
-			// http://localhost:8080/~bxai/boxlang.bxm is the default endpoint for the MCP server when enabled.
-			boxlangMCP: {
-				// Whether to enable the BoxLang MCP server, which allows external clients to connect and interact with the BoxLang runtime.
-				// Use with caution, as this can expose internal runtime functionality if enabled.
-				enabled : false,
-				// An optional secret token that clients must provide to connect to the MCP server.  Set to "" to disable authentication.
-				// Clients send via Authorization header: Authorization: Bearer {authToken}
-				authToken : "",
-				// Allowed IP addresses for request filtering. When non-empty, only requests from these IPs are accepted.
-				// Supports individual IPs (e.g., "127.0.0.1") and CIDR ranges (e.g., "192.168.0.0/24").
-				// Empty array means no IP filtering (all IPs allowed).
-				allowedIPs : [ "127.0.0.1" ],
-				// CORS allowed origins (array of strings, supports wildcards like *.domain.com)
-				// Empty array means no CORS headers - secure by default
-				corsAllowedOrigins : []
 			}
 		}
 
