@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🥊 New Features
 
 - **MCP Server IP Allowlist & Proxy-Aware Client IP Extraction**: `MCPServer` now supports IP-based access control with automatic client IP resolution from common proxy headers.
-  - **`withAllowedIPs(ips)` fluent method**: Configure allowed IP addresses or CIDR ranges. Pass empty array to allow all (default).
+  - **`withAllowedIPs(ips)`**: Configure allowed IP addresses or CIDR ranges. Pass empty array to allow all (default).
   - **`addAllowedIP(ip)` / `clearAllowedIPs()`**: Incremental allowlist management.
   - **`hasAllowedIPs()`**: Check if IP filtering is active.
   - **`verifyClientIP(clientIP, requestData)`**: Validate a client IP against the allowlist with exact match and CIDR range support.
@@ -21,22 +21,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **IP filter failure tracking**: Rejected IP checks recorded in `MCPServerStats.security.ipFilterFailures` counter and exposed in `getStats()` / `getSummary()`.
   - **Security rejection**: Denied IPs return HTTP 403 Forbidden with `INVALID_REQUEST` JSON-RPC error code.
 
-- **`BoxLangMCP` Server**: A complex and production capable MCP server so you can manage and introspect any BoxLang server.
-
 - **Fluent Builder API for Audio BIFs**: `aiSpeak()`, `aiTranscribe()`, and `aiTranslate()` now
   support a fluent builder API. Calling any of these BIFs with no arguments returns the request
   object for chaining.
-  - **`AiSpeechRequest`** gains: `of(text)` static factory, `.text()`, `.model()`, `.provider()`,
-    `.apiKey()`, `.voice()`, `.speed()`, `.instructions()`, `.outputFile()`, `.outputFormat()`,
-    `.timeout()`, gender shortcuts (`.male()`, `.female()`), format shortcuts (`.asMP3()`,
-    `.asWav()`, `.asFlac()`, `.asOpus()`, `.asPCM()`), `.withParams()`, `.withOptions()`,
-    `.withLogging()`, and `.speak()` terminator.
-  - **`AiTranscriptionRequest`** gains: `of(audio)` static factory, `.file(path)`, `.url(url)`,
-    `.data(binary)`, `.model()`, `.provider()`, `.apiKey()`, `.language()`, `.inputFormat()`,
-    `.timeout()`, timestamp shortcuts (`.withWordTimestamps()`, `.withSegmentTimestamps()`,
-    `.withTimestamps()`), `.diarize()`, format shortcuts (`.asJSON()`, `.asText()`,
-    `.asVerboseJSON()`, `.asSRT()`, `.asVTT()`), `.withParams()`, `.withOptions()`,
-    `.withLogging()`, and dual terminators `.transcribe()` and `.translate()`.
+  - **`AiSpeechRequest`** gains:
+    - `of(text)` static factory
+    - `.text()`
+    - `.model()`
+    - `.provider()`
+    - `.apiKey()`
+    - `.voice()`
+    - `.speed()`
+    - `.instructions()`
+    - `.outputFile()`
+    - `.outputFormat()`
+    - `.timeout()`
+    - gender shortcuts (`.male()`, `.female()`)
+    - format shortcuts (`.asMP3()`, `.asWav()`, `.asFlac()`, `.asOpus()`, `.asPCM()`)
+    - `.withParams()`
+    - `.withOptions()`
+    - `.withLogging()`
+    - `.speak()` terminator
+  - **`AiTranscriptionRequest`** gains:
+    - `of(audio)` static factory
+    - `.file(path)`
+    - `.url(url)`
+    - `.data(binary)`
+    - `.model()`
+    - `.provider()`
+    - `.apiKey()`
+    - `.language()`
+    - `.inputFormat()`
+    - `.timeout()`
+    - timestamp shortcuts (`.withWordTimestamps()`, `.withSegmentTimestamps()`, `.withTimestamps()`)
+    - `.diarize()`
+    - format shortcuts (`.asJSON()`, `.asText()`, `.asVerboseJSON()`, `.asSRT()`, `.asVTT()`)
+    - `.withParams()`
+    - `.withOptions()`
+    - `.withLogging()`
+    - dual terminators `.transcribe()` and `.translate()`
 
 - **Image Generation — `aiImage()`**: New BIF for generating images from text prompts using any provider that implements `IAiImageService`.
   - **`aiImage( prompt, params, options )`** BIF: Generate one or more images from a text description. Returns an `AiImageResponse` (with `hasImages()`, `getCount()`, `getFirstURL()`, `getFirstBase64()`, `getRevisedPrompt()`, `saveToFile()`, `saveAllToDirectory()`, `toDataURI()`, `getMimeType()`, `toStruct()`) or saves directly to a file via `options.outputFile`.
