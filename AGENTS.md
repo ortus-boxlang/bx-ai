@@ -3,18 +3,21 @@
 ## ⚠️ CRITICAL: Do Not Hallucinate
 
 **If you don't know something, DO NOT make it up. Either:**
+
 1. **Ask the user** for clarification
 2. **Search the codebase** using available tools (grep_search, semantic_search, read_file)
 3. **Check the actual BIF files** in `src/main/bx/bifs/` to verify function names and signatures
 4. **Acknowledge uncertainty** - It's better to say "I'm not sure, let me check" than to provide incorrect information
 
 **Never assume:**
+
 - Function names or BIF names that you haven't verified
 - API signatures or parameter names
 - Class names or file locations
 - Feature availability
 
 **Always verify before suggesting code that uses:**
+
 - BIFs (Built-in Functions) - check `src/main/bx/bifs/*.bx`
 - Classes - check `src/main/bx/models/`
 - Configuration options - check actual source files
@@ -26,6 +29,7 @@
 This is a **BoxLang module** providing unified AI provider integration. BoxLang is a modern dynamic JVM language (CFML-like syntax) with Java interop. The module exposes **Built-in Functions (BIFs)** written in BoxLang that interface with multiple AI providers (OpenAI, Claude, Gemini, Ollama, etc.) through a consistent API.
 
 **Key Architecture:**
+
 - **Hybrid codebase**: BoxLang (`.bx` files) for business logic + Java for runtime integration
 - **Module structure**: `src/main/bx/` contains BoxLang source, compiled into `build/module/` for distribution
 - **Provider pattern**: All AI services extend `BaseService` (OpenAI-compatible) implementing `IAiService` interface
@@ -34,6 +38,7 @@ This is a **BoxLang module** providing unified AI provider integration. BoxLang 
 ## BoxLang Language Conventions
 
 ### Syntax Essentials
+
 ```java
 // BoxLang looks like Java/CFML hybrid
 class extends="BaseClass" implements="IInterface" {
@@ -71,6 +76,7 @@ messages.map( m => m.content ).filter( c => !isNull(c) )
 ```
 
 ### Key Differences from Java
+
 - **No semicolons required** (but allowed)
 - **Duck typing**: `any` type allows dynamic dispatch
 - **Built-in serialization**: `jsonSerialize()`, `jsonDeserialize()` (NOT serializeJSON/deserializeJSON)
@@ -86,12 +92,14 @@ messages.map( m => m.content ).filter( c => !isNull(c) )
   - Examples: `char(10)` (newline), `left()`, `right()`, `reReplace()`, `trim()`, etc.
 
 ### Code Quality Standards
+
 - **No cryptic variable names**: Use descriptive, self-documenting names (e.g., `maxConnections` not `M`)
 - **Avoid acronyms**: Only use acronyms that are universally known (HTTP, URL, API). Prefer full words.
 - **Avoid reserved scope names**: BoxLang has built-in scopes that cannot be used as variable names:
   - `server`, `request`, `session`, `application`, `cgi`, `url`, `form`, `cookie`, `variables`
   - Use alternative names like `mcpSrv`, `rpcRequest`, `httpReq`, etc.
 - **Type casting**: Use `castAs` operator instead of `javaCast()` function
+
   ```java
   // Good
   arguments.config.diversityFactor castAs "float"
@@ -104,6 +112,7 @@ messages.map( m => m.content ).filter( c => !isNull(c) )
 ## Development Workflows
 
 ### Build & Test
+
 ```bash
 # Full build (downloads BoxLang runtime, compiles module, runs tests)
 ./gradlew build
@@ -120,12 +129,14 @@ curl http://localhost:11434/api/tags  # Verify model availability
 ```
 
 ### Module Development Cycle
+
 1. Edit BoxLang source in `src/main/bx/`
 2. Run `./gradlew shadowJar` to compile module structure into `build/module/`
 3. Tests load module from `build/module/` (see `BaseIntegrationTest.loadModule()`)
 4. Module registration happens at `@BeforeAll` - changes require test restart
 
 ### Testing Strategy
+
 - **ALL tests MUST extend `BaseIntegrationTest`** - Provides module loading, runtime setup, and context management
 - **Java test harness** (`JUnit 5`) executes **BoxLang test code** via `runtime.executeSource()`
 - Tests inject module into BoxLang runtime from `build/module/` directory
@@ -136,6 +147,7 @@ curl http://localhost:11434/api/tags  # Verify model availability
 - **Debugging AI Provider HTTP responses**: Add `logResponseToConsole: true` to AI service provider config (OpenAI, Claude, etc.) to see raw API responses in console output - useful for debugging provider integration issues
 
 **BaseIntegrationTest provides:**
+
 ```java
 protected static BoxRuntime runtime;           // BoxLang runtime instance
 protected static ModuleService moduleService;  // Module management
@@ -147,6 +159,7 @@ protected IScope variables;                    // Variables scope for result ext
 ## Critical Patterns
 
 ### BIF Creation (`src/main/bx/bifs/*.bx`)
+
 ```java
 @BoxBIF  // Required annotation for BIF registration
 class {
@@ -158,6 +171,7 @@ class {
 ```
 
 ### Provider Implementation (`src/main/bx/models/providers/*.bx`)
+
 ```java
 class extends="BaseService" {
     function configure( required any apiKey ) {
@@ -170,6 +184,7 @@ class extends="BaseService" {
 ```
 
 ### Runnable Pipeline Pattern
+
 ```java
 // All runnables implement: run(input, params), stream(onChunk, input, params), to(next)
 var pipeline = aiModel("openai")
@@ -182,48 +197,88 @@ result = pipeline.run( "input" );  // Chains execution
 ## Event System (Expanded) 📡
 
 ### Complete Interception Points
-Module defines **40 custom interception points** in [ModuleConfig.bx](src/main/bx/ModuleConfig.bx#L151-L201) organized by category:
+
+Module defines **53 custom interception points** in [ModuleConfig.bx](src/main/bx/ModuleConfig.bx#L218-L305) organized by category:
 
 **Agent Events** (3):
+
 - `beforeAIAgentRun`, `afterAIAgentRun` - Agent execution lifecycle
 - `onAIAgentCreate` - Agent instantiation
 
 **Model & Provider Events** (5):
+
 - `beforeAIModelInvoke`, `afterAIModelInvoke` - Model execution lifecycle
 - `onAIModelCreate` - Model instantiation
 - `onAIProviderCreate`, `onMissingAiProvider` - Provider management
 
 **Request & Response Events** (5):
+
 - `onAIChatRequest`, `onAIChatRequestCreate` - Request creation
 - `onAIChatResponse` - Response received
 - `onAIRateLimitHit`, `onAIError` - Error handling
 
 **Embedding Events** (4):
+
 - `beforeAIEmbed`, `afterAIEmbed` - Embedding lifecycle
 - `onAIEmbedRequest`, `onAIEmbedResponse` - Embedding API calls
 
 **Pipeline Events** (2):
+
 - `beforeAIPipelineRun`, `afterAIPipelineRun` - Pipeline execution
 
 **Tool Events** (3):
+
 - `beforeAIToolExecute`, `afterAIToolExecute` - Tool invocation
 - `onAIToolCreate` - Tool registration
 
-**Component Creation Events** (7):
+**Component Creation Events** (4):
+
 - `onAiLoaderCreate` - Document loader creation
 - `onAiMemoryCreate` - Memory instance creation
 - `onAIMessageCreate` - Message creation
 - `onAITransformerCreate` - Transformer creation
 
 **Utility Events** (1):
+
 - `onAITokenCount` - Token usage tracking (includes multi-tenant: `tenantId`, `usageMetadata`)
 
-**MCP Events** (5):
-- `onMCPServerCreate`, `onMCPServerRemove` - Server lifecycle
+**Memory Events** (2):
+
+- `onHybridMemoryAdd` - Hybrid memory add operation
+- `onVectorSearch` - Vector search execution
+
+**Audio Events** (6):
+
+- `beforeAISpeech`, `afterAISpeech` - Text-to-speech lifecycle
+- `beforeAITranscription`, `afterAITranscription` - Speech-to-text lifecycle
+- `beforeAITranslation`, `afterAITranslation` - Translation lifecycle
+
+**Image Events** (4):
+
+- `beforeAIImageGeneration`, `afterAIImageGeneration` - Image generation lifecycle
+- `onAIImageRequest`, `onAIImageResponse` - Image API calls
+
+**MCP Server Events** (7):
+
+- `onMCPServerCreate`, `onMCPServerPause`, `onMCPServerRemove`, `onMCPServerResume` - Server lifecycle
 - `onMCPRequest`, `onMCPResponse`, `onMCPError` - MCP operations
 
+**MCP Client Events** (3):
+
+- `onMCPClientRequest`, `onMCPClientResponse`, `onMCPClientError` - MCP client operations
+
+**Tool Registry Events** (2):
+
+- `onAIToolRegistryRegister`, `onAIToolRegistryUnregister` - Tool registry lifecycle
+
+**Agent Registry Events** (2):
+
+- `onAIAgentRegistryRegister`, `onAIAgentRegistryUnregister` - Agent registry lifecycle
+
 ### Event Data Structures
+
 Events include rich context. Example for `onAITokenCount`:
+
 ```javascript
 {
     provider: providerInstance,
@@ -242,13 +297,17 @@ Events include rich context. Example for `onAITokenCount`:
 ```
 
 ### Event Registration
+
 - **For modules**: Add to `interceptors` array in [ModuleConfig.bx](src/main/bx/ModuleConfig.bx)
+
   ```javascript
   interceptors: [
       { class: "path.to.MyInterceptor" }
   ]
   ```
+
 - **For applications/scripts**: Use `BoxRegisterInterceptor()` BIF
+
   ```javascript
   BoxRegisterInterceptor( "onAITokenCount", function( event ) {
       // Track usage
@@ -260,6 +319,7 @@ Events include rich context. Example for `onAITokenCount`:
 ## Memory Systems 🧠
 
 ### Memory Interface
+
 - **Interface**: `IAiMemory` ([models/memory/IAiMemory.bx](src/main/bx/models/memory/IAiMemory.bx) - 297 lines)
   - **Identity Methods**: `name()`, `key()`, `metadata()`
   - **Management**: `add()`, `seed()`, `seedAsync()`, `getAll()`, `clear()`, `count()`
@@ -268,6 +328,7 @@ Events include rich context. Example for `onAITokenCount`:
   - **Async Pattern**: `seedAsync()` returns `BoxFuture`, uses `asyncRun(() => {}, "io-tasks")`
 
 ### Base Memory Implementation
+
 - **Base Class**: `BaseMemory` ([models/memory/BaseMemory.bx](src/main/bx/models/memory/BaseMemory.bx) - 682 lines)
   - **Properties**: `key`, `userId`, `conversationId`, `metadata`, `name`, `config`, `messages`, `maxMessages`
   - **Features**:
@@ -323,6 +384,7 @@ var memory = aiMemory( "hybrid", {
 ## Vector Storage 🔍
 
 ### Vector Memory Interface
+
 - **Interface**: `IVectorMemory` ([models/memory/vector/IVectorMemory.bx](src/main/bx/models/memory/vector/IVectorMemory.bx))
   - **Extends**: `IAiMemory` (all standard memory methods available)
   - **Semantic Retrieval**:
@@ -336,6 +398,7 @@ var memory = aiMemory( "hybrid", {
     - `createCollection(name)`, `deleteCollection(name)`, `listCollections()`
 
 ### Base Vector Implementation
+
 - **Base Class**: `BaseVectorMemory` ([models/memory/vector/BaseVectorMemory.bx](src/main/bx/models/memory/vector/BaseVectorMemory.bx) - 808 lines)
   - **Properties**:
     - `collection` - Collection/index name
@@ -351,7 +414,7 @@ var memory = aiMemory( "hybrid", {
 
 ### Vector Providers
 
-**11 Vector Store Implementations** (in [models/memory/vector/](src/main/bx/models/memory/vector/)):
+**10 Vector Store Implementations** (in [models/memory/vector/](src/main/bx/models/memory/vector/)):
 
 1. **BoxVectorMemory** - In-memory Java-based (default, no external dependencies)
 2. **ChromaVectorMemory** - Chroma DB
@@ -385,6 +448,7 @@ var relevantMessages = vectorMemory.getRelevant( "shipping issues", 5 );
 ## Document Loaders 📂
 
 ### Loader Interface
+
 - **Interface**: `IDocumentLoader` ([models/loaders/IDocumentLoader.bx](src/main/bx/models/loaders/IDocumentLoader.bx) - 244 lines)
   - **Core Loading**:
     - `load()` - Load all documents into memory
@@ -401,10 +465,12 @@ var relevantMessages = vectorMemory.getRelevant( "shipping issues", 5 );
     - `ingestAsync(memory, options)` - Non-blocking ingest with progress tracking
 
 ### Base Loader Implementation
+
 - **Base Class**: `BaseDocumentLoader` ([models/loaders/BaseDocumentLoader.bx](src/main/bx/models/loaders/BaseDocumentLoader.bx) - 767 lines)
   - **Properties**: `source`, `config`, `documents`, `currentIndex`, `documentsLoaded`, `errors`
   - **Chain Support**: `filter`, `map`, `progressCallback` functions
   - **Default Config**:
+
     ```javascript
     {
         encoding: "UTF-8",
@@ -415,6 +481,7 @@ var relevantMessages = vectorMemory.getRelevant( "shipping issues", 5 );
         chunkStrategy: "recursive"
     }
     ```
+
   - **Ingest Options**:
     - Deduplication via similarity threshold
     - Token counting and tracking
@@ -423,7 +490,7 @@ var relevantMessages = vectorMemory.getRelevant( "shipping issues", 5 );
 
 ### Loader Types
 
-**14 Document Loader Implementations** (in [models/loaders/](src/main/bx/models/loaders/)):
+**12 Document Loader Implementations** (in [models/loaders/](src/main/bx/models/loaders/)):
 
 1. **TextLoader** - Plain text files (.txt)
 2. **CSVLoader** - CSV with column mapping
@@ -453,6 +520,7 @@ loader.ingest( vectorMemory, {
 ```
 
 ### Document Model
+
 - **Class**: `Document` ([models/Document.bx](src/main/bx/models/Document.bx) - 422 lines)
   - **Properties**: `id`, `content`, `metadata`, `embedding`
   - **Content Methods**:
@@ -471,6 +539,7 @@ loader.ingest( vectorMemory, {
 ## MCP (Model Context Protocol) 🔌
 
 ### MCP Client
+
 - **Class**: `MCPClient` ([models/mcp/MCPClient.bx](src/main/bx/models/mcp/MCPClient.bx) - 449 lines)
   - **Purpose**: Fluent API for consuming external MCP servers
   - **Configuration** (chainable):
@@ -499,6 +568,7 @@ var result = client.callTool( "search", { query: "BoxLang" } );
 ```
 
 ### MCP Server
+
 - **Class**: `MCPServer` ([models/mcp/MCPServer.bx](src/main/bx/models/mcp/MCPServer.bx) - **1542 lines!** - This is HUGE)
   - **Purpose**: Create an MCP server exposing tools/resources/prompts
   - **Core Properties**:
@@ -545,6 +615,7 @@ var response = mcpSrv.handleRequest( requestBody );
 ```
 
 ### MCP Transports
+
 **Transport Implementations** (in [models/mcp/transports/](src/main/bx/models/mcp/transports/)):
 
 1. **ITransport** - Interface for transport layers
@@ -556,6 +627,7 @@ var response = mcpSrv.handleRequest( requestBody );
    - Ideal for process-based integrations
 
 ### MCP Supporting Classes
+
 - **MCPRequestProcessor** ([models/mcp/MCPRequestProcessor.bx](src/main/bx/models/mcp/MCPRequestProcessor.bx))
   - Normalizes HTTP/STDIO requests into common format
   - Extracts server name, method, body, headers
@@ -567,6 +639,7 @@ var response = mcpSrv.handleRequest( requestBody );
 ## Agent System 🤖
 
 ### AI Agents
+
 - **Class**: `AiAgent` ([models/AiAgent.bx](src/main/bx/models/AiAgent.bx) - 630 lines)
   - **Purpose**: Autonomous entities with reasoning, tools, memory, and sub-agents
   - **Core Properties**:
@@ -611,6 +684,7 @@ var response = supportAgent.run( "My order hasn't arrived" );
 ```
 
 ### Sub-Agents Pattern
+
 ```javascript
 // Example: Main agent delegating to specialized sub-agents
 var researchAgent = aiAgent( agentName: "researcher", instructions: "Research topics", ... );
@@ -629,6 +703,7 @@ var result = coordinatorAgent.run( "Write an article about BoxLang AI" );
 ## Transformers 🔄
 
 ### Transformer Interface
+
 - **Interface**: `ITransformer` ([models/transformers/ITransformer.bx](src/main/bx/models/transformers/ITransformer.bx))
   - Methods: `configure(config)`, `transform(input)` (abstract)
 
@@ -637,6 +712,7 @@ var result = coordinatorAgent.run( "Write an article about BoxLang AI" );
   - Validation and defaults handling
 
 ### Transformer Types
+
 **4 Built-in Transformers** (in [models/transformers/](src/main/bx/models/transformers/)):
 
 1. **JSONExtractorTransformer** - Extract/parse JSON from AI responses
@@ -663,13 +739,134 @@ var data = pipeline.run( "Generate a JSON object with user info" );
 ```
 
 ### Integration with Pipelines
+
 - Transformers work seamlessly with `AiTransformRunnable`
 - Used via `aiTransform()` BIF or `AiTransformRunnable` directly
 - Can be chained: `model.to(transform1).to(transform2)`
 
+## Skills System 🎯
+
+### Skill Model
+
+- **Class**: `AiSkill` ([models/skills/AiSkill.bx](src/main/bx/models/skills/AiSkill.bx))
+  - **Purpose**: Injects domain knowledge and behavioral instructions into AI agents
+  - **Properties**: `name`, `description`, `instructions`, `metadata`
+  - **Integration**: Skills are auto-discovered from `.agents/skills/` directory at module startup
+  - **Global Skills**: When `autoLoadSkills: true` (default), all discovered skills are injected into every `aiAgent()` call
+
+### Skill Auto-Discovery
+
+- **Directory**: `.agents/skills/` (configurable via `skillsDirectory` setting)
+- **Format**: `SKILL.md` files with YAML frontmatter
+- **BIFs**: `aiGlobalSkills()` returns all loaded skills, `aiSkill()` creates custom skills
+
+```javascript
+// Example: Create a custom skill
+var skill = aiSkill(
+    name: "customer-service",
+    description: "Expert customer service protocols",
+    instructions: "Always greet the customer warmly and ask for their order number first."
+);
+
+// Use with agent
+var agent = aiAgent(
+    agentName: "support-agent",
+    skills: [ skill ]
+);
+```
+
+## Middleware System 🔄
+
+### Middleware Interface
+
+- **Interface**: `IAiMiddleware` ([models/middleware/IAiMiddleware.bx](src/main/bx/models/middleware/IAiMiddleware.bx))
+  - Methods: `process(request, next)` - Chainable request processing
+  - **Base Class**: `BaseAiMiddleware` ([models/middleware/BaseAiMiddleware.bx](src/main/bx/models/middleware/BaseAiMiddleware.bx))
+  - **Result**: `AiMiddlewareResult` - Wraps processed request/response
+  - **Adapter**: `StructMiddlewareAdapter` - Converts struct definitions to middleware
+
+### Middleware Usage
+
+- Middleware can be chained to process AI requests before they reach the provider
+- Useful for logging, rate limiting, content filtering, prompt injection detection
+- Built-in middleware implementations in `models/middleware/core/`
+
+## Registry System 📋
+
+### Tool Registry
+
+- **Class**: `AIToolRegistry` ([models/registry/AIToolRegistry.bx](src/main/bx/models/registry/AIToolRegistry.bx))
+  - **Purpose**: Central registry for AI-callable tools
+  - **Events**: `onAIToolRegistryRegister`, `onAIToolRegistryUnregister`
+  - **Base**: `BaseRegistry` provides common registration/lookup logic
+
+### Agent Registry
+
+- **Class**: `AIAgentRegistry` ([models/registry/AIAgentRegistry.bx](src/main/bx/models/registry/AIAgentRegistry.bx))
+  - **Purpose**: Central registry for AI agents
+  - **Events**: `onAIAgentRegistryRegister`, `onAIAgentRegistryUnregister`
+  - Enables agent discovery and reuse across the application
+
+## Audio & Image Systems 🎨
+
+### Audio Capabilities
+
+The module supports three audio operations through capability interfaces:
+
+1. **Text-to-Speech** (`aiSpeak()` BIF) - `IAiSpeechService`
+   - Providers: OpenAI, Grok, Gemini, Mistral, ElevenLabs
+   - Configurable voice, output format, speed
+   - Gender-to-voice mapping via `voiceGenderMap` settings
+
+2. **Speech-to-Text** (`aiTranscribe()` BIF) - `IAiTranscriptionService`
+   - Audio file transcription
+   - Provider-specific model support
+
+3. **Translation** (`aiTranslate()` BIF)
+   - Speech translation across languages
+
+```javascript
+// Example: Text-to-speech
+var audio = aiSpeak(
+    "Hello, welcome to our service!",
+    { provider: "openai", voice: "nova", outputFormat: "mp3" }
+);
+
+// Example: Transcription
+var text = aiTranscribe( "recording.mp3", { provider: "openai" } );
+```
+
+### Image Generation
+
+- **BIF**: `aiImage()` - Generate images from text prompts
+- **Providers**: OpenAI (DALL-E), Gemini, Grok, OpenRouter
+- **Config**: Size, quality, style, instructions
+- **Response**: `AiImageResponse` with image data and metadata
+
+```javascript
+// Example: Generate an image
+var image = aiImage(
+    "A serene mountain landscape at sunset",
+    { provider: "openai", size: "1792x1024", quality: "high" }
+);
+```
+
+### Capability Interfaces
+
+Provider capabilities are defined through interfaces in `models/providers/capabilities/`:
+
+- `IAiChatService` - Chat/chat completion capability
+- `IAiEmbeddingsService` - Embedding generation capability
+- `IAiImageService` - Image generation capability
+- `IAiSpeechService` - Text-to-speech capability
+- `IAiTranscriptionService` - Speech-to-text capability
+
+Providers implement only the interfaces they support, enabling graceful capability detection.
+
 ## Utilities 🛠️
 
 ### Text Chunking
+
 - **Class**: `TextChunker` ([models/util/TextChunker.bx](src/main/bx/models/util/TextChunker.bx) - 423 lines)
   - **Static class**: `TextChunker::chunk(text, options)`
   - **Strategies**:
@@ -692,6 +889,7 @@ var chunks = TextChunker::chunk( longText, {
 ```
 
 ### Token Counting
+
 - **Class**: `TokenCounter` ([models/util/TokenCounter.bx](src/main/bx/models/util/TokenCounter.bx) - 100 lines)
   - **Static class**: `TokenCounter::count(text, options)`
   - **Methods**:
@@ -706,6 +904,7 @@ var tokens = TokenCounter::count( message, { method: "characters" } );
 ```
 
 ### Schema Builder
+
 - **Class**: `SchemaBuilder` ([models/util/SchemaBuilder.bx](src/main/bx/models/util/SchemaBuilder.bx) - 554 lines)
   - **Purpose**: Convert BoxLang classes/structs to JSON schemas for structured AI output
   - **Static Methods**:
@@ -737,6 +936,7 @@ var user = aiChat(
 ```
 
 ### AWS Signature V4
+
 - **Class**: `AwsSignatureV4` ([models/util/AwsSignatureV4.bx](src/main/bx/models/util/AwsSignatureV4.bx) - 318 lines)
   - **Purpose**: AWS Signature Version 4 signing for Bedrock API
   - **Method**: `signRequest(method, host, path, payload, region, service, credentials)`
@@ -749,11 +949,13 @@ var user = aiChat(
 ## Tools System (Expanded) 🔧
 
 ### Tool Interface
+
 - **Interface**: `ITool` ([models/ITool.bx](src/main/bx/models/ITool.bx) - 41 lines)
   - **Methods**: `getName()`, `getSchema()`, `invoke(args)`
   - Very simple contract for maximum flexibility
 
 ### Tool Implementation
+
 - **Class**: `Tool` ([models/Tool.bx](src/main/bx/models/Tool.bx))
   - **Purpose**: Real-time function calling during AI conversations
   - **Properties**: `name`, `description`, `parameters`, `callback`
@@ -793,12 +995,15 @@ var result = aiChat(
 ```
 
 ### Dynamic Tool Registration
+
 Tools can be registered with:
+
 - **Models**: `aiModel("openai").addTools([tools])`
 - **Agents**: `aiAgent(tools: [tool1, tool2])`
 - **MCP Servers**: `mcpServer().registerTool(tool)`
 
 ### Sub-Agents as Tools
+
 - **Pattern**: `aiAgent(subAgents: [agent1, agent2])` auto-wraps agents as callable tools
 - Each sub-agent becomes a tool with its name and description
 - Enables hierarchical agent delegation
@@ -806,7 +1011,9 @@ Tools can be registered with:
 ## Configuration Architecture (Expanded) ⚙️
 
 ### Module Settings Structure
+
 Complete settings from [ModuleConfig.bx](src/main/bx/ModuleConfig.bx#L103-L147):
+
 ```javascript
 {
     provider: "openai",               // Default provider name
@@ -835,7 +1042,9 @@ Complete settings from [ModuleConfig.bx](src/main/bx/ModuleConfig.bx#L103-L147):
 ```
 
 ### Provider Configuration Patterns
+
 **Standard Provider**:
+
 ```javascript
 // Simple API key
 aiService( "openai", "sk-..." )
@@ -849,6 +1058,7 @@ aiService( "openai", {
 ```
 
 **AWS Bedrock (Special Case)**:
+
 ```javascript
 aiService( "bedrock", {
     region: "us-east-1",
@@ -860,6 +1070,7 @@ aiService( "bedrock", {
 ```
 
 ### Request Configuration Hierarchy
+
 1. **AiBaseRequest** - Base for all requests
    - Common: `params`, `provider`, `apiKey`, `model`, `timeout`, `returnFormat`
    - Logging: `logRequest`, `logRequestToConsole`, `logResponse`, `logResponseToConsole`
@@ -872,11 +1083,13 @@ aiService( "bedrock", {
 ## Streaming Architecture 🌊
 
 ### Stream Methods Across Components
+
 - **Provider Level**: `invokeStream(chatRequest, callback)`
 - **Model Level**: `stream(callback, input, params)`
 - **Agent Level**: `stream(callback, input, params, options)`
 
 ### BaseService Streaming Implementation
+
 From [BaseService.bx](src/main/bx/models/providers/BaseService.bx#L394-L428):
 
 ```javascript
@@ -908,17 +1121,20 @@ function chatStream( required chatRequest, required callback ) {
 **Callback Signature**: `function(chunk)` where chunk is incremental text
 
 **Chunk Processing**:
-1. Filter SSE event lines (start with `data: `)
+
+1. Filter SSE event lines (start with `data:`)
 2. Parse JSON chunk
 3. Extract `delta.content` or `choices[0].delta.content`
 4. Call user callback with incremental text only
 
 ### Provider-Specific Streaming
+
 - **OpenAI-compatible**: Standard SSE format via BaseService
 - **Ollama**: Custom `chatStream()` override with different delta structure
 - **Non-streaming providers**: Throw error in `chatStream()` (e.g., VoyageService for embeddings)
 
 ### Error Handling in Streams
+
 - Try/catch around JSON parsing for malformed chunks
 - Graceful handling of null/undefined deltas
 - Stream interruption on critical errors (logs to `ai` logger)
@@ -927,6 +1143,7 @@ function chatStream( required chatRequest, required callback ) {
 ## Request/Response Flow 🔄
 
 ### Complete Execution Flow
+
 1. **User calls BIF**: `aiChat("prompt", params, options)`
 2. **BIF creates request objects**:
    - Creates `AiChatRequest` with merged params
@@ -964,6 +1181,7 @@ function chatStream( required chatRequest, required callback ) {
 9. **Fire events**: `afterAIModelInvoke`, `onAIChatResponse`
 
 ### Tool Execution Recursion
+
 ```javascript
 // Simplified flow
 function chat( chatRequest ) {
@@ -992,7 +1210,9 @@ function chat( chatRequest ) {
 ## Key Architectural Patterns 🎯
 
 ### 1. Fluent APIs Everywhere
+
 Nearly all classes return `this` for method chaining:
+
 ```javascript
 var agent = aiAgent( "support" )
     .addTool( searchTool )
@@ -1006,7 +1226,9 @@ var pipeline = aiModel( "openai" )
 ```
 
 ### 2. Static Utility Classes
+
 Use `::` operator for static methods, `static.` for static variables:
+
 ```javascript
 // Static methods
 var chunks = TextChunker::chunk( text, options );
@@ -1024,7 +1246,9 @@ function someMethod() {
 ```
 
 ### 3. Interface-Driven Design
+
 All major components have interfaces enabling polymorphism:
+
 - `IAiService` → 18 provider implementations
 - `IAiMemory` → 7 memory types + `IVectorMemory` → 11 vector stores
 - `IDocumentLoader` → 14 loader types
@@ -1034,7 +1258,9 @@ All major components have interfaces enabling polymorphism:
 - `ITransport` → HTTP, STDIO transports
 
 ### 4. Async-First for I/O
+
 Methods ending in `Async()` return `BoxFuture`, use `asyncRun()` for non-blocking:
+
 ```javascript
 // Non-blocking document loading
 var future = loader.loadAsync();
@@ -1052,7 +1278,9 @@ var future = asyncRun( () => {
 ```
 
 ### 5. Event-Driven Extensibility
+
 40 interception points for complete customization:
+
 ```javascript
 // Track all AI API costs
 BoxRegisterInterceptor( "onAITokenCount", function( event ) {
@@ -1069,7 +1297,9 @@ BoxRegisterInterceptor( "onMissingAiProvider", function( event ) {
 ```
 
 ### 6. Multi-Tenant by Design
+
 Built-in isolation and tracking:
+
 ```javascript
 // Memory isolation
 var memory = aiMemory( "cache", {
@@ -1086,7 +1316,9 @@ var response = aiChat( "Hello", {
 ```
 
 ### 7. Provider Abstraction
+
 OpenAI-compatible standard in BaseService, override only what differs:
+
 ```javascript
 // Most providers just configure URLs and params
 class OllamaService extends="BaseService" {
@@ -1104,7 +1336,9 @@ class OllamaService extends="BaseService" {
 ```
 
 ### 8. Structured Output via Schemas
+
 Pass class instance, struct, or array to `returnFormat` for typed responses:
+
 ```javascript
 class Product {
     property name="title" type="string";
@@ -1127,8 +1361,8 @@ println( product.inStock ); // true (boolean!)
 
 ```
 src/main/bx/
-├── ModuleConfig.bx          # Module descriptor, settings, 40 interceptor points
-├── bifs/                    # 18 Global BIFs (aiChat, aiMessage, aiService, aiTool, etc.)
+├── ModuleConfig.bx          # Module descriptor, settings, 53 interceptor points
+├── bifs/                    # 27 Global BIFs (aiChat, aiMessage, aiService, aiTool, etc.)
 ├── models/
 │   ├── AiAgent.bx          # Agent system (630 lines) - multi-memory, tools, sub-agents
 │   ├── AiMessage.bx        # Fluent message builder with OnMissingMethod for roles
@@ -1139,6 +1373,7 @@ src/main/bx/
 │   ├── providers/
 │   │   ├── IAiService.bx   # Service interface (configure, invoke, getName)
 │   │   ├── BaseService.bx  # OpenAI-compatible base (986 lines!) - HTTP, streaming, tools
+│   │   ├── capabilities/   # Capability interfaces (IAiChatService, IAiEmbeddingsService, etc.)
 │   │   └── *Service.bx     # 18 provider implementations (OpenAI, Claude, Gemini, Ollama, etc.)
 │   ├── memory/
 │   │   ├── IAiMemory.bx    # Memory interface (297 lines)
@@ -1147,36 +1382,76 @@ src/main/bx/
 │   │   └── vector/
 │   │       ├── IVectorMemory.bx      # Vector memory interface
 │   │       ├── BaseVectorMemory.bx   # Base vector (808 lines)
-│   │       └── *VectorMemory.bx      # 11 vector providers (Box, Chroma, Pinecone, etc.)
+│   │       └── *VectorMemory.bx      # 10 vector providers (Box, Chroma, Pinecone, etc.)
 │   ├── loaders/
 │   │   ├── IDocumentLoader.bx       # Loader interface (244 lines) - functional API
 │   │   ├── BaseDocumentLoader.bx    # Base loader (767 lines)
-│   │   └── *Loader.bx               # 14 loader types (Text, CSV, JSON, PDF, HTTP, etc.)
+│   │   └── *Loader.bx               # 12 loader types (Text, CSV, JSON, PDF, HTTP, etc.)
 │   ├── mcp/
 │   │   ├── MCPClient.bx            # MCP client (449 lines) - fluent API
 │   │   ├── MCPServer.bx            # MCP server (1542 lines!) - JSON-RPC 2.0
+│   │   ├── MCPClientStats.bx       # Client connection stats
+│   │   ├── MCPServerStats.bx       # Server request/error/latency stats
 │   │   ├── MCPResponse.bx          # Response wrapper
 │   │   ├── MCPRequestProcessor.bx  # Request normalization
 │   │   └── transports/
 │   │       ├── ITransport.bx       # Transport interface
+│   │       ├── BaseTransport.bx    # Abstract base transport
 │   │       ├── HTTPTransport.bx    # HTTP/REST transport
 │   │       └── StdioTransport.bx   # CLI/process transport
 │   ├── runnables/
 │   │   ├── IAiRunnable.bx          # Pipeline interface (run, stream, to)
 │   │   ├── AiBaseRunnable.bx       # Base implementation
 │   │   ├── AiRunnableSequence.bx   # Pipeline chaining
+│   │   ├── AiRunnableParallel.bx   # Parallel execution
 │   │   └── AiTransformRunnable.bx  # Transformation wrapper
 │   ├── transformers/
 │   │   ├── ITransformer.bx         # Transformer interface
 │   │   ├── BaseTransformer.bx      # Base implementation
 │   │   └── *Transformer.bx         # 4 types (JSON, XML, Code, TextCleaner)
+│   ├── requests/
+│   │   ├── AiBaseRequest.bx        # Base request with params, provider, logging
+│   │   ├── AiChatRequest.bx        # Chat-specific request (messages, tools, streaming)
+│   │   ├── AiEmbeddingRequest.bx   # Embedding request
+│   │   ├── AiImageRequest.bx       # Image generation request
+│   │   ├── AiSpeechRequest.bx      # Text-to-speech request
+│   │   └── AiTranscriptionRequest.bx # Speech-to-text request
+│   ├── responses/
+│   │   ├── AiBaseResponse.bx       # Base response
+│   │   ├── AiImageResponse.bx      # Image generation response
+│   │   ├── AiSpeechResponse.bx     # Speech response
+│   │   └── AiTranscriptionResponse.bx # Transcription response
+│   ├── registry/
+│   │   ├── BaseRegistry.bx         # Abstract registry base
+│   │   ├── AIAgentRegistry.bx      # Agent registration/lookup
+│   │   └── AIToolRegistry.bx       # Tool registration/lookup
+│   ├── middleware/
+│   │   ├── IAiMiddleware.bx        # Middleware interface
+│   │   ├── BaseAiMiddleware.bx     # Base middleware
+│   │   ├── AiMiddlewareResult.bx   # Middleware result wrapper
+│   │   ├── StructMiddlewareAdapter.bx # Struct-to-middleware adapter
+│   │   └── core/                   # Built-in middleware implementations
+│   ├── skills/
+│   │   └── AiSkill.bx             # Skill model for agent skill injection
+│   ├── tools/
+│   │   ├── ITool.bx               # Tool interface
+│   │   ├── BaseTool.bx            # Abstract tool base
+│   │   ├── ClosureTool.bx         # Closure-based tool adapter
+│   │   ├── MCPTool.bx             # MCP tool wrapper
+│   │   ├── audio/                 # Audio-related tools
+│   │   ├── core/                  # Core built-in tools
+│   │   ├── filesystem/            # Filesystem tools
+│   │   └── image/                 # Image-related tools
 │   └── util/
 │       ├── TextChunker.bx          # Static chunking (423 lines) - 5 strategies
 │       ├── TokenCounter.bx         # Static token counting (100 lines)
 │       ├── SchemaBuilder.bx        # JSON schema generation (554 lines)
-│       └── AwsSignatureV4.bx       # AWS signing (318 lines) - for Bedrock
+│       ├── AwsSignatureV4.bx       # AWS signing (318 lines) - for Bedrock
+│       ├── AwsCredentialProvider.bx # AWS credential resolution
+│       └── YamlFrontmatterParser.bx # YAML frontmatter parsing for markdown loaders
 
 build/module/                # Compiled module (shadowJar output) - tests load from here!
+.agents/skills/              # 35+ SKILL.md files for AI agent skill injection
 ```
 
 ## Critical Implementation Details 🚨
@@ -1186,6 +1461,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
 **🚨 Critical (Breaking if ignored):**
 
 1. **Imports placement**: ALWAYS define imports at top of class definition, NEVER inline in methods
+
    ```javascript
    // ✅ Correct - at top of class
    import bxModules.bxai.models.util.TextChunker;
@@ -1205,6 +1481,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    ```
 
 2. **Static variable access**: Use `static.VAR` not `variables.VAR`
+
    ```javascript
    static {
        DEFAULT_MODEL = "gpt-4";
@@ -1220,6 +1497,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    - Changes to `src/main/bx/` are NOT visible until compiled
 
 4. **Only ONE system message** allowed per AI request (provider limitation)
+
    ```javascript
    // ❌ Wrong - multiple system messages
    messages: [
@@ -1235,7 +1513,8 @@ build/module/                # Compiled module (shadowJar output) - tests load f
 
 **⚠️ Important (Avoid bugs):**
 
-5. **Property getters/setters**: Auto-generated - DON'T create manually
+1. **Property getters/setters**: Auto-generated - DON'T create manually
+
    ```javascript
    class User {
        property name="firstName" type="string";
@@ -1249,7 +1528,8 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    println( user.getFirstName() );  // ✅ Auto-generated getter
    ```
 
-6. **Type casting**: Use `castAs` operator, NOT `javaCast()` function
+2. **Type casting**: Use `castAs` operator, NOT `javaCast()` function
+
    ```javascript
    // ✅ Correct
    var floatValue = config.temperature castAs "float";
@@ -1259,7 +1539,8 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    var floatValue = javaCast( "float", config.temperature );
    ```
 
-7. **Reserved scope names**: Avoid as variable names - `server`, `request`, `session`, `application`, `cgi`, `url`, `form`, `cookie`, `variables`
+3. **Reserved scope names**: Avoid as variable names - `server`, `request`, `session`, `application`, `cgi`, `url`, `form`, `cookie`, `variables`
+
    ```javascript
    // ❌ Wrong - conflicts with BoxLang scope
    var server = MCPServer( "my-server" );
@@ -1268,7 +1549,8 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    var mcpSrv = MCPServer( "my-server" );
    ```
 
-8. **Event announcements**: Use `BoxAnnounce()` (capital B, capital A)
+4. **Event announcements**: Use `BoxAnnounce()` (capital B, capital A)
+
    ```javascript
    // ✅ Correct
    BoxAnnounce( "onAITokenCount", eventData );
@@ -1277,7 +1559,8 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    announce( "onAITokenCount", eventData );
    ```
 
-9. **Ollama model names**: Must include version tags
+5. **Ollama model names**: Must include version tags
+
    ```javascript
    // ✅ Correct
    params: { model: "qwen3:0.6b" }
@@ -1286,7 +1569,8 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    params: { model: "qwen2.5" }  // ERROR: model not found
    ```
 
-10. **Tool argument descriptions**: Default to parameter name if missing (lenient validation)
+6. **Tool argument descriptions**: Default to parameter name if missing (lenient validation)
+
     ```javascript
     // Both work - description optional
     { name: "query", type: "string", description: "Search query", required: true }
@@ -1295,7 +1579,8 @@ build/module/                # Compiled module (shadowJar output) - tests load f
 
 **💡 Performance Tips:**
 
-11. **API key detection**: BIFs auto-detect `<PROVIDER>_API_KEY` env vars
+1. **API key detection**: BIFs auto-detect `<PROVIDER>_API_KEY` env vars
+
     ```javascript
     // Explicit
     aiService( "openai", "sk-..." )
@@ -1304,7 +1589,8 @@ build/module/                # Compiled module (shadowJar output) - tests load f
     aiService( "openai" )
     ```
 
-12. **Streaming format**: Each provider has unique SSE chunk structure - handle nulls gracefully
+2. **Streaming format**: Each provider has unique SSE chunk structure - handle nulls gracefully
+
     ```javascript
     var delta = jsonData.choices[1].delta.content ?: "";
     if ( !isNull( delta ) && delta != "" ) {
@@ -1315,7 +1601,9 @@ build/module/                # Compiled module (shadowJar output) - tests load f
 ## Integration Points
 
 ### HTTP Client (BaseService)
+
 Uses BoxLang's `httpRequest` BIF with Java's HttpClient under the hood:
+
 ```java
 var response = httpRequest( variables.chatURL )
     .setMethod( "POST" )
@@ -1325,7 +1613,9 @@ var response = httpRequest( variables.chatURL )
 ```
 
 ### Event System
+
 Leverage BoxLang's `BoxAnnounce()` BIF for module interception:
+
 ```java
 BoxAnnounce( "onAIRequest", { dataPacket: payload, chatRequest: request, provider: this } );
 ```
@@ -1333,6 +1623,7 @@ BoxAnnounce( "onAIRequest", { dataPacket: payload, chatRequest: request, provide
 **Important:** Use `BoxAnnounce()` (capital B, capital A) - this is the correct BoxLang BIF for event announcements, not `announce()`.
 
 ### GitHub Actions CI/CD
+
 - Uses `hoverkraft-tech/compose-action@v2.0.2` to start Ollama service
 - Waits for service readiness with timeout: `curl -f http://localhost:11434/api/tags`
 - API keys injected via GitHub Secrets (`OPENAI_API_KEY`, `CLAUDE_API_KEY`, etc.)
@@ -1378,6 +1669,63 @@ BoxAnnounce( "onAIRequest", { dataPacket: payload, chatRequest: request, provide
 3. **Breaking changes**: Update changelog with migration guide, bump major version
 4. **Tests**: Match Java test class naming (`*Test.java`), use `@DisplayName` for readability
 5. **Model defaults**: Update in provider's `configure()` or `defaults()` method
+
+## Skills Summary 📚
+
+The `.agents/skills/` directory contains **37 skill files** providing domain-specific knowledge for AI-assisted development. Skills are auto-discovered at module startup and injected into every `aiAgent()` call when `autoLoadSkills: true`.
+
+### BoxLang Language Skills
+
+| Skill | Description |
+|-------|-------------|
+| **boxlang-language-fundamentals** | Syntax, file types (`.bx`/`.bxs`/`.bxm`), variables, scopes, operators, control flow, exception handling, type system, destructuring, spread syntax |
+| **boxlang-classes-and-oop** | Class definitions, properties, constructors, inheritance, interfaces, abstract classes, static members, accessors, annotations |
+| **boxlang-functional-programming** | Closures (`=>`) vs lambdas (`->`), higher-order functions, array/struct pipelines (`map`, `filter`, `reduce`, `groupBy`), destructuring, spread |
+| **boxlang-best-practices** | Naming conventions, scoping rules, error handling patterns, performance guidelines, maintainability standards |
+| **boxlang-code-documenter** | Javadoc-style `/** */` comments, function/class documentation, argument/return type docs, DocBox-compatible annotations |
+| **boxlang-code-reviewer** | Structured review checklist: security, correctness, performance, maintainability, style — with severity-ranked findings |
+| **boxlang-testing** | TestBox BDD (`describe`/`it`) and xUnit styles, expectations/matchers, MockBox mocking, `mockData()`, async testing, exception testing |
+| **boxlang-security** | OWASP Top 10 patterns, `boxlang.json` security config, disallowed BIFs/imports, SQL injection prevention, file upload safety, secret management |
+| **boxlang-configuration** | `boxlang.json` runtime config, environment variable overrides, datasource/cache/executor/logging/security/scheduler configuration |
+| **boxlang-modules-and-packages** | Module installation via `box install`, `boxlang.json` module settings, premium modules (bx-pdf, bx-redis, etc.), CFML compat, ORM, mail |
+| **boxlang-java-integration** | `new java:` syntax, `createObject()`, static method calls, type conversion, JAR inclusion, JSR-223 scripting |
+| **boxlang-file-handling** | `fileRead`/`fileWrite`/`fileCopy`/`fileMove`, directory operations, streaming large files, CSV/JSON processing |
+| **boxlang-database-access** | `queryExecute()`, `bx:query`, datasource config, parameterized queries, transactions, stored procedures, SQL injection prevention |
+| **boxlang-web-development** | `Application.bx` lifecycle, sessions, REST APIs, HTTP client, routing, CSRF, SSE, MiniServer/CommandBox deployment |
+| **boxlang-templating** | `.bxm` markup templates, `bx:output`/`bx:loop`/`bx:if`/`bx:include`, output expressions, HTML generation |
+| **boxlang-runtime-cli-scripting** | `boxlang` binary usage, shebang scripts, CLI args, REPL, action commands (compile, cftranspile, featureaudit) |
+| **boxlang-caching** | Cache providers, `cachePut`/`cacheGet` BIFs, cache regions, Redis/Couchbase distributed caching, TTL policies, distributed locking |
+| **boxlang-async-programming** | `BoxFuture`, `futureNew`, `asyncRun`, `asyncAll`/`asyncAny`/`asyncAllApply`, executors, schedulers, thread components, file watchers, `bx:lock` |
+| **boxlang-file-watchers** | `watcherNew`/`watcherStart`/`watcherStop` BIFs, `WatcherInstance` APIs, event payloads, recursive monitoring, debounce/throttle tuning |
+| **boxlang-scheduled-tasks** | Scheduler DSL (`BaseScheduler`/`ScheduledTask`), cron expressions, frequency constraints, lifecycle callbacks, `bx:schedule` component |
+| **boxlang-interceptors** | Interceptor creation, `BoxRegisterInterceptor()` BIF, `announce()`/`announceAsync()`, pre/post hooks, validation interceptors, security guards |
+
+### BoxLang Core Development Skills
+
+| Skill | Description |
+|-------|-------------|
+| **boxlang-core-dev-runtime-architecture** | `BoxRuntime` singleton, `IBoxContext` hierarchy, scope chain resolution, `DynamicObject`, type system (`IBoxType`), parsing pipeline, class loader isolation, virtual threads |
+| **boxlang-core-dev-module-development** | `ModuleConfig.bx` structure, lifecycle methods (`configure`/`onLoad`/`onUnload`), BIF/component/interceptor registration, Gradle build, ForgeBox publishing |
+| **boxlang-core-dev-bif-development** | `@BoxBIF` annotation, `invoke()` method, argument handling, BoxLang vs Java BIF implementations, member functions, module registration |
+| **boxlang-core-dev-component-development** | Custom tag/component creation, `bx:` prefix, attribute declarations, body/output handling, component paths in modules |
+| **boxlang-core-dev-interceptors** | Observer/Intercepting Filter patterns, interceptor pools, BoxLang class vs Java interceptors, lambda interceptors, registration via BIFs/InterceptorService/ModuleConfig |
+| **boxlang-core-dev-logging** | `LoggingService`, `BoxLangLogger` (trace/debug/info/warn/error), pre-configured common loggers, parameterized messages, Logback config |
+| **boxlang-core-dev-async-tasks** | `BoxFuture` (CompletableFuture extension), `AsyncService`, executor types (VIRTUAL/FIXED/CACHED/SCHEDULED), `BaseScheduler`, `ScheduledTask` fluent API, cron scheduling |
+
+### General Development Skills
+
+| Skill | Description |
+|-------|-------------|
+| **java-expert** | Java services, API design, concurrency (virtual threads), performance profiling, dependency management, JVM best practices |
+| **junit-expert** | JUnit 5 (Jupiter): test lifecycle, parameterized tests, extensions, assertions, parallel execution, dynamic tests, test suites |
+| **mockito-expert** | Mock creation, stubbing, verification, argument captors, spy objects, strict stubbing, custom Answer implementations |
+| **testcontainers-expert** | Docker container lifecycle for integration tests, reusable containers, wait strategies, modules (PostgreSQL, MySQL, Kafka, Redis, LocalStack) |
+| **code-documenter** | Developer-facing documentation: inline comments, API references, onboarding guides, runbooks, architecture decisions |
+| **code-reviewer** | Structured code review: correctness, security, maintainability, performance, test coverage risk, severity-ranked findings |
+| **gitbook-docs-expert** | GitBook documentation: frontmatter, hint blocks, content-ref, embed blocks, tabs, code blocks, SUMMARY.md navigation |
+| **ortus-coding-standards** | Ortus formatting rules: tab indentation, brace placement, naming conventions, alignment, comments — for BoxLang, CFML, and Java |
+| **ortus-java-coding-standards** | Ortus Java-specific formatting: Eclipse formatter profile (`ortus-java-style.xml`), tab indentation, end-of-line braces |
+| **boxlang-docbox** | DocBox API documentation generation: CLI usage, HTML/JSON/UML output strategies, themes, multiple sources, excludes patterns |
 
 ## Questions to Clarify
 
