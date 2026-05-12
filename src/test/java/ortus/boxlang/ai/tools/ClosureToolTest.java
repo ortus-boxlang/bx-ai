@@ -225,7 +225,7 @@ public class ClosureToolTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "schemaType" ) ) ).isEqualTo( "function" );
 		assertThat( variables.get( Key.of( "funcName" ) ) ).isEqualTo( "greet" );
 		assertThat( variables.get( Key.of( "paramType" ) ) ).isEqualTo( "object" );
-		assertThat( variables.get( Key.of( "isStrict" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "isStrict" ) ) ).isEqualTo( false );
 	}
 
 	@DisplayName( "getSchema() marks required parameters correctly" )

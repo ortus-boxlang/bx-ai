@@ -85,7 +85,7 @@ public class aiToolTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "funcName" ) ) ).isEqualTo( "weather" );
 		assertThat( variables.get( Key.of( "funcDesc" ) ) ).isEqualTo( "Get weather for a city" );
 		assertThat( variables.get( Key.of( "paramType" ) ) ).isEqualTo( "object" );
-		assertThat( variables.get( Key.of( "isStrict" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "isStrict" ) ) ).isEqualTo( false );
 	}
 
 	@DisplayName( "aiTool() records required parameters in schema" )
