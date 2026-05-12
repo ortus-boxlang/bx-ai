@@ -29,6 +29,26 @@ class extends="BaseTool" {
 	property name="callable";
 
 	/**
+	 * Maps BoxLang parameter types to JSON Schema types for OpenAI function-calling schemas.
+	 * Modeled on SchemaBuilder.TYPE_MAP but kept local to avoid import coupling.
+	 */
+	static {
+		BOXLANG_TO_JSON_TYPE = {
+			"string"   : "string",
+			"numeric"  : "number",
+			"integer"  : "number",
+			"float"    : "number",
+			"double"   : "number",
+			"boolean"  : "boolean",
+			"array"    : "array",
+			"struct"   : "object",
+			"any"      : "string",
+			"date"     : "string",
+			"datetime" : "string"
+		};
+	}
+
+	/**
 	 * Construct a new ClosureTool with the given name, description, and callable.
 	 *
 	 * @name The tool name
@@ -78,10 +98,12 @@ class extends="BaseTool" {
 				message : "No callable has been set on this ClosureTool. Use call() before invoking."
 			)
 		}
-		// Coerce structured values to JSON strings for string-typed params. MCP clients may send
-		// object/array payloads for params whose schema declares "string" (e.g. JSON-encoded fields
-		// like source_context or key_decisions); without this, BoxLang's typed-arg binding would
-		// throw "Can't cast Struct<Ordered> to a string" before the callable runs.
+		// Coerce structured values to JSON strings only for string-typed params. Now that the
+		// generated schema correctly declares array/object/boolean/number types, the AI will send
+		// native JSON types for those. This coercion is a defensive fallback for cases where a
+		// BoxLang param is declared "string" but the AI (or MCP client) still sends a complex
+		// object/array (e.g. JSON-encoded fields like source_context or key_decisions). Without
+		// this, BoxLang's typed-arg binding would throw "Can't cast Struct<Ordered> to a string" before the callable runs.
 		var incomingArgs = arguments.args
 		variables.callable.$bx.meta.parameters.each( param => {
 			if ( ( param.type ?: "" ) == "string" && incomingArgs.keyExists( param.name ) ) {
@@ -118,7 +140,8 @@ class extends="BaseTool" {
 
 	/**
 	 * Introspect the callable's parameter metadata to build the arguments schema.
-	 * Skips the injected _chatRequest parameter.
+	 * The _chatRequest parameter is injected at runtime by doInvoke() and does not
+	 * appear in the callable's declared parameters, so no filtering is needed.
 	 *
 	 * @throws MissingCallable if no callable has been set
 	 *
@@ -136,10 +159,17 @@ class extends="BaseTool" {
 			if ( param.required ) {
 				results.required.append( param.name )
 			}
-			results.properties[ param.name ] = {
-				"type"        : "string",
+			// Map BoxLang type to JSON Schema type; default to "string" for unknown/untyped params
+			var jsonType = static.BOXLANG_TO_JSON_TYPE[ ( param.type ?: "any" ).lcase() ] ?: "string"
+			var property = {
+				"type"        : jsonType,
 				"description" : variables.argDescriptions[ param.name ] ?: param.name
 			}
+			// For array-typed params, include an open items schema (no element type info available)
+			if ( jsonType == "array" ) {
+				property[ "items" ] = {}
+			}
+			results.properties[ param.name ] = property
 		} )
 		return results
 	}

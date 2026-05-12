@@ -75,6 +75,7 @@ public class aiToolTest extends BaseIntegrationTest {
 				funcName    = schema.function.name
 				funcDesc    = schema.function.description
 				paramType   = schema.function[ "function" ]?.parameters?.type ?: schema.function.parameters.type
+				isStrict    = schema.function.strict ?: false
 			""",
 			context
 		);
@@ -84,6 +85,7 @@ public class aiToolTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "funcName" ) ) ).isEqualTo( "weather" );
 		assertThat( variables.get( Key.of( "funcDesc" ) ) ).isEqualTo( "Get weather for a city" );
 		assertThat( variables.get( Key.of( "paramType" ) ) ).isEqualTo( "object" );
+		assertThat( variables.get( Key.of( "isStrict" ) ) ).isEqualTo( true );
 	}
 
 	@DisplayName( "aiTool() records required parameters in schema" )
@@ -152,6 +154,24 @@ public class aiToolTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.get( Key.of( "isString" ) ) ).isEqualTo( true );
+	}
+
+	@DisplayName( "aiTool() getSchema() maps numeric param to JSON Schema number type" )
+	@Test
+	public void testSchemaMapsNumericToNumber() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				schema = aiTool( "calc", "Calculate", ( required string op, numeric factor = 1 ) => "ok" ).getSchema()
+				opType     = schema.function.parameters.properties.op.type
+				factorType = schema.function.parameters.properties.factor.type
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "opType" ) ) ).isEqualTo( "string" );
+		assertThat( variables.get( Key.of( "factorType" ) ) ).isEqualTo( "number" );
 	}
 
 	@DisplayName( "aiTool() with no callable throws MissingCallable on invoke()" )

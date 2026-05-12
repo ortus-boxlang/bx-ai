@@ -121,6 +121,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - BoxLang 1.13.0 testing.
 - You can now get the binded system message from an agent via `agent.buildSystemMessage()` for debugging and inspection.
 - An agent config now includes the `systemMessage` property
+- **Type-aware tool schemas**: `ClosureTool.getArgumentsSchema()` now maps BoxLang parameter types to their correct JSON Schema types instead of hard-coding everything as `"string"`. `numeric`/`integer`/`float`/`double` → `"number"`, `boolean` → `"boolean"`, `array` → `"array"` (with `"items": {}`), `struct` → `"object"`. Untyped params default to `"string"`. This means the AI receives accurate type hints and sends native JSON types (booleans, numbers, arrays, objects) instead of string-encoded values.
 
 ### 🪲 Fixed
 
