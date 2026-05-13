@@ -316,7 +316,14 @@ class {
 
 			// Agent Registry Events
 			"onAIAgentRegistryRegister",
-			"onAIAgentRegistryUnregister"
+			"onAIAgentRegistryUnregister",
+
+			// Web Search Events
+			"beforeAIWebSearch",
+			"afterAIWebSearch",
+			"onAIWebSearchRequest",
+			"onAIWebSearchResponse",
+			"onAIWebSearchError"
 		 ]
 	}
 

@@ -59,7 +59,7 @@ class extends="BaseSearch" {
 	 * @options Optional struct with maxResults, timeout, searchDepth, etc.
 	 * @return  Array of result structs: [{title, url, snippet}]
 	 */
-	function search( required string query, struct options = {} ) {
+	function doSearch( required string query, struct options = {} ) {
 		// Merge options
 		if ( !isNull( arguments.options ) ) {
 			configure( arguments.options )

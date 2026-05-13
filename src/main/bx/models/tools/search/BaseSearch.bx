@@ -100,7 +100,7 @@ class implements="IWebSearch" {
 
 	/**
 	 * Execute a web search query.
-	 * Must be implemented by subclasses.
+	 * Template method: fires interception events and delegates to doSearch().
 	 *
 	 * @query   The search query string
 	 * @options Optional struct with maxResults, timeout, etc.
@@ -108,28 +108,51 @@ class implements="IWebSearch" {
 	 * @return  Array of result structs: [{title, url, snippet}]
 	 */
 	array function search( required string query, struct options = {} ) {
-		throw(
-			type: "NotImplementedError",
-			message: "search() must be implemented by subclasses of BaseSearch",
-			detail: "query=#arguments.query#, options=#jsonSerialize( arguments.options )#"
-		);
+		BoxAnnounce( "beforeAIWebSearch", {
+			provider : this,
+			query    : arguments.query,
+			options  : arguments.options
+		} )
 
-		return [];
+		try {
+			var results = doSearch( arguments.query, arguments.options )
+
+			BoxAnnounce( "afterAIWebSearch", {
+				provider : this,
+				query    : arguments.query,
+				options  : arguments.options,
+				results  : results,
+				cached   : false
+			} )
+
+			return results
+		} catch ( any e ) {
+			BoxAnnounce( "onAIWebSearchError", {
+				provider : this,
+				query    : arguments.query,
+				options  : arguments.options,
+				error    : e
+			} )
+			rethrow
+		}
 	}
 
 	/**
-	 * Execute a web search asynchronously and return a BoxFuture.
-	 * The future resolves to an array of result structs: [{title, url, snippet}]
+	 * Perform the actual search. Must be implemented by subclasses.
 	 *
 	 * @query   The search query string
 	 * @options Optional struct with maxResults, timeout, etc.
 	 *
-	 * @return  BoxFuture that resolves to an array of result structs
+	 * @return  Array of result structs: [{title, url, snippet}]
 	 */
-	any function searchAsync( required string query, struct options = {} ) {
-		var theQuery   = arguments.query;
-		var theOptions = arguments.options;
-		return asyncRun( () => this.search( theQuery, theOptions ), "io-tasks" );
+	array function doSearch( required string query, struct options = {} ) {
+		throw(
+			type: "NotImplementedError",
+			message: "doSearch() must be implemented by subclasses of BaseSearch",
+			detail: "query=#arguments.query#, options=#jsonSerialize( arguments.options )#"
+		)
+
+		return []
 	}
 
 	// ==================== Private Helper Methods ====================
@@ -148,7 +171,7 @@ class implements="IWebSearch" {
 	private string function resolveApiKey( required string envVarName, required string settingKey ) {
 		// 1. Constructor config
 		if ( structKeyExists( variables.config, arguments.settingKey ) && !variables.config[ arguments.settingKey ].isEmpty() ) {
-			return variables.config[ arguments.settingKey ];
+			return variables.config[ arguments.settingKey ]
 		}
 
 		// 2. Module settings (check webSearch nested struct first, then flat fallback)
@@ -216,7 +239,21 @@ class implements="IWebSearch" {
 			}
 		}
 
+		BoxAnnounce( "onAIWebSearchRequest", {
+			provider : this,
+			url      : arguments.url,
+			method   : arguments.method,
+			headers  : arguments.headers
+		} )
+
 		var response = httpRequest.send();
+
+		BoxAnnounce( "onAIWebSearchResponse", {
+			provider   : this,
+			url        : arguments.url,
+			statusCode : response.statusCode,
+			response   : response
+		} )
 
 		// Log response if enabled
 		if ( variables.logResponse ) {
