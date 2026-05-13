@@ -73,9 +73,14 @@ class extends="BaseSearch" {
 			var statusCode = val( listFirst( response.statusCode, " " ) )
 			if ( statusCode >= 400 ) {
 				return [{
-					title: "HTTP Error",
-					url: query,
-					snippet: "HTTP #statusCode# error fetching #query#"
+					title        : "HTTP Error",
+					url          : query,
+					snippet      : "HTTP #statusCode# error fetching #query#",
+					publishedDate: "",
+					domain       : extractDomain( query ),
+					score        : 0,
+					thumbnail    : "",
+					language     : ""
 				}]
 			}
 
@@ -94,9 +99,14 @@ class extends="BaseSearch" {
 				}
 
 				return [{
-					title   : pageTitle.len() ? pageTitle : "Fetched: #query#",
-					url     : query,
-					snippet : bodyText
+					title        : pageTitle.len() ? pageTitle : "Fetched: #query#",
+					url          : query,
+					snippet      : bodyText,
+					publishedDate: "",
+					domain       : extractDomain( query ),
+					score        : 0,
+					thumbnail    : "",
+					language     : ""
 				}]
 			} catch ( any e ) {
 				// Fall back to raw HTML if Jsoup fails
@@ -105,19 +115,29 @@ class extends="BaseSearch" {
 					content = content.left( variables.maxSnippetLength ) & "...[truncated]"
 				}
 				return [{
-					title   : "Fetched: #query#",
-					url     : query,
-					snippet : content
+					title        : "Fetched: #query#",
+					url          : query,
+					snippet      : content,
+					publishedDate: "",
+					domain       : extractDomain( query ),
+					score        : 0,
+					thumbnail    : "",
+					language     : ""
 				}]
 			}
 		}
 
 		// Not a URL — suggest using a real search provider
 		return [{
-			title: "HTTP Search Provider",
-			url: "",
-			snippet: "The 'http' provider requires a full URL. For web search, use provider 'brave', 'google', or 'tavily' instead. Example: webSearch( '#query#', provider: 'brave' )"
-		}];
+			title        : "HTTP Search Provider",
+			url          : "",
+			snippet      : "The 'http' provider requires a full URL. For web search, use provider 'brave', 'google', or 'tavily' instead. Example: webSearch( '#query#', provider: 'brave' )",
+			publishedDate: "",
+			domain       : "",
+			score        : 0,
+			thumbnail    : "",
+			language     : ""
+		}]
 	}
 
 }

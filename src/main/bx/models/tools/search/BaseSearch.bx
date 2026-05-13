@@ -282,7 +282,7 @@ class implements="IWebSearch" {
 
 	/**
 	 * Format raw search results into a consistent array of structs.
-	 * Each result has: title, url, snippet
+	 * Each result has: title, url, snippet, publishedDate, domain, score, thumbnail, language
 	 *
 	 * @rawResults Array of raw result data from the provider
 	 *
@@ -291,12 +291,40 @@ class implements="IWebSearch" {
 	private array function formatResults( required array rawResults ) {
 		return arguments.rawResults
 			.map( result => {
-				"title": result.title ?: "",
-				"url": result.url ?: result.link ?: "",
-				"snippet": result.snippet ?: result.content ?: result.description ?: result.summary ?: ""
+				var targetUrl = result.url ?: result.link ?: ""
+				// Brave returns thumbnail as a struct {src, width, height}; others as a string or image URL
+				var thumbRaw  = result.thumbnail ?: result.image ?: ""
+				return {
+					"title"        : result.title ?: "",
+					"url"          : targetUrl,
+					"snippet"      : result.snippet ?: result.content ?: result.description ?: result.summary ?: "",
+					"publishedDate": result.publishedDate ?: result.date ?: result.pubDate ?: result.age ?: "",
+					"domain"       : result.domain ?: extractDomain( targetUrl ),
+					"score"        : result.score ?: result.relevance ?: 0,
+					"thumbnail"    : isStruct( thumbRaw ) ? thumbRaw.src ?: "" : thumbRaw,
+					"language"     : result.language ?: ""
+				}
 			} )
 			// Filter out results without URLs
 			.filter( item => !item.url.isEmpty() )
+	}
+
+	/**
+	 * Extract the domain/hostname from a URL.
+	 *
+	 * @targetUrl The full URL
+	 *
+	 * @return    The domain portion (e.g., "www.example.com") or empty string
+	 */
+	private string function extractDomain( required string targetUrl ) {
+		if ( arguments.targetUrl.isEmpty() ) {
+			return ""
+		}
+		try {
+			return reReplace( arguments.targetUrl, "^https?://([^/?##:]+).*$", "\1", "one" )
+		} catch ( any e ) {
+			return ""
+		}
 	}
 
 
