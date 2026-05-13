@@ -208,7 +208,7 @@ class {
 			// Web Search Settings — Defaults for webSearch() BIF and WebSearchTools
 			// --------------------------------------------------------------------------
 			webSearch : {
-				// Default search provider: http, brave, google, tavily
+				// Default search provider: http, brave, google, tavily, exa
 				defaultProvider : "http",
 				// Maximum number of results to return per search
 				maxResults : 5,
@@ -219,6 +219,7 @@ class {
 				googleApiKey : "",
 				googleSearchEngineId : "",
 				tavilyApiKey : "",
+				exaApiKey : "",
 				// Logging
 				logRequest : false,
 				logResponse : false

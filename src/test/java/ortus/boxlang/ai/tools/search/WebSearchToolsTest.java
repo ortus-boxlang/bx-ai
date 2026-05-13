@@ -34,6 +34,7 @@ public class WebSearchToolsTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "googleApiKey", dotenv.get( "GOOGLE_API_KEY", "" ) );
 		moduleRecord.settings.put( "googleSearchEngineId", dotenv.get( "GOOGLE_SEARCH_ENGINE_ID", "" ) );
 		moduleRecord.settings.put( "tavilyApiKey", dotenv.get( "TAVILY_API_KEY", "" ) );
+		moduleRecord.settings.put( "exaApiKey", dotenv.get( "EXA_API_KEY", "" ) );
 	}
 
 	private void assertProviderSearch( String providerName, String constructorConfig, String query ) {
@@ -89,6 +90,19 @@ public class WebSearchToolsTest extends BaseIntegrationTest {
 
 		assertProviderSearch(
 		    "tavily",
+		    "maxResults: 3, timeout: 15",
+		    "BoxLang programming language"
+		);
+	}
+
+	@DisplayName( "WebSearchTools exa provider returns results" )
+	@Test
+	public void testExaProvider() {
+		var exaApiKey = dotenv.get( "EXA_API_KEY", "" );
+		Assumptions.assumeTrue( exaApiKey != null && !exaApiKey.isBlank(), "EXA_API_KEY not set" );
+
+		assertProviderSearch(
+		    "exa",
 		    "maxResults: 3, timeout: 15",
 		    "BoxLang programming language"
 		);

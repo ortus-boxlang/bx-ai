@@ -1,0 +1,144 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Exa Search web provider.
+ *
+ * Uses the official Exa API (https://api.exa.ai/search).
+ * Exa is a neural search engine built for AI — supports keyword, neural, and
+ * auto-magic search modes.
+ *
+ * Requires an EXA_API_KEY (set via env var, module settings, or constructor config).
+ * Free tier available at https://exa.ai.
+ */
+class extends="BaseSearch" {
+
+	/**
+	 * The Exa API key.
+	 */
+	property name="apiKey" type="string" default="";
+
+	/**
+	 * Search type: "keyword", "neural", or "magic" (default: "keyword").
+	 * "magic" lets Exa auto-select the best search mode.
+	 */
+	property name="searchType" type="string" default="keyword";
+
+	/**
+	 * Configure the Exa search provider.
+	 *
+	 * @config Struct with exaApiKey, searchType, maxResults, timeout, etc.
+	 *
+	 * @return This instance for fluent chaining
+	 */
+	function configure( required struct config ) {
+		super.configure( arguments.config )
+		variables.apiKey = resolveApiKey( "EXA_API_KEY", "exaApiKey" )
+		if ( structKeyExists( arguments.config, "type" ) ) {
+			variables.searchType = arguments.config.type
+		}
+		return this
+	}
+
+	/**
+	 * Search using the Exa API.
+	 *
+	 * @query   The search query string
+	 * @options Optional struct with maxResults, timeout, type, country, language, etc.
+	 *
+	 * @return  Array of result structs: [{title, url, snippet, publishedDate, domain, score, thumbnail, language}]
+	 */
+	function doSearch( required string query, struct options = {} ) {
+		// Merge options into config
+		if ( !isNull( arguments.options ) ) {
+			configure( arguments.options )
+		}
+
+		// Check for API key
+		if ( variables.apiKey.isEmpty() ) {
+			return [{
+				title   : "Exa Search Error",
+				url     : "",
+				snippet : "Exa Search requires an API key. Set the EXA_API_KEY environment variable, add exaApiKey to module settings, or pass it in the config struct."
+			}]
+		}
+
+		var searchUrl = "https://api.exa.ai/search"
+
+		var requestBody = {
+			query      : arguments.query,
+			numResults : variables.maxResults,
+			type       : variables.searchType,
+			contents   : { text: { maxCharacters: 1000 } }
+		}
+
+		// Append optional filter params when present in options
+		if ( structKeyExists( arguments.options, "country" ) ) {
+			requestBody.country = arguments.options.country
+		}
+		if ( structKeyExists( arguments.options, "language" ) ) {
+			requestBody.language = arguments.options.language
+		}
+
+		var response = executeRequest(
+			url    : searchUrl,
+			method : "POST",
+			headers: {
+				"Content-Type": "application/json; charset=utf-8",
+				"x-api-key"   : variables.apiKey
+			},
+			body: requestBody
+		)
+
+		var statusCode = val( listFirst( response.statusCode, " " ) )
+		if ( statusCode >= 400 ) {
+			return [{
+				title  : "Exa Search Error",
+				url    : searchUrl,
+				snippet: "HTTP #statusCode# error from Exa API. Response: #response.fileContent#"
+			}]
+		}
+
+		// Parse JSON response
+		try {
+			var data = jsonDeserialize( response.fileContent )
+		} catch ( any e ) {
+			return [{
+				title  : "Exa Search Error",
+				url    : searchUrl,
+				snippet: "Failed to parse Exa response: #e.message#"
+			}]
+		}
+
+		// Exa returns results in the "results" array
+		if ( !structKeyExists( data, "results" ) || !isArray( data.results ) ) {
+			return [{
+				title  : "No Results",
+				url    : "",
+				snippet: "Exa returned no results for: #arguments.query#"
+			}]
+		}
+
+		// Normalize result shape: Exa uses "text" for the snippet content
+		var normalized = data.results.map( result => {
+			result[ "snippet" ] = result.text ?: result.snippet ?: ""
+			return result
+		} )
+
+		return formatResults( normalized )
+	}
+
+}

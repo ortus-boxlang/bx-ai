@@ -39,10 +39,11 @@ class {
 	 */
 	static {
 		PROVIDER_MAP = {
-			"http": "bxModules.bxai.models.tools.search.HttpSearch",
-			"brave": "bxModules.bxai.models.tools.search.BraveSearch",
+			"http"  : "bxModules.bxai.models.tools.search.HttpSearch",
+			"brave" : "bxModules.bxai.models.tools.search.BraveSearch",
 			"google": "bxModules.bxai.models.tools.search.GoogleSearch",
-			"tavily": "bxModules.bxai.models.tools.search.TavilySearch"
+			"tavily": "bxModules.bxai.models.tools.search.TavilySearch",
+			"exa"   : "bxModules.bxai.models.tools.search.ExaSearch"
 		}
 		DEFAULT_PROVIDER = "http"
 		MODULE_SETTINGS = getModuleInfo( "bxai" ).settings
@@ -111,7 +112,7 @@ class {
 	 *
 	 * @return      Array of result structs: [{title, url, snippet}]
 	 */
-	@AITool( "Searches the web for information. Returns an array of results with title, URL, and snippet. Use this to find current information, verify facts, or research topics. Default provider is HTTP (simple URL fetcher, no API key needed). For better results use: brave, google, tavily." )
+	@AITool( "Searches the web for information. Returns an array of results with title, URL, and snippet. Use this to find current information, verify facts, or research topics. Default provider is HTTP (simple URL fetcher, no API key needed). For better results use: brave, google, tavily, exa." )
 	function webSearch(
 		required string query,
 		string provider = "",
