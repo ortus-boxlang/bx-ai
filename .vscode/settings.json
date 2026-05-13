@@ -22,5 +22,8 @@
 		"source.organizeImports": "explicit"
     },
     "boxlang.lsp.lspVersion": "bx-lsp@1.9.0-snapshot",
-    "boxlang.debugger.moduleVersion": "1.1.1+2"
+    "boxlang.debugger.moduleVersion": "1.1.1+2",
+	"boxlang.mappings": {
+		"/bxmodules/bxai" : "./src/main/bx"
+	}
 }
