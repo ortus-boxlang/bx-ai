@@ -80,6 +80,17 @@ class extends="BaseSearch" {
 		var encodedQuery = encodeSearchQuery( query )
 		var searchUrl = "https://www.googleapis.com/customsearch/v1?key=#variables.apiKey#&cx=#variables.searchEngineId#&q=#encodedQuery#&num=#variables.maxResults#"
 
+		// Append optional filter params when present in options
+		if ( structKeyExists( arguments.options, "gl" ) ) {
+			searchUrl &= "&gl=#arguments.options.gl#"
+		}
+		if ( structKeyExists( arguments.options, "hl" ) ) {
+			searchUrl &= "&hl=#arguments.options.hl#"
+		}
+		if ( structKeyExists( arguments.options, "safe" ) ) {
+			searchUrl &= "&safe=#arguments.options.safe#"
+		}
+
 		var response = executeRequest(
 			url: searchUrl
 		)

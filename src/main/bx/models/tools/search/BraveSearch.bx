@@ -67,6 +67,17 @@ class extends="BaseSearch" {
 		var encodedQuery = encodeSearchQuery( query )
 		var searchUrl = "https://api.search.brave.com/res/v1/web/search?q=#encodedQuery#&count=#variables.maxResults#"
 
+		// Append optional filter params when present in options
+		if ( structKeyExists( arguments.options, "country" ) ) {
+			searchUrl &= "&country=#arguments.options.country#"
+		}
+		if ( structKeyExists( arguments.options, "lang" ) ) {
+			searchUrl &= "&lang=#arguments.options.lang#"
+		}
+		if ( structKeyExists( arguments.options, "safeSearch" ) ) {
+			searchUrl &= "&safesearch=#arguments.options.safeSearch#"
+		}
+
 		var response = executeRequest(
 			url: searchUrl,
 			headers: {

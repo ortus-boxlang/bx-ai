@@ -104,7 +104,7 @@ public class WebSearchToolsTest extends BaseIntegrationTest {
 				results = tool.webSearch( "https://example.com" )
 				println( results )
 				first = results[ 1 ]
-				result = isArray( results ) && results.len() == 1 && first.title.findNoCase( "Fetched:" ) == 1 && first.url == "https://example.com"
+				result = isArray( results ) && results.len() == 1 && len( first.title ) > 0 && first.url == "https://example.com"
 			""",
 			context
 		);

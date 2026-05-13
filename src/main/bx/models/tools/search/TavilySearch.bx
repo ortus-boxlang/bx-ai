@@ -84,6 +84,20 @@ class extends="BaseSearch" {
 			include_answer: false
 		}
 
+		// Add optional params when present in options
+		if ( structKeyExists( arguments.options, "includeAnswer" ) ) {
+			requestBody.include_answer = arguments.options.includeAnswer
+		}
+		if ( structKeyExists( arguments.options, "includeRawContent" ) ) {
+			requestBody.include_raw_content = arguments.options.includeRawContent
+		}
+		if ( structKeyExists( arguments.options, "topic" ) ) {
+			requestBody.topic = arguments.options.topic
+		}
+		if ( structKeyExists( arguments.options, "days" ) ) {
+			requestBody.days = arguments.options.days
+		}
+
 		var response = executeRequest(
 			url: searchUrl,
 			method: "POST",

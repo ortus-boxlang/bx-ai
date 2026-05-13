@@ -22,6 +22,8 @@
  *
  * No API key required.
  */
+import java:org.jsoup.Jsoup;
+
 class extends="BaseSearch" {
 
 	/**
@@ -77,17 +79,37 @@ class extends="BaseSearch" {
 				}]
 			}
 
-			// Truncate content for AI consumption (first maxSnippetLength chars)
-			var content = response.fileContent
-			if ( content.len() > variables.maxSnippetLength ) {
-				content = content.left( variables.maxSnippetLength ) & "...[truncated]"
-			}
+			// Parse HTML with Jsoup for clean text extraction
+			try {
+				var doc       = Jsoup::parse( response.fileContent )
+				var pageTitle = doc.title()
 
-			return [{
-				title: "Fetched: #query#",
-				url: query,
-				snippet: content
-			}]
+				// Remove noise elements
+				doc.select( "script, style, nav, header, footer" ).remove()
+
+				// Extract clean body text
+				var bodyText = doc.body().text()
+				if ( bodyText.len() > variables.maxSnippetLength ) {
+					bodyText = bodyText.left( variables.maxSnippetLength ) & "...[truncated]"
+				}
+
+				return [{
+					title   : pageTitle.len() ? pageTitle : "Fetched: #query#",
+					url     : query,
+					snippet : bodyText
+				}]
+			} catch ( any e ) {
+				// Fall back to raw HTML if Jsoup fails
+				var content = response.fileContent
+				if ( content.len() > variables.maxSnippetLength ) {
+					content = content.left( variables.maxSnippetLength ) & "...[truncated]"
+				}
+				return [{
+					title   : "Fetched: #query#",
+					url     : query,
+					snippet : content
+				}]
+			}
 		}
 
 		// Not a URL — suggest using a real search provider
