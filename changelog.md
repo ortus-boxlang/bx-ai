@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 New Features
 
+- **Web Search Tools & BIF**: New `webSearch()` BIF and `WebSearchTools` class providing multi-provider web search for AI agents.
+  - **`webSearch(query, params, options)`** BIF — simple entry point for web search.
+  - **`webSearch@bxai` tool** — auto-registered AI tool enabling agents to search the web during conversations.
+  - **5 search providers** via interface-driven design (`IWebSearch`):
+    - **Brave** — official API, free tier 2K queries/mo, set `BRAVE_API_KEY` env var
+    - **Google Custom Search** — best result quality, requires `GOOGLE_API_KEY` + `GOOGLE_SEARCH_ENGINE_ID`
+    - **Tavily** — AI-optimized search, free tier 1K queries/mo, set `TAVILY_API_KEY` env var
+    - **HTTP** — (Default) generic URL fetcher for direct page retrieval
+  - **Consistent result format** — all providers return `[{title, url, snippet}]` regardless of underlying API.
+  - **Three-tier API key resolution** — constructor config → module settings → environment variables.
+  - **ModuleConfig settings** — `webSearch` section for global configuration (default provider, max results, timeout, API keys, logging).
+  - **All HTTP calls centralized** in `BaseSearch` for consistent logging, error handling, and proxy support.
+
 - **MCP Server IP Allowlist & Proxy-Aware Client IP Extraction**: `MCPServer` now supports IP-based access control with automatic client IP resolution from common proxy headers.
   - **`withAllowedIPs(ips)`**: Configure allowed IP addresses or CIDR ranges. Pass empty array to allow all (default).
   - **`addAllowedIP(ip)` / `clearAllowedIPs()`**: Incremental allowlist management.

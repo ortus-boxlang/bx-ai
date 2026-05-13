@@ -1,0 +1,76 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Web Search BIF
+ *
+ * Provides a simple entry point for web search across multiple providers.
+ * Resolves configuration from module settings, environment variables, and params.
+ */
+import bxModules.bxai.models.tools.search.WebSearchTools;
+
+@BoxBIF
+class {
+
+	static {
+		MODULE_SETTINGS = getModuleInfo( "bxai" ).settings
+	}
+
+	/**
+	 * Execute a web search query using the specified or default provider.
+	 *
+	 * The provider is resolved in this order:
+	 * 1. The `provider` param passed to this function
+	 * 2. The `webSearch.defaultProvider` module setting
+	 * 3. Falls back to "http"
+	 *
+	 * API keys are resolved per-provider using the three-tier pattern:
+	 * constructor config → module settings → environment variable.
+	 *
+	 * @query   The search query string
+	 * @options Optional struct with provider name, logging options, etc.
+	 *          - provider:string - The search provider to use (http, brave, google, tavily)
+	 *          - maxResults:numeric - Maximum number of results to return
+	 *          - timeout:numeric - HTTP request timeout in seconds
+	 *          - logRequest:boolean - Log the request to the ai log
+	 *          - logResponse:boolean - Log the response to the ai log
+	 *
+	 * @return Array of result structs: [{title, url, snippet}]
+	 *
+	 *<pre>
+	 * // Simple search with default provider (HTTP URL fetcher)
+	 * var results = webSearch( "https://en.wikipedia.org/wiki/BoxLang" )
+	 *
+	 * // Search with Brave provider
+	 * var results = webSearch( "BoxLang programming language", { provider: "brave", maxResults: 10 } )
+	 *
+	 * // Search with Google provider
+	 * var results = webSearch( "BoxLang", { provider: "google" } )
+	 * </pre>
+	 */
+	function invoke(
+		required string query,
+		struct options = {}
+	) {
+		// Resolve provider name
+		param options.provider = MODULE_SETTINGS?.webSearch?.defaultProvider ?: "http"
+
+		// Create provider instance
+		return WebSearchTools::createProvider( arguments.options.provider, arguments.options )
+			.search( arguments.query )
+	}
+
+}

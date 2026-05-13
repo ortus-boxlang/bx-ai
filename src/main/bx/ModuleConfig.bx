@@ -202,6 +202,26 @@ class {
 				defaultStyle        : "",
 				// Default style/tone/mood instructions appended to every image prompt
 				defaultInstructions : ""
+			},
+
+			// --------------------------------------------------------------------------
+			// Web Search Settings — Defaults for webSearch() BIF and WebSearchTools
+			// --------------------------------------------------------------------------
+			webSearch : {
+				// Default search provider: http, brave, google, tavily
+				defaultProvider : "http",
+				// Maximum number of results to return per search
+				maxResults : 5,
+				// HTTP request timeout in seconds
+				timeout : 30,
+				// Provider API keys (also resolved via environment variables)
+				braveApiKey : "",
+				googleApiKey : "",
+				googleSearchEngineId : "",
+				tavilyApiKey : "",
+				// Logging
+				logRequest : false,
+				logResponse : false
 			}
 		}
 
@@ -345,9 +365,15 @@ class {
 			"bxai"
 		)
 
-		// Log module load and core/audio/image tool registration
+		// Register web search tools into the registry.
+		aiToolRegistry().scanClass(
+			new bxModules.bxai.models.tools.search.WebSearchTools(),
+			"bxai"
+		)
+
+		// Log module load and core/audio/image/search tool registration
 		writeLog(
-			text: "BoxLang AI loaded and core/audio/image tools registered into the registry",
+			text: "BoxLang AI loaded and core/audio/image/search tools registered into the registry",
 			type: "debug",
 			log: "ai"
 		)

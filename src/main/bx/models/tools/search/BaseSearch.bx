@@ -1,0 +1,251 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Abstract base class for web search providers.
+ *
+ * Centralizes HTTP request execution, logging, error handling, and result formatting.
+ * All concrete search providers extend this class and implement the search() method.
+ */
+class implements="IWebSearch" {
+
+	/**
+	 * Maximum number of results to return (default: 5)
+	 */
+	property name="maxResults" type="numeric" default="5";
+
+	/**
+	 * HTTP request timeout in seconds (default: 30)
+	 */
+	property name="timeout" type="numeric" default="30";
+
+	/**
+	 * Provider configuration struct
+	 */
+	property name="config" type="struct" default="{}";
+
+	/**
+	 * Whether to log requests to console
+	 */
+	property name="logRequest" type="boolean" default="false";
+
+	/**
+	 * Whether to log responses to console
+	 */
+	property name="logResponse" type="boolean" default="false";
+
+	static{
+		MODULE_SETTINGS = getModuleInfo( "bxai" ).settings
+	}
+
+	// ==================== Default Constructor ====================
+
+	/**
+	 * Constructor — accepts optional configuration.
+	 *
+	 * @config Struct with provider-specific API keys, maxResults, timeout, etc.
+	 */
+	function init( struct config = {} ) {
+		variables.config = arguments.config
+		if ( arguments.config.count() > 0 ) {
+			configure( arguments.config )
+		}
+	}
+
+	// ==================== Interface Methods ====================
+
+	/**
+	 * Configure the search provider with API keys and options.
+	 *
+	 * @config Struct of configuration options
+	 *
+	 * @return This instance for fluent chaining
+	 */
+	function configure( required struct config ) {
+		// Ensure variables.config is a struct (defensive against createObject not calling init)
+		if ( !isStruct( variables.config ) ) {
+			variables.config = {}
+		}
+		variables.config.append( arguments.config, true )
+
+		// Check config for maxResults, timeout, logRequest, logResponse
+		if ( structKeyExists( arguments.config, "maxResults" ) ) {
+			variables.maxResults = arguments.config.maxResults
+		}
+		if ( structKeyExists( arguments.config, "timeout" ) ) {
+			variables.timeout = arguments.config.timeout
+		}
+		if ( structKeyExists( arguments.config, "logRequest" ) ) {
+			variables.logRequest = arguments.config.logRequest
+		}
+		if ( structKeyExists( arguments.config, "logResponse" ) ) {
+			variables.logResponse = arguments.config.logResponse
+		}
+
+		return this
+	}
+
+	/**
+	 * Execute a web search query.
+	 * Must be implemented by subclasses.
+	 *
+	 * @query   The search query string
+	 * @options Optional struct with maxResults, timeout, etc.
+	 *
+	 * @return  Array of result structs: [{title, url, snippet}]
+	 */
+	array function search( required string query, struct options = {} ) {
+		throw(
+			type: "NotImplementedError",
+			message: "search() must be implemented by subclasses of BaseSearch",
+			detail: "query=#arguments.query#, options=#jsonSerialize( arguments.options )#"
+		);
+
+		return [];
+	}
+
+	// ==================== Private Helper Methods ====================
+
+	/**
+	 * Resolve an API key using the three-tier precedence:
+	 * 1. Constructor config
+	 * 2. Module settings
+	 * 3. Environment variable
+	 *
+	 * @envVarName  The environment variable name (e.g., "BRAVE_API_KEY")
+	 * @settingKey  The module settings key (e.g., "braveApiKey")
+	 *
+	 * @return      The resolved API key or empty string
+	 */
+	private string function resolveApiKey( required string envVarName, required string settingKey ) {
+		// 1. Constructor config
+		if ( structKeyExists( variables.config, arguments.settingKey ) && !variables.config[ arguments.settingKey ].isEmpty() ) {
+			return variables.config[ arguments.settingKey ];
+		}
+
+		// 2. Module settings (check webSearch nested struct first, then flat fallback)
+		var moduleSettings = static.MODULE_SETTINGS ?: {}
+		if (
+			structKeyExists( moduleSettings, "webSearch" )
+			&& structKeyExists( moduleSettings.webSearch, arguments.settingKey )
+			&& !moduleSettings.webSearch[ arguments.settingKey ].isEmpty()
+		) {
+			return moduleSettings.webSearch[ arguments.settingKey ]
+		}
+		// Flat fallback (for tests that inject keys directly)
+		if ( structKeyExists( moduleSettings, arguments.settingKey ) && !moduleSettings[ arguments.settingKey ].isEmpty() ) {
+			return moduleSettings[ arguments.settingKey ]
+		}
+
+		// 3. Environment variable
+		return getSystemSetting( arguments.envVarName, "" )
+	}
+
+	/**
+	 * Execute an HTTP request with consistent logging and error handling.
+	 * All search providers should use this method for HTTP calls.
+	 *
+	 * @url     The URL to request
+	 * @method  HTTP method (GET, POST, etc.)
+	 * @headers Struct of request headers
+	 * @body    Optional request body (string or struct)
+	 *
+	 * @return  The http() response struct with statusCode, fileContent, etc.
+	 */
+	private function executeRequest(
+		required string url,
+		string method = "GET",
+		struct headers = {},
+		any body = ""
+	) {
+		// Log request if enabled
+		if ( variables.logRequest ) {
+			var logText ="====> WebSearch [#getName()#] Request: #arguments.method# #arguments.url#, Headers: #jsonSerialize( arguments.headers )#"
+			writeLog(
+				text: logText,
+				type: "info",
+				log: "ai"
+			)
+			println( logText )
+		}
+
+		// Build the request using BoxLang's http() BIF fluent API
+		var httpRequest = http( arguments.url )
+			.method( arguments.method )
+			.timeout( variables.timeout )
+
+		// Add headers
+		for ( var headerName, headerValue in arguments.headers ) {
+			httpRequest.header( headerName, headerValue )
+		}
+
+		// Add body if provided
+		if ( !isNull( arguments.body ) && arguments.body != "" ) {
+			if ( isStruct( arguments.body ) ) {
+				httpRequest.body( jsonSerialize( arguments.body ) )
+			} else {
+				httpRequest.body( arguments.body )
+			}
+		}
+
+		var response = httpRequest.send();
+
+		// Log response if enabled
+		if ( variables.logResponse ) {
+			var logText = "====> WebSearch [#getName()#] Response: HTTP #response.statusCode# #response.fileContent#"
+			writeLog(
+				text: logText,
+				type: "info",
+				log: "ai"
+			)
+			println( logText )
+		}
+
+		return response
+	}
+
+	/**
+	 * Encode a search query for inclusion in a URL.
+	 *
+	 * @text The search query text
+	 *
+	 * @return URL-encoded query text
+	 */
+	package string function encodeSearchQuery( required string text ) {
+		return urlEncodedFormat( arguments.text )
+	}
+
+	/**
+	 * Format raw search results into a consistent array of structs.
+	 * Each result has: title, url, snippet
+	 *
+	 * @rawResults Array of raw result data from the provider
+	 *
+	 * @return     Array of formatted result structs
+	 */
+	private array function formatResults( required array rawResults ) {
+		return arguments.rawResults
+			.map( result => {
+				"title": result.title ?: "",
+				"url": result.url ?: result.link ?: "",
+				"snippet": result.snippet ?: result.content ?: result.description ?: result.summary ?: ""
+			} )
+			// Filter out results without URLs
+			.filter( item => !item.url.isEmpty() )
+	}
+
+
+}
