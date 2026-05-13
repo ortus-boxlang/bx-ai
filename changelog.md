@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Web Search Tools & BIF**: New `webSearch()` BIF and `WebSearchTools` class providing multi-provider web search for AI agents.
   - **`webSearch(query, params, options)`** BIF — simple entry point for web search.
   - **`webSearch@bxai` tool** — auto-registered AI tool enabling agents to search the web during conversations.
+  - **`searchAsync(query, options)`** — all search providers now expose a non-blocking async variant that returns a `BoxFuture` resolved on the `io-tasks` executor.
   - **5 search providers** via interface-driven design (`IWebSearch`):
     - **Brave** — official API, free tier 2K queries/mo, set `BRAVE_API_KEY` env var
     - **Google Custom Search** — best result quality, requires `GOOGLE_API_KEY` + `GOOGLE_SEARCH_ENGINE_ID`

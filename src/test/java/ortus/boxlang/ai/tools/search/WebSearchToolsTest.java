@@ -154,4 +154,41 @@ public class WebSearchToolsTest extends BaseIntegrationTest {
 		assertThat( variables.get( result ) ).isEqualTo( true );
 	}
 
+	@DisplayName( "searchAsync() on provider returns BoxFuture resolving to results array" )
+	@Test
+	public void testSearchAsync() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				tool    = new bxModules.bxai.models.tools.search.HttpSearch()
+				future  = tool.searchAsync( "https://example.com" )
+				results = future.get()
+				first   = results.first()
+				result  = isArray( results ) && results.len() > 0 && structKeyExists( first, "title" ) && structKeyExists( first, "url" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( true );
+	}
+
+	@DisplayName( "webSearchAsync BIF returns BoxFuture resolving to results array" )
+	@Test
+	public void testWebSearchAsyncBif() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				future  = webSearchAsync( "https://example.com" )
+				results = future.get()
+				first   = results.first()
+				result  = isArray( results ) && results.len() > 0 && structKeyExists( first, "title" ) && structKeyExists( first, "url" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( true );
+	}
+
 }

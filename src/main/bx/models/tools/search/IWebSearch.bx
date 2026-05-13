@@ -42,6 +42,19 @@ interface {
 	array function search( required string query, struct options = {} );
 
 	/**
+	 * Execute a web search asynchronously and return a BoxFuture.
+	 * The future resolves to an array of result structs: [{title, url, snippet}]
+	 *
+	 * @query   The search query string
+	 * @options Optional struct with maxResults, timeout, etc.
+	 *
+	 * @return  BoxFuture that resolves to an array of result structs
+	 */
+	default any function searchAsync( required string query, struct options = {} ) {
+		return asyncRun( () => this.search( query, options ), "io-tasks" );
+	}
+
+	/**
 	 * Get the provider name identifier.
 	 *
 	 * @return Provider name string (e.g., "http", "brave", "google")
