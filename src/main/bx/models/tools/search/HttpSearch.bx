@@ -131,7 +131,7 @@ class extends="BaseSearch" {
 		return [{
 			title        : "HTTP Search Provider",
 			url          : "",
-			snippet      : "The 'http' provider requires a full URL. For web search, use provider 'brave', 'google', or 'tavily' instead. Example: webSearch( '#query#', provider: 'brave' )",
+			snippet      : "The 'http' provider requires a full URL. For web search, use provider 'brave', 'google', or 'tavily' instead. Example: aiWebSearch( '#query#', provider: 'brave' )",
 			publishedDate: "",
 			domain       : "",
 			score        : 0,

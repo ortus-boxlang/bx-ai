@@ -11,10 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 New Features
 
-- **Web Search Tools & BIF**: New `webSearch()` BIF and `WebSearchTools` class providing multi-provider web search for AI agents.
-  - **`webSearch(query, params, options)`** BIF — simple entry point for web search.
+- **Web Search Tools & BIF**: New `aiWebSearch()` BIF and `WebSearchTools` class providing multi-provider web search for AI agents.
+  - **`aiWebSearch(query, params, options)`** BIF — simple entry point for web search (renamed from `webSearch()`).
   - **`webSearch@bxai` tool** — auto-registered AI tool enabling agents to search the web during conversations.
-  - **`webSearchAsync(query, options)`** BIF — non-blocking variant returning a `BoxFuture` resolved on the `io-tasks` executor; all providers also expose `searchAsync()` directly.
+  - **`aiWebSearchAsync(query, options)`** BIF — non-blocking variant returning a `BoxFuture` resolved on the `io-tasks` executor (renamed from `webSearchAsync()`); all providers also expose `searchAsync()` directly.
   - **`searchAsync(query, options)`** — all search providers now expose a non-blocking async variant that returns a `BoxFuture` resolved on the `io-tasks` executor.
   - **5 web search interception points** — full observability into the search pipeline via `BoxRegisterInterceptor()`:
     - `beforeAIWebSearch` — fired before any search executes (provider, query, options)

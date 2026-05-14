@@ -17,7 +17,7 @@
  * ----------------------------------------------------------------------------------
  * Web Search Async BIF
  *
- * Async variant of webSearch(). Returns a BoxFuture that resolves to an array
+ * Async variant of aiWebSearch(). Returns a BoxFuture that resolves to an array
  * of result structs: [{title, url, snippet}].
  */
 @BoxBIF
@@ -44,11 +44,11 @@ class extends="aiWebSearch" {
 	 *
 	 * <pre>
 	 * // Simple async search with default HTTP provider
-	 * var future = webSearchAsync( "BoxLang programming language" )
+	 * var future = aiWebSearchAsync( "BoxLang programming language" )
 	 * var results = future.get()
 	 *
 	 * // Non-blocking with a callback
-	 * webSearchAsync( "BoxLang", { provider: "brave", maxResults: 5 } )
+	 * aiWebSearchAsync( "BoxLang", { provider: "brave", maxResults: 5 } )
 	 *     .then( results => results.each( r => println( r.title ) ) )
 	 * </pre>
 	 */

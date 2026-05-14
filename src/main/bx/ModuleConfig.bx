@@ -205,7 +205,7 @@ class {
 			},
 
 			// --------------------------------------------------------------------------
-			// Web Search Settings — Defaults for webSearch() BIF and WebSearchTools
+			// Web Search Settings — Defaults for aiWebSearch()/aiWebSearchAsync() BIFs and WebSearchTools
 			// --------------------------------------------------------------------------
 			webSearch : {
 				// Default search provider: http, brave, google, tavily, exa

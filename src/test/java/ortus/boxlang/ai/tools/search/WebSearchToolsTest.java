@@ -128,10 +128,10 @@ public class WebSearchToolsTest extends BaseIntegrationTest {
 	}
 
 	// -------------------------------------------------------------------------
-	// webSearch() BIF
+	// aiWebSearch() BIF
 	// -------------------------------------------------------------------------
 
-	@DisplayName( "webSearch BIF returns results with default http provider" )
+	@DisplayName( "aiWebSearch BIF returns results with default http provider" )
 	@Test
 	public void testWebSearchBif() {
 		// @formatter:off
@@ -148,7 +148,7 @@ public class WebSearchToolsTest extends BaseIntegrationTest {
 		assertThat( variables.get( result ) ).isEqualTo( true );
 	}
 
-	@DisplayName( "webSearch BIF with brave provider returns results" )
+	@DisplayName( "aiWebSearch BIF with brave provider returns results" )
 	@Test
 	public void testWebSearchBifBrave() {
 		var braveApiKey = dotenv.get( "BRAVE_API_KEY", "" );
@@ -187,13 +187,13 @@ public class WebSearchToolsTest extends BaseIntegrationTest {
 		assertThat( variables.get( result ) ).isEqualTo( true );
 	}
 
-	@DisplayName( "webSearchAsync BIF returns BoxFuture resolving to results array" )
+	@DisplayName( "aiWebSearchAsync BIF returns BoxFuture resolving to results array" )
 	@Test
 	public void testWebSearchAsyncBif() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				future  = webSearchAsync( "https://example.com" )
+				future  = aiWebSearchAsync( "https://example.com" )
 				results = future.get()
 				first   = results.first()
 				result  = isArray( results ) && results.len() > 0 && structKeyExists( first, "title" ) && structKeyExists( first, "url" )

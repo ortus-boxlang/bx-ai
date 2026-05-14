@@ -52,13 +52,13 @@ class {
 	 *
 	 *<pre>
 	 * // Simple search with default provider (HTTP URL fetcher)
-	 * var results = webSearch( "https://en.wikipedia.org/wiki/BoxLang" )
+	 * var results = aiWebSearch( "https://en.wikipedia.org/wiki/BoxLang" )
 	 *
 	 * // Search with Brave provider
-	 * var results = webSearch( "BoxLang programming language", { provider: "brave", maxResults: 10 } )
+	 * var results = aiWebSearch( "BoxLang programming language", { provider: "brave", maxResults: 10 } )
 	 *
 	 * // Search with Google provider
-	 * var results = webSearch( "BoxLang", { provider: "google" } )
+	 * var results = aiWebSearch( "BoxLang", { provider: "google" } )
 	 * </pre>
 	 */
 	function invoke(

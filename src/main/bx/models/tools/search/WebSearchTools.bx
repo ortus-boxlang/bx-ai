@@ -17,8 +17,9 @@
  * ----------------------------------------------------------------------------------
  * Web search tool for AI agents.
  *
- * Provides the @AITool-annotated webSearch() method that delegates to the active
- * IWebSearch provider. Auto-registered on module load.
+ * Provides the @AITool-annotated webSearch() method (registered as the `webSearch@bxai` tool)
+ * that delegates to the active IWebSearch provider. Auto-registered on module load.
+ * The BIF entry points are `aiWebSearch()` and `aiWebSearchAsync()`.
  *
  * Supported providers: http (default), brave, google, tavily
  */
