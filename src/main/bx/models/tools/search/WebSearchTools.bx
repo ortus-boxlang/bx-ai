@@ -110,29 +110,32 @@ class {
 	 * @query       The search query string
 	 * @provider    Optional provider name to override the default (http, brave, google, tavily)
 	 * @maxResults  Optional maximum number of results to return (default: 5)
+	 * @options     Optional struct of additional provider-specific options (e.g. language, region)
 	 *
 	 * @return      Array of result structs: [{title, url, snippet}]
 	 */
-	@AITool( "Searches the web for information. Returns an array of results with title, URL, and snippet. Use this to find current information, verify facts, or research topics. Default provider is HTTP (simple URL fetcher, no API key needed). For better results use: brave, google, tavily, exa." )
+	@AITool( "Searches the web for information. Returns an array of results with title, URL, snippet, etc. Use this to find current information, verify facts, or research topics. Default provider is HTTP (simple URL fetcher, no API key needed). For better results use: brave, google, tavily, exa.
+	The options object can accept any name-value pairs the provider can use as provider-specific options like language, region, safeSearch, etc." )
 	function webSearch(
 		required string query,
 		string provider = "",
-		numeric maxResults = 0
+		numeric maxResults = 0,
+		struct options = {}
 	) {
 		// Build search options
-		var options = {}
+		var targetOptions = {}.append( arguments.options, true )
 
 		if ( arguments.maxResults > 0 ) {
-			options.maxResults = arguments.maxResults
+			targetOptions.maxResults = arguments.maxResults
 		}
 
 		// Use specified provider or default
 		if ( !arguments.provider.isEmpty() ) {
 			return createProvider( arguments.provider, variables.config )
-				.search( arguments.query, options );
+				.search( arguments.query, targetOptions );
 		}
 
-		return variables.searchProvider.search( arguments.query, options )
+		return variables.searchProvider.search( arguments.query, targetOptions )
 	}
 
 }
