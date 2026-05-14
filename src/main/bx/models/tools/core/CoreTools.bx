@@ -25,6 +25,61 @@
 class {
 
 	/**
+	 * Print a message to the console. Useful for debugging.
+	 * Auto-registered as print_to_console@bxai on module load.
+	 */
+	@AITool( "Prints a message to the console. Use this for debugging or to output information you want the user to see." )
+	public void function print_to_console( string message ) {
+		println( arguments.message );
+	}
+
+	/**
+	 * Send a message to the AI log file. Useful for debugging or keeping a record of interactions.
+	 * Auto-registered as log@bxai on module load.
+	 * Note: log files can be found in the "logs" directory of your Box installation, typically named "ai.log".
+	 *
+	 * @message The message to log
+	 * @type    The log level/type (e.g., "info", "warning", "error"). Default is "info".
+	 */
+	@AITool( "Sends a message to the AI log file. Use this to keep a record of interactions or for debugging purposes." )
+	public void function log( string message, string type = "info" ) {
+		writeLog(
+			text: arguments.message,
+			type: arguments.type,
+			log: "ai"
+		)
+	}
+
+	/**
+	 * Send an email using the server's mail configuration. Useful for notifications or alerts.
+	 * Auto-registered as sendEmail@bxai on module load.
+	 * Note: This function relies on the server's mail configuration being properly set up.
+	 * Ensure that your Box server can send emails before using this tool.
+	 *
+	 * https://boxlang.ortusbooks.com/boxlang-framework/modularity/mail
+	 *
+	 * @to      Recipient email address
+	 * @subject The subject of the email
+	 * @body    The body content of the email
+	 * @from    The sender's email address
+	 */
+	@AITool( "Sends an email using the server's mail configuration. Use this to send notifications or alerts." )
+	public void function sendEmail(
+		required string to,
+		required string subject,
+		required string body,
+		required string from
+	) {
+		bx:mail
+			from=arguments.from
+			to=arguments.to
+			subject=arguments.subject
+		{
+			writeoutput( arguments.body )
+		};
+	}
+
+	/**
 	 * Returns the current date and time in ISO 8601 format.
 	 * Auto-registered as now@bxai on module load.
 	 */
