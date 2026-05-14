@@ -1,0 +1,29 @@
+{
+    "diagnostics": {
+      "unusedVariable": {
+        "severity": "warning"
+      },
+      "unscopedVariable": {
+        "enabled": true,
+        "severity": "information"
+      },
+      "missingReturnStatement": {
+        "severity": "error"
+      },
+      "unusedImport": {
+        "enabled": true
+      },
+	  "unusedPrivateMethod": {
+		"enabled": false,
+		"severity": "information"
+	  }
+    },
+    "include": [
+      "src/**/*.bx",
+      "src/**/*.bxs",
+	  "src/**/*.bxm"
+    ],
+    "exclude": [
+      "build/**"
+    ]
+  }

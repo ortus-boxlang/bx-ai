@@ -12,7 +12,7 @@ println( "=== JSON Format ===" )
 
 // Method 1: Using asJson() helper
 jsonResult = aiMessage()
-    .user( "Return JSON: {\"name\": \"John Doe\", \"age\": 30, \"city\": \"New York\"}" )
+    .user( 'Return JSON: {"name": "John Doe", "age": 30, "city": "New York"}' )
     .toDefaultModel()
     .asJson()
     .run()
@@ -40,7 +40,7 @@ println()
 println( "=== JSON Format - Complex Objects ===" )
 
 complexJson = aiMessage()
-    .user( """
+    .user( '
         Return JSON with this structure:
         {
             "users": [
@@ -49,7 +49,7 @@ complexJson = aiMessage()
             ],
             "total": 2
         }
-    """ )
+    ' )
     .toDefaultModel()
     .asJson()
     .run()
@@ -66,7 +66,7 @@ println()
 println( "=== JSON Format + Transform ===" )
 
 transformed = aiMessage()
-    .user( "Return JSON: {\"message\": \"hello world\", \"count\": 5}" )
+    .user( 'Return JSON: {"message": "hello world", "count": 5}' )
     .toDefaultModel()
     .asJson()
     .transform( (data) => {
@@ -87,14 +87,14 @@ println( "=== XML Format ===" )
 
 // Method 1: Using asXml() helper
 xmlResult = aiMessage()
-    .user( """
+    .user( "
         Return XML:
         <person>
             <name>Jane Doe</name>
             <age>28</age>
             <city>San Francisco</city>
         </person>
-    """ )
+    " )
     .toDefaultModel()
     .asXml()
     .run()
@@ -108,14 +108,14 @@ println()
 
 // Method 2: Using returnFormat option
 xmlResult2 = aiChat(
-    """
+    "
     Return XML for a book:
     <book>
         <title>BoxLang Guide</title>
         <author>Ortus Solutions</author>
         <year>2025</year>
     </book>
-    """,
+    ",
     {},
     { returnFormat: "xml" }
 )
@@ -131,7 +131,7 @@ println()
 println( "=== XML Format - Complex Documents ===" )
 
 catalogXml = aiMessage()
-    .user( """
+    .user( '
         Return XML catalog:
         <catalog>
             <book id="1">
@@ -143,7 +143,7 @@ catalogXml = aiMessage()
                 <price>39.99</price>
             </book>
         </catalog>
-    """ )
+    ' )
     .toDefaultModel()
     .asXml()
     .run()
@@ -159,7 +159,7 @@ println()
 // ==============================================================================
 println( "=== Return Format Comparison ===" )
 
-prompt = "Return JSON: {\"status\": \"success\", \"code\": 200}"
+prompt = 'Return JSON: {"status": "success", "code": 200}'
 
 // Raw format - full response
 rawResponse = aiChat( prompt, {}, { returnFormat: "raw" } )

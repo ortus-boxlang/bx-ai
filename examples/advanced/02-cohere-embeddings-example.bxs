@@ -208,7 +208,7 @@ println( "=== Semantic Search Results ===" )
 println( "Query: #query#" )
 println()
 results.each( (result, idx) => {
-	println( "##idx#. [#numberFormat( result.similarity * 100, '0.00' )#%] #result.text#" )
+	println( "###idx#. [#numberFormat( result.similarity * 100, '0.00' )#%] #result.text#" )
 } )
 println()
 

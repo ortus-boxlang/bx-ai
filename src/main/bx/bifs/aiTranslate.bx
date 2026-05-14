@@ -47,16 +47,18 @@ class {
 	}
 
 	/**
-	 * Translate audio to English text
+	 * Translate audio to English text, or return a fluent AiTranscriptionRequest builder when
+	 * called with no audio. Builder usage: aiTranslate().file("/path/audio.mp3").translate()
 	 *
-	 * @audio   The audio source: local file path (string), remote URL (string), or binary data
+	 * @audio   The audio source: local file path (string), remote URL (string), or binary data.
+	 *          Omit (or pass "") to get a fluent builder instead.
 	 * @params  Provider API parameters (model, response_format, etc.)
 	 * @options High-level options (provider, apiKey, returnFormat, timeout, logging)
 	 *
-	 * @return String (returnFormat "text") or AiTranscriptionResponse (returnFormat "response" / "raw")
+	 * @return String (returnFormat "text"), AiTranscriptionResponse, or AiTranscriptionRequest (fluent builder)
 	 */
 	function invoke(
-		required any audio,
+		any audio = "",
 		struct params = {},
 		struct options = {}
 	){
@@ -95,6 +97,11 @@ class {
 			options = arguments.options,
 			methodDefaults = static.DEFAULT_OPTIONS  // Pass method defaults separately
 		)
+
+		// Return fluent builder when called with no audio
+		if ( isSimpleValue( arguments.audio ) && !len( arguments.audio ) ) {
+			return transcriptionRequest
+		}
 
 		// Guard: audio source required
 		if ( !transcriptionRequest.hasAudio() ) {

@@ -14,20 +14,27 @@
  * ----------------------------------------------------------------------------------
  */
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiImageService;
 import bxModules.bxai.models.providers.capabilities.IAiSpeechService;
+import bxModules.bxai.models.responses.AiImageResponse;
 import bxModules.bxai.models.responses.AiSpeechResponse;
 
-class extends="OpenAIService" implements="IAiChatService, IAiSpeechService" {
+class extends="OpenAIService" implements="IAiChatService, IAiImageService, IAiSpeechService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "chat", "stream", "speech" ]
+		CAPABILITIES = [ "chat", "stream", "image", "speech" ]
 		DEFAULT_CHAT_PARAMS = {
 			// according to the docs, this is the default model
 			// https://docs.x.ai/docs/models
 			"model" : "grok-4-1-fast-reasoning"
+		}
+		DEFAULT_IMAGE_PARAMS = {
+			// https://docs.x.ai/docs/image-generation
+			"model"           : "grok-2-image",
+			"response_format" : "url"
 		}
 		DEFAULT_SPEECH_PARAMS = {
 			// https://docs.x.ai/docs/tts — available voices: alloy, echo, fable, onyx, nova, shimmer, eve
@@ -40,6 +47,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiSpeechService" {
 	 */
 	function init(){
 		variables.chatURL   = "https://api.x.ai/v1/chat/completions"
+		variables.imageURL  = "https://api.x.ai/v1/images/generations"
 		variables.speechURL = "https://api.x.ai/v1/tts"
 		variables.name      = "Grok"
 	}
@@ -141,6 +149,19 @@ class extends="OpenAIService" implements="IAiChatService, IAiSpeechService" {
 			model       : "",
 			provider    : variables.name
 		);
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiImageService Implementation — xAI image generation (OpenAI-compatible)
+	 * https://docs.x.ai/docs/image-generation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	@override
+	public AiImageResponse function generateImage( required AiImageRequest imageRequest ){
+		arguments.imageRequest.mergeServiceParams( static.DEFAULT_IMAGE_PARAMS )
+		return sendImageRequest( arguments.imageRequest, variables.imageURL )
 	}
 
 }

@@ -73,7 +73,7 @@ public class OllamaTest extends BaseIntegrationTest {
 		    result = aiChat(
 		        messages = "What is 2 + 2? Answer with just the number.",
 		        options = {
-		            "model": "qwen2.5:0.5b-instruct",
+		            "model": "qwen3:0.6b",
 		    	 	logResponseToConsole: true
 		        }
 		    )
@@ -244,7 +244,7 @@ public class OllamaTest extends BaseIntegrationTest {
 		assertThat( variables.get( "fullResponse" ) ).isNotNull();
 		var	fullResponse	= variables.get( "fullResponse" ).toString();
 		// Assert the tool was actually invoked (mechanism is working)
-		// Note: qwen2.5:0.5b-instruct is a very small model and may not reliably
+		// Note: qwen3:0.6b is a very small model and may not reliably
 		// incorporate tool results into its final answer - we assert invocation, not the value.
 		var	toolCallCount	= variables.getAsInteger( Key.of( "toolCallCount" ) );
 		Assumptions.assumeTrue(
@@ -261,7 +261,7 @@ public class OllamaTest extends BaseIntegrationTest {
 		executeWithTimeoutHandling(
 			"""
 			result = aiChat(
-				messages = "Return a JSON object with name 'BoxLang' and version '1.0'. Return ONLY valid JSON, nothing else.",
+				messages = "Return a JSON object with exactly two fields: a 'name' field with value 'BoxLang' and a 'version' field with value '1.0'. Return ONLY valid JSON, nothing else.",
 				options = {
 					returnFormat: "json"
 				}

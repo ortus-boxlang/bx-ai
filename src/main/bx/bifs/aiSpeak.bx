@@ -24,13 +24,13 @@
  *
  * // Save directly to a file
  * aiSpeak(
- *     input  : "Hello World",
+ *     text   : "Hello World",
  *     options: { outputFile: "/tmp/hello.mp3" }
  * )
  *
  * // Use a specific provider, voice, and model
  * response = aiSpeak(
- *     input  : "The quick brown fox",
+ *     text   : "The quick brown fox",
  *     params : { model: "tts-1-hd", voice: "nova" },
  *     options: { provider: "openai", outputFormat: "wav" }
  * )
@@ -40,16 +40,17 @@
 class {
 
 	/**
-	 * Convert text to synthesized speech
+	 * Convert text to synthesized speech, or return a fluent AiSpeechRequest builder when called
+	 * with no text. Builder usage: aiSpeak().text("...").female().asWav().speak()
 	 *
-	 * @text   The text to convert to speech
+	 * @text    The text to convert to speech. Omit (or pass "") to get a fluent builder instead.
 	 * @params  Provider API parameters (model, voice, speed, response_format, etc.)
 	 * @options High-level options (provider, apiKey, outputFile, outputFormat, returnFormat, timeout, logging)
 	 *
-	 * @return AiSpeechResponse containing the audio binary data, or saves to file if options.outputFile is set
+	 * @return AiSpeechResponse, a file path string (when outputFile is set), or AiSpeechRequest (fluent builder)
 	 */
 	function invoke(
-		required string text,
+		string text = "",
 		struct params = {},
 		struct options = {}
 	){
@@ -79,19 +80,6 @@ class {
 			}
 		}
 
-		// Resolve gender keywords ("male"/"female") to provider-specific voice names
-		// so providers always receive a concrete voice identifier, not a keyword.
-		var effectiveVoice = arguments.params.voice ?: arguments.options.voice ?: "";
-		if ( len( effectiveVoice ) && listFindNoCase( "male,female", effectiveVoice ) ) {
-			var resolvedProviderForVoice = arguments.options.provider ?: audioSettings.defaultProvider ?: moduleRecord.settings.provider ?: "openai";
-			var genderMap               = audioSettings.voiceGenderMap ?: {};
-			var providerGenderMap       = genderMap[ resolvedProviderForVoice ] ?: {};
-			var mappedVoice             = providerGenderMap[ effectiveVoice.lcase() ] ?: "";
-			if ( len( mappedVoice ) ) {
-				arguments.params.voice = mappedVoice;
-			}
-		}
-
 		// Create request
 		var speechRequest = new bxModules.bxai.models.requests.AiSpeechRequest(
 			text   = arguments.text,
@@ -99,9 +87,14 @@ class {
 			options = arguments.options
 		)
 
+		// If no text, return the request for fluent builder usage (e.g. aiSpeak().text("...
+		if( arguments.text.isEmpty() ){
+			return speechRequest
+		}
+
 		// Get the service
 		var service = aiService( arguments.options?.provider, arguments.options )
-
+		// Validate the service supports speech synthesis
 		if ( !isInstanceOf( service, "IAiSpeechService" ) ) {
 			throw(
 				type    : "UnsupportedCapability",

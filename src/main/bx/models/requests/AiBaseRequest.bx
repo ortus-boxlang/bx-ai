@@ -35,7 +35,7 @@ abstract class{
 	property name="apiKey" default="";
 
 	/**
-	 * Log request
+	 * Log request to the ai log
 	 */
 	property name="logRequest" type="boolean" default=false;
 
@@ -46,7 +46,7 @@ abstract class{
 	property name="logRequestToConsole" type="boolean" default=false;
 
 	/**
-	 * Log response
+	 * Log response to the ai log
 	 */
 	property name="logResponse" type="boolean" default=false;
 
@@ -69,7 +69,7 @@ abstract class{
 	/**
 	 * The timeout for the request
 	 */
-	property name="timeout" type="numeric" default="#static.DEFAULT_HTTP_TIMEOUT#";
+	property name="timeout" type="numeric";
 
 	/**
 	 * Base URL for the provider API (optional override for the service's default)
@@ -128,11 +128,27 @@ abstract class{
 	property name="middleware" type="array" default=[];
 
 	/**
-	 * Module settings - centralized access point
+	 * Constants and helper methods for AI requests
 	 */
-	static {
+	static{
 		final MODULE_SETTINGS = getModuleInfo( "bxai" ).settings
-		final DEFAULT_HTTP_TIMEOUT = MODULE_SETTINGS.timeout ?: 45
+		final DEFAULT_HTTP_TIMEOUT = MODULE_SETTINGS.timeout
+	}
+
+	static struct function getModuleSettings() {
+		return static.MODULE_SETTINGS
+	}
+
+	static numeric function getDefaultHttpTimeout() {
+		return static.DEFAULT_HTTP_TIMEOUT
+	}
+
+	/**
+	 * Initialize the request with default values
+	 * This method is called automatically when the request is created
+	 */
+	function init(){
+		variables.timeout = static.DEFAULT_HTTP_TIMEOUT
 	}
 
 	/**

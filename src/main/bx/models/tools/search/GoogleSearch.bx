@@ -1,0 +1,131 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License")
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Google Custom Search web provider.
+ *
+ * Uses the Google Custom Search JSON API (https://www.googleapis.com/customsearch/v1).
+ * Requires both a GOOGLE_API_KEY and a GOOGLE_SEARCH_ENGINE_ID (CSE ID).
+ *
+ * Free tier: 100 queries/day, then $5 per 1,000 queries.
+ */
+class extends="BaseSearch" {
+
+	/**
+	 * The Google API key.
+	 */
+	property name="apiKey" type="string" default="";
+
+	/**
+	 * The Google Custom Search Engine ID (CSE ID).
+	 */
+	property name="searchEngineId" type="string" default="";
+
+	/**
+	 * Configure the Google search provider.
+	 *
+	 * @config Struct with googleApiKey, googleSearchEngineId, maxResults, timeout, etc.
+	 * @return This instance for fluent chaining
+	 */
+	function configure( required struct config ) {
+		super.configure( arguments.config )
+		variables.apiKey = resolveApiKey( "GOOGLE_API_KEY", "googleApiKey" )
+		variables.searchEngineId = resolveApiKey( "GOOGLE_SEARCH_ENGINE_ID", "googleSearchEngineId" )
+		return this
+	}
+
+	/**
+	 * Search using the Google Custom Search API.
+	 *
+	 * @query   The search query string
+	 * @options Optional struct with maxResults, timeout, etc.
+	 *
+	 * @return  Array of result structs: [{title, url, snippet}]
+	 */
+	function doSearch( required string query, struct options = {} ) {
+		// Merge options
+		if ( !isNull( arguments.options ) ) {
+			configure( arguments.options )
+		}
+
+		// Check for required credentials
+		if ( variables.apiKey.isEmpty() ) {
+			return [{
+				title: "Google Search Error",
+				url: "",
+				snippet: "Google Custom Search requires an API key. Set the GOOGLE_API_KEY environment variable, add googleApiKey to module settings, or pass it in the config struct."
+			}]
+		}
+		if ( variables.searchEngineId.isEmpty() ) {
+			return [{
+				title: "Google Search Error",
+				url: "",
+				snippet: "Google Custom Search requires a Search Engine ID (CSE). Set the GOOGLE_SEARCH_ENGINE_ID environment variable, add googleSearchEngineId to module settings, or pass it in the config struct. Create one at https://programmablesearchengine.google.com/"
+			}]
+		}
+
+		var encodedQuery = encodeSearchQuery( query )
+		var searchUrl = "https://www.googleapis.com/customsearch/v1?key=#variables.apiKey#&cx=#variables.searchEngineId#&q=#encodedQuery#&num=#variables.maxResults#"
+
+		// Append optional filter params when present in options
+		if ( structKeyExists( arguments.options, "gl" ) ) {
+			searchUrl &= "&gl=#arguments.options.gl#"
+		}
+		if ( structKeyExists( arguments.options, "hl" ) ) {
+			searchUrl &= "&hl=#arguments.options.hl#"
+		}
+		if ( structKeyExists( arguments.options, "safe" ) ) {
+			searchUrl &= "&safe=#arguments.options.safe#"
+		}
+
+		var response = executeRequest(
+			url: searchUrl
+		)
+
+		var statusCode = val( listFirst( response.statusCode, " " ) )
+		if ( statusCode >= 400 ) {
+			return [{
+				title: "Google Search Error",
+				url: searchUrl,
+				snippet: "HTTP #statusCode# error from Google Custom Search API. Response: #response.fileContent#"
+			}]
+		}
+
+		// Parse JSON response
+		try {
+			var data = jsonDeserialize( response.fileContent )
+		} catch ( any e ) {
+			return [{
+				title: "Google Search Error",
+				url: searchUrl,
+				snippet: "Failed to parse Google Search response: #e.message#"
+			}]
+		}
+
+		// Google returns results in the "items" array
+		if ( !structKeyExists( data, "items" ) || !isArray( data.items ) ) {
+			return [{
+				title: "No Results",
+				url: "",
+				snippet: "Google Custom Search returned no results for: #query#"
+			}]
+		}
+
+		// Format results
+		return formatResults( data.items )
+	}
+
+}

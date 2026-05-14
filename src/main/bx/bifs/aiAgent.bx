@@ -43,6 +43,8 @@ class {
 	 * @checkpointer IAiMemory instance used to save/load checkpoint state for suspend-resume
 	 * @checkpointTTL Time-to-live for checkpoint state in minutes (0 = no expiry)
 	 * @mcpServers Array of MCP server URLs to seed into the agent for internal tool calls to sub-agents and tools
+	 * @register When true, registers the agent in the aiAgentRegistry() singleton for observability and analytics. Defaults to false to avoid memory leaks from throwaway or sub-agents.
+	 * @module Module namespace used as the registry key suffix when register is true (e.g. "my-module" → "AgentName@my-module")
 	 *
 	 * @return AiAgent instance for fluent chaining
 	 */
@@ -61,7 +63,9 @@ class {
 		any middleware      = [],
 		any checkpointer,
 		numeric checkpointTTL = 30,
-		array mcpServers    = []
+		array mcpServers    = [],
+		boolean register    = false,
+		string module       = ""
 	) {
 		if( isSimpleValue( arguments.skills ) ){
 			arguments.skills = [ arguments.skills ]
@@ -83,6 +87,11 @@ class {
 
 		// Announce agent creation for observability and extensibility (e.g. logging, analytics, etc.)
 		BoxAnnounce( "onAIAgentCreate", { agent: agent } )
+
+		// Opt-in registration in the agent registry for observability and analytics
+		if ( arguments.register ) {
+			aiAgentRegistry().register( agent, arguments.module )
+		}
 
 		return agent
 	}

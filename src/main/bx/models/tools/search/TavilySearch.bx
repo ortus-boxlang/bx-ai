@@ -1,0 +1,143 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License")
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Tavily Search web provider.
+ *
+ * Uses the official Tavily API (https://api.tavily.com/search).
+ * Tavily is built specifically for AI agents — returns clean, relevant results
+ * optimized for LLM consumption.
+ *
+ * Requires a TAVILY_API_KEY (set via env var, module settings, or constructor config).
+ * Free tier: 1,000 queries/month.
+ */
+class extends="BaseSearch" {
+
+	/**
+	 * The Tavily API key.
+	 */
+	property name="apiKey" type="string" default="";
+
+	/**
+	 * Search depth: "basic" or "advanced" (default: "basic")
+	 */
+	property name="searchDepth" type="string" default="basic";
+
+	/**
+	 * Configure the Tavily search provider.
+	 *
+	 * @config Struct with tavilyApiKey, searchDepth, maxResults, timeout, etc.
+	 *
+	 * @return This instance for fluent chaining
+	 */
+	function configure( required struct config ) {
+		super.configure( arguments.config )
+		variables.apiKey = resolveApiKey( "TAVILY_API_KEY", "tavilyApiKey" )
+		if ( structKeyExists( arguments.config, "searchDepth" ) ) {
+			variables.searchDepth = arguments.config.searchDepth
+		}
+		return this
+	}
+
+	/**
+	 * Search using the Tavily API.
+	 *
+	 * @query   The search query string
+	 * @options Optional struct with maxResults, timeout, searchDepth, etc.
+	 * @return  Array of result structs: [{title, url, snippet}]
+	 */
+	function doSearch( required string query, struct options = {} ) {
+		// Merge options
+		if ( !isNull( arguments.options ) ) {
+			configure( arguments.options )
+		}
+
+		// Check for API key
+		if ( variables.apiKey.isEmpty() ) {
+			return [{
+				title: "Tavily Search Error",
+				url: "",
+				snippet: "Tavily Search requires an API key. Set the TAVILY_API_KEY environment variable, add tavilyApiKey to module settings, or pass it in the config struct."
+			}]
+		}
+
+		var searchUrl = "https://api.tavily.com/search"
+
+		var requestBody = {
+			query: query,
+			api_key: variables.apiKey,
+			max_results: variables.maxResults,
+			search_depth: variables.searchDepth,
+			include_answer: false
+		}
+
+		// Add optional params when present in options
+		if ( structKeyExists( arguments.options, "includeAnswer" ) ) {
+			requestBody.include_answer = arguments.options.includeAnswer
+		}
+		if ( structKeyExists( arguments.options, "includeRawContent" ) ) {
+			requestBody.include_raw_content = arguments.options.includeRawContent
+		}
+		if ( structKeyExists( arguments.options, "topic" ) ) {
+			requestBody.topic = arguments.options.topic
+		}
+		if ( structKeyExists( arguments.options, "days" ) ) {
+			requestBody.days = arguments.options.days
+		}
+
+		var response = executeRequest(
+			url: searchUrl,
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json; charset=utf-8"
+			},
+			body: requestBody
+		)
+
+		var statusCode = val( listFirst( response.statusCode, " " ) )
+		if ( statusCode >= 400 ) {
+			return [{
+				title: "Tavily Search Error",
+				url: searchUrl,
+				snippet: "HTTP #statusCode# error from Tavily API. Response: #response.fileContent#"
+			}]
+		}
+
+		// Parse JSON response
+		try {
+			var data = jsonDeserialize( response.fileContent )
+		} catch ( any e ) {
+			return [{
+				title: "Tavily Search Error",
+				url: searchUrl,
+				snippet: "Failed to parse Tavily response: #e.message#"
+			}]
+		}
+
+		// Tavily returns results in the "results" array
+		if ( !structKeyExists( data, "results" ) || !isArray( data.results ) ) {
+			return [{
+				title: "No Results",
+				url: "",
+				snippet: "Tavily returned no results for: #query#"
+			}]
+		}
+
+		// Format results
+		return formatResults( data.results )
+	}
+
+}

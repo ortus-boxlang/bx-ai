@@ -45,7 +45,7 @@ try {
 
 	println( "Crawled #multiDocs.len()# page(s)" )
 	multiDocs.each( ( doc, idx ) => {
-		println( "  Page ##idx#: #doc.metadata.url ?: 'unknown'#" )
+		println( "  Page ###idx#: #doc.metadata.url ?: 'unknown'#" )
 	})
 	println()
 

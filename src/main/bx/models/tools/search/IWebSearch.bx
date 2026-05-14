@@ -1,0 +1,67 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Interface for web search providers.
+ *
+ * All search implementations must implement this interface to ensure
+ * consistent behavior across providers (HTTP, Brave, Google, Tavily, etc.).
+ */
+interface {
+
+	/**
+	 * Configure the search provider with API keys and options.
+	 *
+	 * @config Struct of configuration options (api keys, timeouts, etc.)
+	 *
+	 * @return This instance for fluent chaining
+	 */
+	any function configure( required struct config );
+
+	/**
+	 * Execute a web search query and return structured results.
+	 *
+	 * @query   The search query string
+	 * @options Optional struct with maxResults, timeout, etc.
+	 *
+	 * @return  Array of result structs: [{title, url, snippet}]
+	 */
+	array function search( required string query, struct options = {} );
+
+	/**
+	 * Execute a web search asynchronously and return a BoxFuture.
+	 * The future resolves to an array of result structs: [{title, url, snippet}]
+	 *
+	 * @query   The search query string
+	 * @options Optional struct with maxResults, timeout, etc.
+	 *
+	 * @return  BoxFuture that resolves to an array of result structs
+	 */
+	default any function searchAsync( required string query, struct options = {} ) {
+		return asyncRun( () => this.search( query, options ), "io-tasks" );
+	}
+
+	/**
+	 * Get the provider name identifier.
+	 *
+	 * @return Provider name string (e.g., "http", "brave", "google")
+	 *
+	 */
+	default string function getName(){
+		return getMetadata( this ).simplename
+	}
+
+}

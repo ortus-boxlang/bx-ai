@@ -33,7 +33,7 @@ public class aiSkillBIFTest extends BaseIntegrationTest {
 	private static final String SKILLS_DIR = Paths.get( "src/test/resources/skills" ).toAbsolutePath().toString();
 
 	@Test
-	@DisplayName( "aiSkill() returns an empty array when the default .ai/skills directory does not exist" )
+	@DisplayName( "aiSkill() returns an empty array when the default /.agents/skills directory does not exist" )
 	public void testDefaultDirectoryMissing() {
 		// @formatter:off
 		runtime.executeSource(
@@ -47,7 +47,7 @@ public class aiSkillBIFTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.getAsBoolean( Key.of( "isArray" ) ) ).isTrue();
-		// The default .ai/skills dir does not exist in the test environment
+		// The default /.agents/skills dir does not exist in the test environment
 		assertThat( variables.getAsBoolean( Key.of( "countIsZero" ) ) ).isTrue();
 	}
 

@@ -11,7 +11,7 @@
 #    - Restrict port access using firewall rules (only expose what's needed)
 #
 # 2. MODELS - Customize for your use case:
-#    - Update the preloaded model in command section (default: qwen2.5:0.5b-instruct)
+#    - Update the preloaded model in command section (default: qwen3:0.6b)
 #    - Add multiple models: ollama pull model1 && ollama pull model2
 #    - For GPU support, add deploy.resources.reservations.devices config
 #
@@ -62,7 +62,7 @@ services:
       "ollama serve &
       sleep 10
       # Preload models
-      ollama pull qwen2.5:0.5b-instruct
+      ollama pull qwen3:0.6b
       ollama pull gemma3
       ollama pull nomic-embed-text
       wait"
@@ -75,7 +75,7 @@ services:
       start_period: 40s
 
   webui:
-    image: ghcr.io/ollama-webui/ollama-webui:main
+    image: ghcr.io/open-webui/open-webui:main
     container_name: ollama-webui
     ports:
       - "3000:8080"
@@ -85,10 +85,10 @@ services:
       ollama:
         condition: service_healthy
     environment:
-      - OLLAMA_API_BASE_URL=http://ollama:11434/api
+      - OLLAMA_BASE_URL=http://ollama:11434
       - WEBUI_AUTH=True
-      - WEBUI_ADMIN_USER=boxlang
-      - WEBUI_ADMIN_PASS=rocks
+      - WEBUI_EMAIL=admin@boxlang.io
+      - WEBUI_PASSWORD=rocks
     restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]

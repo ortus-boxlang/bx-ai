@@ -14,6 +14,8 @@
  * ----------------------------------------------------------------------------------
  * Fluent client for consuming Model Context Protocol (MCP) servers
  */
+import bxModules.bxai.models.mcp.MCPClientStats;
+
 class {
 
 	/**
@@ -56,6 +58,11 @@ class {
 	 */
 	property name="errorCallback" type="any";
 
+	/**
+	 * Internal stats tracker for this client instance
+	 */
+	property name="stats" type="MCPClientStats";
+
 	static {
 		DEFAULT_TIMEOUT = 30000;
 	}
@@ -66,14 +73,15 @@ class {
 	 * @baseURL The base URL of the MCP server
 	 */
 	function init( required string baseURL ) {
-		variables.baseURL = arguments.baseURL.trim();
-		variables.headers = {};
-		variables.timeout = static.DEFAULT_TIMEOUT;
-		variables.authUser = "";
-		variables.authPassword = "";
-		variables.bearerToken = "";
+		variables.baseURL      = arguments.baseURL.trim()
+		variables.headers      = {}
+		variables.timeout      = static.DEFAULT_TIMEOUT
+		variables.authUser     = ""
+		variables.authPassword = ""
+		variables.bearerToken  = ""
+		variables.stats        = new MCPClientStats()
 
-		return this;
+		return this
 	}
 
 	/**
@@ -89,8 +97,8 @@ class {
 	 * @return This client for chaining
 	 */
 	function withTimeout( required numeric ms ) {
-		variables.timeout = arguments.ms;
-		return this;
+		variables.timeout = arguments.ms
+		return this
 	}
 
 	/**
@@ -100,8 +108,8 @@ class {
 	 * @return This client for chaining
 	 */
 	function withHeaders( required struct headers ) {
-		variables.headers.append( arguments.headers, true );
-		return this;
+		variables.headers.append( arguments.headers, true )
+		return this
 	}
 
 	/**
@@ -112,9 +120,9 @@ class {
 	 * @return This client for chaining
 	 */
 	function withAuth( required string user, required string pass ) {
-		variables.authUser = arguments.user;
-		variables.authPassword = arguments.pass;
-		return this;
+		variables.authUser = arguments.user
+		variables.authPassword = arguments.pass
+		return this
 	}
 
 	/**
@@ -124,8 +132,8 @@ class {
 	 * @return This client for chaining
 	 */
 	function withBearerToken( required string token ) {
-		variables.bearerToken = arguments.token;
-		return this;
+		variables.bearerToken = arguments.token
+		return this
 	}
 
 	/**
@@ -135,8 +143,8 @@ class {
 	 * @return This client for chaining
 	 */
 	function onSuccess( required function callback ) {
-		variables.successCallback = arguments.callback;
-		return this;
+		variables.successCallback = arguments.callback
+		return this
 	}
 
 	/**
@@ -146,8 +154,42 @@ class {
 	 * @return This client for chaining
 	 */
 	function onError( required function callback ) {
-		variables.errorCallback = arguments.callback;
-		return this;
+		variables.errorCallback = arguments.callback
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Stats Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get all client statistics as a plain struct (all atomic values unwrapped).
+	 *
+	 * @return Complete stats struct
+	 */
+	struct function getStats() {
+		return variables.stats.getStats()
+	}
+
+	/**
+	 * Get a lightweight summary of the most useful metrics.
+	 *
+	 * @return Summary stats struct
+	 */
+	struct function getSummary() {
+		return variables.stats.getSummary()
+	}
+
+	/**
+	 * Reset all statistics counters to zero.
+	 *
+	 * @return This client for chaining
+	 */
+	function resetStats() {
+		variables.stats.reset()
+		return this
 	}
 
 	/**
@@ -155,6 +197,7 @@ class {
 	 * Discovery Methods
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
+
 
 	/**
 	 * List available tools from the MCP server
@@ -166,8 +209,8 @@ class {
 			"jsonrpc": "2.0",
 			"method": "tools/list",
 			"id": createUUID()
-		};
-		return makeRequest( "POST", "", body );
+		}
+		return makeRequest( "POST", "", body, "tool", "listTools" )
 	}
 
 	/**
@@ -180,8 +223,8 @@ class {
 			"jsonrpc": "2.0",
 			"method": "resources/list",
 			"id": createUUID()
-		};
-		return makeRequest( "POST", "", body );
+		}
+		return makeRequest( "POST", "", body, "resource", "listResources" )
 	}
 
 	/**
@@ -194,8 +237,8 @@ class {
 			"jsonrpc": "2.0",
 			"method": "prompts/list",
 			"id": createUUID()
-		};
-		return makeRequest( "POST", "", body );
+		}
+		return makeRequest( "POST", "", body, "prompt", "listPrompts" )
 	}
 
 	/**
@@ -211,8 +254,8 @@ class {
 			"params": {
 				"capabilities": {}
 			}
-		};
-		return makeRequest( "POST", "", body );
+		}
+		return makeRequest( "POST", "", body, "discovery", "getCapabilities" )
 	}
 
 	/**
@@ -238,7 +281,7 @@ class {
 			},
 			"id": createUUID()
 		};
-		return makeRequest( "POST", "", body );
+		return makeRequest( "POST", "", body, "tool", arguments.tool );
 	}
 
 	/**
@@ -256,7 +299,7 @@ class {
 			},
 			"id": createUUID()
 		};
-		return makeRequest( "POST", "", body );
+		return makeRequest( "POST", "", body, "resource", arguments.uri );
 	}
 
 	/**
@@ -276,7 +319,7 @@ class {
 			},
 			"id": createUUID()
 		};
-		return makeRequest( "POST", "", body );
+		return makeRequest( "POST", "", body, "prompt", arguments.name );
 	}
 
 	/**
@@ -288,26 +331,45 @@ class {
 	/**
 	 * Make an HTTP request to the MCP server
 	 *
-	 * @method HTTP method (GET, POST, etc.)
-	 * @path Path to append to base URL
-	 * @body Optional request body
+	 * @method        HTTP method (GET, POST, etc.)
+	 * @path          Path to append to base URL
+	 * @body          Optional request body
+	 * @operationType The type of operation: tool, resource, prompt, or discovery
+	 * @operationName The specific name being invoked (tool name, URI, prompt name, or label)
 	 * @return MCPResponse with normalized response data
 	 */
-	private MCPResponse function makeRequest( required string method, required string path, any body ) {
-		var targetUrl = variables.baseURL & arguments.path;
-		var mcpResponse = null;
+	private MCPResponse function makeRequest(
+		required string method,
+		required string path,
+		any    body,
+		string operationType = "discovery",
+		string operationName = ""
+	) {
+		var targetUrl   = variables.baseURL & arguments.path
+		var mcpResponse = null
+		var startTime   = 0
 
 		try {
 			// Build authentication credentials
-			var authHeader = "";
+			var authHeader = ""
 			if( len( variables.bearerToken ) ){
-				authHeader = "Bearer #variables.bearerToken#";
+				authHeader = "Bearer #variables.bearerToken#"
 			} else if( len( variables.authUser ) ){
 				// Create Basic Auth header with Base64 encoding
-				var credentials = variables.authUser & ":" & variables.authPassword;
-				var encodedCredentials = toBase64( credentials );
-				authHeader = "Basic #encodedCredentials#";
+				var credentials        = variables.authUser & ":" & variables.authPassword
+				var encodedCredentials = toBase64( credentials )
+				authHeader             = "Basic #encodedCredentials#"
 			}
+
+			// Start timing and fire request event
+			startTime = getTickCount()
+			BoxAnnounce( "onMCPClientRequest", {
+				"client"       : this,
+				"baseURL"      : variables.baseURL,
+				"operation"    : arguments.operationType,
+				"name"         : arguments.operationName,
+				"requestBody"  : arguments.body ?: {}
+			} )
 
 			// Make HTTP request using bx:http component
 			bx: http
@@ -340,77 +402,77 @@ class {
 			}
 
 			// Parse response
-			var statusCode = httpResult.status_code ?: 0;
-			var responseHeaders = {};
+			var statusCode = httpResult.status_code ?: 0
+			var responseHeaders = {}
 
 			// Convert headers to struct
 			if( !isNull( httpResult.responseheader ) ) {
 				for( var headerName in httpResult.responseheader ) {
-					responseHeaders[ headerName ] = httpResult.responseheader[ headerName ];
+					responseHeaders[ headerName ] = httpResult.responseheader[ headerName ]
 				}
 			}
 
 			// Determine success based on status code
-			var isSuccess = statusCode >= 200 && statusCode < 300;
-			var responseData = {};
-			var errorMessage = "";
+			var isSuccess = statusCode >= 200 && statusCode < 300
+			var responseData = {}
+			var errorMessage = ""
 
 			// Parse response body (handles both SSE and plain JSON)
 			if( len( httpResult.filecontent ?: "" ) ) {
 				try {
-					var content = httpResult.filecontent;
+					var content = httpResult.filecontent
 
 					// Check if this is an SSE response
 					if( content.startsWith( "event:" ) || content.contains( char(10) & "data:" ) ) {
 						// Parse SSE format: extract JSON from "data:" line
-						var lines = content.listToArray( char(10) );
+						var lines = content.listToArray( char(10) )
 						for( var line in lines ) {
 							if( line.trim().startsWith( "data:" ) ) {
-								var jsonData = line.trim().replaceNoCase( "data:", "" ).trim();
-								responseData = jsonDeserialize( jsonData );
+								var jsonData = line.trim().replaceNoCase( "data:", "" ).trim()
+								responseData = jsonDeserialize( jsonData )
 
 								// Check for JSON-RPC error
 								if( isStruct( responseData ) && structKeyExists( responseData, "error" ) ) {
-									isSuccess = false;
+									isSuccess = false
 									errorMessage = isStruct( responseData.error )
 										? ( responseData.error.message ?: "Unknown error" )
-										: responseData.error;
+										: responseData.error
 								}
 								// Extract result from JSON-RPC response
 								else if( isStruct( responseData ) && structKeyExists( responseData, "result" ) ) {
-									responseData = responseData.result;
+									responseData = responseData.result
 								}
 								break;
 							}
 						}
 					} else {
 						// Plain JSON response
-						responseData = jsonDeserialize( content );
+						responseData = jsonDeserialize( content )
 
 						// Check for JSON-RPC error
 						if( isStruct( responseData ) && structKeyExists( responseData, "error" ) ) {
-							isSuccess = false;
+							isSuccess = false
 							errorMessage = isStruct( responseData.error )
 								? ( responseData.error.message ?: "Unknown error" )
-								: responseData.error;
+								: responseData.error
 						}
 						// Extract result from JSON-RPC response
 						else if( isStruct( responseData ) && structKeyExists( responseData, "result" ) ) {
-							responseData = responseData.result;
+							responseData = responseData.result
 						}
 					}
 				} catch( any e ) {
-					responseData = httpResult.filecontent;
+					responseData = httpResult.filecontent
 				}
 			}
 
 			// Set error message for failed requests
 			if( !isSuccess && !len( errorMessage ) ) {
-				errorMessage = "HTTP #statusCode#";
+				errorMessage = "HTTP #statusCode#"
 				if( isStruct( responseData ) && structKeyExists( responseData, "error" ) ) {
-					errorMessage = responseData.error;
+					errorMessage = responseData.error
 				} else if( isSimpleValue( responseData ) ) {
-					errorMessage = responseData;
+					errorMessage = responseData
 				}
 			}
 
@@ -421,7 +483,45 @@ class {
 				error: errorMessage,
 				statusCode: statusCode,
 				headers: responseHeaders
-			);
+			)
+
+			// Record stats and fire the appropriate post-request event
+			var elapsedTime = getTickCount() - startTime
+			if ( isSuccess ) {
+				variables.stats.recordCall(
+					operationType: arguments.operationType,
+					name: arguments.operationName,
+					responseTime: elapsedTime,
+					success: true
+				)
+				BoxAnnounce( "onMCPClientResponse", {
+					"client"       : this,
+					"baseURL"      : variables.baseURL,
+					"operation"    : arguments.operationType,
+					"name"         : arguments.operationName,
+					"response"     : mcpResponse,
+					"executionTime": elapsedTime,
+					"statusCode"   : statusCode
+				} )
+			} else {
+				variables.stats.recordCall(
+					operationType: arguments.operationType,
+					name: arguments.operationName,
+					responseTime: elapsedTime,
+					success: false,
+					errorCode: statusCode,
+					errorMessage: errorMessage
+				)
+				BoxAnnounce( "onMCPClientError", {
+					"client"       : this,
+					"baseURL"      : variables.baseURL,
+					"operation"    : arguments.operationType,
+					"name"         : arguments.operationName,
+					"error"        : errorMessage,
+					"statusCode"   : statusCode,
+					"executionTime": elapsedTime
+				} )
+			}
 
 		} catch( any e ) {
 			// Handle network and other errors
@@ -431,17 +531,37 @@ class {
 				error: e.message,
 				statusCode: 0,
 				headers: {}
-			);
+			)
+
+			var elapsedTime = startTime > 0 ? getTickCount() - startTime : 0
+			variables.stats.recordCall(
+				operationType: arguments.operationType,
+				name: arguments.operationName,
+				responseTime: elapsedTime,
+				success: false,
+				errorCode: 0,
+				errorMessage: e.message
+			)
+			BoxAnnounce( "onMCPClientError", {
+				"client"       : this,
+				"baseURL"      : variables.baseURL,
+				"operation"    : arguments.operationType,
+				"name"         : arguments.operationName,
+				"error"        : e.message,
+				"exception"    : e,
+				"statusCode"   : 0,
+				"executionTime": elapsedTime
+			} )
 		}
 
 		// Invoke callbacks
 		if( mcpResponse.getSuccess() && !isNull( variables.successCallback ) ) {
-			variables.successCallback( mcpResponse );
+			variables.successCallback( mcpResponse )
 		} else if( !mcpResponse.getSuccess() && !isNull( variables.errorCallback ) ) {
-			variables.errorCallback( mcpResponse );
+			variables.errorCallback( mcpResponse )
 		}
 
-		return mcpResponse;
+		return mcpResponse
 	}
 
 

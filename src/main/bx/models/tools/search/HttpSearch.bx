@@ -1,0 +1,143 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Generic HTTP search provider.
+ *
+ * Fetches the content of a URL directly. If the query is a plain search term
+ * (not a URL), returns guidance to use a real search provider.
+ *
+ * No API key required.
+ */
+import java:org.jsoup.Jsoup;
+
+class extends="BaseSearch" {
+
+	/**
+	 * Max characters to return in the snippet (default: 4000)
+	 */
+	property name="maxSnippetLength" type="numeric" default="4000";
+
+	/**
+	 * Configure the http search provider.
+	 *
+	 * @config Struct with maxSnippetLength, timeout, logRequest, logResponse, etc.
+	 *
+	 * @return This instance for fluent chaining
+	 */
+	function configure( required struct config ) {
+		super.configure( arguments.config )
+		if ( structKeyExists( arguments.config, "maxSnippetLength" ) ) {
+			variables.maxSnippetLength = arguments.config.maxSnippetLength
+		}
+		return this
+	}
+
+	/**
+	 * Fetch content from a URL.
+	 * If the query is not a URL, returns guidance to use a real search provider.
+	 *
+	 * Example usage:
+	 * <pre>
+	 * results = new HttpSearch().search( "https://www.example.com" )
+	 * // results: [{title: "Fetched: https://www.example.com", url: "https://www.example.com", snippet: "<html>...</html>"}]
+	 * </pre>
+	 *
+	 * @query   A URL to fetch, or a search query
+	 * @options Optional struct with maxResults, timeout, etc.
+	 * @return  Array with a single result struct containing the fetched content
+	 */
+	function doSearch( required string query, struct options = {} ) {
+		// Merge options
+		if ( !isNull( arguments.options ) ) {
+			configure( arguments.options )
+		}
+
+		// Check if the query looks like a URL
+		if ( query.reFindNoCase( "^https?://" ) ) {
+			var response = executeRequest( query )
+
+			var statusCode = val( listFirst( response.statusCode, " " ) )
+			if ( statusCode >= 400 ) {
+				return [{
+					title        : "HTTP Error",
+					url          : query,
+					snippet      : "HTTP #statusCode# error fetching #query#",
+					publishedDate: "",
+					domain       : extractDomain( query ),
+					score        : 0,
+					thumbnail    : "",
+					language     : ""
+				}]
+			}
+
+			// Parse HTML with Jsoup for clean text extraction
+			try {
+				var doc       = Jsoup::parse( response.fileContent )
+				var pageTitle = doc.title()
+
+				// Remove noise elements
+				doc.select( "script, style, nav, header, footer" ).remove()
+
+				// Extract clean body text
+				var bodyText = doc.body().text()
+				if ( bodyText.len() > variables.maxSnippetLength ) {
+					bodyText = bodyText.left( variables.maxSnippetLength ) & "...[truncated]"
+				}
+
+				return [{
+					title        : pageTitle.len() ? pageTitle : "Fetched: #query#",
+					url          : query,
+					snippet      : bodyText,
+					publishedDate: "",
+					domain       : extractDomain( query ),
+					score        : 0,
+					thumbnail    : "",
+					language     : ""
+				}]
+			} catch ( any e ) {
+				// Fall back to raw HTML if Jsoup fails
+				var content = response.fileContent
+				if ( content.len() > variables.maxSnippetLength ) {
+					content = content.left( variables.maxSnippetLength ) & "...[truncated]"
+				}
+				return [{
+					title        : "Fetched: #query#",
+					url          : query,
+					snippet      : content,
+					publishedDate: "",
+					domain       : extractDomain( query ),
+					score        : 0,
+					thumbnail    : "",
+					language     : ""
+				}]
+			}
+		}
+
+		// Not a URL — suggest using a real search provider
+		return [{
+			title        : "HTTP Search Provider",
+			url          : "",
+			snippet      : "The 'http' provider requires a full URL. For web search, use provider 'brave', 'google', or 'tavily' instead. Example: aiWebSearch( '#query#', provider: 'brave' )",
+			publishedDate: "",
+			domain       : "",
+			score        : 0,
+			thumbnail    : "",
+			language     : ""
+		}]
+	}
+
+}

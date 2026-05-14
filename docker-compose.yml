@@ -27,7 +27,7 @@ services:
     command: |
       "ollama serve &
       sleep 10
-      ollama pull qwen2.5:0.5b-instruct
+      ollama pull qwen3:0.6b
       ollama pull nomic-embed-text
       wait"
     restart: unless-stopped

@@ -1,0 +1,205 @@
+/**
+ * Audio Fluent Builder Example
+ *
+ * Demonstrates the fluent builder API for aiSpeak(), aiTranscribe(), and aiTranslate().
+ * All three BIFs now return a request builder object when called with no audio/text,
+ * allowing expressive method chaining before executing the operation.
+ *
+ * Prerequisites:
+ *   - OPENAI_API_KEY env var set for OpenAI examples
+ *   - GROQ_API_KEY env var set for Groq examples
+ *
+ * Usage:
+ *   boxlang examples/advanced/18-audio-fluent-builder-example.bxs
+ */
+
+println( "=== BoxLang AI — Audio Fluent Builder Examples ===" )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 1. aiSpeak() — fluent chain to generate speech
+//
+// Instead of: aiSpeak( text: "Hello", params: {voice:"nova"}, options: {outputFormat:"wav"} )
+// You can write a self-documenting chain:
+// ─────────────────────────────────────────────────────────────────────
+println( "1. aiSpeak() fluent chain" )
+
+var response = aiSpeak()
+	.text( "Welcome to BoxLang AI audio capabilities!" )
+	.provider( "openai" )
+	.female()
+	.asWav()
+	.speak()
+
+response.saveToFile( "/tmp/bxai-fluent-welcome.wav" )
+println( "   Saved to: /tmp/bxai-fluent-welcome.wav" )
+println( "   Audio size: " & response.getSize() & " bytes" )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 2. AiSpeechRequest.of() — static factory approach
+//
+// Useful when constructing a request in a variable first.
+// ─────────────────────────────────────────────────────────────────────
+println( "2. AiSpeechRequest.of() static factory" )
+
+var request = AiSpeechRequest
+	.of( "BoxLang makes AI integration elegant and expressive." )
+	.model( "tts-1-hd" )
+	.male()
+	.asFlac()
+
+// Inspect the builder before executing
+println( "   Text:   " & request.getText() )
+println( "   Format: " & request.getOutputFormat() )
+
+var response2 = request.speak()
+response2.saveToFile( "/tmp/bxai-fluent-hd.flac" )
+println( "   Saved to: /tmp/bxai-fluent-hd.flac" )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 3. Save directly via outputFile on the builder
+//
+// When outputFile is set, .speak() returns the path string directly
+// instead of AiSpeechResponse.
+// ─────────────────────────────────────────────────────────────────────
+println( "3. Save directly with .outputFile()" )
+
+var savedPath = aiSpeak()
+	.text( "Direct file save via fluent builder." )
+	.outputFile( "/tmp/bxai-fluent-direct.mp3" )
+	.speak()
+
+println( "   Saved to: " & savedPath )
+println( "   File exists: " & fileExists( savedPath ) )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 4. aiSpeak() format shortcuts — all available formats
+// ─────────────────────────────────────────────────────────────────────
+println( "4. Format shortcuts demonstration" )
+
+aiSpeak().text( "Test MP3."  ).asMP3() .outputFile( "/tmp/bxai-test.mp3"  ).speak()
+aiSpeak().text( "Test WAV."  ).asWav() .outputFile( "/tmp/bxai-test.wav"  ).speak()
+aiSpeak().text( "Test FLAC." ).asFlac().outputFile( "/tmp/bxai-test.flac" ).speak()
+aiSpeak().text( "Test Opus." ).asOpus().outputFile( "/tmp/bxai-test.opus" ).speak()
+println( "   Format shortcuts: mp3, wav, flac, opus all generated" )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 5. aiTranscribe() — fluent chain for speech-to-text
+//
+// Transcription request returns the same type whether you use aiTranscribe()
+// or AiTranscriptionRequest — and both terminators (.transcribe()/.translate())
+// are available on the same builder object.
+// ─────────────────────────────────────────────────────────────────────
+println( "5. aiTranscribe() fluent chain" )
+
+var sampleAudio = "src/test/resources/loaders/sample.mp3"
+
+var text = aiTranscribe()
+	.file( sampleAudio )
+	.language( "en" )
+	.transcribe()
+
+println( "   Transcription: " & text )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 6. AiTranscriptionRequest.of() — static factory approach
+// ─────────────────────────────────────────────────────────────────────
+println( "6. AiTranscriptionRequest.of() static factory" )
+
+var transcriptionReq = AiTranscriptionRequest
+	.of( sampleAudio )
+	.withWordTimestamps()
+	.provider( "openai" )
+
+var response3 = transcriptionReq
+	.withOptions( { returnFormat: "response" } )
+	.transcribe()
+
+println( "   Text:     " & response3.getText() )
+println( "   Provider: " & response3.getProvider() )
+println( "   Words:    " & response3.getWordCount() )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 7. Groq provider — faster Whisper inference via builder
+// ─────────────────────────────────────────────────────────────────────
+println( "7. Groq transcription via builder" )
+
+var groqText = aiTranscribe()
+	.file( sampleAudio )
+	.provider( "groq" )
+	.model( "whisper-large-v3" )
+	.language( "en" )
+	.transcribe()
+
+println( "   Groq transcription: " & groqText )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 8. aiTranslate() — same builder, different terminator
+//
+// AiTranscriptionRequest has both .transcribe() and .translate() terminators.
+// Use .translate() to translate speech from any language into English.
+// ─────────────────────────────────────────────────────────────────────
+println( "8. aiTranslate() fluent chain" )
+
+var englishText = aiTranslate()
+	.file( sampleAudio )
+	.translate()
+
+println( "   Translation: " & englishText )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 9. AiTranscriptionRequest: builder re-use for both operations
+//
+// The same builder can call .transcribe() then .translate() — each call
+// re-invokes the BIF with the current state.
+// ─────────────────────────────────────────────────────────────────────
+println( "9. Shared builder — both transcribe() and translate()" )
+
+var sharedBuilder = AiTranscriptionRequest.of( sampleAudio )
+
+var transcription = sharedBuilder.transcribe()
+var translation   = sharedBuilder.translate()
+
+println( "   Transcription: " & transcription )
+println( "   Translation:   " & translation )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 10. withLogging() — observability on any builder
+// ─────────────────────────────────────────────────────────────────────
+println( "10. Enable logging on a fluent chain" )
+
+var loggedResponse = aiSpeak()
+	.text( "This call is logged for observability." )
+	.asMP3()
+	.withLogging( request: true, response: true, console: true )
+	.speak()
+
+println( "   Audio size: " & loggedResponse.getSize() & " bytes" )
+println( "" )
+
+// ─────────────────────────────────────────────────────────────────────
+// 11. withParams() — low-level provider params alongside fluent API
+// ─────────────────────────────────────────────────────────────────────
+println( "11. withParams() for provider-specific options" )
+
+var customResponse = aiSpeak()
+	.text( "Speed and voice via withParams." )
+	.withParams( {
+		voice : "alloy",
+		speed : 1.25
+	} )
+	.speak()
+
+println( "   Audio format: " & customResponse.getAudioFormat() )
+println( "" )
+
+println( "=== Audio Fluent Builder Examples Complete ===" )

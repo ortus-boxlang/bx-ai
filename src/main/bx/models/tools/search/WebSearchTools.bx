@@ -1,0 +1,141 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License")
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Web search tool for AI agents.
+ *
+ * Provides the @AITool-annotated webSearch() method (registered as the `webSearch@bxai` tool)
+ * that delegates to the active IWebSearch provider. Auto-registered on module load.
+ * The BIF entry points are `aiWebSearch()` and `aiWebSearchAsync()`.
+ *
+ * Supported providers: http (default), brave, google, tavily
+ */
+class {
+
+	/**
+	 * The active web search provider instance.
+	 */
+	property name="searchProvider" type="any";
+
+	/**
+	 * Provider configuration.
+	 */
+	property name="config" type="struct" default="{}";
+
+	/**
+	 * Map of provider names to their class paths.
+	 */
+	static {
+		PROVIDER_MAP = {
+			"http"  : "bxModules.bxai.models.tools.search.HttpSearch",
+			"brave" : "bxModules.bxai.models.tools.search.BraveSearch",
+			"google": "bxModules.bxai.models.tools.search.GoogleSearch",
+			"tavily": "bxModules.bxai.models.tools.search.TavilySearch",
+			"exa"   : "bxModules.bxai.models.tools.search.ExaSearch"
+		}
+		DEFAULT_PROVIDER = "http"
+		MODULE_SETTINGS = getModuleInfo( "bxai" ).settings
+	}
+
+	/**
+	 * Constructor — accepts optional configuration.
+	 *
+	 * @config Struct with provider, maxResults, timeout, and provider-specific API keys.
+	 */
+	function init( struct config = {} ) {
+		variables.config = arguments.config
+
+		// Resolve default provider from config → module settings → default
+		var defaultProvider = static.DEFAULT_PROVIDER
+		if ( structKeyExists( arguments.config, "provider" ) ) {
+			defaultProvider = arguments.config.provider
+		} else {
+			var moduleSettings = static.MODULE_SETTINGS ?: {}
+			// Check nested webSearch struct first, then flat fallback
+			if (
+				structKeyExists( moduleSettings, "webSearch" )
+				&& structKeyExists( moduleSettings.webSearch, "defaultProvider" )
+				&& !moduleSettings.webSearch.defaultProvider.isEmpty()
+			) {
+				defaultProvider = moduleSettings.webSearch.defaultProvider
+			} else if ( structKeyExists( moduleSettings, "defaultProvider" ) && !moduleSettings.defaultProvider.isEmpty() ) {
+				defaultProvider = moduleSettings.defaultProvider
+			}
+		}
+
+		variables.searchProvider = createProvider( defaultProvider, arguments.config )
+
+		return this
+	}
+
+	/**
+	 * Create a search provider instance by name.
+	 *
+	 * @providerName The provider name (http, brave, google, tavily)
+	 * @config       Configuration struct to pass to the provider
+	 *
+	 * @throws InvalidWebSearchProvider if the provider name is not recognized
+	 *
+	 * @return       An IWebSearch instance
+	 */
+	static public IWebSearch function createProvider( required string providerName, struct config = {} ) {
+		// Verify if provider is valid
+		if ( !static.PROVIDER_MAP.keyExists( arguments.providerName ) ) {
+			throw(
+				type: "InvalidWebSearchProvider",
+				message: "Unknown web search provider: '#arguments.providerName#'. Valid providers: #static.PROVIDER_MAP.keyList()#"
+			)
+		}
+
+		return new "#static.PROVIDER_MAP[ arguments.providerName ]#"()
+			.configure( arguments.config )
+	}
+
+	/**
+	 * Execute a web search query.
+	 *
+	 * @query       The search query string
+	 * @provider    Optional provider name to override the default (http, brave, google, tavily)
+	 * @maxResults  Optional maximum number of results to return (default: 5)
+	 * @options     Optional struct of additional provider-specific options (e.g. language, region)
+	 *
+	 * @return      Array of result structs: [{title, url, snippet}]
+	 */
+	@AITool( "Searches the web for information. Returns an array of results with title, URL, snippet, etc. Use this to find current information, verify facts, or research topics. Default provider is HTTP (simple URL fetcher, no API key needed). For better results use: brave, google, tavily, exa.
+	The options object can accept any name-value pairs the provider can use as provider-specific options like language, region, safeSearch, etc." )
+	function webSearch(
+		required string query,
+		string provider = "",
+		numeric maxResults = 0,
+		struct options = {}
+	) {
+		// Build search options
+		var targetOptions = {}.append( arguments.options, true )
+
+		if ( arguments.maxResults > 0 ) {
+			targetOptions.maxResults = arguments.maxResults
+		}
+
+		// Use specified provider or default
+		if ( !arguments.provider.isEmpty() ) {
+			return createProvider( arguments.provider, variables.config )
+				.search( arguments.query, targetOptions );
+		}
+
+		return variables.searchProvider.search( arguments.query, targetOptions )
+	}
+
+}

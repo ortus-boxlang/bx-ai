@@ -141,10 +141,10 @@ class {
 			// Skills Directory — Global Skill Auto-Discovery
 			// --------------------------------------------------------------------------
 			// Path to the directory scanned for SKILL.md files at module startup.
-			// Defaults to "/{webroot}/.ai/skills" — a vendor-neutral convention that works with
+			// Defaults to "/{webroot}/.agents/skills" — a vendor-neutral convention that works with
 			// any AI toolchain.  Can be absolute or relative (relative paths are
 			// expanded from the CWD).  Set to "" to disable auto-discovery entirely.
-			skillsDirectory : "/.ai/skills",
+			skillsDirectory : "/.agents/skills",
 
 			// When true, skills found in skillsDirectory are automatically loaded and injected
 			// into every agent created with aiAgent() as global / shared skills.
@@ -182,6 +182,47 @@ class {
 					mistral    : { male : "",                        female : "Charlotte"               },
 					elevenlabs : { male : "",                        female : "21m00Tcm4TlvDq8ikWAM"   }
 				}
+			},
+
+			// --------------------------------------------------------------------------
+			// Image Settings — Defaults for aiImage()
+			// --------------------------------------------------------------------------
+			image : {
+				// Default provider for image generation (openai, gemini, grok, openrouter)
+				defaultProvider     : "openai",
+				// Provider-specific API key override for image generation
+				defaultApiKey       : "",
+				// Default model override (leave empty to use provider's built-in default)
+				defaultModel        : "",
+				// Default image dimensions — "auto", "1024x1024", "1792x1024", "1024x1792"
+				defaultSize         : "auto",
+				// Default quality level — "low", "medium", "high", or "auto"; provider-specific support
+				defaultQuality      : "auto",
+				// Default visual style — "vivid" or "natural" (OpenAI DALL-E 3); leave empty for provider default
+				defaultStyle        : "",
+				// Default style/tone/mood instructions appended to every image prompt
+				defaultInstructions : ""
+			},
+
+			// --------------------------------------------------------------------------
+			// Web Search Settings — Defaults for aiWebSearch()/aiWebSearchAsync() BIFs and WebSearchTools
+			// --------------------------------------------------------------------------
+			webSearch : {
+				// Default search provider: http, brave, google, tavily, exa
+				defaultProvider : "http",
+				// Maximum number of results to return per search
+				maxResults : 5,
+				// HTTP request timeout in seconds
+				timeout : 30,
+				// Provider API keys (also resolved via environment variables)
+				braveApiKey : "",
+				googleApiKey : "",
+				googleSearchEngineId : "",
+				tavilyApiKey : "",
+				exaApiKey : "",
+				// Logging
+				logRequest : false,
+				logResponse : false
 			}
 		}
 
@@ -251,16 +292,39 @@ class {
 			"beforeAITranslation",
 			"afterAITranslation",
 
+			// Image Events
+			"beforeAIImageGeneration",
+			"afterAIImageGeneration",
+			"onAIImageRequest",
+			"onAIImageResponse",
+
 			// MCP Server Events
 			"onMCPServerCreate",
+			"onMCPServerPause",
 			"onMCPServerRemove",
+			"onMCPServerResume",
 			"onMCPRequest",
 			"onMCPResponse",
 			"onMCPError",
+			// MCP Client Events
+			"onMCPClientRequest",
+			"onMCPClientResponse",
+			"onMCPClientError",
 
 			// Tool Registry Events
 			"onAIToolRegistryRegister",
-			"onAIToolRegistryUnregister"
+			"onAIToolRegistryUnregister",
+
+			// Agent Registry Events
+			"onAIAgentRegistryRegister",
+			"onAIAgentRegistryUnregister",
+
+			// Web Search Events
+			"beforeAIWebSearch",
+			"afterAIWebSearch",
+			"onAIWebSearchRequest",
+			"onAIWebSearchResponse",
+			"onAIWebSearchError"
 		 ]
 	}
 
@@ -303,9 +367,21 @@ class {
 			"bxai"
 		)
 
-		// Log module load and core/audio tool registration
+		// Register image tools into the registry.
+		aiToolRegistry().scanClass(
+			new bxModules.bxai.models.tools.image.ImageTools(),
+			"bxai"
+		)
+
+		// Register web search tools into the registry.
+		aiToolRegistry().scanClass(
+			new bxModules.bxai.models.tools.search.WebSearchTools(),
+			"bxai"
+		)
+
+		// Log module load and core/audio/image/search tool registration
 		writeLog(
-			text: "BoxLang AI loaded and core/audio tools registered into the registry",
+			text: "BoxLang AI loaded and core/audio/image/search tools registered into the registry",
 			type: "debug",
 			log: "ai"
 		)

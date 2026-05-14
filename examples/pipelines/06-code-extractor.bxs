@@ -95,7 +95,7 @@ function greet( name ) {
 
 	println( "Extracted #allCodeBlocks.len()# code blocks:" )
 	allCodeBlocks.each( ( block, idx ) => {
-		println( "  Block ##idx#:" )
+		println( "  Block ###idx#:" )
 		println( "  " & left( block, 40 ) & "..." )
 		println()
 	})

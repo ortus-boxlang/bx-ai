@@ -1,0 +1,150 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Singleton registry for AI Agents.
+ *
+ * Access via aiAgentRegistry() BIF
+ *
+ * Key convention: agentName or agentName@moduleName
+ *
+ * Registration:
+ *   aiAgentRegistry().register( agent )
+ *   aiAgentRegistry().register( agent, "my-module" )
+ *
+ * Lazy resolution:
+ *   aiAgentRegistry().resolveAgents( [ "MyAgent@my-module", agentInstance ] )
+ *   Converts string keys to AiAgent instances.
+ *
+ * Observability:
+ *   aiAgentRegistry().listAgents()       — all agents with name/description/module
+ *   aiAgentRegistry().getAgentInfo( key ) — info for a specific agent
+ */
+import bxModules.bxai.models.runnables.AiAgent;
+
+class extends="BaseRegistry" {
+
+	// -------------------------------------------------------------------------
+	// Registry Methods
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Register an AiAgent instance in the registry.
+	 *
+	 * @agent  The AiAgent instance to register
+	 * @module Module name for namespacing (optional)
+	 *
+	 * @throws InvalidArgument if the item is not an AiAgent instance
+	 */
+	AIAgentRegistry function register( required any agent, string module = "" ) {
+		if ( isNull( arguments.agent ) || !( arguments.agent instanceof "AiAgent" ) ) {
+			throw(
+				type    : "InvalidArgument",
+				message : "register() requires an AiAgent instance."
+			)
+		}
+
+		super.register( arguments.agent.getAgentName(), arguments.agent, arguments.module )
+		BoxAnnounce( "onAIAgentRegistryRegister", {
+			agent  : arguments.agent,
+			key    : buildKey( arguments.agent.getAgentName(), arguments.module ),
+			module : arguments.module
+		} )
+		return this
+	}
+
+	/**
+	 * Unregister by exact key and fire the onAIAgentRegistryUnregister event.
+	 *
+	 * @key The exact registry key to remove
+	 *
+	 * @returns The registry instance for chaining
+	 */
+	AIAgentRegistry function unregister( required string key ) {
+		super.unregister( arguments.key )
+		BoxAnnounce( "onAIAgentRegistryUnregister", {
+			key    : arguments.key,
+			module : extractModule( arguments.key )
+		} )
+		return this
+	}
+
+	/**
+	 * Unregister all agents registered under a specific module and fire per-item events.
+	 *
+	 * @module The module name whose agents should be removed
+	 */
+	AIAgentRegistry function unregisterByModule( required string module ) {
+		getKeys()
+			.filter( key => extractModule( key ) == module )
+			.each( key => unregister( key ) )
+		return this
+	}
+
+	/**
+	 * Resolve a mixed array of AiAgent instances and/or string registry keys into AiAgent[].
+	 * Called to lazily resolve string keys to agent instances.
+	 *
+	 * @agents Array of AiAgent instances or string registry keys
+	 * @throws RegistryItemNotFoundException if a string key cannot be resolved
+	 *
+	 * @return Array of AiAgent instances
+	 */
+	array function resolveAgents( required array agents ) {
+		return arguments.agents.map( agent => {
+			return isSimpleValue( arguments.agent ) ?
+				this.get( arguments.agent ) :
+				arguments.agent
+		} )
+	}
+
+	/**
+	 * Get agent info (name and description) for a given registry key, without returning the full AiAgent instance.
+	 *
+	 * @key The registry key of the agent (e.g. "MyAgent@my-module")
+	 * @throws RegistryItemNotFoundException if the key cannot be found
+	 *
+	 * @return Struct with 'name', 'description', and 'module' of the agent
+	 */
+	struct function getAgentInfo( required string key ) {
+		var agent = this.get( arguments.key )
+		if ( isNull( agent ) ) {
+			throw(
+				type    : "RegistryItemNotFoundException",
+				message : "No agent found for key: " & arguments.key
+			)
+		}
+		return {
+			name        : agent.getAgentName(),
+			description : agent.getDescription(),
+			module      : extractModule( arguments.key )
+		}
+	}
+
+	/**
+	 * List all registered agents with their keys, names, and descriptions.
+	 * This is the primary analytics/observability surface for the registry.
+	 *
+	 * @return Struct of all registered agents, keyed by registry key, with name, description, and module.
+	 */
+	struct function listAgents() {
+		return variables.registry.map( ( key, agent ) => {
+			return {
+				name        : agent.getAgentName(),
+				description : agent.getDescription(),
+				module      : extractModule( key )
+			}
+		} )
+	}
+
+}

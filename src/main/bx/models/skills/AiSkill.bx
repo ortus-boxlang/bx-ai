@@ -60,7 +60,7 @@ class {
 	property name="filePath" type="string" default="";
 
 	static{
-		DEFAULT_SKILLS_DIRECTORY = ".ai/skills"
+		DEFAULT_SKILLS_DIRECTORY = "/.agents/skills"
 	}
 
 	/**
@@ -98,7 +98,7 @@ class {
 	/**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Static factory methods for loading skills from files and directories, following the Agent Skills open standard.
-	 * The default directory is ".ai/skills" but a custom path can be provided.
+	 * The default directory is "/.agents/skills" but a custom path can be provided.
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
 
@@ -166,7 +166,7 @@ class {
 	 * standard, where each skill lives in its own named subdirectory:
 	 *
 	 * <pre>
-	 * .ai/skills/
+	 * /.agents/skills/
 	 *   sql-optimizer/
 	 *     SKILL.md
 	 *   coding/
@@ -178,7 +178,7 @@ class {
 	 * directory path. Returns an empty array (without error) when the directory
 	 * does not exist, making it safe to call with the default path.
 	 *
-	 * @directory    Root directory to scan. Defaults to ".ai/skills".
+	 * @directory    Root directory to scan. Defaults to "/.agents/skills".
 	 * @recurse Whether to scan subdirectories recursively. Defaults to true.
 	 *
 	 * @return Array of AiSkill instances (empty if directory does not exist or has no SKILL.md files)

@@ -177,6 +177,7 @@ class {
 		var urlParams = arguments.requestData.params ?: {};
 		var requestOrigin = arguments.requestData.origin ?: "";
 		var requestHeaders = arguments.requestData.headers ?: {};
+		var requestId = arguments.requestData.requestId ?: createUUID();
 
 		// Initialize response with security headers from transport
 		var response = {
@@ -185,6 +186,9 @@ class {
 			"headers": arguments.transport.getSecurityHeaders(),
 			"statusCode": 200
 		};
+
+		// Echo the correlation ID in the response so callers can trace requests
+		response.headers[ "X-Request-ID" ] = requestId;
 
 		// Verify server exists
 		var targetServer = MCPServer::getInstance( mcpServerName );
@@ -203,11 +207,26 @@ class {
 		var maxBodySize = targetServer.getMaxRequestBodySize();
 		if ( maxBodySize > 0 && len( requestBody ) > maxBodySize ) {
 			static.mcpLogger.warn( "MCP request body size exceeded limit: #len( requestBody )# > #maxBodySize#" );
+			targetServer.recordSecurityFailure( "bodySize" );
 			return arguments.transport.createErrorResponse(
 				statusCode: 413,
 				errorCode: MCPServer::errorCode( "INVALID_REQUEST" ),
 				message: "Request body too large. Maximum allowed: #maxBodySize# bytes"
 			);
+		}
+
+		// Check IP allowlist if configured
+		if ( targetServer.hasAllowedIPs() ) {
+			var clientIP = targetServer.getClientIP( arguments.requestData );
+			if ( !targetServer.verifyClientIP( clientIP, arguments.requestData ) ) {
+				static.mcpLogger.warn( "MCP request blocked by IP filter: #clientIP# for server: #mcpServerName#" );
+				targetServer.recordSecurityFailure( "ipFilter" );
+				return arguments.transport.createErrorResponse(
+					statusCode: 403,
+					errorCode: MCPServer::errorCode( "INVALID_REQUEST" ),
+					message: "Forbidden: IP address not allowed"
+				);
+			}
 		}
 
 		// Handle CORS if transport supports it
@@ -232,6 +251,7 @@ class {
 			if ( !targetServer.verifyBasicAuth( authHeader ) ) {
 				// Log failed authentication attempt
 				static.mcpLogger.warn( "MCP basic auth failed for server: #mcpServerName#" );
+				targetServer.recordSecurityFailure( "basicAuth" );
 				// Return 401 Unauthorized
 				response.statusCode = 401;
 				response.headers[ "WWW-Authenticate" ] = 'Basic realm="MCP Server"';
@@ -262,6 +282,7 @@ class {
 			if ( !len( apiKey ) || !targetServer.verifyApiKey( apiKey, arguments.requestData ) ) {
 				// Log failed API key attempt
 				static.mcpLogger.warn( "MCP API key validation failed for server: #mcpServerName#" );
+				targetServer.recordSecurityFailure( "apiKey" );
 				// Return 401 Unauthorized
 				response.statusCode = 401;
 				response.content = jsonSerialize( {
@@ -278,9 +299,10 @@ class {
 
 		// Announce MCP request
 		BoxAnnounce( "onMCPRequest", {
-			server: targetServer,
+			server     : targetServer,
 			requestData: arguments.requestData,
-			serverName: mcpServerName
+			serverName : mcpServerName,
+			requestId  : requestId
 		} );
 
 		// Execute onRequest callback if defined (for authentication/inspection)
@@ -331,10 +353,11 @@ class {
 
 		// Announce MCP response
 		BoxAnnounce( "onMCPResponse", {
-			server: targetServer,
-			response: response,
+			server     : targetServer,
+			response   : response,
 			requestData: arguments.requestData,
-			serverName: mcpServerName
+			serverName : mcpServerName,
+			requestId  : requestId
 		} );
 
 		return response;

@@ -223,8 +223,34 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			} );
 		}
 
-		// Send it
-		var result = sendChatRequest( arguments.chatRequest, dataPacket )
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware ---
+		// -------------------------------------------------------------------------------------------
+		var llmContext = { chatRequest: arguments.chatRequest, dataPacket: dataPacket }
+		var llmBeforeResult = arguments.chatRequest.fireMiddleware( hook: "beforeLLMCall", context: llmContext )
+		if ( llmBeforeResult.isTerminal() ) {
+			return llmBeforeResult
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire WrapLLM -> HTTP Call ---
+		// -------------------------------------------------------------------------------------------
+		var capturedDataPacket  = dataPacket;
+		var capturedChatRequest = arguments.chatRequest;
+		var result = arguments.chatRequest.fireWrapMiddleware(
+			hook         : "wrapLLMCall",
+			context      : llmContext,
+			innerFunction: () => sendChatRequest( capturedChatRequest, capturedDataPacket )
+		)
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware, in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		arguments.chatRequest.fireMiddleware(
+			hook   : "afterLLMCall",
+			context: { chatRequest: arguments.chatRequest, result: result },
+			reverse: true
+		)
 
 		// If an error is returned, throw it
 		if( result.keyExists( "message" ) && !result.keyExists( "text" ) ){
@@ -309,9 +335,21 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			// Add any remaining parameters
 			followUpPacket.append( tempParams );
 
-			// Send follow-up request with tool results
+			// Send follow-up request with tool results — wrapped in wrapLLMCall middleware
 			// Cohere typically needs only one follow-up; additional tool calls would require another interaction
-			result = sendChatRequest( arguments.chatRequest, followUpPacket );
+			var followUpContext             = { chatRequest: arguments.chatRequest, dataPacket: followUpPacket }
+			var capturedFollowUpPacket      = followUpPacket;
+			var capturedFollowUpChatRequest = arguments.chatRequest;
+			result = arguments.chatRequest.fireWrapMiddleware(
+				hook         : "wrapLLMCall",
+				context      : followUpContext,
+				innerFunction: () => sendChatRequest( capturedFollowUpChatRequest, capturedFollowUpPacket )
+			)
+			arguments.chatRequest.fireMiddleware(
+				hook   : "afterLLMCall",
+				context: { chatRequest: arguments.chatRequest, result: result },
+				reverse: true
+			)
 
 			// Check if Cohere is requesting MORE tool calls (multi-step reasoning)
 			if( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ){

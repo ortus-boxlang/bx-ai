@@ -110,6 +110,77 @@ public class ClosureToolTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "isString" ) ) ).isEqualTo( true );
 	}
 
+	@DisplayName( "invoke() coerces a struct arg to a JSON string for a string-typed param" )
+	@Test
+	public void testInvokeCoercesStructToJsonStringForStringParam() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				tool = new ClosureTool(
+					"jsonTool",
+					"Accepts a JSON-encoded struct",
+					( required string source_context ) => arguments.source_context
+				)
+				result = tool.invoke( { source_context: { repo: "acme/app", branch: "main" } } )
+				parsed = jsonDeserialize( result )
+				repoOut   = parsed.repo
+				branchOut = parsed.branch
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "repoOut" ) ) ).isEqualTo( "acme/app" );
+		assertThat( variables.get( Key.of( "branchOut" ) ) ).isEqualTo( "main" );
+	}
+
+	@DisplayName( "invoke() coerces an array arg to a JSON string for a string-typed param" )
+	@Test
+	public void testInvokeCoercesArrayToJsonStringForStringParam() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				tool = new ClosureTool(
+					"listTool",
+					"Accepts a JSON-encoded array",
+					( required string files_modified ) => arguments.files_modified
+				)
+				result = tool.invoke( { files_modified: [ "a.bx", "b.bx" ] } )
+				parsed = jsonDeserialize( result )
+				firstOut  = parsed[ 1 ]
+				lengthOut = parsed.len()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "firstOut" ) ) ).isEqualTo( "a.bx" );
+		assertThat( variables.get( Key.of( "lengthOut" ) ) ).isEqualTo( 2 );
+	}
+
+	@DisplayName( "invoke() leaves already-stringified args unchanged for string-typed params" )
+	@Test
+	public void testInvokeLeavesStringArgUnchanged() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				tool = new ClosureTool(
+					"echoTool",
+					"Echoes its input",
+					( required string payload ) => arguments.payload
+				)
+				result = tool.invoke( { payload: '{"already":"json"}' } )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( "{\"already\":\"json\"}" );
+	}
+
 	@DisplayName( "invoke() without a callable throws MissingCallable" )
 	@Test
 	public void testInvokeWithNoCallableThrows() {
@@ -145,6 +216,7 @@ public class ClosureToolTest extends BaseIntegrationTest {
 				schemaType = schema.type
 				funcName   = schema.function.name
 				paramType  = schema.function.parameters.type
+				isStrict   = schema.function.strict ?: false
 			""",
 			context
 		);
@@ -153,6 +225,7 @@ public class ClosureToolTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "schemaType" ) ) ).isEqualTo( "function" );
 		assertThat( variables.get( Key.of( "funcName" ) ) ).isEqualTo( "greet" );
 		assertThat( variables.get( Key.of( "paramType" ) ) ).isEqualTo( "object" );
+		assertThat( variables.get( Key.of( "isStrict" ) ) ).isEqualTo( false );
 	}
 
 	@DisplayName( "getSchema() marks required parameters correctly" )
@@ -191,6 +264,191 @@ public class ClosureToolTest extends BaseIntegrationTest {
 		} catch ( Exception e ) {
 			assertThat( e.getMessage() ).contains( "No callable has been set" );
 		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Type-aware schema generation
+	// -------------------------------------------------------------------------
+
+	@DisplayName( "getSchema() maps numeric param to JSON Schema number type" )
+	@Test
+	public void testSchemaMapsNumericToNumber() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				schema = new ClosureTool( "calc", "Calculate", ( required string op, numeric factor = 1 ) => "ok" ).getSchema()
+				opType     = schema.function.parameters.properties.op.type
+				factorType = schema.function.parameters.properties.factor.type
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "opType" ) ) ).isEqualTo( "string" );
+		assertThat( variables.get( Key.of( "factorType" ) ) ).isEqualTo( "number" );
+	}
+
+	@DisplayName( "getSchema() maps boolean param to JSON Schema boolean type" )
+	@Test
+	public void testSchemaMapsBooleanToBoolean() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				schema = new ClosureTool( "toggle", "Toggle", ( required boolean active ) => "ok" ).getSchema()
+				result = schema.function.parameters.properties.active.type
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( "boolean" );
+	}
+
+	@DisplayName( "getSchema() maps array param to JSON Schema array type with items" )
+	@Test
+	public void testSchemaMapsArrayToArray() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				schema = new ClosureTool( "list", "List", ( required array tags ) => "ok" ).getSchema()
+				propType  = schema.function.parameters.properties.tags.type
+				hasItems  = schema.function.parameters.properties.tags.keyExists( "items" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "propType" ) ) ).isEqualTo( "array" );
+		assertThat( variables.get( Key.of( "hasItems" ) ) ).isEqualTo( true );
+	}
+
+	@DisplayName( "getSchema() maps struct param to JSON Schema object type" )
+	@Test
+	public void testSchemaMapsStructToObject() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				schema = new ClosureTool( "config", "Config", ( required struct options ) => "ok" ).getSchema()
+				result = schema.function.parameters.properties.options.type
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( "object" );
+	}
+
+	@DisplayName( "getSchema() maps integer/float/double to JSON Schema number type" )
+	@Test
+	public void testSchemaMapsIntegerFloatDoubleToNumber() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				schema = new ClosureTool( "multi", "Multi", ( integer a, float b, double c ) => "ok" ).getSchema()
+				aType = schema.function.parameters.properties.a.type
+				bType = schema.function.parameters.properties.b.type
+				cType = schema.function.parameters.properties.c.type
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "aType" ) ) ).isEqualTo( "number" );
+		assertThat( variables.get( Key.of( "bType" ) ) ).isEqualTo( "number" );
+		assertThat( variables.get( Key.of( "cType" ) ) ).isEqualTo( "number" );
+	}
+
+	@DisplayName( "getSchema() defaults untyped params to JSON Schema string type" )
+	@Test
+	public void testSchemaDefaultsUntypedToString() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				schema = new ClosureTool( "untyped", "Untyped", ( required query ) => "ok" ).getSchema()
+				result = schema.function.parameters.properties.query.type
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( "string" );
+	}
+
+	@DisplayName( "invoke() passes native numeric value for numeric-typed param" )
+	@Test
+	public void testInvokePassesNativeNumeric() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				tool = new ClosureTool( "doubleIt", "Double a number", ( required numeric value ) => arguments.value * 2 )
+				result = tool.invoke( { value: 5 } )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// invoke() serializes all results to string via BaseTool.serializeResult()
+		assertThat( variables.get( result ) ).isEqualTo( "10" );
+	}
+
+	@DisplayName( "invoke() passes native boolean value for boolean-typed param" )
+	@Test
+	public void testInvokePassesNativeBoolean() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				tool = new ClosureTool( "isActive", "Check active", ( required boolean active ) => arguments.active )
+				result = tool.invoke( { active: true } )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// invoke() serializes all results to string via BaseTool.serializeResult()
+		assertThat( variables.get( result ) ).isEqualTo( "true" );
+	}
+
+	@DisplayName( "invoke() passes native array for array-typed param" )
+	@Test
+	public void testInvokePassesNativeArray() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				tool = new ClosureTool( "countTags", "Count tags", ( required array tags ) => arguments.tags.len() )
+				result = tool.invoke( { tags: [ "urgent", "internal" ] } )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// invoke() serializes all results to string via BaseTool.serializeResult()
+		assertThat( variables.get( result ) ).isEqualTo( "2" );
+	}
+
+	@DisplayName( "invoke() passes native struct for struct-typed param" )
+	@Test
+	public void testInvokePassesNativeStruct() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+				tool = new ClosureTool( "getKey", "Get key", ( required struct options ) => arguments.options.key )
+				result = tool.invoke( { options: { key: "value" } } )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( "value" );
 	}
 
 	// -------------------------------------------------------------------------

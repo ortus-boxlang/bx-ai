@@ -118,4 +118,48 @@ public class CoreToolsTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "funcName" ) ) ).isEqualTo( "now" );
 	}
 
+	// -------------------------------------------------------------------------
+	// httpGet tool — registered via scanClass for testing
+	// -------------------------------------------------------------------------
+
+	@DisplayName( "httpGet@bxai tool schema follows OpenAI function format" )
+	@Test
+	public void testHttpGetSchemaFormat() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.core.CoreTools;
+				registry = aiToolRegistry()
+				registry.scanClass( new CoreTools(), "bxai" )
+				tool   = registry.get( "httpGet@bxai" )
+				schema = tool.getSchema()
+				schemaType = schema.type
+				funcName   = schema.function.name
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "schemaType" ) ) ).isEqualTo( "function" );
+		assertThat( variables.get( Key.of( "funcName" ) ) ).isEqualTo( "httpGet" );
+	}
+
+	@DisplayName( "now@bxai tool returns an ISO 8601 formatted date/time string" )
+	@Test
+	public void testNowToolLiveCall() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				tool   = aiToolRegistry().get( "now@bxai" )
+				result = tool.invoke( {} )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var output = variables.getAsString( result );
+		// ISO 8601 contains digits and dashes/colons, e.g. 2026-05-12T22:43:48
+		assertThat( output ).matches( "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.+" );
+	}
+
 }

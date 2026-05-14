@@ -13,6 +13,148 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 New Features
 
+- **Web Search Tools & BIF**: New `aiWebSearch()` BIF and `WebSearchTools` class providing multi-provider web search for AI agents.
+  - **`aiWebSearch(query, params, options)`** BIF — simple entry point for web search (renamed from `webSearch()`).
+  - **`webSearch@bxai` tool** — auto-registered AI tool enabling agents to search the web during conversations.
+  - **`aiWebSearchAsync(query, options)`** BIF — non-blocking variant returning a `BoxFuture` resolved on the `io-tasks` executor (renamed from `webSearchAsync()`); all providers also expose `searchAsync()` directly.
+  - **`searchAsync(query, options)`** — all search providers now expose a non-blocking async variant that returns a `BoxFuture` resolved on the `io-tasks` executor.
+  - **5 web search interception points** — full observability into the search pipeline via `BoxRegisterInterceptor()`:
+    - `beforeAIWebSearch` — fired before any search executes (provider, query, options)
+    - `afterAIWebSearch` — fired after search completes (results + `cached: boolean` flag for future caching support)
+    - `onAIWebSearchRequest` — fired immediately before the HTTP/API request is sent (url, method, headers)
+    - `onAIWebSearchResponse` — fired after a successful HTTP/API response is received (statusCode, response)
+    - `onAIWebSearchError` — fired on any search failure before the exception propagates (error)
+  - **6 search providers** via interface-driven design (`IWebSearch`):
+    - **Brave** — official API, free tier 2K queries/mo, set `BRAVE_API_KEY` env var
+    - **Google Custom Search** — best result quality, requires `GOOGLE_API_KEY` + `GOOGLE_SEARCH_ENGINE_ID`
+    - **Tavily** — AI-optimized search, free tier 1K queries/mo, set `TAVILY_API_KEY` env var
+    - **Exa** — neural/semantic search engine built for AI, set `EXA_API_KEY` env var; supports `type: keyword|neural|magic`, `country`, and `language` filters
+    - **HTTP** — (Default) generic URL fetcher for direct page retrieval
+  - **Consistent result format** — all providers return `[{title, url, snippet, publishedDate, domain, score, thumbnail, language}]` regardless of underlying API.
+  - **Three-tier API key resolution** — constructor config → module settings → environment variables.
+  - **ModuleConfig settings** — `webSearch` section for global configuration (default provider, max results, timeout, API keys including `exaApiKey`, logging).
+  - **All HTTP calls centralized** in `BaseSearch` for consistent logging, error handling, and proxy support.
+
+- **MCP Server IP Allowlist & Proxy-Aware Client IP Extraction**: `MCPServer` now supports IP-based access control with automatic client IP resolution from common proxy headers.
+  - **`withAllowedIPs(ips)`**: Configure allowed IP addresses or CIDR ranges. Pass empty array to allow all (default).
+  - **`addAllowedIP(ip)` / `clearAllowedIPs()`**: Incremental allowlist management.
+  - **`hasAllowedIPs()`**: Check if IP filtering is active.
+  - **`verifyClientIP(clientIP, requestData)`**: Validate a client IP against the allowlist with exact match and CIDR range support.
+  - **`getClientIP(requestData)`**: Extract client IP from trusted proxy headers (`X-Forwarded-For`, `CF-Connecting-IP`, `True-Client-IP`, `X-Real-IP`) with fallback to `cgi.REMOTE_ADDR` for direct connections.
+  - **CIDR range matching**: Support both individual IPs (`192.168.1.100`) and CIDR blocks (`192.168.0.0/24`) for IPv4 and IPv6.
+  - **IP filter failure tracking**: Rejected IP checks recorded in `MCPServerStats.security.ipFilterFailures` counter and exposed in `getStats()` / `getSummary()`.
+  - **Security rejection**: Denied IPs return HTTP 403 Forbidden with `INVALID_REQUEST` JSON-RPC error code.
+
+- **Fluent Builder API for Audio BIFs**: `aiSpeak()`, `aiTranscribe()`, and `aiTranslate()` now
+  support a fluent builder API. Calling any of these BIFs with no arguments returns the request
+  object for chaining.
+  - **`AiSpeechRequest`** gains:
+    - `of(text)` static factory
+    - `.text()`
+    - `.model()`
+    - `.provider()`
+    - `.apiKey()`
+    - `.voice()`
+    - `.speed()`
+    - `.instructions()`
+    - `.outputFile()`
+    - `.outputFormat()`
+    - `.timeout()`
+    - gender shortcuts (`.male()`, `.female()`)
+    - format shortcuts (`.asMP3()`, `.asWav()`, `.asFlac()`, `.asOpus()`, `.asPCM()`)
+    - `.withParams()`
+    - `.withOptions()`
+    - `.withLogging()`
+    - `.speak()` terminator
+  - **`AiTranscriptionRequest`** gains:
+    - `of(audio)` static factory
+    - `.file(path)`
+    - `.url(url)`
+    - `.data(binary)`
+    - `.model()`
+    - `.provider()`
+    - `.apiKey()`
+    - `.language()`
+    - `.inputFormat()`
+    - `.timeout()`
+    - timestamp shortcuts (`.withWordTimestamps()`, `.withSegmentTimestamps()`, `.withTimestamps()`)
+    - `.diarize()`
+    - format shortcuts (`.asJSON()`, `.asText()`, `.asVerboseJSON()`, `.asSRT()`, `.asVTT()`)
+    - `.withParams()`
+    - `.withOptions()`
+    - `.withLogging()`
+    - dual terminators `.transcribe()` and `.translate()`
+
+- **Image Generation — `aiImage()`**: New BIF for generating images from text prompts using any provider that implements `IAiImageService`.
+  - **`aiImage( prompt, params, options )`** BIF: Generate one or more images from a text description. Returns an `AiImageResponse` (with `hasImages()`, `getCount()`, `getFirstURL()`, `getFirstBase64()`, `getRevisedPrompt()`, `saveToFile()`, `saveAllToDirectory()`, `toDataURI()`, `getMimeType()`, `toStruct()`) or saves directly to a file via `options.outputFile`.
+  - **`IAiImageService`** interface: New capability interface implemented by providers that support text-to-image generation (`generateImage()`).
+  - **`AiImageRequest`** object: Carries prompt, n, size, quality, style, instructions, outputFormat, and outputFile. All fields fluent via BoxLang property conventions.
+  - **`AiImageResponse`** object: Wraps one or more generated images, each as a struct with `url`, `data` (binary), `mimeType`, and `revisedPrompt`. Convenience methods for saving, encoding, and embedding as data URIs.
+  - **Provider support**:
+    - **OpenAI** — `gpt-image-1` (default) and DALL-E models via `/v1/images/generations`. Supports quality/style/size controls and format/compression parameters.
+    - **Gemini** — Imagen 3 (`imagen-3.0-generate-008`) via the Gemini API predict endpoint. Returns binary image data directly; `size` maps to aspect ratio (1:1, 16:9, 9:16).
+    - **Grok (xAI)** — `grok-2-image` via `https://api.x.ai/v1/images/generations` (OpenAI-compatible format).
+    - **OpenRouter** — FLUX Schnell (default) and many other image models via `https://openrouter.ai/api/v1/images/generations` (OpenAI-compatible format).
+  - **4 new interception points**: `beforeAIImageGeneration`, `afterAIImageGeneration`, `onAIImageRequest`, `onAIImageResponse`.
+  - **`image` settings block** in module config: `defaultProvider`, `defaultApiKey`, `defaultModel`, `defaultSize`, `defaultQuality`, `defaultStyle`, `defaultInstructions`.
+  - **`generateImage@bxai` agent tool**: New `ImageTools` class (`models/tools/image/ImageTools.bx`) auto-registered in the global tool registry at module startup. Generates an image from a text prompt, saves to a file (auto-generates a temp file when no `outputFile` is supplied), and returns the absolute path. Opt-in: `aiAgent( tools: [ "generateImage@bxai" ] )`.
+
+- **MCP Server Observability & Analytics Improvements**
+  - Multiple gaps in the MCP server's observability and analytics have been addressed.
+  - **Thread-safety fix**: `byMethod`, `byTool`, `byUri`, `byName`, and `byCode` counters in `MCPServerStats` were plain struct mutations happening outside any lock, causing silent lost updates under concurrent load. All are now wrapped in dedicated named locks.
+  - **Security failure tracking**: Basic auth rejections, API key rejections, and body-size violations now increment dedicated `AtomicInteger` counters (`security.authFailures`, `security.apiKeyFailures`, `security.bodySizeViolations`) visible in `getStats()` and `getSummary()`. `MCPServer` exposes a `recordSecurityFailure(type)` method for processor delegation.
+  - **Paused-request stats**: Requests rejected due to `SERVER_PAUSED` are now recorded in stats (previously they were silently dropped from all counters).
+  - **`onMCPError` for METHOD_NOT_FOUND**: The `default:` switch case was the only error path that never fired the `onMCPError` interception point. Fixed.
+  - **Per-tool error tracking**: `handleToolCall()` now records a tool error via `recordToolError()` before rethrowing any exception. `MCPServerStats` gains `byTool[name].errors` and an `errors.byTool` roll-up counter.
+  - **Active concurrent request counter**: `MCPServerStats` gains an `activeRequests` `AtomicInteger`; `handleRequest()` increments it on entry and decrements it in a `finally` block. Exposed in `getStats()` and `getSummary()`.
+  - **Requests-per-minute rate**: `getSummary()` now includes `requestsPerMinute` calculated from uptime and total request count.
+  - **X-Request-ID correlation**: `HTTPTransport` reads the `X-Request-ID` request header (or generates a UUID if absent); `StdioTransport` always generates one. The ID is echoed as `X-Request-ID` in the response headers and included in `onMCPRequest` and `onMCPResponse` event payloads.
+
+- **Agent Registry**
+  — New `AIAgentRegistry` singleton (access via `aiAgentRegistry()` BIF) modeled after `AIToolRegistry`. Allows users to explicitly register `AiAgent` instances for centralized discoverability, observability, and analytics.
+  - `aiAgentRegistry().register( agent, module )` — register an `AiAgent` instance with optional module namespace. Key convention: `agentName` or `agentName@moduleName`.
+  - `aiAgentRegistry().unregister( key )` / `unregisterByModule( module )` — remove agents from the registry.
+  - `aiAgentRegistry().resolveAgents( array )` — lazily resolve a mixed array of string keys and `AiAgent` instances into `AiAgent[]`.
+  - `aiAgentRegistry().listAgents()` — returns a struct of all registered agents mapped to `{ name, description, module }` for analytics dashboards and introspection.
+  - `aiAgentRegistry().getAgentInfo( key )` — returns `{ name, description, module }` for a single registry key.
+  - Two new interception points: `onAIAgentRegistryRegister`, `onAIAgentRegistryUnregister` — fired on every register/unregister operation for external observability hooks.
+  - `aiAgent()` BIF gains two new parameters: `register: false` (opt-in flag) and `module: ""` — when `register: true` the agent is automatically placed in the registry at creation time. Defaults to `false` to prevent memory leaks from sub-agents and throwaway agents.
+
+- **MCP Client Stats & Observability**
+  - `MCPClient` now tracks internal usage and performance metrics via a new `MCPClientStats` instance (using atomic variables for thread safety).
+  - `getStats()` — returns a fully serializable struct with call totals, per-operation-type breakdowns, response time avg/min/max, per-tool invocation stats (`count`, `totalTime`, `avgTime`), per-URI resource counts, per-name prompt counts, and error tracking.
+  - `getSummary()` — lightweight summary with `totalCalls`, `successRate`, `avgResponseTime`, per-type totals, `totalErrors`, and `lastCallAt`.
+  - `resetStats()` — resets all counters to zero (fluent).
+  - Three new interception points fired from every HTTP call:
+    - `onMCPClientRequest` — fires before the HTTP request with `{ client, baseURL, operation, name, requestBody }`.
+    - `onMCPClientResponse` — fires on success with `{ client, baseURL, operation, name, response, executionTime, statusCode }`.
+    - `onMCPClientError` — fires on HTTP errors (bad status / JSON-RPC error) and on network-level exceptions with `{ client, baseURL, operation, name, error, statusCode, executionTime }` (includes `exception` key when fired from a `catch` block).
+  - Every operation type is tracked: `tool` (covers `listTools` + `send`), `resource` (covers `listResources` + `readResource`), `prompt` (covers `listPrompts` + `getPrompt`), `discovery` (`getCapabilities`).
+
+- **MCP Server Pause/Resume**
+  - `MCPServer` now supports pausing and resuming via `pause()` and `resume()` fluent methods. While paused, the server remains registered in the global registry but rejects all incoming JSON-RPC requests (except `ping`) with a `SERVER_PAUSED` error (code `-32005`). This lets an admin interface or AI service temporarily halt a server without destroying its configuration, tools, resources, or prompts. Resume restores normal request handling instantly.
+  - `pause()` — pause the server; fires `onMCPServerPause` interception point.
+  - `resume()` — resume the server; fires `onMCPServerResume` interception point.
+  - `isPaused()` — returns `true` if currently paused.
+  - `getSummary()` now includes a `paused` boolean field.
+  - New `SERVER_PAUSED: -32005` error code added to `RPC_ERROR_CODES`.
+  - Two new interception points registered: `onMCPServerPause`, `onMCPServerResume`.
+
+### 🧠 Improvements
+
+- BoxLang 1.13.0 testing.
+- You can now get the binded system message from an agent via `agent.buildSystemMessage()` for debugging and inspection.
+- An agent config now includes the `systemMessage` property
+- **Type-aware tool schemas**: `ClosureTool.getArgumentsSchema()` now maps BoxLang parameter types to their correct JSON Schema types instead of hard-coding everything as `"string"`. `numeric`/`integer`/`float`/`double` → `"number"`, `boolean` → `"boolean"`, `array` → `"array"` (with `"items": {}`), `struct` → `"object"`. Untyped params default to `"string"`. This means the AI receives accurate type hints and sends native JSON types (booleans, numbers, arrays, objects) instead of string-encoded values.
+
+### 🪲 Fixed
+
+- `ClosureTool.doInvoke()`: MCP clients that send JSON fields as real objects/arrays (instead of pre-stringified JSON) caused a "Can't cast Struct to a string" error before the callable ran. The fix walks the callable's declared parameters and `jsonSerialize()`s any non-simple value whose declared type is `string`, keeping the schema contract intact while accepting both wire formats. Callables that declare `struct`, `array`, or `any` parameters are left untouched.
+
+## [3.1.0] - 2026-04-16
+
+### 🥊 New Features
+
 - **Audio Support — Text-to-Speech, Transcription, and Translation**:
   - **`aiSpeak( text, params, options )`** BIF: Convert text to speech using any provider that supports TTS. Returns an `AiSpeechResponse` (with `hasAudio()`, `saveToFile()`, `getBase64()`, `getMimeType()`, `getSize()`) or saves directly to a file via `options.outputFile`.
   - **`aiTranscribe( audio, params, options )`** BIF: Transcribe audio (file path, URL, or binary) to text. Returns the transcript string by default or a full `AiTranscriptionResponse` when `options.returnFormat = "response"`.
@@ -41,6 +183,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `OpenAIService.chat()`: capture `chatRequest` before nested `.each()` closures for tool calling
 - `OpenAIService.chatStream()`: scope callback and `chatRequest` for `sendStreamRequest` call and tool-calling `.each()` closure
 - `CohereService.chat()`: capture `chatRequest` before `.map()` tool closure
+- `ClaudeService`, `GeminiService`, `CohereService`, and `BedrockService` `chat()` methods called `sendChatRequest()` / `sendBedrockRequest()` directly, silently bypassing the entire `wrapLLMCall` middleware chain. `beforeLLMCall`, `wrapLLMCall`, and `afterLLMCall` hooks (including `FlightRecorderMiddleware`, retry wrappers, and any custom LLM wrappers) never fired for these providers.
 - Standardized the data for the `onAITokenCount` event and add missing event on the following services: `BedrockService, ClaudeService, CohereService, GeminiService`
 - MCPServer `scan()` and `scanClass()` where not working accordingly with all cases and permutations.
 - Invalid location of directory for flight recorder tapes
@@ -223,7 +366,7 @@ What's New: <https://ai.ortusbooks.com/readme/release-history/2.1.0>
 	},
 	"ollama" : {
 		"params" : {
-			"model" : "qwen2.5:0.5b-instruct"
+			"model" : "qwen3:0.6b"
 		},
 		"options" : {
 			"baseUrl" : "http://my-ollama-server:11434/"

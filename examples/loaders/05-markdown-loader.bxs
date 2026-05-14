@@ -13,20 +13,20 @@ println()
 // Create a sample Markdown file
 mdFile = getTempDirectory() & "guide-" & createUUID() & ".md"
 fileWrite( mdFile, "
-# BoxLang AI Module Guide
+## BoxLang AI Module Guide
 
-## Introduction
+#### Introduction
 
 The BoxLang AI module provides a unified interface for working with multiple AI providers.
 
-### Key Features
+###### Key Features
 
 - **Multiple Providers**: OpenAI, Claude, Gemini, Ollama, and more
 - **Streaming Support**: Real-time response streaming
 - **Memory Systems**: Conversation history and context management
 - **Tool Calling**: AI agents can call custom functions
 
-## Quick Start
+#### Quick Start
 
 ```javascript
 // Simple chat example
@@ -34,7 +34,7 @@ response = aiChat( ""Hello, AI!"" )
 println( response )
 ```
 
-### Advanced Usage
+###### Advanced Usage
 
 For production applications, consider using:
 
@@ -43,7 +43,7 @@ For production applications, consider using:
 3. **Tools** for function calling
 4. **Pipelines** for multi-step processes
 
-## Best Practices
+#### Best Practices
 
 > **Important:** Always handle API keys securely using environment variables.
 
@@ -52,7 +52,7 @@ For production applications, consider using:
 - Cache responses when possible
 - Monitor token usage
 
-## Conclusion
+#### Conclusion
 
 The BoxLang AI module simplifies AI integration in your applications.
 
@@ -122,7 +122,7 @@ try {
 	message = aiMessage()
 		.system( "Answer questions about this documentation: ${context}" )
 		.user( "What are the key features of the BoxLang AI module?" )
-		.setContext( mdContent )
+		.setContext( {content: mdContent} )
 
 	println( "Query: What are the key features?" )
 	println( "Answer: " & aiChat( message ) )
@@ -141,7 +141,7 @@ try {
 
 	println( "Found #codeBlocks.len()# code block(s):" )
 	codeBlocks.each( ( code, idx ) => {
-		println( "  Code ##idx#: #left( code, 40 )#..." )
+		println( "  Code ###idx#: #left( code, 40 )#..." )
 	})
 	println()
 
@@ -162,7 +162,7 @@ try {
 	println( "Split documentation into #chunks.len()# chunks" )
 	chunks.each( ( chunk, idx ) => {
 		if ( idx <= 3 ) {
-			println( "  Chunk ##idx#: #left( chunk.content, 50 )#..." )
+			println( "  Chunk ###idx#: #left( chunk.content, 50 )#..." )
 		}
 	})
 	println()
@@ -173,17 +173,17 @@ try {
 
 	readmeFile = getTempDirectory() & "README-" & createUUID() & ".md"
 	fileWrite( readmeFile, "
-# My Project
+## My Project
 
 A simple project for demonstration.
 
-## Installation
+#### Installation
 
 ```bash
 npm install my-project
 ```
 
-## Usage
+#### Usage
 
 Import and use:
 
@@ -192,7 +192,7 @@ import { MyClass } from 'my-project';
 const instance = new MyClass();
 ```
 
-## License
+#### License
 
 MIT License - See LICENSE file for details.
 " )

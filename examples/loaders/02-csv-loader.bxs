@@ -43,7 +43,7 @@ try {
 
 	documents.each( ( doc, idx ) => {
 		if ( idx <= 3 ) {  // Show first 3
-			println( "Product ##idx#:" )
+			println( "Product ###idx#:" )
 			println( "  Name: #doc.metadata.name#" )
 			println( "  Category: #doc.metadata.category#" )
 			println( "  Price: $#doc.metadata.price#" )

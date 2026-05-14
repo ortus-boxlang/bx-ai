@@ -191,7 +191,7 @@ class extends="AiBaseRunnable" {
 		}
 
 		// Initialize system message cache
-		variables._systemMsgCache       = ""
+		variables._systemMessageCache       = ""
 		variables._systemMsgFingerprint = ""
 
 		return this;
@@ -214,7 +214,7 @@ class extends="AiBaseRunnable" {
 			_registerLoadSkillTool()
 		}
 		// Clear the system message cache so the updated index is reflected
-		variables._systemMsgCache       = ""
+		variables._systemMessageCache       = ""
 		variables._systemMsgFingerprint = ""
 		return this
 	}
@@ -233,7 +233,7 @@ class extends="AiBaseRunnable" {
 		if ( !hasTool( "loadSkill" ) && variables.availableSkills.len() > 0 ) {
 			_registerLoadSkillTool()
 		}
-		variables._systemMsgCache       = ""
+		variables._systemMessageCache       = ""
 		variables._systemMsgFingerprint = ""
 		return this
 	}
@@ -250,8 +250,8 @@ class extends="AiBaseRunnable" {
 	any function activateSkill( required string name ) {
 		var skill = super.activateSkill( arguments.name )
 		if ( !isNull( skill ) ) {
-			// Invalidate cache so the next buildSystemMessage() reflects the now-active skill
-			variables._systemMsgCache       = ""
+			// Invalidate cache so the next buildSystemMessage reflects the now-active skill
+			variables._systemMessageCache       = ""
 			variables._systemMsgFingerprint = ""
 		}
 		return skill
@@ -567,6 +567,59 @@ class extends="AiBaseRunnable" {
 	 */
 
 	 /**
+	 * Build the system message from description, instructions, skills, tools, and MCP servers.
+	 * Result is cached by a fingerprint covering description, instructions, and both skill pools.
+	 * The cache is invalidated automatically when skills are added or activated.
+	 *
+	 * @force If true, forces rebuilding the system message even if the fingerprint matches (useful if you want to ensure the latest tools list is included after adding tools without changing skills/instructions/description)
+	 *
+	 * @return The system message string to include in the prompt
+	 */
+	string function buildSystemMessage( boolean force = false ) {
+		// Return the cached value when nothing that affects the system message has changed
+		var fingerprint = _buildSystemMessageFingerprint()
+		if ( !force && fingerprint == variables._systemMsgFingerprint && variables._systemMessageCache.len() > 0 ) {
+			return variables._systemMessageCache
+		}
+
+		var parts = []
+
+		// Include description as a "Role" if provided, so the LLM understands its identity and purpose
+		if ( variables.description.len() > 0 ) {
+			parts.append( "Role: " & variables.description )
+		}
+
+		// Include instructions as "Instructions" if provided, so the LLM knows how to behave and use tools
+		if ( variables.instructions.len() > 0 ) {
+			parts.append( "Instructions: " & variables.instructions )
+		}
+
+		// Inject skills content (always-on full blocks + available skills index)
+		var skillsContent = buildSkillsContent()
+		if ( skillsContent.len() > 0 ) {
+			parts.append( skillsContent )
+		}
+
+		// Include available tools so the LLM knows what it can use (note: tools are also passed in the options for structured access, but including in system message can help with LLMs that rely more on the prompt)
+		if ( variables.tools.len() > 0 ) {
+			parts.append( "Available Tools: " & listTools().toString() )
+		}
+
+		// Include connected MCP servers so the LLM knows where its tools came from
+		if ( variables.mcpServers.len() > 0 ) {
+			parts.append( "Connected MCP Servers:" & listMCPServers().toString() )
+		}
+
+		var message = parts.toList( char( 10 ) & char( 10 ) )
+
+		// Cache for next call
+		variables._systemMessageCache       = message
+		variables._systemMsgFingerprint = fingerprint
+
+		return message
+	}
+
+	 /**
 	  * Set instructions
 	 * @instructions The agent's instructions
 	 * @return this for chaining
@@ -874,8 +927,8 @@ class extends="AiBaseRunnable" {
 			"options": variables.options.map( ( key, value ) => {
 				// Mask sensitive options (e.g. API keys) in the config output
 				var maskedValue = ( listFindNoCase( "apikey,token,secret", key ) > 0 )
-					? "****"
-					: value
+				? "****"
+				: value
 				return maskedValue
 			} ),
 			"subAgentCount": variables.subAgents.len(),
@@ -885,6 +938,7 @@ class extends="AiBaseRunnable" {
 					"description": agent.getConfig().description
 				};
 			} ),
+			"systemMessage"		 : buildSystemMessage(),
 			"toolCount"          : variables.tools.len(),
 			"tools"              : listTools(),
 			"mcpServers"         : variables.mcpServers,
@@ -1066,55 +1120,6 @@ class extends="AiBaseRunnable" {
 	}
 
 	// ==================== PRIVATE METHODS ====================
-
-	/**
-	 * Build the system message from description, instructions, skills, tools, and MCP servers.
-	 * Result is cached by a fingerprint covering description, instructions, and both skill pools.
-	 * The cache is invalidated automatically when skills are added or activated.
-	 */
-	private string function buildSystemMessage() {
-		// Return the cached value when nothing that affects the system message has changed
-		var fingerprint = _buildSystemMessageFingerprint()
-		if ( fingerprint == variables._systemMsgFingerprint && variables._systemMsgCache.len() > 0 ) {
-			return variables._systemMsgCache
-		}
-
-		var parts = []
-
-		// Include description as a "Role" if provided, so the LLM understands its identity and purpose
-		if ( variables.description.len() > 0 ) {
-			parts.append( "Role: " & variables.description )
-		}
-
-		// Include instructions as "Instructions" if provided, so the LLM knows how to behave and use tools
-		if ( variables.instructions.len() > 0 ) {
-			parts.append( "Instructions: " & variables.instructions )
-		}
-
-		// Inject skills content (always-on full blocks + available skills index)
-		var skillsContent = buildSkillsContent()
-		if ( skillsContent.len() > 0 ) {
-			parts.append( skillsContent )
-		}
-
-		// Include available tools so the LLM knows what it can use (note: tools are also passed in the options for structured access, but including in system message can help with LLMs that rely more on the prompt)
-		if ( variables.tools.len() > 0 ) {
-			parts.append( "Available Tools: " & listTools().toString() )
-		}
-
-		// Include connected MCP servers so the LLM knows where its tools came from
-		if ( variables.mcpServers.len() > 0 ) {
-			parts.append( "Connected MCP Servers:" & listMCPServers().toString() )
-		}
-
-		var message = parts.toList( char( 10 ) & char( 10 ) )
-
-		// Cache for next call
-		variables._systemMsgCache       = message
-		variables._systemMsgFingerprint = fingerprint
-
-		return message
-	}
 
 	/**
 	 * Compute a lightweight fingerprint over the inputs that shape the system message.

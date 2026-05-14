@@ -1,0 +1,246 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Response object for text-to-image generation operations.
+ * Wraps one or more generated images returned by an AI provider and provides
+ * convenience methods for saving, encoding, and inspecting the results.
+ *
+ * Each image in the images array is a struct with:
+ *   - url           (string)  — direct URL returned by the provider (may be temporary)
+ *   - data          (binary)  — raw binary image data (populated when provider returns b64_json,
+ *                               or lazily fetched via getFirstBase64()/saveToFile())
+ *   - mimeType      (string)  — e.g. "image/png"
+ *   - revisedPrompt (string)  — the prompt the provider actually used (OpenAI may rewrite it)
+ */
+class extends="AiBaseResponse" {
+
+	/**
+	 * Array of generated image structs: [{url, data, mimeType, revisedPrompt}]
+	 */
+	property name="images" type="array";
+
+	/**
+	 * The image format: png, jpg, webp (provider-specific)
+	 */
+	property name="imageFormat" default="png";
+
+	static{
+		MIME_TYPES = {
+			png  : "image/png",
+			jpg  : "image/jpeg",
+			jpeg : "image/jpeg",
+			webp : "image/webp",
+			gif  : "image/gif"
+		}
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @images      Array of image structs ({url, data, mimeType, revisedPrompt})
+	 * @imageFormat The image format returned by the provider
+	 * @model       The model used for generation
+	 * @provider    The provider name
+	 */
+	function init(
+		array images    = [],
+		string imageFormat = "png",
+		string model    = "",
+		string provider = ""
+	){
+		super.init( model = arguments.model, provider = arguments.provider )
+		variables.images      = arguments.images
+		variables.imageFormat = arguments.imageFormat
+		return this
+	}
+
+	/**
+	 * Check whether at least one image was returned.
+	 */
+	boolean function hasImages(){
+		return !isNull( variables.images ) && variables.images.len() > 0
+	}
+
+	/**
+	 * Return the number of images in this response.
+	 */
+	numeric function getCount(){
+		return !isNull( variables.images ) ? variables.images.len() : 0
+	}
+
+	/**
+	 * Return the first image struct, or an empty struct when no images are present.
+	 * Struct keys: url, data, mimeType, revisedPrompt
+	 */
+	struct function getFirstImage(){
+		return hasImages() ? variables.images[ 1 ] : {}
+	}
+
+	/**
+	 * Return the URL of the first generated image, or an empty string.
+	 */
+	string function getFirstURL(){
+		return getFirstImage().url ?: ""
+	}
+
+	/**
+	 * Return the revised prompt used by the provider for the first image.
+	 * OpenAI DALL-E 3 rewrites prompts for safety; other providers return the original.
+	 */
+	string function getRevisedPrompt(){
+		return getFirstImage().revisedPrompt ?: ""
+	}
+
+	/**
+	 * Return the MIME type for this image format.
+	 */
+	string function getMimeType(){
+		return static.MIME_TYPES[ variables.imageFormat.lCase() ] ?: "image/png"
+	}
+
+	/**
+	 * Return the first image as a base64-encoded string.
+	 * If the provider returned a URL (not inline data), fetches the image via HTTP first.
+	 */
+	string function getFirstBase64(){
+		var img = getFirstImage()
+		if ( !structIsEmpty( img ) && !isNull( img.data ) && arrayLen( img.data ) > 0 ) {
+			return toBase64( img.data )
+		}
+		// Fetch from URL if only a URL was returned
+		if ( len( img.url ?: "" ) ) {
+			var fetched = _fetchURL( img.url )
+			variables.images[ 1 ].data = fetched
+			return toBase64( fetched )
+		}
+		return ""
+	}
+
+	/**
+	 * Return a data URI for the first image, suitable for embedding in an HTML <img> src.
+	 * Format: data:<mimeType>;base64,<imageData>
+	 *
+	 * Returns an empty string when no base64 image payload is available.
+	 */
+	string function toDataURI(){
+		var base64Image = getFirstBase64()
+
+		if ( !len( base64Image ) ) {
+			return ""
+		}
+
+		return "data:#getMimeType()#;base64,#base64Image#"
+	}
+
+	/**
+	 * Save the first image to disk at the given file path.
+	 * Creates parent directories if they do not exist.
+	 * Fetches image data from URL if only a URL was returned by the provider.
+	 *
+	 * @filePath Absolute or relative path where the image file should be written
+	 *
+	 * @return The absolute path of the written file
+	 */
+	string function saveToFile( required string filePath ){
+		var img = getFirstImage()
+		var imageData = ""
+
+		if ( !structIsEmpty( img ) && !isNull( img.data ) && arrayLen( img.data ) > 0 ) {
+			imageData = img.data
+		} else if ( len( img.url ?: "" ) ) {
+			imageData = _fetchURL( img.url )
+			variables.images[ 1 ].data = imageData
+		} else {
+			throw( type: "InvalidState", message: "AiImageResponse has no image data or URL to save." )
+		}
+
+		return super.saveToFile( arguments.filePath, imageData )
+	}
+
+	/**
+	 * Save all generated images to a directory.
+	 * Files are named image-1.{format}, image-2.{format}, etc.
+	 *
+	 * @dirPath Absolute or relative path to the target directory
+	 *
+	 * @return Array of absolute file paths written
+	 */
+	array function saveAllToDirectory( required string dirPath ){
+		var expandedDir = expandPath( arguments.dirPath )
+		createObject( "java", "java.io.File" ).init( expandedDir ).mkdirs()
+
+		var paths = []
+		for ( var img, i in variables.images ) {
+			var filePath = expandedDir & "/image-#i#.#variables.imageFormat#"
+			var imageData = ""
+			if ( !isNull( img.data ) && arrayLen( img.data ) > 0 ) {
+				imageData = img.data
+			} else if ( len( img.url ?: "" ) ) {
+				imageData = _fetchURL( img.url )
+				img.data  = imageData
+			} else {
+				throw(
+					type   : "InvalidState",
+					message: "AiImageResponse image at index #i# has no image data or URL to save."
+				)
+			}
+			fileWrite( filePath, imageData )
+			paths.append( filePath )
+		}
+		return paths
+	}
+
+	/**
+	 * Serialize response metadata to a struct (no binary data — safe for logging or JSON output).
+	 */
+	struct function toStruct(){
+		return getBaseStruct().append(
+			{
+				imageFormat   : variables.imageFormat,
+				mimeType      : getMimeType(),
+				count         : getCount(),
+				images        : variables.images.map( img => {
+					url           : img.url ?: "",
+					revisedPrompt : img.revisedPrompt ?: "",
+					mimeType      : img.mimeType ?: getMimeType()
+				} )
+			},
+			true
+		)
+	}
+
+	/**
+	 * Fetch binary data from a URL (used when provider returns a URL instead of inline data).
+	 *
+	 * @targetUrl The URL to fetch image bytes from
+	 *
+	 * @return The fetched image bytes
+	 */
+	private binary function _fetchURL( required string targetUrl ){
+		var results = http( arguments.targetUrl )
+			.get()
+			.asBinary()
+			.send()
+
+		if ( results.statusCode != 200 ) {
+			throw(
+				type   : "ImageFetchError",
+				message: "Failed to fetch image from URL (#arguments.targetUrl#): HTTP #results.statusCode#"
+			)
+		}
+
+		return results.fileContent
+	}
+
+}

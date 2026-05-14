@@ -151,4 +151,73 @@ public class aiTranslateTest extends BaseIntegrationTest {
 		assertThat( isText ).isTrue();
 	}
 
+	// ─────────────────────────────────────────────────────────────────────────
+	// Fluent Builder API Tests
+	// ─────────────────────────────────────────────────────────────────────────
+
+	@DisplayName( "aiTranslate() with no arguments returns an AiTranscriptionRequest builder" )
+	@Test
+	public void testAiTranslateNoArgsReturnsBuilder() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			result    = aiTranslate()
+			isBuilder = isInstanceOf( result, "AiTranscriptionRequest" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		var isBuilder = variables.getAsBoolean( Key.of( "isBuilder" ) );
+		assertThat( isBuilder ).isTrue();
+	}
+
+	@DisplayName( "AiTranscriptionRequest.of() builder .translate() terminator fires beforeAITranslation event" )
+	@Test
+	public void testFluentBuilderTranslateTerminatorFiresEvent() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.requests.AiTranscriptionRequest
+			eventFired = false;
+			BoxRegisterInterceptor(
+				function( data ) { eventFired = true; },
+				"beforeAITranslation"
+			)
+			AiTranscriptionRequest
+				.of( "#SAMPLE_AUDIO#" )
+				.translate()
+			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO ),
+			context
+		);
+		// @formatter:on
+
+		var eventFired = variables.getAsBoolean( Key.of( "eventFired" ) );
+		assertThat( eventFired ).isTrue();
+	}
+
+	@DisplayName( "Fluent builder shared between transcribe() and translate() — .diarize() sets flag correctly" )
+	@Test
+	public void testFluentBuilderDiarizeFlag() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			capturedDiarize = false;
+			BoxRegisterInterceptor(
+				function( data ) { capturedDiarize = data.transcriptionRequest.getDiarize(); },
+				"beforeAITranslation"
+			)
+			aiTranslate()
+				.file( "#SAMPLE_AUDIO#" )
+				.diarize( true )
+				.translate()
+			""".replace( "#SAMPLE_AUDIO#", SAMPLE_AUDIO ),
+			context
+		);
+		// @formatter:on
+
+		var capturedDiarize = variables.getAsBoolean( Key.of( "capturedDiarize" ) );
+		assertThat( capturedDiarize ).isTrue();
+	}
+
 }
