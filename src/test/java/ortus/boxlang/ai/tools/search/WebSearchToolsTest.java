@@ -137,7 +137,7 @@ public class WebSearchToolsTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				results = webSearch( "https://example.com" )
+				results = aiWebSearch( "https://example.com" )
 				first = results.first()
 				result = isArray( results ) && results.len() > 0 && structKeyExists( first, "title" ) && structKeyExists( first, "url" ) && structKeyExists( first, "snippet" )
 			""",
@@ -157,7 +157,7 @@ public class WebSearchToolsTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				results = webSearch( "BoxLang programming language", { provider: "brave" } )
+				results = aiWebSearch( "BoxLang programming language", { provider: "brave" } )
 				first = results.first()
 				result = isArray( results ) && results.len() > 0 && structKeyExists( first, "title" ) && structKeyExists( first, "url" ) && structKeyExists( first, "snippet" )
 			""",

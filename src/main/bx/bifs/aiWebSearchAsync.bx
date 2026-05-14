@@ -21,7 +21,7 @@
  * of result structs: [{title, url, snippet}].
  */
 @BoxBIF
-class extends="webSearch" {
+class extends="aiWebSearch" {
 
 	/**
 	 * Execute a web search query asynchronously using the specified or default provider.

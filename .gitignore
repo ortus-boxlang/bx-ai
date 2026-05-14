@@ -27,3 +27,4 @@ www/boxlang_modules/
 .ollama/
 .claude/**
 .agents/**
+.opencode
