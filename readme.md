@@ -345,6 +345,29 @@ loader.ingest( memory )
 var relevant = memory.getRelevant( "How do I configure BoxLang?", 5 )
 ```
 
+#### 📊 Spreadsheet Loader Integration (bx-spreadsheet)
+
+When the `bx-spreadsheet` module is installed, you can use its `SpreadsheetLoader` for BoxLang AI document loading workflows:
+
+- New `SpreadsheetLoader` in `src/main/bx/loaders/SpreadsheetLoader.bx` for BoxLang AI document loading workflows
+- Loads spreadsheet content as AI `Document` objects
+- Supports one document per sheet (default) or one document per row (`rowsAsDocuments`)
+- Supports header-aware row formatting (`hasHeaders`) and sheet filtering (`sheets`)
+- Inherits the `IDocumentLoader` contract via `BaseDocumentLoader`
+
+```javascript
+import bxModules.bxSpreadsheet.loaders.SpreadsheetLoader;
+
+// One document per sheet (default)
+var docs = new SpreadsheetLoader( source: "./data/customers.xlsx" ).load();
+
+// One document per row on a specific sheet
+var rowDocs = new SpreadsheetLoader( source: "./data/customers.xlsx" )
+    .rowsAsDocuments()
+    .sheets( [ "Customers" ] )
+    .load();
+```
+
 📖 [Memory Systems](https://ai.ortusbooks.com/main-components/memory) · [Vector Memory & RAG](https://ai.ortusbooks.com/main-components/vector-memory) · [Document Loaders](https://ai.ortusbooks.com/main-components/document-loaders)
 
 ### 🔗 Composable Pipelines
