@@ -317,9 +317,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			if ( msg.role == "system" ) {
 				systemPrompt = isSimpleValue( msg.content ) ? msg.content : msg.content.toString();
 			} else {
+				// Preserve structured content (arrays of tool_use / tool_result blocks)
+				// as-is; only flatten non-simple, non-array content. Flattening arrays
+				// with toString() would break multi-turn tool conversations.
 				conversationMessages.append( {
 					"role"    : msg.role,
-					"content" : isSimpleValue( msg.content ) ? msg.content : msg.content.toString()
+					"content" : ( isSimpleValue( msg.content ) || isArray( msg.content ) ) ? msg.content : msg.content.toString()
 				} );
 			}
 		}
@@ -328,6 +331,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		if ( len( trim( systemPrompt ) ) ) {
 			result[ "system" ] = systemPrompt;
+		}
+
+		// Add tool support if tools are present. Bedrock's Claude Messages API uses
+		// the same tool schema as the direct Anthropic Messages API.
+		if ( arguments.params?.tools?.len() ) {
+			result[ "tools" ] = formatToolsForClaude( arguments.params.tools );
 		}
 
 		return result;
@@ -641,6 +650,72 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
+	 * Format tools for the Bedrock Claude Messages API. Identical schema to the
+	 * direct Anthropic Messages API.
+	 * @see https://docs.anthropic.com/en/api/messages#body-tools
+	 *
+	 * @tools The tools to format
+	 *
+	 * @return An array of tools formatted for Claude
+	 */
+	private array function formatToolsForClaude( required array tools ) {
+		var claudeTools = [];
+
+		for ( var tool in arguments.tools ) {
+			var argumentsSchema = tool.getArgumentsSchema();
+			claudeTools.append( {
+				"name"        : tool.getName(),
+				"description" : tool.getDescription(),
+				"input_schema": {
+					"type"      : "object",
+					"properties": argumentsSchema.properties,
+					"required"  : argumentsSchema.required
+				}
+			} );
+		}
+
+		return claudeTools;
+	}
+
+	/**
+	 * Execute a Claude tool call returned by Bedrock and append the tool_result
+	 * message to the conversation.
+	 *
+	 * @toolCall    The tool call block from Claude: { type:"tool_use", id:"", name:"toolName", input:{} }
+	 * @chatRequest The original chat request containing the tool
+	 */
+	private function executeBedrockTool( required struct toolCall, required AiChatRequest chatRequest ) {
+		var messages    = arguments.chatRequest.getMessages();
+		var toolAttempt = arguments.chatRequest.getTool( arguments.toolCall.name );
+
+		if ( toolAttempt.isPresent() ) {
+			var tool = toolAttempt.get();
+			messages.append( {
+				"role"   : "user",
+				"content": [ {
+					"type"        : "tool_result",
+					"tool_use_id" : arguments.toolCall.id,
+					"content"     : tool.invoke( args: arguments.toolCall.input, chatRequest: arguments.chatRequest )
+				} ]
+			} );
+		} else {
+			writeLog(
+				text: "Unable to find tool named: [#arguments.toolCall.name#]",
+				type: "warning",
+				log : "ai"
+			);
+			messages.append( {
+				"role"   : "user",
+				"content": [ {
+					"type"        : "tool_result",
+					"tool_use_id" : arguments.toolCall.id,
+					"content"     : "Tool ['#arguments.toolCall.name#'] not found in chat request"
+				} ]
+			} );
+		}
+	}
+
+	/**
 	 * Override chat to handle Bedrock-specific request signing and model transformation
 	 *
 	 * @chatRequest      The AiChatRequest object
@@ -740,6 +815,50 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					timestamp           : now()
 				}
 			);
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Handle Claude tool-use (native tool_use blocks from the Bedrock Claude Messages API) ---
+		// -------------------------------------------------------------------------------------------
+		if ( modelFamily == "claude" && result.keyExists( "content" ) && isArray( result.content ) ) {
+			var usingTools = false;
+			for ( var contentBlock in result.content ) {
+				if ( contentBlock?.type == "tool_use" ) {
+					usingTools = true;
+					break;
+				}
+			}
+
+			if ( usingTools ) {
+				var maxAllowed = arguments.chatRequest.getMaxInteractions() > 0 ? arguments.chatRequest.getMaxInteractions() : variables.maxInteractions;
+				if ( arguments.interactionCount >= maxAllowed ) {
+					writeLog(
+						text: "Max tool call interactions (#maxAllowed#) exceeded",
+						type: "error",
+						log : "ai"
+					);
+					throw(
+						type   : "MaxInteractionsExceeded",
+						message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
+					);
+				}
+
+				var toolCalls = result.content.filter( contentBlock -> contentBlock?.type == "tool_use" );
+
+				// Record the assistant turn (text + tool_use blocks)
+				arguments.chatRequest.getMessages().append( {
+					"role"    : "assistant",
+					"content" : result.content
+				} );
+
+				// Execute each requested tool, appending tool_result messages
+				for ( var toolCall in toolCalls ) {
+					executeBedrockTool( toolCall, arguments.chatRequest );
+				}
+
+				// Recurse with tool results now in context
+				return chat( arguments.chatRequest, arguments.interactionCount + 1 );
+			}
 		}
 
 		// Handle response based on return format
