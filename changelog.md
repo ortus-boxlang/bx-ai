@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🥊 Added
+
+_Nothing new yet._
+
+### 🔄 Updates / Changes
+
+_Nothing changed yet._
+
 ### 🪲 Fixed
 
 - **MCPRequestProcessor CORS parameter collision**: Renamed the `mcpServer` parameter in `handleCORSPreflight()` to `targetServer` to avoid a case-insensitive name collision with the `MCPServer` import, which caused the stricter BoxLang compiler to reject the file and 500 every MCP request.
@@ -150,6 +158,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - You can now get the binded system message from an agent via `agent.buildSystemMessage()` for debugging and inspection.
 - An agent config now includes the `systemMessage` property
 - **Type-aware tool schemas**: `ClosureTool.getArgumentsSchema()` now maps BoxLang parameter types to their correct JSON Schema types instead of hard-coding everything as `"string"`. `numeric`/`integer`/`float`/`double` → `"number"`, `boolean` → `"boolean"`, `array` → `"array"` (with `"items": {}`), `struct` → `"object"`. Untyped params default to `"string"`. This means the AI receives accurate type hints and sends native JSON types (booleans, numbers, arrays, objects) instead of string-encoded values.
+- **New CoreTools auto-registered at startup** — three additional built-in tools are now scanned from `CoreTools` and registered under the `bxai` namespace on module load:
+  - **`print@bxai`** — Prints a message to the console. Useful for debugging or surfacing output to the end-user.
+  - **`log@bxai`** — Writes a message to the `ai.log` log file with a configurable log level (`info`, `warning`, `error`). Useful for audit trails and debugging without polluting the console.
+  - **`sendEmail@bxai`** — Sends an email via the server's mail configuration (`bx:mail`). Accepts `to`, `from`, `subject`, and `body`. Requires the BoxLang mail module and a configured mail server.
 
 ### 🪲 Fixed
 
