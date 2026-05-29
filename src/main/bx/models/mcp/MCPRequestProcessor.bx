@@ -371,7 +371,7 @@ class {
 	 *
 	 * @return The populated response struct
 	 */
-	private static  struct function handleCORSPreflight( required struct response, required any mcpServer ) {
+	private static  struct function handleCORSPreflight( required struct response, required any targetServer ) {
 		arguments.response.headers[ "Access-Control-Allow-Methods" ] = "POST, GET, OPTIONS";
 		arguments.response.headers[ "Access-Control-Allow-Headers" ] = "Content-Type, Authorization, X-API-Key";
 		arguments.response.headers[ "Access-Control-Max-Age" ] = "86400";

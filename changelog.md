@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🪲 Fixed
+
+- **MCPRequestProcessor CORS parameter collision**: Renamed the `mcpServer` parameter in `handleCORSPreflight()` to `targetServer` to avoid a case-insensitive name collision with the `MCPServer` import, which caused the stricter BoxLang compiler to reject the file and 500 every MCP request.
+
 ## [3.2.0] - 2026-05-14
 
 ### 🥊 New Features
