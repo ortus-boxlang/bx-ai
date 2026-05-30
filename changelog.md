@@ -9,9 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.2.0] - 2026-05-14
+### 🥊 Added
 
-## [3.1.0] - 2026-04-16
+- **BedrockService Tool-Use Support for Claude Models (#190)**: AWS Bedrock's Claude models now support native tool/function calling, matching the feature set of the direct Anthropic API.
+  - `formatToolsForClaude()` converts OpenAI-compatible tool schemas to the Claude-native `input_schema` format.
+  - `executeBedrockTool()` processes Claude `tool_use` blocks, invokes the registered tool, and appends `tool_result` messages back into the conversation.
+  - Multi-turn tool conversations are preserved by correctly handling structured content (arrays of `tool_use`/`tool_result` blocks) without flattening them via `toString()`.
+  - New integration tests in `BedrockTest.java` covering tool-enabled chat and multi-turn tool interactions.
+
+### 🪲 Fixed
+
+- **MCPRequestProcessor CORS parameter collision**: Renamed the `mcpServer` parameter in `handleCORSPreflight()` to `targetServer` to avoid a case-insensitive name collision with the `MCPServer` import, which caused the stricter BoxLang compiler to reject the file and 500 every MCP request.
+
+### 🧠 Updated
+
+- Removed obsolete scheduler test stubs (`DataProcessingScheduler.bx`, `ReportingScheduler.bx`).
+- Added Spreadsheet Loader integration documentation to the README.
+
+## [3.2.0] - 2026-05-14
 
 ### 🥊 New Features
 
