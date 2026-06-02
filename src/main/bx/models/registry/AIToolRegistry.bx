@@ -164,7 +164,7 @@ class extends="BaseRegistry" {
 				var tool = new ClosureTool(
 					toolName,
 					toolDescription,
-					() => invoke( targetInstance, methodName, arguments.filter( ( k, v ) => k != "_chatRequest" ) )
+					() => invoke( targetInstance, methodName, arguments )
 				)
 
 				// Store original method parameter metadata so getArgumentsSchema() sees real param names/types

@@ -80,17 +80,6 @@ class extends="BaseTool" {
 	}
 
 	/**
-	 * Override the parameter list used for schema generation and invocation coercion.
-	 * Each element must be a struct with at least { name, type, required }.
-	 *
-	 * @params Array of parameter descriptor structs
-	 */
-	ClosureTool function setMethodParameters( required array params ) {
-		variables.methodParameters = arguments.params
-		return this
-	}
-
-	/**
 	 * Set the callable function this tool will invoke.
 	 *
 	 * @callable A closure, lambda, or function reference
