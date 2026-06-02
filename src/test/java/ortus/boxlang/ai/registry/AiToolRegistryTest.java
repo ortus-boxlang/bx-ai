@@ -258,6 +258,101 @@ public class AiToolRegistryTest extends BaseIntegrationTest {
 	}
 
 	// -------------------------------------------------------------------------
+	// scanClass() — schema correctness
+	// -------------------------------------------------------------------------
+
+	@DisplayName( "scanClass() schema uses real parameter names, not 'args'" )
+	@Test
+	public void testScanClassSchemaHasRealParamNames() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				reg   = aiToolRegistry()
+				tools = reg.scanClass( createObject( "src.test.bx.tools.ScanTestTools" ) )
+				// getOrder is the first @AITool method
+				tool   = tools.filter( t => t.getName() == "getOrder" )[ 1 ]
+				schema = tool.generateSchema()
+				hasOrderId = schema.function.parameters.properties.keyExists( "orderId" )
+				hasArgs    = schema.function.parameters.properties.keyExists( "args" )
+				reg.unregister( "getOrder" )
+				reg.unregister( "searchOrders" )
+				reg.unregister( "echo" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "hasOrderId" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "hasArgs" ) ) ).isEqualTo( false );
+	}
+
+	@DisplayName( "scanClass() schema marks required parameters in the required array" )
+	@Test
+	public void testScanClassSchemaRequiredParams() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				reg    = aiToolRegistry()
+				tools  = reg.scanClass( createObject( "src.test.bx.tools.ScanTestTools" ) )
+				tool   = tools.filter( t => t.getName() == "searchOrders" )[ 1 ]
+				schema = tool.generateSchema()
+				required = schema.function.parameters.required
+				result   = required.contains( "query" ) && !required.contains( "limit" )
+				reg.unregister( "getOrder" )
+				reg.unregister( "searchOrders" )
+				reg.unregister( "echo" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( true );
+	}
+
+	@DisplayName( "scanClass() schema carries parameter descriptions from @hint" )
+	@Test
+	public void testScanClassSchemaParamDescriptions() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				reg    = aiToolRegistry()
+				tools  = reg.scanClass( createObject( "src.test.bx.tools.ScanTestTools" ) )
+				tool   = tools.filter( t => t.getName() == "getOrder" )[ 1 ]
+				schema = tool.generateSchema()
+				result = schema.function.parameters.properties.orderId.description
+				reg.unregister( "getOrder" )
+				reg.unregister( "searchOrders" )
+				reg.unregister( "echo" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( "The alphanumeric order ID, e.g. PD0002" );
+	}
+
+	@DisplayName( "scanClass() tool invocation forwards named arguments to the target method" )
+	@Test
+	public void testScanClassInvocationForwardsNamedArgs() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				reg    = aiToolRegistry()
+				tools  = reg.scanClass( createObject( "src.test.bx.tools.ScanTestTools" ) )
+				tool   = tools.filter( t => t.getName() == "echo" )[ 1 ]
+				result = tool.invoke( { value: "hello" } )
+				reg.unregister( "getOrder" )
+				reg.unregister( "searchOrders" )
+				reg.unregister( "echo" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( result ) ).isEqualTo( "hello" );
+	}
+
+	// -------------------------------------------------------------------------
 	// Singleton
 	// -------------------------------------------------------------------------
 

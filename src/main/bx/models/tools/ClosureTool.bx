@@ -29,6 +29,13 @@ class extends="BaseTool" {
 	property name="callable";
 
 	/**
+	 * Explicit parameter descriptors that override callable introspection during schema generation.
+	 * Each entry: { name: "orderId", type: "string", required: true }
+	 * Set by AIToolRegistry.scanClass() so scanned methods expose their real params, not the wrapper lambda's.
+	 */
+	property name="methodParameters" default=[];
+
+	/**
 	 * Maps BoxLang parameter types to JSON Schema types for OpenAI function-calling schemas.
 	 * Modeled on SchemaBuilder.TYPE_MAP but kept local to avoid import coupling.
 	 */
@@ -73,6 +80,17 @@ class extends="BaseTool" {
 	}
 
 	/**
+	 * Override the parameter list used for schema generation and invocation coercion.
+	 * Each element must be a struct with at least { name, type, required }.
+	 *
+	 * @params Array of parameter descriptor structs
+	 */
+	ClosureTool function setMethodParameters( required array params ) {
+		variables.methodParameters = arguments.params
+		return this
+	}
+
+	/**
 	 * Set the callable function this tool will invoke.
 	 *
 	 * @callable A closure, lambda, or function reference
@@ -105,7 +123,8 @@ class extends="BaseTool" {
 		// object/array (e.g. JSON-encoded fields like source_context or key_decisions). Without
 		// this, BoxLang's typed-arg binding would throw "Can't cast Struct<Ordered> to a string" before the callable runs.
 		var incomingArgs = arguments.args
-		variables.callable.$bx.meta.parameters.each( param => {
+		var coercionParams = variables.methodParameters.len() ? variables.methodParameters : variables.callable.$bx.meta.parameters
+		coercionParams.each( param => {
 			if ( ( param.type ?: "" ) == "string" && incomingArgs.keyExists( param.name ) ) {
 				var value = incomingArgs[ param.name ]
 				if ( !isNull( value ) && !isSimpleValue( value ) ) {
@@ -154,8 +173,9 @@ class extends="BaseTool" {
 				message : "No callable has been set. Use call() before calling getArgumentsSchema()."
 			)
 		}
-		var results = { "properties" : {}, "required" : [] }
-		variables.callable.$bx.meta.parameters.each( param => {
+		var results    = { "properties" : {}, "required" : [] }
+		var paramList  = variables.methodParameters.len() ? variables.methodParameters : variables.callable.$bx.meta.parameters
+		paramList.each( param => {
 			if ( param.required ) {
 				results.required.append( param.name )
 			}

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🪲 Fixed
+
+- **`@AITool` scan generates wrong parameter schema**: `aiToolRegistry().scanClass()` was wrapping annotated methods in a generic `(args) =>` lambda. `getArgumentsSchema()` introspected that wrapper and produced a single `args` property instead of the actual method parameters (e.g., `orderId`), and the `required` array was always empty for scanned tools. Fixed by storing the original method's parameter metadata (`name`, `type`, `required`) on the `ClosureTool` via `setMethodParameters()` and using it during schema generation when present. The wrapper lambda was also corrected to forward named arguments via the `arguments` scope, ensuring invocation works correctly once the schema exposes real parameter names.
+
 ## [3.3.0] - 2026-05-30
 
 ### 🥊 Added
