@@ -1,0 +1,38 @@
+/**
+ * Test fixture: a class with @AITool-annotated methods.
+ * Used by AiToolRegistryTest to validate scanClass() schema generation.
+ */
+class {
+
+	/**
+	 * Retrieve a single order by order ID.
+	 *
+	 * @orderId The alphanumeric order ID, e.g. PD0002
+	 */
+	@AITool( "Retrieve a single order by order ID." )
+	public string function getOrder( required string orderId ) {
+		return arguments.orderId
+	}
+
+	/**
+	 * Search orders by keyword.
+	 *
+	 * @query Search keyword
+	 * @limit Max results to return
+	 */
+	@AITool( "Search orders by keyword." )
+	public string function searchOrders( required string query, numeric limit = 10 ) {
+		return "results for #arguments.query#"
+	}
+
+	/**
+	 * Echo a value back to the caller.
+	 *
+	 * @value The value to echo
+	 */
+	@AITool( "Echo a value back to the caller." )
+	public string function echo( required string value ) {
+		return arguments.value
+	}
+
+}

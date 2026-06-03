@@ -164,8 +164,15 @@ class extends="BaseRegistry" {
 				var tool = new ClosureTool(
 					toolName,
 					toolDescription,
-					( args ) => invoke( targetInstance, methodName, args )
+					() => invoke( targetInstance, methodName, arguments )
 				)
+
+				// Store original method parameter metadata so getArgumentsSchema() sees real param names/types
+				tool.setMethodParameters( ( fn.parameters ?: [] ).map( p => ({
+					name     : p.name,
+					type     : p.type ?: "any",
+					required : p.required ?: false
+				}) ) )
 
 				argumentDescriptions.each( ( argName, argDesc ) => tool.describeArg( argName, argDesc ) )
 				register( tool, targetModule, toolName )

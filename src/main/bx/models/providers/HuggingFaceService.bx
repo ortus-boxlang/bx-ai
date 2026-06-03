@@ -30,9 +30,9 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	static {
 		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
-			// Default to Qwen 2.5 which is a popular model available on HuggingFace
-			// Users can override with any model available via HuggingFace's inference providers
-			"model" : "Qwen/Qwen2.5-72B-Instruct"
+			// Use an HF Inference-compatible default so tokens with only hf-inference enabled
+			// can chat successfully without requiring extra provider enablement.
+			"model" : "katanemo/Arch-Router-1.5B:hf-inference"
 		}
 		DEFAULT_EMBED_PARAMS = {
 		}
