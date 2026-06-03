@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.1] - 2026-06-03
+
 ### 🪲 Fixed
 
 - **`@AITool` scan generates wrong parameter schema**: `aiToolRegistry().scanClass()` was wrapping annotated methods in a generic `(args) =>` lambda. `getArgumentsSchema()` introspected that wrapper and produced a single `args` property instead of the actual method parameters (e.g., `orderId`), and the `required` array was always empty for scanned tools. Fixed by storing the original method's parameter metadata (`name`, `type`, `required`) on the `ClosureTool` via `setMethodParameters()` and using it during schema generation when present. The wrapper lambda was also corrected to forward named arguments via the `arguments` scope, ensuring invocation works correctly once the schema exposes real parameter names.
@@ -622,7 +624,8 @@ One of our biggest library updates yet! This release introduces a powerful new d
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.0...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.1...HEAD
+[3.3.1]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.0...v3.3.1
 [3.3.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.0.0...v3.1.0
