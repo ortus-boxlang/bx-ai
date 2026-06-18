@@ -39,7 +39,9 @@ import ortus.boxlang.runtime.types.Struct;
  */
 public class BedrockTest extends BaseIntegrationTest {
 
-	private static final String	BEDROCK_MODEL	= "anthropic.claude-3-5-sonnet-20240620-v1:0";
+	private static final String	BEDROCK_MODEL				= "anthropic.claude-3-5-sonnet-20240620-v1:0";
+	// Cross-region inference profile id reachable in eu-west-2 for structured-output coverage
+	private static final String	BEDROCK_STRUCTURED_MODEL	= "eu.anthropic.claude-sonnet-4-6";
 
 	private String				awsAccessKeyId;
 	private String				awsSecretAccessKey;
@@ -130,6 +132,49 @@ public class BedrockTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.get( Key.of( "result" ) ) ).isEqualTo( "San Salvador" );
+	}
+
+	@DisplayName( "Test Bedrock structured output via forced tool-use" )
+	@Test
+	public void testBedrockStructuredOutput() {
+		if ( !hasAwsCredentials() ) {
+			System.out.println( "Skipping testBedrockStructuredOutput - AWS credentials not configured in .env" );
+			return;
+		}
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+			result = aiChat(
+				messages = "John Doe is 30 years old and lives in Seattle. Extract his details.",
+				params   = { model: "%s", max_tokens: 300 },
+				options  = {
+					provider: "bedrock",
+					schema: {
+						"type": "object",
+						"properties": {
+							"name": { "type": "string" },
+							"age":  { "type": "integer" },
+							"city": { "type": "string" }
+						},
+						"required": [ "name", "age", "city" ]
+					}
+				}
+			)
+			isStruct = isStruct( result )
+			name = result.name ?: ""
+			age  = result.age  ?: 0
+			city = result.city ?: ""
+			println( result )
+			""".formatted( BEDROCK_STRUCTURED_MODEL ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isStruct" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "name" ) ).toString() ).contains( "John" );
+		assertThat( variables.getAsInteger( Key.of( "age" ) ) ).isEqualTo( 30 );
+		assertThat( variables.get( Key.of( "city" ) ).toString() ).contains( "Seattle" );
 	}
 
 }
