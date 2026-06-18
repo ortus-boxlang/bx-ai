@@ -21,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
+import ortus.boxlang.runtime.scopes.Key;
 
 /**
  * Integration tests for Claude AI provider
@@ -166,6 +167,162 @@ public class ClaudeTest extends BaseIntegrationTest {
 		var result = ( ortus.boxlang.runtime.types.IStruct ) variables.get( "result" );
 		assertThat( result.containsKey( "name" ) || result.containsKey( "NAME" ) ).isTrue();
 		assertThat( result.containsKey( "version" ) || result.containsKey( "VERSION" ) ).isTrue();
+	}
+
+	@DisplayName( "Structured output forces a tool-use schema for Claude" )
+	@Test
+	public void testStructuredOutputInjectsForcedTool() {
+		// Deterministic / credential-free: a beforeLLMCall middleware captures the request
+		// packet and short-circuits before any HTTP call, so we can assert the forced
+		// structured_output tool + tool_choice were injected.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService( "claude", { apiKey: "dummy-key" } )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract the person: John Doe, age 30" ),
+					{ model: "claude-sonnet-4-5", max_tokens: 200 },
+					{
+						provider: "claude",
+						schema: {
+							"type": "object",
+							"properties": {
+								"name": { "type": "string" },
+								"age":  { "type": "integer" }
+							},
+							"required": [ "name", "age" ]
+						}
+					}
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				hasTools       = captured.packet.keyExists( "tools" )
+				toolCount      = captured.packet.tools.len()
+				toolName       = captured.packet.tools[ 1 ].name
+				hasInputSchema = captured.packet.tools[ 1 ].keyExists( "input_schema" )
+				hasNameProp    = captured.packet.tools[ 1 ].input_schema.properties.keyExists( "name" )
+				hasToolChoice  = captured.packet.keyExists( "tool_choice" )
+				choiceType     = captured.packet.tool_choice.type
+				choiceName     = captured.packet.tool_choice.name
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasTools" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "toolCount" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "toolName" ) ) ).isEqualTo( "structured_output" );
+		assertThat( variables.getAsBoolean( Key.of( "hasInputSchema" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasNameProp" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasToolChoice" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "choiceType" ) ) ).isEqualTo( "tool" );
+		assertThat( variables.get( Key.of( "choiceName" ) ) ).isEqualTo( "structured_output" );
+	}
+
+	@DisplayName( "Structured output extracts the forced tool_use input (canned response)" )
+	@Test
+	public void testStructuredOutputExtractsFromToolUse() {
+		// Deterministic: a wrapLLMCall middleware returns a canned Anthropic response containing
+		// the forced structured_output tool_use block, exercising the extraction +
+		// populateStructuredOutput path with no HTTP.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService( "claude", { apiKey: "dummy-key" } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe, age 30" ),
+					{ model: "claude-sonnet-4-5" },
+					{
+						provider: "claude",
+						schema: {
+							"type": "object",
+							"properties": { "name": { "type": "string" }, "age": { "type": "integer" } },
+							"required": [ "name", "age" ]
+						}
+					}
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						return {
+							"content": [ {
+								"type":  "tool_use",
+								"name":  "structured_output",
+								"input": { "name": "John Doe", "age": 30 }
+							} ],
+							"stop_reason": "tool_use",
+							"usage": { "input_tokens": 5, "output_tokens": 8 }
+						}
+					}
+				} )
+				result   = provider.chat( chatRequest )
+				isStruct = isStruct( result )
+				name     = result.name
+				age      = result.age
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isStruct" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "name" ) ).toString() ).isEqualTo( "John Doe" );
+		assertThat( variables.getAsInteger( Key.of( "age" ) ) ).isEqualTo( 30 );
+	}
+
+	@DisplayName( "Structured output throws (not silent) when the forced tool block is absent" )
+	@Test
+	public void testStructuredOutputThrowsWhenToolAbsent() {
+		// Deterministic: canned response is a text block (e.g. truncated at max_tokens), so the
+		// forced structured_output block is missing. Must throw StructuredOutputError.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService( "claude", { apiKey: "dummy-key" } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe, age 30" ),
+					{ model: "claude-sonnet-4-5" },
+					{
+						provider: "claude",
+						schema: {
+							"type": "object",
+							"properties": { "name": { "type": "string" } },
+							"required": [ "name" ]
+						}
+					}
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						return {
+							"content": [ { "type": "text", "text": "I cannot comply." } ],
+							"stop_reason": "max_tokens",
+							"usage": { "input_tokens": 5, "output_tokens": 3 }
+						}
+					}
+				} )
+				caughtType = ""
+				caughtMsg  = ""
+				try {
+					provider.chat( chatRequest )
+				} catch( any e ) {
+					caughtType = e.type
+					caughtMsg  = e.message
+				}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "caughtType" ) ) ).isEqualTo( "StructuredOutputError" );
+		assertThat( variables.get( Key.of( "caughtMsg" ) ).toString() ).contains( "truncated" );
 	}
 
 	@DisplayName( "Test streaming chat with Claude" )
