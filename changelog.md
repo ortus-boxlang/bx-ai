@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🪲 Fixed
+
+- **Claude structured output via synthetic tool**: Claude models lack OpenAI-style `response_format`, so structured output was silently unsupported — the schema was never sent and `populateStructuredOutput()` failed parsing the model's prose. Fixed by injecting a synthetic `structured_output` tool (requested schema as `input_schema`), pinning `tool_choice` to it, and routing the returned `tool_use.input` through `populateStructuredOutput()`. Now fails loud with `StructuredOutputError` + ai-log when the forced tool block is absent (max_tokens truncation / refusal / tool_choice not honored) instead of feeding prose into the JSON populator. Adds deterministic, credential-free tests (beforeLLMCall packet capture + wrapLLMCall canned-response extraction/throw) for both providers, plus a live Bedrock structured-output test. [#198](https://github.com/ortus-boxlang/bx-ai/issues/198)
+
 ## [3.3.1] - 2026-06-03
 
 ### 🪲 Fixed
