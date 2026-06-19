@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.2] - 2026-06-19
+
 ### 🪲 Fixed
 
 - **Claude structured output via synthetic tool**: Claude models lack OpenAI-style `response_format`, so structured output was silently unsupported — the schema was never sent and `populateStructuredOutput()` failed parsing the model's prose. Fixed by injecting a synthetic `structured_output` tool (requested schema as `input_schema`), pinning `tool_choice` to it, and routing the returned `tool_use.input` through `populateStructuredOutput()`. Now fails loud with `StructuredOutputError` + ai-log when the forced tool block is absent (max_tokens truncation / refusal / tool_choice not honored) instead of feeding prose into the JSON populator. Adds deterministic, credential-free tests (beforeLLMCall packet capture + wrapLLMCall canned-response extraction/throw) for both providers, plus a live Bedrock structured-output test. [#198](https://github.com/ortus-boxlang/bx-ai/issues/198)
@@ -628,7 +630,8 @@ One of our biggest library updates yet! This release introduces a powerful new d
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.1...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.2...HEAD
+[3.3.2]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.1...v3.3.2
 [3.3.1]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.0...v3.3.1
 [3.3.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.1.0...v3.2.0
