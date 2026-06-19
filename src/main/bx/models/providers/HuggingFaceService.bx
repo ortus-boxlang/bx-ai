@@ -30,9 +30,8 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	static {
 		CAPABILITIES = [ "chat", "stream", "embeddings" ]
 		DEFAULT_CHAT_PARAMS = {
-			// Use an HF Inference-compatible default so tokens with only hf-inference enabled
-			// can chat successfully without requiring extra provider enablement.
-			"model" : "katanemo/Arch-Router-1.5B:hf-inference"
+			//"model" : "allenai/Olmo-3-7B-Instruct:publicai"
+			"model" : "openai/gpt-oss-120b:groq"
 		}
 		DEFAULT_EMBED_PARAMS = {
 		}
