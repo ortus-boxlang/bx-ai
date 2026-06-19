@@ -32,6 +32,7 @@
  * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
  */
 import bxModules.bxai.models.util.AwsSignatureV4;
+import bxModules.bxai.models.util.SchemaBuilder;
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
@@ -73,6 +74,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		};
 		// Bedrock service name for AWS signing
 		AWS_SERVICE = "bedrock";
+		// Synthetic tool name used to force Claude into structured-output mode on Bedrock
+		STRUCTURED_OUTPUT_TOOL = "structured_output";
 	}
 
 	/**
@@ -678,6 +681,35 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
+	 * Inject a forced structured-output tool into the Claude request packet.
+	 *
+	 * Exposes the request's structured-output schema as the synthetic tool's input_schema
+	 * and pins tool_choice to it, so Claude is guaranteed to return a single tool_use block
+	 * whose input conforms to the schema. Any real tools are left in place but will not be
+	 * called while tool_choice is forced.
+	 *
+	 * @dataPacket  The Claude request packet (mutated in place)
+	 * @chatRequest The request carrying the structured-output schema
+	 */
+	private void function injectStructuredOutputTool( required struct dataPacket, required AiChatRequest chatRequest ){
+		var cleanSchema = SchemaBuilder::cleanSchema( arguments.chatRequest.getStructuredOutput() );
+
+		if ( !arguments.dataPacket.keyExists( "tools" ) ) {
+			arguments.dataPacket[ "tools" ] = [];
+		}
+		arguments.dataPacket.tools.append( {
+			"name"        : static.STRUCTURED_OUTPUT_TOOL,
+			"description" : "Record the response as structured data that conforms to the required JSON schema.",
+			"input_schema": cleanSchema
+		} );
+
+		arguments.dataPacket[ "tool_choice" ] = {
+			"type" : "tool",
+			"name" : static.STRUCTURED_OUTPUT_TOOL
+		};
+	}
+
+	/**
 	 * Execute a Claude tool call returned by Bedrock and append the tool_result
 	 * message to the conversation.
 	 *
@@ -742,6 +774,17 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			params      = arguments.chatRequest.getParams(),
 			modelFamily = modelFamily
 		);
+
+		// -------------------------------------------------------------------------------------------
+		// --- Structured output via forced tool-use (Claude models only) ---
+		// Claude on Bedrock has no response_format; the robust pattern is to expose the requested
+		// schema as a tool's input_schema and force the model to call it, then read tool_use.input.
+		// @see https://aws.amazon.com/blogs/machine-learning/structured-data-response-with-amazon-bedrock-prompt-engineering-and-tool-use/
+		// -------------------------------------------------------------------------------------------
+		var usingStructuredOutput = ( modelFamily == "claude" && arguments.chatRequest.isStructuredOutput() );
+		if ( usingStructuredOutput ) {
+			injectStructuredOutputTool( dataPacket, arguments.chatRequest );
+		}
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire beforeLLMCall middleware ---
@@ -814,6 +857,33 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					usage               : openAIResponse.usage,
 					timestamp           : now()
 				}
+			);
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Structured output (Claude): the forced synthetic tool's input IS the result. ---
+		// Authoritative path — if the block is absent (truncated at max_tokens, a refusal, or
+		// tool_choice not honored) we fail loudly instead of feeding prose to the JSON populator.
+		// -------------------------------------------------------------------------------------------
+		if ( usingStructuredOutput ) {
+			// Local copy: lambdas don't capture the class `static` scope.
+			var toolName         = static.STRUCTURED_OUTPUT_TOOL;
+			var structuredBlocks = ( result.keyExists( "content" ) && isArray( result.content ) )
+				? result.content.filter( b => ( b?.type ?: "" ) == "tool_use" && ( b?.name ?: "" ) == toolName )
+				: [];
+			if ( structuredBlocks.len() ) {
+				return populateStructuredOutput( jsonSerialize( structuredBlocks.first().input ?: {} ), arguments.chatRequest );
+			}
+			var stopReason = result.stop_reason ?: "unknown";
+			writeLog(
+				text: "Structured output requested but no '#toolName#' tool_use block returned (model=#modelId#, stop_reason=#stopReason#)",
+				type: "error",
+				log : "ai"
+			);
+			throw(
+				type   : "StructuredOutputError",
+				message: "Model did not return the forced structured_output tool (stop_reason=#stopReason#)."
+					& ( stopReason == "max_tokens" ? " Response was truncated — increase max_tokens." : "" )
 			);
 		}
 

@@ -14,6 +14,7 @@
  * ----------------------------------------------------------------------------------
  */
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.util.SchemaBuilder;
 
 class extends="BaseService" implements="IAiChatService" {
 
@@ -32,6 +33,8 @@ class extends="BaseService" implements="IAiChatService" {
 			// https://docs.anthropic.com/en/api/versioning
 			"anthropic-version" : "2023-06-01"
 		};
+		// Synthetic tool name used to force Claude into structured-output mode
+		STRUCTURED_OUTPUT_TOOL = "structured_output";
 	}
 
 	/**
@@ -448,6 +451,17 @@ class extends="BaseService" implements="IAiChatService" {
 		}
 
 		// -------------------------------------------------------------------------------------------
+		// --- Structured output via forced tool-use ---
+		// The Anthropic Messages API has no response_format; the robust pattern is to expose the
+		// requested schema as a tool's input_schema and force the model to call it, then read
+		// tool_use.input. https://docs.anthropic.com/en/docs/build-with-claude/tool-use
+		// -------------------------------------------------------------------------------------------
+		var usingStructuredOutput = arguments.chatRequest.isStructuredOutput();
+		if( usingStructuredOutput ){
+			injectStructuredOutputTool( dataPacket, arguments.chatRequest );
+		}
+
+		// -------------------------------------------------------------------------------------------
 		// --- Fire beforeLLMCall middleware ---
 		// -------------------------------------------------------------------------------------------
 		var llmContext = { chatRequest: arguments.chatRequest, dataPacket: dataPacket }
@@ -502,6 +516,31 @@ class extends="BaseService" implements="IAiChatService" {
 				timestamp        : now()
 			} )
 		}
+		// Structured output: the forced synthetic tool's input IS the result. Authoritative path —
+		// if the block is absent (truncated at max_tokens, a refusal, or tool_choice not honored)
+		// we fail loudly instead of feeding prose to the JSON populator.
+		if( usingStructuredOutput ){
+			// Local copy: lambdas don't capture the class `static` scope.
+			var toolName         = static.STRUCTURED_OUTPUT_TOOL;
+			var structuredBlocks = ( result.keyExists( "content" ) && isArray( result.content ) )
+				? result.content.filter( b => ( b?.type ?: "" ) == "tool_use" && ( b?.name ?: "" ) == toolName )
+				: [];
+			if( structuredBlocks.len() ){
+				return populateStructuredOutput( jsonSerialize( structuredBlocks.first().input ?: {} ), arguments.chatRequest );
+			}
+			var stopReason = result.stop_reason ?: "unknown";
+			writeLog(
+				text: "Structured output requested but no '#toolName#' tool_use block returned (model=#arguments.chatRequest.getModel()#, stop_reason=#stopReason#)",
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "StructuredOutputError",
+				message: "Model did not return the forced structured_output tool (stop_reason=#stopReason#)."
+					& ( stopReason == "max_tokens" ? " Response was truncated — increase max_tokens." : "" )
+			);
+		}
+
 		// Handle tool use responses
 		// Check if Claude wants to use tools
 		var usingTools = false
@@ -566,6 +605,35 @@ class extends="BaseService" implements="IAiChatService" {
 			case "single": default:
 				return content;
 		}
+	}
+
+	/**
+	 * Inject a forced structured-output tool into the Claude request packet.
+	 *
+	 * Exposes the request's structured-output schema as the synthetic tool's input_schema
+	 * and pins tool_choice to it, so Claude is guaranteed to return a single tool_use block
+	 * whose input conforms to the schema. Any real tools are left in place but will not be
+	 * called while tool_choice is forced.
+	 *
+	 * @dataPacket  The Claude request packet (mutated in place)
+	 * @chatRequest The request carrying the structured-output schema
+	 */
+	private void function injectStructuredOutputTool( required struct dataPacket, required AiChatRequest chatRequest ){
+		var cleanSchema = SchemaBuilder::cleanSchema( arguments.chatRequest.getStructuredOutput() );
+
+		if( !arguments.dataPacket.keyExists( "tools" ) ){
+			arguments.dataPacket[ "tools" ] = [];
+		}
+		arguments.dataPacket.tools.append( {
+			"name"        : static.STRUCTURED_OUTPUT_TOOL,
+			"description" : "Record the response as structured data that conforms to the required JSON schema.",
+			"input_schema": cleanSchema
+		} );
+
+		arguments.dataPacket[ "tool_choice" ] = {
+			"type" : "tool",
+			"name" : static.STRUCTURED_OUTPUT_TOOL
+		};
 	}
 
 	/**
