@@ -38,6 +38,7 @@ class {
 			"huggingface",
 			"minimax",
 			"mistral",
+			"mock",
 			"ollama",
 			"openai",
 			"openai-compatible",
@@ -117,6 +118,9 @@ class {
 				break
 			case "minimax":
 				targetClass = "bxModules.bxai.models.providers.MiniMaxService"
+				break
+			case "mock":
+				targetClass = "bxModules.bxai.models.providers.MockService"
 				break
 			case "ollama":
 				targetClass = "bxModules.bxai.models.providers.OllamaService"

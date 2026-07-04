@@ -1,0 +1,84 @@
+/**
+ * Mock Provider Testing Example
+ *
+ * The "mock" provider is a full IAiChatService implementation with no HTTP
+ * transport — scripted responses drive the complete request pipeline
+ * (middleware, tool-calling loop, return formats) deterministically.
+ *
+ * Use it to test your AI code (and your guardrails) offline: no API keys,
+ * no token costs, no flaky network.
+ *
+ * Responses come from:
+ *   1. The instance queue: aiService( "mock" ).setResponses([ ... ])
+ *   2. Per-request:        providerOptions: { responses: [ ... ] }
+ *   3. Fallback:           "Mock response"
+ */
+
+println( "=== Mock Provider Testing ===" )
+println( "" )
+
+// -----------------------------------------------------------------------------
+// 1. Simple scripted response
+// -----------------------------------------------------------------------------
+answer = aiChat( "Hello", {}, {
+	provider       : "mock",
+	providerOptions: { responses: [ "Hi there! I am the mock provider." ] }
+} )
+println( "--- Scripted response ---" )
+println( "Response: #answer#" )
+println( "" )
+
+// -----------------------------------------------------------------------------
+// 2. Scripted tool-calling loop — fully offline
+// -----------------------------------------------------------------------------
+weatherTool = aiTool( "getWeather", "Get the weather for a city", ( required string city ) => {
+	println( "  [TOOL] getWeather invoked for: #city#" )
+	return "Sunny and 85F in #city#"
+} )
+
+answer = aiChat( "What is the weather in Miami?", { tools: [ weatherTool ] }, {
+	provider       : "mock",
+	providerOptions: {
+		responses: [
+			// Turn 1: the "model" decides to call the tool
+			{ toolCalls: [ { name: "getWeather", arguments: { city: "Miami" } } ] },
+			// Turn 2: the "model" answers using the tool result
+			"The weather in Miami is sunny and 85F."
+		]
+	}
+} )
+println( "--- Tool-calling loop ---" )
+println( "Response: #answer#" )
+println( "" )
+
+// -----------------------------------------------------------------------------
+// 3. Assert exactly what was sent to the provider
+// -----------------------------------------------------------------------------
+// Recorded requests show the POST-middleware, POST-sanitization payload — so
+// you can prove your guardrails did their job.
+import bxModules.bxai.models.providers.MockService;
+
+MockService::clearRecorded()
+
+aiChat( "Contains" & char( 8203 ) & " hidden characters", {}, {
+	provider       : "mock",
+	providerOptions: { responses: [ "ok" ] }
+} )
+
+sent = MockService::getRecorded()[ 1 ]
+println( "--- Request recording ---" )
+println( "Provider received (sanitized): #sent.messages[ 1 ].content#" )
+println( "" )
+
+// -----------------------------------------------------------------------------
+// 4. Instance-level usage for unit tests
+// -----------------------------------------------------------------------------
+mock = aiService( "mock" ).setResponses( [ "first answer", "second answer" ] )
+
+r1 = mock.chat( aiChatRequest( "Question one", {}, { returnFormat: "single" } ) )
+r2 = mock.chat( aiChatRequest( "Question two", {}, { returnFormat: "single" } ) )
+
+println( "--- Instance queue ---" )
+println( "First:  #r1#" )
+println( "Second: #r2#" )
+println( "Requests recorded on instance: #mock.getReceivedRequests().len()#" )

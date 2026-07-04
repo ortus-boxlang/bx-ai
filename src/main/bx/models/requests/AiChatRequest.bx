@@ -15,6 +15,8 @@
  * This models a chat request that will be sent to a provider
  */
 import bxModules.bxai.models.util.SchemaBuilder;
+import bxModules.bxai.models.security.PromptSecurity;
+import bxModules.bxai.models.security.SecurityDirector;
 
 class extends="AiBaseRequest"{
 
@@ -93,6 +95,32 @@ class extends="AiBaseRequest"{
 		// Render the messages with bindings applied (including ${context} if present)
 		variables.messages = variables.aiMessage.render();
 
+		// ---------------------------------------------------------------------------
+		// Security: default-on unicode hygiene + optional global guardrail auto-attach
+		// ---------------------------------------------------------------------------
+		// Skipped for internal security requests (LLM judge, etc.) and when the caller
+		// explicitly opts out with `secure: false`.
+		var securitySettings = isStruct( options.security ?: "" ) ? options.security : {};
+		var skipSecurity     = ( options._bxaiSecurityInternal ?: false )
+			|| variables.providerOptions.keyExists( "_bxaiSecurityInternal" )
+			|| ( ( options.secure ?: true ) == false );
+		if( !skipSecurity ){
+			// Unicode hygiene on user messages — DEFAULT ON, independent of security.enabled
+			applyInputHygiene( securitySettings.input ?: {} );
+
+			// Auto-attach the global security middleware stack when enabled
+			// (attached first so guardrails run before any user middleware)
+			if( securitySettings.enabled ?: false ){
+				addMiddleware( SecurityDirector::buildGlobalMiddleware( securitySettings ) );
+			}
+		}
+
+		// Attach per-request middleware passed via options (aiChat/aiChatRequest DX):
+		// IAiMiddleware instances, struct-of-closures, or arrays of either
+		if( options.keyExists( "middleware" ) ){
+			addMiddleware( options.middleware );
+		}
+
 		// Check for explicit schema first (from schema() method)
 		if( options.keyExists( "schema" ) ) {
 			variables.structuredOutputDefinition = options.schema;
@@ -110,6 +138,41 @@ class extends="AiBaseRequest"{
 			}
 		}
 		return this;
+	}
+
+	/**
+	 * Apply unicode hygiene (NFKC normalization + invisible-character stripping) to
+	 * all user-role message content, in place. Message struct references are shared
+	 * with the provider dataPacket, so hygiene applies everywhere.
+	 *
+	 * @inputSettings The `security.input` settings struct (normalizeUnicode/stripZeroWidth flags)
+	 */
+	private void function applyInputHygiene( struct inputSettings = {} ){
+		var doNormalize = arguments.inputSettings.normalizeUnicode ?: true;
+		var doStrip     = arguments.inputSettings.stripZeroWidth ?: true;
+
+		if( !doNormalize && !doStrip ){
+			return;
+		}
+
+		for( var message in variables.messages ){
+			if( ( message.role ?: "" ) != "user" ){
+				continue;
+			}
+
+			// Simple string content
+			if( isSimpleValue( message.content ?: "" ) && len( message.content ?: "" ) ){
+				message.content = PromptSecurity::normalize( message.content, doNormalize, doStrip );
+			}
+			// Multipart content: normalize the text parts only
+			else if( isArray( message.content ?: "" ) ){
+				for( var part in message.content ){
+					if( isStruct( part ) && ( part.type ?: "" ) == "text" && len( part.text ?: "" ) ){
+						part.text = PromptSecurity::normalize( part.text, doNormalize, doStrip );
+					}
+				}
+			}
+		}
 	}
 
 	/**

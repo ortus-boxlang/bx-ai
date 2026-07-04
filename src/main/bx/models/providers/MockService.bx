@@ -1,0 +1,295 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Mock AI Service Provider — deterministic, offline chat provider for testing.
+ *
+ * Extends OpenAIService and replaces ONLY the HTTP transport with scripted responses,
+ * so the full request pipeline (middleware hooks, tool-calling loop, return formats,
+ * structured output) behaves exactly like a real provider — without network calls,
+ * API keys, or token costs.
+ *
+ * Scripted responses come from (in priority order):
+ *   1. The instance queue seeded via setResponses([ ... ])
+ *   2. The per-request option providerOptions.responses (consumed in order)
+ *   3. A default "Mock response" fallback
+ *
+ * Each queue entry can be:
+ *   - A string                     → assistant message content
+ *   - { toolCalls: [ {name, arguments} ] } → a tool-call turn (arguments: struct or JSON string)
+ *   - { choices: [...] }           → a raw OpenAI-format completion, returned as-is
+ *
+ * Every request the mock receives is recorded (post-middleware, post-sanitization view)
+ * on the instance (getReceivedRequests()) and in a static shared log (MockService::getRecorded())
+ * so tests can assert exactly what would have been sent to a real provider.
+ *
+ * Usage:
+ *   result = aiChat( "Hello", {}, {
+ *       provider        : "mock",
+ *       providerOptions : { responses: [ "Hi there!" ] }
+ *   } )
+ *
+ *   // Scripted multi-turn with tool calls
+ *   mock = aiService( "mock" ).setResponses( [
+ *       { toolCalls: [ { name: "getWeather", arguments: { city: "Miami" } } ] },
+ *       "It's 85F and sunny in Miami."
+ *   ] )
+ *   answer = mock.chat( aiChatRequest( "What's the weather?", { tools: [ weatherTool ] } ) )
+ */
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+
+class extends="OpenAIService" {
+
+	/**
+	 * The scripted response queue for this instance
+	 */
+	property name="responses" type="array" default=[];
+
+	/**
+	 * Every request this instance received: { model, messages, timestamp }
+	 */
+	property name="receivedRequests" type="array" default=[];
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		CAPABILITIES = [ "chat", "stream" ]
+		DEFAULT_CHAT_PARAMS = {
+			"model" : "mock-model"
+		}
+		// Shared request log across all mock instances (aiChat creates its own instance)
+		RECORDED = []
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		super.init()
+		variables.name             = "mock"
+		variables.chatURL          = "mock://chat"
+		variables.responses        = []
+		variables.receivedRequests = []
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
+	}
+
+	/**
+	 * Seed the scripted response queue. Responses are consumed in order — one per
+	 * LLM round-trip, including the intermediate turns of a tool-calling loop.
+	 *
+	 * @responses Array of strings, { toolCalls: [...] } structs, or raw completions
+	 *
+	 * @return This service for chaining
+	 */
+	MockService function setResponses( required array responses ){
+		variables.responses = arguments.responses
+		return this
+	}
+
+	/**
+	 * Get the shared static request log (all mock instances)
+	 */
+	static array function getRecorded(){
+		return static.RECORDED
+	}
+
+	/**
+	 * Clear the shared static request log
+	 */
+	static void function clearRecorded(){
+		static.RECORDED.clear()
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Transport Overrides — no HTTP, scripted responses instead
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Replace the HTTP transport with a scripted response, recording the request.
+	 * Announces the same onAIChatRequest / onAIChatResponse events as the real transport.
+	 */
+	private function sendChatRequest(
+		required AiChatRequest chatRequest,
+		required struct dataPacket,
+		chatUrl = getChatURL()
+	){
+		BoxAnnounce( "onAIChatRequest", {
+			"dataPacket" : arguments.dataPacket,
+			"chatRequest": arguments.chatRequest,
+			"provider"   : this
+		} )
+
+		recordRequest( arguments.dataPacket )
+
+		var response = buildCompletion( nextScriptedResponse( arguments.chatRequest ), arguments.dataPacket )
+
+		BoxAnnounce( "onAIChatResponse", {
+			"chatRequest": arguments.chatRequest,
+			"response"   : response,
+			"rawResponse": response,
+			"provider"   : this
+		} )
+
+		return response
+	}
+
+	/**
+	 * Replace the streaming transport with a simulated stream: the scripted response
+	 * content is emitted word-by-word through the callback, then the aggregated
+	 * streamState is returned exactly like the real SSE transport.
+	 *
+	 * Mock chunk shape (simplified): { type: "content", content: "<piece>" }
+	 */
+	private struct function sendStreamRequest(
+		required AiChatRequest chatRequest,
+		required struct dataPacket,
+		required function callback,
+		chatUrl = getChatURL()
+	){
+		BoxAnnounce( "onAIChatRequest", {
+			"dataPacket" : arguments.dataPacket,
+			"chatRequest": arguments.chatRequest,
+			"provider"   : this
+		} )
+
+		recordRequest( arguments.dataPacket )
+
+		var completion = buildCompletion( nextScriptedResponse( arguments.chatRequest ), arguments.dataPacket )
+		var message    = completion.choices.first().message
+
+		var streamState = {
+			"content"     : message.content ?: "",
+			"finishReason": completion.choices.first().finish_reason ?: "stop",
+			"toolCalls"   : message.tool_calls ?: [],
+			"usage"       : completion.usage ?: {}
+		}
+
+		// Emit the content word-by-word to simulate streaming
+		if( len( streamState.content ) ){
+			for( var piece in streamState.content.listToArray( " " ) ){
+				arguments.callback( { "type": "content", "content": piece & " " } )
+			}
+		}
+
+		return streamState
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Helpers
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Record a snapshot of the received request on the instance and the static shared log
+	 */
+	private void function recordRequest( required struct dataPacket ){
+		var snapshot = {
+			"model"    : arguments.dataPacket.model ?: "",
+			"messages" : duplicate( arguments.dataPacket.messages ?: [] ),
+			"timestamp": now()
+		}
+		variables.receivedRequests.append( snapshot )
+		static.RECORDED.append( snapshot )
+	}
+
+	/**
+	 * Pop the next scripted response: instance queue first, then the per-request
+	 * providerOptions.responses queue, then the default fallback.
+	 */
+	private any function nextScriptedResponse( required AiChatRequest chatRequest ){
+		if( variables.responses.len() ){
+			var nextResponse = variables.responses.first()
+			variables.responses.deleteAt( 1 )
+			return nextResponse
+		}
+
+		var requestResponses = arguments.chatRequest.getProviderOption( "responses", [] )
+		if( isArray( requestResponses ) && requestResponses.len() ){
+			var nextRequestResponse = requestResponses.first()
+			requestResponses.deleteAt( 1 )
+			return nextRequestResponse
+		}
+
+		return "Mock response"
+	}
+
+	/**
+	 * Build an OpenAI-format chat completion from a scripted entry
+	 */
+	private struct function buildCompletion( required any scripted, required struct dataPacket ){
+		// Raw completion passthrough
+		if( isStruct( arguments.scripted ) && arguments.scripted.keyExists( "choices" ) ){
+			return arguments.scripted
+		}
+
+		var message      = { "role": "assistant", "content": "" }
+		var finishReason = "stop"
+
+		// Tool-call turn: { toolCalls: [ { name, arguments } ] }
+		if( isStruct( arguments.scripted ) && arguments.scripted.keyExists( "toolCalls" ) ){
+			finishReason = "tool_calls"
+			message[ "content" ]    = arguments.scripted.content ?: ""
+			message[ "tool_calls" ] = arguments.scripted.toolCalls.map( ( toolCall, index ) => {
+				var toolArguments = toolCall.arguments ?: {}
+				return {
+					"id"      : toolCall.id ?: "mock-call-#index#",
+					"type"    : "function",
+					"function": {
+						"name"     : toolCall.name ?: "",
+						"arguments": isSimpleValue( toolArguments ) ? toolArguments : jsonSerialize( toolArguments )
+					}
+				}
+			} )
+		}
+		// Simple string content
+		else if( isSimpleValue( arguments.scripted ) ){
+			message[ "content" ] = arguments.scripted
+		}
+		// Anything else: serialize as content
+		else {
+			message[ "content" ] = jsonSerialize( arguments.scripted )
+		}
+
+		// Rough token estimates (4 chars per token heuristic)
+		var promptChars     = len( jsonSerialize( arguments.dataPacket.messages ?: [] ) )
+		var completionChars = len( message.content ?: "" )
+
+		return {
+			"id"      : "mock-" & createUUID(),
+			"object"  : "chat.completion",
+			"created" : now().toEpoch(),
+			"model"   : arguments.dataPacket.model ?: "mock-model",
+			"choices" : [
+				{
+					"index"        : 0,
+					"finish_reason": finishReason,
+					"message"      : message
+				}
+			],
+			"usage"   : {
+				"prompt_tokens"     : int( promptChars / 4 ),
+				"completion_tokens" : int( completionChars / 4 ),
+				"total_tokens"      : int( ( promptChars + completionChars ) / 4 )
+			}
+		}
+	}
+
+}

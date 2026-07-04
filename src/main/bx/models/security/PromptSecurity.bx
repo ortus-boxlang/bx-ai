@@ -1,0 +1,359 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Static utility for prompt-injection defense: text normalization (hygiene) and
+ * heuristic scanning of untrusted content for injection patterns.
+ *
+ * This is the shared engine used by the security middleware (InputSanitizerMiddleware),
+ * the request pipeline (AiChatRequest default-on hygiene), and available directly for
+ * custom flows:
+ *
+ *   import bxModules.bxai.models.security.PromptSecurity;
+ *
+ *   clean  = PromptSecurity::normalize( untrustedText )
+ *   report = PromptSecurity::scan( untrustedText )
+ *   if( !report.safe ){ ... report.findings ... }
+ *
+ * Built-in detectors:
+ *   - instructionOverride : "ignore previous instructions", "disregard your prompt", etc.
+ *   - roleImpersonation   : "you are now...", fake role headers (<|im_start|>, [INST], <system>)
+ *   - jailbreak           : DAN-style markers, "developer mode", "no restrictions"
+ *   - invisibleUnicode    : zero-width and bidi-control characters hiding instructions
+ *   - base64Blob          : long base64 runs that decode to readable text (smuggled payloads)
+ *   - exfilUrl            : markdown images / URLs carrying data-bearing query strings
+ */
+class {
+
+	static {
+
+		/**
+		 * The default detector set applied when none is specified
+		 */
+		final DEFAULT_DETECTORS = [
+			"instructionOverride",
+			"roleImpersonation",
+			"jailbreak",
+			"invisibleUnicode",
+			"base64Blob",
+			"exfilUrl"
+		]
+
+		/**
+		 * Zero-width, bidi-control and other invisible characters used to hide instructions
+		 * U+200B-200F (zero-width space/joiners, LRM/RLM), U+202A-202E (bidi embedding/overrides),
+		 * U+2060-2064 (word joiner, invisible operators), U+FEFF (BOM / zero-width no-break space)
+		 */
+		final INVISIBLE_CHARS_REGEX = "[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]"
+
+		/**
+		 * Candidate base64 runs: 80+ chars of base64 alphabet with optional padding
+		 */
+		final BASE64_PATTERN = "[A-Za-z0-9+/]{80,}={0,2}"
+
+		/**
+		 * Common unicode homoglyphs (Cyrillic/Greek lookalikes) folded to ASCII for the
+		 * DETECTION copy only — never applied to real message content, since that would
+		 * corrupt legitimate non-Latin text.
+		 */
+		final HOMOGLYPHS = {
+			"#char( 1072 )#": "a", "#char( 1077 )#": "e", "#char( 1086 )#": "o", "#char( 1088 )#": "p",
+			"#char( 1089 )#": "c", "#char( 1093 )#": "x", "#char( 1091 )#": "y", "#char( 1110 )#": "i",
+			"#char( 1109 )#": "s", "#char( 1040 )#": "A", "#char( 1042 )#": "B", "#char( 1045 )#": "E",
+			"#char( 1050 )#": "K", "#char( 1052 )#": "M", "#char( 1053 )#": "H", "#char( 1054 )#": "O",
+			"#char( 1056 )#": "P", "#char( 1057 )#": "C", "#char( 1058 )#": "T", "#char( 1061 )#": "X",
+			"#char( 959 )#" : "o", "#char( 945 )#" : "a", "#char( 918 )#" : "Z", "#char( 913 )#" : "A",
+			"#char( 917 )#" : "E", "#char( 927 )#" : "O", "#char( 929 )#" : "P", "#char( 932 )#" : "T"
+		}
+
+		/**
+		 * Heuristic regex patterns per detector. All patterns embed their own flags.
+		 */
+		final DETECTOR_PATTERNS = {
+			"instructionOverride": [
+				"(?i)ignore\s+(all\s+|any\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|directives?|rules?|messages?)",
+				"(?i)disregard\s+(all\s+|any\s+|your\s+|the\s+)?(previous\s+|prior\s+|above\s+|system\s+)?(prompt|instructions?|rules?|directives?)",
+				"(?i)forget\s+(everything|all|your\s+(instructions?|rules?|training|prompt))",
+				"(?i)(override|overwrite)\s+(your|the|all)\s+(system\s+)?(prompt|instructions?|rules?)",
+				"(?i)new\s+(system\s+)?instructions?\s*:",
+				"(?i)do\s+not\s+(follow|obey)\s+(your|the|any)\s+(previous\s+|prior\s+|system\s+|original\s+)?(instructions?|rules?|prompt)"
+			],
+			"roleImpersonation": [
+				"(?i)you\s+are\s+now\s+(a|an|the|in|no\s+longer)\b",
+				"(?i)act\s+as\s+(if\s+you\s+(are|were)\s+)?(the\s+|a\s+|an\s+)?(system|admin(istrator)?|root|developer|jailbroken)",
+				"(?i)pretend\s+(to\s+be|you\s+are|that\s+you)",
+				"<\|im_(start|end)\|>",
+				"\[/?INST\]",
+				"(?i)<[ \t]*/?[ \t]*system[ \t]*>",
+				"(?im)^[ \t]*##{2,}[ \t]*system[ \t]*:?",
+				"(?i)\bsystem\s+override\b"
+			],
+			"jailbreak": [
+				"(?i)\bDAN\s+mode\b",
+				"(?i)\bdo\s+anything\s+now\b",
+				"(?i)\bdeveloper\s+mode\b",
+				"(?i)\bjailbreak(ing|s|en)?\b",
+				"(?i)(no|without|free\s+of)\s+(any\s+)?(restrictions?|limitations?|filters?|guardrails?|censorship)",
+				"(?i)(safety|content)\s+(guidelines?|filters?|policies)\s+(are|is)\s+(disabled|off|suspended|removed)",
+				"(?i)unfiltered\s+(response|answer|mode|ai)"
+			],
+			"exfilUrl": [
+				"!\[[^\]]*\]\([ \t]*https?://[^)\s]*\?[^)]*\)",
+				"https?://[^\s)""']*(password|secret|token|apikey|api_key|auth)=[^\s)""']*"
+			]
+		}
+	}
+
+	/**
+	 * Normalize text for safe LLM consumption: strips invisible/bidi-control characters
+	 * and applies unicode NFKC normalization. This is safe to apply to real message
+	 * content — it does NOT fold homoglyphs (which would corrupt non-Latin text).
+	 *
+	 * @text           The text to normalize
+	 * @nfkc           Apply unicode NFKC normalization (default true)
+	 * @stripInvisible Strip zero-width/bidi-control characters (default true)
+	 *
+	 * @return The normalized text
+	 */
+	static string function normalize(
+		required string text,
+		boolean nfkc = true,
+		boolean stripInvisible = true
+	){
+		var result = arguments.text
+
+		if( arguments.stripInvisible ){
+			result = reReplace( result, static.INVISIBLE_CHARS_REGEX, "", "all" )
+		}
+
+		if( arguments.nfkc ){
+			var normalizer = createObject( "java", "java.text.Normalizer" )
+			var nfkcForm   = createObject( "java", "java.text.Normalizer$Form" ).NFKC
+			result         = normalizer.normalize( result, nfkcForm )
+		}
+
+		return result
+	}
+
+	/**
+	 * Check if the text contains invisible/bidi-control characters
+	 *
+	 * @text The text to check
+	 *
+	 * @return True if invisible characters are present
+	 */
+	static boolean function hasInvisibleChars( required string text ){
+		return reFind( static.INVISIBLE_CHARS_REGEX, arguments.text ) > 0
+	}
+
+	/**
+	 * Fold common unicode homoglyphs (Cyrillic/Greek lookalikes) to their ASCII
+	 * equivalents. Used internally on the DETECTION copy so lookalike substitution
+	 * cannot evade the pattern scan. Do not apply this to real message content.
+	 *
+	 * @text The text to fold
+	 *
+	 * @return The folded text
+	 */
+	static string function foldHomoglyphs( required string text ){
+		var result = arguments.text
+		for( var glyph in static.HOMOGLYPHS ){
+			result = replace( result, glyph, static.HOMOGLYPHS[ glyph ], "all" )
+		}
+		return result
+	}
+
+	/**
+	 * Scan text for prompt-injection patterns using the built-in detectors and any
+	 * custom patterns. Scanning runs against a normalized + homoglyph-folded copy so
+	 * hidden-character and lookalike tricks cannot evade detection. Positions reported
+	 * in findings are relative to that normalized copy (approximate for the original).
+	 *
+	 * @text           The text to scan
+	 * @detectors      The detector names to run (default: all built-in detectors)
+	 * @customPatterns Array of custom patterns: [ { name: "myPattern", regex: "(?i)..." } ]
+	 *
+	 * @return { safe: boolean, findings: [ { detector, match, position, pattern } ] }
+	 */
+	static struct function scan(
+		required string text,
+		array detectors = [],
+		array customPatterns = []
+	){
+		if( arguments.detectors.isEmpty() ){
+			arguments.detectors = static.DEFAULT_DETECTORS
+		}
+
+		var findings = []
+		// Detection copy: hygiene + homoglyph folding so evasion tricks don't work
+		var scanText = foldHomoglyphs( normalize( arguments.text ) )
+
+		for( var detector in arguments.detectors ){
+
+			// Invisible unicode: checked on the ORIGINAL text (normalize() removes them)
+			if( detector == "invisibleUnicode" ){
+				if( hasInvisibleChars( arguments.text ) ){
+					findings.append( {
+						"detector": "invisibleUnicode",
+						"match"   : "",
+						"position": reFind( static.INVISIBLE_CHARS_REGEX, arguments.text ),
+						"pattern" : static.INVISIBLE_CHARS_REGEX
+					} )
+				}
+				continue
+			}
+
+			// Base64 smuggling: long base64 runs that decode to mostly-printable text
+			if( detector == "base64Blob" ){
+				var candidates = reMatch( static.BASE64_PATTERN, scanText )
+				for( var candidate in candidates ){
+					if( isDecodableText( candidate ) ){
+						findings.append( {
+							"detector": "base64Blob",
+							"match"   : candidate,
+							"position": find( candidate, scanText ),
+							"pattern" : static.BASE64_PATTERN
+						} )
+					}
+				}
+				continue
+			}
+
+			// Regex-based detectors
+			var patterns = static.DETECTOR_PATTERNS[ detector ] ?: []
+			for( var pattern in patterns ){
+				var matches = reMatch( pattern, scanText )
+				if( matches.len() ){
+					findings.append( {
+						"detector": detector,
+						"match"   : matches.first(),
+						"position": find( matches.first(), scanText ),
+						"pattern" : pattern
+					} )
+				}
+			}
+		}
+
+		// Custom user patterns: [ { name, regex } ]
+		for( var custom in arguments.customPatterns ){
+			if( !isStruct( custom ) || !custom.keyExists( "regex" ) ){
+				continue
+			}
+			var customMatches = reMatch( custom.regex, scanText )
+			if( customMatches.len() ){
+				findings.append( {
+					"detector": custom.name ?: "custom",
+					"match"   : customMatches.first(),
+					"position": find( customMatches.first(), scanText ),
+					"pattern" : custom.regex
+				} )
+			}
+		}
+
+		return {
+			"safe"    : findings.isEmpty(),
+			"findings": findings
+		}
+	}
+
+	/**
+	 * Remove all content matched by the given findings from the text.
+	 * Uses each finding's source pattern so evasion via case/spacing differences
+	 * between the scan copy and the original text is still caught.
+	 *
+	 * @text     The text to strip
+	 * @findings The findings array from scan()
+	 *
+	 * @return The stripped text
+	 */
+	static string function strip( required string text, required array findings ){
+		return replaceFindings( arguments.text, arguments.findings, "" )
+	}
+
+	/**
+	 * Replace all content matched by the given findings with a mask.
+	 *
+	 * @text     The text to redact
+	 * @findings The findings array from scan()
+	 * @mask     The replacement mask (default "[REDACTED]")
+	 *
+	 * @return The redacted text
+	 */
+	static string function redact(
+		required string text,
+		required array findings,
+		string mask = "[REDACTED]"
+	){
+		return replaceFindings( arguments.text, arguments.findings, arguments.mask )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Helpers
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Replace every finding's pattern matches in the text with the given replacement
+	 */
+	private static string function replaceFindings(
+		required string text,
+		required array findings,
+		required string replacement
+	){
+		var result = arguments.text
+		for( var finding in arguments.findings ){
+			if( finding.keyExists( "pattern" ) && len( finding.pattern ) ){
+				result = reReplace( result, finding.pattern, arguments.replacement, "all" )
+			} else if( len( finding.match ?: "" ) ){
+				result = replaceNoCase( result, finding.match, arguments.replacement, "all" )
+			}
+		}
+		return result
+	}
+
+	/**
+	 * Check if a base64 candidate decodes to mostly printable text (a smuggled payload)
+	 */
+	private static boolean function isDecodableText( required string candidate ){
+		// Trim to a multiple of 4 so decoding does not fail on partial runs
+		var trimmed = arguments.candidate
+		var overflow = len( trimmed ) % 4
+		if( overflow > 0 ){
+			trimmed = left( trimmed, len( trimmed ) - overflow )
+		}
+		if( !len( trimmed ) ){
+			return false
+		}
+
+		try {
+			var decoded = toString( toBinary( trimmed ) )
+			if( !len( decoded ) ){
+				return false
+			}
+			// Count printable ASCII + whitespace characters
+			var printable = 0
+			var total     = len( decoded )
+			for( var i = 1; i <= total; i++ ){
+				var code = ascii( mid( decoded, i, 1 ) )
+				if( ( code >= 32 && code <= 126 ) || code == 9 || code == 10 || code == 13 ){
+					printable++
+				}
+			}
+			return ( printable / total ) >= 0.85
+		} catch( any e ){
+			return false
+		}
+	}
+
+}
