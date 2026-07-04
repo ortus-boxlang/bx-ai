@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🥊 Added
+
+- **Security & Guardrails suite (Phase 1) — prompt-injection defense**:
+  - **`PromptSecurity` static utility** (`models/security/PromptSecurity.bx`): unicode NFKC normalization + zero-width/bidi-control character stripping (`normalize()`), and heuristic injection scanning (`scan()`) with six built-in detectors — `instructionOverride`, `roleImpersonation`, `jailbreak`, `invisibleUnicode`, `base64Blob`, `exfilUrl` — plus custom regex patterns, homoglyph-folded detection (lookalike-character evasion resistant), and `strip()`/`redact()` remediation helpers.
+  - **`InputSanitizerMiddleware`** (`models/middleware/security/`): scans user messages on `beforeLLMCall` and tool/MCP results via `wrapToolCall` (indirect-injection channel) with four actions: `block` (throws `BXAI.SecurityViolation` before any tokens are spent), `strip`, `flag` (default; findings stamped on `chatRequest.providerOptions.securityFindings` + `ai` log), and `log`.
+  - **`settings.security` module settings block** with global auto-attach: setting `security.enabled = true` wires the configured guardrails into every chat request (`aiChat`/`aiModel`/`aiAgent`) via `SecurityDirector` — no provider changes, works across all 18+ providers. The same struct can be passed per-request via the `security` option.
+  - **`mock` AI provider** (`MockService`): a full `IAiChatService` implementation with scripted responses instead of HTTP — drives the complete pipeline (middleware, tool-calling loops, return formats, streaming) deterministically for offline testing. Supports instance queues (`setResponses()`), per-request `providerOptions.responses`, and request recording (`getReceivedRequests()` / static `MockService::getRecorded()`) so tests can assert the exact post-sanitization payload.
+  - New fully-offline examples under `examples/security/` and a readme **Security & Guardrails** chapter.
+  - **Per-request middleware option**: `aiChat()` / `aiChatRequest()` now accept `options.middleware` (IAiMiddleware instances, struct-of-closures, or arrays of either) so middleware — including the security guardrails — can be attached without going through `aiModel()`/`aiAgent()`. Globally-enabled security middleware always runs first in the chain.
+
+### 🧠 Updated
+
+- **⚠️ Default-on unicode hygiene**: inbound user-role message content is now NFKC-normalized and stripped of zero-width/invisible characters at request construction — even without enabling `settings.security`. This neutralizes hidden-instruction (invisible unicode) injection attacks for every application with effectively zero risk. Opt out via `security.input.normalizeUnicode/stripZeroWidth = false` in module settings, or per request with `secure: false` (skips all security processing). Internal security requests are excluded automatically via the `_bxaiSecurityInternal` flag.
+
 ## [3.3.2] - 2026-06-19
 
 ### 🪲 Fixed
