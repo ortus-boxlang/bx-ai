@@ -240,6 +240,19 @@ class {
 					stripZeroWidth : true,
 					// Also scan tool/MCP results for indirect injection (when sanitizer is attached)
 					scanToolResults : true
+				},
+				// Fencing (spotlighting) — wrap untrusted RAG/context content in delimiters so
+				// the model treats it as DATA, not instructions. Opt-in.
+				fencing : {
+					// When true, the ${context} render path is auto-fenced for every request
+					enabled : false,
+					// When enabled, wrap the ${context} value in fence markers
+					fenceContext : true,
+					// DEFAULT ON: neutralize ${ in binding VALUES before stringBind
+					// (defense-in-depth against template confusion; applies even when fencing is off)
+					escapeBindings : true,
+					// "" = built-in security preamble; non-empty overrides it
+					preamble : ""
 				}
 			},
 

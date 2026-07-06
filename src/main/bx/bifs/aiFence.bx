@@ -1,0 +1,54 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Fence (spotlight) untrusted content for safe inclusion in an AI prompt.
+ *
+ * Wraps the content in unique boundary markers so the model treats it as DATA, not
+ * instructions — the core defense against indirect prompt injection from RAG documents,
+ * tool/MCP output, web pages, and other external sources.
+ *
+ * Usage:
+ *   context = aiFence( retrievedDoc, "knowledge-base" )
+ *   answer  = aiChat( "Answer using this context: #context#", ... )
+ *
+ *   // Include the security preamble inline (for one-off prompts without a system message)
+ *   fenced = aiFence( untrustedText, "web-page", withPreamble = true )
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Fence untrusted content in boundary markers.
+	 *
+	 * @content      The untrusted content to fence (string or complex value)
+	 * @label        A short source label (e.g. "knowledge-base", "web-page"); default "external"
+	 * @withPreamble When true, prepend the security preamble instruction to the fenced block
+	 *
+	 * @return The fenced string
+	 */
+	function invoke(
+		required any content,
+		string label = "external",
+		boolean withPreamble = false
+	){
+		var fenced = bxModules.bxai.models.security.PromptSecurity::fence( arguments.content, arguments.label );
+
+		if( arguments.withPreamble ){
+			return bxModules.bxai.models.security.PromptSecurity::fencePreamble() & char( 10 ) & char( 10 ) & fenced;
+		}
+
+		return fenced;
+	}
+
+}

@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 Added
 
+- **Security & Guardrails suite (Phase 2) — untrusted-content fencing & template hardening**:
+  - **`aiFence()` BIF** and **`PromptSecurity::fence()` / `fencePreamble()`**: wrap untrusted RAG/tool/web content in unique random boundary markers (`[UNTRUSTED-DATA id=... type=...] ... [/UNTRUSTED-DATA id=...]`) plus a security preamble, so the model treats it as inert DATA — the core defense against indirect prompt injection. A random per-call boundary id and neutralization of embedded marker syntax mean an attacker cannot forge a closing marker to "break out" of the fence.
+  - **`AiMessage.addUntrusted( content, label, role )`** and **`setContextTrust( false )`**: register untrusted segments / fence the `${context}` binding on a message; the security preamble is auto-injected into the system message once.
+  - **`settings.security.fencing` block**: `fencing.enabled = true` auto-fences the `${context}` render path for every request (`aiChat`/`aiModel`/`aiAgent`); the same struct can be passed per-request via the `security` option.
+  - New offline examples `examples/security/04-fencing-untrusted-content.bxs` and `05-rag-context-fencing.bxs`, plus a readme "Fencing Untrusted Content" section.
+
+### 🧠 Updated
+
+- **Template-confusion hardening (on by default)**: `AiMessage` now escapes `${...}` inside binding VALUES (via `PromptSecurity::escapeBindings`) before `stringBind`, so untrusted data can't be mistaken for a template placeholder. This is defense-in-depth — `stringBind` does not recurse today (verified by test), so no active re-interpolation vulnerability existed — and only changes output for values that literally contain `${`. Disable per message with `aiMessage().setEscapeBindings( false )` or globally via `security.fencing.escapeBindings = false`; internal/`secure:false` requests are exempt. Default `AiMessage.render()` output is otherwise byte-identical (backwards compatible).
+
 - **Security & Guardrails suite (Phase 1) — prompt-injection defense**:
   - **`PromptSecurity` static utility** (`models/security/PromptSecurity.bx`): unicode NFKC normalization + zero-width/bidi-control character stripping (`normalize()`), and heuristic injection scanning (`scan()`) with six built-in detectors — `instructionOverride`, `roleImpersonation`, `jailbreak`, `invisibleUnicode`, `base64Blob`, `exfilUrl` — plus custom regex patterns, homoglyph-folded detection (lookalike-character evasion resistant), and `strip()`/`redact()` remediation helpers.
   - **`InputSanitizerMiddleware`** (`models/middleware/security/`): scans user messages on `beforeLLMCall` and tool/MCP results via `wrapToolCall` (indirect-injection channel) with four actions: `block` (throws `BXAI.SecurityViolation` before any tokens are spent), `strip`, `flag` (default; findings stamped on `chatRequest.providerOptions.securityFindings` + `ai` log), and `log`.
