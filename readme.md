@@ -540,10 +540,11 @@ msg = aiMessage()
 aiMessage().system( "Answer using: ${context}" ).setContext( docs ).setContextTrust( false )
 ```
 
-Enable it globally so every `options.context` / `${context}` render is fenced:
+**Fencing of the `${context}` path is ON by default** — any context you pass via `options.context` or `${context}` is fenced automatically for every `aiChat`/`aiModel`/`aiAgent` request, no configuration needed. Requests without context are unchanged. Opt out globally or per request:
 
 ```javascript
-security: { fencing: { enabled: true } }
+security: { fencing: { enabled: false } }        // disable auto-fencing
+aiMessage().setContextTrust( true )              // or per message
 ```
 
 > **Template hardening (on by default):** binding VALUES are escaped so untrusted data containing `${...}` can never be mistaken for a template placeholder. Disable per message with `aiMessage().setEscapeBindings( false )` or via `security.fencing.escapeBindings`.

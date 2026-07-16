@@ -49,12 +49,13 @@ boxlang security/01-input-sanitizer.bxs
 
    Or per request with the same shape via the `security` option.
 
-3. **Fence untrusted content (opt-in)** — mark RAG documents, tool/MCP output, and
-   web pages as DATA so injections hidden inside them are inert. Use `aiFence()` for
-   manual composition, `aiMessage().addUntrusted()` / `setContextTrust(false)` for
-   structured messages, or `security.fencing.enabled` to auto-fence the `${context}`
-   path globally. Binding-value escaping (neutralizing `${...}` in untrusted values)
-   is on by default.
+3. **Fence untrusted content (`${context}` fencing ON by default)** — mark RAG
+   documents, tool/MCP output, and web pages as DATA so injections hidden inside them
+   are inert. The `${context}` / `options.context` path is auto-fenced for every
+   request out of the box (opt out with `security.fencing.enabled = false`, or per
+   message with `setContextTrust(true)`). Use `aiFence()` for manual composition and
+   `aiMessage().addUntrusted()` for other untrusted segments. Binding-value escaping
+   (neutralizing `${...}` in untrusted values) is also on by default.
 
 ## Rollout recipe
 
