@@ -198,7 +198,8 @@ class extends="AiBaseRunnable"{
 		variables.untrusted.append( {
 			"content": arguments.content,
 			"label"  : arguments.label,
-			"role"   : arguments.role
+			"role"   : arguments.role,
+			"index"  : variables.messages.len() + 1
 		} );
 		return this;
 	}
