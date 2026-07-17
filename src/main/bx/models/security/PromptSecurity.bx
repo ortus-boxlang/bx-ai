@@ -326,6 +326,7 @@ class {
 		var body      = isSimpleValue( arguments.content ) ? arguments.content : jsonSerialize( arguments.content )
 		var fenceId   = lCase( left( hash( createUUID() & getTickCount(), "MD5" ), 6 ) )
 		var safeLabel = reReplace( arguments.label, "[^A-Za-z0-9_-]", "", "all" )
+		safeLabel = len( safeLabel ) ? safeLabel : "external"
 
 		// Neutralize any attempt to embed our marker syntax or the live id inside the body,
 		// so a crafted "[/UNTRUSTED-DATA id=...]" in the content cannot close the fence early.
