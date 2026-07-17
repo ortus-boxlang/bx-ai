@@ -165,12 +165,23 @@ class extends="AiBaseRunnable"{
 
 		var rendered = format( allBindings )
 
-		// Append any explicitly-registered untrusted segments as fenced messages
-		for( var segment in variables.untrusted ){
-			rendered.append( {
-				"role"   : segment.role,
-				"content": PromptSecurity::fence( segment.content, segment.label )
-			} );
+		// Insert any explicitly-registered untrusted segments as fenced messages at their original positions
+		if( !variables.untrusted.isEmpty() ){
+			var finalMessages = []
+			for( var i = 1; i <= rendered.len() + 1; i++ ){
+				for( var segment in variables.untrusted ){
+					if( ( segment.index ?: 0 ) == i ){
+						finalMessages.append( {
+							"role"   : segment.role,
+							"content": PromptSecurity::fence( segment.content, segment.label )
+						} );
+					}
+				}
+				if( i <= rendered.len() ){
+					finalMessages.append( rendered[ i ] );
+				}
+			}
+			rendered = finalMessages
 		}
 
 		// If any fencing happened, ensure the untrusted-data preamble is in the system message
