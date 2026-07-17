@@ -95,7 +95,9 @@ class extends="AiBaseRequest"{
 		// ---------------------------------------------------------------------------
 		// Security settings: resolve BEFORE render so fencing/escaping apply at render time
 		// ---------------------------------------------------------------------------
-		var securitySettings = isStruct( options.security ?: "" ) ? options.security : {};
+		var moduleSecurity   = super.getModuleSettings().security ?: {};
+		var overrideSecurity = isStruct( options.security ?: "" ) ? options.security : {};
+		var securitySettings = duplicate( moduleSecurity ).append( overrideSecurity, true );
 		var skipSecurity     = ( options._bxaiSecurityInternal ?: false )
 			|| variables.providerOptions.keyExists( "_bxaiSecurityInternal" )
 			|| ( ( options.secure ?: true ) == false );
