@@ -331,7 +331,8 @@ class {
 		// Neutralize any attempt to embed our marker syntax or the live id inside the body,
 		// so a crafted "[/UNTRUSTED-DATA id=...]" in the content cannot close the fence early.
 		body = reReplaceNoCase( body, "\[/?UNTRUSTED-DATA", "[ UNTRUSTED-DATA", "all" )
-		body = replace( body, fenceId, "", "all" )
+		// Marker syntax is neutralized above; avoid mutating content by stripping the live fence id
+		// body = replace( body, fenceId, "", "all" )
 
 		return "[UNTRUSTED-DATA id=#fenceId# type=#safeLabel#]" & char( 10 )
 			& body & char( 10 )
