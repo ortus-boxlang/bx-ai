@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 Added
 
+- **Security & Guardrails suite (Phase 4) — LLM-as-judge (`LLMGuardMiddleware`)**: a middleware that uses a SECOND (typically cheaper/faster) model to classify a request — and optionally the response — for prompt-injection / harmful content before it is acted on, catching novel/obfuscated attacks the heuristic sanitizer misses.
+  - Attach it the way middleware is used in this module — on agents (`aiAgent( middleware: [ guard ] )`) or models (`aiModel( ..., middleware: [ guard ] )`); it is **middleware-only** (no global settings block, no auto-attach).
+  - `beforeLLMCall` judges inbound user content; optional `checkOutput` judges the response on `afterLLMCall`. Blocking **throws `BXAI.SecurityViolation`** (uniform with the InputSanitizer `block` action).
+  - The judge can be any provider (use a cheap/local one such as **Llama Guard via Ollama**). Constructor: `judge` (`{ provider, model, apiKey, params, options }`), `checkInput`, `checkOutput`, `failMode` (`open`/`closed`, default **open** = fail-open), `threshold`, `categories`, `timeout`, `cacheEnabled`/`cacheName`/`maxCacheSize`, `promptTemplate`.
+  - Hardening: the content shown to the judge is **fenced** (Phase 2) so the judge itself can't be injected; the judge's own call is marked internal + protected by a per-thread depth latch so it never re-enters the security pipeline; verdicts are **cached** by normalized-content hash (transient judge errors are never cached). Judge expects strict JSON `{ verdict: SAFE|INJECTION|HARMFUL, confidence, reason }`.
+  - New offline example `examples/security/06-llm-judge.bxs` (MockService as the judge) and a readme "Layer 4: LLM-as-Judge" section. Note: output-side judging on streaming responses is supported for the OpenAI-family providers only.
+
 - **Security & Guardrails suite (Phase 2) — untrusted-content fencing & template hardening**:
   - **`aiFence()` BIF** and **`PromptSecurity::fence()` / `fencePreamble()`**: wrap untrusted RAG/tool/web content in unique random boundary markers (`[UNTRUSTED-DATA id=... type=...] ... [/UNTRUSTED-DATA id=...]`) plus a security preamble, so the model treats it as inert DATA — the core defense against indirect prompt injection. A random per-call boundary id and neutralization of embedded marker syntax mean an attacker cannot forge a closing marker to "break out" of the fence.
   - **`AiMessage.addUntrusted( content, label, role )`** and **`setContextTrust( false )`**: register untrusted segments / fence the `${context}` binding on a message; the security preamble is auto-injected into the system message once.
