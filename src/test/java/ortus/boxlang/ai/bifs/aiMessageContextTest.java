@@ -336,7 +336,9 @@ public class aiMessageContextTest extends BaseIntegrationTest {
 				)
 
 				messages = chatRequest.getMessages()
-				messageContent = messages[1].content
+				// Context fencing is on by default, which prepends a security-preamble system
+				// message; the rendered context lives in the original (user) message.
+				messageContent = messages.filter( m -> m.role != "system" ).first().content
 		    """,
 		    context
 		);
@@ -387,7 +389,9 @@ public class aiMessageContextTest extends BaseIntegrationTest {
 				)
 
 				messages = chatRequest.getMessages()
-				messageContent = messages[1].content
+				// Context fencing is on by default (prepends a preamble system message);
+				// the merged context is rendered into the original (user) message.
+				messageContent = messages.filter( m -> m.role != "system" ).first().content
 		    """,
 		    context
 		);

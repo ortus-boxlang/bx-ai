@@ -15,6 +15,8 @@ boxlang security/01-input-sanitizer.bxs
 | `01-input-sanitizer.bxs`         | `InputSanitizerMiddleware` actions (block/strip/flag/log), custom patterns, direct `PromptSecurity::scan()` usage |
 | `02-global-security-settings.bxs`| The `settings.security` block, default-on unicode hygiene, flag-then-enforce rollout, the `secure: false` escape hatch |
 | `03-mock-provider-testing.bxs`   | The `mock` provider: scripted responses, offline tool-calling loops, request recording for guardrail assertions |
+| `04-fencing-untrusted-content.bxs`| `aiFence()` to spotlight hostile RAG/tool content as DATA; boundary-forgery neutralization; inline security preamble |
+| `05-rag-context-fencing.bxs`     | `aiMessage().addUntrusted()`, `setContextTrust(false)`, and global `security.fencing.enabled` for the `${context}` path |
 
 ## The layers
 
@@ -46,6 +48,14 @@ boxlang security/01-input-sanitizer.bxs
    ```
 
    Or per request with the same shape via the `security` option.
+
+3. **Fence untrusted content (`${context}` fencing ON by default)** — mark RAG
+   documents, tool/MCP output, and web pages as DATA so injections hidden inside them
+   are inert. The `${context}` / `options.context` path is auto-fenced for every
+   request out of the box (opt out with `security.fencing.enabled = false`, or per
+   message with `setContextTrust(true)`). Use `aiFence()` for manual composition and
+   `aiMessage().addUntrusted()` for other untrusted segments. Binding-value escaping
+   (neutralizing `${...}` in untrusted values) is also on by default.
 
 ## Rollout recipe
 

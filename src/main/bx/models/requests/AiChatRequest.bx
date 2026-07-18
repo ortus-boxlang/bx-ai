@@ -92,6 +92,32 @@ class extends="AiBaseRequest"{
 			variables.aiMessage.mergeContext( options.context );
 		}
 
+		// ---------------------------------------------------------------------------
+		// Security settings: resolve BEFORE render so fencing/escaping apply at render time
+		// ---------------------------------------------------------------------------
+		var moduleSecurity   = super.getModuleSettings().security ?: {};
+		var overrideSecurity = isStruct( options.security ?: "" ) ? options.security : {};
+		var securitySettings = duplicate( moduleSecurity ).append( overrideSecurity, true );
+		var skipSecurity     = ( options._bxaiSecurityInternal ?: false )
+			|| variables.providerOptions.keyExists( "_bxaiSecurityInternal" )
+			|| ( ( options.secure ?: true ) == false );
+
+		if( !skipSecurity ){
+			var fencingSettings = isStruct( securitySettings.fencing ?: "" ) ? securitySettings.fencing : {};
+			// Binding-value escaping: DEFAULT ON (defense-in-depth against ${} template confusion)
+			variables.aiMessage.setEscapeBindings( fencingSettings.escapeBindings ?: true );
+			// Auto-fence the ${context} render path when fencing is globally enabled
+			if( ( fencingSettings.enabled ?: false ) && ( fencingSettings.fenceContext ?: true ) ){
+				variables.aiMessage.setContextTrust( false );
+			}
+			if( len( fencingSettings.preamble ?: "" ) ){
+				variables.aiMessage.setFencePreambleText( fencingSettings.preamble );
+			}
+		} else {
+			// Internal/opted-out requests: no binding escaping either, byte-exact content
+			variables.aiMessage.setEscapeBindings( false );
+		}
+
 		// Render the messages with bindings applied (including ${context} if present)
 		variables.messages = variables.aiMessage.render();
 
@@ -100,10 +126,6 @@ class extends="AiBaseRequest"{
 		// ---------------------------------------------------------------------------
 		// Skipped for internal security requests (LLM judge, etc.) and when the caller
 		// explicitly opts out with `secure: false`.
-		var securitySettings = isStruct( options.security ?: "" ) ? options.security : {};
-		var skipSecurity     = ( options._bxaiSecurityInternal ?: false )
-			|| variables.providerOptions.keyExists( "_bxaiSecurityInternal" )
-			|| ( ( options.secure ?: true ) == false );
 		if( !skipSecurity ){
 			// Unicode hygiene on user messages — DEFAULT ON, independent of security.enabled
 			applyInputHygiene( securitySettings.input ?: {} );
