@@ -397,10 +397,18 @@ var cacheKey   = hash( cacheSig & "|" & normalized, "SHA-256" )
 	 * Returns "" for unknown shapes (fail-open) with a warning.
 	 */
 	private string function extractOutputContent( required struct context ){
-		// Streaming (OpenAI family)
-		if( arguments.context.keyExists( "streamState" ) && isStruct( arguments.context.streamState ) ){
-			return arguments.context.streamState.content ?: ""
-		}
+// Streaming (OpenAI family)
+if( arguments.context.keyExists( "streamState" ) && isStruct( arguments.context.streamState ) ){
+	if( arguments.context.streamState.keyExists( "content" ) ){
+		return arguments.context.streamState.content ?: ""
+	}
+	writeLog(
+		text: "LLMGuardMiddleware: streaming provider did not expose accumulated content for output judging; skipping (fail-open).",
+		type: "warning",
+		log : "ai"
+	)
+	return ""
+}
 		if( !arguments.context.keyExists( "result" ) || !isStruct( arguments.context.result ) ){
 			return ""
 		}
