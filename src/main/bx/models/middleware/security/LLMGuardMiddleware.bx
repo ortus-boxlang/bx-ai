@@ -308,11 +308,14 @@ var cacheKey   = hash( cacheSig & "|" & normalized, "SHA-256" )
 		if( len( judgeProvider ) ){
 			judgeOptions[ "provider" ] = judgeProvider
 		}
-		if( len( variables.judge.apiKey ?: "" ) ){
-			judgeOptions[ "apiKey" ] = variables.judge.apiKey
-		}
-		judgeOptions.append( variables.judge.options ?: {}, true )
-
+if( len( variables.judge.apiKey ?: "" ) ){
+	judgeOptions[ "apiKey" ] = variables.judge.apiKey
+}
+judgeOptions.append( variables.judge.options ?: {}, true )
+// Force internal guard options last so they cannot be overridden
+judgeOptions[ "_bxaiSecurityInternal" ] = true
+judgeOptions[ "returnFormat" ] = "single"
+judgeOptions[ "timeout" ] = variables.timeout
 		// Params: deterministic, small; allow user overrides; set model if provided
 		var judgeParams = { "temperature": 0, "max_tokens": 300 }.append( variables.judge.params ?: {}, true )
 		if( len( variables.judge.model ?: "" ) ){
