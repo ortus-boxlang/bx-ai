@@ -17,6 +17,7 @@ boxlang security/01-input-sanitizer.bxs
 | `03-mock-provider-testing.bxs`   | The `mock` provider: scripted responses, offline tool-calling loops, request recording for guardrail assertions |
 | `04-fencing-untrusted-content.bxs`| `aiFence()` to spotlight hostile RAG/tool content as DATA; boundary-forgery neutralization; inline security preamble |
 | `05-rag-context-fencing.bxs`     | `aiMessage().addUntrusted()`, `setContextTrust(false)`, and global `security.fencing.enabled` for the `${context}` path |
+| `06-llm-judge.bxs`               | `LLMGuardMiddleware` — a second (cheap/local) model judges input for injection/harm before the main call; SAFE allows, INJECTION blocks |
 
 ## The layers
 
@@ -56,6 +57,12 @@ boxlang security/01-input-sanitizer.bxs
    message with `setContextTrust(true)`). Use `aiFence()` for manual composition and
    `aiMessage().addUntrusted()` for other untrusted segments. Binding-value escaping
    (neutralizing `${...}` in untrusted values) is also on by default.
+
+4. **LLM-as-judge (middleware)** — `LLMGuardMiddleware` uses a second (cheap/local)
+   model to classify input/output for injection/harm before the main call, catching
+   novel attacks patterns miss. Attach on an agent/model; blocks by throwing
+   `BXAI.SecurityViolation`. Fail-open by default, fenced judge input, recursion-guarded,
+   verdict-cached.
 
 ## Rollout recipe
 
