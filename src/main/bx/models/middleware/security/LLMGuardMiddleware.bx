@@ -181,7 +181,7 @@ class extends="BaseAiMiddleware" {
 		if( !variables.checkInput ){
 			return AiMiddlewareResult.continue()
 		}
-		return guardContent( extractInputContent( arguments.context ), "beforeLLMCall", "request" )
+		return guardContent( extractInputContent( arguments.context ), "beforeLLMCall", "request", arguments.context )
 	}
 
 	/**
@@ -192,7 +192,7 @@ class extends="BaseAiMiddleware" {
 		if( !variables.checkOutput ){
 			return AiMiddlewareResult.continue()
 		}
-		return guardContent( extractOutputContent( arguments.context ), "afterLLMCall", "response" )
+		return guardContent( extractOutputContent( arguments.context ), "afterLLMCall", "response", arguments.context )
 	}
 
 	/**
@@ -204,8 +204,9 @@ class extends="BaseAiMiddleware" {
 	 * @content The content to judge
 	 * @phase   The hook name (for logging)
 	 * @noun    "request" | "response" (for the block message)
+	 * @context The original middleware context (passed through to callJudge for provider fallback)
 	 */
-	private AiMiddlewareResult function guardContent( required string content, required string phase, required string noun ){
+	private AiMiddlewareResult function guardContent( required string content, required string phase, required string noun, struct context = {} ){
 		// Re-entrancy guard: if we're already inside a judge evaluation on this thread, skip.
 		if( !enterGuard() ){
 			return AiMiddlewareResult.continue()
@@ -216,7 +217,7 @@ class extends="BaseAiMiddleware" {
 			return AiMiddlewareResult.continue()
 		}
 
-		var decision = evaluateContent( arguments.content )
+		var decision = evaluateContent( arguments.content, arguments.context )
 		leaveGuard()
 
 		if( decision.blocked ){
@@ -237,10 +238,11 @@ class extends="BaseAiMiddleware" {
 	 * miss, applies failMode on error, caches, and returns the decision.
 	 *
 	 * @content The content to classify
+	 * @context The original middleware context (passed through to callJudge for provider fallback)
 	 *
 	 * @return { blocked, verdict, confidence, reason }
 	 */
-	private struct function evaluateContent( required string content ){
+	private struct function evaluateContent( required string content, struct context = {} ){
 var normalized = PromptSecurity::normalize( arguments.content )
 var promptSig  = len( variables.promptTemplate ) ? variables.promptTemplate : static.DEFAULT_PROMPT
 var judgeSig   = ( variables.judge.provider ?: "" ) & "|" & ( variables.judge.model ?: "" ) & "|" & promptSig
@@ -254,7 +256,7 @@ var cacheKey   = hash( cacheSig & "|" & normalized, "SHA-256" )
 		}
 
 		try {
-			var verdict  = callJudge( normalized )
+			var verdict  = callJudge( normalized, arguments.context )
 			var decision = decide( verdict )
 			// Only successful verdicts are cached — a transient judge error must not
 			// stick a verdict for this content across the cache lifetime.
@@ -283,10 +285,12 @@ var cacheKey   = hash( cacheSig & "|" & normalized, "SHA-256" )
 	 * Uses a nested aiChat() marked _bxaiSecurityInternal so it never re-enters security.
 	 *
 	 * @content The (already normalized) content to classify
+	 * @context The original middleware context; used to fall back to the outer request's
+	 *          provider when judge.provider is blank, matching the documented behavior.
 	 *
 	 * @return { verdict, confidence, reason }
 	 */
-	private struct function callJudge( required string content ){
+	private struct function callJudge( required string content, struct context = {} ){
 		var systemPrompt = len( variables.promptTemplate ) ? variables.promptTemplate : static.DEFAULT_PROMPT
 
 		var judgeMessages = [
@@ -304,7 +308,11 @@ var cacheKey   = hash( cacheSig & "|" & normalized, "SHA-256" )
 			"timeout"               : variables.timeout,
 			"_bxaiSecurityInternal" : true
 		}
-		var judgeProvider = len( variables.judge.provider ?: "" ) ? variables.judge.provider : ""
+		// Determine provider: explicit judge.provider → outer request's provider → module default
+		var judgeProvider = variables.judge.provider ?: ""
+		if( !len( judgeProvider ) && arguments.context.keyExists( "chatRequest" ) && isObject( arguments.context.chatRequest ) ){
+			judgeProvider = arguments.context.chatRequest.getProvider() ?: ""
+		}
 		if( len( judgeProvider ) ){
 			judgeOptions[ "provider" ] = judgeProvider
 		}
