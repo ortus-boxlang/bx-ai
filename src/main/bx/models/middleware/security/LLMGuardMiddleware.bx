@@ -472,9 +472,13 @@ var cacheKey   = hash( cacheSig & "|" & normalized, "SHA-256" )
 	}
 
 	private void function leaveGuard(){
-		var tid = getThreadId()
-		static.DEPTH[ tid ] = max( 0, ( static.DEPTH[ tid ] ?: 1 ) - 1 )
-	}
+var tid      = getThreadId()
+var newDepth = max( 0, ( static.DEPTH[ tid ] ?: 1 ) - 1 )
+if( newDepth <= 0 ){
+	static.DEPTH.delete( tid )
+} else {
+	static.DEPTH[ tid ] = newDepth
+}
 
 	private string function getThreadId(){
 		return createObject( "java", "java.lang.Thread" ).currentThread().getId().toString()
