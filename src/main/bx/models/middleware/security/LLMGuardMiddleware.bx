@@ -241,9 +241,11 @@ class extends="BaseAiMiddleware" {
 	 * @return { blocked, verdict, confidence, reason }
 	 */
 	private struct function evaluateContent( required string content ){
-		var normalized = PromptSecurity::normalize( arguments.content )
-		var cacheKey   = hash( normalized, "SHA-256" )
-
+var normalized = PromptSecurity::normalize( arguments.content )
+var promptSig  = len( variables.promptTemplate ) ? variables.promptTemplate : static.DEFAULT_PROMPT
+var judgeSig   = ( variables.judge.provider ?: "" ) & "|" & ( variables.judge.model ?: "" ) & "|" & promptSig
+var cacheSig   = judgeSig & "|" & variables.threshold & "|" & variables.categories.toList()
+var cacheKey   = hash( cacheSig & "|" & normalized, "SHA-256" )
 		if( variables.cacheEnabled ){
 			var cached = cacheLookup( cacheKey )
 			if( !isNull( cached ) ){
