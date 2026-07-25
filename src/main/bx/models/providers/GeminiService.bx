@@ -311,9 +311,12 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		// No auth header for Gemini
 		arguments.chatRequest.setSendAuthHeader( false );
 		var geminiUsage = { "promptTokens": 0, "completionTokens": 0, "totalTokens": 0, "raw": {} };
+		// Accumulate the streamed assistant text so afterLLMCall middleware can inspect it
+		var geminiContent = "";
 		var normalizedCallback = ( chunk ) => {
 			var content = chunk.candidates?.first()?.content?.parts?.first()?.text ?: "";
 			var finishReason = chunk.candidates?.first()?.finishReason ?: "";
+			geminiContent &= content;
 
 			// Capture usage metadata from Gemini chunks
 			if( !isNull( chunk.usageMetadata ) ){
@@ -341,6 +344,15 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			});
 		};
 
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware (streaming) ---
+		// -------------------------------------------------------------------------------------------
+		var streamLlmBefore = arguments.chatRequest.fireMiddleware( "beforeLLMCall", { chatRequest: arguments.chatRequest, dataPacket: dataPacket } );
+		if( streamLlmBefore.isTerminal() ){
+			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
+			return
+		}
+
 		// Send it with streaming
 		sendStreamRequest( chatRequest, dataPacket, normalizedCallback )
 
@@ -360,6 +372,15 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 				timestamp        : now()
 			} )
 		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware (streaming), in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		arguments.chatRequest.fireMiddleware(
+			hook   : "afterLLMCall",
+			context: { chatRequest: arguments.chatRequest, streamState: { "content": geminiContent, "finishReason": "", "toolCalls": [], "usage": geminiUsage.raw } },
+			reverse: true
+		)
 	}
 
 	/**

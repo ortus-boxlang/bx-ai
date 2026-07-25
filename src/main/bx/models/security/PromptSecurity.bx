@@ -62,6 +62,42 @@ class {
 		final BASE64_PATTERN = "[A-Za-z0-9+/]{80,}={0,2}"
 
 		/**
+		 * The default redactor set applied to OUTPUT when none is specified.
+		 * creditCard is validated with a Luhn check to cut false positives.
+		 */
+		final DEFAULT_REDACTORS = [
+			"email",
+			"ssn",
+			"creditCard",
+			"awsAccessKey",
+			"privateKeyBlock",
+			"jwt",
+			"genericApiToken"
+		]
+
+		/**
+		 * Secret/PII redactor regex patterns. `creditCard` additionally requires a Luhn
+		 * check (see redactSecrets); the others are pure regex.
+		 */
+		final REDACTOR_PATTERNS = {
+			"email"           : "[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}",
+			"phone"           : "(?<![0-9])(\+?1[\s.\-]?)?\(?[2-9][0-9]{2}\)?[\s.\-]?[0-9]{3}[\s.\-]?[0-9]{4}(?![0-9])",
+			"ssn"             : "(?<![0-9])[0-9]{3}-[0-9]{2}-[0-9]{4}(?![0-9])",
+			"creditCard"      : "(?<![0-9])(?:[0-9][ \-]?){13,19}(?![0-9])",
+			"awsAccessKey"    : "AKIA[0-9A-Z]{16}",
+			"privateKeyBlock" : "(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+			"jwt"             : "eyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+",
+			"genericApiToken" : "(?i)(?:api[_\-]?key|secret|token|bearer)[""'\s:=]+[A-Za-z0-9_\-]{24,}"
+		}
+
+		/**
+		 * Markdown image / link exfiltration patterns (data-bearing URLs in rendered output).
+		 * markdownImage matches ![alt](url); markdownLink matches [text](url).
+		 */
+		final MARKDOWN_IMAGE_PATTERN = "!\[[^\]]*\]\([ \t]*(https?://[^)\s]+)[^)]*\)"
+		final MARKDOWN_LINK_PATTERN  = "(?<!!)\[[^\]]*\]\([ \t]*(https?://[^)\s]+)[^)]*\)"
+
+		/**
 		 * Common unicode homoglyphs (Cyrillic/Greek lookalikes) folded to ASCII for the
 		 * DETECTION copy only — never applied to real message content, since that would
 		 * corrupt legitimate non-Latin text.
@@ -393,9 +429,240 @@ class {
 
 	/**
 	 * ---------------------------------------------------------------------------------------------------------
+	 * Output redaction — mask secrets / PII in model responses
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Redact secrets / PII from text using the named redactors. creditCard matches are
+	 * additionally Luhn-validated to cut false positives.
+	 *
+	 * @text      The text to redact
+	 * @redactors Redactor names to apply (default: DEFAULT_REDACTORS)
+	 * @mask      The replacement mask (default "[REDACTED]")
+	 * @custom    Extra redactors as { name: "regex" }
+	 *
+	 * @return { text: redactedText, findings: [ { redactor, match } ] }
+	 */
+	static struct function redactSecrets(
+		required string text,
+		array redactors = [],
+		string mask = "[REDACTED]",
+		struct custom = {}
+	){
+		if( arguments.redactors.isEmpty() ){
+			arguments.redactors = static.DEFAULT_REDACTORS
+		}
+
+		var result   = arguments.text
+		var findings = []
+
+		// Build the effective { name: pattern } map (built-ins by name + any custom)
+		var patterns = {}
+		for( var name in arguments.redactors ){
+			if( static.REDACTOR_PATTERNS.keyExists( name ) ){
+				patterns[ name ] = static.REDACTOR_PATTERNS[ name ]
+			}
+		}
+		patterns.append( arguments.custom, true )
+
+		for( var name in patterns ){
+			var pattern = patterns[ name ]
+			var matches = reMatch( pattern, result )
+			for( var m in matches ){
+				// creditCard: only redact if it passes the Luhn checksum
+				if( name == "creditCard" && !isLuhnValid( m ) ){
+					continue
+				}
+				findings.append( { "redactor": name, "match": m } )
+				result = replace( result, m, arguments.mask, "all" )
+			}
+		}
+
+		return { "text": result, "findings": findings }
+	}
+
+	/**
+	 * Strip markdown image (and optionally link) exfiltration from output. An image to a
+	 * non-allowlisted host is removed; links to non-allowlisted hosts are rewritten to
+	 * their visible text.
+	 *
+	 * @text              The text to clean
+	 * @stripImages       Remove markdown images to non-allowlisted hosts (default true)
+	 * @stripLinks        Rewrite markdown links to non-allowlisted hosts to their text (default false)
+	 * @allowedImageHosts Hosts whose images are kept (empty = strip all external images)
+	 * @allowedLinkHosts  Hosts whose links are kept
+	 *
+	 * @return { text: cleanedText, findings: [ { type, match, url } ] }
+	 */
+	static struct function stripExfil(
+		required string text,
+		boolean stripImages = true,
+		boolean stripLinks = false,
+		array allowedImageHosts = [],
+		array allowedLinkHosts = []
+	){
+		var result   = arguments.text
+		var findings = []
+
+		if( arguments.stripImages ){
+			for( var m in reMatch( static.MARKDOWN_IMAGE_PATTERN, result ) ){
+				var url = reReplace( m, static.MARKDOWN_IMAGE_PATTERN, "\1" )
+				if( !isHostAllowed( url, arguments.allowedImageHosts ) ){
+					findings.append( { "type": "markdownImage", "match": m, "url": url } )
+					result = replace( result, m, "", "all" )
+				}
+			}
+		}
+
+		if( arguments.stripLinks ){
+			for( var m in reMatch( static.MARKDOWN_LINK_PATTERN, result ) ){
+				var url = reReplace( m, static.MARKDOWN_LINK_PATTERN, "\1" )
+				if( !isHostAllowed( url, arguments.allowedLinkHosts ) ){
+					// Rewrite [text](url) → text
+					var linkText = reReplace( m, "^\[([^\]]*)\].*$", "\1" )
+					findings.append( { "type": "markdownLink", "match": m, "url": url } )
+					result = replace( result, m, linkText, "all" )
+				}
+			}
+		}
+
+		return { "text": result, "findings": findings }
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Response content resolver — read/write the assistant text across provider shapes
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Read the assistant text from a middleware afterLLMCall context across all known
+	 * provider response shapes (OpenAI/compat, Claude, Gemini, Cohere) and streaming.
+	 * Returns "" for unknown shapes.
+	 *
+	 * @context The afterLLMCall context ({ chatRequest, result } or { chatRequest, streamState })
+	 */
+	static string function getResponseText( required struct context ){
+		// Streaming (all providers now pass streamState.content)
+		if( arguments.context.keyExists( "streamState" ) && isStruct( arguments.context.streamState ) ){
+			return arguments.context.streamState.content ?: ""
+		}
+		if( !arguments.context.keyExists( "result" ) || !isStruct( arguments.context.result ) ){
+			return ""
+		}
+		var result = arguments.context.result
+
+		// OpenAI / OpenAI-compatible
+		if( result.keyExists( "choices" ) && isArray( result.choices ) && result.choices.len() ){
+			return result.choices.first().message.content ?: ""
+		}
+		// Claude: content[] typed blocks → first text block
+		if( result.keyExists( "content" ) && isArray( result.content ) ){
+			var textBlocks = result.content.filter( b -> isStruct( b ) && ( b.type ?: "" ) == "text" )
+			return textBlocks.isEmpty() ? "" : ( textBlocks.first().text ?: "" )
+		}
+		// Gemini: candidates[1].content.parts[1].text
+		if( result.keyExists( "candidates" ) && isArray( result.candidates ) && result.candidates.len() ){
+			var parts = result.candidates.first().content.parts ?: []
+			return ( isArray( parts ) && parts.len() ) ? ( parts.first().text ?: "" ) : ""
+		}
+		// Cohere
+		if( result.keyExists( "text" ) && isSimpleValue( result.text ) ){
+			return result.text
+		}
+		return ""
+	}
+
+	/**
+	 * Write the assistant text back into a middleware afterLLMCall context, in place,
+	 * across all known provider response shapes and streaming. Returns true if written.
+	 *
+	 * @context The afterLLMCall context
+	 * @text    The new assistant text
+	 */
+	static boolean function setResponseText( required struct context, required string text ){
+		if( arguments.context.keyExists( "streamState" ) && isStruct( arguments.context.streamState ) ){
+			arguments.context.streamState.content = arguments.text
+			return true
+		}
+		if( !arguments.context.keyExists( "result" ) || !isStruct( arguments.context.result ) ){
+			return false
+		}
+		var result = arguments.context.result
+
+		if( result.keyExists( "choices" ) && isArray( result.choices ) && result.choices.len() ){
+			result.choices.first().message.content = arguments.text
+			return true
+		}
+		if( result.keyExists( "content" ) && isArray( result.content ) ){
+			var idx = result.content.find( b -> isStruct( b ) && ( b.type ?: "" ) == "text" )
+			if( idx > 0 ){
+				result.content[ idx ].text = arguments.text
+				return true
+			}
+		}
+		if( result.keyExists( "candidates" ) && isArray( result.candidates ) && result.candidates.len() ){
+			var parts = result.candidates.first().content.parts ?: []
+			if( isArray( parts ) && parts.len() ){
+				parts.first().text = arguments.text
+				return true
+			}
+		}
+		if( result.keyExists( "text" ) && isSimpleValue( result.text ) ){
+			result.text = arguments.text
+			return true
+		}
+		return false
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
 	 * Private Helpers
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
+
+	/**
+	 * Luhn checksum validation for candidate credit-card numbers (digits only after strip).
+	 */
+	private static boolean function isLuhnValid( required string candidate ){
+		var digits = reReplace( arguments.candidate, "[^0-9]", "", "all" )
+		if( len( digits ) < 13 || len( digits ) > 19 ){
+			return false
+		}
+		var sum = 0
+		var alt = false
+		for( var i = len( digits ); i >= 1; i-- ){
+			var d = val( mid( digits, i, 1 ) )
+			if( alt ){
+				d = d * 2
+				if( d > 9 ){
+					d = d - 9
+				}
+			}
+			sum += d
+			alt = !alt
+		}
+		return ( sum % 10 ) == 0
+	}
+
+	/**
+	 * True if the URL's host matches (or is a subdomain of) any allowed host. Empty
+	 * allowlist means nothing is allowed (all external hosts are stripped).
+	 */
+	private static boolean function isHostAllowed( required string url, required array allowedHosts ){
+		if( arguments.allowedHosts.isEmpty() ){
+			return false
+		}
+		var host = reReplace( arguments.url, "^https?://([^/:?##]+).*$", "\1" ).lCase()
+		for( var allowed in arguments.allowedHosts ){
+			var a = allowed.lCase()
+			if( host == a || host.endsWith( "." & a ) ){
+				return true
+			}
+		}
+		return false
+	}
 
 	/**
 	 * Replace every finding's pattern matches in the text with the given replacement

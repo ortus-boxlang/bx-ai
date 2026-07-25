@@ -392,9 +392,12 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		var thisChatRequest = arguments.chatRequest;
 		var requestedModel = arguments.chatRequest.getModel();
 		var cohereUsage = { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "raw": {} };
+		// Accumulate the streamed assistant text so afterLLMCall middleware can inspect it
+		var cohereContent = "";
 		var emitNormalizedChunk = ( parsedChunk ) => {
 			var content = parsedChunk.text ?: ""
 			var finishReason = ""
+			cohereContent &= content;
 
 			if( parsedChunk.event_type == "stream-end" ){
 				finishReason = "stop"
@@ -507,6 +510,15 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			println( dataPacket )
 		}
 
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware (streaming) ---
+		// -------------------------------------------------------------------------------------------
+		var streamLlmBefore = arguments.chatRequest.fireMiddleware( "beforeLLMCall", { chatRequest: arguments.chatRequest, dataPacket: dataPacket } );
+		if( streamLlmBefore.isTerminal() ){
+			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
+			return
+		}
+
 		// Build HTTP request with fluent API
 		var httpRequest = http( getChatURL() )
 			.method( "POST" )
@@ -616,6 +628,15 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				timestamp        : now()
 			} )
 		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware (streaming), in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		arguments.chatRequest.fireMiddleware(
+			hook   : "afterLLMCall",
+			context: { chatRequest: arguments.chatRequest, streamState: { "content": cohereContent, "finishReason": "", "toolCalls": [], "usage": cohereUsage.raw } },
+			reverse: true
+		)
 	}
 
 	/**
