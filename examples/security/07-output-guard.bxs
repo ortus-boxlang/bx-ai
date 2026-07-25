@@ -109,7 +109,31 @@ println( guardedChat(
 println( "" )
 
 // -----------------------------------------------------------------------------
-// 6. Attached on an agent (the primary, recommended seam)
+// 6. Custom redactors: a regex OR a closure for dynamic redaction
+//    A closure receives ( text, mask ) and returns the cleaned text — so you can
+//    partially mask, keep last-4 digits, call an external service, etc.
+// -----------------------------------------------------------------------------
+dynamicGuard = new OutputGuardMiddleware(
+	action         : "redact",
+	redactors      : [],   // skip the built-ins for this demo
+	customRedactors: {
+		// regex redactor: mask every match
+		"internalCode": "ACME-[0-9]+",
+		// closure redactor: keep the last 4 digits of an account number, mask the rest
+		"account"     : ( text, mask ) => reReplace( text, "[0-9]+([0-9]{4})", mask & "\1", "all" )
+	}
+)
+
+println( "--- custom redactors: regex + dynamic closure ---" )
+println( guardedChat(
+	dynamicGuard,
+	"Look up my order",
+	"Order ACME-4821 for account 987654321 is ready."
+) )
+println( "" )
+
+// -----------------------------------------------------------------------------
+// 7. Attached on an agent (the primary, recommended seam)
 // -----------------------------------------------------------------------------
 println( "--- on an agent: response secrets are redacted end-to-end ---" )
 agent = aiAgent(

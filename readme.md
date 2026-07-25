@@ -615,7 +615,20 @@ agent.run( "Show the customer record" )
 // → "The customer's email is [REDACTED], SSN [REDACTED], card [REDACTED]."
 ```
 
-Built-in redactors (opt-in set): `email`, `ssn`, `creditCard` (Luhn-validated to cut false positives), `awsAccessKey`, `privateKeyBlock`, `jwt`, `genericApiToken` — plus `phone` and your own via `customRedactors: { name: "regex" }`. The primary seam is `afterLLMCall`, where the cleaned text is written back into the response **in place** before the provider returns it (works on streaming across all providers, per Layer 4's note). Provider **moderation** endpoints (OpenAI `/moderations`, Azure Content Safety, Bedrock Guardrails) are a planned pluggable extension.
+Built-in redactors (opt-in set): `email`, `ssn`, `creditCard` (Luhn-validated to cut false positives), `awsAccessKey`, `privateKeyBlock`, `jwt`, `genericApiToken` — plus `phone` and your own via `customRedactors`. A custom redactor value is **either a regex string** (matches masked) **or a closure** `function( text, mask )` for **dynamic redaction** — the closure receives the working text and returns the cleaned text, so you can partially mask, keep last-4 digits, call an external service, etc.:
+
+```javascript
+guard = new OutputGuardMiddleware(
+    customRedactors: {
+        // regex: mask every match
+        internalCode: "ACME-[0-9]+",
+        // closure: dynamic — keep the last 4 digits, mask the rest
+        account     : ( text, mask ) => reReplace( text, "[0-9]+([0-9]{4})", mask & "\1", "all" )
+    }
+)
+```
+
+The primary seam is `afterLLMCall`, where the cleaned text is written back into the response **in place** before the provider returns it (works on streaming across all providers, per Layer 4's note). Provider **moderation** endpoints (OpenAI `/moderations`, Azure Content Safety, Bedrock Guardrails) are a planned pluggable extension.
 
 ### 🧪 Testing with the Mock Provider
 

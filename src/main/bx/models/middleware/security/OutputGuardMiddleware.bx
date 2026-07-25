@@ -54,7 +54,8 @@ class extends="BaseAiMiddleware" {
 	property name="redactors" type="array" default=[];
 
 	/**
-	 * Extra redactors as { name: "regex" }
+	 * Extra redactors as { name: "regex" | function( text, mask ) }. A string value is a regex
+	 * whose matches are masked; a closure performs dynamic redaction and returns the cleaned text.
 	 */
 	property name="customRedactors" type="struct" default={};
 
@@ -100,7 +101,7 @@ class extends="BaseAiMiddleware" {
 	 *
 	 * @action              redact (default) | flag | block
 	 * @redactors           Redactor names to apply (default: PromptSecurity.DEFAULT_REDACTORS)
-	 * @customRedactors     Extra redactors as { name: "regex" }
+	 * @customRedactors     Extra redactors as { name: "regex" | function( text, mask ) } (closure = dynamic redaction)
 	 * @mask                Replacement mask for secrets (default "[REDACTED]")
 	 * @stripMarkdownImages Remove markdown images to non-allowlisted hosts (default true)
 	 * @stripExternalLinks  Rewrite external markdown links to their text (default false)

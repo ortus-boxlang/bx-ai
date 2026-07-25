@@ -437,10 +437,16 @@ class {
 	 * Redact secrets / PII from text using the named redactors. creditCard matches are
 	 * additionally Luhn-validated to cut false positives.
 	 *
+	 * A custom redactor value may be EITHER:
+	 *   - a regex string       → every match is replaced with the mask (static redaction), or
+	 *   - a closure/function   → `function( text, mask ) => redactedText` for DYNAMIC redaction.
+	 *     The closure receives the current working text (plus the mask for convenience) and returns
+	 *     the redacted text. If the returned text differs, a finding is recorded for that redactor.
+	 *
 	 * @text      The text to redact
 	 * @redactors Redactor names to apply (default: DEFAULT_REDACTORS)
 	 * @mask      The replacement mask (default "[REDACTED]")
-	 * @custom    Extra redactors as { name: "regex" }
+	 * @custom    Extra redactors as { name: "regex" | function( text, mask ) }
 	 *
 	 * @return { text: redactedText, findings: [ { redactor, match } ] }
 	 */
@@ -457,7 +463,8 @@ class {
 		var result   = arguments.text
 		var findings = []
 
-		// Build the effective { name: pattern } map (built-ins by name + any custom)
+		// Build the effective { name: pattern } map (built-ins by name + any custom).
+		// Custom values win over a same-named built-in and may be a regex OR a closure.
 		var patterns = {}
 		for( var name in arguments.redactors ){
 			if( static.REDACTOR_PATTERNS.keyExists( name ) ){
@@ -468,6 +475,19 @@ class {
 
 		for( var name in patterns ){
 			var pattern = patterns[ name ]
+
+			// Dynamic redactor: a closure/function performs the redaction itself.
+			if( isClosure( pattern ) || isCustomFunction( pattern ) ){
+				var before = result
+				var after  = pattern( before, arguments.mask )
+				if( isSimpleValue( after ?: "" ) && toString( after ) != before ){
+					result = toString( after )
+					findings.append( { "redactor": name, "match": "[dynamic]" } )
+				}
+				continue
+			}
+
+			// Static redactor: a regex whose matches are masked.
 			var matches = reMatch( pattern, result )
 			for( var m in matches ){
 				// creditCard: only redact if it passes the Luhn checksum

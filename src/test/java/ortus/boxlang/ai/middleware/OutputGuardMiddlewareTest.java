@@ -99,6 +99,31 @@ public class OutputGuardMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "intact" ) ) ).isTrue();
 	}
 
+	@DisplayName( "redact: a custom redactor CLOSURE dynamically scrubs the response" )
+	@Test
+	public void testRedactCustomClosure() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.security.OutputGuardMiddleware;
+		        guard  = new OutputGuardMiddleware(
+		            action         : "redact",
+		            redactors      : [],
+		            customRedactors: { "acct": ( text, mask ) => reReplace( text, "[0-9]{5,}", mask, "all" ) }
+		        );
+		        result = aiChat( "look up my account", {}, {
+		            provider       : "mock",
+		            providerOptions: { responses: [ "Your account 987654321 is active." ] },
+		            middleware     : [ guard ]
+		        } );
+		        masked = result.contains( "[REDACTED]" ) && !result.contains( "987654321" );
+		    """,
+		    context
+		);
+		// @formatter:on
+		assertThat( variables.getAsBoolean( Key.of( "masked" ) ) ).isTrue();
+	}
+
 	@DisplayName( "block: a response with secrets throws BXAI.SecurityViolation" )
 	@Test
 	public void testBlockThrows() {

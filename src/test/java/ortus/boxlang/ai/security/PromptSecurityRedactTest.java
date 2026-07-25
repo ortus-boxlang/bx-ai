@@ -184,6 +184,51 @@ public class PromptSecurityRedactTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "masked" ) ) ).isTrue();
 	}
 
+	@DisplayName( "redactSecrets: custom redactor as a CLOSURE does dynamic redaction" )
+	@Test
+	public void testRedactCustomClosure() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.security.PromptSecurity;
+		        // Dynamic redactor: keep the last 4 digits of any account number, mask the rest.
+		        out = PromptSecurity::redactSecrets(
+		            text     : "account 987654321 on file",
+		            redactors: [],
+		            custom   : { "acct": ( text, mask ) => reReplace( text, "[0-9]+([0-9]{4})", mask & "\\1", "all" ) }
+		        );
+		        // 987654321 → [REDACTED]4321, and a finding was recorded
+		        dynamic = out.text.contains( "[REDACTED]4321" )
+		                  && !out.text.contains( "987654321" )
+		                  && out.findings.len() == 1
+		                  && out.findings[ 1 ].redactor == "acct";
+		    """,
+		    context
+		);
+		// @formatter:on
+		assertThat( variables.getAsBoolean( Key.of( "dynamic" ) ) ).isTrue();
+	}
+
+	@DisplayName( "redactSecrets: closure that changes nothing records no finding" )
+	@Test
+	public void testRedactCustomClosureNoOp() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.security.PromptSecurity;
+		        out = PromptSecurity::redactSecrets(
+		            text     : "nothing to see here",
+		            redactors: [],
+		            custom   : { "noop": ( text, mask ) => text }
+		        );
+		        clean = out.findings.isEmpty() && out.text == "nothing to see here";
+		    """,
+		    context
+		);
+		// @formatter:on
+		assertThat( variables.getAsBoolean( Key.of( "clean" ) ) ).isTrue();
+	}
+
 	@DisplayName( "stripExfil: removes a markdown image to a non-allowlisted host" )
 	@Test
 	public void testStripExfilImage() {
