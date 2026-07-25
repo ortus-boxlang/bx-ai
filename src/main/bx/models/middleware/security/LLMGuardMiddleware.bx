@@ -408,48 +408,17 @@ judgeOptions[ "timeout" ] = variables.timeout
 	 * Returns "" for unknown shapes (fail-open) with a warning.
 	 */
 	private string function extractOutputContent( required struct context ){
-// Streaming (OpenAI family)
-if( arguments.context.keyExists( "streamState" ) && isStruct( arguments.context.streamState ) ){
-	if( arguments.context.streamState.keyExists( "content" ) ){
-		return arguments.context.streamState.content ?: ""
-	}
-	writeLog(
-		text: "LLMGuardMiddleware: streaming provider did not expose accumulated content for output judging; skipping (fail-open).",
-		type: "warning",
-		log : "ai"
-	)
-	return ""
-}
-		if( !arguments.context.keyExists( "result" ) || !isStruct( arguments.context.result ) ){
-			return ""
+		// Delegate to the shared resolver (single source of truth across provider shapes
+		// and streaming). Returns "" for unknown shapes → fail-open.
+		var content = PromptSecurity::getResponseText( arguments.context )
+		if( !len( content ) ){
+			writeLog(
+				text: "LLMGuardMiddleware: could not resolve response content shape for output judging; skipping (fail-open).",
+				type: "warning",
+				log : "ai"
+			)
 		}
-		var result = arguments.context.result
-
-		// OpenAI / OpenAI-compatible: choices[1].message.content
-		if( result.keyExists( "choices" ) && isArray( result.choices ) && result.choices.len() ){
-			return result.choices.first().message.content ?: ""
-		}
-		// Claude: content[] array of typed blocks → first text block
-		if( result.keyExists( "content" ) && isArray( result.content ) ){
-			var textBlocks = result.content.filter( b -> isStruct( b ) && ( b.type ?: "" ) == "text" )
-			return textBlocks.isEmpty() ? "" : ( textBlocks.first().text ?: "" )
-		}
-		// Gemini: candidates[1].content.parts[1].text
-		if( result.keyExists( "candidates" ) && isArray( result.candidates ) && result.candidates.len() ){
-			var parts = result.candidates.first().content.parts ?: []
-			return ( isArray( parts ) && parts.len() ) ? ( parts.first().text ?: "" ) : ""
-		}
-		// Cohere: result.text
-		if( result.keyExists( "text" ) && isSimpleValue( result.text ) ){
-			return result.text
-		}
-
-		writeLog(
-			text: "LLMGuardMiddleware: could not resolve response content shape for output judging; skipping (fail-open).",
-			type: "warning",
-			log : "ai"
-		)
-		return ""
+		return content
 	}
 
 	// ==================== Cache ====================
@@ -491,13 +460,14 @@ if( arguments.context.keyExists( "streamState" ) && isStruct( arguments.context.
 	}
 
 	private void function leaveGuard(){
-var tid      = getThreadId()
-var newDepth = max( 0, ( static.DEPTH[ tid ] ?: 1 ) - 1 )
-if( newDepth <= 0 ){
-	static.DEPTH.delete( tid )
-} else {
-	static.DEPTH[ tid ] = newDepth
-}
+		var tid      = getThreadId()
+		var newDepth = max( 0, ( static.DEPTH[ tid ] ?: 1 ) - 1 )
+		if( newDepth <= 0 ){
+			static.DEPTH.delete( tid )
+		} else {
+			static.DEPTH[ tid ] = newDepth
+		}
+	}
 
 	private string function getThreadId(){
 		return createObject( "java", "java.lang.Thread" ).currentThread().getId().toString()

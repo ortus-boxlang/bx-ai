@@ -137,6 +137,7 @@ class extends="BaseService" implements="IAiChatService" {
 		var streamState = {
 			"messageId": "",
 			"model": arguments.chatRequest.getModel(),
+			"content": "",
 			"toolCalls": [],
 			"toolInputBuffers": {},
 			"toolCallIndexMap": {},
@@ -144,6 +145,15 @@ class extends="BaseService" implements="IAiChatService" {
 			"emittedAnyText": false,
 			"usage": { "input_tokens": 0, "output_tokens": 0 }
 		};
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware (streaming) ---
+		// -------------------------------------------------------------------------------------------
+		var streamLlmBefore = arguments.chatRequest.fireMiddleware( "beforeLLMCall", { chatRequest: arguments.chatRequest, dataPacket: dataPacket } );
+		if( streamLlmBefore.isTerminal() ){
+			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
+			return
+		}
 
 		var httpRequest = http( getChatURL() )
 			.method( "POST" )
@@ -205,6 +215,7 @@ class extends="BaseService" implements="IAiChatService" {
 					if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "text_delta" ){
 						var textChunk = parsedChunk.delta.text ?: "";
 						streamState.emittedAnyText = streamState.emittedAnyText || textChunk.len();
+						streamState.content &= textChunk;
 
 						userCallback({
 							"id": streamState.messageId,
@@ -396,6 +407,19 @@ class extends="BaseService" implements="IAiChatService" {
 					]
 				});
 			}
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware (streaming), in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		// Only fire on the pure-text path. The tool_use and no-text-fallback branches above call
+		// chat(), which already fires afterLLMCall — firing again here would double-fire.
+		if( streamState.emittedAnyText && streamState.stopReason != "tool_use" ){
+			arguments.chatRequest.fireMiddleware(
+				hook   : "afterLLMCall",
+				context: { chatRequest: arguments.chatRequest, streamState: { "content": streamState.content, "finishReason": streamState.stopReason, "toolCalls": streamState.toolCalls, "usage": streamState.usage } },
+				reverse: true
+			)
 		}
 	}
 
