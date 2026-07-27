@@ -66,11 +66,49 @@ abstract class implements="IAiMemory" {
 	property name="maxMessages" type="numeric";
 
 	/**
+	 * --------------------------------------------------------------------------
+	 * Summary / AI-Compression Properties
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * AI model name to use for summarization (empty = disabled)
+	 */
+	property name="summaryModel" type="string" default="";
+
+	/**
+	 * AI provider to use for summarization (empty = disabled)
+	 */
+	property name="summaryProvider" type="string" default="";
+
+	/**
+	 * Number of recent messages to keep unsummarized (0 = use default during summarize())
+	 */
+	property name="summaryThreshold" type="numeric" default=0;
+
+	/**
+	 * Cached AI model instance for summarization
+	 */
+	property name="summaryModelInstance" type="any" default="";
+
+	/**
+	 * Current cached summary text
+	 */
+	property name="currentSummary" type="string" default="";
+
+	/**
+	 * Whether a summary message exists in memory
+	 */
+	property name="hasSummary" type="boolean" default=false;
+
+	/**
 	 * Constants
 	 */
 	static {
 		final settings = getModuleInfo( "bxai" ).settings
 		final DEFAULT_MAX_MESSAGES = 100
+		final DEFAULT_SUMMARY_THRESHOLD = 10
+		final SUMMARY_PROMPT = "Summarize the following conversation concisely, preserving key facts, decisions, user preferences, and important context. Be brief but complete.\n\n"
 	}
 
 	/**
@@ -80,12 +118,18 @@ abstract class implements="IAiMemory" {
 	 * @userId The user identifier for multi-tenant isolation
 	 * @conversationId The conversation identifier for multiple conversations
 	 * @maxMessages Maximum number of messages to store
+	 * @summaryThreshold Number of recent messages to keep during summarize()
+	 * @summaryModel AI model name for summarization
+	 * @summaryProvider AI provider name for summarization
 	 */
 	function init(
 		string key = createUUID(),
 		string userId = "",
 		string conversationId = "",
-		numeric maxMessages = static.DEFAULT_MAX_MESSAGES
+		numeric maxMessages = static.DEFAULT_MAX_MESSAGES,
+		numeric summaryThreshold = 0,
+		string summaryModel = "",
+		string summaryProvider = ""
 	) {
 		variables.key = arguments.key
 		variables.userId = arguments.userId
@@ -93,6 +137,12 @@ abstract class implements="IAiMemory" {
 		var fullName = getMetadata( this ).name ?: "BaseMemory"
 		variables.name = fullName.listLast( "." )
 		variables.maxMessages = arguments.maxMessages
+		variables.summaryThreshold = arguments.summaryThreshold
+		variables.summaryModel = arguments.summaryModel
+		variables.summaryProvider = arguments.summaryProvider
+		variables.summaryModelInstance = ""
+		variables.currentSummary = ""
+		variables.hasSummary = false
 		return this
 	}
 
@@ -479,6 +529,22 @@ abstract class implements="IAiMemory" {
 			variables.conversationId = arguments.config.conversationId
 		}
 
+		// Summary configuration
+		if ( arguments.config.keyExists( "summaryThreshold" ) ) {
+			variables.summaryThreshold = arguments.config.summaryThreshold
+		}
+		if ( arguments.config.keyExists( "summaryModel" ) ) {
+			variables.summaryModel = arguments.config.summaryModel
+		}
+		if ( arguments.config.keyExists( "summaryProvider" ) ) {
+			variables.summaryProvider = arguments.config.summaryProvider
+		}
+
+		// Lazy-build the summary model if we now have provider + model
+		if ( len( variables.summaryProvider ) && len( variables.summaryModel ) && !isObject( variables.summaryModelInstance ) ) {
+			variables.summaryModelInstance = buildSummaryModel()
+		}
+
 		return this
 	}
 
@@ -502,7 +568,13 @@ abstract class implements="IAiMemory" {
 			"metadata": this.metadata(),
 			"config": getConfig(),
 			"firstMessageAt": allMessages.isEmpty() ? "" : allMessages.first().timestamp,
-        	"lastMessageAt": allMessages.isEmpty() ? "" : allMessages.last().timestamp
+        	"lastMessageAt": allMessages.isEmpty() ? "" : allMessages.last().timestamp,
+			// Summary fields
+			"summaryModel": variables.summaryModel,
+			"summaryProvider": variables.summaryProvider,
+			"summaryThreshold": variables.summaryThreshold,
+			"hasSummary": variables.hasSummary,
+			"summaryLength": len( variables.currentSummary )
 		}
 
 		// Add role distribution stats
@@ -549,7 +621,12 @@ abstract class implements="IAiMemory" {
 			"metadata": this.metadata(),
 			"config": getConfig(),
 			"messages": getAll( arguments.userId, arguments.conversationId ),
-			"maxMessages": variables.maxMessages
+			"maxMessages": variables.maxMessages,
+			"summaryModel": variables.summaryModel,
+			"summaryProvider": variables.summaryProvider,
+			"summaryThreshold": variables.summaryThreshold,
+			"currentSummary": variables.currentSummary,
+			"hasSummary": variables.hasSummary
 		}
 	}
 
@@ -582,6 +659,28 @@ abstract class implements="IAiMemory" {
 		}
 		if ( arguments.data.keyExists( "messages" ) && isArray( arguments.data.messages ) ) {
 			variables.messages = arguments.data.messages
+		}
+
+		// Restore summary fields
+		if ( arguments.data.keyExists( "summaryModel" ) ) {
+			variables.summaryModel = arguments.data.summaryModel
+		}
+		if ( arguments.data.keyExists( "summaryProvider" ) ) {
+			variables.summaryProvider = arguments.data.summaryProvider
+		}
+		if ( arguments.data.keyExists( "summaryThreshold" ) ) {
+			variables.summaryThreshold = arguments.data.summaryThreshold
+		}
+		if ( arguments.data.keyExists( "currentSummary" ) ) {
+			variables.currentSummary = arguments.data.currentSummary
+		}
+		if ( arguments.data.keyExists( "hasSummary" ) ) {
+			variables.hasSummary = arguments.data.hasSummary
+		}
+
+		// Rebuild the summary model if we have provider + model
+		if ( len( variables.summaryProvider ) && len( variables.summaryModel ) ) {
+			variables.summaryModelInstance = buildSummaryModel()
 		}
 
 		// Ensure we respect maxMessages after import
@@ -690,6 +789,175 @@ abstract class implements="IAiMemory" {
 		variables.maxMessages = arguments.maxMessages
 		this.trim()
 		return this
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * SUMMARIZATION METHODS
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Build or retrieve the AI model for summarization.
+	 * Uses the instance's summaryProvider and summaryModel.
+	 *
+	 * @return AiModel instance or null if not configured
+	 */
+	private any function buildSummaryModel() {
+		if ( !len( variables.summaryProvider ) || !len( variables.summaryModel ) ) {
+			return "";
+		}
+		try {
+			variables.summaryModelInstance = aiModel( variables.summaryProvider )
+				.withParams( { model: variables.summaryModel } )
+				.withOptions( { returnFormat: "single" } );
+			return variables.summaryModelInstance;
+		} catch ( any e ) {
+			writeLog(
+				text: "BaseMemory: Failed to build summary model - #e.message#",
+				type: "error",
+				log: "ai"
+			);
+			return "";
+		}
+	}
+
+	/**
+	 * AI-summarize older messages, keeping recent ones intact.
+	 * Uses the memory's configured summaryModel and summaryProvider from init or configure().
+	 * Pass a config struct to override per-call settings.
+	 * If no summary config is set at all, this is a no-op.
+	 * Subclasses that persist data (JdbcMemory, FileMemory, CacheMemory) should override
+	 * to persist the result after calling super.summarize().
+	 *
+	 * @config Optional struct with keys:
+	 *   - keepRecent: Number of recent messages to keep (default: summaryThreshold or 10)
+	 *   - model: AI model name override (default: summaryModel)
+	 *   - provider: AI provider name override (default: summaryProvider)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function summarize( struct config = {} ) {
+		// Resolve keepRecent: arg > summaryThreshold > default
+		var keepRecent = config.keyExists( "keepRecent" ) && config.keepRecent > 0
+			? config.keepRecent
+			: ( variables.summaryThreshold > 0 ? variables.summaryThreshold : static.DEFAULT_SUMMARY_THRESHOLD )
+
+		// Resolve model/provider: per-call override > instance config > empty
+		var model = config.keyExists( "model" ) ? config.model : variables.summaryModel
+		var provider = config.keyExists( "provider" ) ? config.provider : variables.summaryProvider
+
+		// Need at least (keepRecent + 1) messages to make summarization worthwhile
+		var nonSystemMessages = getNonSystemMessages();
+		if ( nonSystemMessages.len() <= keepRecent ) {
+			return this;
+		}
+
+		// If per-call overrides differ from instance config, build a one-shot model
+		var useModelInstance = variables.summaryModelInstance
+		var useProvider = provider
+		var useModel = model
+
+		// Check if we need a different model than the cached one
+		var needsCustomModel = ( len( useProvider ) && len( useModel ) )
+			&& ( useProvider != variables.summaryProvider || useModel != variables.summaryModel )
+
+		if ( needsCustomModel ) {
+			try {
+				useModelInstance = aiModel( useProvider )
+					.withParams( { model: useModel } )
+					.withOptions( { returnFormat: "single" } )
+			} catch ( any e ) {
+				writeLog(
+					text: "BaseMemory.summarize(): Failed to build per-call model - #e.message#",
+					type: "error",
+					log: "ai"
+				)
+				return this
+			}
+		} else if ( !isObject( useModelInstance ) ) {
+			// Try to build from instance config
+			buildSummaryModel()
+			useModelInstance = variables.summaryModelInstance
+		}
+
+		// If still no model, silently skip
+		if ( !isObject( useModelInstance ) ) {
+			return this;
+		}
+
+		// Split: messages to summarize vs recent messages to keep intact
+		var messagesToSummarizeCount = nonSystemMessages.len() - keepRecent;
+		var toSummarize = nonSystemMessages.slice( 1, messagesToSummarizeCount );
+		var toKeep = nonSystemMessages.slice( messagesToSummarizeCount + 1, keepRecent );
+
+		// Build summarization prompt
+		var summaryPrompt = static.SUMMARY_PROMPT;
+
+		// Include previous summary if exists, for progressive accumulation
+		if ( variables.currentSummary.len() ) {
+			summaryPrompt &= "Previous conversation summary:\n#variables.currentSummary#\n\nNew messages to add to summary:\n";
+		} else {
+			summaryPrompt &= "Messages to summarize:\n";
+		}
+
+		// Add messages to summarize (skip existing summary messages)
+		toSummarize.each( msg => {
+			if ( msg.keyExists( "isSummary" ) && msg.isSummary ) {
+				return;
+			}
+			summaryPrompt &= "#msg.role#: #msg.content#\n";
+		} );
+
+		// Call AI to generate summary
+		try {
+			var summary = useModelInstance.run( aiMessage().user( summaryPrompt ) );
+
+			// Rebuild message structure
+			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
+			variables.messages = [];
+
+			// Re-add system message first
+			if ( systemMsg.len() ) {
+				variables.messages.append( {
+					role: "system",
+					content: systemMsg,
+					timestamp: now()
+				} );
+			}
+
+			// Add summary as a tagged assistant message
+			variables.messages.append( {
+				role: "assistant",
+				content: "[Previous conversation summary]: #summary#",
+				isSummary: true,
+				timestamp: now()
+			} );
+
+			variables.currentSummary = summary;
+			variables.hasSummary = true;
+
+			// Add back the recent messages
+			variables.messages.append( toKeep, true );
+
+		} catch ( any e ) {
+			writeLog(
+				text: "BaseMemory.summarize(): Failed to generate summary - #e.message#. Falling back to truncation.",
+				type: "error",
+				log: "ai"
+			);
+			// Fall back to simple truncation: keep only recent messages
+			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
+			clear();
+			if ( systemMsg.len() ) {
+				setSystemMessage( systemMsg );
+			}
+			toKeep.each( msg => {
+				super.add( msg );
+			} );
+		}
+
+		return this;
 	}
 
 	/**

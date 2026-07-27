@@ -265,6 +265,26 @@ interface {
 
 	/**
 	 * ------------------------------------------------------------------------------
+	 * SUMMARIZATION METHOD
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * AI-compress older messages by generating a summary, keeping recent ones intact.
+	 * Uses the memory's configured summaryModel and summaryProvider by default.
+	 * Pass a config struct to override per-call.
+	 *
+	 * @config Optional struct with keys:
+	 *   - keepRecent: Number of recent messages to keep (default: summaryThreshold or 10)
+	 *   - model: AI model name override (default: summaryModel)
+	 *   - provider: AI provider name override (default: summaryProvider)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	IAiMemory function summarize( struct config );
+
+	/**
+	 * ------------------------------------------------------------------------------
 	 * IMPORT/EXPORT METHODS
 	 * ------------------------------------------------------------------------------
 	 */

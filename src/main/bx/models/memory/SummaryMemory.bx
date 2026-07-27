@@ -16,45 +16,18 @@
  * Automatically summarizes older messages when limit reached
  * Keeps: [System Message] + [Summary of Old Messages] + [Recent Messages]
  * Perfect for long conversations where context must be preserved
+ *
+ * The summarization logic lives in BaseMemory.summarize().
+ * This class adds the auto-trigger behavior: when enough messages accumulate,
+ * trim() automatically calls summarize() to keep memory within bounds.
  */
 class extends="WindowMemory" {
-
-	/**
-	 * Number of recent messages to keep unsummarized
-	 */
-	property name="summaryThreshold" type="numeric";
-
-	/**
-	 * AI model name to use for summarization
-	 */
-	property name="summaryModelName" default="";
-
-	/**
-	 * AI provider to use for summarization
-	 */
-	property name="summaryProvider" default="";
-
-	/**
-	 * Cached AI model instance for summarization
-	 */
-	property name="summaryModelInstance" default="";
-
-	/**
-	 * Current cached summary text
-	 */
-	property name="currentSummary" default="";
-
-	/**
-	 * Whether a summary message exists in memory
-	 */
-	property name="hasSummary" type="boolean" default=false;
 
 	static {
 		final DEFAULT_MAX_MESSAGES = 20
 		final DEFAULT_SUMMARY_THRESHOLD = 10
 		final DEFAULT_SUMMARY_MODEL = "gpt-4o-mini"
 		final DEFAULT_SUMMARY_PROVIDER = "openai"
-		final SUMMARY_PROMPT = "Summarize the following conversation concisely, preserving key facts, decisions, user preferences, and important context. Be brief but complete.\n\n"
 	}
 
 	/**
@@ -80,15 +53,12 @@ class extends="WindowMemory" {
 		super.init(
 			key: arguments.key,
 			userId: arguments.userId,
-			conversationId: arguments.conversationId
+			conversationId: arguments.conversationId,
+			maxMessages: arguments.maxMessages,
+			summaryThreshold: arguments.summaryThreshold,
+			summaryModel: arguments.summaryModel,
+			summaryProvider: arguments.summaryProvider
 		)
-		variables.maxMessages = arguments.maxMessages
-		variables.summaryThreshold = arguments.summaryThreshold
-		variables.summaryModelName = arguments.summaryModel
-		variables.summaryProvider = arguments.summaryProvider
-		variables.summaryModelInstance = ""
-		variables.currentSummary = ""
-		variables.hasSummary = false
 		return this
 	}
 
@@ -101,29 +71,16 @@ class extends="WindowMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	IAiMemory function configure( required struct config ) {
+		// BaseMemory.configure() handles all summary config wiring + model building
 		super.configure( arguments.config )
-
-		if ( arguments.config.keyExists( "summaryThreshold" ) ) {
-			variables.summaryThreshold = arguments.config.summaryThreshold
-		}
-
-		if ( arguments.config.keyExists( "summaryModel" ) ) {
-			variables.summaryModelName = arguments.config.summaryModel
-		}
-
-		if ( arguments.config.keyExists( "summaryProvider" ) ) {
-			variables.summaryProvider = arguments.config.summaryProvider
-		}
-
-		// Create the AI model instance for reuse
-		variables.summaryModelInstance = buildSummaryModel()
-
-		return this;
+		return this
 	}
 
 	/**
 	 * Trim messages to keep only the last N (excluding system message)
-	 * Overrides base to add summarization behavior
+	 * Overrides base to add auto-summarization behavior.
+	 * When enough messages accumulate beyond the threshold, triggers summarize()
+	 * instead of simple truncation.
 	 *
 	 * @userId   Optional per-call user identifier (ignored — SummaryMemory is an on-object store)
 	 * @conversationId Optional per-call conversation identifier (ignored — SummaryMemory is an on-object store)
@@ -143,108 +100,10 @@ class extends="WindowMemory" {
 			return this
 		}
 
-		// We have enough messages to summarize → run summarization
-    	summarizeOldMessages()
+		// We have enough messages to summarize — delegate to base summarize()
+		this.summarize()
 
 		return this
-	}
-
-	/**
-	 * Summarize older messages, keeping recent ones intact
-	 *
-	 * @return void
-	 */
-	private function summarizeOldMessages() {
-		var messages = getNonSystemMessages();
-		// println( "summarizeOldMessages: messages.len()=#messages.len()#, summaryThreshold=#variables.summaryThreshold#", true );
-
-		// Don't summarize if we don't have enough messages
-		if ( messages.len() <= variables.summaryThreshold ) {
-			//println( "summarizeOldMessages: Skipping - not enough messages", true );
-			return;
-		}
-
-		// Calculate split point
-		var messagesToSummarize = messages.len() - variables.summaryThreshold;
-
-		// Split: messages to summarize vs recent to keep
-		var toSummarize = messages.slice( 1, messagesToSummarize );
-		var keepLength = messages.len() - messagesToSummarize;
-		var toKeep = messages.slice( messagesToSummarize + 1, keepLength );
-
-		// Build summarization prompt
-		var summaryPrompt = static.SUMMARY_PROMPT;
-
-		// Include previous summary if exists
-		if ( variables.currentSummary.len() ) {
-			summaryPrompt &= "Previous conversation summary:\n#variables.currentSummary#\n\nNew messages to add to summary:\n";
-		} else {
-			summaryPrompt &= "Messages to summarize:\n";
-		}
-
-		// Add messages to summarize
-		toSummarize.each( msg => {
-			// Skip if it's already a summary
-			if ( msg.keyExists( "isSummary" ) && msg.isSummary ) {
-				return;
-			}
-			summaryPrompt &= "#msg.role#: #msg.content#\n";
-		} );
-
-		// Call AI to generate summary
-		try {
-			var summary = variables.summaryModelInstance.run( aiMessage().user( summaryPrompt ) );
-
-			// Rebuild memory structure WITHOUT triggering trim() recursion
-			// We directly manipulate variables.messages to avoid add() → trim() → summarizeOldMessages() recursion
-			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
-
-			// Clear messages array directly
-			variables.messages = [];
-
-			// Re-add system message directly (avoid setSystemMessage which calls trim)
-			if ( systemMsg.len() ) {
-				variables.messages.append( {
-					role: "system",
-					content: systemMsg,
-					timestamp: now()
-				} );
-			}
-
-			// Add summary as special assistant message (directly, no super.add())
-			variables.messages.append( {
-				role: "assistant",
-				content: "[Previous conversation summary]: #summary#",
-				isSummary: true,
-				timestamp: now()
-			} );
-
-			variables.currentSummary = summary;
-			variables.hasSummary = true;
-
-			// Add back recent messages (directly, no super.add() to avoid trim recursion)
-			variables.messages.append( toKeep, true )
-
-		} catch ( any e ) {
-			// If summarization fails, fall back to simple truncation
-			writeLog(
-				text: "SummaryMemory: Failed to generate summary - #e.message#. Falling back to truncation.",
-				type: "error",
-				log: "ai"
-			);
-
-			// Keep only recent messages
-			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
-			clear();
-
-			if ( systemMsg.len() ) {
-				setSystemMessage( systemMsg );
-			}
-
-			for( var msg in toKeep ){
-				super.add( msg );
-			}
-		}
 	}
 
 	/**
@@ -264,26 +123,28 @@ class extends="WindowMemory" {
 
 	/**
 	 * Get a summary of this memory instance
-	 * Overrides base to add summary-specific fields
+	 * Overrides base to add SummaryMemory-specific fields
 	 *
 	 * @return Struct with memory information
 	 */
 	public struct function getSummary() {
 		var summary = super.getSummary();
+
+		// Add SummaryMemory-specific computed fields
 		summary.maxMessages = variables.maxMessages;
 		summary.summaryThreshold = variables.summaryThreshold;
-		summary.summaryModel = variables.summaryModelName;
+		summary.summaryModel = variables.summaryModel;
 		summary.summaryProvider = variables.summaryProvider;
 		summary.hasSummary = variables.hasSummary;
 		summary.summaryLength = len( variables.currentSummary );
 		summary.summarizedMessageCount = variables.hasSummary ? summary.messageCount - variables.summaryThreshold : 0;
 		summary.recentMessageCount = variables.summaryThreshold;
+
 		return summary;
 	}
 
 	/**
 	 * Export messages to a serializable format
-	 * Overrides base to add summary-specific configuration
 	 *
 	 * @return Struct containing all memory data
 	 */
@@ -291,7 +152,7 @@ class extends="WindowMemory" {
 		var exported = super.export();
 		exported.maxMessages = variables.maxMessages;
 		exported.summaryThreshold = variables.summaryThreshold;
-		exported.summaryModel = variables.summaryModelName;
+		exported.summaryModel = variables.summaryModel;
 		exported.summaryProvider = variables.summaryProvider;
 		exported.currentSummary = variables.currentSummary;
 		exported.hasSummary = variables.hasSummary;
@@ -300,56 +161,15 @@ class extends="WindowMemory" {
 
 	/**
 	 * Import messages from a previously exported format
-	 * Overrides base to restore summary state
 	 *
 	 * @data The exported memory data
 	 *
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function import( required struct data ) {
-		// Import base fields
+		// BaseMemory.import() handles all summary field restoration + model rebuild
 		super.import( arguments.data )
-
-		// Restore summary-specific fields
-		if ( arguments.data.keyExists( "maxMessages" ) ) {
-			variables.maxMessages = arguments.data.maxMessages
-		}
-
-		if ( arguments.data.keyExists( "summaryThreshold" ) ) {
-			variables.summaryThreshold = arguments.data.summaryThreshold
-		}
-
-		if ( arguments.data.keyExists( "summaryModel" ) ) {
-			variables.summaryModelName = arguments.data.summaryModel
-		}
-
-		if ( arguments.data.keyExists( "summaryProvider" ) ) {
-			variables.summaryProvider = arguments.data.summaryProvider
-		}
-
-		// Recreate the AI model instance
-		variables.summaryModelInstance = buildSummaryModel()
-
-		if ( arguments.data.keyExists( "currentSummary" ) ) {
-			variables.currentSummary = arguments.data.currentSummary
-		}
-
-		if ( arguments.data.keyExists( "hasSummary" ) ) {
-			variables.hasSummary = arguments.data.hasSummary
-		}
-
 		return this;
-	}
-
-	/**
-	 * Build or retrieve the AI model for summarization
-	 *
-	 * @return AiModel instance
-	 */
-	private AiModel function buildSummaryModel(){
-		return aiModel( variables.summaryProvider )
-			.withParams( { model: variables.summaryModelName } )
-    		.withOptions( { returnFormat: "single" } )
 	}
 
 }

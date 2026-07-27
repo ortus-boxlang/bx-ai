@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🥊 Added
+
+- **Universal `summarize()` on all conversation memory types**: Summary configuration (`summaryModel`, `summaryProvider`, `summaryThreshold`) moved from `SummaryMemory` into `BaseMemory` so every memory type supports AI summarization. New `IAiMemory.summarize( struct config )` method lets you explicitly condense old messages into a summary at any time, with per-call overrides for model, provider, and keepRecent. Persistent stores (JdbcMemory, FileMemory, CacheMemory) automatically persist the result. BaseVectorMemory overrides as a no-op — vector stores are semantic indexes, not conversation buffers. SummaryMemory retains its existing auto-trigger behavior via `trim()` delegating to the shared base method.
+
 ## [3.3.2] - 2026-06-19
 
 ### 🪲 Fixed
