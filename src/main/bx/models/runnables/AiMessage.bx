@@ -19,6 +19,7 @@
  * This class extends AiBaseRunnable, making it usable in runnable pipelines.
  */
 import bxModules.bxai.models.runnables.*;
+import bxModules.bxai.models.security.PromptSecurity;
 
 class extends="AiBaseRunnable"{
 
@@ -41,6 +42,32 @@ class extends="AiBaseRunnable"{
 	 * The context is automatically available as ${context} in message bindings.
 	 */
 	property name="context" type="struct" default={};
+
+	/**
+	 * Explicitly-registered untrusted content segments, added via addUntrusted().
+	 * Each is { content, label, role }. At render() time these are wrapped in fence
+	 * markers (PromptSecurity::fence) and a one-time fencing preamble is injected.
+	 */
+	property name="untrusted" type="array" default=[];
+
+	/**
+	 * When true, the ${context} value is wrapped in fence markers at render time so the
+	 * model treats retrieved/RAG context as untrusted DATA, not instructions.
+	 * Toggle via setContextTrust( false ). Default false (backwards compatible).
+	 */
+	property name="fenceContext" type="boolean" default=false;
+
+	/**
+	 * When true (default), simple binding VALUES are passed through
+	 * PromptSecurity::escapeBindings before stringBind, so untrusted data containing
+	 * ${...} cannot be mistaken for a template placeholder. Defense-in-depth hardening.
+	 */
+	property name="escapeBindings" type="boolean" default=true;
+
+	/**
+	 * Optional override for the fencing preamble instruction. Empty = built-in preamble.
+	 */
+	property name="fencePreambleText" type="string" default="";
 
 	/**
 	 * CONSTANTS
@@ -103,10 +130,16 @@ class extends="AiBaseRunnable"{
 	 * @return An array of formatted messages
 	 */
 	array function format( required struct bindings ) {
+		// Escape ${...} inside binding VALUES so untrusted data can't be read as a
+		// template placeholder (defense-in-depth; only changes values containing "${").
+		var effectiveBindings = variables.escapeBindings
+			? PromptSecurity::escapeBindings( arguments.bindings )
+			: arguments.bindings;
+
 		return variables.messages.map( message => {
             var formattedMessage = duplicate( message );
 			if( isSimpleValue( formattedMessage.content ) ){
-				formattedMessage.content = stringBind( formattedMessage.content, bindings )
+				formattedMessage.content = stringBind( formattedMessage.content, effectiveBindings )
 			}
 			return formattedMessage;
 		} )
@@ -122,11 +155,100 @@ class extends="AiBaseRunnable"{
 	array function render( struct bindings = {} ) {
         // Merge provided bindings with stored bindings, in favor of provided
         var allBindings = arguments.bindings.append( variables.bindings, false )
-		// If we have context, add it to bindings as ${context}
+		// If we have context, add it to bindings as ${context} — fenced when requested
 		if( hasContext() ){
-			allBindings[ "context" ] = jsonSerialize( variables.context );
+			var contextJson = jsonSerialize( variables.context );
+			allBindings[ "context" ] = variables.fenceContext
+				? PromptSecurity::fence( contextJson, "context" )
+				: contextJson;
 		}
-		return format( allBindings )
+
+		var rendered = format( allBindings )
+
+		// Insert any explicitly-registered untrusted segments as fenced messages at their original positions
+		if( !variables.untrusted.isEmpty() ){
+			var finalMessages = []
+			for( var i = 1; i <= rendered.len() + 1; i++ ){
+				for( var segment in variables.untrusted ){
+					if( ( segment.index ?: 0 ) == i ){
+						finalMessages.append( {
+							"role"   : segment.role,
+							"content": PromptSecurity::fence( segment.content, segment.label )
+						} );
+					}
+				}
+				if( i <= rendered.len() ){
+					finalMessages.append( rendered[ i ] );
+				}
+			}
+			rendered = finalMessages
+		}
+
+		// If any fencing happened, ensure the untrusted-data preamble is in the system message
+		var fencingActive = ( variables.fenceContext && hasContext() ) || !variables.untrusted.isEmpty();
+		if( fencingActive ){
+			rendered = injectFencePreamble( rendered );
+		}
+
+		return rendered
+	}
+
+	/**
+	 * Register a segment of untrusted content (RAG doc, tool output, web page, etc.) to be
+	 * fenced at render time. The content is wrapped in unique boundary markers and a
+	 * one-time security preamble is injected into the system message, telling the model to
+	 * treat it as DATA and never follow instructions inside it.
+	 *
+	 * @content The untrusted content
+	 * @label   A short source label (e.g. "knowledge-base", "web-page")
+	 * @role    The message role to render the fenced content under (default "user")
+	 *
+	 * @return The message for chaining
+	 */
+	AiMessage function addUntrusted( required any content, string label = "external", string role = "user" ){
+		variables.untrusted.append( {
+			"content": arguments.content,
+			"label"  : arguments.label,
+			"role"   : arguments.role,
+			"index"  : variables.messages.len() + 1
+		} );
+		return this;
+	}
+
+	/**
+	 * Mark this message's ${context} as trusted or untrusted. When untrusted, the context
+	 * is fenced at render time and the security preamble is injected.
+	 *
+	 * @trusted True = render context as-is; False = fence it as untrusted DATA
+	 *
+	 * @return The message for chaining
+	 */
+	AiMessage function setContextTrust( required boolean trusted ){
+		variables.fenceContext = !arguments.trusted;
+		return this;
+	}
+
+	/**
+	 * Inject the fencing preamble into the system message (once), or prepend a new system
+	 * message if none exists. Idempotent — will not duplicate an already-present preamble.
+	 *
+	 * @messages The rendered messages array
+	 *
+	 * @return The messages array with the preamble ensured
+	 */
+	private array function injectFencePreamble( required array messages ){
+		var preamble = len( variables.fencePreambleText ) ? variables.fencePreambleText : PromptSecurity::fencePreamble();
+		var sysIndex = arguments.messages.find( m -> ( m.role ?: "" ) == "system" );
+
+		if( sysIndex > 0 && isSimpleValue( arguments.messages[ sysIndex ].content ?: "" ) ){
+			// Only inject if not already present
+			if( !arguments.messages[ sysIndex ].content.contains( preamble ) ){
+				arguments.messages[ sysIndex ].content = preamble & char( 10 ) & char( 10 ) & arguments.messages[ sysIndex ].content;
+			}
+		} else {
+			arguments.messages.prepend( { "role": "system", "content": preamble } );
+		}
+		return arguments.messages;
 	}
 
 	/**

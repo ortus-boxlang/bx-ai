@@ -1151,6 +1151,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		var endpoint = getBedrockStreamEndpoint( arguments.modelId );
 		var payload  = jsonSerialize( arguments.dataPacket );
 
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware (streaming) ---
+		// -------------------------------------------------------------------------------------------
+		var streamLlmBefore = arguments.aiRequest.fireMiddleware( "beforeLLMCall", { chatRequest: arguments.aiRequest, dataPacket: arguments.dataPacket } );
+		if( streamLlmBefore.isTerminal() ){
+			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
+			return
+		}
+
 		// Announce the request
 		boxAnnounce(
 			"onAIRequest",
@@ -1235,6 +1244,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Parse the AWS event-stream binary response
 		// The response contains multiple events, each with a binary header and JSON payload
 		var bedrockUsage = { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "raw": {} };
+		// Accumulate the streamed assistant text so afterLLMCall middleware can inspect it
+		var bedrockContent = "";
 		var userStreamCallback = arguments.callback;
 		var usageCapturingCallback = ( chunk ) => {
 			// Capture usage data from the normalized chunk if present
@@ -1244,6 +1255,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				bedrockUsage.totalTokens  = bedrockUsage.inputTokens + bedrockUsage.outputTokens;
 				bedrockUsage.raw          = chunk.usage;
 			}
+			bedrockContent &= ( chunk.choices?.first()?.delta?.content ?: "" );
 			userStreamCallback( chunk );
 		};
 
@@ -1288,6 +1300,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				"streamComplete" : true
 			}
 		);
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware (streaming), in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		arguments.aiRequest.fireMiddleware(
+			hook   : "afterLLMCall",
+			context: { chatRequest: arguments.aiRequest, streamState: { "content": bedrockContent, "finishReason": "", "toolCalls": [], "usage": bedrockUsage.raw } },
+			reverse: true
+		)
 	}
 
 	/**
