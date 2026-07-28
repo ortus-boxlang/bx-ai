@@ -946,15 +946,20 @@ abstract class implements="IAiMemory" {
 				type: "error",
 				log: "ai"
 			);
+
 			// Fall back to simple truncation: keep only recent messages
 			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
-			clear();
+			variables.messages = [];
+
 			if ( systemMsg.len() ) {
-				setSystemMessage( systemMsg );
+				variables.messages.append( {
+					role: "system",
+					content: systemMsg,
+					timestamp: now()
+				} );
 			}
-			toKeep.each( msg => {
-				super.add( msg );
-			} );
+
+			variables.messages.append( toKeep, true );
 		}
 
 		return this;
