@@ -841,4 +841,23 @@ abstract class
 	 */
 	abstract IVectorMemory function clearCollection();
 
+	/**
+	 * --------------------------------------------------------------------------
+	 * SUMMARIZATION
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Vector stores are semantic search indexes, not conversation buffers.
+	 * Summarization doesn't apply — all documents are kept for retrieval.
+	 * This is a no-op to avoid inheriting BaseMemory's conversation summarization.
+	 *
+	 * @config Ignored for vector stores
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function summarize( struct config = {} ) {
+		return this
+	}
+
 }
