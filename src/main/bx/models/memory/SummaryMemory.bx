@@ -63,7 +63,7 @@ class extends="WindowMemory" {
 			summaryModel: arguments.summaryModel,
 			summaryProvider: arguments.summaryProvider
 		)
-		if ( variables.summaryThreshold >= variables.maxMessages ) {
+		if ( variables.maxMessages > 0 && variables.summaryThreshold >= variables.maxMessages ) {
 			throw(
 				type: "InvalidConfiguration",
 				message: "SummaryMemory: summaryThreshold (#variables.summaryThreshold#) must be less than maxMessages (#variables.maxMessages#). summaryThreshold is the keep-window after compression; maxMessages is the trigger."
