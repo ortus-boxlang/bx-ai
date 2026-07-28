@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🧠 Updated
 
+- **SummaryMemory trigger fix — `maxMessages` and `summaryThreshold` now have distinct, non-overlapping roles**: Previously `summaryThreshold` was used for both the auto-trigger and the keep-window, making `maxMessages` dead weight that was stored and exported but never consulted. Now: `maxMessages` is the **trigger** (compression fires when non-system message count reaches this value) and `summaryThreshold` is the **keep-window** (how many recent messages survive verbatim after compression). Result after compression: `[system?] + [AI summary] + [last summaryThreshold messages]`. A validation guard throws `InvalidConfiguration` if `summaryThreshold >= maxMessages`. Default values (maxMessages=20, summaryThreshold=10) are unchanged.
+
 - **Template-confusion hardening (on by default)**: `AiMessage` now escapes `${...}` inside binding VALUES (via `PromptSecurity::escapeBindings`) before `stringBind`, so untrusted data can't be mistaken for a template placeholder. This is defense-in-depth — `stringBind` does not recurse today (verified by test), so no active re-interpolation vulnerability existed — and only changes output for values that literally contain `${`. Disable per message with `aiMessage().setEscapeBindings( false )` or globally via `security.fencing.escapeBindings = false`; internal/`secure:false` requests are exempt. Default `AiMessage.render()` output is otherwise byte-identical (backwards compatible).
 
 - **Security & Guardrails suite (Phase 1) — prompt-injection defense**:

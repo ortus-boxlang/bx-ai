@@ -13,13 +13,17 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  * Summary Memory - Intelligent conversation compression
- * Automatically summarizes older messages when limit reached
- * Keeps: [System Message] + [Summary of Old Messages] + [Recent Messages]
- * Perfect for long conversations where context must be preserved
+ * Automatically summarizes older messages when the buffer reaches maxMessages,
+ * then keeps the most recent summaryThreshold messages verbatim.
+ * Result: [System Message?] + [AI Summary] + [Last summaryThreshold Messages]
+ *
+ * Parameters:
+ *   maxMessages      — TRIGGER: compress when non-system message count reaches this (default: 20)
+ *   summaryThreshold — KEEP-WINDOW: messages kept verbatim after compression (default: 10)
+ *                      Must be less than maxMessages.
  *
  * The summarization logic lives in BaseMemory.summarize().
- * This class adds the auto-trigger behavior: when enough messages accumulate,
- * trim() automatically calls summarize() to keep memory within bounds.
+ * This class adds the auto-trigger in trim(), which fires on every add().
  */
 class extends="WindowMemory" {
 
@@ -33,13 +37,13 @@ class extends="WindowMemory" {
 	/**
 	 * Constructor
 	 *
-	 * @key The unique key for this memory instance
-	 * @userId The user identifier for multi-tenant isolation
-	 * @conversationId The conversation identifier for multiple conversations
-	 * @maxMessages Maximum total messages (default: 20)
-	 * @summaryThreshold Number of recent messages to keep (default: 10)
-	 * @summaryModel Model for summarization (default: gpt-4o-mini)
-	 * @summaryProvider Provider for summarization (default: openai)
+	 * @key              The unique key for this memory instance
+	 * @userId           The user identifier for multi-tenant isolation
+	 * @conversationId   The conversation identifier for multiple conversations
+	 * @maxMessages      Trigger: compress when non-system messages reach this count (default: 20)
+	 * @summaryThreshold Keep-window: messages kept verbatim after compression (default: 10). Must be < maxMessages.
+	 * @summaryModel     Model for summarization (default: gpt-4o-mini)
+	 * @summaryProvider  Provider for summarization (default: openai)
 	 */
 	function init(
 		string key = createUUID(),
@@ -59,6 +63,12 @@ class extends="WindowMemory" {
 			summaryModel: arguments.summaryModel,
 			summaryProvider: arguments.summaryProvider
 		)
+		if ( variables.maxMessages > 0 && variables.summaryThreshold >= variables.maxMessages ) {
+			throw(
+				type: "InvalidConfiguration",
+				message: "SummaryMemory: summaryThreshold (#variables.summaryThreshold#) must be less than maxMessages (#variables.maxMessages#). summaryThreshold is the keep-window after compression; maxMessages is the trigger."
+			)
+		}
 		return this
 	}
 
@@ -73,14 +83,23 @@ class extends="WindowMemory" {
 	IAiMemory function configure( required struct config ) {
 		// BaseMemory.configure() handles all summary config wiring + model building
 		super.configure( arguments.config )
+		if ( variables.summaryThreshold >= variables.maxMessages ) {
+			throw(
+				type: "InvalidConfiguration",
+				message: "SummaryMemory: summaryThreshold (#variables.summaryThreshold#) must be less than maxMessages (#variables.maxMessages#). summaryThreshold is the keep-window after compression; maxMessages is the trigger."
+			)
+		}
 		return this
 	}
 
 	/**
-	 * Trim messages to keep only the last N (excluding system message)
-	 * Overrides base to add auto-summarization behavior.
-	 * When enough messages accumulate beyond the threshold, triggers summarize()
-	 * instead of simple truncation.
+	 * Auto-trigger summarization when the buffer reaches maxMessages.
+	 *
+	 * Roles:
+	 *   maxMessages      — trigger: fires when non-system message count reaches this value
+	 *   summaryThreshold — keep-window: how many recent messages survive verbatim (must be < maxMessages)
+	 *
+	 * Result after compression: [system?] + [AI summary] + [last summaryThreshold messages]
 	 *
 	 * @userId   Optional per-call user identifier (ignored — SummaryMemory is an on-object store)
 	 * @conversationId Optional per-call conversation identifier (ignored — SummaryMemory is an on-object store)
@@ -88,21 +107,10 @@ class extends="WindowMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
-		var nonSystemMessages = getNonSystemMessages()
-
-		// Calculate how many messages we would summarize
-		var totalMessages = nonSystemMessages.len()
-		var messagesToSummarize = totalMessages - variables.summaryThreshold
-
-		// Only summarize if we have accumulated at least threshold worth of messages
-		// This batches summarization and makes it more efficient
-		if ( messagesToSummarize < variables.summaryThreshold ) {
+		if ( variables.maxMessages == 0 || getNonSystemMessages().len() < variables.maxMessages ) {
 			return this
 		}
-
-		// We have enough messages to summarize — delegate to base summarize()
 		this.summarize()
-
 		return this
 	}
 
