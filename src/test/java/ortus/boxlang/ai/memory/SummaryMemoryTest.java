@@ -412,7 +412,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 			// Should have thrown
 			assertThat( false ).isTrue();
 		} catch ( Exception e ) {
-			assertThat( e.getMessage() ).containsIgnoringCase( "summaryThreshold" );
+			assertThat( e.getMessage() ).contains( "summaryThreshold" );
 		}
 	}
 
