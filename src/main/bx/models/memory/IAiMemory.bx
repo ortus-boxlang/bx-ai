@@ -281,7 +281,7 @@ interface {
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	IAiMemory function summarize( struct config );
+	IAiMemory function summarize( struct config = {} );
 
 	/**
 	 * ------------------------------------------------------------------------------
