@@ -370,6 +370,53 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "Test trigger fires at maxMessages, not 2×summaryThreshold" )
+	public void testTriggerAtMaxMessages() {
+		// maxMessages=10, summaryThreshold=4 → old broken trigger=8 (2×4), correct trigger=10
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "summary", key: "trigger-test", config: {
+		        maxMessages: 10,
+		        summaryThreshold: 4
+		    } )
+
+		    // Add 9 messages — below maxMessages=10, so NO summarization should fire
+		    for( i = 1; i <= 9; i++ ) {
+		        memory.add( "Message " & i )
+		    }
+
+		    count = memory.count()
+		    hasSummary = memory.getHasSummary()
+		    """,
+		    context
+		);
+
+		// 9 < maxMessages(10) → no summarization yet
+		assertThat( variables.getAsInteger( Key.of( "count" ) ) ).isEqualTo( 9 );
+		assertThat( variables.getAsBoolean( Key.of( "hasSummary" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "Test summaryThreshold >= maxMessages throws InvalidConfiguration" )
+	public void testInvalidThresholdConfiguration() {
+		try {
+			runtime.executeSource(
+			    """
+			    memory = aiMemory( memory: "summary", config: {
+			        maxMessages: 5,
+			        summaryThreshold: 5
+			    } )
+			    """,
+			    context
+			);
+			// Should have thrown
+			assertThat( false ).isTrue();
+		} catch ( Exception e ) {
+			assertThat( e.getMessage() ).containsIgnoringCase( "summaryThreshold" );
+		}
+	}
+
+	@Test
 	@DisplayName( "Test SummaryMemory progressive summarization" )
 	public void testProgressiveSummarization() {
 		runtime.executeSource(

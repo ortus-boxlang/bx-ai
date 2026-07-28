@@ -334,6 +334,32 @@ var result = agent.run( "What are the latest trends in AI?" )
 
 ### 🧠 Memory & RAG Pipelines
 
+#### Summary Memory (Auto-Compression)
+
+Summary Memory automatically compresses older messages into an AI-generated summary when the
+conversation buffer fills up, keeping the most recent messages verbatim for sharp context.
+
+| Parameter | Role | Default |
+|---|---|---|
+| `maxMessages` | **Trigger** — compress when non-system message count reaches this | `20` |
+| `summaryThreshold` | **Keep-window** — messages kept verbatim after compression | `10` |
+| `summaryModel` | AI model used to generate the summary | `"gpt-4o-mini"` |
+| `summaryProvider` | AI provider for summarization | `"openai"` |
+
+> **Constraint:** `summaryThreshold` must be less than `maxMessages` — otherwise compression
+> would re-trigger immediately on the next message.
+
+Result after compression: `[system?] + [AI summary] + [last summaryThreshold messages]`
+
+```javascript
+var memory = aiMemory( "summary", config: {
+    maxMessages      : 20,   // compress when buffer reaches 20 messages
+    summaryThreshold : 10,   // keep last 10 verbatim after each compression
+    summaryModel     : "gpt-4o-mini",
+    summaryProvider  : "openai"
+} )
+```
+
 ```javascript
 // Load documents into vector memory for semantic search
 var loader = aiDocuments( "pdf", "./docs/*.pdf" )
