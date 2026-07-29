@@ -378,7 +378,10 @@ class {
 			"afterAIWebSearch",
 			"onAIWebSearchRequest",
 			"onAIWebSearchResponse",
-			"onAIWebSearchError"
+			"onAIWebSearchError",
+
+			// Memory Summarization Event
+			"onAIMemorySummarize"
 		 ]
 	}
 
