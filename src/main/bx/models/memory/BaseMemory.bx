@@ -940,6 +940,19 @@ abstract class implements="IAiMemory" {
 			// Add back the recent messages
 			variables.messages.append( toKeep, true );
 
+			// Announce summarization event
+			BoxAnnounce( "onAIMemorySummarize", {
+				memory: this,
+				key: variables.key,
+				type: this.name(),
+				userId: variables.userId,
+				conversationId: variables.conversationId,
+				messageCount: variables.messages.len(),
+				summaryLength: len( summary ),
+				keepRecent: keepRecent,
+				summarizedCount: toSummarize.len()
+			} );
+
 		} catch ( any e ) {
 			writeLog(
 				text: "BaseMemory.summarize(): Failed to generate summary - #e.message#. Falling back to truncation.",
