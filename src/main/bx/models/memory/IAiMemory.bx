@@ -161,6 +161,23 @@ interface {
      */
     IAiMemory function setMaxMessages( required numeric maxMessages );
 
+    /**
+     * Get the maximum estimated token size trigger (0 = disabled)
+     *
+     * @return Numeric maxTokens
+     */
+    numeric function getMaxTokens();
+
+    /**
+     * Set the maximum estimated token size trigger
+     * 0 means disabled; mutex with maxMessages in SummaryMemory
+     *
+     * @maxTokens Maximum estimated token count (0 = disabled)
+     *
+     * @return IAiMemory for chaining
+     */
+    IAiMemory function setMaxTokens( required numeric maxTokens );
+
 	/**
 	 * ------------------------------------------------------------------------------
 	 *  QUANTITY MANAGEMENT METHODS
