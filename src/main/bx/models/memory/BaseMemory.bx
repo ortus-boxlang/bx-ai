@@ -609,8 +609,8 @@ abstract class implements="IAiMemory" {
 			}
 		}
 
-		// Estimated token count via the public sizeInTokens() method (same heuristic as aiTokens())
-		summary.sizeInTokens = this.sizeInTokens()
+		// Estimated token count from already-fetched allMessages to avoid a redundant getAll() call
+		summary.sizeInTokens = allMessages.isEmpty() ? 0 : TokenCounter::count( allMessages.map( m => m.content ) )
 
 		return summary
 	}
