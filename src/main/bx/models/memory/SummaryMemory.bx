@@ -136,7 +136,7 @@ class extends="WindowMemory" {
 	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
 		var triggered = false
 		if ( variables.maxTokens > 0 ) {
-			triggered = estimateMemoryTokens() >= variables.maxTokens
+			triggered = this.sizeInTokens() >= variables.maxTokens
 		} else if ( variables.maxMessages > 0 ) {
 			triggered = getNonSystemMessages().len() >= variables.maxMessages
 		}

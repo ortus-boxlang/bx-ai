@@ -609,9 +609,8 @@ abstract class implements="IAiMemory" {
 			}
 		}
 
-		// Add estimated token count (rough approximation: ~4 chars per token)
-		var totalChars = allMessages.reduce( ( sum, msg ) => sum + len( msg.content ), 0 )
-		summary.estimatedTokens = ceiling( totalChars / 4 )
+		// Estimated token count via the public sizeInTokens() method (same heuristic as aiTokens())
+		summary.sizeInTokens = this.sizeInTokens()
 
 		return summary
 	}
@@ -827,16 +826,6 @@ abstract class implements="IAiMemory" {
 	 * SUMMARIZATION METHODS
 	 * --------------------------------------------------------------------------
 	 */
-
-	/**
-	 * Estimate the total token count of all non-system messages using the 4-chars/token heuristic.
-	 *
-	 * @return Estimated token count as a numeric
-	 */
-	private numeric function estimateMemoryTokens() {
-		var contents = getNonSystemMessages().map( m => m.content )
-		return contents.isEmpty() ? 0 : TokenCounter::count( contents )
-	}
 
 	/**
 	 * Build or retrieve the AI model for summarization.

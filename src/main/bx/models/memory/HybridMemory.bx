@@ -316,9 +316,8 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 			}
 		}
 
-		// Add estimated token count from recent messages (rough approximation: ~4 chars per token)
-		var totalChars = recentMessages.reduce( ( sum, msg ) => sum + len( msg.content ), 0 )
-		summary.estimatedTokens = ceiling( totalChars / 4 )
+		// Estimated token count via sizeInTokens() (same heuristic as aiTokens())
+		summary.sizeInTokens = this.sizeInTokens()
 
 		// Add hybrid-specific configuration
 		summary.recentLimit = variables.recentLimit;
