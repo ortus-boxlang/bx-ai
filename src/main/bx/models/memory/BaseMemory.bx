@@ -16,6 +16,7 @@
  * Provides common functionality for conversation history storage
  */
 import bxModules.bxai.models.loaders.Document;
+import bxModules.bxai.models.util.TokenCounter;
 
 abstract class implements="IAiMemory" {
 
@@ -64,6 +65,11 @@ abstract class implements="IAiMemory" {
 	 * Maximum number of messages to store (0 = unlimited)
 	 */
 	property name="maxMessages" type="numeric";
+
+	/**
+	 * Maximum estimated token size to store (0 = disabled; mutex with maxMessages in SummaryMemory)
+	 */
+	property name="maxTokens" type="numeric" default=0;
 
 	/**
 	 * --------------------------------------------------------------------------
@@ -129,7 +135,8 @@ abstract class implements="IAiMemory" {
 		numeric maxMessages = static.DEFAULT_MAX_MESSAGES,
 		numeric summaryThreshold = 0,
 		string summaryModel = "",
-		string summaryProvider = ""
+		string summaryProvider = "",
+		numeric maxTokens = 0
 	) {
 		variables.key = arguments.key
 		variables.userId = arguments.userId
@@ -140,6 +147,7 @@ abstract class implements="IAiMemory" {
 		variables.summaryThreshold = arguments.summaryThreshold
 		variables.summaryModel = arguments.summaryModel
 		variables.summaryProvider = arguments.summaryProvider
+		variables.maxTokens = arguments.maxTokens
 		variables.summaryModelInstance = ""
 		variables.currentSummary = ""
 		variables.hasSummary = false
@@ -529,6 +537,10 @@ abstract class implements="IAiMemory" {
 			variables.conversationId = arguments.config.conversationId
 		}
 
+		if ( arguments.config.keyExists( "maxTokens" ) ) {
+			variables.maxTokens = arguments.config.maxTokens
+		}
+
 		// Summary configuration
 		if ( arguments.config.keyExists( "summaryThreshold" ) ) {
 			variables.summaryThreshold = arguments.config.summaryThreshold
@@ -563,6 +575,7 @@ abstract class implements="IAiMemory" {
 			"conversationId": this.getConversationId(),
 			"messageCount": count(),
 			"maxMessages": variables.maxMessages,
+			"maxTokens": variables.maxTokens,
 			"nonSystemCount": getNonSystemMessages().len(),
 			"hasSystemMessage": hasSystemMessage(),
 			"metadata": this.metadata(),
@@ -596,9 +609,8 @@ abstract class implements="IAiMemory" {
 			}
 		}
 
-		// Add estimated token count (rough approximation: ~4 chars per token)
-		var totalChars = allMessages.reduce( ( sum, msg ) => sum + len( msg.content ), 0 )
-		summary.estimatedTokens = ceiling( totalChars / 4 )
+		// Estimated token count from already-fetched allMessages to avoid a redundant getAll() call
+		summary.sizeInTokens = allMessages.isEmpty() ? 0 : TokenCounter::count( allMessages.map( m => m.content ) )
 
 		return summary
 	}
@@ -622,6 +634,7 @@ abstract class implements="IAiMemory" {
 			"config": getConfig(),
 			"messages": getAll( arguments.userId, arguments.conversationId ),
 			"maxMessages": variables.maxMessages,
+			"maxTokens": variables.maxTokens,
 			"summaryModel": variables.summaryModel,
 			"summaryProvider": variables.summaryProvider,
 			"summaryThreshold": variables.summaryThreshold,
@@ -656,6 +669,9 @@ abstract class implements="IAiMemory" {
 		}
 		if ( arguments.data.keyExists( "maxMessages" ) ) {
 			variables.maxMessages = arguments.data.maxMessages
+		}
+		if ( arguments.data.keyExists( "maxTokens" ) ) {
+			variables.maxTokens = arguments.data.maxTokens
 		}
 		if ( arguments.data.keyExists( "messages" ) && isArray( arguments.data.messages ) ) {
 			variables.messages = arguments.data.messages
@@ -787,6 +803,20 @@ abstract class implements="IAiMemory" {
 	 */
 	public IAiMemory function setMaxMessages( required numeric maxMessages ) {
 		variables.maxMessages = arguments.maxMessages
+		this.trim()
+		return this
+	}
+
+	/**
+	 * Set the maximum estimated token size trigger
+	 * Triggers trim if current token count exceeds new limit
+	 *
+	 * @maxTokens The new maximum token count (0 = disabled)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function setMaxTokens( required numeric maxTokens ) {
+		variables.maxTokens = arguments.maxTokens
 		this.trim()
 		return this
 	}
