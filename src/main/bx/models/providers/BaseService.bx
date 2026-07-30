@@ -855,12 +855,46 @@ abstract class implements="IAiService" {
 						// Populate based on schema type
 						if( isObject( schema ) ) {
 							result[ name ] = SchemaBuilder::populateClass( schema, propertyData );
+						} else if( isArray( schema ) && !schema.isEmpty() && isObject( schema[ 1 ] ) ) {
+							result[ name ] = SchemaBuilder::populateArray( schema[ 1 ], propertyData );
 						} else if( isStruct( schema ) ) {
 							result[ name ] = SchemaBuilder::populateStruct( propertyData );
 						} else {
 							// Raw data
 							result[ name ] = data[ name ];
 						}
+					}
+				}
+
+				return result;
+			}
+
+			// Check if this is a complex struct with class instance or array-of-class-instance values.
+			// BoxLang class instances satisfy isStruct(), so we must check isObject() first.
+			var hasComplexValues = false;
+			for( var checkKey in outputDefinition ) {
+				var checkValue = outputDefinition[ checkKey ];
+				if( isObject( checkValue ) || ( isArray( checkValue ) && !checkValue.isEmpty() && isObject( checkValue[ 1 ] ) ) ) {
+					hasComplexValues = true;
+					break;
+				}
+			}
+
+			if( hasComplexValues ) {
+				var result = {};
+				var data = jsonDeserialize( jsonContent );
+
+				for( var key in outputDefinition ) {
+					if( !data.keyExists( key ) ) continue;
+
+					var originalValue = outputDefinition[ key ];
+
+					if( isObject( originalValue ) ) {
+						result[ key ] = SchemaBuilder::populateClass( duplicate( originalValue ), jsonSerialize( data[ key ] ) );
+					} else if( isArray( originalValue ) && !originalValue.isEmpty() && isObject( originalValue[ 1 ] ) ) {
+						result[ key ] = SchemaBuilder::populateArray( originalValue[ 1 ], jsonSerialize( data[ key ] ) );
+					} else {
+						result[ key ] = data[ key ];
 					}
 				}
 
