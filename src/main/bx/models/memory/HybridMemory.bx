@@ -18,6 +18,7 @@
  */
 import bxModules.bxai.models.memory.WindowMemory;
 import bxModules.bxai.models.memory.vector.ChromaVectorMemory;
+import bxModules.bxai.models.util.TokenCounter;
 
 class extends="bxModules.bxai.models.memory.BaseMemory" {
 
@@ -316,8 +317,8 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 			}
 		}
 
-		// Estimated token count via sizeInTokens() (same heuristic as aiTokens())
-		summary.sizeInTokens = this.sizeInTokens()
+		// Estimated token count from recentMemory only to avoid expensive/non-deterministic vector lookups
+		summary.sizeInTokens = recentMessages.isEmpty() ? 0 : TokenCounter::count( recentMessages.map( m => m.content ) )
 
 		// Add hybrid-specific configuration
 		summary.recentLimit = variables.recentLimit;
