@@ -295,20 +295,60 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				);
 			}
 
-			// Execute each tool call
+			// Execute each tool call, firing the beforeToolCall / wrapToolCall / afterToolCall
+			// middleware hooks around each invocation so approval/suspension middleware (e.g.
+			// HITL) behaves consistently with the other providers. A terminal middleware result
+			// (suspend/cancel/reject) stops the tool chain immediately instead of invoking the
+			// remaining tool calls in the batch.
 			var thisChatRequest = arguments.chatRequest;
-			var toolResults = result.tool_calls.map( toolCall => {
+			var toolResults = [];
+			var terminalToolResult = "";
+			for( var toolCall in result.tool_calls ){
 				// Find the tool in our original tools list
 				var tool = tools.filter( t => t.getSchema().function.name == toolCall.name ).first();
 
-				// Invoke the tool with the parameters
-				var toolOutput = tool.invoke( toolCall.parameters, thisChatRequest );
+				var toolContext      = { tool: tool, toolCall: toolCall, chatRequest: thisChatRequest }
+				var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
-				return {
+				// Suspend: stop the tool chain so the agent can checkpoint and pause
+				if ( toolBeforeResult.isSuspended() ) {
+					terminalToolResult = toolBeforeResult
+					break
+				}
+
+				// Cancel/Reject: stop the tool chain immediately
+				if ( toolBeforeResult.isCancelled() || toolBeforeResult.isRejected() ) {
+					terminalToolResult = toolBeforeResult
+					break
+				}
+
+				// Invoke the tool with the parameters, wrapped in wrapToolCall middleware
+				var capturedTool     = tool;
+				var capturedToolCall = toolCall;
+				var toolOutput = thisChatRequest.fireWrapMiddleware(
+					"wrapToolCall",
+					toolContext,
+					() => capturedTool.invoke( capturedToolCall.parameters, thisChatRequest )
+				);
+
+				// Fire afterToolCall middleware
+				thisChatRequest.fireMiddleware(
+					hook   : "afterToolCall",
+					context: { tool: tool, toolCall: toolCall, chatRequest: thisChatRequest, result: toolOutput },
+					reverse: true
+				);
+
+				toolResults.append( {
 					"call": toolCall,
 					"outputs": [ { "result": toolOutput } ]
-				};
-			} );
+				} );
+			}
+
+			// A terminal middleware result (suspend/cancel/reject) stops the tool chain
+			// immediately — return it directly instead of continuing to the follow-up request.
+			if ( isObject( terminalToolResult ) ) {
+				return terminalToolResult
+			}
 
 			// Make a follow-up request with tool results
 			// NOTE: Cohere requires EITHER message OR tool_results, not both (unless force_single_step=true)
