@@ -1,0 +1,112 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * A human's decision on a HumanInteractionRequest.
+ *
+ * For tool_approval requests, `decision` maps directly onto the existing
+ * AiMiddlewareResult vocabulary: approve | reject | edit | cancel.
+ */
+class {
+
+	/**
+	 * The HumanInteractionRequest.id this decision resolves
+	 */
+	property name="requestID" type="string" default="";
+
+	/**
+	 * The decision: approve | reject | edit | cancel (for tool_approval requests),
+	 * or a gateway/interactionType-specific value for other interaction types
+	 */
+	property name="decision" type="string" default="";
+
+	/**
+	 * Corrected data when decision is "edit" (e.g. { correctedArgs: {...} })
+	 */
+	property name="editedData" type="struct" default={};
+
+	/**
+	 * Freeform/selection input the human submitted, for non-approval interaction types
+	 */
+	property name="submittedData" type="struct" default={};
+
+	/**
+	 * Human-readable reason for the decision
+	 */
+	property name="reason" type="string" default="";
+
+	/**
+	 * Identifier of who made the decision (platform-native user id, email, etc.)
+	 */
+	property name="decidedBy" type="string" default="";
+
+	/**
+	 * When the decision was made
+	 */
+	property name="decidedAt" type="date";
+
+	/**
+	 * Free-form metadata for gateway-specific extensions
+	 */
+	property name="metadata" type="struct" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @requestID      The HumanInteractionRequest.id this decision resolves
+	 * @decision       The decision: approve | reject | edit | cancel, or interactionType-specific
+	 * @editedData     Corrected data when decision is "edit"
+	 * @submittedData  Freeform/selection input the human submitted
+	 * @reason         Human-readable reason for the decision
+	 * @decidedBy      Identifier of who made the decision
+	 * @decidedAt      When the decision was made (defaults to now)
+	 * @metadata       Free-form metadata for gateway-specific extensions
+	 */
+	function init(
+		string requestID     = "",
+		string decision      = "",
+		struct editedData    = {},
+		struct submittedData = {},
+		string reason        = "",
+		string decidedBy     = "",
+		date   decidedAt     = now(),
+		struct metadata      = {}
+	) {
+		variables.requestID     = arguments.requestID
+		variables.decision      = arguments.decision
+		variables.editedData    = arguments.editedData
+		variables.submittedData = arguments.submittedData
+		variables.reason        = arguments.reason
+		variables.decidedBy     = arguments.decidedBy
+		variables.decidedAt     = arguments.decidedAt
+		variables.metadata      = arguments.metadata
+		return this;
+	}
+
+	boolean function isApproved() {
+		return variables.decision == "approve"
+	}
+
+	boolean function isRejected() {
+		return variables.decision == "reject"
+	}
+
+	boolean function isEdit() {
+		return variables.decision == "edit"
+	}
+
+	boolean function isCancelled() {
+		return variables.decision == "cancel"
+	}
+
+}
