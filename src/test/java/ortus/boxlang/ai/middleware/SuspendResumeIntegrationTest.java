@@ -750,8 +750,7 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		        )
 
 		        sawMiddlewareStop = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
-		        // MockService streams content chunks as { type: "content", content: "..." }
-		        sawFinalContent   = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "content" && ( c.content ?: "" ) contains "Understood" )
+		        sawFinalContent   = chunks.some( c => isStruct( c ) && ( c.choices?.first()?.delta?.content ?: "" ) contains "Understood" )
 		        toolNotCalled     = toolACalls == 0
 		    """,
 		    context

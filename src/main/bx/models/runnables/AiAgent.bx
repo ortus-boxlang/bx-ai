@@ -479,8 +479,10 @@ class extends="AiBaseRunnable" {
 		var terminalStreamResult = ""
 		var wrappedCallback = ( chunk ) => {
 			// A terminal middleware result (e.g. a suspended tool call) is delivered as a sentinel
-			// chunk rather than a normal delta — capture it instead of treating it as content
-			if ( isStruct( arguments.chunk ) && arguments.chunk.type == "middleware_stop" ) {
+			// chunk rather than a normal delta — capture it instead of treating it as content.
+			// Normal content chunks from every provider have no `type` key, so this must be a
+			// safe-navigated read, not a direct one.
+			if ( isStruct( arguments.chunk ) && ( arguments.chunk.type ?: "" ) == "middleware_stop" ) {
 				terminalStreamResult = arguments.chunk.result
 				userOnChunk( arguments.chunk )
 				return
