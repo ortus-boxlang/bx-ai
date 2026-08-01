@@ -1,0 +1,103 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Base interface for all Gateways.
+ *
+ * A gateway is a bidirectional human interaction adapter: it translates platform events
+ * (a Slack message, a CLI keystroke, an HTTP webhook) into normalized agent input, and
+ * translates agent events — including suspended human-in-the-loop interactions — back
+ * into platform-native experiences. It is more than a message transport: it also manages
+ * identity, threads, interactive actions, streaming, approvals, and resuming suspended
+ * agent executions.
+ *
+ * Declares only the universal contract: identity, configuration, lifecycle, and runtime
+ * capability discovery. Specific capabilities (inbound parsing, outbound delivery,
+ * streaming, interactive actions, human-in-the-loop presentation) are declared through
+ * dedicated interfaces in this package:
+ *
+ * - IInboundGateway        : parseInbound() + verifyInbound()
+ * - IOutboundGateway       : deliver()
+ * - IStreamingGateway      : deliverStream()
+ * - IInteractiveGateway    : deliverInteractive()
+ * - IHumanInteractionGateway : requestHumanInteraction() + parseHumanDecision()
+ *
+ * A gateway implements only the capability interfaces it actually supports (mirrors the
+ * IAiService / IAiChatService / IAiEmbeddingsService pattern already used by AI
+ * providers), and advertises what it supports via getCapabilities().
+ *
+ * @since 4.0.0
+ */
+interface {
+
+	/**
+	 * The name of this gateway (e.g. "cli", "slack", "http")
+	 */
+	default public string function getName(){
+		return variables.name;
+	}
+
+	/**
+	 * The description of this gateway, used for logging and debugging
+	 */
+	default public string function getDescription(){
+		return variables.description;
+	}
+
+	/**
+	 * Configure the gateway with configuration options
+	 *
+	 * @options A struct containing configuration options — shape is gateway-specific
+	 *
+	 * @return The configured gateway instance
+	 */
+	IGateway function configure( required any options );
+
+	/**
+	 * Returns all capabilities this gateway supports.
+	 * Possible values: "inboundMessages", "outboundMessages", "streaming", "threads",
+	 * "attachments", "messageEditing", "interactiveActions", "humanApproval",
+	 * "argumentEditing", "authentication"
+	 *
+	 * @return Array of capability strings
+	 */
+	array function getCapabilities();
+
+	/**
+	 * Returns true if this gateway supports the given capability.
+	 *
+	 * @capability One of the strings returned by getCapabilities()
+	 *
+	 * @return boolean
+	 */
+	default public boolean function supports( required string capability ){
+		return getCapabilities().findNoCase( arguments.capability ) > 0;
+	}
+
+	/**
+	 * Start the gateway (e.g. open a socket connection, register a webhook listener).
+	 * Default is a no-op — override for gateways that need explicit lifecycle management.
+	 */
+	default public void function start(){
+		// no-op by default
+	}
+
+	/**
+	 * Stop the gateway and release any resources acquired in start().
+	 * Default is a no-op — override for gateways that need explicit lifecycle management.
+	 */
+	default public void function stop(){
+		// no-op by default
+	}
+
+}

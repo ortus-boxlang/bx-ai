@@ -1,0 +1,92 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * The result of a gateway delivery attempt (IOutboundGateway.deliver() /
+ * IHumanInteractionGateway.requestHumanInteraction()).
+ *
+ * For synchronous gateways (e.g. CLI), a delivery can carry an immediate decision.
+ * For asynchronous gateways (e.g. Slack, HTTP webhook), success just means the
+ * platform accepted the message — the real answer arrives later via parseInbound()
+ * or parseHumanDecision().
+ */
+class {
+
+	/**
+	 * Whether the gateway successfully accepted/delivered the event
+	 */
+	property name="success" type="boolean" default=true;
+
+	/**
+	 * Platform-native identifier for the delivered message/interaction, if any
+	 * (e.g. a Slack message ts, an email message-id)
+	 */
+	property name="deliveryID" type="string" default="";
+
+	/**
+	 * Error message when success is false
+	 */
+	property name="error" type="string" default="";
+
+	/**
+	 * For synchronous gateways: an immediate HumanInteractionDecision, if the
+	 * platform resolved the interaction inline (e.g. a blocking CLI prompt)
+	 */
+	property name="decision";
+
+	/**
+	 * The raw, platform-native response this result was derived from, if any
+	 */
+	property name="raw" type="struct" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @success    Whether the gateway successfully accepted/delivered the event
+	 * @deliveryID Platform-native identifier for the delivered message/interaction
+	 * @error      Error message when success is false
+	 * @decision   An immediate HumanInteractionDecision for synchronous gateways
+	 * @raw        The raw, platform-native response this result was derived from
+	 */
+	function init(
+		boolean success    = true,
+		string  deliveryID = "",
+		string  error      = "",
+		any     decision,
+		struct  raw        = {}
+	) {
+		variables.success    = arguments.success
+		variables.deliveryID = arguments.deliveryID
+		variables.error      = arguments.error
+		variables.decision   = arguments.decision ?: javacast( "null", "" )
+		variables.raw        = arguments.raw
+		return this;
+	}
+
+	/**
+	 * Whether this result carries an immediate decision (synchronous gateway)
+	 */
+	boolean function hasDecision() {
+		return !isNull( variables.decision )
+	}
+
+	/**
+	 * Convenience factory for a failed delivery
+	 *
+	 * @error Error message describing the failure
+	 */
+	static GatewayDeliveryResult function failure( required string error ) {
+		return new GatewayDeliveryResult( success: false, error: arguments.error )
+	}
+
+}
