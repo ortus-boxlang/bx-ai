@@ -1,0 +1,141 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * The canonical/reference IGateway: presents human-in-the-loop approval requests as a
+ * blocking stdin/stdout prompt. This is what `HumanInTheLoopMiddleware` attaches by
+ * default when no `gateway` is supplied (mode "cli", the default) — the exact prompt
+ * banner and A/R/Q parsing that used to live as a private `cliApprove()` method on the
+ * middleware itself now lives here, so the CLI is just another gateway rather than a
+ * special case.
+ *
+ * `requestHumanInteraction()` always resolves synchronously (the whole point of a
+ * blocking CLI prompt), so its GatewayDeliveryResult always carries a decision —
+ * `parseHumanDecision()` is never actually reachable and throws if called.
+ *
+ * One behavior change from the original `cliApprove()`: unrecognized input used to
+ * silently cancel the run. This now re-prompts (up to `MAX_PROMPT_ATTEMPTS` times)
+ * before falling back to cancel, so a mistyped keystroke doesn't abort an otherwise
+ * fine run.
+ */
+import bxModules.bxai.models.gateway.BaseGateway;
+import bxModules.bxai.models.gateway.contracts.GatewayContext;
+import bxModules.bxai.models.gateway.contracts.GatewayDeliveryResult;
+import bxModules.bxai.models.gateway.contracts.GatewayEvent;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+
+class extends="BaseGateway" {
+
+	/**
+	 * How the raw decision text is read for each prompt attempt. Defaults to a closure
+	 * around the cliRead() BIF; overridable (e.g. in tests) to avoid touching real stdin.
+	 */
+	property name="inputReader";
+
+	/**
+	 * Maximum prompt attempts before an unrecognized decision falls back to cancel
+	 */
+	static {
+		MAX_PROMPT_ATTEMPTS = 3
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @inputReader Optional function() => string returning the raw decision text for each
+	 *              prompt attempt. Defaults to reading a line from stdin via cliRead().
+	 */
+	function init( function inputReader ) {
+		variables.inputReader = arguments.inputReader ?: ( () => cliRead() )
+		variables.name        = "cli"
+		variables.description = "Blocking CLI approval gateway — prompts for a decision on stdin/stdout."
+		return this;
+	}
+
+	array function getDeclaredCapabilities() {
+		return [ "humanApproval" ]
+	}
+
+	/**
+	 * Prompt for and return a decision. Always resolves synchronously.
+	 */
+	GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest request, required GatewayContext context ) {
+		var decision = promptForDecision( arguments.request )
+		return new GatewayDeliveryResult( deliveryID: arguments.request.getId(), decision: decision )
+	}
+
+	/**
+	 * Never reachable — the CLI resolves inline in requestHumanInteraction(); there is no
+	 * separate inbound decision event to parse.
+	 */
+	HumanInteractionDecision function parseHumanDecision( required GatewayEvent event ) {
+		throw(
+			type   : "GatewayCapabilityNotSupported",
+			message: "CliGateway resolves decisions synchronously in requestHumanInteraction() — there is no inbound event to parse."
+		)
+	}
+
+	/**
+	 * Print the approval banner and read decisions from variables.inputReader() until a
+	 * recognized one arrives or MAX_PROMPT_ATTEMPTS is exhausted (which cancels).
+	 */
+	private HumanInteractionDecision function promptForDecision( required HumanInteractionRequest interactionRequest ) {
+		var attempts = 0
+
+		while ( ++attempts <= static.MAX_PROMPT_ATTEMPTS ) {
+			println( "" )
+			println( "╔══════════════════════════════════════════════════╗" )
+			println( "║         HUMAN APPROVAL REQUIRED                  ║" )
+			println( "╚══════════════════════════════════════════════════╝" )
+			println( " #arguments.interactionRequest.getTitle()#" )
+			println( " #arguments.interactionRequest.getMessage()#" )
+
+			println( "" )
+			println( " [A]pprove  [R]eject  [Q]uit" )
+			print  ( " Decision: " )
+
+			var input = variables.inputReader().trim().lCase()
+			println( "" )
+
+			if ( input == "a" || input == "approve" ) {
+				return new HumanInteractionDecision( requestID: arguments.interactionRequest.getId(), decision: "approve" )
+			}
+			if ( input == "r" || input == "reject" ) {
+				return new HumanInteractionDecision(
+					requestID: arguments.interactionRequest.getId(),
+					decision : "reject",
+					reason   : "Rejected by human operator."
+				)
+			}
+			if ( input == "q" || input == "quit" ) {
+				return new HumanInteractionDecision(
+					requestID: arguments.interactionRequest.getId(),
+					decision : "cancel",
+					reason   : "Human operator chose to quit."
+				)
+			}
+
+			if ( attempts < static.MAX_PROMPT_ATTEMPTS ) {
+				println( " Unrecognized input [#input#] — please enter A, R, or Q." )
+			}
+		}
+
+		return new HumanInteractionDecision(
+			requestID: arguments.interactionRequest.getId(),
+			decision : "cancel",
+			reason   : "No valid decision entered after #static.MAX_PROMPT_ATTEMPTS# attempts."
+		)
+	}
+
+}

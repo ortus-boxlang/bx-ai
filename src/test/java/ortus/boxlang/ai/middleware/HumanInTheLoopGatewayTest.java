@@ -241,4 +241,84 @@ public class HumanInTheLoopGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "smallIsContinue" ) ) ).isTrue();
 	}
 
+	// -------------------------------------------------------------------------
+	// Phase 3 compatibility: default (mode "cli") auto-attaches a CliGateway
+	// -------------------------------------------------------------------------
+
+	@DisplayName( "compat: with no mode/gateway specified, the default constructed middleware auto-attaches a CliGateway" )
+	@Test
+	public void testDefaultConstructorAttachesCliGateway() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+
+				mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ] )
+				isCliGateway = isInstanceOf( mw.getGateway(), "CliGateway" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isCliGateway" ) ) ).isTrue();
+	}
+
+	@DisplayName( "compat: mode 'cli' explicitly also auto-attaches a CliGateway" )
+	@Test
+	public void testExplicitCliModeAttachesCliGateway() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+
+				mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ], mode: "cli" )
+				isCliGateway = isInstanceOf( mw.getGateway(), "CliGateway" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isCliGateway" ) ) ).isTrue();
+	}
+
+	@DisplayName( "compat: mode 'web' still has no gateway attached and suspends as before" )
+	@Test
+	public void testWebModeStillHasNoGateway() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+
+				mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ], mode: "web" )
+				gatewayIsNull = isNull( mw.getGateway() )
+
+				result = mw.beforeToolCall( context: { toolName: "deleteRecord", toolCall: {} } )
+				isSuspended = result.isSuspended()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "gatewayIsNull" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isSuspended" ) ) ).isTrue();
+	}
+
+	@DisplayName( "compat: an unrecognized mode still falls back to a CliGateway rather than failing" )
+	@Test
+	public void testUnrecognizedModeFallsBackToCliGateway() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+
+				mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ], mode: "carrier-pigeon" )
+				isCliGateway = isInstanceOf( mw.getGateway(), "CliGateway" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isCliGateway" ) ) ).isTrue();
+	}
+
 }
