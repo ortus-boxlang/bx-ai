@@ -146,9 +146,9 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "toolBCalled" ) ) ).isTrue();
 	}
 
-	@DisplayName( "Resume with 'reject' stops the chain without ever invoking the tool" )
+	@DisplayName( "Resume with 'reject' never invokes the tool, but the run continues and completes normally" )
 	@Test
-	public void testResumeRejectStopsWithoutInvokingTool() {
+	public void testResumeRejectSkipsToolAndContinues() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
@@ -161,7 +161,8 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		        mockSvc = aiService( "mock" )
 		        mockSvc.setResponses( [
 		            { toolCalls: [ { name: "toolA", arguments: {} } ] },
-		            { toolCalls: [ { name: "toolA", arguments: {} } ] }
+		            { toolCalls: [ { name: "toolA", arguments: {} } ] },
+		            "Understood, I will not run toolA."
 		        ] )
 		        model = new AiModel( service: mockSvc )
 
@@ -178,16 +179,97 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 
 		        agent.run( "please run toolA", {}, { threadId: "hitl-test-resume-reject" } )
 
-		        finalResult   = agent.resume( "reject", "hitl-test-resume-reject" )
-		        isRejected    = isObject( finalResult ) && finalResult.isRejected()
-		        toolNotCalled = toolACalls == 0
+		        // A rejected tool call is NOT a hard stop: it's absorbed as tool feedback and the
+		        // run continues, producing a normal completion — not a raw AiMiddlewareResult.
+		        finalResult         = agent.resume( "reject", "hitl-test-resume-reject" )
+		        isNormalCompletion  = finalResult == "Understood, I will not run toolA."
+		        toolNotCalled       = toolACalls == 0
 		    """,
 		    context
 		);
 		// @formatter:on
 
-		assertThat( variables.getAsBoolean( Key.of( "isRejected" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isNormalCompletion" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "toolNotCalled" ) ) ).isTrue();
+	}
+
+	@DisplayName( "A rejected tool call does not block the rest of the batch — an unrelated, safe tool call still runs" )
+	@Test
+	public void testRejectContinuesToRemainingToolCallsInBatch() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.GuardrailMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        dangerousCalls = 0
+		        safeCalls      = 0
+		        dangerousTool  = aiTool( "runQuery", "Run a SQL query", ( required string sql ) => { dangerousCalls++; return "rows" } )
+		        safeTool       = aiTool( "getWeather", "Get the weather", () => { safeCalls++; return "sunny" } )
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "runQuery", arguments: { sql: "DROP TABLE users" } }, { name: "getWeather", arguments: {} } ] },
+		            "I avoided dropping the table and checked the weather."
+		        ] )
+		        model = new AiModel( service: mockSvc )
+
+		        guardMw = new GuardrailMiddleware( argPatterns: { runQuery: [ { sql: "(?i)\\bDROP\\b" } ] } )
+
+		        agent = aiAgent( model: model, tools: [ dangerousTool, safeTool ], middleware: [ guardMw ] )
+
+		        result = agent.run( "Drop the users table and check the weather" )
+
+		        isNormalCompletion  = result == "I avoided dropping the table and checked the weather."
+		        dangerousToolBlocked = dangerousCalls == 0
+		        safeToolStillRan     = safeCalls == 1
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isNormalCompletion" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "dangerousToolBlocked" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "safeToolStillRan" ) ) ).isTrue();
+	}
+
+	@DisplayName( "Cancel (unlike reject) still hard-stops the entire batch immediately" )
+	@Test
+	public void testCancelStopsWholeBatch() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.AiMiddlewareResult;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B", () => { toolBCalls++; return "B done" } )
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "toolA", arguments: {} }, { name: "toolB", arguments: {} } ] }
+		        ] )
+		        model = new AiModel( service: mockSvc )
+
+		        cancelMw = {
+		            "beforeToolCall": ( ctx ) => AiMiddlewareResult.cancel( "Max tool calls exceeded" )
+		        }
+
+		        agent = aiAgent( model: model, tools: [ toolA, toolB ], middleware: [ cancelMw ] )
+
+		        result = agent.run( "please run toolA and toolB" )
+
+		        isCancelled    = isObject( result ) && result.isCancelled()
+		        neitherToolRan = toolACalls == 0 && toolBCalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isCancelled" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "neitherToolRan" ) ) ).isTrue();
 	}
 
 	@DisplayName( "Streaming: a suspended tool call emits a middleware_stop sentinel and saves a checkpoint" )
@@ -565,20 +647,19 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "gotEditedArgs" ) ) ).isTrue();
 	}
 
-	// ---- Streaming: any terminal result (not just suspend) must short-circuit ----
+	// ---- Streaming: hard-stop terminal results (suspend/cancel) must short-circuit; reject must not ----
 
-	@DisplayName( "Streaming: a rejected tool call short-circuits without firing afterAgentRun/storeInMemory" )
+	@DisplayName( "Streaming: a cancelled tool call short-circuits without firing afterAgentRun/storeInMemory" )
 	@Test
-	public void testStreamRejectShortCircuitsWithoutCompletion() {
+	public void testStreamCancelShortCircuitsWithoutCompletion() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
 		        import bxModules.bxai.models.middleware.AiMiddlewareResult;
 		        import bxModules.bxai.models.runnables.AiModel;
 
 		        toolACalls = 0
-		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolA = aiTool( "toolA", "Tool A", () => { toolACalls++; return "A done" } )
 
 		        mockSvc = aiService( "mock" )
 		        mockSvc.setResponses( [
@@ -586,7 +667,9 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		        ] )
 		        model = new AiModel( service: mockSvc )
 
-		        hitlMw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA" ], mode: "web" )
+		        cancelMw = {
+		            "beforeToolCall": ( ctx ) => AiMiddlewareResult.cancel( "Max tool calls exceeded" )
+		        }
 
 		        afterAgentRunFired = false
 		        auditMw = {
@@ -599,12 +682,59 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		        agent = aiAgent(
 		            model     : model,
 		            tools     : [ toolA ],
-		            middleware: [ hitlMw, auditMw ]
+		            middleware: [ cancelMw, auditMw ]
+		        )
+
+		        chunks = []
+		        agent.stream(
+		            ( chunk ) => { chunks.append( chunk ) },
+		            "please run toolA",
+		            {},
+		            { threadId: "hitl-test-stream-cancel" }
+		        )
+
+		        sawCancelSentinel = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" && c.result.isCancelled() )
+		        toolNotCalled     = toolACalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawCancelSentinel" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolNotCalled" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "afterAgentRunFired" ) ) ).isFalse();
+	}
+
+	@DisplayName( "Streaming: a rejected tool call does NOT short-circuit — it's absorbed and the stream completes normally" )
+	@Test
+	public void testStreamRejectDoesNotShortCircuit() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "toolA", arguments: {} } ] },
+		            "Understood, I will not run toolA."
+		        ] )
+		        model = new AiModel( service: mockSvc )
+
+		        hitlMw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA" ], mode: "web" )
+
+		        chunks = []
+		        agent = aiAgent(
+		            model     : model,
+		            tools     : [ toolA ],
+		            middleware: [ hitlMw ]
 		        )
 
 		        // Simulate a resume-time rejection by pre-seeding the resumeContext directly via
 		        // options, so beforeToolCall returns reject() on the very first tool call.
-		        chunks = []
 		        agent.stream(
 		            ( chunk ) => { chunks.append( chunk ) },
 		            "please run toolA",
@@ -619,16 +749,18 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		            }
 		        )
 
-		        sawRejectSentinel = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" && c.result.isRejected() )
+		        sawMiddlewareStop = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+		        // MockService streams content chunks as { type: "content", content: "..." }
+		        sawFinalContent   = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "content" && ( c.content ?: "" ) contains "Understood" )
 		        toolNotCalled     = toolACalls == 0
 		    """,
 		    context
 		);
 		// @formatter:on
 
-		assertThat( variables.getAsBoolean( Key.of( "sawRejectSentinel" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawMiddlewareStop" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "sawFinalContent" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "toolNotCalled" ) ) ).isTrue();
-		assertThat( variables.getAsBoolean( Key.of( "afterAgentRunFired" ) ) ).isFalse();
 	}
 
 }

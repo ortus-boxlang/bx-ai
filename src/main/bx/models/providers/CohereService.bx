@@ -320,16 +320,24 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				}
 				var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
-				// Suspend: stop the tool chain so the agent can checkpoint and pause
-				if ( toolBeforeResult.isSuspended() ) {
+				// Suspend/Cancel: hard-stop the entire tool chain immediately. Suspend needs a
+				// human to resume it externally; cancel (e.g. MaxToolCallsMiddleware's limit, or
+				// a human choosing to quit in HITL's CLI mode) means abort the run outright —
+				// neither should let the batch continue.
+				if ( toolBeforeResult.isSuspended() || toolBeforeResult.isCancelled() ) {
 					terminalToolResult = toolBeforeResult
 					break
 				}
 
-				// Cancel/Reject: stop the tool chain immediately
-				if ( toolBeforeResult.isCancelled() || toolBeforeResult.isRejected() ) {
-					terminalToolResult = toolBeforeResult
-					break
+				// Reject: skip only this tool call — record the reason as its result and keep
+				// processing the rest of the batch/follow-up instead of surfacing a raw
+				// middleware result.
+				if ( toolBeforeResult.isRejected() ) {
+					toolResults.append( {
+						"call": toolCall,
+						"outputs": [ { "result": "[Tool call blocked: #toolBeforeResult.getReason()#]" } ]
+					} );
+					continue;
 				}
 
 				// Invoke the tool with the parameters, wrapped in wrapToolCall middleware
@@ -354,8 +362,9 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				} );
 			}
 
-			// A terminal middleware result (suspend/cancel/reject) stops the tool chain
-			// immediately — return it directly instead of continuing to the follow-up request.
+			// A hard-stop middleware result (suspend/cancel) stops the tool chain immediately —
+			// return it directly instead of continuing to the follow-up request. A reject does
+			// not reach here: it's absorbed above and the loop continues.
 			if ( isObject( terminalToolResult ) ) {
 				return terminalToolResult
 			}
