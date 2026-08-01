@@ -353,8 +353,8 @@ public class SchemaBuilderTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Complex struct with class instance values populates class instances on response" )
-	public void testPopulateComplexStructWithClassInstances() {
+	@DisplayName( "populateClass() populates a Contact instance from JSON response" )
+	public void testPopulateClassWithContact() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
