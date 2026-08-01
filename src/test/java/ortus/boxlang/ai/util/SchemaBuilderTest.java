@@ -423,4 +423,70 @@ public class SchemaBuilderTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "hasProductName" ) ) ).isTrue();
 	}
 
+	@Test
+	@DisplayName( "populateArray() handles plain struct templates by returning items as-is" )
+	public void testPopulateArrayWithStructTemplate() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.util.SchemaBuilder;
+
+			// Plain struct as template (not a class instance)
+			template = { name: "", price: 0 };
+			jsonData = '[{"name": "Widget", "price": 29}, {"name": "Gadget", "price": 99}]';
+
+			result = SchemaBuilder::populateArray( template, jsonData );
+
+			resultSize  = result.len();
+			firstName   = result[1].name;
+			firstPrice  = result[1].price;
+			secondName  = result[2].name;
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "resultSize" ) ) ).isEqualTo( 2 );
+		assertThat( variables.get( Key.of( "firstName" ) ).toString() ).isEqualTo( "Widget" );
+		assertThat( variables.get( Key.of( "firstPrice" ) ) ).isEqualTo( 29 );
+		assertThat( variables.get( Key.of( "secondName" ) ).toString() ).isEqualTo( "Gadget" );
+	}
+
+	@Test
+	@DisplayName( "merge() with array-of-struct schema generates correct property schema and populates items as-is" )
+	public void testMergeWithArrayOfStructSchema() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.util.SchemaBuilder;
+
+			// merge() where one schema is an array of plain structs
+			merged = SchemaBuilder::merge([
+				{ name: "contact", schema: new src.test.bx.Contact() },
+				{ name: "tags", schema: [ { label: "", value: "" } ] }
+			]);
+
+			// Schema structure checks
+			hasContact   = merged.properties.keyExists( "contact" );
+			hasTags      = merged.properties.keyExists( "tags" );
+			tagsType     = merged.properties.tags.type;
+
+			// _originalSchemas should store original templates for population
+			originalCount  = merged._originalSchemas.len();
+			tagsOrigSchema = merged._originalSchemas[2].schema;
+			isTagsArray    = isArray( tagsOrigSchema );
+			isTagsItemStruct = isStruct( tagsOrigSchema[1] );
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasContact" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasTags" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "tagsType" ) ).toString() ).isEqualTo( "array" );
+		assertThat( variables.get( Key.of( "originalCount" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsBoolean( Key.of( "isTagsArray" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isTagsItemStruct" ) ) ).isTrue();
+	}
+
 }
