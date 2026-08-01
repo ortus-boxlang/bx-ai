@@ -14,20 +14,21 @@
  * ----------------------------------------------------------------------------------
  * Human-in-the-Loop (HITL) middleware.
  *
- * A thin adapter over two Phase 2 collaborators:
+ * A thin adapter over three collaborators:
  *   - An IApprovalPolicy decides WHETHER a pending tool call needs approval
  *     (default: match against `toolsRequiringApproval` via ToolNameApprovalPolicy —
  *     pass `policy` for annotation-based, risk-based, callback-based, or composite
  *     decisions instead — see models/hitl/policies/).
- *   - Presentation is either an attached IGateway (via HumanInteractionCoordinator,
- *     so Slack/HTTP/any gateway can present the request and resolve it later) or,
- *     with no gateway attached, today's original behavior is unchanged:
- *       mode "cli" : blocks and prompts the user on stdin/stdout
- *       mode "web" : suspends the run, returning an AiMiddlewareResult.suspend() so
- *                    the caller can checkpoint and present the approval request
- *                    asynchronously via its own means.
+ *   - Presentation is always through an IGateway via HumanInteractionCoordinator.
+ *     Pass `gateway` for Slack/HTTP/any custom gateway. With no gateway supplied,
+ *     mode "cli" (the default) auto-attaches a CliGateway — the canonical/reference
+ *     gateway, a blocking stdin/stdout prompt — so the CLI is just another gateway,
+ *     not a special case.
+ *   - mode "web" (no gateway attached) suspends the run instead, returning an
+ *     AiMiddlewareResult.suspend() so the caller can checkpoint and present the
+ *     approval request asynchronously via its own means.
  *
- * CLI mode example (unchanged):
+ * CLI mode example (unchanged — default-attaches a CliGateway under the hood):
  *   aiAgent( middleware: new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ] ) )
  *
  * Web / async mode example (unchanged):
@@ -39,7 +40,7 @@
  *       checkpointer: aiMemory( "cache" )
  *   )
  *
- * Gateway-attached example (new in Phase 2):
+ * Gateway-attached example (Phase 2+):
  *   aiAgent(
  *       middleware  : new HumanInTheLoopMiddleware(
  *                         policy : new RiskLevelApprovalPolicy( minLevel: "high" ),
@@ -52,6 +53,11 @@
  *   agent.resume( "approve", threadId )
  *   agent.resume( "reject", threadId )
  *   agent.resume( "edit", threadId, { correctedArgs: { ... } } )
+ *
+ * Migration note: `mode` still works exactly as before and isn't deprecated for "cli"/
+ * "web" — but if you're attaching a specific gateway anyway, prefer `gateway:` over
+ * `mode:` going forward; an unrecognized `mode` value now falls back to a CliGateway
+ * with a console warning rather than silently behaving like "cli".
  */
 import bxModules.bxai.models.middleware.BaseAiMiddleware;
 import bxModules.bxai.models.middleware.AiMiddlewareResult;
@@ -60,6 +66,7 @@ import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
 import bxModules.bxai.models.hitl.policies.ToolNameApprovalPolicy;
 import bxModules.bxai.models.hitl.policies.CallbackApprovalPolicy;
 import bxModules.bxai.models.gateway.IGateway;
+import bxModules.bxai.models.gateway.cli.CliGateway;
 import bxModules.bxai.models.gateway.contracts.GatewayContext;
 import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
 import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
@@ -95,8 +102,8 @@ class extends="BaseAiMiddleware" {
 	property name="policy";
 
 	/**
-	 * Optional gateway to present approval requests through. When set, this takes over
-	 * presentation entirely — approvalMode/cliApprove are not used.
+	 * The gateway approval requests are presented through — either the one supplied,
+	 * or (mode "cli"/unrecognized) a default-attached CliGateway. Null only for mode "web".
 	 */
 	property name="gateway";
 
@@ -117,8 +124,8 @@ class extends="BaseAiMiddleware" {
 	 * @policy                 An IApprovalPolicy deciding whether a pending tool call needs approval.
 	 *                         Defaults to a ToolNameApprovalPolicy built from toolsRequiringApproval
 	 *                         (or a CallbackApprovalPolicy built from approvalCallback, if supplied).
-	 * @gateway                An IGateway to present approval requests through instead of the built-in
-	 *                         cli/web behavior — e.g. aiGateway( "mock" ), a Slack gateway, etc.
+	 * @gateway                An IGateway to present approval requests through — e.g. aiGateway( "mock" ),
+	 *                         a Slack gateway, etc. Defaults to a CliGateway unless mode is "web".
 	 */
 	function init(
 		array    toolsRequiringApproval = [],
@@ -132,8 +139,18 @@ class extends="BaseAiMiddleware" {
 		variables.approvalMode           = arguments.mode
 		variables.showArguments          = arguments.showArguments
 		variables.approvalCallback       = arguments.approvalCallback
-		variables.gateway                = arguments.gateway ?: javacast( "null", "" )
 		variables.coordinator            = new HumanInteractionCoordinator()
+
+		if ( !isNull( arguments.gateway ) ) {
+			variables.gateway = arguments.gateway
+		} else if ( arguments.mode == "web" ) {
+			variables.gateway = javacast( "null", "" )
+		} else {
+			if ( arguments.mode != "cli" ) {
+				println( "[DEPRECATED] HumanInTheLoopMiddleware: unrecognized mode [#arguments.mode#] — defaulting to a CliGateway. Pass `gateway:` instead of `mode:` going forward." )
+			}
+			variables.gateway = new CliGateway()
+		}
 
 		if ( !isNull( arguments.policy ) ) {
 			variables.policy = arguments.policy
@@ -144,9 +161,9 @@ class extends="BaseAiMiddleware" {
 		}
 
 		variables.name = "Human-in-the-Loop Middleware"
-		variables.description = "Intercepts tool calls that need human approval (per its IApprovalPolicy) and either " &
-			"presents them via an attached IGateway, or — with no gateway attached — blocks for a CLI prompt (mode " &
-			"'cli') or suspends the run for asynchronous approval (mode 'web')."
+		variables.description = "Intercepts tool calls that need human approval (per its IApprovalPolicy) and " &
+			"presents them via an attached IGateway (a CliGateway by default), or — for mode 'web' with no " &
+			"gateway attached — suspends the run for asynchronous approval."
 
 		return this
 	}
@@ -206,18 +223,13 @@ class extends="BaseAiMiddleware" {
 				: ( context.toolCall?.function?.arguments ?: "{}" )
 		}
 
-		// Gateway attached — present through it instead of the built-in cli/web behavior
+		// A gateway is always attached except for mode "web" — present through it
 		if ( !isNull( variables.gateway ) ) {
 			return gatewayApprove( toolName, pendingData, context )
 		}
 
-		if ( variables.approvalMode == "web" ) {
-			// Async/web mode: suspend and let the caller checkpoint
-			return AiMiddlewareResult.suspend( pendingData )
-		}
-
-		// CLI mode: block and prompt on stdin/stdout
-		return cliApprove( toolName, pendingData )
+		// mode "web", no gateway attached: suspend and let the caller checkpoint
+		return AiMiddlewareResult.suspend( pendingData )
 	}
 
 	// ==================== Private Helpers ====================
@@ -303,37 +315,6 @@ class extends="BaseAiMiddleware" {
 			// Cohere shape: parameters is already a struct
 			arguments.context.toolCall.parameters = arguments.newArgs
 		}
-	}
-
-	private AiMiddlewareResult function cliApprove( required string toolName, required struct pendingData ) {
-		println( "" )
-		println( "╔══════════════════════════════════════════════════╗" )
-		println( "║         HUMAN APPROVAL REQUIRED                  ║" )
-		println( "╚══════════════════════════════════════════════════╝" )
-		println( " Tool: #arguments.toolName#" )
-
-		if ( variables.showArguments ) {
-			println( " Args: #arguments.pendingData.arguments#" )
-		}
-
-		println( "" )
-		println( " [A]pprove  [R]eject  [Q]uit" )
-		print  ( " Decision: " )
-
-		var input = cliRead().trim().lCase()
-
-		println( "" )
-
-		if ( input == "a" || input == "approve" ) {
-			return AiMiddlewareResult.approve()
-		}
-
-		if ( input == "r" || input == "reject" ) {
-			return AiMiddlewareResult.reject( "Rejected by human operator." )
-		}
-
-		// "q" or anything else = cancel the entire run
-		return AiMiddlewareResult.cancel( "Human operator chose to quit." )
 	}
 
 }
