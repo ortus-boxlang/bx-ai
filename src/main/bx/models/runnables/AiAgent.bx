@@ -503,26 +503,30 @@ class extends="AiBaseRunnable" {
 		variables.aiModel.stream( wrappedCallback, messages, effectiveParams, effectiveOptions )
 
 		// -------------------------------------------------------------------------------------------
-		// --- Handle Suspension ---
+		// --- Handle Terminal Middleware Results (suspend/cancel/reject) ---
 		// -------------------------------------------------------------------------------------------
-		// If a tool call suspended mid-stream, save checkpoint and stop — mirrors run()'s handling.
-		// However, if there is no checkpointer configured, we can't save state, so just stop.
+		// A terminal result means there is no successful assistant turn to store in memory —
+		// mirrors run()'s handling. If the tool call suspended specifically, also save a
+		// checkpoint before stopping (if there is no checkpointer configured, we can't save
+		// state, so just stop).
 		if (
 			isObject( terminalStreamResult )
 			&& terminalStreamResult instanceof "AiMiddlewareResult"
-			&& terminalStreamResult.isSuspended()
+			&& terminalStreamResult.isTerminal()
 		) {
-			variables.checkpointer?.saveState(
-				threadId,
-				{
-					input       : arguments.input,
-					messages    : messages,
-					params      : effectiveParams,
-					options     : effectiveOptions,
-					suspendData : terminalStreamResult.getData()
-				},
-				variables.checkpointTTL
-			)
+			if ( terminalStreamResult.isSuspended() ) {
+				variables.checkpointer?.saveState(
+					threadId,
+					{
+						input       : arguments.input,
+						messages    : messages,
+						params      : effectiveParams,
+						options     : effectiveOptions,
+						suspendData : terminalStreamResult.getData()
+					},
+					variables.checkpointTTL
+				)
+			}
 			return
 		}
 

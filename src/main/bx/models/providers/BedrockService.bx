@@ -747,7 +747,16 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire Tool Middleware ---
 		// -------------------------------------------------------------------------------------------
-		var toolContext      = { tool: tool, toolCall: arguments.toolCall, chatRequest: arguments.chatRequest }
+		var toolContext = {
+			tool       : tool,
+			toolCall   : arguments.toolCall,
+			chatRequest: arguments.chatRequest,
+			// Normalized keys so shape-agnostic middleware (GuardrailMiddleware argPatterns,
+			// FlightRecorderMiddleware, etc.) can inspect the real arguments — Claude-on-Bedrock's
+			// toolCall carries them in `.input` (already a struct), not OpenAI's `.function.arguments`.
+			toolName   : arguments.toolCall.name ?: tool.getName(),
+			toolArgs   : arguments.toolCall.input ?: {}
+		}
 		var toolBeforeResult = arguments.chatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
 		// Suspend: stop so the agent can checkpoint and pause

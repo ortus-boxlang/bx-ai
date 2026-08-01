@@ -307,7 +307,17 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				// Find the tool in our original tools list
 				var tool = tools.filter( t => t.getSchema().function.name == toolCall.name ).first();
 
-				var toolContext      = { tool: tool, toolCall: toolCall, chatRequest: thisChatRequest }
+				var toolContext = {
+					tool       : tool,
+					toolCall   : toolCall,
+					chatRequest: thisChatRequest,
+					// Normalized keys so shape-agnostic middleware (GuardrailMiddleware argPatterns,
+					// FlightRecorderMiddleware, etc.) can inspect the real arguments — Cohere's
+					// toolCall carries them in `.parameters` (already a struct), not OpenAI's
+					// `.function.arguments`.
+					toolName   : toolCall.name ?: tool.getName(),
+					toolArgs   : toolCall.parameters ?: {}
+				}
 				var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
 				// Suspend: stop the tool chain so the agent can checkpoint and pause

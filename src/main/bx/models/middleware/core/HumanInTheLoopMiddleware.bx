@@ -114,12 +114,22 @@ class extends="BaseAiMiddleware" {
 				}
 
 				if ( decision == "edit" && !resumeCtx.editedData.isEmpty() ) {
-					// Patch tool call arguments with the edited data.
-					// BaseService reads toolCall.function.arguments AFTER beforeToolCall
-					// returns, so in-place mutation is picked up automatically.
+					// Patch tool call arguments with the edited data. Each provider reads the
+					// tool call's live arguments back from the same struct reference AFTER
+					// beforeToolCall returns, so in-place mutation is picked up automatically —
+					// but the field/shape differs per provider, so detect which one is present.
 					var newArgs = resumeCtx.editedData.correctedArgs ?: resumeCtx.editedData
-					if ( !isNull( context.toolCall ) && context.toolCall.keyExists( "function" ) ) {
-						context.toolCall.function.arguments = jsonSerialize( newArgs )
+					if ( !isNull( context.toolCall ) ) {
+						if ( context.toolCall.keyExists( "function" ) ) {
+							// OpenAI-family shape: arguments is a JSON-encoded string
+							context.toolCall.function.arguments = jsonSerialize( newArgs )
+						} else if ( context.toolCall.keyExists( "input" ) ) {
+							// Claude / Bedrock shape: input is already a struct
+							context.toolCall.input = newArgs
+						} else if ( context.toolCall.keyExists( "parameters" ) ) {
+							// Cohere shape: parameters is already a struct
+							context.toolCall.parameters = newArgs
+						}
 					}
 				}
 
@@ -134,11 +144,16 @@ class extends="BaseAiMiddleware" {
 			return AiMiddlewareResult.continue()
 		}
 
-		// Gather pending tool info
+		// Gather pending tool info. Prefer the normalized context.toolArgs (set by providers
+		// whose toolCall shape doesn't carry a `.function.arguments` JSON string — Claude,
+		// Bedrock, Cohere) over the OpenAI-shape read, so the approval payload always shows
+		// the real arguments regardless of provider.
 		var pendingData = {
 			toolName  : toolName,
 			toolCall  : context.toolCall ?: {},
-			arguments : context.toolCall?.function?.arguments ?: "{}"
+			arguments : ( context.keyExists( "toolArgs" ) && isStruct( context.toolArgs ) )
+				? jsonSerialize( context.toolArgs )
+				: ( context.toolCall?.function?.arguments ?: "{}" )
 		}
 
 		if ( variables.approvalMode == "web" ) {
