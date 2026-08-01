@@ -53,7 +53,7 @@ public class aiGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "supportsIn" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "supportsOut" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "supportsHitl" ) ) ).isTrue();
-		// MockGateway does not implement IStreamingGateway
+		// MockGateway does not declare the "streaming" capability
 		assertThat( variables.getAsBoolean( Key.of( "supportsStream" ) ) ).isFalse();
 	}
 

@@ -14,17 +14,18 @@
  * ----------------------------------------------------------------------------------
  * Abstract base for gateway implementations.
  *
- * Provides a sensible configure() default and capability discovery inferred from the
- * optional capability interfaces (IInboundGateway/IOutboundGateway/IStreamingGateway/
- * IInteractiveGateway/IHumanInteractionGateway) a concrete gateway implements — mirrors
- * BaseService's getCapabilities()/hasCapability()/getDeclaredCapabilities() pattern used
- * by AI providers, so gateways follow the same "implement what you support, capabilities
- * stay in sync automatically" convention.
+ * Provides a sensible configure() default and capability discovery driven by
+ * getDeclaredCapabilities() — mirrors BaseService's getCapabilities()/hasCapability()
+ * pattern used by AI providers, so gateways follow the same "declare what you support"
+ * convention.
  *
- * Concrete gateways: `class extends="BaseGateway" implements="IInboundGateway,IOutboundGateway"`.
- * Fine-grained platform features that can't be inferred structurally (threads,
- * attachments, messageEditing, argumentEditing, authentication) should be declared
- * explicitly by overriding getDeclaredCapabilities().
+ * Concrete gateways: `class extends="BaseGateway"`, overriding only the IGateway
+ * capability methods (parseInbound/verifyInbound, deliver, deliverChunk,
+ * deliverInteractive, requestHumanInteraction/parseHumanDecision) they actually
+ * support, and overriding getDeclaredCapabilities() to advertise those same
+ * capabilities (e.g. "inboundMessages", "outboundMessages", "streaming",
+ * "interactiveActions", "humanApproval", plus any platform-specific ones like
+ * "threads", "attachments", "messageEditing", "argumentEditing", "authentication").
  */
 abstract class implements="IGateway" {
 
@@ -58,45 +59,23 @@ abstract class implements="IGateway" {
 	}
 
 	/**
-	 * Returns all capabilities this gateway supports.
-	 * If the concrete class overrides getDeclaredCapabilities(), that result is used.
-	 * Otherwise capabilities are inferred from implemented interfaces.
+	 * Returns all capabilities this gateway supports — whatever getDeclaredCapabilities()
+	 * reports.
 	 *
 	 * @return Array of capability strings
 	 */
 	public array function getCapabilities() {
-		var declared = getDeclaredCapabilities()
-		if ( !declared.isEmpty() ) {
-			return declared
-		}
-		// Fallback: infer from interfaces
-		var caps = []
-		if ( isInstanceOf( this, "IInboundGateway" ) ) {
-			caps.append( "inboundMessages" )
-		}
-		if ( isInstanceOf( this, "IOutboundGateway" ) ) {
-			caps.append( "outboundMessages" )
-		}
-		if ( isInstanceOf( this, "IStreamingGateway" ) ) {
-			caps.append( "streaming" )
-		}
-		if ( isInstanceOf( this, "IInteractiveGateway" ) ) {
-			caps.append( "interactiveActions" )
-		}
-		if ( isInstanceOf( this, "IHumanInteractionGateway" ) ) {
-			caps.append( "humanApproval" )
-		}
-		return caps
+		return getDeclaredCapabilities()
 	}
 
 	/**
-	 * Override in concrete gateways to declare explicit capabilities via static.CAPABILITIES
-	 * (needed for capabilities that can't be inferred from an implemented interface, e.g.
-	 * "threads", "attachments", "messageEditing", "argumentEditing", "authentication").
-	 * Returning a non-empty array bypasses interface-based detection entirely, so include
-	 * the structural ones too if you override this.
+	 * Override in concrete gateways to declare which capabilities they support
+	 * (e.g. "inboundMessages", "outboundMessages", "streaming", "interactiveActions",
+	 * "humanApproval", "threads", "attachments", "messageEditing", "argumentEditing",
+	 * "authentication"). Only declare a capability if the corresponding IGateway
+	 * method is actually overridden.
 	 *
-	 * @return Array of capability strings, or [] to use interface detection
+	 * @return Array of capability strings
 	 */
 	public array function getDeclaredCapabilities() {
 		return []

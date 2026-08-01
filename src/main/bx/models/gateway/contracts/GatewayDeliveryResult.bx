@@ -12,8 +12,8 @@
  * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
- * The result of a gateway delivery attempt (IOutboundGateway.deliver() /
- * IHumanInteractionGateway.requestHumanInteraction()).
+ * The result of a gateway delivery attempt (IGateway.deliver() /
+ * IGateway.requestHumanInteraction()).
  *
  * For synchronous gateways (e.g. CLI), a delivery can carry an immediate decision.
  * For asynchronous gateways (e.g. Slack, HTTP webhook), success just means the

@@ -14,7 +14,7 @@
  * ----------------------------------------------------------------------------------
  * Deterministic, in-memory reference Gateway — the "MockService" of the Gateway SPI.
  *
- * Exercises the full IGateway contract (inbound parsing, outbound delivery, and
+ * Exercises the full IGateway capability set (inbound parsing, outbound delivery, and
  * human-in-the-loop presentation/decision-parsing) without any platform dependency, so
  * the SPI itself — and anything built on top of it — can be proven correct without a
  * CLI, a webhook server, or a real platform account. This is also the reference every
@@ -45,7 +45,7 @@ import bxModules.bxai.models.gateway.contracts.GatewayDeliveryResult;
 import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
 import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
 
-class extends="BaseGateway" implements="IInboundGateway,IOutboundGateway,IHumanInteractionGateway" {
+class extends="BaseGateway" {
 
 	/**
 	 * Every event delivered via deliver(), in order
@@ -95,8 +95,15 @@ class extends="BaseGateway" implements="IInboundGateway,IOutboundGateway,IHumanI
 		return this
 	}
 
+	/**
+	 * Declares the capabilities this reference gateway supports.
+	 */
+	array function getDeclaredCapabilities(){
+		return [ "inboundMessages", "outboundMessages", "humanApproval" ]
+	}
+
 	// -------------------------------------------------------------------------
-	// IInboundGateway
+	// Inbound
 	// -------------------------------------------------------------------------
 
 	boolean function verifyInbound( required any payload, struct requestContext = {} ){
@@ -122,7 +129,7 @@ class extends="BaseGateway" implements="IInboundGateway,IOutboundGateway,IHumanI
 	}
 
 	// -------------------------------------------------------------------------
-	// IOutboundGateway
+	// Outbound
 	// -------------------------------------------------------------------------
 
 	GatewayDeliveryResult function deliver( required GatewayEvent event, required GatewayContext context ){
@@ -131,7 +138,7 @@ class extends="BaseGateway" implements="IInboundGateway,IOutboundGateway,IHumanI
 	}
 
 	// -------------------------------------------------------------------------
-	// IHumanInteractionGateway
+	// Human-in-the-loop
 	// -------------------------------------------------------------------------
 
 	GatewayDeliveryResult function requestHumanInteraction(

@@ -12,7 +12,7 @@
  * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
- * Base interface for all Gateways.
+ * The single interface every Gateway implements.
  *
  * A gateway is a bidirectional human interaction adapter: it translates platform events
  * (a Slack message, a CLI keystroke, an HTTP webhook) into normalized agent input, and
@@ -21,23 +21,21 @@
  * identity, threads, interactive actions, streaming, approvals, and resuming suspended
  * agent executions.
  *
- * Declares only the universal contract: identity, configuration, lifecycle, and runtime
- * capability discovery. Specific capabilities (inbound parsing, outbound delivery,
- * streaming, interactive actions, human-in-the-loop presentation) are declared through
- * dedicated interfaces in this package:
- *
- * - IInboundGateway        : parseInbound() + verifyInbound()
- * - IOutboundGateway       : deliver()
- * - IStreamingGateway      : deliverStream()
- * - IInteractiveGateway    : deliverInteractive()
- * - IHumanInteractionGateway : requestHumanInteraction() + parseHumanDecision()
- *
- * A gateway implements only the capability interfaces it actually supports (mirrors the
- * IAiService / IAiChatService / IAiEmbeddingsService pattern already used by AI
- * providers), and advertises what it supports via getCapabilities().
+ * Every capability method below is a `default` — a concrete gateway only overrides the
+ * ones it actually supports and declares them via getDeclaredCapabilities() (see
+ * BaseGateway). Unsupported methods fall back to a safe "not supported" default: a
+ * failed GatewayDeliveryResult where a result object makes sense, or a thrown
+ * GatewayCapabilityNotSupported otherwise. Check supports()/getCapabilities() before
+ * calling a capability method to avoid relying on that fallback.
  *
  * @since 4.0.0
  */
+import bxModules.bxai.models.gateway.contracts.GatewayContext;
+import bxModules.bxai.models.gateway.contracts.GatewayEvent;
+import bxModules.bxai.models.gateway.contracts.GatewayDeliveryResult;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+
 interface {
 
 	/**
@@ -98,6 +96,127 @@ interface {
 	 */
 	default public void function stop(){
 		// no-op by default
+	}
+
+	// -------------------------------------------------------------------------
+	// Inbound — override + declare "inboundMessages" to support
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Verify that an inbound payload is authentic (e.g. signature/HMAC validation).
+	 * Call this before parseInbound() for any externally-reachable gateway.
+	 *
+	 * @payload        The raw inbound payload (shape is gateway-specific)
+	 * @requestContext Transport-level context (headers, IP, etc.), shape is gateway-specific
+	 *
+	 * @return true if the payload is verified authentic; false by default (nothing to verify)
+	 */
+	default public boolean function verifyInbound( required any payload, struct requestContext = {} ){
+		return false;
+	}
+
+	/**
+	 * Parse a raw inbound platform payload into one or more normalized GatewayMessage(s).
+	 *
+	 * @payload        The raw inbound payload (shape is gateway-specific)
+	 * @requestContext Transport-level context (headers, IP, etc.), shape is gateway-specific
+	 *
+	 * @return Array of GatewayMessage instances
+	 */
+	default public array function parseInbound( required any payload, struct requestContext = {} ){
+		throw(
+			type   : "GatewayCapabilityNotSupported",
+			message: "Gateway [#getName()#] does not support inbound message parsing."
+		);
+	}
+
+	// -------------------------------------------------------------------------
+	// Outbound — override + declare "outboundMessages" to support
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Deliver a normalized GatewayEvent to the platform this gateway represents.
+	 *
+	 * @event   The normalized event to deliver
+	 * @context The GatewayContext identifying who/where to deliver it to
+	 *
+	 * @return A GatewayDeliveryResult describing the outcome
+	 */
+	default public GatewayDeliveryResult function deliver( required GatewayEvent event, required GatewayContext context ){
+		return GatewayDeliveryResult.failure( "Gateway [#getName()#] does not support outbound delivery." );
+	}
+
+	// -------------------------------------------------------------------------
+	// Streaming — override + declare "streaming" to support
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Deliver a single response.started / response.delta / response.completed event as
+	 * part of an ongoing streamed response.
+	 *
+	 * @event   The normalized event to deliver (type is one of GatewayEvent.TYPES.RESPONSE_*)
+	 * @context The GatewayContext identifying who/where to deliver it to
+	 *
+	 * @return A GatewayDeliveryResult describing the outcome
+	 */
+	default public GatewayDeliveryResult function deliverChunk( required GatewayEvent event, required GatewayContext context ){
+		return GatewayDeliveryResult.failure( "Gateway [#getName()#] does not support streaming delivery." );
+	}
+
+	// -------------------------------------------------------------------------
+	// Interactive actions — override + declare "interactiveActions" to support
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Deliver a GatewayEvent using rich interactive actions native to the platform
+	 * (e.g. approve/reject buttons) instead of plain text instructions.
+	 *
+	 * @event   The normalized event to deliver
+	 * @context The GatewayContext identifying who/where to deliver it to
+	 * @actions Interactive action definitions — gateway-specific shape (label, value, style, etc.)
+	 *
+	 * @return A GatewayDeliveryResult describing the outcome
+	 */
+	default public GatewayDeliveryResult function deliverInteractive( required GatewayEvent event, required GatewayContext context, required array actions ){
+		return GatewayDeliveryResult.failure( "Gateway [#getName()#] does not support interactive actions." );
+	}
+
+	// -------------------------------------------------------------------------
+	// Human-in-the-loop — override + declare "humanApproval" to support
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Present a HumanInteractionRequest to a human via this gateway.
+	 *
+	 * For synchronous gateways (e.g. CLI), this may block and return a
+	 * GatewayDeliveryResult already carrying the decision (see GatewayDeliveryResult.hasDecision()).
+	 * For asynchronous gateways, it returns immediately once the platform has accepted the
+	 * request, and the decision arrives later via an inbound event that parseHumanDecision()
+	 * turns into a HumanInteractionDecision.
+	 *
+	 * @request The interaction request to present
+	 * @context The GatewayContext identifying who/where to present it to
+	 *
+	 * @return A GatewayDeliveryResult — for synchronous gateways this may already carry
+	 *         the human's decision via getDecision()/hasDecision()
+	 */
+	default public GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest request, required GatewayContext context ){
+		return GatewayDeliveryResult.failure( "Gateway [#getName()#] does not support human-in-the-loop interaction." );
+	}
+
+	/**
+	 * Parse an inbound GatewayEvent (e.g. a button click, a webhook callback) into a
+	 * normalized HumanInteractionDecision.
+	 *
+	 * @event The inbound event carrying the human's decision
+	 *
+	 * @return The normalized HumanInteractionDecision
+	 */
+	default public HumanInteractionDecision function parseHumanDecision( required GatewayEvent event ){
+		throw(
+			type   : "GatewayCapabilityNotSupported",
+			message: "Gateway [#getName()#] does not support human-in-the-loop interaction."
+		);
 	}
 
 }
