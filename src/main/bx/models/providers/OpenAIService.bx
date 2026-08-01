@@ -275,12 +275,23 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		// Capture chatRequest in local scope for use in nested closures
 		var thisChatRequest = arguments.chatRequest
 		var newMessages = arguments.chatRequest.getMessages().map( message -> message )
-		result.choices.each( ( choice, index ) => {
+		// Captures a terminal (suspend/cancel/reject) middleware result so we can break out of both
+		// the choice and tool-call loops immediately instead of continuing to invoke remaining tool
+		// calls in the batch and recursing into another chat() round as if nothing happened.
+		var terminalToolResult = ""
+
+		for( var choice in result.choices ){
+			if ( isObject( terminalToolResult ) ) {
+				break
+			}
 			var targetChatRequest = thisChatRequest
 			// add the tool call into our message history
 			newMessages.append( choice.message )
 			// find the tool, invoke it, append the result to the chat history
-			choice.message.tool_calls.each( ( toolCall, i ) => {
+			for( var toolCall in choice.message.tool_calls ){
+				if ( isObject( terminalToolResult ) ) {
+					break
+				}
 				var toolAttempt = thisChatRequest.getTool( toolCall.function.name )
 				if( toolAttempt.isPresent() ){
 					var tool = toolAttempt.get();
@@ -291,53 +302,63 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 					var toolContext     = { tool: tool, toolCall: toolCall, chatRequest: targetChatRequest }
 					var toolBeforeResult = targetChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
-					// Suspend: return so the agent can checkpoint and pause
-					if ( toolBeforeResult.isSuspended() ) {
+					// Suspend/Cancel: hard-stop the entire tool chain immediately and surface the
+					// terminal result to the caller. Suspend needs a human to resume it externally;
+					// cancel (e.g. MaxToolCallsMiddleware's limit, or a human choosing to quit in
+					// HITL's CLI mode) means abort the run outright — neither should let the chain
+					// continue.
+					if ( toolBeforeResult.isSuspended() || toolBeforeResult.isCancelled() ) {
 						newMessages.append( {
 							"role"        : "tool",
 							"tool_call_id": toolCall.id,
-							"content"     : "[Suspended: awaiting human approval]"
+							"content"     : toolBeforeResult.isSuspended()
+								? "[Suspended: awaiting human approval]"
+								: "[Tool call blocked: #toolBeforeResult.getReason()#]"
 						} )
 						targetChatRequest.setMessages( newMessages )
-						return toolBeforeResult
+						terminalToolResult = toolBeforeResult
+						break
 					}
 
-					// Cancel/Reject: skip the tool call but continue the chain, appending the reason to the chat history
-					if ( toolBeforeResult.isCancelled() || toolBeforeResult.isRejected() ) {
+					// Reject: skip only this tool call — append the reason as its tool result so
+					// the model sees why, and keep processing the rest of the batch and the chain
+					// so the run can gracefully continue (e.g. respond to the rejection) instead of
+					// surfacing a raw middleware result to the caller.
+					if ( toolBeforeResult.isRejected() ) {
 						newMessages.append( {
 							"role"        : "tool",
 							"tool_call_id": toolCall.id,
 							"content"     : "[Tool call blocked: #toolBeforeResult.getReason()#]"
 						} )
-						return toolBeforeResult
 					}
+					else {
+						// -------------------------------------------------------------------------------------------
+						// --- Invoke the Tool Middleware + Tooling ---
+						// -------------------------------------------------------------------------------------------
+						var capturedTool         = tool
+						var capturedToolCallArgs = toolCall.function.arguments
+						var toolResult = targetChatRequest.fireWrapMiddleware(
+							"wrapToolCall",
+							toolContext,
+							() => capturedTool.invoke( JSONDeserialize( capturedToolCallArgs ), targetChatRequest )
+						)
 
-					// -------------------------------------------------------------------------------------------
-					// --- Invoke the Tool Middleware + Tooling ---
-					// -------------------------------------------------------------------------------------------
-					var capturedTool         = tool
-					var capturedToolCallArgs = toolCall.function.arguments
-					var toolResult = targetChatRequest.fireWrapMiddleware(
-						"wrapToolCall",
-						toolContext,
-						() => capturedTool.invoke( JSONDeserialize( capturedToolCallArgs ), targetChatRequest )
-					)
+						// -------------------------------------------------------------------------------------------
+						// --- Fire afterToolCall Middleware ---
+						// -------------------------------------------------------------------------------------------
+						targetChatRequest.fireMiddleware(
+							hook   : "afterToolCall",
+							context: { tool: tool, toolCall: toolCall, chatRequest: targetChatRequest, result: toolResult },
+							reverse: true
+						)
 
-					// -------------------------------------------------------------------------------------------
-					// --- Fire afterToolCall Middleware ---
-					// -------------------------------------------------------------------------------------------
-					targetChatRequest.fireMiddleware(
-						hook   : "afterToolCall",
-						context: { tool: tool, toolCall: toolCall, chatRequest: targetChatRequest, result: toolResult },
-						reverse: true
-					)
-
-					// Append the tool result to the messages for the next iteration of the chat loop
-					newMessages.append({
-						"role"        : "tool",
-						"tool_call_id": toolCall.id,
-						"content"     : toolResult
-					})
+						// Append the tool result to the messages for the next iteration of the chat loop
+						newMessages.append({
+							"role"        : "tool",
+							"tool_call_id": toolCall.id,
+							"content"     : toolResult
+						})
+					}
 				}
 				// -------------------------------------------------------------------------------------------
 				// --- Tool Not Found ---
@@ -354,8 +375,15 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 						"content"     : "Tool ['#toolCall.function.name#'] not found in chat request"
 					})
 				}
-			});
-		});
+			}
+		}
+
+		// A hard-stop middleware result (suspend/cancel) stops the tool chain immediately —
+		// return it directly instead of continuing the recursive chat() loop. A reject does not
+		// reach here: it's absorbed above and the loop continues.
+		if ( isObject( terminalToolResult ) ) {
+			return terminalToolResult
+		}
 
 		arguments.chatRequest.setMessages( newMessages )
 		return chat( arguments.chatRequest, arguments.interactionCount + 1 )
@@ -501,7 +529,15 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 
 		var thisChatRequest = arguments.chatRequest
 		var thisCallback    = arguments.callback
-		streamState.toolCalls.each( toolCall => {
+		// Captures a terminal (suspend/cancel/reject) middleware result so we can stop the tool
+		// chain immediately instead of continuing to invoke remaining tool calls in the batch and
+		// recursing into another chatStream() round as if nothing happened.
+		var terminalToolResult = ""
+
+		for( var toolCall in streamState.toolCalls ){
+			if ( isObject( terminalToolResult ) ) {
+				break
+			}
 			var targetChatRequest = thisChatRequest
 			var toolAttempt       = thisChatRequest.getTool( toolCall.function.name ?: "" )
 			var toolArguments     = {}
@@ -524,52 +560,59 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				// -------------------------------------------------------------------------------------------
 				var streamToolCtx         = { tool: tool, toolCall: toolCall, chatRequest: targetChatRequest };
 				var streamToolBeforeResult = targetChatRequest.fireMiddleware( "beforeToolCall", streamToolCtx );
-				if ( streamToolBeforeResult.isSuspended() ) {
+
+				// Suspend/Cancel: hard-stop the entire tool chain immediately (see chat() for why
+				// cancel is treated the same as suspend here, unlike reject).
+				if ( streamToolBeforeResult.isSuspended() || streamToolBeforeResult.isCancelled() ) {
 					newMessages.append( {
 						"role"        : "tool",
 						"tool_call_id": toolCall.id ?: "",
-						"content"     : "[Suspended: awaiting human approval]"
+						"content"     : streamToolBeforeResult.isSuspended()
+							? "[Suspended: awaiting human approval]"
+							: "[Tool call blocked: #streamToolBeforeResult.getReason()#]"
 					} );
 					targetChatRequest.setMessages( newMessages );
-					return;
+					terminalToolResult = streamToolBeforeResult
+					break
 				}
 
-				// If the tool call was cancelled or rejected by middleware, skip invoking the tool
-				if ( streamToolBeforeResult.isCancelled() || streamToolBeforeResult.isRejected() ) {
+				// Reject: skip only this tool call and keep processing the rest of the batch/chain
+				// (see chat() for the full rationale).
+				if ( streamToolBeforeResult.isRejected() ) {
 					newMessages.append( {
 						"role"        : "tool",
 						"tool_call_id": toolCall.id ?: "",
 						"content"     : "[Tool call blocked: #streamToolBeforeResult.getReason()#]"
 					} );
-					return;
 				}
+				else {
+					// -------------------------------------------------------------------------------------------
+					// --- Invoke the Tool, wrapped in wrapToolCall middleware ---
+					// -------------------------------------------------------------------------------------------
+					var capturedStreamTool        = tool;
+					var capturedStreamToolArgs    = toolArguments;
+					var capturedStreamChatRequest = targetChatRequest;
+					var streamToolResult = targetChatRequest.fireWrapMiddleware(
+						"wrapToolCall",
+						streamToolCtx,
+						() => capturedStreamTool.invoke( capturedStreamToolArgs, capturedStreamChatRequest )
+					);
 
-				// -------------------------------------------------------------------------------------------
-				// --- Invoke the Tool, wrapped in wrapToolCall middleware ---
-				// -------------------------------------------------------------------------------------------
-				var capturedStreamTool        = tool;
-				var capturedStreamToolArgs    = toolArguments;
-				var capturedStreamChatRequest = targetChatRequest;
-				var streamToolResult = targetChatRequest.fireWrapMiddleware(
-					"wrapToolCall",
-					streamToolCtx,
-					() => capturedStreamTool.invoke( capturedStreamToolArgs, capturedStreamChatRequest )
-				);
+					// -------------------------------------------------------------------------------------------
+					// --- Fire afterToolCall Middleware ---
+					// -------------------------------------------------------------------------------------------
+					targetChatRequest.fireMiddleware(
+						hook   : "afterToolCall",
+						context: { tool: tool, toolCall: toolCall, chatRequest: targetChatRequest, result: streamToolResult },
+						reverse: true
+					);
 
-				// -------------------------------------------------------------------------------------------
-				// --- Fire afterToolCall Middleware ---
-				// -------------------------------------------------------------------------------------------
-				targetChatRequest.fireMiddleware(
-					hook   : "afterToolCall",
-					context: { tool: tool, toolCall: toolCall, chatRequest: targetChatRequest, result: streamToolResult },
-					reverse: true
-				);
-
-				newMessages.append({
-					"role"        : "tool",
-					"tool_call_id": toolCall.id ?: "",
-					"content"     : streamToolResult
-				});
+					newMessages.append({
+						"role"        : "tool",
+						"tool_call_id": toolCall.id ?: "",
+						"content"     : streamToolResult
+					});
+				}
 			}
 			// -------------------------------------------------------------------------------------------
 			// --- Tool Not Found ---
@@ -586,7 +629,16 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 					"content"     : "Tool ['#toolCall.function.name ?: "unknown"#'] not found in chat request"
 				})
 			}
-		} );
+		}
+
+		// A hard-stop middleware result (suspend/cancel) stops the tool chain immediately. Emit
+		// the same sentinel chunk used for a beforeLLMCall-terminal result so callers/agents can
+		// detect it, instead of continuing the recursive chatStream() loop. A reject does not
+		// reach here: it's absorbed above and the loop continues.
+		if ( isObject( terminalToolResult ) ) {
+			thisCallback( { type: "middleware_stop", result: terminalToolResult } )
+			return
+		}
 
 		// Continue streaming the final answer after tool execution
 		thisChatRequest.setMessages( newMessages );
