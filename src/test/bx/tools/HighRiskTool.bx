@@ -1,0 +1,36 @@
+/**
+ * Test fixture: a tool whose doInvoke() carries a @riskLevel "high" annotation.
+ * Used by RiskLevelApprovalPolicyTest.
+ */
+import bxModules.bxai.models.tools.BaseTool;
+
+class extends="BaseTool" {
+
+	function init() {
+		variables.name        = "dropTable"
+		variables.description = "Drops a database table. Annotated as high risk."
+		return this;
+	}
+
+	@riskLevel( "high" )
+	any function doInvoke( required struct args, chatRequest ) {
+		return "dropped"
+	}
+
+	struct function generateSchema() {
+		return {
+			"type"    : "function",
+			"function": {
+				"name"       : variables.name,
+				"description": variables.description,
+				"parameters" : {
+					"type"                : "object",
+					"properties"          : { "tableName": { "type": "string" } },
+					"required"            : [ "tableName" ],
+					"additionalProperties": false
+				}
+			}
+		}
+	}
+
+}

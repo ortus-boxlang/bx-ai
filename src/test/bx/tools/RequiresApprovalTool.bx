@@ -1,0 +1,36 @@
+/**
+ * Test fixture: a tool whose doInvoke() carries a @requiresApproval annotation.
+ * Used by AnnotationApprovalPolicyTest.
+ */
+import bxModules.bxai.models.tools.BaseTool;
+
+class extends="BaseTool" {
+
+	function init() {
+		variables.name        = "deleteRecord"
+		variables.description = "Deletes a record. Annotated as requiring approval."
+		return this;
+	}
+
+	@requiresApproval
+	any function doInvoke( required struct args, chatRequest ) {
+		return "deleted"
+	}
+
+	struct function generateSchema() {
+		return {
+			"type"    : "function",
+			"function": {
+				"name"       : variables.name,
+				"description": variables.description,
+				"parameters" : {
+					"type"                : "object",
+					"properties"          : { "id": { "type": "number" } },
+					"required"            : [ "id" ],
+					"additionalProperties": false
+				}
+			}
+		}
+	}
+
+}

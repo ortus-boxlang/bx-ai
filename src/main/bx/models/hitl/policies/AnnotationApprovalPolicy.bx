@@ -1,0 +1,80 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Requires approval for tool calls whose `doInvoke()` method carries a given
+ * BoxLang annotation — the same annotation-scanning mechanism `MCPServer.scanClass()`
+ * already uses for `@mcpTool`/`@mcpResource`/`@mcpPrompt` discovery, applied here to a
+ * `@requiresApproval` (by default) marker. Like those, it's a standalone annotation
+ * line directly above the function — not inside its javadoc-style comment block:
+ *
+ * ```
+ * class extends="BaseTool" {
+ *     @requiresApproval
+ *     any function doInvoke( required struct args, AiChatRequest chatRequest ) {
+ *         ...
+ *     }
+ * }
+ * ```
+ *
+ * Tools with no `tool` in context (e.g. a bare `context.toolName` string with no
+ * live tool reference) never require approval under this policy — pair it with
+ * `ToolNameApprovalPolicy` via `CompositeApprovalPolicy` for a belt-and-suspenders
+ * setup if that matters for your use case.
+ */
+import bxModules.bxai.models.hitl.IApprovalPolicy;
+
+class implements="IApprovalPolicy" {
+
+	/**
+	 * The annotation name to look for on the tool's doInvoke() method
+	 */
+	property name="annotationName" type="string" default="requiresApproval";
+
+	/**
+	 * Constructor
+	 *
+	 * @annotationName The annotation name to look for (default "requiresApproval")
+	 */
+	function init( string annotationName = "requiresApproval" ) {
+		variables.annotationName = arguments.annotationName
+		return this;
+	}
+
+	boolean function needsApproval( required struct context ) {
+		var tool = arguments.context.tool ?: javacast( "null", "" )
+		if ( isNull( tool ) ) {
+			return false
+		}
+		return hasAnnotation( tool, variables.annotationName )
+	}
+
+	/**
+	 * Scan a tool instance's doInvoke() method metadata for the given annotation.
+	 *
+	 * @tool           The tool instance to inspect
+	 * @annotationName The annotation name to look for
+	 */
+	private boolean function hasAnnotation( required any tool, required string annotationName ) {
+		var meta      = getMetadata( arguments.tool )
+		var functions = meta.functions ?: []
+		for ( var thisFunction in functions ) {
+			if ( thisFunction.name == "doInvoke" ) {
+				var annotations = thisFunction.annotations ?: {}
+				return annotations.keyExists( arguments.annotationName )
+			}
+		}
+		return false
+	}
+
+}

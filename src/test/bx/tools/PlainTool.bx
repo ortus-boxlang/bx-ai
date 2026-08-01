@@ -1,0 +1,39 @@
+/**
+ * Test fixture: a tool with no approval-related annotations and a schema with a
+ * required field + additionalProperties:false, used to exercise
+ * HumanInteractionCoordinator's edited-argument validation.
+ */
+import bxModules.bxai.models.tools.BaseTool;
+
+class extends="BaseTool" {
+
+	function init() {
+		variables.name        = "placeOrder"
+		variables.description = "Places an order. No approval annotations."
+		return this;
+	}
+
+	any function doInvoke( required struct args, chatRequest ) {
+		return "ordered"
+	}
+
+	struct function generateSchema() {
+		return {
+			"type"    : "function",
+			"function": {
+				"name"       : variables.name,
+				"description": variables.description,
+				"parameters" : {
+					"type"                : "object",
+					"properties"          : {
+						"item": { "type": "string" },
+						"qty" : { "type": "number" }
+					},
+					"required"            : [ "item", "qty" ],
+					"additionalProperties": false
+				}
+			}
+		}
+	}
+
+}

@@ -1,0 +1,258 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Owns the lifecycle of a suspended-for-approval tool call once a gateway is
+ * presenting it: creates and tracks the AgentSuspension, and resolves it exactly
+ * once with a human's decision.
+ *
+ * This does NOT replace AiAgent's existing checkpoint/resume mechanism — the
+ * suspension here just points at a checkpoint (by threadID) the way AgentSuspension
+ * itself documents. It exists so the SAME pending approval can be safely presented
+ * to (and resolved from) more than one gateway without double-resolving — e.g. the
+ * same approval mirrored to both a web UI and Slack, where either channel might
+ * answer first.
+ *
+ * Concurrency: the atomic claim on an AgentSuspension's status uses
+ * java.util.concurrent.ConcurrentHashMap.replace(), a real compare-and-set — of two
+ * simultaneous resolve() calls for the same suspension, exactly one succeeds and
+ * the other throws SuspensionAlreadyResolved.
+ *
+ * Decision settled for Phase 2: invalid edited arguments (failing validation
+ * against the tool's declared schema) do NOT throw and do NOT re-suspend for
+ * correction. They're normalized into a REJECTED outcome with a reason describing
+ * what failed — consistent with how "reject" already behaves everywhere else in
+ * this module (soft-skip the tool call, keep the run going). Re-suspending for
+ * in-place correction is a reasonable future enhancement but adds a retry loop this
+ * phase doesn't need.
+ *
+ * @since 4.0.0
+ */
+import bxModules.bxai.models.gateway.IGateway;
+import bxModules.bxai.models.gateway.AgentSuspension;
+import bxModules.bxai.models.gateway.contracts.GatewayContext;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+import bxModules.bxai.models.tools.ITool;
+
+class {
+
+	/**
+	 * Pending/resolved suspensions, keyed by suspensionID
+	 */
+	property name="suspensions" type="struct" default={};
+
+	/**
+	 * The decision each resolved suspension was resolved with, keyed by suspensionID
+	 */
+	property name="decisions" type="struct" default={};
+
+	/**
+	 * java.util.concurrent.ConcurrentHashMap<String,String> of suspensionID -> status,
+	 * used purely as the atomic compare-and-set primitive for resolve()
+	 */
+	property name="statusLocks";
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		variables.suspensions = {}
+		variables.decisions   = {}
+		variables.statusLocks = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init()
+		return this;
+	}
+
+	/**
+	 * Present a HumanInteractionRequest to a human via the given gateway, creating and
+	 * tracking an AgentSuspension for it.
+	 *
+	 * For synchronous gateways (the delivery already carries a decision — see
+	 * GatewayDeliveryResult.hasDecision()), the suspension is resolved immediately and
+	 * returned already in its terminal state. For asynchronous gateways, the suspension
+	 * is returned still pending; call resolve() later when the decision arrives.
+	 *
+	 * @request     The interaction request to present
+	 * @context     The GatewayContext identifying who/where to present it to
+	 * @gateway     The gateway to present the request through
+	 * @executionID The agent execution/run this suspension correlates to
+	 * @threadID    The checkpointed thread this suspension can be resumed from
+	 * @checkpoint  Opaque checkpoint reference/metadata
+	 * @tool        The tool being called, if known — used to validate an immediate "edit" decision
+	 *
+	 * @return The AgentSuspension tracking this request
+	 */
+	AgentSuspension function requestApproval(
+		required HumanInteractionRequest request,
+		required GatewayContext context,
+		required IGateway gateway,
+		string executionID = "",
+		string threadID    = "",
+		struct checkpoint  = {},
+		ITool tool
+	) {
+		var suspension = new AgentSuspension(
+			executionID: arguments.executionID,
+			threadID   : arguments.threadID,
+			reason     : arguments.request.getMessage(),
+			interaction: arguments.request,
+			checkpoint : arguments.checkpoint
+		)
+
+		variables.statusLocks.put( suspension.getSuspensionID(), AgentSuspension.STATUSES.PENDING )
+		variables.suspensions[ suspension.getSuspensionID() ] = suspension
+
+		var delivery = arguments.gateway.requestHumanInteraction( arguments.request, arguments.context )
+
+		if ( delivery.hasDecision() ) {
+			resolve( suspension.getSuspensionID(), delivery.getDecision(), arguments.tool )
+		}
+
+		return suspension
+	}
+
+	/**
+	 * Resolve a pending suspension with a human's decision. Atomic — see class docs.
+	 *
+	 * @suspensionID The AgentSuspension.suspensionID to resolve
+	 * @decision     The human's decision
+	 * @tool         The tool being called, if known — used to validate an "edit" decision's arguments
+	 *
+	 * @throws SuspensionNotFound        if no pending suspension exists with that id
+	 * @throws SuspensionAlreadyResolved if another resolve() call already claimed it
+	 *
+	 * @return The now-resolved AgentSuspension
+	 */
+	AgentSuspension function resolve(
+		required string suspensionID,
+		required HumanInteractionDecision decision,
+		ITool tool
+	) {
+		if ( !variables.suspensions.keyExists( arguments.suspensionID ) ) {
+			throw(
+				type   : "SuspensionNotFound",
+				message: "No pending suspension with id [#arguments.suspensionID#]."
+			)
+		}
+
+		var suspension  = variables.suspensions[ arguments.suspensionID ]
+		var decision    = arguments.decision
+		var newStatus   = decisionToStatus( decision )
+
+		// Validate edited arguments BEFORE claiming — a validation failure downgrades
+		// the effective decision to a rejection instead of applying bad arguments.
+		if ( decision.isEdit() && !isNull( arguments.tool ) ) {
+			var validationError = validateArguments( arguments.tool, decision.getEditedData() )
+			if ( !isNull( validationError ) ) {
+				decision = new HumanInteractionDecision(
+					requestID: decision.getRequestID(),
+					decision : "reject",
+					reason   : validationError,
+					decidedBy: decision.getDecidedBy()
+				)
+				newStatus = AgentSuspension.STATUSES.REJECTED
+			}
+		}
+
+		var claimed = variables.statusLocks.replace(
+			arguments.suspensionID,
+			AgentSuspension.STATUSES.PENDING,
+			newStatus
+		)
+
+		if ( !claimed ) {
+			throw(
+				type   : "SuspensionAlreadyResolved",
+				message: "Suspension [#arguments.suspensionID#] was already resolved with status [#variables.statusLocks.get( arguments.suspensionID )#]."
+			)
+		}
+
+		suspension.setStatus( newStatus )
+		variables.decisions[ arguments.suspensionID ] = decision
+
+		return suspension
+	}
+
+	/**
+	 * Look up a tracked suspension by id, pending or resolved.
+	 *
+	 * @suspensionID The AgentSuspension.suspensionID to look up
+	 */
+	AgentSuspension function getSuspension( required string suspensionID ) {
+		return variables.suspensions[ arguments.suspensionID ] ?: javacast( "null", "" )
+	}
+
+	/**
+	 * Look up the decision a suspension was resolved with, if any.
+	 *
+	 * @suspensionID The AgentSuspension.suspensionID to look up
+	 */
+	HumanInteractionDecision function getDecision( required string suspensionID ) {
+		return variables.decisions[ arguments.suspensionID ] ?: javacast( "null", "" )
+	}
+
+	/**
+	 * Map a HumanInteractionDecision to the AgentSuspension status it resolves to.
+	 *
+	 * @decision The decision to map
+	 */
+	private string function decisionToStatus( required HumanInteractionDecision decision ) {
+		if ( arguments.decision.isApproved() ) {
+			return AgentSuspension.STATUSES.APPROVED
+		}
+		if ( arguments.decision.isRejected() ) {
+			return AgentSuspension.STATUSES.REJECTED
+		}
+		if ( arguments.decision.isEdit() ) {
+			return AgentSuspension.STATUSES.EDITED
+		}
+		if ( arguments.decision.isCancelled() ) {
+			return AgentSuspension.STATUSES.CANCELLED
+		}
+		return AgentSuspension.STATUSES.FAILED
+	}
+
+	/**
+	 * Validate edited arguments against a tool's declared schema (OpenAI function-schema
+	 * shape: { function: { parameters: { properties, required, additionalProperties } } },
+	 * or a bare { parameters: {...} }/{ properties: {...} } shape).
+	 *
+	 * @tool        The tool the edited arguments would be invoked with
+	 * @editedArgs  The human-edited arguments struct to validate
+	 *
+	 * @return null if valid, otherwise a human-readable description of what failed
+	 */
+	private any function validateArguments( required ITool tool, required struct editedArgs ) {
+		var schema     = arguments.tool.getSchema()
+		var fn         = schema.function ?: schema
+		var params     = fn.parameters ?: {}
+		var required   = params.required ?: []
+		var properties = params.properties ?: {}
+		var editedArgs = arguments.editedArgs
+
+		var missing = required.filter( ( key ) => !editedArgs.keyExists( key ) )
+		if ( missing.len() ) {
+			return "Edited arguments are missing required field(s): [#missing.toList()#]."
+		}
+
+		if ( params.keyExists( "additionalProperties" ) && !params.additionalProperties && !properties.isEmpty() ) {
+			var unknown = editedArgs.keyArray().filter( ( key ) => !properties.keyExists( key ) )
+			if ( unknown.len() ) {
+				return "Edited arguments contain field(s) not in the tool's schema: [#unknown.toList()#]."
+			}
+		}
+
+		return javacast( "null", "" )
+	}
+
+}

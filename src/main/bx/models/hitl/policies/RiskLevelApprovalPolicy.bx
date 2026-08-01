@@ -1,0 +1,105 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Requires approval for tool calls whose declared risk level meets or exceeds a
+ * configured threshold. Risk level is declared the same way `AnnotationApprovalPolicy`
+ * reads its marker — a standalone annotation line directly above the tool's
+ * doInvoke() method (not inside its javadoc-style comment block):
+ *
+ * ```
+ * class extends="BaseTool" {
+ *     @riskLevel( "high" )
+ *     any function doInvoke( required struct args, AiChatRequest chatRequest ) {
+ *         ...
+ *     }
+ * }
+ * ```
+ *
+ * Tools with no `@riskLevel` annotation are treated as `defaultLevel` (default "low").
+ */
+import bxModules.bxai.models.hitl.IApprovalPolicy;
+
+class implements="IApprovalPolicy" {
+
+	/**
+	 * The minimum risk level (inclusive) that requires approval
+	 */
+	property name="minLevel" type="string" default="high";
+
+	/**
+	 * The risk level assumed for tools with no @riskLevel annotation
+	 */
+	property name="defaultLevel" type="string" default="low";
+
+	/**
+	 * Ordered risk scale, lowest to highest
+	 */
+	static {
+		LEVELS = [ "low", "medium", "high", "critical" ]
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @minLevel      The minimum risk level (inclusive) that requires approval — one of
+	 *                "low"/"medium"/"high"/"critical" (default "high")
+	 * @defaultLevel  The risk level assumed for tools with no @riskLevel annotation (default "low")
+	 */
+	function init( string minLevel = "high", string defaultLevel = "low" ) {
+		variables.minLevel     = arguments.minLevel
+		variables.defaultLevel = arguments.defaultLevel
+		return this;
+	}
+
+	boolean function needsApproval( required struct context ) {
+		var tool = arguments.context.tool ?: javacast( "null", "" )
+		if ( isNull( tool ) ) {
+			return false
+		}
+		var declaredLevel = readRiskLevel( tool )
+		return levelIndex( declaredLevel ) >= levelIndex( variables.minLevel )
+	}
+
+	/**
+	 * Read the @riskLevel annotation off a tool's doInvoke() method, falling back to defaultLevel.
+	 *
+	 * @tool The tool instance to inspect
+	 */
+	private string function readRiskLevel( required any tool ) {
+		var meta      = getMetadata( arguments.tool )
+		var functions = meta.functions ?: []
+		for ( var thisFunction in functions ) {
+			if ( thisFunction.name == "doInvoke" ) {
+				var annotations = thisFunction.annotations ?: {}
+				if ( annotations.keyExists( "riskLevel" ) && isSimpleValue( annotations.riskLevel ) && len( trim( annotations.riskLevel ) ) ) {
+					return annotations.riskLevel
+				}
+			}
+		}
+		return variables.defaultLevel
+	}
+
+	/**
+	 * Resolve a risk level string to its position on the ordered scale — unknown
+	 * levels sort below "low" so they never accidentally require approval by
+	 * comparison against a valid minLevel.
+	 *
+	 * @level The risk level string to resolve
+	 */
+	private numeric function levelIndex( required string level ) {
+		var idx = static.LEVELS.findNoCase( arguments.level )
+		return idx > 0 ? idx : 0
+	}
+
+}
