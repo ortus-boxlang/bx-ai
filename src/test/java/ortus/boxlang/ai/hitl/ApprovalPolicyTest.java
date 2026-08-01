@@ -132,6 +132,36 @@ public class ApprovalPolicyTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "needsIt" ) ) ).isTrue();
 	}
 
+	@DisplayName( "RiskLevelApprovalPolicy: an invalid minLevel/defaultLevel throws instead of misbehaving" )
+	@Test
+	public void testRiskLevelPolicyRejectsInvalidLevels() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.policies.RiskLevelApprovalPolicy;
+
+				badMinLevelThrew = false
+				try {
+					new RiskLevelApprovalPolicy( minLevel: "extreme" )
+				} catch ( any e ) {
+					badMinLevelThrew = true
+				}
+
+				badDefaultLevelThrew = false
+				try {
+					new RiskLevelApprovalPolicy( defaultLevel: "meh" )
+				} catch ( any e ) {
+					badDefaultLevelThrew = true
+				}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "badMinLevelThrew" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "badDefaultLevelThrew" ) ) ).isTrue();
+	}
+
 	// -------------------------------------------------------------------------
 	// CallbackApprovalPolicy
 	// -------------------------------------------------------------------------
@@ -229,6 +259,51 @@ public class ApprovalPolicyTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.getAsBoolean( Key.of( "result" ) ) ).isFalse();
+	}
+
+	@DisplayName( "CompositeApprovalPolicy: mode is normalized case-insensitively" )
+	@Test
+	public void testCompositePolicyModeIsCaseInsensitive() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.policies.ToolNameApprovalPolicy;
+				import bxModules.bxai.models.hitl.policies.CallbackApprovalPolicy;
+				import bxModules.bxai.models.hitl.policies.CompositeApprovalPolicy;
+
+				byName      = new ToolNameApprovalPolicy( [ "deleteRecord" ] )
+				alwaysTrue  = new CallbackApprovalPolicy( ( context ) => true )
+				composite   = new CompositeApprovalPolicy( [ byName, alwaysTrue ], "ALL" )
+
+				result = composite.needsApproval( { toolName: "deleteRecord" } )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "result" ) ) ).isTrue();
+	}
+
+	@DisplayName( "CompositeApprovalPolicy: an invalid mode throws instead of silently defaulting" )
+	@Test
+	public void testCompositePolicyRejectsInvalidMode() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.policies.CompositeApprovalPolicy;
+
+				threw = false
+				try {
+					new CompositeApprovalPolicy( [], "sometimes" )
+				} catch ( any e ) {
+					threw = true
+				}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
 	}
 
 }

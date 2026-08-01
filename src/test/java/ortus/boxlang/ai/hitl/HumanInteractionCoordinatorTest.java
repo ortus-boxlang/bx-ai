@@ -129,6 +129,42 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "storedIsEdit" ) ) ).isTrue();
 	}
 
+	@DisplayName( "resolve() validates edited arguments wrapped as { correctedArgs: {...} } too" )
+	@Test
+	public void testResolveEditValidArgumentsWrappedInCorrectedArgs() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				coordinator = new HumanInteractionCoordinator()
+				gw          = aiGateway( "mock" )
+				interactionRequest     = new HumanInteractionRequest( executionID: "run-3b" )
+				ctx         = new GatewayContext( gateway: "mock" )
+				tool        = createObject( "src.test.bx.tools.PlainTool" )
+
+				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw, tool: tool )
+
+				// A gateway/consumer may wrap edited data as { correctedArgs: {...} } — the
+				// same convention HumanInTheLoopMiddleware's resume path already unwraps.
+				decision = new HumanInteractionDecision(
+					requestID : interactionRequest.getId(),
+					decision  : "edit",
+					editedData: { correctedArgs: { item: "widget", qty: 5 } }
+				)
+				resolved = coordinator.resolve( suspension.getSuspensionID(), decision, tool )
+				isEdited = resolved.getStatus() == "edited"
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isEdited" ) ) ).isTrue();
+	}
+
 	@DisplayName( "resolve() with invalid edited arguments (missing required field) downgrades to rejected" )
 	@Test
 	public void testResolveEditInvalidArgumentsDowngradesToReject() {

@@ -151,8 +151,12 @@ class {
 
 		// Validate edited arguments BEFORE claiming — a validation failure downgrades
 		// the effective decision to a rejection instead of applying bad arguments.
+		// editedData may be the raw args struct directly, or wrapped as { correctedArgs: {...} }
+		// (the convention documented on HumanInteractionDecision.editedData and used by
+		// HumanInTheLoopMiddleware's resume path) — unwrap the same way before validating.
 		if ( decision.isEdit() && !isNull( arguments.tool ) ) {
-			var validationError = validateArguments( arguments.tool, decision.getEditedData() )
+			var editedArgs       = decision.getEditedData().correctedArgs ?: decision.getEditedData()
+			var validationError = validateArguments( arguments.tool, editedArgs )
 			if ( !isNull( validationError ) ) {
 				decision = new HumanInteractionDecision(
 					requestID: decision.getRequestID(),

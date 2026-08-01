@@ -1,6 +1,6 @@
 /**
- * Test fixture: a tool whose doInvoke() carries a @riskLevel "high" annotation.
- * Used by RiskLevelApprovalPolicyTest.
+ * Test fixture: a tool whose doInvoke() carries a @riskLevel( "high" ) annotation.
+ * Used by ApprovalPolicyTest.
  */
 import bxModules.bxai.models.tools.BaseTool;
 

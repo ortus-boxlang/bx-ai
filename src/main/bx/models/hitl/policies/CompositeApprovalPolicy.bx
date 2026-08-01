@@ -45,8 +45,15 @@ class implements="IApprovalPolicy" {
 	 *           only if every policy does) — default "any"
 	 */
 	function init( array policies = [], string mode = "any" ) {
+		var normalizedMode = arguments.mode.trim().lCase()
+		if ( normalizedMode != "any" && normalizedMode != "all" ) {
+			throw(
+				type   : "InvalidArgument",
+				message: "CompositeApprovalPolicy mode [#arguments.mode#] is invalid — must be 'any' or 'all'."
+			)
+		}
 		variables.policies = arguments.policies
-		variables.mode     = arguments.mode
+		variables.mode     = normalizedMode
 		return this;
 	}
 

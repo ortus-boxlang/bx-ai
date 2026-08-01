@@ -57,6 +57,8 @@ class implements="IApprovalPolicy" {
 	 * @defaultLevel  The risk level assumed for tools with no @riskLevel annotation (default "low")
 	 */
 	function init( string minLevel = "high", string defaultLevel = "low" ) {
+		validateLevel( arguments.minLevel, "minLevel" )
+		validateLevel( arguments.defaultLevel, "defaultLevel" )
 		variables.minLevel     = arguments.minLevel
 		variables.defaultLevel = arguments.defaultLevel
 		return this;
@@ -91,15 +93,34 @@ class implements="IApprovalPolicy" {
 	}
 
 	/**
-	 * Resolve a risk level string to its position on the ordered scale — unknown
-	 * levels sort below "low" so they never accidentally require approval by
-	 * comparison against a valid minLevel.
+	 * Resolve a risk level string to its position on the ordered scale — an unrecognized
+	 * @riskLevel annotation value (author-controlled, not validated at construction time)
+	 * sorts below "low" so it never accidentally requires approval by comparison against
+	 * a valid minLevel.
 	 *
 	 * @level The risk level string to resolve
 	 */
 	private numeric function levelIndex( required string level ) {
 		var idx = static.LEVELS.findNoCase( arguments.level )
 		return idx > 0 ? idx : 0
+	}
+
+	/**
+	 * Validate a constructor-supplied risk level against the known scale — throws rather
+	 * than silently misbehaving (an invalid minLevel would otherwise require approval for
+	 * every tool; an invalid defaultLevel could silently disable approval for unannotated
+	 * ones).
+	 *
+	 * @level     The level string to validate
+	 * @paramName The constructor argument name, for the error message
+	 */
+	private void function validateLevel( required string level, required string paramName ) {
+		if ( static.LEVELS.findNoCase( arguments.level ) == 0 ) {
+			throw(
+				type   : "InvalidArgument",
+				message: "RiskLevelApprovalPolicy #arguments.paramName# [#arguments.level#] is not a valid risk level. Valid levels are: [#static.LEVELS.toList()#]."
+			)
+		}
 	}
 
 }
