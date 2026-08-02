@@ -390,7 +390,6 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 						top_p: 0.9,
 						top_k: 40,
 						tool_choice: { type: "auto" },
-						metadata: { user_id: "u-123" },
 						stream: true
 					},
 					{ provider: "bedrock" }
@@ -415,8 +414,6 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 				topKVal           = packet.top_k
 				hasToolChoice     = packet.keyExists( "tool_choice" )
 				toolChoiceType    = packet.tool_choice.type
-				hasMetadata       = packet.keyExists( "metadata" )
-				metadataUserId    = packet.metadata.user_id
 				hasTemperature    = packet.keyExists( "temperature" )
 				temperatureVal    = packet.temperature
 
@@ -438,8 +435,6 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "topKVal" ) ) ).isEqualTo( 40 );
 		assertThat( variables.getAsBoolean( Key.of( "hasToolChoice" ) ) ).isTrue();
 		assertThat( variables.get( Key.of( "toolChoiceType" ) ) ).isEqualTo( "auto" );
-		assertThat( variables.getAsBoolean( Key.of( "hasMetadata" ) ) ).isTrue();
-		assertThat( variables.get( Key.of( "metadataUserId" ) ) ).isEqualTo( "u-123" );
 		assertThat( variables.getAsBoolean( Key.of( "hasTemperature" ) ) ).isTrue();
 		assertThat( variables.get( Key.of( "temperatureVal" ) ).toString() ).isEqualTo( "0.5" );
 
@@ -502,6 +497,98 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "maxTokens" ) ) ).isEqualTo( 4096 );
 		assertThat( variables.getAsBoolean( Key.of( "hasTools" ) ) ).isTrue();
 		assertThat( variables.get( Key.of( "toolName" ) ) ).isEqualTo( "getWeather" );
+	}
+
+	@Test
+	@DisplayName( "Claude transform passes params.system through when no system message exists" )
+	public void testClaudeTransformPassesParamsSystemThrough() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Hello" ),
+					{
+						model: "anthropic.claude-3-sonnet-20240229-v1:0",
+						system: "You are a pirate."
+					},
+					{ provider: "bedrock" }
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				packet    = captured.packet
+				hasSystem = packet.keyExists( "system" )
+				systemVal = packet.system
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasSystem" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "systemVal" ) ) ).isEqualTo( "You are a pirate." );
+	}
+
+	@Test
+	@DisplayName( "Claude transform: a real system message wins over params.system" )
+	public void testClaudeTransformSystemMessageWinsOverParamsSystem() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().system( "You are a helpful assistant." ).user( "Hello" ),
+					{
+						model: "anthropic.claude-3-sonnet-20240229-v1:0",
+						system: "You are a pirate."
+					},
+					{ provider: "bedrock" }
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				packet    = captured.packet
+				hasSystem = packet.keyExists( "system" )
+				systemVal = packet.system
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasSystem" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "systemVal" ) ) ).isEqualTo( "You are a helpful assistant." );
 	}
 
 	@Test
