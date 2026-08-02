@@ -363,6 +363,148 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "Claude transform passes caller params through instead of allow-listing" )
+	public void testClaudeTransformPassesParamsThrough() {
+		// Deterministic / credential-free: a beforeLLMCall middleware captures the request
+		// packet and cancels before any signing or HTTP call, so we can inspect exactly what
+		// transformRequestForClaude built.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Hello" ),
+					{
+						model: "anthropic.claude-3-sonnet-20240229-v1:0",
+						temperature: 0.5,
+						stop_sequences: [ "STOP" ],
+						top_p: 0.9,
+						top_k: 40,
+						tool_choice: { type: "auto" },
+						metadata: { user_id: "u-123" },
+						stream: true
+					},
+					{ provider: "bedrock" }
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				packet = captured.packet
+
+				hasStopSequences  = packet.keyExists( "stop_sequences" )
+				stopSequenceVal   = packet.stop_sequences[ 1 ]
+				hasTopP           = packet.keyExists( "top_p" )
+				topPVal           = packet.top_p
+				hasTopK           = packet.keyExists( "top_k" )
+				topKVal           = packet.top_k
+				hasToolChoice     = packet.keyExists( "tool_choice" )
+				toolChoiceType    = packet.tool_choice.type
+				hasMetadata       = packet.keyExists( "metadata" )
+				metadataUserId    = packet.metadata.user_id
+				hasTemperature    = packet.keyExists( "temperature" )
+				temperatureVal    = packet.temperature
+
+				hasModel          = packet.keyExists( "model" )
+				hasStream         = packet.keyExists( "stream" )
+
+				anthropicVersion  = packet.anthropic_version
+				maxTokens         = packet.max_tokens
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasStopSequences" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "stopSequenceVal" ) ) ).isEqualTo( "STOP" );
+		assertThat( variables.getAsBoolean( Key.of( "hasTopP" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "topPVal" ) ).toString() ).isEqualTo( "0.9" );
+		assertThat( variables.getAsBoolean( Key.of( "hasTopK" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "topKVal" ) ) ).isEqualTo( 40 );
+		assertThat( variables.getAsBoolean( Key.of( "hasToolChoice" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "toolChoiceType" ) ) ).isEqualTo( "auto" );
+		assertThat( variables.getAsBoolean( Key.of( "hasMetadata" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "metadataUserId" ) ) ).isEqualTo( "u-123" );
+		assertThat( variables.getAsBoolean( Key.of( "hasTemperature" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "temperatureVal" ) ).toString() ).isEqualTo( "0.5" );
+
+		assertThat( variables.getAsBoolean( Key.of( "hasModel" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "hasStream" ) ) ).isFalse();
+
+		assertThat( variables.get( Key.of( "anthropicVersion" ) ) ).isEqualTo( "bedrock-2023-05-31" );
+		assertThat( variables.getAsInteger( Key.of( "maxTokens" ) ) ).isEqualTo( 4096 );
+	}
+
+	@Test
+	@DisplayName( "Claude transform still formats tools and default max_tokens correctly" )
+	public void testClaudeTransformKeepsToolsAndMaxTokensDefault() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "What is the weather?" ),
+					{
+						model: "anthropic.claude-3-sonnet-20240229-v1:0",
+						tools: [
+							aiTool(
+								"getWeather",
+								"Get the weather for a location",
+								location => "sunny"
+							)
+						]
+					},
+					{ provider: "bedrock" }
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				packet      = captured.packet
+				maxTokens   = packet.max_tokens
+				hasTools    = packet.keyExists( "tools" )
+				toolName    = packet.tools[ 1 ].name
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "maxTokens" ) ) ).isEqualTo( 4096 );
+		assertThat( variables.getAsBoolean( Key.of( "hasTools" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "toolName" ) ) ).isEqualTo( "getWeather" );
+	}
+
+	@Test
 	@DisplayName( "AiChatRequest supports providerOptions for provider-specific settings" )
 	public void testProviderOptions() {
 		// @formatter:off

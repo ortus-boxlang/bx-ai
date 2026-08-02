@@ -302,15 +302,18 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Uses Claude Messages API format with Bedrock-specific wrapper
 	 */
 	private struct function transformRequestForClaude( required array messages, required struct params ){
-		var result = {
-			"anthropic_version" : "bedrock-2023-05-31",
-			"max_tokens"        : arguments.params.max_tokens ?: 4096
-		};
+		// Passthrough-with-exclusions: forward every caller param except the ones
+		// Bedrock supplies itself (anthropic_version, max_tokens) or rejects/rebuilds
+		// in this transform (model, stream, messages, system, tools).
+		var result = arguments.params.duplicate();
+		result.delete( "model" );
+		result.delete( "stream" );
+		result.delete( "messages" );
+		result.delete( "system" );
+		result.delete( "tools" );
 
-		// Handle temperature if provided
-		if ( arguments.params.keyExists( "temperature" ) ) {
-			result[ "temperature" ] = arguments.params.temperature;
-		}
+		result[ "anthropic_version" ] = "bedrock-2023-05-31";
+		result[ "max_tokens" ]        = arguments.params.max_tokens ?: 4096;
 
 		// Separate system message from other messages
 		var systemPrompt         = "";
