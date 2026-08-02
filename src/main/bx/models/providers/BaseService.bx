@@ -31,6 +31,7 @@
  * - params        : Default request parameters
  */
 import bxModules.bxai.models.util.SchemaBuilder;
+import bxModules.bxai.models.transformers.JSONExtractorTransformer;
 
 abstract class implements="IAiService" {
 
@@ -796,6 +797,19 @@ abstract class implements="IAiService" {
 
 		// No code block found, return original content
 		return arguments.content;
+	}
+
+	/**
+	 * Extract and parse JSON from content that may contain surrounding prose or markdown fences.
+	 * Delegates to JSONExtractorTransformer in lenient mode (strictMode:false), so a reply with
+	 * no usable JSON degrades to an empty struct instead of throwing.
+	 *
+	 * @content The raw LLM content to extract JSON from
+	 *
+	 * @return The parsed JSON (struct/array), or an empty struct if none was found
+	 */
+	private any function extractJSONContent( required string content ){
+		return new JSONExtractorTransformer( { strictMode : false } ).transform( arguments.content );
 	}
 
 	/**

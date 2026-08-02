@@ -98,6 +98,108 @@ public class MockServiceTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "isAnswer" ) ) ).isTrue();
 	}
 
+	@DisplayName( "json return format parses a clean JSON reply" )
+	@Test
+	public void testJsonReturnFormatCleanReply() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        result = aiChat( "Hello", {}, {
+		            provider       : "mock",
+		            returnFormat   : "json",
+		            providerOptions: { responses: [ '{"a":1}' ] }
+		        } );
+		        hasA = result.a == 1;
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasA" ) ) ).isTrue();
+	}
+
+	@DisplayName( "json return format parses JSON with leading prose" )
+	@Test
+	public void testJsonReturnFormatLeadingProse() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        result = aiChat( "Hello", {}, {
+		            provider       : "mock",
+		            returnFormat   : "json",
+		            providerOptions: { responses: [ 'Here you go: {"a":1}' ] }
+		        } );
+		        hasA = result.a == 1;
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasA" ) ) ).isTrue();
+	}
+
+	@DisplayName( "json return format parses JSON with trailing prose" )
+	@Test
+	public void testJsonReturnFormatTrailingProse() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        result = aiChat( "Hello", {}, {
+		            provider       : "mock",
+		            returnFormat   : "json",
+		            providerOptions: { responses: [ '{"a":1} Let me know if you need anything else!' ] }
+		        } );
+		        hasA = result.a == 1;
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasA" ) ) ).isTrue();
+	}
+
+	@DisplayName( "json return format still parses a fenced ```json block" )
+	@Test
+	public void testJsonReturnFormatFencedBlock() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        result = aiChat( "Hello", {}, {
+		            provider       : "mock",
+		            returnFormat   : "json",
+		            providerOptions: { responses: [ '```json
+		{"a":1}
+		```' ] }
+		        } );
+		        hasA = result.a == 1;
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasA" ) ) ).isTrue();
+	}
+
+	@DisplayName( "json return format degrades to an empty struct instead of throwing on garbage" )
+	@Test
+	public void testJsonReturnFormatGarbageDoesNotThrow() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        result = aiChat( "Hello", {}, {
+		            provider       : "mock",
+		            returnFormat   : "json",
+		            providerOptions: { responses: [ 'This is not JSON at all, sorry!' ] }
+		        } );
+		        isEmpty = isStruct( result ) && structIsEmpty( result );
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isEmpty" ) ) ).isTrue();
+	}
+
 	@DisplayName( "instance usage: setResponses queue + request recording" )
 	@Test
 	public void testInstanceQueueAndRecording() {

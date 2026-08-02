@@ -1023,7 +1023,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			case "raw":
 				return openAIResponse;
 			case "json":
-				return jsonDeserialize( extractFromCodeBlock( content, "json" ) );
+				return extractJSONContent( content );
 			case "xml":
 				return xmlParse( extractFromCodeBlock( content, "xml" ) );
 			case "structuredOutput":
