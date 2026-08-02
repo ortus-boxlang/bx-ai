@@ -24,9 +24,9 @@
  * - Anthropic Claude (claude-3-*, claude-instant-*)
  * - Amazon Titan (amazon.titan-*)
  * - Meta Llama (meta.llama-*)
- * - Cohere (cohere.*)
- * - AI21 Labs (ai21.*)
- * - Mistral (mistral.*)
+ * - Cohere (cohere.*) — uses the Claude-shape transform, no dedicated Cohere transform
+ * - Legacy Mistral (mistral.mistral-7b-instruct-*, mixtral-*, mistral-large-2402-*)
+ * - Everything else (AI21 Jamba, modern Mistral, and other post-2024 families) — OpenAI shape
  *
  * @see https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html
  * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
@@ -241,7 +241,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *
 	 * @modelId The Bedrock model ID
 	 *
-	 * @return The model family: "claude", "titan", "llama", "cohere", "ai21", "mistral", "openai", or "unknown"
+	 * @return The model family: "claude", "titan", "llama", "cohere", "ai21", "mistral", or "openai"
 	 */
 	private string function detectModelFamily( required string modelId ){
 		var id = arguments.modelId.lcase();
@@ -256,14 +256,34 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			return "cohere";
 		} else if ( id.findNoCase( "ai21" ) ) {
 			return "ai21";
-		} else if ( id.findNoCase( "mistral" ) ) {
+		} else if ( id.findNoCase( "mistral" ) && isLegacyMistral( id ) ) {
 			return "mistral";
-		} else if ( id.findNoCase( "openai" ) || id.findNoCase( "gpt" ) ) {
-			// OpenAI-compatible models on Bedrock (cross-region inference profiles)
-			return "openai";
 		}
 
-		return "unknown";
+		// Every other Bedrock family — ai21 Jamba, zai/GLM, qwen, deepseek, moonshotai/Kimi,
+		// minimax, nvidia/Nemotron, google/gemma, modern Mistral (Ministral 3, Magistral,
+		// Devstral, Voxtral), plain openai/gpt-oss, and anything unrecognized — speaks the
+		// OpenAI chat-completions shape on Bedrock. Defaulting here (rather than to Claude)
+		// means an unsupported model fails loudly against the wrong shape instead of
+		// transformResponseFromClaude() silently returning "".
+		return "openai";
+	}
+
+	/**
+	 * Legacy Mistral models (7B-Instruct, Mixtral, Mistral-Large-2402) use the raw
+	 * <s>[INST] prompt/outputs shape. Newer Mistral models (Ministral 3, Magistral,
+	 * Devstral, Voxtral) are OpenAI-shaped and reject that legacy format with a 400.
+	 *
+	 * @id The lowercased Bedrock model ID
+	 */
+	private boolean function isLegacyMistral( required string id ){
+		var legacyPrefixes = [ "mistral.mistral-7b-instruct-", "mistral.mixtral-", "mistral.mistral-large-2402-" ];
+		for ( var prefix in legacyPrefixes ) {
+			if ( arguments.id.startsWith( prefix ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -282,6 +302,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	){
 		switch ( arguments.modelFamily ) {
 			case "claude":
+			case "cohere":
+				// Cohere has no dedicated Bedrock transform; keep it on the Claude-shape
+				// request it has always used rather than falling into the openai default.
 				return transformRequestForClaude( arguments.messages, arguments.params );
 			case "titan":
 				return transformRequestForTitan( arguments.messages, arguments.params );
@@ -290,10 +313,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			case "mistral":
 				return transformRequestForMistral( arguments.messages, arguments.params );
 			case "openai":
-				return transformRequestForOpenAI( arguments.messages, arguments.params );
 			default:
-				// Default to Claude-style format as it's most common on Bedrock
-				return transformRequestForClaude( arguments.messages, arguments.params );
+				// ai21 and every other unmapped family speak the OpenAI shape on Bedrock
+				return transformRequestForOpenAI( arguments.messages, arguments.params );
 		}
 	}
 
@@ -467,6 +489,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	){
 		switch ( arguments.modelFamily ) {
 			case "claude":
+			case "cohere":
 				return transformResponseFromClaude( arguments.response, arguments.modelId );
 			case "titan":
 				return transformResponseFromTitan( arguments.response, arguments.modelId );
@@ -475,9 +498,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			case "mistral":
 				return transformResponseFromMistral( arguments.response, arguments.modelId );
 			case "openai":
-				return transformResponseFromOpenAI( arguments.response, arguments.modelId );
 			default:
-				return transformResponseFromClaude( arguments.response, arguments.modelId );
+				return transformResponseFromOpenAI( arguments.response, arguments.modelId );
 		}
 	}
 

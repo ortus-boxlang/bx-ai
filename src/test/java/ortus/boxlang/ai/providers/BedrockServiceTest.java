@@ -399,4 +399,94 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "profileArn" ) ) ).isEqualTo( "arn:aws:test:123" );
 		assertThat( variables.get( Key.of( "customVal" ) ) ).isEqualTo( "customValue" );
 	}
+
+	@Test
+	@DisplayName( "detectModelFamily() routes post-2024 Bedrock families to the correct request shape" )
+	public void testModelFamilyDetectionTable() {
+		// detectModelFamily() is private, so this exercises it indirectly through the shape of
+		// the dataPacket produced by transformRequestForModel(): a beforeLLMCall middleware
+		// captures the packet and cancels before any signing/HTTP call (same technique as
+		// testStructuredOutputInjectsForcedTool), then a shape fingerprint (which keys are
+		// present) is mapped back to the family that must have produced it. Covers the
+		// GitHub #226 detection table, including the mistral legacy/modern split.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				cases = [
+					{ modelId: "zai.glm-4.7-flash",                     expected: "openai"  },
+					{ modelId: "qwen.qwen3-32b-v1:0",                   expected: "openai"  },
+					{ modelId: "deepseek.v3.2",                         expected: "openai"  },
+					{ modelId: "moonshotai.kimi-k2.5",                  expected: "openai"  },
+					{ modelId: "minimax.minimax-m2.5",                  expected: "openai"  },
+					{ modelId: "nvidia.nemotron-super-3-120b",          expected: "openai"  },
+					{ modelId: "google.gemma-3-27b-it",                 expected: "openai"  },
+					{ modelId: "mistral.ministral-3-8b-instruct",       expected: "openai"  },
+					{ modelId: "openai.gpt-oss-20b-1:0",                expected: "openai"  },
+					{ modelId: "mistral.mistral-7b-instruct-v0:2",      expected: "mistral" },
+					{ modelId: "mistral.mixtral-8x7b-instruct-v0:1",    expected: "mistral" },
+					{ modelId: "eu.anthropic.claude-sonnet-4-6",        expected: "claude"  },
+					{ modelId: "amazon.titan-text-express-v1",          expected: "titan"   },
+					{ modelId: "meta.llama3-70b-instruct-v1:0",         expected: "llama"   },
+					// No dedicated Cohere transform exists; the fix preserves Cohere on the
+					// Claude-shape request rather than letting it fall into the new openai default.
+					{ modelId: "cohere.command-r-v1:0",                 expected: "claude"  }
+				]
+
+				mismatches = []
+
+				for ( testCase in cases ) {
+					provider = aiService(
+						"bedrock",
+						{
+							awsAccessKeyId: "%s",
+							awsSecretAccessKey: "%s",
+							region: "%s"
+						}
+					)
+					captured = {}
+					chatRequest = aiChatRequest(
+						aiMessage().user( "test" ),
+						{ model: testCase.modelId, max_tokens: 50 },
+						{ provider: "bedrock" }
+					)
+					chatRequest.addMiddleware( {
+						"beforeLLMCall": ( ctx ) => {
+							captured.packet = ctx.dataPacket
+							return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+						}
+					} )
+					provider.chat( chatRequest )
+					packet = captured.packet
+
+					shape = "unknown-shape"
+					if ( packet.keyExists( "anthropic_version" ) ) {
+						shape = "claude"
+					} else if ( packet.keyExists( "inputText" ) ) {
+						shape = "titan"
+					} else if ( packet.keyExists( "prompt" ) && packet.keyExists( "max_gen_len" ) ) {
+						shape = "llama"
+					} else if ( packet.keyExists( "prompt" ) ) {
+						shape = "mistral"
+					} else if ( packet.keyExists( "messages" ) ) {
+						shape = "openai"
+					}
+
+					if ( shape != testCase.expected ) {
+						mismatches.append( testCase.modelId & ": expected " & testCase.expected & " but got " & shape )
+					}
+				}
+
+				mismatchCount   = mismatches.len()
+				mismatchSummary = mismatches.toList( char( 10 ) )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		int mismatchCount = variables.getAsInteger( Key.of( "mismatchCount" ) );
+		if ( mismatchCount > 0 ) {
+			System.out.println( "Model family detection mismatches:\n" + variables.get( Key.of( "mismatchSummary" ) ) );
+		}
+		assertThat( mismatchCount ).isEqualTo( 0 );
+	}
 }
