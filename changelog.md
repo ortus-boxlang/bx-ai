@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔐 Security Fixes
+
+- **Gemini API key no longer leaks into logs (credential disclosure)**: Gemini authenticates with a `?key=` **query parameter**, and the per-request key was written into `variables.chatURL` — instance state on a long-lived shared service — which `BaseService` then printed verbatim as `Endpoint: ...` whenever `logRequest` or `logRequestToConsole` was enabled. A live API key therefore landed in the `ai` log file and on stdout during ordinary debugging. (Header-authenticated providers were never affected: the request logger only records header *names*, never values.)
+  - The key-bearing URL is now **request-local** and handed straight to the transport; only the key-free endpoint is stored on the service instance. This also removes a cross-request hazard, since a shared service instance could previously expose one caller's key to another.
+  - Defense in depth: new **`PromptSecurity::redactURLSecrets()`** masks `key` / `api_key` / `token` / `access_token` / `secret` / `password` / `sig` / `signature` query-param values in any endpoint that gets logged, so **every** provider — including any future key-in-URL one — is covered. Non-secret params (e.g. `alt=sse`) are preserved so logs stay useful.
+  - Verified end-to-end: with logging enabled the key appeared **twice** in output before the fix and **zero** times after.
+
 ### 🥊 Added
 
 - **Security & Guardrails suite (Phase 3) — output guard (`OutputGuardMiddleware`)**: a middleware that scrubs the model's **response** before it reaches your app or the user — the outbound counterpart to the inbound sanitizer/fencing/judge layers.
