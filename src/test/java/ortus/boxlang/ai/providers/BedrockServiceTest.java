@@ -852,4 +852,346 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 
 		assertThat( variables.getAsBoolean( Key.of( "isEmpty" ) ) ).isTrue();
 	}
+
+	// -----------------------------------------------------------------------
+	// Chunk 3 — item 8: loud UnsupportedProviderCapability for tools / structured
+	// output on non-Claude model families
+	// -----------------------------------------------------------------------
+
+	@Test
+	@DisplayName( "chat() throws UnsupportedProviderCapability when tools are supplied for a non-Claude model family" )
+	public void testCapabilityGateThrowsForToolsOnNonClaudeFamily() {
+		// Deterministic / credential-free: assertCapabilitySupported() throws before any request
+		// packet is built or HTTP call attempted, so no middleware interception is needed here.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				tool = aiTool( "noop", "does nothing", () => "ok" )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "amazon.titan-text-express-v1", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				caughtType = ""
+				caughtMsg  = ""
+				try {
+					provider.chat( chatRequest )
+				} catch( any e ) {
+					caughtType = e.type
+					caughtMsg  = e.message
+				}
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "caughtType" ) ) ).isEqualTo( "UnsupportedProviderCapability" );
+		assertThat( variables.get( Key.of( "caughtMsg" ) ).toString() ).contains( "titan" );
+	}
+
+	@Test
+	@DisplayName( "chat() throws UnsupportedProviderCapability when schema-typed structured output is requested for a non-Claude model family" )
+	public void testCapabilityGateThrowsForStructuredOutputOnNonClaudeFamily() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe, age 30" ),
+					{ model: "amazon.titan-text-express-v1" },
+					{
+						provider: "bedrock",
+						schema: {
+							"type": "object",
+							"properties": { "name": { "type": "string" } },
+							"required": [ "name" ]
+						}
+					}
+				)
+				caughtType = ""
+				caughtMsg  = ""
+				try {
+					provider.chat( chatRequest )
+				} catch( any e ) {
+					caughtType = e.type
+					caughtMsg  = e.message
+				}
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "caughtType" ) ) ).isEqualTo( "UnsupportedProviderCapability" );
+		assertThat( variables.get( Key.of( "caughtMsg" ) ).toString() ).contains( "structured output" );
+	}
+
+	@Test
+	@DisplayName( "chat() does not gate tools for the Claude model family" )
+	public void testCapabilityGateAllowsClaudeWithTools() {
+		// Deterministic: a beforeLLMCall middleware captures the packet and cancels before any
+		// HTTP call, confirming Claude reaches request-building with tools intact (no throw).
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				tool = aiTool( "noop", "does nothing", () => "ok" )
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+				provider.chat( chatRequest )
+				hasTools = captured.packet.keyExists( "tools" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasTools" ) ) ).isTrue();
+	}
+
+	// -----------------------------------------------------------------------
+	// Chunk 3 — item 9: flattenMessageContent array-content hardening
+	// -----------------------------------------------------------------------
+
+	@Test
+	@DisplayName( "flattenMessageContent returns a plain string unchanged" )
+	public void testFlattenMessageContentPassthroughString() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				flattened = service.flattenMessageContent( "hello world" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "flattened" ) ) ).isEqualTo( "hello world" );
+	}
+
+	@Test
+	@DisplayName( "flattenMessageContent joins array text parts and skips non-text parts" )
+	public void testFlattenMessageContentJoinsTextPartsSkipsNonText() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				flattened = service.flattenMessageContent( [
+					{ "type": "text", "text": "Hello" },
+					{ "type": "tool_use", "name": "x", "input": {} },
+					{ "type": "text", "text": "World" }
+				] )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "flattened" ) ).toString() ).isEqualTo( "Hello World" );
+	}
+
+	@Test
+	@DisplayName( "flattenMessageContent returns an empty string when the array has no text parts" )
+	public void testFlattenMessageContentAllNonTextReturnsEmpty() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				flattened = service.flattenMessageContent( [
+					{ "type": "tool_use", "name": "x", "input": {} },
+					{ "type": "image", "source": {} }
+				] )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "flattened" ) ).toString() ).isEqualTo( "" );
+	}
+
+	// -----------------------------------------------------------------------
+	// Chunk 3 — item 11: Cohere / Titan-v2 embeddings shape routing
+	// -----------------------------------------------------------------------
+
+	@Test
+	@DisplayName( "detectEmbeddingModelFamily routes cohere.embed-*, titan-embed-text-v2*, and defaults to titan-v1" )
+	public void testDetectEmbeddingModelFamily() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				cohereFamily  = service.detectEmbeddingModelFamily( "cohere.embed-english-v3" )
+				titanV2Family = service.detectEmbeddingModelFamily( "amazon.titan-embed-text-v2:0" )
+				titanV1Family = service.detectEmbeddingModelFamily( "amazon.titan-embed-text-v1" )
+				defaultFamily = service.detectEmbeddingModelFamily( "some.other.embedding-model" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "cohereFamily" ) ) ).isEqualTo( "cohere" );
+		assertThat( variables.get( Key.of( "titanV2Family" ) ) ).isEqualTo( "titan-v2" );
+		assertThat( variables.get( Key.of( "titanV1Family" ) ) ).isEqualTo( "titan-v1" );
+		assertThat( variables.get( Key.of( "defaultFamily" ) ) ).isEqualTo( "titan-v1" );
+	}
+
+	@Test
+	@DisplayName( "buildCohereEmbeddingRequest builds { texts, input_type }, defaulting input_type to search_document" )
+	public void testBuildCohereEmbeddingRequest() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				defaultPacket  = service.buildCohereEmbeddingRequest( [ "a", "b" ], {} )
+				overridePacket = service.buildCohereEmbeddingRequest( [ "a" ], { input_type: "search_query" } )
+				textCount      = defaultPacket.texts.len()
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "textCount" ) ) ).isEqualTo( 2 );
+		@SuppressWarnings( "unchecked" )
+		IStruct	defaultPacket	= ( IStruct ) variables.get( Key.of( "defaultPacket" ) );
+		@SuppressWarnings( "unchecked" )
+		IStruct	overridePacket	= ( IStruct ) variables.get( Key.of( "overridePacket" ) );
+		assertThat( defaultPacket.get( Key.of( "input_type" ) ) ).isEqualTo( "search_document" );
+		assertThat( overridePacket.get( Key.of( "input_type" ) ) ).isEqualTo( "search_query" );
+	}
+
+	@Test
+	@DisplayName( "buildTitanEmbeddingRequest adds dimensions/normalize only for v2 when present in params" )
+	public void testBuildTitanEmbeddingRequest() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				v1Packet          = service.buildTitanEmbeddingRequest( "hello", {}, false )
+				v2PacketNoExtras  = service.buildTitanEmbeddingRequest( "hello", {}, true )
+				v2PacketWithExtras= service.buildTitanEmbeddingRequest( "hello", { dimensions: 512, normalize: true }, true )
+
+				v1HasDimensions   = v1Packet.keyExists( "dimensions" )
+				v2NoExtrasHasDims = v2PacketNoExtras.keyExists( "dimensions" )
+				v2Dimensions      = v2PacketWithExtras.dimensions
+				v2Normalize       = v2PacketWithExtras.normalize
+				v1InputText       = v1Packet.inputText
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "v1InputText" ) ) ).isEqualTo( "hello" );
+		assertThat( variables.getAsBoolean( Key.of( "v1HasDimensions" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "v2NoExtrasHasDims" ) ) ).isFalse();
+		assertThat( variables.getAsInteger( Key.of( "v2Dimensions" ) ) ).isEqualTo( 512 );
+		assertThat( variables.getAsBoolean( Key.of( "v2Normalize" ) ) ).isTrue();
+	}
+
+	// -----------------------------------------------------------------------
+	// Chunk 3 — item 1: AWS default credential chain (ECS/EKS + IMDSv2) + caching
+	// -----------------------------------------------------------------------
+	// Container/IMDS endpoints (169.254.170.2 / 169.254.169.254) are not reachable from the test
+	// sandbox, so loadContainerCredentials()/loadImdsCredentials() themselves are not exercised
+	// here. What IS covered deterministically: explicit-credential resolution priority, and the
+	// pure 5-minute-refresh-buffer cache-validity check that governs when the chain re-resolves.
+
+	@Test
+	@DisplayName( "resolveAwsCredentials returns the explicit/struct-configured credentials" )
+	public void testResolveAwsCredentialsReturnsExplicitCreds() {
+		// Instantiate + configure() directly rather than via the aiService() BIF: per
+		// testDefaultEndpointUnchanged's note, aiService() merges moduleRecord.settings.apiKey
+		// (the dotenv-derived struct this test class's beforeEach() sets) ahead of configure()'s
+		// own struct-vs-nested-apiKey precedence, which would shadow the explicit creds asserted
+		// on below.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = new bxModules.bxai.models.providers.BedrockService()
+				service.configure( {
+					awsAccessKeyId: "%s",
+					awsSecretAccessKey: "%s",
+					awsSessionToken: "test-session-token",
+					region: "%s"
+				} )
+				creds = service.resolveAwsCredentials()
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		@SuppressWarnings( "unchecked" )
+		IStruct creds = ( IStruct ) variables.get( Key.of( "creds" ) );
+		assertThat( creds.get( Key.of( "accessKeyId" ) ) ).isEqualTo( DUMMY_AWS_ACCESS_KEY_ID );
+		assertThat( creds.get( Key.of( "secretAccessKey" ) ) ).isEqualTo( DUMMY_AWS_SECRET_ACCESS_KEY );
+		assertThat( creds.get( Key.of( "sessionToken" ) ) ).isEqualTo( "test-session-token" );
+	}
+
+	@Test
+	@DisplayName( "isCredentialCacheValid: fresh cache (>5 min to expiry) is valid; empty/missing-expiration/soon-to-expire/already-expired are not" )
+	public void testIsCredentialCacheValidExpiryBuffer() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+
+				freshCache             = { accessKeyId: "x", secretAccessKey: "y", sessionToken: "", expiration: dateAdd( "n", 30, now() ) }
+				soonToExpireCache      = { accessKeyId: "x", secretAccessKey: "y", sessionToken: "", expiration: dateAdd( "n", 3, now() ) }
+				alreadyExpiredCache    = { accessKeyId: "x", secretAccessKey: "y", sessionToken: "", expiration: dateAdd( "n", -5, now() ) }
+				emptyCache             = {}
+				missingExpirationCache = { accessKeyId: "x" }
+
+				freshIsValid              = service.isCredentialCacheValid( freshCache )
+				soonToExpireIsValid       = service.isCredentialCacheValid( soonToExpireCache )
+				alreadyExpiredIsValid     = service.isCredentialCacheValid( alreadyExpiredCache )
+				emptyIsValid              = service.isCredentialCacheValid( emptyCache )
+				missingExpirationIsValid  = service.isCredentialCacheValid( missingExpirationCache )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "freshIsValid" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "soonToExpireIsValid" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "alreadyExpiredIsValid" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "emptyIsValid" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "missingExpirationIsValid" ) ) ).isFalse();
+	}
 }

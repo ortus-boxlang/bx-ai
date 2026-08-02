@@ -17,21 +17,33 @@
  * This provider enables integration with AWS Bedrock for accessing foundation models
  * like Claude, Titan, Llama, and others through AWS's managed service.
  *
- * Unlike other providers that use API keys, Bedrock uses AWS IAM authentication
- * with Signature Version 4 request signing by default. It also supports Bedrock's
- * long-term API keys (bearer auth): configure() with a plain string, or set the
- * AWS_BEARER_TOKEN_BEDROCK environment variable, to skip SigV4 entirely.
+ * Unlike other providers that use API keys, Bedrock authenticates with AWS Signature
+ * Version 4 request signing by default, using credentials resolved via a subset of
+ * AWS's standard default credential provider chain (see resolveAwsCredentials()),
+ * in order:
+ *   1. Explicit `awsAccessKeyId`/`awsSecretAccessKey`/`awsSessionToken` passed to configure()
+ *   2. `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` environment variables
+ *   3. A Bedrock long-term API key (bearer auth) — configure() with a plain string, or the
+ *      `AWS_BEARER_TOKEN_BEDROCK` environment variable — which skips SigV4 entirely
+ *   4. ECS/EKS container credentials (`AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` or `_FULL_URI`)
+ *   5. EC2 IMDSv2 instance-role credentials (session-token handshake + role lookup)
+ * Steps 4/5 are cached on the instance and refreshed once within 5 minutes of expiry.
+ *
+ * Tool calling and schema-typed structured output are only wired up for Claude-family
+ * models on Bedrock (Claude's tool-use API); requesting either on any other family
+ * throws `UnsupportedProviderCapability` instead of silently dropping them.
  *
  * Supported model families:
- * - Anthropic Claude (claude-3-*, claude-instant-*)
- * - Amazon Titan (amazon.titan-*)
+ * - Anthropic Claude (claude-3-*, claude-instant-*) — tools + structured output
+ * - Amazon Titan (amazon.titan-*, amazon.titan-embed-text-v1/v2 for embeddings)
  * - Meta Llama (meta.llama-*)
- * - Cohere (cohere.*)
+ * - Cohere (cohere.*, cohere.embed-* for embeddings)
  * - AI21 Labs (ai21.*)
  * - Mistral (mistral.*)
  *
  * @see https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html
  * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
+ * @see https://docs.aws.amazon.com/sdkref/latest/guide/standardized-credentials.html
  */
 import bxModules.bxai.models.util.AwsSignatureV4;
 import bxModules.bxai.models.util.SchemaBuilder;
@@ -85,6 +97,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		AWS_SERVICE = "bedrock";
 		// Synthetic tool name used to force Claude into structured-output mode on Bedrock
 		STRUCTURED_OUTPUT_TOOL = "structured_output";
+		// Cohere's Bedrock embed API accepts at most this many texts per InvokeModel call
+		COHERE_EMBED_BATCH_SIZE = 96;
 	}
 
 	/**
@@ -95,6 +109,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Bedrock doesn't use a fixed URL - it's constructed per request based on region and model
 		variables.chatURL       = "";
 		variables.embeddingsURL = "";
+		// Cache for credentials auto-resolved from the ECS/EKS container or EC2 IMDSv2 endpoints
+		// (see resolveAwsCredentials()). Empty until/unless the chain actually falls through to
+		// one of those steps — explicit/env credentials never populate this.
+		variables.resolvedCredentials = {};
 
 		// Set default params
 		defaults( static.DEFAULT_CHAT_PARAMS );
@@ -189,6 +207,192 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		}
 		if ( !len( variables.baseURL ) ) {
 			variables.baseURL = getSystemSetting( "BOXLANG_MODULES_BXAI_BEDROCK_BASEURL", "" );
+		}
+	}
+
+	/**
+	 * Whether a cached, auto-resolved credentials struct (see resolveAwsCredentials()) is still
+	 * usable: present, carries an "expiration", and has more than 5 minutes left before it expires.
+	 * Pure/no I/O — the 5-minute refresh buffer is deliberately testable without a clock seam or
+	 * real container/IMDS network calls.
+	 *
+	 * @cached A struct as returned by loadContainerCredentials()/loadImdsCredentials() (or {})
+	 *
+	 * @return True if the cached credentials can still be used as-is
+	 */
+	public boolean function isCredentialCacheValid( required struct cached ){
+		if ( arguments.cached.isEmpty() || !arguments.cached.keyExists( "expiration" ) ) {
+			return false;
+		}
+		return dateDiff( "n", now(), arguments.cached.expiration ) > 5;
+	}
+
+	/**
+	 * Resolve the AWS credentials to sign this request with, following (a subset of) the standard
+	 * AWS default credential provider chain:
+	 *   1. Explicit struct credentials passed to configure() (variables.awsAccessKeyId/SecretAccessKey)
+	 *   2. AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN environment variables
+	 *      (both loaded into the same variables.* at construction/configure() time — by the time
+	 *      this runs, steps 1 and 2 are indistinguishable and handled by the same check below)
+	 *   3. Bedrock bearer token — handled entirely separately by useBearerAuth()/getBearerToken(),
+	 *      which short-circuits SigV4 (and this method) altogether; this method is only reached
+	 *      when useBearerAuth() is false
+	 *   4. ECS/EKS container credentials (AWS_CONTAINER_CREDENTIALS_RELATIVE_URI / _FULL_URI)
+	 *   5. EC2 IMDSv2 instance-role credentials
+	 *
+	 * Auto-resolved credentials (steps 4/5) are cached on the instance and re-resolved once within
+	 * 5 minutes of their reported expiration (see isCredentialCacheValid()). If nothing resolves,
+	 * today's behavior is preserved: the (empty) variables.aws* values are returned as-is and the
+	 * signed request will fail with AWS's own auth error.
+	 *
+	 * @return Struct: { accessKeyId, secretAccessKey, sessionToken }
+	 */
+	public struct function resolveAwsCredentials(){
+		// 1 + 2: explicit struct / environment credentials, already resolved onto the instance.
+		if ( len( variables.awsAccessKeyId ) && len( variables.awsSecretAccessKey ) ) {
+			return {
+				accessKeyId     : variables.awsAccessKeyId,
+				secretAccessKey : variables.awsSecretAccessKey,
+				sessionToken    : variables.awsSessionToken
+			};
+		}
+
+		// Cached auto-resolved (container/IMDS) credentials, still valid.
+		if ( isCredentialCacheValid( variables.resolvedCredentials ) ) {
+			return variables.resolvedCredentials;
+		}
+
+		// 4: ECS/EKS container credentials
+		var creds = loadContainerCredentials();
+
+		// 5: EC2 IMDSv2 instance-role credentials
+		if ( isNull( creds ) ) {
+			creds = loadImdsCredentials();
+		}
+
+		if ( !isNull( creds ) ) {
+			variables.resolvedCredentials = creds;
+			return creds;
+		}
+
+		// Nothing resolved anywhere in the chain — keep today's behavior (empty credentials;
+		// the signed request will be rejected by AWS with its own auth error).
+		return {
+			accessKeyId     : variables.awsAccessKeyId,
+			secretAccessKey : variables.awsSecretAccessKey,
+			sessionToken    : variables.awsSessionToken
+		};
+	}
+
+	/**
+	 * Load temporary credentials from the ECS/EKS container credentials endpoint, per
+	 * AWS_CONTAINER_CREDENTIALS_RELATIVE_URI (resolved against the fixed 169.254.170.2 link-local
+	 * address) or AWS_CONTAINER_CREDENTIALS_FULL_URI (used as-is, optionally with
+	 * AWS_CONTAINER_AUTHORIZATION_TOKEN as a bearer Authorization header).
+	 * @see https://docs.aws.amazon.com/sdkref/latest/guide/feature-container-credentials.html
+	 *
+	 * @return Struct { accessKeyId, secretAccessKey, sessionToken, expiration } or null if the
+	 *         endpoint isn't configured or the request fails
+	 */
+	private any function loadContainerCredentials(){
+		var relativeUri = getSystemSetting( "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "" );
+		var fullUri      = getSystemSetting( "AWS_CONTAINER_CREDENTIALS_FULL_URI", "" );
+
+		if ( !len( relativeUri ) && !len( fullUri ) ) {
+			return javacast( "null", "" );
+		}
+
+		var url       = len( fullUri ) ? fullUri : ( "http://169.254.170.2" & relativeUri );
+		var authToken = getSystemSetting( "AWS_CONTAINER_AUTHORIZATION_TOKEN", "" );
+
+		try {
+			var req = http( url = url ).method( "GET" ).timeout( 2 ).throwOnError( false );
+			if ( len( authToken ) ) {
+				req.header( "Authorization", authToken );
+			}
+			var result     = req.send();
+			var statusCode = val( listFirst( result.statusCode, " " ) );
+			if ( statusCode != 200 ) {
+				return javacast( "null", "" );
+			}
+
+			var body = jsonDeserialize( result.fileContent );
+			return {
+				accessKeyId     : body.AccessKeyId ?: "",
+				secretAccessKey : body.SecretAccessKey ?: "",
+				sessionToken    : body.Token ?: "",
+				expiration      : len( body.Expiration ?: "" ) ? parseDateTime( body.Expiration ) : dateAdd( "n", 60, now() )
+			};
+		} catch ( any e ) {
+			writeLog(
+				text: "Bedrock: failed to load ECS/EKS container credentials: #e.message#",
+				type: "warning",
+				log : "ai"
+			);
+			return javacast( "null", "" );
+		}
+	}
+
+	/**
+	 * Load temporary credentials from the EC2 IMDSv2 instance metadata service: fetch a session
+	 * token (PUT /latest/api/token), use it to discover the attached instance-profile role name,
+	 * then fetch that role's credentials.
+	 * @see https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-metadata-v2-how-it-works.html
+	 *
+	 * @return Struct { accessKeyId, secretAccessKey, sessionToken, expiration } or null if IMDS
+	 *         is unreachable or no role is attached
+	 */
+	private any function loadImdsCredentials(){
+		try {
+			var tokenResult = http( url = "http://169.254.169.254/latest/api/token" )
+				.method( "PUT" )
+				.timeout( 1 )
+				.throwOnError( false )
+				.header( "X-aws-ec2-metadata-token-ttl-seconds", "21600" )
+				.send();
+
+			if ( val( listFirst( tokenResult.statusCode, " " ) ) != 200 ) {
+				return javacast( "null", "" );
+			}
+			var token = trim( tokenResult.fileContent );
+
+			var roleResult = http( url = "http://169.254.169.254/latest/meta-data/iam/security-credentials/" )
+				.method( "GET" )
+				.timeout( 1 )
+				.throwOnError( false )
+				.header( "X-aws-ec2-metadata-token", token )
+				.send();
+
+			if ( val( listFirst( roleResult.statusCode, " " ) ) != 200 || !len( trim( roleResult.fileContent ) ) ) {
+				return javacast( "null", "" );
+			}
+			var role = trim( listFirst( roleResult.fileContent, char( 10 ) ) );
+
+			var credResult = http( url = "http://169.254.169.254/latest/meta-data/iam/security-credentials/#role#" )
+				.method( "GET" )
+				.timeout( 1 )
+				.throwOnError( false )
+				.header( "X-aws-ec2-metadata-token", token )
+				.send();
+
+			if ( val( listFirst( credResult.statusCode, " " ) ) != 200 ) {
+				return javacast( "null", "" );
+			}
+
+			var body = jsonDeserialize( credResult.fileContent );
+			return {
+				accessKeyId     : body.AccessKeyId ?: "",
+				secretAccessKey : body.SecretAccessKey ?: "",
+				sessionToken    : body.Token ?: "",
+				expiration      : len( body.Expiration ?: "" ) ? parseDateTime( body.Expiration ) : dateAdd( "n", 60, now() )
+			};
+		} catch ( any e ) {
+			writeLog(
+				text: "Bedrock: failed to load EC2 IMDSv2 instance-role credentials: #e.message#",
+				type: "warning",
+				log : "ai"
+			);
+			return javacast( "null", "" );
 		}
 	}
 
@@ -332,6 +536,49 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
+	 * Guard against silently dropping tools / schema-typed structured output on model families
+	 * that Bedrock's request transforms don't wire them up for. Today only `transformRequestForClaude`
+	 * emits `tools`, and only `chat()`'s Claude branch injects the forced structured-output tool —
+	 * every other family (Titan, Llama, Mistral, Cohere, AI21, OpenAI-compatible) silently ignored
+	 * `params.tools` and a schema-typed `returnFormat`. Fail loudly instead.
+	 *
+	 * @modelFamily The detected model family (see detectModelFamily())
+	 * @chatRequest The chat request carrying params.tools / isStructuredOutput()
+	 *
+	 * @throws UnsupportedProviderCapability when the family is not "claude" and the caller
+	 *         supplied tools and/or a schema-typed structured output request
+	 */
+	private void function assertCapabilitySupported( required string modelFamily, required AiChatRequest chatRequest ){
+		if ( arguments.modelFamily == "claude" ) {
+			return;
+		}
+
+		var params        = arguments.chatRequest.getParams();
+		var hasTools      = isStruct( params ) && params.keyExists( "tools" ) && isArray( params.tools ) && params.tools.len() > 0;
+		var hasStructured = arguments.chatRequest.isStructuredOutput();
+
+		if ( !hasTools && !hasStructured ) {
+			return;
+		}
+
+		var capability = hasTools && hasStructured
+			? "tools and schema-typed structured output"
+			: ( hasTools ? "tools" : "schema-typed structured output" );
+
+		writeLog(
+			text: "Bedrock model family '#arguments.modelFamily#' does not support #capability# — this module only wires it up for Claude-family models on Bedrock",
+			type: "error",
+			log : "ai"
+		);
+
+		throw(
+			type   : "UnsupportedProviderCapability",
+			message: "Bedrock model family '#arguments.modelFamily#' does not support #capability#. "
+				& "Use a Claude-family model (anthropic.claude-*, invoked via Bedrock) for tool calling or schema-typed structured output."
+		);
+	}
+
+	/**
 	 * Transform an OpenAI-format request to Bedrock model-specific format
 	 *
 	 * @messages    Array of messages in OpenAI format
@@ -411,6 +658,38 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
+	 * Flatten a message's `content` into a plain string for the legacy (non-Claude) Bedrock
+	 * request formats, which only understand a single text blob per message.
+	 *
+	 * - A plain string is returned as-is (no behavior change for the common case).
+	 * - Array-shaped content (image parts, tool_use/tool_result blocks, etc. — as produced by
+	 *   Claude-style multi-block messages carried over in conversation history) is reduced to
+	 *   just its `type == "text"` parts, joined with a space; non-text parts are skipped rather
+	 *   than stringified, since Titan/Llama/Mistral/OpenAI-compatible have no representation for
+	 *   them. Previously these transforms did `"..." & msg.content & "..."`, which on an array
+	 *   coerced to BoxLang's array-to-string form (unusable prose) instead of the intended text.
+	 * - Anything else (e.g. a struct) falls back to its string representation.
+	 *
+	 * @content A message's `content` value: string, array of content-block structs, or other
+	 *
+	 * @return The flattened plain-text content
+	 */
+	public string function flattenMessageContent( required any content ){
+		if ( isSimpleValue( arguments.content ) ) {
+			return arguments.content;
+		}
+
+		if ( isArray( arguments.content ) ) {
+			return arguments.content
+				.filter( part -> isStruct( part ) && ( part.type ?: "" ) == "text" )
+				.map( part -> part.text ?: "" )
+				.toList( " " );
+		}
+
+		return arguments.content.toString();
+	}
+
+	/**
 	 * Transform request for Amazon Titan models
 	 */
 	private struct function transformRequestForTitan( required array messages, required struct params ){
@@ -419,11 +698,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		for ( var msg in arguments.messages ) {
 			if ( msg.role == "system" ) {
-				inputText &= "System: " & msg.content & char( 10 );
+				inputText &= "System: " & flattenMessageContent( msg.content ) & char( 10 );
 			} else if ( msg.role == "user" ) {
-				inputText &= "User: " & msg.content & char( 10 );
+				inputText &= "User: " & flattenMessageContent( msg.content ) & char( 10 );
 			} else if ( msg.role == "assistant" ) {
-				inputText &= "Assistant: " & msg.content & char( 10 );
+				inputText &= "Assistant: " & flattenMessageContent( msg.content ) & char( 10 );
 			}
 		}
 
@@ -450,11 +729,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		for ( var msg in arguments.messages ) {
 			if ( msg.role == "system" ) {
-				prompt &= "<<SYS>>" & char( 10 ) & msg.content & char( 10 ) & "<</SYS>>" & char( 10 ) & char( 10 );
+				prompt &= "<<SYS>>" & char( 10 ) & flattenMessageContent( msg.content ) & char( 10 ) & "<</SYS>>" & char( 10 ) & char( 10 );
 			} else if ( msg.role == "user" ) {
-				prompt &= "[INST] " & msg.content & " [/INST]" & char( 10 );
+				prompt &= "[INST] " & flattenMessageContent( msg.content ) & " [/INST]" & char( 10 );
 			} else if ( msg.role == "assistant" ) {
-				prompt &= msg.content & char( 10 );
+				prompt &= flattenMessageContent( msg.content ) & char( 10 );
 			}
 		}
 
@@ -475,12 +754,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		for ( var msg in arguments.messages ) {
 			if ( msg.role == "user" ) {
-				prompt &= "<s>[INST] " & msg.content & " [/INST]";
+				prompt &= "<s>[INST] " & flattenMessageContent( msg.content ) & " [/INST]";
 			} else if ( msg.role == "assistant" ) {
-				prompt &= msg.content & "</s>";
+				prompt &= flattenMessageContent( msg.content ) & "</s>";
 			} else if ( msg.role == "system" ) {
 				// Prepend system message to first user message
-				prompt = msg.content & char( 10 ) & char( 10 ) & prompt;
+				prompt = flattenMessageContent( msg.content ) & char( 10 ) & char( 10 ) & prompt;
 			}
 		}
 
@@ -919,6 +1198,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Detect model family for request/response transformation (always use modelId for this)
 		var modelFamily = detectModelFamily( modelId );
 
+		// Fail loudly if tools / schema-typed structured output were requested on a family this
+		// module doesn't wire them up for, instead of silently dropping them (only "claude" does).
+		assertCapabilitySupported( modelFamily, arguments.chatRequest );
+
 		// Build the request body for the specific model
 		var dataPacket = transformRequestForModel(
 			messages    = arguments.chatRequest.getMessages(),
@@ -1257,6 +1540,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			};
 			headersToSign.append( extraHeaders, true );
 
+			var creds         = resolveAwsCredentials();
 			var signer        = new AwsSignatureV4();
 			var signedHeaders = signer.signRequest(
 				method      = "POST",
@@ -1267,9 +1551,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				payload         = payload,
 				region          = variables.region,
 				service         = static.AWS_SERVICE,
-				accessKeyId     = variables.awsAccessKeyId,
-				secretAccessKey = variables.awsSecretAccessKey,
-				sessionToken    = variables.awsSessionToken
+				accessKeyId     = creds.accessKeyId,
+				secretAccessKey = creds.secretAccessKey,
+				sessionToken    = creds.sessionToken
 			);
 
 			httpService.header( "Host", host );
@@ -1407,6 +1691,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Detect model family for request/response transformation (always use modelId for this)
 		var modelFamily = detectModelFamily( modelId );
 
+		// Fail loudly if tools / schema-typed structured output were requested on a family this
+		// module doesn't wire them up for, instead of silently dropping them (only "claude" does).
+		assertCapabilitySupported( modelFamily, arguments.chatRequest );
+
 		// Build the request body for the specific model
 		var dataPacket = transformRequestForModel(
 			messages    = arguments.chatRequest.getMessages(),
@@ -1503,6 +1791,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			};
 			headersToSign.append( extraHeaders, true );
 
+			var creds         = resolveAwsCredentials();
 			var signer        = new AwsSignatureV4();
 			var signedHeaders = signer.signRequest(
 				method      = "POST",
@@ -1513,9 +1802,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				payload         = payload,
 				region          = variables.region,
 				service         = static.AWS_SERVICE,
-				accessKeyId     = variables.awsAccessKeyId,
-				secretAccessKey = variables.awsSecretAccessKey,
-				sessionToken    = variables.awsSessionToken
+				accessKeyId     = creds.accessKeyId,
+				secretAccessKey = creds.secretAccessKey,
+				sessionToken    = creds.sessionToken
 			);
 
 			httpService.header( "Host", host );
@@ -1981,7 +2270,162 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
-	 * Generate embeddings using Bedrock Titan Embeddings or other embedding models
+	 * Detect the embedding model "shape" from the model ID, so embeddings() can build the
+	 * request/parse the response the way that specific model actually expects instead of
+	 * assuming Titan v1 for everything.
+	 *
+	 * @modelId The Bedrock embedding model ID
+	 *
+	 * @return "cohere" (cohere.embed-*), "titan-v2" (amazon.titan-embed-text-v2*), or "titan-v1" (default)
+	 */
+	public string function detectEmbeddingModelFamily( required string modelId ){
+		var id = arguments.modelId.lcase();
+
+		if ( id.findNoCase( "cohere.embed" ) ) {
+			return "cohere";
+		}
+		if ( id.findNoCase( "titan-embed-text-v2" ) ) {
+			return "titan-v2";
+		}
+		return "titan-v1";
+	}
+
+	/**
+	 * Build a Titan embeddings request body. v1 is just `{ inputText }`; v2 additionally accepts
+	 * optional `dimensions` / `normalize`, read from the request's params.
+	 *
+	 * @text   A single input text
+	 * @params The embedding request's params (embeddingRequest.getParams())
+	 * @isV2   Whether to include the v2-only optional fields
+	 *
+	 * @return The Titan InvokeModel request body for one text
+	 */
+	public struct function buildTitanEmbeddingRequest( required string text, required struct params, boolean isV2 = false ){
+		var dataPacket = { "inputText" : arguments.text };
+
+		if ( arguments.isV2 ) {
+			if ( arguments.params.keyExists( "dimensions" ) ) {
+				dataPacket[ "dimensions" ] = arguments.params.dimensions;
+			}
+			if ( arguments.params.keyExists( "normalize" ) ) {
+				dataPacket[ "normalize" ] = arguments.params.normalize;
+			}
+		}
+
+		return dataPacket;
+	}
+
+	/**
+	 * Build a Cohere embeddings request body: `{ texts: [...], input_type }`.
+	 * @see https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-cohere-embed.html
+	 *
+	 * @texts  A batch of input texts (max 96 per Cohere's embed API limit)
+	 * @params The embedding request's params (embeddingRequest.getParams())
+	 *
+	 * @return The Cohere InvokeModel request body for this batch
+	 */
+	public struct function buildCohereEmbeddingRequest( required array texts, required struct params ){
+		return {
+			"texts"      : arguments.texts,
+			"input_type" : arguments.params.input_type ?: "search_document"
+		};
+	}
+
+	/**
+	 * Send Titan embedding requests, one text per call (Titan has no batch endpoint).
+	 *
+	 * @modelId          The Titan model ID
+	 * @texts            The input texts to embed
+	 * @embeddingRequest The embedding request object
+	 * @isV2             Whether this is titan-embed-text-v2 (adds optional dimensions/normalize)
+	 */
+	private array function sendTitanEmbeddings(
+		required string modelId,
+		required array texts,
+		required AiEmbeddingRequest embeddingRequest,
+		boolean isV2 = false
+	){
+		var params  = arguments.embeddingRequest.getParams();
+		var results = [];
+
+		for ( var i = 1; i <= arguments.texts.len(); i++ ) {
+			var dataPacket = buildTitanEmbeddingRequest( arguments.texts[ i ], params, arguments.isV2 );
+
+			var result = sendBedrockEmbeddingRequest( arguments.modelId, dataPacket, arguments.embeddingRequest );
+
+			if ( result.keyExists( "error" ) ) {
+				throw( type: "ProviderError", message: result.error.message ?: "Embedding request failed" );
+			}
+
+			// Titan reports the input token count per-call.
+			var tokenCount = result.keyExists( "inputTextTokenCount" ) ? result.inputTextTokenCount : 0;
+
+			arrayAppend( results, { "embedding" : result.embedding, "index" : i - 1, "promptTokens" : tokenCount } );
+		}
+
+		return results;
+	}
+
+	/**
+	 * Send Cohere embedding requests, batched up to 96 texts per call (Cohere's embed API limit).
+	 *
+	 * @modelId          The Cohere model ID
+	 * @texts            The input texts to embed
+	 * @embeddingRequest The embedding request object
+	 */
+	private array function sendCohereEmbeddings(
+		required string modelId,
+		required array texts,
+		required AiEmbeddingRequest embeddingRequest
+	){
+		var params     = arguments.embeddingRequest.getParams();
+		var results    = [];
+		var batchSize  = static.COHERE_EMBED_BATCH_SIZE;
+		var totalTexts = arguments.texts.len();
+		var startIndex = 1;
+
+		while ( startIndex <= totalTexts ) {
+			var endIndex = min( startIndex + batchSize - 1, totalTexts );
+			var batch    = arguments.texts.slice( startIndex, endIndex - startIndex + 1 );
+
+			var dataPacket = buildCohereEmbeddingRequest( batch, params );
+			var result      = sendBedrockEmbeddingRequest( arguments.modelId, dataPacket, arguments.embeddingRequest );
+
+			if ( result.keyExists( "error" ) ) {
+				throw( type: "ProviderError", message: result.error.message ?: "Embedding request failed" );
+			}
+
+			// Cohere batch responses may not carry a token count at all — sendBedrockEmbeddingRequest
+			// backfills "inputTextTokenCount" from the X-Amzn-Bedrock-Input-Token-Count response
+			// header when the body itself doesn't have it (falls back to 0 if neither is present).
+			var tokenCount      = result.keyExists( "inputTextTokenCount" ) ? result.inputTextTokenCount : 0;
+			var batchEmbeddings = result.embeddings ?: [];
+
+			for ( var j = 1; j <= batchEmbeddings.len(); j++ ) {
+				arrayAppend(
+					results,
+					{
+						"embedding"    : batchEmbeddings[ j ],
+						"index"        : startIndex + j - 2,
+						// Only attribute the token count to the first item of the batch so it's
+						// counted once per HTTP call, not once per text in the batch.
+						"promptTokens" : ( j == 1 ) ? tokenCount : 0
+					}
+				);
+			}
+
+			startIndex = endIndex + 1;
+		}
+
+		return results;
+	}
+
+	/**
+	 * Generate embeddings using Bedrock's embedding models. Routes to the model-specific request/
+	 * response shape by embedding model ID (see detectEmbeddingModelFamily()):
+	 *   - `cohere.embed-*`             — batched `{ texts, input_type }` request, `embeddings[]` response
+	 *   - `amazon.titan-embed-text-v2*`— Titan v1 body + optional `dimensions`/`normalize`
+	 *   - everything else              — Titan v1, one text per call (original behavior)
 	 *
 	 * @embeddingRequest The embedding request object
 	 */
@@ -1993,32 +2437,27 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			modelId = "amazon.titan-embed-text-v1";
 		}
 
-		var input        = arguments.embeddingRequest.getInput();
-		var results      = [];
+		var embeddingFamily = detectEmbeddingModelFamily( modelId );
+		var input           = arguments.embeddingRequest.getInput();
+		var textsToProcess  = isArray( input ) ? input : [ input ];
+
+		var rawResults = [];
+		switch ( embeddingFamily ) {
+			case "cohere":
+				rawResults = sendCohereEmbeddings( modelId, textsToProcess, arguments.embeddingRequest );
+				break;
+			case "titan-v2":
+				rawResults = sendTitanEmbeddings( modelId, textsToProcess, arguments.embeddingRequest, true );
+				break;
+			default:
+				rawResults = sendTitanEmbeddings( modelId, textsToProcess, arguments.embeddingRequest, false );
+		}
+
 		var promptTokens = 0;
-
-		// Titan embeddings handles one text at a time
-		var textsToProcess = isArray( input ) ? input : [ input ];
-
-		for ( var i = 1; i <= textsToProcess.len(); i++ ) {
-			var text = textsToProcess[ i ];
-
-			var dataPacket = { "inputText" : text };
-
-			var result = sendBedrockEmbeddingRequest(
-				modelId,
-				dataPacket,
-				arguments.embeddingRequest
-			);
-
-			if ( result.keyExists( "error" ) ) {
-				throw( type: "ProviderError", message: result.error.message ?: "Embedding request failed" );
-			}
-
-			// Titan reports the input token count per-call; accumulate across all texts processed.
-			promptTokens += result.keyExists( "inputTextTokenCount" ) ? result.inputTextTokenCount : 0;
-
-			arrayAppend( results, { "embedding" : result.embedding, "index" : i - 1 } );
+		var results      = [];
+		for ( var item in rawResults ) {
+			promptTokens += item.promptTokens ?: 0;
+			arrayAppend( results, { "embedding" : item.embedding, "index" : item.index } );
 		}
 
 		// Format response like OpenAI
@@ -2116,6 +2555,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			};
 			headersToSign.append( extraHeaders, true );
 
+			var creds         = resolveAwsCredentials();
 			var signer        = new AwsSignatureV4();
 			var signedHeaders = signer.signRequest(
 				method      = "POST",
@@ -2126,9 +2566,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				payload         = payload,
 				region          = variables.region,
 				service         = static.AWS_SERVICE,
-				accessKeyId     = variables.awsAccessKeyId,
-				secretAccessKey = variables.awsSecretAccessKey,
-				sessionToken    = variables.awsSessionToken
+				accessKeyId     = creds.accessKeyId,
+				secretAccessKey = creds.secretAccessKey,
+				sessionToken    = creds.sessionToken
 			);
 
 			httpService.header( "Host", host );
@@ -2205,6 +2645,18 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		}
 
 		var parsedResponse = jsonDeserialize( httpResult.fileContent );
+
+		// Titan v1/v2 report "inputTextTokenCount" in the body; Cohere's embed response has no
+		// per-call token count field at all. Backfill it from the X-Amzn-Bedrock-Input-Token-Count
+		// response header (same mechanism sendBedrockRequest() uses for chat's legacy-family usage
+		// gap) so embeddings()'s usage accounting works uniformly across all three shapes — falls
+		// back to 0 (via embeddings()'s `?: 0` reads) when the header is also absent.
+		if ( !parsedResponse.keyExists( "inputTextTokenCount" ) && isStruct( httpResult.responseHeader ?: {} ) ) {
+			var inputTokenHeader = httpResult.responseHeader[ "X-Amzn-Bedrock-Input-Token-Count" ] ?: "";
+			if ( len( inputTokenHeader ) ) {
+				parsedResponse[ "inputTextTokenCount" ] = val( inputTokenHeader );
+			}
+		}
 
 		boxAnnounce(
 			"onAIEmbedResponse",
