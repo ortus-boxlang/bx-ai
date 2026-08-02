@@ -253,10 +253,15 @@ class {
 	 * Percent-encode a single opaque value (e.g. a Bedrock model ID or ARN used as one path
 	 * segment) using the same per-character AWS-style encoding this class uses internally to
 	 * build the canonical request. Exposed so callers can build a request path that agrees,
-	 * byte-for-byte, with what signRequest()'s canonical request computation expects — pass the
-	 * SAME raw (unencoded) value to both this method (to build the wire path) and to
-	 * signRequest()'s `path` argument (which re-derives the canonical URI itself); do not pass
-	 * an already-encoded path into signRequest(), or its own encoding pass will double-encode it.
+	 * byte-for-byte, with what signRequest()'s canonical request computation expects — encode
+	 * the raw value with this method ONCE to build the wire path, then pass that SAME
+	 * ALREADY-ENCODED path (not the original raw value) as signRequest()'s `path` argument.
+	 * signRequest() encodes whatever path it is given a SECOND time internally (via its private
+	 * uriEncodePath()) when building the canonical request — that double-encoding is deliberate
+	 * and required by AWS's documented "double URI-encode except S3" canonical-request rule
+	 * (matches botocore's own SigV4 implementation), not a bug to avoid. Passing a raw/unencoded
+	 * path into signRequest() instead would only single-encode the canonical request and produce
+	 * a signature mismatch against what AWS computes for the actual (encoded) wire path.
 	 *
 	 * @component The raw value to encode (may contain reserved characters like ":" or "/")
 	 *
@@ -264,6 +269,23 @@ class {
 	 */
 	public string function encodeComponent( required string component ) {
 		return uriEncodeComponent( arguments.component );
+	}
+
+	/**
+	 * Compute the canonical-request URI for a path exactly as signRequest() does internally
+	 * (each "/"-separated segment percent-encoded a second time via uriEncodeComponent()). Not
+	 * called by signRequest() itself — its private uriEncodePath() does the same work inline —
+	 * this is exposed purely as a small test seam so callers/tests can verify the canonical path
+	 * signRequest() will sign for a given (already wire-encoded) path without reimplementing
+	 * AWS's double-URI-encode-except-S3 rule.
+	 *
+	 * @path The already wire-encoded request path to canonicalize (e.g. from
+	 *       BedrockService.getBedrockPath())
+	 *
+	 * @return The canonical-request URI for this path
+	 */
+	public string function computeCanonicalPath( required string path ) {
+		return uriEncodePath( arguments.path );
 	}
 
 	/**

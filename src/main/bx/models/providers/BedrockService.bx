@@ -24,7 +24,9 @@
  *   1. Explicit `awsAccessKeyId`/`awsSecretAccessKey`/`awsSessionToken` passed to configure()
  *   2. `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` environment variables
  *   3. A Bedrock long-term API key (bearer auth) — configure() with a plain string, or the
- *      `AWS_BEARER_TOKEN_BEDROCK` environment variable — which skips SigV4 entirely
+ *      `AWS_BEARER_TOKEN_BEDROCK` environment variable — used ONLY when no AWS access key was
+ *      resolved via steps 1/2 above; explicit/env AWS credentials always win and skip bearer
+ *      auth entirely (see useBearerAuth())
  *   4. ECS/EKS container credentials (`AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` or `_FULL_URI`)
  *   5. EC2 IMDSv2 instance-role credentials (session-token handshake + role lookup)
  * Steps 4/5 are cached on the instance and refreshed once within 5 minutes of expiry.
@@ -99,6 +101,14 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		STRUCTURED_OUTPUT_TOOL = "structured_output";
 		// Cohere's Bedrock embed API accepts at most this many texts per InvokeModel call
 		COHERE_EMBED_BATCH_SIZE = 96;
+		// After a failed container/IMDS credential resolution attempt (e.g. off-EC2, no role
+		// attached), skip retrying the network round-trip for this many seconds — otherwise every
+		// request pays the ~1-2s IMDS/container timeout again (worst case: once per text in
+		// sendTitanEmbeddings).
+		NEGATIVE_CACHE_SECONDS = 60;
+		// Model families whose Bedrock request transform genuinely has no representation for
+		// tools / schema-typed structured output (see assertCapabilitySupported()).
+		NO_TOOL_SUPPORT_FAMILIES = [ "titan", "llama", "mistral", "openai", "cohere" ];
 	}
 
 	/**
@@ -113,6 +123,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// (see resolveAwsCredentials()). Empty until/unless the chain actually falls through to
 		// one of those steps — explicit/env credentials never populate this.
 		variables.resolvedCredentials = {};
+		// Timestamp of the last resolution attempt that found nothing anywhere in the chain (null
+		// until the first such failure) — backs the negative cache in resolveAwsCredentials().
+		variables.lastCredentialResolutionFailure = javacast( "null", "" );
+		// Unique per-instance name for the named lock guarding resolveAwsCredentials()'s
+		// read-modify-write of variables.resolvedCredentials / lastCredentialResolutionFailure.
+		variables.credentialLockName = "bedrock-credentials-" & createUUID();
 
 		// Set default params
 		defaults( static.DEFAULT_CHAT_PARAMS );
@@ -241,9 +257,19 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *   5. EC2 IMDSv2 instance-role credentials
 	 *
 	 * Auto-resolved credentials (steps 4/5) are cached on the instance and re-resolved once within
-	 * 5 minutes of their reported expiration (see isCredentialCacheValid()). If nothing resolves,
-	 * today's behavior is preserved: the (empty) variables.aws* values are returned as-is and the
-	 * signed request will fail with AWS's own auth error.
+	 * 5 minutes of their reported expiration (see isCredentialCacheValid()). A failed resolution
+	 * attempt (nothing anywhere in the chain) is itself negative-cached for
+	 * static.NEGATIVE_CACHE_SECONDS so an off-EC2 caller with no role attached doesn't pay the
+	 * container/IMDS network timeout on every single request. If a refresh attempt fails while the
+	 * previously cached credentials are still within their 5-minute expiry buffer but not yet
+	 * ACTUALLY expired, those still-valid cached credentials are reused rather than discarded (see
+	 * fallbackToCachedOrEmptyCredentials()). Only when nothing resolves and nothing cached is still
+	 * valid does today's original behavior apply: the (empty) variables.aws* values are returned
+	 * as-is and the signed request will fail with AWS's own auth error.
+	 *
+	 * The read-modify-write of variables.resolvedCredentials / lastCredentialResolutionFailure is
+	 * guarded by a named lock so concurrent requests can't race each other into duplicate
+	 * container/IMDS calls or clobber each other's cache writes.
 	 *
 	 * @return Struct: { accessKeyId, secretAccessKey, sessionToken }
 	 */
@@ -257,26 +283,77 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			};
 		}
 
-		// Cached auto-resolved (container/IMDS) credentials, still valid.
-		if ( isCredentialCacheValid( variables.resolvedCredentials ) ) {
+		var result = {};
+
+		lock
+			name="#variables.credentialLockName#"
+			type="exclusive"
+			timeout="10"
+			throwontimeout="true" {
+
+			// Cached auto-resolved (container/IMDS) credentials, still valid.
+			if ( isCredentialCacheValid( variables.resolvedCredentials ) ) {
+				result = variables.resolvedCredentials;
+			} else if (
+				!isNull( variables.lastCredentialResolutionFailure )
+				&& dateDiff( "s", variables.lastCredentialResolutionFailure, now() ) < static.NEGATIVE_CACHE_SECONDS
+			) {
+				// Negative cache: a resolution attempt recently found nothing — skip the
+				// container/IMDS round-trips for a while rather than paying that timeout again.
+				result = fallbackToCachedOrEmptyCredentials();
+			} else {
+				// 4: ECS/EKS container credentials
+				var creds = loadContainerCredentials();
+
+				// 5: EC2 IMDSv2 instance-role credentials
+				if ( isNull( creds ) ) {
+					creds = loadImdsCredentials();
+				}
+
+				if ( !isNull( creds ) ) {
+					variables.resolvedCredentials             = creds;
+					variables.lastCredentialResolutionFailure  = javacast( "null", "" );
+					result = creds;
+				} else {
+					// Nothing resolved this attempt — start/refresh the negative-cache window,
+					// then fall back to still-valid cached credentials if any.
+					variables.lastCredentialResolutionFailure = now();
+					result = fallbackToCachedOrEmptyCredentials();
+				}
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Fallback used by resolveAwsCredentials() whenever a (real or negative-cache-skipped)
+	 * container/IMDS resolution attempt doesn't yield fresh credentials: if the previously
+	 * auto-resolved credentials are within the 5-minute expiry buffer (isCredentialCacheValid()
+	 * already said no) but are not yet ACTUALLY expired, keep using them — a refresh hiccup
+	 * shouldn't discard credentials that still work — otherwise fall back to the original (likely
+	 * empty) explicit/env values.
+	 *
+	 * @return Struct: { accessKeyId, secretAccessKey, sessionToken }
+	 */
+	private struct function fallbackToCachedOrEmptyCredentials(){
+		if (
+			!variables.resolvedCredentials.isEmpty()
+			&& variables.resolvedCredentials.keyExists( "expiration" )
+			&& dateCompare( now(), variables.resolvedCredentials.expiration ) < 0
+		) {
+			writeLog(
+				text: "Bedrock: credential refresh failed (or was skipped via the negative cache) while "
+					& "still within the 5-minute expiry buffer; reusing still-valid cached credentials "
+					& "(expires #variables.resolvedCredentials.expiration#)",
+				type: "warning",
+				log : "ai"
+			);
 			return variables.resolvedCredentials;
 		}
 
-		// 4: ECS/EKS container credentials
-		var creds = loadContainerCredentials();
-
-		// 5: EC2 IMDSv2 instance-role credentials
-		if ( isNull( creds ) ) {
-			creds = loadImdsCredentials();
-		}
-
-		if ( !isNull( creds ) ) {
-			variables.resolvedCredentials = creds;
-			return creds;
-		}
-
-		// Nothing resolved anywhere in the chain — keep today's behavior (empty credentials;
-		// the signed request will be rejected by AWS with its own auth error).
+		// Nothing usable anywhere in the chain — keep today's behavior (empty credentials; the
+		// signed request will be rejected by AWS with its own auth error).
 		return {
 			accessKeyId     : variables.awsAccessKeyId,
 			secretAccessKey : variables.awsSecretAccessKey,
@@ -398,11 +475,21 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 	/**
 	 * True when this service should authenticate with a Bedrock long-term API key (bearer
-	 * token) instead of AWS SigV4 request signing: either a plain string was passed to
-	 * configure() (per the module-wide "string = apiKey" contract), or the
-	 * AWS_BEARER_TOKEN_BEDROCK environment variable is set.
+	 * token) instead of AWS SigV4 request signing.
+	 *
+	 * Explicit/env AWS credentials always WIN over bearer auth: aiService()/aiChat() inject the
+	 * module-wide settings.apiKey (or a BEDROCK_API_KEY env var) into every provider's options as
+	 * a plain string, including Bedrock's — so a bare string apiKey must not silently disable
+	 * SigV4 when a struct of AWS credentials was ALSO supplied in the same configure() call.
+	 * Bearer auth is therefore only used when NO AWS access key is available at all
+	 * (variables.awsAccessKeyId is empty after struct + environment resolution) AND a bearer
+	 * token is present — a plain string passed to configure() (the module-wide "string = apiKey"
+	 * contract), or the AWS_BEARER_TOKEN_BEDROCK environment variable.
 	 */
 	public boolean function useBearerAuth(){
+		if ( len( variables.awsAccessKeyId ) ) {
+			return false;
+		}
 		return ( isSimpleValue( variables.apiKey ) && len( variables.apiKey ) > 0 )
 			|| len( getSystemSetting( "AWS_BEARER_TOKEN_BEDROCK", "" ) ) > 0;
 	}
@@ -430,15 +517,45 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
-	 * Get the Bedrock host: the configured baseURL's host (scheme + any path stripped) when an
-	 * override is set, otherwise the standard regional Bedrock runtime host. This is used for
-	 * both the request URL and the SigV4/request "Host" header, so the two always agree.
+	 * Get the Bedrock host: the configured baseURL's host (scheme, path, and port-carrying
+	 * authority aside — port stays with the host) when an override is set, otherwise the
+	 * standard regional Bedrock runtime host. This is used for both the request URL and the
+	 * SigV4/request "Host" header, so the two always agree. Any path prefix carried by baseURL
+	 * (e.g. "/bedrock" in "https://proxy.internal/bedrock") is NOT part of the host — see
+	 * getBedrockPathPrefix(), which is prepended to the request path instead.
 	 */
 	public string function getBedrockHost(){
 		if ( !len( variables.baseURL ) ) {
 			return "bedrock-runtime.#variables.region#.amazonaws.com";
 		}
 		return listFirst( reReplaceNoCase( variables.baseURL, "^[a-z][a-z0-9+.-]*://", "", "one" ), "/" );
+	}
+
+	/**
+	 * The path prefix carried by baseURL, if any (e.g. "bedrock" for
+	 * "https://proxy.internal/bedrock"), with any leading/trailing slashes stripped. Empty string
+	 * when baseURL has no path component — the common case: a bare host, or no override at all.
+	 *
+	 * Prepended to the request path in getBedrockPath()/getBedrockStreamPath() so a proxy/gateway
+	 * sitting in front of Bedrock at a sub-path is supported for both the wire URL and the path
+	 * signed by AwsSignatureV4 — previously getBedrockHost()'s listFirst() silently discarded
+	 * everything in baseURL after the host.
+	 */
+	private string function getBedrockPathPrefix(){
+		if ( !len( variables.baseURL ) ) {
+			return "";
+		}
+		var withoutScheme = reReplaceNoCase( variables.baseURL, "^[a-z][a-z0-9+.-]*://", "", "one" );
+		// Guard listRest() with find() first: with no delimiter present it does not reliably
+		// return "" (see the same pattern in BaseRegistry.bx's key.listRest( "@" ) usage).
+		if ( !withoutScheme.find( "/" ) ) {
+			return "";
+		}
+		var prefix = withoutScheme.listRest( "/" );
+		if ( !len( prefix ) ) {
+			return "";
+		}
+		return ( right( prefix, 1 ) == "/" ) ? left( prefix, len( prefix ) - 1 ) : prefix;
 	}
 
 	/**
@@ -455,20 +572,26 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * The Bedrock InvokeModel API has exactly one route — POST /model/{modelId}/invoke — where
 	 * {modelId} accepts a plain model ID or an inference-profile / application-inference-profile
 	 * / provisioned-model ARN. There is no separate "/application-inference-profile/..." route.
+	 * Any baseURL path prefix (see getBedrockPathPrefix()) is prepended ahead of "/model/...", so
+	 * a proxy/gateway mounted at a sub-path is reachable.
 	 *
 	 * The modelId/ARN is percent-encoded as a single opaque path segment (including its literal
-	 * ":" and, for ARNs, "/" characters) exactly once here — this encoded form is what goes on
-	 * the wire. The same raw (unencoded) path passed to AwsSignatureV4.signRequest() below is
-	 * re-encoded a second time internally by its uriEncodePath(), which is the AWS-documented
-	 * "double URI-encode except S3" canonical-request rule — so signing this already-encoded
-	 * path here would double up on that and produce a mismatched signature. Passing the same
-	 * modelIdOrArn through the same encodeComponent() call for both the wire path and the value
-	 * handed to the signer keeps the two in agreement.
+	 * ":" and, for ARNs, "/" characters) exactly once here — this ENCODED form is both what goes
+	 * on the wire AND what is passed, unchanged, as AwsSignatureV4.signRequest()'s `path`
+	 * argument. signRequest() re-encodes it a SECOND time internally (via its private
+	 * uriEncodePath()) when building the canonical request — that double-encoding is deliberate
+	 * and correct: it is AWS's documented "double URI-encode except S3" canonical-request rule
+	 * (matches botocore's own SigV4 implementation), not a bug. Passing a RAW/unencoded path into
+	 * signRequest() instead would single-encode the canonical request and produce a signature
+	 * mismatch against what AWS computes for the actual (encoded) wire path. Sharing the exact
+	 * same already-encoded string for both the wire path and the signer's `path` argument is what
+	 * keeps the two in agreement.
 	 *
 	 * @modelIdOrArn The model ID or ARN to invoke
 	 */
 	public string function getBedrockPath( required string modelIdOrArn ){
-		return "/model/#encodeBedrockModelId( arguments.modelIdOrArn )#/invoke";
+		var prefix = getBedrockPathPrefix();
+		return "#len( prefix ) ? ( '/' & prefix ) : ''#/model/#encodeBedrockModelId( arguments.modelIdOrArn )#/invoke";
 	}
 
 	/**
@@ -484,12 +607,14 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 	/**
 	 * Get the request path for a streaming model invocation. See getBedrockPath() for the
-	 * routing + encoding rationale — same rules, "-with-response-stream" suffix.
+	 * routing + encoding + baseURL-path-prefix rationale — same rules, "-with-response-stream"
+	 * suffix.
 	 *
 	 * @modelIdOrArn The model ID or ARN to invoke
 	 */
 	public string function getBedrockStreamPath( required string modelIdOrArn ){
-		return "/model/#encodeBedrockModelId( arguments.modelIdOrArn )#/invoke-with-response-stream";
+		var prefix = getBedrockPathPrefix();
+		return "#len( prefix ) ? ( '/' & prefix ) : ''#/model/#encodeBedrockModelId( arguments.modelIdOrArn )#/invoke-with-response-stream";
 	}
 
 	/**
@@ -537,19 +662,23 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 	/**
 	 * Guard against silently dropping tools / schema-typed structured output on model families
-	 * that Bedrock's request transforms don't wire them up for. Today only `transformRequestForClaude`
-	 * emits `tools`, and only `chat()`'s Claude branch injects the forced structured-output tool —
-	 * every other family (Titan, Llama, Mistral, Cohere, AI21, OpenAI-compatible) silently ignored
-	 * `params.tools` and a schema-typed `returnFormat`. Fail loudly instead.
+	 * whose Bedrock request transform genuinely has no representation for them: Titan, Llama,
+	 * Mistral, and OpenAI-compatible each have a dedicated, tool-less request builder in
+	 * transformRequestForModel(), and Cohere Command's actual wire format isn't Claude's Messages
+	 * API either (see static.NO_TOOL_SUPPORT_FAMILIES). Every other family — "claude" itself,
+	 * "ai21", and "unknown" — falls through transformRequestForModel()'s default branch, which
+	 * reuses the Claude-style builder and DOES emit `tools`, so gating them here would be
+	 * over-strict for no benefit; they are allowed through unchanged.
 	 *
 	 * @modelFamily The detected model family (see detectModelFamily())
 	 * @chatRequest The chat request carrying params.tools / isStructuredOutput()
 	 *
-	 * @throws UnsupportedProviderCapability when the family is not "claude" and the caller
-	 *         supplied tools and/or a schema-typed structured output request
+	 * @throws UnsupportedProviderCapability when the family is one of
+	 *         static.NO_TOOL_SUPPORT_FAMILIES and the caller supplied tools and/or a
+	 *         schema-typed structured output request
 	 */
 	private void function assertCapabilitySupported( required string modelFamily, required AiChatRequest chatRequest ){
-		if ( arguments.modelFamily == "claude" ) {
+		if ( !static.NO_TOOL_SUPPORT_FAMILIES.contains( arguments.modelFamily ) ) {
 			return;
 		}
 
@@ -566,7 +695,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			: ( hasTools ? "tools" : "schema-typed structured output" );
 
 		writeLog(
-			text: "Bedrock model family '#arguments.modelFamily#' does not support #capability# — this module only wires it up for Claude-family models on Bedrock",
+			text: "Bedrock model family '#arguments.modelFamily#' does not support #capability# — this module's request transform for this family has no representation for it on Bedrock",
 			type: "error",
 			log : "ai"
 		);
@@ -1250,24 +1379,14 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			reverse: true
 		)
 
-		// Check for errors
+		// Check for errors. sendBedrockRequest() already announced onAIError (with the real
+		// computed canRetry, and the aiRequest-keyed payload matching BaseService's contract) for
+		// this exact failure — don't re-announce here with a second, hardcoded canRetry:true.
 		if ( result.keyExists( "error" ) ) {
 			writeLog(
 				text: "Bedrock error: #result.error.toString()#",
 				type: "error",
 				log : "ai"
-			);
-
-			boxAnnounce(
-				"onAIError",
-				{
-					error        : result.error,
-					errorMessage : result.error.toString(),
-					provider     : this,
-					operation    : "chat",
-					chatRequest  : arguments.chatRequest,
-					canRetry     : true
-				}
 			);
 
 			throw( type: "ProviderError", message: result.error.toString() );
@@ -1440,6 +1559,23 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
+	 * Normalize a response header value that may come back as an array (some HTTP clients return
+	 * multi-valued headers as an array instead of a single delimited string) into a single plain
+	 * string, so val()-parsing the X-Amzn-Bedrock-*-Token-Count headers doesn't choke on an array.
+	 *
+	 * @headerValue A response header value: a string, an array, or empty/absent (already elvis'd
+	 *              to "" by the caller when the header key doesn't exist)
+	 *
+	 * @return The first value as a string, or "" when empty/absent
+	 */
+	private string function firstHeaderValue( required any headerValue ){
+		if ( isArray( arguments.headerValue ) ) {
+			return arguments.headerValue.len() ? toString( arguments.headerValue[ 1 ] ) : "";
+		}
+		return toString( arguments.headerValue );
+	}
+
+	/**
 	 * Detect a Bedrock Guardrails intervention on a response and log it. Bedrock reports this
 	 * via the `x-amzn-bedrock-guardrailaction` response header on InvokeModel, or (per some
 	 * model/response shapes) an `amazon-bedrock-guardrailAction` field in the response body.
@@ -1451,11 +1587,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * @response   The parsed JSON response body
 	 */
 	private void function checkGuardrailIntervention( required struct httpResult, required struct response ){
-		var action = "";
-		if ( isStruct( arguments.httpResult.responseHeader ?: {} ) ) {
-			for ( var headerName in arguments.httpResult.responseHeader ) {
+		var action          = "";
+		var responseHeaders = arguments.httpResult.responseHeader ?: {};
+		if ( isStruct( responseHeaders ) ) {
+			for ( var headerName in responseHeaders ) {
 				if ( headerName.reFindNoCase( "^x-amzn-bedrock-guardrailaction$" ) ) {
-					action = arguments.httpResult.responseHeader[ headerName ];
+					action = responseHeaders[ headerName ];
 					break;
 				}
 			}
@@ -1596,8 +1733,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			};
 
 			// Rate limiting (429): announce a dedicated event matching BaseService's
-			// onAIRateLimitHit contract, so rate-limit-aware middleware works the same as it
-			// does for every other provider.
+			// onAIRateLimitHit contract (BaseService.bx:360-367 uses the key "chatRequest", not
+			// "aiRequest"), so rate-limit-aware middleware works the same as it does for every
+			// other provider.
 			if ( statusCode == 429 ) {
 				var errorData = {};
 				try {
@@ -1606,15 +1744,16 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					errorData = { "message" : httpResult.fileContent };
 				}
 
+				var responseHeaders = httpResult.responseHeader ?: {};
 				boxAnnounce(
 					"onAIRateLimitHit",
 					{
-						provider   : this,
-						operation  : "chat",
-						statusCode : statusCode,
-						errorData  : errorData,
-						aiRequest  : arguments.aiRequest,
-						retryAfter : httpResult.responseHeader.keyExists( "retry-after" ) ? httpResult.responseHeader[ "retry-after" ] : ""
+						provider    : this,
+						operation   : "chat",
+						statusCode  : statusCode,
+						errorData   : errorData,
+						chatRequest : arguments.aiRequest,
+						retryAfter  : responseHeaders.keyExists( "retry-after" ) ? responseHeaders[ "retry-after" ] : ""
 					}
 				);
 			}
@@ -1641,8 +1780,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// body — AWS instead exposes token counts via response headers. Backfill them onto the
 		// response so the family-specific transform can read them like any other usage field.
 		if ( !response.keyExists( "usage" ) && isStruct( httpResult.responseHeader ?: {} ) ) {
-			var inputTokenHeader  = httpResult.responseHeader[ "X-Amzn-Bedrock-Input-Token-Count" ] ?: "";
-			var outputTokenHeader = httpResult.responseHeader[ "X-Amzn-Bedrock-Output-Token-Count" ] ?: "";
+			var inputTokenHeader  = firstHeaderValue( httpResult.responseHeader[ "X-Amzn-Bedrock-Input-Token-Count" ] ?: "" );
+			var outputTokenHeader = firstHeaderValue( httpResult.responseHeader[ "X-Amzn-Bedrock-Output-Token-Count" ] ?: "" );
 			if ( len( inputTokenHeader ) || len( outputTokenHeader ) ) {
 				response[ "usage" ] = {
 					"prompt_tokens"     : val( inputTokenHeader ),
@@ -1827,7 +1966,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			writeLog( text: errorMessage, type: "error", log: "ai" );
 
 			// Rate limiting (429): announce a dedicated event matching BaseService's
-			// onAIRateLimitHit contract.
+			// onAIRateLimitHit contract (BaseService.bx:360-367 uses the key "chatRequest", not
+			// "aiRequest").
 			if ( statusCode == 429 ) {
 				var errorData = {};
 				try {
@@ -1836,15 +1976,16 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					errorData = { "message" : httpResult.fileContent };
 				}
 
+				var responseHeaders = httpResult.responseHeader ?: {};
 				boxAnnounce(
 					"onAIRateLimitHit",
 					{
-						provider   : this,
-						operation  : "stream",
-						statusCode : statusCode,
-						errorData  : errorData,
-						aiRequest  : arguments.aiRequest,
-						retryAfter : httpResult.responseHeader.keyExists( "retry-after" ) ? httpResult.responseHeader[ "retry-after" ] : ""
+						provider    : this,
+						operation   : "stream",
+						statusCode  : statusCode,
+						errorData   : errorData,
+						chatRequest : arguments.aiRequest,
+						retryAfter  : responseHeaders.keyExists( "retry-after" ) ? responseHeaders[ "retry-after" ] : ""
 					}
 				);
 			}
@@ -2467,8 +2608,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			"usage" : { "prompt_tokens" : promptTokens, "total_tokens" : promptTokens }
 		};
 
-		// Announce token usage, mirroring the chat path's onAITokenCount payload
-		if ( promptTokens > 0 ) {
+		// Announce token usage, mirroring the chat path's onAITokenCount payload. Chat announces
+		// whenever its response carries a "usage" key at all (which every family's transform
+		// always builds, even when the counts are zero) rather than gating on promptTokens > 0 —
+		// match that here too so an all-zero-usage embedding call still gets its event.
+		if ( response.keyExists( "usage" ) ) {
 			boxAnnounce(
 				"onAITokenCount",
 				{
@@ -2606,8 +2750,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				}
 			};
 
-			// Rate limiting (429): announce a dedicated event matching BaseService's
-			// onAIRateLimitHit contract.
+			// Rate limiting (429): announce a dedicated event. Uses the "embeddingRequest" key —
+			// unlike chat/stream's onAIRateLimitHit (which mirrors BaseService.bx:360-367's
+			// "chatRequest" key), BaseService has no embeddings equivalent to match, so this key
+			// is Bedrock-embeddings-specific rather than "matching BaseService's contract".
 			if ( statusCode == 429 ) {
 				var errorData = {};
 				try {
@@ -2616,6 +2762,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					errorData = { "message" : httpResult.fileContent };
 				}
 
+				var responseHeaders = httpResult.responseHeader ?: {};
 				boxAnnounce(
 					"onAIRateLimitHit",
 					{
@@ -2624,7 +2771,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 						statusCode       : statusCode,
 						errorData        : errorData,
 						embeddingRequest : arguments.embeddingRequest,
-						retryAfter       : httpResult.responseHeader.keyExists( "retry-after" ) ? httpResult.responseHeader[ "retry-after" ] : ""
+						retryAfter       : responseHeaders.keyExists( "retry-after" ) ? responseHeaders[ "retry-after" ] : ""
 					}
 				);
 			}
@@ -2652,7 +2799,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// gap) so embeddings()'s usage accounting works uniformly across all three shapes — falls
 		// back to 0 (via embeddings()'s `?: 0` reads) when the header is also absent.
 		if ( !parsedResponse.keyExists( "inputTextTokenCount" ) && isStruct( httpResult.responseHeader ?: {} ) ) {
-			var inputTokenHeader = httpResult.responseHeader[ "X-Amzn-Bedrock-Input-Token-Count" ] ?: "";
+			var inputTokenHeader = firstHeaderValue( httpResult.responseHeader[ "X-Amzn-Bedrock-Input-Token-Count" ] ?: "" );
 			if ( len( inputTokenHeader ) ) {
 				parsedResponse[ "inputTextTokenCount" ] = val( inputTokenHeader );
 			}

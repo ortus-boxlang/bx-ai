@@ -19,6 +19,7 @@ package ortus.boxlang.ai.providers;
 
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -601,30 +602,44 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "getBedrockPath's encoded model ID, re-encoded by AwsSignatureV4's canonical-request pass, round-trips without residual reserved characters" )
+	@DisplayName( "getBedrockPath's wire path, re-encoded by AwsSignatureV4's actual canonical-request computation, double-encodes as AWS's non-S3 rule requires" )
 	public void testPathEncodingAgreesWithSigner() {
-		// item-2 fix: the wire path (single-encoded) is passed as-is into
-		// AwsSignatureV4.signRequest()'s `path` argument, which re-encodes it a second time
-		// internally (AWS's documented double-URI-encode-except-S3 rule) to build the canonical
-		// request. Verifying via the public encodeComponent() seam that encoding the same raw
-		// value twice produces the expected double-escaped form confirms the two paths agree.
+		// Test-honesty fix (review finding): the previous version of this test never touched the
+		// signer at all — it only called encodeComponent() twice, which re-derives the same math
+		// AwsSignatureV4 uses internally without exercising the signer itself, and so could never
+		// catch a regression there. This version calls BedrockService.getBedrockPath() for the
+		// real wire path, then AwsSignatureV4.computeCanonicalPath() — a small public seam that
+		// runs the exact same private uriEncodePath() signRequest() calls internally — to get the
+		// actual canonical-request path the signer would compute and sign. Confirms the documented
+		// contract (see getBedrockPath()'s and AwsSignatureV4.encodeComponent()'s docblocks): the
+		// wire path is single-encoded, the canonical (signed) path is double-encoded, and that
+		// double-encoding is deliberate/correct (AWS's "double URI-encode except S3" rule,
+		// matching botocore), not a bug.
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
-				signer = new src.main.bx.models.util.AwsSignatureV4()
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
 				arn = "arn:aws:bedrock:us-east-1:123456789012:inference-profile/abc"
-				once  = signer.encodeComponent( arn )
-				twice = signer.encodeComponent( once )
-			""",
+				wirePath      = service.getBedrockPath( arn )
+				signer        = new src.main.bx.models.util.AwsSignatureV4()
+				canonicalPath = signer.computeCanonicalPath( wirePath )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
 			context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( Key.of( "once" ) ).toString() )
-		    .isEqualTo( "arn%3Aaws%3Abedrock%3Aus-east-1%3A123456789012%3Ainference-profile%2Fabc" );
-		// Every "%" from the first pass must itself be escaped to "%25" by the second pass
-		assertThat( variables.get( Key.of( "twice" ) ).toString() )
-		    .isEqualTo( "arn%253Aaws%253Abedrock%253Aus-east-1%253A123456789012%253Ainference-profile%252Fabc" );
+		String	wirePath		= variables.get( Key.of( "wirePath" ) ).toString();
+		String	canonicalPath	= variables.get( Key.of( "canonicalPath" ) ).toString();
+
+		assertWithMessage( "the wire path must carry a single-encoded ':'" )
+		    .that( wirePath ).contains( "%3A" );
+		assertWithMessage( "the wire path must not already be double-encoded" )
+		    .that( wirePath ).doesNotContain( "%253A" );
+		assertWithMessage( "the canonical request path (what AwsSignatureV4 actually signs) must be double-encoded" )
+		    .that( canonicalPath ).contains( "%253A" );
 	}
 
 	// -----------------------------------------------------------------------
@@ -679,6 +694,49 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		    .isEqualTo( "https://bedrock-runtime.us-west-2.amazonaws.com/model/amazon.titan-text-express-v1/invoke" );
 	}
 
+	@Test
+	@DisplayName( "baseURL with a path prefix is preserved in both the wire endpoint and getBedrockPath/getBedrockStreamPath, not silently dropped" )
+	public void testBaseURLPathPrefix() {
+		// Review finding: getBedrockHost()'s listFirst() only ever returned the host, silently
+		// discarding any path prefix in baseURL (e.g. a proxy/gateway mounted under "/bedrock").
+		// getBedrockPathPrefix() now recovers that prefix and getBedrockPath()/getBedrockStreamPath()
+		// prepend it ahead of "/model/...", so both the wire URL and the path handed to
+		// AwsSignatureV4.signRequest() for signing carry it.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s",
+						baseURL: "https://proxy.internal/bedrock"
+					}
+				)
+				endpoint       = service.getBedrockEndpoint( "anthropic.claude-3-sonnet-20240229-v1:0" )
+				path           = service.getBedrockPath( "anthropic.claude-3-sonnet-20240229-v1:0" )
+				streamEndpoint = service.getBedrockStreamEndpoint( "anthropic.claude-3-sonnet-20240229-v1:0" )
+				streamPath     = service.getBedrockStreamPath( "anthropic.claude-3-sonnet-20240229-v1:0" )
+				host           = service.getBedrockHost()
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "endpoint" ) ).toString() )
+		    .isEqualTo( "https://proxy.internal/bedrock/model/anthropic.claude-3-sonnet-20240229-v1%3A0/invoke" );
+		assertThat( variables.get( Key.of( "path" ) ).toString() )
+		    .isEqualTo( "/bedrock/model/anthropic.claude-3-sonnet-20240229-v1%3A0/invoke" );
+		assertThat( variables.get( Key.of( "streamEndpoint" ) ).toString() )
+		    .isEqualTo( "https://proxy.internal/bedrock/model/anthropic.claude-3-sonnet-20240229-v1%3A0/invoke-with-response-stream" );
+		assertThat( variables.get( Key.of( "streamPath" ) ).toString() )
+		    .isEqualTo( "/bedrock/model/anthropic.claude-3-sonnet-20240229-v1%3A0/invoke-with-response-stream" );
+		// The Host header / SigV4 host must stay just the host — the path prefix belongs on the
+		// path, not folded into Host.
+		assertThat( variables.get( Key.of( "host" ) ).toString() ).isEqualTo( "proxy.internal" );
+	}
+
 	// -----------------------------------------------------------------------
 	// Chunk 2 — item 14: bearer / API-key auth
 	// -----------------------------------------------------------------------
@@ -709,6 +767,12 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "useBearerAuth() is false for struct-based AWS credential configuration" )
 	public void testStructConfigureDoesNotUseBearerAuth() {
+		// Guard: when aiService() merges in moduleRecord.settings.apiKey (see beforeEach) ahead of
+		// the explicit awsAccessKeyId passed below, variables.awsAccessKeyId can end up empty if
+		// dotenv has no real AWS creds — at that point this assertion depends solely on the
+		// ambient AWS_BEARER_TOKEN_BEDROCK env var being unset.
+		assumeTrue( System.getenv( "AWS_BEARER_TOKEN_BEDROCK" ) == null, "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
+
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
@@ -730,12 +794,45 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	public void testNestedCredentialsStructDoesNotUseBearerAuth() {
 		// Guards against a false positive: variables.apiKey holds the nested credentials STRUCT
 		// in this flow (see beforeEach), which must NOT be mistaken for a bearer-mode string key.
+		// When dotenv has no real AWS creds, variables.awsAccessKeyId ends up empty too, so this
+		// assertion falls through to depending on the ambient AWS_BEARER_TOKEN_BEDROCK env var
+		// being unset.
+		assumeTrue( System.getenv( "AWS_BEARER_TOKEN_BEDROCK" ) == null, "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
+
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
 				service = aiService( "bedrock", {} )
 				usesBearer = service.useBearerAuth()
 			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "usesBearer" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "useBearerAuth() is false when a plain-string apiKey AND struct AWS credentials are both configured (explicit AWS creds win)" )
+	public void testExplicitAwsCredsWinOverStringApiKey() {
+		// Review finding: aiService()/aiChat() inject the module-wide settings.apiKey (or a
+		// BEDROCK_API_KEY env var) into every provider's options as a plain string, including
+		// Bedrock's — so a bare string apiKey must NOT silently disable SigV4 when a struct of AWS
+		// credentials was ALSO supplied in the same configure() call. Explicit AWS credentials
+		// must win regardless of the ambient AWS_BEARER_TOKEN_BEDROCK env var, since
+		// variables.awsAccessKeyId is non-empty here (short-circuits useBearerAuth() to false).
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = new bxModules.bxai.models.providers.BedrockService()
+				service.configure( {
+					apiKey: "some-plain-string-key",
+					awsAccessKeyId: "%s",
+					awsSecretAccessKey: "%s",
+					region: "%s"
+				} )
+				usesBearer = service.useBearerAuth()
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
 			context
 		);
 		// @formatter:on
