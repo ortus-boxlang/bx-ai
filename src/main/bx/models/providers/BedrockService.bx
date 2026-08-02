@@ -25,8 +25,13 @@
  * - Amazon Titan (amazon.titan-*)
  * - Meta Llama (meta.llama-*)
  * - Cohere (cohere.*) — uses the Claude-shape transform, no dedicated Cohere transform
- * - Legacy Mistral (mistral.mistral-7b-instruct-*, mixtral-*, mistral-large-2402-*)
- * - Everything else (AI21 Jamba, modern Mistral, and other post-2024 families) — OpenAI shape
+ * - Legacy Mistral (mistral.mistral-7b-instruct-*, mixtral-*, mistral-large/small-2402-*)
+ * - Opaque inference-profile / provisioned-model ARNs with no vendor substring — assumed
+ *   Claude, preserving the historical default for the common case
+ * - Everything else (AI21 Jamba, modern Mistral, Amazon Nova, and other post-2024 families)
+ *   — OpenAI shape. No dedicated Nova transform exists yet (tracked under #227's Converse
+ *   discussion), so Nova requests 400 loudly against this fallback instead of silently
+ *   mis-parsing.
  *
  * @see https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html
  * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
@@ -76,6 +81,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		AWS_SERVICE = "bedrock";
 		// Synthetic tool name used to force Claude into structured-output mode on Bedrock
 		STRUCTURED_OUTPUT_TOOL = "structured_output";
+		// Anchored (start-of-string or region-prefix dot, e.g. "eu.mistral.") match for the
+		// legacy, prompt-shaped Mistral models. Everything else on Bedrock's Mistral line is
+		// OpenAI-shaped.
+		LEGACY_MISTRAL_PATTERN = "(^|\.)mistral\.(mistral-7b-instruct-|mixtral-|mistral-(large|small)-2402-)";
 	}
 
 	/**
@@ -241,7 +250,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *
 	 * @modelId The Bedrock model ID
 	 *
-	 * @return The model family: "claude", "titan", "llama", "cohere", "ai21", "mistral", or "openai"
+	 * @return The model family: "claude", "titan", "llama", "cohere", "mistral", or "openai"
 	 */
 	private string function detectModelFamily( required string modelId ){
 		var id = arguments.modelId.lcase();
@@ -254,36 +263,42 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			return "llama";
 		} else if ( id.findNoCase( "cohere" ) ) {
 			return "cohere";
-		} else if ( id.findNoCase( "ai21" ) ) {
-			return "ai21";
-		} else if ( id.findNoCase( "mistral" ) && isLegacyMistral( id ) ) {
+		} else if ( isLegacyMistral( id ) ) {
 			return "mistral";
+		} else if ( id.startsWith( "arn:" ) ) {
+			// Opaque inference-profile / provisioned-model ARNs carry no vendor substring in
+			// the id itself, so none of the checks above can match. These previously fell
+			// through to the Claude default and worked for Claude-backed profiles (the common
+			// case) — preserve that explicitly instead of silently routing them into the
+			// openai fallback below (400).
+			return "claude";
 		}
 
-		// Every other Bedrock family — ai21 Jamba, zai/GLM, qwen, deepseek, moonshotai/Kimi,
-		// minimax, nvidia/Nemotron, google/gemma, modern Mistral (Ministral 3, Magistral,
-		// Devstral, Voxtral), plain openai/gpt-oss, and anything unrecognized — speaks the
-		// OpenAI chat-completions shape on Bedrock. Defaulting here (rather than to Claude)
-		// means an unsupported model fails loudly against the wrong shape instead of
-		// transformResponseFromClaude() silently returning "".
+		// Every other Bedrock family — ai21 Jamba (OpenAI-shaped; no dedicated branch needed),
+		// zai/GLM, qwen, deepseek, moonshotai/Kimi, minimax, nvidia/Nemotron, google/gemma,
+		// modern Mistral (Ministral 3, Magistral, Devstral, Voxtral, Mistral-Large-2407+),
+		// plain openai/gpt-oss, Amazon Nova (no dedicated transform exists yet — see #227's
+		// Converse API discussion — so it 400s loudly here instead of silently mis-parsing),
+		// and anything unrecognized — speaks the OpenAI chat-completions shape on Bedrock.
+		// Defaulting here (rather than to Claude) means an unsupported model fails loudly
+		// against the wrong shape instead of transformResponseFromClaude() silently returning "".
 		return "openai";
 	}
 
 	/**
-	 * Legacy Mistral models (7B-Instruct, Mixtral, Mistral-Large-2402) use the raw
+	 * Legacy Mistral models (7B-Instruct, Mixtral, Mistral-Large/Small-2402) use the raw
 	 * <s>[INST] prompt/outputs shape. Newer Mistral models (Ministral 3, Magistral,
-	 * Devstral, Voxtral) are OpenAI-shaped and reject that legacy format with a 400.
+	 * Devstral, Voxtral, Mistral-Large-2407+) are OpenAI-shaped and reject that legacy
+	 * format with a 400. Anchored to the start of the id or a region-prefix dot (e.g.
+	 * "eu.mistral.mixtral-...") so region-prefixed ids still match, and case-insensitive
+	 * regardless of caller casing.
 	 *
-	 * @id The lowercased Bedrock model ID
+	 * @id The Bedrock model ID (any case)
+	 *
+	 * @return True if this is a legacy, prompt-shaped Mistral model
 	 */
 	private boolean function isLegacyMistral( required string id ){
-		var legacyPrefixes = [ "mistral.mistral-7b-instruct-", "mistral.mixtral-", "mistral.mistral-large-2402-" ];
-		for ( var prefix in legacyPrefixes ) {
-			if ( arguments.id.startsWith( prefix ) ) {
-				return true;
-			}
-		}
-		return false;
+		return reFindNoCase( static.LEGACY_MISTRAL_PATTERN, arguments.id ) > 0;
 	}
 
 	/**
@@ -1635,7 +1650,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		switch ( arguments.modelFamily ) {
 			case "claude":
-				// Claude streaming format
+			case "cohere":
+				// Cohere has no dedicated Bedrock transform; keep it on the Claude-shape
+				// stream chunks it has always used rather than falling into the openai default.
 				if ( arguments.chunk.keyExists( "type" ) ) {
 					switch ( arguments.chunk.type ) {
 						case "content_block_delta":
@@ -1689,7 +1706,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				break;
 
 			case "openai":
-				// OpenAI-compatible streaming format - already in standard format
+			default:
+				// OpenAI-compatible streaming format - already in standard format. Also the
+				// fallback for any family not explicitly handled above (ai21 and everything
+				// else), matching detectModelFamily()'s and transformRequestForModel()'s
+				// openai default — family not in this switch ⇒ openai, in all three switches.
 				if ( arguments.chunk.keyExists( "choices" ) && isArray( arguments.chunk.choices ) && arguments.chunk.choices.len() > 0 ) {
 					var delta = arguments.chunk.choices[ 1 ].delta ?: {};
 					if ( delta.keyExists( "content" ) ) {
@@ -1698,13 +1719,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					if ( arguments.chunk.choices[ 1 ].keyExists( "finish_reason" ) && !isNull( arguments.chunk.choices[ 1 ].finish_reason ) ) {
 						finishReason = arguments.chunk.choices[ 1 ].finish_reason;
 					}
-				}
-				break;
-
-			default:
-				// Default to Claude format
-				if ( arguments.chunk.keyExists( "delta" ) && arguments.chunk.delta.keyExists( "text" ) ) {
-					content = arguments.chunk.delta.text;
 				}
 		}
 

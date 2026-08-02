@@ -429,20 +429,35 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 					{ modelId: "meta.llama3-70b-instruct-v1:0",         expected: "llama"   },
 					// No dedicated Cohere transform exists; the fix preserves Cohere on the
 					// Claude-shape request rather than letting it fall into the new openai default.
-					{ modelId: "cohere.command-r-v1:0",                 expected: "claude"  }
+					{ modelId: "cohere.command-r-v1:0",                 expected: "claude"  },
+					// ai21 Jamba is OpenAI-shaped; the removed ai21 branch used to route it to
+					// the Claude transform instead (silent zero chunks on stream).
+					{ modelId: "ai21.jamba-1-5-large-v1:0",             expected: "openai"  },
+					{ modelId: "mistral.mistral-large-2402-v1:0",       expected: "mistral" },
+					{ modelId: "mistral.mistral-small-2402-v1:0",       expected: "mistral" },
+					{ modelId: "mistral.mistral-large-2407-v1:0",       expected: "openai"  },
+					{ modelId: "mistral.magistral-small-2509-v1:0",     expected: "openai"  },
+					// Region-prefixed legacy Mistral: the anchored regex must still match past
+					// the "eu." prefix.
+					{ modelId: "eu.mistral.mixtral-8x7b-instruct-v0:1", expected: "mistral" },
+					// Opaque inference-profile ARN with no vendor substring: previously fell
+					// through to the Claude default; the ARN guard preserves that explicitly.
+					{ modelId: "arn:aws:bedrock:eu-west-2:123456789012:application-inference-profile/abc123", expected: "claude" },
+					// Amazon Nova has no dedicated transform; documents the chosen openai fallback.
+					{ modelId: "amazon.nova-lite-v1:0",                 expected: "openai"  }
 				]
 
 				mismatches = []
+				provider  = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
 
 				for ( testCase in cases ) {
-					provider = aiService(
-						"bedrock",
-						{
-							awsAccessKeyId: "%s",
-							awsSecretAccessKey: "%s",
-							region: "%s"
-						}
-					)
 					captured = {}
 					chatRequest = aiChatRequest(
 						aiMessage().user( "test" ),
@@ -458,7 +473,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 					provider.chat( chatRequest )
 					packet = captured.packet
 
-					shape = "unknown-shape"
+					shape = "unrecognized-shape"
 					if ( packet.keyExists( "anthropic_version" ) ) {
 						shape = "claude"
 					} else if ( packet.keyExists( "inputText" ) ) {
