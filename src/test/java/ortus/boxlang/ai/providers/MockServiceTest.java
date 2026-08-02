@@ -200,6 +200,26 @@ public class MockServiceTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "isEmpty" ) ) ).isTrue();
 	}
 
+	@DisplayName( "json return format parses correctly when a fence marker appears inside a JSON string value" )
+	@Test
+	public void testJsonReturnFormatFenceMarkerInsideStringValue() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        result = aiChat( "Hello", {}, {
+		            provider       : "mock",
+		            returnFormat   : "json",
+		            providerOptions: { responses: [ '{"code":"```json x ```"}' ] }
+		        } );
+		        hasCode = result.code == '```json x ```';
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasCode" ) ) ).isTrue();
+	}
+
 	@DisplayName( "instance usage: setResponses queue + request recording" )
 	@Test
 	public void testInstanceQueueAndRecording() {

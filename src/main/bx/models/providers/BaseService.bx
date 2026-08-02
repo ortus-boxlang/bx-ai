@@ -806,10 +806,22 @@ abstract class implements="IAiService" {
 	 *
 	 * @content The raw LLM content to extract JSON from
 	 *
-	 * @return The parsed JSON (struct/array), or an empty struct if none was found
+	 * @return The parsed JSON value - struct, array, string, number, boolean, or null - or an
+	 *         empty struct if no JSON could be found/parsed
 	 */
 	private any function extractJSONContent( required string content ){
-		return new JSONExtractorTransformer( { strictMode : false } ).transform( arguments.content );
+		var result = new JSONExtractorTransformer( { strictMode : false } ).transform( arguments.content );
+
+		// Extraction found nothing usable - warn so this degraded path isn't silent, but never throw
+		if ( isStruct( result ) && structIsEmpty( result ) && len( arguments.content.trim() ) > 0 ) {
+			writeLog(
+				text: "aiChat returnFormat json: no parseable JSON found in model reply (first 200 chars): " & left( arguments.content, 200 ),
+				type: "warn",
+				log : "ai"
+			);
+		}
+
+		return result;
 	}
 
 	/**
