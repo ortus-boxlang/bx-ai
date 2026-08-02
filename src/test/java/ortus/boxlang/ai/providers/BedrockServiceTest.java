@@ -260,6 +260,61 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "formatToolsForClaude formats an MCPTool without throwing (bug repro)" )
+	public void testFormatToolsForClaudeWithMCPTool() {
+		// Deterministic / credential-free: a beforeLLMCall middleware captures the request
+		// packet and short-circuits before any signing or HTTP call. MCPTool (unlike ClosureTool)
+		// does not implement getArgumentsSchema(), which formatToolsForClaude() calls
+		// unconditionally; BaseTool.onMissingMethod() then throws "MissingMethod".
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				import bxModules.bxai.models.tools.MCPTool;
+
+				captured   = {}
+				mockClient = new src.test.bx.mocks.MockMCPClient()
+				remoteTool = new MCPTool( mockClient, {
+					name: "remoteThing",
+					description: "a remote thing",
+					inputSchema: { type: "object", properties: {}, required: [] }
+				} )
+
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hello" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", max_tokens: 50, tools: [ remoteTool ] },
+					{ provider: "bedrock" }
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				toolName       = captured.packet.tools[ 1 ].name
+				hasInputSchema = captured.packet.tools[ 1 ].keyExists( "input_schema" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "toolName" ) ) ).isEqualTo( "remoteThing" );
+		assertThat( variables.getAsBoolean( Key.of( "hasInputSchema" ) ) ).isTrue();
+	}
+
+	@Test
 	@DisplayName( "Structured output extracts the forced tool_use input (canned response)" )
 	public void testStructuredOutputExtractsFromToolUse() {
 		// Deterministic: a wrapLLMCall middleware returns a canned Bedrock Claude response
