@@ -53,29 +53,29 @@ public class GatewayRequestProcessorTest extends BaseIntegrationTest {
 	 * (statusCode/headers) instead of just the written content.
 	 */
 	private static final String SETUP = """
-		import bxModules.bxai.models.gateway.http.GatewayRequestProcessor;
-		import bxModules.bxai.models.gateway.http.GatewaySecurity;
-		import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
-		import bxModules.bxai.models.gateway.contracts.GatewayContext;
+	                                    import bxModules.bxai.models.gateway.http.GatewayRequestProcessor;
+	                                    import bxModules.bxai.models.gateway.http.GatewaySecurity;
+	                                    import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+	                                    import bxModules.bxai.models.gateway.contracts.GatewayContext;
 
-		secret = "test-shared-secret"
-		gw = aiGateway( "http", { secret: secret } )
-		gatewayRegistry().register( gw )
+	                                    secret = "test-shared-secret"
+	                                    gw = aiGateway( "http", { secret: secret } )
+	                                    gatewayRegistry().register( gw )
 
-		capturedResponse = {}
-		gwTransport = GatewayRequestProcessor::getHttpTransport()
-		gwTransport.writeResponse = ( response ) => {
-			capturedResponse = response
-			return response
-		}
+	                                    capturedResponse = {}
+	                                    gwTransport = GatewayRequestProcessor::getHttpTransport()
+	                                    gwTransport.writeResponse = ( response ) => {
+	                                    	capturedResponse = response
+	                                    	return response
+	                                    }
 
-		function signedHeaders( rawBody ) {
-			var timestamp = toString( int( now().getTime() / 1000 ) )
-			var nonce     = createUUID()
-			var signature = GatewaySecurity::sign( secret, timestamp, nonce, rawBody )
-			return { "X-Timestamp": timestamp, "X-Nonce": nonce, "X-Signature": signature, "Content-Type": "application/json" }
-		}
-		""";
+	                                    function signedHeaders( rawBody ) {
+	                                    	var timestamp = toString( int( now().getTime() / 1000 ) )
+	                                    	var nonce     = createUUID()
+	                                    	var signature = GatewaySecurity::sign( secret, timestamp, nonce, rawBody )
+	                                    	return { "X-Timestamp": timestamp, "X-Nonce": nonce, "X-Signature": signature, "Content-Type": "application/json" }
+	                                    }
+	                                    """;
 
 	@DisplayName( "full round trip: suspend -> GET pending -> signed POST decision -> resolved decision returned" )
 	@Test
