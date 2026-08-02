@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
+import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
 
 public class BedrockServiceTest extends BaseIntegrationTest {
@@ -398,5 +399,144 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "defaultResult" ) ) ).isEqualTo( "defaultValue" );
 		assertThat( variables.get( Key.of( "profileArn" ) ) ).isEqualTo( "arn:aws:test:123" );
 		assertThat( variables.get( Key.of( "customVal" ) ) ).isEqualTo( "customValue" );
+	}
+
+	@Test
+	@DisplayName( "Claude-on-Bedrock response transform joins all text content blocks, not just the first" )
+	public void testClaudeContentJoinsMultipleTextBlocks() {
+		// Deterministic: a wrapLLMCall middleware returns a canned Bedrock Claude response with
+		// TWO separate "type":"text" content blocks (e.g. text interleaved around a thinking/
+		// tool_use block). Bedrock previously read only content[1], silently dropping the rest.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Say two things" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						return {
+							"content": [
+								{ "type": "text", "text": "Hello" },
+								{ "type": "text", "text": "World" }
+							],
+							"stop_reason": "end_turn",
+							"usage": { "input_tokens": 5, "output_tokens": 8 }
+						}
+					}
+				} )
+				result = provider.chat( chatRequest )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "result" ) ).toString() ).contains( "Hello" );
+		assertThat( variables.get( Key.of( "result" ) ).toString() ).contains( "World" );
+	}
+
+	@Test
+	@DisplayName( "Claude-on-Bedrock content join still allows tool_use extraction from the same content array" )
+	public void testClaudeContentJoinDoesNotBreakToolUse() {
+		// Regression guard for the item-6 fix: joining all "text" blocks must not interfere with
+		// the separate tool_use extraction path, which filters the same result.content array.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe, age 30" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{
+						provider: "bedrock",
+						schema: {
+							"type": "object",
+							"properties": { "name": { "type": "string" }, "age": { "type": "integer" } },
+							"required": [ "name", "age" ]
+						}
+					}
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						return {
+							"content": [
+								{ "type": "text", "text": "Sure, here you go:" },
+								{ "type": "tool_use", "name": "structured_output", "input": { "name": "John Doe", "age": 30 } }
+							],
+							"stop_reason": "tool_use",
+							"usage": { "input_tokens": 5, "output_tokens": 8 }
+						}
+					}
+				} )
+				result = provider.chat( chatRequest )
+				name   = result.name
+				age    = result.age
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "name" ) ).toString() ).isEqualTo( "John Doe" );
+		assertThat( variables.getAsInteger( Key.of( "age" ) ) ).isEqualTo( 30 );
+	}
+
+	@Test
+	@DisplayName( "configure() applies BaseService's module-settings merge (defaultParams + providers.Bedrock)" )
+	public void testConfigureMergesModuleSettings() {
+		// item-5 fix: struct-based configure() must call super.configure() so
+		// settings.defaultParams and settings.providers.Bedrock.{params,options} are merged into
+		// variables.params, the same as every other provider. Mutate the shared module settings
+		// struct in place and restore it afterward so other provider tests aren't affected.
+		IStruct	defaultParams	= ( IStruct ) moduleRecord.settings.get( "defaultParams" );
+		IStruct	providers		= ( IStruct ) moduleRecord.settings.get( "providers" );
+
+		defaultParams.put( "temperature", 0.42d );
+
+		Struct bedrockParams = new Struct();
+		bedrockParams.put( "max_tokens", 999 );
+		Struct bedrockOptions = new Struct();
+		bedrockOptions.put( "customBedrockOption", "yes" );
+		Struct bedrockProviderSettings = new Struct();
+		bedrockProviderSettings.put( "params", bedrockParams );
+		bedrockProviderSettings.put( "options", bedrockOptions );
+		providers.put( "Bedrock", bedrockProviderSettings );
+
+		try {
+			// @formatter:off
+			executeWithTimeoutHandling(
+				"""
+					service = aiService(
+						"bedrock",
+						{
+							awsAccessKeyId: "%s",
+							awsSecretAccessKey: "%s",
+							region: "%s"
+						}
+					)
+					params         = service.getParams()
+					hasTemperature = params.keyExists( "temperature" )
+					temperature    = params.temperature
+					maxTokens      = params.max_tokens
+				""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+				context
+			);
+			// @formatter:on
+
+			assertThat( variables.getAsBoolean( Key.of( "hasTemperature" ) ) ).isTrue();
+			assertThat( variables.get( Key.of( "temperature" ) ) ).isEqualTo( 0.42d );
+			assertThat( variables.getAsInteger( Key.of( "maxTokens" ) ) ).isEqualTo( 999 );
+		} finally {
+			defaultParams.remove( "temperature" );
+			providers.remove( "Bedrock" );
+		}
 	}
 }
