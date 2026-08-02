@@ -30,7 +30,7 @@ class {
 		 * - interceptorService : The BoxLang InterceptorService
 		 * - log : A logger for the module config itself
 		 */
-		final CORE_GATEWAYS = [ "mock" ];
+		final CORE_GATEWAYS = [ "mock", "cli", "http" ];
 	}
 
 	/**
@@ -50,6 +50,12 @@ class {
 		switch ( arguments.name ) {
 			case "mock":
 				targetClass = "bxModules.bxai.models.gateway.MockGateway"
+				break
+			case "cli":
+				targetClass = "bxModules.bxai.models.gateway.cli.CliGateway"
+				break
+			case "http":
+				targetClass = "bxModules.bxai.models.gateway.http.HttpGateway"
 				break
 			default:
 				// Announce the gateway request so external modules can listen and supply one
