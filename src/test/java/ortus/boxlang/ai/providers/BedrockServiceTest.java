@@ -18,6 +18,7 @@
 package ortus.boxlang.ai.providers;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -538,5 +539,317 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 			defaultParams.remove( "temperature" );
 			providers.remove( "Bedrock" );
 		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Chunk 2 — item 2: routing/encoding, path construction
+	// -----------------------------------------------------------------------
+
+	@Test
+	@DisplayName( "getBedrockPath/getBedrockStreamPath route through /model/{id}/invoke for a plain model ID, encoding its colon" )
+	public void testPathForPlainModelId() {
+		// item-2 fix: the only real Bedrock InvokeModel route is /model/{modelId}/invoke — there
+		// is no "/application-inference-profile/..." route. The modelId is percent-encoded as a
+		// single path segment (its literal ":" included), matching what AwsSignatureV4 expects
+		// so the wire path and the signed canonical path agree.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				path       = service.getBedrockPath( "anthropic.claude-3-sonnet-20240229-v1:0" )
+				streamPath = service.getBedrockStreamPath( "anthropic.claude-3-sonnet-20240229-v1:0" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "path" ) ).toString() )
+		    .isEqualTo( "/model/anthropic.claude-3-sonnet-20240229-v1%3A0/invoke" );
+		assertThat( variables.get( Key.of( "streamPath" ) ).toString() )
+		    .isEqualTo( "/model/anthropic.claude-3-sonnet-20240229-v1%3A0/invoke-with-response-stream" );
+	}
+
+	@Test
+	@DisplayName( "getBedrockPath routes an inference-profile ARN through /model/{arn}/invoke, not /application-inference-profile/..." )
+	public void testPathForInferenceProfileArn() {
+		// item-2 fix: previously this emitted "/application-inference-profile/{arn}/invoke",
+		// a route that does not exist in the Bedrock API, with the ARN interpolated unencoded.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				arn  = "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/my-profile"
+				path = service.getBedrockPath( arn )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		String path = variables.get( Key.of( "path" ) ).toString();
+		assertWithMessage( "must not use the non-existent application-inference-profile route" )
+		    .that( path ).doesNotContain( "application-inference-profile/arn" );
+		assertThat( path ).startsWith( "/model/" );
+		assertThat( path ).endsWith( "/invoke" );
+		// ":" and the ARN's embedded "/" must both be percent-encoded as one opaque path segment
+		assertThat( path ).contains( "arn%3Aaws%3Abedrock%3Aus-east-1%3A123456789012%3Aapplication-inference-profile%2Fmy-profile" );
+	}
+
+	@Test
+	@DisplayName( "getBedrockPath's encoded model ID, re-encoded by AwsSignatureV4's canonical-request pass, round-trips without residual reserved characters" )
+	public void testPathEncodingAgreesWithSigner() {
+		// item-2 fix: the wire path (single-encoded) is passed as-is into
+		// AwsSignatureV4.signRequest()'s `path` argument, which re-encodes it a second time
+		// internally (AWS's documented double-URI-encode-except-S3 rule) to build the canonical
+		// request. Verifying via the public encodeComponent() seam that encoding the same raw
+		// value twice produces the expected double-escaped form confirms the two paths agree.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				signer = new src.main.bx.models.util.AwsSignatureV4()
+				arn = "arn:aws:bedrock:us-east-1:123456789012:inference-profile/abc"
+				once  = signer.encodeComponent( arn )
+				twice = signer.encodeComponent( once )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "once" ) ).toString() )
+		    .isEqualTo( "arn%3Aaws%3Abedrock%3Aus-east-1%3A123456789012%3Ainference-profile%2Fabc" );
+		// Every "%" from the first pass must itself be escaped to "%25" by the second pass
+		assertThat( variables.get( Key.of( "twice" ) ).toString() )
+		    .isEqualTo( "arn%253Aaws%253Abedrock%253Aus-east-1%253A123456789012%253Ainference-profile%252Fabc" );
+	}
+
+	// -----------------------------------------------------------------------
+	// Chunk 2 — item 12: baseURL / endpoint override
+	// -----------------------------------------------------------------------
+
+	@Test
+	@DisplayName( "baseURL config overrides the Bedrock host for signing and the request URL" )
+	public void testBaseURLOverride() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s",
+						baseURL: "http://localhost:4566"
+					}
+				)
+				endpoint = service.getBedrockEndpoint( "anthropic.claude-3-sonnet-20240229-v1:0" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "endpoint" ) ).toString() )
+		    .isEqualTo( "http://localhost:4566/model/anthropic.claude-3-sonnet-20240229-v1%3A0/invoke" );
+	}
+
+	@Test
+	@DisplayName( "Without a baseURL override, the default regional AWS endpoint is used" )
+	public void testDefaultEndpointUnchanged() {
+		// Instantiate + configure() directly rather than via the aiService() BIF: the test
+		// class's beforeEach() puts a credentials struct (with its own .env-derived region) on
+		// moduleRecord.settings.apiKey, and aiService() merges that in ahead of configure()'s own
+		// struct-vs-nested-apiKey precedence — irrelevant to what this test verifies (the default
+		// host template), but it would shadow the region asserted on below.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = new bxModules.bxai.models.providers.BedrockService()
+				service.configure( { awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "us-west-2" } )
+				endpoint = service.getBedrockEndpoint( "amazon.titan-text-express-v1" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "endpoint" ) ).toString() )
+		    .isEqualTo( "https://bedrock-runtime.us-west-2.amazonaws.com/model/amazon.titan-text-express-v1/invoke" );
+	}
+
+	// -----------------------------------------------------------------------
+	// Chunk 2 — item 14: bearer / API-key auth
+	// -----------------------------------------------------------------------
+
+	@Test
+	@DisplayName( "configure() with a plain string sets it as the apiKey (bearer auth), not modelId" )
+	public void testConfigureStringIsApiKeyNotModelId() {
+		// item-14 fix: configure(string) now follows the module-wide "string = apiKey" contract
+		// instead of the old (incorrect) "string = modelId" behavior.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = new bxModules.bxai.models.providers.BedrockService()
+				service.configure( "my-bedrock-api-key" )
+				apiKey        = service.getApiKey()
+				modelIdEmpty  = !len( service.getModelId() )
+				usesBearer    = service.useBearerAuth()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "apiKey" ) ).toString() ).isEqualTo( "my-bedrock-api-key" );
+		assertThat( variables.getAsBoolean( Key.of( "modelIdEmpty" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "usesBearer" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "useBearerAuth() is false for struct-based AWS credential configuration" )
+	public void testStructConfigureDoesNotUseBearerAuth() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				usesBearer = service.useBearerAuth()
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "usesBearer" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "useBearerAuth() is false for nested apiKey credentials struct (aiService flow), even though apiKey is set" )
+	public void testNestedCredentialsStructDoesNotUseBearerAuth() {
+		// Guards against a false positive: variables.apiKey holds the nested credentials STRUCT
+		// in this flow (see beforeEach), which must NOT be mistaken for a bearer-mode string key.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService( "bedrock", {} )
+				usesBearer = service.useBearerAuth()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "usesBearer" ) ) ).isFalse();
+	}
+
+	// -----------------------------------------------------------------------
+	// Chunk 2 — item 16 + item 15: header passthrough + Guardrails
+	// -----------------------------------------------------------------------
+
+	@Test
+	@DisplayName( "buildProviderOptionHeaders passes through generic x-amzn-bedrock-* providerOptions keys" )
+	public void testGenericHeaderPassthrough() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				headers = service.buildProviderOptionHeaders( {
+					"x-amzn-bedrock-performanceconfig-latency": "optimized",
+					"Service-Tier": "flex",
+					unrelatedOption: "ignored"
+				} )
+				hasLatency     = headers.keyExists( "x-amzn-bedrock-performanceconfig-latency" )
+				latencyVal     = headers[ "x-amzn-bedrock-performanceconfig-latency" ]
+				hasServiceTier = headers.keyExists( "Service-Tier" )
+				hasUnrelated   = headers.keyExists( "unrelatedOption" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasLatency" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "latencyVal" ) ) ).isEqualTo( "optimized" );
+		assertWithMessage( "keys not shaped like x-amzn-bedrock-* must not pass through" )
+		    .that( variables.getAsBoolean( Key.of( "hasServiceTier" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "hasUnrelated" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "buildProviderOptionHeaders honors the bedrockHeaders struct shorthand" )
+	public void testBedrockHeadersStructShorthand() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				headers = service.buildProviderOptionHeaders( {
+					bedrockHeaders: {
+						"Service-Tier": "flex",
+						"Request-Metadata": "project=demo"
+					}
+				} )
+				serviceTier = headers[ "Service-Tier" ]
+				requestMeta = headers[ "Request-Metadata" ]
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "serviceTier" ) ) ).isEqualTo( "flex" );
+		assertThat( variables.get( Key.of( "requestMeta" ) ).toString() ).contains( "demo" );
+	}
+
+	@Test
+	@DisplayName( "buildProviderOptionHeaders maps guardrailIdentifier/Version/Trace to X-Amzn-Bedrock-Guardrail* headers" )
+	public void testGuardrailHeaders() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				headers = service.buildProviderOptionHeaders( {
+					guardrailIdentifier: "gr-abc123",
+					guardrailVersion: "1",
+					guardrailTrace: "ENABLED"
+				} )
+				identifier = headers[ "X-Amzn-Bedrock-GuardrailIdentifier" ]
+				version    = headers[ "X-Amzn-Bedrock-GuardrailVersion" ]
+				trace      = headers[ "X-Amzn-Bedrock-Trace" ]
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "identifier" ) ) ).isEqualTo( "gr-abc123" );
+		assertThat( variables.get( Key.of( "version" ) ) ).isEqualTo( "1" );
+		assertThat( variables.get( Key.of( "trace" ) ) ).isEqualTo( "ENABLED" );
+	}
+
+	@Test
+	@DisplayName( "buildProviderOptionHeaders returns an empty struct when no relevant providerOptions are set" )
+	public void testNoExtraHeadersWhenNoProviderOptions() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				headers   = service.buildProviderOptionHeaders( { inferenceProfileArn: "arn:aws:test:123" } )
+				isEmpty   = structIsEmpty( headers )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isEmpty" ) ) ).isTrue();
 	}
 }

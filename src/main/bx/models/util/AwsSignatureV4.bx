@@ -250,6 +250,23 @@ class {
 	}
 
 	/**
+	 * Percent-encode a single opaque value (e.g. a Bedrock model ID or ARN used as one path
+	 * segment) using the same per-character AWS-style encoding this class uses internally to
+	 * build the canonical request. Exposed so callers can build a request path that agrees,
+	 * byte-for-byte, with what signRequest()'s canonical request computation expects — pass the
+	 * SAME raw (unencoded) value to both this method (to build the wire path) and to
+	 * signRequest()'s `path` argument (which re-derives the canonical URI itself); do not pass
+	 * an already-encoded path into signRequest(), or its own encoding pass will double-encode it.
+	 *
+	 * @component The raw value to encode (may contain reserved characters like ":" or "/")
+	 *
+	 * @return The percent-encoded value
+	 */
+	public string function encodeComponent( required string component ) {
+		return uriEncodeComponent( arguments.component );
+	}
+
+	/**
 	 * URI encode a path component for AWS Signature V4
 	 * Each path segment must be individually encoded
 	 */

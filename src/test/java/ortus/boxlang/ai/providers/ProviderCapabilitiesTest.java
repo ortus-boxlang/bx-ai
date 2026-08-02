@@ -169,6 +169,19 @@ public class ProviderCapabilitiesTest extends BaseIntegrationTest {
 		assertThat( caps ).containsAtLeast( "chat", "stream", "embeddings" );
 	}
 
+	@Test
+	@DisplayName( "Bedrock reports chat, stream and embeddings capabilities" )
+	public void testBedrockCapabilities() {
+		// configure( "test-key" ) now follows the module-wide "string = apiKey" contract (a
+		// Bedrock long-term API key / bearer token) instead of the old, incorrect "string =
+		// modelId" behavior — this exercises that it no longer throws and capability reporting
+		// is unaffected by the auth mode.
+		Array caps = executeGetCapabilities( "Bedrock" );
+		assertThat( caps ).containsAtLeast( "chat", "stream", "embeddings" );
+		assertThat( executeHasCapability( "Bedrock", "chat" ) ).isTrue();
+		assertThat( executeHasCapability( "Bedrock", "embeddings" ) ).isTrue();
+	}
+
 	// -----------------------------------------------------------------------
 	// Chat-only providers
 	// -----------------------------------------------------------------------

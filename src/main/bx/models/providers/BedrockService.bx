@@ -18,7 +18,9 @@
  * like Claude, Titan, Llama, and others through AWS's managed service.
  *
  * Unlike other providers that use API keys, Bedrock uses AWS IAM authentication
- * with Signature Version 4 request signing.
+ * with Signature Version 4 request signing by default. It also supports Bedrock's
+ * long-term API keys (bearer auth): configure() with a plain string, or set the
+ * AWS_BEARER_TOKEN_BEDROCK environment variable, to skip SigV4 entirely.
  *
  * Supported model families:
  * - Anthropic Claude (claude-3-*, claude-instant-*)
@@ -64,6 +66,13 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	property name="modelId" default="";
 
 	/**
+	 * Endpoint override for the Bedrock runtime host (e.g. a VPC endpoint, LocalStack, or a
+	 * proxy). When empty, the default "bedrock-runtime.{region}.amazonaws.com" host is used.
+	 * Accepts a full "scheme://host[:port]" value; scheme defaults to https if omitted.
+	 */
+	property name="baseURL" default="";
+
+	/**
 	 * Static defaults
 	 */
 	static {
@@ -104,16 +113,22 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	/**
 	 * Configure the service with AWS credentials and region
 	 *
-	 *         OR a simple string for backward compatibility (treated as modelId)
+	 *         OR a simple string for backward compatibility. Per the module-wide "string =
+	 *         apiKey" contract (BaseService's configure()), a plain string is the API key —
+	 *         for Bedrock that means a long-term Bedrock API key, which is used as a bearer
+	 *         token (Authorization: Bearer ...) instead of AWS IAM/SigV4 signing.
 	 *
-	 * @options A struct containing: region, awsAccessKeyId, awsSecretAccessKey, awsSessionToken (optional), modelId (optional)
+	 * @options A struct containing: region, awsAccessKeyId, awsSecretAccessKey, awsSessionToken (optional), modelId (optional), baseURL (optional)
+	 *          OR a plain string Bedrock API key (bearer auth)
 	 *
 	 * @return The service instance
 	 */
 	IAiService function configure( required any options ){
 		if ( isSimpleValue( arguments.options ) ) {
-			// If a simple string is passed, treat it as model ID for compatibility
-			variables.modelId = arguments.options;
+			// Delegate to BaseService: sets variables.apiKey to the raw string. useBearerAuth()
+			// detects this (a simple, non-empty apiKey) and switches request signing to bearer
+			// auth, bypassing SigV4/AWS credentials entirely.
+			super.configure( arguments.options );
 		} else if ( isStruct( arguments.options ) ) {
 			// Delegate to BaseService for the module-settings merges (defaultParams,
 			// providers.Bedrock.{params,options}) that struct-based configure() must not skip.
@@ -145,6 +160,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			if ( arguments.options.keyExists( "model" ) ) {
 				variables.params.model = arguments.options.model;
 			}
+			if ( arguments.options.keyExists( "baseURL" ) && len( arguments.options.baseURL ) ) {
+				variables.baseURL = arguments.options.baseURL.trim();
+			}
 		}
 
 		return this;
@@ -169,75 +187,118 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				variables.region = envRegion;
 			}
 		}
+		if ( !len( variables.baseURL ) ) {
+			variables.baseURL = getSystemSetting( "BOXLANG_MODULES_BXAI_BEDROCK_BASEURL", "" );
+		}
 	}
 
 	/**
-	 * Get the Bedrock endpoint URL for the configured region and model
+	 * True when this service should authenticate with a Bedrock long-term API key (bearer
+	 * token) instead of AWS SigV4 request signing: either a plain string was passed to
+	 * configure() (per the module-wide "string = apiKey" contract), or the
+	 * AWS_BEARER_TOKEN_BEDROCK environment variable is set.
+	 */
+	public boolean function useBearerAuth(){
+		return ( isSimpleValue( variables.apiKey ) && len( variables.apiKey ) > 0 )
+			|| len( getSystemSetting( "AWS_BEARER_TOKEN_BEDROCK", "" ) ) > 0;
+	}
+
+	/**
+	 * The bearer token to use when useBearerAuth() is true: the configured apiKey string,
+	 * falling back to the AWS_BEARER_TOKEN_BEDROCK environment variable.
+	 */
+	public string function getBearerToken(){
+		if ( isSimpleValue( variables.apiKey ) && len( variables.apiKey ) > 0 ) {
+			return variables.apiKey;
+		}
+		return getSystemSetting( "AWS_BEARER_TOKEN_BEDROCK", "" );
+	}
+
+	/**
+	 * Get the Bedrock endpoint URL for the configured region/baseURL and model
 	 *
-	 * @modelIdOrArn The model ID or inference profile ARN to invoke
+	 * @modelIdOrArn The model ID or inference profile / provisioned-model ARN to invoke
 	 *
 	 * @return The full endpoint URL
 	 */
-	private string function getBedrockEndpoint( required string modelIdOrArn ){
-		return "https://bedrock-runtime.#variables.region#.amazonaws.com#getBedrockPath( arguments.modelIdOrArn )#";
+	public string function getBedrockEndpoint( required string modelIdOrArn ){
+		return "#getBedrockScheme()#://#getBedrockHost()##getBedrockPath( arguments.modelIdOrArn )#";
 	}
 
 	/**
-	 * Get the Bedrock host for the configured region
+	 * Get the Bedrock host: the configured baseURL's host (scheme + any path stripped) when an
+	 * override is set, otherwise the standard regional Bedrock runtime host. This is used for
+	 * both the request URL and the SigV4/request "Host" header, so the two always agree.
 	 */
-	private string function getBedrockHost(){
-		return "bedrock-runtime.#variables.region#.amazonaws.com";
-	}
-
-	/**
-	 * Get the request path for a model invocation
-	 * Supports both model IDs and inference profile ARNs
-	 *
-	 * @modelIdOrArn The model ID or inference profile ARN to invoke
-	 */
-	private string function getBedrockPath( required string modelIdOrArn ){
-		// Check if this is an inference profile ARN
-		if ( isInferenceProfileArn( arguments.modelIdOrArn ) ) {
-			return "/application-inference-profile/#arguments.modelIdOrArn#/invoke";
+	public string function getBedrockHost(){
+		if ( !len( variables.baseURL ) ) {
+			return "bedrock-runtime.#variables.region#.amazonaws.com";
 		}
-		return "/model/#arguments.modelIdOrArn#/invoke";
+		return listFirst( reReplaceNoCase( variables.baseURL, "^[a-z][a-z0-9+.-]*://", "", "one" ), "/" );
 	}
 
 	/**
-	 * Get the Bedrock streaming endpoint URL for the configured region and model
+	 * The URL scheme to use — "http" only when baseURL explicitly opts into it (e.g. a local
+	 * LocalStack/proxy endpoint), "https" otherwise (including the default AWS endpoint).
+	 */
+	private string function getBedrockScheme(){
+		return ( len( variables.baseURL ) && variables.baseURL.reFindNoCase( "^http://" ) > 0 ) ? "http" : "https";
+	}
+
+	/**
+	 * Get the request path for a model invocation.
 	 *
-	 * @modelIdOrArn The model ID or inference profile ARN to invoke
+	 * The Bedrock InvokeModel API has exactly one route — POST /model/{modelId}/invoke — where
+	 * {modelId} accepts a plain model ID or an inference-profile / application-inference-profile
+	 * / provisioned-model ARN. There is no separate "/application-inference-profile/..." route.
+	 *
+	 * The modelId/ARN is percent-encoded as a single opaque path segment (including its literal
+	 * ":" and, for ARNs, "/" characters) exactly once here — this encoded form is what goes on
+	 * the wire. The same raw (unencoded) path passed to AwsSignatureV4.signRequest() below is
+	 * re-encoded a second time internally by its uriEncodePath(), which is the AWS-documented
+	 * "double URI-encode except S3" canonical-request rule — so signing this already-encoded
+	 * path here would double up on that and produce a mismatched signature. Passing the same
+	 * modelIdOrArn through the same encodeComponent() call for both the wire path and the value
+	 * handed to the signer keeps the two in agreement.
+	 *
+	 * @modelIdOrArn The model ID or ARN to invoke
+	 */
+	public string function getBedrockPath( required string modelIdOrArn ){
+		return "/model/#encodeBedrockModelId( arguments.modelIdOrArn )#/invoke";
+	}
+
+	/**
+	 * Get the Bedrock streaming endpoint URL for the configured region/baseURL and model
+	 *
+	 * @modelIdOrArn The model ID or ARN to invoke
 	 *
 	 * @return The full streaming endpoint URL
 	 */
-	private string function getBedrockStreamEndpoint( required string modelIdOrArn ){
-		return "https://bedrock-runtime.#variables.region#.amazonaws.com#getBedrockStreamPath( arguments.modelIdOrArn )#";
+	public string function getBedrockStreamEndpoint( required string modelIdOrArn ){
+		return "#getBedrockScheme()#://#getBedrockHost()##getBedrockStreamPath( arguments.modelIdOrArn )#";
 	}
 
 	/**
-	 * Get the request path for a streaming model invocation
-	 * Supports both model IDs and inference profile ARNs
+	 * Get the request path for a streaming model invocation. See getBedrockPath() for the
+	 * routing + encoding rationale — same rules, "-with-response-stream" suffix.
 	 *
-	 * @modelIdOrArn The model ID or inference profile ARN to invoke
+	 * @modelIdOrArn The model ID or ARN to invoke
 	 */
-	private string function getBedrockStreamPath( required string modelIdOrArn ){
-		// Check if this is an inference profile ARN
-		if ( isInferenceProfileArn( arguments.modelIdOrArn ) ) {
-			return "/application-inference-profile/#arguments.modelIdOrArn#/invoke-with-response-stream";
-		}
-		return "/model/#arguments.modelIdOrArn#/invoke-with-response-stream";
+	public string function getBedrockStreamPath( required string modelIdOrArn ){
+		return "/model/#encodeBedrockModelId( arguments.modelIdOrArn )#/invoke-with-response-stream";
 	}
 
 	/**
-	 * Check if the given string is an AWS Bedrock inference profile ARN
+	 * Percent-encode a Bedrock model ID or ARN as a single opaque path segment, using the same
+	 * per-character encoding AwsSignatureV4 applies when building the canonical request (see
+	 * AwsSignatureV4.uriEncodeComponent()). Encodes literal ":" (present in most model IDs, e.g.
+	 * "anthropic.claude-3-sonnet-20240229-v1:0") and, for ARNs, "/" as well — both are otherwise
+	 * illegal/ambiguous in a URL path segment.
 	 *
-	 * @arnOrId The string to check
-	 *
-	 * @return True if this is an inference profile ARN
+	 * @modelIdOrArn The model ID or ARN to encode
 	 */
-	private boolean function isInferenceProfileArn( required string arnOrId ){
-		return arguments.arnOrId.findNoCase( "arn:aws:bedrock" ) > 0
-			&& arguments.arnOrId.findNoCase( "inference-profile" ) > 0;
+	public string function encodeBedrockModelId( required string modelIdOrArn ){
+		return new AwsSignatureV4().encodeComponent( arguments.modelIdOrArn );
 	}
 
 	/**
@@ -1047,6 +1108,89 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
+	 * Build extra request headers driven by providerOptions:
+	 *   - Generic passthrough: any providerOptions key already shaped like a Bedrock header
+	 *     (matches `x-amzn-bedrock-*`, case-insensitive) is forwarded verbatim. Covers ad-hoc
+	 *     headers like PerformanceConfig-Latency, Service-Tier, Request-Metadata, Trace.
+	 *   - Struct shorthand: `providerOptions.bedrockHeaders = { "X-Amzn-Bedrock-...": "value" }`.
+	 *   - First-class Guardrails: `guardrailIdentifier` / `guardrailVersion` / `guardrailTrace`
+	 *     map to X-Amzn-Bedrock-GuardrailIdentifier / -GuardrailVersion / -Trace.
+	 *
+	 * Pure/no I/O, so it's directly unit-testable without a signer or HTTP call.
+	 *
+	 * @providerOptions An AiBaseRequest's providerOptions struct (chatRequest.getProviderOptions())
+	 *
+	 * @return Struct of header name -> value to add to the Bedrock InvokeModel request
+	 */
+	public struct function buildProviderOptionHeaders( required struct providerOptions ){
+		var extraHeaders = {};
+
+		for ( var key in arguments.providerOptions ) {
+			if ( key.reFindNoCase( "^x-amzn-bedrock-" ) ) {
+				extraHeaders[ key ] = arguments.providerOptions[ key ];
+			}
+		}
+
+		if (
+			arguments.providerOptions.keyExists( "bedrockHeaders" ) && isStruct( arguments.providerOptions.bedrockHeaders )
+		) {
+			extraHeaders.append( arguments.providerOptions.bedrockHeaders, true );
+		}
+
+		if (
+			arguments.providerOptions.keyExists( "guardrailIdentifier" ) && len( arguments.providerOptions.guardrailIdentifier )
+		) {
+			extraHeaders[ "X-Amzn-Bedrock-GuardrailIdentifier" ] = arguments.providerOptions.guardrailIdentifier;
+		}
+		if (
+			arguments.providerOptions.keyExists( "guardrailVersion" ) && len( arguments.providerOptions.guardrailVersion )
+		) {
+			extraHeaders[ "X-Amzn-Bedrock-GuardrailVersion" ] = arguments.providerOptions.guardrailVersion;
+		}
+		if (
+			arguments.providerOptions.keyExists( "guardrailTrace" ) && len( arguments.providerOptions.guardrailTrace )
+		) {
+			extraHeaders[ "X-Amzn-Bedrock-Trace" ] = arguments.providerOptions.guardrailTrace;
+		}
+
+		return extraHeaders;
+	}
+
+	/**
+	 * Detect a Bedrock Guardrails intervention on a response and log it. Bedrock reports this
+	 * via the `x-amzn-bedrock-guardrailaction` response header on InvokeModel, or (per some
+	 * model/response shapes) an `amazon-bedrock-guardrailAction` field in the response body.
+	 * There is no AiChatResponse/metadata object in this module to attach structured data to
+	 * (chat() returns plain strings/structs/arrays depending on returnFormat) — a warn-level log
+	 * line is the minimum surface for this, per the module's error-handling convention.
+	 *
+	 * @httpResult The raw HTTP result (for response headers)
+	 * @response   The parsed JSON response body
+	 */
+	private void function checkGuardrailIntervention( required struct httpResult, required struct response ){
+		var action = "";
+		if ( isStruct( arguments.httpResult.responseHeader ?: {} ) ) {
+			for ( var headerName in arguments.httpResult.responseHeader ) {
+				if ( headerName.reFindNoCase( "^x-amzn-bedrock-guardrailaction$" ) ) {
+					action = arguments.httpResult.responseHeader[ headerName ];
+					break;
+				}
+			}
+		}
+		if ( !len( action ) && arguments.response.keyExists( "amazon-bedrock-guardrailAction" ) ) {
+			action = arguments.response[ "amazon-bedrock-guardrailAction" ];
+		}
+
+		if ( len( action ) && action.findNoCase( "INTERVENED" ) ) {
+			writeLog(
+				text: "Bedrock guardrail intervened for this request (action=#action#)",
+				type: "warning",
+				log : "ai"
+			);
+		}
+	}
+
+	/**
 	 * Send a signed request to AWS Bedrock
 	 *
 	 * @modelId    The model ID or inference profile ARN to invoke
@@ -1088,24 +1232,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			println( buildBedrockRequestLog( arguments.aiRequest, arguments.dataPacket, endpoint ) );
 		}
 
-		// Sign the request using AWS Signature V4
-		var signer        = new AwsSignatureV4();
-		var signedHeaders = signer.signRequest(
-			method      = "POST",
-			host        = host,
-			path        = path,
-			queryString = "",
-			headers     = {
-				"content-type" : "application/json",
-				"accept"       : "application/json"
-			},
-			payload         = payload,
-			region          = variables.region,
-			service         = static.AWS_SERVICE,
-			accessKeyId     = variables.awsAccessKeyId,
-			secretAccessKey = variables.awsSecretAccessKey,
-			sessionToken    = variables.awsSessionToken
-		);
+		// Provider-option-driven extra headers (generic x-amzn-bedrock-* passthrough + Guardrails)
+		// — must be included in BOTH the signature (when SigV4 is used) and the wire request.
+		var extraHeaders = buildProviderOptionHeaders( arguments.aiRequest.getProviderOptions() );
 
 		// Make the HTTP request using fluent API
 		var httpService = http( url = endpoint )
@@ -1114,12 +1243,45 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			.timeout( arguments.aiRequest.getTimeout() )
 			.throwOnError( false )
 			.header( "Content-Type", "application/json" )
-			.header( "Accept", "application/json" )
-			.header( "Host", host );
+			.header( "Accept", "application/json" );
 
-		// Add signed headers
-		for ( var headerName in signedHeaders ) {
-			httpService.header( headerName, signedHeaders[ headerName ] );
+		if ( useBearerAuth() ) {
+			// Bedrock long-term API key: bearer auth, no SigV4 signing, no AWS credentials needed.
+			httpService.header( "Authorization", "Bearer #getBearerToken()#" );
+		} else {
+			// Sign the request using AWS Signature V4. Extra headers must be part of what's
+			// signed, or AWS will reject the request with a signature mismatch.
+			var headersToSign = {
+				"content-type" : "application/json",
+				"accept"       : "application/json"
+			};
+			headersToSign.append( extraHeaders, true );
+
+			var signer        = new AwsSignatureV4();
+			var signedHeaders = signer.signRequest(
+				method      = "POST",
+				host        = host,
+				path        = path,
+				queryString = "",
+				headers     = headersToSign,
+				payload         = payload,
+				region          = variables.region,
+				service         = static.AWS_SERVICE,
+				accessKeyId     = variables.awsAccessKeyId,
+				secretAccessKey = variables.awsSecretAccessKey,
+				sessionToken    = variables.awsSessionToken
+			);
+
+			httpService.header( "Host", host );
+			for ( var headerName in signedHeaders ) {
+				httpService.header( headerName, signedHeaders[ headerName ] );
+			}
+		}
+
+		// Add the extra headers themselves onto the wire request (signRequest only returns the
+		// AWS-computed Authorization/x-amz-* headers, not the ones it was asked to sign).
+		for ( var headerName in extraHeaders ) {
+			httpService.header( headerName, extraHeaders[ headerName ] );
 		}
 
 		// Add body and send
@@ -1205,6 +1367,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				};
 			}
 		}
+
+		checkGuardrailIntervention( httpResult, response );
 
 		boxAnnounce(
 			"onAIChatResponse",
@@ -1317,24 +1481,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			println( buildBedrockRequestLog( arguments.aiRequest, arguments.dataPacket, endpoint, true ) );
 		}
 
-		// Sign the request using AWS Signature V4
-		var signer        = new AwsSignatureV4();
-		var signedHeaders = signer.signRequest(
-			method      = "POST",
-			host        = host,
-			path        = path,
-			queryString = "",
-			headers     = {
-				"content-type" : "application/json",
-				"accept"       : "application/vnd.amazon.eventstream"
-			},
-			payload         = payload,
-			region          = variables.region,
-			service         = static.AWS_SERVICE,
-			accessKeyId     = variables.awsAccessKeyId,
-			secretAccessKey = variables.awsSecretAccessKey,
-			sessionToken    = variables.awsSessionToken
-		);
+		// Provider-option-driven extra headers (generic x-amzn-bedrock-* passthrough + Guardrails)
+		var extraHeaders = buildProviderOptionHeaders( arguments.aiRequest.getProviderOptions() );
 
 		// Build HTTP request - use synchronous request and process binary response
 		var httpService = http( url = endpoint )
@@ -1343,12 +1491,41 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			.timeout( arguments.aiRequest.getTimeout() )
 			.throwOnError( false )
 			.header( "Content-Type", "application/json" )
-			.header( "Accept", "application/vnd.amazon.eventstream" )
-			.header( "Host", host );
+			.header( "Accept", "application/vnd.amazon.eventstream" );
 
-		// Add signed headers
-		for ( var headerName in signedHeaders ) {
-			httpService.header( headerName, signedHeaders[ headerName ] );
+		if ( useBearerAuth() ) {
+			httpService.header( "Authorization", "Bearer #getBearerToken()#" );
+		} else {
+			// Sign the request using AWS Signature V4
+			var headersToSign = {
+				"content-type" : "application/json",
+				"accept"       : "application/vnd.amazon.eventstream"
+			};
+			headersToSign.append( extraHeaders, true );
+
+			var signer        = new AwsSignatureV4();
+			var signedHeaders = signer.signRequest(
+				method      = "POST",
+				host        = host,
+				path        = path,
+				queryString = "",
+				headers     = headersToSign,
+				payload         = payload,
+				region          = variables.region,
+				service         = static.AWS_SERVICE,
+				accessKeyId     = variables.awsAccessKeyId,
+				secretAccessKey = variables.awsSecretAccessKey,
+				sessionToken    = variables.awsSessionToken
+			);
+
+			httpService.header( "Host", host );
+			for ( var headerName in signedHeaders ) {
+				httpService.header( headerName, signedHeaders[ headerName ] );
+			}
+		}
+
+		for ( var headerName in extraHeaders ) {
+			httpService.header( headerName, extraHeaders[ headerName ] );
 		}
 
 		// Send request and get response
@@ -1397,6 +1574,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 			throw( type: "ProviderError", message: errorMessage );
 		}
+
+		// Guardrails may be reported on the initial response headers even for a streaming call
+		checkGuardrailIntervention( httpResult, {} );
 
 		// Parse the AWS event-stream binary response
 		// The response contains multiple events, each with a binary header and JSON payload
@@ -1655,6 +1835,19 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					"total_tokens"      : ( metrics.inputTokenCount ?: 0 ) + ( metrics.outputTokenCount ?: 0 )
 				};
 			}
+			// Guardrails: some streamed events carry an in-band intervention marker alongside the
+			// chunk payload (in addition to/instead of the response-header form checked once for
+			// the whole stream in sendBedrockStreamRequest).
+			if(
+				payloadJson.keyExists( "amazon-bedrock-guardrailAction" )
+				&& payloadJson[ "amazon-bedrock-guardrailAction" ].findNoCase( "INTERVENED" )
+			){
+				writeLog(
+					text: "Bedrock guardrail intervened during streaming (action=#payloadJson[ 'amazon-bedrock-guardrailAction' ]#)",
+					type: "warning",
+					log : "ai"
+				);
+			}
 
 			// Transform and send to callback
 			var streamChunk = transformStreamChunk( payloadJson, arguments.modelFamily, arguments.modelId );
@@ -1901,38 +2094,51 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			println( buildBedrockEmbeddingRequestLog( arguments.embeddingRequest, arguments.dataPacket, endpoint ) );
 		}
 
-		// Sign the request
-		var signer        = new AwsSignatureV4();
-		var signedHeaders = signer.signRequest(
-			method      = "POST",
-			host        = host,
-			path        = path,
-			queryString = "",
-			headers     = {
-				"content-type" : "application/json",
-				"accept"       : "application/json"
-			},
-			payload         = payload,
-			region          = variables.region,
-			service         = static.AWS_SERVICE,
-			accessKeyId     = variables.awsAccessKeyId,
-			secretAccessKey = variables.awsSecretAccessKey,
-			sessionToken    = variables.awsSessionToken
-		);
+		// Same auth rule as chat/stream: a Bedrock long-term API key (string apiKey, or
+		// AWS_BEARER_TOKEN_BEDROCK) uses bearer auth and skips SigV4 entirely.
+		var extraHeaders = buildProviderOptionHeaders( arguments.embeddingRequest.getProviderOptions() );
 
-		// Make the request using fluent API
 		var httpService = http( url = endpoint )
 			.method( "POST" )
 			.charset( "UTF-8" )
 			.timeout( arguments.embeddingRequest.getTimeout() )
 			.throwOnError( false )
 			.header( "Content-Type", "application/json" )
-			.header( "Accept", "application/json" )
-			.header( "Host", host );
+			.header( "Accept", "application/json" );
 
-		// Add signed headers
-		for ( var headerName in signedHeaders ) {
-			httpService.header( headerName, signedHeaders[ headerName ] );
+		if ( useBearerAuth() ) {
+			httpService.header( "Authorization", "Bearer #getBearerToken()#" );
+		} else {
+			// Sign the request
+			var headersToSign = {
+				"content-type" : "application/json",
+				"accept"       : "application/json"
+			};
+			headersToSign.append( extraHeaders, true );
+
+			var signer        = new AwsSignatureV4();
+			var signedHeaders = signer.signRequest(
+				method      = "POST",
+				host        = host,
+				path        = path,
+				queryString = "",
+				headers     = headersToSign,
+				payload         = payload,
+				region          = variables.region,
+				service         = static.AWS_SERVICE,
+				accessKeyId     = variables.awsAccessKeyId,
+				secretAccessKey = variables.awsSecretAccessKey,
+				sessionToken    = variables.awsSessionToken
+			);
+
+			httpService.header( "Host", host );
+			for ( var headerName in signedHeaders ) {
+				httpService.header( headerName, signedHeaders[ headerName ] );
+			}
+		}
+
+		for ( var headerName in extraHeaders ) {
+			httpService.header( headerName, extraHeaders[ headerName ] );
 		}
 
 		// Add body and send
