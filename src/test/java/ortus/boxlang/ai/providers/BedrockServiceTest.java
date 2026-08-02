@@ -260,7 +260,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "formatToolsForClaude formats an MCPTool without throwing (bug repro)" )
+	@DisplayName( "formatToolsForClaude formats an MCPTool without throwing" )
 	public void testFormatToolsForClaudeWithMCPTool() {
 		// Deterministic / credential-free: a beforeLLMCall middleware captures the request
 		// packet and short-circuits before any signing or HTTP call. MCPTool (unlike ClosureTool)

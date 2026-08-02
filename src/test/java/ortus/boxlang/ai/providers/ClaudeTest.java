@@ -229,7 +229,7 @@ public class ClaudeTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "choiceName" ) ) ).isEqualTo( "structured_output" );
 	}
 
-	@DisplayName( "formatToolsForClaude formats an MCPTool without throwing (bug repro)" )
+	@DisplayName( "formatToolsForClaude formats an MCPTool without throwing" )
 	@Test
 	public void testFormatToolsForClaudeWithMCPTool() {
 		// Deterministic / credential-free: a beforeLLMCall middleware captures the request
