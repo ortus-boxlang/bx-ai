@@ -116,6 +116,21 @@ abstract class implements="ITool" {
 	}
 
 	/**
+	 * Get the argument schema for this tool, derived from getSchema()'s function.parameters.
+	 * Used by provider formatters (e.g. Claude/Bedrock) that need properties/required directly.
+	 * Subclasses with a native argument schema (e.g. ClosureTool) may override this.
+	 *
+	 * @return A struct with the tool's "properties" and "required" argument schema keys
+	 */
+	public struct function getArgumentsSchema() {
+		var parameters = getSchema().function.parameters
+		return {
+			"properties" : parameters.properties ?: {},
+			"required"   : parameters.required ?: []
+		}
+	}
+
+	/**
      * Invoke the the tool's callable function with the provided arguments. This is used by the AI to execute the function and get a result.
 	 *
 	 * - If the result is a simple value, returns the string representation of the value.

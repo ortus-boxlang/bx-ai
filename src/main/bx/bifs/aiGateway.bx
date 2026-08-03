@@ -30,7 +30,7 @@ class {
 		 * - interceptorService : The BoxLang InterceptorService
 		 * - log : A logger for the module config itself
 		 */
-		final CORE_GATEWAYS = [ "mock" ];
+		final CORE_GATEWAYS = [ "mock", "cli", "http" ];
 	}
 
 	/**
@@ -51,19 +51,30 @@ class {
 			case "mock":
 				targetClass = "bxModules.bxai.models.gateway.MockGateway"
 				break
+			case "cli":
+				targetClass = "bxModules.bxai.models.gateway.cli.CliGateway"
+				break
+			case "http":
+				targetClass = "bxModules.bxai.models.gateway.http.HttpGateway"
+				break
 			default:
-				// Announce the gateway request so external modules can listen and supply one
-				// (e.g. bx-ai-gateway-slack listening for name == "slack")
-				var iData = { name: arguments.name, options: arguments.options, gateway: null }
-				BoxAnnounce( "onMissingGateway", iData )
+				// Check if it's a full class path
+				if ( arguments.name.findNoCase( "." ) ) {
+					targetClass = arguments.name
+				} else {
+					// Announce the gateway request so external modules can listen and supply one
+					// (e.g. bx-ai-gateway-slack listening for name == "slack")
+					var iData = { name: arguments.name, options: arguments.options, gateway: null }
+					BoxAnnounce( "onMissingGateway", iData )
 
-				if ( iData.gateway == null ) {
-					throw(
-						type   : "GatewayNotSupported",
-						message: "Gateway [#arguments.name#] is not supported. Core gateways are: [#static.CORE_GATEWAYS.toList()#]. Install a module that provides it (e.g. bx-ai-gateway-#arguments.name#)."
-					)
+					if ( iData.gateway == null ) {
+						throw(
+							type   : "GatewayNotSupported",
+							message: "Gateway [#arguments.name#] is not supported. Core gateways are: [#static.CORE_GATEWAYS.toList()#]. Install a module that provides it (e.g. bx-ai-gateway-#arguments.name#)."
+						)
+					}
+					return iData.gateway
 				}
-				return iData.gateway
 		}
 
 		// Create the gateway instance
