@@ -395,7 +395,6 @@ class {
 			// Gateway Events
 			"onGatewayRegistryRegister",
 			"onGatewayRegistryUnregister",
-			"onMissingGateway",
 			"onGatewayCreate"
 		 ]
 	}
