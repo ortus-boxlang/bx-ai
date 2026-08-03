@@ -14,10 +14,12 @@
  * ----------------------------------------------------------------------------------
  * Creates a reference to a Gateway implementation by name.
  *
- * Mirrors aiService()'s factory pattern for AI providers: a small switch resolves the
- * gateway names bx-ai ships in core, and a BoxAnnounce extension point lets external
- * modules (e.g. bx-ai-gateway-slack) supply gateway classes for names bx-ai doesn't know
- * about — without this module needing to hardcode every platform integration.
+ * A small switch resolves the gateway names bx-ai ships in core. For any other name,
+ * external gateway modules (e.g. bx-ai-gateway-slack) integrate via gatewayRegistry():
+ * a module registers an instance under its gateway name when it loads
+ * (`gatewayRegistry().register( new SlackGateway() )`), and this BIF looks it up and
+ * (re)configures it with the given options. If nothing is registered under that name,
+ * the name is tried as a directly-instantiable class path as a last resort.
  */
 @BoxBIF
 class {
@@ -58,23 +60,26 @@ class {
 				targetClass = "bxModules.bxai.models.gateway.http.HttpGateway"
 				break
 			default:
-				// Check if it's a full class path
-				if ( arguments.name.findNoCase( "." ) ) {
-					targetClass = arguments.name
-				} else {
-					// Announce the gateway request so external modules can listen and supply one
-					// (e.g. bx-ai-gateway-slack listening for name == "slack")
-					var iData = { name: arguments.name, options: arguments.options, gateway: null }
-					BoxAnnounce( "onMissingGateway", iData )
-
-					if ( iData.gateway == null ) {
-						throw(
-							type   : "GatewayNotSupported",
-							message: "Gateway [#arguments.name#] is not supported. Core gateways are: [#static.CORE_GATEWAYS.toList()#]. Install a module that provides it (e.g. bx-ai-gateway-#arguments.name#)."
-						)
-					}
-					return iData.gateway
+				// A module that provides this gateway registers an instance under its name
+				// when it loads — prefer that over anything else.
+				if ( gatewayRegistry().has( arguments.name ) ) {
+					var registeredGateway = gatewayRegistry().get( arguments.name )
+					registeredGateway.configure( arguments.options )
+					BoxAnnounce( "onGatewayCreate", { gateway: registeredGateway } )
+					return registeredGateway
 				}
+
+				// Fallback: try the name as a directly-instantiable class path
+				try {
+					var oTargetGateway = new "#arguments.name#"().configure( arguments.options )
+				} catch ( any e ) {
+					throw(
+						type   : "GatewayNotSupported",
+						message: "Gateway [#arguments.name#] is not supported. Core gateways are: [#static.CORE_GATEWAYS.toList()#]. Register it in gatewayRegistry() or install a module that provides it (e.g. bx-ai-gateway-#arguments.name#)."
+					)
+				}
+				BoxAnnounce( "onGatewayCreate", { gateway: oTargetGateway } )
+				return oTargetGateway
 		}
 
 		// Create the gateway instance
