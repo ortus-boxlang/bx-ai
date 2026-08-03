@@ -277,6 +277,15 @@ class {
 				// Logging
 				logRequest : false,
 				logResponse : false
+			},
+
+			// --------------------------------------------------------------------------
+			// Gateway Settings — per-gateway configuration for aiGateway( name )
+			// --------------------------------------------------------------------------
+			// The name of the key is the gateway name, each gateway can have its own
+			// configuration options.
+			// Ex: { slack: { botToken: "...", signingSecret: "..." } }
+			gateways : {
 			}
 		}
 
@@ -378,7 +387,16 @@ class {
 			"afterAIWebSearch",
 			"onAIWebSearchRequest",
 			"onAIWebSearchResponse",
-			"onAIWebSearchError"
+			"onAIWebSearchError",
+
+			// Memory Summarization Event
+			"onAIMemorySummarize",
+
+			// Gateway Events
+			"onGatewayRegistryRegister",
+			"onGatewayRegistryUnregister",
+			"onMissingGateway",
+			"onGatewayCreate"
 		 ]
 	}
 

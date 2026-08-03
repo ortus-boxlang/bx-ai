@@ -1,0 +1,89 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Creates a reference to a Gateway implementation by name.
+ *
+ * Mirrors aiService()'s factory pattern for AI providers: a small switch resolves the
+ * gateway names bx-ai ships in core, and a BoxAnnounce extension point lets external
+ * modules (e.g. bx-ai-gateway-slack) supply gateway classes for names bx-ai doesn't know
+ * about — without this module needing to hardcode every platform integration.
+ */
+@BoxBIF
+class {
+
+	static {
+		/**
+		 * Inject the following references into the class
+		 * - moduleRecord : The ModuleRecord instance
+		 * - boxRuntime : The BoxRuntime instance
+		 * - interceptorService : The BoxLang InterceptorService
+		 * - log : A logger for the module config itself
+		 */
+		final CORE_GATEWAYS = [ "mock", "cli", "http" ];
+	}
+
+	/**
+	 * Creates a reference to a Gateway implementation this module (or an external module)
+	 * supports.
+	 *
+	 * @name    The gateway name to resolve (e.g. "mock", "cli", "slack")
+	 * @options A struct of options to configure the gateway instance
+	 *
+	 * @throws GatewayNotSupported if the gateway name is not supported
+	 *
+	 * @return The configured IGateway instance
+	 */
+	function invoke( required string name, struct options = {} ) {
+		var targetClass = ""
+
+		switch ( arguments.name ) {
+			case "mock":
+				targetClass = "bxModules.bxai.models.gateway.MockGateway"
+				break
+			case "cli":
+				targetClass = "bxModules.bxai.models.gateway.cli.CliGateway"
+				break
+			case "http":
+				targetClass = "bxModules.bxai.models.gateway.http.HttpGateway"
+				break
+			default:
+				// Check if it's a full class path
+				if ( arguments.name.findNoCase( "." ) ) {
+					targetClass = arguments.name
+				} else {
+					// Announce the gateway request so external modules can listen and supply one
+					// (e.g. bx-ai-gateway-slack listening for name == "slack")
+					var iData = { name: arguments.name, options: arguments.options, gateway: null }
+					BoxAnnounce( "onMissingGateway", iData )
+
+					if ( iData.gateway == null ) {
+						throw(
+							type   : "GatewayNotSupported",
+							message: "Gateway [#arguments.name#] is not supported. Core gateways are: [#static.CORE_GATEWAYS.toList()#]. Install a module that provides it (e.g. bx-ai-gateway-#arguments.name#)."
+						)
+					}
+					return iData.gateway
+				}
+		}
+
+		// Create the gateway instance
+		var oTargetGateway = new "#targetClass#"().configure( arguments.options )
+
+		// Announce
+		BoxAnnounce( "onGatewayCreate", { gateway: oTargetGateway } )
+
+		return oTargetGateway
+	}
+
+}

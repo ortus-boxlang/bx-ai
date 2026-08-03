@@ -357,22 +357,25 @@ class extends="AiBaseRunnable" {
 		var response = variables.aiModel.run( messages, effectiveParams, effectiveOptions )
 
 		// -------------------------------------------------------------------------------------------
-		// --- Handle Suspension ---
+		// --- Handle Terminal Middleware Results (suspend/cancel/reject) ---
 		// -------------------------------------------------------------------------------------------
-		// If the model returned a suspension, save checkpoint and return it
-		// However, if there is no checkpointer configured, we can't save state, so just return the suspension result without saving
-		if ( isObject( response ) && response instanceof "AiMiddlewareResult" && response.isSuspended() ) {
-			variables.checkpointer?.saveState(
-				threadId,
-				{
-					input       : arguments.input,
-					messages    : messages,
-					params      : effectiveParams,
-					options     : effectiveOptions,
-					suspendData : response.getData()
-				},
-				variables.checkpointTTL
-			)
+		// A terminal result means there is no successful assistant turn to store in memory.
+		// If the model returned a suspension specifically, also save a checkpoint before returning
+		// (if there is no checkpointer configured, we can't save state, so just return without saving).
+		if ( isObject( response ) && response instanceof "AiMiddlewareResult" && response.isTerminal() ) {
+			if ( response.isSuspended() ) {
+				variables.checkpointer?.saveState(
+					threadId,
+					{
+						input       : arguments.input,
+						messages    : messages,
+						params      : effectiveParams,
+						options     : effectiveOptions,
+						suspendData : response.getData()
+					},
+					variables.checkpointTTL
+				)
+			}
 			return response
 		}
 
@@ -471,7 +474,19 @@ class extends="AiBaseRunnable" {
 		var userOnChunk = arguments.onChunk
 		// Store accumulated response for memory
 		var accumulated = ""
+		// Captures a terminal (suspend/cancel/reject) middleware result surfaced via the
+		// "middleware_stop" sentinel chunk emitted by the provider's chatStream() implementation
+		var terminalStreamResult = ""
 		var wrappedCallback = ( chunk ) => {
+			// A terminal middleware result (e.g. a suspended tool call) is delivered as a sentinel
+			// chunk rather than a normal delta — capture it instead of treating it as content.
+			// Normal content chunks from every provider have no `type` key, so this must be a
+			// safe-navigated read, not a direct one.
+			if ( isStruct( arguments.chunk ) && ( arguments.chunk.type ?: "" ) == "middleware_stop" ) {
+				terminalStreamResult = arguments.chunk.result
+				userOnChunk( arguments.chunk )
+				return
+			}
 			// Accumulate content
 			var content = arguments.chunk.choices?.first()?.delta?.content ?: ""
 			accumulated &= content;
@@ -489,6 +504,33 @@ class extends="AiBaseRunnable" {
 		// -------------------------------------------------------------------------------------------
 		variables.aiModel.stream( wrappedCallback, messages, effectiveParams, effectiveOptions )
 
+		// -------------------------------------------------------------------------------------------
+		// --- Handle Terminal Middleware Results (suspend/cancel/reject) ---
+		// -------------------------------------------------------------------------------------------
+		// A terminal result means there is no successful assistant turn to store in memory —
+		// mirrors run()'s handling. If the tool call suspended specifically, also save a
+		// checkpoint before stopping (if there is no checkpointer configured, we can't save
+		// state, so just stop).
+		if (
+			isObject( terminalStreamResult )
+			&& terminalStreamResult instanceof "AiMiddlewareResult"
+			&& terminalStreamResult.isTerminal()
+		) {
+			if ( terminalStreamResult.isSuspended() ) {
+				variables.checkpointer?.saveState(
+					threadId,
+					{
+						input       : arguments.input,
+						messages    : messages,
+						params      : effectiveParams,
+						options     : effectiveOptions,
+						suspendData : terminalStreamResult.getData()
+					},
+					variables.checkpointTTL
+				)
+			}
+			return
+		}
 
 		// -------------------------------------------------------------------------------------------
 		// --- Store in memory ---

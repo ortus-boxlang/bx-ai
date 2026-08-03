@@ -1,0 +1,275 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * HTTP front controller for the generic Gateway SPI — the transport-agnostic
+ * processing logic behind public/gateway.bxm, mirroring MCPRequestProcessor's
+ * transport/processHttp() shape but routing REST-style instead of JSON-RPC.
+ *
+ * Reuses mcp/transports/HTTPTransport as-is (CGI request/response, CORS, security
+ * headers) rather than subclassing it — path routing is a processor concern, not a
+ * transport one, and everything HTTPTransport already provides (readRequest(),
+ * writeResponse(), getSecurityHeaders(), handlePreflight()) is generic enough to
+ * reuse directly.
+ *
+ * Routes:
+ *   POST /bxai/gateways/{gatewayName}/events         — inbound platform event
+ *   GET  /bxai/interactions/{requestID}               — poll a pending interaction
+ *   POST /bxai/interactions/{requestID}/decisions      — submit a human's decision
+ *
+ * {gatewayName} and interaction lookups both resolve against gatewayRegistry() —
+ * i.e. the application must register its configured HttpGateway instance(s) at
+ * startup (`gatewayRegistry().register( aiGateway( "http", { secret: "..." } ) )`)
+ * before this processor can route to them. This keeps the secret/config out of the
+ * URL and lets one process serve multiple registered gateways.
+ *
+ * @since 4.0.0
+ */
+import bxModules.bxai.models.gateway.contracts.GatewayEvent;
+
+class {
+
+	/**
+	 * Static logger and transport singleton
+	 */
+	static {
+		gwLogger      = getBoxRuntime().getLoggingService().getLogger( "ai" )
+		httpTransport = new bxModules.bxai.models.mcp.transports.HTTPTransport()
+	}
+
+	/**
+	 * Get the shared HTTP transport instance
+	 */
+	static any function getHttpTransport() {
+		return static.httpTransport;
+	}
+
+	/**
+	 * Entry point for public/gateway.bxm. Reads the request from the HTTP context,
+	 * routes it, and writes the response back. Returns the content for logging/testing.
+	 */
+	static string function processHttp() {
+		var requestData = static.httpTransport.readRequest();
+		var response     = route( requestData );
+		static.httpTransport.writeResponse( response );
+		return response.content;
+	}
+
+	/**
+	 * Route a normalized request to the matching handler.
+	 *
+	 * @requestData The normalized request struct from HTTPTransport.readRequest()
+	 *
+	 * @return Response struct { content, contentType, headers, statusCode }
+	 */
+	static struct function route( required struct requestData ) {
+		var response = {
+			"content"    : "",
+			"contentType": "application/json",
+			"headers"    : static.httpTransport.getSecurityHeaders(),
+			"statusCode" : 200
+		}
+		response.headers[ "X-Request-ID" ] = arguments.requestData.requestId ?: createUUID()
+
+		if ( static.httpTransport.supports( "preflight" ) && arguments.requestData.method == "OPTIONS" ) {
+			var preflight = static.httpTransport.handlePreflight( {} )
+			preflight.headers[ "X-Request-ID" ] = response.headers[ "X-Request-ID" ]
+			return preflight
+		}
+
+		var pathInfo = cgi.PATH_INFO ?: ""
+		var segments = listToArray( pathInfo, "/" ).filter( ( segment ) => len( segment ) > 0 )
+
+		try {
+			if ( segments.len() == 3 && segments[ 1 ] == "gateways" && segments[ 3 ] == "events" && arguments.requestData.method == "POST" ) {
+				return handleInboundEvent( segments[ 2 ], arguments.requestData, response )
+			}
+			if ( segments.len() == 2 && segments[ 1 ] == "interactions" && arguments.requestData.method == "GET" ) {
+				return handleGetInteraction( segments[ 2 ], response )
+			}
+			if ( segments.len() == 3 && segments[ 1 ] == "interactions" && segments[ 3 ] == "decisions" && arguments.requestData.method == "POST" ) {
+				return handleDecision( segments[ 2 ], arguments.requestData, response )
+			}
+		} catch ( any e ) {
+			static.gwLogger.error( "Gateway request processing error: #e.message#" )
+			response.statusCode = 500
+			response.content    = jsonSerialize( { "error": e.message ?: "Internal error" } )
+			return response
+		}
+
+		response.statusCode = 404
+		response.content    = jsonSerialize( { "error": "Not found: #arguments.requestData.method# #pathInfo#" } )
+		return response
+	}
+
+	// -------------------------------------------------------------------------
+	// Route handlers
+	// -------------------------------------------------------------------------
+
+	private static struct function handleInboundEvent(
+		required string gatewayName,
+		required struct requestData,
+		required struct response
+	) {
+		var gw = resolveGateway( arguments.gatewayName )
+		if ( isNull( gw ) ) {
+			arguments.response.statusCode = 404
+			arguments.response.content    = jsonSerialize( { "error": "Unknown gateway: #arguments.gatewayName#" } )
+			return arguments.response
+		}
+
+		var requestContext = { "headers": arguments.requestData.headers, "rawBody": arguments.requestData.body }
+
+		if ( !gw.verifyInbound( arguments.requestData.body, requestContext ) ) {
+			arguments.response.statusCode = 401
+			arguments.response.content    = jsonSerialize( { "error": "Signature verification failed." } )
+			return arguments.response
+		}
+
+		var payload  = jsonDeserialize( arguments.requestData.body )
+		var messages = gw.parseInbound( payload, requestContext )
+
+		arguments.response.content = jsonSerialize( {
+			"messages": messages.map( ( m ) => {
+				return {
+					"id"     : m.getId(),
+					"text"   : m.getText(),
+					"context": m.getContext().toStruct()
+				}
+			} )
+		} )
+		return arguments.response
+	}
+
+	private static struct function handleGetInteraction( required string requestID, required struct response ) {
+		var gw = findGatewayForInteraction( arguments.requestID )
+		if ( isNull( gw ) ) {
+			arguments.response.statusCode = 404
+			arguments.response.content    = jsonSerialize( { "error": "Interaction not found." } )
+			return arguments.response
+		}
+
+		if ( gw.isInteractionExpired( arguments.requestID ) ) {
+			arguments.response.statusCode = 410
+			arguments.response.content    = jsonSerialize( { "error": "Interaction has expired." } )
+			return arguments.response
+		}
+
+		var record = gw.getInteraction( arguments.requestID )
+		var req    = record.request
+
+		arguments.response.content = jsonSerialize( {
+			"requestID"       : req.getId(),
+			"interactionType" : req.getInteractionType(),
+			"title"           : req.getTitle(),
+			"message"         : req.getMessage(),
+			"allowedDecisions": req.getAllowedDecisions(),
+			"pendingAction"   : req.getPendingAction(),
+			"status"          : isNull( record.decision ) ? "pending" : "resolved",
+			"threadID"        : record.context.getThreadID(),
+			"agentID"         : record.context.getAgentID()
+		} )
+		return arguments.response
+	}
+
+	private static struct function handleDecision(
+		required string requestID,
+		required struct requestData,
+		required struct response
+	) {
+		var gw = findGatewayForInteraction( arguments.requestID )
+		if ( isNull( gw ) ) {
+			arguments.response.statusCode = 404
+			arguments.response.content    = jsonSerialize( { "error": "Interaction not found." } )
+			return arguments.response
+		}
+
+		var verifyResult = gw.verifySignedRequest( { "headers": arguments.requestData.headers, "rawBody": arguments.requestData.body } )
+		if ( !verifyResult.valid ) {
+			arguments.response.statusCode = 401
+			arguments.response.content    = jsonSerialize( { "error": verifyResult.reason } )
+			return arguments.response
+		}
+
+		var body  = jsonDeserialize( arguments.requestData.body )
+		var event = new GatewayEvent(
+			type: "interaction.decision",
+			data: {
+				"requestID" : arguments.requestID,
+				"decision"  : body.decision ?: "",
+				"editedData": body.editedData ?: {},
+				"reason"    : body.reason ?: "",
+				"decidedBy" : body.decidedBy ?: ""
+			}
+		)
+		var decision = gw.parseHumanDecision( event )
+
+		try {
+			var resolved = gw.resolveInteraction( arguments.requestID, decision )
+		} catch ( InteractionAlreadyResolved e ) {
+			arguments.response.statusCode = 409
+			arguments.response.content    = jsonSerialize( { "error": e.message } )
+			return arguments.response
+		} catch ( InteractionExpired e ) {
+			arguments.response.statusCode = 410
+			arguments.response.content    = jsonSerialize( { "error": e.message } )
+			return arguments.response
+		}
+
+		var record = gw.getInteraction( arguments.requestID )
+		arguments.response.content = jsonSerialize( {
+			"requestID"  : arguments.requestID,
+			"decision"   : resolved.getDecision(),
+			"editedData" : resolved.getEditedData(),
+			"reason"     : resolved.getReason(),
+			"threadID"   : record.context.getThreadID(),
+			"agentID"    : record.context.getAgentID(),
+			"executionID": record.context.getExecutionID()
+		} )
+		return arguments.response
+	}
+
+	// -------------------------------------------------------------------------
+	// Gateway resolution
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Resolve a registered gateway by name via gatewayRegistry().
+	 */
+	private static any function resolveGateway( required string name ) {
+		try {
+			return gatewayRegistry().get( arguments.name )
+		} catch ( any e ) {
+			return javacast( "null", "" )
+		}
+	}
+
+	/**
+	 * Find whichever registered, humanApproval-capable HttpGateway is tracking the
+	 * given requestID. Interaction endpoints don't carry a gateway name in their URL
+	 * (see class docs), so all registered candidates are checked.
+	 */
+	private static any function findGatewayForInteraction( required string requestID ) {
+		var registry = gatewayRegistry()
+		for ( var key in registry.listGateways() ) {
+			var gw = registry.get( key )
+			if ( gw.supports( "humanApproval" ) && isInstanceOf( gw, "HttpGateway" ) ) {
+				if ( !isNull( gw.getInteraction( arguments.requestID ) ) ) {
+					return gw
+				}
+			}
+		}
+		return javacast( "null", "" )
+	}
+
+}

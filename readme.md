@@ -334,6 +334,49 @@ var result = agent.run( "What are the latest trends in AI?" )
 
 ### 🧠 Memory & RAG Pipelines
 
+#### Summary Memory (Auto-Compression)
+
+Summary Memory automatically compresses older messages into an AI-generated summary when the
+conversation buffer fills up, keeping the most recent messages verbatim for sharp context.
+
+Two **mutually exclusive** trigger modes — set one, not both:
+
+| Parameter | Role | Default |
+|---|---|---|
+| `maxMessages` | **Message-count trigger** — compress when non-system message count reaches this | `20` |
+| `maxTokens` | **Token-size trigger** — compress when estimated token count reaches this (mutex with `maxMessages`) | `0` (disabled) |
+| `summaryThreshold` | **Keep-window** — messages kept verbatim after compression | `10` |
+| `summaryModel` | AI model used to generate the summary | `"gpt-4o-mini"` |
+| `summaryProvider` | AI provider for summarization | `"openai"` |
+
+> **Constraint (message-count mode):** `summaryThreshold` must be less than `maxMessages` — otherwise compression
+> would re-trigger immediately on the next message.
+>
+> **Mutex rule:** Setting both `maxTokens > 0` and `maxMessages > 0` throws `InvalidConfiguration`.
+
+Result after compression: `[system?] + [AI summary] + [last summaryThreshold messages]`
+
+**Message-count mode (default):**
+```javascript
+var memory = aiMemory( "summary", config: {
+    maxMessages      : 20,   // compress when buffer reaches 20 messages
+    summaryThreshold : 10,   // keep last 10 verbatim after each compression
+    summaryModel     : "gpt-4o-mini",
+    summaryProvider  : "openai"
+} )
+```
+
+**Token-size mode:**
+```javascript
+var memory = aiMemory( "summary", config: {
+    maxTokens        : 4000, // compress when estimated token count reaches 4000
+    maxMessages      : 0,    // must be 0 (or omitted) in token mode
+    summaryThreshold : 10,   // keep last 10 messages verbatim after each compression
+    summaryModel     : "gpt-4o-mini",
+    summaryProvider  : "openai"
+} )
+```
+
 ```javascript
 // Load documents into vector memory for semantic search
 var loader = aiDocuments( "pdf", "./docs/*.pdf" )

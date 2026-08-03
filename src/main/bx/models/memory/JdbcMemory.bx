@@ -203,6 +203,19 @@ class extends="BaseMemory" {
 		return this;
 	}
 
+	/**
+	 * AI-summarize older messages and persist the result to database.
+	 *
+	 * @config Optional struct with keys: keepRecent, model, provider
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function summarize( struct config = {} ) {
+		super.summarize( arguments.config )
+		saveToDatabase()
+		return this
+	}
+
 	// ========================================
 	// Private Helper Methods
 	// ========================================

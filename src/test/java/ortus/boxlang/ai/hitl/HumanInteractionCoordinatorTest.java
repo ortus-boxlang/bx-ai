@@ -1,0 +1,325 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Verifies HumanInteractionCoordinator's requestApproval()/resolve() lifecycle,
+ * the atomic claim (only one of two concurrent resolve() calls wins), and edited
+ * argument validation against a tool's declared schema.
+ */
+package ortus.boxlang.ai.hitl;
+
+import static com.google.common.truth.Truth.assertThat;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import ortus.boxlang.ai.BaseIntegrationTest;
+import ortus.boxlang.runtime.scopes.Key;
+
+@DisplayName( "HumanInteractionCoordinator Tests" )
+public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
+
+	@DisplayName( "requestApproval() against an async gateway leaves the suspension pending" )
+	@Test
+	public void testRequestApprovalAsyncPending() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				coordinator = new HumanInteractionCoordinator()
+				gw          = aiGateway( "mock" )
+				interactionRequest     = new HumanInteractionRequest( executionID: "run-1" )
+				ctx         = new GatewayContext( gateway: "mock" )
+
+				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw )
+				isPending   = suspension.isPending()
+				fetchedBack = coordinator.getSuspension( suspension.getSuspensionID() )
+				sameObject  = fetchedBack.getSuspensionID() == suspension.getSuspensionID()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isPending" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sameObject" ) ) ).isTrue();
+	}
+
+	@DisplayName( "requestApproval() against a synchronous (scripted) gateway resolves immediately" )
+	@Test
+	public void testRequestApprovalSyncResolvesImmediately() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				coordinator = new HumanInteractionCoordinator()
+				gw          = aiGateway( "mock" )
+				gw.setScriptedDecisions( [ "approve" ] )
+				interactionRequest     = new HumanInteractionRequest( executionID: "run-2" )
+				ctx         = new GatewayContext( gateway: "mock" )
+
+				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw )
+				isApproved  = suspension.getStatus() == "approved"
+				isTerminal  = suspension.isTerminal()
+				decision    = coordinator.getDecision( suspension.getSuspensionID() )
+				decisionIsApproved = decision.isApproved()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isApproved" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isTerminal" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "decisionIsApproved" ) ) ).isTrue();
+	}
+
+	@DisplayName( "resolve() with valid edited arguments transitions to edited" )
+	@Test
+	public void testResolveEditValidArguments() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				coordinator = new HumanInteractionCoordinator()
+				gw          = aiGateway( "mock" )
+				interactionRequest     = new HumanInteractionRequest( executionID: "run-3" )
+				ctx         = new GatewayContext( gateway: "mock" )
+				tool        = createObject( "src.test.bx.tools.PlainTool" )
+
+				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw, tool: tool )
+
+				decision = new HumanInteractionDecision(
+					requestID : interactionRequest.getId(),
+					decision  : "edit",
+					editedData: { item: "widget", qty: 5 }
+				)
+				resolved   = coordinator.resolve( suspension.getSuspensionID(), decision, tool )
+				isEdited   = resolved.getStatus() == "edited"
+
+				storedDecision = coordinator.getDecision( suspension.getSuspensionID() )
+				storedIsEdit   = storedDecision.isEdit()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isEdited" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "storedIsEdit" ) ) ).isTrue();
+	}
+
+	@DisplayName( "resolve() validates edited arguments wrapped as { correctedArgs: {...} } too" )
+	@Test
+	public void testResolveEditValidArgumentsWrappedInCorrectedArgs() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				coordinator = new HumanInteractionCoordinator()
+				gw          = aiGateway( "mock" )
+				interactionRequest     = new HumanInteractionRequest( executionID: "run-3b" )
+				ctx         = new GatewayContext( gateway: "mock" )
+				tool        = createObject( "src.test.bx.tools.PlainTool" )
+
+				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw, tool: tool )
+
+				// A gateway/consumer may wrap edited data as { correctedArgs: {...} } — the
+				// same convention HumanInTheLoopMiddleware's resume path already unwraps.
+				decision = new HumanInteractionDecision(
+					requestID : interactionRequest.getId(),
+					decision  : "edit",
+					editedData: { correctedArgs: { item: "widget", qty: 5 } }
+				)
+				resolved = coordinator.resolve( suspension.getSuspensionID(), decision, tool )
+				isEdited = resolved.getStatus() == "edited"
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isEdited" ) ) ).isTrue();
+	}
+
+	@DisplayName( "resolve() with invalid edited arguments (missing required field) downgrades to rejected" )
+	@Test
+	public void testResolveEditInvalidArgumentsDowngradesToReject() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				coordinator = new HumanInteractionCoordinator()
+				gw          = aiGateway( "mock" )
+				interactionRequest     = new HumanInteractionRequest( executionID: "run-4" )
+				ctx         = new GatewayContext( gateway: "mock" )
+				tool        = createObject( "src.test.bx.tools.PlainTool" )
+
+				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw, tool: tool )
+
+				// Missing required "qty"
+				decision = new HumanInteractionDecision(
+					requestID : interactionRequest.getId(),
+					decision  : "edit",
+					editedData: { item: "widget" }
+				)
+				resolved    = coordinator.resolve( suspension.getSuspensionID(), decision, tool )
+				isRejected  = resolved.getStatus() == "rejected"
+
+				storedDecision  = coordinator.getDecision( suspension.getSuspensionID() )
+				storedIsReject  = storedDecision.isRejected()
+				hasReason       = len( storedDecision.getReason() ) > 0
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isRejected" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "storedIsReject" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasReason" ) ) ).isTrue();
+	}
+
+	@DisplayName( "resolve() with edited arguments outside the schema (additionalProperties:false) downgrades to rejected" )
+	@Test
+	public void testResolveEditUnknownArgumentDowngradesToReject() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				coordinator = new HumanInteractionCoordinator()
+				gw          = aiGateway( "mock" )
+				interactionRequest     = new HumanInteractionRequest( executionID: "run-5" )
+				ctx         = new GatewayContext( gateway: "mock" )
+				tool        = createObject( "src.test.bx.tools.PlainTool" )
+
+				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw, tool: tool )
+
+				decision = new HumanInteractionDecision(
+					requestID : interactionRequest.getId(),
+					decision  : "edit",
+					editedData: { item: "widget", qty: 5, discountCode: "HACKED" }
+				)
+				resolved   = coordinator.resolve( suspension.getSuspensionID(), decision, tool )
+				isRejected = resolved.getStatus() == "rejected"
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isRejected" ) ) ).isTrue();
+	}
+
+	@DisplayName( "resolve() throws SuspensionNotFound for an unknown suspension id" )
+	@Test
+	public void testResolveUnknownSuspensionThrows() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+
+				coordinator = new HumanInteractionCoordinator()
+				decision    = new HumanInteractionDecision( requestID: "nope", decision: "approve" )
+
+				threw = false
+				errorType = ""
+				try {
+					coordinator.resolve( "does-not-exist", decision )
+				} catch ( any e ) {
+					threw = true
+					errorType = e.type
+				}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "errorType" ) ) ).isEqualTo( "SuspensionNotFound" );
+	}
+
+	@DisplayName( "resolve(): of two concurrent calls for the same suspension, exactly one wins" )
+	@Test
+	public void testConcurrentResolveOnlyOneWins() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				coordinator  = new HumanInteractionCoordinator()
+				gw           = aiGateway( "mock" )
+				interactionRequest      = new HumanInteractionRequest( executionID: "run-6" )
+				ctx          = new GatewayContext( gateway: "mock" )
+
+				suspension   = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw )
+				suspensionID = suspension.getSuspensionID()
+				requestID    = interactionRequest.getId()
+
+				futureA = asyncRun( () => {
+					try {
+						coordinator.resolve( suspensionID, new HumanInteractionDecision( requestID: requestID, decision: "approve" ) )
+						return "ok"
+					} catch ( any e ) {
+						return "error:" & e.type
+					}
+				}, "io-tasks" )
+
+				futureB = asyncRun( () => {
+					try {
+						coordinator.resolve( suspensionID, new HumanInteractionDecision( requestID: requestID, decision: "reject" ) )
+						return "ok"
+					} catch ( any e ) {
+						return "error:" & e.type
+					}
+				}, "io-tasks" )
+
+				resultA = futureA.get()
+				resultB = futureB.get()
+
+				exactlyOneWon  = ( resultA == "ok" && resultB != "ok" ) || ( resultB == "ok" && resultA != "ok" )
+				loserGotRightError = ( resultA == "ok" && resultB == "error:SuspensionAlreadyResolved" ) ||
+					( resultB == "ok" && resultA == "error:SuspensionAlreadyResolved" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "exactlyOneWon" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "loserGotRightError" ) ) ).isTrue();
+	}
+
+}

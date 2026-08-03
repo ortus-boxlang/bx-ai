@@ -710,27 +710,24 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
-	 * Execute a Claude tool call returned by Bedrock and append the tool_result
+	 * Execute a Claude tool call returned by Bedrock, firing the beforeToolCall / wrapToolCall /
+	 * afterToolCall middleware hooks around the invocation so approval/suspension middleware
+	 * (e.g. HITL) behaves consistently with the other providers, and append the tool_result
 	 * message to the conversation.
 	 *
 	 * @toolCall    The tool call block from Claude: { type:"tool_use", id:"", name:"toolName", input:{} }
 	 * @chatRequest The original chat request containing the tool
+	 *
+	 * @return An AiMiddlewareResult if the tool call was suspended or cancelled by middleware —
+	 *         the caller must hard-stop the batch and surface it. Null (void) otherwise, meaning
+	 *         either the tool executed normally or was rejected (rejection is absorbed here: the
+	 *         reason is appended as the tool result and the caller should continue the batch).
 	 */
-	private function executeBedrockTool( required struct toolCall, required AiChatRequest chatRequest ) {
+	private any function executeBedrockTool( required struct toolCall, required AiChatRequest chatRequest ) {
 		var messages    = arguments.chatRequest.getMessages();
 		var toolAttempt = arguments.chatRequest.getTool( arguments.toolCall.name );
 
-		if ( toolAttempt.isPresent() ) {
-			var tool = toolAttempt.get();
-			messages.append( {
-				"role"   : "user",
-				"content": [ {
-					"type"        : "tool_result",
-					"tool_use_id" : arguments.toolCall.id,
-					"content"     : tool.invoke( args: arguments.toolCall.input, chatRequest: arguments.chatRequest )
-				} ]
-			} );
-		} else {
+		if ( !toolAttempt.isPresent() ) {
 			writeLog(
 				text: "Unable to find tool named: [#arguments.toolCall.name#]",
 				type: "warning",
@@ -744,7 +741,88 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					"content"     : "Tool ['#arguments.toolCall.name#'] not found in chat request"
 				} ]
 			} );
+			return;
 		}
+
+		var tool = toolAttempt.get();
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire Tool Middleware ---
+		// -------------------------------------------------------------------------------------------
+		var toolContext = {
+			tool       : tool,
+			toolCall   : arguments.toolCall,
+			chatRequest: arguments.chatRequest,
+			// Normalized keys so shape-agnostic middleware (GuardrailMiddleware argPatterns,
+			// FlightRecorderMiddleware, etc.) can inspect the real arguments — Claude-on-Bedrock's
+			// toolCall carries them in `.input` (already a struct), not OpenAI's `.function.arguments`.
+			toolName   : arguments.toolCall.name ?: tool.getName(),
+			toolArgs   : arguments.toolCall.input ?: {}
+		}
+		var toolBeforeResult = arguments.chatRequest.fireMiddleware( "beforeToolCall", toolContext )
+
+		// Suspend/Cancel: hard-stop so the caller can break the batch and surface the terminal
+		// result. Suspend needs a human to resume it externally; cancel (e.g.
+		// MaxToolCallsMiddleware's limit, or a human choosing to quit in HITL's CLI mode) means
+		// abort the run outright — neither should let the batch continue.
+		if ( toolBeforeResult.isSuspended() || toolBeforeResult.isCancelled() ) {
+			messages.append( {
+				"role"   : "user",
+				"content": [ {
+					"type"        : "tool_result",
+					"tool_use_id" : arguments.toolCall.id,
+					"content"     : toolBeforeResult.isSuspended()
+						? "[Suspended: awaiting human approval]"
+						: "[Tool call blocked: #toolBeforeResult.getReason()#]"
+				} ]
+			} );
+			return toolBeforeResult
+		}
+
+		// Reject: skip only this tool call — append the reason as its tool result and let the
+		// caller continue processing the rest of the batch/chain instead of surfacing a raw
+		// middleware result.
+		if ( toolBeforeResult.isRejected() ) {
+			messages.append( {
+				"role"   : "user",
+				"content": [ {
+					"type"        : "tool_result",
+					"tool_use_id" : arguments.toolCall.id,
+					"content"     : "[Tool call blocked: #toolBeforeResult.getReason()#]"
+				} ]
+			} );
+			return;
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Invoke the Tool, wrapped in wrapToolCall middleware ---
+		// -------------------------------------------------------------------------------------------
+		var capturedTool        = tool;
+		var capturedToolCall    = arguments.toolCall;
+		var capturedChatRequest = arguments.chatRequest;
+		var toolResult = arguments.chatRequest.fireWrapMiddleware(
+			"wrapToolCall",
+			toolContext,
+			() => capturedTool.invoke( args: capturedToolCall.input, chatRequest: capturedChatRequest )
+		);
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterToolCall Middleware ---
+		// -------------------------------------------------------------------------------------------
+		arguments.chatRequest.fireMiddleware(
+			hook   : "afterToolCall",
+			context: { tool: tool, toolCall: arguments.toolCall, chatRequest: arguments.chatRequest, result: toolResult },
+			reverse: true
+		);
+
+		messages.append( {
+			"role"   : "user",
+			"content": [ {
+				"type"        : "tool_result",
+				"tool_use_id" : arguments.toolCall.id,
+				"content"     : toolResult
+			} ]
+		} );
 	}
 
 	/**
@@ -921,9 +999,14 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					"content" : result.content
 				} );
 
-				// Execute each requested tool, appending tool_result messages
+				// Execute each requested tool, appending tool_result messages. A terminal
+				// middleware result (suspend/cancel/reject) stops the tool chain immediately
+				// instead of invoking the remaining tool calls in the batch.
 				for ( var toolCall in toolCalls ) {
-					executeBedrockTool( toolCall, arguments.chatRequest );
+					var toolExecResult = executeBedrockTool( toolCall, arguments.chatRequest );
+					if ( isObject( toolExecResult ) ) {
+						return toolExecResult
+					}
 				}
 
 				// Recurse with tool results now in context

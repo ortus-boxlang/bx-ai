@@ -297,6 +297,20 @@ class extends="BaseMemory" {
 	}
 
 	/**
+	 * AI-summarize older messages and persist the result to file.
+	 *
+	 * @config Optional struct with keys: keepRecent, model, provider
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function summarize( struct config = {} ) {
+		super.summarize( arguments.config )
+		var filePath = getFilePath( variables.userId, variables.conversationId )
+		saveMessagesToFile( filePath, variables.messages )
+		return this
+	}
+
+	/**
 	 * --------------------------------------------------------------------------
 	 * Private Helpers
 	 * --------------------------------------------------------------------------

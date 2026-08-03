@@ -1,0 +1,83 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Combines several IApprovalPolicy instances into one.
+ *
+ * - mode "any" (default): approval is required if ANY policy says so — the safer
+ *   default, since it only takes one policy flagging a call for a human to get
+ *   involved.
+ * - mode "all": approval is required only if EVERY policy says so — useful for
+ *   narrowing an otherwise-broad policy (e.g. "risky AND not annotated
+ *   auto-approved").
+ *
+ * An empty policy list never requires approval, under either mode.
+ */
+import bxModules.bxai.models.hitl.IApprovalPolicy;
+
+class implements="IApprovalPolicy" {
+
+	/**
+	 * The policies to combine
+	 */
+	property name="policies" type="array" default=[];
+
+	/**
+	 * Combination mode: "any" or "all"
+	 */
+	property name="mode" type="string" default="any";
+
+	/**
+	 * Constructor
+	 *
+	 * @policies Array of IApprovalPolicy instances to combine
+	 * @mode     "any" (require approval if any policy does) or "all" (require approval
+	 *           only if every policy does) — default "any"
+	 */
+	function init( array policies = [], string mode = "any" ) {
+		var normalizedMode = arguments.mode.trim().lCase()
+		if ( normalizedMode != "any" && normalizedMode != "all" ) {
+			throw(
+				type   : "InvalidArgument",
+				message: "CompositeApprovalPolicy mode [#arguments.mode#] is invalid — must be 'any' or 'all'."
+			)
+		}
+		variables.policies = arguments.policies
+		variables.mode     = normalizedMode
+		return this;
+	}
+
+	boolean function needsApproval( required struct context ) {
+		if ( variables.policies.isEmpty() ) {
+			return false
+		}
+
+		if ( variables.mode == "all" ) {
+			for ( var policy in variables.policies ) {
+				if ( !policy.needsApproval( arguments.context ) ) {
+					return false
+				}
+			}
+			return true
+		}
+
+		// "any"
+		for ( var policy in variables.policies ) {
+			if ( policy.needsApproval( arguments.context ) ) {
+				return true
+			}
+		}
+		return false
+	}
+
+}

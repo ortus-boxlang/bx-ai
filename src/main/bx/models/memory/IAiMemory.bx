@@ -15,6 +15,8 @@
  * Interface for AI Agent Memory implementations
  * Defines the contract for storing and retrieving conversation history
  */
+import bxModules.bxai.models.util.TokenCounter;
+
 interface {
 
 	/**
@@ -161,6 +163,44 @@ interface {
      */
     IAiMemory function setMaxMessages( required numeric maxMessages );
 
+    /**
+     * Get the maximum estimated token size trigger (0 = disabled)
+     * Default: 0 (disabled) — override in implementations that support token-based limiting.
+     *
+     * @return Numeric maxTokens
+     */
+    default numeric function getMaxTokens() {
+        return 0;
+    }
+
+    /**
+     * Set the maximum estimated token size trigger
+     * 0 means disabled; mutex with maxMessages in SummaryMemory.
+     * Default: no-op — override in implementations that support token-based limiting.
+     *
+     * @maxTokens Maximum estimated token count (0 = disabled)
+     *
+     * @return IAiMemory for chaining
+     */
+    default IAiMemory function setMaxTokens( required numeric maxTokens ) {
+        return this;
+    }
+
+    /**
+     * Get the estimated token count of all messages currently stored in this memory.
+     * Uses the 4-chars/token heuristic (same as aiTokens() / TokenCounter).
+     * Follows the same pattern as Document.getTokenCount().
+     *
+     * @userId         Optional per-call user identifier (overrides instance default)
+     * @conversationId Optional per-call conversation identifier (overrides instance default)
+     *
+     * @return Numeric estimated token count
+     */
+    default numeric function sizeInTokens( string userId = "", string conversationId = "" ) {
+        var all = this.getAll( arguments.userId, arguments.conversationId )
+        return all.isEmpty() ? 0 : TokenCounter::count( all.map( m => m.content ) )
+    }
+
 	/**
 	 * ------------------------------------------------------------------------------
 	 *  QUANTITY MANAGEMENT METHODS
@@ -262,6 +302,26 @@ interface {
      * @return Struct with memory information
      */
     struct function getSummary();
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * SUMMARIZATION METHOD
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * AI-compress older messages by generating a summary, keeping recent ones intact.
+	 * Uses the memory's configured summaryModel and summaryProvider by default.
+	 * Pass a config struct to override per-call.
+	 *
+	 * @config Optional struct with keys:
+	 *   - keepRecent: Number of recent messages to keep (default: summaryThreshold or 10)
+	 *   - model: AI model name override (default: summaryModel)
+	 *   - provider: AI provider name override (default: summaryProvider)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	IAiMemory function summarize( struct config = {} );
 
 	/**
 	 * ------------------------------------------------------------------------------

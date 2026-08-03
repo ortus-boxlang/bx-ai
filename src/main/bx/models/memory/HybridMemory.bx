@@ -18,6 +18,7 @@
  */
 import bxModules.bxai.models.memory.WindowMemory;
 import bxModules.bxai.models.memory.vector.ChromaVectorMemory;
+import bxModules.bxai.models.util.TokenCounter;
 
 class extends="bxModules.bxai.models.memory.BaseMemory" {
 
@@ -93,6 +94,18 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 		var recentConfig = {
 			maxMessages: variables.recentLimit * 2  // Keep more in window than we return
 		};
+
+		// Forward any summary config to the recent memory so summarize() works
+		if ( arguments.config.keyExists( "summaryModel" ) ) {
+			recentConfig.summaryModel = arguments.config.summaryModel;
+		}
+		if ( arguments.config.keyExists( "summaryProvider" ) ) {
+			recentConfig.summaryProvider = arguments.config.summaryProvider;
+		}
+		if ( arguments.config.keyExists( "summaryThreshold" ) ) {
+			recentConfig.summaryThreshold = arguments.config.summaryThreshold;
+		}
+
 		variables.recentMemory = new WindowMemory(
 			key: variables.key & ":recent",
 			userId: variables.userId,
@@ -304,9 +317,8 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 			}
 		}
 
-		// Add estimated token count from recent messages (rough approximation: ~4 chars per token)
-		var totalChars = recentMessages.reduce( ( sum, msg ) => sum + len( msg.content ), 0 )
-		summary.estimatedTokens = ceiling( totalChars / 4 )
+		// Estimated token count from recentMemory only to avoid expensive/non-deterministic vector lookups
+		summary.sizeInTokens = recentMessages.isEmpty() ? 0 : TokenCounter::count( recentMessages.map( m => m.content ) )
 
 		// Add hybrid-specific configuration
 		summary.recentLimit = variables.recentLimit;
@@ -399,6 +411,19 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	IAiMemory function trim( string userId = "", string conversationId = "" ) {
 		variables.recentMemory.trim( userId, conversationId );
 		return this;
+	}
+
+	/**
+	 * AI-summarize older messages in the recent (window) memory.
+	 * The vector memory is a semantic store and does not need summarization.
+	 *
+	 * @config Optional struct with keys: keepRecent, model, provider
+	 *
+	 * @return HybridMemory for chaining
+	 */
+	IAiMemory function summarize( struct config = {} ) {
+		variables.recentMemory.summarize( arguments.config )
+		return this
 	}
 
 	/**

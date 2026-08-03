@@ -13,66 +13,51 @@
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
  * Summary Memory - Intelligent conversation compression
- * Automatically summarizes older messages when limit reached
- * Keeps: [System Message] + [Summary of Old Messages] + [Recent Messages]
- * Perfect for long conversations where context must be preserved
+ * Automatically summarizes older messages when the buffer reaches a trigger threshold,
+ * then keeps the most recent summaryThreshold messages verbatim.
+ * Result: [System Message?] + [AI Summary] + [Last summaryThreshold Messages]
+ *
+ * Two mutually exclusive trigger modes (set one, not both):
+ *   maxMessages — TRIGGER: compress when non-system message count reaches this (default: 20)
+ *   maxTokens   — TRIGGER: compress when estimated token count reaches this (default: 0 = disabled)
+ *
+ * Parameters:
+ *   maxMessages      — message-count trigger (default: 20; set to 0 when using maxTokens)
+ *   maxTokens        — token-size trigger (default: 0 = disabled; mutex with maxMessages)
+ *   summaryThreshold — KEEP-WINDOW: messages kept verbatim after compression (default: 10)
+ *                      Must be less than maxMessages when using message-count mode.
+ *
+ * The summarization logic lives in BaseMemory.summarize().
+ * This class adds the auto-trigger in trim(), which fires on every add().
  */
 class extends="WindowMemory" {
-
-	/**
-	 * Number of recent messages to keep unsummarized
-	 */
-	property name="summaryThreshold" type="numeric";
-
-	/**
-	 * AI model name to use for summarization
-	 */
-	property name="summaryModelName" default="";
-
-	/**
-	 * AI provider to use for summarization
-	 */
-	property name="summaryProvider" default="";
-
-	/**
-	 * Cached AI model instance for summarization
-	 */
-	property name="summaryModelInstance" default="";
-
-	/**
-	 * Current cached summary text
-	 */
-	property name="currentSummary" default="";
-
-	/**
-	 * Whether a summary message exists in memory
-	 */
-	property name="hasSummary" type="boolean" default=false;
 
 	static {
 		final DEFAULT_MAX_MESSAGES = 20
 		final DEFAULT_SUMMARY_THRESHOLD = 10
 		final DEFAULT_SUMMARY_MODEL = "gpt-4o-mini"
 		final DEFAULT_SUMMARY_PROVIDER = "openai"
-		final SUMMARY_PROMPT = "Summarize the following conversation concisely, preserving key facts, decisions, user preferences, and important context. Be brief but complete.\n\n"
+		final DEFAULT_MAX_TOKENS = 0
 	}
 
 	/**
 	 * Constructor
 	 *
-	 * @key The unique key for this memory instance
-	 * @userId The user identifier for multi-tenant isolation
-	 * @conversationId The conversation identifier for multiple conversations
-	 * @maxMessages Maximum total messages (default: 20)
-	 * @summaryThreshold Number of recent messages to keep (default: 10)
-	 * @summaryModel Model for summarization (default: gpt-4o-mini)
-	 * @summaryProvider Provider for summarization (default: openai)
+	 * @key              The unique key for this memory instance
+	 * @userId           The user identifier for multi-tenant isolation
+	 * @conversationId   The conversation identifier for multiple conversations
+	 * @maxMessages      Message-count trigger: compress when non-system messages reach this (default: 20). Set to 0 when using maxTokens.
+	 * @maxTokens        Token-size trigger: compress when estimated token count reaches this (default: 0 = disabled). Mutex with maxMessages.
+	 * @summaryThreshold Keep-window: messages kept verbatim after compression (default: 10). Must be < maxMessages in message-count mode.
+	 * @summaryModel     Model for summarization (default: gpt-4o-mini)
+	 * @summaryProvider  Provider for summarization (default: openai)
 	 */
 	function init(
 		string key = createUUID(),
 		string userId = "",
 		string conversationId = "",
 		numeric maxMessages = static.DEFAULT_MAX_MESSAGES,
+		numeric maxTokens = static.DEFAULT_MAX_TOKENS,
 		numeric summaryThreshold = static.DEFAULT_SUMMARY_THRESHOLD,
 		string summaryModel = static.DEFAULT_SUMMARY_MODEL,
 		string summaryProvider = static.DEFAULT_SUMMARY_PROVIDER
@@ -80,50 +65,68 @@ class extends="WindowMemory" {
 		super.init(
 			key: arguments.key,
 			userId: arguments.userId,
-			conversationId: arguments.conversationId
+			conversationId: arguments.conversationId,
+			maxMessages: arguments.maxMessages,
+			maxTokens: arguments.maxTokens,
+			summaryThreshold: arguments.summaryThreshold,
+			summaryModel: arguments.summaryModel,
+			summaryProvider: arguments.summaryProvider
 		)
-		variables.maxMessages = arguments.maxMessages
-		variables.summaryThreshold = arguments.summaryThreshold
-		variables.summaryModelName = arguments.summaryModel
-		variables.summaryProvider = arguments.summaryProvider
-		variables.summaryModelInstance = ""
-		variables.currentSummary = ""
-		variables.hasSummary = false
+		// Mutex: cannot have both triggers active
+		if ( variables.maxTokens > 0 && variables.maxMessages > 0 ) {
+			throw(
+				type: "InvalidConfiguration",
+				message: "SummaryMemory: set either maxTokens OR maxMessages as the trigger, not both."
+			)
+		}
+		// Message-count mode only: summaryThreshold must be less than maxMessages
+		if ( variables.maxTokens == 0 && variables.maxMessages > 0 && variables.summaryThreshold >= variables.maxMessages ) {
+			throw(
+				type: "InvalidConfiguration",
+				message: "SummaryMemory: summaryThreshold (#variables.summaryThreshold#) must be less than maxMessages (#variables.maxMessages#). summaryThreshold is the keep-window after compression; maxMessages is the trigger."
+			)
+		}
 		return this
 	}
 
 	/**
 	 * Configure the memory instance
-	 * Supports maxMessages, summaryThreshold, summaryModel, summaryProvider in config
+	 * Supports maxMessages, maxTokens, summaryThreshold, summaryModel, summaryProvider in config
 	 *
-	 * @config Configuration struct with options (maxMessages, summaryThreshold, summaryModel, summaryProvider, etc.)
+	 * @config Configuration struct with options (maxMessages, maxTokens, summaryThreshold, summaryModel, summaryProvider, etc.)
 	 *
 	 * @return IAiMemory for chaining
 	 */
 	IAiMemory function configure( required struct config ) {
+		// BaseMemory.configure() handles all summary config wiring + model building
 		super.configure( arguments.config )
-
-		if ( arguments.config.keyExists( "summaryThreshold" ) ) {
-			variables.summaryThreshold = arguments.config.summaryThreshold
+		// Mutex: cannot have both triggers active
+		if ( variables.maxTokens > 0 && variables.maxMessages > 0 ) {
+			throw(
+				type: "InvalidConfiguration",
+				message: "SummaryMemory: set either maxTokens OR maxMessages as the trigger, not both."
+			)
 		}
-
-		if ( arguments.config.keyExists( "summaryModel" ) ) {
-			variables.summaryModelName = arguments.config.summaryModel
+		// Message-count mode only: summaryThreshold must be less than maxMessages
+		if ( variables.maxTokens == 0 && variables.maxMessages > 0 && variables.summaryThreshold >= variables.maxMessages ) {
+			throw(
+				type: "InvalidConfiguration",
+				message: "SummaryMemory: summaryThreshold (#variables.summaryThreshold#) must be less than maxMessages (#variables.maxMessages#). summaryThreshold is the keep-window after compression; maxMessages is the trigger."
+			)
 		}
-
-		if ( arguments.config.keyExists( "summaryProvider" ) ) {
-			variables.summaryProvider = arguments.config.summaryProvider
-		}
-
-		// Create the AI model instance for reuse
-		variables.summaryModelInstance = buildSummaryModel()
-
-		return this;
+		return this
 	}
 
 	/**
-	 * Trim messages to keep only the last N (excluding system message)
-	 * Overrides base to add summarization behavior
+	 * Auto-trigger summarization when the buffer reaches the configured trigger threshold.
+	 *
+	 * Two mutually exclusive trigger modes:
+	 *   maxTokens   > 0 → token mode:   fires when estimated token count >= maxTokens
+	 *   maxMessages > 0 → message mode: fires when non-system message count >= maxMessages
+	 *
+	 * summaryThreshold — keep-window: how many recent messages survive verbatim after compression
+	 *
+	 * Result after compression: [system?] + [AI summary] + [last summaryThreshold messages]
 	 *
 	 * @userId   Optional per-call user identifier (ignored — SummaryMemory is an on-object store)
 	 * @conversationId Optional per-call conversation identifier (ignored — SummaryMemory is an on-object store)
@@ -131,120 +134,15 @@ class extends="WindowMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
-		var nonSystemMessages = getNonSystemMessages()
-
-		// Calculate how many messages we would summarize
-		var totalMessages = nonSystemMessages.len()
-		var messagesToSummarize = totalMessages - variables.summaryThreshold
-
-		// Only summarize if we have accumulated at least threshold worth of messages
-		// This batches summarization and makes it more efficient
-		if ( messagesToSummarize < variables.summaryThreshold ) {
-			return this
+		var triggered = false
+		if ( variables.maxTokens > 0 ) {
+			triggered = this.sizeInTokens() >= variables.maxTokens
+		} else if ( variables.maxMessages > 0 ) {
+			triggered = getNonSystemMessages().len() >= variables.maxMessages
 		}
-
-		// We have enough messages to summarize → run summarization
-    	summarizeOldMessages()
-
+		if ( !triggered ) { return this }
+		this.summarize()
 		return this
-	}
-
-	/**
-	 * Summarize older messages, keeping recent ones intact
-	 *
-	 * @return void
-	 */
-	private function summarizeOldMessages() {
-		var messages = getNonSystemMessages();
-		// println( "summarizeOldMessages: messages.len()=#messages.len()#, summaryThreshold=#variables.summaryThreshold#", true );
-
-		// Don't summarize if we don't have enough messages
-		if ( messages.len() <= variables.summaryThreshold ) {
-			//println( "summarizeOldMessages: Skipping - not enough messages", true );
-			return;
-		}
-
-		// Calculate split point
-		var messagesToSummarize = messages.len() - variables.summaryThreshold;
-
-		// Split: messages to summarize vs recent to keep
-		var toSummarize = messages.slice( 1, messagesToSummarize );
-		var keepLength = messages.len() - messagesToSummarize;
-		var toKeep = messages.slice( messagesToSummarize + 1, keepLength );
-
-		// Build summarization prompt
-		var summaryPrompt = static.SUMMARY_PROMPT;
-
-		// Include previous summary if exists
-		if ( variables.currentSummary.len() ) {
-			summaryPrompt &= "Previous conversation summary:\n#variables.currentSummary#\n\nNew messages to add to summary:\n";
-		} else {
-			summaryPrompt &= "Messages to summarize:\n";
-		}
-
-		// Add messages to summarize
-		toSummarize.each( msg => {
-			// Skip if it's already a summary
-			if ( msg.keyExists( "isSummary" ) && msg.isSummary ) {
-				return;
-			}
-			summaryPrompt &= "#msg.role#: #msg.content#\n";
-		} );
-
-		// Call AI to generate summary
-		try {
-			var summary = variables.summaryModelInstance.run( aiMessage().user( summaryPrompt ) );
-
-			// Rebuild memory structure WITHOUT triggering trim() recursion
-			// We directly manipulate variables.messages to avoid add() → trim() → summarizeOldMessages() recursion
-			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
-
-			// Clear messages array directly
-			variables.messages = [];
-
-			// Re-add system message directly (avoid setSystemMessage which calls trim)
-			if ( systemMsg.len() ) {
-				variables.messages.append( {
-					role: "system",
-					content: systemMsg,
-					timestamp: now()
-				} );
-			}
-
-			// Add summary as special assistant message (directly, no super.add())
-			variables.messages.append( {
-				role: "assistant",
-				content: "[Previous conversation summary]: #summary#",
-				isSummary: true,
-				timestamp: now()
-			} );
-
-			variables.currentSummary = summary;
-			variables.hasSummary = true;
-
-			// Add back recent messages (directly, no super.add() to avoid trim recursion)
-			variables.messages.append( toKeep, true )
-
-		} catch ( any e ) {
-			// If summarization fails, fall back to simple truncation
-			writeLog(
-				text: "SummaryMemory: Failed to generate summary - #e.message#. Falling back to truncation.",
-				type: "error",
-				log: "ai"
-			);
-
-			// Keep only recent messages
-			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
-			clear();
-
-			if ( systemMsg.len() ) {
-				setSystemMessage( systemMsg );
-			}
-
-			for( var msg in toKeep ){
-				super.add( msg );
-			}
-		}
 	}
 
 	/**
@@ -264,34 +162,38 @@ class extends="WindowMemory" {
 
 	/**
 	 * Get a summary of this memory instance
-	 * Overrides base to add summary-specific fields
+	 * Overrides base to add SummaryMemory-specific fields
 	 *
 	 * @return Struct with memory information
 	 */
 	public struct function getSummary() {
 		var summary = super.getSummary();
+
+		// Add SummaryMemory-specific computed fields
 		summary.maxMessages = variables.maxMessages;
+		summary.maxTokens = variables.maxTokens;
 		summary.summaryThreshold = variables.summaryThreshold;
-		summary.summaryModel = variables.summaryModelName;
+		summary.summaryModel = variables.summaryModel;
 		summary.summaryProvider = variables.summaryProvider;
 		summary.hasSummary = variables.hasSummary;
 		summary.summaryLength = len( variables.currentSummary );
 		summary.summarizedMessageCount = variables.hasSummary ? summary.messageCount - variables.summaryThreshold : 0;
 		summary.recentMessageCount = variables.summaryThreshold;
+
 		return summary;
 	}
 
 	/**
 	 * Export messages to a serializable format
-	 * Overrides base to add summary-specific configuration
 	 *
 	 * @return Struct containing all memory data
 	 */
 	public struct function export() {
 		var exported = super.export();
 		exported.maxMessages = variables.maxMessages;
+		exported.maxTokens = variables.maxTokens;
 		exported.summaryThreshold = variables.summaryThreshold;
-		exported.summaryModel = variables.summaryModelName;
+		exported.summaryModel = variables.summaryModel;
 		exported.summaryProvider = variables.summaryProvider;
 		exported.currentSummary = variables.currentSummary;
 		exported.hasSummary = variables.hasSummary;
@@ -300,56 +202,15 @@ class extends="WindowMemory" {
 
 	/**
 	 * Import messages from a previously exported format
-	 * Overrides base to restore summary state
 	 *
 	 * @data The exported memory data
 	 *
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function import( required struct data ) {
-		// Import base fields
+		// BaseMemory.import() handles all summary field restoration + model rebuild
 		super.import( arguments.data )
-
-		// Restore summary-specific fields
-		if ( arguments.data.keyExists( "maxMessages" ) ) {
-			variables.maxMessages = arguments.data.maxMessages
-		}
-
-		if ( arguments.data.keyExists( "summaryThreshold" ) ) {
-			variables.summaryThreshold = arguments.data.summaryThreshold
-		}
-
-		if ( arguments.data.keyExists( "summaryModel" ) ) {
-			variables.summaryModelName = arguments.data.summaryModel
-		}
-
-		if ( arguments.data.keyExists( "summaryProvider" ) ) {
-			variables.summaryProvider = arguments.data.summaryProvider
-		}
-
-		// Recreate the AI model instance
-		variables.summaryModelInstance = buildSummaryModel()
-
-		if ( arguments.data.keyExists( "currentSummary" ) ) {
-			variables.currentSummary = arguments.data.currentSummary
-		}
-
-		if ( arguments.data.keyExists( "hasSummary" ) ) {
-			variables.hasSummary = arguments.data.hasSummary
-		}
-
 		return this;
-	}
-
-	/**
-	 * Build or retrieve the AI model for summarization
-	 *
-	 * @return AiModel instance
-	 */
-	private AiModel function buildSummaryModel(){
-		return aiModel( variables.summaryProvider )
-			.withParams( { model: variables.summaryModelName } )
-    		.withOptions( { returnFormat: "single" } )
 	}
 
 }

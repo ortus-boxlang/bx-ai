@@ -1,0 +1,130 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Identity/correlation envelope threaded through every gateway operation.
+ *
+ * A gateway-neutral bundle of "who/where" identifiers so agent code, middleware, and
+ * gateway implementations all speak the same coordinates regardless of which platform
+ * (CLI, Slack, HTTP webhook, etc.) is on the other end.
+ */
+class {
+
+	/**
+	 * The gateway name this context originated from or is targeting (e.g. "cli", "slack", "http")
+	 */
+	property name="gateway" type="string" default="";
+
+	/**
+	 * Tenant identifier for multi-tenant deployments
+	 */
+	property name="tenantID" type="string" default="";
+
+	/**
+	 * Platform-native conversation identifier (e.g. a Slack channel/DM id)
+	 */
+	property name="conversationID" type="string" default="";
+
+	/**
+	 * The agent execution thread this context correlates to — matches AiAgent's threadId
+	 */
+	property name="threadID" type="string" default="";
+
+	/**
+	 * Platform-native user identifier (e.g. a Slack user id)
+	 */
+	property name="userID" type="string" default="";
+
+	/**
+	 * The specific agent run/execution this context correlates to — matches AiAgent's runId
+	 */
+	property name="executionID" type="string" default="";
+
+	/**
+	 * The agent identifier or name handling this context
+	 */
+	property name="agentID" type="string" default="";
+
+	/**
+	 * Platform-native identity details (display name, avatar, roles, etc.)
+	 */
+	property name="identity" type="struct" default={};
+
+	/**
+	 * Free-form metadata for gateway-specific extensions
+	 */
+	property name="metadata" type="struct" default={};
+
+	/**
+	 * The raw, unprocessed platform payload this context was derived from, if any
+	 */
+	property name="raw" type="struct" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @gateway        The gateway name this context originated from or is targeting
+	 * @tenantID       Tenant identifier for multi-tenant deployments
+	 * @conversationID Platform-native conversation identifier
+	 * @threadID       The agent execution thread this context correlates to
+	 * @userID         Platform-native user identifier
+	 * @executionID    The specific agent run/execution this context correlates to
+	 * @agentID        The agent identifier or name handling this context
+	 * @identity       Platform-native identity details
+	 * @metadata       Free-form metadata for gateway-specific extensions
+	 * @raw            The raw, unprocessed platform payload this context was derived from
+	 */
+	function init(
+		string gateway        = "",
+		string tenantID       = "",
+		string conversationID = "",
+		string threadID       = "",
+		string userID         = "",
+		string executionID    = "",
+		string agentID        = "",
+		struct identity       = {},
+		struct metadata       = {},
+		struct raw            = {}
+	) {
+		variables.gateway        = arguments.gateway
+		variables.tenantID       = arguments.tenantID
+		variables.conversationID = arguments.conversationID
+		variables.threadID       = arguments.threadID
+		variables.userID         = arguments.userID
+		variables.executionID    = arguments.executionID
+		variables.agentID        = arguments.agentID
+		variables.identity       = arguments.identity
+		variables.metadata       = arguments.metadata
+		variables.raw            = arguments.raw
+		return this;
+	}
+
+	/**
+	 * Serialize to a plain struct (useful for logging, persistence, or transport)
+	 */
+	struct function toStruct() {
+		return {
+			"gateway"        : variables.gateway,
+			"tenantID"       : variables.tenantID,
+			"conversationID" : variables.conversationID,
+			"threadID"       : variables.threadID,
+			"userID"         : variables.userID,
+			"executionID"    : variables.executionID,
+			"agentID"        : variables.agentID,
+			"identity"       : variables.identity,
+			"metadata"       : variables.metadata,
+			"raw"            : variables.raw
+		}
+	}
+
+}
