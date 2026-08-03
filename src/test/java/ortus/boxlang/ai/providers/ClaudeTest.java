@@ -229,6 +229,54 @@ public class ClaudeTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "choiceName" ) ) ).isEqualTo( "structured_output" );
 	}
 
+	@DisplayName( "formatToolsForClaude formats an MCPTool without throwing" )
+	@Test
+	public void testFormatToolsForClaudeWithMCPTool() {
+		// Deterministic / credential-free: a beforeLLMCall middleware captures the request
+		// packet and short-circuits before any HTTP call. MCPTool (unlike ClosureTool) does not
+		// implement getArgumentsSchema(), which formatToolsForClaude() calls unconditionally;
+		// BaseTool.onMissingMethod() then throws "MissingMethod".
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				import bxModules.bxai.models.tools.MCPTool;
+
+				captured   = {}
+				mockClient = new src.test.bx.mocks.MockMCPClient()
+				remoteTool = new MCPTool( mockClient, {
+					name: "remoteThing",
+					description: "a remote thing",
+					inputSchema: { type: "object", properties: {}, required: [] }
+				} )
+
+				provider = aiService( "claude", { apiKey: "dummy-key" } )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hello" ),
+					{ model: "claude-sonnet-4-5", max_tokens: 50, tools: [ remoteTool ] },
+					{ provider: "claude" }
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				toolName       = captured.packet.tools[ 1 ].name
+				hasInputSchema = captured.packet.tools[ 1 ].keyExists( "input_schema" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "toolName" ) ) ).isEqualTo( "remoteThing" );
+		assertThat( variables.getAsBoolean( Key.of( "hasInputSchema" ) ) ).isTrue();
+	}
+
 	@DisplayName( "Structured output extracts the forced tool_use input (canned response)" )
 	@Test
 	public void testStructuredOutputExtractsFromToolUse() {

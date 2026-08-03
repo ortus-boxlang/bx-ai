@@ -71,6 +71,22 @@ public class aiGatewayTest extends BaseIntegrationTest {
 		);
 	}
 
+	@DisplayName( "aiGateway() resolves a dotted name directly as a class path, without announcing onMissingGateway" )
+	@Test
+	public void testResolvesFullClassPathDirectly() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				gw   = aiGateway( "bxModules.bxai.models.gateway.MockGateway" )
+				name = gw.getName()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "name" ) ) ).isEqualTo( "mock" );
+	}
+
 	@DisplayName( "aiGateway('unknown') fires onMissingGateway so an external module can supply one" )
 	@Test
 	public void testOnMissingGatewayExtensionPoint() {

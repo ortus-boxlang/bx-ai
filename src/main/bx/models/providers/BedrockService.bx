@@ -39,9 +39,15 @@
  * - Anthropic Claude (claude-3-*, claude-instant-*) — tools + structured output
  * - Amazon Titan (amazon.titan-*, amazon.titan-embed-text-v1/v2 for embeddings)
  * - Meta Llama (meta.llama-*)
- * - Cohere (cohere.*, cohere.embed-* for embeddings)
- * - AI21 Labs (ai21.*)
- * - Mistral (mistral.*)
+ * - Cohere (cohere.*) — uses the Claude-shape transform, no dedicated Cohere transform;
+ *   cohere.embed-* is supported for embeddings via its own batched embed shape
+ * - Legacy Mistral (mistral.mistral-7b-instruct-*, mixtral-*, mistral-large/small-2402-*)
+ * - Opaque inference-profile / provisioned-model ARNs with no vendor substring — assumed
+ *   Claude, preserving the historical default for the common case
+ * - Everything else (AI21 Jamba, modern Mistral, Amazon Nova, and other post-2024 families)
+ *   — OpenAI shape. No dedicated Nova transform exists yet (tracked under #227's Converse
+ *   discussion), so Nova requests 400 loudly against this fallback instead of silently
+ *   mis-parsing.
  *
  * @see https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html
  * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
@@ -109,6 +115,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Model families whose Bedrock request transform genuinely has no representation for
 		// tools / schema-typed structured output (see assertCapabilitySupported()).
 		NO_TOOL_SUPPORT_FAMILIES = [ "titan", "llama", "mistral", "openai", "cohere" ];
+		// Anchored (start-of-string or region-prefix dot, e.g. "eu.mistral.") match for the
+		// legacy, prompt-shaped Mistral models. Everything else on Bedrock's Mistral line is
+		// OpenAI-shaped.
+		LEGACY_MISTRAL_PATTERN = "(^|\.)mistral\.(mistral-7b-instruct-|mixtral-|mistral-(large|small)-2402-)";
 	}
 
 	/**
@@ -635,7 +645,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *
 	 * @modelId The Bedrock model ID
 	 *
-	 * @return The model family: "claude", "titan", "llama", "cohere", "ai21", "mistral", "openai", or "unknown"
+	 * @return The model family: "claude", "titan", "llama", "cohere", "mistral", or "openai"
 	 */
 	private string function detectModelFamily( required string modelId ){
 		var id = arguments.modelId.lcase();
@@ -648,16 +658,42 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			return "llama";
 		} else if ( id.findNoCase( "cohere" ) ) {
 			return "cohere";
-		} else if ( id.findNoCase( "ai21" ) ) {
-			return "ai21";
-		} else if ( id.findNoCase( "mistral" ) ) {
+		} else if ( isLegacyMistral( id ) ) {
 			return "mistral";
-		} else if ( id.findNoCase( "openai" ) || id.findNoCase( "gpt" ) ) {
-			// OpenAI-compatible models on Bedrock (cross-region inference profiles)
-			return "openai";
+		} else if ( id.startsWith( "arn:" ) ) {
+			// Opaque inference-profile / provisioned-model ARNs carry no vendor substring in
+			// the id itself, so none of the checks above can match. These previously fell
+			// through to the Claude default and worked for Claude-backed profiles (the common
+			// case) — preserve that explicitly instead of silently routing them into the
+			// openai fallback below (400).
+			return "claude";
 		}
 
-		return "unknown";
+		// Every other Bedrock family — ai21 Jamba (OpenAI-shaped; no dedicated branch needed),
+		// zai/GLM, qwen, deepseek, moonshotai/Kimi, minimax, nvidia/Nemotron, google/gemma,
+		// modern Mistral (Ministral 3, Magistral, Devstral, Voxtral, Mistral-Large-2407+),
+		// plain openai/gpt-oss, Amazon Nova (no dedicated transform exists yet — see #227's
+		// Converse API discussion — so it 400s loudly here instead of silently mis-parsing),
+		// and anything unrecognized — speaks the OpenAI chat-completions shape on Bedrock.
+		// Defaulting here (rather than to Claude) means an unsupported model fails loudly
+		// against the wrong shape instead of transformResponseFromClaude() silently returning "".
+		return "openai";
+	}
+
+	/**
+	 * Legacy Mistral models (7B-Instruct, Mixtral, Mistral-Large/Small-2402) use the raw
+	 * <s>[INST] prompt/outputs shape. Newer Mistral models (Ministral 3, Magistral,
+	 * Devstral, Voxtral, Mistral-Large-2407+) are OpenAI-shaped and reject that legacy
+	 * format with a 400. Anchored to the start of the id or a region-prefix dot (e.g.
+	 * "eu.mistral.mixtral-...") so region-prefixed ids still match, and case-insensitive
+	 * regardless of caller casing.
+	 *
+	 * @id The Bedrock model ID (any case)
+	 *
+	 * @return True if this is a legacy, prompt-shaped Mistral model
+	 */
+	private boolean function isLegacyMistral( required string id ){
+		return reFindNoCase( static.LEGACY_MISTRAL_PATTERN, arguments.id ) > 0;
 	}
 
 	/**
@@ -665,10 +701,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * whose Bedrock request transform genuinely has no representation for them: Titan, Llama,
 	 * Mistral, and OpenAI-compatible each have a dedicated, tool-less request builder in
 	 * transformRequestForModel(), and Cohere Command's actual wire format isn't Claude's Messages
-	 * API either (see static.NO_TOOL_SUPPORT_FAMILIES). Every other family — "claude" itself,
-	 * "ai21", and "unknown" — falls through transformRequestForModel()'s default branch, which
-	 * reuses the Claude-style builder and DOES emit `tools`, so gating them here would be
-	 * over-strict for no benefit; they are allowed through unchanged.
+	 * API either (see static.NO_TOOL_SUPPORT_FAMILIES).
+	 *
+	 * Since #226, detectModelFamily() returns exactly one of "claude", "titan", "llama",
+	 * "cohere", "mistral", "openai" — there is no "ai21"/"unknown" any more, and an
+	 * unrecognized model id resolves to "openai". "claude" is therefore the only family that
+	 * passes this gate, which matches reality: transformRequestForClaude() is the sole request
+	 * builder here that emits `tools`. An unrecognized id + tools now throws instead of quietly
+	 * building a Claude-shaped request for a model that isn't Claude — the loud failure is the
+	 * point. Opaque `arn:` model ids still detect as "claude" and so still pass.
 	 *
 	 * @modelFamily The detected model family (see detectModelFamily())
 	 * @chatRequest The chat request carrying params.tools / isStructuredOutput()
@@ -723,6 +764,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	){
 		switch ( arguments.modelFamily ) {
 			case "claude":
+			case "cohere":
+				// Cohere has no dedicated Bedrock transform; keep it on the Claude-shape
+				// request it has always used rather than falling into the openai default.
 				return transformRequestForClaude( arguments.messages, arguments.params );
 			case "titan":
 				return transformRequestForTitan( arguments.messages, arguments.params );
@@ -731,10 +775,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			case "mistral":
 				return transformRequestForMistral( arguments.messages, arguments.params );
 			case "openai":
-				return transformRequestForOpenAI( arguments.messages, arguments.params );
 			default:
-				// Default to Claude-style format as it's most common on Bedrock
-				return transformRequestForClaude( arguments.messages, arguments.params );
+				// ai21 and every other unmapped family speak the OpenAI shape on Bedrock
+				return transformRequestForOpenAI( arguments.messages, arguments.params );
 		}
 	}
 
@@ -743,15 +786,23 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Uses Claude Messages API format with Bedrock-specific wrapper
 	 */
 	private struct function transformRequestForClaude( required array messages, required struct params ){
-		var result = {
-			"anthropic_version" : "bedrock-2023-05-31",
-			"max_tokens"        : arguments.params.max_tokens ?: 4096
-		};
-
-		// Handle temperature if provided
-		if ( arguments.params.keyExists( "temperature" ) ) {
-			result[ "temperature" ] = arguments.params.temperature;
+		// Passthrough-with-exclusions: forward every caller param except the ones this
+		// transform rebuilds itself (model, stream, messages, tools — see below) or
+		// overwrites/defaults (anthropic_version, max_tokens). Built via a shallow,
+		// key-by-key copy rather than params.duplicate(): duplicate() deep-copies the
+		// whole struct including tool objects, and BoxLang's DuplicationUtil throws on
+		// non-Serializable Java objects a tool may hold (e.g. a Thread). A shallow copy
+		// never recurses into tools' object graph. "system" is intentionally NOT
+		// excluded here — see the system/message split below for why.
+		var result = {};
+		for ( var key in arguments.params ) {
+			if ( !listFindNoCase( "model,stream,messages,tools", key ) ) {
+				result[ key ] = arguments.params[ key ];
+			}
 		}
+
+		result[ "anthropic_version" ] = "bedrock-2023-05-31";
+		result[ "max_tokens" ]        = arguments.params.max_tokens ?: 4096;
 
 		// Separate system message from other messages
 		var systemPrompt         = "";
@@ -773,6 +824,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		result[ "messages" ] = conversationMessages;
 
+		// A real system message wins over a caller-supplied params.system (matches
+		// ClaudeService); otherwise leave params.system, already copied through above,
+		// in place.
 		if ( len( trim( systemPrompt ) ) ) {
 			result[ "system" ] = systemPrompt;
 		}
@@ -940,6 +994,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	){
 		switch ( arguments.modelFamily ) {
 			case "claude":
+			case "cohere":
 				return transformResponseFromClaude( arguments.response, arguments.modelId );
 			case "titan":
 				return transformResponseFromTitan( arguments.response, arguments.modelId );
@@ -948,9 +1003,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			case "mistral":
 				return transformResponseFromMistral( arguments.response, arguments.modelId );
 			case "openai":
-				return transformResponseFromOpenAI( arguments.response, arguments.modelId );
 			default:
-				return transformResponseFromClaude( arguments.response, arguments.modelId );
+				return transformResponseFromOpenAI( arguments.response, arguments.modelId );
 		}
 	}
 
@@ -2319,7 +2373,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		switch ( arguments.modelFamily ) {
 			case "claude":
-				// Claude streaming format
+			case "cohere":
+				// Cohere has no dedicated Bedrock transform; keep it on the Claude-shape
+				// stream chunks it has always used rather than falling into the openai default.
 				if ( arguments.chunk.keyExists( "type" ) ) {
 					switch ( arguments.chunk.type ) {
 						case "content_block_delta":
@@ -2373,7 +2429,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				break;
 
 			case "openai":
-				// OpenAI-compatible streaming format - already in standard format
+			default:
+				// OpenAI-compatible streaming format - already in standard format. Also the
+				// fallback for any family not explicitly handled above (ai21 and everything
+				// else), matching detectModelFamily()'s and transformRequestForModel()'s
+				// openai default — family not in this switch ⇒ openai, in all three switches.
 				if ( arguments.chunk.keyExists( "choices" ) && isArray( arguments.chunk.choices ) && arguments.chunk.choices.len() > 0 ) {
 					var delta = arguments.chunk.choices[ 1 ].delta ?: {};
 					if ( delta.keyExists( "content" ) ) {
@@ -2382,13 +2442,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					if ( arguments.chunk.choices[ 1 ].keyExists( "finish_reason" ) && !isNull( arguments.chunk.choices[ 1 ].finish_reason ) ) {
 						finishReason = arguments.chunk.choices[ 1 ].finish_reason;
 					}
-				}
-				break;
-
-			default:
-				// Default to Claude format
-				if ( arguments.chunk.keyExists( "delta" ) && arguments.chunk.delta.keyExists( "text" ) ) {
-					content = arguments.chunk.delta.text;
 				}
 		}
 
