@@ -339,15 +339,23 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Uses Claude Messages API format with Bedrock-specific wrapper
 	 */
 	private struct function transformRequestForClaude( required array messages, required struct params ){
-		var result = {
-			"anthropic_version" : "bedrock-2023-05-31",
-			"max_tokens"        : arguments.params.max_tokens ?: 4096
-		};
-
-		// Handle temperature if provided
-		if ( arguments.params.keyExists( "temperature" ) ) {
-			result[ "temperature" ] = arguments.params.temperature;
+		// Passthrough-with-exclusions: forward every caller param except the ones this
+		// transform rebuilds itself (model, stream, messages, tools — see below) or
+		// overwrites/defaults (anthropic_version, max_tokens). Built via a shallow,
+		// key-by-key copy rather than params.duplicate(): duplicate() deep-copies the
+		// whole struct including tool objects, and BoxLang's DuplicationUtil throws on
+		// non-Serializable Java objects a tool may hold (e.g. a Thread). A shallow copy
+		// never recurses into tools' object graph. "system" is intentionally NOT
+		// excluded here — see the system/message split below for why.
+		var result = {};
+		for ( var key in arguments.params ) {
+			if ( !listFindNoCase( "model,stream,messages,tools", key ) ) {
+				result[ key ] = arguments.params[ key ];
+			}
 		}
+
+		result[ "anthropic_version" ] = "bedrock-2023-05-31";
+		result[ "max_tokens" ]        = arguments.params.max_tokens ?: 4096;
 
 		// Separate system message from other messages
 		var systemPrompt         = "";
@@ -369,6 +377,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		result[ "messages" ] = conversationMessages;
 
+		// A real system message wins over a caller-supplied params.system (matches
+		// ClaudeService); otherwise leave params.system, already copied through above,
+		// in place.
 		if ( len( trim( systemPrompt ) ) ) {
 			result[ "system" ] = systemPrompt;
 		}

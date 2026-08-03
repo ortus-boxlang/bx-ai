@@ -1,0 +1,341 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * A generic, network-reachable IGateway: inbound platform events arrive as signed HTTP
+ * POSTs, human decisions on a pending interaction arrive the same way, and outbound
+ * events are delivered either by POSTing to a configured callback URL or simply
+ * recorded for polling if none is configured. See GatewayRequestProcessor for the
+ * actual HTTP endpoints that drive this class, and public/gateway.bxm for the front
+ * controller that exposes them.
+ *
+ * This is the first gateway with real network exposure, so — unlike MockGateway/
+ * CliGateway — every inbound mutation is signed (GatewaySecurity, HMAC-SHA256),
+ * timestamp-bounded, and nonce-deduplicated; every pending interaction has an
+ * expiry; and resolving a decision is an atomic claim (java.util.concurrent.
+ * ConcurrentHashMap.replace()) so a duplicate decision POST for an already-resolved
+ * interaction is rejected rather than silently overwriting it.
+ *
+ * Integration note: this gateway does not itself call AiAgent.resume() — that would
+ * require knowing which agent/checkpointer a given interaction belongs to, which is
+ * application state this module doesn't own. The calling application is expected to
+ * set GatewayContext.threadID (and, if useful, agentID) when presenting a request —
+ * both are persisted alongside the pending interaction and returned by GET
+ * /bxai/interactions/{requestID} and by the decision POST response — so the
+ * application can correlate the resolved decision back to `agent.resume(decision,
+ * threadID, editedData)` itself.
+ *
+ * @since 4.0.0
+ */
+import bxModules.bxai.models.gateway.BaseGateway;
+import bxModules.bxai.models.gateway.IGateway;
+import bxModules.bxai.models.gateway.contracts.GatewayContext;
+import bxModules.bxai.models.gateway.contracts.GatewayDeliveryResult;
+import bxModules.bxai.models.gateway.contracts.GatewayEvent;
+import bxModules.bxai.models.gateway.contracts.GatewayMessage;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+import bxModules.bxai.models.gateway.http.GatewaySecurity;
+
+class extends="BaseGateway" {
+
+	/**
+	 * Shared HMAC secret used to sign/verify inbound events and decision POSTs
+	 */
+	property name="secret" type="string" default="";
+
+	/**
+	 * Optional URL outbound events are POSTed to. If empty, deliver() only records locally.
+	 */
+	property name="callbackUrl" type="string" default="";
+
+	/**
+	 * Maximum allowed clock skew / request age for signed requests, in seconds
+	 */
+	property name="toleranceSeconds" type="numeric" default=300;
+
+	/**
+	 * How long a presented interaction stays open before it's treated as expired, in seconds
+	 */
+	property name="requestTTLSeconds" type="numeric" default=900;
+
+	/**
+	 * Every event delivered via deliver(), in order — mirrors MockGateway for observability/testing
+	 */
+	property name="deliveredEvents" type="array" default=[];
+
+	/**
+	 * Pending/resolved interactions, keyed by HumanInteractionRequest.id
+	 */
+	property name="interactions" type="struct" default={};
+
+	/**
+	 * java.util.concurrent.ConcurrentHashMap<String,String> of requestID -> status,
+	 * the atomic compare-and-set primitive resolveInteraction() claims against
+	 */
+	property name="statusLocks";
+
+	/**
+	 * java.util.concurrent.ConcurrentHashMap<String,Long> of nonce -> expiry epoch millis,
+	 * used to reject replayed signed requests
+	 */
+	property name="seenNonces";
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		variables.name              = "http"
+		variables.description       = "Signed, network-reachable gateway exposing inbound events and human-in-the-loop interactions over HTTP."
+		variables.deliveredEvents   = []
+		variables.interactions      = {}
+		variables.statusLocks       = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init()
+		variables.seenNonces        = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init()
+		return this;
+	}
+
+	/**
+	 * @options { secret, callbackUrl, toleranceSeconds, requestTTLSeconds }
+	 */
+	IGateway function configure( required any options ) {
+		super.configure( arguments.options )
+		variables.secret            = variables.options.secret ?: ""
+		variables.callbackUrl       = variables.options.callbackUrl ?: ""
+		variables.toleranceSeconds  = variables.options.toleranceSeconds ?: 300
+		variables.requestTTLSeconds = variables.options.requestTTLSeconds ?: 900
+		return this;
+	}
+
+	array function getDeclaredCapabilities() {
+		return [ "inboundMessages", "outboundMessages", "humanApproval" ]
+	}
+
+	// -------------------------------------------------------------------------
+	// Inbound
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Verify a signed inbound request. Expects requestContext.headers to carry
+	 * X-Signature, X-Timestamp, X-Nonce, and requestContext.rawBody the exact body string
+	 * the signature was computed over.
+	 */
+	boolean function verifyInbound( required any payload, struct requestContext = {} ) {
+		return verifySignedRequest( arguments.requestContext ).valid
+	}
+
+	/**
+	 * Parse a verified inbound JSON payload into a normalized GatewayMessage.
+	 *
+	 * @payload Struct with at least `text`; optionally userID/conversationID/threadID
+	 */
+	array function parseInbound( required any payload, struct requestContext = {} ) {
+		var gwContext = new GatewayContext(
+			gateway       : variables.name,
+			conversationID: arguments.payload.conversationID ?: "",
+			userID        : arguments.payload.userID ?: "",
+			threadID      : arguments.payload.threadID ?: "",
+			raw           : isStruct( arguments.payload ) ? arguments.payload : {}
+		)
+		return [
+			new GatewayMessage(
+				text   : arguments.payload.text ?: "",
+				context: gwContext,
+				raw    : isStruct( arguments.payload ) ? arguments.payload : {}
+			)
+		]
+	}
+
+	// -------------------------------------------------------------------------
+	// Outbound
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Deliver an event: POST it to callbackUrl if configured, always record it locally.
+	 */
+	GatewayDeliveryResult function deliver( required GatewayEvent event, required GatewayContext context ) {
+		variables.deliveredEvents.append( arguments.event )
+
+		if ( !variables.callbackUrl.len() ) {
+			return new GatewayDeliveryResult( deliveryID: arguments.event.getId() )
+		}
+
+		try {
+			var eventPayload = {
+				"id"         : arguments.event.getId(),
+				"type"       : arguments.event.getType(),
+				"executionID": arguments.event.getExecutionID(),
+				"data"       : arguments.event.getData(),
+				"createdAt"  : arguments.event.getCreatedAt()
+			}
+			var httpResult = postJSON( variables.callbackUrl, {
+				"event"  : eventPayload,
+				"context": arguments.context.toStruct()
+			} )
+			var statusCode = val( httpResult.statusCode )
+			return new GatewayDeliveryResult(
+				deliveryID: arguments.event.getId(),
+				success   : statusCode < 300,
+				error     : statusCode < 300 ? "" : "Callback returned HTTP #httpResult.statusCode#",
+				raw       : httpResult
+			)
+		} catch ( any e ) {
+			return GatewayDeliveryResult.failure( "Failed to deliver to callback URL: #e.message#" )
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Human-in-the-loop
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Present an interaction request. Always resolves asynchronously — HttpGateway has
+	 * no synchronous channel to a human, so the decision arrives later via resolveInteraction().
+	 */
+	GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest request, required GatewayContext context ) {
+		var id = arguments.request.getId()
+		variables.statusLocks.put( id, "pending" )
+		variables.interactions[ id ] = {
+			"request"  : arguments.request,
+			"context"  : arguments.context,
+			"decision" : javacast( "null", "" ),
+			"createdAt": now()
+		}
+		return new GatewayDeliveryResult( deliveryID: id )
+	}
+
+	/**
+	 * Build a HumanInteractionDecision from an inbound decision POST's parsed body.
+	 */
+	HumanInteractionDecision function parseHumanDecision( required GatewayEvent event ) {
+		var data = arguments.event.getData()
+		return new HumanInteractionDecision(
+			requestID : data.requestID ?: "",
+			decision  : data.decision ?: "",
+			editedData: data.editedData ?: {},
+			reason    : data.reason ?: "",
+			decidedBy : data.decidedBy ?: ""
+		)
+	}
+
+	/**
+	 * Look up a tracked interaction record by requestID, pending or resolved.
+	 *
+	 * @return struct { request, context, decision, createdAt } or null if unknown
+	 */
+	any function getInteraction( required string requestID ) {
+		return variables.interactions[ arguments.requestID ] ?: javacast( "null", "" )
+	}
+
+	/**
+	 * Whether a requestID's presented interaction has aged past requestTTLSeconds.
+	 */
+	boolean function isInteractionExpired( required string requestID ) {
+		var record = getInteraction( arguments.requestID )
+		if ( isNull( record ) ) {
+			return true
+		}
+		return dateDiff( "s", record.createdAt, now() ) > variables.requestTTLSeconds
+	}
+
+	/**
+	 * Atomically resolve a pending interaction with a decision. Only the first call for a
+	 * given requestID succeeds — a second (duplicate) call throws rather than overwriting.
+	 *
+	 * @throws InteractionNotFound      if no interaction is tracked with that id
+	 * @throws InteractionExpired       if the interaction aged past requestTTLSeconds
+	 * @throws InteractionAlreadyResolved if another resolveInteraction() call already claimed it
+	 */
+	HumanInteractionDecision function resolveInteraction( required string requestID, required HumanInteractionDecision decision ) {
+		var record = getInteraction( arguments.requestID )
+		if ( isNull( record ) ) {
+			throw( type: "InteractionNotFound", message: "No interaction with id [#arguments.requestID#]." )
+		}
+		if ( isInteractionExpired( arguments.requestID ) ) {
+			throw( type: "InteractionExpired", message: "Interaction [#arguments.requestID#] has expired." )
+		}
+
+		var claimed = variables.statusLocks.replace( arguments.requestID, "pending", "resolved" )
+		if ( !claimed ) {
+			throw(
+				type   : "InteractionAlreadyResolved",
+				message: "Interaction [#arguments.requestID#] was already resolved with status [#variables.statusLocks.get( arguments.requestID )#]."
+			)
+		}
+
+		record.decision = arguments.decision
+		return arguments.decision
+	}
+
+	// -------------------------------------------------------------------------
+	// Security
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Verify a signed request's signature, freshness, and nonce uniqueness in one call.
+	 * On success, the nonce is marked used so it can't be replayed.
+	 *
+	 * @requestContext { headers: { X-Signature, X-Timestamp, X-Nonce }, rawBody }
+	 *
+	 * @return struct { valid: boolean, reason: string }
+	 */
+	struct function verifySignedRequest( required struct requestContext ) {
+		var headers   = arguments.requestContext.headers ?: {}
+		var rawBody   = arguments.requestContext.rawBody ?: ""
+		var signature = headers[ "X-Signature" ] ?: ""
+		var timestamp = headers[ "X-Timestamp" ] ?: ""
+		var nonce     = headers[ "X-Nonce" ] ?: ""
+
+		if ( !variables.secret.len() ) {
+			return { valid: false, reason: "Gateway has no signing secret configured." }
+		}
+		if ( !signature.len() || !timestamp.len() || !nonce.len() ) {
+			return { valid: false, reason: "Missing X-Signature/X-Timestamp/X-Nonce header(s)." }
+		}
+		if ( !isNull( variables.seenNonces.get( nonce ) ) ) {
+			return { valid: false, reason: "Nonce has already been used (replay)." }
+		}
+
+		var result = GatewaySecurity::verify(
+			secret          : variables.secret,
+			timestamp       : timestamp,
+			nonce           : nonce,
+			rawBody         : rawBody,
+			signature       : signature,
+			toleranceSeconds: variables.toleranceSeconds
+		)
+
+		if ( result.valid ) {
+			variables.seenNonces.put( nonce, now().getTime() + ( variables.toleranceSeconds * 1000 ) )
+		}
+
+		return result
+	}
+
+	// -------------------------------------------------------------------------
+	// Private helpers
+	// -------------------------------------------------------------------------
+
+	private struct function postJSON( required string url, required struct body ) {
+		bx: http
+			url    = arguments.url
+			method = "post"
+			result = "callbackResult"
+			charset = "utf-8"
+		{
+			bx:httpParam type="header" name="content-type" value="application/json";
+			bx:httpParam type="body" value=jsonSerialize( arguments.body );
+		}
+		return { statusCode: callbackResult.statusCode, fileContent: callbackResult.fileContent ?: "" }
+	}
+
+}
