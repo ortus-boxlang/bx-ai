@@ -23,10 +23,10 @@ import ortus.boxlang.runtime.scopes.Key;
  * was enabled. That put a live API key into the `ai` log and stdout.
  *
  * Two independent defenses are asserted:
- *   1. PromptSecurity::redactURLSecrets() masks secret query params in anything logged — this
- *      protects EVERY provider, including any future key-in-URL one.
- *   2. GeminiService keeps the key out of shared instance state entirely, so it can neither be
- *      logged nor bleed between concurrent requests using different API keys.
+ * 1. PromptSecurity::redactURLSecrets() masks secret query params in anything logged — this
+ * protects EVERY provider, including any future key-in-URL one.
+ * 2. GeminiService keeps the key out of shared instance state entirely, so it can neither be
+ * logged nor bleed between concurrent requests using different API keys.
  *
  * The source-level guards below are deliberate: they encode the exact shape of the original bug
  * and were verified to FAIL when it is reintroduced.
@@ -99,13 +99,13 @@ public class ApiKeyUrlLeakTest extends BaseIntegrationTest {
 	@DisplayName( "Gemini never assigns a key-bearing URL to shared instance state" )
 	@Test
 	public void testGeminiDoesNotAssignKeyToInstanceURL() throws IOException {
-		String src = Files.readString(
+		String	src			= Files.readString(
 		    Path.of( "src/main/bx/models/providers/GeminiService.bx" ),
 		    StandardCharsets.UTF_8
 		);
 
 		// The original bug: `variables.chatURL = ... ?key=#chatRequest.getApiKey()#`
-		String offenders = src.lines()
+		String	offenders	= src.lines()
 		    .filter( line -> line.contains( "variables.chatURL" )
 		        && line.contains( "=" )
 		        && line.contains( "key=#" ) )
@@ -117,12 +117,12 @@ public class ApiKeyUrlLeakTest extends BaseIntegrationTest {
 	@DisplayName( "every logged endpoint routes through the redactor" )
 	@Test
 	public void testLogBuildersRedact() throws IOException {
-		String src = Files.readString(
+		String	src			= Files.readString(
 		    Path.of( "src/main/bx/models/providers/BaseService.bx" ),
 		    StandardCharsets.UTF_8
 		);
 
-		String unredacted = src.lines()
+		String	unredacted	= src.lines()
 		    .filter( line -> line.contains( "\"Endpoint: #" ) )
 		    .filter( line -> !line.contains( "redactURLSecrets(" ) )
 		    .reduce( "", ( a, b ) -> a + b.trim() + "\n" );
