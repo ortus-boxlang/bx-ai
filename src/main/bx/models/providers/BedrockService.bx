@@ -23,10 +23,13 @@
  * in order:
  *   1. Explicit `awsAccessKeyId`/`awsSecretAccessKey`/`awsSessionToken` passed to configure()
  *   2. `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` environment variables
- *   3. A Bedrock long-term API key (bearer auth) — configure() with a plain string, or the
- *      `AWS_BEARER_TOKEN_BEDROCK` environment variable — used ONLY when no AWS access key was
- *      resolved via steps 1/2 above; explicit/env AWS credentials always win and skip bearer
- *      auth entirely (see useBearerAuth())
+ *   3. A Bedrock long-term API key (bearer auth) — an explicit `bearerToken` passed to
+ *      configure(), or the `AWS_BEARER_TOKEN_BEDROCK` environment variable — used ONLY when no
+ *      AWS access key was resolved via steps 1/2 above; explicit/env AWS credentials always win
+ *      and skip bearer auth entirely (see useBearerAuth()). Bearer auth is opt-in only: it is
+ *      never inferred from a generic `apiKey` — `configure( "a-string" )` sets `modelId` (see
+ *      configure()'s docblock for why Bedrock deliberately deviates from the module-wide
+ *      "string = apiKey" contract here).
  *   4. ECS/EKS container credentials (`AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` or `_FULL_URI`)
  *   5. EC2 IMDSv2 instance-role credentials (session-token handshake + role lookup)
  * Steps 4/5 are cached on the instance and refreshed once within 5 minutes of expiry.
@@ -93,6 +96,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	property name="baseURL" default="";
 
 	/**
+	 * Explicit Bedrock long-term API key (bearer token) — opt-in only. When set, and no AWS
+	 * access key is available (see useBearerAuth()), requests authenticate with
+	 * "Authorization: Bearer {bearerToken}" instead of AWS SigV4 signing. Never inferred from
+	 * `apiKey` (see configure()'s docblock for why); the `AWS_BEARER_TOKEN_BEDROCK` environment
+	 * variable is the other, equally explicit, way to opt in.
+	 */
+	property name="bearerToken" default="";
+
+	/**
 	 * Static defaults
 	 */
 	static {
@@ -157,22 +169,28 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	/**
 	 * Configure the service with AWS credentials and region
 	 *
-	 *         OR a simple string for backward compatibility. Per the module-wide "string =
-	 *         apiKey" contract (BaseService's configure()), a plain string is the API key —
-	 *         for Bedrock that means a long-term Bedrock API key, which is used as a bearer
-	 *         token (Authorization: Bearer ...) instead of AWS IAM/SigV4 signing.
+	 *         OR a simple string for backward compatibility (treated as modelId).
 	 *
-	 * @options A struct containing: region, awsAccessKeyId, awsSecretAccessKey, awsSessionToken (optional), modelId (optional), baseURL (optional)
-	 *          OR a plain string Bedrock API key (bearer auth)
+	 *         Bedrock deliberately deviates from BaseService's module-wide "string = apiKey"
+	 *         contract here: a Bedrock model id (e.g. "anthropic.claude-3-sonnet-20240229-v1:0")
+	 *         is by far the more useful single-string argument, and this has been Bedrock's
+	 *         behavior since before bearer auth existed — changing it would silently break
+	 *         every existing `configure( "anthropic.claude-..." )` caller. Bearer tokens have
+	 *         their own explicit configuration instead: the `bearerToken` struct key (see
+	 *         below) or the `AWS_BEARER_TOKEN_BEDROCK` environment variable — see
+	 *         useBearerAuth()/getBearerToken().
+	 *
+	 * @options A struct containing: region, awsAccessKeyId, awsSecretAccessKey, awsSessionToken (optional), modelId (optional), baseURL (optional), bearerToken (optional)
+	 *          OR a plain string model ID
 	 *
 	 * @return The service instance
 	 */
 	IAiService function configure( required any options ){
 		if ( isSimpleValue( arguments.options ) ) {
-			// Delegate to BaseService: sets variables.apiKey to the raw string. useBearerAuth()
-			// detects this (a simple, non-empty apiKey) and switches request signing to bearer
-			// auth, bypassing SigV4/AWS credentials entirely.
-			super.configure( arguments.options );
+			// If a simple string is passed, treat it as model ID for compatibility — see the
+			// docblock above for why Bedrock does not follow BaseService's "string = apiKey"
+			// contract.
+			variables.modelId = arguments.options;
 		} else if ( isStruct( arguments.options ) ) {
 			// Delegate to BaseService for the module-settings merges (defaultParams,
 			// providers.Bedrock.{params,options}) that struct-based configure() must not skip.
@@ -206,6 +224,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 			if ( arguments.options.keyExists( "baseURL" ) && len( arguments.options.baseURL ) ) {
 				variables.baseURL = arguments.options.baseURL.trim();
+			}
+			if ( arguments.options.keyExists( "bearerToken" ) && len( arguments.options.bearerToken ) ) {
+				variables.bearerToken = arguments.options.bearerToken;
 			}
 		}
 
@@ -487,30 +508,34 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * True when this service should authenticate with a Bedrock long-term API key (bearer
 	 * token) instead of AWS SigV4 request signing.
 	 *
-	 * Explicit/env AWS credentials always WIN over bearer auth: aiService()/aiChat() inject the
-	 * module-wide settings.apiKey (or a BEDROCK_API_KEY env var) into every provider's options as
-	 * a plain string, including Bedrock's — so a bare string apiKey must not silently disable
-	 * SigV4 when a struct of AWS credentials was ALSO supplied in the same configure() call.
-	 * Bearer auth is therefore only used when NO AWS access key is available at all
-	 * (variables.awsAccessKeyId is empty after struct + environment resolution) AND a bearer
-	 * token is present — a plain string passed to configure() (the module-wide "string = apiKey"
-	 * contract), or the AWS_BEARER_TOKEN_BEDROCK environment variable.
+	 * Bearer auth is explicit opt-in ONLY — an explicit `bearerToken` passed to configure(), or
+	 * the AWS_BEARER_TOKEN_BEDROCK environment variable. It is NEVER inferred from a generic
+	 * `apiKey` value: aiService()/aiChat() inject the module-wide settings.apiKey (or a
+	 * BEDROCK_API_KEY env var) into every provider's options as a plain string, including
+	 * Bedrock's, so treating any non-empty apiKey as a bearer token would make a caller with (say)
+	 * a global OpenAI key and no AWS credentials silently attempt Bedrock bearer auth with the
+	 * wrong key.
+	 *
+	 * Explicit/env AWS credentials always WIN over bearer auth regardless: bearer auth is only
+	 * used when NO AWS access key is available at all (variables.awsAccessKeyId is empty after
+	 * struct + environment resolution) AND a bearer token is present — kept as cheap insurance
+	 * even though bearerToken/AWS_BEARER_TOKEN_BEDROCK are already explicit opt-ins.
 	 */
 	public boolean function useBearerAuth(){
 		if ( len( variables.awsAccessKeyId ) ) {
 			return false;
 		}
-		return ( isSimpleValue( variables.apiKey ) && len( variables.apiKey ) > 0 )
+		return len( variables.bearerToken ) > 0
 			|| len( getSystemSetting( "AWS_BEARER_TOKEN_BEDROCK", "" ) ) > 0;
 	}
 
 	/**
-	 * The bearer token to use when useBearerAuth() is true: the configured apiKey string,
-	 * falling back to the AWS_BEARER_TOKEN_BEDROCK environment variable.
+	 * The bearer token to use when useBearerAuth() is true: the explicit `bearerToken` config
+	 * value, falling back to the AWS_BEARER_TOKEN_BEDROCK environment variable.
 	 */
 	public string function getBearerToken(){
-		if ( isSimpleValue( variables.apiKey ) && len( variables.apiKey ) > 0 ) {
-			return variables.apiKey;
+		if ( len( variables.bearerToken ) > 0 ) {
+			return variables.bearerToken;
 		}
 		return getSystemSetting( "AWS_BEARER_TOKEN_BEDROCK", "" );
 	}
@@ -2730,8 +2755,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			println( buildBedrockEmbeddingRequestLog( arguments.embeddingRequest, arguments.dataPacket, endpoint ) );
 		}
 
-		// Same auth rule as chat/stream: a Bedrock long-term API key (string apiKey, or
-		// AWS_BEARER_TOKEN_BEDROCK) uses bearer auth and skips SigV4 entirely.
+		// Same auth rule as chat/stream: a Bedrock long-term API key (explicit `bearerToken`
+		// config, or AWS_BEARER_TOKEN_BEDROCK) uses bearer auth and skips SigV4 entirely.
 		var extraHeaders = buildProviderOptionHeaders( arguments.embeddingRequest.getProviderOptions() );
 
 		var httpService = http( url = endpoint )

@@ -1026,26 +1026,76 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	// -----------------------------------------------------------------------
 
 	@Test
-	@DisplayName( "configure() with a plain string sets it as the apiKey (bearer auth), not modelId" )
-	public void testConfigureStringIsApiKeyNotModelId() {
-		// item-14 fix: configure(string) now follows the module-wide "string = apiKey" contract
-		// instead of the old (incorrect) "string = modelId" behavior.
+	@DisplayName( "configure() with a plain string sets it as modelId (pre-#227 behavior restored), not apiKey" )
+	public void testConfigureStringSetsModelId() {
+		// Bearer auth is now explicit opt-in only (bearerToken / AWS_BEARER_TOKEN_BEDROCK) —
+		// configure(string) keeps its original, non-breaking meaning: set modelId. See
+		// BedrockService.configure()'s docblock for why Bedrock deliberately deviates from
+		// BaseService's "string = apiKey" contract here.
+		assumeTrue( System.getenv( "AWS_BEARER_TOKEN_BEDROCK" ) == null, "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
+
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
 				service = new bxModules.bxai.models.providers.BedrockService()
-				service.configure( "my-bedrock-api-key" )
-				apiKey        = service.getApiKey()
-				modelIdEmpty  = !len( service.getModelId() )
-				usesBearer    = service.useBearerAuth()
+				service.configure( "anthropic.claude-3-sonnet-20240229-v1:0" )
+				modelId    = service.getModelId()
+				apiKeyEmpty = !len( service.getApiKey() )
+				usesBearer  = service.useBearerAuth()
 			""",
 			context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( Key.of( "apiKey" ) ).toString() ).isEqualTo( "my-bedrock-api-key" );
-		assertThat( variables.getAsBoolean( Key.of( "modelIdEmpty" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "modelId" ) ).toString() ).isEqualTo( "anthropic.claude-3-sonnet-20240229-v1:0" );
+		assertThat( variables.getAsBoolean( Key.of( "apiKeyEmpty" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "usesBearer" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "configure() with a plain-string apiKey (module-settings footgun) does NOT select bearer auth without an explicit bearerToken" )
+	public void testStringApiKeyAloneDoesNotUseBearerAuth() {
+		// Regression test for the footgun this rework closes: aiService()/aiChat() inject the
+		// module-wide settings.apiKey (or a BEDROCK_API_KEY env var) into EVERY provider's options
+		// as a plain string — including Bedrock's — so a caller with (say) a global OpenAI key and
+		// no AWS credentials configured must NOT have that string silently selected as a Bedrock
+		// bearer token. Bearer auth only activates via the explicit bearerToken key or the
+		// AWS_BEARER_TOKEN_BEDROCK env var (guarded below).
+		assumeTrue( System.getenv( "AWS_BEARER_TOKEN_BEDROCK" ) == null, "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = new bxModules.bxai.models.providers.BedrockService()
+				service.configure( { apiKey: "sk-some-other-providers-global-key" } )
+				usesBearer = service.useBearerAuth()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "usesBearer" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "useBearerAuth() is true when an explicit bearerToken is configured and no AWS access key is available" )
+	public void testExplicitBearerTokenUsesBearerAuth() {
+		assumeTrue( System.getenv( "AWS_BEARER_TOKEN_BEDROCK" ) == null, "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = new bxModules.bxai.models.providers.BedrockService()
+				service.configure( { bearerToken: "my-bedrock-bearer-token" } )
+				usesBearer  = service.useBearerAuth()
+				bearerToken = service.getBearerToken()
+			""",
+			context
+		);
+		// @formatter:on
+
 		assertThat( variables.getAsBoolean( Key.of( "usesBearer" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "bearerToken" ) ).toString() ).isEqualTo( "my-bedrock-bearer-token" );
 	}
 
 	@Test
@@ -1077,10 +1127,11 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	@DisplayName( "useBearerAuth() is false for nested apiKey credentials struct (aiService flow), even though apiKey is set" )
 	public void testNestedCredentialsStructDoesNotUseBearerAuth() {
 		// Guards against a false positive: variables.apiKey holds the nested credentials STRUCT
-		// in this flow (see beforeEach), which must NOT be mistaken for a bearer-mode string key.
-		// When dotenv has no real AWS creds, variables.awsAccessKeyId ends up empty too, so this
-		// assertion falls through to depending on the ambient AWS_BEARER_TOKEN_BEDROCK env var
-		// being unset.
+		// in this flow (see beforeEach). apiKey is never consulted by useBearerAuth() any more
+		// (bearer auth keys off bearerToken/AWS_BEARER_TOKEN_BEDROCK only), but this still confirms
+		// the struct-credentials flow doesn't accidentally end up in bearer mode. When dotenv has
+		// no real AWS creds, variables.awsAccessKeyId ends up empty too, so this assertion falls
+		// through to depending on the ambient AWS_BEARER_TOKEN_BEDROCK env var being unset.
 		assumeTrue( System.getenv( "AWS_BEARER_TOKEN_BEDROCK" ) == null, "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
 
 		// @formatter:off
@@ -1097,20 +1148,19 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "useBearerAuth() is false when a plain-string apiKey AND struct AWS credentials are both configured (explicit AWS creds win)" )
-	public void testExplicitAwsCredsWinOverStringApiKey() {
-		// Review finding: aiService()/aiChat() inject the module-wide settings.apiKey (or a
-		// BEDROCK_API_KEY env var) into every provider's options as a plain string, including
-		// Bedrock's — so a bare string apiKey must NOT silently disable SigV4 when a struct of AWS
-		// credentials was ALSO supplied in the same configure() call. Explicit AWS credentials
-		// must win regardless of the ambient AWS_BEARER_TOKEN_BEDROCK env var, since
+	@DisplayName( "useBearerAuth() is false when an explicit bearerToken AND struct AWS credentials are both configured (explicit AWS creds win)" )
+	public void testExplicitAwsCredsWinOverBearerToken() {
+		// The precedence guard kept from the original review finding: explicit AWS credentials
+		// must win over bearer auth even when a bearerToken is ALSO supplied in the same
+		// configure() call — cheap insurance, even though bearerToken is itself an explicit opt-in.
+		// Must hold regardless of the ambient AWS_BEARER_TOKEN_BEDROCK env var, since
 		// variables.awsAccessKeyId is non-empty here (short-circuits useBearerAuth() to false).
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
 				service = new bxModules.bxai.models.providers.BedrockService()
 				service.configure( {
-					apiKey: "some-plain-string-key",
+					bearerToken: "some-bearer-token",
 					awsAccessKeyId: "%s",
 					awsSecretAccessKey: "%s",
 					region: "%s"

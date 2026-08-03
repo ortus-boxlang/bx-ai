@@ -172,10 +172,9 @@ public class ProviderCapabilitiesTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "Bedrock reports chat, stream and embeddings capabilities" )
 	public void testBedrockCapabilities() {
-		// configure( "test-key" ) now follows the module-wide "string = apiKey" contract (a
-		// Bedrock long-term API key / bearer token) instead of the old, incorrect "string =
-		// modelId" behavior — this exercises that it no longer throws and capability reporting
-		// is unaffected by the auth mode.
+		// configure( "test-key" ) sets modelId for Bedrock (its long-standing, non-breaking
+		// behavior — see BedrockService.configure()'s docblock) rather than apiKey; this exercises
+		// that capability reporting is unaffected by that, same as every other provider here.
 		Array caps = executeGetCapabilities( "Bedrock" );
 		assertThat( caps ).containsAtLeast( "chat", "stream", "embeddings" );
 		assertThat( executeHasCapability( "Bedrock", "chat" ) ).isTrue();
