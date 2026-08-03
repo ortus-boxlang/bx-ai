@@ -1,0 +1,277 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * HTTP front controller for SlackGateway — the transport-agnostic processing logic
+ * behind public/slack.bxm, mirroring bx-ai's own GatewayRequestProcessor shape.
+ *
+ * Reuses bx-ai's mcp/transports/HTTPTransport as-is (CGI request/response, CORS,
+ * security headers) rather than building a parallel HTTP stack — path routing here is
+ * a processor concern, not a transport one.
+ *
+ * Routes:
+ *   POST /events        — Slack Events API (message/app_mention callbacks, plus the
+ *                          one-time url_verification handshake)
+ *   POST /interactions   — Slack Interactivity payloads (block_actions button clicks)
+ *
+ * Both routes resolve the configured SlackGateway via gatewayRegistry().get( "slack" ) —
+ * i.e. the application must register it at startup
+ * (`gatewayRegistry().register( aiGateway( "slack", { botToken: "...", signingSecret: "..." } ) )`)
+ * before this processor can route to it.
+ *
+ * route( requestData ) is the real testable seam: it takes the same normalized request
+ * struct HTTPTransport.readRequest() produces, so tests can drive it directly with a
+ * hand-built struct without needing a running HTTP server.
+ *
+ * @since 1.0.0
+ */
+import bxModules.bxai.models.gateway.contracts.GatewayEvent;
+
+class {
+
+	/**
+	 * Static logger and transport singleton
+	 */
+	static {
+		slackLogger   = getBoxRuntime().getLoggingService().getLogger( "ai" )
+		httpTransport = new bxModules.bxai.models.mcp.transports.HTTPTransport()
+	}
+
+	/**
+	 * Get the shared HTTP transport instance
+	 */
+	static any function getHttpTransport() {
+		return static.httpTransport;
+	}
+
+	/**
+	 * Entry point for public/slack.bxm. Reads the request from the HTTP context,
+	 * routes it, and writes the response back. Returns the content for logging/testing.
+	 */
+	static string function processHttp() {
+		var requestData = static.httpTransport.readRequest();
+		var response     = route( requestData );
+		static.httpTransport.writeResponse( response );
+		return response.content;
+	}
+
+	/**
+	 * Route a normalized request to the matching handler.
+	 *
+	 * @requestData The normalized request struct from HTTPTransport.readRequest()
+	 * @path        The path to route on. Defaults to the real CGI.PATH_INFO for the live
+	 *              HTTP entry point (processHttp()); tests pass this explicitly instead
+	 *              of needing a mocked CGI/web-server environment.
+	 *
+	 * @return Response struct { content, contentType, headers, statusCode }
+	 */
+	static struct function route( required struct requestData, string path = ( cgi.PATH_INFO ?: "" ) ) {
+		var response = {
+			"content"    : "",
+			"contentType": "application/json",
+			"headers"    : static.httpTransport.getSecurityHeaders(),
+			"statusCode" : 200
+		}
+		response.headers[ "X-Request-ID" ] = arguments.requestData.requestId ?: createUUID()
+
+		if ( static.httpTransport.supports( "preflight" ) && arguments.requestData.method == "OPTIONS" ) {
+			var preflight = static.httpTransport.handlePreflight( {} )
+			preflight.headers[ "X-Request-ID" ] = response.headers[ "X-Request-ID" ]
+			return preflight
+		}
+
+		var segments = listToArray( arguments.path, "/" ).filter( ( segment ) => len( segment ) > 0 )
+
+		try {
+			if ( segments.len() == 1 && segments[ 1 ] == "events" && arguments.requestData.method == "POST" ) {
+				return handleEvents( arguments.requestData, response )
+			}
+			if ( segments.len() == 1 && segments[ 1 ] == "interactions" && arguments.requestData.method == "POST" ) {
+				return handleInteraction( arguments.requestData, response )
+			}
+		} catch ( any e ) {
+			static.slackLogger.error( "Slack gateway request processing error: #e.message#" )
+			response.statusCode = 500
+			response.content    = jsonSerialize( { "error": e.message ?: "Internal error" } )
+			return response
+		}
+
+		response.statusCode = 404
+		response.content    = jsonSerialize( { "error": "Not found: #arguments.requestData.method# #arguments.path#" } )
+		return response
+	}
+
+	// -------------------------------------------------------------------------
+	// Route handlers
+	// -------------------------------------------------------------------------
+
+	private static struct function handleEvents( required struct requestData, required struct response ) {
+		var gw = resolveGateway()
+		if ( isNull( gw ) ) {
+			arguments.response.statusCode = 404
+			arguments.response.content    = jsonSerialize( { "error": "No [slack] gateway registered." } )
+			return arguments.response
+		}
+
+		var requestContext = { "headers": arguments.requestData.headers, "rawBody": arguments.requestData.body }
+
+		if ( !gw.verifyInbound( {}, requestContext ) ) {
+			arguments.response.statusCode = 401
+			arguments.response.content    = jsonSerialize( { "error": "Signature verification failed." } )
+			return arguments.response
+		}
+
+		if ( !isJSON( arguments.requestData.body ) ) {
+			arguments.response.statusCode = 400
+			arguments.response.content    = jsonSerialize( { "error": "Request body is not valid JSON." } )
+			return arguments.response
+		}
+		var payload = jsonDeserialize( arguments.requestData.body )
+
+		// Slack's one-time Events API subscription handshake
+		if ( ( payload.type ?: "" ) == "url_verification" ) {
+			arguments.response.contentType = "text/plain"
+			arguments.response.content     = payload.challenge ?: ""
+			return arguments.response
+		}
+
+		if ( ( payload.type ?: "" ) == "event_callback" ) {
+			var messages = gw.parseInbound( payload, requestContext )
+
+			// parseInbound() returns [] for events it deliberately filters out (bot
+			// messages, system subtypes) — nothing to hand the consuming application.
+			if ( messages.len() ) {
+				// Let the consuming application decide what to do (feed an agent, log, etc.) —
+				// this module doesn't own agent/thread wiring.
+				BoxAnnounce( "onSlackInboundMessage", { "messages": messages, "gateway": gw, "payload": payload } )
+			}
+		}
+
+		// Slack only requires a fast 200 ack — no body needed.
+		arguments.response.content = jsonSerialize( { "ok": true } )
+		return arguments.response
+	}
+
+	private static struct function handleInteraction( required struct requestData, required struct response ) {
+		var gw = resolveGateway()
+		if ( isNull( gw ) ) {
+			arguments.response.statusCode = 404
+			arguments.response.content    = jsonSerialize( { "error": "No [slack] gateway registered." } )
+			return arguments.response
+		}
+
+		var requestContext = { "headers": arguments.requestData.headers, "rawBody": arguments.requestData.body }
+
+		if ( !gw.verifyInbound( {}, requestContext ) ) {
+			arguments.response.statusCode = 401
+			arguments.response.content    = jsonSerialize( { "error": "Signature verification failed." } )
+			return arguments.response
+		}
+
+		var interactionPayload = parseFormPayload( arguments.requestData.body )
+		var actions            = interactionPayload.actions ?: []
+
+		if ( !isArray( actions ) || actions.isEmpty() ) {
+			arguments.response.statusCode = 400
+			arguments.response.content    = jsonSerialize( { "error": "Interaction payload missing actions array." } )
+			return arguments.response
+		}
+
+		var action      = actions[ 1 ]
+		var actionValue = isJSON( action.value ?: "" ) ? jsonDeserialize( action.value ) : {}
+		var requestID   = actionValue.requestID ?: ""
+
+		var event = new GatewayEvent(
+			type: "interaction.decision",
+			data: {
+				"requestID": requestID,
+				"decision" : actionValue.decision ?: "",
+				"decidedBy": interactionPayload.user.id ?: ""
+			}
+		)
+		var decision = gw.parseHumanDecision( event )
+
+		try {
+			gw.resolveInteraction( requestID, decision )
+		} catch ( InteractionNotFound e ) {
+			arguments.response.statusCode = 404
+			arguments.response.content    = jsonSerialize( { "error": e.message } )
+			return arguments.response
+		} catch ( InteractionAlreadyResolved e ) {
+			arguments.response.statusCode = 409
+			arguments.response.content    = jsonSerialize( { "error": e.message } )
+			return arguments.response
+		} catch ( InteractionExpired e ) {
+			arguments.response.statusCode = 410
+			arguments.response.content    = jsonSerialize( { "error": e.message } )
+			return arguments.response
+		}
+
+		BoxAnnounce( "onSlackInteractionResolved", {
+			"requestID": requestID,
+			"decision" : decision,
+			"gateway"  : gw,
+			"record"   : gw.getInteraction( requestID )
+		} )
+
+		// Slack only requires a fast 200 ack for interactivity payloads.
+		arguments.response.content = jsonSerialize( { "ok": true } )
+		return arguments.response
+	}
+
+	// -------------------------------------------------------------------------
+	// Helpers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Resolve the registered "slack" gateway via gatewayRegistry(), lazily registering
+	 * one from SLACK_BOT_TOKEN/SLACK_SIGNING_SECRET if ModuleConfig's onRuntimeStart
+	 * registration didn't win the race (module activation order isn't guaranteed — see
+	 * onRuntimeStart()'s doc comment). A real HTTP request is always safely
+	 * post-startup, so this path reliably succeeds even when the eager one didn't.
+	 */
+	private static any function resolveGateway() {
+		try {
+			if ( gatewayRegistry().has( "slack" ) ) {
+				return gatewayRegistry().get( "slack" )
+			}
+		} catch ( any e ) {
+			// gatewayRegistry() itself not callable yet — fall through to the lazy
+			// registration below instead of giving up; a real HTTP request is always
+			// safely post-startup, so this path should still succeed.
+		}
+
+		var gw = new bxModules.bxaiSlack.models.SlackGateway().configure( {
+			"botToken"     : getSystemSetting( "SLACK_BOT_TOKEN", "" ),
+			"signingSecret": getSystemSetting( "SLACK_SIGNING_SECRET", "" )
+		} )
+		gatewayRegistry().register( gw )
+		return gw
+	}
+
+	/**
+	 * Extract and decode the `payload` field from Slack's
+	 * application/x-www-form-urlencoded Interactivity POST body, returning the parsed JSON.
+	 *
+	 * @rawBody The raw form-encoded request body, e.g. "payload=%7B...%7D"
+	 */
+	private static struct function parseFormPayload( required string rawBody ) {
+		for ( var pair in listToArray( arguments.rawBody, "&" ) ) {
+			if ( pair.left( 8 ) == "payload=" ) {
+				return jsonDeserialize( urlDecode( pair.right( len( pair ) - 8 ) ) )
+			}
+		}
+		return {}
+	}
+
+}
