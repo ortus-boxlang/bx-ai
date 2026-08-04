@@ -147,7 +147,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.resolvedCredentials = {};
 		// Timestamp of the last resolution attempt that found nothing anywhere in the chain (null
 		// until the first such failure) — backs the negative cache in resolveAwsCredentials().
-		variables.lastCredentialResolutionFailure = javacast( "null", "" );
+		variables.lastCredentialResolutionFailure = null;
 		// Unique per-instance name for the named lock guarding resolveAwsCredentials()'s
 		// read-modify-write of variables.resolvedCredentials / lastCredentialResolutionFailure.
 		variables.credentialLockName = "bedrock-credentials-" & createUUID();
@@ -343,7 +343,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 				if ( !isNull( creds ) ) {
 					variables.resolvedCredentials             = creds;
-					variables.lastCredentialResolutionFailure  = javacast( "null", "" );
+					variables.lastCredentialResolutionFailure = null;
 					result = creds;
 				} else {
 					// Nothing resolved this attempt — start/refresh the negative-cache window,
@@ -407,7 +407,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		var fullUri      = getSystemSetting( "AWS_CONTAINER_CREDENTIALS_FULL_URI", "" );
 
 		if ( !len( relativeUri ) && !len( fullUri ) ) {
-			return javacast( "null", "" );
+			return null;
 		}
 
 		var url       = len( fullUri ) ? fullUri : ( "http://169.254.170.2" & relativeUri );
@@ -421,7 +421,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			var result     = req.send();
 			var statusCode = val( listFirst( result.statusCode, " " ) );
 			if ( statusCode != 200 ) {
-				return javacast( "null", "" );
+				return null;
 			}
 
 			var body = jsonDeserialize( result.fileContent );
@@ -437,7 +437,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				type: "warning",
 				log : "ai"
 			);
-			return javacast( "null", "" );
+			return null;
 		}
 	}
 
@@ -460,7 +460,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				.send();
 
 			if ( val( listFirst( tokenResult.statusCode, " " ) ) != 200 ) {
-				return javacast( "null", "" );
+				return null;
 			}
 			var token = trim( tokenResult.fileContent );
 
@@ -472,7 +472,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				.send();
 
 			if ( val( listFirst( roleResult.statusCode, " " ) ) != 200 || !len( trim( roleResult.fileContent ) ) ) {
-				return javacast( "null", "" );
+				return null;
 			}
 			var role = trim( listFirst( roleResult.fileContent, char( 10 ) ) );
 
@@ -484,7 +484,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				.send();
 
 			if ( val( listFirst( credResult.statusCode, " " ) ) != 200 ) {
-				return javacast( "null", "" );
+				return null;
 			}
 
 			var body = jsonDeserialize( credResult.fileContent );
@@ -500,7 +500,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				type: "warning",
 				log : "ai"
 			);
-			return javacast( "null", "" );
+			return null;
 		}
 	}
 
