@@ -57,7 +57,7 @@ public class aiGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "supportsStream" ) ) ).isFalse();
 	}
 
-	@DisplayName( "aiGateway('unknown') throws GatewayNotSupported when no listener supplies one" )
+	@DisplayName( "aiGateway('unknown') throws GatewayNotSupported when nothing is registered and it isn't a resolvable class path" )
 	@Test
 	public void testUnknownGatewayThrows() {
 		assertThrows(
@@ -71,7 +71,7 @@ public class aiGatewayTest extends BaseIntegrationTest {
 		);
 	}
 
-	@DisplayName( "aiGateway() resolves a dotted name directly as a class path, without announcing onMissingGateway" )
+	@DisplayName( "aiGateway() resolves a dotted name directly as a class path when nothing is registered under that name" )
 	@Test
 	public void testResolvesFullClassPathDirectly() {
 		// @formatter:off
@@ -87,30 +87,27 @@ public class aiGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "name" ) ) ).isEqualTo( "mock" );
 	}
 
-	@DisplayName( "aiGateway('unknown') fires onMissingGateway so an external module can supply one" )
+	@DisplayName( "aiGateway() resolves a gateway a module registered in gatewayRegistry(), reconfiguring the same instance" )
 	@Test
-	public void testOnMissingGatewayExtensionPoint() {
+	public void testResolvesFromGatewayRegistry() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				boxRegisterInterceptor(
-					( data ) -> {
-						if( data.name == "myCustomGateway" ) {
-							data.gateway = {
-								getName : () => "myCustomGateway"
-							}
-						}
-					},
-					"onMissingGateway"
-				)
-				gw     = aiGateway( "myCustomGateway" )
-				result = gw.getName()
+				registered = new bxModules.bxai.models.gateway.MockGateway()
+				registered.setName( "myCustomGateway" )
+				gatewayRegistry().register( registered )
+
+				gw = aiGateway( "myCustomGateway", { seedValue: "abc" } )
+				resultName = gw.getName()
+				// configure() mutates the SAME instance in place — confirm it's not a fresh copy
+				registeredSeedValue = registered.getOptions().seedValue
 			""",
 			context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( "result" ) ).isEqualTo( "myCustomGateway" );
+		assertThat( variables.get( Key.of( "resultName" ) ) ).isEqualTo( "myCustomGateway" );
+		assertThat( variables.get( Key.of( "registeredSeedValue" ) ) ).isEqualTo( "abc" );
 	}
 
 }
