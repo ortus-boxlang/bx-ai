@@ -40,7 +40,7 @@ import ortus.boxlang.runtime.scopes.Key;
  */
 public abstract class BaseSlackChannelTest extends BaseIntegrationTest {
 
-	protected static Key				slackModuleName	= new Key( "bxaiSlack" );
+	protected static Key			slackModuleName	= new Key( "bxaiSlack" );
 	protected static ModuleRecord	slackModuleRecord;
 
 	@BeforeAll
