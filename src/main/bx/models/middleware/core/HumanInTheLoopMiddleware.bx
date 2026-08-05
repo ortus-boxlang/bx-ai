@@ -259,10 +259,10 @@ class extends="BaseAiMiddleware" {
 		var tool      = arguments.context.tool ?: javacast( "null", "" )
 
 		var suspension = variables.coordinator.requestApproval(
-			request: interactionRequest,
-			context: gwContext,
-			gateway: variables.gateway,
-			tool   : tool
+			humanRequest: interactionRequest,
+			context     : gwContext,
+			gateway     : variables.gateway,
+			tool        : tool
 		)
 
 		if ( suspension.isTerminal() ) {

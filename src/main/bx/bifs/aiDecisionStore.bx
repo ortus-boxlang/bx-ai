@@ -1,0 +1,72 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Create an IDecisionStore instance for durable human-in-the-loop "approve always" grants
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Create an IDecisionStore instance.
+	 *
+	 * @store  The store type to create: cache | jdbc | file, or a full class path. Defaults to "cache".
+	 * @config Configuration struct for the store (e.g. { cacheName }, { datasource, table }, { directoryPath })
+	 *
+	 * @return IDecisionStore instance
+	 */
+	function invoke(
+		string store = "cache",
+		struct config = {}
+	) {
+		var storeClass = "";
+
+		switch ( arguments.store.lcase() ) {
+			case "cache":
+			case "CacheDecisionStore":
+				storeClass = "bxModules.bxai.models.hitl.decisions.CacheDecisionStore";
+				break;
+			case "jdbc":
+			case "JdbcDecisionStore":
+			case "database":
+			case "db":
+				storeClass = "bxModules.bxai.models.hitl.decisions.JdbcDecisionStore";
+				break;
+			case "file":
+			case "FileDecisionStore":
+				storeClass = "bxModules.bxai.models.hitl.decisions.FileDecisionStore";
+				break;
+			default:
+				if ( arguments.store.findNoCase( "." ) ) {
+					storeClass = arguments.store;
+				} else {
+					throw(
+						type   : "InvalidDecisionStoreType",
+						message: "Unknown decision store type: #arguments.store#. Available types: cache, jdbc, file"
+					);
+				}
+		}
+
+		BoxAnnounce( "onAiDecisionStoreCreate", {
+			storeType  : arguments.store,
+			storeClass : storeClass,
+			storeConfig: arguments.config
+		} );
+
+		return new "#storeClass#"( argumentCollection: arguments.config );
+	}
+
+}

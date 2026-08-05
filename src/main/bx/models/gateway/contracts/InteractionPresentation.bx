@@ -1,0 +1,110 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Normalized "what to render" shape for a HumanInteractionRequest, built by
+ * IGateway.presentInteraction() and shared by every chat-native gateway (Slack, Telegram,
+ * Teams, ...) instead of each one hand-rolling its own title/body/buttons logic.
+ *
+ * A gateway maps this into its own wire format — e.g. Slack Block Kit buttons, a Telegram
+ * inline keyboard, a Teams Adaptive Card — but the content decisions (what the title says,
+ * how buttons are labeled per decision, how long the body can be) are made once, here.
+ *
+ * Gateways with no natural "buttons" concept (CLI, generic HTTP) simply don't call this —
+ * it exists for chat-native gateways, not as a mandatory step in every gateway's flow.
+ */
+class {
+
+	/**
+	 * Short title/header for the interaction (e.g. a Slack message header, a Telegram bold line)
+	 */
+	property name="title" type="string" default="";
+
+	/**
+	 * The full body text describing the request, already truncated if a maxBodyLength was given
+	 */
+	property name="body" type="string" default="";
+
+	/**
+	 * Buttons a human can press, one per allowed decision — [{ label, value, style }]. `value`
+	 * is always the raw decision string (e.g. "approve_always") a gateway echoes back verbatim
+	 * in the inbound event it fires once pressed; `style` is a hint ("primary"/"danger"/"default")
+	 * gateways may map onto their own button-color vocabulary.
+	 */
+	property name="buttons" type="array" default=[];
+
+	/**
+	 * Well-known style constants for buttons()
+	 */
+	static {
+		STYLES = {
+			PRIMARY: "primary",
+			DANGER : "danger",
+			DEFAULT: "default"
+		}
+
+		// Default label/style per well-known decision string — gateways may override per-button
+		DECISION_PRESETS = {
+			"approve"        : { label: "Approve",             style: "primary" },
+			"approve_always" : { label: "Approve Always",       style: "primary" },
+			"approve_session": { label: "Approve for Session",  style: "primary" },
+			"reject"         : { label: "Reject",               style: "danger"  },
+			"edit"           : { label: "Edit",                 style: "default" },
+			"cancel"         : { label: "Cancel",               style: "default" }
+		}
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @title   Short title/header for the interaction
+	 * @body    The full body text describing the request
+	 * @buttons Buttons a human can press, one per allowed decision
+	 */
+	function init(
+		string title   = "",
+		string body    = "",
+		array  buttons = []
+	) {
+		variables.title   = arguments.title
+		variables.body    = arguments.body
+		variables.buttons = arguments.buttons
+		return this;
+	}
+
+	/**
+	 * Build a button definition for a decision string, falling back to a title-cased label
+	 * and the "default" style for decisions with no known preset.
+	 *
+	 * @decision One of HumanInteractionRequest's allowedDecisions entries
+	 */
+	static struct function buttonFor( required string decision ) {
+		var preset = static.DECISION_PRESETS[ arguments.decision ] ?: {
+			label: arguments.decision.replace( "_", " ", "all" ).ucFirst(),
+			style: static.STYLES.DEFAULT
+		}
+		return { "label": preset.label, "value": arguments.decision, "style": preset.style }
+	}
+
+	/**
+	 * Serialize to a plain struct (useful for logging or gateways that build JSON directly)
+	 */
+	struct function toStruct() {
+		return {
+			"title"  : variables.title,
+			"body"   : variables.body,
+			"buttons": variables.buttons
+		}
+	}
+
+}

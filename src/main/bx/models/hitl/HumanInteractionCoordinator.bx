@@ -43,6 +43,7 @@ import bxModules.bxai.models.gateway.AgentSuspension;
 import bxModules.bxai.models.gateway.contracts.GatewayContext;
 import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
 import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+import bxModules.bxai.models.hitl.decisions.IDecisionStore;
 import bxModules.bxai.models.tools.ITool;
 
 class {
@@ -64,12 +65,36 @@ class {
 	property name="statusLocks";
 
 	/**
-	 * Constructor
+	 * Optional durable grant store for "approve_always" decisions. When absent, "approve_always"
+	 * behaves identically to "approve_session" — a per-coordinator, in-memory grant only.
 	 */
-	function init() {
-		variables.suspensions = {}
-		variables.decisions   = {}
-		variables.statusLocks = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init()
+	property name="decisionStore";
+
+	/**
+	 * "approve_session" grants, in-memory only, keyed by "threadID:toolName". Deliberately not
+	 * backed by IDecisionStore — a session grant should never outlive this coordinator.
+	 */
+	property name="sessionGrants" type="struct" default={};
+
+	/**
+	 * Identity/toolName captured at requestApproval() time so resolve() — which only sees a
+	 * suspensionID and a decision — can still record a grant when the decision calls for one.
+	 * Keyed by suspensionID.
+	 */
+	property name="suspensionMeta" type="struct" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @decisionStore Optional IDecisionStore for durable "approve_always" grants
+	 */
+	function init( IDecisionStore decisionStore ) {
+		variables.suspensions   = {}
+		variables.decisions     = {}
+		variables.statusLocks   = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init()
+		variables.decisionStore = arguments.decisionStore ?: javacast( "null", "" )
+		variables.sessionGrants = {}
+		variables.suspensionMeta = {}
 		return this;
 	}
 
@@ -77,23 +102,27 @@ class {
 	 * Present a HumanInteractionRequest to a human via the given gateway, creating and
 	 * tracking an AgentSuspension for it.
 	 *
+	 * If an identity/tool pair already carries a durable ("approve_always") or in-session
+	 * ("approve_session") grant, the suspension is created but never presented — it's
+	 * auto-resolved as approved immediately, same as a synchronous gateway's instant decision.
+	 *
 	 * For synchronous gateways (the delivery already carries a decision — see
 	 * GatewayDeliveryResult.hasDecision()), the suspension is resolved immediately and
 	 * returned already in its terminal state. For asynchronous gateways, the suspension
 	 * is returned still pending; call resolve() later when the decision arrives.
 	 *
-	 * @request     The interaction request to present
-	 * @context     The GatewayContext identifying who/where to present it to
-	 * @gateway     The gateway to present the request through
-	 * @executionID The agent execution/run this suspension correlates to
-	 * @threadID    The checkpointed thread this suspension can be resumed from
-	 * @checkpoint  Opaque checkpoint reference/metadata
-	 * @tool        The tool being called, if known — used to validate an immediate "edit" decision
+	 * @humanRequest The interaction request to present
+	 * @context      The GatewayContext identifying who/where to present it to
+	 * @gateway      The gateway to present the request through
+	 * @executionID  The agent execution/run this suspension correlates to
+	 * @threadID     The checkpointed thread this suspension can be resumed from
+	 * @checkpoint   Opaque checkpoint reference/metadata
+	 * @tool         The tool being called, if known — used to validate an immediate "edit" decision
 	 *
 	 * @return The AgentSuspension tracking this request
 	 */
 	AgentSuspension function requestApproval(
-		required HumanInteractionRequest request,
+		required HumanInteractionRequest humanRequest,
 		required GatewayContext context,
 		required IGateway gateway,
 		string executionID = "",
@@ -101,18 +130,37 @@ class {
 		struct checkpoint  = {},
 		ITool tool
 	) {
+		var toolName = !isNull( arguments.tool ) ? arguments.tool.getName() : ( arguments.humanRequest.getPendingAction().toolName ?: "" )
+		var identity = arguments.context.getUserID()
+
 		var suspension = new AgentSuspension(
 			executionID: arguments.executionID,
 			threadID   : arguments.threadID,
-			reason     : arguments.request.getMessage(),
-			interaction: arguments.request,
+			reason     : arguments.humanRequest.getMessage(),
+			interaction: arguments.humanRequest,
 			checkpoint : arguments.checkpoint
 		)
 
 		variables.statusLocks.put( suspension.getSuspensionID(), AgentSuspension.STATUSES.PENDING )
 		variables.suspensions[ suspension.getSuspensionID() ] = suspension
+		variables.suspensionMeta[ suspension.getSuspensionID() ] = {
+			"identity": identity,
+			"toolName": toolName,
+			"threadID": arguments.threadID
+		}
 
-		var delivery = arguments.gateway.requestHumanInteraction( arguments.request, arguments.context )
+		if ( len( toolName ) && isAlreadyGranted( identity, arguments.threadID, toolName ) ) {
+			var autoDecision = new HumanInteractionDecision(
+				requestID: arguments.humanRequest.getId(),
+				decision : HumanInteractionDecision.DECISIONS.APPROVE,
+				reason   : "Auto-approved via an existing grant.",
+				decidedBy: identity
+			)
+			resolve( suspension.getSuspensionID(), autoDecision, arguments.tool )
+			return suspension
+		}
+
+		var delivery = arguments.gateway.requestHumanInteraction( arguments.humanRequest, arguments.context )
 
 		if ( delivery.hasDecision() ) {
 			resolve( suspension.getSuspensionID(), delivery.getDecision(), arguments.tool )
@@ -184,6 +232,10 @@ class {
 		suspension.setStatus( newStatus )
 		variables.decisions[ arguments.suspensionID ] = decision
 
+		if ( decision.isApprovedAlways() || decision.isApprovedForSession() ) {
+			recordGrant( arguments.suspensionID, decision )
+		}
+
 		return suspension
 	}
 
@@ -224,6 +276,65 @@ class {
 			return AgentSuspension.STATUSES.CANCELLED
 		}
 		return AgentSuspension.STATUSES.FAILED
+	}
+
+	/**
+	 * Whether the given identity already holds a grant — durable ("approve_always", via
+	 * decisionStore) or in-session ("approve_session", via sessionGrants) — for this tool on
+	 * this thread. A missing identity or toolName can never be granted.
+	 *
+	 * @identity Who is asking
+	 * @threadID The thread the session grant (if any) would be scoped to
+	 * @toolName The tool being called
+	 */
+	private boolean function isAlreadyGranted( required string identity, required string threadID, required string toolName ) {
+		if ( !len( arguments.identity ) || !len( arguments.toolName ) ) {
+			return false
+		}
+
+		if ( variables.sessionGrants.keyExists( sessionGrantKey( arguments.threadID, arguments.toolName ) ) ) {
+			return true
+		}
+
+		if ( !isNull( variables.decisionStore ) ) {
+			return variables.decisionStore.isGranted( arguments.identity, arguments.toolName )
+		}
+
+		return false
+	}
+
+	/**
+	 * Record a grant after a suspension resolves with "approve_always"/"approve_session",
+	 * looking up the identity/toolName captured at requestApproval() time since resolve()
+	 * itself only sees a suspensionID.
+	 *
+	 * @suspensionID The suspension that just resolved
+	 * @decision     The decision it resolved with
+	 */
+	private void function recordGrant( required string suspensionID, required HumanInteractionDecision decision ) {
+		var meta = variables.suspensionMeta[ arguments.suspensionID ] ?: javacast( "null", "" )
+		if ( isNull( meta ) || !len( meta.identity ) || !len( meta.toolName ) ) {
+			return
+		}
+
+		if ( arguments.decision.isApprovedForSession() ) {
+			variables.sessionGrants[ sessionGrantKey( meta.threadID, meta.toolName ) ] = true
+			return
+		}
+
+		if ( arguments.decision.isApprovedAlways() && !isNull( variables.decisionStore ) ) {
+			variables.decisionStore.grant( meta.identity, meta.toolName )
+		}
+	}
+
+	/**
+	 * Build the sessionGrants key for a thread/tool pair.
+	 *
+	 * @threadID The thread a session grant is scoped to
+	 * @toolName The tool the grant applies to
+	 */
+	private string function sessionGrantKey( required string threadID, required string toolName ) {
+		return arguments.threadID & ":" & arguments.toolName
 	}
 
 	/**
