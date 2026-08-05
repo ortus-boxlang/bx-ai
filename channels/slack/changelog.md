@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 Added
 
+* **Approve Always / Approve for Session buttons**: `requestHumanInteraction()` now renders a button
+  for every decision in `HumanInteractionRequest.getAllowedDecisions()` that Slack can represent as a
+  single click — `approve`, `approve_always`, `approve_session`, `reject` — reusing bx-ai core's
+  `IGateway.presentInteraction()` for consistent label/style-per-decision wording (e.g. "Approve
+  Always", "Approve for Session") instead of hand-rolling Slack-specific button text. `edit`/`cancel`
+  are still excluded (no single-click Slack affordance), same scope limit as before. Resolving the
+  interaction now also reuses `IGateway.presentResolution()` for the confirmation message shown in
+  the updated Slack message — attribution (`Answered by <@user>`) stays a separate, Slack-native
+  mention block rather than duplicated in the summary line.
+
 * Initial release: `SlackGateway` implementing bx-ai's `IGateway` SPI — inbound Slack Events API
   messages, outbound `chat.postMessage` delivery, and human-in-the-loop approvals presented as
   Block Kit Approve/Reject buttons resolved via Slack's Interactivity endpoint.

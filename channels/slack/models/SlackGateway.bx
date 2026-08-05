@@ -26,10 +26,15 @@
  * (Slack retries delivery on slow acks) can't double-resolve the same request.
  *
  * Scope note: Slack buttons don't have a natural way to submit *edited* arguments
- * inline (that needs a modal/view), so "edit" is not offered as a button in v1 —
- * requestHumanInteraction() only renders buttons for "approve"/"reject" out of
- * whatever HumanInteractionRequest.getAllowedDecisions() allows. This is a
- * documented scope limit, not a silent gap.
+ * inline (that needs a modal/view), so "edit" is not offered as a button — nor is
+ * "cancel", which has no natural single-click Slack affordance either.
+ * requestHumanInteraction() renders buttons for "approve"/"approve_always"/
+ * "approve_session"/"reject" out of whatever HumanInteractionRequest.
+ * getAllowedDecisions() allows, reusing IGateway.presentInteraction()'s shared
+ * label/style-per-decision vocabulary (see InteractionPresentation) so the same
+ * "Approve Always"/"Approve for Session" wording appears consistently across every
+ * chat-native gateway, not just Slack. This is a documented scope limit, not a
+ * silent gap.
  *
  * Integration note: mirroring HttpGateway, this gateway does not itself call
  * AiAgent.resume() — the calling application sets GatewayContext.threadID (and,
@@ -90,6 +95,14 @@ class extends="BaseGateway" {
 	 * the atomic compare-and-set primitive resolveInteraction() claims against
 	 */
 	property name="statusLocks";
+
+	/**
+	 * Decisions Slack can represent as a single-click button — see the class docs' scope note
+	 * on why "edit" and "cancel" are excluded.
+	 */
+	static {
+		SUPPORTED_DECISIONS = "approve,approve_always,approve_session,reject"
+	}
 
 	/**
 	 * Constructor
@@ -321,18 +334,21 @@ class extends="BaseGateway" {
 	GatewayDeliveryResult function requestHumanInteraction( required any humanRequest, required any context ) {
 		var id = arguments.humanRequest.getId()
 
-		var allowedDecisions = arguments.humanRequest.getAllowedDecisions().filter( ( d ) => [ "approve", "reject" ].findNoCase( d ) > 0 )
+		// Reuse IGateway's shared label/style-per-decision vocabulary for buttons — filtered
+		// down to the decisions Slack can represent as a single-click button (see class docs).
+		var presentation     = this.presentInteraction( arguments.humanRequest, variables.SLACK_SECTION_TEXT_MAX_LENGTH )
+		var supportedButtons = presentation.getButtons().filter( ( b ) => static.SUPPORTED_DECISIONS.listFindNoCase( b.value ) > 0 )
 
 		// Build button elements with per-index action_id (Eve pattern) so every button
 		// in the same actions block gets a unique action_id, which Slack requires.
 		var buttonElements = []
-		for ( var i = 1; i <= allowedDecisions.len(); i++ ) {
-			var d = allowedDecisions[ i ]
+		for ( var i = 1; i <= supportedButtons.len(); i++ ) {
+			var b = supportedButtons[ i ]
 			buttonElements.append( buildButton(
 				{
-					"label": d.lCase() == "approve" ? "✅ Approve" : "❌ Reject",
-					"value": jsonSerialize( { "requestID": id, "decision": d.lCase() } ),
-					"style": d.lCase() == "approve" ? "primary" : "danger"
+					"label": b.label,
+					"value": jsonSerialize( { "requestID": id, "decision": b.value } ),
+					"style": b.style == "default" ? "" : b.style
 				},
 				i
 			) )
@@ -351,6 +367,9 @@ class extends="BaseGateway" {
 
 		var body = {
 			"channel": arguments.context.getConversationID(),
+			// Prefer the actual message over presentInteraction()'s generic "Approval needed"
+			// fallback title — Slack shows this "text" field as the notification/plain-text
+			// preview, where the real content is more useful than a generic header.
 			"text"   : arguments.humanRequest.getTitle().len() ? arguments.humanRequest.getTitle() : arguments.humanRequest.getMessage(),
 			"blocks" : blocks
 		}
@@ -454,13 +473,24 @@ class extends="BaseGateway" {
 			// Eve "answered-card" pattern: preserve the original prompt blocks so context
 			// stays visible, strip the interactive action buttons, then append a
 			// confirmation section and an attribution context block.
+			//
+			// presentResolution() already knows how to phrase every decision variant
+			// (approve/approve_always/approve_session/reject-with-reason/edit/cancel) — reused
+			// here for the summary line, but with decidedBy stripped, since Slack renders
+			// attribution as its own clickable <@user> mention in a separate context block
+			// below rather than presentResolution()'s plain-text "by X" suffix.
+			var summaryDecision = new HumanInteractionDecision(
+				requestID: arguments.decision.getRequestID(),
+				decision : arguments.decision.getDecision(),
+				reason   : arguments.decision.getReason()
+			)
 			var answeredBlocks = []
 			for ( var block in ( record.promptBlocks ?: [] ) ) {
 				answeredBlocks.append( block )
 			}
 			answeredBlocks.append( {
 				"type": "section",
-				"text": { "type": "mrkdwn", "text": ":white_check_mark: *#arguments.decision.getDecision()#*" }
+				"text": { "type": "mrkdwn", "text": ":white_check_mark: #this.presentResolution( summaryDecision )#" }
 			} )
 			var who = arguments.decision.getDecidedBy().len() ? arguments.decision.getDecidedBy() : ""
 			if ( who.len() ) {
@@ -473,7 +503,7 @@ class extends="BaseGateway" {
 			this.callSlackApi( "chat.update", {
 				"channel": record.slackChannel,
 				"ts"     : record.slackTs,
-				"text"   : "#buildRequestText( record.humanRequest )# — #resolutionSummary( arguments.decision )#",
+				"text"   : "#buildRequestText( record.humanRequest )# — #this.presentResolution( summaryDecision )#",
 				"blocks" : answeredBlocks
 			} )
 		} catch ( any e ) {
@@ -581,15 +611,6 @@ class extends="BaseGateway" {
 			return truncateMrkdwn( data.text )
 		}
 		return truncateMrkdwn( "*#arguments.event.getType()#*" & ( structIsEmpty( data ) ? "" : char( 10 ) & "```#jsonSerialize( data )#```" ) )
-	}
-
-	/**
-	 * Human-readable summary line for a resolved decision, used when updating the
-	 * original Slack message.
-	 */
-	private string function resolutionSummary( required HumanInteractionDecision decision ) {
-		var who = arguments.decision.getDecidedBy().len() ? " by <@#arguments.decision.getDecidedBy()#>" : ""
-		return "Resolved: *#arguments.decision.getDecision()#*#who#"
 	}
 
 }
