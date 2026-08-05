@@ -220,7 +220,7 @@ public class coreMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "resultIsContinue" ) ) ).isTrue();
 	}
 
-	@DisplayName( "HumanInTheLoopMiddleware: resume with 'approve' returns continue" )
+	@DisplayName( "HumanInTheLoopMiddleware: resume with 'approve' returns approved" )
 	@Test
 	public void testHITLResumeApprove() {
 		// @formatter:off
@@ -247,7 +247,7 @@ public class coreMiddlewareTest extends BaseIntegrationTest {
 
 		        ctx = { toolName: "placeOrder", toolCall: {}, chatRequest: chatRequest };
 		        result = mw.beforeToolCall( context: ctx );
-		        resultIsContinue = result.isContinue();
+		        resultIsApproved = result.isApproved();
 
 		        // resumeContext should be cleared after consumption
 		        resumeContextCleared = chatRequest.getResumeContext().isEmpty();
@@ -256,7 +256,7 @@ public class coreMiddlewareTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		assertThat( variables.getAsBoolean( Key.of( "resultIsContinue" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resultIsApproved" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "resumeContextCleared" ) ) ).isTrue();
 	}
 
@@ -365,9 +365,9 @@ public class coreMiddlewareTest extends BaseIntegrationTest {
 
 		        ctx = { toolName: "placeOrder", toolCall: {}, chatRequest: chatRequest };
 
-		        // First call: resume context is consumed → continue
+		        // First call: resume context is consumed → approved
 		        r1 = mw.beforeToolCall( context: ctx );
-		        r1IsContinue = r1.isContinue();
+		        r1IsApproved = r1.isApproved();
 
 		        // Second call on the same tool: normal HITL → suspend again
 		        r2 = mw.beforeToolCall( context: ctx );
@@ -377,7 +377,7 @@ public class coreMiddlewareTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		assertThat( variables.getAsBoolean( Key.of( "r1IsContinue" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "r1IsApproved" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "r2IsSuspended" ) ) ).isTrue();
 	}
 

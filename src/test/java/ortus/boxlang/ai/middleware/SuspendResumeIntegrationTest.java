@@ -193,6 +193,80 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "toolNotCalled" ) ) ).isTrue();
 	}
 
+	@DisplayName( "Resume with 'approve_always' through an async gateway records a durable grant that auto-approves a later, separate run" )
+	@Test
+	public void testResumeApproveAlwaysThroughAsyncGatewayRecordsGrant() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+				import bxModules.bxai.models.runnables.AiModel;
+
+				toolACalls = 0
+				toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+
+				mockSvc = aiService( "mock" )
+				mockSvc.setResponses( [
+					// Run 1: suspends (the Mock gateway is unscripted, so it's asynchronous)
+					{ toolCalls: [ { name: "toolA", arguments: {} } ] },
+					// Resume re-asks the LLM; this time approve_always resolves it
+					{ toolCalls: [ { name: "toolA", arguments: {} } ] },
+					"Run 1 done.",
+					// Run 2 (separate thread, same identity): should auto-approve via the
+					// recorded grant and never suspend at all
+					{ toolCalls: [ { name: "toolA", arguments: {} } ] },
+					"Run 2 done."
+				] )
+				model = new AiModel( service: mockSvc )
+
+				gw = aiGateway( "mock" )
+				hitlMw = new HumanInTheLoopMiddleware(
+					toolsRequiringApproval: [ "toolA" ],
+					gateway               : gw,
+					decisionStore         : aiDecisionStore( "cache" )
+				)
+				checkpointer = aiMemory( "cache" )
+
+				agent = aiAgent(
+					model       : model,
+					tools       : [ toolA ],
+					middleware  : [ hitlMw ],
+					checkpointer: checkpointer,
+					checkpointTTL: 5
+				)
+
+				// Run 1: suspends — the gateway presented the request but nothing resolved it yet
+				r1 = agent.run( "please run toolA", {}, { threadId: "grant-test-t1", userId: "alice" } )
+				r1Suspended = isObject( r1 ) && r1.isSuspended()
+				presentedAfterRun1 = gw.getPendingInteractions().len()
+
+				// Resume with approve_always, attributing the decision to alice
+				finalResult1 = agent.resume( "approve_always", "grant-test-t1", {}, "alice", "" )
+				isFinal1 = finalResult1 == "Run 1 done."
+
+				// Run 2: a completely separate thread, same identity — the durable grant recorded
+				// on resume above should auto-approve this without ever presenting to the gateway
+				r2 = agent.run( "please run toolA again", {}, { threadId: "grant-test-t2", userId: "alice" } )
+				r2NotSuspended = !( isObject( r2 ) && r2.isSuspended() )
+				isFinal2 = r2 == "Run 2 done."
+				presentedAfterRun2 = gw.getPendingInteractions().len()
+
+				toolCalledTwice = toolACalls == 2
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "r1Suspended" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "presentedAfterRun1" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsBoolean( Key.of( "isFinal1" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "r2NotSuspended" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinal2" ) ) ).isTrue();
+		// Run 2 never presented to the gateway at all — the grant short-circuited it
+		assertThat( variables.getAsInteger( Key.of( "presentedAfterRun2" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsBoolean( Key.of( "toolCalledTwice" ) ) ).isTrue();
+	}
+
 	@DisplayName( "A rejected tool call does not block the rest of the batch — an unrelated, safe tool call still runs" )
 	@Test
 	public void testRejectContinuesToRemainingToolCallsInBatch() {

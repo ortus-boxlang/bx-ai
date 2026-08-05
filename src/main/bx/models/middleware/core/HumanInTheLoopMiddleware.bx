@@ -202,19 +202,39 @@ class extends="BaseAiMiddleware" {
 				// Clear so subsequent tool calls in the same run go through normal HITL
 				context.chatRequest.setResumeContext( {} )
 
-				var decision = resumeCtx.resumeDecision
+				var resumeReason = resumeCtx.reason ?: ""
+				if ( !resumeReason.len() && resumeCtx.resumeDecision == "reject" ) {
+					resumeReason = "Rejected by human operator during resume."
+				}
+				var resumedDecision = new HumanInteractionDecision(
+					decision  : resumeCtx.resumeDecision,
+					editedData: resumeCtx.editedData ?: {},
+					reason    : resumeReason,
+					decidedBy : resumeCtx.decidedBy ?: ""
+				)
 
-				if ( decision == "reject" ) {
-					return AiMiddlewareResult.reject( "Rejected by human operator during resume." )
+				// Route through the SAME coordinator that presented the original request, so
+				// approve_always/approve_session record a grant here too — not just on the
+				// synchronous (Cli/scripted-Mock) path. This only works when the coordinator
+				// that suspended the run is still alive to resolve it (e.g. an application-
+				// scoped agent/middleware, not one rebuilt fresh per request) — when it isn't,
+				// fall back to dispatching the plain decision below rather than failing resume.
+				var suspensionID = resumeCtx.suspendData?.suspensionID ?: ""
+				if ( len( suspensionID ) ) {
+					var tool = context.tool ?: javacast( "null", "" )
+					try {
+						variables.coordinator.resolve( suspensionID, resumedDecision, tool )
+						resumedDecision = variables.coordinator.getDecision( suspensionID )
+					} catch ( SuspensionNotFound e ) {
+						// Coordinator lost track of this suspension (different process/instance
+						// than the one that suspended it) — dispatch the decision anyway.
+					} catch ( SuspensionAlreadyResolved e ) {
+						// Someone else already resolved it — use what was actually recorded.
+						resumedDecision = variables.coordinator.getDecision( suspensionID )
+					}
 				}
 
-				if ( decision == "edit" && !resumeCtx.editedData.isEmpty() ) {
-					var newArgs = resumeCtx.editedData.correctedArgs ?: resumeCtx.editedData
-					applyEditedArguments( context, newArgs )
-				}
-
-				// "approve" (and "edit" after patching) → let the tool proceed
-				return AiMiddlewareResult.continue()
+				return decisionToMiddlewareResult( resumedDecision, context )
 			}
 		}
 		// ── End resume path ──────────────────────────────────────────────────────
@@ -268,7 +288,14 @@ class extends="BaseAiMiddleware" {
 				toolArgs: arguments.pendingData.arguments
 			}
 		)
-		var gwContext = new GatewayContext( gateway: variables.gateway.getName() )
+		// Identity for grant-scoping (see HumanInteractionCoordinator.isAlreadyGranted()) comes
+		// from the chat request's userId — the only place it survives down to a tool-call
+		// context, since the AiAgent instance itself isn't reachable from here (see
+		// AiBaseRequest.userId's doc comment for why).
+		var gwContext = new GatewayContext(
+			gateway: variables.gateway.getName(),
+			userID : arguments.context.chatRequest?.getUserId() ?: ""
+		)
 		var tool      = arguments.context.tool ?: javacast( "null", "" )
 
 		var suspension = variables.coordinator.requestApproval(
