@@ -21,20 +21,26 @@
 class {
 
 	/**
-	 * Create an IDecisionStore instance.
+	 * Create an IDecisionStore instance. When called with no arguments, resolves the
+	 * application-wide default from settings.hitl.decisionStore — the same fallback
+	 * HumanInTheLoopMiddleware uses when it isn't given a decisionStore explicitly.
 	 *
-	 * @store  The store type to create: cache | jdbc | file, or a full class path. Defaults to "cache".
-	 * @config Configuration struct for the store (e.g. { cacheName }, { datasource, table }, { directoryPath })
+	 * @store  The store type to create: cache | jdbc | file, or a full class path.
+	 *         Defaults to settings.hitl.decisionStore.provider.
+	 * @config Configuration struct for the store (e.g. { cacheName }, { datasource, table },
+	 *         { directoryPath }). Defaults to settings.hitl.decisionStore.config.
 	 *
 	 * @return IDecisionStore instance
 	 */
 	function invoke(
-		string store = "cache",
-		struct config = {}
+		string store,
+		struct config
 	) {
-		var storeClass = "";
+		var storeType   = arguments.store ?: moduleRecord.settings.hitl.decisionStore.provider;
+		var storeConfig = arguments.config ?: moduleRecord.settings.hitl.decisionStore.config;
+		var storeClass  = "";
 
-		switch ( arguments.store.lcase() ) {
+		switch ( storeType.lcase() ) {
 			case "cache":
 			case "CacheDecisionStore":
 				storeClass = "bxModules.bxai.models.hitl.decisions.CacheDecisionStore";
@@ -50,23 +56,23 @@ class {
 				storeClass = "bxModules.bxai.models.hitl.decisions.FileDecisionStore";
 				break;
 			default:
-				if ( arguments.store.findNoCase( "." ) ) {
-					storeClass = arguments.store;
+				if ( storeType.findNoCase( "." ) ) {
+					storeClass = storeType;
 				} else {
 					throw(
 						type   : "InvalidDecisionStoreType",
-						message: "Unknown decision store type: #arguments.store#. Available types: cache, jdbc, file"
+						message: "Unknown decision store type: #storeType#. Available types: cache, jdbc, file"
 					);
 				}
 		}
 
 		BoxAnnounce( "onAiDecisionStoreCreate", {
-			storeType  : arguments.store,
+			storeType  : storeType,
 			storeClass : storeClass,
-			storeConfig: arguments.config
+			storeConfig: storeConfig
 		} );
 
-		return new "#storeClass#"( argumentCollection: arguments.config );
+		return new "#storeClass#"( argumentCollection: storeConfig );
 	}
 
 }

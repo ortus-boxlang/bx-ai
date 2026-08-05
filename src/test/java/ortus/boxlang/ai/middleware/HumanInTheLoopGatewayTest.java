@@ -58,6 +58,47 @@ public class HumanInTheLoopGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "isApproved" ) ) ).isTrue();
 	}
 
+	@DisplayName( "with no decisionStore supplied, the coordinator defaults from settings.hitl.decisionStore" )
+	@Test
+	public void testCoordinatorDefaultsDecisionStoreFromSettings() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+
+				mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "placeOrder" ], gateway: aiGateway( "mock" ) )
+				storeAttached = !isNull( mw.getCoordinator().getDecisionStore() )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "storeAttached" ) ) ).isTrue();
+	}
+
+	@DisplayName( "an explicit decisionStore passed to the middleware wins over the settings default" )
+	@Test
+	public void testExplicitDecisionStoreOverridesDefault() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+
+				myStore = aiDecisionStore( "file", { directoryPath: getTempDirectory() & "/bxai-mw-decision-store-test" } )
+				mw = new HumanInTheLoopMiddleware(
+					toolsRequiringApproval: [ "placeOrder" ],
+					gateway               : aiGateway( "mock" ),
+					decisionStore         : myStore
+				)
+				sameInstance = mw.getCoordinator().getDecisionStore() == myStore
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sameInstance" ) ) ).isTrue();
+	}
+
 	@DisplayName( "gateway attached + scripted 'reject': beforeToolCall returns reject with reason" )
 	@Test
 	public void testGatewayScriptedReject() {

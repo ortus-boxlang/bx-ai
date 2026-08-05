@@ -58,11 +58,19 @@
  * "web" — but if you're attaching a specific gateway anyway, prefer `gateway:` over
  * `mode:` going forward; an unrecognized `mode` value now falls back to a CliGateway
  * with a console warning rather than silently behaving like "cli".
+ *
+ * Durable "approve_always" grants are backed by an IDecisionStore, passed straight
+ * through to HumanInteractionCoordinator. Pass `decisionStore` to use a specific one
+ * (e.g. `aiDecisionStore( "jdbc", { datasource: "..." } )`); with none supplied, it
+ * defaults to the application-wide store resolved from settings.hitl.decisionStore —
+ * deliberately application-scoped, not per-agent, since an application only ever
+ * attaches one HumanInTheLoopMiddleware at a time.
  */
 import bxModules.bxai.models.middleware.BaseAiMiddleware;
 import bxModules.bxai.models.middleware.AiMiddlewareResult;
 import bxModules.bxai.models.hitl.IApprovalPolicy;
 import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+import bxModules.bxai.models.hitl.decisions.IDecisionStore;
 import bxModules.bxai.models.hitl.policies.ToolNameApprovalPolicy;
 import bxModules.bxai.models.hitl.policies.CallbackApprovalPolicy;
 import bxModules.bxai.models.gateway.IGateway;
@@ -126,6 +134,10 @@ class extends="BaseAiMiddleware" {
 	 *                         (or a CallbackApprovalPolicy built from approvalCallback, if supplied).
 	 * @gateway                An IGateway to present approval requests through — e.g. aiGateway( "mock" ),
 	 *                         a Slack gateway, etc. Defaults to a CliGateway unless mode is "web".
+	 * @decisionStore          An IDecisionStore for durable "approve_always" grants. Defaults to the
+	 *                         application-wide store resolved by aiDecisionStore() (settings.hitl.
+	 *                         decisionStore) — there is deliberately no per-agent override, since an
+	 *                         application never attaches more than one HumanInTheLoopMiddleware at a time.
 	 */
 	function init(
 		array    toolsRequiringApproval = [],
@@ -133,13 +145,14 @@ class extends="BaseAiMiddleware" {
 		boolean  showArguments          = true,
 		function approvalCallback,
 		IApprovalPolicy policy,
-		IGateway gateway
+		IGateway gateway,
+		IDecisionStore decisionStore
 	) {
 		variables.toolsRequiringApproval = arguments.toolsRequiringApproval
 		variables.approvalMode           = arguments.mode
 		variables.showArguments          = arguments.showArguments
 		variables.approvalCallback       = arguments.approvalCallback
-		variables.coordinator            = new HumanInteractionCoordinator()
+		variables.coordinator            = new HumanInteractionCoordinator( arguments.decisionStore ?: aiDecisionStore() )
 
 		if ( !isNull( arguments.gateway ) ) {
 			variables.gateway = arguments.gateway
