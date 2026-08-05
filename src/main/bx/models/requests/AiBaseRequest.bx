@@ -101,6 +101,15 @@ abstract class{
 	property name="tenantId" type="string" default="";
 
 	/**
+	 * The userId this request runs as, threaded down from AiAgent.run()/stream()'s
+	 * `options.userId` (the same identifier already used for memory correlation). Exists on
+	 * the request — not just as a local variable in AiAgent — so middleware (e.g.
+	 * HumanInTheLoopMiddleware, which only ever sees `context.chatRequest`, never the agent
+	 * itself) can identity-scope its own state, such as HITL "approve always" grants.
+	 */
+	property name="userId" type="string" default="";
+
+	/**
 	 * Additional metadata for usage tracking (cost center, project, etc.)
 	 * This data will be included in onAITokenCount events for custom billing logic
 	 */

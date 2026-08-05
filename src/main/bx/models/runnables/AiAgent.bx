@@ -766,13 +766,26 @@ class extends="AiBaseRunnable" {
 	 * saves a checkpoint. Call this method after the human has approved/edited the
 	 * pending operation to continue execution.
 	 *
-	 * @decision  "approve", "reject", or "edit" — the human's decision
-	 * @threadId  The thread to resume. Defaults to this agent's current threadId.
+	 * @decision   "approve"/"approve_always"/"approve_session"/"reject"/"edit"/"cancel" — the
+	 *             human's decision. Any value beyond plain approve/reject/edit is passed
+	 *             through as-is to HumanInteractionCoordinator, which is what actually
+	 *             interprets approve_always/approve_session into a recorded grant.
+	 * @threadId   The thread to resume. Defaults to this agent's current threadId.
 	 * @editedData When decision is "edit", pass the corrected data here.
+	 * @decidedBy  Optional identifier of who made the decision (platform-native user id, email,
+	 *             etc.) — recorded on the resolved HumanInteractionDecision if the coordinator
+	 *             that originally suspended this run is still reachable.
+	 * @reason     Optional human-readable reason for the decision (e.g. why it was rejected).
 	 *
 	 * @return The agent response continuing from the checkpoint
 	 */
-	any function resume( required string decision, required string threadId, struct editedData = {} ) {
+	any function resume(
+		required string decision,
+		required string threadId,
+		struct editedData = {},
+		string decidedBy  = "",
+		string reason      = ""
+	) {
 		if ( isNull( variables.checkpointer ) ) {
 			throw(
 				type   : "AiAgent.NoCheckpointer",
@@ -795,6 +808,8 @@ class extends="AiBaseRunnable" {
 		var resumeResult = savedState
 		resumeResult.resumeDecision = arguments.decision
 		resumeResult.editedData     = arguments.editedData
+		resumeResult.decidedBy      = arguments.decidedBy
+		resumeResult.reason         = arguments.reason
 
 		// Re-run from the savedState input with resume context in options
 		return run(
@@ -810,16 +825,20 @@ class extends="AiBaseRunnable" {
 	 * Mirror of resume() for streaming agents. Calls stream() with the saved input
 	 * and injects the resume decision into options so middleware can act on it.
 	 *
-	 * @onChunk   Callback for each streamed chunk
-	 * @decision  "approve", "reject", or "edit"
-	 * @threadId  The thread to resume. Defaults to this agent's current threadId.
+	 * @onChunk    Callback for each streamed chunk
+	 * @decision   "approve"/"approve_always"/"approve_session"/"reject"/"edit"/"cancel"
+	 * @threadId   The thread to resume. Defaults to this agent's current threadId.
 	 * @editedData When decision is "edit", pass corrected data here.
+	 * @decidedBy  Optional identifier of who made the decision
+	 * @reason     Optional human-readable reason for the decision
 	 */
 	void function resumeStream(
 		required function onChunk,
 		required string   decision,
 		required string   threadId,
-		struct            editedData = {}
+		struct            editedData = {},
+		string            decidedBy  = "",
+		string            reason      = ""
 	) {
 		if ( isNull( variables.checkpointer ) ) {
 			throw(
@@ -841,6 +860,8 @@ class extends="AiBaseRunnable" {
 		var resumeResult = savedState
 		resumeResult.resumeDecision = arguments.decision
 		resumeResult.editedData     = arguments.editedData
+		resumeResult.decidedBy      = arguments.decidedBy
+		resumeResult.reason         = arguments.reason
 
 		stream(
 			arguments.onChunk,
