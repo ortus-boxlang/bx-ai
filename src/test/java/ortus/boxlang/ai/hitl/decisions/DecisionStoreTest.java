@@ -55,6 +55,29 @@ public class DecisionStoreTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "fileOk" ) ) ).isTrue();
 	}
 
+	@DisplayName( "aiDecisionStore() with no arguments resolves the application-wide default from settings.hitl.decisionStore" )
+	@Test
+	public void testResolvesApplicationDefault() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				store = aiDecisionStore()
+				storeOk = !isNull( store )
+
+				// Default provider is "cache" per ModuleConfig.bx settings.hitl.decisionStore —
+				// round-trip a grant through it to prove it's a real, working store.
+				identity = "default-store-" & createUUID()
+				store.grant( identity, "sendEmail" )
+				granted = store.isGranted( identity, "sendEmail" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "storeOk" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "granted" ) ) ).isTrue();
+	}
+
 	@DisplayName( "aiDecisionStore() throws for an unknown store type" )
 	@Test
 	public void testUnknownStoreTypeThrows() {
