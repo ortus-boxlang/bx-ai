@@ -70,9 +70,9 @@ class extends="BaseGateway" {
 	/**
 	 * Prompt for and return a decision. Always resolves synchronously.
 	 */
-	GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest request, required GatewayContext context ) {
-		var decision = promptForDecision( arguments.request )
-		return new GatewayDeliveryResult( deliveryID: arguments.request.getId(), decision: decision )
+	GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest humanRequest, required GatewayContext context ) {
+		var decision = promptForDecision( arguments.humanRequest )
+		return new GatewayDeliveryResult( deliveryID: arguments.humanRequest.getId(), decision: decision )
 	}
 
 	/**
