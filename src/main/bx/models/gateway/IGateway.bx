@@ -195,13 +195,13 @@ interface {
 	 * request, and the decision arrives later via an inbound event that parseHumanDecision()
 	 * turns into a HumanInteractionDecision.
 	 *
-	 * @request The interaction request to present
-	 * @context The GatewayContext identifying who/where to present it to
+	 * @humanRequest The interaction request to present
+	 * @context      The GatewayContext identifying who/where to present it to
 	 *
 	 * @return A GatewayDeliveryResult — for synchronous gateways this may already carry
 	 *         the human's decision via getDecision()/hasDecision()
 	 */
-	default public GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest request, required GatewayContext context ){
+	default public GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest humanRequest, required GatewayContext context ){
 		return GatewayDeliveryResult.failure( "Gateway [#getName()#] does not support human-in-the-loop interaction." );
 	}
 

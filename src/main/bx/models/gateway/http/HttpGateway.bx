@@ -201,11 +201,11 @@ class extends="BaseGateway" {
 	 * Present an interaction request. Always resolves asynchronously — HttpGateway has
 	 * no synchronous channel to a human, so the decision arrives later via resolveInteraction().
 	 */
-	GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest request, required GatewayContext context ) {
-		var id = arguments.request.getId()
+	GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest humanRequest, required GatewayContext context ) {
+		var id = arguments.humanRequest.getId()
 		variables.statusLocks.put( id, "pending" )
 		variables.interactions[ id ] = {
-			"request"  : arguments.request,
+			"request"  : arguments.humanRequest,
 			"context"  : arguments.context,
 			"decision" : javacast( "null", "" ),
 			"createdAt": now()
