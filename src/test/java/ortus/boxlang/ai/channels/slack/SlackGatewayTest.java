@@ -220,6 +220,115 @@ public class SlackGatewayTest extends BaseSlackChannelTest {
 		assertThat( variables.getAsInteger( Key.of( "promptBlockCount" ) ) ).isEqualTo( 1 );
 	}
 
+	@DisplayName( "requestHumanInteraction() renders approve_always/approve_session buttons using IGateway's shared label/style vocabulary" )
+	@Test
+	public void testRequestHumanInteractionIncludesGrantVariantButtons() {
+		runtime.executeSource(
+		    IMPORTS + """
+		              gw = new SlackGateway().configure( { botToken: "xoxb-test", signingSecret: "shhh" } )
+
+		              captured = { body: {} }
+		              gw.callSlackApi = ( method, body ) => {
+		                  captured.body = body
+		                  return { ok: true, channel: body.channel ?: "", ts: "1700000000.000200" }
+		              }
+
+		              gwContext = new GatewayContext( gateway: "slack", conversationID: "C123" )
+		              humanRequest = new HumanInteractionRequest(
+		                  title           : "Approve tool call?",
+		                  message         : "The agent wants to send an email.",
+		                  allowedDecisions: [ "approve", "approve_always", "approve_session", "reject" ]
+		              )
+
+		              gw.requestHumanInteraction( humanRequest, gwContext )
+
+		              elements = captured.body.blocks[ 2 ].elements
+		              elementCount = elements.len()
+		              labels = elements.map( ( e ) => e.text.text )
+		              values = elements.map( ( e ) => jsonDeserialize( e.value ).decision )
+		              styles = elements.map( ( e ) => e.style ?: "" )
+		              """,
+		    context
+		);
+		assertThat( variables.getAsInteger( Key.of( "elementCount" ) ) ).isEqualTo( 4 );
+		assertThat( variables.get( Key.of( "labels" ) ).toString() ).contains( "Approve Always" );
+		assertThat( variables.get( Key.of( "labels" ) ).toString() ).contains( "Approve for Session" );
+		assertThat( variables.get( Key.of( "values" ) ).toString() ).contains( "approve_always" );
+		assertThat( variables.get( Key.of( "values" ) ).toString() ).contains( "approve_session" );
+		assertThat( variables.get( Key.of( "styles" ) ).toString() ).contains( "primary" );
+		assertThat( variables.get( Key.of( "styles" ) ).toString() ).contains( "danger" );
+	}
+
+	@DisplayName( "requestHumanInteraction() excludes edit/cancel from buttons since Slack has no single-click affordance for them" )
+	@Test
+	public void testRequestHumanInteractionExcludesEditAndCancelButtons() {
+		runtime.executeSource(
+		    IMPORTS + """
+		              gw = new SlackGateway().configure( { botToken: "xoxb-test", signingSecret: "shhh" } )
+
+		              captured = { body: {} }
+		              gw.callSlackApi = ( method, body ) => {
+		                  captured.body = body
+		                  return { ok: true, channel: body.channel ?: "", ts: "1700000000.000300" }
+		              }
+
+		              gwContext = new GatewayContext( gateway: "slack", conversationID: "C123" )
+		              humanRequest = new HumanInteractionRequest(
+		                  title           : "Approve tool call?",
+		                  message         : "The agent wants to run a tool.",
+		                  allowedDecisions: [ "approve", "edit", "cancel", "reject" ]
+		              )
+
+		              gw.requestHumanInteraction( humanRequest, gwContext )
+
+		              elements     = captured.body.blocks[ 2 ].elements
+		              elementCount = elements.len()
+		              values       = elements.map( ( e ) => jsonDeserialize( e.value ).decision )
+		              """,
+		    context
+		);
+		assertThat( variables.getAsInteger( Key.of( "elementCount" ) ) ).isEqualTo( 2 );
+		assertThat( variables.get( Key.of( "values" ) ).toString() ).doesNotContain( "edit" );
+		assertThat( variables.get( Key.of( "values" ) ).toString() ).doesNotContain( "cancel" );
+	}
+
+	@DisplayName( "resolveInteraction() updates the Slack message using presentResolution()'s decision-specific phrasing" )
+	@Test
+	public void testResolveInteractionUsesPresentResolutionPhrasing() {
+		runtime.executeSource(
+		    IMPORTS + """
+		              gw = new SlackGateway().configure( { botToken: "xoxb-test", signingSecret: "shhh" } )
+
+		              calls = []
+		              gw.callSlackApi = ( method, body ) => {
+		                  calls.append( { method: method, body: body } )
+		                  return { ok: true, channel: body.channel ?: "", ts: "1700000000.000400" }
+		              }
+
+		              gwContext    = new GatewayContext( gateway: "slack", conversationID: "C123" )
+		              humanRequest = new HumanInteractionRequest( title: "Approve?", message: "Send the email?" )
+		              gw.requestHumanInteraction( humanRequest, gwContext )
+
+		              decision = new HumanInteractionDecision(
+		                  requestID: humanRequest.getId(),
+		                  decision : "approve_always",
+		                  decidedBy: "U999"
+		              )
+		              gw.resolveInteraction( humanRequest.getId(), decision )
+
+		              updateCall   = calls.filter( ( c ) => c.method == "chat.update" )[ 1 ]
+		              summaryBlock = updateCall.body.blocks[ 2 ].text.text
+		              contextBlock = updateCall.body.blocks[ 3 ].elements[ 1 ].text
+		              """,
+		    context
+		);
+		assertThat( variables.get( Key.of( "summaryBlock" ) ).toString() ).contains( "Approved always" );
+		assertThat( variables.get( Key.of( "summaryBlock" ) ).toString() ).contains( "auto-approved" );
+		// decidedBy attribution lives in its own Slack-native mention block, not duplicated in the summary line
+		assertThat( variables.get( Key.of( "summaryBlock" ) ).toString() ).doesNotContain( "U999" );
+		assertThat( variables.get( Key.of( "contextBlock" ) ).toString() ).contains( "<@U999>" );
+	}
+
 	@DisplayName( "requestHumanInteraction() does not track a pending interaction when Slack delivery fails" )
 	@Test
 	public void testRequestHumanInteractionSkipsTrackingOnDeliveryFailure() {
