@@ -15,7 +15,10 @@
  * A human's decision on a HumanInteractionRequest.
  *
  * For tool_approval requests, `decision` maps directly onto the existing
- * AiMiddlewareResult vocabulary: approve | reject | edit | cancel.
+ * AiMiddlewareResult vocabulary: approve | reject | edit | cancel — plus two durable-grant
+ * variants, approve_always | approve_session, which resolve to the same APPROVED outcome as
+ * "approve" but also tell HumanInteractionCoordinator to record a grant so future requests for
+ * the same identity/tool/scope can skip presenting entirely. See DECISIONS for the full set.
  */
 class {
 
@@ -61,6 +64,20 @@ class {
 	property name="metadata" type="struct" default={};
 
 	/**
+	 * Well-known decision string constants
+	 */
+	static {
+		DECISIONS = {
+			APPROVE        : "approve",
+			APPROVE_ALWAYS : "approve_always",
+			APPROVE_SESSION: "approve_session",
+			REJECT         : "reject",
+			EDIT           : "edit",
+			CANCEL         : "cancel"
+		}
+	}
+
+	/**
 	 * Constructor
 	 *
 	 * @requestID      The HumanInteractionRequest.id this decision resolves
@@ -93,20 +110,40 @@ class {
 		return this;
 	}
 
+	/**
+	 * Whether this decision resolves to an approved outcome — true for a plain "approve" as
+	 * well as either durable-grant variant ("approve_always"/"approve_session")
+	 */
 	boolean function isApproved() {
-		return variables.decision == "approve"
+		return variables.decision == static.DECISIONS.APPROVE
+			|| variables.decision == static.DECISIONS.APPROVE_ALWAYS
+			|| variables.decision == static.DECISIONS.APPROVE_SESSION
+	}
+
+	/**
+	 * Whether this decision is specifically an "approve_always" durable grant
+	 */
+	boolean function isApprovedAlways() {
+		return variables.decision == static.DECISIONS.APPROVE_ALWAYS
+	}
+
+	/**
+	 * Whether this decision is specifically an "approve_session" grant
+	 */
+	boolean function isApprovedForSession() {
+		return variables.decision == static.DECISIONS.APPROVE_SESSION
 	}
 
 	boolean function isRejected() {
-		return variables.decision == "reject"
+		return variables.decision == static.DECISIONS.REJECT
 	}
 
 	boolean function isEdit() {
-		return variables.decision == "edit"
+		return variables.decision == static.DECISIONS.EDIT
 	}
 
 	boolean function isCancelled() {
-		return variables.decision == "cancel"
+		return variables.decision == static.DECISIONS.CANCEL
 	}
 
 }

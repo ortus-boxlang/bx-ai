@@ -1,0 +1,102 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Verifies Slack's request signature scheme (https://api.slack.com/authentication/verifying-requests-from-slack).
+ *
+ * Slack signs every Events API and Interactivity POST with:
+ *   basestring = "v0:" & X-Slack-Request-Timestamp & ":" & rawBody
+ *   signature  = "v0=" & hex( HMAC-SHA256( basestring, signingSecret ) )
+ *
+ * The signature covers the EXACT raw request body — for the Interactivity endpoint that
+ * is the raw `application/x-www-form-urlencoded` string, not the decoded `payload` JSON.
+ * Slack recommends rejecting requests whose timestamp is more than 5 minutes old to
+ * defend against replay.
+ */
+class {
+
+	/**
+	 * Compute Slack's v0 signature for a request.
+	 *
+	 * @signingSecret The app's Slack signing secret
+	 * @timestamp     The X-Slack-Request-Timestamp header value
+	 * @rawBody       The exact raw request body string the signature was computed over
+	 *
+	 * @return The full "v0=..." signature string
+	 */
+	static string function sign(
+		required string signingSecret,
+		required string timestamp,
+		required string rawBody
+	) {
+		var basestring = "v0:" & arguments.timestamp & ":" & arguments.rawBody
+		var keySpec    = createObject( "java", "javax.crypto.spec.SecretKeySpec" ).init(
+			charsetDecode( arguments.signingSecret, "UTF-8" ),
+			"HmacSHA256"
+		)
+		var mac = createObject( "java", "javax.crypto.Mac" ).getInstance( "HmacSHA256" )
+		mac.init( keySpec )
+		var digest = mac.doFinal( charsetDecode( basestring, "UTF-8" ) )
+		return "v0=" & binaryEncode( digest, "hex" ).lCase()
+	}
+
+	/**
+	 * Verify a Slack request's signature and timestamp freshness in one call.
+	 *
+	 * @signingSecret    The app's Slack signing secret
+	 * @timestamp        The X-Slack-Request-Timestamp header value the request claims
+	 * @rawBody          The exact raw request body string received
+	 * @signature        The X-Slack-Signature header value to verify
+	 * @toleranceSeconds Maximum allowed clock skew / request age, in seconds (Slack recommends 300)
+	 *
+	 * @return struct { valid: boolean, reason: string } — reason is "" when valid
+	 */
+	static struct function verify(
+		required string signingSecret,
+		required string timestamp,
+		required string rawBody,
+		required string signature,
+		numeric toleranceSeconds = 300
+	) {
+		if ( !isNumeric( arguments.timestamp ) ) {
+			return { valid: false, reason: "Missing or non-numeric X-Slack-Request-Timestamp." }
+		}
+
+		var age = abs( now().getTime() / 1000 - val( arguments.timestamp ) )
+		if ( age > arguments.toleranceSeconds ) {
+			return { valid: false, reason: "Request timestamp outside the allowed tolerance (#arguments.toleranceSeconds#s)." }
+		}
+
+		var expected = sign( arguments.signingSecret, arguments.timestamp, arguments.rawBody )
+		if ( !constantTimeEquals( expected, arguments.signature.lCase() ) ) {
+			return { valid: false, reason: "Signature mismatch." }
+		}
+
+		return { valid: true, reason: "" }
+	}
+
+	/**
+	 * Constant-time string comparison, delegating to java.security.MessageDigest.isEqual()
+	 * so verification time doesn't leak how many leading characters matched.
+	 *
+	 * @a First string
+	 * @b Second string
+	 */
+	static boolean function constantTimeEquals( required string a, required string b ) {
+		return createObject( "java", "java.security.MessageDigest" ).isEqual(
+			charsetDecode( arguments.a, "UTF-8" ),
+			charsetDecode( arguments.b, "UTF-8" )
+		)
+	}
+
+}

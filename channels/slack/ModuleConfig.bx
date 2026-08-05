@@ -1,0 +1,202 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * This is the module descriptor and entry point for your module in the runtime.
+ * The unique name of the module is the name of the directory on the modules folder
+ * or the name property in the box.json file.
+ *<p>
+ * A BoxLang mapping will be created for you with the name of the module as well using the
+ * this.mapping property.
+ *<p>
+ * Every module will have its own classloader that will be used to load the module libs and dependencies.
+ */
+
+class {
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * Injections
+	 * --------------------------------------------------------------------------
+	 */
+	property name="moduleRecord";
+	property name="boxRuntime";
+	property name="functionService";
+	property name="componentService";
+	property name="interceptorService";
+	property name="asyncService";
+	property name="schedulerService";
+	property name="datasourceService";
+	property name="cacheService";
+	property name="log";
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * Module Properties
+	 * --------------------------------------------------------------------------
+	 * Here is where you define the properties of your module that the module service
+	 * will use to register and activate your module
+	 */
+
+	/**
+	 * Your module version. Try to use semantic versioning
+	 * @mandatory
+	 */
+	this.version = "@build.version@+@build.number@";
+
+	/**
+	 * The BoxLang mapping for your module.  All BoxLang modules are registered with an internal
+	 * mapping prefix of : bxModules.{this.mapping}, /bxmodules/{this.mapping}. Ex: bxModules.test, /bxmodules/test
+	 */
+	this.mapping = "bxaiSlack";
+
+	/**
+	 * The public mapping for your module.  This is the public facing mapping
+	 * that users will use to access your module features.
+	 * For us it will be /~bxaiSlack -> public mapping
+	 */
+	this.publicMapping = {
+		name     : "~bxaiSlack",
+		usePrefix: false,
+		path     : "public"
+	};
+
+	/**
+	 * Who built the module
+	 */
+	this.author = "Ortus Solutions";
+
+	/**
+	 * The module description
+	 */
+	this.description = "Slack gateway for BoxLang AI (bx-ai) — presents inbound messages, human-in-the-loop approvals, and interactive workflows over Slack";
+
+	/**
+	 * The module web URL
+	 */
+	this.webURL = "https://www.ortussolutions.com";
+
+	/**
+	 * This boolean flag tells the module service to skip the module registration/activation process.
+	 */
+	this.enabled = true;
+
+	/**
+	 * The module dependencies that this module needs to be activated before this module is activated.
+	 * A list of module slugs: Example: [ "bxai", "bxoshi" ]
+	 *
+	 * NOTE: this list is validated against each module's internal this.mapping (confirmed
+	 * empirically — "bx-ai" throws "not in the module registry", only "bxai" resolves), so
+	 * it correctly orders *activation*. It does NOT order the onRuntimeStart broadcast
+	 * every module's ModuleConfig implicitly listens for (see onRuntimeStart() below), so
+	 * this alone does not guarantee gatewayRegistry() is callable there.
+	 */
+	this.dependencies = [ "bxai" ];
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * Module Methods
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Called by the ModuleService on module registration
+	 */
+	function configure(){
+		/**
+		 * Every module has a settings configuration object.
+		 *
+		 * These are used as defaults when `aiGateway( "slack" )` is called with no
+		 * (or partial) options — explicit options passed to aiGateway() always win.
+		 * See https://api.slack.com/authentication/basics for botToken/signingSecret.
+		 */
+		settings = {
+			// The Slack bot token (xoxb-...) used to authenticate Web API calls
+			botToken: getSystemSetting( "SLACK_BOT_TOKEN", "" ),
+			// The Slack app's signing secret, used to verify inbound requests
+			signingSecret: getSystemSetting( "SLACK_SIGNING_SECRET", "" ),
+			// Base URL for the Slack Web API — overridable for testing
+			apiBaseUrl: "https://slack.com/api",
+			// Maximum allowed clock skew / request age for signed requests, in seconds
+			toleranceSeconds: 300,
+			// How long a presented interaction stays open before it's treated as expired, in seconds
+			requestTTLSeconds: 900
+		};
+
+		/**
+		 * The module interceptors to register into the runtime
+		 */
+		interceptors = [];
+
+		/**
+		 * A list of custom interception points to register into the runtime
+		 */
+		customInterceptionPoints = [
+			// Fired when a verified Slack Events API `event_callback` is parsed into
+			// normalized GatewayMessage(s). { messages, gateway, payload }
+			"onSlackInboundMessage",
+			// Fired after a Slack interactive button click atomically resolves a pending
+			// human-in-the-loop interaction. { requestID, decision, gateway, record }
+			"onSlackInteractionResolved"
+		];
+	}
+
+	/**
+	 * Called by the ModuleService on module activation.
+	 */
+	function onLoad(){
+
+	}
+
+	/**
+	 * Called by the ModuleService on runtime start. Registers a SlackGateway instance in
+	 * bx-ai's gatewayRegistry() under the name "slack", configured with this module's
+	 * settings (env-var-sourced defaults). This is the integration point
+	 * aiGateway( "slack" ) resolves against — every call reconfigures this SAME instance
+	 * in place rather than creating a fresh one.
+	 *
+	 * Best-effort only: onRuntimeStart is a broadcast every loaded module's ModuleConfig
+	 * implicitly listens for, and the firing order between modules is not guaranteed by
+	 * this.dependencies (confirmed empirically — bxai's gatewayRegistry() BIF is not
+	 * always callable yet when this fires). If it's not available yet, this silently
+	 * no-ops instead of crashing runtime startup; SlackRequestProcessor.resolveGateway()
+	 * carries a lazy fallback that registers on first real HTTP request instead, which is
+	 * always safely post-startup.
+	 */
+	function onRuntimeStart(){
+		try {
+			gatewayRegistry().register(
+				new bxModules.bxaiSlack.models.SlackGateway().configure( moduleRecord.settings )
+			);
+		} catch ( any e ) {
+			// gatewayRegistry() not callable yet — SlackRequestProcessor registers lazily instead.
+		}
+	}
+
+	/**
+	 * Called by the ModuleService on module deactivation
+	 */
+	function onUnload(){
+
+	}
+
+	/**
+	 * --------------------------------------------------------------------------
+	 * Module Events
+	 * --------------------------------------------------------------------------
+	 * You can listen to any runtime events by creating the methods
+	 * that match the approved runtime interception points
+	 * https://boxlang.ortusbooks.com/boxlang-framework/interceptors/core-interception-points
+	 */
+
+}

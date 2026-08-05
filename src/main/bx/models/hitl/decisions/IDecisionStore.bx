@@ -1,0 +1,80 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Pluggable storage for durable human-in-the-loop decision grants ("approve always").
+ *
+ * "approve for session" grants do NOT use this — they live in an in-memory struct on
+ * HumanInteractionCoordinator, scoped to exactly that coordinator's lifetime, since a session
+ * grant should never outlive the process that issued it. IDecisionStore exists only for grants
+ * that must outlive a single session and stay visible across every gateway/channel a user comes
+ * back through — and across restarts, if a durable backend (Jdbc/File) is used.
+ *
+ * @since 4.0.0
+ */
+interface {
+
+	/**
+	 * Record a durable grant.
+	 *
+	 * @identity  Who granted it — a platform-native user id, gateway-qualified if identities
+	 *            aren't globally unique (e.g. "slack:U999")
+	 * @toolName  The tool this grant applies to
+	 * @scope     Optional narrower scope a policy defines (e.g. an args-shape hash, a risk
+	 *            level) — "" means "this tool, unconditionally"
+	 * @expiresAt Optional expiry; omit for a grant that never expires
+	 */
+	void function grant(
+		required string identity,
+		required string toolName,
+		string scope = "",
+		date expiresAt
+	);
+
+	/**
+	 * Whether a durable grant exists and is still valid for the given identity/tool/scope.
+	 *
+	 * @identity Who is asking
+	 * @toolName The tool being invoked
+	 * @scope    The scope to check, matching what grant() was called with
+	 */
+	boolean function isGranted(
+		required string identity,
+		required string toolName,
+		string scope = ""
+	);
+
+	/**
+	 * Revoke a previously-recorded grant. No-op if none exists.
+	 *
+	 * @identity Who the grant belongs to
+	 * @toolName The tool the grant applies to
+	 * @scope    The scope to revoke, matching what grant() was called with
+	 */
+	void function revoke(
+		required string identity,
+		required string toolName,
+		string scope = ""
+	);
+
+	/**
+	 * List every grant recorded for an identity — the primary surface for a "manage my
+	 * approvals" command/UI.
+	 *
+	 * @identity Whose grants to list
+	 *
+	 * @return array of { toolName, scope, grantedAt, expiresAt }
+	 */
+	array function listGrants( required string identity );
+
+}

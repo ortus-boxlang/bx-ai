@@ -395,7 +395,10 @@ class {
 			// Gateway Events
 			"onGatewayRegistryRegister",
 			"onGatewayRegistryUnregister",
-			"onGatewayCreate"
+			"onGatewayCreate",
+
+			// Decision Store Events
+			"onAiDecisionStoreCreate"
 		 ]
 	}
 

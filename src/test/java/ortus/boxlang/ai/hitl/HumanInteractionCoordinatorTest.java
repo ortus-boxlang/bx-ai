@@ -47,7 +47,7 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 				interactionRequest     = new HumanInteractionRequest( executionID: "run-1" )
 				ctx         = new GatewayContext( gateway: "mock" )
 
-				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw )
+				suspension  = coordinator.requestApproval( humanRequest: interactionRequest, context: ctx, gateway: gw )
 				isPending   = suspension.isPending()
 				fetchedBack = coordinator.getSuspension( suspension.getSuspensionID() )
 				sameObject  = fetchedBack.getSuspensionID() == suspension.getSuspensionID()
@@ -76,7 +76,7 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 				interactionRequest     = new HumanInteractionRequest( executionID: "run-2" )
 				ctx         = new GatewayContext( gateway: "mock" )
 
-				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw )
+				suspension  = coordinator.requestApproval( humanRequest: interactionRequest, context: ctx, gateway: gw )
 				isApproved  = suspension.getStatus() == "approved"
 				isTerminal  = suspension.isTerminal()
 				decision    = coordinator.getDecision( suspension.getSuspensionID() )
@@ -108,7 +108,7 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 				ctx         = new GatewayContext( gateway: "mock" )
 				tool        = createObject( "src.test.bx.tools.PlainTool" )
 
-				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw, tool: tool )
+				suspension  = coordinator.requestApproval( humanRequest: interactionRequest, context: ctx, gateway: gw, tool: tool )
 
 				decision = new HumanInteractionDecision(
 					requestID : interactionRequest.getId(),
@@ -146,7 +146,7 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 				ctx         = new GatewayContext( gateway: "mock" )
 				tool        = createObject( "src.test.bx.tools.PlainTool" )
 
-				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw, tool: tool )
+				suspension  = coordinator.requestApproval( humanRequest: interactionRequest, context: ctx, gateway: gw, tool: tool )
 
 				// A gateway/consumer may wrap edited data as { correctedArgs: {...} } — the
 				// same convention HumanInTheLoopMiddleware's resume path already unwraps.
@@ -182,7 +182,7 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 				ctx         = new GatewayContext( gateway: "mock" )
 				tool        = createObject( "src.test.bx.tools.PlainTool" )
 
-				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw, tool: tool )
+				suspension  = coordinator.requestApproval( humanRequest: interactionRequest, context: ctx, gateway: gw, tool: tool )
 
 				// Missing required "qty"
 				decision = new HumanInteractionDecision(
@@ -223,7 +223,7 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 				ctx         = new GatewayContext( gateway: "mock" )
 				tool        = createObject( "src.test.bx.tools.PlainTool" )
 
-				suspension  = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw, tool: tool )
+				suspension  = coordinator.requestApproval( humanRequest: interactionRequest, context: ctx, gateway: gw, tool: tool )
 
 				decision = new HumanInteractionDecision(
 					requestID : interactionRequest.getId(),
@@ -285,7 +285,7 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 				interactionRequest      = new HumanInteractionRequest( executionID: "run-6" )
 				ctx          = new GatewayContext( gateway: "mock" )
 
-				suspension   = coordinator.requestApproval( request: interactionRequest, context: ctx, gateway: gw )
+				suspension   = coordinator.requestApproval( humanRequest: interactionRequest, context: ctx, gateway: gw )
 				suspensionID = suspension.getSuspensionID()
 				requestID    = interactionRequest.getId()
 
@@ -320,6 +320,87 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 
 		assertThat( variables.getAsBoolean( Key.of( "exactlyOneWon" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "loserGotRightError" ) ) ).isTrue();
+	}
+
+	@DisplayName( "An 'approve_always' decision records a durable grant that auto-approves future requests without presenting" )
+	@Test
+	public void testApproveAlwaysAutoApprovesViaDecisionStore() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				coordinator = new HumanInteractionCoordinator( aiDecisionStore( "cache" ) )
+				gw          = aiGateway( "mock" )
+				tool        = createObject( "src.test.bx.tools.PlainTool" ).init()
+				identity    = "alice-" & createUUID()
+				ctx         = new GatewayContext( gateway: "mock", userID: identity )
+
+				gw.setScriptedDecisions( [ "approve_always" ] )
+				req1 = new HumanInteractionRequest( executionID: "run-7", allowedDecisions: [ "approve", "approve_always", "reject" ] )
+				suspension1 = coordinator.requestApproval( humanRequest: req1, context: ctx, gateway: gw, tool: tool )
+				presentedAfterFirst = gw.getPendingInteractions().len()
+				approved1 = suspension1.getStatus() == "approved"
+
+				// Same identity + tool, a fresh request — should auto-approve, never reaching the gateway
+				req2 = new HumanInteractionRequest( executionID: "run-7b", allowedDecisions: [ "approve", "approve_always", "reject" ] )
+				suspension2 = coordinator.requestApproval( humanRequest: req2, context: ctx, gateway: gw, tool: tool )
+				presentedAfterSecond = gw.getPendingInteractions().len()
+				approved2 = suspension2.getStatus() == "approved"
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "approved1" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "presentedAfterFirst" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsBoolean( Key.of( "approved2" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "presentedAfterSecond" ) ) ).isEqualTo( 1 );
+	}
+
+	@DisplayName( "An 'approve_session' decision auto-approves later requests on the same thread only, and needs no decisionStore" )
+	@Test
+	public void testApproveSessionScopedToThread() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				coordinator = new HumanInteractionCoordinator()
+				gw          = aiGateway( "mock" )
+				tool        = createObject( "src.test.bx.tools.PlainTool" ).init()
+				identity    = "bob-" & createUUID()
+				ctx         = new GatewayContext( gateway: "mock", userID: identity )
+
+				gw.setScriptedDecisions( [ "approve_session" ] )
+				req1 = new HumanInteractionRequest( executionID: "run-8", allowedDecisions: [ "approve", "approve_session", "reject" ] )
+				coordinator.requestApproval( humanRequest: req1, context: ctx, gateway: gw, tool: tool, threadID: "thread-A" )
+
+				// Same thread — session grant applies, gateway is not asked again
+				req2 = new HumanInteractionRequest( executionID: "run-8b", allowedDecisions: [ "approve", "approve_session", "reject" ] )
+				suspension2 = coordinator.requestApproval( humanRequest: req2, context: ctx, gateway: gw, tool: tool, threadID: "thread-A" )
+				presentedAfterThreadA = gw.getPendingInteractions().len()
+				approved2 = suspension2.getStatus() == "approved"
+
+				// A different thread never saw the grant — gateway IS asked again
+				gw.setScriptedDecisions( [ "approve" ] )
+				req3 = new HumanInteractionRequest( executionID: "run-8c", allowedDecisions: [ "approve", "approve_session", "reject" ] )
+				suspension3 = coordinator.requestApproval( humanRequest: req3, context: ctx, gateway: gw, tool: tool, threadID: "thread-B" )
+				presentedAfterThreadB = gw.getPendingInteractions().len()
+				approved3 = suspension3.getStatus() == "approved"
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "presentedAfterThreadA" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsBoolean( Key.of( "approved2" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "presentedAfterThreadB" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsBoolean( Key.of( "approved3" ) ) ).isTrue();
 	}
 
 }
