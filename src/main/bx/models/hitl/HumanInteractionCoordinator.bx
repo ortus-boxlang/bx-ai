@@ -446,9 +446,9 @@ class {
 		variables.checkpointer.saveState(
 			persistenceKey( arguments.suspensionID ),
 			{
-				"suspension": suspensionToStruct( suspension ),
+				"suspension": suspension.toStruct(),
 				"meta"      : variables.suspensionMeta[ arguments.suspensionID ] ?: {},
-				"decision"  : isNull( decision ) ? {} : decisionToStruct( decision )
+				"decision"  : isNull( decision ) ? {} : decision.toStruct()
 			}
 		)
 	}
@@ -478,7 +478,7 @@ class {
 		variables.statusLocks.putIfAbsent( arguments.suspensionID, suspension.getStatus() )
 
 		if ( !isNull( saved.decision ) && !saved.decision.isEmpty() ) {
-			variables.decisions[ arguments.suspensionID ] = structToDecision( saved.decision )
+			variables.decisions[ arguments.suspensionID ] = new HumanInteractionDecision( argumentCollection: saved.decision )
 		}
 	}
 
@@ -493,107 +493,26 @@ class {
 	}
 
 	/**
-	 * Plain-struct projection of an AgentSuspension, safe to hand to a checkpointer.
-	 */
-	private struct function suspensionToStruct( required AgentSuspension suspension ) {
-		var interaction = arguments.suspension.getInteraction()
-		return {
-			"suspensionID": arguments.suspension.getSuspensionID(),
-			"executionID" : arguments.suspension.getExecutionID(),
-			"threadID"    : arguments.suspension.getThreadID(),
-			"reason"      : arguments.suspension.getReason(),
-			"status"      : arguments.suspension.getStatus(),
-			"checkpoint"  : arguments.suspension.getCheckpoint(),
-			"createdAt"   : arguments.suspension.getCreatedAt(),
-			"expiresAt"   : arguments.suspension.getExpiresAt() ?: javacast( "null", "" ),
-			"interaction" : isNull( interaction ) ? javacast( "null", "" ) : interactionToStruct( interaction )
-		}
-	}
-
-	/**
-	 * Reconstruct an AgentSuspension from suspensionToStruct()'s projection.
+	 * Reconstruct an AgentSuspension from AgentSuspension.toStruct()'s projection. Only the
+	 * nested `interaction` needs special handling — it comes back as a plain struct (from
+	 * HumanInteractionRequest.toStruct()) rather than flattened, so it's rebuilt into a real
+	 * HumanInteractionRequest before the rest round-trips via argumentCollection.
 	 */
 	private AgentSuspension function structToSuspension( required struct data ) {
+		var interaction = ( !isNull( arguments.data.interaction ) && isStruct( arguments.data.interaction ) )
+			? new HumanInteractionRequest( argumentCollection: arguments.data.interaction )
+			: javacast( "null", "" )
+
 		return new AgentSuspension(
 			suspensionID: arguments.data.suspensionID,
 			executionID : arguments.data.executionID,
 			threadID    : arguments.data.threadID,
 			reason      : arguments.data.reason,
 			status      : arguments.data.status,
-			interaction : isNull( arguments.data.interaction ) ? javacast( "null", "" ) : structToInteraction( arguments.data.interaction ),
+			interaction : interaction,
 			checkpoint  : arguments.data.checkpoint,
 			createdAt   : arguments.data.createdAt,
 			expiresAt   : arguments.data.expiresAt ?: javacast( "null", "" )
-		)
-	}
-
-	/**
-	 * Plain-struct projection of a HumanInteractionRequest, safe to hand to a checkpointer.
-	 */
-	private struct function interactionToStruct( required HumanInteractionRequest request ) {
-		return {
-			"id"              : arguments.request.getId(),
-			"executionID"     : arguments.request.getExecutionID(),
-			"interactionType" : arguments.request.getInteractionType(),
-			"title"           : arguments.request.getTitle(),
-			"message"         : arguments.request.getMessage(),
-			"allowedDecisions": arguments.request.getAllowedDecisions(),
-			"pendingAction"   : arguments.request.getPendingAction(),
-			"inputSchema"     : arguments.request.getInputSchema(),
-			"metadata"        : arguments.request.getMetadata(),
-			"createdAt"       : arguments.request.getCreatedAt(),
-			"expiresAt"       : arguments.request.getExpiresAt() ?: javacast( "null", "" )
-		}
-	}
-
-	/**
-	 * Reconstruct a HumanInteractionRequest from interactionToStruct()'s projection.
-	 */
-	private HumanInteractionRequest function structToInteraction( required struct data ) {
-		return new HumanInteractionRequest(
-			id              : arguments.data.id,
-			executionID     : arguments.data.executionID,
-			interactionType : arguments.data.interactionType,
-			title           : arguments.data.title,
-			message         : arguments.data.message,
-			allowedDecisions: arguments.data.allowedDecisions,
-			pendingAction   : arguments.data.pendingAction,
-			inputSchema     : arguments.data.inputSchema,
-			metadata        : arguments.data.metadata,
-			createdAt       : arguments.data.createdAt,
-			expiresAt       : arguments.data.expiresAt ?: javacast( "null", "" )
-		)
-	}
-
-	/**
-	 * Plain-struct projection of a HumanInteractionDecision, safe to hand to a checkpointer.
-	 */
-	private struct function decisionToStruct( required HumanInteractionDecision decision ) {
-		return {
-			"requestID"    : arguments.decision.getRequestID(),
-			"decision"     : arguments.decision.getDecision(),
-			"editedData"   : arguments.decision.getEditedData(),
-			"submittedData": arguments.decision.getSubmittedData(),
-			"reason"       : arguments.decision.getReason(),
-			"decidedBy"    : arguments.decision.getDecidedBy(),
-			"decidedAt"    : arguments.decision.getDecidedAt(),
-			"metadata"     : arguments.decision.getMetadata()
-		}
-	}
-
-	/**
-	 * Reconstruct a HumanInteractionDecision from decisionToStruct()'s projection.
-	 */
-	private HumanInteractionDecision function structToDecision( required struct data ) {
-		return new HumanInteractionDecision(
-			requestID    : arguments.data.requestID,
-			decision     : arguments.data.decision,
-			editedData   : arguments.data.editedData,
-			submittedData: arguments.data.submittedData,
-			reason       : arguments.data.reason,
-			decidedBy    : arguments.data.decidedBy,
-			decidedAt    : arguments.data.decidedAt,
-			metadata     : arguments.data.metadata
 		)
 	}
 

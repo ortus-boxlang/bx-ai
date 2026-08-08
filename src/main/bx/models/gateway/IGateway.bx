@@ -99,6 +99,23 @@ interface {
 		// no-op by default
 	}
 
+	/**
+	 * Link a durable store (any IAiMemory-shaped instance) for pending human-interaction
+	 * state, so it can survive past this gateway instance's own lifetime — e.g. a restart.
+	 * Called automatically by HumanInTheLoopMiddleware.onAttach() with the same checkpointer
+	 * the owning agent uses.
+	 *
+	 * Default is a no-op — gateways that never need to survive a restart (CliGateway,
+	 * MockGateway: their pending state is only ever meaningful within one process anyway)
+	 * simply ignore it. Override for a gateway whose "humanApproval" capability needs to
+	 * outlive the process that presented the request — see HttpGateway.
+	 *
+	 * @checkpointer Any IAiMemory instance supporting saveState/loadState/clearState
+	 */
+	default public void function setCheckpointer( required any checkpointer ){
+		// no-op by default
+	}
+
 	// -------------------------------------------------------------------------
 	// Inbound — override + declare "inboundMessages" to support
 	// -------------------------------------------------------------------------

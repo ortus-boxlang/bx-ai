@@ -506,4 +506,28 @@ public class HumanInTheLoopGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "sameInstance" ) ) ).isTrue();
 	}
 
+	@DisplayName( "onAttach: links the checkpointer into the gateway too, not just the coordinator" )
+	@Test
+	public void testOnAttachLinksGatewayCheckpointer() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+				import bxModules.bxai.models.runnables.AiModel;
+
+				httpGw = aiGateway( "http", { secret: "test-secret" } )
+				mw     = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "placeOrder" ], gateway: httpGw )
+				model  = new AiModel( service: aiService( "mock" ) )
+				cp     = aiMemory( "cache" )
+
+				agent = aiAgent( model: model, middleware: [ mw ], checkpointer: cp )
+				gatewayGotIt = httpGw.getCheckpointer() == cp
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "gatewayGotIt" ) ) ).isTrue();
+	}
+
 }

@@ -146,4 +146,25 @@ class {
 		return !isNull( variables.expiresAt ) && now() > variables.expiresAt
 	}
 
+	/**
+	 * Serialize to a plain struct (useful for logging, persistence, or transport). Keys
+	 * match this class's constructor named args 1:1 — reconstruct with
+	 * `new AgentSuspension( argumentCollection: savedStruct )`, after first rebuilding
+	 * `interaction` back into a HumanInteractionRequest via ITS toStruct()/constructor,
+	 * since this is a shallow projection (interaction is nested, not flattened).
+	 */
+	struct function toStruct() {
+		return {
+			"suspensionID": variables.suspensionID,
+			"executionID" : variables.executionID,
+			"threadID"    : variables.threadID,
+			"reason"      : variables.reason,
+			"status"      : variables.status,
+			"interaction" : isNull( variables.interaction ) ? javacast( "null", "" ) : variables.interaction.toStruct(),
+			"checkpoint"  : variables.checkpoint,
+			"createdAt"   : variables.createdAt,
+			"expiresAt"   : isNull( variables.expiresAt ) ? javacast( "null", "" ) : variables.expiresAt
+		}
+	}
+
 }

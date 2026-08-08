@@ -92,6 +92,14 @@ class extends="BaseGateway" {
 	property name="seenNonces";
 
 	/**
+	 * Optional durable store for pending-interaction state (see setCheckpointer()). When
+	 * absent, interactions live only in this gateway instance's in-memory struct, as before
+	 * this existed. Deliberately not used for seenNonces — replay protection is a
+	 * short-TTL, single-process concern, not something that needs to survive a restart.
+	 */
+	property name="checkpointer";
+
+	/**
 	 * Constructor
 	 */
 	function init() {
@@ -118,6 +126,16 @@ class extends="BaseGateway" {
 
 	array function getDeclaredCapabilities() {
 		return [ "inboundMessages", "outboundMessages", "humanApproval" ]
+	}
+
+	/**
+	 * Link a durable store for pending-interaction state (see IGateway.setCheckpointer()).
+	 * Without one, a restart between requestHumanInteraction() and resolveInteraction()
+	 * loses the interaction entirely — resolveInteraction() would throw InteractionNotFound
+	 * even though the human's decision, once it arrives, is perfectly valid.
+	 */
+	void function setCheckpointer( required any checkpointer ) {
+		variables.checkpointer = arguments.checkpointer
 	}
 
 	// -------------------------------------------------------------------------
@@ -210,6 +228,7 @@ class extends="BaseGateway" {
 			"decision" : javacast( "null", "" ),
 			"createdAt": now()
 		}
+		persistInteraction( id )
 		return new GatewayDeliveryResult( deliveryID: id )
 	}
 
@@ -228,11 +247,14 @@ class extends="BaseGateway" {
 	}
 
 	/**
-	 * Look up a tracked interaction record by requestID, pending or resolved.
+	 * Look up a tracked interaction record by requestID, pending or resolved. Transparently
+	 * hydrates it from the linked checkpointer first if this gateway instance doesn't
+	 * already have it in memory — e.g. a fresh instance after a restart.
 	 *
 	 * @return struct { request, context, decision, createdAt } or null if unknown
 	 */
 	any function getInteraction( required string requestID ) {
+		hydrateInteraction( arguments.requestID )
 		return variables.interactions[ arguments.requestID ] ?: javacast( "null", "" )
 	}
 
@@ -273,6 +295,7 @@ class extends="BaseGateway" {
 		}
 
 		record.decision = arguments.decision
+		persistInteraction( arguments.requestID )
 		return arguments.decision
 	}
 
@@ -336,6 +359,81 @@ class extends="BaseGateway" {
 			bx:httpParam type="body" value=jsonSerialize( arguments.body );
 		}
 		return { statusCode: callbackResult.statusCode, fileContent: callbackResult.fileContent ?: "" }
+	}
+
+	/**
+	 * Persist an interaction record (request/context/decision/createdAt) through the linked
+	 * checkpointer. A no-op when no checkpointer is linked. Called after every state change
+	 * (creation and resolution) so the durable copy never lags behind what's in memory.
+	 *
+	 * Stored as plain structs (via each object's own toStruct()), not the live objects —
+	 * the same discipline HumanInteractionCoordinator's persistence follows, since a
+	 * File/Jdbc-backed store needs to serialize this, not hold a live object reference.
+	 *
+	 * @requestID The interaction to persist
+	 */
+	private void function persistInteraction( required string requestID ) {
+		if ( isNull( variables.checkpointer ) ) {
+			return
+		}
+
+		var record = variables.interactions[ arguments.requestID ] ?: javacast( "null", "" )
+		if ( isNull( record ) ) {
+			return
+		}
+
+		variables.checkpointer.saveState(
+			persistenceKey( arguments.requestID ),
+			{
+				"request"  : record.request.toStruct(),
+				"context"  : record.context.toStruct(),
+				"decision" : isNull( record.decision ) ? {} : record.decision.toStruct(),
+				"createdAt": record.createdAt
+			}
+		)
+	}
+
+	/**
+	 * Load an interaction into this gateway instance's in-memory struct from the linked
+	 * checkpointer, if this instance doesn't already have it — e.g. a fresh instance after
+	 * a restart, being asked to resolve an interaction a previous instance presented. A
+	 * no-op when no checkpointer is linked, the interaction is already in memory, or
+	 * nothing durable is found under that id.
+	 *
+	 * @requestID The interaction to hydrate
+	 */
+	private void function hydrateInteraction( required string requestID ) {
+		if ( variables.interactions.keyExists( arguments.requestID ) || isNull( variables.checkpointer ) ) {
+			return
+		}
+
+		var saved = variables.checkpointer.loadState( persistenceKey( arguments.requestID ) )
+		if ( saved.isEmpty() ) {
+			return
+		}
+
+		var decision = ( !isNull( saved.decision ) && !saved.decision.isEmpty() )
+			? new HumanInteractionDecision( argumentCollection: saved.decision )
+			: javacast( "null", "" )
+
+		variables.interactions[ arguments.requestID ] = {
+			"request"  : new HumanInteractionRequest( argumentCollection: saved.request ),
+			"context"  : new GatewayContext( argumentCollection: saved.context ),
+			"decision" : decision,
+			"createdAt": saved.createdAt
+		}
+		variables.statusLocks.putIfAbsent( arguments.requestID, isNull( decision ) ? "pending" : "resolved" )
+	}
+
+	/**
+	 * The checkpointer key an interaction is persisted under — distinct from AiAgent's own
+	 * threadId-keyed checkpoint entries, and from HumanInteractionCoordinator's own
+	 * "hitl:suspension:" namespace, so none of the three ever collide in a shared store.
+	 *
+	 * @requestID The interaction id to build a key for
+	 */
+	private string function persistenceKey( required string requestID ) {
+		return "hitl:http-interaction:" & arguments.requestID
 	}
 
 }

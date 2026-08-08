@@ -210,6 +210,9 @@ class extends="BaseAiMiddleware" {
 
 		if ( !isNull( variables.checkpointer ) ) {
 			variables.coordinator.setCheckpointer( variables.checkpointer )
+			if ( !isNull( variables.gateway ) ) {
+				variables.gateway.setCheckpointer( variables.checkpointer )
+			}
 		}
 
 		// Only a CliGateway resolves synchronously and never suspends. Mode "web" (no
