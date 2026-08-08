@@ -41,8 +41,7 @@
 		"gradlew",
 		"build.gradle",
 		"/src/**",
-		"gradle/**",
-		"/channels/**"
+		"gradle/**"
 	],
 	"scripts": {},
 	"installPaths": {
