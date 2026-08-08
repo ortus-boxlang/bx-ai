@@ -517,11 +517,11 @@ abstract class implements="IAiRunnable" {
 			arguments.middleware.each( mw => withMiddleware( mw ) )
 			return this
 		}
-		if ( isStruct( arguments.middleware ) && !isObject( arguments.middleware ) ) {
-			variables.middleware.append( new StructMiddlewareAdapter( arguments.middleware ) )
-		} else {
-			variables.middleware.append( arguments.middleware )
-		}
+		var mwInstance = ( isStruct( arguments.middleware ) && !isObject( arguments.middleware ) )
+			? new StructMiddlewareAdapter( arguments.middleware )
+			: arguments.middleware
+		variables.middleware.append( mwInstance )
+		mwInstance.onAttach( this )
 		return this
 	}
 
@@ -545,6 +545,23 @@ abstract class implements="IAiRunnable" {
 		return variables.middleware.map( mw => {
 			return { name: mw.getName(), description: mw.getDescription() }
 		} )
+	}
+
+	/**
+	 * Get a specific middleware instance attached to this runnable by name.
+	 *
+	 * @name The middleware's name (see IAiMiddleware.getName()) — defaults to its class
+	 *       name unless the middleware overrides it
+	 *
+	 * @return The middleware instance, or null if none is attached under that name
+	 */
+	public any function getMiddleware( required string name ) {
+		for ( var mw in variables.middleware ) {
+			if ( mw.getName() == arguments.name ) {
+				return mw
+			}
+		}
+		return
 	}
 
 	/**

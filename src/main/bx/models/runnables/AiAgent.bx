@@ -760,6 +760,19 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
+	 * Get the checkpointer backend configured on this agent, if any.
+	 *
+	 * Middleware can call this from their onAttach( agent ) hook to link to the same
+	 * durable store the agent itself checkpoints to, rather than requiring a second,
+	 * separately-configured store that risks drifting out of sync with this one.
+	 *
+	 * @return The configured IAiMemory checkpointer, or null if none is configured
+	 */
+	any function getCheckpointer() {
+		return variables.checkpointer;
+	}
+
+	/**
 	 * Resume a previously suspended run from its saved checkpoint.
 	 *
 	 * When a middleware suspends a run (e.g. HumanInTheLoopMiddleware), the agent
