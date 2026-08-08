@@ -550,12 +550,16 @@ abstract class implements="IAiRunnable" {
 	/**
 	 * Get a specific middleware instance attached to this runnable by name.
 	 *
+	 * Named distinctly from getMiddleware() — the implicit accessor for the `middleware`
+	 * property, which returns the raw array of every attached instance — so this doesn't
+	 * shadow that existing behavior.
+	 *
 	 * @name The middleware's name (see IAiMiddleware.getName()) — defaults to its class
 	 *       name unless the middleware overrides it
 	 *
 	 * @return The middleware instance, or null if none is attached under that name
 	 */
-	public any function getMiddleware( required string name ) {
+	public any function getMiddlewareByName( required string name ) {
 		for ( var mw in variables.middleware ) {
 			if ( mw.getName() == arguments.name ) {
 				return mw

@@ -821,4 +821,96 @@ public class RunnablesTest extends BaseIntegrationTest {
 		assertThat( variables.get( "returnFormat" ) ).isEqualTo( "raw" );
 	}
 
+	// ---- Middleware attach lifecycle: onAttach() / getMiddlewareByName() / getCheckpointer() ----
+
+	@DisplayName( "withMiddleware(): attached middleware is reachable via getMiddlewareByName(name)" )
+	@Test
+	public void testGetMiddlewareByName() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.LoggingMiddleware;
+				import bxModules.bxai.models.middleware.core.MaxToolCallsMiddleware;
+				import bxModules.bxai.models.runnables.AiModel;
+
+				mw1 = new LoggingMiddleware( logToFile: false, logToConsole: false )
+				model = new AiModel( service: aiService( "mock" ) )
+
+				// Attached via the constructor's middleware: argument
+				agent = aiAgent( model: model, middleware: [ mw1 ] )
+				foundViaConstructor = agent.getMiddlewareByName( mw1.getName() ) == mw1
+
+				// Attached later via .withMiddleware()
+				mw2 = new MaxToolCallsMiddleware( maxCalls: 5 )
+				agent.withMiddleware( mw2 )
+				foundViaLaterAttach = agent.getMiddlewareByName( mw2.getName() ) == mw2
+
+				// An unregistered name returns null rather than erroring
+				notFound = isNull( agent.getMiddlewareByName( "does-not-exist" ) )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "foundViaConstructor" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "foundViaLaterAttach" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "notFound" ) ) ).isTrue();
+	}
+
+	@DisplayName( "withMiddleware(): a middleware that doesn't override onAttach() attaches without error" )
+	@Test
+	public void testDefaultOnAttachIsNoOp() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.LoggingMiddleware;
+				import bxModules.bxai.models.runnables.AiModel;
+
+				mw = new LoggingMiddleware( logToFile: false, logToConsole: false )
+				model = new AiModel( service: aiService( "mock" ) )
+
+				// Would throw if the interface's default onAttach() no-op weren't inherited cleanly
+				agent = aiAgent( model: model, middleware: [ mw ] )
+				attached = agent.getMiddlewareByName( mw.getName() ) == mw
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "attached" ) ) ).isTrue();
+	}
+
+	@DisplayName( "getCheckpointer(): reflects what was configured (constructor, withCheckpointer(), or nothing)" )
+	@Test
+	public void testGetCheckpointer() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.runnables.AiModel;
+
+				model = new AiModel( service: aiService( "mock" ) )
+
+				// Nothing configured
+				agentNoCheckpointer = aiAgent( model: model )
+				noneConfigured = isNull( agentNoCheckpointer.getCheckpointer() )
+
+				// Configured via the constructor
+				cp1 = aiMemory( "cache" )
+				agentWithCheckpointer = aiAgent( model: model, checkpointer: cp1 )
+				matchesConstructorArg = agentWithCheckpointer.getCheckpointer() == cp1
+
+				// Configured later via withCheckpointer()
+				cp2 = aiMemory( "cache" )
+				agentNoCheckpointer.withCheckpointer( cp2 )
+				matchesLaterCall = agentNoCheckpointer.getCheckpointer() == cp2
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "noneConfigured" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "matchesConstructorArg" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "matchesLaterCall" ) ) ).isTrue();
+	}
+
 }

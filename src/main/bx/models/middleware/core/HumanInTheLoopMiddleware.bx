@@ -208,11 +208,17 @@ class extends="BaseAiMiddleware" {
 
 		variables.checkpointer = arguments.agent.getCheckpointer()
 
-		if ( isNull( variables.checkpointer ) && !isNull( variables.gateway ) && !isInstanceOf( variables.gateway, "CliGateway" ) ) {
+		// Only a CliGateway resolves synchronously and never suspends. Mode "web" (no
+		// gateway attached at all) and every other gateway can suspend, so both need a
+		// checkpointer to have anywhere durable to land the pause.
+		var canSuspend = isNull( variables.gateway ) || !isInstanceOf( variables.gateway, "CliGateway" )
+
+		if ( isNull( variables.checkpointer ) && canSuspend ) {
 			throw(
 				type   : "HumanInTheLoopMiddleware.NoCheckpointer",
-				message: "HumanInTheLoopMiddleware is attached to gateway [#variables.gateway.getName()#], which " &
-					"cannot resolve approvals synchronously, but the agent has no checkpointer configured. " &
+				message: "HumanInTheLoopMiddleware is attached to " &
+					( isNull( variables.gateway ) ? "mode ""web""" : "gateway [#variables.gateway.getName()#]" ) &
+					", which can suspend a run, but the agent has no checkpointer configured. " &
 					"Pass checkpointer: to aiAgent(...) so a pending approval can survive past this run."
 			)
 		}
