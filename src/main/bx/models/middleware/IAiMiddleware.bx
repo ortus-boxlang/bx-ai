@@ -55,6 +55,21 @@ interface {
 	}
 
 	/**
+	 * Fired once when this middleware is attached to a runnable (e.g. an AiAgent) via
+	 * withMiddleware() — including when passed directly to the constructor's `middleware`
+	 * argument. Use this to link to resources the owning runnable already has configured
+	 * (e.g. `agent.getCheckpointer()`) instead of requiring them to be configured a second
+	 * time on the middleware itself.
+	 *
+	 * Default: no-op.
+	 *
+	 * @agent The runnable (e.g. AiAgent) this middleware was just attached to
+	 */
+	default public void function onAttach( required any agent ) {
+		// no-op by default
+	}
+
+	/**
 	 * Fired before the agent's run() method begins processing.
 	 * Return cancel() or suspend() to halt execution.
 	 *

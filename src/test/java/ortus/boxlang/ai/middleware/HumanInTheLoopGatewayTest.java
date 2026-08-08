@@ -22,12 +22,14 @@
 package ortus.boxlang.ai.middleware;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
+import ortus.boxlang.runtime.types.exceptions.BoxRuntimeException;
 
 @DisplayName( "HumanInTheLoopMiddleware Gateway-Attached Tests" )
 public class HumanInTheLoopGatewayTest extends BaseIntegrationTest {
@@ -360,6 +362,172 @@ public class HumanInTheLoopGatewayTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.getAsBoolean( Key.of( "isCliGateway" ) ) ).isTrue();
+	}
+
+	// ---- onAttach(): linking to the owning agent's checkpointer ----
+
+	@DisplayName( "onAttach: default CliGateway needs no checkpointer and attaches without error" )
+	@Test
+	public void testOnAttachCliGatewayNeedsNoCheckpointer() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+				import bxModules.bxai.models.runnables.AiModel;
+
+				mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ] )
+				model = new AiModel( service: aiService( "mock" ) )
+
+				// No checkpointer configured on the agent at all
+				agent = aiAgent( model: model, middleware: [ mw ] )
+				checkpointerStillNull = isNull( mw.getCheckpointer() )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "checkpointerStillNull" ) ) ).isTrue();
+	}
+
+	@DisplayName( "onAttach: links the middleware's checkpointer to the agent's when one is configured" )
+	@Test
+	public void testOnAttachLinksCheckpointer() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+				import bxModules.bxai.models.runnables.AiModel;
+
+				mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "placeOrder" ], gateway: aiGateway( "mock" ) )
+				model = new AiModel( service: aiService( "mock" ) )
+				cp = aiMemory( "cache" )
+
+				agent = aiAgent( model: model, middleware: [ mw ], checkpointer: cp )
+				sameInstance = mw.getCheckpointer() == cp
+				sameAsAgent = mw.getCheckpointer() == agent.getCheckpointer()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sameInstance" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sameAsAgent" ) ) ).isTrue();
+	}
+
+	@DisplayName( "onAttach: throws at attach time when a non-CLI gateway is attached with no checkpointer" )
+	@Test
+	public void testOnAttachThrowsForAsyncGatewayWithoutCheckpointer() {
+		BoxRuntimeException e = assertThrows( BoxRuntimeException.class, () -> {
+			// @formatter:off
+			runtime.executeSource(
+				"""
+					import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+					import bxModules.bxai.models.runnables.AiModel;
+
+					mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "placeOrder" ], gateway: aiGateway( "mock" ) )
+					model = new AiModel( service: aiService( "mock" ) )
+
+					// No checkpointer configured — this should fail loudly right here, not later
+					agent = aiAgent( model: model, middleware: [ mw ] )
+				""",
+				context
+			);
+			// @formatter:on
+		} );
+
+		assertThat( e.getMessage() ).contains( "no checkpointer configured" );
+	}
+
+	@DisplayName( "onAttach: throws at attach time for mode 'web' (no gateway at all) with no checkpointer" )
+	@Test
+	public void testOnAttachThrowsForWebModeWithoutCheckpointer() {
+		BoxRuntimeException e = assertThrows( BoxRuntimeException.class, () -> {
+			// @formatter:off
+			runtime.executeSource(
+				"""
+					import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+					import bxModules.bxai.models.runnables.AiModel;
+
+					mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ], mode: "web" )
+					model = new AiModel( service: aiService( "mock" ) )
+
+					agent = aiAgent( model: model, middleware: [ mw ] )
+				""",
+				context
+			);
+			// @formatter:on
+		} );
+
+		assertThat( e.getMessage() ).contains( "mode \"web\"" );
+	}
+
+	@DisplayName( "onAttach: mode 'web' with a checkpointer configured attaches without error" )
+	@Test
+	public void testOnAttachWebModeWithCheckpointerIsFine() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+				import bxModules.bxai.models.runnables.AiModel;
+
+				mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ], mode: "web" )
+				model = new AiModel( service: aiService( "mock" ) )
+				cp = aiMemory( "cache" )
+
+				agent = aiAgent( model: model, middleware: [ mw ], checkpointer: cp )
+				linked = mw.getCheckpointer() == cp
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "linked" ) ) ).isTrue();
+	}
+
+	@DisplayName( "onAttach: the middleware is reachable back out via agent.getMiddlewareByName()" )
+	@Test
+	public void testHitlMiddlewareReachableViaGetMiddleware() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+				import bxModules.bxai.models.runnables.AiModel;
+
+				mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ] )
+				model = new AiModel( service: aiService( "mock" ) )
+
+				agent = aiAgent( model: model, middleware: [ mw ] )
+				sameInstance = agent.getMiddlewareByName( mw.getName() ) == mw
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sameInstance" ) ) ).isTrue();
+	}
+
+	@DisplayName( "onAttach: links the checkpointer into the gateway too, not just the coordinator" )
+	@Test
+	public void testOnAttachLinksGatewayCheckpointer() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+				import bxModules.bxai.models.runnables.AiModel;
+
+				httpGw = aiGateway( "http", { secret: "test-secret" } )
+				mw     = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "placeOrder" ], gateway: httpGw )
+				model  = new AiModel( service: aiService( "mock" ) )
+				cp     = aiMemory( "cache" )
+
+				agent = aiAgent( model: model, middleware: [ mw ], checkpointer: cp )
+				gatewayGotIt = httpGw.getCheckpointer() == cp
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "gatewayGotIt" ) ) ).isTrue();
 	}
 
 }

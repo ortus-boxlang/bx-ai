@@ -146,4 +146,22 @@ class {
 		return variables.decision == static.DECISIONS.CANCEL
 	}
 
+	/**
+	 * Serialize to a plain struct (useful for logging, persistence, or transport). Keys
+	 * match this class's constructor named args 1:1, so `new HumanInteractionDecision(
+	 * argumentCollection: savedStruct )` round-trips it cleanly.
+	 */
+	struct function toStruct() {
+		return {
+			"requestID"    : variables.requestID,
+			"decision"     : variables.decision,
+			"editedData"   : variables.editedData,
+			"submittedData": variables.submittedData,
+			"reason"       : variables.reason,
+			"decidedBy"    : variables.decidedBy,
+			"decidedAt"    : variables.decidedAt,
+			"metadata"     : variables.metadata
+		}
+	}
+
 }

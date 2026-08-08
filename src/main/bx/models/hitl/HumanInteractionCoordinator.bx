@@ -26,7 +26,25 @@
  * Concurrency: the atomic claim on an AgentSuspension's status uses
  * java.util.concurrent.ConcurrentHashMap.replace(), a real compare-and-set — of two
  * simultaneous resolve() calls for the same suspension, exactly one succeeds and
- * the other throws SuspensionAlreadyResolved.
+ * the other throws SuspensionAlreadyResolved. That guarantee is scoped to a single
+ * coordinator instance/process — see the durability note below for what that means
+ * once suspensions can also be loaded into a fresh instance after a restart.
+ *
+ * Durability: suspensions, their meta, and their eventual decision are, when a
+ * checkpointer is linked (see setCheckpointer() — HumanInTheLoopMiddleware wires this
+ * automatically via its onAttach() hook), persisted through the SAME IAiMemory-shaped
+ * store AiAgent already checkpoints turns to — under a distinct key namespace, not
+ * overlapping AiAgent's own threadId-keyed entries. A fresh coordinator (e.g. after a
+ * restart) transparently hydrates a suspension from that store the first time it's
+ * looked up or resolved, rather than only ever knowing about suspensions it created
+ * itself. This closes the previous gap where a checkpoint could survive a restart
+ * while this coordinator's own bookkeeping — kept only in memory — did not.
+ * "approve_session" grants are the one exception: they're deliberately NEVER
+ * persisted (see sessionGrants below) — that's unchanged by any of this.
+ * Note the atomic-claim guarantee above does NOT extend across two coordinator
+ * instances resolving the same hydrated suspension concurrently (e.g. two separate
+ * processes racing) — each instance's compare-and-set is only atomic within itself.
+ * Treat cross-process concurrent resolution as out of scope for this phase.
  *
  * Decision settled for Phase 2: invalid edited arguments (failing validation
  * against the tool's declared schema) do NOT throw and do NOT re-suspend for
@@ -71,6 +89,12 @@ class {
 	property name="decisionStore";
 
 	/**
+	 * Optional durable store for suspension/decision state (see setCheckpointer()). When absent,
+	 * suspensions live only in this coordinator's in-memory structs, as before this existed.
+	 */
+	property name="checkpointer";
+
+	/**
 	 * "approve_session" grants, in-memory only, keyed by "threadID:toolName". Deliberately not
 	 * backed by IDecisionStore — a session grant should never outlive this coordinator.
 	 */
@@ -95,6 +119,22 @@ class {
 		variables.decisionStore = arguments.decisionStore ?: javacast( "null", "" )
 		variables.sessionGrants = {}
 		variables.suspensionMeta = {}
+		return this;
+	}
+
+	/**
+	 * Link a durable store for suspension/decision state, so a suspension created by this
+	 * coordinator can still be found and resolved by another instance later — e.g. after a
+	 * restart. Typically wired automatically by HumanInTheLoopMiddleware.onAttach() from the
+	 * agent's own checkpointer; call directly only for a coordinator built without a
+	 * middleware/agent in the picture.
+	 *
+	 * @checkpointer Any IAiMemory instance supporting saveState/loadState/clearState
+	 *
+	 * @return This coordinator for chaining
+	 */
+	HumanInteractionCoordinator function setCheckpointer( required any checkpointer ) {
+		variables.checkpointer = arguments.checkpointer
 		return this;
 	}
 
@@ -148,6 +188,7 @@ class {
 			"toolName": toolName,
 			"threadID": arguments.threadID
 		}
+		persistSuspension( suspension.getSuspensionID() )
 
 		if ( len( toolName ) && isAlreadyGranted( identity, arguments.threadID, toolName ) ) {
 			var autoDecision = new HumanInteractionDecision(
@@ -186,6 +227,8 @@ class {
 		required HumanInteractionDecision decision,
 		ITool tool
 	) {
+		hydrateSuspension( arguments.suspensionID )
+
 		if ( !variables.suspensions.keyExists( arguments.suspensionID ) ) {
 			throw(
 				type   : "SuspensionNotFound",
@@ -236,24 +279,31 @@ class {
 			recordGrant( arguments.suspensionID, decision )
 		}
 
+		persistSuspension( arguments.suspensionID )
+
 		return suspension
 	}
 
 	/**
-	 * Look up a tracked suspension by id, pending or resolved.
+	 * Look up a tracked suspension by id, pending or resolved. Transparently hydrates it
+	 * from the linked checkpointer first if this coordinator instance doesn't already have
+	 * it in memory (see class docs on durability).
 	 *
 	 * @suspensionID The AgentSuspension.suspensionID to look up
 	 */
 	AgentSuspension function getSuspension( required string suspensionID ) {
+		hydrateSuspension( arguments.suspensionID )
 		return variables.suspensions[ arguments.suspensionID ] ?: javacast( "null", "" )
 	}
 
 	/**
-	 * Look up the decision a suspension was resolved with, if any.
+	 * Look up the decision a suspension was resolved with, if any. Transparently hydrates
+	 * from the linked checkpointer first — see getSuspension().
 	 *
 	 * @suspensionID The AgentSuspension.suspensionID to look up
 	 */
 	HumanInteractionDecision function getDecision( required string suspensionID ) {
+		hydrateSuspension( arguments.suspensionID )
 		return variables.decisions[ arguments.suspensionID ] ?: javacast( "null", "" )
 	}
 
@@ -368,6 +418,102 @@ class {
 		}
 
 		return javacast( "null", "" )
+	}
+
+	/**
+	 * Persist a suspension (plus its meta and, once resolved, its decision) through the
+	 * linked checkpointer. A no-op when no checkpointer is linked. Called after every
+	 * state change (creation and resolution) so the durable copy never lags behind what's
+	 * in memory.
+	 *
+	 * Stored as plain structs (not the live AgentSuspension/HumanInteractionDecision
+	 * objects) — the same discipline AiAgent's own checkpointing follows, since a File/Jdbc
+	 * -backed store needs to serialize this, not hold a live object reference.
+	 *
+	 * @suspensionID The suspension to persist
+	 */
+	private void function persistSuspension( required string suspensionID ) {
+		if ( isNull( variables.checkpointer ) ) {
+			return
+		}
+
+		var suspension = variables.suspensions[ arguments.suspensionID ] ?: javacast( "null", "" )
+		if ( isNull( suspension ) ) {
+			return
+		}
+		var decision = variables.decisions[ arguments.suspensionID ] ?: javacast( "null", "" )
+
+		variables.checkpointer.saveState(
+			persistenceKey( arguments.suspensionID ),
+			{
+				"suspension": suspension.toStruct(),
+				"meta"      : variables.suspensionMeta[ arguments.suspensionID ] ?: {},
+				"decision"  : isNull( decision ) ? {} : decision.toStruct()
+			}
+		)
+	}
+
+	/**
+	 * Load a suspension into this coordinator's in-memory structs from the linked
+	 * checkpointer, if this instance doesn't already have it — e.g. a fresh coordinator
+	 * after a restart, being asked to resolve a suspension a previous instance created.
+	 * A no-op when no checkpointer is linked, or the suspension is already in memory, or
+	 * nothing durable is found under that id.
+	 *
+	 * @suspensionID The suspension to hydrate
+	 */
+	private void function hydrateSuspension( required string suspensionID ) {
+		if ( variables.suspensions.keyExists( arguments.suspensionID ) || isNull( variables.checkpointer ) ) {
+			return
+		}
+
+		var saved = variables.checkpointer.loadState( persistenceKey( arguments.suspensionID ) )
+		if ( saved.isEmpty() ) {
+			return
+		}
+
+		var suspension = structToSuspension( saved.suspension )
+		variables.suspensions[ arguments.suspensionID ]    = suspension
+		variables.suspensionMeta[ arguments.suspensionID ] = saved.meta ?: {}
+		variables.statusLocks.putIfAbsent( arguments.suspensionID, suspension.getStatus() )
+
+		if ( !isNull( saved.decision ) && !saved.decision.isEmpty() ) {
+			variables.decisions[ arguments.suspensionID ] = new HumanInteractionDecision( argumentCollection: saved.decision )
+		}
+	}
+
+	/**
+	 * The checkpointer key a suspension is persisted under — distinct from AiAgent's own
+	 * threadId-keyed checkpoint entries so the two never collide in a shared store.
+	 *
+	 * @suspensionID The suspension id to build a key for
+	 */
+	private string function persistenceKey( required string suspensionID ) {
+		return "hitl:suspension:" & arguments.suspensionID
+	}
+
+	/**
+	 * Reconstruct an AgentSuspension from AgentSuspension.toStruct()'s projection. Only the
+	 * nested `interaction` needs special handling — it comes back as a plain struct (from
+	 * HumanInteractionRequest.toStruct()) rather than flattened, so it's rebuilt into a real
+	 * HumanInteractionRequest before the rest round-trips via argumentCollection.
+	 */
+	private AgentSuspension function structToSuspension( required struct data ) {
+		var interaction = ( !isNull( arguments.data.interaction ) && isStruct( arguments.data.interaction ) )
+			? new HumanInteractionRequest( argumentCollection: arguments.data.interaction )
+			: javacast( "null", "" )
+
+		return new AgentSuspension(
+			suspensionID: arguments.data.suspensionID,
+			executionID : arguments.data.executionID,
+			threadID    : arguments.data.threadID,
+			reason      : arguments.data.reason,
+			status      : arguments.data.status,
+			interaction : interaction,
+			checkpoint  : arguments.data.checkpoint,
+			createdAt   : arguments.data.createdAt,
+			expiresAt   : arguments.data.expiresAt ?: javacast( "null", "" )
+		)
 	}
 
 }

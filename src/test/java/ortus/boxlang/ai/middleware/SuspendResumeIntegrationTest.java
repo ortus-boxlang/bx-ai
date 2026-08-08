@@ -802,9 +802,10 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 
 		        chunks = []
 		        agent = aiAgent(
-		            model     : model,
-		            tools     : [ toolA ],
-		            middleware: [ hitlMw ]
+		            model       : model,
+		            tools       : [ toolA ],
+		            middleware  : [ hitlMw ],
+		            checkpointer: aiMemory( "cache" )
 		        )
 
 		        // Simulate a resume-time rejection by pre-seeding the resumeContext directly via
