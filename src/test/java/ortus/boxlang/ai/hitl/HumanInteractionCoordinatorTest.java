@@ -546,4 +546,168 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "decisionSurvived" ) ) ).isTrue();
 	}
 
+	// ---- Durable pending index: hasPending() / getAllPending() / clearSuspension() / clearAllPending() ----
+
+	@DisplayName( "hasPending()/getAllPending(): reflect the index across create, resolve, and a fresh instance" )
+	@Test
+	public void testHasPendingAndGetAllPendingLifecycle() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				cp = aiMemory( "cache" )
+
+				coord1 = new HumanInteractionCoordinator()
+				coord1.setCheckpointer( cp )
+				gw = aiGateway( "mock" )
+				ctx = new GatewayContext( gateway: "mock", threadID: "index-thread" )
+
+				req1 = new HumanInteractionRequest( executionID: "run-index-1" )
+				req2 = new HumanInteractionRequest( executionID: "run-index-2" )
+
+				s1 = coord1.requestApproval( humanRequest: req1, context: ctx, gateway: gw, threadID: "index-thread-1" )
+				s2 = coord1.requestApproval( humanRequest: req2, context: ctx, gateway: gw, threadID: "index-thread-2" )
+
+				bothPendingOnCoord1 = coord1.hasPending( s1.getSuspensionID() ) && coord1.hasPending( s2.getSuspensionID() )
+				allPendingCountAfterCreate = coord1.getAllPending().len()
+
+				// A fresh instance — same checkpointer, nothing in memory — sees the same index
+				coord2 = new HumanInteractionCoordinator()
+				coord2.setCheckpointer( cp )
+				sameCountFromFreshInstance = coord2.getAllPending().len() == 2
+				coord2HasBoth = coord2.hasPending( s1.getSuspensionID() ) && coord2.hasPending( s2.getSuspensionID() )
+
+				// Resolving one removes it from the index — visible from either instance
+				decision = new HumanInteractionDecision( requestID: req1.getId(), decision: "approve" )
+				coord2.resolve( s1.getSuspensionID(), decision )
+
+				stillHasS2NotS1 = !coord2.hasPending( s1.getSuspensionID() ) && coord2.hasPending( s2.getSuspensionID() )
+				countAfterOneResolved = coord1.getAllPending().len()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "bothPendingOnCoord1" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "allPendingCountAfterCreate" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsBoolean( Key.of( "sameCountFromFreshInstance" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "coord2HasBoth" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "stillHasS2NotS1" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "countAfterOneResolved" ) ) ).isEqualTo( 1 );
+	}
+
+	@DisplayName( "clearSuspension(): removes it from the index, its durable entry, and memory — without recording a decision" )
+	@Test
+	public void testClearSuspension() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				cp = aiMemory( "cache" )
+				coordinator = new HumanInteractionCoordinator()
+				coordinator.setCheckpointer( cp )
+				gw = aiGateway( "mock" )
+				ctx = new GatewayContext( gateway: "mock", threadID: "clear-thread" )
+
+				req = new HumanInteractionRequest( executionID: "run-clear" )
+				suspension = coordinator.requestApproval( humanRequest: req, context: ctx, gateway: gw, threadID: "clear-thread" )
+				id = suspension.getSuspensionID()
+
+				pendingBeforeClear = coordinator.hasPending( id )
+				coordinator.clearSuspension( id )
+				pendingAfterClear = coordinator.hasPending( id )
+				goneFromGetSuspension = isNull( coordinator.getSuspension( id ) )
+
+				// A fresh instance shouldn't be able to hydrate it either — it's really gone
+				coord2 = new HumanInteractionCoordinator()
+				coord2.setCheckpointer( cp )
+				goneFromFreshInstance = isNull( coord2.getSuspension( id ) )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "pendingBeforeClear" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "pendingAfterClear" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "goneFromGetSuspension" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "goneFromFreshInstance" ) ) ).isTrue();
+	}
+
+	@DisplayName( "clearAllPending(): removes every pending suspension in one call" )
+	@Test
+	public void testClearAllPending() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				cp = aiMemory( "cache" )
+				coordinator = new HumanInteractionCoordinator()
+				coordinator.setCheckpointer( cp )
+				gw = aiGateway( "mock" )
+				ctx = new GatewayContext( gateway: "mock", threadID: "clear-all-thread" )
+
+				ids = []
+				for ( i = 1; i <= 3; i++ ) {
+					req = new HumanInteractionRequest( executionID: "run-clear-all-" & i )
+					s = coordinator.requestApproval( humanRequest: req, context: ctx, gateway: gw, threadID: "clear-all-thread-" & i )
+					ids.append( s.getSuspensionID() )
+				}
+
+				countBeforeClear = coordinator.getAllPending().len()
+				coordinator.clearAllPending()
+				countAfterClear = coordinator.getAllPending().len()
+				noneStillPending = ids.filter( ( id ) => coordinator.hasPending( id ) ).isEmpty()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "countBeforeClear" ) ) ).isEqualTo( 3 );
+		assertThat( variables.getAsInteger( Key.of( "countAfterClear" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsBoolean( Key.of( "noneStillPending" ) ) ).isTrue();
+	}
+
+	@DisplayName( "without setCheckpointer(): hasPending()/getAllPending()/clearAllPending() are safe no-ops, not errors" )
+	@Test
+	public void testPendingIndexOperationsSafeWithoutCheckpointer() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				coordinator = new HumanInteractionCoordinator()
+				gw = aiGateway( "mock" )
+				ctx = new GatewayContext( gateway: "mock", threadID: "no-cp-index-thread" )
+				req = new HumanInteractionRequest( executionID: "run-no-cp-index" )
+
+				suspension = coordinator.requestApproval( humanRequest: req, context: ctx, gateway: gw, threadID: "no-cp-index-thread" )
+
+				didNotThrow = true
+				try {
+					hasIt   = coordinator.hasPending( suspension.getSuspensionID() )
+					allPend = coordinator.getAllPending()
+					coordinator.clearAllPending()
+				} catch ( any e ) {
+					didNotThrow = false
+				}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "didNotThrow" ) ) ).isTrue();
+	}
+
 }
