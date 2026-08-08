@@ -491,4 +491,59 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "notFound" ) ) ).isTrue();
 	}
 
+	@DisplayName( "setCheckpointer(): survives a real File-backed store, not just an in-process cache" )
+	@Test
+	public void testSuspensionSurvivesWithFileBackedStore() {
+		// The cache-backed test above proves object-level handoff between coordinator
+		// instances, but a cache region can still live entirely in this same process's
+		// memory. A File-backed store is the actual proof this reaches real, independent
+		// storage — coord2 reads what coord1 wrote purely by reading the same JSON file
+		// back off disk, nothing shared between the two but the directory path.
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				storeDir = getTempDirectory() & "/bxai-hitl-coordinator-file-restart-" & createUUID()
+				cp = aiMemory( memory: "file", config: { directoryPath: storeDir } )
+
+				coord1 = new HumanInteractionCoordinator()
+				coord1.setCheckpointer( cp )
+				gw  = aiGateway( "mock" )
+				req = new HumanInteractionRequest( executionID: "run-file-restart", pendingAction: { toolName: "deleteRecord" } )
+				ctx = new GatewayContext( gateway: "mock", threadID: "file-restart-thread", userID: "alice" )
+
+				suspension = coord1.requestApproval( humanRequest: req, context: ctx, gateway: gw, threadID: "file-restart-thread" )
+				suspensionID = suspension.getSuspensionID()
+
+				// Prove it actually landed on disk, independent of any BoxLang object
+				checkpointFileExists = fileExists( storeDir & "/checkpoints/hitl_suspension_" & suspensionID.reReplace( "[^a-zA-Z0-9_\\-]", "_", "all" ) & ".json" )
+
+				// A brand new coordinator built against the SAME directory — nothing in
+				// common with coord1 except the path on disk.
+				coord2 = new HumanInteractionCoordinator()
+				coord2.setCheckpointer( aiMemory( memory: "file", config: { directoryPath: storeDir } ) )
+
+				decision = new HumanInteractionDecision( requestID: req.getId(), decision: "approve", decidedBy: "alice" )
+				resolved = coord2.resolve( suspensionID, decision )
+				resolvedByNewInstance = resolved.getStatus() == "approved"
+
+				// And a third, confirming the resolution itself was written back to disk
+				coord3 = new HumanInteractionCoordinator()
+				coord3.setCheckpointer( aiMemory( memory: "file", config: { directoryPath: storeDir } ) )
+				finalDecision = coord3.getDecision( suspensionID )
+				decisionSurvived = !isNull( finalDecision ) && finalDecision.getDecision() == "approve"
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "checkpointFileExists" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resolvedByNewInstance" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "decisionSurvived" ) ) ).isTrue();
+	}
+
 }

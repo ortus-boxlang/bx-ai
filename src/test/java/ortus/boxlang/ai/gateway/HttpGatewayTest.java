@@ -249,4 +249,48 @@ public class HttpGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "didNotThrow" ) ) ).isTrue();
 	}
 
+	@DisplayName( "setCheckpointer(): survives a real File-backed store, not just an in-process cache" )
+	@Test
+	public void testInteractionSurvivesWithFileBackedStore() {
+		// Same reasoning as HumanInteractionCoordinatorTest's file-backed test: this proves
+		// gw2 reads what gw1 wrote purely from a JSON file on disk, not anything shared
+		// in-process — the actual claim "survives a restart" rests on.
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				storeDir = getTempDirectory() & "/bxai-http-gateway-file-restart-" & createUUID()
+
+				gw1 = aiGateway( "http", { secret: "test-secret" } )
+				gw1.setCheckpointer( aiMemory( memory: "file", config: { directoryPath: storeDir } ) )
+				interactionRequest = new HumanInteractionRequest( executionID: "run-file-restart", pendingAction: { toolName: "deleteRecord" } )
+				ctx = new GatewayContext( gateway: "http", threadID: "file-restart-thread", userID: "alice" )
+				gw1.requestHumanInteraction( interactionRequest, ctx )
+
+				checkpointFileExists = fileExists( storeDir & "/checkpoints/hitl_http-interaction_" & interactionRequest.getId().reReplace( "[^a-zA-Z0-9_\\-]", "_", "all" ) & ".json" )
+
+				gw2 = aiGateway( "http", { secret: "test-secret" } )
+				gw2.setCheckpointer( aiMemory( memory: "file", config: { directoryPath: storeDir } ) )
+
+				decision = new HumanInteractionDecision( requestID: interactionRequest.getId(), decision: "approve", decidedBy: "alice" )
+				resolved = gw2.resolveInteraction( interactionRequest.getId(), decision )
+				resolvedByNewInstance = resolved.isApproved()
+
+				gw3 = aiGateway( "http", { secret: "test-secret" } )
+				gw3.setCheckpointer( aiMemory( memory: "file", config: { directoryPath: storeDir } ) )
+				finalRecord = gw3.getInteraction( interactionRequest.getId() )
+				decisionSurvived = !isNull( finalRecord.decision ) && finalRecord.decision.getDecidedBy() == "alice"
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "checkpointFileExists" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resolvedByNewInstance" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "decisionSurvived" ) ) ).isTrue();
+	}
+
 }
