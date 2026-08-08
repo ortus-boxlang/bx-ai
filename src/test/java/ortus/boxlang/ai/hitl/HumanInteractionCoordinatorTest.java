@@ -403,4 +403,92 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "approved3" ) ) ).isTrue();
 	}
 
+	// ---- Durability: a suspension survives moving to a brand new coordinator instance ----
+
+	@DisplayName( "setCheckpointer(): a pending suspension is resolvable from a brand new coordinator instance" )
+	@Test
+	public void testSuspensionSurvivesCoordinatorRestart() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				cp = aiMemory( "cache" )
+
+				// "Process 1": creates a suspension against an unscripted (async, never
+				// auto-resolving) gateway, then is discarded — nothing else references it.
+				coord1 = new HumanInteractionCoordinator()
+				coord1.setCheckpointer( cp )
+				gw  = aiGateway( "mock" )
+				req = new HumanInteractionRequest( executionID: "run-restart", pendingAction: { toolName: "deleteRecord" } )
+				ctx = new GatewayContext( gateway: "mock", threadID: "restart-thread", userID: "alice" )
+
+				suspension = coord1.requestApproval( humanRequest: req, context: ctx, gateway: gw, threadID: "restart-thread" )
+				suspensionID = suspension.getSuspensionID()
+				createdPending = suspension.isPending()
+
+				// "Restart": a fresh coordinator, same checkpointer, no in-memory knowledge
+				// of coord1's suspension at all.
+				coord2 = new HumanInteractionCoordinator()
+				coord2.setCheckpointer( cp )
+
+				hydrated = coord2.getSuspension( suspensionID )
+				foundAfterRestart = !isNull( hydrated )
+				stillPendingAfterRestart = !isNull( hydrated ) && hydrated.isPending()
+
+				decision = new HumanInteractionDecision( requestID: req.getId(), decision: "approve", decidedBy: "alice" )
+				resolved = coord2.resolve( suspensionID, decision )
+				resolvedByNewInstance = resolved.getStatus() == "approved"
+
+				// Another "restart": a third instance should see the resolution durably too
+				coord3 = new HumanInteractionCoordinator()
+				coord3.setCheckpointer( cp )
+				finalState    = coord3.getSuspension( suspensionID )
+				finalStatus   = finalState.getStatus()
+				finalDecision = coord3.getDecision( suspensionID )
+				decisionSurvived = !isNull( finalDecision ) && finalDecision.getDecision() == "approve" && finalDecision.getDecidedBy() == "alice"
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "createdPending" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "foundAfterRestart" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "stillPendingAfterRestart" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resolvedByNewInstance" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "finalStatus" ) ) ).isEqualTo( "approved" );
+		assertThat( variables.getAsBoolean( Key.of( "decisionSurvived" ) ) ).isTrue();
+	}
+
+	@DisplayName( "without setCheckpointer(): behavior is unchanged — in-memory only, nothing survives a new instance" )
+	@Test
+	public void testNoCheckpointerMeansNoDurability() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				coord1 = new HumanInteractionCoordinator()
+				gw  = aiGateway( "mock" )
+				req = new HumanInteractionRequest( executionID: "run-no-cp" )
+				ctx = new GatewayContext( gateway: "mock", threadID: "no-cp-thread" )
+
+				suspension = coord1.requestApproval( humanRequest: req, context: ctx, gateway: gw, threadID: "no-cp-thread" )
+				suspensionID = suspension.getSuspensionID()
+
+				coord2 = new HumanInteractionCoordinator()
+				notFound = isNull( coord2.getSuspension( suspensionID ) )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "notFound" ) ) ).isTrue();
+	}
+
 }
