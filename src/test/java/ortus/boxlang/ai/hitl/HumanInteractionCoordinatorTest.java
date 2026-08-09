@@ -720,4 +720,58 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "didNotThrow" ) ) ).isTrue();
 	}
 
+	// ---- getSuspensionByThread() ----
+
+	@DisplayName( "getSuspensionByThread(): finds the pending suspension for a thread among several others" )
+	@Test
+	public void testGetSuspensionByThread() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				// Isolated File-backed store — see testHasPendingAndGetAllPendingLifecycle()
+				// for why aiMemory("cache") isn't safe for count/identity-sensitive assertions
+				// like this one when run alongside other cache-backed HITL tests.
+				cp = aiMemory( memory: "file", config: { directoryPath: getTempDirectory() & "/bxai-hitl-by-thread-" & createUUID() } )
+				coordinator = new HumanInteractionCoordinator()
+				coordinator.setCheckpointer( cp )
+				gw = aiGateway( "mock" )
+
+				ctxA = new GatewayContext( gateway: "mock", threadID: "thread-A" )
+				ctxB = new GatewayContext( gateway: "mock", threadID: "thread-B" )
+				reqA = new HumanInteractionRequest( executionID: "run-A" )
+				reqB = new HumanInteractionRequest( executionID: "run-B" )
+
+				sA = coordinator.requestApproval( humanRequest: reqA, context: ctxA, gateway: gw, threadID: "thread-A" )
+				sB = coordinator.requestApproval( humanRequest: reqB, context: ctxB, gateway: gw, threadID: "thread-B" )
+
+				foundA = coordinator.getSuspensionByThread( "thread-A" )
+				matchesA = !isNull( foundA ) && foundA.getSuspensionID() == sA.getSuspensionID()
+
+				// A thread with nothing pending at all
+				nothingForUnknownThread = isNull( coordinator.getSuspensionByThread( "thread-nonexistent" ) )
+
+				// A thread whose suspension has since been resolved is no longer "pending" —
+				// getSuspensionByThread() should stop finding it
+				decision = new HumanInteractionDecision( requestID: reqA.getId(), decision: "approve" )
+				coordinator.resolve( sA.getSuspensionID(), decision )
+				goneAfterResolve = isNull( coordinator.getSuspensionByThread( "thread-A" ) )
+
+				// thread-B is untouched and still findable
+				stillFindsB = coordinator.getSuspensionByThread( "thread-B" ).getSuspensionID() == sB.getSuspensionID()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "matchesA" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "nothingForUnknownThread" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "goneAfterResolve" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "stillFindsB" ) ) ).isTrue();
+	}
+
 }

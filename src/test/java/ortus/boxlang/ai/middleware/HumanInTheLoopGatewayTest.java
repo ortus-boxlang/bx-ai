@@ -591,4 +591,35 @@ public class HumanInTheLoopGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "noneLeftAfterClearAll" ) ) ).isTrue();
 	}
 
+	@DisplayName( "getSuspensionByThread(): delegate reaches the same coordinator state as calling it directly" )
+	@Test
+	public void testGetSuspensionByThreadDelegate() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				gw = aiGateway( "mock" )
+				mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "placeOrder" ], gateway: gw )
+				mw.getCoordinator().setCheckpointer( aiMemory( memory: "file", config: { directoryPath: getTempDirectory() & "/bxai-hitl-mw-by-thread-" & createUUID() } ) )
+
+				req = new HumanInteractionRequest( executionID: "run-by-thread-delegate" )
+				ctx = new GatewayContext( gateway: "mock", threadID: "delegate-by-thread" )
+				suspension = mw.getCoordinator().requestApproval( humanRequest: req, context: ctx, gateway: gw, threadID: "delegate-by-thread" )
+
+				viaDelegate    = mw.getSuspensionByThread( "delegate-by-thread" )
+				viaCoordinator = mw.getCoordinator().getSuspensionByThread( "delegate-by-thread" )
+				sameSuspension = !isNull( viaDelegate ) && viaDelegate.getSuspensionID() == viaCoordinator.getSuspensionID()
+				nothingForOtherThread = isNull( mw.getSuspensionByThread( "some-other-thread" ) )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sameSuspension" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "nothingForOtherThread" ) ) ).isTrue();
+	}
+
 }

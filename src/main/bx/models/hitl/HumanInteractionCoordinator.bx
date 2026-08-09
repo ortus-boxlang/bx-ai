@@ -342,6 +342,21 @@ class {
 	}
 
 	/**
+	 * Look up the currently-pending suspension for a thread, if any. Built on getAllPending()
+	 * rather than a separate index — no new durable state, just a query over what's already
+	 * tracked as pending. Returns null if the thread has nothing pending — including if it
+	 * once did and has since been resolved; this only reports current, actionable state, not
+	 * history (use getDecision() against a known suspensionID for that).
+	 *
+	 * @threadID The thread to look up
+	 */
+	AgentSuspension function getSuspensionByThread( required string threadID ) {
+		var targetThreadID = arguments.threadID
+		var matches         = getAllPending().filter( ( suspension ) => suspension.getThreadID() == targetThreadID )
+		return matches.isEmpty() ? javacast( "null", "" ) : matches.first()
+	}
+
+	/**
 	 * Remove a suspension entirely — from the durable index, its own durable entry, and
 	 * this coordinator's in-memory structs. Distinct from resolve(): this doesn't require
 	 * or record a decision, it just forgets the suspension ever existed. Intended for
