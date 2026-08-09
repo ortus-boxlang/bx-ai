@@ -74,6 +74,7 @@ import bxModules.bxai.models.hitl.decisions.IDecisionStore;
 import bxModules.bxai.models.hitl.policies.ToolNameApprovalPolicy;
 import bxModules.bxai.models.hitl.policies.CallbackApprovalPolicy;
 import bxModules.bxai.models.gateway.IGateway;
+import bxModules.bxai.models.gateway.AgentSuspension;
 import bxModules.bxai.models.gateway.cli.CliGateway;
 import bxModules.bxai.models.gateway.contracts.GatewayContext;
 import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
@@ -229,6 +230,63 @@ class extends="BaseAiMiddleware" {
 					"Pass checkpointer: to aiAgent(...) so a pending approval can survive past this run."
 			)
 		}
+	}
+
+	// ==================== Coordinator delegates ====================
+	//
+	// Thin pass-throughs to this middleware's HumanInteractionCoordinator, so callers
+	// don't need to reach through getCoordinator() themselves for common lookups. All the
+	// actual logic and durability live on HumanInteractionCoordinator — see its docs.
+
+	/**
+	 * Look up a tracked suspension by id, pending or resolved.
+	 *
+	 * @suspensionID The suspension id to look up
+	 */
+	AgentSuspension function getSuspension( required string suspensionID ) {
+		return variables.coordinator.getSuspension( arguments.suspensionID )
+	}
+
+	/**
+	 * Look up the decision a suspension was resolved with, if any.
+	 *
+	 * @suspensionID The suspension id to look up
+	 */
+	HumanInteractionDecision function getDecision( required string suspensionID ) {
+		return variables.coordinator.getDecision( arguments.suspensionID )
+	}
+
+	/**
+	 * Whether a suspension is currently tracked as pending.
+	 *
+	 * @suspensionID The suspension id to check
+	 */
+	boolean function hasPending( required string suspensionID ) {
+		return variables.coordinator.hasPending( arguments.suspensionID )
+	}
+
+	/**
+	 * Every currently-pending suspension.
+	 */
+	array function getAllPending() {
+		return variables.coordinator.getAllPending()
+	}
+
+	/**
+	 * Remove a suspension entirely — without recording a decision. Distinct from resolving
+	 * it; see HumanInteractionCoordinator.clearSuspension().
+	 *
+	 * @suspensionID The suspension to clear
+	 */
+	void function clearSuspension( required string suspensionID ) {
+		variables.coordinator.clearSuspension( arguments.suspensionID )
+	}
+
+	/**
+	 * Clear every currently-pending suspension.
+	 */
+	void function clearAllPending() {
+		variables.coordinator.clearAllPending()
 	}
 
 	// ==================== Hooks ====================

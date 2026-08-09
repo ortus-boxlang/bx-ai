@@ -530,4 +530,65 @@ public class HumanInTheLoopGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "gatewayGotIt" ) ) ).isTrue();
 	}
 
+	@DisplayName( "coordinator delegates: getSuspension/getDecision/hasPending/getAllPending/clearSuspension/clearAllPending all pass through" )
+	@Test
+	public void testCoordinatorDelegates() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				gw = aiGateway( "mock" )
+				mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "placeOrder" ], gateway: gw )
+				// hasPending()/getAllPending() read the durable index, which only exists once a
+				// checkpointer is linked — normally onAttach() does this; standalone here, so link
+				// it directly on the coordinator. File-backed with a unique directory, not
+				// aiMemory("cache") — CacheMemory's saveState/loadState key by threadId alone,
+				// not scoped by its own instance key, so every aiMemory("cache") in the same JVM
+				// shares one checkpoint keyspace; the pending index's one fixed key would then
+				// collide with any other cache-backed HITL test running in the same suite.
+				mw.getCoordinator().setCheckpointer( aiMemory( memory: "file", config: { directoryPath: getTempDirectory() & "/bxai-hitl-mw-delegates-" & createUUID() } ) )
+				ctx = new GatewayContext( gateway: "mock", threadID: "delegate-thread" )
+
+				req1 = new HumanInteractionRequest( executionID: "run-delegate-1" )
+				req2 = new HumanInteractionRequest( executionID: "run-delegate-2" )
+				s1 = mw.getCoordinator().requestApproval( humanRequest: req1, context: ctx, gateway: gw, threadID: "delegate-thread-1" )
+				s2 = mw.getCoordinator().requestApproval( humanRequest: req2, context: ctx, gateway: gw, threadID: "delegate-thread-2" )
+				id1 = s1.getSuspensionID()
+				id2 = s2.getSuspensionID()
+
+				// getSuspension()/hasPending()/getAllPending() reach the same coordinator state
+				// as calling getCoordinator() directly
+				sameSuspension = mw.getSuspension( id1 ) == mw.getCoordinator().getSuspension( id1 )
+				hasPendingViaDelegate = mw.hasPending( id1 )
+				allPendingViaDelegate = mw.getAllPending().len() == 2
+
+				// getDecision(): resolve directly on the coordinator, read back via the delegate
+				decision = new HumanInteractionDecision( requestID: req1.getId(), decision: "approve" )
+				mw.getCoordinator().resolve( id1, decision )
+				decisionViaDelegate = mw.getDecision( id1 ).isApproved()
+
+				// clearSuspension(): via the delegate, confirm gone from the coordinator too
+				mw.clearSuspension( id2 )
+				goneAfterDelegateClear = isNull( mw.getCoordinator().getSuspension( id2 ) )
+
+				// clearAllPending(): nothing pending left either way (id1 already resolved, id2 cleared)
+				mw.clearAllPending()
+				noneLeftAfterClearAll = mw.getAllPending().isEmpty()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sameSuspension" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasPendingViaDelegate" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "allPendingViaDelegate" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "decisionViaDelegate" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "goneAfterDelegateClear" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noneLeftAfterClearAll" ) ) ).isTrue();
+	}
+
 }

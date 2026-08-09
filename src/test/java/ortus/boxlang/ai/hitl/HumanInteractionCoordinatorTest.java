@@ -559,7 +559,14 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
 				import bxModules.bxai.models.gateway.contracts.GatewayContext;
 
-				cp = aiMemory( "cache" )
+				// File-backed with a unique directory, not aiMemory("cache") — CacheMemory's
+				// saveState/loadState key by threadId alone ("checkpoint:" & threadId), not
+				// scoped by its own instance key, so every aiMemory("cache") in the same JVM
+				// shares one checkpoint keyspace. The pending index uses one fixed key
+				// ("hitl:pending-index"), so two coordinators sharing that keyspace — e.g. this
+				// test running alongside any other cache-backed HITL test — would corrupt each
+				// other's counts. A unique directory per test genuinely isolates it.
+				cp = aiMemory( memory: "file", config: { directoryPath: getTempDirectory() & "/bxai-hitl-index-lifecycle-" & createUUID() } )
 
 				coord1 = new HumanInteractionCoordinator()
 				coord1.setCheckpointer( cp )
@@ -650,7 +657,10 @@ public class HumanInteractionCoordinatorTest extends BaseIntegrationTest {
 				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
 				import bxModules.bxai.models.gateway.contracts.GatewayContext;
 
-				cp = aiMemory( "cache" )
+				// See testHasPendingAndGetAllPendingLifecycle() for why this is File-backed with
+				// a unique directory rather than aiMemory("cache") — clearAllPending() here would
+				// otherwise wipe out any other cache-backed coordinator's pending index too.
+				cp = aiMemory( memory: "file", config: { directoryPath: getTempDirectory() & "/bxai-hitl-clear-all-" & createUUID() } )
 				coordinator = new HumanInteractionCoordinator()
 				coordinator.setCheckpointer( cp )
 				gw = aiGateway( "mock" )

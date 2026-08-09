@@ -60,6 +60,20 @@
  * would never appear in getAllPending() at all. Treat that as out of scope for this phase,
  * same as the cross-process atomicity gap above.
  *
+ * Sharper version of that same caveat, worth knowing before choosing a checkpointer: the
+ * pending index is scoped ONLY by its fixed key, not by anything identifying this
+ * coordinator/agent — so two coordinators that happen to share a checkpointer resolving to
+ * the SAME underlying store see one COMBINED index, not two separate ones. In the common
+ * one-agent-per-checkpointer usage this never comes up. It's easy to hit by accident,
+ * though: CacheMemory's saveState/loadState/clearState key purely by threadId
+ * ("checkpoint:" & threadId, see CacheMemory.buildCheckpointKey()) — NOT by that
+ * CacheMemory instance's own `key` — so every `aiMemory("cache")` call anywhere in the
+ * same runtime shares one checkpoint keyspace regardless of how many separate instances
+ * you construct. Suspension-scoped keys (persistenceKey(), keyed by a UUID) don't collide
+ * in practice even when that keyspace is shared; this one fixed index key does. Give each
+ * logically-distinct coordinator/agent a genuinely isolated store (e.g. a File-backed
+ * memory pointed at its own directory) if you need separate pending indexes.
+ *
  * Decision settled for Phase 2: invalid edited arguments (failing validation
  * against the tool's declared schema) do NOT throw and do NOT re-suspend for
  * correction. They're normalized into a REJECTED outcome with a reason describing
