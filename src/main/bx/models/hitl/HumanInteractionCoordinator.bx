@@ -46,6 +46,34 @@
  * processes racing) — each instance's compare-and-set is only atomic within itself.
  * Treat cross-process concurrent resolution as out of scope for this phase.
  *
+ * Bulk/durable lookups (hasPending/getAllPending/clearSuspension/clearAllPending): backed
+ * by a single well-known checkpointer key (see pendingIndexKey()) holding every currently-
+ * pending suspensionID, rather than a real prefix-scan of the checkpointer — deliberately,
+ * since IAiMemory has no such capability and most backends don't durably persist
+ * saveState/loadState/clearState at all beyond Cache/File/Jdbc. That single key is
+ * read-modified-written on every create/resolve/clear, so two processes racing on it can
+ * each miss the other's update. The failure mode is self-correcting for false positives
+ * (a stale "still pending" entry — getAllPending() re-checks each suspension's actual
+ * persisted status before returning it, and the atomic claim in resolve() still prevents
+ * a real double-resolve regardless). It is NOT self-correcting for a false negative — a
+ * suspension whose creation crashed between persistSuspension() and addToPendingIndex()
+ * would never appear in getAllPending() at all. Treat that as out of scope for this phase,
+ * same as the cross-process atomicity gap above.
+ *
+ * Sharper version of that same caveat, worth knowing before choosing a checkpointer: the
+ * pending index is scoped ONLY by its fixed key, not by anything identifying this
+ * coordinator/agent — so two coordinators that happen to share a checkpointer resolving to
+ * the SAME underlying store see one COMBINED index, not two separate ones. In the common
+ * one-agent-per-checkpointer usage this never comes up. It's easy to hit by accident,
+ * though: CacheMemory's saveState/loadState/clearState key purely by threadId
+ * ("checkpoint:" & threadId, see CacheMemory.buildCheckpointKey()) — NOT by that
+ * CacheMemory instance's own `key` — so every `aiMemory("cache")` call anywhere in the
+ * same runtime shares one checkpoint keyspace regardless of how many separate instances
+ * you construct. Suspension-scoped keys (persistenceKey(), keyed by a UUID) don't collide
+ * in practice even when that keyspace is shared; this one fixed index key does. Give each
+ * logically-distinct coordinator/agent a genuinely isolated store (e.g. a File-backed
+ * memory pointed at its own directory) if you need separate pending indexes.
+ *
  * Decision settled for Phase 2: invalid edited arguments (failing validation
  * against the tool's declared schema) do NOT throw and do NOT re-suspend for
  * correction. They're normalized into a REJECTED outcome with a reason describing
@@ -189,6 +217,7 @@ class {
 			"threadID": arguments.threadID
 		}
 		persistSuspension( suspension.getSuspensionID() )
+		addToPendingIndex( suspension.getSuspensionID() )
 
 		if ( len( toolName ) && isAlreadyGranted( identity, arguments.threadID, toolName ) ) {
 			var autoDecision = new HumanInteractionDecision(
@@ -280,8 +309,74 @@ class {
 		}
 
 		persistSuspension( arguments.suspensionID )
+		removeFromPendingIndex( arguments.suspensionID )
 
 		return suspension
+	}
+
+	/**
+	 * Whether a suspension is currently tracked as pending in the durable index. Cheap —
+	 * checks the index only, without hydrating the full suspension. False for an unknown
+	 * id, a resolved suspension, or when no checkpointer is linked (nothing durable to
+	 * check — falls back to false rather than an in-memory-only guess).
+	 *
+	 * @suspensionID The suspension id to check
+	 */
+	boolean function hasPending( required string suspensionID ) {
+		var targetID = arguments.suspensionID
+		return !loadPendingIndex().filter( ( id ) => id == targetID ).isEmpty()
+	}
+
+	/**
+	 * Every currently-pending suspension, per the durable index. Hydrates any suspension
+	 * not already in memory (same as getSuspension()), then re-checks each one's actual
+	 * persisted status before including it — the index can go stale (see class docs), the
+	 * suspension's own status is the real source of truth.
+	 *
+	 * @return Array of pending AgentSuspension instances
+	 */
+	array function getAllPending() {
+		return loadPendingIndex()
+			.map( ( id ) => getSuspension( id ) )
+			.filter( ( suspension ) => !isNull( suspension ) && suspension.isPending() )
+	}
+
+	/**
+	 * Look up the currently-pending suspension for a thread, if any. Built on getAllPending()
+	 * rather than a separate index — no new durable state, just a query over what's already
+	 * tracked as pending. Returns null if the thread has nothing pending — including if it
+	 * once did and has since been resolved; this only reports current, actionable state, not
+	 * history (use getDecision() against a known suspensionID for that).
+	 *
+	 * @threadID The thread to look up
+	 */
+	AgentSuspension function getSuspensionByThread( required string threadID ) {
+		var targetThreadID = arguments.threadID
+		var matches         = getAllPending().filter( ( suspension ) => suspension.getThreadID() == targetThreadID )
+		return matches.isEmpty() ? javacast( "null", "" ) : matches.first()
+	}
+
+	/**
+	 * Remove a suspension entirely — from the durable index, its own durable entry, and
+	 * this coordinator's in-memory structs. Distinct from resolve(): this doesn't require
+	 * or record a decision, it just forgets the suspension ever existed. Intended for
+	 * administrative cleanup (an expired or abandoned request), not a human decision path.
+	 *
+	 * @suspensionID The suspension to clear
+	 */
+	void function clearSuspension( required string suspensionID ) {
+		clearSuspensionEntry( arguments.suspensionID )
+		removeFromPendingIndex( arguments.suspensionID )
+	}
+
+	/**
+	 * Clear every currently-pending suspension — see clearSuspension(). An administrative
+	 * bulk reset (tests, or an operator flushing a stuck queue), not a decision path.
+	 */
+	void function clearAllPending() {
+		var ids = loadPendingIndex()
+		ids.each( ( id ) => clearSuspensionEntry( id ) )
+		savePendingIndex( [] )
 	}
 
 	/**
@@ -490,6 +585,91 @@ class {
 	 */
 	private string function persistenceKey( required string suspensionID ) {
 		return "hitl:suspension:" & arguments.suspensionID
+	}
+
+	/**
+	 * The single, well-known checkpointer key the durable pending-suspension index is
+	 * stored under. See class docs for why this is one key rather than a real prefix-scan.
+	 */
+	private string function pendingIndexKey() {
+		return "hitl:pending-index"
+	}
+
+	/**
+	 * Load the current durable set of pending suspensionIDs. Always reads straight from
+	 * the checkpointer rather than caching in memory — these bulk operations exist
+	 * specifically to see durable, possibly cross-process state. Empty array when no
+	 * checkpointer is linked or nothing has been indexed yet.
+	 */
+	private array function loadPendingIndex() {
+		if ( isNull( variables.checkpointer ) ) {
+			return []
+		}
+		var saved = variables.checkpointer.loadState( pendingIndexKey() )
+		return saved.ids ?: []
+	}
+
+	/**
+	 * Persist the given set of pending suspensionIDs as the durable index. A no-op when no
+	 * checkpointer is linked.
+	 *
+	 * @ids The full set of currently-pending suspensionIDs to persist
+	 */
+	private void function savePendingIndex( required array ids ) {
+		if ( isNull( variables.checkpointer ) ) {
+			return
+		}
+		variables.checkpointer.saveState( pendingIndexKey(), { "ids": arguments.ids } )
+	}
+
+	/**
+	 * Add a suspensionID to the durable pending index. A no-op when no checkpointer is
+	 * linked, or it's already present.
+	 *
+	 * @suspensionID The suspension to add
+	 */
+	private void function addToPendingIndex( required string suspensionID ) {
+		if ( isNull( variables.checkpointer ) ) {
+			return
+		}
+		var targetID = arguments.suspensionID
+		var ids      = loadPendingIndex()
+		if ( ids.filter( ( id ) => id == targetID ).isEmpty() ) {
+			ids.append( targetID )
+			savePendingIndex( ids )
+		}
+	}
+
+	/**
+	 * Remove a suspensionID from the durable pending index. A no-op when no checkpointer
+	 * is linked.
+	 *
+	 * @suspensionID The suspension to remove
+	 */
+	private void function removeFromPendingIndex( required string suspensionID ) {
+		if ( isNull( variables.checkpointer ) ) {
+			return
+		}
+		var targetID = arguments.suspensionID
+		savePendingIndex( loadPendingIndex().filter( ( id ) => id != targetID ) )
+	}
+
+	/**
+	 * Delete a single suspension's own durable entry and in-memory bookkeeping — everything
+	 * except its membership in the pending index, which clearSuspension()/clearAllPending()
+	 * handle separately (clearAllPending() batches the index write into one, rather than
+	 * once per suspension).
+	 *
+	 * @suspensionID The suspension entry to delete
+	 */
+	private void function clearSuspensionEntry( required string suspensionID ) {
+		if ( !isNull( variables.checkpointer ) ) {
+			variables.checkpointer.clearState( persistenceKey( arguments.suspensionID ) )
+		}
+		variables.suspensions.delete( arguments.suspensionID )
+		variables.decisions.delete( arguments.suspensionID )
+		variables.suspensionMeta.delete( arguments.suspensionID )
+		variables.statusLocks.remove( arguments.suspensionID )
 	}
 
 	/**
