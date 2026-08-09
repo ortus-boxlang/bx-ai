@@ -38,6 +38,7 @@
  */
 import bxModules.bxai.models.util.AwsSignatureV4;
 import bxModules.bxai.models.util.SchemaBuilder;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
@@ -809,6 +810,13 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		}
 		var toolBeforeResult = arguments.chatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
+		// executeBedrockTool() — if still reached with a "defer" (mode "web", see chat()'s own
+		// batched pass-1/pass-2 handling, which no longer calls this helper), treat it exactly
+		// like the "suspend" a single tool call always meant before batching existed.
+		if ( toolBeforeResult.isDeferred() ) {
+			toolBeforeResult = AiMiddlewareResult.suspend( toolBeforeResult.getData() )
+		}
+
 		// Suspend/Cancel: hard-stop so the caller can break the batch and surface the terminal
 		// result. Suspend needs a human to resume it externally; cancel (e.g.
 		// MaxToolCallsMiddleware's limit, or a human choosing to quit in HITL's CLI mode) means
@@ -874,6 +882,96 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
+	 * Finish processing a tool-call batch that was suspended for human approval (see
+	 * afterToolBatch()), using the finalized resume ledger AiAgent.resume() built. No LLM call —
+	 * and nothing that already executed (or was already blocked) during the original attempt
+	 * runs again, since pass 1 never actually invokes a tool while any part of the batch could
+	 * still suspend (see chat()'s "Pass 1: decide" / "Pass 2: execute" split).
+	 *
+	 * @chatRequest      The chat request to continue — its messages are the pre-LLM-call
+	 *                    messages from the original (suspended) attempt
+	 * @resumeCtx         The resume context AiAgent.resume() built: { assistantMessage, resumeLedger }
+	 * @interactionCount Current tool call interaction count (used internally)
+	 */
+	private any function resumeToolBatch( required AiChatRequest chatRequest, required struct resumeCtx, required numeric interactionCount ) {
+		// Consume the resume context immediately — chat() recurses for the NEXT turn below, and
+		// that recursive call must not re-detect this same resume context and loop forever.
+		arguments.chatRequest.setResumeContext( {} )
+
+		var thisChatRequest  = arguments.chatRequest
+		var assistantMessage = arguments.resumeCtx.assistantMessage
+		var ledger            = arguments.resumeCtx.resumeLedger ?: []
+		var toolCalls          = ( assistantMessage.content ?: [] ).filter( contentBlock -> contentBlock?.type == "tool_use" )
+
+		var messages = thisChatRequest.getMessages()
+		messages.append( assistantMessage )
+
+		for ( var i = 1; i <= toolCalls.len(); i++ ) {
+			var toolCall    = toolCalls[ i ]
+			var ledgerEntry = ( i <= ledger.len() )
+				? ledger[ i ]
+				: { status: "blocked", reason: "No resume decision was recorded for this tool call." }
+
+			if ( ledgerEntry.status == "cancel" ) {
+				var cancelReason = ledgerEntry.reason ?: "Cancelled by human operator during resume."
+				messages.append( {
+					"role"   : "user",
+					"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "[Tool call blocked: #cancelReason#]" } ]
+				} )
+				thisChatRequest.setMessages( messages )
+				return AiMiddlewareResult.cancel( cancelReason )
+			}
+
+			if ( ledgerEntry.status == "blocked" ) {
+				messages.append( {
+					"role"   : "user",
+					"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "[Tool call blocked: #ledgerEntry.reason ?: ""#]" } ]
+				} )
+				continue
+			}
+
+			// "execute"
+			var toolAttempt = thisChatRequest.getTool( toolCall.name )
+			if ( !toolAttempt.isPresent() ) {
+				writeLog(
+					text: "Unable to find tool named: [#toolCall.name#]",
+					type: "warning",
+					log : "ai"
+				)
+				messages.append( {
+					"role"   : "user",
+					"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "Tool ['#toolCall.name#'] not found in chat request" } ]
+				} )
+				continue
+			}
+
+			var tool     = toolAttempt.get()
+			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs : ( toolCall.input ?: {} )
+			var capturedTool = tool
+			var capturedArgs = toolArgs
+			var toolResult = thisChatRequest.fireWrapMiddleware(
+				"wrapToolCall",
+				{ tool: tool, toolCall: toolCall, chatRequest: thisChatRequest, toolName: toolCall.name ?: tool.getName(), toolArgs: toolArgs },
+				() => capturedTool.invoke( args: capturedArgs, chatRequest: thisChatRequest )
+			)
+
+			thisChatRequest.fireMiddleware(
+				hook   : "afterToolCall",
+				context: { tool: tool, toolCall: toolCall, chatRequest: thisChatRequest, result: toolResult },
+				reverse: true
+			)
+
+			messages.append( {
+				"role"   : "user",
+				"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": toolResult } ]
+			} )
+		}
+
+		thisChatRequest.setMessages( messages )
+		return chat( thisChatRequest, arguments.interactionCount + 1 )
+	}
+
+	/**
 	 * Override chat to handle Bedrock-specific request signing and model transformation
 	 *
 	 * @chatRequest      The AiChatRequest object
@@ -881,6 +979,17 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 */
 		@override
 	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		// -------------------------------------------------------------------------------------------
+		// --- Resume short-circuit ---
+		// A batch tool-call suspension (see afterToolBatch()) was resolved via AiAgent.resume()
+		// with a finalized resume ledger — finish that same tool batch directly instead of
+		// calling the LLM again (no replay, nothing that already ran re-runs).
+		// -------------------------------------------------------------------------------------------
+		var resumeCtx = arguments.chatRequest.getResumeContext() ?: {}
+		if ( !resumeCtx.isEmpty() && resumeCtx.keyExists( "assistantMessage" ) ) {
+			return resumeToolBatch( arguments.chatRequest, resumeCtx, arguments.interactionCount )
+		}
+
 		// Get the model to use
 		var modelId = len( variables.modelId ) ? variables.modelId : arguments.chatRequest.getModel();
 		if ( !len( modelId ) ) {
@@ -1042,23 +1151,139 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				var toolCalls = result.content.filter( contentBlock -> contentBlock?.type == "tool_use" );
 
 				// Record the assistant turn (text + tool_use blocks)
-				arguments.chatRequest.getMessages().append( {
-					"role"    : "assistant",
-					"content" : result.content
-				} );
+				var assistantMessage = { "role": "assistant", "content": result.content }
+				var thisChatRequest  = arguments.chatRequest
+				var messages         = thisChatRequest.getMessages()
+				messages.append( assistantMessage )
 
-				// Execute each requested tool, appending tool_result messages. A terminal
-				// middleware result (suspend/cancel/reject) stops the tool chain immediately
-				// instead of invoking the remaining tool calls in the batch.
+				// ── Pass 1: decide ──────────────────────────────────────────────────────────
+				// Fire beforeToolCall for EVERY tool call in this turn before invoking any of
+				// them — see OpenAIService.chat() for the full rationale (this mirrors it).
+				var batch = []
+				var terminalToolResult = ""
+
 				for ( var toolCall in toolCalls ) {
-					var toolExecResult = executeBedrockTool( toolCall, arguments.chatRequest );
-					if ( isObject( toolExecResult ) ) {
-						return toolExecResult
+					var toolAttempt = thisChatRequest.getTool( toolCall.name )
+					if ( !toolAttempt.isPresent() ) {
+						writeLog(
+							text: "Unable to find tool named: [#toolCall.name#]",
+							type: "warning",
+							log : "ai"
+						);
+						batch.append( {
+							tool    : javacast( "null", "" ),
+							toolCall: toolCall,
+							toolName: toolCall.name,
+							toolArgs: {},
+							result  : AiMiddlewareResult.reject( "Tool ['#toolCall.name#'] not found in chat request" )
+						} )
+						continue
+					}
+
+					var tool        = toolAttempt.get()
+					var toolContext = {
+						tool       : tool,
+						toolCall   : toolCall,
+						chatRequest: thisChatRequest,
+						toolName   : toolCall.name ?: tool.getName(),
+						toolArgs   : toolCall.input ?: {}
+					}
+					var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
+
+					if ( toolBeforeResult.isCancelled() ) {
+						messages.append( {
+							"role"   : "user",
+							"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "[Tool call blocked: #toolBeforeResult.getReason()#]" } ]
+						} );
+						terminalToolResult = toolBeforeResult
+						break
+					}
+
+					batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+				}
+
+				if ( isObject( terminalToolResult ) ) {
+					return terminalToolResult
+				}
+
+				// ── Suspend the whole batch at once, if anything needs a human decision ──────
+				if ( batch.some( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() ) ) {
+					var batchResult = thisChatRequest.fireMiddleware(
+						"afterToolBatch",
+						{ chatRequest: thisChatRequest, assistantMessage: assistantMessage, batch: batch }
+					)
+
+					// No attached middleware's afterToolBatch() converted the pending entries
+					// into anything (the default is continue()) — e.g. a custom middleware
+					// suspended a tool call directly from beforeToolCall() without participating
+					// in the defer()/afterToolBatch() protocol at all. Fall back to a generic
+					// combined suspend so a tool call ANY middleware said needs a decision is
+					// never silently executed.
+					if ( !batchResult.isSuspended() && !batchResult.isCancelled() ) {
+						var pending = batch.filter( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() )
+						var pendingActions = pending.map( ( entry ) => {
+							var data = entry.result.getData()
+							return {
+								toolName    : entry.toolName,
+								toolArgs    : ( isStruct( entry.toolArgs ) ) ? entry.toolArgs : {},
+								suspensionID: data.suspensionID ?: ""
+							}
+						} )
+						batchResult = AiMiddlewareResult.suspend( { pendingActions: pendingActions } )
+					}
+
+					if ( batchResult.isTerminal() ) {
+						if ( !batchResult.isSuspended() ) {
+							return batchResult
+						}
+						var resumeLedger = batch.map( ( entry ) => {
+							if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
+								return { toolName: entry.toolName, status: "pending" }
+							}
+							if ( entry.result.isRejected() ) {
+								return { toolName: entry.toolName, status: "blocked", reason: entry.result.getReason() }
+							}
+							return { toolName: entry.toolName, status: "execute" }
+						} )
+						var mergedData = duplicate( batchResult.getData() )
+						mergedData[ "assistantMessage" ] = assistantMessage
+						mergedData[ "resumeLedger" ]     = resumeLedger
+						return AiMiddlewareResult.suspend( mergedData )
 					}
 				}
 
+				// ── Pass 2: execute ────────────────────────────────────────────────────────
+				for ( var entry in batch ) {
+					if ( entry.result.isRejected() ) {
+						messages.append( {
+							"role"   : "user",
+							"content": [ { "type": "tool_result", "tool_use_id": entry.toolCall.id, "content": "[Tool call blocked: #entry.result.getReason()#]" } ]
+						} );
+						continue
+					}
+
+					var capturedTool     = entry.tool
+					var capturedToolCall = entry.toolCall
+					var toolResult = thisChatRequest.fireWrapMiddleware(
+						"wrapToolCall",
+						{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: entry.toolCall.input ?: {} },
+						() => capturedTool.invoke( args: capturedToolCall.input, chatRequest: thisChatRequest )
+					);
+
+					thisChatRequest.fireMiddleware(
+						hook   : "afterToolCall",
+						context: { tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, result: toolResult },
+						reverse: true
+					);
+
+					messages.append( {
+						"role"   : "user",
+						"content": [ { "type": "tool_result", "tool_use_id": entry.toolCall.id, "content": toolResult } ]
+					} );
+				}
+
 				// Recurse with tool results now in context
-				return chat( arguments.chatRequest, arguments.interactionCount + 1 );
+				return chat( thisChatRequest, arguments.interactionCount + 1 );
 			}
 		}
 
