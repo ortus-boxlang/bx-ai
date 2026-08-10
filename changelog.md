@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🧠 Updated
 
 - OpenAI provider's default chat model bumped from `gpt-5-nano` to `gpt-5.6-luna`.
+- Claude provider's default chat model bumped from `claude-sonnet-4-5` to `claude-sonnet-5`.
 - `SummaryMemory`: `maxMessages` now triggers compression and `summaryThreshold` is the keep-window (previously threshold did both and `maxMessages` was unused).
 - `AiMessage` escapes `${...}` inside binding values by default to prevent template-confusion injection.
 - Security & Guardrails Phase 1: `PromptSecurity` heuristic injection scanning, `InputSanitizerMiddleware`, global `settings.security` auto-attach, and a new `mock` AI provider for deterministic offline testing.

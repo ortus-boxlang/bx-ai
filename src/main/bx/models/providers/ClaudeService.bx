@@ -27,7 +27,7 @@ class extends="BaseService" implements="IAiChatService" {
 		DEFAULT_CHAT_PARAMS = {
 			// according to the docs, this is the default model and tokens
 			// https://docs.anthropic.com/en/docs/about-claude/models/overview#model-aliases
-			"model" : "claude-sonnet-4-5",
+			"model" : "claude-sonnet-5",
 			"max_tokens": 1024
 		};
 		DEFAULT_HEADERS = {
