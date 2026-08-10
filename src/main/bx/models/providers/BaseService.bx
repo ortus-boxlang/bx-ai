@@ -32,6 +32,7 @@
  */
 import bxModules.bxai.models.util.SchemaBuilder;
 import bxModules.bxai.models.security.PromptSecurity;
+import bxModules.bxai.models.transformers.JSONExtractorTransformer;
 
 abstract class implements="IAiService" {
 
@@ -797,6 +798,31 @@ abstract class implements="IAiService" {
 
 		// No code block found, return original content
 		return arguments.content;
+	}
+
+	/**
+	 * Extract and parse JSON from content that may contain surrounding prose or markdown fences.
+	 * Delegates to JSONExtractorTransformer in lenient mode (strictMode:false), so a reply with
+	 * no usable JSON degrades to an empty struct instead of throwing.
+	 *
+	 * @content The raw LLM content to extract JSON from
+	 *
+	 * @return The parsed JSON value - struct, array, string, number, boolean, or null - or an
+	 *         empty struct if no JSON could be found/parsed
+	 */
+	private any function extractJSONContent( required string content ){
+		var result = new JSONExtractorTransformer( { strictMode : false } ).transform( arguments.content );
+
+		// Extraction found nothing usable - warn so this degraded path isn't silent, but never throw
+		if ( isStruct( result ) && structIsEmpty( result ) && len( arguments.content.trim() ) > 0 ) {
+			writeLog(
+				text: "aiChat returnFormat json: no parseable JSON found in model reply (first 200 chars): " & left( arguments.content, 200 ),
+				type: "warn",
+				log : "ai"
+			);
+		}
+
+		return result;
 	}
 
 	/**

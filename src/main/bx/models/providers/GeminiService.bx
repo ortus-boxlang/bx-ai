@@ -262,7 +262,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			case "raw":
 				return result;
 			case "json":
-				return jsonDeserialize( extractFromCodeBlock( content, "json" ) );
+				return extractJSONContent( content );
 			case "xml":
 				return xmlParse( extractFromCodeBlock( content, "xml" ) );
 			case "structuredOutput":
