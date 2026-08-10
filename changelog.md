@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🪲 Fixed
+
+- **Complex struct `returnFormat` generated getter/setter names instead of property names**: BoxLang class instances satisfy `isStruct()`, so a struct `returnFormat` containing class instances (e.g. `{ order: new Order(), items: [ new Items() ] }`) had its schema built from method names (`getOrderId`, `setOrderId`) instead of actual properties — making the AI's response unusable. `SchemaBuilder` now checks `isObject()` before `isStruct()` throughout (including for arrays of class/struct instances), so schema generation and response population both use real property names. ([#182](https://github.com/ortus-boxlang/bx-ai/issues/182))
+
 ### 🥊 Added
 
 - **SummaryMemory token-based trigger mode (`maxTokens`)**: an alternative to `maxMessages` that compresses the conversation buffer when its estimated token count reaches the threshold. The two modes are mutually exclusive — setting both `maxTokens > 0` and `maxMessages > 0` throws `InvalidConfiguration`. Token estimation uses the existing `TokenCounter` utility (4 chars/token heuristic, same as `aiTokens()` BIF). `summaryThreshold` remains the keep-window in both modes. Configure via `maxTokens: 4000` (and `maxMessages: 0`) in the `config` struct; export/import round-trips `maxTokens` correctly. The `getMaxTokens()` / `setMaxTokens()` pair is added to `IAiMemory` with safe `default` implementations (returns `0` / `this` respectively), and `sizeInTokens()` is added as a first-class public method on every memory type via `IAiMemory` default (same `aiTokens()` heuristic, exposed in `getSummary()` as `sizeInTokens`).
