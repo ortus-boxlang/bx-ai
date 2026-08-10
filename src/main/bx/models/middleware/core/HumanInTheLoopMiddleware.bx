@@ -374,13 +374,62 @@ class extends="BaseAiMiddleware" {
 				: ( context.toolCall?.function?.arguments ?: "{}" )
 		}
 
-		// A gateway is always attached except for mode "web" — present through it
+		// A gateway is always attached except for mode "web" — present through it immediately,
+		// exactly as before: CliGateway resolves synchronously, and so can a scripted/mock
+		// gateway; a genuinely asynchronous one comes back still pending (suspend() carrying a
+		// suspensionID). Either way this is per-tool-call, same as always — batching changes
+		// what happens AFTER this returns, not the presentation itself (see afterToolBatch()):
+		// the caller no longer stops evaluating the rest of this turn's tool calls just because
+		// ONE of them came back pending.
 		if ( !isNull( variables.gateway ) ) {
 			return gatewayApprove( toolName, pendingData, context )
 		}
 
-		// mode "web", no gateway attached: suspend and let the caller checkpoint
-		return AiMiddlewareResult.suspend( pendingData )
+		// mode "web", no gateway attached: nothing to present anywhere — defer so
+		// afterToolBatch() below can checkpoint ONCE for the whole turn instead of tool-by-tool.
+		return AiMiddlewareResult.defer( pendingData )
+	}
+
+	/**
+	 * Fired once per LLM turn after every tool call has been evaluated (see IAiMiddleware docs).
+	 * Collects whatever still needs a human decision — deferred (mode "web") or already
+	 * individually presented but still pending (a gateway that didn't resolve synchronously) —
+	 * and checkpoints ONCE for all of it, instead of the provider suspending (and checkpointing)
+	 * on the first pending tool call and never even looking at the rest of the batch.
+	 *
+	 * Note this does NOT achieve a single combined gateway presentation for an asynchronous
+	 * gateway — each pending tool call was already individually presented by gatewayApprove()
+	 * above (there's no way to know a gateway will resolve synchronously before calling it, so
+	 * presentation can't be deferred the way mode "web" defers it). What this fixes is that
+	 * EVERY tool call in the turn now actually gets evaluated and presented — none are silently
+	 * skipped — and the run suspends/resumes as ONE batch regardless of how many gateway
+	 * suspensions that took.
+	 */
+	AiMiddlewareResult function afterToolBatch( required struct context ) {
+		var pending = arguments.context.batch.filter( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() )
+		if ( pending.isEmpty() ) {
+			return AiMiddlewareResult.continue()
+		}
+
+		// mode "web": nothing was presented anywhere yet — defer() only recorded intent.
+		if ( isNull( variables.gateway ) ) {
+			var pendingActions = pending.map( ( entry ) => {
+				return { toolName: entry.toolName, toolArgs: ( isStruct( entry.toolArgs ) ) ? entry.toolArgs : {} }
+			} )
+			return AiMiddlewareResult.suspend( { pendingActions: pendingActions } )
+		}
+
+		// Gateway-attached: each pending item already has its own suspensionID from
+		// gatewayApprove() — surface the aggregate list so the checkpoint (and a later
+		// agent.resume()) can find every one of them, not just the first.
+		var pendingActions = pending.map( ( entry ) => {
+			return {
+				toolName    : entry.toolName,
+				toolArgs    : ( isStruct( entry.toolArgs ) ) ? entry.toolArgs : {},
+				suspensionID: entry.result.getData().suspensionID ?: ""
+			}
+		} )
+		return AiMiddlewareResult.suspend( { pendingActions: pendingActions } )
 	}
 
 	// ==================== Private Helpers ====================

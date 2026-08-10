@@ -324,7 +324,7 @@ public class HumanInTheLoopGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "isCliGateway" ) ) ).isTrue();
 	}
 
-	@DisplayName( "compat: mode 'web' still has no gateway attached and suspends as before" )
+	@DisplayName( "compat: mode 'web' still has no gateway attached and defers/suspends as before" )
 	@Test
 	public void testWebModeStillHasNoGateway() {
 		// @formatter:off
@@ -335,14 +335,23 @@ public class HumanInTheLoopGatewayTest extends BaseIntegrationTest {
 				mw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ], mode: "web" )
 				gatewayIsNull = isNull( mw.getGateway() )
 
-				result = mw.beforeToolCall( context: { toolName: "deleteRecord", toolCall: {} } )
-				isSuspended = result.isSuspended()
+				toolCtx = { toolName: "deleteRecord", toolCall: {} }
+				result = mw.beforeToolCall( context: toolCtx )
+				isDeferred = result.isDeferred()
+
+				batchResult = mw.afterToolBatch( context: {
+					chatRequest: {},
+					assistantMessage: {},
+					batch: [ { tool: javacast( "null", "" ), toolCall: {}, toolName: "deleteRecord", toolArgs: {}, result: result } ]
+				} )
+				isSuspended = batchResult.isSuspended()
 			""",
 			context
 		);
 		// @formatter:on
 
 		assertThat( variables.getAsBoolean( Key.of( "gatewayIsNull" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isDeferred" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "isSuspended" ) ) ).isTrue();
 	}
 

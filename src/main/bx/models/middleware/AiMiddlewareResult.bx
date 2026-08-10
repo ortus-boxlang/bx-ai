@@ -14,7 +14,7 @@
  * ----------------------------------------------------------------------------------
  * Typed return object from all middleware hook methods.
  *
- * Valid types: continue | cancel | approve | reject | edit | suspend
+ * Valid types: continue | cancel | approve | reject | edit | suspend | defer
  *
  * Use the static factory methods to create instances:
  *   AiMiddlewareResult.continue()
@@ -23,6 +23,7 @@
  *   AiMiddlewareResult.reject( "reason" )
  *   AiMiddlewareResult.edit( { argName: newValue } )
  *   AiMiddlewareResult.suspend( { question, toolName, toolArgs, toolCallId } )
+ *   AiMiddlewareResult.defer( { toolName, toolArgs, toolCallId } )
  */
 class {
 
@@ -119,6 +120,23 @@ class {
 		);
 	}
 
+	/**
+	 * Defer — this pending tool call needs a human decision, but don't stop evaluating the
+	 * rest of the batch yet. A provider's tool-call loop collects every deferred call across
+	 * a single LLM turn and fires afterToolBatch() once, with the full set, instead of
+	 * suspending on the first one it sees. Terminal at the per-tool-call middleware-stack
+	 * level (like suspend/cancel/reject, no later middleware sees this same tool call after a
+	 * defer) but NOT a hard-stop for the batch loop itself — that's afterToolBatch()'s call.
+	 *
+	 * @pending Struct containing: { toolName, toolArgs, toolCallId }
+	 */
+	static AiMiddlewareResult function defer( required struct pending ) {
+		return new AiMiddlewareResult(
+			type: "defer",
+			data: arguments.pending
+		);
+	}
+
 	// ==================== Predicate Methods ====================
 
 	/**
@@ -164,11 +182,21 @@ class {
 	}
 
 	/**
-	 * Is this a terminal result (cancelled, rejected, or suspended)?
-	 * Terminal results stop the middleware chain.
+	 * Is this a "defer" result?
+	 */
+	boolean function isDeferred() {
+		return variables.type == "defer";
+	}
+
+	/**
+	 * Is this a terminal result (cancelled, rejected, suspended, or deferred)?
+	 * Terminal results stop the middleware chain FOR THIS ONE TOOL CALL — i.e. no later
+	 * middleware in the stack sees this same tool call. "defer" is terminal in that narrow
+	 * sense only; unlike suspend/cancel it does NOT stop a provider's batch loop from
+	 * evaluating the rest of the tool calls in the same LLM turn (see afterToolBatch()).
 	 */
 	boolean function isTerminal() {
-		return listFindNoCase( "cancel,reject,suspend", variables.type ) > 0;
+		return listFindNoCase( "cancel,reject,suspend,defer", variables.type ) > 0;
 	}
 
 	/**

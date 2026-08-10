@@ -38,6 +38,8 @@
  *     { error, phase, context }
  *     phase: "beforeAgentRun" | "afterAgentRun" | "beforeLLMCall" | "afterLLMCall" | "beforeToolCall" | "afterToolCall"
  */
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
 interface {
 
 	/**
@@ -116,6 +118,33 @@ interface {
 	 * @context A struct of { tool, toolName, toolArgs, toolCallId, result }
 	 */
 	AiMiddlewareResult function afterToolCall( required struct context );
+
+	/**
+	 * Fired once per LLM turn, after beforeToolCall has been evaluated for EVERY tool call the
+	 * model requested in that turn — not just the first one. Lets middleware collect every
+	 * pending-approval tool call from a single batch into ONE suspension instead of suspending
+	 * the instant the first one needs a human decision (see AiMiddlewareResult.defer()).
+	 *
+	 * Only relevant to middleware that returns defer() from beforeToolCall — if nothing in the
+	 * batch deferred, the caller doesn't fire this hook at all (there's nothing to batch).
+	 *
+	 * Default: no-op, continue.
+	 *
+	 * @context A struct of:
+	 *   { chatRequest, assistantMessage, batch: [ { tool, toolCall, toolName, toolArgs, result }, ... ] }
+	 *   `batch` covers every tool call from the turn, in order — `result` is each one's
+	 *   beforeToolCall() outcome (continue/approve/reject/defer/cancel). Only entries whose
+	 *   result.isDeferred() actually need a decision; the rest already resolved during the
+	 *   per-call pass.
+	 *
+	 *   To suspend, return AiMiddlewareResult.suspend( yourOwnMetadata ) — the caller (the
+	 *   provider) merges in the replay-needed `assistantMessage` and a positional resume ledger
+	 *   automatically, so implementations only need to supply whatever they want a human/gateway
+	 *   to see (e.g. a combined interaction request), not the replay mechanics.
+	 */
+	default public AiMiddlewareResult function afterToolBatch( required struct context ) {
+		return AiMiddlewareResult.continue();
+	}
 
 	/**
 	 * Fired when any hook throws an unhandled exception.
