@@ -155,7 +155,9 @@ class extends="OpenAIService" {
 	 * content is emitted word-by-word through the callback, then the aggregated
 	 * streamState is returned exactly like the real SSE transport.
 	 *
-	 * Mock chunk shape (simplified): { type: "content", content: "<piece>" }
+	 * Chunks are normalized to the same OpenAI-shaped `{ choices: [ { delta: { content } } ] }`
+	 * format every real provider (OpenAI, Claude, Bedrock, Cohere) emits to the callback, so
+	 * code that consumes a stream behaves identically regardless of provider — including mock.
 	 */
 	private struct function sendStreamRequest(
 		required AiChatRequest chatRequest,
@@ -181,10 +183,25 @@ class extends="OpenAIService" {
 			"usage"       : completion.usage ?: {}
 		}
 
-		// Emit the content word-by-word to simulate streaming
+		// Emit the content word-by-word to simulate streaming, in the same normalized shape
+		// every real provider uses
 		if( len( streamState.content ) ){
-			for( var piece in streamState.content.listToArray( " " ) ){
-				arguments.callback( { "type": "content", "content": piece & " " } )
+			var words = streamState.content.listToArray( " " )
+			for( var i = 1; i <= words.len(); i++ ){
+				var isLast = ( i == words.len() )
+				arguments.callback( {
+					"id"      : completion.id ?: "",
+					"provider": "mock",
+					"model"   : completion.model ?: "",
+					"object"  : "chat.completion.chunk",
+					"choices" : [
+						{
+							"index"        : 0,
+							"delta"        : { "role": "assistant", "content": words[ i ] & ( isLast ? "" : " " ) },
+							"finish_reason": isLast ? streamState.finishReason : javacast( "null", "" )
+						}
+					]
+				} )
 			}
 		}
 

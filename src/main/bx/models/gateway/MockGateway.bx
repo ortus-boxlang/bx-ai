@@ -1,0 +1,224 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Deterministic, in-memory reference Gateway — the "MockService" of the Gateway SPI.
+ *
+ * Exercises the full IGateway capability set (inbound parsing, outbound delivery, and
+ * human-in-the-loop presentation/decision-parsing) without any platform dependency, so
+ * the SPI itself — and anything built on top of it — can be proven correct without a
+ * CLI, a webhook server, or a real platform account. This is also the reference every
+ * future gateway module (Slack, Discord, HTTP, ...) can compare its behavior against.
+ *
+ * Usage:
+ *   gw = aiGateway( "mock" )
+ *   gw.deliver( event, context )
+ *   gw.getDeliveredEvents()   // inspect what was "sent"
+ *
+ *   // Simulate an inbound platform message:
+ *   messages = gw.parseInbound( { text: "hello", userID: "U1", conversationID: "C1" } )
+ *
+ *   // Simulate an async HITL round trip:
+ *   gw.requestHumanInteraction( request, context )        // "sent" to the human
+ *   gw.simulateDecision( request.getId(), "approve" )      // human responds later
+ *   decision = gw.parseHumanDecision( inboundEvent )
+ *
+ *   // Or script an immediate (synchronous-style) decision ahead of time:
+ *   gw.setScriptedDecisions( [ "approve" ] )
+ *   result = gw.requestHumanInteraction( request, context )
+ *   result.hasDecision() // true
+ */
+import bxModules.bxai.models.gateway.contracts.GatewayContext;
+import bxModules.bxai.models.gateway.contracts.GatewayEvent;
+import bxModules.bxai.models.gateway.contracts.GatewayMessage;
+import bxModules.bxai.models.gateway.contracts.GatewayDeliveryResult;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+
+class extends="BaseGateway" {
+
+	/**
+	 * Every event delivered via deliver(), in order
+	 */
+	property name="deliveredEvents" type="array" default=[];
+
+	/**
+	 * Every HumanInteractionRequest presented via requestHumanInteraction(), keyed by request id
+	 */
+	property name="pendingInteractions" type="struct" default={};
+
+	/**
+	 * Every HumanInteractionDecision resolved so far, keyed by request id
+	 */
+	property name="resolvedDecisions" type="struct" default={};
+
+	/**
+	 * Queue of decisions to apply immediately/synchronously on the next
+	 * requestHumanInteraction() calls, in order — mirrors MockService's setResponses().
+	 * Each entry may be a bare decision string ("approve"/"reject") or a struct
+	 * { decision, editedData, reason, decidedBy }.
+	 */
+	property name="scriptedDecisions" type="array" default=[];
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.name              = "mock"
+		variables.description       = "Deterministic in-memory reference gateway for testing"
+		variables.deliveredEvents   = []
+		variables.pendingInteractions = {}
+		variables.resolvedDecisions   = {}
+		variables.scriptedDecisions   = []
+		return this;
+	}
+
+	/**
+	 * Seed the scripted decision queue, consumed in order by requestHumanInteraction().
+	 *
+	 * @decisions Array of decision strings or { decision, editedData, reason, decidedBy } structs
+	 *
+	 * @return This gateway for chaining
+	 */
+	MockGateway function setScriptedDecisions( required array decisions ){
+		variables.scriptedDecisions = arguments.decisions
+		return this
+	}
+
+	/**
+	 * Declares the capabilities this reference gateway supports.
+	 */
+	array function getDeclaredCapabilities(){
+		return [ "inboundMessages", "outboundMessages", "humanApproval" ]
+	}
+
+	// -------------------------------------------------------------------------
+	// Inbound
+	// -------------------------------------------------------------------------
+
+	boolean function verifyInbound( required any payload, struct requestContext = {} ){
+		// No real transport/signature to verify for an in-memory mock
+		return true
+	}
+
+	array function parseInbound( required any payload, struct requestContext = {} ){
+		var context = new GatewayContext(
+			gateway       : variables.name,
+			conversationID: arguments.payload.conversationID ?: "",
+			userID        : arguments.payload.userID ?: "",
+			threadID      : arguments.payload.threadID ?: "",
+			raw           : isStruct( arguments.payload ) ? arguments.payload : {}
+		)
+		return [
+			new GatewayMessage(
+				text   : arguments.payload.text ?: "",
+				context: context,
+				raw    : isStruct( arguments.payload ) ? arguments.payload : {}
+			)
+		]
+	}
+
+	// -------------------------------------------------------------------------
+	// Outbound
+	// -------------------------------------------------------------------------
+
+	GatewayDeliveryResult function deliver( required GatewayEvent event, required GatewayContext context ){
+		variables.deliveredEvents.append( arguments.event )
+		return new GatewayDeliveryResult( deliveryID: arguments.event.getId() )
+	}
+
+	// -------------------------------------------------------------------------
+	// Human-in-the-loop
+	// -------------------------------------------------------------------------
+
+	GatewayDeliveryResult function requestHumanInteraction(
+		required HumanInteractionRequest humanRequest,
+		required GatewayContext context
+	){
+		variables.pendingInteractions[ arguments.humanRequest.getId() ] = arguments.humanRequest
+
+		// If a decision has been scripted ahead of time, resolve immediately —
+		// simulates a synchronous gateway (e.g. a blocking CLI prompt)
+		if ( variables.scriptedDecisions.len() ) {
+			var next     = variables.scriptedDecisions[ 1 ]
+			variables.scriptedDecisions.deleteAt( 1 )
+			var decision = isSimpleValue( next )
+				? new HumanInteractionDecision( requestID: arguments.humanRequest.getId(), decision: next )
+				: new HumanInteractionDecision(
+					requestID    : arguments.humanRequest.getId(),
+					decision     : next.decision ?: "",
+					editedData   : next.editedData ?: {},
+					reason       : next.reason ?: "",
+					decidedBy    : next.decidedBy ?: ""
+				)
+			variables.resolvedDecisions[ arguments.humanRequest.getId() ] = decision
+			return new GatewayDeliveryResult( deliveryID: arguments.humanRequest.getId(), decision: decision )
+		}
+
+		// Otherwise this is an async request — the decision arrives later via
+		// simulateDecision() + parseHumanDecision()
+		return new GatewayDeliveryResult( deliveryID: arguments.humanRequest.getId() )
+	}
+
+	HumanInteractionDecision function parseHumanDecision( required GatewayEvent event ){
+		var data = arguments.event.getData()
+		return new HumanInteractionDecision(
+			requestID    : data.requestID ?: "",
+			decision     : data.decision ?: "",
+			editedData   : data.editedData ?: {},
+			reason       : data.reason ?: "",
+			decidedBy    : data.decidedBy ?: ""
+		)
+	}
+
+	/**
+	 * Test helper: simulate a human responding to a previously-presented interaction
+	 * request out-of-band (as an async gateway like Slack or HTTP would).
+	 *
+	 * @requestID The HumanInteractionRequest.id being resolved
+	 * @decision  The decision string ("approve"/"reject"/"edit"/"cancel")
+	 * @editedData Corrected data when decision is "edit"
+	 * @reason    Human-readable reason for the decision
+	 * @decidedBy Identifier of who made the decision
+	 *
+	 * @return A GatewayEvent representing the inbound decision callback, ready to pass to parseHumanDecision()
+	 */
+	GatewayEvent function simulateDecision(
+		required string requestID,
+		required string decision,
+		struct editedData = {},
+		string reason      = "",
+		string decidedBy   = ""
+	){
+		var decisionRecord = new HumanInteractionDecision(
+			requestID : arguments.requestID,
+			decision  : arguments.decision,
+			editedData: arguments.editedData,
+			reason    : arguments.reason,
+			decidedBy : arguments.decidedBy
+		)
+		variables.resolvedDecisions[ arguments.requestID ] = decisionRecord
+		return new GatewayEvent(
+			type       : "interaction.decision",
+			executionID: variables.pendingInteractions[ arguments.requestID ]?.getExecutionID() ?: "",
+			data       : {
+				requestID : arguments.requestID,
+				decision  : arguments.decision,
+				editedData: arguments.editedData,
+				reason    : arguments.reason,
+				decidedBy : arguments.decidedBy
+			}
+		)
+	}
+
+}

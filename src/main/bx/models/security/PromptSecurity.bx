@@ -450,6 +450,29 @@ class {
 	 *
 	 * @return { text: redactedText, findings: [ { redactor, match } ] }
 	 */
+	/**
+	 * Redact secret-bearing query parameters from a URL so it is safe to log.
+	 *
+	 * Most providers authenticate with an `Authorization` header, and the request logger only ever
+	 * records header NAMES. But some — Gemini most notably — authenticate with a `?key=` QUERY
+	 * PARAMETER, so logging the endpoint verbatim would put a live API key into the `ai` log and
+	 * the console whenever `logRequest` / `logRequestToConsole` is enabled.
+	 *
+	 * Non-secret parameters are preserved so the logged endpoint stays useful.
+	 *
+	 * @url The URL to sanitize
+	 *
+	 * @return The URL with key/token/secret-style query param VALUES masked
+	 */
+	static string function redactURLSecrets( required string url ){
+		return reReplaceNoCase(
+			arguments.url,
+			"([?&](key|api_?key|access_?token|token|secret|password|sig|signature)=)[^&##]*",
+			"\1***REDACTED***",
+			"all"
+		)
+	}
+
 	static struct function redactSecrets(
 		required string text,
 		array redactors = [],
@@ -527,9 +550,9 @@ class {
 
 		if( arguments.stripImages ){
 			for( var m in reMatch( static.MARKDOWN_IMAGE_PATTERN, result ) ){
-				var url = reReplace( m, static.MARKDOWN_IMAGE_PATTERN, "\1" )
-				if( !isHostAllowed( url, arguments.allowedImageHosts ) ){
-					findings.append( { "type": "markdownImage", "match": m, "url": url } )
+				var matchUrl = reReplace( m, static.MARKDOWN_IMAGE_PATTERN, "\1" )
+				if( !isHostAllowed( matchUrl, arguments.allowedImageHosts ) ){
+					findings.append( { "type": "markdownImage", "match": m, "url": matchUrl } )
 					result = replace( result, m, "", "all" )
 				}
 			}
@@ -537,11 +560,11 @@ class {
 
 		if( arguments.stripLinks ){
 			for( var m in reMatch( static.MARKDOWN_LINK_PATTERN, result ) ){
-				var url = reReplace( m, static.MARKDOWN_LINK_PATTERN, "\1" )
-				if( !isHostAllowed( url, arguments.allowedLinkHosts ) ){
+				var matchUrl = reReplace( m, static.MARKDOWN_LINK_PATTERN, "\1" )
+				if( !isHostAllowed( matchUrl, arguments.allowedLinkHosts ) ){
 					// Rewrite [text](url) → text
 					var linkText = reReplace( m, "^\[([^\]]*)\].*$", "\1" )
-					findings.append( { "type": "markdownLink", "match": m, "url": url } )
+					findings.append( { "type": "markdownLink", "match": m, "url": matchUrl } )
 					result = replace( result, m, linkText, "all" )
 				}
 			}

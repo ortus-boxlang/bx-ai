@@ -1,0 +1,301 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * The single interface every Gateway implements.
+ *
+ * A gateway is a bidirectional human interaction adapter: it translates platform events
+ * (a Slack message, a CLI keystroke, an HTTP webhook) into normalized agent input, and
+ * translates agent events — including suspended human-in-the-loop interactions — back
+ * into platform-native experiences. It is more than a message transport: it also manages
+ * identity, threads, interactive actions, streaming, approvals, and resuming suspended
+ * agent executions.
+ *
+ * Every capability method below is a `default` — a concrete gateway only overrides the
+ * ones it actually supports and declares them via getDeclaredCapabilities() (see
+ * BaseGateway). Unsupported methods fall back to a safe "not supported" default: a
+ * failed GatewayDeliveryResult where a result object makes sense, or a thrown
+ * GatewayCapabilityNotSupported otherwise. Check supports()/getCapabilities() before
+ * calling a capability method to avoid relying on that fallback.
+ *
+ * @since 4.0.0
+ */
+import bxModules.bxai.models.gateway.contracts.GatewayContext;
+import bxModules.bxai.models.gateway.contracts.GatewayEvent;
+import bxModules.bxai.models.gateway.contracts.GatewayDeliveryResult;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+import bxModules.bxai.models.gateway.contracts.InteractionPresentation;
+
+interface {
+
+	/**
+	 * The name of this gateway (e.g. "cli", "slack", "http")
+	 */
+	default public string function getName(){
+		return variables.name;
+	}
+
+	/**
+	 * The description of this gateway, used for logging and debugging
+	 */
+	default public string function getDescription(){
+		return variables.description;
+	}
+
+	/**
+	 * Configure the gateway with configuration options
+	 *
+	 * @options A struct containing configuration options — shape is gateway-specific
+	 *
+	 * @return The configured gateway instance
+	 */
+	IGateway function configure( required any options );
+
+	/**
+	 * Returns all capabilities this gateway supports.
+	 * Possible values: "inboundMessages", "outboundMessages", "streaming", "threads",
+	 * "attachments", "messageEditing", "interactiveActions", "humanApproval",
+	 * "argumentEditing", "authentication"
+	 *
+	 * @return Array of capability strings
+	 */
+	array function getCapabilities();
+
+	/**
+	 * Returns true if this gateway supports the given capability.
+	 *
+	 * @capability One of the strings returned by getCapabilities()
+	 *
+	 * @return boolean
+	 */
+	default public boolean function supports( required string capability ){
+		return getCapabilities().findNoCase( arguments.capability ) > 0;
+	}
+
+	/**
+	 * Start the gateway (e.g. open a socket connection, register a webhook listener).
+	 * Default is a no-op — override for gateways that need explicit lifecycle management.
+	 */
+	default public void function start(){
+		// no-op by default
+	}
+
+	/**
+	 * Stop the gateway and release any resources acquired in start().
+	 * Default is a no-op — override for gateways that need explicit lifecycle management.
+	 */
+	default public void function stop(){
+		// no-op by default
+	}
+
+	/**
+	 * Link a durable store (any IAiMemory-shaped instance) for pending human-interaction
+	 * state, so it can survive past this gateway instance's own lifetime — e.g. a restart.
+	 * Called automatically by HumanInTheLoopMiddleware.onAttach() with the same checkpointer
+	 * the owning agent uses.
+	 *
+	 * Default is a no-op — gateways that never need to survive a restart (CliGateway,
+	 * MockGateway: their pending state is only ever meaningful within one process anyway)
+	 * simply ignore it. Override for a gateway whose "humanApproval" capability needs to
+	 * outlive the process that presented the request — see HttpGateway.
+	 *
+	 * @checkpointer Any IAiMemory instance supporting saveState/loadState/clearState
+	 */
+	default public void function setCheckpointer( required any checkpointer ){
+		// no-op by default
+	}
+
+	// -------------------------------------------------------------------------
+	// Inbound — override + declare "inboundMessages" to support
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Verify that an inbound payload is authentic (e.g. signature/HMAC validation).
+	 * Call this before parseInbound() for any externally-reachable gateway.
+	 *
+	 * @payload        The raw inbound payload (shape is gateway-specific)
+	 * @requestContext Transport-level context (headers, IP, etc.), shape is gateway-specific
+	 *
+	 * @return true if the payload is verified authentic; false by default (nothing to verify)
+	 */
+	default public boolean function verifyInbound( required any payload, struct requestContext = {} ){
+		return false;
+	}
+
+	/**
+	 * Parse a raw inbound platform payload into one or more normalized GatewayMessage(s).
+	 *
+	 * @payload        The raw inbound payload (shape is gateway-specific)
+	 * @requestContext Transport-level context (headers, IP, etc.), shape is gateway-specific
+	 *
+	 * @return Array of GatewayMessage instances
+	 */
+	default public array function parseInbound( required any payload, struct requestContext = {} ){
+		throw(
+			type   : "GatewayCapabilityNotSupported",
+			message: "Gateway [#getName()#] does not support inbound message parsing."
+		);
+	}
+
+	// -------------------------------------------------------------------------
+	// Outbound — override + declare "outboundMessages" to support
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Deliver a normalized GatewayEvent to the platform this gateway represents.
+	 *
+	 * @event   The normalized event to deliver
+	 * @context The GatewayContext identifying who/where to deliver it to
+	 *
+	 * @return A GatewayDeliveryResult describing the outcome
+	 */
+	default public GatewayDeliveryResult function deliver( required GatewayEvent event, required GatewayContext context ){
+		return GatewayDeliveryResult.failure( "Gateway [#getName()#] does not support outbound delivery." );
+	}
+
+	// -------------------------------------------------------------------------
+	// Streaming — override + declare "streaming" to support
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Deliver a single response.started / response.delta / response.completed event as
+	 * part of an ongoing streamed response.
+	 *
+	 * @event   The normalized event to deliver (type is one of GatewayEvent.TYPES.RESPONSE_*)
+	 * @context The GatewayContext identifying who/where to deliver it to
+	 *
+	 * @return A GatewayDeliveryResult describing the outcome
+	 */
+	default public GatewayDeliveryResult function deliverChunk( required GatewayEvent event, required GatewayContext context ){
+		return GatewayDeliveryResult.failure( "Gateway [#getName()#] does not support streaming delivery." );
+	}
+
+	// -------------------------------------------------------------------------
+	// Interactive actions — override + declare "interactiveActions" to support
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Deliver a GatewayEvent using rich interactive actions native to the platform
+	 * (e.g. approve/reject buttons) instead of plain text instructions.
+	 *
+	 * @event   The normalized event to deliver
+	 * @context The GatewayContext identifying who/where to deliver it to
+	 * @actions Interactive action definitions — gateway-specific shape (label, value, style, etc.)
+	 *
+	 * @return A GatewayDeliveryResult describing the outcome
+	 */
+	default public GatewayDeliveryResult function deliverInteractive( required GatewayEvent event, required GatewayContext context, required array actions ){
+		return GatewayDeliveryResult.failure( "Gateway [#getName()#] does not support interactive actions." );
+	}
+
+	// -------------------------------------------------------------------------
+	// Human-in-the-loop — override + declare "humanApproval" to support
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Present a HumanInteractionRequest to a human via this gateway.
+	 *
+	 * For synchronous gateways (e.g. CLI), this may block and return a
+	 * GatewayDeliveryResult already carrying the decision (see GatewayDeliveryResult.hasDecision()).
+	 * For asynchronous gateways, it returns immediately once the platform has accepted the
+	 * request, and the decision arrives later via an inbound event that parseHumanDecision()
+	 * turns into a HumanInteractionDecision.
+	 *
+	 * @humanRequest The interaction request to present
+	 * @context      The GatewayContext identifying who/where to present it to
+	 *
+	 * @return A GatewayDeliveryResult — for synchronous gateways this may already carry
+	 *         the human's decision via getDecision()/hasDecision()
+	 */
+	default public GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest humanRequest, required GatewayContext context ){
+		return GatewayDeliveryResult.failure( "Gateway [#getName()#] does not support human-in-the-loop interaction." );
+	}
+
+	/**
+	 * Parse an inbound GatewayEvent (e.g. a button click, a webhook callback) into a
+	 * normalized HumanInteractionDecision.
+	 *
+	 * @event The inbound event carrying the human's decision
+	 *
+	 * @return The normalized HumanInteractionDecision
+	 */
+	default public HumanInteractionDecision function parseHumanDecision( required GatewayEvent event ){
+		throw(
+			type   : "GatewayCapabilityNotSupported",
+			message: "Gateway [#getName()#] does not support human-in-the-loop interaction."
+		);
+	}
+
+	/**
+	 * Build the normalized "what to render" content for a HumanInteractionRequest — title,
+	 * body, and one button per allowed decision. Chat-native gateways (Slack, Telegram, Teams,
+	 * ...) call this from their requestHumanInteraction() override and map the result into
+	 * their own wire format, instead of each one re-deriving title/body/button text itself.
+	 * Gateways with no "buttons" concept (CLI, generic HTTP) have no reason to call this.
+	 *
+	 * @humanRequest    The interaction request to build a presentation for
+	 * @maxBodyLength Truncate the body to this many characters, appending an ellipsis marker.
+	 *                0 (the default) means no truncation.
+	 *
+	 * @return An InteractionPresentation with title/body/buttons populated
+	 */
+	default public InteractionPresentation function presentInteraction( required HumanInteractionRequest humanRequest, numeric maxBodyLength = 0 ){
+		var title = len( arguments.humanRequest.getTitle() ) ? arguments.humanRequest.getTitle() : "Approval needed";
+		var body  = arguments.humanRequest.getMessage();
+
+		if ( arguments.maxBodyLength > 0 && len( body ) > arguments.maxBodyLength ) {
+			body = body.left( arguments.maxBodyLength ) & "…";
+		}
+
+		var buttons = arguments.humanRequest.getAllowedDecisions().map( ( decision ) => InteractionPresentation.buttonFor( decision ) );
+
+		return new InteractionPresentation( title: title, body: body, buttons: buttons );
+	}
+
+	/**
+	 * Build a short human-readable summary of a resolved HumanInteractionDecision — e.g. for a
+	 * gateway to post as a follow-up message or edit its original interactive message once
+	 * resolved. Chat-native gateways call this from wherever they finalize an interaction;
+	 * gateways with no follow-up concept (CLI, generic HTTP) have no reason to call this.
+	 *
+	 * @decision The resolved decision to summarize
+	 *
+	 * @return A short plain-text summary, e.g. "Approved by alice" or "Rejected: not now"
+	 */
+	default public string function presentResolution( required HumanInteractionDecision decision ){
+		var by = len( arguments.decision.getDecidedBy() ) ? " by #arguments.decision.getDecidedBy()#" : "";
+
+		if ( arguments.decision.isApprovedAlways() ) {
+			return "Approved always#by# — future requests for this tool will be auto-approved.";
+		}
+		if ( arguments.decision.isApprovedForSession() ) {
+			return "Approved for this session#by#.";
+		}
+		if ( arguments.decision.isApproved() ) {
+			return "Approved#by#.";
+		}
+		if ( arguments.decision.isRejected() ) {
+			var reason = len( arguments.decision.getReason() ) ? ": #arguments.decision.getReason()#" : "";
+			return "Rejected#by##reason#";
+		}
+		if ( arguments.decision.isEdit() ) {
+			return "Edited and approved#by#.";
+		}
+		if ( arguments.decision.isCancelled() ) {
+			return "Cancelled#by#.";
+		}
+		return "Resolved#by#.";
+	}
+
+}

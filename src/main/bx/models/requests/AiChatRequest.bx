@@ -81,6 +81,9 @@ class extends="AiBaseRequest"{
 		variables.tenantId = options.tenantId ?: "";
 		variables.usageMetadata = options.usageMetadata ?: {};
 
+		// The identity this request runs as (see AiBaseRequest.userId doc comment)
+		variables.userId = options.userId ?: "";
+
 		// Provider-specific options
 		variables.providerOptions = options.providerOptions ?: {};
 

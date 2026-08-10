@@ -260,6 +260,61 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "formatToolsForClaude formats an MCPTool without throwing" )
+	public void testFormatToolsForClaudeWithMCPTool() {
+		// Deterministic / credential-free: a beforeLLMCall middleware captures the request
+		// packet and short-circuits before any signing or HTTP call. MCPTool (unlike ClosureTool)
+		// does not implement getArgumentsSchema(), which formatToolsForClaude() calls
+		// unconditionally; BaseTool.onMissingMethod() then throws "MissingMethod".
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				import bxModules.bxai.models.tools.MCPTool;
+
+				captured   = {}
+				mockClient = new src.test.bx.mocks.MockMCPClient()
+				remoteTool = new MCPTool( mockClient, {
+					name: "remoteThing",
+					description: "a remote thing",
+					inputSchema: { type: "object", properties: {}, required: [] }
+				} )
+
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hello" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", max_tokens: 50, tools: [ remoteTool ] },
+					{ provider: "bedrock" }
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				toolName       = captured.packet.tools[ 1 ].name
+				hasInputSchema = captured.packet.tools[ 1 ].keyExists( "input_schema" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "toolName" ) ) ).isEqualTo( "remoteThing" );
+		assertThat( variables.getAsBoolean( Key.of( "hasInputSchema" ) ) ).isTrue();
+	}
+
+	@Test
 	@DisplayName( "Structured output extracts the forced tool_use input (canned response)" )
 	public void testStructuredOutputExtractsFromToolUse() {
 		// Deterministic: a wrapLLMCall middleware returns a canned Bedrock Claude response
@@ -363,6 +418,235 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "Claude transform passes caller params through instead of allow-listing" )
+	public void testClaudeTransformPassesParamsThrough() {
+		// Deterministic / credential-free: a beforeLLMCall middleware captures the request
+		// packet and cancels before any signing or HTTP call, so we can inspect exactly what
+		// transformRequestForClaude built.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Hello" ),
+					{
+						model: "anthropic.claude-3-sonnet-20240229-v1:0",
+						temperature: 0.5,
+						stop_sequences: [ "STOP" ],
+						top_p: 0.9,
+						top_k: 40,
+						tool_choice: { type: "auto" },
+						stream: true
+					},
+					{ provider: "bedrock" }
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				packet = captured.packet
+
+				hasStopSequences  = packet.keyExists( "stop_sequences" )
+				stopSequenceVal   = packet.stop_sequences[ 1 ]
+				hasTopP           = packet.keyExists( "top_p" )
+				topPVal           = packet.top_p
+				hasTopK           = packet.keyExists( "top_k" )
+				topKVal           = packet.top_k
+				hasToolChoice     = packet.keyExists( "tool_choice" )
+				toolChoiceType    = packet.tool_choice.type
+				hasTemperature    = packet.keyExists( "temperature" )
+				temperatureVal    = packet.temperature
+
+				hasModel          = packet.keyExists( "model" )
+				hasStream         = packet.keyExists( "stream" )
+
+				anthropicVersion  = packet.anthropic_version
+				maxTokens         = packet.max_tokens
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasStopSequences" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "stopSequenceVal" ) ) ).isEqualTo( "STOP" );
+		assertThat( variables.getAsBoolean( Key.of( "hasTopP" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "topPVal" ) ).toString() ).isEqualTo( "0.9" );
+		assertThat( variables.getAsBoolean( Key.of( "hasTopK" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "topKVal" ) ) ).isEqualTo( 40 );
+		assertThat( variables.getAsBoolean( Key.of( "hasToolChoice" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "toolChoiceType" ) ) ).isEqualTo( "auto" );
+		assertThat( variables.getAsBoolean( Key.of( "hasTemperature" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "temperatureVal" ) ).toString() ).isEqualTo( "0.5" );
+
+		assertThat( variables.getAsBoolean( Key.of( "hasModel" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "hasStream" ) ) ).isFalse();
+
+		assertThat( variables.get( Key.of( "anthropicVersion" ) ) ).isEqualTo( "bedrock-2023-05-31" );
+		assertThat( variables.getAsInteger( Key.of( "maxTokens" ) ) ).isEqualTo( 4096 );
+	}
+
+	@Test
+	@DisplayName( "Claude transform still formats tools and default max_tokens correctly" )
+	public void testClaudeTransformKeepsToolsAndMaxTokensDefault() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "What is the weather?" ),
+					{
+						model: "anthropic.claude-3-sonnet-20240229-v1:0",
+						tools: [
+							aiTool(
+								"getWeather",
+								"Get the weather for a location",
+								location => "sunny"
+							)
+						]
+					},
+					{ provider: "bedrock" }
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				packet      = captured.packet
+				maxTokens   = packet.max_tokens
+				hasTools    = packet.keyExists( "tools" )
+				toolName    = packet.tools[ 1 ].name
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "maxTokens" ) ) ).isEqualTo( 4096 );
+		assertThat( variables.getAsBoolean( Key.of( "hasTools" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "toolName" ) ) ).isEqualTo( "getWeather" );
+	}
+
+	@Test
+	@DisplayName( "Claude transform passes params.system through when no system message exists" )
+	public void testClaudeTransformPassesParamsSystemThrough() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Hello" ),
+					{
+						model: "anthropic.claude-3-sonnet-20240229-v1:0",
+						system: "You are a pirate."
+					},
+					{ provider: "bedrock" }
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				packet    = captured.packet
+				hasSystem = packet.keyExists( "system" )
+				systemVal = packet.system
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasSystem" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "systemVal" ) ) ).isEqualTo( "You are a pirate." );
+	}
+
+	@Test
+	@DisplayName( "Claude transform: a real system message wins over params.system" )
+	public void testClaudeTransformSystemMessageWinsOverParamsSystem() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().system( "You are a helpful assistant." ).user( "Hello" ),
+					{
+						model: "anthropic.claude-3-sonnet-20240229-v1:0",
+						system: "You are a pirate."
+					},
+					{ provider: "bedrock" }
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				packet    = captured.packet
+				hasSystem = packet.keyExists( "system" )
+				systemVal = packet.system
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasSystem" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "systemVal" ) ) ).isEqualTo( "You are a helpful assistant." );
+	}
+
+	@Test
 	@DisplayName( "AiChatRequest supports providerOptions for provider-specific settings" )
 	public void testProviderOptions() {
 		// @formatter:off
@@ -398,5 +682,110 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "defaultResult" ) ) ).isEqualTo( "defaultValue" );
 		assertThat( variables.get( Key.of( "profileArn" ) ) ).isEqualTo( "arn:aws:test:123" );
 		assertThat( variables.get( Key.of( "customVal" ) ) ).isEqualTo( "customValue" );
+	}
+
+	@Test
+	@DisplayName( "detectModelFamily() routes post-2024 Bedrock families to the correct request shape" )
+	public void testModelFamilyDetectionTable() {
+		// detectModelFamily() is private, so this exercises it indirectly through the shape of
+		// the dataPacket produced by transformRequestForModel(): a beforeLLMCall middleware
+		// captures the packet and cancels before any signing/HTTP call (same technique as
+		// testStructuredOutputInjectsForcedTool), then a shape fingerprint (which keys are
+		// present) is mapped back to the family that must have produced it. Covers the
+		// GitHub #226 detection table, including the mistral legacy/modern split.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				cases = [
+					{ modelId: "zai.glm-4.7-flash",                     expected: "openai"  },
+					{ modelId: "qwen.qwen3-32b-v1:0",                   expected: "openai"  },
+					{ modelId: "deepseek.v3.2",                         expected: "openai"  },
+					{ modelId: "moonshotai.kimi-k2.5",                  expected: "openai"  },
+					{ modelId: "minimax.minimax-m2.5",                  expected: "openai"  },
+					{ modelId: "nvidia.nemotron-super-3-120b",          expected: "openai"  },
+					{ modelId: "google.gemma-3-27b-it",                 expected: "openai"  },
+					{ modelId: "mistral.ministral-3-8b-instruct",       expected: "openai"  },
+					{ modelId: "openai.gpt-oss-20b-1:0",                expected: "openai"  },
+					{ modelId: "mistral.mistral-7b-instruct-v0:2",      expected: "mistral" },
+					{ modelId: "mistral.mixtral-8x7b-instruct-v0:1",    expected: "mistral" },
+					{ modelId: "eu.anthropic.claude-sonnet-4-6",        expected: "claude"  },
+					{ modelId: "amazon.titan-text-express-v1",          expected: "titan"   },
+					{ modelId: "meta.llama3-70b-instruct-v1:0",         expected: "llama"   },
+					// No dedicated Cohere transform exists; the fix preserves Cohere on the
+					// Claude-shape request rather than letting it fall into the new openai default.
+					{ modelId: "cohere.command-r-v1:0",                 expected: "claude"  },
+					// ai21 Jamba is OpenAI-shaped; the removed ai21 branch used to route it to
+					// the Claude transform instead (silent zero chunks on stream).
+					{ modelId: "ai21.jamba-1-5-large-v1:0",             expected: "openai"  },
+					{ modelId: "mistral.mistral-large-2402-v1:0",       expected: "mistral" },
+					{ modelId: "mistral.mistral-small-2402-v1:0",       expected: "mistral" },
+					{ modelId: "mistral.mistral-large-2407-v1:0",       expected: "openai"  },
+					{ modelId: "mistral.magistral-small-2509-v1:0",     expected: "openai"  },
+					// Region-prefixed legacy Mistral: the anchored regex must still match past
+					// the "eu." prefix.
+					{ modelId: "eu.mistral.mixtral-8x7b-instruct-v0:1", expected: "mistral" },
+					// Opaque inference-profile ARN with no vendor substring: previously fell
+					// through to the Claude default; the ARN guard preserves that explicitly.
+					{ modelId: "arn:aws:bedrock:eu-west-2:123456789012:application-inference-profile/abc123", expected: "claude" },
+					// Amazon Nova has no dedicated transform; documents the chosen openai fallback.
+					{ modelId: "amazon.nova-lite-v1:0",                 expected: "openai"  }
+				]
+
+				mismatches = []
+				provider  = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				for ( testCase in cases ) {
+					captured = {}
+					chatRequest = aiChatRequest(
+						aiMessage().user( "test" ),
+						{ model: testCase.modelId, max_tokens: 50 },
+						{ provider: "bedrock" }
+					)
+					chatRequest.addMiddleware( {
+						"beforeLLMCall": ( ctx ) => {
+							captured.packet = ctx.dataPacket
+							return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+						}
+					} )
+					provider.chat( chatRequest )
+					packet = captured.packet
+
+					shape = "unrecognized-shape"
+					if ( packet.keyExists( "anthropic_version" ) ) {
+						shape = "claude"
+					} else if ( packet.keyExists( "inputText" ) ) {
+						shape = "titan"
+					} else if ( packet.keyExists( "prompt" ) && packet.keyExists( "max_gen_len" ) ) {
+						shape = "llama"
+					} else if ( packet.keyExists( "prompt" ) ) {
+						shape = "mistral"
+					} else if ( packet.keyExists( "messages" ) ) {
+						shape = "openai"
+					}
+
+					if ( shape != testCase.expected ) {
+						mismatches.append( testCase.modelId & ": expected " & testCase.expected & " but got " & shape )
+					}
+				}
+
+				mismatchCount   = mismatches.len()
+				mismatchSummary = mismatches.toList( char( 10 ) )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		int mismatchCount = variables.getAsInteger( Key.of( "mismatchCount" ) );
+		if ( mismatchCount > 0 ) {
+			System.out.println( "Model family detection mismatches:\n" + variables.get( Key.of( "mismatchSummary" ) ) );
+		}
+		assertThat( mismatchCount ).isEqualTo( 0 );
 	}
 }

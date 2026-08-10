@@ -24,15 +24,21 @@
  * - Anthropic Claude (claude-3-*, claude-instant-*)
  * - Amazon Titan (amazon.titan-*)
  * - Meta Llama (meta.llama-*)
- * - Cohere (cohere.*)
- * - AI21 Labs (ai21.*)
- * - Mistral (mistral.*)
+ * - Cohere (cohere.*) — uses the Claude-shape transform, no dedicated Cohere transform
+ * - Legacy Mistral (mistral.mistral-7b-instruct-*, mixtral-*, mistral-large/small-2402-*)
+ * - Opaque inference-profile / provisioned-model ARNs with no vendor substring — assumed
+ *   Claude, preserving the historical default for the common case
+ * - Everything else (AI21 Jamba, modern Mistral, Amazon Nova, and other post-2024 families)
+ *   — OpenAI shape. No dedicated Nova transform exists yet (tracked under #227's Converse
+ *   discussion), so Nova requests 400 loudly against this fallback instead of silently
+ *   mis-parsing.
  *
  * @see https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html
  * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
  */
 import bxModules.bxai.models.util.AwsSignatureV4;
 import bxModules.bxai.models.util.SchemaBuilder;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
@@ -76,6 +82,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		AWS_SERVICE = "bedrock";
 		// Synthetic tool name used to force Claude into structured-output mode on Bedrock
 		STRUCTURED_OUTPUT_TOOL = "structured_output";
+		// Anchored (start-of-string or region-prefix dot, e.g. "eu.mistral.") match for the
+		// legacy, prompt-shaped Mistral models. Everything else on Bedrock's Mistral line is
+		// OpenAI-shaped.
+		LEGACY_MISTRAL_PATTERN = "(^|\.)mistral\.(mistral-7b-instruct-|mixtral-|mistral-(large|small)-2402-)";
 	}
 
 	/**
@@ -241,7 +251,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *
 	 * @modelId The Bedrock model ID
 	 *
-	 * @return The model family: "claude", "titan", "llama", "cohere", "ai21", "mistral", "openai", or "unknown"
+	 * @return The model family: "claude", "titan", "llama", "cohere", "mistral", or "openai"
 	 */
 	private string function detectModelFamily( required string modelId ){
 		var id = arguments.modelId.lcase();
@@ -254,16 +264,42 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			return "llama";
 		} else if ( id.findNoCase( "cohere" ) ) {
 			return "cohere";
-		} else if ( id.findNoCase( "ai21" ) ) {
-			return "ai21";
-		} else if ( id.findNoCase( "mistral" ) ) {
+		} else if ( isLegacyMistral( id ) ) {
 			return "mistral";
-		} else if ( id.findNoCase( "openai" ) || id.findNoCase( "gpt" ) ) {
-			// OpenAI-compatible models on Bedrock (cross-region inference profiles)
-			return "openai";
+		} else if ( id.startsWith( "arn:" ) ) {
+			// Opaque inference-profile / provisioned-model ARNs carry no vendor substring in
+			// the id itself, so none of the checks above can match. These previously fell
+			// through to the Claude default and worked for Claude-backed profiles (the common
+			// case) — preserve that explicitly instead of silently routing them into the
+			// openai fallback below (400).
+			return "claude";
 		}
 
-		return "unknown";
+		// Every other Bedrock family — ai21 Jamba (OpenAI-shaped; no dedicated branch needed),
+		// zai/GLM, qwen, deepseek, moonshotai/Kimi, minimax, nvidia/Nemotron, google/gemma,
+		// modern Mistral (Ministral 3, Magistral, Devstral, Voxtral, Mistral-Large-2407+),
+		// plain openai/gpt-oss, Amazon Nova (no dedicated transform exists yet — see #227's
+		// Converse API discussion — so it 400s loudly here instead of silently mis-parsing),
+		// and anything unrecognized — speaks the OpenAI chat-completions shape on Bedrock.
+		// Defaulting here (rather than to Claude) means an unsupported model fails loudly
+		// against the wrong shape instead of transformResponseFromClaude() silently returning "".
+		return "openai";
+	}
+
+	/**
+	 * Legacy Mistral models (7B-Instruct, Mixtral, Mistral-Large/Small-2402) use the raw
+	 * <s>[INST] prompt/outputs shape. Newer Mistral models (Ministral 3, Magistral,
+	 * Devstral, Voxtral, Mistral-Large-2407+) are OpenAI-shaped and reject that legacy
+	 * format with a 400. Anchored to the start of the id or a region-prefix dot (e.g.
+	 * "eu.mistral.mixtral-...") so region-prefixed ids still match, and case-insensitive
+	 * regardless of caller casing.
+	 *
+	 * @id The Bedrock model ID (any case)
+	 *
+	 * @return True if this is a legacy, prompt-shaped Mistral model
+	 */
+	private boolean function isLegacyMistral( required string id ){
+		return reFindNoCase( static.LEGACY_MISTRAL_PATTERN, arguments.id ) > 0;
 	}
 
 	/**
@@ -282,6 +318,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	){
 		switch ( arguments.modelFamily ) {
 			case "claude":
+			case "cohere":
+				// Cohere has no dedicated Bedrock transform; keep it on the Claude-shape
+				// request it has always used rather than falling into the openai default.
 				return transformRequestForClaude( arguments.messages, arguments.params );
 			case "titan":
 				return transformRequestForTitan( arguments.messages, arguments.params );
@@ -290,10 +329,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			case "mistral":
 				return transformRequestForMistral( arguments.messages, arguments.params );
 			case "openai":
-				return transformRequestForOpenAI( arguments.messages, arguments.params );
 			default:
-				// Default to Claude-style format as it's most common on Bedrock
-				return transformRequestForClaude( arguments.messages, arguments.params );
+				// ai21 and every other unmapped family speak the OpenAI shape on Bedrock
+				return transformRequestForOpenAI( arguments.messages, arguments.params );
 		}
 	}
 
@@ -302,15 +340,23 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Uses Claude Messages API format with Bedrock-specific wrapper
 	 */
 	private struct function transformRequestForClaude( required array messages, required struct params ){
-		var result = {
-			"anthropic_version" : "bedrock-2023-05-31",
-			"max_tokens"        : arguments.params.max_tokens ?: 4096
-		};
-
-		// Handle temperature if provided
-		if ( arguments.params.keyExists( "temperature" ) ) {
-			result[ "temperature" ] = arguments.params.temperature;
+		// Passthrough-with-exclusions: forward every caller param except the ones this
+		// transform rebuilds itself (model, stream, messages, tools — see below) or
+		// overwrites/defaults (anthropic_version, max_tokens). Built via a shallow,
+		// key-by-key copy rather than params.duplicate(): duplicate() deep-copies the
+		// whole struct including tool objects, and BoxLang's DuplicationUtil throws on
+		// non-Serializable Java objects a tool may hold (e.g. a Thread). A shallow copy
+		// never recurses into tools' object graph. "system" is intentionally NOT
+		// excluded here — see the system/message split below for why.
+		var result = {};
+		for ( var key in arguments.params ) {
+			if ( !listFindNoCase( "model,stream,messages,tools", key ) ) {
+				result[ key ] = arguments.params[ key ];
+			}
 		}
+
+		result[ "anthropic_version" ] = "bedrock-2023-05-31";
+		result[ "max_tokens" ]        = arguments.params.max_tokens ?: 4096;
 
 		// Separate system message from other messages
 		var systemPrompt         = "";
@@ -332,6 +378,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		result[ "messages" ] = conversationMessages;
 
+		// A real system message wins over a caller-supplied params.system (matches
+		// ClaudeService); otherwise leave params.system, already copied through above,
+		// in place.
 		if ( len( trim( systemPrompt ) ) ) {
 			result[ "system" ] = systemPrompt;
 		}
@@ -467,6 +516,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	){
 		switch ( arguments.modelFamily ) {
 			case "claude":
+			case "cohere":
 				return transformResponseFromClaude( arguments.response, arguments.modelId );
 			case "titan":
 				return transformResponseFromTitan( arguments.response, arguments.modelId );
@@ -475,9 +525,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			case "mistral":
 				return transformResponseFromMistral( arguments.response, arguments.modelId );
 			case "openai":
-				return transformResponseFromOpenAI( arguments.response, arguments.modelId );
 			default:
-				return transformResponseFromClaude( arguments.response, arguments.modelId );
+				return transformResponseFromOpenAI( arguments.response, arguments.modelId );
 		}
 	}
 
@@ -710,41 +759,93 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
-	 * Execute a Claude tool call returned by Bedrock and append the tool_result
-	 * message to the conversation.
+	 * Finish processing a tool-call batch that was suspended for human approval (see
+	 * afterToolBatch()), using the finalized resume ledger AiAgent.resume() built. No LLM call —
+	 * and nothing that already executed (or was already blocked) during the original attempt
+	 * runs again, since pass 1 never actually invokes a tool while any part of the batch could
+	 * still suspend (see chat()'s "Pass 1: decide" / "Pass 2: execute" split).
 	 *
-	 * @toolCall    The tool call block from Claude: { type:"tool_use", id:"", name:"toolName", input:{} }
-	 * @chatRequest The original chat request containing the tool
+	 * @chatRequest      The chat request to continue — its messages are the pre-LLM-call
+	 *                    messages from the original (suspended) attempt
+	 * @resumeCtx         The resume context AiAgent.resume() built: { assistantMessage, resumeLedger }
+	 * @interactionCount Current tool call interaction count (used internally)
 	 */
-	private function executeBedrockTool( required struct toolCall, required AiChatRequest chatRequest ) {
-		var messages    = arguments.chatRequest.getMessages();
-		var toolAttempt = arguments.chatRequest.getTool( arguments.toolCall.name );
+	private any function resumeToolBatch( required AiChatRequest chatRequest, required struct resumeCtx, required numeric interactionCount ) {
+		// Consume the resume context immediately — chat() recurses for the NEXT turn below, and
+		// that recursive call must not re-detect this same resume context and loop forever.
+		arguments.chatRequest.setResumeContext( {} )
 
-		if ( toolAttempt.isPresent() ) {
-			var tool = toolAttempt.get();
+		var thisChatRequest  = arguments.chatRequest
+		var assistantMessage = arguments.resumeCtx.assistantMessage
+		var ledger            = arguments.resumeCtx.resumeLedger ?: []
+		var toolCalls          = ( assistantMessage.content ?: [] ).filter( contentBlock -> contentBlock?.type == "tool_use" )
+
+		var messages = thisChatRequest.getMessages()
+		messages.append( assistantMessage )
+
+		for ( var i = 1; i <= toolCalls.len(); i++ ) {
+			var toolCall    = toolCalls[ i ]
+			var ledgerEntry = ( i <= ledger.len() )
+				? ledger[ i ]
+				: { status: "blocked", reason: "No resume decision was recorded for this tool call." }
+
+			if ( ledgerEntry.status == "cancel" ) {
+				var cancelReason = ledgerEntry.reason ?: "Cancelled by human operator during resume."
+				messages.append( {
+					"role"   : "user",
+					"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "[Tool call blocked: #cancelReason#]" } ]
+				} )
+				thisChatRequest.setMessages( messages )
+				return AiMiddlewareResult.cancel( cancelReason )
+			}
+
+			if ( ledgerEntry.status == "blocked" ) {
+				messages.append( {
+					"role"   : "user",
+					"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "[Tool call blocked: #ledgerEntry.reason ?: ""#]" } ]
+				} )
+				continue
+			}
+
+			// "execute"
+			var toolAttempt = thisChatRequest.getTool( toolCall.name )
+			if ( !toolAttempt.isPresent() ) {
+				writeLog(
+					text: "Unable to find tool named: [#toolCall.name#]",
+					type: "warning",
+					log : "ai"
+				)
+				messages.append( {
+					"role"   : "user",
+					"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "Tool ['#toolCall.name#'] not found in chat request" } ]
+				} )
+				continue
+			}
+
+			var tool     = toolAttempt.get()
+			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs : ( toolCall.input ?: {} )
+			var capturedTool = tool
+			var capturedArgs = toolArgs
+			var toolResult = thisChatRequest.fireWrapMiddleware(
+				"wrapToolCall",
+				{ tool: tool, toolCall: toolCall, chatRequest: thisChatRequest, toolName: toolCall.name ?: tool.getName(), toolArgs: toolArgs },
+				() => capturedTool.invoke( args: capturedArgs, chatRequest: thisChatRequest )
+			)
+
+			thisChatRequest.fireMiddleware(
+				hook   : "afterToolCall",
+				context: { tool: tool, toolCall: toolCall, chatRequest: thisChatRequest, result: toolResult },
+				reverse: true
+			)
+
 			messages.append( {
 				"role"   : "user",
-				"content": [ {
-					"type"        : "tool_result",
-					"tool_use_id" : arguments.toolCall.id,
-					"content"     : tool.invoke( args: arguments.toolCall.input, chatRequest: arguments.chatRequest )
-				} ]
-			} );
-		} else {
-			writeLog(
-				text: "Unable to find tool named: [#arguments.toolCall.name#]",
-				type: "warning",
-				log : "ai"
-			);
-			messages.append( {
-				"role"   : "user",
-				"content": [ {
-					"type"        : "tool_result",
-					"tool_use_id" : arguments.toolCall.id,
-					"content"     : "Tool ['#arguments.toolCall.name#'] not found in chat request"
-				} ]
-			} );
+				"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": toolResult } ]
+			} )
 		}
+
+		thisChatRequest.setMessages( messages )
+		return chat( thisChatRequest, arguments.interactionCount + 1 )
 	}
 
 	/**
@@ -755,6 +856,17 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 */
 		@override
 	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		// -------------------------------------------------------------------------------------------
+		// --- Resume short-circuit ---
+		// A batch tool-call suspension (see afterToolBatch()) was resolved via AiAgent.resume()
+		// with a finalized resume ledger — finish that same tool batch directly instead of
+		// calling the LLM again (no replay, nothing that already ran re-runs).
+		// -------------------------------------------------------------------------------------------
+		var resumeCtx = arguments.chatRequest.getResumeContext() ?: {}
+		if ( !resumeCtx.isEmpty() && resumeCtx.keyExists( "assistantMessage" ) ) {
+			return resumeToolBatch( arguments.chatRequest, resumeCtx, arguments.interactionCount )
+		}
+
 		// Get the model to use
 		var modelId = len( variables.modelId ) ? variables.modelId : arguments.chatRequest.getModel();
 		if ( !len( modelId ) ) {
@@ -916,18 +1028,139 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				var toolCalls = result.content.filter( contentBlock -> contentBlock?.type == "tool_use" );
 
 				// Record the assistant turn (text + tool_use blocks)
-				arguments.chatRequest.getMessages().append( {
-					"role"    : "assistant",
-					"content" : result.content
-				} );
+				var assistantMessage = { "role": "assistant", "content": result.content }
+				var thisChatRequest  = arguments.chatRequest
+				var messages         = thisChatRequest.getMessages()
+				messages.append( assistantMessage )
 
-				// Execute each requested tool, appending tool_result messages
+				// ── Pass 1: decide ──────────────────────────────────────────────────────────
+				// Fire beforeToolCall for EVERY tool call in this turn before invoking any of
+				// them — see OpenAIService.chat() for the full rationale (this mirrors it).
+				var batch = []
+				var terminalToolResult = ""
+
 				for ( var toolCall in toolCalls ) {
-					executeBedrockTool( toolCall, arguments.chatRequest );
+					var toolAttempt = thisChatRequest.getTool( toolCall.name )
+					if ( !toolAttempt.isPresent() ) {
+						writeLog(
+							text: "Unable to find tool named: [#toolCall.name#]",
+							type: "warning",
+							log : "ai"
+						);
+						batch.append( {
+							tool    : javacast( "null", "" ),
+							toolCall: toolCall,
+							toolName: toolCall.name,
+							toolArgs: {},
+							result  : AiMiddlewareResult.reject( "Tool ['#toolCall.name#'] not found in chat request" )
+						} )
+						continue
+					}
+
+					var tool        = toolAttempt.get()
+					var toolContext = {
+						tool       : tool,
+						toolCall   : toolCall,
+						chatRequest: thisChatRequest,
+						toolName   : toolCall.name ?: tool.getName(),
+						toolArgs   : toolCall.input ?: {}
+					}
+					var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
+
+					if ( toolBeforeResult.isCancelled() ) {
+						messages.append( {
+							"role"   : "user",
+							"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "[Tool call blocked: #toolBeforeResult.getReason()#]" } ]
+						} );
+						terminalToolResult = toolBeforeResult
+						break
+					}
+
+					batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+				}
+
+				if ( isObject( terminalToolResult ) ) {
+					return terminalToolResult
+				}
+
+				// ── Suspend the whole batch at once, if anything needs a human decision ──────
+				if ( batch.some( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() ) ) {
+					var batchResult = thisChatRequest.fireMiddleware(
+						"afterToolBatch",
+						{ chatRequest: thisChatRequest, assistantMessage: assistantMessage, batch: batch }
+					)
+
+					// No attached middleware's afterToolBatch() converted the pending entries
+					// into anything (the default is continue()) — e.g. a custom middleware
+					// suspended a tool call directly from beforeToolCall() without participating
+					// in the defer()/afterToolBatch() protocol at all. Fall back to a generic
+					// combined suspend so a tool call ANY middleware said needs a decision is
+					// never silently executed.
+					if ( !batchResult.isSuspended() && !batchResult.isCancelled() ) {
+						var pending = batch.filter( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() )
+						var pendingActions = pending.map( ( entry ) => {
+							var data = entry.result.getData()
+							return {
+								toolName    : entry.toolName,
+								toolArgs    : ( isStruct( entry.toolArgs ) ) ? entry.toolArgs : {},
+								suspensionID: data.suspensionID ?: ""
+							}
+						} )
+						batchResult = AiMiddlewareResult.suspend( { pendingActions: pendingActions } )
+					}
+
+					if ( batchResult.isTerminal() ) {
+						if ( !batchResult.isSuspended() ) {
+							return batchResult
+						}
+						var resumeLedger = batch.map( ( entry ) => {
+							if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
+								return { toolName: entry.toolName, status: "pending" }
+							}
+							if ( entry.result.isRejected() ) {
+								return { toolName: entry.toolName, status: "blocked", reason: entry.result.getReason() }
+							}
+							return { toolName: entry.toolName, status: "execute" }
+						} )
+						var mergedData = duplicate( batchResult.getData() )
+						mergedData[ "assistantMessage" ] = assistantMessage
+						mergedData[ "resumeLedger" ]     = resumeLedger
+						return AiMiddlewareResult.suspend( mergedData )
+					}
+				}
+
+				// ── Pass 2: execute ────────────────────────────────────────────────────────
+				for ( var entry in batch ) {
+					if ( entry.result.isRejected() ) {
+						messages.append( {
+							"role"   : "user",
+							"content": [ { "type": "tool_result", "tool_use_id": entry.toolCall.id, "content": "[Tool call blocked: #entry.result.getReason()#]" } ]
+						} );
+						continue
+					}
+
+					var capturedTool     = entry.tool
+					var capturedToolCall = entry.toolCall
+					var toolResult = thisChatRequest.fireWrapMiddleware(
+						"wrapToolCall",
+						{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: entry.toolCall.input ?: {} },
+						() => capturedTool.invoke( args: capturedToolCall.input, chatRequest: thisChatRequest )
+					);
+
+					thisChatRequest.fireMiddleware(
+						hook   : "afterToolCall",
+						context: { tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, result: toolResult },
+						reverse: true
+					);
+
+					messages.append( {
+						"role"   : "user",
+						"content": [ { "type": "tool_result", "tool_use_id": entry.toolCall.id, "content": toolResult } ]
+					} );
 				}
 
 				// Recurse with tool results now in context
-				return chat( arguments.chatRequest, arguments.interactionCount + 1 );
+				return chat( thisChatRequest, arguments.interactionCount + 1 );
 			}
 		}
 
@@ -1530,7 +1763,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		switch ( arguments.modelFamily ) {
 			case "claude":
-				// Claude streaming format
+			case "cohere":
+				// Cohere has no dedicated Bedrock transform; keep it on the Claude-shape
+				// stream chunks it has always used rather than falling into the openai default.
 				if ( arguments.chunk.keyExists( "type" ) ) {
 					switch ( arguments.chunk.type ) {
 						case "content_block_delta":
@@ -1584,7 +1819,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				break;
 
 			case "openai":
-				// OpenAI-compatible streaming format - already in standard format
+			default:
+				// OpenAI-compatible streaming format - already in standard format. Also the
+				// fallback for any family not explicitly handled above (ai21 and everything
+				// else), matching detectModelFamily()'s and transformRequestForModel()'s
+				// openai default — family not in this switch ⇒ openai, in all three switches.
 				if ( arguments.chunk.keyExists( "choices" ) && isArray( arguments.chunk.choices ) && arguments.chunk.choices.len() > 0 ) {
 					var delta = arguments.chunk.choices[ 1 ].delta ?: {};
 					if ( delta.keyExists( "content" ) ) {
@@ -1593,13 +1832,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					if ( arguments.chunk.choices[ 1 ].keyExists( "finish_reason" ) && !isNull( arguments.chunk.choices[ 1 ].finish_reason ) ) {
 						finishReason = arguments.chunk.choices[ 1 ].finish_reason;
 					}
-				}
-				break;
-
-			default:
-				// Default to Claude format
-				if ( arguments.chunk.keyExists( "delta" ) && arguments.chunk.delta.keyExists( "text" ) ) {
-					content = arguments.chunk.delta.text;
 				}
 		}
 

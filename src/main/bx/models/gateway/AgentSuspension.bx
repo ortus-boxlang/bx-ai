@@ -1,0 +1,170 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Durable coordination record for a suspended agent execution awaiting a human decision.
+ *
+ * This is a thin coordination record, NOT a replacement for the existing checkpoint
+ * mechanism (IAiMemory.saveState/loadState/clearState) that AiAgent already uses —
+ * it references the checkpoint by threadID rather than duplicating it, so the proven
+ * checkpoint/resume mechanics stay untouched. Its job is purely to let multiple
+ * gateways coordinate around a single suspension (e.g. the same approval delivered to
+ * both Slack and a web UI) without double-resolving it — that atomic-claim logic lives
+ * in the HumanInteractionCoordinator (Phase 2), not here.
+ */
+import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+
+class {
+
+	/**
+	 * Unique identifier for this suspension record
+	 */
+	property name="suspensionID" type="string" default="";
+
+	/**
+	 * The agent execution/run this suspension correlates to — matches AiAgent's runId
+	 */
+	property name="executionID" type="string" default="";
+
+	/**
+	 * The checkpointed thread this suspension can be resumed from — matches AiAgent's threadId
+	 */
+	property name="threadID" type="string" default="";
+
+	/**
+	 * Human-readable reason the execution suspended
+	 */
+	property name="reason" type="string" default="";
+
+	/**
+	 * Current status — prefer AgentSuspension.STATUSES.* constants
+	 */
+	property name="status" type="string" default="pending";
+
+	/**
+	 * The HumanInteractionRequest presented to the human for this suspension
+	 */
+	property name="interaction" type="HumanInteractionRequest";
+
+	/**
+	 * Opaque checkpoint reference/metadata (the actual state lives in the configured
+	 * IAiMemory checkpointer, keyed by threadID — this is just a pointer/summary)
+	 */
+	property name="checkpoint" type="struct" default={};
+
+	/**
+	 * When this suspension was created
+	 */
+	property name="createdAt" type="date";
+
+	/**
+	 * When this suspension expires if left undecided
+	 */
+	property name="expiresAt";
+
+	/**
+	 * Well-known status constants
+	 */
+	static {
+		STATUSES = {
+			PENDING   : "pending",
+			APPROVED  : "approved",
+			REJECTED  : "rejected",
+			EDITED    : "edited",
+			CANCELLED : "cancelled",
+			EXPIRED   : "expired",
+			RESUMED   : "resumed",
+			FAILED    : "failed"
+		}
+		TERMINAL_STATUSES = "approved,rejected,edited,cancelled,expired,resumed,failed"
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @suspensionID Unique identifier for this suspension record (auto-generated if omitted)
+	 * @executionID  The agent execution/run this suspension correlates to
+	 * @threadID     The checkpointed thread this suspension can be resumed from
+	 * @reason       Human-readable reason the execution suspended
+	 * @status       Current status, defaults to "pending"
+	 * @interaction  The HumanInteractionRequest presented to the human for this suspension
+	 * @checkpoint   Opaque checkpoint reference/metadata
+	 * @createdAt    When this suspension was created (defaults to now)
+	 * @expiresAt    When this suspension expires if left undecided
+	 */
+	function init(
+		string suspensionID = createUUID(),
+		string executionID  = "",
+		string threadID     = "",
+		string reason       = "",
+		string status       = "pending",
+		any    interaction,
+		struct checkpoint   = {},
+		date   createdAt    = now(),
+		any    expiresAt
+	) {
+		variables.suspensionID = arguments.suspensionID
+		variables.executionID  = arguments.executionID
+		variables.threadID     = arguments.threadID
+		variables.reason       = arguments.reason
+		variables.status       = arguments.status
+		variables.interaction  = arguments.interaction ?: javacast( "null", "" )
+		variables.checkpoint   = arguments.checkpoint
+		variables.createdAt    = arguments.createdAt
+		variables.expiresAt    = arguments.expiresAt ?: javacast( "null", "" )
+		return this;
+	}
+
+	/**
+	 * Whether this suspension is still awaiting a decision
+	 */
+	boolean function isPending() {
+		return variables.status == static.STATUSES.PENDING
+	}
+
+	/**
+	 * Whether this suspension has reached a terminal status and can no longer be claimed
+	 */
+	boolean function isTerminal() {
+		return static.TERMINAL_STATUSES.listFindNoCase( variables.status ) > 0
+	}
+
+	/**
+	 * Whether this suspension has expired
+	 */
+	boolean function isExpired() {
+		return !isNull( variables.expiresAt ) && now() > variables.expiresAt
+	}
+
+	/**
+	 * Serialize to a plain struct (useful for logging, persistence, or transport). Keys
+	 * match this class's constructor named args 1:1 — reconstruct with
+	 * `new AgentSuspension( argumentCollection: savedStruct )`, after first rebuilding
+	 * `interaction` back into a HumanInteractionRequest via ITS toStruct()/constructor,
+	 * since this is a shallow projection (interaction is nested, not flattened).
+	 */
+	struct function toStruct() {
+		return {
+			"suspensionID": variables.suspensionID,
+			"executionID" : variables.executionID,
+			"threadID"    : variables.threadID,
+			"reason"      : variables.reason,
+			"status"      : variables.status,
+			"interaction" : isNull( variables.interaction ) ? javacast( "null", "" ) : variables.interaction.toStruct(),
+			"checkpoint"  : variables.checkpoint,
+			"createdAt"   : variables.createdAt,
+			"expiresAt"   : isNull( variables.expiresAt ) ? javacast( "null", "" ) : variables.expiresAt
+		}
+	}
+
+}

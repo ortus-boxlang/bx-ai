@@ -31,6 +31,7 @@
  * - params        : Default request parameters
  */
 import bxModules.bxai.models.util.SchemaBuilder;
+import bxModules.bxai.models.security.PromptSecurity;
 
 abstract class implements="IAiService" {
 
@@ -923,7 +924,7 @@ abstract class implements="IAiService" {
 		logLines.append( "========================================" );
 		logLines.append( "** AI Request (#now()#)**" );
 		logLines.append( "Provider: #this.name# / Model: #arguments.chatRequest.getModel()#" );
-		logLines.append( "Endpoint: #getChatURL()#" );
+		logLines.append( "Endpoint: #PromptSecurity::redactURLSecrets( getChatURL() )#" );
 		logLines.append( "Timeout: #arguments.chatRequest.getTimeout()#s" );
 		logLines.append( "Message Count: #arguments.chatRequest.getMessages().len()#" );
 
@@ -1014,7 +1015,7 @@ abstract class implements="IAiService" {
 		logLines.append( "========================================" );
 		logLines.append( "** AI Embedding Request (#now()#)**" );
 		logLines.append( "Provider: #this.name# / Model: #arguments.embeddingRequest.getModel()#" );
-		logLines.append( "Endpoint: #getEmbeddingsURL()#" );
+		logLines.append( "Endpoint: #PromptSecurity::redactURLSecrets( getEmbeddingsURL() )#" );
 		logLines.append( "Timeout: #arguments.embeddingRequest.getTimeout()#s" );
 
 		// Show input details
