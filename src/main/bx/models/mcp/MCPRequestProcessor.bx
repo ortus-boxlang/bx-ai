@@ -388,19 +388,19 @@ class {
 	/**
 	 * Handle GET requests for server discovery
 	 *
-	 * @server The MCP server instance
+	 * @mcpServer The MCP server instance
 	 * @response The response struct to populate
 	 * @urlParams URL parameters
 	 *
 	 * @return The populated response struct
 	 */
-	private static  struct function handleDiscovery( required any server, required struct response, struct urlParams = {} ) {
+	private static  struct function handleDiscovery( required any mcpServer, required struct response, struct urlParams = {} ) {
 		arguments.response.content = {
 			"jsonrpc": "2.0",
 			"result": {
 				"protocolVersion": static.DEFAULT_MCP_PROTOCOL_VERSION,
-				"capabilities": arguments.server.getCapabilities(),
-				"serverInfo": arguments.server.getServerInfo()
+				"capabilities": arguments.mcpServer.getCapabilities(),
+				"serverInfo": arguments.mcpServer.getServerInfo()
 			},
 			"id": arguments.urlParams.id ?: javacast( "null", "" )
 		}.toJson()
@@ -411,7 +411,7 @@ class {
 	/**
 	 * Handle POST requests for JSON-RPC
 	 *
-	 * @server The MCP server instance
+	 * @mcpServer The MCP server instance
 	 * @response The response struct to populate
 	 * @requestBody The request body
 	 * @acceptHeader The Accept header value
@@ -419,7 +419,7 @@ class {
 	 * @return The populated response struct
 	 */
 	private static  struct function handleJSONRPC(
-		required any server,
+		required any mcpServer,
 		required struct response,
 		required string requestBody,
 		string acceptHeader = "application/json"
@@ -429,7 +429,7 @@ class {
 			var useSSE = arguments.acceptHeader contains "text/event-stream";
 
 			// Process the MCP request
-			var mcpResponse = arguments.server.handleRequest( arguments.requestBody );
+			var mcpResponse = arguments.mcpServer.handleRequest( arguments.requestBody );
 
 			// Format response
 			if ( useSSE ) {

@@ -1,0 +1,128 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Cache-backed IDecisionStore — the default implementation. Wraps the `cache( cacheName )` BIF,
+ * mirroring the same I/O pattern CacheMemory uses for checkpoints. Suitable for single-node
+ * deployments or where grants only need to outlive the process, not survive a restart.
+ *
+ * @since 4.0.0
+ */
+class implements="IDecisionStore" {
+
+	/**
+	 * The BoxLang cache provider instance
+	 */
+	property name="cache" type="any";
+
+	/**
+	 * The name of the cache to use
+	 */
+	property name="cacheName" type="string";
+
+	static {
+		final DEFAULT_CACHE_NAME = "default"
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @cacheName Name of the cache to use (default: "default")
+	 */
+	function init( string cacheName = static.DEFAULT_CACHE_NAME ) {
+		variables.cacheName = arguments.cacheName
+		variables.cache     = cache( variables.cacheName )
+		return this;
+	}
+
+	void function grant(
+		required string identity,
+		required string toolName,
+		string scope = "",
+		date expiresAt
+	) {
+		var record = {
+			"identity" : arguments.identity,
+			"toolName" : arguments.toolName,
+			"scope"    : arguments.scope,
+			"grantedAt": now(),
+			"expiresAt": isNull( arguments.expiresAt ) ? "" : arguments.expiresAt
+		}
+
+		if ( !isNull( arguments.expiresAt ) ) {
+			var ttlMinutes = dateDiff( "n", now(), arguments.expiresAt )
+			variables.cache.set( buildKey( arguments.identity, arguments.toolName, arguments.scope ), record, max( ttlMinutes, 1 ), 0 )
+		} else {
+			variables.cache.set( buildKey( arguments.identity, arguments.toolName, arguments.scope ), record )
+		}
+
+		trackGrantKey( arguments.identity, buildKey( arguments.identity, arguments.toolName, arguments.scope ) )
+	}
+
+	boolean function isGranted(
+		required string identity,
+		required string toolName,
+		string scope = ""
+	) {
+		var record = variables.cache.get( buildKey( arguments.identity, arguments.toolName, arguments.scope ) ).orElse( javacast( "null", "" ) )
+		if ( isNull( record ) ) {
+			return false
+		}
+		if ( len( record.expiresAt ) && now() > record.expiresAt ) {
+			revoke( arguments.identity, arguments.toolName, arguments.scope )
+			return false
+		}
+		return true
+	}
+
+	void function revoke(
+		required string identity,
+		required string toolName,
+		string scope = ""
+	) {
+		variables.cache.clear( buildKey( arguments.identity, arguments.toolName, arguments.scope ) )
+	}
+
+	array function listGrants( required string identity ) {
+		var keys = variables.cache.get( buildIndexKey( arguments.identity ) ).orElse( [] )
+		return keys
+			.map( ( key ) => variables.cache.get( key ).orElse( javacast( "null", "" ) ) )
+			.filter( ( record ) => !isNull( record ) && ( !len( record.expiresAt ) || now() <= record.expiresAt ) )
+	}
+
+	// -------------------------------------------------------------------------
+	// Private Helpers
+	// -------------------------------------------------------------------------
+
+	private string function buildKey( required string identity, required string toolName, required string scope ) {
+		return "bxai:decisionGrant:" & arguments.identity & ":" & arguments.toolName & ":" & arguments.scope
+	}
+
+	private string function buildIndexKey( required string identity ) {
+		return "bxai:decisionGrantIndex:" & arguments.identity
+	}
+
+	/**
+	 * Track this grant's key against the identity's index so listGrants() can enumerate it
+	 * without a native cache-scan API.
+	 */
+	private void function trackGrantKey( required string identity, required string grantKey ) {
+		var indexKey = buildIndexKey( arguments.identity )
+		var keys     = variables.cache.get( indexKey ).orElse( [] )
+		if ( !keys.contains( arguments.grantKey ) ) {
+			keys.append( arguments.grantKey )
+		}
+		variables.cache.set( indexKey, keys )
+	}
+
+}

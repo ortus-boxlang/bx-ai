@@ -76,6 +76,92 @@ public class CliGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "isApproved" ) ) ).isTrue();
 	}
 
+	@DisplayName( "'al' grants approve_always when the request allows it" )
+	@Test
+	public void testApproveAlwaysShortcut() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.gateway.cli.CliGateway;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				gw = new CliGateway( inputReader: () => "al" )
+				interactionRequest = new HumanInteractionRequest(
+					title           : "Approval needed",
+					message         : "Run tool X?",
+					allowedDecisions: [ "approve", "approve_always", "approve_session", "reject" ]
+				)
+				ctx = new GatewayContext( gateway: "cli" )
+
+				result = gw.requestHumanInteraction( interactionRequest, ctx )
+				isApprovedAlways = result.getDecision().isApprovedAlways()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isApprovedAlways" ) ) ).isTrue();
+	}
+
+	@DisplayName( "the full word 'approve_session' also grants approve_session" )
+	@Test
+	public void testApproveSessionFullWord() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.gateway.cli.CliGateway;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				gw = new CliGateway( inputReader: () => "approve_session" )
+				interactionRequest = new HumanInteractionRequest(
+					title           : "Approval needed",
+					message         : "Run tool X?",
+					allowedDecisions: [ "approve", "approve_always", "approve_session", "reject" ]
+				)
+				ctx = new GatewayContext( gateway: "cli" )
+
+				result = gw.requestHumanInteraction( interactionRequest, ctx )
+				isApprovedForSession = result.getDecision().isApprovedForSession()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isApprovedForSession" ) ) ).isTrue();
+	}
+
+	@DisplayName( "'al' is not accepted when the request's allowedDecisions doesn't offer approve_always" )
+	@Test
+	public void testApproveAlwaysNotOfferedFallsThroughToReprompt() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.gateway.cli.CliGateway;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				inputs = [ "al", "a" ]
+				gw = new CliGateway( inputReader: () => {
+					var next = inputs[ 1 ]
+					inputs.deleteAt( 1 )
+					return next
+				} )
+				// Default allowedDecisions is just [ "approve", "reject" ] — no approve_always offered
+				interactionRequest = new HumanInteractionRequest( title: "Approval needed", message: "Run tool X?" )
+				ctx = new GatewayContext( gateway: "cli" )
+
+				result = gw.requestHumanInteraction( interactionRequest, ctx )
+				isApproved = result.getDecision().isApproved()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isApproved" ) ) ).isTrue();
+	}
+
 	@DisplayName( "'reject' rejects with a reason" )
 	@Test
 	public void testReject() {

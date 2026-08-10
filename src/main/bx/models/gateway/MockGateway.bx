@@ -142,10 +142,10 @@ class extends="BaseGateway" {
 	// -------------------------------------------------------------------------
 
 	GatewayDeliveryResult function requestHumanInteraction(
-		required HumanInteractionRequest request,
+		required HumanInteractionRequest humanRequest,
 		required GatewayContext context
 	){
-		variables.pendingInteractions[ arguments.request.getId() ] = arguments.request
+		variables.pendingInteractions[ arguments.humanRequest.getId() ] = arguments.humanRequest
 
 		// If a decision has been scripted ahead of time, resolve immediately —
 		// simulates a synchronous gateway (e.g. a blocking CLI prompt)
@@ -153,21 +153,21 @@ class extends="BaseGateway" {
 			var next     = variables.scriptedDecisions[ 1 ]
 			variables.scriptedDecisions.deleteAt( 1 )
 			var decision = isSimpleValue( next )
-				? new HumanInteractionDecision( requestID: arguments.request.getId(), decision: next )
+				? new HumanInteractionDecision( requestID: arguments.humanRequest.getId(), decision: next )
 				: new HumanInteractionDecision(
-					requestID    : arguments.request.getId(),
+					requestID    : arguments.humanRequest.getId(),
 					decision     : next.decision ?: "",
 					editedData   : next.editedData ?: {},
 					reason       : next.reason ?: "",
 					decidedBy    : next.decidedBy ?: ""
 				)
-			variables.resolvedDecisions[ arguments.request.getId() ] = decision
-			return new GatewayDeliveryResult( deliveryID: arguments.request.getId(), decision: decision )
+			variables.resolvedDecisions[ arguments.humanRequest.getId() ] = decision
+			return new GatewayDeliveryResult( deliveryID: arguments.humanRequest.getId(), decision: decision )
 		}
 
 		// Otherwise this is an async request — the decision arrives later via
 		// simulateDecision() + parseHumanDecision()
-		return new GatewayDeliveryResult( deliveryID: arguments.request.getId() )
+		return new GatewayDeliveryResult( deliveryID: arguments.humanRequest.getId() )
 	}
 
 	HumanInteractionDecision function parseHumanDecision( required GatewayEvent event ){

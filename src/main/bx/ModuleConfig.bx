@@ -286,6 +286,22 @@ class {
 			// configuration options.
 			// Ex: { slack: { botToken: "...", signingSecret: "..." } }
 			gateways : {
+			},
+
+			// --------------------------------------------------------------------------
+			// HITL Settings — default decision store for HumanInTheLoopMiddleware
+			// --------------------------------------------------------------------------
+			// The default IDecisionStore backend used for "approve_always" durable grants
+			// when a HumanInTheLoopMiddleware isn't given one explicitly. Mirrors the
+			// `memory` setting above — resolved by aiDecisionStore() when called with no
+			// arguments. There is deliberately no per-agent override: every
+			// HumanInTheLoopMiddleware in an application shares this one store, since an
+			// application never attaches more than one HITL middleware at a time.
+			hitl : {
+				decisionStore : {
+					provider : "cache",
+					config : {}
+				}
 			}
 		}
 
@@ -395,8 +411,10 @@ class {
 			// Gateway Events
 			"onGatewayRegistryRegister",
 			"onGatewayRegistryUnregister",
-			"onMissingGateway",
-			"onGatewayCreate"
+			"onGatewayCreate",
+
+			// Decision Store Events
+			"onAiDecisionStoreCreate"
 		 ]
 	}
 

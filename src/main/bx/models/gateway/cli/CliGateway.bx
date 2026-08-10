@@ -27,6 +27,13 @@
  * silently cancel the run. This now re-prompts (up to `MAX_PROMPT_ATTEMPTS` times)
  * before falling back to cancel, so a mistyped keystroke doesn't abort an otherwise
  * fine run.
+ *
+ * Like any chat-native gateway, the prompt is built from IGateway.presentInteraction()'s
+ * shared title/body/button vocabulary — filtered to the decisions a terminal prompt can
+ * reasonably collect (approve/approve_always/approve_session/reject), plus quit (mapped
+ * to "cancel") as an always-available escape hatch. "edit" is excluded for the same
+ * reason most chat-native gateways would: there's no interactive flow here to collect
+ * corrected arguments.
  */
 import bxModules.bxai.models.gateway.BaseGateway;
 import bxModules.bxai.models.gateway.contracts.GatewayContext;
@@ -48,6 +55,16 @@ class extends="BaseGateway" {
 	 */
 	static {
 		MAX_PROMPT_ATTEMPTS = 3
+
+		// Decisions a terminal prompt can collect, each with an unambiguous typed shortcut.
+		// "cancel" is deliberately not here — Q/quit is offered unconditionally below as an
+		// always-available escape hatch, not something a HumanInteractionRequest opts into.
+		PROMPT_SHORTCUTS = {
+			"approve"        : "a",
+			"approve_always" : "al",
+			"approve_session": "as",
+			"reject"         : "r"
+		}
 	}
 
 	/**
@@ -70,9 +87,9 @@ class extends="BaseGateway" {
 	/**
 	 * Prompt for and return a decision. Always resolves synchronously.
 	 */
-	GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest request, required GatewayContext context ) {
-		var decision = promptForDecision( arguments.request )
-		return new GatewayDeliveryResult( deliveryID: arguments.request.getId(), decision: decision )
+	GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest humanRequest, required GatewayContext context ) {
+		var decision = promptForDecision( arguments.humanRequest )
+		return new GatewayDeliveryResult( deliveryID: arguments.humanRequest.getId(), decision: decision )
 	}
 
 	/**
@@ -91,6 +108,22 @@ class extends="BaseGateway" {
 	 * recognized one arrives or MAX_PROMPT_ATTEMPTS is exhausted (which cancels).
 	 */
 	private HumanInteractionDecision function promptForDecision( required HumanInteractionRequest interactionRequest ) {
+		var presentation = this.presentInteraction( arguments.interactionRequest )
+		var offered      = presentation.getButtons().filter( ( b ) => static.PROMPT_SHORTCUTS.keyExists( b.value ) )
+
+		// Both the short shortcut ("a", "al", ...) and the full decision word ("approve",
+		// "approve_always", ...) resolve to the decision value, so either typing style works.
+		var shortcutToDecision = {}
+		for ( var b in offered ) {
+			shortcutToDecision[ static.PROMPT_SHORTCUTS[ b.value ] ] = b.value
+			shortcutToDecision[ b.value ] = b.value
+		}
+
+		var menu = offered
+			.map( ( b ) => "[#static.PROMPT_SHORTCUTS[ b.value ].uCase()#] #b.label#" )
+			.toList( "  " ) & "  [Q] Quit"
+		var validShortcuts = shortcutToDecision.keyArray().map( ( s ) => s.uCase() ).toList( ", " ) & ", Q"
+
 		var attempts = 0
 
 		while ( ++attempts <= static.MAX_PROMPT_ATTEMPTS ) {
@@ -98,26 +131,16 @@ class extends="BaseGateway" {
 			println( "╔══════════════════════════════════════════════════╗" )
 			println( "║         HUMAN APPROVAL REQUIRED                  ║" )
 			println( "╚══════════════════════════════════════════════════╝" )
-			println( " #arguments.interactionRequest.getTitle()#" )
-			println( " #arguments.interactionRequest.getMessage()#" )
+			println( " #presentation.getTitle()#" )
+			println( " #presentation.getBody()#" )
 
 			println( "" )
-			println( " [A]pprove  [R]eject  [Q]uit" )
+			println( " #menu#" )
 			print  ( " Decision: " )
 
 			var input = variables.inputReader().trim().lCase()
 			println( "" )
 
-			if ( input == "a" || input == "approve" ) {
-				return new HumanInteractionDecision( requestID: arguments.interactionRequest.getId(), decision: "approve" )
-			}
-			if ( input == "r" || input == "reject" ) {
-				return new HumanInteractionDecision(
-					requestID: arguments.interactionRequest.getId(),
-					decision : "reject",
-					reason   : "Rejected by human operator."
-				)
-			}
 			if ( input == "q" || input == "quit" ) {
 				return new HumanInteractionDecision(
 					requestID: arguments.interactionRequest.getId(),
@@ -126,8 +149,19 @@ class extends="BaseGateway" {
 				)
 			}
 
+			if ( shortcutToDecision.keyExists( input ) ) {
+				var decision = shortcutToDecision[ input ]
+				var result   = new HumanInteractionDecision(
+					requestID: arguments.interactionRequest.getId(),
+					decision : decision,
+					reason   : decision == "reject" ? "Rejected by human operator." : ""
+				)
+				println( " #this.presentResolution( result )#" )
+				return result
+			}
+
 			if ( attempts < static.MAX_PROMPT_ATTEMPTS ) {
-				println( " Unrecognized input [#input#] — please enter A, R, or Q." )
+				println( " Unrecognized input [#input#] — please enter one of: #validShortcuts#." )
 			}
 		}
 
