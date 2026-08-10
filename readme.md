@@ -702,19 +702,105 @@ sent = MockService::getRecorded()
 
 📖 See [examples/security](examples/security) for runnable, fully-offline examples.
 
+## 🧑‍⚖️ Human-in-the-Loop (HITL)
+
+Require a human to approve sensitive tool calls before they run. Attach `HumanInTheLoopMiddleware` and pick how approvals are presented.
+
+```javascript
+import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+
+// CLI mode (default) — blocking terminal prompt
+agent = aiAgent(
+    tools     : [ deleteRecordTool ],
+    middleware: [ new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ] ) ]
+)
+
+// Web / async mode — the run SUSPENDS so you can approve out-of-band
+agent = aiAgent(
+    tools       : [ deleteRecordTool ],
+    middleware  : [ new HumanInTheLoopMiddleware( mode: "web", toolsRequiringApproval: [ "deleteRecord" ] ) ],
+    checkpointer: aiMemory( "cache" )
+)
+
+result = agent.run( "Delete record 42", {}, { threadId: "req-42" } )
+
+if ( result.isSuspended() ) {
+    pending = result.getData().pendingActions   // every tool call awaiting a decision
+}
+
+// Later — finish the batch WITHOUT replaying the LLM call
+final = agent.resume( "approve", "req-42" )
+```
+
+**Decisions:** `approve`, `approve_always`, `approve_session`, `reject`, `edit`, `cancel`.
+
+**Batched approvals:** when one turn requests several tool calls needing approval, they suspend together as **one** checkpoint. Resume with a single decision (applied to all) or an array of per-call decisions — nothing already executed runs twice.
+
+```javascript
+final = agent.resume( [ { decision: "approve" }, { decision: "reject", reason: "not needed" } ], "req-42" )
+```
+
+**Approval policies** decide *whether* a call needs approval — `ToolNameApprovalPolicy` (default), `RiskLevelApprovalPolicy`, `AnnotationApprovalPolicy`, `CallbackApprovalPolicy`, `CompositeApprovalPolicy`.
+
+**Durable grants:** `approve_always` / `approve_session` are persisted through a pluggable `IDecisionStore` (`cache`, `jdbc`, or `file`) so a human isn't asked the same question forever.
+
+```javascript
+hitl = new HumanInTheLoopMiddleware(
+    toolsRequiringApproval: [ "placeOrder" ],
+    decisionStore         : aiDecisionStore( "jdbc", { datasource: "myDSN" } )
+)
+```
+
+📖 Runnable examples: [examples/middleware/05-hitl-cli.bxs](examples/middleware/05-hitl-cli.bxs) and [06-hitl-web.bxs](examples/middleware/06-hitl-web.bxs).
+
+## 🔌 Gateways
+
+A **gateway** is a bidirectional human-interaction adapter: it turns platform events into normalized agent input, and turns agent events — including a suspended HITL approval — back into a platform-native experience.
+
+```javascript
+cli  = aiGateway( "cli" )                                     // blocking terminal prompt
+http = aiGateway( "http", { secret: "shared-hmac-secret" } )   // signed webhooks
+
+agent = aiAgent(
+    middleware  : [ new HumanInTheLoopMiddleware( gateway: http ) ],
+    checkpointer: aiMemory( "cache" )
+)
+```
+
+| Core gateway | What it does |
+|---|---|
+| `cli` | Reference implementation — blocking stdin/stdout approval prompt |
+| `http` | Network-reachable: HMAC-SHA256 signing, nonce dedup, TTL-bounded interactions, atomic decision claims |
+| `mock` | In-memory gateway for tests and examples |
+
+**Capabilities** a gateway may declare: `inboundMessages`, `outboundMessages`, `streaming`, `threads`, `attachments`, `messageEditing`, `interactiveActions`, `humanApproval`, `argumentEditing`, `authentication`.
+
+**External gateways** (Slack, Discord, Teams, …) ship as their own modules and register themselves at load time:
+
+```javascript
+gatewayRegistry().register( new MyPlatformGateway(), "my-module" )
+myGateway = aiGateway( "my-platform" )
+```
+
+Implement `IGateway` to build your own — every capability method has a safe default, so you only override what you actually support.
+
 ## 🛠️ Global Functions (BIFs)
 
 | Function | Purpose | Parameters | Return Type | Async Support |
 |----------|---------|------------|-------------|---------------|
 | `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options`, `mcpServers=[]`, `skills=[]`, `availableSkills=[]` | AiAgent Object (supports `runAsync()`) | ✅ |
+| `aiAgentRegistry()` | Get the singleton AI Agent Registry | _(none)_ | AIAgentRegistry Object | N/A |
 | `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
 | `aiChatRequest()` | Compose a reusable chat request object (useful for advanced pipelines and middleware) | `messages`, `params`, `options`, `headers` | AiChatRequest Object | N/A |
 | `aiChatStream()` | Stream chat responses from AI provider | `messages`, `callback`, `params={}`, `options={}` | void | N/A |
 | `aiChunk()` | Split text into chunks for RAG ingestion or token-window management | `text`, `options={}` _(chunkSize, overlap, strategy)_ | Array of Strings | N/A |
+| `aiDecisionStore()` | Create an `IDecisionStore` for durable human-approval grants | `store` _(cache\|jdbc\|file, defaults to `settings.hitl.decisionStore`)_, `config` | IDecisionStore Object | N/A |
 | `aiDocuments()` | Create fluent document loader | `source`, `config={}` | IDocumentLoader Object | N/A |
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
 | `aiFence()` | Fence (spotlight) untrusted content so the model treats it as DATA, not instructions | `content`, `label="external"`, `withPreamble=false` | String | N/A |
+| `aiGateway()` | Resolve a human-interaction gateway by name | `name` _(core: `mock`, `cli`, `http`; or externally registered)_, `options={}` | IGateway Object | N/A |
+| `aiImage()` | Generate images from a text prompt | `prompt`, `params={}`, `options={}` | AiImageResponse Object | N/A |
 | `aiMemory()` | Create memory instance | `memory`, `key`, `userId`, `conversationId`, `config={}` | IAiMemory Object | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
 | `aiModel()` | Create AI model wrapper | `provider`, `apiKey`, `tools`, `mcpServers=[]`, `skills=[]` | AiModel Object | N/A |
@@ -734,6 +820,7 @@ sent = MockService::getRecorded()
 | `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors`, `statsEnabled`, `force` | MCPServer Object | N/A |
 | `aiWebSearch()` | Search the web via a pluggable provider | `query`, `params={}`, `options={}` _(provider, maxResults)_ | Array of `{title, url, snippet}` | ❌ |
 | `aiWebSearchAsync()` | Search the web asynchronously | `query`, `params={}`, `options={}` _(provider, maxResults)_ | BoxLang Future | ✅ |
+| `gatewayRegistry()` | Get the singleton Gateway Registry (external gateway modules register here) | _(none)_ | GatewayRegistry Object | N/A |
 
 > **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](https://ai.ortusbooks.com/main-components/overview.md#return-formats) documentation for details.
 

@@ -796,9 +796,10 @@ class extends="AiBaseRunnable" {
 	 *             per-call decision structs — { decision, editedData?, decidedBy?, reason? } —
 	 *             one per pending tool call, in the same order they were originally presented.
 	 *             A field omitted on a per-call struct falls back to this call's own top-level
-	 *             argument. approve_always/approve_session are NOT recorded as durable grants
-	 *             for a batch suspension (see HumanInteractionCoordinator.requestBatchApproval()
-	 *             docs) — they resolve like a plain "approve" there.
+	 *             argument. approve_always/approve_session record a durable grant for every
+	 *             batch entry a gateway actually presented (those carry a suspensionID — see
+	 *             HumanInTheLoopMiddleware.afterToolBatch()); in mode "web" nothing was
+	 *             presented, so there is no grant to record and they resolve like "approve".
 	 * @threadId   The thread to resume. Defaults to this agent's current threadId.
 	 * @editedData When decision is "edit", pass the corrected data here. Fallback for any
 	 *             per-call struct (batch case) that omits its own editedData.
