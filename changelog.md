@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-08-10
+
 ### 🔐 Security Fixes
 
 - Gemini's API key was leaking into logs via the request URL (`?key=...`). Key is now request-local, and `PromptSecurity::redactURLSecrets()` masks key/token/secret query params in any logged endpoint as defense in depth.
@@ -31,7 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `HumanInTheLoopMiddleware` now defaults its `IDecisionStore` from `settings.hitl.decisionStore` instead of never having one.
 - `CliGateway`'s approval prompt now offers `approve_always`/`approve_session`, not just approve/reject/quit.
 - Durable/session approval grants (`approve_always`/`approve_session`) via a pluggable `IDecisionStore` — cache, JDBC, and file-backed implementations, resolved through `aiDecisionStore()`.
-- Slack channel (`channels/slack/`) — first platform gateway, presenting HITL approvals as Block Kit buttons. Establishes a `channels/<name>/` convention for future Discord/Teams/Telegram gateways.
 - Generic HTTP/webhook gateway (`HttpGateway`) with HMAC request signing, nonce dedup, TTL-bounded interactions, and atomic decision claims.
 - `aiGateway()` now resolves external gateways via `gatewayRegistry()` instead of an interception point.
 - CLI gateway extracted as the reference `IGateway` implementation; `HumanInTheLoopMiddleware` now always presents through an attached gateway (zero behavior change for existing usage).
