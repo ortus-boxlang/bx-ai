@@ -9,8 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.4.0] - 2026-08-10
-
 ### 🔐 Security Fixes
 
 - Gemini's API key was leaking into logs via the request URL (`?key=...`). Key is now request-local, and `PromptSecurity::redactURLSecrets()` masks key/token/secret query params in any logged endpoint as defense in depth.
