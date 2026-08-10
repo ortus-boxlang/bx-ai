@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🪲 Fixed
 
-- `approve_always`/`approve_session` grants never actually persisted for Slack/HTTP (async) gateways — missing identity on `GatewayContext` and an incomplete resume-path decision handler. Fixed; new integration test covers suspend → resume with a grant → auto-approve on a later run.
+- `approve_always`/`approve_session` grants never actually persisted for async (non-CLI) gateways — missing identity on `GatewayContext` and an incomplete resume-path decision handler. Fixed; new integration test covers suspend → resume with a grant → auto-approve on a later run.
 - Renamed several bare `request`/`server`/`url` locals that could shadow BoxLang's reserved scopes (hygiene fix; no confirmed live bug found in this codebase).
 - MCP tools crashed the Claude and Bedrock providers — `BaseTool` now provides a default `getArgumentsSchema()`. ([#231](https://github.com/ortus-boxlang/bx-ai/issues/231))
 - Bedrock model-family detection was inconsistent across request/response/stream transforms (AI21, Cohere, legacy Mistral, and bare inference-profile ARNs could get mismatched parsing). ([#226](https://github.com/ortus-boxlang/bx-ai/issues/226))
@@ -31,12 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `HumanInTheLoopMiddleware` now defaults its `IDecisionStore` from `settings.hitl.decisionStore` instead of never having one.
 - `CliGateway`'s approval prompt now offers `approve_always`/`approve_session`, not just approve/reject/quit.
 - Durable/session approval grants (`approve_always`/`approve_session`) via a pluggable `IDecisionStore` — cache, JDBC, and file-backed implementations, resolved through `aiDecisionStore()`.
-- Slack channel (`channels/slack/`) — first platform gateway, presenting HITL approvals as Block Kit buttons. Establishes a `channels/<name>/` convention for future Discord/Teams/Telegram gateways.
 - Generic HTTP/webhook gateway (`HttpGateway`) with HMAC request signing, nonce dedup, TTL-bounded interactions, and atomic decision claims.
 - `aiGateway()` now resolves external gateways via `gatewayRegistry()` instead of an interception point.
 - CLI gateway extracted as the reference `IGateway` implementation; `HumanInTheLoopMiddleware` now always presents through an attached gateway (zero behavior change for existing usage).
 - HITL extracted into a `models/hitl/` package: pluggable `IApprovalPolicy` implementations, a `HumanInteractionCoordinator` owning the suspend/resolve lifecycle, and gateway-attached `HumanInTheLoopMiddleware`.
-- New Gateway SPI (`IGateway`, `AgentSuspension`, `GatewayRegistry`, `aiGateway()`) with a `MockGateway` reference implementation — foundation for Slack/HTTP/CLI gateways.
+- New Gateway SPI (`IGateway`, `AgentSuspension`, `GatewayRegistry`, `aiGateway()`) with a `MockGateway` reference implementation — foundation for HTTP/CLI and future platform gateway modules.
 - `SummaryMemory` supports a token-based trigger (`maxTokens`) as an alternative to `maxMessages`.
 - New `onAIMemorySummarize` interception point.
 - `summarize()` is now available on every conversation memory type, not just `SummaryMemory`.
@@ -47,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🧠 Updated
 
+- OpenAI provider's default chat model bumped from `gpt-5-nano` to `gpt-5.6-luna`.
+- Claude provider's default chat model bumped from `claude-sonnet-4-5` to `claude-sonnet-5`.
 - `SummaryMemory`: `maxMessages` now triggers compression and `summaryThreshold` is the keep-window (previously threshold did both and `maxMessages` was unused).
 - `AiMessage` escapes `${...}` inside binding values by default to prevent template-confusion injection.
 - Security & Guardrails Phase 1: `PromptSecurity` heuristic injection scanning, `InputSanitizerMiddleware`, global `settings.security` auto-attach, and a new `mock` AI provider for deterministic offline testing.

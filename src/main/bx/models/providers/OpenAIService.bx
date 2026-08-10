@@ -39,8 +39,8 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		DEFAULT_CHAT_PARAMS = {
 			// https://platform.openai.com/docs/models
 			// according to the docs, this is the default model
-			// https://platform.openai.com/docs/models/gpt-5-nano
-			"model" : "gpt-5-nano"
+			// https://platform.openai.com/docs/models/gpt-5.6-luna
+			"model" : "gpt-5.6-luna"
 		}
 		DEFAULT_EMBED_PARAMS = {
 			"model" : "text-embedding-3-small"
