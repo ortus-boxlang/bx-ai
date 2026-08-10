@@ -28,12 +28,12 @@
  * before falling back to cancel, so a mistyped keystroke doesn't abort an otherwise
  * fine run.
  *
- * Like Slack, the prompt is built from IGateway.presentInteraction()'s shared title/
- * body/button vocabulary — filtered to the decisions a terminal prompt can reasonably
- * collect (approve/approve_always/approve_session/reject), plus quit (mapped to
- * "cancel") as an always-available escape hatch. "edit" is excluded for the same
- * reason Slack excludes it: there's no interactive flow here to collect corrected
- * arguments.
+ * Like any chat-native gateway, the prompt is built from IGateway.presentInteraction()'s
+ * shared title/body/button vocabulary — filtered to the decisions a terminal prompt can
+ * reasonably collect (approve/approve_always/approve_session/reject), plus quit (mapped
+ * to "cancel") as an always-available escape hatch. "edit" is excluded for the same
+ * reason most chat-native gateways would: there's no interactive flow here to collect
+ * corrected arguments.
  */
 import bxModules.bxai.models.gateway.BaseGateway;
 import bxModules.bxai.models.gateway.contracts.GatewayContext;
