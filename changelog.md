@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🪲 Fixed
 
-- `approve_always`/`approve_session` grants never actually persisted for Slack/HTTP (async) gateways — missing identity on `GatewayContext` and an incomplete resume-path decision handler. Fixed; new integration test covers suspend → resume with a grant → auto-approve on a later run.
+- `approve_always`/`approve_session` grants never actually persisted for async (non-CLI) gateways — missing identity on `GatewayContext` and an incomplete resume-path decision handler. Fixed; new integration test covers suspend → resume with a grant → auto-approve on a later run.
 - Renamed several bare `request`/`server`/`url` locals that could shadow BoxLang's reserved scopes (hygiene fix; no confirmed live bug found in this codebase).
 - MCP tools crashed the Claude and Bedrock providers — `BaseTool` now provides a default `getArgumentsSchema()`. ([#231](https://github.com/ortus-boxlang/bx-ai/issues/231))
 - Bedrock model-family detection was inconsistent across request/response/stream transforms (AI21, Cohere, legacy Mistral, and bare inference-profile ARNs could get mismatched parsing). ([#226](https://github.com/ortus-boxlang/bx-ai/issues/226))
@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `aiGateway()` now resolves external gateways via `gatewayRegistry()` instead of an interception point.
 - CLI gateway extracted as the reference `IGateway` implementation; `HumanInTheLoopMiddleware` now always presents through an attached gateway (zero behavior change for existing usage).
 - HITL extracted into a `models/hitl/` package: pluggable `IApprovalPolicy` implementations, a `HumanInteractionCoordinator` owning the suspend/resolve lifecycle, and gateway-attached `HumanInTheLoopMiddleware`.
-- New Gateway SPI (`IGateway`, `AgentSuspension`, `GatewayRegistry`, `aiGateway()`) with a `MockGateway` reference implementation — foundation for Slack/HTTP/CLI gateways.
+- New Gateway SPI (`IGateway`, `AgentSuspension`, `GatewayRegistry`, `aiGateway()`) with a `MockGateway` reference implementation — foundation for HTTP/CLI and future platform gateway modules.
 - `SummaryMemory` supports a token-based trigger (`maxTokens`) as an alternative to `maxMessages`.
 - New `onAIMemorySummarize` interception point.
 - `summarize()` is now available on every conversation memory type, not just `SummaryMemory`.
