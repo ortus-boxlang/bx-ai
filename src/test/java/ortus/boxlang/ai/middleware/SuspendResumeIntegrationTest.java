@@ -507,6 +507,83 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "checkpointSaved" ) ) ).isTrue();
 	}
 
+	@DisplayName( "Streaming: two pending tool calls suspend as ONE batch, resumeStream() with an array resolves them individually" )
+	@Test
+	public void testStreamMultiplePendingToolCallsBatchAndArrayResume() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "toolA", arguments: {} }, { name: "toolB", arguments: {} } ] },
+		            // resumeStream() finishes the batch directly (no LLM replay)
+		            "toolA ran, toolB was rejected."
+		        ] )
+		        model = new AiModel( service: mockSvc )
+
+		        hitlMw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" )
+		        checkpointer = aiMemory( "cache" )
+
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ hitlMw ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        chunks = []
+		        agent.stream(
+		            ( chunk ) => { chunks.append( chunk ) },
+		            "please run toolA and toolB",
+		            {},
+		            { threadId: "hitl-test-stream-batch" }
+		        )
+
+		        stopChunk       = chunks.filter( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" ).first()
+		        isSuspended     = !isNull( stopChunk ) && stopChunk.result.isSuspended()
+		        pendingActions  = !isNull( stopChunk ) ? ( stopChunk.result.getData().pendingActions ?: [] ) : []
+		        bothPending     = pendingActions.len() == 2
+		        neitherRanYet   = toolACalls == 0 && toolBCalls == 0
+
+		        resumeChunks = []
+		        agent.resumeStream(
+		            ( chunk ) => { resumeChunks.append( chunk ) },
+		            [
+		                { decision: "approve" },
+		                { decision: "reject", reason: "not needed" }
+		            ],
+		            "hitl-test-stream-batch"
+		        )
+
+		        finalText = resumeChunks
+		            .filter( c => isStruct( c ) && c.keyExists( "choices" ) )
+		            .map( c => c.choices.first().delta.content ?: "" )
+		            .toList( "" )
+		        isFinalText  = finalText == "toolA ran, toolB was rejected."
+		        toolARan     = toolACalls == 1
+		        toolBSkipped = toolBCalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isSuspended" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothPending" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolARan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBSkipped" ) ) ).isTrue();
+	}
+
 	// ---- Claude / Bedrock / Cohere: newly-wired beforeToolCall/afterToolCall coverage ----
 	// These providers previously invoked tools directly with no middleware hooks at all.
 	// Deterministic / credential-free: a wrapLLMCall middleware returns a canned tool-call

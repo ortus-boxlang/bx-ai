@@ -1049,19 +1049,21 @@ class extends="AiBaseRunnable" {
 	/**
 	 * Resume a previously suspended streaming run from its saved checkpoint.
 	 *
-	 * Mirror of resume() for streaming agents. Calls stream() with the saved input
-	 * and injects the resume decision into options so middleware can act on it.
+	 * Mirror of resume() for streaming agents — see its docs for the batch-decision vocabulary
+	 * (a single decision applied to every pending call, or an array of per-call decisions) and
+	 * the no-replay mechanics. Calls stream() with the saved input and injects the resume
+	 * decision into options so middleware/providers can act on it.
 	 *
 	 * @onChunk    Callback for each streamed chunk
-	 * @decision   "approve"/"approve_always"/"approve_session"/"reject"/"edit"/"cancel"
+	 * @decision   See resume()'s docs — a single decision string or an array of per-call decision structs
 	 * @threadId   The thread to resume. Defaults to this agent's current threadId.
-	 * @editedData When decision is "edit", pass corrected data here.
-	 * @decidedBy  Optional identifier of who made the decision
-	 * @reason     Optional human-readable reason for the decision
+	 * @editedData When decision is "edit", pass corrected data here. Fallback for the batch case.
+	 * @decidedBy  Optional identifier of who made the decision. Fallback for the batch case.
+	 * @reason     Optional human-readable reason for the decision. Fallback for the batch case.
 	 */
 	void function resumeStream(
 		required function onChunk,
-		required string   decision,
+		required any       decision,
 		required string   threadId,
 		struct            editedData = {},
 		string            decidedBy  = "",
@@ -1083,6 +1085,50 @@ class extends="AiBaseRunnable" {
 		}
 
 		variables.checkpointer.clearState( arguments.threadId )
+
+		var suspendData = savedState.suspendData ?: {}
+
+		// Batch suspension — see resume() for the full explanation.
+		if ( isStruct( suspendData ) && suspendData.keyExists( "assistantMessage" ) ) {
+			var resolved     = resolvePendingActions(
+				suspendData,
+				arguments.decision,
+				arguments.editedData,
+				arguments.decidedBy,
+				arguments.reason
+			)
+			var resumeLedger     = resolved.ledger
+			var pendingDecisions = resolved.pendingDecisions
+
+			var pendingActions = suspendData.pendingActions ?: []
+			for ( var i = 1; i <= pendingActions.len(); i++ ) {
+				var suspensionID = pendingActions[ i ].suspensionID ?: ""
+				if ( len( suspensionID ) ) {
+					_resolveGatewaySuspension( suspensionID, pendingDecisions[ i ] )
+				}
+			}
+
+			var resumeResult = savedState
+			resumeResult[ "assistantMessage" ] = suspendData.assistantMessage
+			resumeResult[ "resumeLedger" ]     = resumeLedger
+
+			stream(
+				arguments.onChunk,
+				savedState.input,
+				savedState.params,
+				savedState.options.append( { _resumeContext: resumeResult } )
+			)
+			return
+		}
+
+		if ( isArray( arguments.decision ) ) {
+			throw(
+				type   : "AiAgent.InvalidResumeDecision",
+				message: "An array of decisions was passed to resumeStream(), but the checkpoint for threadId " &
+					"'#arguments.threadId#' is a single-tool-call suspension, not a batch. Pass a single " &
+					"decision string instead."
+			)
+		}
 
 		var resumeResult = savedState
 		resumeResult.resumeDecision = arguments.decision
