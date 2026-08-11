@@ -833,8 +833,15 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		// variables.params was only ever read for .model — every other provider pushes it into the
 		// chat request via mergeServiceParams(), so settings.defaultParams / providers.Bedrock.params
 		// silently never reached the wire. Capture the built packet to assert on what AWS would see.
-		IStruct	defaultParams	= ( IStruct ) moduleRecord.settings.get( "defaultParams" );
-		IStruct	providers		= ( IStruct ) moduleRecord.settings.get( "providers" );
+		IStruct	defaultParams		= ( IStruct ) moduleRecord.settings.get( "defaultParams" );
+		IStruct	providers			= ( IStruct ) moduleRecord.settings.get( "providers" );
+
+		// moduleRecord.settings is static and shared by every test class in this fork, so capture
+		// the prior values (including absence) and restore exactly, rather than removing keys.
+		boolean	hadTemperature		= defaultParams.containsKey( "temperature" );
+		Object	priorTemperature	= defaultParams.get( "temperature" );
+		boolean	hadBedrock			= providers.containsKey( "Bedrock" );
+		Object	priorBedrock		= providers.get( "Bedrock" );
 
 		defaultParams.put( "temperature", 0.42d );
 
@@ -877,21 +884,78 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 
 					packet         = captured.packet
 					hasTemperature = packet.keyExists( "temperature" )
-					temperatureVal = packet.keyExists( "temperature" ) ? packet.temperature : ""
+					temperatureVal = hasTemperature ? packet.temperature : 0
 					maxTokens      = packet.max_tokens
+
+					// The resolved model must be reported back on the request; merging service
+					// params must NOT overwrite it with the service's default Claude id.
+					reportedModel = chatRequest.getModel()
 				""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
 				context
 			);
 			// @formatter:on
 
 			assertThat( variables.getAsBoolean( Key.of( "hasTemperature" ) ) ).isTrue();
-			assertThat( variables.get( Key.of( "temperatureVal" ) ).toString() ).isEqualTo( "0.42" );
+			assertThat( variables.getAsDouble( Key.of( "temperatureVal" ) ) ).isEqualTo( 0.42d );
 			// providers.Bedrock.params.max_tokens must win over the hardcoded 4096 default
 			assertThat( variables.getAsInteger( Key.of( "maxTokens" ) ) ).isEqualTo( 999 );
+			assertThat( variables.get( Key.of( "reportedModel" ) ) ).isEqualTo( "anthropic.claude-3-sonnet-20240229-v1:0" );
 		} finally {
-			defaultParams.remove( "temperature" );
-			providers.remove( "Bedrock" );
+			if ( hadTemperature ) {
+				defaultParams.put( "temperature", priorTemperature );
+			} else {
+				defaultParams.remove( "temperature" );
+			}
+			if ( hadBedrock ) {
+				providers.put( "Bedrock", priorBedrock );
+			} else {
+				providers.remove( "Bedrock" );
+			}
 		}
+	}
+
+	@Test
+	@DisplayName( "Service default max_tokens is not imposed on families with a lower ceiling" )
+	public void testServiceDefaultMaxTokensDoesNotOverrideFamilyFallback() {
+		// DEFAULT_CHAT_PARAMS.max_tokens is Claude-shaped (4096). Merging it into every request
+		// would override transformRequestForLlama's own 2048 fallback, and Bedrock's Meta Llama
+		// max_gen_len ceiling is 2048 — so a blanket merge 400s every Llama call. Only a value
+		// that differs from the built-in default counts as configured.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Hello" ),
+					{ model: "meta.llama3-70b-instruct-v1:0" },
+					{ provider: "bedrock" }
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chat( chatRequest )
+
+				maxGenLen = captured.packet.max_gen_len
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "maxGenLen" ) ) ).isEqualTo( 2048 );
 	}
 
 	// -----------------------------------------------------------------------

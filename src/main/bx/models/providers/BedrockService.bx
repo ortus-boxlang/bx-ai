@@ -305,6 +305,34 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *
 	 * @return Struct: { accessKeyId, secretAccessKey, sessionToken }
 	 */
+	/**
+	 * The subset of variables.params that module settings actually configured — what belongs on the
+	 * request, as opposed to this service's own built-in defaults.
+	 *
+	 * Two keys must not be merged blindly. "model" has dedicated resolution here (variables.modelId
+	 * → request → params) and merging it would make AiBaseRequest.getModel() report the default
+	 * Claude id for a request routed to another family. And DEFAULT_CHAT_PARAMS.max_tokens is
+	 * Claude-shaped (4096): imposing it on every family overrides each transform's own fallback —
+	 * Llama's max_gen_len tops out at 2048, so a merged 4096 makes AWS reject every Llama call. A
+	 * value equal to the built-in default is therefore treated as "not configured"; one that
+	 * differs came from settings and is forwarded.
+	 */
+	private struct function configuredServiceParams(){
+		var configured = {};
+
+		for ( var key in variables.params ) {
+			if ( key == "model" ) {
+				continue;
+			}
+			if ( static.DEFAULT_CHAT_PARAMS.keyExists( key ) && static.DEFAULT_CHAT_PARAMS[ key ] == variables.params[ key ] ) {
+				continue;
+			}
+			configured[ key ] = variables.params[ key ];
+		}
+
+		return configured;
+	}
+
 	public struct function resolveAwsCredentials(){
 		// 1 + 2: explicit struct / environment credentials, already resolved onto the instance.
 		if ( len( variables.awsAccessKeyId ) && len( variables.awsSecretAccessKey ) ) {
@@ -1388,9 +1416,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Push service-level params into the request, as every other provider does. configure()
 		// merges settings.defaultParams and settings.providers.Bedrock.params into variables.params,
 		// but variables.params was only ever read for .model — so module-configured temperature /
-		// top_p / max_tokens never reached the InvokeModel body. override defaults to false, so
-		// anything set on the request itself still wins.
-		arguments.chatRequest.mergeServiceParams( variables.params );
+		// top_p / max_tokens never reached the InvokeModel body.
+		arguments.chatRequest
+			.setModelIfEmpty( modelId )
+			.mergeServiceParams( configuredServiceParams() );
 
 		// Determine the endpoint identifier (use inference profile ARN if provided)
 		var inferenceProfileArn = arguments.chatRequest.getProviderOption( "inferenceProfileArn" );
@@ -2014,9 +2043,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Push service-level params into the request, as every other provider does. configure()
 		// merges settings.defaultParams and settings.providers.Bedrock.params into variables.params,
 		// but variables.params was only ever read for .model — so module-configured temperature /
-		// top_p / max_tokens never reached the InvokeModel body. override defaults to false, so
-		// anything set on the request itself still wins.
-		arguments.chatRequest.mergeServiceParams( variables.params );
+		// top_p / max_tokens never reached the InvokeModel body.
+		arguments.chatRequest
+			.setModelIfEmpty( modelId )
+			.mergeServiceParams( configuredServiceParams() );
 
 		// Determine the endpoint identifier (use inference profile ARN if provided)
 		var inferenceProfileArn = arguments.chatRequest.getProviderOption( "inferenceProfileArn" );
