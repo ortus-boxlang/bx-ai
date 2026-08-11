@@ -826,6 +826,74 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		}
 	}
 
+	@Test
+	@DisplayName( "Merged module-settings params reach the InvokeModel body, not just service.getParams()" )
+	public void testMergedModuleSettingsParamsReachRequestBody() {
+		// testConfigureMergesModuleSettings above proves the merge lands in variables.params, but
+		// variables.params was only ever read for .model — every other provider pushes it into the
+		// chat request via mergeServiceParams(), so settings.defaultParams / providers.Bedrock.params
+		// silently never reached the wire. Capture the built packet to assert on what AWS would see.
+		IStruct	defaultParams	= ( IStruct ) moduleRecord.settings.get( "defaultParams" );
+		IStruct	providers		= ( IStruct ) moduleRecord.settings.get( "providers" );
+
+		defaultParams.put( "temperature", 0.42d );
+
+		Struct bedrockParams = new Struct();
+		bedrockParams.put( "max_tokens", 999 );
+		Struct bedrockProviderSettings = new Struct();
+		bedrockProviderSettings.put( "params", bedrockParams );
+		providers.put( "Bedrock", bedrockProviderSettings );
+
+		try {
+			// @formatter:off
+			executeWithTimeoutHandling(
+				"""
+					captured = {}
+					provider = aiService(
+						"bedrock",
+						{
+							awsAccessKeyId: "%s",
+							awsSecretAccessKey: "%s",
+							region: "%s"
+						}
+					)
+
+					// Note: no temperature / max_tokens on the request itself — they must arrive
+					// purely from the merged module settings.
+					chatRequest = aiChatRequest(
+						aiMessage().user( "Hello" ),
+						{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+						{ provider: "bedrock" }
+					)
+
+					chatRequest.addMiddleware( {
+						"beforeLLMCall": ( ctx ) => {
+							captured.packet = ctx.dataPacket
+							return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+						}
+					} )
+
+					provider.chat( chatRequest )
+
+					packet         = captured.packet
+					hasTemperature = packet.keyExists( "temperature" )
+					temperatureVal = packet.keyExists( "temperature" ) ? packet.temperature : ""
+					maxTokens      = packet.max_tokens
+				""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+				context
+			);
+			// @formatter:on
+
+			assertThat( variables.getAsBoolean( Key.of( "hasTemperature" ) ) ).isTrue();
+			assertThat( variables.get( Key.of( "temperatureVal" ) ).toString() ).isEqualTo( "0.42" );
+			// providers.Bedrock.params.max_tokens must win over the hardcoded 4096 default
+			assertThat( variables.getAsInteger( Key.of( "maxTokens" ) ) ).isEqualTo( 999 );
+		} finally {
+			defaultParams.remove( "temperature" );
+			providers.remove( "Bedrock" );
+		}
+	}
+
 	// -----------------------------------------------------------------------
 	// Chunk 2 — item 2: routing/encoding, path construction
 	// -----------------------------------------------------------------------

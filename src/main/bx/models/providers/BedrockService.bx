@@ -1385,6 +1385,13 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			modelId = variables.params.model;
 		}
 
+		// Push service-level params into the request, as every other provider does. configure()
+		// merges settings.defaultParams and settings.providers.Bedrock.params into variables.params,
+		// but variables.params was only ever read for .model — so module-configured temperature /
+		// top_p / max_tokens never reached the InvokeModel body. override defaults to false, so
+		// anything set on the request itself still wins.
+		arguments.chatRequest.mergeServiceParams( variables.params );
+
 		// Determine the endpoint identifier (use inference profile ARN if provided)
 		var inferenceProfileArn = arguments.chatRequest.getProviderOption( "inferenceProfileArn" );
 		var endpointId = len( inferenceProfileArn ) ? inferenceProfileArn : modelId;
@@ -2003,6 +2010,13 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		if ( !len( modelId ) ) {
 			modelId = variables.params.model;
 		}
+
+		// Push service-level params into the request, as every other provider does. configure()
+		// merges settings.defaultParams and settings.providers.Bedrock.params into variables.params,
+		// but variables.params was only ever read for .model — so module-configured temperature /
+		// top_p / max_tokens never reached the InvokeModel body. override defaults to false, so
+		// anything set on the request itself still wins.
+		arguments.chatRequest.mergeServiceParams( variables.params );
 
 		// Determine the endpoint identifier (use inference profile ARN if provided)
 		var inferenceProfileArn = arguments.chatRequest.getProviderOption( "inferenceProfileArn" );
