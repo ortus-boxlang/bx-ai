@@ -197,10 +197,17 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			// providers.Bedrock.{params,options}) that struct-based configure() must not skip.
 			super.configure( arguments.options );
 
+			// Read from variables.options, not arguments.options: super.configure() merges
+			// providers.Bedrock.options into it, so this is what makes module-level provider
+			// options (region, baseURL, bearerToken, credentials) take effect. The two happen to
+			// alias the same struct today, but relying on that would silently break if
+			// BaseService ever copied instead of assigning.
+			var resolvedOptions = variables.options;
+
 			// Check if credentials are nested inside apiKey (from aiChat/aiService flow)
-			var credSource = arguments.options;
-			if ( arguments.options.keyExists( "apiKey" ) && isStruct( arguments.options.apiKey ) ) {
-				credSource = arguments.options.apiKey;
+			var credSource = resolvedOptions;
+			if ( resolvedOptions.keyExists( "apiKey" ) && isStruct( resolvedOptions.apiKey ) ) {
+				credSource = resolvedOptions.apiKey;
 			}
 
 			// Configure with struct of settings - check both top-level and apiKey nested
@@ -217,17 +224,17 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				variables.awsSessionToken = credSource.awsSessionToken;
 			}
 			// These remain at top level
-			if ( arguments.options.keyExists( "modelId" ) ) {
-				variables.modelId = arguments.options.modelId;
+			if ( resolvedOptions.keyExists( "modelId" ) ) {
+				variables.modelId = resolvedOptions.modelId;
 			}
-			if ( arguments.options.keyExists( "model" ) ) {
-				variables.params.model = arguments.options.model;
+			if ( resolvedOptions.keyExists( "model" ) ) {
+				variables.params.model = resolvedOptions.model;
 			}
-			if ( arguments.options.keyExists( "baseURL" ) && len( arguments.options.baseURL ) ) {
-				variables.baseURL = arguments.options.baseURL.trim();
+			if ( resolvedOptions.keyExists( "baseURL" ) && len( resolvedOptions.baseURL ) ) {
+				variables.baseURL = resolvedOptions.baseURL.trim();
 			}
-			if ( arguments.options.keyExists( "bearerToken" ) && len( arguments.options.bearerToken ) ) {
-				variables.bearerToken = arguments.options.bearerToken;
+			if ( resolvedOptions.keyExists( "bearerToken" ) && len( resolvedOptions.bearerToken ) ) {
+				variables.bearerToken = resolvedOptions.bearerToken;
 			}
 		}
 
@@ -431,6 +438,37 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * @return Struct { accessKeyId, secretAccessKey, sessionToken, expiration } or null if the
 	 *         endpoint isn't configured or the request fails
 	 */
+	/**
+	 * Resolve the container credential provider's authorization token.
+	 *
+	 * EKS Pod Identity supplies AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE and rotates the file's
+	 * contents, so the file is read on every call rather than cached; ECS supplies the token
+	 * inline via AWS_CONTAINER_AUTHORIZATION_TOKEN. The file variant takes precedence, matching
+	 * the AWS container credential provider specification. An unreadable file falls back to the
+	 * inline value instead of failing the whole credential chain.
+	 *
+	 * @see https://docs.aws.amazon.com/sdkref/latest/guide/feature-container-credentials.html
+	 *
+	 * @return The authorization token, or an empty string when neither variable is set
+	 */
+	public string function containerAuthorizationToken(){
+		var tokenFile = getSystemSetting( "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE", "" );
+
+		if ( len( tokenFile ) ) {
+			try {
+				return fileRead( tokenFile ).trim();
+			} catch ( any e ) {
+				writeLog(
+					text: "Bedrock: could not read AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE [#tokenFile#]: #e.message#",
+					type: "warning",
+					log : "ai"
+				);
+			}
+		}
+
+		return getSystemSetting( "AWS_CONTAINER_AUTHORIZATION_TOKEN", "" );
+	}
+
 	private any function loadContainerCredentials(){
 		var relativeUri = getSystemSetting( "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "" );
 		var fullUri      = getSystemSetting( "AWS_CONTAINER_CREDENTIALS_FULL_URI", "" );
@@ -440,7 +478,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		}
 
 		var url       = len( fullUri ) ? fullUri : ( "http://169.254.170.2" & relativeUri );
-		var authToken = getSystemSetting( "AWS_CONTAINER_AUTHORIZATION_TOKEN", "" );
+		var authToken = containerAuthorizationToken();
 
 		try {
 			var req = http( url = url ).method( "GET" ).timeout( 2 ).throwOnError( false );
@@ -2801,6 +2839,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		if ( !len( modelId ) ) {
 			modelId = "amazon.titan-embed-text-v1";
 		}
+
+		// Push service-level params into the request, exactly as chat()/chatStream() do, so a
+		// module-configured input_type / dimensions / normalize reaches the InvokeModel body.
+		arguments.embeddingRequest.mergeServiceParams( configuredServiceParams() );
 
 		var embeddingFamily = detectEmbeddingModelFamily( modelId );
 		var input           = arguments.embeddingRequest.getInput();

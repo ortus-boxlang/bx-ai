@@ -958,6 +958,150 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "maxGenLen" ) ) ).isEqualTo( 2048 );
 	}
 
+	@Test
+	@DisplayName( "Merged module-settings params reach the embeddings payload, not just chat" )
+	public void testMergedModuleSettingsParamsReachEmbeddings() {
+		// chat()/chatStream() merge configuredServiceParams(), but embeddings() did not — so a
+		// module-configured input_type / dimensions / normalize never reached the InvokeModel body.
+		IStruct	defaultParams	= ( IStruct ) moduleRecord.settings.get( "defaultParams" );
+		IStruct	providers		= ( IStruct ) moduleRecord.settings.get( "providers" );
+
+		boolean	hadBedrock		= providers.containsKey( "Bedrock" );
+		Object	priorBedrock	= providers.get( "Bedrock" );
+
+		Struct	bedrockParams	= new Struct();
+		bedrockParams.put( "input_type", "classification" );
+		Struct bedrockProviderSettings = new Struct();
+		bedrockProviderSettings.put( "params", bedrockParams );
+		providers.put( "Bedrock", bedrockProviderSettings );
+
+		try {
+			// @formatter:off
+			executeWithTimeoutHandling(
+				"""
+					provider = aiService(
+						"bedrock",
+						{
+							awsAccessKeyId: "%s",
+							awsSecretAccessKey: "%s",
+							region: "%s"
+						}
+					)
+
+					embeddingRequest = new src.main.bx.models.requests.AiEmbeddingRequest(
+						"hello",
+						{ model: "cohere.embed-english-v3" }
+					)
+
+					// The HTTP call fails with dummy credentials; the merge must already have
+					// happened by then, so inspect the request afterwards.
+					try {
+						provider.embeddings( embeddingRequest )
+					} catch ( any e ) {
+					}
+
+					mergedParams  = embeddingRequest.getParams()
+					hasInputType  = mergedParams.keyExists( "input_type" )
+					inputTypeVal  = hasInputType ? mergedParams.input_type : ""
+				""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+				context
+			);
+			// @formatter:on
+
+			assertThat( variables.getAsBoolean( Key.of( "hasInputType" ) ) ).isTrue();
+			assertThat( variables.get( Key.of( "inputTypeVal" ) ) ).isEqualTo( "classification" );
+		} finally {
+			if ( hadBedrock ) {
+				providers.put( "Bedrock", priorBedrock );
+			} else {
+				providers.remove( "Bedrock" );
+			}
+		}
+	}
+
+	@Test
+	@DisplayName( "settings.providers.Bedrock.options are honoured, not just params" )
+	public void testConfigureHonoursMergedProviderOptions() {
+		// super.configure() merges providers.Bedrock.options into variables.options, but Bedrock
+		// then read region/credentials/baseURL/bearerToken out of the raw arguments.options, so
+		// module-level provider options had no effect.
+		IStruct	providers		= ( IStruct ) moduleRecord.settings.get( "providers" );
+		boolean	hadBedrock		= providers.containsKey( "Bedrock" );
+		Object	priorBedrock	= providers.get( "Bedrock" );
+
+		Struct	bedrockOptions	= new Struct();
+		bedrockOptions.put( "region", "eu-west-2" );
+		bedrockOptions.put( "baseURL", "https://bedrock.internal.example" );
+		Struct bedrockProviderSettings = new Struct();
+		bedrockProviderSettings.put( "options", bedrockOptions );
+		providers.put( "Bedrock", bedrockProviderSettings );
+
+		try {
+			// @formatter:off
+			executeWithTimeoutHandling(
+				"""
+					// Deliberately supply NO region and NO baseURL at the call site — both must
+					// come from the merged provider options.
+					provider = aiService(
+						"bedrock",
+						{
+							awsAccessKeyId: "%s",
+							awsSecretAccessKey: "%s"
+						}
+					)
+
+					resolvedEndpoint = provider.getBedrockEndpoint( "anthropic.claude-3-sonnet-20240229-v1:0" )
+				""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY ),
+				context
+			);
+			// @formatter:on
+
+			assertThat( variables.get( Key.of( "resolvedEndpoint" ) ).toString() ).contains( "bedrock.internal.example" );
+		} finally {
+			if ( hadBedrock ) {
+				providers.put( "Bedrock", priorBedrock );
+			} else {
+				providers.remove( "Bedrock" );
+			}
+		}
+	}
+
+	@Test
+	@DisplayName( "Container credentials read AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE (EKS Pod Identity)" )
+	public void testContainerAuthorizationTokenFile() throws java.io.IOException {
+		// EKS Pod Identity supplies AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE rather than the inline
+		// AWS_CONTAINER_AUTHORIZATION_TOKEN, and rotates the file's contents. Reading only the
+		// inline variable means the Authorization header is omitted and the request is rejected.
+		java.nio.file.Path tokenFile = java.nio.file.Files.createTempFile( "bxai-container-token", ".tmp" );
+		java.nio.file.Files.writeString( tokenFile, "pod-identity-token-value" );
+
+		System.setProperty( "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE", tokenFile.toAbsolutePath().toString() );
+		try {
+			// @formatter:off
+			executeWithTimeoutHandling(
+				"""
+					provider = aiService(
+						"bedrock",
+						{
+							awsAccessKeyId: "%s",
+							awsSecretAccessKey: "%s",
+							region: "%s"
+						}
+					)
+
+					resolvedToken = provider.containerAuthorizationToken()
+				""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+				context
+			);
+			// @formatter:on
+
+			assertThat( variables.get( Key.of( "resolvedToken" ) ) ).isEqualTo( "pod-identity-token-value" );
+		} finally {
+			System.clearProperty( "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE" );
+			java.nio.file.Files.deleteIfExists( tokenFile );
+		}
+	}
+
 	// -----------------------------------------------------------------------
 	// Chunk 2 — item 2: routing/encoding, path construction
 	// -----------------------------------------------------------------------
