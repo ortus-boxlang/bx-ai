@@ -21,6 +21,7 @@ import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,12 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	private String				awsSessionToken;
 	private String				awsRegion;
 
+	/** Prior values of the shared module settings this class overwrites, so they can be restored. */
+	private boolean				hadPriorProvider;
+	private Object				priorProvider;
+	private boolean				hadPriorApiKey;
+	private Object				priorApiKey;
+
 	@BeforeEach
 	public void beforeEach() {
 		// Load AWS credentials from .env file (same pattern as other provider tests)
@@ -49,6 +56,15 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		awsSecretAccessKey	= dotenv.get( "AWS_SECRET_ACCESS_KEY", "" );
 		awsSessionToken		= dotenv.get( "AWS_SESSION_TOKEN", "" );
 		awsRegion			= dotenv.get( "AWS_REGION", "us-east-1" );
+
+		// moduleRecord.settings is static and shared with every other test class in this Gradle
+		// worker. Overwriting provider/apiKey without restoring them leaked Bedrock's struct
+		// credentials into whichever class ran next — MockService would then receive a credential
+		// struct as its API key. Capture the prior values (including absence) for afterEach.
+		hadPriorProvider	= moduleRecord.settings.containsKey( "provider" );
+		priorProvider		= moduleRecord.settings.get( "provider" );
+		hadPriorApiKey		= moduleRecord.settings.containsKey( "apiKey" );
+		priorApiKey			= moduleRecord.settings.get( "apiKey" );
 
 		// Configure module settings with AWS credentials as a struct (Bedrock uses struct-based apiKey)
 		moduleRecord.settings.put( "provider", "bedrock" );
@@ -61,6 +77,22 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 			credentials.put( "awsSessionToken", awsSessionToken );
 		}
 		moduleRecord.settings.put( "apiKey", credentials );
+	}
+
+	@AfterEach
+	public void afterEach() {
+		// Restore the shared settings this class overwrote, so later test classes in the same
+		// worker don't inherit Bedrock's provider and credential struct.
+		if ( hadPriorProvider ) {
+			moduleRecord.settings.put( "provider", priorProvider );
+		} else {
+			moduleRecord.settings.remove( "provider" );
+		}
+		if ( hadPriorApiKey ) {
+			moduleRecord.settings.put( "apiKey", priorApiKey );
+		} else {
+			moduleRecord.settings.remove( "apiKey" );
+		}
 	}
 
 	private boolean hasAwsCredentials() {
