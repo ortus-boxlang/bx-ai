@@ -139,4 +139,25 @@ class {
 		return !isNull( variables.expiresAt ) && now() > variables.expiresAt
 	}
 
+	/**
+	 * Serialize to a plain struct (useful for logging, persistence, or transport). Keys
+	 * match this class's constructor named args 1:1, so `new HumanInteractionRequest(
+	 * argumentCollection: savedStruct )` round-trips it cleanly.
+	 */
+	struct function toStruct() {
+		return {
+			"id"              : variables.id,
+			"executionID"     : variables.executionID,
+			"interactionType" : variables.interactionType,
+			"title"           : variables.title,
+			"message"         : variables.message,
+			"allowedDecisions": variables.allowedDecisions,
+			"pendingAction"   : variables.pendingAction,
+			"inputSchema"     : variables.inputSchema,
+			"metadata"        : variables.metadata,
+			"createdAt"       : variables.createdAt,
+			"expiresAt"       : isNull( variables.expiresAt ) ? javacast( "null", "" ) : variables.expiresAt
+		}
+	}
+
 }

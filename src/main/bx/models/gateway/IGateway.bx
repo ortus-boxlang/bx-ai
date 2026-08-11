@@ -35,6 +35,7 @@ import bxModules.bxai.models.gateway.contracts.GatewayEvent;
 import bxModules.bxai.models.gateway.contracts.GatewayDeliveryResult;
 import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
 import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+import bxModules.bxai.models.gateway.contracts.InteractionPresentation;
 
 interface {
 
@@ -95,6 +96,23 @@ interface {
 	 * Default is a no-op — override for gateways that need explicit lifecycle management.
 	 */
 	default public void function stop(){
+		// no-op by default
+	}
+
+	/**
+	 * Link a durable store (any IAiMemory-shaped instance) for pending human-interaction
+	 * state, so it can survive past this gateway instance's own lifetime — e.g. a restart.
+	 * Called automatically by HumanInTheLoopMiddleware.onAttach() with the same checkpointer
+	 * the owning agent uses.
+	 *
+	 * Default is a no-op — gateways that never need to survive a restart (CliGateway,
+	 * MockGateway: their pending state is only ever meaningful within one process anyway)
+	 * simply ignore it. Override for a gateway whose "humanApproval" capability needs to
+	 * outlive the process that presented the request — see HttpGateway.
+	 *
+	 * @checkpointer Any IAiMemory instance supporting saveState/loadState/clearState
+	 */
+	default public void function setCheckpointer( required any checkpointer ){
 		// no-op by default
 	}
 
@@ -194,13 +212,13 @@ interface {
 	 * request, and the decision arrives later via an inbound event that parseHumanDecision()
 	 * turns into a HumanInteractionDecision.
 	 *
-	 * @request The interaction request to present
-	 * @context The GatewayContext identifying who/where to present it to
+	 * @humanRequest The interaction request to present
+	 * @context      The GatewayContext identifying who/where to present it to
 	 *
 	 * @return A GatewayDeliveryResult — for synchronous gateways this may already carry
 	 *         the human's decision via getDecision()/hasDecision()
 	 */
-	default public GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest request, required GatewayContext context ){
+	default public GatewayDeliveryResult function requestHumanInteraction( required HumanInteractionRequest humanRequest, required GatewayContext context ){
 		return GatewayDeliveryResult.failure( "Gateway [#getName()#] does not support human-in-the-loop interaction." );
 	}
 
@@ -217,6 +235,67 @@ interface {
 			type   : "GatewayCapabilityNotSupported",
 			message: "Gateway [#getName()#] does not support human-in-the-loop interaction."
 		);
+	}
+
+	/**
+	 * Build the normalized "what to render" content for a HumanInteractionRequest — title,
+	 * body, and one button per allowed decision. Chat-native gateways (Slack, Telegram, Teams,
+	 * ...) call this from their requestHumanInteraction() override and map the result into
+	 * their own wire format, instead of each one re-deriving title/body/button text itself.
+	 * Gateways with no "buttons" concept (CLI, generic HTTP) have no reason to call this.
+	 *
+	 * @humanRequest    The interaction request to build a presentation for
+	 * @maxBodyLength Truncate the body to this many characters, appending an ellipsis marker.
+	 *                0 (the default) means no truncation.
+	 *
+	 * @return An InteractionPresentation with title/body/buttons populated
+	 */
+	default public InteractionPresentation function presentInteraction( required HumanInteractionRequest humanRequest, numeric maxBodyLength = 0 ){
+		var title = len( arguments.humanRequest.getTitle() ) ? arguments.humanRequest.getTitle() : "Approval needed";
+		var body  = arguments.humanRequest.getMessage();
+
+		if ( arguments.maxBodyLength > 0 && len( body ) > arguments.maxBodyLength ) {
+			body = body.left( arguments.maxBodyLength ) & "…";
+		}
+
+		var buttons = arguments.humanRequest.getAllowedDecisions().map( ( decision ) => InteractionPresentation.buttonFor( decision ) );
+
+		return new InteractionPresentation( title: title, body: body, buttons: buttons );
+	}
+
+	/**
+	 * Build a short human-readable summary of a resolved HumanInteractionDecision — e.g. for a
+	 * gateway to post as a follow-up message or edit its original interactive message once
+	 * resolved. Chat-native gateways call this from wherever they finalize an interaction;
+	 * gateways with no follow-up concept (CLI, generic HTTP) have no reason to call this.
+	 *
+	 * @decision The resolved decision to summarize
+	 *
+	 * @return A short plain-text summary, e.g. "Approved by alice" or "Rejected: not now"
+	 */
+	default public string function presentResolution( required HumanInteractionDecision decision ){
+		var by = len( arguments.decision.getDecidedBy() ) ? " by #arguments.decision.getDecidedBy()#" : "";
+
+		if ( arguments.decision.isApprovedAlways() ) {
+			return "Approved always#by# — future requests for this tool will be auto-approved.";
+		}
+		if ( arguments.decision.isApprovedForSession() ) {
+			return "Approved for this session#by#.";
+		}
+		if ( arguments.decision.isApproved() ) {
+			return "Approved#by#.";
+		}
+		if ( arguments.decision.isRejected() ) {
+			var reason = len( arguments.decision.getReason() ) ? ": #arguments.decision.getReason()#" : "";
+			return "Rejected#by##reason#";
+		}
+		if ( arguments.decision.isEdit() ) {
+			return "Edited and approved#by#.";
+		}
+		if ( arguments.decision.isCancelled() ) {
+			return "Cancelled#by#.";
+		}
+		return "Resolved#by#.";
 	}
 
 }

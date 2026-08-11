@@ -261,6 +261,8 @@ class {
 			var propertySchema = {};
 			if( isObject( schema ) ) {
 				propertySchema = fromClass( schema );
+			} else if( isArray( schema ) ) {
+				propertySchema = buildPropertySchema( schema );
 			} else if( isStruct( schema ) ) {
 				propertySchema = fromStruct( schema );
 			} else {
@@ -472,6 +474,12 @@ class {
 	 */
 	private static struct function buildPropertySchema( required any value ) {
 		var propertySchema = {};
+
+		// Class instance - generate schema from class metadata (must check BEFORE isStruct
+		// because BoxLang class instances also satisfy isStruct())
+		if( isObject( arguments.value ) ) {
+			return fromClass( arguments.value );
+		}
 
 		// Nested struct
 		if( isStruct( arguments.value ) ) {

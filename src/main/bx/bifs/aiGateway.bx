@@ -39,7 +39,8 @@ class {
 	 * Creates a reference to a Gateway implementation this module (or an external module)
 	 * supports.
 	 *
-	 * @name    The gateway name to resolve (e.g. "mock", "cli", "slack")
+	 * @name    The gateway name to resolve — a core name ("mock", "cli", "http") or an
+	 *          externally-registered name provided by a gateway module (e.g. "slack")
 	 * @options A struct of options to configure the gateway instance
 	 *
 	 * @throws GatewayNotSupported if the gateway name is not supported

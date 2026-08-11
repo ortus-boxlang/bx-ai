@@ -1,0 +1,197 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * JDBC-backed IDecisionStore. Mirrors JdbcMemory's datasource/table/ensureTable() pattern —
+ * suitable for production/multi-node deployments where grants must be visible to every node
+ * and survive a restart.
+ *
+ * @since 4.0.0
+ */
+class implements="IDecisionStore" {
+
+	/**
+	 * The datasource name to use for database operations
+	 */
+	property name="datasource" type="string";
+
+	/**
+	 * The table name to use for storing decision grants
+	 */
+	property name="table" type="string";
+
+	static {
+		final DEFAULT_TABLE = "bx_ai_decision_grants"
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @datasource The datasource name
+	 * @table      The table name (optional, defaults to bx_ai_decision_grants)
+	 */
+	function init( required string datasource, string table = static.DEFAULT_TABLE ) {
+		if ( !len( arguments.datasource ) ) {
+			throw(
+				type   : "JdbcDecisionStore.MissingDatasource",
+				message: "Datasource is required for JdbcDecisionStore."
+			)
+		}
+		variables.datasource = arguments.datasource
+		variables.table      = arguments.table
+		ensureTable()
+		return this;
+	}
+
+	void function grant(
+		required string identity,
+		required string toolName,
+		string scope = "",
+		date expiresAt
+	) {
+		var key = buildKey( arguments.identity, arguments.toolName, arguments.scope )
+
+		try {
+			queryExecute(
+				"DELETE FROM #variables.table# WHERE grant_key = :key",
+				{ key: key },
+				{ datasource: variables.datasource }
+			)
+		} catch ( any ignored ) {}
+
+		queryExecute(
+			"INSERT INTO #variables.table# (grant_key, identity_id, tool_name, scope, granted_at, expires_at)
+			 VALUES (:key, :identityId, :toolName, :scope, CURRENT_TIMESTAMP, :expiresAt)",
+			{
+				key       : key,
+				identityId: arguments.identity,
+				toolName  : arguments.toolName,
+				scope     : arguments.scope,
+				expiresAt : isNull( arguments.expiresAt ) ? "" : dateTimeFormat( arguments.expiresAt, "yyyy-MM-dd HH:nn:ss" )
+			},
+			{ datasource: variables.datasource }
+		)
+	}
+
+	boolean function isGranted(
+		required string identity,
+		required string toolName,
+		string scope = ""
+	) {
+		var rows = queryExecute(
+			"SELECT expires_at FROM #variables.table# WHERE grant_key = :key",
+			{ key: buildKey( arguments.identity, arguments.toolName, arguments.scope ) },
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		if ( rows.isEmpty() ) {
+			return false
+		}
+
+		var expiresAt = rows[ 1 ].expires_at
+		if ( !isNull( expiresAt ) && len( expiresAt ) && now() > expiresAt ) {
+			revoke( arguments.identity, arguments.toolName, arguments.scope )
+			return false
+		}
+
+		return true
+	}
+
+	void function revoke(
+		required string identity,
+		required string toolName,
+		string scope = ""
+	) {
+		queryExecute(
+			"DELETE FROM #variables.table# WHERE grant_key = :key",
+			{ key: buildKey( arguments.identity, arguments.toolName, arguments.scope ) },
+			{ datasource: variables.datasource }
+		)
+	}
+
+	array function listGrants( required string identity ) {
+		var rows = queryExecute(
+			"SELECT tool_name, scope, granted_at, expires_at FROM #variables.table# WHERE identity_id = :identityId",
+			{ identityId: arguments.identity },
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		return rows
+			.filter( ( row ) => isNull( row.expires_at ) || !len( row.expires_at ) || now() <= row.expires_at )
+			.map( ( row ) => {
+				return {
+					"toolName" : row.tool_name,
+					"scope"    : row.scope,
+					"grantedAt": row.granted_at,
+					"expiresAt": row.expires_at
+				}
+			} )
+	}
+
+	// -------------------------------------------------------------------------
+	// Private Helpers
+	// -------------------------------------------------------------------------
+
+	private string function buildKey( required string identity, required string toolName, required string scope ) {
+		return arguments.identity & ":" & arguments.toolName & ":" & arguments.scope
+	}
+
+	private void function ensureTable() {
+		bx:dbinfo
+			name="tables"
+			type="tables"
+			datasource="#variables.datasource#" {}
+
+		var tableExists = false
+		for ( var tableInfo in tables ) {
+			if ( tableInfo.table_name.toLowerCase() == variables.table.toLowerCase() ) {
+				tableExists = true
+				break
+			}
+		}
+
+		if ( !tableExists ) {
+			createTable()
+		}
+	}
+
+	private void function createTable() {
+		var sql = "
+			CREATE TABLE #variables.table# (
+				grant_key VARCHAR(512) PRIMARY KEY,
+				identity_id VARCHAR(255) NOT NULL,
+				tool_name VARCHAR(255) NOT NULL,
+				scope VARCHAR(255),
+				granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				expires_at VARCHAR(50)
+			)
+		"
+
+		queryExecute(
+			sql,
+			{},
+			{ datasource: variables.datasource }
+		)
+
+		try {
+			queryExecute(
+				"CREATE INDEX idx_#variables.table#_identity ON #variables.table# (identity_id)",
+				{},
+				{ datasource: variables.datasource }
+			)
+		} catch ( any ignored ) {
+			// Index might already exist or DB might not support it — table creation is what matters
+		}
+	}
+
+}

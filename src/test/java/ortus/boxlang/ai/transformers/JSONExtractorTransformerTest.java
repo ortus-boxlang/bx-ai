@@ -351,4 +351,97 @@ public class JSONExtractorTransformerTest extends BaseIntegrationTest {
 		assertThat( keywords.get( 0 ) ).isEqualTo( "great" );
 	}
 
+	@Test
+	@DisplayName( "Fence marker inside a JSON string value is not mistaken for a real fence" )
+	public void testFenceMarkerInsideStringValue() {
+		runtime.executeSource(
+		    """
+		    import bxModules.bxai.models.transformers.JSONExtractorTransformer;
+
+		    transformer = new JSONExtractorTransformer();
+		    input = '{"code":"```json x ```"}';
+		    result = transformer.transform(input);
+		    """,
+		    context
+		);
+
+		var result = variables.getAsStruct( Key.of( "result" ) );
+		assertThat( result.get( "code" ) ).isEqualTo( "```json x ```" );
+	}
+
+	@Test
+	@DisplayName( "Prose mentions ```json``` then a real fence follows" )
+	public void testProseMentionsFenceThenRealFence() {
+		runtime.executeSource(
+		    """
+		    import bxModules.bxai.models.transformers.JSONExtractorTransformer;
+
+		    transformer = new JSONExtractorTransformer();
+		    input = 'I will reply in ```json``` format: ```json {"a":1} ```';
+		    result = transformer.transform(input);
+		    """,
+		    context
+		);
+
+		var result = variables.getAsStruct( Key.of( "result" ) );
+		assertThat( result.get( "a" ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Prose has a brace before the real JSON payload" )
+	public void testProseBraceBeforePayload() {
+		runtime.executeSource(
+		    """
+		    import bxModules.bxai.models.transformers.JSONExtractorTransformer;
+
+		    transformer = new JSONExtractorTransformer();
+		    input = 'Use {curly} like: {"a":1}';
+		    result = transformer.transform(input);
+		    """,
+		    context
+		);
+
+		var result = variables.getAsStruct( Key.of( "result" ) );
+		assertThat( result.get( "a" ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Extract a top-level JSON array" )
+	public void testTopLevelArray() {
+		runtime.executeSource(
+		    """
+		    import bxModules.bxai.models.transformers.JSONExtractorTransformer;
+
+		    transformer = new JSONExtractorTransformer();
+		    input = '[{"a":1}]';
+		    result = transformer.transform(input);
+		    """,
+		    context
+		);
+
+		var result = variables.getAsArray( Key.of( "result" ) );
+		assertThat( result.size() ).isEqualTo( 1 );
+		assertThat( ( ( IStruct ) result.get( 0 ) ).get( "a" ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Scalar JSON inputs preserve their type" )
+	public void testScalarInputsPreserveType() {
+		runtime.executeSource(
+		    """
+		    import bxModules.bxai.models.transformers.JSONExtractorTransformer;
+
+		    transformer = new JSONExtractorTransformer();
+		    stringResult  = transformer.transform('"hello"');
+		    numberResult  = transformer.transform('42');
+		    booleanResult = transformer.transform('true');
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsString( Key.of( "stringResult" ) ) ).isEqualTo( "hello" );
+		assertThat( ( ( Number ) variables.get( Key.of( "numberResult" ) ) ).intValue() ).isEqualTo( 42 );
+		assertThat( variables.getAsBoolean( Key.of( "booleanResult" ) ) ).isTrue();
+	}
+
 }

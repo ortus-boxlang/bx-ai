@@ -550,9 +550,9 @@ class {
 
 		if( arguments.stripImages ){
 			for( var m in reMatch( static.MARKDOWN_IMAGE_PATTERN, result ) ){
-				var url = reReplace( m, static.MARKDOWN_IMAGE_PATTERN, "\1" )
-				if( !isHostAllowed( url, arguments.allowedImageHosts ) ){
-					findings.append( { "type": "markdownImage", "match": m, "url": url } )
+				var matchUrl = reReplace( m, static.MARKDOWN_IMAGE_PATTERN, "\1" )
+				if( !isHostAllowed( matchUrl, arguments.allowedImageHosts ) ){
+					findings.append( { "type": "markdownImage", "match": m, "url": matchUrl } )
 					result = replace( result, m, "", "all" )
 				}
 			}
@@ -560,11 +560,11 @@ class {
 
 		if( arguments.stripLinks ){
 			for( var m in reMatch( static.MARKDOWN_LINK_PATTERN, result ) ){
-				var url = reReplace( m, static.MARKDOWN_LINK_PATTERN, "\1" )
-				if( !isHostAllowed( url, arguments.allowedLinkHosts ) ){
+				var matchUrl = reReplace( m, static.MARKDOWN_LINK_PATTERN, "\1" )
+				if( !isHostAllowed( matchUrl, arguments.allowedLinkHosts ) ){
 					// Rewrite [text](url) → text
 					var linkText = reReplace( m, "^\[([^\]]*)\].*$", "\1" )
-					findings.append( { "type": "markdownLink", "match": m, "url": url } )
+					findings.append( { "type": "markdownLink", "match": m, "url": matchUrl } )
 					result = replace( result, m, linkText, "all" )
 				}
 			}

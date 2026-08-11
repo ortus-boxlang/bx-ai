@@ -106,12 +106,11 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 
 		        mockSvc = aiService( "mock" )
 		        mockSvc.setResponses( [
-		            // Original attempt: toolA suspends before toolB runs
+		            // Original attempt: neither tool runs yet — the whole batch suspends together
+		            // once toolA (which needs approval) is seen, before any tool actually executes.
 		            { toolCalls: [ { name: "toolA", arguments: {} }, { name: "toolB", arguments: {} } ] },
-		            // Resume re-runs the agent from the checkpointed input: the LLM is asked again
-		            // and returns the same tool calls; this time resumeContext approves toolA
-		            { toolCalls: [ { name: "toolA", arguments: {} }, { name: "toolB", arguments: {} } ] },
-		            // Follow-up turn after both tool results are sent back
+		            // Resume finishes that same batch directly (no LLM replay) and continues into
+		            // the next turn once both tool results are sent back.
 		            "All done."
 		        ] )
 		        model = new AiModel( service: mockSvc )
@@ -161,7 +160,8 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		        mockSvc = aiService( "mock" )
 		        mockSvc.setResponses( [
 		            { toolCalls: [ { name: "toolA", arguments: {} } ] },
-		            { toolCalls: [ { name: "toolA", arguments: {} } ] },
+		            // Resume finishes the batch directly (no LLM replay) — this is the only other
+		            // scripted response needed, for the turn after the rejection is sent back.
 		            "Understood, I will not run toolA."
 		        ] )
 		        model = new AiModel( service: mockSvc )
@@ -191,6 +191,80 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 
 		assertThat( variables.getAsBoolean( Key.of( "isNormalCompletion" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "toolNotCalled" ) ) ).isTrue();
+	}
+
+	@DisplayName( "Resume with 'approve_always' through an async gateway records a durable grant that auto-approves a later, separate run" )
+	@Test
+	public void testResumeApproveAlwaysThroughAsyncGatewayRecordsGrant() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+				import bxModules.bxai.models.runnables.AiModel;
+
+				toolACalls = 0
+				toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+
+				mockSvc = aiService( "mock" )
+				mockSvc.setResponses( [
+					// Run 1: suspends (the Mock gateway is unscripted, so it's asynchronous)
+					{ toolCalls: [ { name: "toolA", arguments: {} } ] },
+					// Resume finishes the batch directly (no LLM replay) — approve_always
+					// resolves the pending item and records a durable grant
+					"Run 1 done.",
+					// Run 2 (separate thread, same identity): should auto-approve via the
+					// recorded grant and never suspend at all
+					{ toolCalls: [ { name: "toolA", arguments: {} } ] },
+					"Run 2 done."
+				] )
+				model = new AiModel( service: mockSvc )
+
+				gw = aiGateway( "mock" )
+				hitlMw = new HumanInTheLoopMiddleware(
+					toolsRequiringApproval: [ "toolA" ],
+					gateway               : gw,
+					decisionStore         : aiDecisionStore( "cache" )
+				)
+				checkpointer = aiMemory( "cache" )
+
+				agent = aiAgent(
+					model       : model,
+					tools       : [ toolA ],
+					middleware  : [ hitlMw ],
+					checkpointer: checkpointer,
+					checkpointTTL: 5
+				)
+
+				// Run 1: suspends — the gateway presented the request but nothing resolved it yet
+				r1 = agent.run( "please run toolA", {}, { threadId: "grant-test-t1", userId: "alice" } )
+				r1Suspended = isObject( r1 ) && r1.isSuspended()
+				presentedAfterRun1 = gw.getPendingInteractions().len()
+
+				// Resume with approve_always, attributing the decision to alice
+				finalResult1 = agent.resume( "approve_always", "grant-test-t1", {}, "alice", "" )
+				isFinal1 = finalResult1 == "Run 1 done."
+
+				// Run 2: a completely separate thread, same identity — the durable grant recorded
+				// on resume above should auto-approve this without ever presenting to the gateway
+				r2 = agent.run( "please run toolA again", {}, { threadId: "grant-test-t2", userId: "alice" } )
+				r2NotSuspended = !( isObject( r2 ) && r2.isSuspended() )
+				isFinal2 = r2 == "Run 2 done."
+				presentedAfterRun2 = gw.getPendingInteractions().len()
+
+				toolCalledTwice = toolACalls == 2
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "r1Suspended" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "presentedAfterRun1" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsBoolean( Key.of( "isFinal1" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "r2NotSuspended" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinal2" ) ) ).isTrue();
+		// Run 2 never presented to the gateway at all — the grant short-circuited it
+		assertThat( variables.getAsInteger( Key.of( "presentedAfterRun2" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsBoolean( Key.of( "toolCalledTwice" ) ) ).isTrue();
 	}
 
 	@DisplayName( "A rejected tool call does not block the rest of the batch — an unrelated, safe tool call still runs" )
@@ -272,6 +346,115 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "neitherToolRan" ) ) ).isTrue();
 	}
 
+	@DisplayName( "Two tool calls needing approval in the same turn suspend ONCE, as one batch — not one at a time" )
+	@Test
+	public void testMultiplePendingToolCallsSuspendAsOneBatch() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            // Both tool calls need approval — the whole turn suspends together, before
+		            // EITHER tool runs, instead of stopping after evaluating only toolA.
+		            { toolCalls: [ { name: "toolA", arguments: {} }, { name: "toolB", arguments: {} } ] }
+		        ] )
+		        model = new AiModel( service: mockSvc )
+
+		        hitlMw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" )
+		        checkpointer = aiMemory( "cache" )
+
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ hitlMw ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        result = agent.run( "please run toolA and toolB", {}, { threadId: "hitl-test-batch-suspend" } )
+
+		        isSuspended     = isObject( result ) && result.isSuspended()
+		        pendingActions  = result.getData().pendingActions ?: []
+		        bothPending     = pendingActions.len() == 2
+		        pendingNames    = pendingActions.map( ( a ) => a.toolName ).sort( "textnocase" ).toList()
+		        neitherRanYet   = toolACalls == 0 && toolBCalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isSuspended" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothPending" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "pendingNames" ) ).toString() ).isEqualTo( "toolA,toolB" );
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+	}
+
+	@DisplayName( "Resume with an array of per-call decisions resolves a batch suspension individually" )
+	@Test
+	public void testResumeWithArrayOfDecisionsResolvesBatchIndividually() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "toolA", arguments: {} }, { name: "toolB", arguments: {} } ] },
+		            // Resume finishes the batch directly (no LLM replay) — one more scripted
+		            // response for the turn after both tool results are sent back.
+		            "toolA ran, toolB was rejected."
+		        ] )
+		        model = new AiModel( service: mockSvc )
+
+		        hitlMw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" )
+		        checkpointer = aiMemory( "cache" )
+
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ hitlMw ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        agent.run( "please run toolA and toolB", {}, { threadId: "hitl-test-batch-array-resume" } )
+
+		        // One decision per pending tool call, in the order they were presented (toolA, toolB)
+		        finalResult = agent.resume(
+		            [
+		                { decision: "approve" },
+		                { decision: "reject", reason: "not needed" }
+		            ],
+		            "hitl-test-batch-array-resume"
+		        )
+
+		        isFinalText  = finalResult == "toolA ran, toolB was rejected."
+		        toolARan     = toolACalls == 1
+		        toolBSkipped = toolBCalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolARan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBSkipped" ) ) ).isTrue();
+	}
+
 	@DisplayName( "Streaming: a suspended tool call emits a middleware_stop sentinel and saves a checkpoint" )
 	@Test
 	public void testStreamSuspendEmitsSentinelAndSavesCheckpoint() {
@@ -322,6 +505,83 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "sawMiddlewareStop" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "toolNotCalled" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "checkpointSaved" ) ) ).isTrue();
+	}
+
+	@DisplayName( "Streaming: two pending tool calls suspend as ONE batch, resumeStream() with an array resolves them individually" )
+	@Test
+	public void testStreamMultiplePendingToolCallsBatchAndArrayResume() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "toolA", arguments: {} }, { name: "toolB", arguments: {} } ] },
+		            // resumeStream() finishes the batch directly (no LLM replay)
+		            "toolA ran, toolB was rejected."
+		        ] )
+		        model = new AiModel( service: mockSvc )
+
+		        hitlMw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" )
+		        checkpointer = aiMemory( "cache" )
+
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ hitlMw ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        chunks = []
+		        agent.stream(
+		            ( chunk ) => { chunks.append( chunk ) },
+		            "please run toolA and toolB",
+		            {},
+		            { threadId: "hitl-test-stream-batch" }
+		        )
+
+		        stopChunk       = chunks.filter( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" ).first()
+		        isSuspended     = !isNull( stopChunk ) && stopChunk.result.isSuspended()
+		        pendingActions  = !isNull( stopChunk ) ? ( stopChunk.result.getData().pendingActions ?: [] ) : []
+		        bothPending     = pendingActions.len() == 2
+		        neitherRanYet   = toolACalls == 0 && toolBCalls == 0
+
+		        resumeChunks = []
+		        agent.resumeStream(
+		            ( chunk ) => { resumeChunks.append( chunk ) },
+		            [
+		                { decision: "approve" },
+		                { decision: "reject", reason: "not needed" }
+		            ],
+		            "hitl-test-stream-batch"
+		        )
+
+		        finalText = resumeChunks
+		            .filter( c => isStruct( c ) && c.keyExists( "choices" ) )
+		            .map( c => c.choices.first().delta.content ?: "" )
+		            .toList( "" )
+		        isFinalText  = finalText == "toolA ran, toolB was rejected."
+		        toolARan     = toolACalls == 1
+		        toolBSkipped = toolBCalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isSuspended" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothPending" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolARan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBSkipped" ) ) ).isTrue();
 	}
 
 	// ---- Claude / Bedrock / Cohere: newly-wired beforeToolCall/afterToolCall coverage ----
@@ -431,6 +691,161 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.getAsBoolean( Key.of( "gotEditedArgs" ) ) ).isTrue();
+	}
+
+	@DisplayName( "ClaudeService: two tool calls needing approval suspend as ONE batch, resume with an array resolves them individually" )
+	@Test
+	public void testClaudeBatchSuspendAndArrayResume() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+
+		        provider = aiService( "claude", { apiKey: "dummy-key" } )
+		        model    = new AiModel( service: provider )
+
+		        callCount = 0
+		        cannedLLM = {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                callCount++
+		                if ( callCount == 1 ) {
+		                    return {
+		                        "content": [
+		                            { "type": "tool_use", "id": "call_a", "name": "toolA", "input": {} },
+		                            { "type": "tool_use", "id": "call_b", "name": "toolB", "input": {} }
+		                        ],
+		                        "stop_reason": "tool_use",
+		                        "usage": { "input_tokens": 5, "output_tokens": 5 }
+		                    }
+		                }
+		                return {
+		                    "content": [ { "type": "text", "text": "toolA ran, toolB was rejected." } ],
+		                    "stop_reason": "end_turn",
+		                    "usage": { "input_tokens": 5, "output_tokens": 5 }
+		                }
+		            }
+		        }
+
+		        hitlMw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" )
+		        checkpointer = aiMemory( "cache" )
+
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ hitlMw, cannedLLM ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        suspendedResult = agent.run( "please run toolA and toolB", {}, { threadId: "claude-batch-test" } )
+		        isSuspended     = isObject( suspendedResult ) && suspendedResult.isSuspended()
+		        pendingActions  = suspendedResult.getData().pendingActions ?: []
+		        bothPending     = pendingActions.len() == 2
+		        neitherRanYet   = toolACalls == 0 && toolBCalls == 0
+
+		        finalResult = agent.resume(
+		            [
+		                { decision: "approve" },
+		                { decision: "reject", reason: "not needed" }
+		            ],
+		            "claude-batch-test"
+		        )
+
+		        isFinalText  = finalResult == "toolA ran, toolB was rejected."
+		        toolARan     = toolACalls == 1
+		        toolBSkipped = toolBCalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isSuspended" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothPending" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolARan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBSkipped" ) ) ).isTrue();
+	}
+
+	@DisplayName( "ClaudeService: chatStream()'s resumeToolBatchStream() finishes a batch from a resume ledger — no LLM replay" )
+	@Test
+	public void testClaudeStreamResumeToolBatchFinishesLedgerDirectly() {
+		// Deterministic / credential-free by construction: unlike a normal suspend, this test
+		// never touches Claude's SSE transport at all — ClaudeService.chatStream() has no
+		// wrapLLMCall seam around its initial HTTP call (unlike chat()), so an *initial* streamed
+		// tool-call batch can't be simulated without a real network call. resumeToolBatchStream()
+		// itself has no such limitation: it starts from an already-resolved resume ledger (exactly
+		// what AiAgent.resumeStream() hands it) and only touches the network for its final
+		// follow-up turn, which — like chat() — IS wrapLLMCall-wrapped. This test drives that
+		// method directly by pre-seeding _resumeContext, the same shape AiAgent.resumeStream()
+		// builds, without needing AiAgent or a real suspend/resume round-trip.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B", () => { toolBCalls++; return "B done" } )
+
+		        provider = aiService( "claude", { apiKey: "dummy-key" } )
+
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "please run toolA and toolB" ),
+		            { model: "claude-sonnet-4-5", tools: [ toolA, toolB ] },
+		            {
+		                provider: "claude",
+		                _resumeContext: {
+		                    assistantMessage: {
+		                        "role": "assistant",
+		                        "content": [
+		                            { "type": "tool_use", "id": "call_a", "name": "toolA", "input": {} },
+		                            { "type": "tool_use", "id": "call_b", "name": "toolB", "input": {} }
+		                        ]
+		                    },
+		                    resumeLedger: [
+		                        { toolName: "toolA", status: "execute" },
+		                        { toolName: "toolB", status: "blocked", reason: "not needed" }
+		                    ]
+		                }
+		            }
+		        )
+		        chatRequest.addMiddleware( {
+		            // Only the follow-up turn after tool results are sent back touches the network
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                return {
+		                    "content": [ { "type": "text", "text": "toolA ran, toolB was rejected." } ],
+		                    "stop_reason": "end_turn",
+		                    "usage": { "input_tokens": 5, "output_tokens": 5 }
+		                }
+		            }
+		        } )
+
+		        chunks = []
+		        provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+		        sawMiddlewareStop = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+		        finalText = chunks
+		            .filter( c => isStruct( c ) && c.keyExists( "choices" ) )
+		            .map( c => c.choices.first().delta.content ?: "" )
+		            .toList( "" )
+		        isFinalText  = finalText == "toolA ran, toolB was rejected."
+		        toolARan     = toolACalls == 1
+		        toolBSkipped = toolBCalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawMiddlewareStop" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolARan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBSkipped" ) ) ).isTrue();
 	}
 
 	@DisplayName( "BedrockService: beforeToolCall now fires and a suspend stops the tool chain" )
@@ -548,6 +963,93 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "gotEditedArgs" ) ) ).isTrue();
 	}
 
+	@DisplayName( "BedrockService: two tool calls needing approval suspend as ONE batch, resume with an array resolves them individually" )
+	@Test
+	public void testBedrockBatchSuspendAndArrayResume() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+
+		        provider = aiService(
+		            "bedrock",
+		            {
+		                awsAccessKeyId    : "AKIAIOSFODNN7EXAMPLE",
+		                awsSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+		                region            : "us-east-1"
+		            }
+		        )
+		        model = new AiModel( service: provider, params: { model: "anthropic.claude-3-sonnet-20240229-v1:0" } )
+
+		        callCount = 0
+		        cannedLLM = {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                callCount++
+		                if ( callCount == 1 ) {
+		                    return {
+		                        "content": [
+		                            { "type": "tool_use", "id": "call_a", "name": "toolA", "input": {} },
+		                            { "type": "tool_use", "id": "call_b", "name": "toolB", "input": {} }
+		                        ],
+		                        "stop_reason": "tool_use",
+		                        "usage": { "input_tokens": 5, "output_tokens": 5 }
+		                    }
+		                }
+		                return {
+		                    "content": [ { "type": "text", "text": "toolA ran, toolB was rejected." } ],
+		                    "stop_reason": "end_turn",
+		                    "usage": { "input_tokens": 5, "output_tokens": 5 }
+		                }
+		            }
+		        }
+
+		        hitlMw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" )
+		        checkpointer = aiMemory( "cache" )
+
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ hitlMw, cannedLLM ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        suspendedResult = agent.run( "please run toolA and toolB", {}, { threadId: "bedrock-batch-test" } )
+		        isSuspended     = isObject( suspendedResult ) && suspendedResult.isSuspended()
+		        pendingActions  = suspendedResult.getData().pendingActions ?: []
+		        bothPending     = pendingActions.len() == 2
+		        neitherRanYet   = toolACalls == 0 && toolBCalls == 0
+
+		        finalResult = agent.resume(
+		            [
+		                { decision: "approve" },
+		                { decision: "reject", reason: "not needed" }
+		            ],
+		            "bedrock-batch-test"
+		        )
+
+		        isFinalText  = finalResult == "toolA ran, toolB was rejected."
+		        toolARan     = toolACalls == 1
+		        toolBSkipped = toolBCalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isSuspended" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothPending" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolARan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBSkipped" ) ) ).isTrue();
+	}
+
 	@DisplayName( "CohereService: beforeToolCall now fires and a suspend stops the tool chain" )
 	@Test
 	public void testCohereToolCallSuspendStopsChain() {
@@ -647,6 +1149,82 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "gotEditedArgs" ) ) ).isTrue();
 	}
 
+	@DisplayName( "CohereService: two tool calls needing approval suspend as ONE batch, resume with an array resolves them individually" )
+	@Test
+	public void testCohereBatchSuspendAndArrayResume() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+
+		        provider = aiService( "cohere", { apiKey: "dummy-key" } )
+		        model    = new AiModel( service: provider )
+
+		        callCount = 0
+		        cannedLLM = {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                callCount++
+		                if ( callCount == 1 ) {
+		                    return {
+		                        "text"      : "",
+		                        "tool_calls": [
+		                            { "name": "toolA", "parameters": {} },
+		                            { "name": "toolB", "parameters": {} }
+		                        ]
+		                    }
+		                }
+		                // The follow-up request after tool results are sent back
+		                return { "text": "toolA ran, toolB was rejected." }
+		            }
+		        }
+
+		        hitlMw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" )
+		        checkpointer = aiMemory( "cache" )
+
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ hitlMw, cannedLLM ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        suspendedResult = agent.run( "please run toolA and toolB", {}, { threadId: "cohere-batch-test" } )
+		        isSuspended     = isObject( suspendedResult ) && suspendedResult.isSuspended()
+		        pendingActions  = suspendedResult.getData().pendingActions ?: []
+		        bothPending     = pendingActions.len() == 2
+		        neitherRanYet   = toolACalls == 0 && toolBCalls == 0
+
+		        finalResult = agent.resume(
+		            [
+		                { decision: "approve" },
+		                { decision: "reject", reason: "not needed" }
+		            ],
+		            "cohere-batch-test"
+		        )
+
+		        isFinalText  = finalResult == "toolA ran, toolB was rejected."
+		        toolARan     = toolACalls == 1
+		        toolBSkipped = toolBCalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isSuspended" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothPending" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolARan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBSkipped" ) ) ).isTrue();
+	}
+
 	// ---- Streaming: hard-stop terminal results (suspend/cancel) must short-circuit; reject must not ----
 
 	@DisplayName( "Streaming: a cancelled tool call short-circuits without firing afterAgentRun/storeInMemory" )
@@ -728,9 +1306,10 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 
 		        chunks = []
 		        agent = aiAgent(
-		            model     : model,
-		            tools     : [ toolA ],
-		            middleware: [ hitlMw ]
+		            model       : model,
+		            tools       : [ toolA ],
+		            middleware  : [ hitlMw ],
+		            checkpointer: aiMemory( "cache" )
 		        )
 
 		        // Simulate a resume-time rejection by pre-seeding the resumeContext directly via

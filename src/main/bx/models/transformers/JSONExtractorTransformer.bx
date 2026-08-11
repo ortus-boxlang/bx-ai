@@ -145,44 +145,85 @@ class extends="BaseTransformer" {
 	 * @return Text without markdown code blocks
 	 */
 	private string function stripMarkdownCodeBlocks( required string text ) {
-		var result = arguments.text.trim()
+		var original = arguments.text.trim()
 
-		// Check for ```json ... ``` pattern
-		if ( result.findNoCase( "```json" ) > 0 ) {
-			// Find the start and end positions
-			var startPos = result.findNoCase( "```json" )
-			var contentStart = startPos + 7 // Length of "```json"
-			// Skip any whitespace after ```json
-			while ( contentStart <= len( result ) && mid( result, contentStart, 1 ).trim() == "" ) {
-				contentStart++
-			}
-			// Find closing ```
-			var endPos = result.find( "```", contentStart )
-			if ( endPos > 0 ) {
-				return mid( result, contentStart, endPos - contentStart ).trim()
-			}
+		// Check for ```json ... ``` pattern(s). A fence marker can appear more than once
+		// (inside a quoted JSON string value, or mentioned in prose) so every occurrence is
+		// tried in order and only kept if the candidate actually deserializes as JSON.
+		var jsonFenceResult = extractValidJSONFence( original, "```json" )
+		if ( len( jsonFenceResult ) > 0 ) {
+			return jsonFenceResult
 		}
 
 		// Check for ``` ... ``` pattern (no language)
-		if ( result.startsWith( "```" ) ) {
+		if ( original.startsWith( "```" ) ) {
 			var contentStart = 4 // Position after ```
 			// Skip any whitespace
-			while ( contentStart <= len( result ) && mid( result, contentStart, 1 ).trim() == "" ) {
+			while ( contentStart <= len( original ) && mid( original, contentStart, 1 ).trim() == "" ) {
 				contentStart++
 			}
 			// Find closing ```
-			var endPos = result.find( "```", contentStart )
+			var endPos = original.find( "```", contentStart )
 			if ( endPos > 0 ) {
-				return mid( result, contentStart, endPos - contentStart ).trim()
+				var candidate = mid( original, contentStart, endPos - contentStart ).trim()
+				if ( isJSON( candidate ) ) {
+					return candidate
+				}
 			}
 		}
 
 		// Remove single backticks around JSON-like content
-		if ( result.startsWith( "`" ) && result.endsWith( "`" ) && len( result ) > 2 ) {
-			return mid( result, 2, len( result ) - 2 ).trim()
+		if ( original.startsWith( "`" ) && original.endsWith( "`" ) && len( original ) > 2 ) {
+			var candidate = mid( original, 2, len( original ) - 2 ).trim()
+			if ( isJSON( candidate ) ) {
+				return candidate
+			}
 		}
 
-		return result.trim()
+		// No fenced candidate parsed as valid JSON — fall through with the ORIGINAL, untouched
+		// text so findJSONInText can scan it directly instead of working from a mangled slice.
+		return original
+	}
+
+	/**
+	 * Find every occurrence of a markdown fence marker (e.g. "```json") and return the first
+	 * fenced candidate block that deserializes as valid JSON. Occurrences that don't close, or
+	 * whose content isn't valid JSON, are skipped in favor of the next occurrence.
+	 *
+	 * @text The text to search
+	 * @fenceMarker The opening fence marker to look for (e.g. "```json")
+	 *
+	 * @return The first valid JSON candidate found inside a fence, or "" if none parsed
+	 */
+	private string function extractValidJSONFence( required string text, required string fenceMarker ) {
+		var searchFrom = 1
+		var textLen = len( arguments.text )
+
+		while ( searchFrom <= textLen ) {
+			var startPos = arguments.text.findNoCase( arguments.fenceMarker, searchFrom )
+			if ( startPos == 0 ) {
+				break
+			}
+
+			var contentStart = startPos + len( arguments.fenceMarker )
+			// Skip any whitespace after the fence marker
+			while ( contentStart <= textLen && mid( arguments.text, contentStart, 1 ).trim() == "" ) {
+				contentStart++
+			}
+
+			var endPos = arguments.text.find( "```", contentStart )
+			if ( endPos > 0 ) {
+				var candidate = mid( arguments.text, contentStart, endPos - contentStart ).trim()
+				if ( len( candidate ) > 0 && isJSON( candidate ) ) {
+					return candidate
+				}
+			}
+
+			// This occurrence didn't yield valid JSON - keep scanning for the next one
+			searchFrom = startPos + len( arguments.fenceMarker )
+		}
+
+		return ""
 	}
 
 	/**
@@ -206,26 +247,62 @@ class extends="BaseTransformer" {
 
 		// Try array first if it comes before object (or object not found)
 		if ( arrayPos > 0 && ( arrayPos < objectPos || objectPos == 0 ) ) {
-			var extracted = extractBracedContent( content, arrayPos, "[", "]" )
-			if ( len( extracted ) > 0 && isJSON( extracted ) ) {
+			var extracted = scanForValidBracedContent( content, "[", "]" )
+			if ( len( extracted ) > 0 ) {
+				return extracted
+			}
+
+			extracted = scanForValidBracedContent( content, "{", "}" )
+			if ( len( extracted ) > 0 ) {
+				return extracted
+			}
+		} else if ( objectPos > 0 ) {
+			// Try object first, then fall back to array
+			var extracted = scanForValidBracedContent( content, "{", "}" )
+			if ( len( extracted ) > 0 ) {
+				return extracted
+			}
+
+			extracted = scanForValidBracedContent( content, "[", "]" )
+			if ( len( extracted ) > 0 ) {
 				return extracted
 			}
 		}
 
-		// Try object
-		if ( objectPos > 0 ) {
-			var extracted = extractBracedContent( content, objectPos, "{", "}" )
-			if ( len( extracted ) > 0 && isJSON( extracted ) ) {
-				return extracted
-			}
-		}
+		return ""
+	}
 
-		// If object failed, try array again
-		if ( arrayPos > 0 && arrayPos > objectPos ) {
-			var extracted = extractBracedContent( content, arrayPos, "[", "]" )
+	/**
+	 * Scan a string for every occurrence of openChar and attempt extractBracedContent at each,
+	 * retrying at the next occurrence until one produces a valid JSON candidate. Bounded by the
+	 * string length since each retry starts strictly after the previous occurrence.
+	 *
+	 * @text The text to search
+	 * @openChar The opening character
+	 * @closeChar The closing character
+	 *
+	 * @return The first valid JSON candidate found, or "" if none parsed
+	 */
+	private string function scanForValidBracedContent(
+		required string text,
+		required string openChar,
+		required string closeChar
+	) {
+		var searchFrom = 1
+		var textLen = len( arguments.text )
+
+		while ( searchFrom <= textLen ) {
+			var pos = arguments.text.find( arguments.openChar, searchFrom )
+			if ( pos == 0 ) {
+				break
+			}
+
+			var extracted = extractBracedContent( arguments.text, pos, arguments.openChar, arguments.closeChar )
 			if ( len( extracted ) > 0 && isJSON( extracted ) ) {
 				return extracted
 			}
+
+			searchFrom = pos + 1
 		}
 
 		return ""

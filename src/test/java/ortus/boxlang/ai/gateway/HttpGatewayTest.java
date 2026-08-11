@@ -140,4 +140,157 @@ public class HttpGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "secondAttemptThrew" ) ) ).isTrue();
 	}
 
+	// ---- Durability: a pending interaction survives moving to a brand new gateway instance ----
+
+	@DisplayName( "setCheckpointer(): a pending interaction is resolvable from a brand new gateway instance" )
+	@Test
+	public void testInteractionSurvivesGatewayRestart() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				cp = aiMemory( "cache" )
+
+				// "Process 1": presents an interaction, then is discarded — nothing else
+				// references it.
+				gw1 = aiGateway( "http", { secret: "test-secret" } )
+				gw1.setCheckpointer( cp )
+				interactionRequest = new HumanInteractionRequest( executionID: "run-restart", pendingAction: { toolName: "deleteRecord" } )
+				ctx = new GatewayContext( gateway: "http", threadID: "restart-thread", userID: "alice" )
+				gw1.requestHumanInteraction( interactionRequest, ctx )
+
+				// "Restart": a fresh gateway instance, same checkpointer, no in-memory
+				// knowledge of gw1's interaction at all.
+				gw2 = aiGateway( "http", { secret: "test-secret" } )
+				gw2.setCheckpointer( cp )
+
+				hydrated = gw2.getInteraction( interactionRequest.getId() )
+				foundAfterRestart = !isNull( hydrated )
+				threadSurvived = !isNull( hydrated ) && hydrated.context.getThreadID() == "restart-thread"
+
+				decision = new HumanInteractionDecision( requestID: interactionRequest.getId(), decision: "approve", decidedBy: "alice" )
+				resolved = gw2.resolveInteraction( interactionRequest.getId(), decision )
+				resolvedByNewInstance = resolved.isApproved()
+
+				// A THIRD instance should see the resolution durably too, and reject a
+				// second resolve attempt exactly as it would within a single process.
+				gw3 = aiGateway( "http", { secret: "test-secret" } )
+				gw3.setCheckpointer( cp )
+				finalRecord = gw3.getInteraction( interactionRequest.getId() )
+				decisionSurvived = !isNull( finalRecord.decision ) && finalRecord.decision.getDecidedBy() == "alice"
+
+				secondResolveThrew = false
+				try {
+					gw3.resolveInteraction( interactionRequest.getId(), decision )
+				} catch ( any e ) {
+					secondResolveThrew = true
+				}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "foundAfterRestart" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "threadSurvived" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resolvedByNewInstance" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "decisionSurvived" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "secondResolveThrew" ) ) ).isTrue();
+	}
+
+	@DisplayName( "without setCheckpointer(): behavior is unchanged — in-memory only, nothing survives a new instance" )
+	@Test
+	public void testNoCheckpointerMeansNoDurability() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				gw1 = aiGateway( "http", { secret: "test-secret" } )
+				interactionRequest = new HumanInteractionRequest( executionID: "run-no-cp" )
+				ctx = new GatewayContext( gateway: "http", threadID: "no-cp-thread" )
+				gw1.requestHumanInteraction( interactionRequest, ctx )
+
+				gw2 = aiGateway( "http", { secret: "test-secret" } )
+				notFound = isNull( gw2.getInteraction( interactionRequest.getId() ) )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "notFound" ) ) ).isTrue();
+	}
+
+	@DisplayName( "MockGateway/CliGateway inherit setCheckpointer() as a harmless no-op" )
+	@Test
+	public void testOtherGatewaysIgnoreSetCheckpointer() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				mockGw = aiGateway( "mock" )
+				cliGw  = aiGateway( "cli" )
+				cp     = aiMemory( "cache" )
+
+				didNotThrow = true
+				try {
+					mockGw.setCheckpointer( cp )
+					cliGw.setCheckpointer( cp )
+				} catch ( any e ) {
+					didNotThrow = false
+				}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "didNotThrow" ) ) ).isTrue();
+	}
+
+	@DisplayName( "setCheckpointer(): survives a real File-backed store, not just an in-process cache" )
+	@Test
+	public void testInteractionSurvivesWithFileBackedStore() {
+		// Same reasoning as HumanInteractionCoordinatorTest's file-backed test: this proves
+		// gw2 reads what gw1 wrote purely from a JSON file on disk, not anything shared
+		// in-process — the actual claim "survives a restart" rests on.
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+				import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+				import bxModules.bxai.models.gateway.contracts.GatewayContext;
+
+				storeDir = getTempDirectory() & "/bxai-http-gateway-file-restart-" & createUUID()
+
+				gw1 = aiGateway( "http", { secret: "test-secret" } )
+				gw1.setCheckpointer( aiMemory( memory: "file", config: { directoryPath: storeDir } ) )
+				interactionRequest = new HumanInteractionRequest( executionID: "run-file-restart", pendingAction: { toolName: "deleteRecord" } )
+				ctx = new GatewayContext( gateway: "http", threadID: "file-restart-thread", userID: "alice" )
+				gw1.requestHumanInteraction( interactionRequest, ctx )
+
+				checkpointFileExists = fileExists( storeDir & "/checkpoints/hitl_http-interaction_" & interactionRequest.getId().reReplace( "[^a-zA-Z0-9_\\-]", "_", "all" ) & ".json" )
+
+				gw2 = aiGateway( "http", { secret: "test-secret" } )
+				gw2.setCheckpointer( aiMemory( memory: "file", config: { directoryPath: storeDir } ) )
+
+				decision = new HumanInteractionDecision( requestID: interactionRequest.getId(), decision: "approve", decidedBy: "alice" )
+				resolved = gw2.resolveInteraction( interactionRequest.getId(), decision )
+				resolvedByNewInstance = resolved.isApproved()
+
+				gw3 = aiGateway( "http", { secret: "test-secret" } )
+				gw3.setCheckpointer( aiMemory( memory: "file", config: { directoryPath: storeDir } ) )
+				finalRecord = gw3.getInteraction( interactionRequest.getId() )
+				decisionSurvived = !isNull( finalRecord.decision ) && finalRecord.decision.getDecidedBy() == "alice"
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "checkpointFileExists" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resolvedByNewInstance" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "decisionSurvived" ) ) ).isTrue();
+	}
+
 }
