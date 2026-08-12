@@ -1,0 +1,92 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Lets an external caller cancel or steer a run already in flight, via a CancellationToken
+ * the caller keeps a handle to.
+ *
+ * Checks the token at beforeLLMCall and beforeToolCall — the finest-grained checkpoints a
+ * provider's tool-loop fires (confirmed identical across OpenAI/Claude/Bedrock/Cohere/Gemini).
+ * There is no mid-token-generation interruption: cancel()/steer() take effect at the next
+ * checkpoint, not instantly.
+ *
+ *   - Cancelled: the run stops with AiMiddlewareResult.cancel( token.getCancelReason() ), the
+ *     same terminal result any other middleware (e.g. MaxToolCallsMiddleware) already produces.
+ *   - Steered: every message queued via token.steer() is appended to the live AiChatRequest's
+ *     messages and picked up on the request's next round-trip — the run continues, nothing is lost.
+ *
+ * Usage:
+ *   token = new CancellationToken()
+ *   agent = aiAgent( middleware: [ new RunControlMiddleware( token ) ] )
+ *   // ... later, from wherever holds the token:
+ *   token.cancel()
+ *   // — or —
+ *   token.steer( "Actually, focus on X instead." )
+ */
+import bxModules.bxai.models.middleware.BaseAiMiddleware;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+import bxModules.bxai.models.runnables.CancellationToken;
+
+class extends="BaseAiMiddleware" {
+
+	/**
+	 * The token this middleware checks at every checkpoint.
+	 */
+	property name="token";
+
+	/**
+	 * Constructor
+	 *
+	 * @token The CancellationToken to check at each checkpoint
+	 */
+	function init( required CancellationToken token ) {
+		variables.token = arguments.token
+		variables.name = "Run Control Middleware"
+		variables.description = "Lets an external caller cancel or steer this run via a CancellationToken."
+
+		return this
+	}
+
+	// ==================== Hooks ====================
+
+	AiMiddlewareResult function beforeLLMCall( required struct context ) {
+		return checkControl( context )
+	}
+
+	AiMiddlewareResult function beforeToolCall( required struct context ) {
+		return checkControl( context )
+	}
+
+	// ==================== Private Helpers ====================
+
+	/**
+	 * Check the token and act on it: cancel stops the run; a steer splices queued messages
+	 * into the live chat request and lets the run continue.
+	 */
+	private AiMiddlewareResult function checkControl( required struct context ) {
+		if ( variables.token.isCancelled() ) {
+			return AiMiddlewareResult.cancel( variables.token.getCancelReason() )
+		}
+
+		if ( variables.token.hasPendingSteer() && arguments.context.keyExists( "chatRequest" ) ) {
+			var messages = arguments.context.chatRequest.getMessages()
+			variables.token.consumeSteerMessages().each( ( input ) => {
+				messages.append( isSimpleValue( input ) ? { role: "user", content: input } : input )
+			} )
+			arguments.context.chatRequest.setMessages( messages )
+		}
+
+		return AiMiddlewareResult.continue()
+	}
+
+}

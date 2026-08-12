@@ -1,0 +1,108 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * A handle an external caller keeps to cancel or steer an in-flight AiAgent run.
+ *
+ * Nothing in AiAgent/the providers checks this on its own — attach RunControlMiddleware
+ * (constructed with this token) to the agent, and it reads the token at every
+ * beforeLLMCall/beforeToolCall checkpoint the provider tool-loop already fires. Those are
+ * the finest-grained checkpoints that exist in this codebase: there is no mid-token-generation
+ * interruption, so cancel()/steer() only take effect at the next such boundary, not instantly.
+ *
+ * Usage:
+ *   token = new CancellationToken()
+ *   agent = aiAgent( middleware: [ new RunControlMiddleware( token ) ] )
+ *
+ *   // from wherever holds the token — another thread, a later tick of an event loop, etc:
+ *   token.cancel()                                    // next checkpoint stops the run
+ *   // — or —
+ *   token.steer( "Actually, focus on X instead." )     // next checkpoint splices this in, run continues
+ *
+ * One token is meant for one run — create a fresh CancellationToken per agent.run()/stream()
+ * call you want independent control over, the same way you'd create a fresh threadId.
+ */
+class {
+
+	/**
+	 * True once cancel() has been called. Checked, never reset — a cancelled token stays cancelled.
+	 */
+	property name="cancelled" type="boolean" default=false;
+
+	/**
+	 * The reason passed to cancel(), surfaced on the terminal AiMiddlewareResult.cancel(reason).
+	 */
+	property name="cancelReason" type="string" default="";
+
+	/**
+	 * Messages queued by steer(), not yet applied to a live AiChatRequest.
+	 */
+	property name="pendingSteerMessages" type="array" default=[];
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.cancelled           = false
+		variables.cancelReason        = ""
+		variables.pendingSteerMessages = []
+		return this
+	}
+
+	/**
+	 * Mark this token cancelled. Idempotent — calling it again just overwrites the reason.
+	 *
+	 * @reason Human-readable explanation, surfaced on the run's terminal AiMiddlewareResult
+	 */
+	CancellationToken function cancel( string reason = "Cancelled by caller." ){
+		variables.cancelled    = true
+		variables.cancelReason = arguments.reason
+		return this
+	}
+
+	/**
+	 * Whether cancel() has been called on this token.
+	 */
+	boolean function isCancelled(){
+		return variables.cancelled
+	}
+
+	/**
+	 * Queue a message to be spliced into the run at the next checkpoint, without cancelling it.
+	 *
+	 * @input Either a string (wrapped as a user-role message) or a full message struct ({role, content})
+	 */
+	CancellationToken function steer( required any input ){
+		variables.pendingSteerMessages.append( arguments.input )
+		return this
+	}
+
+	/**
+	 * Whether steer() has queued anything not yet consumed.
+	 */
+	boolean function hasPendingSteer(){
+		return !variables.pendingSteerMessages.isEmpty()
+	}
+
+	/**
+	 * Drain and return every queued steer message, clearing the queue so nothing is applied twice.
+	 *
+	 * @return Array of whatever was passed to steer() — strings and/or message structs, in call order
+	 */
+	array function consumeSteerMessages(){
+		var pending = variables.pendingSteerMessages
+		variables.pendingSteerMessages = []
+		return pending
+	}
+
+}
