@@ -320,6 +320,8 @@ class {
 			"beforeAIAgentRun",
 			"afterAIAgentRun",
 			"onAIAgentCreate",
+			"onAIAgentRunCancel",
+			"onAIAgentRunSteer",
 
 			// Model & Provider Events
 			"beforeAIModelInvoke",

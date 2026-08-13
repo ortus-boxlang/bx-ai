@@ -805,7 +805,11 @@ class extends="AiBaseRunnable" {
 	 * @return True if an active run was found and cancelled, false if nothing was active
 	 */
 	boolean function cancelRun( required string threadId, string reason = "Cancelled by caller." ) {
-		return variables.runControlMiddleware.cancel( arguments.threadId, arguments.reason );
+		var wasCancelled = variables.runControlMiddleware.cancel( arguments.threadId, arguments.reason )
+		if ( wasCancelled ) {
+			BoxAnnounce( "onAIAgentRunCancel", { agent: this, threadId: arguments.threadId, reason: arguments.reason } )
+		}
+		return wasCancelled;
 	}
 
 	/**
@@ -819,7 +823,11 @@ class extends="AiBaseRunnable" {
 	 * @return True if an active run was found and steered, false if nothing was active
 	 */
 	boolean function steerRun( required string threadId, required any input ) {
-		return variables.runControlMiddleware.steer( arguments.threadId, arguments.input );
+		var wasSteered = variables.runControlMiddleware.steer( arguments.threadId, arguments.input )
+		if ( wasSteered ) {
+			BoxAnnounce( "onAIAgentRunSteer", { agent: this, threadId: arguments.threadId, input: arguments.input } )
+		}
+		return wasSteered;
 	}
 
 	/**
