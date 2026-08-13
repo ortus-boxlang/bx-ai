@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 Added
 
+- **`AiAgent.cancelRun( threadId )` / `steerRun( threadId, message )`**: cancel or steer an agent run already in flight, addressed purely by `threadId` — no token to construct or wire up, every agent supports this out of the box. Takes effect at the run's next `beforeLLMCall`/`beforeToolCall` checkpoint: cancelling stops the run with a terminal `AiMiddlewareResult.cancel()`; steering splices a new message into the live request without restarting anything already in progress. Both return `false` as a safe no-op when the thread has no run currently in flight.
 - **Batch tool-call approvals into one suspension, resume without replaying the LLM call**: when a turn requests multiple tool calls needing approval, they now suspend together as ONE checkpoint instead of one at a time (the rest used to be silently skipped). `agent.resume()`/`resumeStream()` accept a single decision or an array of per-call decisions, and finish the batch directly — no LLM replay, nothing already executed runs twice. Consistent across OpenAI, Claude, Bedrock, and Cohere; streaming batching covers OpenAI and Claude (the only two with streaming tool-call support today).
 - `HumanInTheLoopMiddleware` now defaults its `IDecisionStore` from `settings.hitl.decisionStore` instead of never having one.
 - `CliGateway`'s approval prompt now offers `approve_always`/`approve_session`, not just approve/reject/quit.

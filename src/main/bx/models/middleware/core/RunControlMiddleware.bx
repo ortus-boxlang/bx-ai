@@ -1,0 +1,135 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Internal middleware backing AiAgent.cancelRun()/steerRun() — not constructed or configured
+ * directly; every AiAgent auto-attaches one of these in its own init(). There is no public
+ * API on this class meant for end users; use AiAgent.cancelRun( threadId )/steerRun( threadId,
+ * message ) instead. See CancellationToken.bx for the object this owns per thread.
+ *
+ * Lifecycle:
+ *   - beforeAgentRun: creates a fresh CancellationToken for this run's threadId, tracks it
+ *     under that threadId, and attaches it to the run's eventual request (via context.options,
+ *     the same struct AiAgent later hands to AiModel.run()/AiChatRequest's constructor — so
+ *     it's reachable as chatRequest.getCancellationToken() once the request exists).
+ *   - beforeLLMCall / beforeToolCall: the finest-grained checkpoints a provider's tool-loop
+ *     fires (confirmed identical across OpenAI/Claude/Bedrock/Cohere/Gemini). Reads the token
+ *     off context.chatRequest and honours it: cancelled stops the run with a terminal
+ *     AiMiddlewareResult.cancel(reason); a pending steer splices its queued messages into the
+ *     live request and lets the run continue. There is no mid-token-generation interruption —
+ *     effect lands at the next checkpoint, not instantly.
+ *   - afterAgentRun: releases the threadId entry — the tracked-token map only ever holds
+ *     entries for runs currently in flight, not history.
+ *
+ * A threadId with no active run (already finished, or a threadId was never passed to
+ * run()/stream() to begin with) has nothing to find — cancel()/steer() are safe no-ops then.
+ */
+import bxModules.bxai.models.middleware.BaseAiMiddleware;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+import bxModules.bxai.models.runnables.CancellationToken;
+
+class extends="BaseAiMiddleware" {
+
+	/**
+	 * java.util.concurrent.ConcurrentHashMap<String,CancellationToken> threadId -> the token
+	 * for that thread's currently in-flight run. Only ever holds entries for active runs.
+	 */
+	property name="tokens";
+
+	/**
+	 * Constructor
+	 */
+	function init() {
+		variables.tokens = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init()
+		variables.name = "Run Control Middleware"
+		variables.description = "Internal — backs AiAgent.cancelRun()/steerRun()."
+
+		return this
+	}
+
+	// ==================== Hooks ====================
+
+	AiMiddlewareResult function beforeAgentRun( required struct context ) {
+		var token = new CancellationToken()
+		variables.tokens.put( arguments.context.threadId, token )
+
+		// context.options is the SAME struct reference AiAgent later passes to
+		// AiModel.run()/AiChatRequest's constructor — mutating it here is how the token
+		// becomes reachable as chatRequest.getCancellationToken() once that request exists.
+		arguments.context.options.cancellationToken = token
+
+		return AiMiddlewareResult.continue()
+	}
+
+	AiMiddlewareResult function afterAgentRun( required struct context ) {
+		variables.tokens.remove( arguments.context.threadId )
+		return AiMiddlewareResult.continue()
+	}
+
+	AiMiddlewareResult function beforeLLMCall( required struct context ) {
+		return checkControl( context )
+	}
+
+	AiMiddlewareResult function beforeToolCall( required struct context ) {
+		return checkControl( context )
+	}
+
+	// ==================== AiAgent Pass-Throughs ====================
+	// Called only by AiAgent.cancelRun()/steerRun() — see those doc comments for the public contract.
+
+	boolean function cancel( required string threadId, string reason = "Cancelled by caller." ) {
+		var token = variables.tokens.get( arguments.threadId )
+		if ( isNull( token ) ) {
+			return false
+		}
+		token.cancel( arguments.reason )
+		return true
+	}
+
+	boolean function steer( required string threadId, required any input ) {
+		var token = variables.tokens.get( arguments.threadId )
+		if ( isNull( token ) ) {
+			return false
+		}
+		token.steer( arguments.input )
+		return true
+	}
+
+	// ==================== Private Helpers ====================
+
+	private AiMiddlewareResult function checkControl( required struct context ) {
+		if ( !arguments.context.keyExists( "chatRequest" ) ) {
+			return AiMiddlewareResult.continue()
+		}
+
+		var token = arguments.context.chatRequest.getCancellationToken()
+		if ( isNull( token ) ) {
+			return AiMiddlewareResult.continue()
+		}
+
+		if ( token.isCancelled() ) {
+			return AiMiddlewareResult.cancel( token.getCancelReason() )
+		}
+
+		if ( token.hasPendingSteer() ) {
+			var messages = arguments.context.chatRequest.getMessages()
+			token.consumeSteerMessages().each( ( input ) => {
+				messages.append( isSimpleValue( input ) ? { role: "user", content: input } : input )
+			} )
+			arguments.context.chatRequest.setMessages( messages )
+		}
+
+		return AiMiddlewareResult.continue()
+	}
+
+}

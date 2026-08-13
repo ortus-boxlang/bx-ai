@@ -21,6 +21,7 @@ import bxModules.bxai.models.runnables.*;
 import bxModules.bxai.models.middleware.AiMiddlewareResult;
 import bxModules.bxai.models.middleware.IAiMiddleware;
 import bxModules.bxai.models.middleware.StructMiddlewareAdapter;
+import bxModules.bxai.models.middleware.core.RunControlMiddleware;
 import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
 
 class extends="AiBaseRunnable" {
@@ -175,6 +176,10 @@ class extends="AiBaseRunnable" {
 		arguments.subAgents.each( subAgent => addSubAgent( subAgent ) )
 		// Middleware setup + Checkpointer
 		withMiddleware( arguments.middleware )
+		// Every agent can cancelRun()/steerRun() out of the box — internal, always attached,
+		// zero cost for callers who never use it. See RunControlMiddleware.bx.
+		variables.runControlMiddleware = new RunControlMiddleware()
+		withMiddleware( variables.runControlMiddleware )
 		// MCP Server Setup
 		withMCPServers( arguments.mcpServers )
 
@@ -321,6 +326,9 @@ class extends="AiBaseRunnable" {
 		var effectiveParams = variables.params.duplicate().append( arguments.params )
 		// Merge options (including returnFormat)
 		var effectiveOptions = variables.options.duplicate().append( arguments.options )
+		// Guarantee threadId is always present on effectiveOptions — and therefore on the
+		// request it flows into — even when the caller didn't pass one and it was auto-generated
+		effectiveOptions.threadId = threadId
 		// Create the agent context of execution
 		var agentContext = {
 			runId			: runId,
@@ -450,6 +458,9 @@ class extends="AiBaseRunnable" {
 		var effectiveParams = variables.params.duplicate().append( arguments.params )
 		// Merge options
 		var effectiveOptions = variables.options.duplicate().append( arguments.options )
+		// Guarantee threadId is always present on effectiveOptions — and therefore on the
+		// request it flows into — even when the caller didn't pass one and it was auto-generated
+		effectiveOptions.threadId = threadId
 		// Fire beforeAgentRun middleware (inbound)
 		var agentContext = {
 			agent    : this,
@@ -776,6 +787,39 @@ class extends="AiBaseRunnable" {
 	 */
 	any function getCheckpointer() {
 		return variables.checkpointer;
+	}
+
+	/**
+	 * Cancel the run currently active for a thread, from anywhere — a webhook handler, an
+	 * admin endpoint, any code path, with no reference to the original run()/stream() call
+	 * kept around. Addresses the run purely by threadId, the same identifier already passed
+	 * to run()/stream() via options.threadId.
+	 *
+	 * Takes effect at the run's next beforeLLMCall/beforeToolCall checkpoint, not instantly —
+	 * there is no mid-token-generation interruption. Safe no-op if nothing is active for that
+	 * thread (already finished, or a threadId was never passed to begin with).
+	 *
+	 * @threadId The thread whose active run should be cancelled
+	 * @reason   Human-readable reason, surfaced on the run's terminal result
+	 *
+	 * @return True if an active run was found and cancelled, false if nothing was active
+	 */
+	boolean function cancelRun( required string threadId, string reason = "Cancelled by caller." ) {
+		return variables.runControlMiddleware.cancel( arguments.threadId, arguments.reason );
+	}
+
+	/**
+	 * Steer the run currently active for a thread — splices a new message into it at the
+	 * next checkpoint without restarting anything already in progress. Same addressing and
+	 * timing caveats as cancelRun(); safe no-op if nothing is active for that thread.
+	 *
+	 * @threadId The thread whose active run should be steered
+	 * @input    A string (wrapped as a user-role message) or a full message struct
+	 *
+	 * @return True if an active run was found and steered, false if nothing was active
+	 */
+	boolean function steerRun( required string threadId, required any input ) {
+		return variables.runControlMiddleware.steer( arguments.threadId, arguments.input );
 	}
 
 	/**
