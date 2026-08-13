@@ -53,6 +53,154 @@ public class RunControlMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "steerResult" ) ) ).isFalse();
 	}
 
+	@DisplayName( "onAIAgentRunCancel fires with the agent/threadId/reason when cancelRun() actually cancels a run" )
+	@Test
+	public void testOnAIAgentRunCancelFires() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolACalls = 0
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "toolA", arguments: {} } ] },
+		            "Final answer."
+		        ] )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
+
+		        agent = aiAgent( model: model )
+
+		        eventFired      = false
+		        capturedThreadId = ""
+		        capturedReason   = ""
+		        capturedAgent    = ""
+		        BoxRegisterInterceptor(
+		            function( data ) {
+		                eventFired       = true
+		                capturedThreadId = data.threadId
+		                capturedReason   = data.reason
+		                capturedAgent    = data.agent.getAgentName()
+		            },
+		            "onAIAgentRunCancel"
+		        )
+
+		        toolA = aiTool( "toolA", "Tool A", () => {
+		            toolACalls++
+		            agent.cancelRun( "thread-cancel-event", "stop for event test" )
+		            return "A done"
+		        } )
+		        agent.withTools( [ toolA ] )
+
+		        result = agent.run( "do toolA", {}, { threadId: "thread-cancel-event" } )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "eventFired" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "capturedThreadId" ) ) ).isEqualTo( "thread-cancel-event" );
+		assertThat( variables.getAsString( Key.of( "capturedReason" ) ) ).isEqualTo( "stop for event test" );
+		assertThat( variables.getAsString( Key.of( "capturedAgent" ) ) ).isEqualTo( "BxAi" );
+	}
+
+	@DisplayName( "onAIAgentRunCancel does NOT fire when cancelRun() is a no-op (nothing active for that thread)" )
+	@Test
+	public void testOnAIAgentRunCancelDoesNotFireOnNoOp() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [ "hi there" ] )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
+		        agent = aiAgent( model: model )
+
+		        eventFired = false
+		        BoxRegisterInterceptor(
+		            function( data ) { eventFired = true },
+		            "onAIAgentRunCancel"
+		        )
+
+		        cancelResult = agent.cancelRun( "never-started-thread" )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "cancelResult" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "eventFired" ) ) ).isFalse();
+	}
+
+	@DisplayName( "onAIAgentRunSteer fires with the agent/threadId/input when steerRun() actually steers a run" )
+	@Test
+	public void testOnAIAgentRunSteerFires() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "toolA", arguments: {} } ] },
+		            "Final answer with BANANA mentioned."
+		        ] )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
+
+		        agent = aiAgent( model: model )
+
+		        eventFired       = false
+		        capturedThreadId = ""
+		        capturedInput    = ""
+		        BoxRegisterInterceptor(
+		            function( data ) {
+		                eventFired       = true
+		                capturedThreadId = data.threadId
+		                capturedInput    = data.input
+		            },
+		            "onAIAgentRunSteer"
+		        )
+
+		        toolA = aiTool( "toolA", "Tool A", () => {
+		            agent.steerRun( "thread-steer-event", "Please also mention BANANA." )
+		            return "A done"
+		        } )
+		        agent.withTools( [ toolA ] )
+
+		        result = agent.run( "do toolA", {}, { threadId: "thread-steer-event" } )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "eventFired" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "capturedThreadId" ) ) ).isEqualTo( "thread-steer-event" );
+		assertThat( variables.getAsString( Key.of( "capturedInput" ) ) ).isEqualTo( "Please also mention BANANA." );
+	}
+
+	@DisplayName( "onAIAgentRunSteer does NOT fire when steerRun() is a no-op (nothing active for that thread)" )
+	@Test
+	public void testOnAIAgentRunSteerDoesNotFireOnNoOp() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [ "hi there" ] )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
+		        agent = aiAgent( model: model )
+
+		        eventFired = false
+		        BoxRegisterInterceptor(
+		            function( data ) { eventFired = true },
+		            "onAIAgentRunSteer"
+		        )
+
+		        steerResult = agent.steerRun( "never-started-thread", "hello" )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "steerResult" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "eventFired" ) ) ).isFalse();
+	}
+
 	@DisplayName( "cancelRun() mid-loop stops the run before the next tool call; already-run tool call still ran" )
 	@Test
 	public void testCancelRunMidLoop() {
