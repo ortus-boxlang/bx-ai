@@ -137,6 +137,106 @@ public class RunControlMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "foundSteered" ) ) ).isTrue();
 	}
 
+	@DisplayName( "cancelRun() mid-loop stops a stream()ing run before the next tool call, emitting a middleware_stop cancel sentinel" )
+	@Test
+	public void testCancelRunMidLoopStreaming() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolACalls = 0
+		        toolBCalls = 0
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "toolA", arguments: {} } ] },
+		            { toolCalls: [ { name: "toolB", arguments: {} } ] },
+		            "Final answer."
+		        ] )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
+
+		        agent = aiAgent( model: model )
+
+		        toolA = aiTool( "toolA", "Tool A", () => {
+		            toolACalls++
+		            agent.cancelRun( "thread-cancel-mid-loop-stream", "stop after A" )
+		            return "A done"
+		        } )
+		        toolB = aiTool( "toolB", "Tool B", () => { toolBCalls++; return "B done" } )
+		        agent.withTools( [ toolA, toolB ] )
+
+		        chunks = []
+		        agent.stream(
+		            ( chunk ) => { chunks.append( chunk ) },
+		            "do toolA then toolB",
+		            {},
+		            { threadId: "thread-cancel-mid-loop-stream" }
+		        )
+
+		        sawCancelSentinel = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" && c.result.isCancelled() )
+		        aRanBNot          = toolACalls == 1 && toolBCalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawCancelSentinel" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "aRanBNot" ) ) ).isTrue();
+	}
+
+	@DisplayName( "steerRun() mid-loop injects a message into a stream()ing run and it completes normally, reflecting it" )
+	@Test
+	public void testSteerRunMidLoopStreaming() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "toolA", arguments: {} } ] },
+		            "Final answer with BANANA mentioned."
+		        ] )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
+
+		        agent = aiAgent( model: model )
+
+		        toolA = aiTool( "toolA", "Tool A", () => {
+		            agent.steerRun( "thread-steer-mid-loop-stream", "Please also mention BANANA." )
+		            return "A done"
+		        } )
+		        agent.withTools( [ toolA ] )
+
+		        chunks = []
+		        agent.stream(
+		            ( chunk ) => { chunks.append( chunk ) },
+		            "do toolA",
+		            {},
+		            { threadId: "thread-steer-mid-loop-stream" }
+		        )
+
+		        streamedContent = ""
+		        chunks.each( ( c ) => {
+		            if ( isStruct( c ) && c.keyExists( "choices" ) ) {
+		                streamedContent &= ( c.choices.first().delta.content ?: "" )
+		            }
+		        } )
+		        gotFinalAnswer = streamedContent contains "BANANA"
+
+		        // Confirm the steered message actually reached the 2nd request the mock received
+		        lastMessages = mockSvc.getReceivedRequests().last().messages
+		        foundSteered = false
+		        lastMessages.each( ( m ) => {
+		            if ( isSimpleValue( m.content ?: "" ) && m.content contains "BANANA" ) {
+		                foundSteered = true
+		            }
+		        } )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "gotFinalAnswer" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "foundSteered" ) ) ).isTrue();
+	}
+
 	@DisplayName( "Two threads running on the same agent don't cross-contaminate: cancelling one doesn't affect the other" )
 	@Test
 	public void testTwoThreadsDoNotCrossContaminate() {
