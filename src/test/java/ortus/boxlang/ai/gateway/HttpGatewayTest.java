@@ -293,4 +293,86 @@ public class HttpGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "decisionSurvived" ) ) ).isTrue();
 	}
 
+	@DisplayName( "onGatewayMessageReceived fires from parseInbound() with the request's threadId" )
+	@Test
+	public void testOnGatewayMessageReceivedFires() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				gw = aiGateway( "http", { secret: "test-secret" } )
+
+				fired          = false
+				capturedThread = ""
+				BoxRegisterInterceptor(
+					function( data ) {
+						fired          = true
+						capturedThread = data.threadId
+					},
+					"onGatewayMessageReceived"
+				)
+
+				gw.parseInbound( { text: "hello", userID: "U1", conversationID: "C1", threadID: "T1" } )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "fired" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "capturedThread" ) ) ).isEqualTo( "T1" );
+	}
+
+	@DisplayName( "onGatewayMessageSent fires from deliver() even when no callbackUrl is configured" )
+	@Test
+	public void testOnGatewayMessageSentFires() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				gw = aiGateway( "http", { secret: "test-secret" } )
+
+				fired          = false
+				capturedThread = ""
+				BoxRegisterInterceptor(
+					function( data ) {
+						fired          = true
+						capturedThread = data.threadId
+					},
+					"onGatewayMessageSent"
+				)
+
+				event = new bxModules.bxai.models.gateway.contracts.GatewayEvent( type: "response.completed", data: { content: "hi" } )
+				ctx   = new bxModules.bxai.models.gateway.contracts.GatewayContext( threadID: "T2" )
+				gw.deliver( event, ctx )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "fired" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "capturedThread" ) ) ).isEqualTo( "T2" );
+	}
+
+	@DisplayName( "isRunning() tracks start()/stop() via the inherited BaseGateway template method, even with no real connect step overridden" )
+	@Test
+	public void testIsRunningTracksLifecycle() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				gw = aiGateway( "http", { secret: "test-secret" } )
+				notRunningInitially = !gw.isRunning()
+
+				gw.start()
+				runningAfterStart = gw.isRunning()
+
+				gw.stop()
+				notRunningAfterStop = !gw.isRunning()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "notRunningInitially" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "runningAfterStart" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "notRunningAfterStop" ) ) ).isTrue();
+	}
+
 }

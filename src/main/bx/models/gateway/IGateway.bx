@@ -130,7 +130,14 @@ interface {
 	 * For a gateway that overrides onMessage(), this is where inbound delivery actually
 	 * begins. Default is a no-op — override for gateways that need explicit lifecycle
 	 * management. A gateway that overrides this is responsible for also making isRunning()
-	 * reflect the change (see isRunning() below).
+	 * reflect the change (see isRunning() below) and, if it wants observability, firing
+	 * onGatewayConnect.
+	 *
+	 * A gateway that extends BaseGateway gets all of this for free and should NOT override
+	 * start() directly — BaseGateway.start()/stop() are template methods that already track
+	 * isRunning() and fire onGatewayConnect/onGatewayDisconnect; override BaseGateway's
+	 * onStart()/onStop() instead for connect/disconnect logic. This raw IGateway default
+	 * only matters for a gateway implementing IGateway directly, bypassing BaseGateway.
 	 */
 	default public void function start(){
 		// no-op by default
@@ -139,9 +146,8 @@ interface {
 	/**
 	 * Stop the gateway and release any resources acquired in start().
 	 * For a gateway that overrides onMessage(), this is where inbound delivery stops.
-	 * Default is a no-op — override for gateways that need explicit lifecycle management.
-	 * A gateway that overrides this is responsible for also making isRunning() reflect the
-	 * change (see isRunning() below).
+	 * Default is a no-op — override for gateways that need explicit lifecycle management,
+	 * same BaseGateway.onStop() note as start()/onStart() above.
 	 */
 	default public void function stop(){
 		// no-op by default
@@ -150,10 +156,10 @@ interface {
 	/**
 	 * Whether this gateway is currently started (start() called, stop() not called since).
 	 * Meaningless — and always false — for a gateway that never overrides start()/stop(),
-	 * since it has no lifecycle to be "running." A gateway that DOES override start()/stop()
-	 * is responsible for keeping variables.running in sync (this default just reads it);
-	 * there is no automatic wiring — matches how getName()/getDescription() read variables
-	 * the concrete gateway is responsible for setting.
+	 * since it has no lifecycle to be "running." A gateway extending BaseGateway gets this
+	 * correctly wired automatically (see start()'s doc comment); a gateway implementing
+	 * IGateway directly is responsible for keeping variables.running in sync itself — this
+	 * default just reads it, there is no automatic wiring at this level.
 	 *
 	 * @return boolean
 	 */
@@ -198,6 +204,13 @@ interface {
 	/**
 	 * Parse a raw inbound platform payload into one or more normalized GatewayMessage(s).
 	 *
+	 * An overriding implementation should fire onGatewayMessageReceived once per returned
+	 * GatewayMessage — payload `{ gateway: this, message, threadId: message.getContext().
+	 * getThreadID(), userId: message.getContext().getUserID(), conversationId: message.
+	 * getContext().getConversationID() }` — so observability/audit consumers can see who
+	 * sent what, on which thread, without needing GatewaySession in the picture at all.
+	 * MockGateway/HttpGateway are the reference implementations of this convention.
+	 *
 	 * @payload        The raw inbound payload (shape is gateway-specific)
 	 * @requestContext Transport-level context (headers, IP, etc.), shape is gateway-specific
 	 *
@@ -216,6 +229,11 @@ interface {
 
 	/**
 	 * Deliver a normalized GatewayEvent to the platform this gateway represents.
+	 *
+	 * An overriding implementation should fire onGatewayMessageSent after attempting
+	 * delivery — payload `{ gateway: this, event, context, result, threadId: context.
+	 * getThreadID() }` — same observability rationale as parseInbound()'s
+	 * onGatewayMessageReceived. MockGateway/HttpGateway are the reference implementations.
 	 *
 	 * @event   The normalized event to deliver
 	 * @context The GatewayContext identifying who/where to deliver it to

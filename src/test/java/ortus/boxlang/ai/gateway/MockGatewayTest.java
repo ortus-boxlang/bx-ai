@@ -207,4 +207,102 @@ public class MockGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "survived" ) ) ).isTrue();
 	}
 
+	@DisplayName( "onGatewayConnect/onGatewayDisconnect fire on start()/stop(), only on a real state transition" )
+	@Test
+	public void testConnectDisconnectEventsFireOnceOnRealTransitions() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				gw = aiGateway( "mock" )
+
+				connectCount    = 0
+				disconnectCount = 0
+				connectedGateway = ""
+				BoxRegisterInterceptor(
+					function( data ) { connectCount++; connectedGateway = data.gateway },
+					"onGatewayConnect"
+				)
+				BoxRegisterInterceptor(
+					function( data ) { disconnectCount++ },
+					"onGatewayDisconnect"
+				)
+
+				gw.start()
+				gw.start()   // already running — must NOT fire a second onGatewayConnect
+
+				gw.stop()
+				gw.stop()    // already stopped — must NOT fire a second onGatewayDisconnect
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "connectCount" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "disconnectCount" ) ) ).isEqualTo( 1 );
+	}
+
+	@DisplayName( "onGatewayMessageReceived fires once per parsed message with gateway/threadId/userId/conversationId" )
+	@Test
+	public void testOnGatewayMessageReceivedFires() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				gw = aiGateway( "mock" )
+
+				fired          = false
+				capturedThread = ""
+				capturedUser   = ""
+				capturedConvo  = ""
+				BoxRegisterInterceptor(
+					function( data ) {
+						fired          = true
+						capturedThread = data.threadId
+						capturedUser   = data.userId
+						capturedConvo  = data.conversationId
+					},
+					"onGatewayMessageReceived"
+				)
+
+				gw.parseInbound( { text: "hello", userID: "U1", conversationID: "C1", threadID: "T1" } )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "fired" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "capturedThread" ) ) ).isEqualTo( "T1" );
+		assertThat( variables.getAsString( Key.of( "capturedUser" ) ) ).isEqualTo( "U1" );
+		assertThat( variables.getAsString( Key.of( "capturedConvo" ) ) ).isEqualTo( "C1" );
+	}
+
+	@DisplayName( "onGatewayMessageSent fires on deliver() with the threadId from the delivery context" )
+	@Test
+	public void testOnGatewayMessageSentFires() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				gw = aiGateway( "mock" )
+
+				fired          = false
+				capturedThread = ""
+				BoxRegisterInterceptor(
+					function( data ) {
+						fired          = true
+						capturedThread = data.threadId
+					},
+					"onGatewayMessageSent"
+				)
+
+				event = new bxModules.bxai.models.gateway.contracts.GatewayEvent( type: "response.completed", data: { content: "hi" } )
+				ctx   = new bxModules.bxai.models.gateway.contracts.GatewayContext( threadID: "T2" )
+				gw.deliver( event, ctx )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "fired" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "capturedThread" ) ) ).isEqualTo( "T2" );
+	}
+
 }

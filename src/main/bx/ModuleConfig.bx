@@ -415,6 +415,10 @@ class {
 			"onGatewayRegistryUnregister",
 			"onGatewayCreate",
 			"onGatewaySessionCreate",
+			"onGatewayConnect",
+			"onGatewayDisconnect",
+			"onGatewayMessageReceived",
+			"onGatewayMessageSent",
 
 			// Decision Store Events
 			"onAiDecisionStoreCreate"

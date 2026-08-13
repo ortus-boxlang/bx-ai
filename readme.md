@@ -808,6 +808,23 @@ session.start()
 
 Lifecycle and observability: `session.isRunning()` / `gateway.isRunning()` report whether `start()`/`stop()` have been called; `session.getActiveThreadIds()` lists threads with a turn currently in flight; `session.getQueueDepth( threadId )` reports how many messages are buffered for a thread.
 
+Every gateway fires interception points on connect/disconnect and inbound/outbound messages — independent of `GatewaySession`, since a gateway can be used directly (e.g. with `HumanInTheLoopMiddleware`) without one:
+
+```javascript
+BoxRegisterInterceptor( ( data ) => {
+    log.info( "Message on thread #data.threadId# from user #data.userId#" )
+}, "onGatewayMessageReceived" )
+```
+
+| Event | Fires from | Payload |
+|---|---|---|
+| `onGatewayConnect` | `start()`, only on a real not-running → running transition | `{ gateway }` |
+| `onGatewayDisconnect` | `stop()`, only on a real running → not-running transition | `{ gateway }` |
+| `onGatewayMessageReceived` | `parseInbound()`, once per parsed message | `{ gateway, message, threadId, userId, conversationId }` |
+| `onGatewayMessageSent` | `deliver()` | `{ gateway, event, context, result, threadId }` |
+
+A gateway extending `BaseGateway` gets `onGatewayConnect`/`onGatewayDisconnect` and `isRunning()` tracking automatically — override `onStart()`/`onStop()` for connect/disconnect logic, never `start()`/`stop()` directly.
+
 ## 🛠️ Global Functions (BIFs)
 
 | Function | Purpose | Parameters | Return Type | Async Support |

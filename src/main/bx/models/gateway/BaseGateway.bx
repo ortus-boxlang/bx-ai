@@ -26,6 +26,13 @@
  * capabilities (e.g. "inboundMessages", "outboundMessages", "streaming",
  * "interactiveActions", "humanApproval", plus any platform-specific ones like
  * "threads", "attachments", "messageEditing", "argumentEditing", "authentication").
+ *
+ * start()/stop() are template methods here (mirroring the getCapabilities()/
+ * getDeclaredCapabilities() split above): they track isRunning() and fire
+ * onGatewayConnect/onGatewayDisconnect for every gateway automatically, so a
+ * concrete gateway with connect/disconnect logic overrides onStart()/onStop()
+ * — never start()/stop() directly — and gets both for free. A gateway with no
+ * real lifecycle (most of them, today) doesn't need to override anything here.
  */
 abstract class implements="IGateway" {
 
@@ -43,6 +50,11 @@ abstract class implements="IGateway" {
 	 * Configuration options this gateway was configured with
 	 */
 	property name="options" type="struct" default={};
+
+	/**
+	 * Backs isRunning() — see the start()/stop() template methods below.
+	 */
+	property name="running" type="boolean" default=false;
 
 	/**
 	 * Configure the gateway with configuration options.
@@ -79,6 +91,60 @@ abstract class implements="IGateway" {
 	 */
 	public array function getDeclaredCapabilities() {
 		return []
+	}
+
+	/**
+	 * Start the gateway. Fires onGatewayConnect only on a real not-running -> running
+	 * transition (calling start() again while already running is a harmless no-op, no
+	 * duplicate event) — same "gate the state change, then announce" discipline as
+	 * AiAgent.cancelRun()/steerRun(). Calls onStart() first so a concrete gateway's own
+	 * connect logic runs before the event fires.
+	 */
+	public void function start() {
+		if ( variables.running ) {
+			return
+		}
+		onStart()
+		variables.running = true
+		BoxAnnounce( "onGatewayConnect", { gateway: this } )
+	}
+
+	/**
+	 * Stop the gateway. Fires onGatewayDisconnect only on a real running -> not-running
+	 * transition. Calls onStop() first so a concrete gateway's own disconnect logic runs
+	 * before the event fires.
+	 */
+	public void function stop() {
+		if ( !variables.running ) {
+			return
+		}
+		onStop()
+		variables.running = false
+		BoxAnnounce( "onGatewayDisconnect", { gateway: this } )
+	}
+
+	/**
+	 * Whether start() has been called and stop() hasn't since.
+	 */
+	public boolean function isRunning() {
+		return variables.running
+	}
+
+	/**
+	 * Override for gateway-specific connect logic (open a socket, register a webhook
+	 * listener, etc.) — called by start(), before onGatewayConnect fires. Default is a
+	 * no-op; most gateways today have no real connect step.
+	 */
+	public void function onStart() {
+		// no-op by default
+	}
+
+	/**
+	 * Override for gateway-specific disconnect logic — called by stop(), before
+	 * onGatewayDisconnect fires. Default is a no-op.
+	 */
+	public void function onStop() {
+		// no-op by default
 	}
 
 }
