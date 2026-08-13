@@ -84,6 +84,11 @@ class extends="AiBaseRequest"{
 		// The identity this request runs as (see AiBaseRequest.userId doc comment)
 		variables.userId = options.userId ?: "";
 
+		// The thread this request belongs to, and its optional cancel/steer handle (see
+		// AiBaseRequest.threadId/cancellationToken doc comments)
+		variables.threadId          = options.threadId ?: "";
+		variables.cancellationToken = options.cancellationToken ?: javacast( "null", "" );
+
 		// Provider-specific options
 		variables.providerOptions = options.providerOptions ?: {};
 

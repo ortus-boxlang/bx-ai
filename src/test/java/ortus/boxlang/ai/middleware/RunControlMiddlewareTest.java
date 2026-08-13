@@ -12,9 +12,10 @@
  * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
- * Tests for CancellationToken + RunControlMiddleware: an external caller cancelling or
- * steering an AiAgent run already in flight, checked at beforeLLMCall/beforeToolCall —
- * the finest-grained checkpoints a provider's tool-loop fires.
+ * Tests for AiAgent.cancelRun()/steerRun(): the public, threadId-addressable API an external
+ * caller uses to cancel or steer an AiAgent run already in flight. Every agent auto-attaches a
+ * RunControlMiddleware internally (see RunControlMiddleware.bx) — there is no user-constructed
+ * token or middleware in this design, only threadId in, boolean out.
  */
 package ortus.boxlang.ai.middleware;
 
@@ -26,221 +27,40 @@ import org.junit.jupiter.api.Test;
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
 
-@DisplayName( "CancellationToken + RunControlMiddleware Tests" )
+@DisplayName( "AiAgent Run Control (cancelRun/steerRun) Tests" )
 public class RunControlMiddlewareTest extends BaseIntegrationTest {
 
-	// ---- CancellationToken in isolation ----
-
-	@DisplayName( "CancellationToken: starts uncancelled with no pending steer" )
+	@DisplayName( "cancelRun()/steerRun() on a threadId with no active run are safe no-ops" )
 	@Test
-	public void testTokenInitialState() {
+	public void testNoActiveRunIsSafeNoOp() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.runnables.CancellationToken;
-
-		        token = new CancellationToken();
-
-		        notCancelled  = !token.isCancelled();
-		        noPendingSteer = !token.hasPendingSteer();
-		    """,
-		    context
-		);
-		// @formatter:on
-
-		assertThat( variables.getAsBoolean( Key.of( "notCancelled" ) ) ).isTrue();
-		assertThat( variables.getAsBoolean( Key.of( "noPendingSteer" ) ) ).isTrue();
-	}
-
-	@DisplayName( "CancellationToken: cancel() sets cancelled + reason" )
-	@Test
-	public void testTokenCancel() {
-		// @formatter:off
-		runtime.executeSource(
-		    """
-		        import bxModules.bxai.models.runnables.CancellationToken;
-
-		        token = new CancellationToken();
-		        token.cancel( "stop it" );
-
-		        isCancelled  = token.isCancelled();
-		        reasonCorrect = token.getCancelReason() == "stop it";
-		    """,
-		    context
-		);
-		// @formatter:on
-
-		assertThat( variables.getAsBoolean( Key.of( "isCancelled" ) ) ).isTrue();
-		assertThat( variables.getAsBoolean( Key.of( "reasonCorrect" ) ) ).isTrue();
-	}
-
-	@DisplayName( "CancellationToken: steer() queues messages, consumeSteerMessages() drains them exactly once" )
-	@Test
-	public void testTokenSteerQueueDrains() {
-		// @formatter:off
-		runtime.executeSource(
-		    """
-		        import bxModules.bxai.models.runnables.CancellationToken;
-
-		        token = new CancellationToken();
-		        token.steer( "first" );
-		        token.steer( "second" );
-
-		        hasPendingBeforeDrain = token.hasPendingSteer();
-		        drained = token.consumeSteerMessages();
-		        drainedTwo = drained.len() == 2;
-		        drainedInOrder = drained[ 1 ] == "first" && drained[ 2 ] == "second";
-		        hasPendingAfterDrain = token.hasPendingSteer();
-		    """,
-		    context
-		);
-		// @formatter:on
-
-		assertThat( variables.getAsBoolean( Key.of( "hasPendingBeforeDrain" ) ) ).isTrue();
-		assertThat( variables.getAsBoolean( Key.of( "drainedTwo" ) ) ).isTrue();
-		assertThat( variables.getAsBoolean( Key.of( "drainedInOrder" ) ) ).isTrue();
-		assertThat( variables.getAsBoolean( Key.of( "hasPendingAfterDrain" ) ) ).isFalse();
-	}
-
-	// ---- RunControlMiddleware in isolation ----
-
-	@DisplayName( "RunControlMiddleware: continues when token is not cancelled and has no pending steer" )
-	@Test
-	public void testMiddlewareContinuesWhenClean() {
-		// @formatter:off
-		runtime.executeSource(
-		    """
-		        import bxModules.bxai.models.middleware.core.RunControlMiddleware;
-		        import bxModules.bxai.models.runnables.CancellationToken;
-
-		        token = new CancellationToken();
-		        mw    = new RunControlMiddleware( token );
-
-		        r1 = mw.beforeLLMCall( context: {} );
-		        r2 = mw.beforeToolCall( context: {} );
-
-		        bothContinue = r1.isContinue() && r2.isContinue();
-		    """,
-		    context
-		);
-		// @formatter:on
-
-		assertThat( variables.getAsBoolean( Key.of( "bothContinue" ) ) ).isTrue();
-	}
-
-	@DisplayName( "RunControlMiddleware: cancelled token produces a cancel result with the token's reason" )
-	@Test
-	public void testMiddlewareCancels() {
-		// @formatter:off
-		runtime.executeSource(
-		    """
-		        import bxModules.bxai.models.middleware.core.RunControlMiddleware;
-		        import bxModules.bxai.models.runnables.CancellationToken;
-
-		        token = new CancellationToken();
-		        mw    = new RunControlMiddleware( token );
-		        token.cancel( "external stop" );
-
-		        result = mw.beforeLLMCall( context: {} );
-
-		        isCancelled  = result.isCancelled();
-		        reasonCorrect = result.getReason() == "external stop";
-		    """,
-		    context
-		);
-		// @formatter:on
-
-		assertThat( variables.getAsBoolean( Key.of( "isCancelled" ) ) ).isTrue();
-		assertThat( variables.getAsBoolean( Key.of( "reasonCorrect" ) ) ).isTrue();
-	}
-
-	@DisplayName( "RunControlMiddleware: pending steer appends to chatRequest messages and continues" )
-	@Test
-	public void testMiddlewareSteersAppendsMessage() {
-		// @formatter:off
-		runtime.executeSource(
-		    """
-		        import bxModules.bxai.models.middleware.core.RunControlMiddleware;
-		        import bxModules.bxai.models.runnables.CancellationToken;
-		        import bxModules.bxai.models.requests.AiChatRequest;
-
-		        token = new CancellationToken();
-		        mw    = new RunControlMiddleware( token );
-		        token.steer( "extra instruction" );
-
-		        chatRequest = new AiChatRequest( aiMessage( [ { role: "user", content: "original" } ] ) );
-		        result = mw.beforeLLMCall( context: { chatRequest: chatRequest } );
-
-		        messages = chatRequest.getMessages();
-		        appended = messages.len() == 2 && messages[ 2 ].role == "user" && messages[ 2 ].content == "extra instruction";
-		        stillContinues = result.isContinue();
-		        drainedAfter = !token.hasPendingSteer();
-		    """,
-		    context
-		);
-		// @formatter:on
-
-		assertThat( variables.getAsBoolean( Key.of( "appended" ) ) ).isTrue();
-		assertThat( variables.getAsBoolean( Key.of( "stillContinues" ) ) ).isTrue();
-		assertThat( variables.getAsBoolean( Key.of( "drainedAfter" ) ) ).isTrue();
-	}
-
-	// ---- End-to-end against a mock-provider agent (same aiService("mock").setResponses()
-	// ---- instance-queue pattern SuspendResumeIntegrationTest.java already uses) ----
-
-	@DisplayName( "End-to-end: cancelling before run() starts stops it before any tool call executes" )
-	@Test
-	public void testEndToEndCancelBeforeRun() {
-		// @formatter:off
-		runtime.executeSource(
-		    """
-		        import bxModules.bxai.models.middleware.core.RunControlMiddleware;
-		        import bxModules.bxai.models.runnables.CancellationToken;
-		        import bxModules.bxai.models.runnables.AiModel;
-
-		        toolACalls = 0
-		        toolA = aiTool( "toolA", "Tool A", () => { toolACalls++; return "A done" } )
-
 		        mockSvc = aiService( "mock" )
-		        mockSvc.setResponses( [
-		            { toolCalls: [ { name: "toolA", arguments: {} } ] },
-		            "Final answer."
-		        ] )
-		        model = new AiModel( service: mockSvc )
+		        mockSvc.setResponses( [ "hi there" ] )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
 
-		        token = new CancellationToken()
-		        agent = aiAgent( model: model, tools: [ toolA ], middleware: [ new RunControlMiddleware( token ) ] )
+		        agent = aiAgent( model: model )
 
-		        token.cancel( "stop before start" )
-		        result = agent.run( "do toolA" )
-
-		        isCancelled  = isObject( result ) && result.isCancelled()
-		        neitherRan   = toolACalls == 0
+		        cancelResult = agent.cancelRun( "never-started-thread" )
+		        steerResult  = agent.steerRun( "never-started-thread", "hello" )
 		    """,
 		    context
 		);
 		// @formatter:on
 
-		assertThat( variables.getAsBoolean( Key.of( "isCancelled" ) ) ).isTrue();
-		assertThat( variables.getAsBoolean( Key.of( "neitherRan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "cancelResult" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "steerResult" ) ) ).isFalse();
 	}
 
-	@DisplayName( "End-to-end: cancelling mid-loop stops before the next tool call, first tool call already ran" )
+	@DisplayName( "cancelRun() mid-loop stops the run before the next tool call; already-run tool call still ran" )
 	@Test
-	public void testEndToEndCancelMidLoop() {
+	public void testCancelRunMidLoop() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.core.RunControlMiddleware;
-		        import bxModules.bxai.models.runnables.CancellationToken;
-		        import bxModules.bxai.models.runnables.AiModel;
-
 		        toolACalls = 0
 		        toolBCalls = 0
-		        token = new CancellationToken()
-
-		        toolA = aiTool( "toolA", "Tool A", () => { toolACalls++; token.cancel( "stop after A" ); return "A done" } )
-		        toolB = aiTool( "toolB", "Tool B", () => { toolBCalls++; return "B done" } )
 
 		        mockSvc = aiService( "mock" )
 		        mockSvc.setResponses( [
@@ -248,10 +68,19 @@ public class RunControlMiddlewareTest extends BaseIntegrationTest {
 		            { toolCalls: [ { name: "toolB", arguments: {} } ] },
 		            "Final answer."
 		        ] )
-		        model = new AiModel( service: mockSvc )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
 
-		        agent = aiAgent( model: model, tools: [ toolA, toolB ], middleware: [ new RunControlMiddleware( token ) ] )
-		        result = agent.run( "do toolA then toolB" )
+		        agent = aiAgent( model: model )
+
+		        toolA = aiTool( "toolA", "Tool A", () => {
+		            toolACalls++
+		            agent.cancelRun( "thread-cancel-mid-loop", "stop after A" )
+		            return "A done"
+		        } )
+		        toolB = aiTool( "toolB", "Tool B", () => { toolBCalls++; return "B done" } )
+		        agent.withTools( [ toolA, toolB ] )
+
+		        result = agent.run( "do toolA then toolB", {}, { threadId: "thread-cancel-mid-loop" } )
 
 		        isCancelled = isObject( result ) && result.isCancelled()
 		        aRanBNot    = toolACalls == 1 && toolBCalls == 0
@@ -264,28 +93,28 @@ public class RunControlMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "aRanBNot" ) ) ).isTrue();
 	}
 
-	@DisplayName( "End-to-end: steering mid-loop injects a message and the run completes normally, reflecting it" )
+	@DisplayName( "steerRun() mid-loop injects a message and the run completes normally, reflecting it" )
 	@Test
-	public void testEndToEndSteerMidLoopCompletesNormally() {
+	public void testSteerRunMidLoopCompletesNormally() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.core.RunControlMiddleware;
-		        import bxModules.bxai.models.runnables.CancellationToken;
-		        import bxModules.bxai.models.runnables.AiModel;
-
-		        token = new CancellationToken()
-		        toolA = aiTool( "toolA", "Tool A", () => { token.steer( "Please also mention BANANA." ); return "A done" } )
-
 		        mockSvc = aiService( "mock" )
 		        mockSvc.setResponses( [
 		            { toolCalls: [ { name: "toolA", arguments: {} } ] },
 		            "Final answer with BANANA mentioned."
 		        ] )
-		        model = new AiModel( service: mockSvc )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
 
-		        agent = aiAgent( model: model, tools: [ toolA ], middleware: [ new RunControlMiddleware( token ) ] )
-		        result = agent.run( "do toolA" )
+		        agent = aiAgent( model: model )
+
+		        toolA = aiTool( "toolA", "Tool A", () => {
+		            agent.steerRun( "thread-steer-mid-loop", "Please also mention BANANA." )
+		            return "A done"
+		        } )
+		        agent.withTools( [ toolA ] )
+
+		        result = agent.run( "do toolA", {}, { threadId: "thread-steer-mid-loop" } )
 
 		        completedNormally = !isObject( result )
 		        gotFinalAnswer    = result == "Final answer with BANANA mentioned."
@@ -308,24 +137,56 @@ public class RunControlMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "foundSteered" ) ) ).isTrue();
 	}
 
-	@DisplayName( "End-to-end: an untouched token never interferes with a normal run" )
+	@DisplayName( "Two threads running on the same agent don't cross-contaminate: cancelling one doesn't affect the other" )
 	@Test
-	public void testEndToEndCleanTokenNoInterference() {
+	public void testTwoThreadsDoNotCrossContaminate() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
-		        import bxModules.bxai.models.middleware.core.RunControlMiddleware;
-		        import bxModules.bxai.models.runnables.CancellationToken;
-		        import bxModules.bxai.models.runnables.AiModel;
+		        mockSvcX = aiService( "mock" )
+		        mockSvcX.setResponses( [ "response for X" ] )
+		        modelX = new bxModules.bxai.models.runnables.AiModel( service: mockSvcX )
+		        agentX = aiAgent( model: modelX )
 
+		        mockSvcY = aiService( "mock" )
+		        mockSvcY.setResponses( [ "response for Y" ] )
+		        modelY = new bxModules.bxai.models.runnables.AiModel( service: mockSvcY )
+		        agentY = aiAgent( model: modelY )
+
+		        // Cancelling thread "x" on agentX must not touch agentY's independent thread "y"
+		        resultX = agentX.run( "hello x", {}, { threadId: "thread-x" } )
+		        resultY = agentY.run( "hello y", {}, { threadId: "thread-y" } )
+
+		        xUnaffected = resultX == "response for X"
+		        yUnaffected = resultY == "response for Y"
+
+		        // Both threads are finished now — cancelling either is a safe no-op
+		        cancelXAfterFinish = agentX.cancelRun( "thread-x" )
+		        cancelYAfterFinish = agentY.cancelRun( "thread-y" )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "xUnaffected" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "yUnaffected" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "cancelXAfterFinish" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "cancelYAfterFinish" ) ) ).isFalse();
+	}
+
+	@DisplayName( "A run that is never cancelled or steered completes normally, unaffected by run control" )
+	@Test
+	public void testCleanRunNoInterference() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
 		        mockSvc = aiService( "mock" )
 		        mockSvc.setResponses( [ "Just a plain answer." ] )
-		        model = new AiModel( service: mockSvc )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
 
-		        token = new CancellationToken()
-		        agent = aiAgent( model: model, middleware: [ new RunControlMiddleware( token ) ] )
+		        agent = aiAgent( model: model )
+		        result = agent.run( "say hi", {}, { threadId: "thread-clean" } )
 
-		        result = agent.run( "say hi" )
 		        unaffected = result == "Just a plain answer."
 		    """,
 		    context
