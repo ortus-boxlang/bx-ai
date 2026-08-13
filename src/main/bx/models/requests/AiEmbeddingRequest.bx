@@ -54,7 +54,7 @@ class extends="AiBaseRequest"{
 		variables.baseURL = options.baseURL ?: "";
 		variables.providerOptions = options.providerOptions ?: {};
 		variables.threadId          = options.threadId ?: "";
-		variables.cancellationToken = options.cancellationToken ?: javacast( "null", "" );
+		variables.cancellationToken = options.cancellationToken ?: null;
 		return this;
 	}
 

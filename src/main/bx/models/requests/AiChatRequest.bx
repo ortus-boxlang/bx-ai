@@ -87,7 +87,7 @@ class extends="AiBaseRequest"{
 		// The thread this request belongs to, and its optional cancel/steer handle (see
 		// AiBaseRequest.threadId/cancellationToken doc comments)
 		variables.threadId          = options.threadId ?: "";
-		variables.cancellationToken = options.cancellationToken ?: javacast( "null", "" );
+		variables.cancellationToken = options.cancellationToken ?: null;
 
 		// Provider-specific options
 		variables.providerOptions = options.providerOptions ?: {};
