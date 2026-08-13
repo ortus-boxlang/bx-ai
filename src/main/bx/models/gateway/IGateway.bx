@@ -84,8 +84,31 @@ interface {
 	}
 
 	/**
+	 * Register a callback to be invoked once per normalized inbound GatewayMessage this
+	 * gateway receives, for gateways that PUSH inbound messages rather than being polled
+	 * or driven by a request/response cycle (e.g. a persistent-connection or long-poll
+	 * adapter — a future Telegram gateway, for instance). Call this BEFORE start() — for
+	 * a gateway that overrides this, start() is where inbound delivery actually begins
+	 * (open the connection/poll loop and begin invoking the registered callback) and
+	 * stop() is where it ends (close it, stop invoking the callback).
+	 *
+	 * Default is a no-op: CliGateway is synchronous/blocking and HttpGateway is driven by
+	 * the inbound HTTP request itself (via GatewayRequestProcessor calling parseInbound()
+	 * directly) — neither has anything to push on its own schedule, so neither overrides
+	 * this. A gateway that does override it stores at most one callback at a time — a
+	 * second onMessage() call replaces the first, it does not add a second listener.
+	 *
+	 * @callback function( GatewayMessage message ) — invoked once per inbound message
+	 */
+	default public void function onMessage( required function callback ){
+		// no-op by default
+	}
+
+	/**
 	 * Start the gateway (e.g. open a socket connection, register a webhook listener).
-	 * Default is a no-op — override for gateways that need explicit lifecycle management.
+	 * For a gateway that overrides onMessage(), this is where inbound delivery actually
+	 * begins. Default is a no-op — override for gateways that need explicit lifecycle
+	 * management.
 	 */
 	default public void function start(){
 		// no-op by default
@@ -93,6 +116,7 @@ interface {
 
 	/**
 	 * Stop the gateway and release any resources acquired in start().
+	 * For a gateway that overrides onMessage(), this is where inbound delivery stops.
 	 * Default is a no-op — override for gateways that need explicit lifecycle management.
 	 */
 	default public void function stop(){

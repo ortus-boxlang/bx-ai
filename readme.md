@@ -784,6 +784,28 @@ myGateway = aiGateway( "my-platform" )
 
 Implement `IGateway` to build your own — every capability method has a safe default, so you only override what you actually support.
 
+### Gateway Sessions — wiring an agent to one or more gateways
+
+`GatewaySession` (via `aiGatewaySession()`) is the orchestrator that turns "a message arrived on a gateway" into "the agent responded, relayed back through that same gateway" — including deciding what happens when a second message arrives on a thread that already has a turn in flight:
+
+```javascript
+session = aiGatewaySession(
+    agent   : myAgent,
+    gateways: [ aiGateway( "cli" ) ],   // single gateway or an array — multiple gateways can share one agent
+    policy  : "queue"                   // "reject" | "queue" | "steer" | "interrupt"
+)
+session.start()
+```
+
+| Policy | A second message arrives on a busy thread… |
+|---|---|
+| `reject` | …is refused immediately; the caller must resend. |
+| `queue` (default) | …is buffered and dispatched right after the current turn finishes. |
+| `steer` | …is spliced into the *currently running* turn via `agent.steerRun()` — not a new turn, nothing already produced is lost. Matches Hermes Agent's non-destructive "steer" semantic — **not** the same as some other agent frameworks' "steer," which cancels and restarts. |
+| `interrupt` | …asks the current turn to stop via `agent.cancelRun()` (takes effect at its next checkpoint, not instantly), then dispatches the new message next. |
+
+`maxQueueDepth` (default 50) bounds how many messages can buffer per thread under `queue`/`interrupt` before further messages fall back to an immediate rejection. Gateways that declare the `"streaming"` capability get chunk-by-chunk delivery via `deliverChunk()`; others get one buffered `deliver()` call once the turn completes. A gateway that pushes inbound messages (rather than being driven by a request/response cycle) implements `IGateway.onMessage()` to register the session's dispatch callback.
+
 ## 🛠️ Global Functions (BIFs)
 
 | Function | Purpose | Parameters | Return Type | Async Support |
@@ -800,6 +822,7 @@ Implement `IGateway` to build your own — every capability method has a safe de
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
 | `aiFence()` | Fence (spotlight) untrusted content so the model treats it as DATA, not instructions | `content`, `label="external"`, `withPreamble=false` | String | N/A |
 | `aiGateway()` | Resolve a human-interaction gateway by name | `name` _(core: `mock`, `cli`, `http`; or externally registered)_, `options={}` | IGateway Object | N/A |
+| `aiGatewaySession()` | Wire an agent to one or more gateways for inbound message handling | `agent`, `gateways`, `policy="queue"` _(reject\|queue\|steer\|interrupt)_, `maxQueueDepth=50`, `checkpointer` | GatewaySession Object | N/A |
 | `aiImage()` | Generate images from a text prompt | `prompt`, `params={}`, `options={}` | AiImageResponse Object | N/A |
 | `aiMemory()` | Create memory instance | `memory`, `key`, `userId`, `conversationId`, `config={}` | IAiMemory Object | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |

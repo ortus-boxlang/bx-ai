@@ -414,6 +414,7 @@ class {
 			"onGatewayRegistryRegister",
 			"onGatewayRegistryUnregister",
 			"onGatewayCreate",
+			"onGatewaySessionCreate",
 
 			// Decision Store Events
 			"onAiDecisionStoreCreate"
