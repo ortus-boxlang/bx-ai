@@ -89,6 +89,11 @@ class {
 	property name="queues";
 
 	/**
+	 * Whether start() has been called and stop() hasn't since. See isRunning().
+	 */
+	property name="running" type="boolean" default=false;
+
+	/**
 	 * The valid policy values — anything else throws at construction.
 	 */
 	static {
@@ -156,6 +161,7 @@ class {
 			gw.onMessage( ( message ) => handleInbound( message, gw ) )
 			gw.start()
 		} )
+		variables.running = true
 		return this
 	}
 
@@ -166,6 +172,18 @@ class {
 	 */
 	void function stop() {
 		variables.gateways.each( ( name, gw ) => gw.stop() )
+		variables.running = false
+	}
+
+	/**
+	 * Whether start() has been called and stop() hasn't since. Reports THIS session's own
+	 * lifecycle state, not each attached gateway's — call gw.isRunning() on an individual
+	 * gateway for that (a session-level "all attached gateways currently up" rollup isn't
+	 * provided, since a caller checking per-gateway health would want to know WHICH one is
+	 * down, not just that the aggregate is unhealthy).
+	 */
+	boolean function isRunning() {
+		return variables.running
 	}
 
 	/**
@@ -178,6 +196,18 @@ class {
 			ids.append( threadId )
 		}
 		return ids
+	}
+
+	/**
+	 * How many messages are currently buffered for a thread under "queue"/"interrupt" —
+	 * 0 if the thread has no queue at all (free, or every buffered message already drained).
+	 * Non-destructive.
+	 *
+	 * @threadId The thread to inspect
+	 */
+	numeric function getQueueDepth( required string threadId ) {
+		var queue = variables.queues.get( arguments.threadId )
+		return isNull( queue ) ? 0 : queue.size()
 	}
 
 	/**

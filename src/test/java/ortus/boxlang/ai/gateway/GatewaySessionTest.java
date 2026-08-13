@@ -411,4 +411,82 @@ public class GatewaySessionTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "eventFired" ) ) ).isTrue();
 	}
 
+	@DisplayName( "isRunning() reflects start()/stop() on the session itself" )
+	@Test
+	public void testSessionIsRunningTracksLifecycle() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [ "hi" ] )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
+		        agent = aiAgent( model: model )
+
+		        gw = aiGateway( "mock" )
+		        session = aiGatewaySession( agent: agent, gateways: [ gw ] )
+
+		        notRunningInitially = !session.isRunning()
+		        session.start()
+		        runningAfterStart = session.isRunning()
+		        session.stop()
+		        notRunningAfterStop = !session.isRunning()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "notRunningInitially" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "runningAfterStart" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "notRunningAfterStop" ) ) ).isTrue();
+	}
+
+	@DisplayName( "getQueueDepth() reports buffered messages per thread and drops to 0 once fully drained" )
+	@Test
+	public void testGetQueueDepthTracksBufferedMessages() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "toolA", arguments: {} } ] },
+		            "First.",
+		            "Second.",
+		            "Third."
+		        ] )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
+		        agent = aiAgent( model: model )
+
+		        gw = aiGateway( "mock" )
+		        session = aiGatewaySession( agent: agent, gateways: [ gw ], policy: "queue" )
+
+		        depthDuringToolCall = -1
+		        toolA = aiTool( "toolA", "Tool A", () => {
+		            depthBefore = session.getQueueDepth( "thread-depth" )
+
+		            msg2 = gw.parseInbound( { text: "second", userID: "u1", conversationID: "c1", threadID: "thread-depth" } )
+		            session.handleInbound( msg2[ 1 ], gw )
+		            msg3 = gw.parseInbound( { text: "third", userID: "u1", conversationID: "c1", threadID: "thread-depth" } )
+		            session.handleInbound( msg3[ 1 ], gw )
+
+		            depthDuringToolCall = session.getQueueDepth( "thread-depth" )
+		            return "A done"
+		        } )
+		        agent.withTools( [ toolA ] )
+
+		        depthBeforeAnythingStarts = session.getQueueDepth( "thread-depth" )
+
+		        msg1 = gw.parseInbound( { text: "first", userID: "u1", conversationID: "c1", threadID: "thread-depth" } )
+		        session.handleInbound( msg1[ 1 ], gw ).get()
+
+		        depthAfterFullyDrained = session.getQueueDepth( "thread-depth" )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "depthBeforeAnythingStarts" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "depthDuringToolCall" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsInteger( Key.of( "depthAfterFullyDrained" ) ) ).isEqualTo( 0 );
+	}
+
 }

@@ -141,4 +141,70 @@ public class MockGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "isRejected" ) ) ).isTrue();
 	}
 
+	@DisplayName( "isRunning() reflects start()/stop(); a gateway that never overrides them stays false" )
+	@Test
+	public void testIsRunningTracksLifecycle() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				gw = aiGateway( "mock" )
+				notRunningInitially = !gw.isRunning()
+
+				gw.start()
+				runningAfterStart = gw.isRunning()
+
+				gw.stop()
+				notRunningAfterStop = !gw.isRunning()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "notRunningInitially" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "runningAfterStart" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "notRunningAfterStop" ) ) ).isTrue();
+	}
+
+	@DisplayName( "onError() registers a callback that simulateError() invokes with the given error info" )
+	@Test
+	public void testOnErrorCallbackFires() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				gw = aiGateway( "mock" )
+
+				fired         = false
+				capturedError = ""
+				gw.onError( function( error ) {
+					fired         = true
+					capturedError = error
+				} )
+
+				gw.simulateError( "connection dropped" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "fired" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "capturedError" ) ) ).isEqualTo( "connection dropped" );
+	}
+
+	@DisplayName( "simulateError() with no onError() callback registered is a safe no-op" )
+	@Test
+	public void testSimulateErrorWithoutCallbackIsNoOp() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				gw = aiGateway( "mock" )
+				gw.simulateError( "nobody is listening" )
+				survived = true
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "survived" ) ) ).isTrue();
+	}
+
 }

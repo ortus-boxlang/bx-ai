@@ -80,7 +80,39 @@ class extends="BaseGateway" {
 		variables.pendingInteractions = {}
 		variables.resolvedDecisions   = {}
 		variables.scriptedDecisions   = []
+		variables.running            = false
+		variables.errorCallback      = null
 		return this;
+	}
+
+	// -------------------------------------------------------------------------
+	// Lifecycle — exercises IGateway.isRunning()/onError() so both have a real
+	// reference implementation to test against, not just their no-op defaults
+	// -------------------------------------------------------------------------
+
+	void function start(){
+		variables.running = true
+	}
+
+	void function stop(){
+		variables.running = false
+	}
+
+	void function onError( required function callback ){
+		variables.errorCallback = arguments.callback
+	}
+
+	/**
+	 * Test helper: simulate this gateway's connection dropping unexpectedly, invoking
+	 * whatever callback was registered via onError() (a no-op if none was).
+	 *
+	 * @error Whatever error information to hand the callback — a message string, a struct, etc.
+	 */
+	void function simulateError( required any error ){
+		if ( isNull( variables.errorCallback ) ) {
+			return
+		}
+		variables.errorCallback( arguments.error )
 	}
 
 	/**

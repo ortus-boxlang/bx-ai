@@ -804,7 +804,9 @@ session.start()
 | `steer` | …is spliced into the *currently running* turn via `agent.steerRun()` — not a new turn, nothing already produced is lost. Matches Hermes Agent's non-destructive "steer" semantic — **not** the same as some other agent frameworks' "steer," which cancels and restarts. |
 | `interrupt` | …asks the current turn to stop via `agent.cancelRun()` (takes effect at its next checkpoint, not instantly), then dispatches the new message next. |
 
-`maxQueueDepth` (default 50) bounds how many messages can buffer per thread under `queue`/`interrupt` before further messages fall back to an immediate rejection. Gateways that declare the `"streaming"` capability get chunk-by-chunk delivery via `deliverChunk()`; others get one buffered `deliver()` call once the turn completes. A gateway that pushes inbound messages (rather than being driven by a request/response cycle) implements `IGateway.onMessage()` to register the session's dispatch callback.
+`maxQueueDepth` (default 50) bounds how many messages can buffer per thread under `queue`/`interrupt` before further messages fall back to an immediate rejection. Gateways that declare the `"streaming"` capability get chunk-by-chunk delivery via `deliverChunk()`; others get one buffered `deliver()` call once the turn completes. A gateway that pushes inbound messages (rather than being driven by a request/response cycle) implements `IGateway.onMessage()` to register the session's dispatch callback, and `IGateway.onError()` to be notified if its connection drops unexpectedly rather than requiring a caller to poll.
+
+Lifecycle and observability: `session.isRunning()` / `gateway.isRunning()` report whether `start()`/`stop()` have been called; `session.getActiveThreadIds()` lists threads with a turn currently in flight; `session.getQueueDepth( threadId )` reports how many messages are buffered for a thread.
 
 ## 🛠️ Global Functions (BIFs)
 

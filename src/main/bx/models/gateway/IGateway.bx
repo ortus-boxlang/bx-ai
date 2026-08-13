@@ -105,10 +105,32 @@ interface {
 	}
 
 	/**
+	 * Register a callback to be invoked when this gateway's connection drops unexpectedly
+	 * (not via an explicit stop()) — a socket closing, a poll loop erroring out, an
+	 * upstream platform rejecting credentials mid-session. Lets a caller (e.g. GatewaySession,
+	 * a monitoring hook) react without having to poll isRunning(). Call this BEFORE start(),
+	 * same as onMessage(). Stores at most one callback at a time — a second onError() call
+	 * replaces the first.
+	 *
+	 * Default is a no-op: none of today's core gateways hold a connection that can drop out
+	 * from under them (CliGateway is synchronous, HttpGateway is driven by the inbound HTTP
+	 * request itself, MockGateway is in-memory) — this exists for a future persistent-
+	 * connection adapter (a long-poll or websocket-based gateway) to override.
+	 *
+	 * @callback function( any error ) — invoked with whatever error information the gateway
+	 *           provides (a message string, a struct, a caught exception) — shape is
+	 *           gateway-specific, there is no normalized error contract here
+	 */
+	default public void function onError( required function callback ){
+		// no-op by default
+	}
+
+	/**
 	 * Start the gateway (e.g. open a socket connection, register a webhook listener).
 	 * For a gateway that overrides onMessage(), this is where inbound delivery actually
 	 * begins. Default is a no-op — override for gateways that need explicit lifecycle
-	 * management.
+	 * management. A gateway that overrides this is responsible for also making isRunning()
+	 * reflect the change (see isRunning() below).
 	 */
 	default public void function start(){
 		// no-op by default
@@ -118,9 +140,25 @@ interface {
 	 * Stop the gateway and release any resources acquired in start().
 	 * For a gateway that overrides onMessage(), this is where inbound delivery stops.
 	 * Default is a no-op — override for gateways that need explicit lifecycle management.
+	 * A gateway that overrides this is responsible for also making isRunning() reflect the
+	 * change (see isRunning() below).
 	 */
 	default public void function stop(){
 		// no-op by default
+	}
+
+	/**
+	 * Whether this gateway is currently started (start() called, stop() not called since).
+	 * Meaningless — and always false — for a gateway that never overrides start()/stop(),
+	 * since it has no lifecycle to be "running." A gateway that DOES override start()/stop()
+	 * is responsible for keeping variables.running in sync (this default just reads it);
+	 * there is no automatic wiring — matches how getName()/getDescription() read variables
+	 * the concrete gateway is responsible for setting.
+	 *
+	 * @return boolean
+	 */
+	default public boolean function isRunning(){
+		return variables.running ?: false;
 	}
 
 	/**
