@@ -791,11 +791,13 @@ Implement `IGateway` to build your own — every capability method has a safe de
 ```javascript
 session = aiGatewaySession(
     agent   : myAgent,
-    gateways: [ aiGateway( "cli" ) ],   // single gateway or an array — multiple gateways can share one agent
-    policy  : "queue"                   // "reject" | "queue" | "steer" | "interrupt"
+    gateways: [ "cli", "http" ],   // single gateway or an array — multiple gateways can share one agent
+    policy  : "queue"              // "reject" | "queue" | "steer" | "interrupt"
 )
 session.start()
 ```
+
+`gateways` entries can be a string name (resolved via `aiGateway( name )` — core names or anything registered in `gatewayRegistry()`) or an already-constructed `IGateway` instance (`aiGateway( "http", { secret: "..." } )` when you need to pass configuration options) — mix and match freely.
 
 | Policy | A second message arrives on a busy thread… |
 |---|---|

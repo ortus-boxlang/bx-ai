@@ -489,4 +489,91 @@ public class GatewaySessionTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "depthAfterFullyDrained" ) ) ).isEqualTo( 0 );
 	}
 
+	@DisplayName( "gateways accepts a single gateway name as a string, resolved via aiGateway() same as passing the instance directly" )
+	@Test
+	public void testSingleGatewayAsStringResolvesViaAiGateway() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [ "Hello back!" ] )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
+		        agent = aiAgent( model: model )
+
+		        // "mock" as a bare string instead of aiGateway( "mock" )
+		        session = aiGatewaySession( agent: agent, gateways: "mock" )
+
+		        gw = session.getGateways()[ "mock" ]
+		        resolvedToRealGateway = !isNull( gw ) && gw.getName() == "mock"
+
+		        messages = gw.parseInbound( { text: "hello", userID: "u1", conversationID: "c1", threadID: "thread-str" } )
+		        session.handleInbound( messages[ 1 ], gw ).get()
+
+		        delivered = gw.getDeliveredEvents()
+		        gotReply  = delivered.len() == 1 && delivered[ 1 ].getData().content == "Hello back!"
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "resolvedToRealGateway" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "gotReply" ) ) ).isTrue();
+	}
+
+	@DisplayName( "gateways array can mix string names and IGateway instances" )
+	@Test
+	public void testGatewaysArrayMixesStringsAndInstances() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [ "hi" ] )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
+		        agent = aiAgent( model: model )
+
+		        httpGw = aiGateway( "http", { secret: "test-secret" } )
+		        httpGw.setName( "http-b" )
+
+		        // Mix: "mock" resolved by name, httpGw passed as an already-constructed instance
+		        session = aiGatewaySession( agent: agent, gateways: [ "mock", httpGw ] )
+
+		        gateways    = session.getGateways()
+		        hasMock     = gateways.keyExists( "mock" )
+		        hasHttpB    = gateways.keyExists( "http-b" )
+		        sameHttpRef = gateways[ "http-b" ] == httpGw
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasMock" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasHttpB" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sameHttpRef" ) ) ).isTrue();
+	}
+
+	@DisplayName( "an unresolvable gateway name propagates aiGateway()'s own GatewayNotSupported error" )
+	@Test
+	public void testUnknownGatewayNameThrows() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [ "hi" ] )
+		        model = new bxModules.bxai.models.runnables.AiModel( service: mockSvc )
+		        agent = aiAgent( model: model )
+
+		        threw = false
+		        try {
+		            aiGatewaySession( agent: agent, gateways: "totally-not-a-real-gateway" )
+		        } catch ( "GatewayNotSupported" e ) {
+		            threw = true
+		        }
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
+	}
+
 }

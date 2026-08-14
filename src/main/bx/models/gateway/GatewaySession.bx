@@ -43,6 +43,10 @@
  * Usage:
  *   session = aiGatewaySession( agent: myAgent, gateways: [ aiGateway("cli") ], policy: "queue" )
  *   session.start()
+ *
+ * `gateways` accepts a single gateway or an array; each entry is either an IGateway instance
+ * or a string name resolved via aiGateway( name ) — so `gateways: [ "cli", "http" ]` works
+ * too, exactly as if each name had been passed through aiGateway() first.
  */
 import bxModules.bxai.models.runnables.AiAgent;
 import bxModules.bxai.models.gateway.IGateway;
@@ -104,7 +108,9 @@ class {
 	 * Constructor
 	 *
 	 * @agent         The AiAgent every inbound message dispatches to
-	 * @gateways      A single IGateway or an array of IGateway instances
+	 * @gateways      A single gateway or an array of gateways — each entry either an IGateway
+	 *                instance, or a string gateway name resolved via aiGateway( name ) (core
+	 *                names "mock"/"cli"/"http", or anything registered in gatewayRegistry()).
 	 * @policy        "reject" | "queue" | "steer" | "interrupt". Defaults to "queue".
 	 * @maxQueueDepth Cap on buffered messages per thread before falling back to reject. 0 = unlimited.
 	 * @checkpointer  Optional IAiMemory instance passed to every gateway's setCheckpointer().
@@ -132,7 +138,12 @@ class {
 		variables.gateways      = {}
 
 		var gwList = isArray( arguments.gateways ) ? arguments.gateways : [ arguments.gateways ]
-		gwList.each( ( gw ) => {
+		gwList.each( ( gwOrName ) => {
+			// A string is a gateway name to resolve — same lookup aiGateway() itself does
+			// (core names, then gatewayRegistry()) — so aiGatewaySession( gateways: [ "cli" ] )
+			// works exactly like aiGatewaySession( gateways: [ aiGateway( "cli" ) ] ).
+			var gw = isSimpleValue( gwOrName ) ? aiGateway( gwOrName ) : gwOrName
+
 			if ( variables.gateways.keyExists( gw.getName() ) ) {
 				throw(
 					type   : "GatewaySessionDuplicateGatewayName",
