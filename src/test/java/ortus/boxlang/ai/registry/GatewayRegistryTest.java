@@ -38,7 +38,7 @@ public class GatewayRegistryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				reg = gatewayRegistry()
+				reg = aiGatewayRegistry()
 				gw  = aiGateway( "mock" )
 				reg.register( gw )
 				result = reg.has( "mock" )
@@ -58,7 +58,7 @@ public class GatewayRegistryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				reg = gatewayRegistry()
+				reg = aiGatewayRegistry()
 				gw  = aiGateway( "mock" )
 				reg.register( gw, "test-mod" )
 				result     = reg.has( "mock@test-mod" )
@@ -81,7 +81,7 @@ public class GatewayRegistryTest extends BaseIntegrationTest {
 			// @formatter:off
 			runtime.executeSource(
 				"""
-					gatewayRegistry().register( "notAGateway" )
+					aiGatewayRegistry().register( "notAGateway" )
 				""",
 				context
 			);
@@ -102,7 +102,7 @@ public class GatewayRegistryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				reg = gatewayRegistry()
+				reg = aiGatewayRegistry()
 				gw  = aiGateway( "mock" )
 				reg.register( gw, "test-exact" )
 				fetched = reg.get( "mock@test-exact" )
@@ -123,7 +123,7 @@ public class GatewayRegistryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				result = gatewayRegistry().has( "totallyMissingGateway_xyz" )
+				result = aiGatewayRegistry().has( "totallyMissingGateway_xyz" )
 			""",
 			context
 		);
@@ -142,7 +142,7 @@ public class GatewayRegistryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				reg = gatewayRegistry()
+				reg = aiGatewayRegistry()
 				gw1 = aiGateway( "mock" )
 				gw2 = aiGateway( "mock" )
 				reg.register( gw1, "test-cleanup" )
@@ -170,7 +170,7 @@ public class GatewayRegistryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				reg = gatewayRegistry()
+				reg = aiGatewayRegistry()
 				gw  = aiGateway( "mock" )
 				reg.register( gw, "test-list" )
 				listing = reg.listGateways()
@@ -190,14 +190,14 @@ public class GatewayRegistryTest extends BaseIntegrationTest {
 	// Singleton
 	// -------------------------------------------------------------------------
 
-	@DisplayName( "gatewayRegistry() returns the same singleton instance on repeated calls" )
+	@DisplayName( "aiGatewayRegistry() returns the same singleton instance on repeated calls" )
 	@Test
 	public void testGetInstanceIsSingleton() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				r1     = gatewayRegistry()
-				r2     = gatewayRegistry()
+				r1     = aiGatewayRegistry()
+				r2     = aiGatewayRegistry()
 				result = ( r1 === r2 )
 			""",
 			context

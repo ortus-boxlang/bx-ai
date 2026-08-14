@@ -27,9 +27,9 @@
  *   GET  /bxai/interactions/{requestID}               — poll a pending interaction
  *   POST /bxai/interactions/{requestID}/decisions      — submit a human's decision
  *
- * {gatewayName} and interaction lookups both resolve against gatewayRegistry() —
+ * {gatewayName} and interaction lookups both resolve against aiGatewayRegistry() —
  * i.e. the application must register its configured HttpGateway instance(s) at
- * startup (`gatewayRegistry().register( aiGateway( "http", { secret: "..." } ) )`)
+ * startup (`aiGatewayRegistry().register( aiGateway( "http", { secret: "..." } ) )`)
  * before this processor can route to them. This keeps the secret/config out of the
  * URL and lets one process serve multiple registered gateways.
  *
@@ -244,11 +244,11 @@ class {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Resolve a registered gateway by name via gatewayRegistry().
+	 * Resolve a registered gateway by name via aiGatewayRegistry().
 	 */
 	private static any function resolveGateway( required string name ) {
 		try {
-			return gatewayRegistry().get( arguments.name )
+			return aiGatewayRegistry().get( arguments.name )
 		} catch ( any e ) {
 			return javacast( "null", "" )
 		}
@@ -260,7 +260,7 @@ class {
 	 * (see class docs), so all registered candidates are checked.
 	 */
 	private static any function findGatewayForInteraction( required string requestID ) {
-		var registry = gatewayRegistry()
+		var registry = aiGatewayRegistry()
 		for ( var key in registry.listGateways() ) {
 			var gw = registry.get( key )
 			if ( gw.supports( "humanApproval" ) && isInstanceOf( gw, "HttpGateway" ) ) {

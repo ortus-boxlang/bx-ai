@@ -40,7 +40,7 @@ public class GatewayRequestProcessorTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				gatewayRegistry().unregisterByModule( "" )
+				aiGatewayRegistry().unregisterByModule( "" )
 			""",
 			context
 		);
@@ -60,7 +60,7 @@ public class GatewayRequestProcessorTest extends BaseIntegrationTest {
 
 	                                    secret = "test-shared-secret"
 	                                    gw = aiGateway( "http", { secret: secret } )
-	                                    gatewayRegistry().register( gw )
+	                                    aiGatewayRegistry().register( gw )
 
 	                                    capturedResponse = {}
 	                                    gwTransport = GatewayRequestProcessor::getHttpTransport()

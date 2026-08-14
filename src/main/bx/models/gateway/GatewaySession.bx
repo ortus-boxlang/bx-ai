@@ -1,0 +1,427 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Wires one-or-more IGateway instances to one AiAgent: inbound messages become agent turns,
+ * agent output relays back through whichever gateway the message arrived on, and a second
+ * message arriving on a thread that's already mid-turn is handled per a configurable policy.
+ *
+ * This is the sole orchestrator — there is deliberately no separate "TurnCoordinator" class
+ * or agent-attached "turn coordination" middleware. Every agent middleware hook fires from
+ * INSIDE agent.run()/stream(), after the caller has already committed to that call — so
+ * middleware can reject a call already in flight, but it cannot make the pre-call decision
+ * "don't call the agent yet, hold this message for later" that queue/interrupt require, and
+ * steer doesn't start a new call at all. Only the thing that decides whether to call the
+ * agent — this class — can implement all four policies, using nothing but the already-public
+ * AiAgent.cancelRun()/steerRun(). (Independently corroborated against real source review of
+ * both Vercel Eve's TurnControlReceiver and Hermes Agent's GatewayRunner — both land on this
+ * exact same single-orchestrator shape, for the same reason.)
+ *
+ * Policies (a second message arriving while a thread already has a turn in flight):
+ *   - "reject"    Immediately reply that a response is already in progress. Nothing queued.
+ *   - "queue"     Buffer the message; dispatch it right after the current turn finishes.
+ *   - "steer"     Splice the message into the CURRENTLY RUNNING turn via agent.steerRun() —
+ *                 not a new turn at all. Matches Hermes Agent's "steer" semantic exactly
+ *                 (non-destructive, no restart). Does NOT match Vercel Eve's "steer", which
+ *                 cancels the active turn and starts a replacement — that's this class's
+ *                 "interrupt" policy, not its "steer".
+ *   - "interrupt" Ask the current turn to stop via agent.cancelRun() (takes effect at its next
+ *                 checkpoint, not instantly — see RunControlMiddleware), then queue the new
+ *                 message the same way "queue" does, so it dispatches once the cancelled turn
+ *                 actually returns.
+ *
+ * Usage:
+ *   session = aiGatewaySession( agent: myAgent, gateways: [ aiGateway("cli") ], policy: "queue" )
+ *   session.start()
+ *
+ * `gateways` accepts a single gateway or an array; each entry is either an IGateway instance
+ * or a string name resolved via aiGateway( name ) — so `gateways: [ "cli", "http" ]` works
+ * too, exactly as if each name had been passed through aiGateway() first.
+ */
+import bxModules.bxai.models.runnables.AiAgent;
+import bxModules.bxai.models.gateway.IGateway;
+import bxModules.bxai.models.gateway.contracts.GatewayMessage;
+import bxModules.bxai.models.gateway.contracts.GatewayEvent;
+
+class {
+
+	/**
+	 * The single AiAgent every inbound message is dispatched to.
+	 */
+	property name="agent";
+
+	/**
+	 * gatewayName -> IGateway. Keyed (not an array) for O(1) reply routing and to make
+	 * duplicate gateway names in one session a construction-time error, not a silent overwrite.
+	 */
+	property name="gateways" type="struct" default={};
+
+	/**
+	 * "reject" | "queue" | "steer" | "interrupt" — see the class doc comment.
+	 */
+	property name="policy" type="string" default="queue";
+
+	/**
+	 * Cap on buffered messages per thread for "queue"/"interrupt" before further messages
+	 * fall back to an immediate reject reply. 0 = unlimited.
+	 */
+	property name="maxQueueDepth" type="numeric" default=50;
+
+	/**
+	 * java.util.concurrent.ConcurrentHashMap<String threadId, String claimId> — which claim
+	 * currently owns a thread. Only ever holds entries for threads with a turn in flight.
+	 */
+	property name="claims";
+
+	/**
+	 * java.util.concurrent.ConcurrentHashMap<String threadId, ConcurrentLinkedQueue<struct>>
+	 * — messages buffered for a busy thread under "queue"/"interrupt", each entry
+	 * { message: GatewayMessage, gateway: IGateway } so a reply always goes back through
+	 * whichever gateway that specific message actually arrived on, even if a backlog on one
+	 * thread spans more than one gateway.
+	 */
+	property name="queues";
+
+	/**
+	 * Whether start() has been called and stop() hasn't since. See isRunning().
+	 */
+	property name="running" type="boolean" default=false;
+
+	/**
+	 * The valid policy values — anything else throws at construction.
+	 */
+	static {
+		VALID_POLICIES = [ "reject", "queue", "steer", "interrupt" ];
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @agent         The AiAgent every inbound message dispatches to
+	 * @gateways      A single gateway or an array of gateways — each entry either an IGateway
+	 *                instance, or a string gateway name resolved via aiGateway( name ) (core
+	 *                names "mock"/"cli"/"http", or anything registered in aiGatewayRegistry()).
+	 * @policy        "reject" | "queue" | "steer" | "interrupt". Defaults to "queue".
+	 * @maxQueueDepth Cap on buffered messages per thread before falling back to reject. 0 = unlimited.
+	 * @checkpointer  Optional IAiMemory instance passed to every gateway's setCheckpointer().
+	 *                Defaults to the agent's own checkpointer, if it has one.
+	 */
+	function init(
+		required AiAgent agent,
+		required any gateways,
+		string  policy        = "queue",
+		numeric maxQueueDepth = 50,
+		any     checkpointer
+	) {
+		if ( !static.VALID_POLICIES.findNoCase( arguments.policy ) ) {
+			throw(
+				type   : "GatewaySessionInvalidPolicy",
+				message: "Invalid policy '#arguments.policy#'. Valid policies are: #static.VALID_POLICIES.toList()#."
+			)
+		}
+
+		variables.agent         = arguments.agent
+		variables.policy        = arguments.policy
+		variables.maxQueueDepth = arguments.maxQueueDepth
+		variables.claims        = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init()
+		variables.queues        = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init()
+		variables.gateways      = {}
+
+		var gwList = isArray( arguments.gateways ) ? arguments.gateways : [ arguments.gateways ]
+		gwList.each( ( gwOrName ) => {
+			// A string is a gateway name to resolve — same lookup aiGateway() itself does
+			// (core names, then aiGatewayRegistry()) — so aiGatewaySession( gateways: [ "cli" ] )
+			// works exactly like aiGatewaySession( gateways: [ aiGateway( "cli" ) ] ).
+			var gw = isSimpleValue( gwOrName ) ? aiGateway( gwOrName ) : gwOrName
+
+			if ( variables.gateways.keyExists( gw.getName() ) ) {
+				throw(
+					type   : "GatewaySessionDuplicateGatewayName",
+					message: "Two gateways passed to this GatewaySession share the name '#gw.getName()#' — gateway names must be unique within a session."
+				)
+			}
+			variables.gateways[ gw.getName() ] = gw
+		} )
+
+		var effectiveCheckpointer = arguments.checkpointer ?: variables.agent.getCheckpointer()
+		if ( !isNull( effectiveCheckpointer ) ) {
+			variables.gateways.each( ( name, gw ) => gw.setCheckpointer( effectiveCheckpointer ) )
+		}
+
+		return this
+	}
+
+	/**
+	 * Begin accepting inbound messages: registers this session's dispatch as every attached
+	 * gateway's onMessage() callback, then starts each gateway.
+	 *
+	 * @return This session for chaining
+	 */
+	GatewaySession function start() {
+		variables.gateways.each( ( name, gw ) => {
+			gw.onMessage( ( message ) => handleInbound( message, gw ) )
+			gw.start()
+		} )
+		variables.running = true
+		return this
+	}
+
+	/**
+	 * Stop accepting NEW inbound messages. Does not force-cancel turns already in flight or
+	 * drop buffered queues — that's an explicit, separate decision a caller can make:
+	 *   session.getActiveThreadIds().each( ( threadId ) => session.getAgent().cancelRun( threadId ) )
+	 */
+	void function stop() {
+		variables.gateways.each( ( name, gw ) => gw.stop() )
+		variables.running = false
+	}
+
+	/**
+	 * Whether start() has been called and stop() hasn't since. Reports THIS session's own
+	 * lifecycle state, not each attached gateway's — call gw.isRunning() on an individual
+	 * gateway for that (a session-level "all attached gateways currently up" rollup isn't
+	 * provided, since a caller checking per-gateway health would want to know WHICH one is
+	 * down, not just that the aggregate is unhealthy).
+	 */
+	boolean function isRunning() {
+		return variables.running
+	}
+
+	/**
+	 * Every threadId with a turn currently in flight. Non-destructive — does not affect
+	 * those turns, just reports which threads are currently claimed.
+	 */
+	array function getActiveThreadIds() {
+		var ids = []
+		for ( var threadId in variables.claims.keySet() ) {
+			ids.append( threadId )
+		}
+		return ids
+	}
+
+	/**
+	 * How many messages are currently buffered for a thread under "queue"/"interrupt" —
+	 * 0 if the thread has no queue at all (free, or every buffered message already drained).
+	 * Non-destructive.
+	 *
+	 * @threadId The thread to inspect
+	 */
+	numeric function getQueueDepth( required string threadId ) {
+		var queue = variables.queues.get( arguments.threadId )
+		return isNull( queue ) ? 0 : queue.size()
+	}
+
+	/**
+	 * Handle one normalized inbound message: dispatch immediately if its thread is free, or
+	 * apply this session's configured policy if it's already mid-turn.
+	 *
+	 * Public — not assumed reachable only via a gateway's onMessage() push callback; a future
+	 * pull-style caller (e.g. GatewayRequestProcessor's inbound HTTP request/response path)
+	 * can call this directly too. It must stay the ONLY place that call/no-call/buffer
+	 * decision gets made — see the class doc comment's Eve/Hermes note on why duplicating
+	 * this decision elsewhere is exactly how that decision gets out of sync.
+	 *
+	 * @message       The normalized inbound message
+	 * @sourceGateway The gateway this message arrived on — replies for it go back through here
+	 *
+	 * @return The BoxFuture for the dispatch THIS call triggered (the thread was free), or
+	 *         null when the message was instead queued/steered/rejected — nothing new was
+	 *         dispatched by this call. Production callers ignore this; tests use it to
+	 *         deterministically wait for a turn — and everything it goes on to drain from the
+	 *         queue — to finish, without sleeps (see GatewaySessionTest).
+	 */
+	any function handleInbound( required GatewayMessage message, required IGateway sourceGateway ) {
+		var threadId = resolveThreadId( arguments.message, arguments.sourceGateway )
+		var claimId  = createUUID()
+		var previous = variables.claims.putIfAbsent( threadId, claimId )
+
+		if ( isNull( previous ) ) {
+			// Thread was free — this call owns it now.
+			return dispatchTurn( arguments.message, arguments.sourceGateway, threadId, claimId )
+		}
+
+		switch ( variables.policy ) {
+			case "reject":
+				replyRejected( arguments.message, arguments.sourceGateway, "A response is already in progress for this thread." )
+				break
+
+			case "steer":
+				variables.agent.steerRun( threadId, arguments.message.getText() )
+				break
+
+			case "interrupt":
+				variables.agent.cancelRun( threadId, "Interrupted by a newer inbound message on thread #threadId#." )
+				enqueue( threadId, arguments.message, arguments.sourceGateway )
+				break
+
+			case "queue":
+			default:
+				enqueue( threadId, arguments.message, arguments.sourceGateway )
+				break
+		}
+
+		return null
+	}
+
+	// ==================== Private Helpers ====================
+
+	/**
+	 * Closed by default: a message's own threadId always wins if present (matches
+	 * AiAgent's threadId); otherwise namespaced by source gateway name, so two gateways
+	 * producing the same raw conversation id never collide.
+	 */
+	private string function resolveThreadId( required GatewayMessage message, required IGateway sourceGateway ) {
+		var explicit = arguments.message.getContext().getThreadID()
+		if ( len( explicit ) ) {
+			return explicit
+		}
+		return "#arguments.sourceGateway.getName()#:#arguments.message.getContext().getConversationID()#"
+	}
+
+	private void function enqueue( required string threadId, required GatewayMessage message, required IGateway sourceGateway ) {
+		var queue = variables.queues.get( arguments.threadId )
+		if ( isNull( queue ) ) {
+			queue = createObject( "java", "java.util.concurrent.ConcurrentLinkedQueue" ).init()
+			var existing = variables.queues.putIfAbsent( arguments.threadId, queue )
+			if ( !isNull( existing ) ) {
+				queue = existing
+			}
+		}
+
+		if ( variables.maxQueueDepth > 0 && queue.size() >= variables.maxQueueDepth ) {
+			replyRejected( arguments.message, arguments.sourceGateway, "Too many messages already buffered for this thread." )
+			return
+		}
+
+		queue.add( { message: arguments.message, gateway: arguments.sourceGateway } )
+	}
+
+	private void function replyRejected( required GatewayMessage message, required IGateway sourceGateway, required string reason ) {
+		var event = new GatewayEvent(
+			type   : "message.rejected",
+			data   : { reason: arguments.reason },
+			context: arguments.message.getContext()
+		)
+		arguments.sourceGateway.deliver( event, arguments.message.getContext() )
+	}
+
+	/**
+	 * Dispatches asynchronously (via the io-tasks virtual-thread pool, the same primitive
+	 * IAiRunnable.runAsync()/aiParallel() already use) so handleInbound() never blocks a
+	 * gateway's calling thread for the duration of a whole agent turn. Covers ONE async hop
+	 * per claim lifetime, not one per turn — drainQueue() (called at the end of this task)
+	 * runs any further queued turns synchronously within this same task, so the loop never
+	 * races a freshly-spawned task for the same thread.
+	 */
+	private BoxFuture function dispatchTurn( required GatewayMessage message, required IGateway sourceGateway, required string threadId, required string claimId ) {
+		return asyncRun( () => {
+			dispatchTurnSync( message, sourceGateway, threadId )
+			drainQueue( threadId, claimId )
+		}, "io-tasks" )
+	}
+
+	/**
+	 * CAS-safe release: check-then-remove has a race window (something could be enqueued
+	 * between "queue empty" and "release the claim"), so after releasing, re-check — if
+	 * something arrived in that window, re-claim and keep draining. Exactly-once is
+	 * guaranteed by the CAS either way, regardless of who wins the re-claim.
+	 */
+	private void function drainQueue( required string threadId, required string claimId ) {
+		while ( true ) {
+			var queue = variables.queues.get( arguments.threadId )
+			var next  = isNull( queue ) ? null : queue.poll()
+
+			if ( isNull( next ) ) {
+				variables.claims.remove( arguments.threadId, arguments.claimId )
+
+				var stillPending = !isNull( queue ) && !queue.isEmpty()
+				if ( stillPending && isNull( variables.claims.putIfAbsent( arguments.threadId, arguments.claimId ) ) ) {
+					continue
+				}
+				return
+			}
+
+			dispatchTurnSync( next.message, next.gateway, arguments.threadId )
+		}
+	}
+
+	/**
+	 * Runs one turn to completion, relaying output back through sourceGateway — streamed
+	 * chunk-by-chunk if it declares "streaming" support, buffered into one final delivery
+	 * otherwise (true of every core gateway today). Blocking by design: agent.stream() is
+	 * itself synchronous, and dispatchTurn()'s async wrapper is what keeps this off the
+	 * caller's thread — this method runs turns one at a time within that one async hop.
+	 */
+	private void function dispatchTurnSync( required GatewayMessage message, required IGateway sourceGateway, required string threadId ) {
+		var context           = arguments.message.getContext()
+		var supportsStreaming = arguments.sourceGateway.supports( "streaming" )
+		var accumulated       = ""
+
+		if ( supportsStreaming ) {
+			deliverStreamEvent( arguments.sourceGateway, context, GatewayEvent.TYPES.RESPONSE_STARTED, "" )
+		}
+
+		variables.agent.stream(
+			( chunk ) => {
+				var text = extractChunkText( chunk )
+				if ( len( text ) ) {
+					accumulated &= text
+					if ( supportsStreaming ) {
+						deliverStreamEvent( arguments.sourceGateway, context, GatewayEvent.TYPES.RESPONSE_DELTA, text )
+					}
+				}
+			},
+			arguments.message.getText(),
+			{},
+			{ threadId: arguments.threadId }
+		)
+
+		if ( supportsStreaming ) {
+			deliverStreamEvent( arguments.sourceGateway, context, GatewayEvent.TYPES.RESPONSE_COMPLETED, accumulated )
+		} else {
+			var event = new GatewayEvent(
+				type   : GatewayEvent.TYPES.RESPONSE_COMPLETED,
+				data   : { content: accumulated },
+				context: context
+			)
+			arguments.sourceGateway.deliver( event, context )
+		}
+	}
+
+	private void function deliverStreamEvent( required IGateway gateway, required any context, required string type, required string content ) {
+		var event = new GatewayEvent(
+			type   : arguments.type,
+			data   : { content: arguments.content },
+			context: arguments.context
+		)
+		arguments.gateway.deliverChunk( event, arguments.context )
+	}
+
+	/**
+	 * A middleware_stop sentinel (cancel/suspend/reject — see AiAgent.stream()) carries no
+	 * assistant content to relay; it's skipped here rather than narrated back to the gateway.
+	 * Surfacing turn outcomes (e.g. "this turn was interrupted") through the gateway is a
+	 * documented follow-up, not solved in this pass.
+	 */
+	private string function extractChunkText( required any chunk ) {
+		if ( !isStruct( arguments.chunk ) || ( arguments.chunk.type ?: "" ) == "middleware_stop" ) {
+			return ""
+		}
+		var choices = arguments.chunk.choices ?: []
+		if ( !choices.len() ) {
+			return ""
+		}
+		return choices.first().delta.content ?: ""
+	}
+
+}

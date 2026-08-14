@@ -15,11 +15,11 @@
  * Returns the singleton GatewayRegistry instance.
  *
  * Usage:
- *   gatewayRegistry().register( gatewayInstance )
- *   gatewayRegistry().register( gatewayInstance, "my-module" )
- *   gatewayRegistry().get( "slack@bx-ai-gateway-slack" )
- *   gatewayRegistry().has( "cli" )
- *   gatewayRegistry().listGateways()
+ *   aiGatewayRegistry().register( gatewayInstance )
+ *   aiGatewayRegistry().register( gatewayInstance, "my-module" )
+ *   aiGatewayRegistry().get( "slack@bx-ai-gateway-slack" )
+ *   aiGatewayRegistry().has( "cli" )
+ *   aiGatewayRegistry().listGateways()
  */
 import bxModules.bxai.models.gateway.registry.GatewayRegistry;
 

@@ -29,7 +29,11 @@
  *     live request and lets the run continue. There is no mid-token-generation interruption —
  *     effect lands at the next checkpoint, not instantly.
  *   - afterAgentRun: releases the threadId entry — the tracked-token map only ever holds
- *     entries for runs currently in flight, not history.
+ *     entries for runs currently in flight, not history. Uses a 2-arg CAS remove (only evict
+ *     if the map still holds THIS call's token) rather than an unconditional remove, so two
+ *     run()/stream() calls sharing a threadId while both are in flight can't have the first
+ *     one to finish evict the other's still-active token — see GatewaySession.bx's `queue`/
+ *     `interrupt` policies, which are exactly the scenario that makes this a real case.
  *
  * A threadId with no active run (already finished, or a threadId was never passed to
  * run()/stream() to begin with) has nothing to find — cancel()/steer() are safe no-ops then.
@@ -72,7 +76,13 @@ class extends="BaseAiMiddleware" {
 	}
 
 	AiMiddlewareResult function afterAgentRun( required struct context ) {
-		variables.tokens.remove( arguments.context.threadId )
+		var myToken = arguments.context.options.cancellationToken ?: null
+		if ( !isNull( myToken ) ) {
+			// 2-arg CAS: only evict if it's STILL this call's token. If a second run() on the
+			// same threadId overwrote it since, that's this middleware's problem to leave alone —
+			// that other call's own afterAgentRun owns releasing its own entry.
+			variables.tokens.remove( arguments.context.threadId, myToken )
+		}
 		return AiMiddlewareResult.continue()
 	}
 

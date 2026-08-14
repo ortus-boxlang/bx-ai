@@ -444,4 +444,44 @@ public class RunControlMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "unaffected" ) ) ).isTrue();
 	}
 
+	// ---- Internal white-box test for the afterAgentRun CAS release (RunControlMiddleware
+	// ---- constructed directly here — the only place in this suite that does so — because the
+	// ---- property under test is a registry-internal invariant, not something reachable
+	// ---- through cancelRun()/steerRun()'s public contract) ----
+
+	@DisplayName( "afterAgentRun releases only ITS OWN token: a second run() sharing a threadId isn't evicted by the first run()'s cleanup" )
+	@Test
+	public void testAfterAgentRunDoesNotEvictAnotherRunsToken() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.RunControlMiddleware;
+
+		        mw = new RunControlMiddleware()
+
+		        // Run A starts on "shared-thread"
+		        contextA = { threadId: "shared-thread", options: {} }
+		        mw.beforeAgentRun( contextA )
+
+		        // Run B starts on the SAME threadId while A is still active — overwrites the
+		        // registry entry, exactly the scenario GatewaySession's queue/interrupt policies
+		        // can now produce (two run()/stream() calls sharing a threadId while both are
+		        // in flight, e.g. an interrupted run whose cancel hasn't landed yet).
+		        contextB = { threadId: "shared-thread", options: {} }
+		        mw.beforeAgentRun( contextB )
+
+		        // Run A finishes FIRST, while B is still active — A's cleanup must only ever
+		        // release ITS OWN token, never B's.
+		        mw.afterAgentRun( contextA )
+
+		        // B is still active — cancelling "shared-thread" must still find B's token.
+		        bStillCancellable = mw.cancel( "shared-thread", "cancel B" )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "bStillCancellable" ) ) ).isTrue();
+	}
+
 }
