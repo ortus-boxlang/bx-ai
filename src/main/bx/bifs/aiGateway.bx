@@ -15,9 +15,9 @@
  * Creates a reference to a Gateway implementation by name.
  *
  * A small switch resolves the gateway names bx-ai ships in core. For any other name,
- * external gateway modules (e.g. bx-ai-gateway-slack) integrate via gatewayRegistry():
+ * external gateway modules (e.g. bx-ai-gateway-slack) integrate via aiGatewayRegistry():
  * a module registers an instance under its gateway name when it loads
- * (`gatewayRegistry().register( new SlackGateway() )`), and this BIF looks it up and
+ * (`aiGatewayRegistry().register( new SlackGateway() )`), and this BIF looks it up and
  * (re)configures it with the given options. If nothing is registered under that name,
  * the name is tried as a directly-instantiable class path as a last resort.
  */
@@ -39,15 +39,25 @@ class {
 	 * Creates a reference to a Gateway implementation this module (or an external module)
 	 * supports.
 	 *
-	 * @name    The gateway name to resolve — a core name ("mock", "cli", "http") or an
-	 *          externally-registered name provided by a gateway module (e.g. "slack")
-	 * @options A struct of options to configure the gateway instance
+	 * @name     The gateway name to resolve — a core name ("mock", "cli", "http") or an
+	 *           externally-registered name provided by a gateway module (e.g. "slack")
+	 * @options  A struct of options to configure the gateway instance
+	 * @register When true, registers the newly-constructed gateway in the aiGatewayRegistry()
+	 *           singleton for discovery/reuse. Defaults to false to avoid registry pollution
+	 *           from throwaway or test instances. Ignored when @name resolves to an
+	 *           already-registered gateway — it's registered already.
+	 * @module   Module namespace used as the registry key suffix when register is true (e.g. "my-module" → "name@my-module")
 	 *
 	 * @throws GatewayNotSupported if the gateway name is not supported
 	 *
 	 * @return The configured IGateway instance
 	 */
-	function invoke( required string name, struct options = {} ) {
+	function invoke(
+		required string name,
+		struct  options  = {},
+		boolean register = false,
+		string  module   = ""
+	) {
 		var targetClass = ""
 
 		switch ( arguments.name ) {
@@ -63,8 +73,8 @@ class {
 			default:
 				// A module that provides this gateway registers an instance under its name
 				// when it loads — prefer that over anything else.
-				if ( gatewayRegistry().has( arguments.name ) ) {
-					var registeredGateway = gatewayRegistry().get( arguments.name )
+				if ( aiGatewayRegistry().has( arguments.name ) ) {
+					var registeredGateway = aiGatewayRegistry().get( arguments.name )
 					registeredGateway.configure( arguments.options )
 					BoxAnnounce( "onGatewayCreate", { gateway: registeredGateway } )
 					return registeredGateway
@@ -76,10 +86,13 @@ class {
 				} catch ( any e ) {
 					throw(
 						type   : "GatewayNotSupported",
-						message: "Gateway [#arguments.name#] is not supported. Core gateways are: [#static.CORE_GATEWAYS.toList()#]. Register it in gatewayRegistry() or install a module that provides it (e.g. bx-ai-gateway-#arguments.name#)."
+						message: "Gateway [#arguments.name#] is not supported. Core gateways are: [#static.CORE_GATEWAYS.toList()#]. Register it in aiGatewayRegistry() or install a module that provides it (e.g. bx-ai-gateway-#arguments.name#)."
 					)
 				}
 				BoxAnnounce( "onGatewayCreate", { gateway: oTargetGateway } )
+				if ( arguments.register ) {
+					aiGatewayRegistry().register( oTargetGateway, arguments.module )
+				}
 				return oTargetGateway
 		}
 
@@ -88,6 +101,11 @@ class {
 
 		// Announce
 		BoxAnnounce( "onGatewayCreate", { gateway: oTargetGateway } )
+
+		// Opt-in registration in the gateway registry for discovery/reuse
+		if ( arguments.register ) {
+			aiGatewayRegistry().register( oTargetGateway, arguments.module )
+		}
 
 		return oTargetGateway
 	}

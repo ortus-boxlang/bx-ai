@@ -24,7 +24,7 @@ class {
 	 * @agent         The AiAgent every inbound message dispatches to
 	 * @gateways      A single gateway or an array of gateways — each entry either an IGateway
 	 *                instance, or a string gateway name resolved via aiGateway( name ) (core
-	 *                names "mock"/"cli"/"http", or anything registered in gatewayRegistry()).
+	 *                names "mock"/"cli"/"http", or anything registered in aiGatewayRegistry()).
 	 * @policy        "reject" | "queue" | "steer" | "interrupt" — how to handle an inbound
 	 *                message that arrives for a thread with a turn already in flight.
 	 *                Defaults to "queue".

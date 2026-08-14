@@ -778,9 +778,11 @@ agent = aiAgent(
 **External gateways** (Slack, Discord, Teams, …) ship as their own modules and register themselves at load time:
 
 ```javascript
-gatewayRegistry().register( new MyPlatformGateway(), "my-module" )
+aiGatewayRegistry().register( new MyPlatformGateway(), "my-module" )
 myGateway = aiGateway( "my-platform" )
 ```
+
+`aiGateway()` can also auto-register the instance it constructs — pass `register: true` (and optionally `module`) instead of calling `aiGatewayRegistry().register()` yourself: `aiGateway( name: "http", register: true, module: "my-module" )`.
 
 Implement `IGateway` to build your own — every capability method has a safe default, so you only override what you actually support.
 
@@ -797,7 +799,7 @@ session = aiGatewaySession(
 session.start()
 ```
 
-`gateways` entries can be a string name (resolved via `aiGateway( name )` — core names or anything registered in `gatewayRegistry()`) or an already-constructed `IGateway` instance (`aiGateway( "http", { secret: "..." } )` when you need to pass configuration options) — mix and match freely.
+`gateways` entries can be a string name (resolved via `aiGateway( name )` — core names or anything registered in `aiGatewayRegistry()`) or an already-constructed `IGateway` instance (`aiGateway( "http", { secret: "..." } )` when you need to pass configuration options) — mix and match freely.
 
 | Policy | A second message arrives on a busy thread… |
 |---|---|
@@ -842,7 +844,7 @@ A gateway extending `BaseGateway` gets `onGatewayConnect`/`onGatewayDisconnect` 
 | `aiDocuments()` | Create fluent document loader | `source`, `config={}` | IDocumentLoader Object | N/A |
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
 | `aiFence()` | Fence (spotlight) untrusted content so the model treats it as DATA, not instructions | `content`, `label="external"`, `withPreamble=false` | String | N/A |
-| `aiGateway()` | Resolve a human-interaction gateway by name | `name` _(core: `mock`, `cli`, `http`; or externally registered)_, `options={}` | IGateway Object | N/A |
+| `aiGateway()` | Resolve a human-interaction gateway by name | `name` _(core: `mock`, `cli`, `http`; or externally registered)_, `options={}`, `register=false`, `module=""` | IGateway Object | N/A |
 | `aiGatewaySession()` | Wire an agent to one or more gateways for inbound message handling | `agent`, `gateways`, `policy="queue"` _(reject\|queue\|steer\|interrupt)_, `maxQueueDepth=50`, `checkpointer` | GatewaySession Object | N/A |
 | `aiImage()` | Generate images from a text prompt | `prompt`, `params={}`, `options={}` | AiImageResponse Object | N/A |
 | `aiMemory()` | Create memory instance | `memory`, `key`, `userId`, `conversationId`, `config={}` | IAiMemory Object | N/A |
@@ -864,7 +866,7 @@ A gateway extending `BaseGateway` gets `onGatewayConnect`/`onGatewayDisconnect` 
 | `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors`, `statsEnabled`, `force` | MCPServer Object | N/A |
 | `aiWebSearch()` | Search the web via a pluggable provider | `query`, `params={}`, `options={}` _(provider, maxResults)_ | Array of `{title, url, snippet}` | ❌ |
 | `aiWebSearchAsync()` | Search the web asynchronously | `query`, `params={}`, `options={}` _(provider, maxResults)_ | BoxLang Future | ✅ |
-| `gatewayRegistry()` | Get the singleton Gateway Registry (external gateway modules register here) | _(none)_ | GatewayRegistry Object | N/A |
+| `aiGatewayRegistry()` | Get the singleton Gateway Registry (external gateway modules register here) | _(none)_ | GatewayRegistry Object | N/A |
 
 > **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](https://ai.ortusbooks.com/main-components/overview.md#return-formats) documentation for details.
 

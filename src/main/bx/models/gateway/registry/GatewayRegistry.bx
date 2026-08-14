@@ -14,13 +14,13 @@
  * ----------------------------------------------------------------------------------
  * Singleton registry for configured, instantiated Gateway objects.
  *
- * Access via gatewayRegistry() BIF
+ * Access via aiGatewayRegistry() BIF
  *
  * Key convention: gatewayName or gatewayName@moduleName
  *
  * Registration:
- *   gatewayRegistry().register( myGatewayInstance )
- *   gatewayRegistry().register( myGatewayInstance, "my-module" )
+ *   aiGatewayRegistry().register( myGatewayInstance )
+ *   aiGatewayRegistry().register( myGatewayInstance, "my-module" )
  *
  * This registry holds already-instantiated, configured IGateway objects a module wants
  * discoverable/reusable at runtime — it is distinct from aiGateway(name), which resolves
