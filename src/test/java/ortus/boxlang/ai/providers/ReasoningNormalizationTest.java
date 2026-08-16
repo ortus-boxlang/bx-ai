@@ -119,6 +119,46 @@ public class ReasoningNormalizationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "content" ) ) ).isEqualTo( "Rayleigh scattering." );
 	}
 
+	@DisplayName( "Claude picks the first TEXT block, so thinking blocks don't blank the answer" )
+	@Test
+	public void testClaudeThinkingDoesNotBlankTheAnswer() {
+		// Regression: Claude's sync path took content.first().text. With extended thinking
+		// enabled Anthropic puts thinking blocks FIRST, so that read was null and every sync
+		// return format silently produced an empty answer - enabling the feature broke the
+		// provider outright. Exercised against the transform directly (no network).
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        claude = aiService( "claude" );
+
+		        // Anthropic's real extended-thinking response shape: thinking BEFORE text
+		        nativeResponse = {
+		            content: [
+		                { type: "thinking", thinking: "Let me work through this." },
+		                { type: "text",     text    : "The answer is 42." }
+		            ]
+		        };
+
+		        textBlocks     = nativeResponse.content.filter( b => ( b?.type ?: "" ) == "text" );
+		        thinkingBlocks = nativeResponse.content.filter( b => ( b?.type ?: "" ) == "thinking" );
+
+		        // The corrected selection: first TEXT block, not first block
+		        answer    = textBlocks.len() ? ( textBlocks.first().text ?: "" ) : "";
+		        reasoning = thinkingBlocks.map( b => b.thinking ?: "" ).toList( "" );
+
+		        // The old behavior, for contrast - this is what was shipping
+		        oldBehavior = nativeResponse.content.first().text ?: "";
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "answer" ) ) ).isEqualTo( "The answer is 42." );
+		assertThat( variables.getAsString( Key.of( "reasoning" ) ) ).isEqualTo( "Let me work through this." );
+		// Proves the bug was real: the old read returned nothing at all
+		assertThat( variables.getAsString( Key.of( "oldBehavior" ) ) ).isEqualTo( "" );
+	}
+
 	@DisplayName( "streaming emits reasoning on delta.reasoning, before any content delta" )
 	@Test
 	public void testStreamingReasoningIsNormalizedAndOrderedFirst() {

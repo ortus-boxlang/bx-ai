@@ -408,6 +408,15 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 						"content": parsedChunk.message?.content ?: ""
 					}
 
+					// Reasoning-capable local models (deepseek-r1 and friends) return their
+					// thinking on Ollama's own `message.thinking` key. Map it onto the standard
+					// `delta.reasoning` so consumers read it identically here and on every
+					// other provider — never merged into `content`, which is the answer.
+					var ollamaThinking = parsedChunk.message?.thinking ?: ""
+					if( isSimpleValue( ollamaThinking ) && len( ollamaThinking ) ){
+						delta[ "reasoning" ] = ollamaThinking
+					}
+
 					// Ollama sends COMPLETE tool-call objects in streaming chunks (not partial
 					// argument deltas like OpenAI).  Normalize each call to OpenAI delta format
 					// so BaseService.updateStreamState() / mergeToolCallDeltas() can accumulate

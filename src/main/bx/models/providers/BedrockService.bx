@@ -1759,6 +1759,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		required string modelId
 	){
 		var content = "";
+		var reasoning = "";
 		var finishReason = "";
 
 		switch ( arguments.modelFamily ) {
@@ -1771,6 +1772,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 						case "content_block_delta":
 							if ( arguments.chunk.keyExists( "delta" ) && arguments.chunk.delta.keyExists( "text" ) ) {
 								content = arguments.chunk.delta.text;
+							}
+							// Claude-on-Bedrock extended thinking arrives as its own delta type,
+							// mapped onto the standard `delta.reasoning` key like every other
+							// provider — never merged into `content`, which is the answer.
+							if ( arguments.chunk.keyExists( "delta" ) && arguments.chunk.delta.keyExists( "thinking" ) ) {
+								reasoning = arguments.chunk.delta.thinking ?: "";
 							}
 							break;
 						case "message_stop":
@@ -1829,22 +1836,39 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					if ( delta.keyExists( "content" ) ) {
 						content = delta.content;
 					}
+					// OpenAI-shaped models on Bedrock carrying reasoning, in either spelling
+					for ( var reasoningKey in [ "reasoning", "reasoning_content" ] ) {
+						if ( delta.keyExists( reasoningKey ) && isSimpleValue( delta[ reasoningKey ] ) ) {
+							reasoning = delta[ reasoningKey ];
+							break;
+						}
+					}
 					if ( arguments.chunk.choices[ 1 ].keyExists( "finish_reason" ) && !isNull( arguments.chunk.choices[ 1 ].finish_reason ) ) {
 						finishReason = arguments.chunk.choices[ 1 ].finish_reason;
 					}
 				}
 		}
 
-		// Only return if we have content or a finish reason
-		if ( !len( content ) && !len( finishReason ) ) {
+		// Only return if we have content, reasoning, or a finish reason. Reasoning must be
+		// part of this guard: a thinking-only chunk (which is what every chunk is while the
+		// model is still reasoning) carries no content, and would otherwise be dropped here.
+		if ( !len( content ) && !len( reasoning ) && !len( finishReason ) ) {
 			return javacast( "null", "" );
 		}
 
 		// Return OpenAI-compatible streaming format
+		var streamDelta = {};
+		if ( len( content ) ) {
+			streamDelta[ "content" ] = content;
+		}
+		if ( len( reasoning ) ) {
+			streamDelta[ "reasoning" ] = reasoning;
+		}
+
 		return {
 			"choices" : [
 				{
-					"delta" : len( content ) ? { "content" : content } : {},
+					"delta" : streamDelta,
 					"index" : 0,
 					"finish_reason" : len( finishReason ) ? finishReason : javacast( "null", "" )
 				}

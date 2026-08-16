@@ -933,8 +933,28 @@ class extends="BaseService" implements="IAiChatService" {
 			return chat( thisChatRequest, arguments.interactionCount + 1 );
 		}
 
-		// Determine return formats
-		var content = result.content.first().text
+		// Determine return formats.
+		//
+		// Take the first TEXT block rather than blindly the first block: with extended
+		// thinking enabled (`params: { thinking: {...} }`) Anthropic puts one or more
+		// `thinking` blocks BEFORE the answer, so `content.first().text` was null and
+		// every sync return format silently produced an empty answer — enabling the
+		// feature broke the provider outright.
+		var textBlocks = result.content.filter( block -> ( block?.type ?: "" ) == "text" )
+		var content    = textBlocks.len() ? ( textBlocks.first().text ?: "" ) : ""
+
+		// Surface the model's thinking on the standard `reasoning` key. Claude's sync
+		// `raw` format returns Anthropic's own native envelope (pre-existing behavior,
+		// not an OpenAI `choices[]` shape), so reasoning is attached at the top level
+		// here; the streaming path uses the normalized `delta.reasoning` like everyone
+		// else. Never merged into `content` — that is the answer, and what memory keeps.
+		var thinkingBlocks = result.content.filter( block -> ( block?.type ?: "" ) == "thinking" )
+		if( thinkingBlocks.len() ){
+			result[ "reasoning" ] = thinkingBlocks
+				.map( block -> block.thinking ?: "" )
+				.toList( "" )
+		}
+
 		switch( arguments.chatRequest.getReturnFormat() ){
 			case "all":
 				return result.content;
