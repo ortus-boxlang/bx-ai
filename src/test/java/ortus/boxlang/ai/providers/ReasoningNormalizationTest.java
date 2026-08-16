@@ -82,6 +82,43 @@ public class ReasoningNormalizationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "content" ) ) ).isEqualTo( "Just an answer." );
 	}
 
+	@DisplayName( "a provider-native reasoning_content is normalized to reasoning on the sync path" )
+	@Test
+	public void testSyncNativeSpellingIsNormalized() {
+		// A RAW completion, passed through untouched by the mock's own message builder -
+		// this is the shape a real provider (DeepSeek) actually returns, so it exercises
+		// the normalization itself rather than the mock writing the standard key directly.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        result = aiChat( "Why is the sky blue?", {}, {
+		            provider       : "mock",
+		            returnFormat   : "raw",
+		            providerOptions: { responses: [ {
+		                choices: [ {
+		                    index        : 0,
+		                    finish_reason: "stop",
+		                    message      : {
+		                        role             : "assistant",
+		                        content          : "Rayleigh scattering.",
+		                        reasoning_content: "Native provider spelling."
+		                    }
+		                } ]
+		            } ] }
+		        } );
+
+		        message   = result.choices.first().message;
+		        reasoning = message.reasoning ?: "";
+		        content   = message.content;
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "reasoning" ) ) ).isEqualTo( "Native provider spelling." );
+		assertThat( variables.getAsString( Key.of( "content" ) ) ).isEqualTo( "Rayleigh scattering." );
+	}
+
 	@DisplayName( "streaming emits reasoning on delta.reasoning, before any content delta" )
 	@Test
 	public void testStreamingReasoningIsNormalizedAndOrderedFirst() {

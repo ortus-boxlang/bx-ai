@@ -410,6 +410,10 @@ abstract class implements="IAiService" {
 			);
 		}
 
+		// Normalize reasoning BEFORE announcing, so onAIChatResponse listeners and the
+		// caller both see the same standard shape (see normalizeReasoningMessage)
+		normalizeReasoningMessage( iData.response );
+
 		BoxAnnounce( "onAIChatResponse", iData );
 
 		return iData.response;
@@ -597,6 +601,45 @@ abstract class implements="IAiService" {
 			if( delta.keyExists( candidate ) && !isNull( delta[ candidate ] ) && isSimpleValue( delta[ candidate ] ) ){
 				delta[ "reasoning" ] = delta[ candidate ];
 				return;
+			}
+		}
+	}
+
+	/**
+	 * Synchronous counterpart to normalizeReasoningDelta(): normalize a provider's native
+	 * reasoning field onto the standard `choices[].message.reasoning` key, IN PLACE, on a
+	 * non-streaming completion.
+	 *
+	 * Subclasses that replace the transport entirely (see MockService) must call this from
+	 * their own override too, or mock responses would follow a different contract than the
+	 * real providers they stand in for.
+	 *
+	 * @response A parsed chat completion in OpenAI envelope shape - MUTATED in place
+	 *
+	 * @return void
+	 */
+	private void function normalizeReasoningMessage( required any response ){
+		if( !isStruct( arguments.response ) ){
+			return;
+		}
+
+		var choices = arguments.response.choices ?: [];
+		if( !isArray( choices ) || choices.isEmpty() ){
+			return;
+		}
+
+		for( var choice in choices ){
+			var message = choice.message ?: "";
+			if( !isStruct( message ) || message.keyExists( "reasoning" ) ){
+				continue;
+			}
+
+			// Alternate native spellings, in priority order
+			for( var candidate in [ "reasoning_content", "thinking" ] ){
+				if( message.keyExists( candidate ) && !isNull( message[ candidate ] ) && isSimpleValue( message[ candidate ] ) ){
+					message[ "reasoning" ] = message[ candidate ];
+					break;
+				}
 			}
 		}
 	}

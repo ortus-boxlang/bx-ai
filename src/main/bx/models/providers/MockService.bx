@@ -143,6 +143,13 @@ class extends="OpenAIService" {
 
 		var response = buildCompletion( nextScriptedResponse( arguments.chatRequest ), arguments.dataPacket )
 
+		// Same normalization the real transport applies (see BaseService.sendChatRequest) —
+		// this override replaces the transport wholesale, so without this a raw scripted
+		// completion carrying a provider-native `reasoning_content` would reach callers
+		// un-normalized under mock while a real provider normalized it, and every test
+		// written against the mock would be testing a contract production doesn't have.
+		normalizeReasoningMessage( response )
+
 		BoxAnnounce( "onAIChatResponse", {
 			"chatRequest": arguments.chatRequest,
 			"response"   : response,
@@ -177,6 +184,7 @@ class extends="OpenAIService" {
 		recordRequest( arguments.dataPacket )
 
 		var completion = buildCompletion( nextScriptedResponse( arguments.chatRequest ), arguments.dataPacket )
+		normalizeReasoningMessage( completion )
 		var message    = completion.choices.first().message
 
 		var streamState = {
