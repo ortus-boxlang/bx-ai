@@ -504,10 +504,14 @@ class extends="AiBaseRunnable" {
 				userOnChunk( arguments.chunk )
 				return
 			}
-			// Accumulate content
+			// Accumulate content ONLY — deliberately never `delta.reasoning`. Reasoning is
+			// the model's own thinking, not its answer: `accumulated` becomes the assistant
+			// message persisted to memory, so folding reasoning in here would replay the
+			// model's private thinking back to it as if it had said it. Reasoning still
+			// reaches the caller below, on the chunk itself.
 			var content = arguments.chunk.choices?.first()?.delta?.content ?: ""
 			accumulated &= content;
-			// Call user callback with the chunk
+			// Call user callback with the chunk (content AND reasoning deltas alike)
 			userOnChunk( arguments.chunk )
 		}
 

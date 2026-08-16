@@ -313,6 +313,37 @@ aiChatStream(
 
 📖 [Chat & Streaming Guide](https://ai.ortusbooks.com/main-components/chat)
 
+#### 🧠 Reasoning (thinking) models
+
+Reasoning is enabled the same way any other provider parameter is — `params` passes through to the provider verbatim:
+
+```javascript
+// Claude extended thinking
+aiChat( "Solve this step by step", params: {
+    thinking: { type: "enabled", budget_tokens: 10000 }
+}, options: { provider: "claude" } )
+
+// OpenAI reasoning effort
+aiChat( "Solve this step by step", params: { reasoning_effort: "high" } )
+```
+
+Whatever the provider calls it on the wire (Anthropic `thinking_delta`, DeepSeek `reasoning_content`), it comes back **normalized onto one key**, so your code never branches on provider:
+
+```javascript
+aiChatStream( "Why is the sky blue?", ( chunk ) => {
+    var delta     = chunk.choices?.first()?.delta ?: {}
+    var reasoning = delta.reasoning ?: ""   // the model's thinking
+    var content   = delta.content   ?: ""   // the actual answer
+} )
+
+// Synchronously, on the raw completion:
+// result.choices.first().message.reasoning
+```
+
+> **Absence is normal, not an error.** A provider or model that doesn't reason simply omits the key — always read it defensively (`delta.reasoning ?: ""`). Reasoning is deliberately *not* a declared capability, because it varies per **model** (Sonnet vs. Haiku, gpt-5 vs. gpt-4o), not per provider.
+>
+> Reasoning is always kept separate from `content` and is **never** persisted to agent memory — replaying a model's private thinking back to it as if it had said it changes its behavior on the next turn.
+
 ### 🤖 Autonomous Agents with Tools
 
 ```javascript

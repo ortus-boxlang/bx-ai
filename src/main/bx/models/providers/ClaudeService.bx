@@ -151,6 +151,7 @@ class extends="BaseService" implements="IAiChatService" {
 			"messageId": "",
 			"model": arguments.chatRequest.getModel(),
 			"content": "",
+			"reasoning": "",
 			"toolCalls": [],
 			"toolInputBuffers": {},
 			"toolCallIndexMap": {},
@@ -222,6 +223,39 @@ class extends="BaseService" implements="IAiChatService" {
 							streamState.toolInputBuffers[ bufferKey ] = "";
 						}
 						streamState.toolInputBuffers[ bufferKey ] &= parsedChunk.delta.partial_json ?: "";
+						return;
+					}
+
+					// Extended thinking: Anthropic streams the model's reasoning as its own
+					// content-block type, BEFORE any text. Normalize it onto the standard
+					// `delta.reasoning` key so consumers read reasoning identically here and
+					// on every OpenAI-shaped provider — never merged into `content`, which
+					// is the answer and is what gets persisted to memory.
+					// `signature_delta` (Anthropic's verification signature) and redacted
+					// thinking blocks have no cross-provider equivalent and are deliberately
+					// not surfaced on the normalized envelope.
+					if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "thinking_delta" ){
+						var thinkingChunk = parsedChunk.delta.thinking ?: "";
+						if( !thinkingChunk.len() ){
+							return;
+						}
+						streamState.reasoning &= thinkingChunk;
+
+						userCallback({
+							"id": streamState.messageId,
+							"provider": "Claude",
+							"model": streamState.model,
+							"object": "chat.completion.chunk",
+							"choices": [
+								{
+									"index": 0,
+									"delta": {
+										"role": "assistant",
+										"reasoning": thinkingChunk
+									}
+								}
+							]
+						});
 						return;
 					}
 
