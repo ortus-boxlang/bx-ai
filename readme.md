@@ -344,6 +344,25 @@ aiChatStream( "Why is the sky blue?", ( chunk ) => {
 >
 > Reasoning is always kept separate from `content` and is **never** persisted to agent memory — replaying a model's private thinking back to it as if it had said it changes its behavior on the next turn.
 
+**Reasoning + tools on OpenAI.** OpenAI does not accept function tools alongside active reasoning on `/v1/chat/completions`, which is the endpoint this module speaks:
+
+```
+Function tools with reasoning_effort are not supported for <model> in /v1/chat/completions.
+To use function tools, use /v1/responses or set reasoning_effort to 'none'.
+```
+
+This bites whenever you pass `tools` while OpenAI's default model is a reasoning model, even if you never set `reasoning_effort` yourself — the model reasons by default. Until Responses API support lands, pick one:
+
+```javascript
+// Tools, no reasoning — name a non-reasoning model explicitly
+aiChat( "How hot is it in KC?", params: { tools: [ tool ], model: "gpt-4o" } )
+
+// Tools on a reasoning model — turn reasoning off for the call
+aiChat( "How hot is it in KC?", params: { tools: [ tool ], reasoning_effort: "none" } )
+```
+
+Other providers are unaffected — Claude, for one, accepts extended thinking and tools together on its single endpoint.
+
 ### 🤖 Autonomous Agents with Tools
 
 ```javascript
