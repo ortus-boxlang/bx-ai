@@ -28,6 +28,24 @@ import ortus.boxlang.runtime.scopes.Key;
  */
 public class OpenAITest extends BaseIntegrationTest {
 
+	/**
+	 * Model used by every test below that passes tools.
+	 *
+	 * The provider default (gpt-5.6-luna) is a reasoning model, and OpenAI rejects function
+	 * tools alongside active reasoning on /v1/chat/completions:
+	 *
+	 * "Function tools with reasoning_effort are not supported for gpt-5.6-luna in
+	 * /v1/chat/completions. To use function tools, use /v1/responses or set
+	 * reasoning_effort to 'none'."
+	 *
+	 * That is a genuine constraint of the endpoint this provider speaks, not a bug in these
+	 * tests - a caller combining tools with a reasoning model has to change one of the two,
+	 * or use the Responses API (which this module does not implement yet). These tests are
+	 * here to exercise tool calling, so they pin a non-reasoning tool-capable model and
+	 * leave the endpoint question to be answered properly by Responses API support.
+	 */
+	private static final String TOOL_MODEL = "gpt-4o";
+
 	@BeforeEach
 	public void beforeEach() {
 		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
@@ -132,11 +150,12 @@ public class OpenAITest extends BaseIntegrationTest {
 
 			result = aiChat( messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.", params = {
 				tools: [ tool ],
-				seed: 27
+				seed : 27,
+				model: "%s"
 			} )
 			println( result )
 
-			""",
+			""".formatted( TOOL_MODEL ),
 			context
 		);
 		// @formatter:on
@@ -170,7 +189,7 @@ public class OpenAITest extends BaseIntegrationTest {
 				middleware   : [ hitlMw ],
 				checkpointer : checkpointer,
 				checkpointTTL: 5,
-				params       : { seed: 27 }
+				params       : { seed: 27, model: "%s" }
 			)
 
 			suspendedResult = agent.run(
@@ -185,7 +204,7 @@ public class OpenAITest extends BaseIntegrationTest {
 				? agent.resume( "approve", "openai-live-hitl-suspend" )
 				: suspendedResult
 			println( "Final result: " & finalResult )
-			""",
+			""".formatted( TOOL_MODEL ),
 			context
 		);
 		// @formatter:on
@@ -225,7 +244,7 @@ public class OpenAITest extends BaseIntegrationTest {
 				middleware   : [ hitlMw ],
 				checkpointer : checkpointer,
 				checkpointTTL: 5,
-				params       : { seed: 27 }
+				params       : { seed: 27, model: "%s" }
 			)
 
 			// Same prompt/seed as "Test the tool calls with OpenAI" — reliably drives two tool
@@ -246,7 +265,7 @@ public class OpenAITest extends BaseIntegrationTest {
 				? agent.resume( "approve", "openai-live-hitl-batch" )
 				: suspendedResult
 			println( "Final result: " & finalResult )
-			""",
+			""".formatted( TOOL_MODEL ),
 			context
 		);
 		// @formatter:on
