@@ -254,6 +254,39 @@ public class ReasoningNormalizationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "memoryLeaked" ) ) ).isFalse();
 	}
 
+	@DisplayName( "a provider's own streamState without a reasoning key is seeded, not blown up" )
+	@Test
+	public void testStreamStateWithoutReasoningKeyIsTolerated() {
+		// Regression: providers that build their OWN streamState struct (Ollama) had no
+		// `reasoning` key, so accumulating into it threw "The key [reasoning] was not found
+		// in the struct" on every single chunk - caught by the emit try/catch, which then
+		// silently stopped accumulating content for the rest of the stream.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        svc = new src.test.bx.mocks.LegacyStreamStateService();
+
+		        // The pre-existing shape: no reasoning key at all
+		        state = { "content": "", "finishReason": "", "toolCalls": [], "usage": {} };
+		        chunk = { "choices": [ {
+		            "index"        : 0,
+		            "delta"        : { "role": "assistant", "content": "hi", "reasoning": "think" },
+		            "finish_reason": ""
+		        } ] };
+
+		        svc.applyChunk( state, chunk );
+
+		        accumulatedContent   = state.content;
+		        accumulatedReasoning = state.reasoning ?: "";
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "accumulatedContent" ) ) ).isEqualTo( "hi" );
+		assertThat( variables.getAsString( Key.of( "accumulatedReasoning" ) ) ).isEqualTo( "think" );
+	}
+
 	@DisplayName( "every streamed chunk conforms to the shared envelope, reasoning included" )
 	@Test
 	public void testChunkEnvelopeConformance() {

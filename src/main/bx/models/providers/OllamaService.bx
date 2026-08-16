@@ -339,6 +339,7 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 		var requestedModel = arguments.chatRequest.getModel()
 		var streamState = {
 			"content": "",
+			"reasoning": "",
 			"finishReason": "",
 			"toolCalls": [],
 			"usage": {}

@@ -673,9 +673,11 @@ abstract class implements="IAiService" {
 		// Accumulate streamed reasoning, kept STRICTLY separate from content — reasoning is
 		// the model's own thinking, not the answer, and must never be merged into the
 		// assistant message that gets returned or persisted to memory.
+		// A provider that builds its own streamState struct may not carry the key at all, so
+		// seed it here rather than assuming it — never assume a caller's struct shape.
 		var reasoning = firstChoice.delta?.reasoning ?: "";
-		if( !isNull( reasoning ) && isSimpleValue( reasoning ) ){
-			arguments.streamState.reasoning &= toString( reasoning );
+		if( !isNull( reasoning ) && isSimpleValue( reasoning ) && toString( reasoning ).len() ){
+			arguments.streamState[ "reasoning" ] = ( arguments.streamState.reasoning ?: "" ) & toString( reasoning );
 		}
 
 		// Track finish reason if available
