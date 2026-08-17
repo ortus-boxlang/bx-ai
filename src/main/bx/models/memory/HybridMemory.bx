@@ -418,11 +418,13 @@ class extends="bxModules.bxai.models.memory.BaseMemory" {
 	 * The vector memory is a semantic store and does not need summarization.
 	 *
 	 * @config Optional struct with keys: keepRecent, model, provider
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return HybridMemory for chaining
 	 */
-	IAiMemory function summarize( struct config = {} ) {
-		variables.recentMemory.summarize( arguments.config )
+	IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
+		variables.recentMemory.summarize( arguments.config, arguments.userId, arguments.conversationId )
 		return this
 	}
 

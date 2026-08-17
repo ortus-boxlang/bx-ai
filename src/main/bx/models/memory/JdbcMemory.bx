@@ -207,12 +207,16 @@ class extends="BaseMemory" {
 	 * AI-summarize older messages and persist the result to database.
 	 *
 	 * @config Optional struct with keys: keepRecent, model, provider
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function summarize( struct config = {} ) {
-		super.summarize( arguments.config )
-		saveToDatabase()
+	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
+		lock name="#buildSummarizeLockName( arguments.userId, arguments.conversationId )#" type="exclusive" timeout="10" {
+			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
+			saveToDatabase( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
+		}
 		return this
 	}
 

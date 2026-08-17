@@ -853,10 +853,12 @@ abstract class
 	 * This is a no-op to avoid inheriting BaseMemory's conversation summarization.
 	 *
 	 * @config Ignored for vector stores
+	 * @userId Ignored for vector stores
+	 * @conversationId Ignored for vector stores
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function summarize( struct config = {} ) {
+	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
 		return this
 	}
 

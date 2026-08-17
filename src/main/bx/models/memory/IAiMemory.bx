@@ -318,10 +318,12 @@ interface {
 	 *   - keepRecent: Number of recent messages to keep (default: summaryThreshold or 10)
 	 *   - model: AI model name override (default: summaryModel)
 	 *   - provider: AI provider name override (default: summaryProvider)
+	 * @userId   Optional per-call user identifier (overrides instance default). Omit both userId and conversationId to summarize the instance-default scope (or all/shared data for stateless instances).
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	IAiMemory function summarize( struct config = {} );
+	IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" );
 
 	/**
 	 * ------------------------------------------------------------------------------

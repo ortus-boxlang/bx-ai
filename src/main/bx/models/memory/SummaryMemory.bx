@@ -128,20 +128,20 @@ class extends="WindowMemory" {
 	 *
 	 * Result after compression: [system?] + [AI summary] + [last summaryThreshold messages]
 	 *
-	 * @userId   Optional per-call user identifier (ignored — SummaryMemory is an on-object store)
-	 * @conversationId Optional per-call conversation identifier (ignored — SummaryMemory is an on-object store)
+	 * @userId   Optional per-call user identifier (overrides instance default; forwarded to summarize())
+	 * @conversationId Optional per-call conversation identifier (overrides instance default; forwarded to summarize())
 	 *
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
 		var triggered = false
 		if ( variables.maxTokens > 0 ) {
-			triggered = this.sizeInTokens() >= variables.maxTokens
+			triggered = this.sizeInTokens( arguments.userId, arguments.conversationId ) >= variables.maxTokens
 		} else if ( variables.maxMessages > 0 ) {
-			triggered = getNonSystemMessages().len() >= variables.maxMessages
+			triggered = getNonSystemMessages( arguments.userId, arguments.conversationId ).len() >= variables.maxMessages
 		}
 		if ( !triggered ) { return this }
-		this.summarize()
+		this.summarize( {}, arguments.userId, arguments.conversationId )
 		return this
 	}
 
