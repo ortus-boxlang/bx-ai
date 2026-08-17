@@ -177,6 +177,20 @@ abstract class implements="IAiMemory" {
 	}
 
 	/**
+	 * Build an instance-wide lock name for serializing summarize() calls.
+	 * doSummarize() writes its result into the single shared variables.messages field
+	 * regardless of which (userId, conversationId) scope it's summarizing, so the lock
+	 * must serialize ALL summarize() calls on this instance - not just same-scope ones -
+	 * or two concurrent calls for different scopes could interleave and corrupt each
+	 * other's result via that shared field.
+	 *
+	 * @return The lock name string
+	 */
+	private string function buildSummarizeLockName() {
+		return "aimemory-summarize:" & variables.key
+	}
+
+	/**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Interface Methods
 	 * ---------------------------------------------------------------------------------------------------------
@@ -857,17 +871,43 @@ abstract class implements="IAiMemory" {
 	 * Uses the memory's configured summaryModel and summaryProvider from init or configure().
 	 * Pass a config struct to override per-call settings.
 	 * If no summary config is set at all, this is a no-op.
-	 * Subclasses that persist data (JdbcMemory, FileMemory, CacheMemory) should override
-	 * to persist the result after calling super.summarize().
+	 * Subclasses that persist data (JdbcMemory, FileMemory, CacheMemory, SessionMemory) should
+	 * override to call doSummarize() + persist the result, wrapped in the same
+	 * buildSummarizeLockName() lock (see those classes for the pattern) rather than calling
+	 * super.summarize() (which would acquire its own nested lock for no benefit).
 	 *
 	 * @config Optional struct with keys:
 	 *   - keepRecent: Number of recent messages to keep (default: summaryThreshold or 10)
 	 *   - model: AI model name override (default: summaryModel)
 	 *   - provider: AI provider name override (default: summaryProvider)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return IAiMemory for chaining
 	 */
-	public IAiMemory function summarize( struct config = {} ) {
+	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
+		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
+			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
+		}
+		return this
+	}
+
+	/**
+	 * The actual summarization algorithm - reads, calls the AI model, and rebuilds
+	 * variables.messages. Not locked itself; callers (summarize() and the persist-after-summarize
+	 * overrides in JdbcMemory/CacheMemory/FileMemory/SessionMemory) must run it inside a
+	 * buildSummarizeLockName() lock so the read -> mutate -> persist sequence is atomic per scope.
+	 *
+	 * @config Optional struct with keys:
+	 *   - keepRecent: Number of recent messages to keep (default: summaryThreshold or 10)
+	 *   - model: AI model name override (default: summaryModel)
+	 *   - provider: AI provider name override (default: summaryProvider)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	private IAiMemory function doSummarize( struct config = {}, string userId = "", string conversationId = "" ) {
 		// Resolve keepRecent: arg > summaryThreshold > default
 		var keepRecent = config.keyExists( "keepRecent" ) && config.keepRecent > 0
 			? config.keepRecent
@@ -878,7 +918,7 @@ abstract class implements="IAiMemory" {
 		var provider = config.keyExists( "provider" ) ? config.provider : variables.summaryProvider
 
 		// Need at least (keepRecent + 1) messages to make summarization worthwhile
-		var nonSystemMessages = getNonSystemMessages();
+		var nonSystemMessages = getNonSystemMessages( arguments.userId, arguments.conversationId );
 		if ( nonSystemMessages.len() <= keepRecent ) {
 			return this;
 		}
@@ -944,7 +984,7 @@ abstract class implements="IAiMemory" {
 			var summary = useModelInstance.run( aiMessage().user( summaryPrompt ) );
 
 			// Rebuild message structure
-			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
+			var systemMsg = hasSystemMessage( arguments.userId, arguments.conversationId ) ? getSystemMessage( arguments.userId, arguments.conversationId ) : "";
 			variables.messages = [];
 
 			// Re-add system message first
@@ -975,8 +1015,8 @@ abstract class implements="IAiMemory" {
 				memory: this,
 				key: variables.key,
 				type: this.name(),
-				userId: variables.userId,
-				conversationId: variables.conversationId,
+				userId: resolveUserId( arguments.userId ),
+				conversationId: resolveConversationId( arguments.conversationId ),
 				messageCount: variables.messages.len(),
 				summaryLength: len( summary ),
 				keepRecent: keepRecent,
@@ -991,7 +1031,7 @@ abstract class implements="IAiMemory" {
 			);
 
 			// Fall back to simple truncation: keep only recent messages
-			var systemMsg = hasSystemMessage() ? getSystemMessage() : "";
+			var systemMsg = hasSystemMessage( arguments.userId, arguments.conversationId ) ? getSystemMessage( arguments.userId, arguments.conversationId ) : "";
 			variables.messages = [];
 
 			if ( systemMsg.len() ) {
