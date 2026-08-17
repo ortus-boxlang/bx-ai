@@ -533,10 +533,12 @@ class extends="BaseMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
-		lock name="#buildSummarizeLockName( arguments.userId, arguments.conversationId )#" type="exclusive" timeout="10" {
+		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
 			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
 			var cacheKey = buildCacheKey( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
-			setCacheData( cacheKey, variables.messages, variables.metadata )
+			// Preserve the target scope's own metadata - variables.metadata only tracks the instance-default scope
+			var existingMetadata = getCacheData( cacheKey ).metadata
+			setCacheData( cacheKey, variables.messages, existingMetadata )
 		}
 		return this
 	}

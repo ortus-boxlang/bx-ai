@@ -177,18 +177,17 @@ abstract class implements="IAiMemory" {
 	}
 
 	/**
-	 * Build a scope-specific lock name for serializing summarize() calls.
-	 * Different (userId, conversationId) scopes on the same shared/stateless memory
-	 * instance get independent lock names so they don't block each other; the same
-	 * scope is serialized to keep the read -> mutate -> persist sequence atomic.
-	 *
-	 * @userId   The per-call userId (empty = use instance default)
-	 * @conversationId The per-call conversationId (empty = use instance default)
+	 * Build an instance-wide lock name for serializing summarize() calls.
+	 * doSummarize() writes its result into the single shared variables.messages field
+	 * regardless of which (userId, conversationId) scope it's summarizing, so the lock
+	 * must serialize ALL summarize() calls on this instance - not just same-scope ones -
+	 * or two concurrent calls for different scopes could interleave and corrupt each
+	 * other's result via that shared field.
 	 *
 	 * @return The lock name string
 	 */
-	private string function buildSummarizeLockName( string userId = "", string conversationId = "" ) {
-		return "aimemory-summarize:" & variables.key & ":" & resolveUserId( arguments.userId ) & ":" & resolveConversationId( arguments.conversationId )
+	private string function buildSummarizeLockName() {
+		return "aimemory-summarize:" & variables.key
 	}
 
 	/**
@@ -887,7 +886,7 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
-		lock name="#buildSummarizeLockName( arguments.userId, arguments.conversationId )#" type="exclusive" timeout="10" {
+		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
 			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
 		}
 		return this

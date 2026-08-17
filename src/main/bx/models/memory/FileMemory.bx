@@ -306,7 +306,7 @@ class extends="BaseMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
-		lock name="#buildSummarizeLockName( arguments.userId, arguments.conversationId )#" type="exclusive" timeout="10" {
+		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
 			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
 			var filePath = getFilePath( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
 			saveMessagesToFile( filePath, variables.messages )
