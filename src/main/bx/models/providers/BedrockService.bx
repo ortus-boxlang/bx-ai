@@ -1119,8 +1119,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			// `message.reasoning` key rather than dropping it — the streaming path already
 			// maps `delta.thinking` this way, and normalizeReasoningMessage() cannot rescue
 			// this one because the native `thinking` key never survives onto the message.
+			// Joined with no delimiter, matching ClaudeService and the streaming path, which
+			// accumulates thinking deltas by plain concatenation — so sync and stream report
+			// identical reasoning for the same response.
 			var thinkingBlocks = arguments.response.content.filter( b -> isStruct( b ) && ( b.type ?: "" ) == "thinking" );
-			reasoning          = thinkingBlocks.map( b -> b.thinking ?: "" ).toList( char( 10 ) );
+			reasoning          = thinkingBlocks.map( b -> b.thinking ?: "" ).toList( "" );
 		}
 
 		// Absence is normal, never an error: omit the key entirely rather than emitting "".
