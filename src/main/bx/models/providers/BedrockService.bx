@@ -1104,7 +1104,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Transform Claude Bedrock response to OpenAI format
 	 */
 	private struct function transformResponseFromClaude( required struct response, required string modelId ){
-		var content = "";
+		var content   = "";
+		var reasoning = "";
 
 		// Claude may return multiple "text" content blocks (e.g. interleaved with tool_use
 		// or thinking blocks) — join all of them rather than reading only the first block.
@@ -1113,12 +1114,25 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		) {
 			var textBlocks = arguments.response.content.filter( b -> isStruct( b ) && ( b.type ?: "" ) == "text" );
 			content = textBlocks.map( b -> b.text ?: "" ).toList( char( 10 ) );
+
+			// Extended thinking arrives as its own block type. Surface it on the standard
+			// `message.reasoning` key rather than dropping it — the streaming path already
+			// maps `delta.thinking` this way, and normalizeReasoningMessage() cannot rescue
+			// this one because the native `thinking` key never survives onto the message.
+			var thinkingBlocks = arguments.response.content.filter( b -> isStruct( b ) && ( b.type ?: "" ) == "thinking" );
+			reasoning          = thinkingBlocks.map( b -> b.thinking ?: "" ).toList( char( 10 ) );
+		}
+
+		// Absence is normal, never an error: omit the key entirely rather than emitting "".
+		var assistantMessage = { "role" : "assistant", "content" : content };
+		if ( len( reasoning ) ) {
+			assistantMessage[ "reasoning" ] = reasoning;
 		}
 
 		return {
 			"choices" : [
 				{
-					"message"       : { "role" : "assistant", "content" : content },
+					"message"       : assistantMessage,
 					"finish_reason" : arguments.response.stop_reason ?: "stop",
 					"index"         : 0
 				}
@@ -1533,6 +1547,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		// Transform response to OpenAI format
 		var openAIResponse = transformResponseFromModel( result, modelFamily, modelId );
+
+		// Bedrock overrides chat() wholesale, so it never passes through
+		// BaseService.sendChatRequest() where every other provider gets this. Without it an
+		// OpenAI-shaped Bedrock model answering with a native `reasoning_content` key reaches
+		// the caller un-normalized — transformResponseFromOpenAI() returns such bodies verbatim.
+		normalizeReasoningMessage( openAIResponse );
 
 		// Announce token usage
 		if ( openAIResponse.keyExists( "usage" ) ) {
@@ -2137,7 +2157,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		var host     = getBedrockHost();
 		var path     = getBedrockStreamPath( arguments.modelId );
 		var endpoint = getBedrockStreamEndpoint( arguments.modelId );
-		var payload  = jsonSerialize( arguments.dataPacket );
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire beforeLLMCall middleware (streaming) ---
@@ -2147,6 +2166,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
 			return
 		}
+
+		// Serialize AFTER the hook, not before: middleware is handed `dataPacket` so it can
+		// mutate it, and the sync path already honours that. Signing below is over this payload,
+		// so anything the hook changed has to be in it.
+		var payload = jsonSerialize( arguments.dataPacket );
 
 		// Announce the request
 		boxAnnounce(

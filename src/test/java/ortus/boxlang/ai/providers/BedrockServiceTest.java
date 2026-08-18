@@ -19,6 +19,7 @@ package ortus.boxlang.ai.providers;
 
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
+import static org.junit.jupiter.api.Assumptions.abort;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import org.junit.jupiter.api.AfterEach;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
+import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
@@ -99,6 +101,29 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		return !awsAccessKeyId.isEmpty() && !awsSecretAccessKey.isEmpty();
 	}
 
+	/**
+	 * executeWithTimeoutHandling() tolerates only timeouts and re-throws everything else, so a
+	 * model this account has not enabled — or a role without bedrock:InvokeModel — turns a live
+	 * smoke test into a hard build failure. Those are environment facts, not regressions: skip.
+	 */
+	private void executeLiveBedrockCall( String source, IBoxContext context ) {
+		try {
+			executeWithTimeoutHandling( source, context );
+		} catch ( Exception e ) {
+			String message = String.valueOf( e.getMessage() );
+			// Deliberately NOT tolerated: "InvalidSignatureException" / "signature we calculated
+			// does not match" means SigV4 canonicalization itself regressed, which must fail the
+			// build. An unknown or expired access key is a different message and a different fact.
+			for ( String marker : new String[] { "AccessDenied", "AccessDeniedException", "UnrecognizedClient", "ValidationException", "don't have access",
+			    "not authorized", "security token included in the request is invalid" } ) {
+				if ( message.contains( marker ) ) {
+					abort( "Bedrock live call unavailable for these credentials: " + message );
+				}
+			}
+			throw e;
+		}
+	}
+
 	@Test
 	@DisplayName( "Can instantiate Bedrock service via aiService BIF" )
 	public void testInstantiateBedrock() {
@@ -150,19 +175,16 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "Bedrock service can make real API call to Claude" )
 	public void testRealClaudeCall() {
-		if ( !hasAwsCredentials() ) {
-			System.out.println( "Skipping testRealClaudeCall - AWS credentials not configured in .env" );
-			return;
-		}
+		assumeTrue( hasAwsCredentials(), "AWS credentials not configured in .env" );
 
 		// @formatter:off
-		executeWithTimeoutHandling(
+		executeLiveBedrockCall(
 			"""
 				// aiChat signature: invoke(messages, params, options, headers)
 				response = aiChat(
 					aiMessage().user( "Say 'Bedrock test successful' and nothing else" ),
 					{
-						model: "anthropic.claude-3-sonnet-20240229-v1:0",
+						model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
 						max_tokens: 100
 					},
 					{
@@ -183,10 +205,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "Bedrock service loads credentials from environment" )
 	public void testEnvironmentCredentials() {
-		if ( !hasAwsCredentials() ) {
-			System.out.println( "Skipping testEnvironmentCredentials - AWS credentials not configured in .env" );
-			return;
-		}
+		assumeTrue( hasAwsCredentials(), "AWS credentials not configured in .env" );
 
 		// @formatter:off
 		executeWithTimeoutHandling(
@@ -805,6 +824,134 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( Key.of( "name" ) ).toString() ).isEqualTo( "John Doe" );
 		assertThat( variables.getAsInteger( Key.of( "age" ) ) ).isEqualTo( 30 );
+	}
+
+	@Test
+	@DisplayName( "Claude-on-Bedrock surfaces extended-thinking blocks as message.reasoning, kept out of content" )
+	public void testClaudeSyncReasoningSurfaces() {
+		// Upstream normalized reasoning onto choices[].message.reasoning and patched Bedrock's
+		// STREAM path, but the sync path filters content to type=="text" — thinking blocks were
+		// dropped on the floor, so Bedrock alone reported reasoning when streaming and nothing
+		// when not. normalizeReasoningMessage() cannot rescue this: no native `thinking` key
+		// survives onto the message for it to map from.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Think, then answer" ),
+					{ model: "anthropic.claude-3-5-sonnet-20241022-v2:0" },
+					{ provider: "bedrock", returnFormat: "raw" }
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						return {
+							"content": [
+								{ "type": "thinking", "thinking": "step one" },
+								{ "type": "text", "text": "Answer" }
+							],
+							"stop_reason": "end_turn",
+							"usage": { "input_tokens": 5, "output_tokens": 8 }
+						}
+					}
+				} )
+				result    = provider.chat( chatRequest )
+				message   = result.choices[ 1 ].message
+				reasoning = message.reasoning ?: ""
+				content   = message.content ?: ""
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "reasoning" ) ).toString() ).isEqualTo( "step one" );
+		// Reasoning must never be folded into the answer - it is not what the model said.
+		assertThat( variables.get( Key.of( "content" ) ).toString() ).isEqualTo( "Answer" );
+	}
+
+	@Test
+	@DisplayName( "Claude-on-Bedrock omits message.reasoning entirely when the model did not think" )
+	public void testClaudeSyncReasoningAbsentOmitsKey() {
+		// Absence is normal, never an error: the key must be missing, not present-but-empty, so
+		// `message.reasoning ?: ""` degrades the same way it does on every other provider.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Just answer" ),
+					{ model: "anthropic.claude-3-5-sonnet-20241022-v2:0" },
+					{ provider: "bedrock", returnFormat: "raw" }
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						return {
+							"content": [ { "type": "text", "text": "Answer" } ],
+							"stop_reason": "end_turn",
+							"usage": { "input_tokens": 5, "output_tokens": 8 }
+						}
+					}
+				} )
+				result       = provider.chat( chatRequest )
+				hasReasoning = result.choices[ 1 ].message.keyExists( "reasoning" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasReasoning" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "OpenAI-shaped Bedrock model's native reasoning_content is normalized onto message.reasoning" )
+	public void testOpenAIShapedReasoningContentNormalized() {
+		// transformResponseFromOpenAI() early-returns an already-OpenAI-shaped body verbatim, and
+		// Bedrock overrides chat() so it never reaches BaseService.sendChatRequest() where the
+		// normalization lives. DeepSeek-on-Bedrock spells it `reasoning_content`.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Think, then answer" ),
+					{ model: "deepseek.r1-v1:0" },
+					{ provider: "bedrock", returnFormat: "raw" }
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						return {
+							"choices": [
+								{
+									"message": {
+										"role": "assistant",
+										"content": "Answer",
+										"reasoning_content": "step one"
+									},
+									"finish_reason": "stop",
+									"index": 0
+								}
+							],
+							"usage": { "prompt_tokens": 5, "completion_tokens": 8, "total_tokens": 13 }
+						}
+					}
+				} )
+				result    = provider.chat( chatRequest )
+				reasoning = result.choices[ 1 ].message.reasoning ?: ""
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "reasoning" ) ).toString() ).isEqualTo( "step one" );
 	}
 
 	@Test
