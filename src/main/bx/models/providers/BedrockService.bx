@@ -214,14 +214,23 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			if ( credSource.keyExists( "region" ) ) {
 				variables.region = credSource.region;
 			}
+			// Credentials resolve as an ATOMIC SET. init() already seeded the instance from the
+			// environment, so assigning the keys individually here let an explicit long-term key
+			// pair keep AWS_SESSION_TOKEN from the environment — a token that belongs to different
+			// credentials. SigV4 then signs with the mismatched triple and AWS rejects it. An
+			// explicit access key therefore defines the whole set: the secret and the session
+			// token come from that same source, or not at all.
 			if ( credSource.keyExists( "awsAccessKeyId" ) ) {
-				variables.awsAccessKeyId = credSource.awsAccessKeyId;
-			}
-			if ( credSource.keyExists( "awsSecretAccessKey" ) ) {
-				variables.awsSecretAccessKey = credSource.awsSecretAccessKey;
-			}
-			if ( credSource.keyExists( "awsSessionToken" ) ) {
-				variables.awsSessionToken = credSource.awsSessionToken;
+				variables.awsAccessKeyId     = credSource.awsAccessKeyId;
+				variables.awsSecretAccessKey = credSource.awsSecretAccessKey ?: "";
+				variables.awsSessionToken    = credSource.awsSessionToken ?: "";
+			} else {
+				if ( credSource.keyExists( "awsSecretAccessKey" ) ) {
+					variables.awsSecretAccessKey = credSource.awsSecretAccessKey;
+				}
+				if ( credSource.keyExists( "awsSessionToken" ) ) {
+					variables.awsSessionToken = credSource.awsSessionToken;
+				}
 			}
 			// These remain at top level
 			if ( resolvedOptions.keyExists( "modelId" ) ) {

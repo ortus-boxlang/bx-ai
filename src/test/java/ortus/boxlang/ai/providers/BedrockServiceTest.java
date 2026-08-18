@@ -111,10 +111,12 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 			executeWithTimeoutHandling( source, context );
 		} catch ( Exception e ) {
 			String message = String.valueOf( e.getMessage() );
-			// Deliberately NOT tolerated: "InvalidSignatureException" / "signature we calculated
-			// does not match" means SigV4 canonicalization itself regressed, which must fail the
-			// build. An unknown or expired access key is a different message and a different fact.
-			for ( String marker : new String[] { "AccessDenied", "AccessDeniedException", "UnrecognizedClient", "ValidationException", "don't have access",
+			// Tolerated markers describe the ENVIRONMENT: this account/role cannot make the call.
+			// Deliberately NOT tolerated: "InvalidSignatureException" (SigV4 canonicalization
+			// regressed) and "ValidationException" — Bedrock returns the latter for a malformed
+			// request body, bad parameters, or an unknown model id, which is exactly what a
+			// regression in the request transform looks like. Those must fail the build.
+			for ( String marker : new String[] { "AccessDenied", "AccessDeniedException", "UnrecognizedClient", "don't have access",
 			    "not authorized", "security token included in the request is invalid" } ) {
 				if ( message.contains( marker ) ) {
 					abort( "Bedrock live call unavailable for these credentials: " + message );
@@ -2045,6 +2047,47 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		assertThat( creds.get( Key.of( "accessKeyId" ) ) ).isEqualTo( DUMMY_AWS_ACCESS_KEY_ID );
 		assertThat( creds.get( Key.of( "secretAccessKey" ) ) ).isEqualTo( DUMMY_AWS_SECRET_ACCESS_KEY );
 		assertThat( creds.get( Key.of( "sessionToken" ) ) ).isEqualTo( "test-session-token" );
+	}
+
+	@Test
+	@DisplayName( "Explicit credentials do not inherit an unrelated AWS_SESSION_TOKEN from the environment" )
+	public void testExplicitCredentialsDoNotMixWithEnvironmentSessionToken() {
+		// init() seeds the instance from the environment, so assigning configure()'s keys
+		// individually let an explicit long-term key pair keep the environment's session token —
+		// a token belonging to different credentials. SigV4 signed the mismatched triple and AWS
+		// rejected it. Credentials must resolve as an atomic set.
+		//
+		// Simulated by pre-seeding the session token the way loadAwsCredentialsFromEnvironment()
+		// would, then configuring an explicit long-term pair with no token of its own.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = new bxModules.bxai.models.providers.BedrockService()
+				service.configure( {
+					awsAccessKeyId: "AKIAENVENVENVENVENVE",
+					awsSecretAccessKey: "env-secret",
+					awsSessionToken: "env-session-token",
+					region: "%s"
+				} )
+				// A later explicit configure() with long-term credentials and NO session token
+				service.configure( {
+					awsAccessKeyId: "%s",
+					awsSecretAccessKey: "%s",
+					region: "%s"
+				} )
+				creds = service.resolveAwsCredentials()
+			""".formatted( DUMMY_AWS_REGION, DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		@SuppressWarnings( "unchecked" )
+		IStruct creds = ( IStruct ) variables.get( Key.of( "creds" ) );
+		assertThat( creds.get( Key.of( "accessKeyId" ) ) ).isEqualTo( DUMMY_AWS_ACCESS_KEY_ID );
+		assertThat( creds.get( Key.of( "secretAccessKey" ) ) ).isEqualTo( DUMMY_AWS_SECRET_ACCESS_KEY );
+		assertWithMessage( "an explicit key pair must not be signed with a session token from another credential source" )
+		    .that( creds.get( Key.of( "sessionToken" ) ) )
+		    .isEqualTo( "" );
 	}
 
 	@Test
