@@ -313,6 +313,56 @@ aiChatStream(
 
 📖 [Chat & Streaming Guide](https://ai.ortusbooks.com/main-components/chat)
 
+#### 🧠 Reasoning (thinking) models
+
+Reasoning is enabled the same way any other provider parameter is — `params` passes through to the provider verbatim:
+
+```javascript
+// Claude extended thinking
+aiChat( "Solve this step by step", params: {
+    thinking: { type: "enabled", budget_tokens: 10000 }
+}, options: { provider: "claude" } )
+
+// OpenAI reasoning effort
+aiChat( "Solve this step by step", params: { reasoning_effort: "high" } )
+```
+
+Whatever the provider calls it on the wire (Anthropic `thinking_delta`, DeepSeek `reasoning_content`), it comes back **normalized onto one key**, so your code never branches on provider:
+
+```javascript
+aiChatStream( "Why is the sky blue?", ( chunk ) => {
+    var delta     = chunk.choices?.first()?.delta ?: {}
+    var reasoning = delta.reasoning ?: ""   // the model's thinking
+    var content   = delta.content   ?: ""   // the actual answer
+} )
+
+// Synchronously, on the raw completion:
+// result.choices.first().message.reasoning
+```
+
+> **Absence is normal, not an error.** A provider or model that doesn't reason simply omits the key — always read it defensively (`delta.reasoning ?: ""`). Reasoning is deliberately *not* a declared capability, because it varies per **model** (Sonnet vs. Haiku, gpt-5 vs. gpt-4o), not per provider.
+>
+> Reasoning is always kept separate from `content` and is **never** persisted to agent memory — replaying a model's private thinking back to it as if it had said it changes its behavior on the next turn.
+
+**Reasoning + tools on OpenAI.** OpenAI does not accept function tools alongside active reasoning on `/v1/chat/completions`, which is the endpoint this module speaks:
+
+```
+Function tools with reasoning_effort are not supported for <model> in /v1/chat/completions.
+To use function tools, use /v1/responses or set reasoning_effort to 'none'.
+```
+
+This bites whenever you pass `tools` while OpenAI's default model is a reasoning model, even if you never set `reasoning_effort` yourself — the model reasons by default. Until Responses API support lands, pick one:
+
+```javascript
+// Tools, no reasoning — name a non-reasoning model explicitly
+aiChat( "How hot is it in KC?", params: { tools: [ tool ], model: "gpt-4o" } )
+
+// Tools on a reasoning model — turn reasoning off for the call
+aiChat( "How hot is it in KC?", params: { tools: [ tool ], reasoning_effort: "none" } )
+```
+
+Other providers are unaffected — Claude, for one, accepts extended thinking and tools together on its single endpoint.
+
 ### 🤖 Autonomous Agents with Tools
 
 ```javascript
@@ -778,11 +828,56 @@ agent = aiAgent(
 **External gateways** (Slack, Discord, Teams, …) ship as their own modules and register themselves at load time:
 
 ```javascript
-gatewayRegistry().register( new MyPlatformGateway(), "my-module" )
+aiGatewayRegistry().register( new MyPlatformGateway(), "my-module" )
 myGateway = aiGateway( "my-platform" )
 ```
 
+`aiGateway()` can also auto-register the instance it constructs — pass `register: true` (and optionally `module`) instead of calling `aiGatewayRegistry().register()` yourself: `aiGateway( name: "http", register: true, module: "my-module" )`.
+
 Implement `IGateway` to build your own — every capability method has a safe default, so you only override what you actually support.
+
+### Gateway Sessions — wiring an agent to one or more gateways
+
+`GatewaySession` (via `aiGatewaySession()`) is the orchestrator that turns "a message arrived on a gateway" into "the agent responded, relayed back through that same gateway" — including deciding what happens when a second message arrives on a thread that already has a turn in flight:
+
+```javascript
+session = aiGatewaySession(
+    agent   : myAgent,
+    gateways: [ "cli", "http" ],   // single gateway or an array — multiple gateways can share one agent
+    policy  : "queue"              // "reject" | "queue" | "steer" | "interrupt"
+)
+session.start()
+```
+
+`gateways` entries can be a string name (resolved via `aiGateway( name )` — core names or anything registered in `aiGatewayRegistry()`) or an already-constructed `IGateway` instance (`aiGateway( "http", { secret: "..." } )` when you need to pass configuration options) — mix and match freely.
+
+| Policy | A second message arrives on a busy thread… |
+|---|---|
+| `reject` | …is refused immediately; the caller must resend. |
+| `queue` (default) | …is buffered and dispatched right after the current turn finishes. |
+| `steer` | …is spliced into the *currently running* turn via `agent.steerRun()` — not a new turn, nothing already produced is lost. Matches Hermes Agent's non-destructive "steer" semantic — **not** the same as some other agent frameworks' "steer," which cancels and restarts. |
+| `interrupt` | …asks the current turn to stop via `agent.cancelRun()` (takes effect at its next checkpoint, not instantly), then dispatches the new message next. |
+
+`maxQueueDepth` (default 50) bounds how many messages can buffer per thread under `queue`/`interrupt` before further messages fall back to an immediate rejection. Gateways that declare the `"streaming"` capability get chunk-by-chunk delivery via `deliverChunk()`; others get one buffered `deliver()` call once the turn completes. A gateway that pushes inbound messages (rather than being driven by a request/response cycle) implements `IGateway.onMessage()` to register the session's dispatch callback, and `IGateway.onError()` to be notified if its connection drops unexpectedly rather than requiring a caller to poll.
+
+Lifecycle and observability: `session.isRunning()` / `gateway.isRunning()` report whether `start()`/`stop()` have been called; `session.getActiveThreadIds()` lists threads with a turn currently in flight; `session.getQueueDepth( threadId )` reports how many messages are buffered for a thread.
+
+Every gateway fires interception points on connect/disconnect and inbound/outbound messages — independent of `GatewaySession`, since a gateway can be used directly (e.g. with `HumanInTheLoopMiddleware`) without one:
+
+```javascript
+BoxRegisterInterceptor( ( data ) => {
+    log.info( "Message on thread #data.threadId# from user #data.userId#" )
+}, "onGatewayMessageReceived" )
+```
+
+| Event | Fires from | Payload |
+|---|---|---|
+| `onGatewayConnect` | `start()`, only on a real not-running → running transition | `{ gateway }` |
+| `onGatewayDisconnect` | `stop()`, only on a real running → not-running transition | `{ gateway }` |
+| `onGatewayMessageReceived` | `parseInbound()`, once per parsed message | `{ gateway, message, threadId, userId, conversationId }` |
+| `onGatewayMessageSent` | `deliver()` | `{ gateway, event, context, result, threadId }` |
+
+A gateway extending `BaseGateway` gets `onGatewayConnect`/`onGatewayDisconnect` and `isRunning()` tracking automatically — override `onStart()`/`onStop()` for connect/disconnect logic, never `start()`/`stop()` directly.
 
 ## 🛠️ Global Functions (BIFs)
 
@@ -799,7 +894,8 @@ Implement `IGateway` to build your own — every capability method has a safe de
 | `aiDocuments()` | Create fluent document loader | `source`, `config={}` | IDocumentLoader Object | N/A |
 | `aiEmbed()` | Generate embeddings | `input`, `params={}`, `options={}` | Array/Struct | N/A |
 | `aiFence()` | Fence (spotlight) untrusted content so the model treats it as DATA, not instructions | `content`, `label="external"`, `withPreamble=false` | String | N/A |
-| `aiGateway()` | Resolve a human-interaction gateway by name | `name` _(core: `mock`, `cli`, `http`; or externally registered)_, `options={}` | IGateway Object | N/A |
+| `aiGateway()` | Resolve a human-interaction gateway by name | `name` _(core: `mock`, `cli`, `http`; or externally registered)_, `options={}`, `register=false`, `module=""` | IGateway Object | N/A |
+| `aiGatewaySession()` | Wire an agent to one or more gateways for inbound message handling | `agent`, `gateways`, `policy="queue"` _(reject\|queue\|steer\|interrupt)_, `maxQueueDepth=50`, `checkpointer` | GatewaySession Object | N/A |
 | `aiImage()` | Generate images from a text prompt | `prompt`, `params={}`, `options={}` | AiImageResponse Object | N/A |
 | `aiMemory()` | Create memory instance | `memory`, `key`, `userId`, `conversationId`, `config={}` | IAiMemory Object | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
@@ -820,7 +916,7 @@ Implement `IGateway` to build your own — every capability method has a safe de
 | `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors`, `statsEnabled`, `force` | MCPServer Object | N/A |
 | `aiWebSearch()` | Search the web via a pluggable provider | `query`, `params={}`, `options={}` _(provider, maxResults)_ | Array of `{title, url, snippet}` | ❌ |
 | `aiWebSearchAsync()` | Search the web asynchronously | `query`, `params={}`, `options={}` _(provider, maxResults)_ | BoxLang Future | ✅ |
-| `gatewayRegistry()` | Get the singleton Gateway Registry (external gateway modules register here) | _(none)_ | GatewayRegistry Object | N/A |
+| `aiGatewayRegistry()` | Get the singleton Gateway Registry (external gateway modules register here) | _(none)_ | GatewayRegistry Object | N/A |
 
 > **Note on Return Formats:** When using pipelines (runnable chains), the default return format is `raw` (full API response), giving you access to all metadata. Use `.singleMessage()`, `.allMessages()`, or `.withFormat()` to extract specific data. The `aiChat()` BIF defaults to `single` format (content string) for convenience. See the [Pipeline Return Formats](https://ai.ortusbooks.com/main-components/overview.md#return-formats) documentation for details.
 

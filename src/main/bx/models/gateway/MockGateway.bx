@@ -80,7 +80,42 @@ class extends="BaseGateway" {
 		variables.pendingInteractions = {}
 		variables.resolvedDecisions   = {}
 		variables.scriptedDecisions   = []
+		variables.errorCallback      = null
 		return this;
+	}
+
+	// -------------------------------------------------------------------------
+	// Lifecycle — exercises BaseGateway's onStart()/onStop() template-method hooks
+	// and IGateway.onError() so all three have a real reference implementation to
+	// test against, not just their no-op defaults. isRunning()/onGatewayConnect/
+	// onGatewayDisconnect are handled by BaseGateway.start()/stop() — nothing to
+	// override here beyond onStart()/onStop() themselves, and this mock has no
+	// real connect/disconnect work to do, so both stay empty.
+	// -------------------------------------------------------------------------
+
+	void function onStart(){
+		// no real connection to open for an in-memory mock
+	}
+
+	void function onStop(){
+		// no real connection to close for an in-memory mock
+	}
+
+	void function onError( required function callback ){
+		variables.errorCallback = arguments.callback
+	}
+
+	/**
+	 * Test helper: simulate this gateway's connection dropping unexpectedly, invoking
+	 * whatever callback was registered via onError() (a no-op if none was).
+	 *
+	 * @error Whatever error information to hand the callback — a message string, a struct, etc.
+	 */
+	void function simulateError( required any error ){
+		if ( isNull( variables.errorCallback ) ) {
+			return
+		}
+		variables.errorCallback( arguments.error )
 	}
 
 	/**
@@ -119,13 +154,25 @@ class extends="BaseGateway" {
 			threadID      : arguments.payload.threadID ?: "",
 			raw           : isStruct( arguments.payload ) ? arguments.payload : {}
 		)
-		return [
+		var messages = [
 			new GatewayMessage(
 				text   : arguments.payload.text ?: "",
 				context: context,
 				raw    : isStruct( arguments.payload ) ? arguments.payload : {}
 			)
 		]
+
+		messages.each( ( message ) => {
+			BoxAnnounce( "onGatewayMessageReceived", {
+				gateway       : this,
+				message       : message,
+				threadId      : message.getContext().getThreadID(),
+				userId        : message.getContext().getUserID(),
+				conversationId: message.getContext().getConversationID()
+			} )
+		} )
+
+		return messages;
 	}
 
 	// -------------------------------------------------------------------------
@@ -134,7 +181,17 @@ class extends="BaseGateway" {
 
 	GatewayDeliveryResult function deliver( required GatewayEvent event, required GatewayContext context ){
 		variables.deliveredEvents.append( arguments.event )
-		return new GatewayDeliveryResult( deliveryID: arguments.event.getId() )
+		var result = new GatewayDeliveryResult( deliveryID: arguments.event.getId() )
+
+		BoxAnnounce( "onGatewayMessageSent", {
+			gateway : this,
+			event   : arguments.event,
+			context : arguments.context,
+			result  : result,
+			threadId: arguments.context.getThreadID()
+		} )
+
+		return result;
 	}
 
 	// -------------------------------------------------------------------------

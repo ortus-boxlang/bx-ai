@@ -410,6 +410,10 @@ abstract class implements="IAiService" {
 			);
 		}
 
+		// Normalize reasoning BEFORE announcing, so onAIChatResponse listeners and the
+		// caller both see the same standard shape (see normalizeReasoningMessage)
+		normalizeReasoningMessage( iData.response );
+
 		BoxAnnounce( "onAIChatResponse", iData );
 
 		return iData.response;
@@ -436,6 +440,7 @@ abstract class implements="IAiService" {
 		var thisChatRequest = arguments.chatRequest;
 		var streamState = {
 			"content": "",
+			"reasoning": "",
 			"finishReason": "",
 			"toolCalls": [],
 			"usage": {}
@@ -503,6 +508,7 @@ abstract class implements="IAiService" {
 				// Try to parse and send to callback
 				try {
 					var parsedChunk = jsonDeserialize( chunk.data );
+					normalizeReasoningDelta( parsedChunk );
 					updateStreamState( streamState, parsedChunk );
 					userCallback( parsedChunk );
 				} catch( any e ){
@@ -562,6 +568,83 @@ abstract class implements="IAiService" {
 	}
 
 	/**
+	 * Normalize a provider's native reasoning/thinking delta field onto the standard
+	 * `choices[].delta.reasoning` key, IN PLACE, before the chunk reaches the caller.
+	 *
+	 * Reasoning-capable providers each named this field differently as the feature
+	 * shipped (DeepSeek emits `reasoning_content`, others already emit `reasoning`),
+	 * so consumers would otherwise have to branch on provider to read the same thing.
+	 * Every provider in this module emits the OpenAI `chat.completion.chunk` envelope
+	 * to its callback, and this keeps reasoning inside that same contract rather than
+	 * beside it — see the normalized-reasoning section of the streaming docs.
+	 *
+	 * Absence is normal, never an error: a provider or model with no reasoning simply
+	 * leaves the key unset, and consumers treat that as "this turn had none".
+	 *
+	 * @parsedChunk A parsed streaming chunk in OpenAI envelope shape - MUTATED in place
+	 *
+	 * @return void
+	 */
+	private void function normalizeReasoningDelta( required struct parsedChunk ){
+		var choices = arguments.parsedChunk.choices ?: [];
+		if( !isArray( choices ) || choices.isEmpty() ){
+			return;
+		}
+
+		var delta = choices.first().delta ?: "";
+		if( !isStruct( delta ) || delta.keyExists( "reasoning" ) ){
+			return;
+		}
+
+		// Alternate native spellings, in priority order
+		for( var candidate in [ "reasoning_content", "thinking" ] ){
+			if( delta.keyExists( candidate ) && !isNull( delta[ candidate ] ) && isSimpleValue( delta[ candidate ] ) ){
+				delta[ "reasoning" ] = delta[ candidate ];
+				return;
+			}
+		}
+	}
+
+	/**
+	 * Synchronous counterpart to normalizeReasoningDelta(): normalize a provider's native
+	 * reasoning field onto the standard `choices[].message.reasoning` key, IN PLACE, on a
+	 * non-streaming completion.
+	 *
+	 * Subclasses that replace the transport entirely (see MockService) must call this from
+	 * their own override too, or mock responses would follow a different contract than the
+	 * real providers they stand in for.
+	 *
+	 * @response A parsed chat completion in OpenAI envelope shape - MUTATED in place
+	 *
+	 * @return void
+	 */
+	private void function normalizeReasoningMessage( required any response ){
+		if( !isStruct( arguments.response ) ){
+			return;
+		}
+
+		var choices = arguments.response.choices ?: [];
+		if( !isArray( choices ) || choices.isEmpty() ){
+			return;
+		}
+
+		for( var choice in choices ){
+			var message = choice.message ?: "";
+			if( !isStruct( message ) || message.keyExists( "reasoning" ) ){
+				continue;
+			}
+
+			// Alternate native spellings, in priority order
+			for( var candidate in [ "reasoning_content", "thinking" ] ){
+				if( message.keyExists( candidate ) && !isNull( message[ candidate ] ) && isSimpleValue( message[ candidate ] ) ){
+					message[ "reasoning" ] = message[ candidate ];
+					break;
+				}
+			}
+		}
+	}
+
+	/**
 	 * Update stream state from a parsed chunk
 	 *
 	 * @streamState The mutable stream state accumulator
@@ -585,6 +668,16 @@ abstract class implements="IAiService" {
 		var content = firstChoice.delta?.content ?: "";
 		if( !isNull( content ) && isSimpleValue( content ) ){
 			arguments.streamState.content &= toString( content );
+		}
+
+		// Accumulate streamed reasoning, kept STRICTLY separate from content — reasoning is
+		// the model's own thinking, not the answer, and must never be merged into the
+		// assistant message that gets returned or persisted to memory.
+		// A provider that builds its own streamState struct may not carry the key at all, so
+		// seed it here rather than assuming it — never assume a caller's struct shape.
+		var reasoning = firstChoice.delta?.reasoning ?: "";
+		if( !isNull( reasoning ) && isSimpleValue( reasoning ) && toString( reasoning ).len() ){
+			arguments.streamState[ "reasoning" ] = ( arguments.streamState.reasoning ?: "" ) & toString( reasoning );
 		}
 
 		// Track finish reason if available

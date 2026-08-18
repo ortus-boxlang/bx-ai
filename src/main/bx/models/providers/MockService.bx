@@ -27,6 +27,9 @@
  * Each queue entry can be:
  *   - A string                     → assistant message content
  *   - { toolCalls: [ {name, arguments} ] } → a tool-call turn (arguments: struct or JSON string)
+ *   - { content: "...", reasoning: "..." } → a turn that also emits normalized reasoning,
+ *                                    so reasoning-aware consumers can be tested offline
+ *                                    without a real reasoning-capable model
  *   - { choices: [...] }           → a raw OpenAI-format completion, returned as-is
  *
  * Every request the mock receives is recorded (post-middleware, post-sanitization view)
@@ -140,6 +143,13 @@ class extends="OpenAIService" {
 
 		var response = buildCompletion( nextScriptedResponse( arguments.chatRequest ), arguments.dataPacket )
 
+		// Same normalization the real transport applies (see BaseService.sendChatRequest) —
+		// this override replaces the transport wholesale, so without this a raw scripted
+		// completion carrying a provider-native `reasoning_content` would reach callers
+		// un-normalized under mock while a real provider normalized it, and every test
+		// written against the mock would be testing a contract production doesn't have.
+		normalizeReasoningMessage( response )
+
 		BoxAnnounce( "onAIChatResponse", {
 			"chatRequest": arguments.chatRequest,
 			"response"   : response,
@@ -174,13 +184,40 @@ class extends="OpenAIService" {
 		recordRequest( arguments.dataPacket )
 
 		var completion = buildCompletion( nextScriptedResponse( arguments.chatRequest ), arguments.dataPacket )
+		normalizeReasoningMessage( completion )
 		var message    = completion.choices.first().message
 
 		var streamState = {
 			"content"     : message.content ?: "",
+			"reasoning"   : message.reasoning ?: "",
 			"finishReason": completion.choices.first().finish_reason ?: "stop",
 			"toolCalls"   : message.tool_calls ?: [],
 			"usage"       : completion.usage ?: {}
+		}
+
+		// Emit reasoning FIRST, word-by-word, on the normalized `delta.reasoning` key -
+		// real reasoning-capable providers stream the model's thinking before any answer
+		// text, so consumers that render reasoning see the same ordering under mock.
+		if( len( streamState.reasoning ) ){
+			var reasoningWords = streamState.reasoning.listToArray( " " )
+			for( var r = 1; r <= reasoningWords.len(); r++ ){
+				var isLastReasoning = ( r == reasoningWords.len() )
+				arguments.callback( {
+					"id"      : completion.id ?: "",
+					"provider": "mock",
+					"model"   : completion.model ?: "",
+					"object"  : "chat.completion.chunk",
+					"choices" : [
+						{
+							"index": 0,
+							"delta": {
+								"role"     : "assistant",
+								"reasoning": reasoningWords[ r ] & ( isLastReasoning ? "" : " " )
+							}
+						}
+					]
+				} )
+			}
 		}
 
 		// Emit the content word-by-word to simulate streaming, in the same normalized shape
@@ -260,6 +297,13 @@ class extends="OpenAIService" {
 		var message      = { "role": "assistant", "content": "" }
 		var finishReason = "stop"
 
+		// Optional scripted reasoning, on the normalized `message.reasoning` key every
+		// reasoning-capable provider maps onto. Kept separate from content so tests can
+		// prove reasoning never leaks into the assistant answer or into memory.
+		if( isStruct( arguments.scripted ) && arguments.scripted.keyExists( "reasoning" ) ){
+			message[ "reasoning" ] = toString( arguments.scripted.reasoning )
+		}
+
 		// Tool-call turn: { toolCalls: [ { name, arguments } ] }
 		if( isStruct( arguments.scripted ) && arguments.scripted.keyExists( "toolCalls" ) ){
 			finishReason = "tool_calls"
@@ -279,6 +323,10 @@ class extends="OpenAIService" {
 		// Simple string content
 		else if( isSimpleValue( arguments.scripted ) ){
 			message[ "content" ] = arguments.scripted
+		}
+		// Explicit content struct, e.g. { content: "...", reasoning: "..." }
+		else if( isStruct( arguments.scripted ) && arguments.scripted.keyExists( "content" ) ){
+			message[ "content" ] = toString( arguments.scripted.content )
 		}
 		// Anything else: serialize as content
 		else {

@@ -26,8 +26,8 @@ class extends="OpenAIService" implements="IAiChatService, IAiTranscriptionServic
 		CAPABILITIES = [ "chat", "stream", "transcription", "translation" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://console.groq.com/docs/models
-			// according to the docs, this is a fast, efficient model
-			"model" : "llama-3.1-8b-instant"
+			// llama-3.1-8b-instant was deprecated by Groq on 2026-08-16; this is its recommended replacement
+			"model" : "openai/gpt-oss-20b"
 		}
 		DEFAULT_TRANSCRIPTION_PARAMS = {
 			// https://console.groq.com/docs/speech-text

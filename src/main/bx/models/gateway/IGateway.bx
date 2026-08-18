@@ -84,8 +84,60 @@ interface {
 	}
 
 	/**
+	 * Register a callback to be invoked once per normalized inbound GatewayMessage this
+	 * gateway receives, for gateways that PUSH inbound messages rather than being polled
+	 * or driven by a request/response cycle (e.g. a persistent-connection or long-poll
+	 * adapter — a future Telegram gateway, for instance). Call this BEFORE start() — for
+	 * a gateway that overrides this, start() is where inbound delivery actually begins
+	 * (open the connection/poll loop and begin invoking the registered callback) and
+	 * stop() is where it ends (close it, stop invoking the callback).
+	 *
+	 * Default is a no-op: CliGateway is synchronous/blocking and HttpGateway is driven by
+	 * the inbound HTTP request itself (via GatewayRequestProcessor calling parseInbound()
+	 * directly) — neither has anything to push on its own schedule, so neither overrides
+	 * this. A gateway that does override it stores at most one callback at a time — a
+	 * second onMessage() call replaces the first, it does not add a second listener.
+	 *
+	 * @callback function( GatewayMessage message ) — invoked once per inbound message
+	 */
+	default public void function onMessage( required function callback ){
+		// no-op by default
+	}
+
+	/**
+	 * Register a callback to be invoked when this gateway's connection drops unexpectedly
+	 * (not via an explicit stop()) — a socket closing, a poll loop erroring out, an
+	 * upstream platform rejecting credentials mid-session. Lets a caller (e.g. GatewaySession,
+	 * a monitoring hook) react without having to poll isRunning(). Call this BEFORE start(),
+	 * same as onMessage(). Stores at most one callback at a time — a second onError() call
+	 * replaces the first.
+	 *
+	 * Default is a no-op: none of today's core gateways hold a connection that can drop out
+	 * from under them (CliGateway is synchronous, HttpGateway is driven by the inbound HTTP
+	 * request itself, MockGateway is in-memory) — this exists for a future persistent-
+	 * connection adapter (a long-poll or websocket-based gateway) to override.
+	 *
+	 * @callback function( any error ) — invoked with whatever error information the gateway
+	 *           provides (a message string, a struct, a caught exception) — shape is
+	 *           gateway-specific, there is no normalized error contract here
+	 */
+	default public void function onError( required function callback ){
+		// no-op by default
+	}
+
+	/**
 	 * Start the gateway (e.g. open a socket connection, register a webhook listener).
-	 * Default is a no-op — override for gateways that need explicit lifecycle management.
+	 * For a gateway that overrides onMessage(), this is where inbound delivery actually
+	 * begins. Default is a no-op — override for gateways that need explicit lifecycle
+	 * management. A gateway that overrides this is responsible for also making isRunning()
+	 * reflect the change (see isRunning() below) and, if it wants observability, firing
+	 * onGatewayConnect.
+	 *
+	 * A gateway that extends BaseGateway gets all of this for free and should NOT override
+	 * start() directly — BaseGateway.start()/stop() are template methods that already track
+	 * isRunning() and fire onGatewayConnect/onGatewayDisconnect; override BaseGateway's
+	 * onStart()/onStop() instead for connect/disconnect logic. This raw IGateway default
+	 * only matters for a gateway implementing IGateway directly, bypassing BaseGateway.
 	 */
 	default public void function start(){
 		// no-op by default
@@ -93,10 +145,26 @@ interface {
 
 	/**
 	 * Stop the gateway and release any resources acquired in start().
-	 * Default is a no-op — override for gateways that need explicit lifecycle management.
+	 * For a gateway that overrides onMessage(), this is where inbound delivery stops.
+	 * Default is a no-op — override for gateways that need explicit lifecycle management,
+	 * same BaseGateway.onStop() note as start()/onStart() above.
 	 */
 	default public void function stop(){
 		// no-op by default
+	}
+
+	/**
+	 * Whether this gateway is currently started (start() called, stop() not called since).
+	 * Meaningless — and always false — for a gateway that never overrides start()/stop(),
+	 * since it has no lifecycle to be "running." A gateway extending BaseGateway gets this
+	 * correctly wired automatically (see start()'s doc comment); a gateway implementing
+	 * IGateway directly is responsible for keeping variables.running in sync itself — this
+	 * default just reads it, there is no automatic wiring at this level.
+	 *
+	 * @return boolean
+	 */
+	default public boolean function isRunning(){
+		return variables.running ?: false;
 	}
 
 	/**
@@ -136,6 +204,13 @@ interface {
 	/**
 	 * Parse a raw inbound platform payload into one or more normalized GatewayMessage(s).
 	 *
+	 * An overriding implementation should fire onGatewayMessageReceived once per returned
+	 * GatewayMessage — payload `{ gateway: this, message, threadId: message.getContext().
+	 * getThreadID(), userId: message.getContext().getUserID(), conversationId: message.
+	 * getContext().getConversationID() }` — so observability/audit consumers can see who
+	 * sent what, on which thread, without needing GatewaySession in the picture at all.
+	 * MockGateway/HttpGateway are the reference implementations of this convention.
+	 *
 	 * @payload        The raw inbound payload (shape is gateway-specific)
 	 * @requestContext Transport-level context (headers, IP, etc.), shape is gateway-specific
 	 *
@@ -154,6 +229,11 @@ interface {
 
 	/**
 	 * Deliver a normalized GatewayEvent to the platform this gateway represents.
+	 *
+	 * An overriding implementation should fire onGatewayMessageSent after attempting
+	 * delivery — payload `{ gateway: this, event, context, result, threadId: context.
+	 * getThreadID() }` — same observability rationale as parseInbound()'s
+	 * onGatewayMessageReceived. MockGateway/HttpGateway are the reference implementations.
 	 *
 	 * @event   The normalized event to deliver
 	 * @context The GatewayContext identifying who/where to deliver it to

@@ -164,13 +164,25 @@ class extends="BaseGateway" {
 			threadID      : arguments.payload.threadID ?: "",
 			raw           : isStruct( arguments.payload ) ? arguments.payload : {}
 		)
-		return [
+		var messages = [
 			new GatewayMessage(
 				text   : arguments.payload.text ?: "",
 				context: gwContext,
 				raw    : isStruct( arguments.payload ) ? arguments.payload : {}
 			)
 		]
+
+		messages.each( ( message ) => {
+			BoxAnnounce( "onGatewayMessageReceived", {
+				gateway       : this,
+				message       : message,
+				threadId      : message.getContext().getThreadID(),
+				userId        : message.getContext().getUserID(),
+				conversationId: message.getContext().getConversationID()
+			} )
+		} )
+
+		return messages;
 	}
 
 	// -------------------------------------------------------------------------
@@ -183,32 +195,43 @@ class extends="BaseGateway" {
 	GatewayDeliveryResult function deliver( required GatewayEvent event, required GatewayContext context ) {
 		variables.deliveredEvents.append( arguments.event )
 
+		var result = ""
 		if ( !variables.callbackUrl.len() ) {
-			return new GatewayDeliveryResult( deliveryID: arguments.event.getId() )
+			result = new GatewayDeliveryResult( deliveryID: arguments.event.getId() )
+		} else {
+			try {
+				var eventPayload = {
+					"id"         : arguments.event.getId(),
+					"type"       : arguments.event.getType(),
+					"executionID": arguments.event.getExecutionID(),
+					"data"       : arguments.event.getData(),
+					"createdAt"  : arguments.event.getCreatedAt()
+				}
+				var httpResult = postJSON( variables.callbackUrl, {
+					"event"  : eventPayload,
+					"context": arguments.context.toStruct()
+				} )
+				var statusCode = val( httpResult.statusCode )
+				result = new GatewayDeliveryResult(
+					deliveryID: arguments.event.getId(),
+					success   : statusCode < 300,
+					error     : statusCode < 300 ? "" : "Callback returned HTTP #httpResult.statusCode#",
+					raw       : httpResult
+				)
+			} catch ( any e ) {
+				result = GatewayDeliveryResult.failure( "Failed to deliver to callback URL: #e.message#" )
+			}
 		}
 
-		try {
-			var eventPayload = {
-				"id"         : arguments.event.getId(),
-				"type"       : arguments.event.getType(),
-				"executionID": arguments.event.getExecutionID(),
-				"data"       : arguments.event.getData(),
-				"createdAt"  : arguments.event.getCreatedAt()
-			}
-			var httpResult = postJSON( variables.callbackUrl, {
-				"event"  : eventPayload,
-				"context": arguments.context.toStruct()
-			} )
-			var statusCode = val( httpResult.statusCode )
-			return new GatewayDeliveryResult(
-				deliveryID: arguments.event.getId(),
-				success   : statusCode < 300,
-				error     : statusCode < 300 ? "" : "Callback returned HTTP #httpResult.statusCode#",
-				raw       : httpResult
-			)
-		} catch ( any e ) {
-			return GatewayDeliveryResult.failure( "Failed to deliver to callback URL: #e.message#" )
-		}
+		BoxAnnounce( "onGatewayMessageSent", {
+			gateway : this,
+			event   : arguments.event,
+			context : arguments.context,
+			result  : result,
+			threadId: arguments.context.getThreadID()
+		} )
+
+		return result;
 	}
 
 	// -------------------------------------------------------------------------

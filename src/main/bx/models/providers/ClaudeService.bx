@@ -151,6 +151,7 @@ class extends="BaseService" implements="IAiChatService" {
 			"messageId": "",
 			"model": arguments.chatRequest.getModel(),
 			"content": "",
+			"reasoning": "",
 			"toolCalls": [],
 			"toolInputBuffers": {},
 			"toolCallIndexMap": {},
@@ -222,6 +223,39 @@ class extends="BaseService" implements="IAiChatService" {
 							streamState.toolInputBuffers[ bufferKey ] = "";
 						}
 						streamState.toolInputBuffers[ bufferKey ] &= parsedChunk.delta.partial_json ?: "";
+						return;
+					}
+
+					// Extended thinking: Anthropic streams the model's reasoning as its own
+					// content-block type, BEFORE any text. Normalize it onto the standard
+					// `delta.reasoning` key so consumers read reasoning identically here and
+					// on every OpenAI-shaped provider — never merged into `content`, which
+					// is the answer and is what gets persisted to memory.
+					// `signature_delta` (Anthropic's verification signature) and redacted
+					// thinking blocks have no cross-provider equivalent and are deliberately
+					// not surfaced on the normalized envelope.
+					if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "thinking_delta" ){
+						var thinkingChunk = parsedChunk.delta.thinking ?: "";
+						if( !thinkingChunk.len() ){
+							return;
+						}
+						streamState.reasoning &= thinkingChunk;
+
+						userCallback({
+							"id": streamState.messageId,
+							"provider": "Claude",
+							"model": streamState.model,
+							"object": "chat.completion.chunk",
+							"choices": [
+								{
+									"index": 0,
+									"delta": {
+										"role": "assistant",
+										"reasoning": thinkingChunk
+									}
+								}
+							]
+						});
 						return;
 					}
 
@@ -899,8 +933,28 @@ class extends="BaseService" implements="IAiChatService" {
 			return chat( thisChatRequest, arguments.interactionCount + 1 );
 		}
 
-		// Determine return formats
-		var content = result.content.first().text
+		// Determine return formats.
+		//
+		// Take the first TEXT block rather than blindly the first block: with extended
+		// thinking enabled (`params: { thinking: {...} }`) Anthropic puts one or more
+		// `thinking` blocks BEFORE the answer, so `content.first().text` was null and
+		// every sync return format silently produced an empty answer — enabling the
+		// feature broke the provider outright.
+		var textBlocks = result.content.filter( block -> ( block?.type ?: "" ) == "text" )
+		var content    = textBlocks.len() ? ( textBlocks.first().text ?: "" ) : ""
+
+		// Surface the model's thinking on the standard `reasoning` key. Claude's sync
+		// `raw` format returns Anthropic's own native envelope (pre-existing behavior,
+		// not an OpenAI `choices[]` shape), so reasoning is attached at the top level
+		// here; the streaming path uses the normalized `delta.reasoning` like everyone
+		// else. Never merged into `content` — that is the answer, and what memory keeps.
+		var thinkingBlocks = result.content.filter( block -> ( block?.type ?: "" ) == "thinking" )
+		if( thinkingBlocks.len() ){
+			result[ "reasoning" ] = thinkingBlocks
+				.map( block -> block.thinking ?: "" )
+				.toList( "" )
+		}
+
 		switch( arguments.chatRequest.getReturnFormat() ){
 			case "all":
 				return result.content;

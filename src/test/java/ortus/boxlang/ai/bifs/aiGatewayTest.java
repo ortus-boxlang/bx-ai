@@ -87,7 +87,7 @@ public class aiGatewayTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "name" ) ) ).isEqualTo( "mock" );
 	}
 
-	@DisplayName( "aiGateway() resolves a gateway a module registered in gatewayRegistry(), reconfiguring the same instance" )
+	@DisplayName( "aiGateway() resolves a gateway a module registered in aiGatewayRegistry(), reconfiguring the same instance" )
 	@Test
 	public void testResolvesFromGatewayRegistry() {
 		// @formatter:off
@@ -95,7 +95,7 @@ public class aiGatewayTest extends BaseIntegrationTest {
 			"""
 				registered = new bxModules.bxai.models.gateway.MockGateway()
 				registered.setName( "myCustomGateway" )
-				gatewayRegistry().register( registered )
+				aiGatewayRegistry().register( registered )
 
 				gw = aiGateway( "myCustomGateway", { seedValue: "abc" } )
 				resultName = gw.getName()
@@ -108,6 +108,68 @@ public class aiGatewayTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( Key.of( "resultName" ) ) ).isEqualTo( "myCustomGateway" );
 		assertThat( variables.get( Key.of( "registeredSeedValue" ) ) ).isEqualTo( "abc" );
+	}
+
+	@DisplayName( "aiGateway( register: true ) auto-registers the newly constructed gateway in aiGatewayRegistry()" )
+	@Test
+	public void testAutoRegisterTrue() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				aiGatewayRegistry().unregisterByModule( "test-aiGateway-autoRegister" )
+
+				gw = aiGateway( name: "mock", register: true, module: "test-aiGateway-autoRegister" )
+				hasIt = aiGatewayRegistry().has( "mock@test-aiGateway-autoRegister" )
+				sameInstance = aiGatewayRegistry().get( "mock@test-aiGateway-autoRegister" ) === gw
+
+				aiGatewayRegistry().unregisterByModule( "test-aiGateway-autoRegister" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasIt" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sameInstance" ) ) ).isTrue();
+	}
+
+	@DisplayName( "aiGateway() does not auto-register by default" )
+	@Test
+	public void testAutoRegisterDefaultsFalse() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				aiGatewayRegistry().unregisterByModule( "test-aiGateway-noAutoRegister" )
+
+				gw = aiGateway( name: "mock", module: "test-aiGateway-noAutoRegister" )
+				hasIt = aiGatewayRegistry().has( "mock@test-aiGateway-noAutoRegister" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasIt" ) ) ).isFalse();
+	}
+
+	@DisplayName( "aiGateway( register: true ) does not re-register an already-registered gateway resolved from aiGatewayRegistry()" )
+	@Test
+	public void testAutoRegisterSkippedWhenAlreadyRegistered() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				registered = new bxModules.bxai.models.gateway.MockGateway()
+				registered.setName( "myAutoRegisteredGateway" )
+				aiGatewayRegistry().register( registered )
+
+				gw = aiGateway( name: "myAutoRegisteredGateway", register: true )
+				sameInstance = aiGatewayRegistry().get( "myAutoRegisteredGateway" ) === registered
+
+				aiGatewayRegistry().unregister( "myAutoRegisteredGateway" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sameInstance" ) ) ).isTrue();
 	}
 
 }

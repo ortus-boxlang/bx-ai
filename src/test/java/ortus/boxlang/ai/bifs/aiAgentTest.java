@@ -280,7 +280,12 @@ public class aiAgentTest extends BaseIntegrationTest {
 				// A tool from the default set provided by the BoxLang MCP server, which should be available without additional config in the test environment
 				tools: [ "now@bxai" ],
 				// Add the BoxLang MCP doc server
-				mcpServers: [ "https://boxlang.ortusbooks.com/~gitbook/mcp" ]
+				mcpServers: [ "https://boxlang.ortusbooks.com/~gitbook/mcp" ],
+				// The provider default is a reasoning model, and OpenAI rejects function tools
+				// alongside active reasoning on /v1/chat/completions ("...use /v1/responses or
+				// set reasoning_effort to 'none'"). This agent carries tools, so it pins a
+				// non-reasoning tool-capable model - same reason as OpenAITest.TOOL_MODEL.
+				params: { model: "gpt-4o" }
 		    )
 
 			println( agent.getConfig() )

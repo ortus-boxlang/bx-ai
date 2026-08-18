@@ -19,7 +19,7 @@
  *
  * Usage:
  * 1. Configure and register a gateway at startup:
- *    gatewayRegistry().register( aiGateway( "http", { secret: "shared-secret" } ) )
+ *    aiGatewayRegistry().register( aiGateway( "http", { secret: "shared-secret" } ) )
  *
  * 2. Send requests to this endpoint:
  *    POST http://localhost/~bxai/gateway.bxm/gateways/myGateway/events

@@ -110,6 +110,24 @@ abstract class{
 	property name="userId" type="string" default="";
 
 	/**
+	 * The threadId this individual request belongs to, threaded down from
+	 * AiAgent.run()/stream()'s `options.threadId`. Lives on the request — not just on the
+	 * agent — for the same reason userId does: it's the request object, not the agent, that
+	 * reaches every middleware hook (beforeLLMCall, beforeToolCall, etc.), and one agent
+	 * instance runs many different threads over its lifetime, so there's nowhere durable on
+	 * the agent itself for a single request's thread identity to live.
+	 */
+	property name="threadId" type="string" default="";
+
+	/**
+	 * Optional CancellationToken for this request, threaded down from
+	 * AiAgent.run()/stream()'s `options.cancellationToken`. Any request type can carry one —
+	 * RunControlMiddleware reads it at beforeLLMCall/beforeToolCall to honour an external
+	 * cancel()/steer() call against the CancellationToken active for this request's thread.
+	 */
+	property name="cancellationToken";
+
+	/**
 	 * Additional metadata for usage tracking (cost center, project, etc.)
 	 * This data will be included in onAITokenCount events for custom billing logic
 	 */
