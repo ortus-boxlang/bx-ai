@@ -38,6 +38,12 @@ class {
 	static {
 
 		/**
+		 * Native spellings a provider may use for reasoning on the OpenAI envelope, in priority
+		 * order. Shared by getResponseReasoning()/setResponseReasoning() so the two cannot drift.
+		 */
+		final REASONING_KEYS = [ "reasoning", "reasoning_content" ]
+
+		/**
 		 * The default detector set applied when none is specified
 		 */
 		final DEFAULT_DETECTORS = [
@@ -580,6 +586,136 @@ class {
 	 */
 
 	/**
+	 * Read the model's REASONING out of a middleware afterLLMCall context as a LIST of parts — one
+	 * per OpenAI-envelope choice, or a single element for a provider-attached derived key or a
+	 * stream aggregate. Parts rather than one joined string because scrubbing has to write each
+	 * choice back independently: joining and then writing the joined value to every choice replaced
+	 * distinct per-choice reasoning with the same combined text.
+	 *
+	 * Deliberately does NOT read Claude's typed `thinking` content blocks. Those must be echoed back
+	 * to the provider complete and unmodified within a tool-use turn, so providers attach a derived
+	 * `reasoning` string for guards to work on instead - see BedrockService.chat() and
+	 * ClaudeService.chat(). Resolving the blocks here would invite an in-place rewrite that gets the
+	 * next request rejected.
+	 *
+	 * @context The afterLLMCall context
+	 */
+	static array function getResponseReasoningParts( required struct context ){
+		// Streaming: providers accumulate reasoning alongside content
+		if( arguments.context.keyExists( "streamState" ) && isStruct( arguments.context.streamState ) ){
+			var streamed = arguments.context.streamState.reasoning ?: ""
+			return len( streamed ) ? [ streamed ] : []
+		}
+		if( !arguments.context.keyExists( "result" ) || !isStruct( arguments.context.result ) ){
+			return []
+		}
+		var result = arguments.context.result
+
+		// OpenAI-shaped envelope FIRST, in either native spelling, across EVERY choice. Checked
+		// before the provider-attached top-level key because a transformed body can carry both, and
+		// scrubbing only the top-level copy would leave choices[].message.reasoning intact.
+		var parts = []
+		if( result.keyExists( "choices" ) && isArray( result.choices ) ){
+			for( var choice in result.choices ){
+				var message = choice.message ?: ""
+				if( !isStruct( message ) ){
+					continue
+				}
+				for( var candidate in static.REASONING_KEYS ){
+					if( message.keyExists( candidate ) && !isNull( message[ candidate ] ) && isSimpleValue( message[ candidate ] ) ){
+						parts.append( message[ candidate ] )
+						break
+					}
+				}
+			}
+		}
+		if( parts.len() ){
+			return parts
+		}
+
+		// Provider-attached derived copy (Claude native envelope, Bedrock raw body)
+		if( result.keyExists( "reasoning" ) && isSimpleValue( result.reasoning ) && len( result.reasoning ) ){
+			return [ result.reasoning ]
+		}
+		return []
+	}
+
+	/**
+	 * Convenience read for consumers that only need to INSPECT reasoning (judging, logging) and do
+	 * not write it back — the parts joined for scanning. Anything that scrubs must use
+	 * getResponseReasoningParts()/setResponseReasoningParts() so per-choice values are preserved.
+	 *
+	 * @context The afterLLMCall context
+	 */
+	static string function getResponseReasoning( required struct context ){
+		return getResponseReasoningParts( arguments.context ).toList( char( 10 ) )
+	}
+
+	/**
+	 * Write reasoning back into a middleware afterLLMCall context, in place, one part per choice in
+	 * the same order getResponseReasoningParts() produced them. Returns true if anything was
+	 * written. Subject to the same rule as the getter: never writes to a native `thinking` block.
+	 *
+	 * @context The afterLLMCall context
+	 * @parts   Replacement reasoning, positionally matching getResponseReasoningParts()
+	 */
+	static boolean function setResponseReasoningParts( required struct context, required array parts ){
+		if( arguments.parts.isEmpty() ){
+			return false
+		}
+
+		if( arguments.context.keyExists( "streamState" ) && isStruct( arguments.context.streamState ) ){
+			arguments.context.streamState.reasoning = arguments.parts.first()
+			return true
+		}
+		if( !arguments.context.keyExists( "result" ) || !isStruct( arguments.context.result ) ){
+			return false
+		}
+		var result = arguments.context.result
+		var wrote  = false
+
+		if( result.keyExists( "choices" ) && isArray( result.choices ) ){
+			var partIndex = 0
+			for( var choice in result.choices ){
+				var message = choice.message ?: ""
+				if( !isStruct( message ) ){
+					continue
+				}
+				// Advance only for choices that actually carried reasoning, so the parts line up
+				// with what the getter returned even when some choices have none.
+				var matched = ""
+				for( var candidate in static.REASONING_KEYS ){
+					if( message.keyExists( candidate ) && isSimpleValue( message[ candidate ] ) ){
+						matched = candidate
+						break
+					}
+				}
+				if( !len( matched ) ){
+					continue
+				}
+				partIndex++
+				if( partIndex > arguments.parts.len() ){
+					break
+				}
+				message[ matched ] = arguments.parts[ partIndex ]
+				wrote = true
+			}
+		}
+
+		if( wrote ){
+			return true
+		}
+
+		// No envelope reasoning: the provider-attached derived copy is the single part.
+		if( result.keyExists( "reasoning" ) && isSimpleValue( result.reasoning ) ){
+			result.reasoning = arguments.parts.first()
+			return true
+		}
+
+		return false
+	}
+
+	/**
 	 * Read the assistant text from a middleware afterLLMCall context across all known
 	 * provider response shapes (OpenAI/compat, Claude, Gemini, Cohere) and streaming.
 	 * Returns "" for unknown shapes.
@@ -600,10 +736,16 @@ class {
 		if( result.keyExists( "choices" ) && isArray( result.choices ) && result.choices.len() ){
 			return result.choices.first().message.content ?: ""
 		}
-		// Claude: content[] typed blocks → first text block
+		// Claude: content[] typed blocks → ALL text blocks, joined.
+		// Reading only the first block let a secret in a later block bypass the guard entirely:
+		// BedrockService.transformResponseFromClaude() joins every text block (interleaved with
+		// thinking/tool_use blocks) into the returned content, so anything past block one was
+		// returned to the caller without ever being inspected. Joined with char(10) to match that
+		// transform. Providers that surface only the first block see a superset here, which is the
+		// safe direction for a guard.
 		if( result.keyExists( "content" ) && isArray( result.content ) ){
 			var textBlocks = result.content.filter( b -> isStruct( b ) && ( b.type ?: "" ) == "text" )
-			return textBlocks.isEmpty() ? "" : ( textBlocks.first().text ?: "" )
+			return textBlocks.isEmpty() ? "" : textBlocks.map( b -> b.text ?: "" ).toList( char( 10 ) )
 		}
 		// Gemini: candidates[1].content.parts[1].text
 		if( result.keyExists( "candidates" ) && isArray( result.candidates ) && result.candidates.len() ){
@@ -613,6 +755,22 @@ class {
 		// Cohere
 		if( result.keyExists( "text" ) && isSimpleValue( result.text ) ){
 			return result.text
+		}
+		// Bedrock Titan: results[].outputText
+		if( result.keyExists( "results" ) && isArray( result.results ) && result.results.len() && isStruct( result.results.first() ) ){
+			return result.results.first().outputText ?: ""
+		}
+		// Bedrock Llama: generation
+		if( result.keyExists( "generation" ) && isSimpleValue( result.generation ) ){
+			return result.generation
+		}
+		// Bedrock Mistral: outputs[].text
+		if( result.keyExists( "outputs" ) && isArray( result.outputs ) && result.outputs.len() && isStruct( result.outputs.first() ) ){
+			return result.outputs.first().text ?: ""
+		}
+		// Bedrock legacy Cohere: generations[].text
+		if( result.keyExists( "generations" ) && isArray( result.generations ) && result.generations.len() && isStruct( result.generations.first() ) ){
+			return result.generations.first().text ?: ""
 		}
 		return ""
 	}
@@ -638,10 +796,35 @@ class {
 			result.choices.first().message.content = arguments.text
 			return true
 		}
+		// Claude: getResponseText joins every text block, so the redacted string handed back here
+		// covers all of them. Writing it into the first block alone would leave later blocks
+		// carrying their original, unredacted text — and the Bedrock transform joins those back
+		// into the response. Collapse into the first text block and drop the rest. Removing them
+		// rather than blanking keeps the array valid for the tool-call path, which re-sends this
+		// same content[] to the provider as the assistant turn (empty text blocks are rejected).
 		if( result.keyExists( "content" ) && isArray( result.content ) ){
-			var idx = result.content.find( b -> isStruct( b ) && ( b.type ?: "" ) == "text" )
-			if( idx > 0 ){
-				result.content[ idx ].text = arguments.text
+			var textIndexes = []
+			for( var i = 1; i <= result.content.len(); i++ ){
+				var block = result.content[ i ]
+				if( isStruct( block ) && ( block.type ?: "" ) == "text" ){
+					textIndexes.append( i )
+				}
+			}
+			if( !textIndexes.isEmpty() ){
+				// delete back-to-front so the earlier indexes stay valid
+				for( var i = textIndexes.len(); i > 1; i-- ){
+					result.content.deleteAt( textIndexes[ i ] )
+				}
+				if( len( arguments.text ) ){
+					result.content[ textIndexes.first() ].text = arguments.text
+				} else {
+					// A redaction that consumed the whole block (e.g. exfil stripping applied to a
+					// turn whose only text was a markdown image) must not leave an EMPTY text block
+					// behind: the tool-call path re-sends this same array as the assistant turn and
+					// Bedrock/Anthropic reject an empty text block with a 400. Drop it instead, for
+					// the same reason the trailing blocks above are deleted rather than blanked.
+					result.content.deleteAt( textIndexes.first() )
+				}
 				return true
 			}
 		}
@@ -654,6 +837,26 @@ class {
 		}
 		if( result.keyExists( "text" ) && isSimpleValue( result.text ) ){
 			result.text = arguments.text
+			return true
+		}
+		// Bedrock Titan: results[].outputText
+		if( result.keyExists( "results" ) && isArray( result.results ) && result.results.len() && isStruct( result.results.first() ) ){
+			result.results.first().outputText = arguments.text
+			return true
+		}
+		// Bedrock Llama: generation
+		if( result.keyExists( "generation" ) && isSimpleValue( result.generation ) ){
+			result.generation = arguments.text
+			return true
+		}
+		// Bedrock Mistral: outputs[].text
+		if( result.keyExists( "outputs" ) && isArray( result.outputs ) && result.outputs.len() && isStruct( result.outputs.first() ) ){
+			result.outputs.first().text = arguments.text
+			return true
+		}
+		// Bedrock legacy Cohere: generations[].text
+		if( result.keyExists( "generations" ) && isArray( result.generations ) && result.generations.len() && isStruct( result.generations.first() ) ){
+			result.generations.first().text = arguments.text
 			return true
 		}
 		return false

@@ -339,8 +339,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		if ( arguments.cached.isEmpty() || !arguments.cached.keyExists( "expiration" ) ) {
 			return false;
 		}
-		// Key material must actually be present. An expiry alone is not evidence of credentials, and
-		// a container endpoint answering `200 {}` would otherwise read as valid until it "expired".
+		// Key material must actually be present. A container endpoint answering `200 {}` yields a
+		// struct with empty keys and a synthesized 60-minute expiry, which otherwise read as valid
+		// — suppressing the IMDS fallback and signing every request with an empty secret for an
+		// hour. An expiry alone is not evidence of credentials.
 		if ( !len( arguments.cached.accessKeyId ?: "" ) || !len( arguments.cached.secretAccessKey ?: "" ) ) {
 			return false;
 		}
@@ -790,9 +792,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 			var body = jsonDeserialize( result.fileContent );
 
-			// A 200 carrying no key material is a failed resolution, not an empty-but-valid
-			// credential set: returning it would cache empty keys behind the synthesized expiry
-			// below and suppress the IMDS fallback for an hour.
+			// A 200 carrying no key material is a failed resolution, not a credential set: return
+			// null so the chain falls through to IMDS instead of caching an empty set behind a
+			// synthesized expiry.
 			if ( !len( body.AccessKeyId ?: "" ) || !len( body.SecretAccessKey ?: "" ) ) {
 				writeLog(
 					text: "Bedrock: container credential endpoint returned no key material; falling through to IMDS",
@@ -1396,15 +1398,16 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *
 	 * @return OpenAI-compatible response struct
 	 */
-	private struct function transformResponseFromModel(
+	public struct function transformResponseFromModel(
 		required struct response,
 		required string modelFamily,
 		required string modelId
 	){
 		switch ( arguments.modelFamily ) {
 			case "claude":
-			case "cohere":
 				return transformResponseFromClaude( arguments.response, arguments.modelId );
+			case "cohere":
+				return transformResponseFromCohere( arguments.response, arguments.modelId );
 			case "titan":
 				return transformResponseFromTitan( arguments.response, arguments.modelId );
 			case "llama":
@@ -1414,6 +1417,93 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			case "openai":
 			default:
 				return transformResponseFromOpenAI( arguments.response, arguments.modelId );
+		}
+	}
+
+	/**
+	 * Derive the model's reasoning from a raw Bedrock body as a plain string, so an OutputGuard
+	 * has a copy it can legally rewrite.
+	 *
+	 * The native carriers are off limits for mutation. Claude's `thinking` blocks must be echoed
+	 * back "complete and unmodified" within a tool-use turn or the next request is rejected, so
+	 * this reads them without ever writing to them.
+	 *
+	 * Shape-driven rather than family-driven: the thinking-block and OpenAI-envelope carriers are
+	 * mutually exclusive on the wire, so the detected family adds nothing here.
+	 *
+	 * @response The raw provider body
+	 *
+	 * @return The reasoning text, or an empty string when the model produced none
+	 */
+	private string function deriveReasoning( required struct response ){
+		// Claude / Claude-backed inference profiles: typed `thinking` content blocks. Joined with
+		// no delimiter, matching ClaudeService and the streaming path's plain concatenation.
+		if ( arguments.response.keyExists( "content" ) && isArray( arguments.response.content ) ) {
+			var thinkingBlocks = arguments.response.content.filter( b -> isStruct( b ) && ( b.type ?: "" ) == "thinking" );
+			if ( thinkingBlocks.len() ) {
+				return thinkingBlocks.map( b -> b.thinking ?: "" ).toList( "" );
+			}
+		}
+
+		// OpenAI-shaped families, in either native spelling (DeepSeek-on-Bedrock uses
+		// `reasoning_content`). transformResponseFromOpenAI() returns these bodies verbatim, so
+		// without this the unscrubbed native key would be the one the caller reads.
+		if ( arguments.response.keyExists( "choices" ) && isArray( arguments.response.choices ) && arguments.response.choices.len() ) {
+			var message = arguments.response.choices.first().message ?: "";
+			if ( isStruct( message ) ) {
+				for ( var candidate in [ "reasoning", "reasoning_content" ] ) {
+					if ( message.keyExists( candidate ) && !isNull( message[ candidate ] ) && isSimpleValue( message[ candidate ] ) ) {
+						return message[ candidate ];
+					}
+				}
+			}
+		}
+
+		return "";
+	}
+
+	/**
+	 * Copy the derived (and possibly guard-scrubbed) reasoning from the raw body onto the
+	 * normalized envelope, so the caller never reads an unscrubbed native spelling.
+	 *
+	 * @openAIResponse The normalized OpenAI-shaped envelope - MUTATED in place
+	 * @rawResponse    The raw provider body carrying the derived `reasoning` key
+	 *
+	 * @return void
+	 */
+	private void function applyDerivedReasoning( required any openAIResponse, required struct rawResponse ){
+		if ( !arguments.rawResponse.keyExists( "reasoning" ) || !isSimpleValue( arguments.rawResponse.reasoning ) ) {
+			return;
+		}
+		if ( !isStruct( arguments.openAIResponse ) ) {
+			return;
+		}
+
+		var choices = arguments.openAIResponse.choices ?: [];
+		if ( !isArray( choices ) || choices.isEmpty() ) {
+			return;
+		}
+
+		var message = choices.first().message ?: "";
+		if ( !isStruct( message ) ) {
+			return;
+		}
+
+		var scrubbed = arguments.rawResponse.reasoning;
+
+		// A guard that redacted everything leaves an empty string: absence is normal, so drop the
+		// key rather than reporting "" as if the model had thought and said nothing.
+		if ( !len( scrubbed ) ) {
+			message.delete( "reasoning" );
+			message.delete( "reasoning_content" );
+			return;
+		}
+
+		message[ "reasoning" ] = scrubbed;
+		// The passthrough path can carry the unscrubbed native spelling straight from the wire
+		// body; overwrite rather than delete so the shape a caller may already read is preserved.
+		if ( message.keyExists( "reasoning_content" ) ) {
+			message[ "reasoning_content" ] = scrubbed;
 		}
 	}
 
@@ -1523,6 +1613,107 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			},
 			"model" : arguments.modelId
 		};
+	}
+
+	/**
+	 * Transform Cohere response to OpenAI format
+	 *
+	 * Two wire shapes exist on Bedrock and neither resembles Claude's:
+	 * - Command R / R+ (cohere.command-r*): { text, generation_id, finish_reason, ... }
+	 * - Command / Command Light (cohere.command-text-*): { generations: [ { text, finish_reason } ] }
+	 *
+	 * Cohere carries no usage block, so sendBedrockRequest's X-Amzn-Bedrock-*-Token-Count header
+	 * backfill lands on response.usage and is read back here, exactly as the Mistral transform does.
+	 */
+	private struct function transformResponseFromCohere( required struct response, required string modelId ){
+		var content      = "";
+		var finishReason = "";
+		var matched      = false;
+
+		if ( arguments.response.keyExists( "text" ) && isSimpleValue( arguments.response.text ) ) {
+			// Command R / R+ chat shape
+			matched      = true;
+			content      = arguments.response.text;
+			finishReason = arguments.response.finish_reason ?: "";
+		} else if (
+			arguments.response.keyExists( "generations" ) && isArray( arguments.response.generations ) && arguments.response.generations.len() > 0 && isStruct(
+				arguments.response.generations[ 1 ]
+			)
+		) {
+			// Legacy Command generate shape
+			matched      = true;
+			content      = arguments.response.generations[ 1 ].text ?: "";
+			finishReason = arguments.response.generations[ 1 ].finish_reason ?: "";
+		}
+
+		// An unrecognized Cohere body would otherwise normalize to an empty assistant message —
+		// the exact silent-drop this transform exists to stop. Say so rather than returning "".
+		if ( !matched ) {
+			writeLog(
+				text: "Bedrock Cohere response matched neither the Command R ({text}) nor the legacy Command ({generations}) shape; returning empty content for model #arguments.modelId#",
+				type: "warning",
+				log : "ai"
+			);
+		}
+
+		// A finish_reason of "error" is a provider failure, not a completion — Cohere returns it
+		// with text: "". Normalizing it to a successful empty response would hide the failure from
+		// callers, who would have no way to retry or report it. Throw, matching how every other
+		// Bedrock failure surfaces (ProviderError).
+		if ( ucase( trim( finishReason ) ) == "ERROR" ) {
+			writeLog(
+				text: "Bedrock Cohere generation failed with finish_reason 'error' for model #arguments.modelId#",
+				type: "error",
+				log : "ai"
+			);
+
+			throw(
+				type   : "ProviderError",
+				message: "Cohere generation failed on Bedrock (finish_reason: error) for model #arguments.modelId#."
+			);
+		}
+
+		return {
+			"choices" : [
+				{
+					"message" : {
+						"role"    : "assistant",
+						"content" : content
+					},
+					"finish_reason" : mapCohereFinishReason( finishReason ),
+					"index"         : 0
+				}
+			],
+			"usage" : {
+				"prompt_tokens"     : arguments.response.usage?.prompt_tokens ?: 0,
+				"completion_tokens" : arguments.response.usage?.completion_tokens ?: 0,
+				"total_tokens"      : arguments.response.usage?.total_tokens ?: 0
+			},
+			"model" : arguments.modelId
+		};
+	}
+
+	/**
+	 * Map Cohere's finish reasons onto the OpenAI vocabulary the normalized struct promises.
+	 *
+	 * AWS documents these values for Command R/R+: complete, max_tokens, error_limit, error_toxic,
+	 * error, user_cancel. `error` is handled by the caller (it is a provider failure, not a finish
+	 * reason — see transformResponseFromCohere) and never reaches here. Anything unrecognized,
+	 * including an empty value, falls back to "stop" as the Titan stream transform does.
+	 *
+	 * @see https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-cohere-command-r-plus.html
+	 */
+	private string function mapCohereFinishReason( required string finishReason ){
+		switch ( ucase( trim( arguments.finishReason ) ) ) {
+			case "MAX_TOKENS":
+			// the model's context limit was reached — a length outcome, not a failure
+			case "ERROR_LIMIT":
+				return "length";
+			case "ERROR_TOXIC":
+				return "content_filter";
+			default:
+				return "stop";
+		}
 	}
 
 	/**
@@ -1846,6 +2037,28 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire afterLLMCall middleware, in reverse order ---
 		// -------------------------------------------------------------------------------------------
+		// Fired with the raw Bedrock body, matching ClaudeService/CohereService/GeminiService.
+		// PromptSecurity::getResponseText/setResponseText resolves each provider's native shape and
+		// mutates it in place, which is what lets an OutputGuard redaction also scrub the content
+		// reused as the assistant turn on the tool-call path below.
+		//
+		// Reasoning is attached as a DERIVED top-level key first (same convention ClaudeService
+		// uses) so a guard has something it can legally rewrite. The native `thinking` blocks in
+		// result.content must NOT be touched: Bedrock requires the thinking blocks of the latest
+		// assistant message to be passed back "complete and unmodified" on a tool-use turn, and a
+		// modified block is rejected outright ("thinking or redacted_thinking blocks in the latest
+		// assistant message cannot be modified"). The blocks stay byte-identical for the round
+		// trip; this derived string is the caller-facing copy and never reaches the wire.
+		// @see https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-extended-thinking.html
+		// Normally already attached by sendBedrockRequest() ahead of its announce; still needed
+		// here for the wrapLLMCall-canned-response path, where that never ran.
+		if ( !result.keyExists( "reasoning" ) ) {
+			var derivedReasoning = deriveReasoning( result );
+			if ( len( derivedReasoning ) ) {
+				result[ "reasoning" ] = derivedReasoning;
+			}
+		}
+
 		arguments.chatRequest.fireMiddleware(
 			hook   : "afterLLMCall",
 			context: { chatRequest: arguments.chatRequest, result: result },
@@ -1867,6 +2080,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		// Transform response to OpenAI format
 		var openAIResponse = transformResponseFromModel( result, modelFamily, modelId );
+
+		// An OutputGuard may have scrubbed result.reasoning in place while afterLLMCall ran, so
+		// that copy — not the raw thinking blocks it was derived from — is what the caller gets.
+		applyDerivedReasoning( openAIResponse, result );
 
 		// Bedrock overrides chat() wholesale, so it never passes through
 		// BaseService.sendChatRequest() where every other provider gets this. Without it an
@@ -2386,6 +2603,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		checkGuardrailIntervention( httpResult, response );
 
+		// Attach the derived reasoning BEFORE announcing, matching BaseService.sendChatRequest(),
+		// which normalizes reasoning ahead of its own announce so listeners and the eventual caller
+		// see the same shape. Announcing the untouched native body here meant an onAIChatResponse
+		// listener was the only consumer that never saw the model's reasoning.
+		var announcedReasoning = deriveReasoning( response );
+		if ( len( announcedReasoning ) ) {
+			response[ "reasoning" ] = announcedReasoning;
+		}
+
 		boxAnnounce(
 			"onAIChatResponse",
 			{
@@ -2618,6 +2844,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		var bedrockUsage = { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "raw": {} };
 		// Accumulate the streamed assistant text so afterLLMCall middleware can inspect it
 		var bedrockContent = "";
+		// Reasoning is accumulated separately and never folded into bedrockContent — content is
+		// the answer, and is what gets persisted to memory. Kept so an OutputGuard can inspect
+		// streamed reasoning too, matching the sync path's derived copy.
+		var bedrockReasoning = "";
 		var userStreamCallback = arguments.callback;
 		var usageCapturingCallback = ( chunk ) => {
 			// Capture usage data from the normalized chunk if present
@@ -2633,9 +2863,24 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			// throw was swallowed by processBedrockEvent's catch at debug level, so the caller's
 			// stream callback silently never received that final usage chunk.
 			if ( isArray( chunk.choices ?: "" ) && chunk.choices.len() ) {
-				bedrockContent &= ( chunk.choices.first().delta?.content ?: "" );
+				var streamDelta   = chunk.choices.first().delta ?: {};
+				bedrockContent   &= ( streamDelta.content ?: "" );
+				bedrockReasoning &= ( streamDelta.reasoning ?: "" );
 			}
 			userStreamCallback( chunk );
+		};
+
+		// Held in a named variable rather than built inline in the context: middleware mutates this
+		// struct (PromptSecurity::setResponseText/setResponseReasoning write into it), and an
+		// anonymous literal is unreachable the moment fireMiddleware returns — so a redaction
+		// reported success while provably changing nothing. BaseService.sendStreamRequest keeps and
+		// returns the same struct it handed the middleware; this now matches.
+		var streamState = {
+			"content"     : "",
+			"reasoning"   : "",
+			"finishReason": "",
+			"toolCalls"   : [],
+			"usage"       : {}
 		};
 
 		parseBedrockEventStream(
@@ -2684,9 +2929,13 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire afterLLMCall middleware (streaming), in reverse order ---
 		// -------------------------------------------------------------------------------------------
+		streamState.content   = bedrockContent;
+		streamState.reasoning = bedrockReasoning;
+		streamState.usage     = bedrockUsage.raw;
+
 		arguments.aiRequest.fireMiddleware(
 			hook   : "afterLLMCall",
-			context: { chatRequest: arguments.aiRequest, streamState: { "content": bedrockContent, "finishReason": "", "toolCalls": [], "usage": bedrockUsage.raw } },
+			context: { chatRequest: arguments.aiRequest, streamState: streamState },
 			reverse: true
 		)
 	}
@@ -2998,7 +3247,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				// OpenAI-compatible streaming format - already in standard format. Also the
 				// fallback for any family not explicitly handled above (ai21 and everything
 				// else), matching detectModelFamily()'s and transformRequestForModel()'s
-				// openai default — family not in this switch ⇒ openai, in all three switches.
+				// openai default — family not in this switch ⇒ openai.
+				//
+				// NOTE: cohere is the one family where the three switches no longer agree. The
+				// request and stream switches still use the Claude shape; the response switch
+				// routes it to transformResponseFromCohere. Cohere-on-Bedrock is therefore not
+				// functional end to end until a transformRequestForCohere() exists — see #248.
 				if ( arguments.chunk.keyExists( "choices" ) && isArray( arguments.chunk.choices ) && arguments.chunk.choices.len() > 0 ) {
 					var delta = arguments.chunk.choices[ 1 ].delta ?: {};
 					if ( delta.keyExists( "content" ) ) {

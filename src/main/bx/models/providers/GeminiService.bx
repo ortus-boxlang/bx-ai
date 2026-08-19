@@ -388,7 +388,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		// -------------------------------------------------------------------------------------------
 		arguments.chatRequest.fireMiddleware(
 			hook   : "afterLLMCall",
-			context: { chatRequest: arguments.chatRequest, streamState: { "content": geminiContent, "finishReason": "", "toolCalls": [], "usage": geminiUsage.raw } },
+			context: { chatRequest: arguments.chatRequest, streamState: { "reasoning": "", "content": geminiContent, "finishReason": "", "toolCalls": [], "usage": geminiUsage.raw } },
 			reverse: true
 		)
 	}

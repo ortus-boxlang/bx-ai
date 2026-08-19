@@ -894,7 +894,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		// -------------------------------------------------------------------------------------------
 		arguments.chatRequest.fireMiddleware(
 			hook   : "afterLLMCall",
-			context: { chatRequest: arguments.chatRequest, streamState: { "content": cohereContent, "finishReason": "", "toolCalls": [], "usage": cohereUsage.raw } },
+			context: { chatRequest: arguments.chatRequest, streamState: { "reasoning": "", "content": cohereContent, "finishReason": "", "toolCalls": [], "usage": cohereUsage.raw } },
 			reverse: true
 		)
 	}

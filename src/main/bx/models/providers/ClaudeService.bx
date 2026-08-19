@@ -594,7 +594,16 @@ class extends="BaseService" implements="IAiChatService" {
 		if( streamState.emittedAnyText && streamState.stopReason != "tool_use" ){
 			arguments.chatRequest.fireMiddleware(
 				hook   : "afterLLMCall",
-				context: { chatRequest: arguments.chatRequest, streamState: { "content": streamState.content, "finishReason": streamState.stopReason, "toolCalls": streamState.toolCalls, "usage": streamState.usage } },
+				context: {
+					chatRequest: arguments.chatRequest,
+					streamState: {
+						"content"     : streamState.content,
+						"reasoning"   : streamState.reasoning ?: "",
+						"finishReason": streamState.stopReason,
+						"toolCalls"   : streamState.toolCalls,
+						"usage"       : streamState.usage
+					}
+				},
 				reverse: true
 			)
 		}
@@ -692,6 +701,28 @@ class extends="BaseService" implements="IAiChatService" {
 			context      : llmContext,
 			innerFunction: () => sendChatRequest( capturedChatRequest, capturedDataPacket )
 		)
+
+		// Surface the model's thinking on the standard `reasoning` key BEFORE afterLLMCall runs,
+		// so an OutputGuard can inspect and scrub it — attaching it further down (just before the
+		// returnFormat switch, where this used to live) meant reasoning reached the caller having
+		// never been scanned. Claude's sync `raw` format returns Anthropic's own native envelope
+		// (pre-existing behavior, not an OpenAI `choices[]` shape), so reasoning is attached at the
+		// top level here; the streaming path uses the normalized `delta.reasoning` like everyone
+		// else. Never merged into `content` — that is the answer, and what memory keeps.
+		//
+		// The native `thinking` blocks are deliberately left untouched: they must be echoed back to
+		// Anthropic complete and unmodified within a tool-use turn, so this derived string is the
+		// only copy a guard may rewrite.
+		var nativeReasoning = ""
+		if( isStruct( result ) && result.keyExists( "content" ) && isArray( result.content ) ){
+			var thinkingBlocks = result.content.filter( block -> ( block?.type ?: "" ) == "thinking" )
+			if( thinkingBlocks.len() ){
+				nativeReasoning = thinkingBlocks
+					.map( block -> block.thinking ?: "" )
+					.toList( "" )
+				result[ "reasoning" ] = nativeReasoning
+			}
+		}
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire afterLLMCall middleware, in reverse order ---
@@ -940,26 +971,19 @@ class extends="BaseService" implements="IAiChatService" {
 		// `thinking` blocks BEFORE the answer, so `content.first().text` was null and
 		// every sync return format silently produced an empty answer — enabling the
 		// feature broke the provider outright.
+		// Join ALL text blocks, matching PromptSecurity::getResponseText and
+		// BedrockService.transformResponseFromClaude. Reading only the first made the answer depend
+		// on whether a guard had run: setResponseText collapses the text blocks into the first one,
+		// so attaching an OutputGuard changed the returned content rather than just masking it, and
+		// returnFormat "all" silently returned fewer blocks than before.
 		var textBlocks = result.content.filter( block -> ( block?.type ?: "" ) == "text" )
-		var content    = textBlocks.len() ? ( textBlocks.first().text ?: "" ) : ""
-
-		// Surface the model's thinking on the standard `reasoning` key. Claude's sync
-		// `raw` format returns Anthropic's own native envelope (pre-existing behavior,
-		// not an OpenAI `choices[]` shape), so reasoning is attached at the top level
-		// here; the streaming path uses the normalized `delta.reasoning` like everyone
-		// else. Never merged into `content` — that is the answer, and what memory keeps.
-		var thinkingBlocks = result.content.filter( block -> ( block?.type ?: "" ) == "thinking" )
-		if( thinkingBlocks.len() ){
-			result[ "reasoning" ] = thinkingBlocks
-				.map( block -> block.thinking ?: "" )
-				.toList( "" )
-		}
+		var content    = textBlocks.map( block -> block.text ?: "" ).toList( char( 10 ) )
 
 		switch( arguments.chatRequest.getReturnFormat() ){
 			case "all":
-				return result.content;
+				return sanitizedNativeEnvelope( result, nativeReasoning ).content;
 			case "raw":
-				return result;
+				return sanitizedNativeEnvelope( result, nativeReasoning );
 			case "json":
 				return extractJSONContent( content );
 			case "xml" :
@@ -1232,6 +1256,62 @@ class extends="BaseService" implements="IAiChatService" {
 
 		thisChatRequest.setMessages( messages )
 		return chat( thisChatRequest, arguments.interactionCount + 1 )
+	}
+
+
+	/**
+	 * The native Anthropic envelope as it should be RETURNED to the caller, which is not always the
+	 * one sent back to Anthropic.
+	 *
+	 * A guard may have scrubbed the derived `result.reasoning`, but the native `thinking` blocks it
+	 * was derived from are deliberately never rewritten — Anthropic requires them echoed back
+	 * complete and unmodified within a tool-use turn. So `returnFormat: "raw"`/`"all"` would hand
+	 * the caller the untouched thinking text, defeating the redaction. When the derived copy no
+	 * longer matches the native blocks, a COPY is returned with the scrubbed text collapsed into the
+	 * first thinking block and the rest dropped (mirroring how PromptSecurity collapses text
+	 * blocks). The original struct is left intact for the message history and the provider round
+	 * trip.
+	 *
+	 * @result          The native envelope
+	 * @nativeReasoning The thinking text as it arrived, before any guard ran
+	 *
+	 * @return The envelope safe to return to the caller
+	 */
+	private struct function sanitizedNativeEnvelope( required struct result, required string nativeReasoning ){
+		var derived = arguments.result.reasoning ?: ""
+
+		// Nothing scrubbed it, or there was never any thinking to scrub.
+		if( !len( arguments.nativeReasoning ) || derived == arguments.nativeReasoning ){
+			return arguments.result
+		}
+
+		var safe = duplicate( arguments.result )
+		if( !isArray( safe.content ?: "" ) ){
+			return safe
+		}
+
+		var thinkingIndexes = []
+		for( var i = 1; i <= safe.content.len(); i++ ){
+			var block = safe.content[ i ]
+			if( isStruct( block ) && ( block.type ?: "" ) == "thinking" ){
+				thinkingIndexes.append( i )
+			}
+		}
+		if( thinkingIndexes.isEmpty() ){
+			return safe
+		}
+
+		// delete back-to-front so the earlier indexes stay valid
+		for( var i = thinkingIndexes.len(); i > 1; i-- ){
+			safe.content.deleteAt( thinkingIndexes[ i ] )
+		}
+		if( len( derived ) ){
+			safe.content[ thinkingIndexes.first() ].thinking = derived
+		} else {
+			safe.content.deleteAt( thinkingIndexes.first() )
+		}
+
+		return safe
 	}
 
 }
