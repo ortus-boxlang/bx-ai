@@ -1667,8 +1667,12 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "buildProviderOptionHeaders honors the bedrockHeaders struct shorthand" )
+	@DisplayName( "buildProviderOptionHeaders honors the bedrockHeaders struct shorthand, verbatim" )
 	public void testBedrockHeadersStructShorthand() {
+		// Uses FULL X-Amzn-Bedrock-* header names, which is the contract. `bedrockHeaders` is
+		// appended verbatim and nothing prefixes it, so an earlier version of this test asserting
+		// bare `Service-Tier` / `Request-Metadata` keys passed while proving nothing — those would
+		// have gone on the wire as header names Bedrock does not recognize.
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
@@ -1678,12 +1682,12 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 				)
 				headers = service.buildProviderOptionHeaders( {
 					bedrockHeaders: {
-						"Service-Tier": "flex",
-						"Request-Metadata": "project=demo"
+						"X-Amzn-Bedrock-Service-Tier": "flex",
+						"X-Amzn-Bedrock-Request-Metadata": "project=demo"
 					}
 				} )
-				serviceTier = headers[ "Service-Tier" ]
-				requestMeta = headers[ "Request-Metadata" ]
+				serviceTier = headers[ "X-Amzn-Bedrock-Service-Tier" ]
+				requestMeta = headers[ "X-Amzn-Bedrock-Request-Metadata" ]
 			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
 			context
 		);
@@ -1691,6 +1695,33 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( Key.of( "serviceTier" ) ) ).isEqualTo( "flex" );
 		assertThat( variables.get( Key.of( "requestMeta" ) ).toString() ).contains( "demo" );
+	}
+
+	@Test
+	@DisplayName( "bedrockHeaders is appended verbatim: a bare suffix is NOT prefixed for the caller" )
+	public void testBedrockHeadersAreNotPrefixed() {
+		// Pins the contract the previous test used to blur, so nobody "fixes" this by silently
+		// prefixing and changing what goes on the wire.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				headers = service.buildProviderOptionHeaders( {
+					bedrockHeaders: { "Service-Tier": "flex" }
+				} )
+				kept     = headers.keyExists( "Service-Tier" )
+				prefixed = headers.keyExists( "X-Amzn-Bedrock-Service-Tier" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "kept" ) ) ).isTrue();
+		assertWithMessage( "bedrockHeaders keys are forwarded as-is; nothing adds the prefix" )
+		    .that( variables.getAsBoolean( Key.of( "prefixed" ) ) ).isFalse();
 	}
 
 	@Test

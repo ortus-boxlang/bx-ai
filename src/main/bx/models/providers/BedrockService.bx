@@ -1799,11 +1799,23 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	/**
 	 * Build extra request headers driven by providerOptions:
 	 *   - Generic passthrough: any providerOptions key already shaped like a Bedrock header
-	 *     (matches `x-amzn-bedrock-*`, case-insensitive) is forwarded verbatim. Covers ad-hoc
-	 *     headers like PerformanceConfig-Latency, Service-Tier, Request-Metadata, Trace.
+	 *     (matches `x-amzn-bedrock-*`, case-insensitive) is forwarded verbatim. Keys must be the
+	 *     FULL header name — `X-Amzn-Bedrock-Service-Tier`, not `Service-Tier` — since the regex
+	 *     anchors on the prefix and a bare suffix is silently ignored. Covers ad-hoc headers like
+	 *     X-Amzn-Bedrock-PerformanceConfig-Latency / -Service-Tier / -Request-Metadata / -Trace.
 	 *   - Struct shorthand: `providerOptions.bedrockHeaders = { "X-Amzn-Bedrock-...": "value" }`.
-	 *   - First-class Guardrails: `guardrailIdentifier` / `guardrailVersion` / `guardrailTrace`
-	 *     map to X-Amzn-Bedrock-GuardrailIdentifier / -GuardrailVersion / -Trace.
+	 *     Appended verbatim, so the same full-name rule applies — this struct is NOT prefixed for
+	 *     you, and a bare suffix becomes a header name Bedrock does not recognize.
+	 *   - First-class Guardrails: `guardrailIdentifier` / `guardrailVersion` map to
+	 *     X-Amzn-Bedrock-GuardrailIdentifier / -GuardrailVersion, and `guardrailTrace` maps to
+	 *     `X-Amzn-Bedrock-Trace` (values ENABLED / DISABLED / ENABLED_FULL) — which is the header
+	 *     InvokeModel's Request Syntax and URI Request Parameters actually document, and the one
+	 *     that produces the `amazon-bedrock-trace.guardrails` block in the response body. AWS's own
+	 *     reference is self-inconsistent here: its "Use a guardrail" EXAMPLE additionally shows an
+	 *     `X-Amzn-Bedrock-GuardrailTrace` header alongside `X-Amzn-Bedrock-Trace`, but no such
+	 *     parameter appears in either authoritative section. A caller who wants that variant can
+	 *     send it through the generic passthrough above; we deliberately send the documented one.
+	 *     @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
 	 *
 	 * Pure/no I/O, so it's directly unit-testable without a signer or HTTP call.
 	 *
@@ -1879,7 +1891,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		if ( isStruct( responseHeaders ) ) {
 			for ( var headerName in responseHeaders ) {
 				if ( headerName.reFindNoCase( "^x-amzn-bedrock-guardrailaction$" ) ) {
-					action = responseHeaders[ headerName ];
+					// Normalized like every other header read here: an array-shaped multi-value
+					// header would make the findNoCase() below an arrayFindNoCase() against header
+					// values, silently missing the intervention it exists to report.
+					action = firstHeaderValue( responseHeaders[ headerName ] );
 					break;
 				}
 			}
@@ -2040,7 +2055,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 						statusCode  : statusCode,
 						errorData   : errorData,
 						chatRequest : arguments.aiRequest,
-						retryAfter  : responseHeaders.keyExists( "retry-after" ) ? responseHeaders[ "retry-after" ] : ""
+						retryAfter  : firstHeaderValue( responseHeaders[ "retry-after" ] ?: "" )
 					}
 				);
 			}
@@ -2284,7 +2299,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 						statusCode  : statusCode,
 						errorData   : errorData,
 						chatRequest : arguments.aiRequest,
-						retryAfter  : responseHeaders.keyExists( "retry-after" ) ? responseHeaders[ "retry-after" ] : ""
+						retryAfter  : firstHeaderValue( responseHeaders[ "retry-after" ] ?: "" )
 					}
 				);
 			}
@@ -3097,7 +3112,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 						statusCode       : statusCode,
 						errorData        : errorData,
 						embeddingRequest : arguments.embeddingRequest,
-						retryAfter       : responseHeaders.keyExists( "retry-after" ) ? responseHeaders[ "retry-after" ] : ""
+						retryAfter       : firstHeaderValue( responseHeaders[ "retry-after" ] ?: "" )
 					}
 				);
 			}
