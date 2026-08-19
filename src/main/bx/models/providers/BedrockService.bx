@@ -125,6 +125,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// request pays the ~1-2s IMDS/container timeout again (worst case: once per text in
 		// sendTitanEmbeddings).
 		NEGATIVE_CACHE_SECONDS = 60;
+		// Auto-resolved (container/IMDS) credentials, cached across INSTANCES rather than on one.
+		// aiService() builds a fresh provider per call (aiService.bx: `new "#targetClass#"()`), so
+		// an instance-scoped cache never survives to be read a second time: every request would
+		// re-hit the metadata endpoint and the negative cache below could never fire. Keyed by
+		// credentialCacheKey(); each entry is { credentials: {}, lastFailure: null|datetime }.
+		CREDENTIAL_CACHE = {};
 		// Model families whose Bedrock request transform genuinely has no representation for
 		// tools / schema-typed structured output (see assertCapabilitySupported()).
 		NO_TOOL_SUPPORT_FAMILIES = [ "titan", "llama", "mistral", "openai", "cohere" ];
@@ -142,16 +148,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Bedrock doesn't use a fixed URL - it's constructed per request based on region and model
 		variables.chatURL       = "";
 		variables.embeddingsURL = "";
-		// Cache for credentials auto-resolved from the ECS/EKS container or EC2 IMDSv2 endpoints
-		// (see resolveAwsCredentials()). Empty until/unless the chain actually falls through to
-		// one of those steps — explicit/env credentials never populate this.
-		variables.resolvedCredentials = {};
-		// Timestamp of the last resolution attempt that found nothing anywhere in the chain (null
-		// until the first such failure) — backs the negative cache in resolveAwsCredentials().
-		variables.lastCredentialResolutionFailure = null;
-		// Unique per-instance name for the named lock guarding resolveAwsCredentials()'s
-		// read-modify-write of variables.resolvedCredentials / lastCredentialResolutionFailure.
-		variables.credentialLockName = "bedrock-credentials-" & createUUID();
+		// Auto-resolved credential state (ECS/EKS container or EC2 IMDSv2) lives in
+		// static.CREDENTIAL_CACHE, shared across instances and keyed by credentialCacheKey() —
+		// see that method and the static block. Explicit/env credentials never populate it.
 
 		// Set default params
 		defaults( static.DEFAULT_CHAT_PARAMS );
@@ -304,7 +303,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *   4. ECS/EKS container credentials (AWS_CONTAINER_CREDENTIALS_RELATIVE_URI / _FULL_URI)
 	 *   5. EC2 IMDSv2 instance-role credentials
 	 *
-	 * Auto-resolved credentials (steps 4/5) are cached on the instance and re-resolved once within
+	 * Auto-resolved credentials (steps 4/5) are cached in static.CREDENTIAL_CACHE — SHARED across
+	 * instances, keyed by credentialCacheKey() — and re-resolved once within
 	 * 5 minutes of their reported expiration (see isCredentialCacheValid()). A failed resolution
 	 * attempt (nothing anywhere in the chain) is itself negative-cached for
 	 * static.NEGATIVE_CACHE_SECONDS so an off-EC2 caller with no role attached doesn't pay the
@@ -315,9 +315,14 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * valid does today's original behavior apply: the (empty) variables.aws* values are returned
 	 * as-is and the signed request will fail with AWS's own auth error.
 	 *
-	 * The read-modify-write of variables.resolvedCredentials / lastCredentialResolutionFailure is
-	 * guarded by a named lock so concurrent requests can't race each other into duplicate
-	 * container/IMDS calls or clobber each other's cache writes.
+	 * The read-modify-write of the cache entry is guarded by a named lock derived from the cache key
+	 * (not from instance identity) so concurrent requests for the same credential source can't race
+	 * each other into duplicate container/IMDS calls or clobber each other's cache writes, while
+	 * different sources don't serialize against each other.
+	 *
+	 * Sharing the cache across instances is the point: aiService() constructs a fresh provider on
+	 * every call, so an instance-scoped cache was read exactly once and never hit — every request
+	 * paid a metadata round-trip, and the negative cache could never fire at all.
 	 *
 	 * @return Struct: { accessKeyId, secretAccessKey, sessionToken }
 	 */
@@ -359,24 +364,30 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			};
 		}
 
-		var result = {};
+		var result   = {};
+		var cacheKey = credentialCacheKey();
 
+		// Lock name is derived from the cache key, not from instance identity: concurrent refreshes
+		// for the SAME credential source serialize (one metadata round-trip, not one per thread),
+		// while different sources proceed independently.
 		lock
-			name="#variables.credentialLockName#"
+			name="bedrock-credentials-#cacheKey#"
 			type="exclusive"
 			timeout="10"
 			throwontimeout="true" {
 
+			var entry = static.CREDENTIAL_CACHE[ cacheKey ] ?: { "credentials" : {}, "lastFailure" : null };
+
 			// Cached auto-resolved (container/IMDS) credentials, still valid.
-			if ( isCredentialCacheValid( variables.resolvedCredentials ) ) {
-				result = variables.resolvedCredentials;
+			if ( isCredentialCacheValid( entry.credentials ) ) {
+				result = entry.credentials;
 			} else if (
-				!isNull( variables.lastCredentialResolutionFailure )
-				&& dateDiff( "s", variables.lastCredentialResolutionFailure, now() ) < static.NEGATIVE_CACHE_SECONDS
+				!isNull( entry.lastFailure )
+				&& dateDiff( "s", entry.lastFailure, now() ) < static.NEGATIVE_CACHE_SECONDS
 			) {
 				// Negative cache: a resolution attempt recently found nothing — skip the
 				// container/IMDS round-trips for a while rather than paying that timeout again.
-				result = fallbackToCachedOrEmptyCredentials();
+				result = fallbackToCachedOrEmptyCredentials( entry.credentials );
 			} else {
 				// 4: ECS/EKS container credentials
 				var creds = loadContainerCredentials();
@@ -387,19 +398,40 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				}
 
 				if ( !isNull( creds ) ) {
-					variables.resolvedCredentials             = creds;
-					variables.lastCredentialResolutionFailure = null;
-					result = creds;
+					entry.credentials = creds;
+					entry.lastFailure = null;
+					result            = creds;
 				} else {
 					// Nothing resolved this attempt — start/refresh the negative-cache window,
 					// then fall back to still-valid cached credentials if any.
-					variables.lastCredentialResolutionFailure = now();
-					result = fallbackToCachedOrEmptyCredentials();
+					entry.lastFailure = now();
+					result            = fallbackToCachedOrEmptyCredentials( entry.credentials );
 				}
 			}
+
+			static.CREDENTIAL_CACHE[ cacheKey ] = entry;
 		}
 
 		return result;
+	}
+
+	/**
+	 * Key under which auto-resolved credentials are shared across instances.
+	 *
+	 * Built from what actually determines the credential values — the container endpoint in use, or
+	 * EC2 IMDS otherwise — plus the region. Region does not change what the metadata service hands
+	 * back, but including it keeps two differently-configured services from sharing an entry, at
+	 * the negligible cost of one extra entry per region in a process that targets several.
+	 *
+	 * @return The cache key
+	 */
+	public string function credentialCacheKey(){
+		var relativeUri = getSystemSetting( "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "" );
+		var fullUri     = getSystemSetting( "AWS_CONTAINER_CREDENTIALS_FULL_URI", "" );
+		var source      = len( relativeUri ) ? "container-relative:" & relativeUri
+			: ( len( fullUri ) ? "container-full:" & fullUri : "ec2-imds" );
+
+		return hash( lCase( variables.region & "|" & source ), "MD5" );
 	}
 
 	/**
@@ -410,22 +442,24 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * shouldn't discard credentials that still work — otherwise fall back to the original (likely
 	 * empty) explicit/env values.
 	 *
+	 * @cached The cached credentials for this credential source (may be empty)
+	 *
 	 * @return Struct: { accessKeyId, secretAccessKey, sessionToken }
 	 */
-	private struct function fallbackToCachedOrEmptyCredentials(){
+	private struct function fallbackToCachedOrEmptyCredentials( required struct cached ){
 		if (
-			!variables.resolvedCredentials.isEmpty()
-			&& variables.resolvedCredentials.keyExists( "expiration" )
-			&& dateCompare( now(), variables.resolvedCredentials.expiration ) < 0
+			!arguments.cached.isEmpty()
+			&& arguments.cached.keyExists( "expiration" )
+			&& dateCompare( now(), arguments.cached.expiration ) < 0
 		) {
 			writeLog(
 				text: "Bedrock: credential refresh failed (or was skipped via the negative cache) while "
 					& "still within the 5-minute expiry buffer; reusing still-valid cached credentials "
-					& "(expires #variables.resolvedCredentials.expiration#)",
+					& "(expires #arguments.cached.expiration#)",
 				type: "warning",
 				log : "ai"
 			);
-			return variables.resolvedCredentials;
+			return arguments.cached;
 		}
 
 		// Nothing usable anywhere in the chain — keep today's behavior (empty credentials; the

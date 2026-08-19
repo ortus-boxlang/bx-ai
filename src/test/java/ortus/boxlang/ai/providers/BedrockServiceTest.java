@@ -2122,6 +2122,57 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "Auto-resolved credential state is shared across service instances, not per-instance" )
+	public void testCredentialCacheIsSharedAcrossInstances() {
+		// aiService() builds a fresh provider per call, so an instance-scoped cache was read exactly
+		// once and never hit: every request re-paid a container/IMDS round-trip and the negative
+		// cache could never fire. The cache now lives in static.CREDENTIAL_CACHE keyed by
+		// credentialCacheKey(), so two separate instances must agree on the key and see one entry.
+		//
+		// Asserted via the key rather than by counting metadata calls, since neither endpoint is
+		// reachable from a test host — an off-AWS box is exactly the negative-cache case, and the
+		// shared entry is what makes the second instance skip the timeout.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				serviceA = new bxModules.bxai.models.providers.BedrockService()
+				serviceB = new bxModules.bxai.models.providers.BedrockService()
+				serviceA.configure( { region: "%s" } )
+				serviceB.configure( { region: "%s" } )
+
+				// No explicit credentials, so both fall through to the auto-resolved path.
+				startA = getTickCount()
+				credsA = serviceA.resolveAwsCredentials()
+				elapsedA = getTickCount() - startA
+
+				startB = getTickCount()
+				credsB = serviceB.resolveAwsCredentials()
+				elapsedB = getTickCount() - startB
+
+				sharedKeys = serviceA.credentialCacheKey() == serviceB.credentialCacheKey()
+				resolvedA  = isStruct( credsA )
+				resolvedB  = isStruct( credsB )
+			""".formatted( DUMMY_AWS_REGION, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertWithMessage( "two instances with the same region and credential source must share one cache entry" )
+		    .that( variables.getAsBoolean( Key.of( "sharedKeys" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resolvedA" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resolvedB" ) ) ).isTrue();
+
+		// The second instance must not re-pay the metadata timeout the first one already ate: with a
+		// per-instance cache both calls paid it. Deliberately a generous bound rather than a tight
+		// one — off-AWS the first call spends seconds in container+IMDS timeouts and the second
+		// returns from the negative cache immediately, and ON AWS both are fast, so this cannot fail
+		// spuriously in either environment; it only fails if the cache stopped being shared.
+		long elapsedB = ( ( Number ) variables.get( Key.of( "elapsedB" ) ) ).longValue();
+		assertWithMessage( "second instance re-paid the metadata round-trip; credential cache is not shared (elapsedB=" + elapsedB + "ms)" )
+		    .that( elapsedB < 1000L ).isTrue();
+	}
+
+	@Test
 	@DisplayName( "isCredentialCacheValid: fresh cache (>5 min to expiry) is valid; empty/missing-expiration/soon-to-expire/already-expired are not" )
 	public void testIsCredentialCacheValidExpiryBuffer() {
 		// @formatter:off
