@@ -2243,6 +2243,12 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 				httpsAny   = service.isTrustedContainerCredentialUri( "https://vault.internal.example/creds" )
 				plainOther = service.isTrustedContainerCredentialUri( "http://evil.example.com/creds" )
 				imdsSpoof  = service.isTrustedContainerCredentialUri( "http://169.254.169.254/creds" )
+				// userinfo bypass: the real host is evil.example, not 127.0.0.1
+				userinfo   = service.isTrustedContainerCredentialUri( "http://127.0.0.1:80@evil.example/creds" )
+				userinfo2  = service.isTrustedContainerCredentialUri( "http://169.254.170.2@evil.example/creds" )
+				// bracketed IPv6 loopback must be accepted, not mangled into "["
+				ipv6       = service.isTrustedContainerCredentialUri( "http://[::1]:8080/creds" )
+				ipv6Eks    = service.isTrustedContainerCredentialUri( "http://[fd00:ec2::23]/creds" )
 			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
 			context
 		);
@@ -2256,6 +2262,57 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		    .that( variables.getAsBoolean( Key.of( "plainOther" ) ) ).isFalse();
 		assertWithMessage( "the IMDS address is not a container credential endpoint" )
 		    .that( variables.getAsBoolean( Key.of( "imdsSpoof" ) ) ).isFalse();
+		assertWithMessage( "userinfo before the host must not make an arbitrary host look trusted" )
+		    .that( variables.getAsBoolean( Key.of( "userinfo" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "userinfo2" ) ) ).isFalse();
+		assertWithMessage( "a bracketed IPv6 loopback literal is a trusted endpoint" )
+		    .that( variables.getAsBoolean( Key.of( "ipv6" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "ipv6Eks" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "An explicit key pair never inherits a session token from a lower-priority source" )
+	public void testSessionTokenStaysAtomicWithItsKeyPair() {
+		// Credential sources were merged into one struct and the token read off the merged result, so
+		// a caller's complete pair could pick up a session token belonging to the module-global
+		// credentials — SigV4 then signs a mismatched triple and AWS rejects it.
+		IStruct	providers		= Struct.of(
+		    "Bedrock",
+		    Struct.of( "options", Struct.of( "awsSessionToken", "provider-session-token" ) )
+		);
+		Object	priorProviders	= moduleRecord.settings.get( Key.of( "providers" ) );
+		moduleRecord.settings.put( Key.of( "providers" ), providers );
+
+		try {
+			// @formatter:off
+			executeWithTimeoutHandling(
+				"""
+					service = new bxModules.bxai.models.providers.BedrockService()
+					// A COMPLETE explicit pair with no session token of its own, while both a provider
+					// setting and the global apiKey struct offer one.
+					service.configure( {
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						apiKey: { awsSessionToken: "global-session-token" }
+					} )
+					creds = service.resolveAwsCredentials()
+				""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY ),
+				context
+			);
+			// @formatter:on
+
+			@SuppressWarnings( "unchecked" )
+			IStruct creds = ( IStruct ) variables.get( Key.of( "creds" ) );
+			assertThat( creds.get( Key.of( "accessKeyId" ) ) ).isEqualTo( DUMMY_AWS_ACCESS_KEY_ID );
+			assertWithMessage( "the session token must come from the same source as the key pair, or not at all" )
+			    .that( creds.get( Key.of( "sessionToken" ) ) ).isEqualTo( "" );
+		} finally {
+			if ( priorProviders == null ) {
+				moduleRecord.settings.remove( Key.of( "providers" ) );
+			} else {
+				moduleRecord.settings.put( Key.of( "providers" ), priorProviders );
+			}
+		}
 	}
 
 	@Test

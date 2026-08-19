@@ -221,18 +221,19 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			var resolvedOptions = duplicate( variables.options );
 			resolvedOptions.append( callerOptions, true );
 
-			// Credentials may be nested inside apiKey (the aiChat()/aiService() flow injects the
-			// module-level apiKey struct there). Overlay it rather than SWITCHING to it wholesale:
-			// replacing credSource discarded the caller's own explicit region and credentials, so an
-			// explicit eu-west-2 key pair silently signed as the module's us-east-1 account.
+			// ------------------------------------------------------------------------------------
+			// Credential sources, highest precedence first. Each is evaluated as an ATOMIC SET: the
+			// source that supplies a complete key pair supplies the session token too, or leaves it
+			// empty. Merging the sources first and then reading the token off the merged struct is
+			// what this replaces — it let a caller's explicit pair pick up a session token from
+			// provider settings or the module-global apiKey, which is a token belonging to different
+			// credentials, and SigV4 signs the mismatched triple for AWS to reject.
 			//
-			// Precedence, highest first: explicit per-call arguments, then
-			// settings.providers.Bedrock.options (provider-specific), then the module-global apiKey
-			// struct, then the environment values init() loaded. The global apiKey is the BROADEST
-			// scope of the three configured sources, so it fills only what neither of the narrower
-			// ones stated.
-			var credSource      = duplicate( resolvedOptions );
-			// Read module settings the way BaseService does. `static.` resolves to THIS class's own
+			// The module-global apiKey is the BROADEST configured scope (aiChat()/aiService() inject
+			// it for every provider), so it ranks below provider-specific settings, which in turn
+			// rank below what this call stated explicitly.
+			// ------------------------------------------------------------------------------------
+			// Read module settings the way BaseService does: `static.` resolves to THIS class's own
 			// static scope, so BaseService's MODULE_SETTINGS is not reachable through it.
 			var providerOptions = {};
 			var moduleSettings  = getModuleInfo( "bxai" ).settings ?: {};
@@ -245,49 +246,43 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				providerOptions = moduleSettings.providers[ variables.name ].options;
 			}
 
-			if ( resolvedOptions.keyExists( "apiKey" ) && isStruct( resolvedOptions.apiKey ) ) {
-				for ( var credKey in [ "region", "awsAccessKeyId", "awsSecretAccessKey", "awsSessionToken" ] ) {
-					var statedNarrowly = len( callerOptions[ credKey ] ?: "" ) || len( providerOptions[ credKey ] ?: "" );
-					if ( len( resolvedOptions.apiKey[ credKey ] ?: "" ) && !statedNarrowly ) {
-						credSource[ credKey ] = resolvedOptions.apiKey[ credKey ];
+			var nestedApiKey      = ( isStruct( resolvedOptions.apiKey ?: "" ) ) ? resolvedOptions.apiKey : {};
+			var credentialSources = [ callerOptions, providerOptions, nestedApiKey ];
+
+			// Region is not part of the credential set, so it just takes the highest-priority value.
+			for ( var source in credentialSources ) {
+				if ( len( source.region ?: "" ) ) {
+					variables.region = source.region;
+					break;
+				}
+			}
+
+			var adoptedCompleteSet = false;
+			for ( var source in credentialSources ) {
+				if ( len( source.awsAccessKeyId ?: "" ) && len( source.awsSecretAccessKey ?: "" ) ) {
+					variables.awsAccessKeyId     = source.awsAccessKeyId;
+					variables.awsSecretAccessKey = source.awsSecretAccessKey;
+					variables.awsSessionToken    = source.awsSessionToken ?: "";
+					adoptedCompleteSet           = true;
+					break;
+				}
+			}
+
+			if ( !adoptedCompleteSet ) {
+				// No source supplied a complete pair. Override only the individual values that were
+				// actually stated, highest-priority source first, leaving the rest of the chain (the
+				// environment values init() loaded) intact — blanking an environment-supplied secret
+				// because an access key id was configured alone is its own regression.
+				for ( var credKey in [ "awsAccessKeyId", "awsSecretAccessKey", "awsSessionToken" ] ) {
+					for ( var source in credentialSources ) {
+						if ( len( source[ credKey ] ?: "" ) ) {
+							variables[ credKey ] = source[ credKey ];
+							break;
+						}
 					}
 				}
 			}
 
-			// Configure with struct of settings - check both top-level and apiKey nested
-			if ( credSource.keyExists( "region" ) ) {
-				variables.region = credSource.region;
-			}
-			// Credentials resolve as an ATOMIC SET, but only when this source actually supplies a
-			// COMPLETE long-term pair. init() already seeded the instance from the environment, so
-			// assigning the keys individually let an explicit pair keep AWS_SESSION_TOKEN from the
-			// environment — a token belonging to different credentials, which SigV4 then signs with
-			// and AWS rejects. Gating on a complete pair rather than on the access key alone
-			// matters just as much in the other direction: keying off keyExists() blanked an
-			// environment-supplied secret whenever only an access key id was configured (or one was
-			// declared present-but-empty), which turned a working setup into requests signed with
-			// an empty secret.
-			var explicitKeyId  = credSource.awsAccessKeyId ?: "";
-			var explicitSecret = credSource.awsSecretAccessKey ?: "";
-
-			if ( len( explicitKeyId ) && len( explicitSecret ) ) {
-				// A complete set: the session token comes from this same source, or not at all.
-				variables.awsAccessKeyId     = explicitKeyId;
-				variables.awsSecretAccessKey = explicitSecret;
-				variables.awsSessionToken    = credSource.awsSessionToken ?: "";
-			} else {
-				// Partial: override only what was actually given, leaving the rest of the chain
-				// (environment values loaded in init()) intact, as it behaved before.
-				if ( len( explicitKeyId ) ) {
-					variables.awsAccessKeyId = explicitKeyId;
-				}
-				if ( len( explicitSecret ) ) {
-					variables.awsSecretAccessKey = explicitSecret;
-				}
-				if ( len( credSource.awsSessionToken ?: "" ) ) {
-					variables.awsSessionToken = credSource.awsSessionToken;
-				}
-			}
 			// These remain at top level
 			if ( resolvedOptions.keyExists( "modelId" ) ) {
 				variables.modelId = resolvedOptions.modelId;
@@ -593,6 +588,38 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
+	 * Extract the real host from an absolute URI, so a trust decision cannot be fooled by the
+	 * authority's own syntax.
+	 *
+	 * Two traps this exists for. A URI may carry `userinfo@` before the host, so
+	 * `http://127.0.0.1:80@evil.example/creds` has a real host of `evil.example` while a naive
+	 * "everything before the first colon" read returns `127.0.0.1`. And an IPv6 literal is
+	 * bracketed and full of colons, so that same read turns `http://[::1]/` into `[`.
+	 *
+	 * @uri An absolute URI
+	 *
+	 * @return The lowercased host, with any userinfo, port and IPv6 brackets removed
+	 */
+	private string function extractUriHost( required string uri ){
+		// Strip the scheme, then take the authority: everything up to the first / ? or ##
+		var authority = arguments.uri.reReplaceNoCase( "^[a-z][a-z0-9+.-]*://", "" );
+		authority     = authority.listFirst( "/?##" );
+
+		// Userinfo may itself contain @, so the host follows the LAST one
+		if ( authority.find( "@" ) ) {
+			authority = authority.listLast( "@" );
+		}
+
+		// Bracketed IPv6 literal: the host is what is inside the brackets, and any port follows them
+		if ( authority.startsWith( "[" ) ) {
+			var closing = authority.find( "]" );
+			return closing > 1 ? lCase( authority.mid( 2, closing - 2 ) ) : "";
+		}
+
+		return lCase( authority.listFirst( ":" ) );
+	}
+
+	/**
 	 * Whether a container credential endpoint may be contacted, per the AWS SDKs' rule for
 	 * AWS_CONTAINER_CREDENTIALS_FULL_URI.
 	 *
@@ -617,10 +644,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		}
 
 		if ( normalized.reFindNoCase( "^http://" ) ) {
-			// Host is everything after the scheme up to the first /, ? or : (port)
-			var host = normalized.reReplaceNoCase( "^http://", "" ).listFirst( "/?" ).listFirst( ":" );
+			var host = extractUriHost( normalized );
 
-			var trustedHosts = [ "localhost", "127.0.0.1", "::1", "[::1]", "169.254.170.2", "169.254.170.23", "fd00:ec2::23", "[fd00:ec2::23]" ];
+			var trustedHosts = [ "localhost", "127.0.0.1", "::1", "169.254.170.2", "169.254.170.23", "fd00:ec2::23" ];
 			if ( trustedHosts.findNoCase( host ) ) {
 				return true;
 			}
@@ -655,6 +681,19 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// one endpoint and cached the result under the other.
 		var url = "";
 		if ( len( relativeUri ) ) {
+			// RELATIVE_URI is concatenated onto the fixed ECS address, so it must actually be a path.
+			// A value like "@evil.example/creds" would otherwise assemble into
+			// "http://169.254.170.2@evil.example/creds", whose real host is evil.example — the
+			// userinfo trick, arriving through the one input that skipped the trust check.
+			if ( !relativeUri.startsWith( "/" ) || relativeUri.find( "@" ) ) {
+				writeLog(
+					text: "Bedrock: ignoring AWS_CONTAINER_CREDENTIALS_RELATIVE_URI [#relativeUri#] — it must be a "
+						& "path beginning with / and may not contain userinfo",
+					type: "warning",
+					log : "ai"
+				);
+				return null;
+			}
 			url = "http://169.254.170.2" & relativeUri;
 		} else if ( isTrustedContainerCredentialUri( fullUri ) ) {
 			url = fullUri;
