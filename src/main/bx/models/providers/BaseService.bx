@@ -365,7 +365,7 @@ abstract class implements="IAiService" {
 				statusCode: chatResult.statusCode,
 				errorData: errorData,
 				chatRequest: arguments.chatRequest,
-				retryAfter: chatResult.responseheader.keyExists( "retry-after" ) ? chatResult.responseheader[ "retry-after" ] : ""
+				retryAfter: firstHeaderValue( chatResult.responseheader[ "retry-after" ] ?: "" )
 			} );
 		}
 
@@ -585,6 +585,23 @@ abstract class implements="IAiService" {
 	 *
 	 * @return void
 	 */
+	/**
+	 * Normalize a response header value that may come back as an array (some HTTP clients return
+	 * multi-valued headers as an array rather than one delimited string) into a single plain
+	 * string. Without this, a listener handed `retryAfter` as an array sees `val()` yield 0 and
+	 * retries immediately into the same throttle.
+	 *
+	 * @headerValue The raw header value: a string, an array of strings, or empty
+	 *
+	 * @return The first value as a string, or an empty string
+	 */
+	private string function firstHeaderValue( required any headerValue ){
+		if( isArray( arguments.headerValue ) ){
+			return arguments.headerValue.len() ? toString( arguments.headerValue[ 1 ] ) : ""
+		}
+		return toString( arguments.headerValue )
+	}
+
 	private void function normalizeReasoningDelta( required struct parsedChunk ){
 		var choices = arguments.parsedChunk.choices ?: [];
 		if( !isArray( choices ) || choices.isEmpty() ){
