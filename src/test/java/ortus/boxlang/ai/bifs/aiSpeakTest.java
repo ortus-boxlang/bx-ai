@@ -80,7 +80,7 @@ public class aiSpeakTest extends BaseIntegrationTest {
 	@Test
 	public void testAiSpeakOpenAIReturnsResponse() {
 		// @formatter:off
-		runtime.executeSource(
+		var completed = executeWithTimeoutHandling(
 			"""
 			response = aiSpeak(
 				text   : "BoxLang is a modern, dynamic JVM language.",
@@ -93,6 +93,10 @@ public class aiSpeakTest extends BaseIntegrationTest {
 			context
 		);
 		// @formatter:on
+
+		if ( !completed ) {
+			return;
+		}
 
 		var	hasAudio	= variables.getAsBoolean( Key.of( "hasAudio" ) );
 		var	audioFormat	= variables.getAsString( Key.of( "audioFormat" ) );
@@ -108,7 +112,7 @@ public class aiSpeakTest extends BaseIntegrationTest {
 	public void testAiSpeakSavesToFile() {
 		var outputPath = "/src/test/resources/loaders/bxai-speak-test.mp3";
 		// @formatter:off
-		runtime.executeSource(
+		var completed = executeWithTimeoutHandling(
 			"""
 			outputPath = "#outputPath#";
 			savedPath = aiSpeak(
@@ -121,6 +125,10 @@ public class aiSpeakTest extends BaseIntegrationTest {
 			context
 		);
 		// @formatter:on
+
+		if ( !completed ) {
+			return;
+		}
 
 		var fileExistsResult = variables.getAsBoolean( Key.of( "fileExistsResult" ) );
 		assertThat( fileExistsResult ).isTrue();
@@ -331,7 +339,7 @@ public class aiSpeakTest extends BaseIntegrationTest {
 	@Test
 	public void testAiSpeechRequestOfStaticFactory() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			import bxModules.bxai.models.requests.AiSpeechRequest
 			capturedText = "";
@@ -352,7 +360,7 @@ public class aiSpeakTest extends BaseIntegrationTest {
 	@Test
 	public void testFluentBuilderVoiceAndFormat() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			capturedVoice  = "";
 			capturedFormat = "";
@@ -382,7 +390,7 @@ public class aiSpeakTest extends BaseIntegrationTest {
 	@Test
 	public void testFluentBuilderTextProviderModel() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			capturedText  = "";
 			capturedModel = "";

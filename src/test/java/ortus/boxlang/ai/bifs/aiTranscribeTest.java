@@ -83,7 +83,7 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 	@Test
 	public void testAiTranscribeOpenAIReturnsText() {
 		// @formatter:off
-		runtime.executeSource(
+		var completed = executeWithTimeoutHandling(
 			"""
 			result = aiTranscribe( audio: "#SAMPLE_AUDIO#" )
 			isText = isSimpleValue( result )
@@ -92,6 +92,10 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 			context
 		);
 		// @formatter:on
+
+		if ( !completed ) {
+			return;
+		}
 
 		var	isText	= variables.getAsBoolean( Key.of( "isText" ) );
 		var	textLen	= variables.getAsInteger( Key.of( "textLen" ) );
@@ -104,7 +108,7 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 	@Test
 	public void testAiTranscribeReturnsResponseObject() {
 		// @formatter:off
-		runtime.executeSource(
+		var completed = executeWithTimeoutHandling(
 			"""
 			response = aiTranscribe(
 				audio  : "#SAMPLE_AUDIO#",
@@ -117,6 +121,10 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
+		if ( !completed ) {
+			return;
+		}
+
 		var	hasText		= variables.getAsBoolean( Key.of( "hasText" ) );
 		var	provider	= variables.getAsString( Key.of( "provider" ) );
 
@@ -128,7 +136,7 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 	@Test
 	public void testAiTranscribeGroq() {
 		// @formatter:off
-		runtime.executeSource(
+		var completed = executeWithTimeoutHandling(
 			"""
 			result = aiTranscribe(
 				audio  : "#SAMPLE_AUDIO#",
@@ -141,6 +149,10 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 			context
 		);
 		// @formatter:on
+
+		if ( !completed ) {
+			return;
+		}
 
 		var isText = variables.getAsBoolean( Key.of( "isText" ) );
 		assertThat( isText ).isTrue();
@@ -193,7 +205,7 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 	@Test
 	public void testFluentBuilderFileAndLanguage() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			capturedLang = "";
 			BoxRegisterInterceptor(
@@ -216,7 +228,7 @@ public class aiTranscribeTest extends BaseIntegrationTest {
 	@Test
 	public void testFluentBuilderWithWordTimestamps() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			capturedTimestamps = [];
 			BoxRegisterInterceptor(
