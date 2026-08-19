@@ -110,7 +110,7 @@ public class aiSpeakTest extends BaseIntegrationTest {
 	@DisplayName( "aiSpeak with outputFile option saves audio to disk" )
 	@Test
 	public void testAiSpeakSavesToFile() {
-		var outputPath = "/src/test/resources/loaders/bxai-speak-test.mp3";
+		var	outputPath	= "/src/test/resources/loaders/bxai-speak-test.mp3";
 		// @formatter:off
 		var completed = executeWithTimeoutHandling(
 			"""

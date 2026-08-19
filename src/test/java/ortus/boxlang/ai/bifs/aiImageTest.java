@@ -156,7 +156,7 @@ public class aiImageTest extends BaseIntegrationTest {
 	@DisplayName( "aiImage with outputFile option saves image to disk and returns path" )
 	@Test
 	public void testAiImageSavesToFile() {
-		var outputPath = "/tmp/bxai-image-test.png";
+		var	outputPath	= "/tmp/bxai-image-test.png";
 		// @formatter:off
 		var completed = executeWithTimeoutHandling(
 			"""
@@ -184,7 +184,7 @@ public class aiImageTest extends BaseIntegrationTest {
 	@DisplayName( "aiImage returns a string path when outputFile is set, not an AiImageResponse" )
 	@Test
 	public void testAiImageWithOutputFileReturnsString() {
-		var outputPath = "/tmp/bxai-image-string-test.png";
+		var	outputPath	= "/tmp/bxai-image-string-test.png";
 		// @formatter:off
 		var completed = executeWithTimeoutHandling(
 			"""
@@ -426,7 +426,7 @@ public class aiImageTest extends BaseIntegrationTest {
 	@DisplayName( "Fluent builder .outputFile() saves image and returns file path" )
 	@Test
 	public void testFluentBuilderOutputFile() {
-		var outputPath = "/tmp/bxai-fluent-image-test.png";
+		var	outputPath	= "/tmp/bxai-fluent-image-test.png";
 		// @formatter:off
 		var completed = executeWithTimeoutHandling(
 			"""
